@@ -258,7 +258,8 @@ describe('CommentThread', () => {
 
     renderWithQueryClient(<CommentThread entityType="patient" entityId="patient_1" />);
 
-    expect(screen.getByText('読み込み中...')).toBeTruthy();
+    expect(screen.getByRole('status', { name: 'コメントを読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('読み込み中...', { selector: 'p' })).toBeNull();
     expect(screen.queryByText('コメントはまだありません。')).toBeNull();
   });
 

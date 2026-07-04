@@ -6,6 +6,7 @@ import { MessageSquare, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/loading';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
@@ -125,9 +126,18 @@ export function CommentThread({ entityType, entityId, variant = 'card' }: Commen
             </Button>
           </div>
         ) : isPending ? (
-          <p role="status" aria-live="polite" className="text-sm text-muted-foreground">
-            読み込み中...
-          </p>
+          <div role="status" aria-label="コメントを読み込み中" className="space-y-2 py-1">
+            {Array.from({ length: 2 }).map((_, index) => (
+              <div key={index} className="flex gap-3">
+                <Skeleton className="h-8 w-8 shrink-0 rounded-full" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-3 w-1/4" />
+                  <Skeleton className="h-4 w-3/4" />
+                </div>
+              </div>
+            ))}
+            <span className="sr-only">コメントを読み込み中</span>
+          </div>
         ) : comments.length === 0 ? (
           <p className="text-sm text-muted-foreground">コメントはまだありません。</p>
         ) : null}
