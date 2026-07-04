@@ -1,5 +1,41 @@
 # CODEX Goal Progress
 
+## R40/R44 Patient Edit readApiJson Partial - 2026-07-05 07:06 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/patients/[id]/edit/patient-edit-content.tsx`
+    - `src/app/(dashboard)/patients/[id]/edit/patient-edit-content.fetch.test.tsx`
+- Scope:
+  - Reused `readApiJson` for the patient edit overview read GET.
+  - Added queryFn contract coverage proving API JSON `message` from a failed
+    overview GET is surfaced through the shared helper.
+  - Preserved patient overview API path helper, org headers, React Query key,
+    enabled gate, reconnect/window focus behavior, dot-segment fail-closed
+    behavior, edit redirect helper, and loading/error UI.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.fetch.test.tsx' 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.test.ts'`
+    passed `2` files / `9` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `d62db6f6`
+    (`refactor(ui): reuse readApiJson in patient edit`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Patient Readiness Cards readApiJson Partial - 2026-07-05 07:02 JST
 
 - Status:

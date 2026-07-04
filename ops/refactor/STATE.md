@@ -318,6 +318,12 @@
   read GET を readApiJson へ収束し、patient path helpers、org header、queryKey、enabled gate、
   dot-segment fail-closed、patient links、loading/error UI は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 patient-edit readApiJson slice(d62db6f6) land。focused Vitest 9、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。patient edit の overview read GET を
+  readApiJson へ収束し、patient API path helper、org header、queryKey、enabled gate、
+  reconnect/window focus settings、dot-segment fail-closed、edit redirect helper、loading/error UI は保持。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
+  維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 
