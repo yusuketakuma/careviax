@@ -1,5 +1,40 @@
 # CODEX Goal Progress
 
+## R55 Medication Print Loading State - 2026-07-04 19:28 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/patients/[id]/medications/print/page.tsx`
+    - `src/app/(dashboard)/patients/[id]/medications/print/page.test.tsx`
+- Scope:
+  - Replaced the generic `Loading` return in the medication print page with a
+    named skeleton region that preserves the print toolbar and medication table
+    shape without rendering final printable PHI.
+  - Loading no longer exposes generic `読み込み中...` semantics or final patient
+    medication content before all print data resolves.
+- Safety:
+  - UI loading-state presentation and tests only.
+  - No API path, query key, fetcher, org header, `enabled` behavior, no-store
+    cache setting, print readiness, auto-print timing, URL helper usage,
+    medication query params, DB, auth, authorization, billing, audit,
+    deployment, package, or server behavior changed.
+  - Loading copy is PHI-free and does not echo patient names, patient ids, kana,
+    birth dates, drug names, doses, frequencies, prescriber names, pharmacy
+    names, org ids, or raw errors.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/medications/print/page.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `4` tests.
+  - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
+    the medication print source/test files.
+  - `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `4ba53160`
+    (`fix(patients): show skeleton for medication print loading`).
+- Remaining:
+  - Broader R55 residuals and Plans.md objective remain open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Patient Edit Loading State - 2026-07-04 19:25 JST
 
 - Status:

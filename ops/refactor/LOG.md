@@ -1024,3 +1024,26 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - commit: `4792e87c` (`fix(patients): show skeleton for edit loading`)。
 - 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
   `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
+
+## 2026-07-04 R55 medication print loading skeleton
+
+- 分類: UI loading-state cleanup / R55 visible loading residual。
+- 実施:
+  - `medications/print/page.tsx` の org / patient / medication print data loading 分岐で使っていた
+    generic `Loading` return を、print toolbar と medication table の形を保つ領域固有
+    `role="status"` + skeleton へ置換。
+  - loading 中に generic `読み込み中...` status、最終 print layout、患者名が出ないことを
+    `medications/print/page.test.tsx` に追加。
+- 挙動変更: loading presentation のみ。query key、fetcher、org header、enabled behavior、
+  no-store cache setting、print readiness、auto-print timing、URL helper usage、medication query params、
+  API/DB/auth/authorization/billing/audit は不変。
+- UI/UX根拠: `docs/ui-ux-design-guidelines.md` の 5状態分離、領域固有 loading label、
+  generic loading copy 禁止、印刷表形状に沿う skeleton loading に整合。
+- 安全性: product API/DB/auth/authorization/PHI/billing/deploy/package dependency は不変。
+  Loading copy は PHI-free で、patient name・patient id・kana・birth date・drug name・dose・frequency・prescriber name・pharmacy name・org id・raw error
+  を出さない。
+- 検証: focused medication print Vitest `1 file / 4 tests` green、targeted ESLint green、
+  targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `4ba53160` (`fix(patients): show skeleton for medication print loading`)。
+- 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
+  `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
