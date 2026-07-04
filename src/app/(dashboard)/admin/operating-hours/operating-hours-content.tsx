@@ -24,6 +24,7 @@ import { PageSection } from '@/components/layout/page-section';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { isValidOperatingWindow } from '@/lib/calendar/operating-day';
+import { messageFromError } from '@/lib/utils/error-message';
 import type { StatusRole } from '@/lib/constants/status-tokens';
 
 type SiteOption = { id: string; name: string };
@@ -247,11 +248,11 @@ export function OperatingHoursContent() {
         queryKey: ['pharmacy-operating-hours', orgId, activeSiteId],
       });
     },
-    onError: (error: Error) => {
+    onError: (error) => {
       if (error instanceof OperatingHoursSaveError && error.status === 409) {
         setSaveConflictMessage(error.message);
       }
-      toast.error(error.message);
+      toast.error(messageFromError(error, '営業時間設定の保存に失敗しました'));
     },
   });
 

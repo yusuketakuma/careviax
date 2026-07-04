@@ -6,6 +6,7 @@ import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { toast } from 'sonner';
 
 setupDomTestEnv();
 
@@ -251,6 +252,9 @@ describe('OperatingHoursContent', () => {
         '営業時間設定が他の操作で更新されています。画面を再読み込みしてから保存してください',
       ),
     ).toBeTruthy();
+    expect(toast.error).toHaveBeenCalledWith(
+      '営業時間設定が他の操作で更新されています。画面を再読み込みしてから保存してください',
+    );
     expect(screen.getByRole('button', { name: '画面を再読み込み' })).toBeTruthy();
     expect((screen.getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(true);
 
@@ -259,6 +263,49 @@ describe('OperatingHoursContent', () => {
         String(input) === '/api/pharmacy-operating-hours' && init?.method === 'PUT',
     );
     expect(putCalls).toHaveLength(1);
+  });
+
+  it('falls back to the operating-hours save message for non-conflict save failures', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/pharmacy-sites') {
+        return new Response(JSON.stringify({ data: [{ id: 'site_1', name: '本店' }] }), {
+          status: 200,
+        });
+      }
+      if (url.startsWith('/api/pharmacy-operating-hours?')) {
+        return new Response(
+          JSON.stringify({
+            data: {
+              site_id: 'site_1',
+              weekly: weeklyFixture(),
+              weekly_updated_at: '2026-06-27T00:00:00.000Z',
+              resolved_days: [],
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      if (url === '/api/pharmacy-operating-hours' && init?.method === 'PUT') {
+        return new Response(JSON.stringify({}), { status: 500 });
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderContent();
+
+    const mondayOpen = (await screen.findByLabelText('月曜日の開始時刻')) as HTMLInputElement;
+    fireEvent.change(mondayOpen, { target: { value: '10:00' } });
+
+    const saveButton = await screen.findByRole('button', { name: '保存' });
+    await waitFor(() => expect((saveButton as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('営業時間設定の保存に失敗しました');
+    });
+    expect(screen.queryByRole('button', { name: '画面を再読み込み' })).toBeNull();
   });
 
   it('treats an all-day open row (null times) as valid and clean, not an error', async () => {
