@@ -3,7 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
-import { stubJsonFetch } from '@/test/fetch-test-utils';
+import { jsonResponse, stubJsonFetch } from '@/test/fetch-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import type { SafetyIssueRecord } from './safety-check.shared';
@@ -379,6 +379,38 @@ describe('SafetyCheckContent url/header convergence', () => {
       expect(buildPatientApiPath).toHaveBeenCalledWith('patient_1');
       expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/patients/__helper_patient__');
       expect(fetchMock).not.toHaveBeenCalledWith('/api/patients/patient_1', expect.anything());
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('surfaces API messages from the medication issues read query', async () => {
+    const { queryConfigs } = renderSafetyCheck();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({ message: 'API側の服薬課題エラー' }, 500)),
+    );
+
+    try {
+      await expect(queryConfigs.get('medication-issues')!.queryFn()).rejects.toThrow(
+        'API側の服薬課題エラー',
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('surfaces API messages from the patient summary read query', async () => {
+    const { queryConfigs } = renderSafetyCheck({ patientId: 'patient_1' });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({ message: 'API側の患者情報エラー' }, 500)),
+    );
+
+    try {
+      await expect(queryConfigs.get('patient-safety-check-summary')!.queryFn()).rejects.toThrow(
+        'API側の患者情報エラー',
+      );
     } finally {
       vi.unstubAllGlobals();
     }

@@ -21,6 +21,7 @@ import { Skeleton } from '@/components/ui/loading';
 import { Textarea } from '@/components/ui/textarea';
 import { WorkflowBackLink } from '@/components/features/workflow/workflow-back-link';
 import { PatientHeader } from '@/components/features/patients/patient-header';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
@@ -341,8 +342,7 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
         `/api/medication-issues?${new URLSearchParams({ patient_id: patientId })}`,
         { headers: buildOrgHeaders(orgId) },
       );
-      if (!response.ok) throw new Error('服薬課題の取得に失敗しました');
-      return response.json() as Promise<MedicationIssueResponse>;
+      return readApiJson<MedicationIssueResponse>(response, '服薬課題の取得に失敗しました');
     },
     enabled: !!orgId,
   });
@@ -353,8 +353,7 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
       const response = await fetch(buildPatientApiPath(patientId), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('患者情報の取得に失敗しました');
-      return response.json() as Promise<PatientSummaryResponse>;
+      return readApiJson<PatientSummaryResponse>(response, '患者情報の取得に失敗しました');
     },
     enabled: !!orgId,
   });
