@@ -1633,7 +1633,8 @@ export function PrescriptionHistoryContent() {
         size="inline"
         title="処方履歴を読み込めませんでした"
         description="データの読み込みに失敗しました。時間をおいて再読み込みしてください。"
-        action={{ label: '再読み込み', onClick: () => void refetch() }}
+        onRetry={() => void refetch()}
+        retryLabel="再読み込み"
       />
     );
   }

@@ -376,7 +376,8 @@ export function PatientCareTeamPanel({
             size="inline"
             title="他職種マスターを読み込めませんでした"
             description="「登録済みなし」ではなく取得エラーです。手入力は可能ですが、重複登録を避けるため再読み込みしてください。"
-            action={{ label: '再読み込み', onClick: () => void refetchProfessionalOptions() }}
+            onRetry={() => void refetchProfessionalOptions()}
+            retryLabel="再読み込み"
           />
         ) : null}
         {isProfessionalOptionsTruncated ? (

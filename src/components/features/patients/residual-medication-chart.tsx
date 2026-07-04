@@ -87,7 +87,8 @@ export function ResidualMedicationChart({ patientId }: { patientId: string }) {
           size="inline"
           title="残薬データを読み込めませんでした"
           description="「残薬なし」ではなく取得エラーです。再読み込みしてください。"
-          action={{ label: '再読み込み', onClick: () => void refetch() }}
+          onRetry={() => void refetch()}
+          retryLabel="再読み込み"
         />
       </div>
     );
