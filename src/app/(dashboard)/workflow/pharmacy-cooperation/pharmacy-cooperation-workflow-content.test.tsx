@@ -1,41 +1,25 @@
 // @vitest-environment jsdom
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import { PharmacyCooperationWorkflowContent } from './pharmacy-cooperation-workflow-content';
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
 }));
 
-vi.mock('sonner', () => ({
-  toast: {
-    success: vi.fn(),
-    error: vi.fn(),
-  },
-}));
+vi.mock('sonner', async () => {
+  const { createSonnerToastMock } = await import('@/test/sonner-test-utils');
+  return createSonnerToastMock().module;
+});
 
 setupDomTestEnv();
 
-function createWrapper() {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  });
-
-  return function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
-  };
-}
-
 function renderContent() {
-  return render(<PharmacyCooperationWorkflowContent />, { wrapper: createWrapper() });
+  return render(<PharmacyCooperationWorkflowContent />, { wrapper: createQueryClientWrapper() });
 }
 
 function findFetchCall(

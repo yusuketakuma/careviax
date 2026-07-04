@@ -1,5 +1,30 @@
 # CODEX Goal Progress
 
+## R21/R32 Billing Workflow Test Harness Cleanup - 2026-07-04 18:03 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/test/query-client-test-utils.tsx`
+    - `src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx`
+    - `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`
+- Scope:
+  - Added a shared test QueryClient wrapper with retry disabled by default.
+  - Replaced two local React Query wrappers with the shared helper.
+  - Replaced two local partial `sonner` mocks with `createSonnerToastMock()`.
+- Safety:
+  - Test-harness only. Product runtime code was not changed.
+  - No API, DB, auth, authorization, PHI, audit, billing logic, deployment,
+    payload, query, or component runtime behavior changed.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `2` files / `37` tests.
+  - Targeted ESLint passed for the exact helper/test files.
+  - Targeted Prettier check passed for the exact helper/test files.
+  - Targeted `git diff --check` passed.
+- Remaining:
+  - Existing dirty operator docs, `refactor-instructions.md`, and untracked
+    local skill files remain unrelated and are not included in this slice.
+
 ## Single Codex Operation Switch - 2026-07-04 17:58 JST
 
 - Status:

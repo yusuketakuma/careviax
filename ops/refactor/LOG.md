@@ -645,3 +645,29 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: `.codex/config.toml` / `.codex/agents/*.toml` /
   `src/components/features/reports/report-edit-form.test.tsx` / `refactor-instructions.md` の dirty diff は
   別スライスとして保持し、この切替には混ぜない。
+
+## 2026-07-04 R21/R32 billing workflow test harness cleanup
+
+- 分類: test-harness cleanup / R21 sonner mock residual + R32 QueryClient wrapper duplication。
+- 実施:
+  - `src/test/query-client-test-utils.tsx` を追加し、test QueryClient の retry=false 既定と
+    wrapper provider を共有化。
+  - `billing-candidates-content.test.tsx` と `pharmacy-cooperation-workflow-content.test.tsx` の
+    local QueryClient wrapper を共有 helper に置換。
+  - 両テストの local partial `sonner` mock を `createSonnerToastMock()` helper に置換。
+- 変更ファイル:
+  - `src/test/query-client-test-utils.tsx`
+  - `src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx`
+  - `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`
+- 削除したコード: 各テスト内の local QueryClientProvider wrapper と `success` / `error` のみの
+  partial toast mock。
+- 共通化した処理: React Query test wrapper と sonner mock surface。
+- 挙動変更: なし。test-only で product runtime source は不変。
+- FE/BE整合性への影響: なし。
+- UI配置への影響: なし。
+- 性能への影響: なし。
+- 検証: focused Vitest `2 files / 37 tests` green、exact ESLint green、exact
+  Prettier check green、targeted `git diff --check` green。
+- 残課題: R21/R32 の他 residual は引き続き narrow wave で移行する。
+- 次アクション: R43 route-compare `jsonResponse` helper 収束、または R55 schedule proposals
+  loading skeleton 化を次候補として再評価する。
