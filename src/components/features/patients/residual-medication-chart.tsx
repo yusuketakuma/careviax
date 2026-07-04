@@ -7,6 +7,7 @@ import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { japanDateKey } from '@/lib/utils/date-boundary';
 import { ErrorState } from '@/components/ui/error-state';
+import { SkeletonRows } from '@/components/ui/loading';
 
 type ResidualRecord = {
   id: string;
@@ -63,8 +64,15 @@ export function ResidualMedicationChart({ patientId }: { patientId: string }) {
 
   if (isLoading) {
     return (
-      <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-        読み込み中...
+      <div
+        className="flex h-48 items-center justify-center rounded-md border border-dashed p-4"
+        role="status"
+        aria-label="残薬データを読み込み中"
+        aria-live="polite"
+      >
+        <div className="w-full max-w-md">
+          <SkeletonRows rows={3} cols={2} status={false} />
+        </div>
       </div>
     );
   }

@@ -80,6 +80,21 @@ describe('ResidualMedicationChart', () => {
     }
   });
 
+  it('uses an announced skeleton instead of visible plain loading text', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    render(<ResidualMedicationChart patientId="pt_1" />);
+
+    expect(screen.getByRole('status', { name: '残薬データを読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('読み込み中...', { selector: 'div' })).toBeNull();
+  });
+
   it('surfaces a retryable error instead of a false "no residual data" state when the fetch fails', () => {
     useOrgIdMock.mockReturnValue('org_1');
     const refetch = vi.fn();
