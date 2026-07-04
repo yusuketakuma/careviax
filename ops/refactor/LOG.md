@@ -5,6 +5,20 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-04 R10-next-action 3d23dc1b
+
+- 分類: refactor / workspace rail helper convergence
+- 対象: handoff/report-share workspace helpers
+- 実施: 監査キュー優先の `buildWorkspaceNextAction` 準コピー2箇所を
+  `buildDailyOpsNextAction` 呼び出しへ収束。画面別 no-audit fallback は props で保持。
+- 挙動変更: なし。handoff は `/schedules`、report-share は先頭訪問 focus URL を維持。
+- 安全: product API/DB/auth/authorization/PHI/billing/deploy/package dependency は変更不要。
+  query/mutation/org header/audit/server behavior 不変。
+- 検証: focused daily-ops/handoff/report vitest 3 files / 55 tests green（既存 act warning は出力あり）。
+  scoped eslint/prettier/diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit 3d23dc1b。
+- 残課題: broad Plans.md objective は継続。R10 は ac8aa952 + 3d23dc1b で完了。
+
 ## 2026-07-04 R10-blocked-reasons ac8aa952
 
 - 分類: refactor / workspace rail helper convergence

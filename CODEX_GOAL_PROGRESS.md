@@ -1,5 +1,39 @@
 # CODEX Goal Progress
 
+## R10 Next Action Builder Convergence - 2026-07-04 21:56 JST
+
+- Status:
+  - Implemented and validated the remaining R10
+    `buildWorkspaceNextAction` near-duplicate follow-up:
+    - `src/app/(dashboard)/handoff/handoff-workspace.helpers.ts`
+    - `src/app/(dashboard)/reports/report-share-workspace.helpers.ts`
+- Scope:
+  - Replaced the duplicated audit-first next-action construction with
+    `buildDailyOpsNextAction`.
+  - Kept each screen's no-audit fallback behavior:
+    - handoff continues to link visit preparation to `/schedules`.
+    - report-share continues to focus the first visit schedule when available.
+  - R10 is now complete together with the earlier `ac8aa952` blocked-reason
+    mapper convergence.
+- Safety:
+  - Presentation helper consolidation only.
+  - No product API, DB, auth, authorization, PHI projection, billing semantics,
+    deployment, package dependency, query, mutation, org header, audit logging,
+    or server behavior changed.
+- Validation:
+  - `pnpm exec vitest run src/lib/workspace/daily-ops-rail.test.ts 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `3` files / `55` tests. Existing React `act(...)` warnings were
+    emitted by handoff tests, but the suite passed.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed for the changed files.
+- Commit:
+  - Implementation slice landed at `3d23dc1b`
+    (`refactor(workspace): share next action builder`).
+- Remaining:
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R10 Blocked Reason Rail Mapper Convergence - 2026-07-04 21:52 JST
 
 - Status:
