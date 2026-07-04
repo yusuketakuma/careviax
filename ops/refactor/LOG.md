@@ -3858,6 +3858,27 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
   個別確認してから段階移行する。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
 
+## 2026-07-05 R40/R44 billing rules readApiJson slice
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 実施:
+  - admin billing-rules の collection GET helper を `readApiJson` へ移行。
+  - 既存 focused test で collection endpoint と mutation/path contracts を継続固定。
+- 挙動変更: read fetch 実装内部の helper 収束のみ。`BILLING_RULES_API_PATH`、
+  React Query key、staleTime、response envelope/source/summary、false-empty retryable error UI、
+  SSOT sync POST、custom-rule create/update/delete、hostile-id encode/fail-closed detail path は維持。
+- 安全性: billing surface は read-only helper のみ変更。DB/schema、auth/authorization、
+  PHI projection、billing rule calculation、deployment、package dependency、live DB operation、
+  external send、secret handling、push、destructive operation、mutation/server behavior は不変。
+  SSOT では必要時の product API/DB/auth/authorization/PHI/billing/deploy/package dependency
+  変更許可を確認済みだが、この slice では不要。
+- 検証: focused billing-rules Vitest `1 file / 14 tests` green、scoped ESLint green、
+  targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `31b5ff99` (`Converge billing rule reads on shared JSON helper`)。
+- 残課題: R40/R44 は broad。追加の client fetcher は response body read が PHI-safe かを
+  個別確認してから段階移行する。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
 ## 2026-07-05 R40/R44 external professionals readApiJson slice
 
 - 分類: query-helper / client fetch error handling → `readApiJson` 収束。

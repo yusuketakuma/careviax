@@ -168,6 +168,11 @@
   read GET effects を readApiJson へ収束し、path helper/org-header/list metadata/error UI/mutation
   contract は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 billing-rules readApiJson slice(31b5ff99) land。focused Vitest 14、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。billing-rules collection read GET を
+  readApiJson へ収束し、BILLING_RULES_API_PATH/queryKey/source-summary/false-empty retry UI/
+  SSOT sync/custom mutation/detail-path contract は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 

@@ -46851,6 +46851,47 @@ false` for every migrated column.
   - Existing unrelated `refactor-instructions.md` and local skill install files
     remain outside this slice.
 
+## R40/R44 Billing Rules readApiJson Slice - 2026-07-05 05:17 JST
+
+- Scope:
+  - `src/app/(dashboard)/admin/billing-rules/page.tsx`
+  - `src/app/(dashboard)/admin/billing-rules/page.test.tsx`
+- Status:
+  - Implemented and committed as `31b5ff99`
+    (`Converge billing rule reads on shared JSON helper`).
+- Changes:
+  - Replaced the billing-rules collection read GET helper with
+    `readApiJson<BillingRulesResponse>`.
+  - Preserved `BILLING_RULES_API_PATH`, React Query key, staleTime, response
+    envelope/summary/source handling, false-empty retryable error UI, and
+    collection path test coverage.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    rule calculation behavior, SSOT seed POST, custom-rule create/update/delete
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, destructive operation, and hostile-id
+    encode/fail-closed detail path behavior.
+  - The 2026-07-04 user instruction allowing product
+    API/DB/auth/authorization/PHI/billing/deploy/package dependency changes when
+    necessary is recorded in `ops/refactor/STATE.md`; this slice did not require
+    those changes.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/billing-rules/page.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `14` tests.
+  - `pnpm exec eslint --max-warnings=0 'src/app/(dashboard)/admin/billing-rules/page.tsx' 'src/app/(dashboard)/admin/billing-rules/page.test.tsx'`
+    passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/admin/billing-rules/page.tsx' 'src/app/(dashboard)/admin/billing-rules/page.test.tsx'`
+    passed.
+  - `git diff --check -- 'src/app/(dashboard)/admin/billing-rules/page.tsx' 'src/app/(dashboard)/admin/billing-rules/page.test.tsx'`
+    passed.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - R40/R44 remains partial and broad; continue per-fetcher body-read/PHI review
+    before converting additional client read fetchers.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 External Professionals readApiJson Slice - 2026-07-05 05:02 JST
 
 - Scope:
