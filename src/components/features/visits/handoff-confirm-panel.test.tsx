@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import { HandoffConfirmPanel } from './handoff-confirm-panel';
 import type { VisitHandoff } from '@/types/visit-brief';
 
@@ -33,14 +33,9 @@ function baseHandoff(): VisitHandoff {
 }
 
 function renderPanel(handoff: VisitHandoff = baseHandoff()) {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  return render(<HandoffConfirmPanel visitRecordId="visit_record_1" handoff={handoff} />, {
+    wrapper: createQueryClientWrapper(),
   });
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <HandoffConfirmPanel visitRecordId="visit_record_1" handoff={handoff} />
-    </QueryClientProvider>,
-  );
 }
 
 afterEach(() => {

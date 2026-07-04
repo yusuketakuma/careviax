@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
 
-import { type PropsWithChildren } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { PatientStructuredCarePanel } from './patient-structured-care-panel';
 import { stubJsonFetch as stubFetch } from '@/test/fetch-test-utils';
@@ -19,15 +18,6 @@ vi.mock('@/lib/patient/api-paths', async (importActual) => {
 });
 
 setupDomTestEnv();
-
-function createWrapper() {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
-  return function Wrapper({ children }: PropsWithChildren) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
-  };
-}
 
 describe('PatientStructuredCarePanel', () => {
   beforeEach(() => {
@@ -72,7 +62,7 @@ describe('PatientStructuredCarePanel', () => {
       },
     });
 
-    render(<PatientStructuredCarePanel patientId="p1" />, { wrapper: createWrapper() });
+    render(<PatientStructuredCarePanel patientId="p1" />, { wrapper: createQueryClientWrapper() });
 
     await screen.findByTestId('patient-structured-care-panel');
     expect(screen.getByText('TPN')).toBeTruthy();
@@ -85,7 +75,7 @@ describe('PatientStructuredCarePanel', () => {
   it('構造化行が無ければ空カードを描画しない', async () => {
     stubFetch({ data: { procedures: [], narcotics: [] } });
 
-    render(<PatientStructuredCarePanel patientId="p1" />, { wrapper: createWrapper() });
+    render(<PatientStructuredCarePanel patientId="p1" />, { wrapper: createQueryClientWrapper() });
 
     await waitFor(() => {
       expect(globalThis.fetch as ReturnType<typeof vi.fn>).toHaveBeenCalled();
@@ -103,7 +93,7 @@ describe('PatientStructuredCarePanel', () => {
     );
 
     render(<PatientStructuredCarePanel patientId="pt/1?tab=x#frag" />, {
-      wrapper: createWrapper(),
+      wrapper: createQueryClientWrapper(),
     });
 
     await waitFor(() => {
@@ -126,7 +116,7 @@ describe('PatientStructuredCarePanel', () => {
       vi.fn(async () => new Response('server error', { status: 500 })),
     );
 
-    render(<PatientStructuredCarePanel patientId="p1" />, { wrapper: createWrapper() });
+    render(<PatientStructuredCarePanel patientId="p1" />, { wrapper: createQueryClientWrapper() });
 
     expect(await screen.findByTestId('patient-structured-care-panel-error')).toBeTruthy();
     expect(screen.getByText('在宅医療処置・麻薬の取得に失敗しました。')).toBeTruthy();

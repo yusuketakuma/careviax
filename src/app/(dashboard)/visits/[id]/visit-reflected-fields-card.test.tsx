@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
 
-import { type PropsWithChildren } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import { VisitReflectedFieldsCard } from './visit-reflected-fields-card';
 import { stubJsonFetch as stubFetch } from '@/test/fetch-test-utils';
 
@@ -13,15 +12,6 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
 }));
 
 setupDomTestEnv();
-
-function createWrapper() {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
-  return function Wrapper({ children }: PropsWithChildren) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
-  };
-}
 
 const revision = {
   id: 'rev_1',
@@ -58,7 +48,7 @@ describe('VisitReflectedFieldsCard', () => {
   it('反映項目を項目名・変更種別・差分で表示する', async () => {
     stubFetch({ data: [revision] });
 
-    render(<VisitReflectedFieldsCard recordId="vr_1" />, { wrapper: createWrapper() });
+    render(<VisitReflectedFieldsCard recordId="vr_1" />, { wrapper: createQueryClientWrapper() });
 
     await screen.findByTestId('visit-reflected-fields-card');
     expect(screen.getByText('介護度')).toBeTruthy();
@@ -80,7 +70,7 @@ describe('VisitReflectedFieldsCard', () => {
       ],
     });
 
-    render(<VisitReflectedFieldsCard recordId="vr_1" />, { wrapper: createWrapper() });
+    render(<VisitReflectedFieldsCard recordId="vr_1" />, { wrapper: createQueryClientWrapper() });
 
     await screen.findByTestId('visit-reflected-fields-card');
     expect(screen.getByText('電話番号')).toBeTruthy();
@@ -90,7 +80,7 @@ describe('VisitReflectedFieldsCard', () => {
   it('反映が無ければカードを描画しない', async () => {
     stubFetch({ data: [] });
 
-    render(<VisitReflectedFieldsCard recordId="vr_1" />, { wrapper: createWrapper() });
+    render(<VisitReflectedFieldsCard recordId="vr_1" />, { wrapper: createQueryClientWrapper() });
 
     await waitFor(() => {
       expect(globalThis.fetch as ReturnType<typeof vi.fn>).toHaveBeenCalled();
@@ -104,7 +94,7 @@ describe('VisitReflectedFieldsCard', () => {
       vi.fn(async () => new Response('server error', { status: 500 })),
     );
 
-    render(<VisitReflectedFieldsCard recordId="vr_1" />, { wrapper: createWrapper() });
+    render(<VisitReflectedFieldsCard recordId="vr_1" />, { wrapper: createQueryClientWrapper() });
 
     expect(await screen.findByTestId('visit-reflected-fields-card-error')).toBeTruthy();
     expect(screen.getByText('反映済み項目の取得に失敗しました。')).toBeTruthy();

@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import {
   loadLatestVoiceMemoDraft,
   saveVoiceMemoManualTranscript,
@@ -33,14 +33,7 @@ vi.mock('sonner', () => ({
 }));
 
 function renderContent() {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <VoiceMemoContent visitId="visit_1" />
-    </QueryClientProvider>,
-  );
+  return render(<VoiceMemoContent visitId="visit_1" />, { wrapper: createQueryClientWrapper() });
 }
 
 beforeEach(() => {
