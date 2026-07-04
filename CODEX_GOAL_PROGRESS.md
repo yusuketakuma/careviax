@@ -1,5 +1,39 @@
 # CODEX Goal Progress
 
+## R32 Reports/Handoff QueryClient Wrapper Convergence - 2026-07-04 22:32 JST
+
+- Status:
+  - Implemented and validated a ninth bounded R32 slice:
+    - `src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx`
+    - `src/app/(dashboard)/reports/print/print-hub-content.test.tsx`
+    - `src/app/(dashboard)/reports/report-share-workspace.test.tsx`
+    - `src/app/(dashboard)/handoff/handoff-workspace.test.tsx`
+- Scope:
+  - Replaced four more local `QueryClient` / `QueryClientProvider` wrapper
+    implementations with `createQueryClientWrapper`.
+  - Used `createTestQueryClient` where the print hub test still needs direct
+    query cache inspection.
+  - Preserved retry-disabled test defaults and left product runtime code
+    untouched.
+- Safety:
+  - Test harness convergence only.
+  - No product API, DB, auth, authorization, PHI projection, billing semantics,
+    deployment, package dependency, query, mutation, org header, audit logging,
+    or runtime behavior changed.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `4` files / `98` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `1258009e`
+    (`test(reports): share query client wrapper`).
+- Remaining:
+  - R32 remains partially open for the remaining local QueryClient wrappers.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R32 Select/Schedule QueryClient Wrapper Convergence - 2026-07-04 22:28 JST
 
 - Status:
