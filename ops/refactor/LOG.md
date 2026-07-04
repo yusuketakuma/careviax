@@ -5,6 +5,23 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-04 R25-route-global-boundary 823307ae
+
+- 分類: pattern-inconsistency / ErrorState retry action convergence
+- 対象: `src/components/ui/error-state.tsx`, `src/app/global-error.tsx`,
+  `src/components/ui/route-error-boundary.tsx`
+- 実施: `ErrorState` に `retryVariant` を追加し、global/route error boundary の
+  `action={{ label: '再試行', onClick, variant: 'outline' }}` 2箇所を
+  `onRetry` + `retryVariant="outline"` へ移行。outline維持の回帰テストを追加。
+- 挙動変更: なし。表示ラベル、retry handler、outline variant、secondary dashboard link、
+  Sentry capture、digest表示、error-boundary behavior は不変。
+- 安全: UI presentation/refactor のみ。product API/DB/auth/authorization/PHI/billing/deploy/package
+  dependency は変更不要。audit/live DB/external send/secret/push/destructive operation 不変。
+- 検証: targeted route/global retry action scan 0件。focused ErrorState vitest 1 file / 8 tests green。
+  scoped eslint/prettier/diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit 823307ae。
+- 残課題: R25 は partial。残りの ErrorState retry action は段階移行を継続。
+
 ## 2026-07-04 R25-schedule-calendar 7461d41f
 
 - 分類: pattern-inconsistency / ErrorState retry action convergence

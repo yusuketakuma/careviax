@@ -1,5 +1,45 @@
 # CODEX Goal Progress
 
+## R25 Route/Global Error Boundary Retry Shorthand Partial - 2026-07-04 23:39 JST
+
+- Status:
+  - Implemented and validated the next bounded R25 slice:
+    - `src/components/ui/error-state.tsx`
+    - `src/app/global-error.tsx`
+    - `src/components/ui/route-error-boundary.tsx`
+- Scope:
+  - Added `retryVariant` to `ErrorState` so the `onRetry` shorthand can preserve
+    non-default button variants.
+  - Migrated the global error page and shared route error boundary from
+    hand-written `action={{ label: '再試行', onClick, variant: 'outline' }}`
+    objects to `onRetry` + `retryVariant="outline"`.
+  - Added a focused regression test that verifies `retryVariant="outline"`
+    preserves outline button styling and still calls the retry handler.
+- Safety:
+  - UI presentation/refactor only.
+  - Visible retry copy, click handlers, outline button style, secondary
+    dashboard link, Sentry capture behavior, digest display, and error-boundary
+    behavior are preserved.
+  - No product API, DB, auth, authorization, PHI projection, billing semantics,
+    audit, deployment, package dependency, live DB operation, external send,
+    secret handling, push, or destructive operation changed.
+- Validation:
+  - Targeted route/global scan for hand-written `再試行` retry actions returned
+    no matches.
+  - `pnpm exec vitest run src/components/ui/error-state.test.tsx --reporter=dot --testTimeout=30000`
+    passed `1` file / `8` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `823307ae`
+    (`refactor(ui): support retry variant shorthand`).
+- Remaining:
+  - R25 is partial; remaining ErrorState retry action boilerplate should be
+    migrated in bounded screen/domain chunks.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R25 Schedule Calendar ErrorState Retry Shorthand Partial - 2026-07-04 23:34 JST
 
 - Status:
