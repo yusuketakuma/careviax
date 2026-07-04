@@ -19,7 +19,7 @@ export default function ContactProfilesPage() {
         shortcuts={getAdminContactProfilesShortcutLinks()}
       />
 
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="連携先プロファイルを読み込み中..." />}>
         <ContactProfilesContent />
       </Suspense>
     </PageScaffold>
