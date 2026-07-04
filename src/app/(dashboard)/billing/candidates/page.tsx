@@ -48,7 +48,7 @@ export default async function BillingCandidatesPage({ searchParams }: BillingCan
         ]}
       />
 
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="月次請求候補を読み込み中..." />}>
         <BillingCandidatesContent
           initialBillingMonth={initialBillingMonth}
           initialPatientId={initialPatientId}

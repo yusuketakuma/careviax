@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 export default function BillingPage() {
   return (
     <PageScaffold variant="bare">
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="算定チェックを読み込み中..." />}>
         <BillingCheckContent />
       </Suspense>
     </PageScaffold>

@@ -32,7 +32,7 @@ export default function PartnerCooperationBillingPage() {
         ]}
       />
 
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="薬局間協力 月次処理を読み込み中..." />}>
         <PartnerCooperationBillingContent />
       </Suspense>
     </PageScaffold>
