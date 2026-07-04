@@ -9,6 +9,8 @@ const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
 const useMutationMock = vi.hoisted(() => vi.fn());
 const useQueryClientMock = vi.hoisted(() => vi.fn());
+const toastErrorMock = vi.hoisted(() => vi.fn());
+const toastSuccessMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
@@ -18,6 +20,13 @@ vi.mock('@tanstack/react-query', () => ({
   useQuery: useQueryMock,
   useMutation: useMutationMock,
   useQueryClient: useQueryClientMock,
+}));
+
+vi.mock('sonner', () => ({
+  toast: {
+    error: toastErrorMock,
+    success: toastSuccessMock,
+  },
 }));
 
 import { ExternalViewerContent } from './external-viewer-content';
@@ -84,6 +93,45 @@ describe('ExternalViewerContent', () => {
         updated_at: '2026-03-28T00:00:00.000Z',
       }),
     });
+  });
+
+  it('keeps server messages and falls back for self-report mutation error toasts', () => {
+    const mutationConfigs: Array<{ onError?: (error: Error) => void }> = [];
+    const baseMutation = useMutationMock.getMockImplementation();
+    useMutationMock.mockImplementation((config: { onError?: (error: Error) => void }) => {
+      mutationConfigs.push(config);
+      return baseMutation?.(config);
+    });
+
+    render(<ExternalViewerContent />);
+
+    const findMutationByFallback = (fallback: string) => {
+      const config = mutationConfigs.find((candidate) =>
+        String(candidate.onError).includes(fallback),
+      );
+      expect(config).toBeTruthy();
+      return config;
+    };
+
+    const cases = [
+      {
+        config: findMutationByFallback('自己申告の更新に失敗しました'),
+        serverMessage: '自己申告APIからの詳細エラー',
+        fallback: '自己申告の更新に失敗しました',
+      },
+      {
+        config: findMutationByFallback('タスク作成に失敗しました'),
+        serverMessage: 'タスクAPIからの詳細エラー',
+        fallback: 'タスク作成に失敗しました',
+      },
+    ];
+
+    for (const { config, serverMessage, fallback } of cases) {
+      config?.onError?.(new Error(serverMessage));
+      expect(toastErrorMock).toHaveBeenLastCalledWith(serverMessage);
+      config?.onError?.(new Error(''));
+      expect(toastErrorMock).toHaveBeenLastCalledWith(fallback);
+    }
   });
 
   it('passes the visible report version timestamp when the triage button is clicked', () => {

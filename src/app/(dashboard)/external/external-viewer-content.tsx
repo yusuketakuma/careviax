@@ -20,6 +20,7 @@ import { SELF_REPORT_STATUS_LABELS } from '@/lib/constants/status-labels';
 import { PageSection } from '@/components/layout/page-section';
 import { ActionRail } from '@/components/ui/action-rail';
 import { cn } from '@/lib/utils';
+import { messageFromError } from '@/lib/utils/error-message';
 import type { ExternalFocus } from '@/lib/dashboard/home-link-builders';
 
 type ExternalGrant = {
@@ -153,7 +154,7 @@ export function ExternalViewerContent({
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['patient-self-reports', orgId] });
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) => toast.error(messageFromError(error, '自己申告の更新に失敗しました')),
   });
 
   const createTaskMutation = useMutation({
@@ -190,7 +191,7 @@ export function ExternalViewerContent({
       await queryClient.invalidateQueries({ queryKey: ['tasks', orgId] });
       toast.success('自己申告をタスク化しました');
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) => toast.error(messageFromError(error, 'タスク作成に失敗しました')),
   });
 
   const shareCard = (
