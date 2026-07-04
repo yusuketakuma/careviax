@@ -90,6 +90,12 @@
   active status,limit params / org header / queryKeys / enabled gates / retry UI /
   hostile-id links / confirm and discard mutations は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 qr-draft-list readApiJson slice(09120529) land。focused Vitest 1、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。QR draft list all / unmatched
+  read GET を readApiJson へ収束し、endpoints/query params / org header / queryKeys /
+  fallback refetch / realtime invalidation / enabled gates / DataTable states / row navigation /
+  keyboard shortcuts は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 - codex: R40/R44 prescription-history readApiJson slice(d65d08d5) land。focused Vitest 29、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。patient prescription history GET /
   drug-master batch enrichment POST を readApiJson へ収束し、patient path helper / hostile-id

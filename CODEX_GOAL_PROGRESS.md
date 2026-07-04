@@ -1,5 +1,42 @@
 # CODEX Goal Progress
 
+## R40/R44 QR Draft List readApiJson Partial - 2026-07-05 08:33 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/prescriptions/qr-drafts/page.tsx`
+    - `src/app/(dashboard)/prescriptions/qr-drafts/page.test.tsx`
+- Scope:
+  - Reused `readApiJson` for QR draft list all/unmatched read fetchers.
+  - Added queryFn contract coverage proving API JSON `message` from failed QR
+    draft list fetches is preserved while URL and `x-org-id` header contracts
+    remain unchanged.
+  - Preserved endpoints/query params, org headers, React Query/realtime query
+    keys, fallback refetch intervals, realtime invalidation, enabled gates,
+    DataTable error/empty/retry states, row navigation, and keyboard shortcuts.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/prescriptions/qr-drafts/page.test.tsx'`
+    passed `1` file / `1` test.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `09120529`
+    (`refactor(ui): reuse readApiJson in QR draft list`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Schedule Proposals readApiJson Partial - 2026-07-05 08:29 JST
 
 - Status:
