@@ -331,6 +331,25 @@ afterEach(() => {
 });
 
 describe('InterprofessionalShareContent', () => {
+  it('shows a share workspace skeleton instead of a generic spinner while loading', () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>(() => {})),
+    );
+
+    renderShare();
+
+    expect(
+      screen.getByRole('status', { name: '他職種共有ワークスペースを読み込み中' }),
+    ).toBeTruthy();
+    expect(screen.queryByRole('status', { name: '読み込み中...' })).toBeNull();
+    expect(screen.queryByText('読み込み中...', { selector: 'span' })).toBeNull();
+    expect(screen.queryByTestId('interprofessional-share')).toBeNull();
+    expect(screen.queryByText(REPORT.patient_summary.name as string)).toBeNull();
+    expect(screen.queryByText('ケアマネへの服薬状況報告')).toBeNull();
+    expect(screen.queryByRole('button', { name: '返信依頼を起票' })).toBeNull();
+  });
+
   it('3 カラム(共有する相手 / 相手に見える内容 / 返信・確認)を描画する', async () => {
     stubFetch();
     renderShare();
