@@ -213,6 +213,75 @@ describe('/api/patient-share-cases/[id]/correction-requests', () => {
     );
   });
 
+  it('returns a cursor page and audits only visible correction requests when rows overflow', async () => {
+    correctionRequestFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'correction_1',
+        share_case_id: 'share_case_1',
+        target_owner: 'partner_pharmacy',
+        target_type: 'partner_visit_record',
+        target_id: 'partner_visit_record_1',
+        field_path: 'record_content',
+        request_type: 'correction',
+        status: 'open',
+        requested_by: 'user_1',
+        responded_by: null,
+        resolved_by: null,
+        resolved_at: null,
+        created_at: new Date('2026-06-19T01:00:00.000Z'),
+        updated_at: new Date('2026-06-19T01:00:00.000Z'),
+      },
+      {
+        id: 'correction_2',
+        share_case_id: 'share_case_1',
+        target_owner: 'partner_pharmacy',
+        target_type: 'partner_visit_record',
+        target_id: 'partner_visit_record_2',
+        field_path: 'record_content',
+        request_type: 'correction',
+        status: 'responded',
+        requested_by: 'user_2',
+        responded_by: 'user_3',
+        resolved_by: null,
+        resolved_at: null,
+        created_at: new Date('2026-06-19T00:30:00.000Z'),
+        updated_at: new Date('2026-06-19T00:30:00.000Z'),
+      },
+    ]);
+
+    const response = await rawGET(createGetRequest('?limit=1'), routeContext);
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(correctionRequestFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 2,
+      }),
+    );
+    const body = await response.json();
+    expect(patientShareCorrectionRequestPageSchema.safeParse(body).success).toBe(true);
+    expect(body).toMatchObject({
+      data: [{ id: 'correction_1' }],
+      hasMore: true,
+      nextCursor: 'correction_1',
+    });
+    expect(body.data).toHaveLength(1);
+    expect(JSON.stringify(body)).not.toContain('correction_2');
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        changes: expect.objectContaining({
+          viewed_count: 1,
+          correction_request_ids: ['correction_1'],
+          statuses: ['open'],
+          has_more: true,
+          limit: 1,
+        }),
+      }),
+    );
+  });
+
   it.each([
     ['empty status', '?status='],
     ['blank status', '?status=%20%20'],

@@ -117,7 +117,7 @@ const authenticatedGET = withAuthContext<{ id: string }>(
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
         orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
       });
-      const pageRows = correctionRequests.slice(0, limit);
+      const page = buildCursorPage(correctionRequests, limit, (row) => row.id);
 
       await createAuditLogEntry(tx, ctx, {
         action: 'patient_share_correction_requests_viewed',
@@ -128,24 +128,23 @@ const authenticatedGET = withAuthContext<{ id: string }>(
           target_screen: 'patient_share_case_correction_requests',
           viewer_role: ctx.role,
           share_case_id: id,
-          viewed_count: pageRows.length,
-          correction_request_ids: pageRows.map((row) => row.id),
-          statuses: [...new Set(pageRows.map((row) => row.status))].sort(),
+          viewed_count: page.data.length,
+          correction_request_ids: page.data.map((row) => row.id),
+          statuses: [...new Set(page.data.map((row) => row.status))].sort(),
           has_status_filter: Boolean(status),
           has_cursor: Boolean(cursor),
-          has_more: correctionRequests.length > limit,
+          has_more: page.hasMore,
           limit,
         },
       });
 
-      return correctionRequests;
+      return page;
     });
 
     if (!rows) return notFound('患者共有ケースが見つかりません');
-    const page = buildCursorPage(rows, limit, (row) => row.id);
     return success({
-      ...page,
-      data: page.data.map(toPatientShareCorrectionRequestRow),
+      ...rows,
+      data: rows.data.map(toPatientShareCorrectionRequestRow),
     });
   },
   {
