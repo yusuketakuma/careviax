@@ -4,8 +4,9 @@ import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { toPrismaJsonInput } from '@/lib/db/json';
-import { formatDateKey } from '@/lib/date-key';
+import { formatUtcDateKey } from '@/lib/date-key';
 import { withOrgContext } from '@/lib/db/rls';
+import { utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
@@ -26,7 +27,7 @@ class ManagementPlanMutationConflictError extends Error {}
 function dateOnlyString(value: Date | string | null | undefined) {
   if (!value) return null;
   if (typeof value === 'string') return value.slice(0, 10);
-  return formatDateKey(value);
+  return formatUtcDateKey(value);
 }
 
 async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -126,12 +127,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       ...(data.content !== undefined ? { content: toPrismaJsonInput(data.content) } : {}),
       ...(data.effective_from !== undefined
         ? {
-            effective_from: data.effective_from ? new Date(data.effective_from) : null,
+            effective_from: data.effective_from ? utcDateFromLocalKey(data.effective_from) : null,
           }
         : {}),
       ...(data.next_review_date !== undefined
         ? {
-            next_review_date: data.next_review_date ? new Date(data.next_review_date) : null,
+            next_review_date: data.next_review_date
+              ? utcDateFromLocalKey(data.next_review_date)
+              : null,
           }
         : {}),
     };

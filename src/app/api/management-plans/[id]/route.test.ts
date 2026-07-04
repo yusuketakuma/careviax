@@ -425,7 +425,55 @@ describe('/api/management-plans/[id]', () => {
     expect(resolveManagementPlanReviewAlertMock).not.toHaveBeenCalled();
   });
 
-  it('validates existing effective dates by the local pharmacy calendar day', async () => {
+  it('validates existing @db.Date effective dates by their UTC date key under a non-Tokyo runtime TZ', async () => {
+    const previousTz = process.env.TZ;
+    process.env.TZ = 'America/New_York';
+    try {
+      managementPlanFindFirstMock.mockResolvedValue({
+        id: 'plan_1',
+        org_id: 'org_1',
+        case_id: 'case_1',
+        status: 'draft',
+        effective_from: new Date('2026-06-30T00:00:00.000Z'),
+        next_review_date: null,
+        case_: {
+          patient_id: 'patient_1',
+          primary_pharmacist_id: 'user_2',
+        },
+      });
+
+      const response = (await PATCH(
+        createPatchRequest({
+          action: 'update',
+          next_review_date: '2026-06-30',
+        }),
+        {
+          params: Promise.resolve({ id: 'plan_1' }),
+        },
+      ))!;
+
+      expect(response.status).toBe(200);
+      expect(managementPlanUpdateManyMock).toHaveBeenCalledWith({
+        where: {
+          id: 'plan_1',
+          org_id: 'org_1',
+          status: 'draft',
+        },
+        data: {
+          content: {},
+          next_review_date: new Date('2026-06-30T00:00:00.000Z'),
+        },
+      });
+    } finally {
+      if (previousTz === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = previousTz;
+      }
+    }
+  });
+
+  it('validates existing effective dates by their UTC date key instead of the runtime local day', async () => {
     managementPlanFindFirstMock.mockResolvedValue({
       id: 'plan_1',
       org_id: 'org_1',
@@ -449,17 +497,19 @@ describe('/api/management-plans/[id]', () => {
       },
     ))!;
 
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'VALIDATION_ERROR',
-      message: '入力値が不正です',
-      details: {
-        next_review_date: ['next_review_date は effective_from 以降の日付を指定してください'],
+    expect(response.status).toBe(200);
+    expect(managementPlanFindFirstMock).toHaveBeenCalled();
+    expect(managementPlanUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'plan_1',
+        org_id: 'org_1',
+        status: 'draft',
+      },
+      data: {
+        content: {},
+        next_review_date: new Date('2026-06-30T00:00:00.000Z'),
       },
     });
-    expect(managementPlanFindFirstMock).toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(managementPlanUpdateManyMock).not.toHaveBeenCalled();
     expect(scheduleManagementPlanReviewAlertMock).not.toHaveBeenCalled();
     expect(resolveManagementPlanReviewAlertMock).not.toHaveBeenCalled();
   });

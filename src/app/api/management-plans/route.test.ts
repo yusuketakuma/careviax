@@ -444,6 +444,36 @@ describe('/api/management-plans', () => {
     });
   });
 
+  it('stores date-key fields as UTC-midnight dates under a non-Tokyo runtime TZ', async () => {
+    const previousTz = process.env.TZ;
+    process.env.TZ = 'America/New_York';
+    try {
+      const response = (await POST(
+        createPostRequest({
+          case_id: 'case_1',
+          title: '訪問薬剤管理指導計画書',
+          content: { summary: '内容' },
+          effective_from: '2026-04-01',
+          next_review_date: '2026-04-30',
+        }),
+      ))!;
+
+      expect(response.status).toBe(201);
+      expect(managementPlanCreateMock).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          effective_from: new Date('2026-04-01T00:00:00.000Z'),
+          next_review_date: new Date('2026-04-30T00:00:00.000Z'),
+        }),
+      });
+    } finally {
+      if (previousTz === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = previousTz;
+      }
+    }
+  });
+
   it('maps version conflicts during management plan creation to 409', async () => {
     managementPlanCreateMock.mockRejectedValueOnce(
       new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {

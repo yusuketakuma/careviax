@@ -6,6 +6,7 @@ import { prisma } from '@/lib/db/client';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
 import { withOrgContext } from '@/lib/db/rls';
+import { utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
@@ -188,10 +189,10 @@ export async function POST(req: NextRequest) {
             created_by: ctx.userId,
             version: (latest?.version ?? 0) + 1,
             effective_from: parsed.data.effective_from
-              ? new Date(parsed.data.effective_from)
+              ? utcDateFromLocalKey(parsed.data.effective_from)
               : null,
             next_review_date: parsed.data.next_review_date
-              ? new Date(parsed.data.next_review_date)
+              ? utcDateFromLocalKey(parsed.data.next_review_date)
               : null,
             source_plan_id: parsed.data.source_plan_id ?? null,
           },
