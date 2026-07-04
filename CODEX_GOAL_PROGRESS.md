@@ -24,6 +24,9 @@
   - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
     the patient visit brief source/test files.
   - `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `77b2eafa`
+    (`fix(visit-brief): show skeleton while summary loads`).
 - Remaining:
   - Broader R55 residuals and Plans.md objective remain open.
   - Existing unrelated `refactor-instructions.md` and local skill install files

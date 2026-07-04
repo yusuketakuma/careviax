@@ -868,5 +868,6 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
   Loading copy は PHI-free で、patient identifier・visit brief body・org id・raw error を出さない。
 - 検証: focused patient visit brief Vitest `1 file / 3 tests` green、targeted ESLint green、
   targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `77b2eafa` (`fix(visit-brief): show skeleton while summary loads`)。
 - 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
   `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
