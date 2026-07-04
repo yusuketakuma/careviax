@@ -1,5 +1,42 @@
 # CODEX Goal Progress
 
+## R32 Platform QueryClient Wrapper Convergence - 2026-07-04 22:07 JST
+
+- Status:
+  - Implemented and validated a bounded R32 slice:
+    - `src/app/platform/tenant-directory-content.test.tsx`
+    - `src/app/platform/tenants/[orgId]/break-glass-panel.test.tsx`
+    - `src/app/platform/tenants/[orgId]/audit-log-panel.test.tsx`
+    - `src/app/platform/tenants/[orgId]/data-explorer-panel.test.tsx`
+- Scope:
+  - Replaced four local `QueryClient` / `QueryClientProvider` wrapper
+    implementations with the shared `createQueryClientWrapper` helper from
+    `src/test/query-client-test-utils.tsx`.
+  - Preserved the same retry-disabled test defaults while removing per-file
+    drift.
+  - Live candidate check found R30 `formatFileSize` and R19 diff-review
+    contract are already shared in current code; R18 history prescription line
+    shape is not byte-identical with the shared prescription detail shape and
+    was left unchanged.
+- Safety:
+  - Test harness convergence only.
+  - No product API, DB, auth, authorization, PHI projection, billing semantics,
+    deployment, package dependency, query, mutation, org header, audit logging,
+    or runtime behavior changed.
+- Validation:
+  - `pnpm exec vitest run 'src/app/platform/tenant-directory-content.test.tsx' 'src/app/platform/tenants/[orgId]/break-glass-panel.test.tsx' 'src/app/platform/tenants/[orgId]/audit-log-panel.test.tsx' 'src/app/platform/tenants/[orgId]/data-explorer-panel.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `4` files / `9` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `b8466684`
+    (`test(platform): share query client wrapper`).
+- Remaining:
+  - R32 remains partially open for the remaining local QueryClient wrappers.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R05 Import CSV Helper Convergence - 2026-07-04 22:02 JST
 
 - Status:
