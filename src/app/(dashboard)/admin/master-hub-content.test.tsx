@@ -234,6 +234,7 @@ describe('MasterHubContent', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
     vi.clearAllMocks();
   });
 
@@ -271,6 +272,23 @@ describe('MasterHubContent', () => {
         queryKey: ['admin', 'master-hub', 'session-org'],
       }),
     );
+  });
+
+  it('fetches the master hub through the static API path and unwraps the data envelope', async () => {
+    const fixture = buildFixture();
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify({ data: fixture }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<MasterHubContent />);
+
+    const queryOptions = useQueryMock.mock.calls.at(-1)?.[0] as
+      | { queryKey: unknown[]; queryFn: () => Promise<MasterHubResponse> }
+      | undefined;
+    expect(queryOptions?.queryKey).toEqual(['admin', 'master-hub', 'org_1']);
+    await expect(queryOptions?.queryFn()).resolves.toEqual(fixture);
+    expect(fetchMock).toHaveBeenCalledWith('/api/admin/master-hub');
   });
 
   it('renders master cards with freshness badges, meta, narrative, and outline actions', () => {

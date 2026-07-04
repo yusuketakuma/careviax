@@ -14,6 +14,7 @@ import {
   type BlockedReason,
   type EvidenceItem,
 } from '@/components/features/workspace/action-rail';
+import { readApiJson } from '@/lib/api/client-json';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildDailyOpsBlockedReasons } from '@/lib/workspace/daily-ops-rail';
 import type { MasterHubCard, MasterHubResponse } from '@/types/master-hub';
@@ -28,8 +29,10 @@ import type { MasterHubCard, MasterHubResponse } from '@/types/master-hub';
 
 async function fetchMasterHub(): Promise<MasterHubResponse> {
   const res = await fetch('/api/admin/master-hub');
-  if (!res.ok) throw new Error('マスター鮮度集計の取得に失敗しました');
-  const json = await res.json();
+  const json = await readApiJson<{ data: MasterHubResponse }>(
+    res,
+    'マスター鮮度集計の取得に失敗しました',
+  );
   return json.data;
 }
 
