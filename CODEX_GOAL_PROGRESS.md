@@ -1,5 +1,44 @@
 # CODEX Goal Progress
 
+## R40/R44 My Day readApiJson Partial - 2026-07-05 05:31 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/my-day/my-day-content.tsx`
+    - `src/app/(dashboard)/my-day/my-day-content.test.tsx`
+- Scope:
+  - Reused `readApiJson<{ data: VisitSchedule[] }>` for the assigned visit
+    schedule GET.
+  - Reused `readApiJson<{ data?: StatusChangeAuditLog[] }>` for the admin-only
+    patient status-change audit-log GET.
+  - Preserved `/api/visit-schedules?date_from=...&date_to=...&pharmacist_id=...`,
+    `/api/audit-logs?action=patient_status_change&limit=10&date_from=...`,
+    `buildOrgHeaders`, React Query keys, enabled gates, JST day boundary
+    encoding, task cursor pagination, dashboard cockpit fetch, and status-change
+    visibility rules.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/my-day/my-day-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `20` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `bc78bc28`
+    (`refactor(ui): reuse readApiJson in my day`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 External Viewer readApiJson Partial - 2026-07-05 05:27 JST
 
 - Status:
