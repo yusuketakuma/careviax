@@ -23,7 +23,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
         title="タスク"
         description="未完了タスクを期限順に処理し、必要な業務画面へ移動"
       />
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="タスクを読み込み中..." />}>
         <TasksContent
           initialAssigned={initialState.initialAssigned}
           initialStatus={initialState.initialStatus}

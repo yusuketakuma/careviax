@@ -27,7 +27,7 @@ export default async function WorkflowDashboardPage({ searchParams }: WorkflowDa
         description="処方登録から報告書までの主業務フローと、工程別の滞留・例外・連携状況を確認します"
       />
 
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="ワークフローダッシュボードを読み込み中..." />}>
         <WorkflowDashboardContent
           initialFocus={initialState.initialFocus}
           initialContext={initialState.initialContext}

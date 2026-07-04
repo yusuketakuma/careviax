@@ -26,7 +26,7 @@ export default function PharmacyCooperationWorkflowPage() {
         ]}
       />
 
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="薬局間協力ワークフローを読み込み中..." />}>
         <PharmacyCooperationWorkflowContent />
       </Suspense>
     </PageScaffold>
