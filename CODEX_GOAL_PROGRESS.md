@@ -1,5 +1,53 @@
 # CODEX Goal Progress
 
+## R55 Workflow and Tasks Route Loading Labels - 2026-07-04 21:05 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/workflow/page.tsx`
+    - `src/app/(dashboard)/workflow/page.test.tsx`
+    - `src/app/(dashboard)/workflow/pharmacy-cooperation/page.tsx`
+    - `src/app/(dashboard)/workflow/pharmacy-cooperation/page.test.tsx`
+    - `src/app/(dashboard)/tasks/page.tsx`
+    - `src/app/(dashboard)/tasks/page.test.tsx`
+- Scope:
+  - Replaced three route-level generic Suspense fallback `Loading` instances
+    with screen-specific statuses:
+    - `ワークフローダッシュボードを読み込み中...`
+    - `薬局間協力ワークフローを読み込み中...`
+    - `タスクを読み込み中...`
+  - Added route shell regression tests proving each fallback is
+    screen-specific, generic `読み込み中...` is absent, suspended content is not
+    rendered, and workflow/tasks search param wiring remains intact.
+  - Confirmed `rg -n "<Suspense fallback=\\{<Loading />\\}" 'src/app/(dashboard)/workflow' 'src/app/(dashboard)/tasks' --glob 'page.tsx'`
+    now returns no matches.
+- Safety:
+  - Route-shell loading presentation and tests only.
+  - No workflow dashboard content query, pharmacy-cooperation workflow content
+    query, task list query, task mutation, work-request creation flow, search
+    param parsing semantics, API path, org header, DB, auth, authorization, PHI
+    handling, billing semantics, audit, deployment, package, or server behavior
+    changed.
+  - Loading copy is PHI-free and does not echo workflow item details, patient
+    identifiers, task titles/descriptions, partner pharmacy details, billing
+    values, org IDs, or raw errors.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/workflow/page.test.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/page.test.tsx' 'src/app/(dashboard)/tasks/page.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `3` files / `6` tests.
+  - Scoped ESLint, Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed for the route source/test file pairs.
+  - Workflow/tasks route generic fallback closure scan returned no matches.
+- Commit:
+  - Implementation slice landed at `d172cd27`
+    (`fix(workflow): name route loading fallbacks`).
+- Remaining:
+  - Broader R55 / Plans.md objective remains open beyond this workflow/tasks
+    route-shell fallback slice.
+  - Dashboard-wide generic route fallback scan still reports `15` matches
+    outside workflow/tasks.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Billing Route Loading Fallback Closure - 2026-07-04 20:59 JST
 
 - Status:

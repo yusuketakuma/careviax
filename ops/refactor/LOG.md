@@ -1559,3 +1559,33 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - commit: `8f673aa4` (`fix(billing): close route loading fallbacks`)。
 - 残課題: billing route-shell generic fallback は closure。broad Plans.md / R55 residual scan は継続。
   `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
+
+## 2026-07-04 R55 workflow and tasks route loading labels
+
+- 分類: UI loading-state cleanup / R55 route-shell generic loading residual。
+- 実施:
+  - `workflow/page.tsx` の route-level Suspense fallback を generic `Loading` から
+    `ワークフローダッシュボードを読み込み中...` の画面固有 status へ変更。
+  - `workflow/pharmacy-cooperation/page.tsx` を
+    `薬局間協力ワークフローを読み込み中...`、`tasks/page.tsx` を
+    `タスクを読み込み中...` に変更。
+  - 3 route の page test を追加し、generic `読み込み中...` が出ないこと、suspended content が出ないこと、
+    workflow/tasks の search param wiring が保持されることを固定。
+- 挙動変更: route-shell loading label のみ。workflow dashboard content query、
+  pharmacy-cooperation workflow content query、task list query、task mutation、
+  work-request creation flow、search param parsing semantics、API path、org header、
+  API/DB/auth/authorization/billing/audit は不変。
+- UI/UX根拠: `docs/ui-ux-design-guidelines.md` の Clear state / false-empty prevention と
+  route fallback は軽量で意味のある loading UI にする Next loading/Suspense guidance に整合。
+- 安全性: product API/DB/auth/authorization/PHI/billing/deploy/package dependency は不変。
+  Loading copy は PHI-free で、workflow item detail・patient identifier・task title/description・partner pharmacy detail・billing value・org id・raw error
+  を出さない。
+- 検証: focused workflow/tasks route fallback Vitest `3 files / 6 tests` green、
+  targeted ESLint green、targeted Prettier check green、targeted `git diff --check` green、
+  `pnpm typecheck` green。
+  `rg -n "<Suspense fallback=\\{<Loading />\\}" 'src/app/(dashboard)/workflow' 'src/app/(dashboard)/tasks' --glob 'page.tsx'`
+  は no matches。
+- commit: `d172cd27` (`fix(workflow): name route loading fallbacks`)。
+- 残課題: workflow/tasks route-shell generic fallback は closure。dashboard-wide generic fallback scan は
+  workflow/tasks 外で `15` matches。broad Plans.md / R55 residual scan は継続。
+  `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
