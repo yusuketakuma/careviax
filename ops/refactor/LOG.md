@@ -5,6 +5,21 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-04 R09 63b98972
+
+- 分類: refactor / cockpit action rail guard convergence
+- 対象: `src/components/features/workspace/action-rail.tsx`,
+  handoff/schedule/report-share workspaces
+- 実施: loading/error wrapper を `GuardedWorkspaceActionRail` に集約し、3画面のコピペを props
+  差分（test id / aria / report-share error detail）だけへ縮小。
+- 挙動変更: なし。既存の loading test id、aria label、エラー文言、再試行、report-share detail は保持。
+- 安全: product API/DB/auth/authorization/PHI/billing/deploy/package dependency は変更不要。
+  copy は PHI-free、query/mutation/org header/server behavior 不変。
+- 検証: focused workspace vitest 3 files / 75 tests green（既存 act warning は出力あり）。
+  scoped eslint/prettier/diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit 63b98972。
+- 残課題: broad Plans.md objective は継続。未関係 dirty は対象外。
+
 ## 2026-07-03 台帳再編（このコミット）
 
 - 分類: docs/ops

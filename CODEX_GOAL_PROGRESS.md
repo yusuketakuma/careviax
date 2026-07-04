@@ -1,5 +1,41 @@
 # CODEX Goal Progress
 
+## R09 Cockpit Action Rail Guard Convergence - 2026-07-04 21:44 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/components/features/workspace/action-rail.tsx`
+    - `src/app/(dashboard)/handoff/handoff-workspace.tsx`
+    - `src/app/(dashboard)/schedules/schedule-team-board.tsx`
+    - `src/app/(dashboard)/reports/report-share-workspace.tsx`
+- Scope:
+  - Added shared `GuardedWorkspaceActionRail` for the cockpit action rail
+    loading/error guard.
+  - Replaced the copied guard blocks in handoff, schedule, and report-share
+    workspaces while preserving each screen's loading test id, aria label,
+    error title/description, retry behavior, and report-share error detail.
+- Safety:
+  - UI component consolidation only.
+  - No product API, DB, auth, authorization, PHI projection, billing semantics,
+    deployment, package dependency, query, mutation, org header, audit logging,
+    or server behavior changed.
+  - Loading/error copy remains PHI-free and does not echo patient identifiers,
+    visit details, report content, org ids, raw request payloads, billing
+    values, or secrets.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `3` files / `75` tests. Existing React `act(...)` warnings were
+    emitted by handoff tests, but the suite passed.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed for the changed source files.
+- Commit:
+  - Implementation slice landed at `63b98972`
+    (`refactor(workspace): share action rail guard`).
+- Remaining:
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Generic Visible Loading Closure - 2026-07-04 21:34 JST
 
 - Status:
