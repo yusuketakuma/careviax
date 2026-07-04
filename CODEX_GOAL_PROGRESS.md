@@ -1,5 +1,40 @@
 # CODEX Goal Progress
 
+## R55 Visit Record Form Loading State - 2026-07-04 20:03 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`
+    - `src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx`
+- Scope:
+  - Replaced the visible generic `読み込み中...` schedule bootstrap state with a
+    named skeleton region that preserves visit step navigation and form rhythm
+    without rendering final visit content.
+  - Loading no longer exposes generic loading copy or final visit form actions
+    before org context and schedule data resolve.
+- Safety:
+  - UI loading-state presentation and tests only.
+  - No fetch path, org header, visit preparation/CDS query behavior, offline
+    sync behavior, form state, submit payload, cache invalidation, DB, auth,
+    authorization, billing, audit, deployment, package, or server behavior
+    changed.
+  - Loading copy is PHI-free and does not echo patient names, schedule details,
+    medication management content, visit notes, carry-item status, org ids, or
+    raw errors.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `22` tests.
+  - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
+    the visit-record form source/test files.
+  - `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `8d4bf6ed`
+    (`fix(visits): show skeleton for visit record loading`).
+- Remaining:
+  - Broader R55 residuals and Plans.md objective remain open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Patient MCS Loading State - 2026-07-04 19:58 JST
 
 - Status:

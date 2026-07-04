@@ -814,6 +814,27 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
   `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
 
+## 2026-07-04 R55 visit-record form loading skeleton
+
+- 分類: UI loading-state cleanup / R55 visible loading residual。
+- 実施:
+  - `visits/[id]/record/visit-record-form.tsx` の org 未解決 / schedule loading 分岐で使っていた
+    visible generic `読み込み中...` paragraph を、step navigation と form の形を保つ領域固有
+    `role="status"` + skeleton へ置換。
+  - loading 中に generic `読み込み中...` text、訪問完了 button、medication management section、訪問時チェックが出ないことを
+    `visit-record-form.test.tsx` に追加。
+- 挙動変更: loading presentation のみ。fetch path、org header、visit preparation/CDS query behavior、
+  offline sync behavior、form state、submit payload、cache invalidation、API/DB/auth/authorization/billing/audit は不変。
+- UI/UX根拠: `docs/ui-ux-design-guidelines.md` の 5状態分離、領域固有 loading label、
+  generic loading copy 禁止、visit-record form shape に沿う skeleton loading に整合。
+- 安全性: Loading copy は PHI-free で、patient name・schedule detail・medication management content・visit note・carry-item status・org id・raw error
+  を出さない。
+- 検証: focused visit-record form Vitest `1 file / 22 tests` green、targeted ESLint green、
+  targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `8d4bf6ed` (`fix(visits): show skeleton for visit record loading`)。
+- 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
+  `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
+
 ## 2026-07-04 R55 patient MCS loading skeleton
 
 - 分類: UI loading-state cleanup / R55 visible loading residual。
