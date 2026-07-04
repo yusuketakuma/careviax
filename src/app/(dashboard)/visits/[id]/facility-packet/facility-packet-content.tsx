@@ -10,6 +10,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/loading';
 import { Textarea } from '@/components/ui/textarea';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
@@ -59,8 +60,7 @@ export function FacilityPacketContent({ scheduleId }: { scheduleId: string }) {
       const res = await fetch(`/api/visit-preparations/${scheduleId}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('施設訪問パケットの取得に失敗しました');
-      return res.json();
+      return readApiJson<PreparationSnapshot>(res, '施設訪問パケットの取得に失敗しました');
     },
     enabled: !!orgId && !!scheduleId,
   });
