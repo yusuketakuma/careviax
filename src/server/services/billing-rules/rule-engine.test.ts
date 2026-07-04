@@ -259,6 +259,114 @@ describe('rule-engine: buildBillingCandidateSpecs', () => {
     expect(base!.points).toBe(59);
   });
 
+  it('applies the shared monthly cap to medical online visits', async () => {
+    const onlineRule = makeBaseRule({
+      ssot_key: 'medical.home_visit.online',
+      code: 'MED_HOME_VISIT_ONLINE',
+      name: '在宅患者オンライン薬剤管理指導料',
+      amount: 59,
+      conditions: {
+        requires_online_visit: true,
+        monthly_cap_shared: true,
+        weekly_pharmacist_cap: 40,
+      },
+    });
+    const tx = makeTx([makeBaseRule(), onlineRule]);
+
+    const specs = await buildBillingCandidateSpecs(
+      tx,
+      makeContext({ onlineEligible: true, monthlyVisitCount: 5 }),
+    );
+
+    const base = specs.find((s) => s.ssotKey === 'medical.home_visit.online');
+    expect(base).toMatchObject({
+      status: 'excluded',
+      points: 59,
+      exclusionReason: '月内算定上限を超過しています（5/4）',
+      calculationBreakdown: expect.objectContaining({
+        monthly_cap: 4,
+        monthly_cap_shared: true,
+      }),
+    });
+  });
+
+  it('applies the shared monthly cap to care online visits', async () => {
+    const careOnlineRule = makeBaseRule({
+      ssot_key: 'care.home_management.pharmacy.online',
+      code: 'CARE_HOME_PHARMACY_ONLINE',
+      name: '居宅療養管理指導 薬局薬剤師 情報通信機器',
+      amount: 46,
+      service_type: 'care_home_management',
+      payer_basis: 'care',
+      calculation_unit: 'unit',
+      conditions: {
+        requires_online_visit: true,
+        monthly_cap_shared: true,
+        special_monthly_cap: 8,
+        special_weekly_cap: 2,
+      },
+    });
+    const tx = makeTx([careOnlineRule]);
+
+    const specs = await buildBillingCandidateSpecs(
+      tx,
+      makeContext({
+        payerBasis: 'care',
+        serviceType: 'care_home_management',
+        onlineEligible: true,
+        monthlyVisitCount: 5,
+      }),
+    );
+
+    expect(specs[0]).toMatchObject({
+      status: 'excluded',
+      points: 46,
+      exclusionReason: '月内算定上限を超過しています（5/4）',
+      calculationBreakdown: expect.objectContaining({
+        monthly_cap: 4,
+        monthly_cap_shared: true,
+      }),
+    });
+  });
+
+  it('uses the special shared cap fallback for eligible online visits', async () => {
+    const onlineRule = makeBaseRule({
+      ssot_key: 'medical.home_visit.online',
+      code: 'MED_HOME_VISIT_ONLINE',
+      name: '在宅患者オンライン薬剤管理指導料',
+      amount: 59,
+      conditions: {
+        requires_online_visit: true,
+        monthly_cap_shared: true,
+        special_monthly_cap: null as unknown as number,
+        special_weekly_cap: null as unknown as number,
+        weekly_pharmacist_cap: 40,
+      },
+    });
+    const tx = makeTx([makeBaseRule(), onlineRule]);
+
+    const specs = await buildBillingCandidateSpecs(
+      tx,
+      makeContext({
+        onlineEligible: true,
+        specialCapEligible: true,
+        monthlyVisitCount: 8,
+        weeklyVisitCount: 3,
+      }),
+    );
+
+    const base = specs.find((s) => s.ssotKey === 'medical.home_visit.online');
+    expect(base).toMatchObject({
+      status: 'excluded',
+      exclusionReason: '週内算定上限を超過しています（3/2）',
+      calculationBreakdown: expect.objectContaining({
+        monthly_cap: 8,
+        weekly_cap: 2,
+        monthly_cap_shared: true,
+      }),
+    });
+  });
+
   // ── 7. monthly cap exceeded ──
   it('marks base rule as excluded when monthly cap is exceeded', async () => {
     const singleRule = makeBaseRule({

@@ -57,6 +57,42 @@ function hasRegionAddOn(
   return (regionAddOns ?? []).some((value) => value === regionKey);
 }
 
+const SHARED_MONTHLY_CAP = 4;
+const SHARED_SPECIAL_MONTHLY_CAP = 8;
+const SHARED_SPECIAL_WEEKLY_CAP = 2;
+
+function finiteNumber(value: unknown) {
+  if (typeof value !== 'number' && typeof value !== 'string') return null;
+  if (typeof value === 'string' && value.trim() === '') return null;
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function resolveMonthlyCap(conditions: Record<string, unknown>, context: BillingEvidenceContext) {
+  if (context.specialCapEligible) {
+    return (
+      finiteNumber(conditions.special_monthly_cap) ??
+      (conditions.monthly_cap_shared === true ? SHARED_SPECIAL_MONTHLY_CAP : null)
+    );
+  }
+
+  return (
+    finiteNumber(conditions.monthly_cap) ??
+    (conditions.monthly_cap_shared === true ? SHARED_MONTHLY_CAP : null)
+  );
+}
+
+function resolveWeeklyCap(conditions: Record<string, unknown>, context: BillingEvidenceContext) {
+  if (context.specialCapEligible) {
+    return (
+      finiteNumber(conditions.special_weekly_cap) ??
+      (conditions.monthly_cap_shared === true ? SHARED_SPECIAL_WEEKLY_CAP : null)
+    );
+  }
+
+  return finiteNumber(conditions.weekly_pharmacist_cap);
+}
+
 export async function getHomeCareBillingSsotSummary(tx: Tx, orgId: string, asOfDate?: Date) {
   const targetDate = asOfDate ?? new Date();
   const now = new Date(
@@ -184,18 +220,14 @@ export async function buildBillingCandidateSpecs(
   if (baseRule) {
     let exclusionReason: string | null = null;
     const conditions = readRuleConditions(baseRule);
-    const monthlyCap = Number(
-      context.specialCapEligible ? conditions.special_monthly_cap : conditions.monthly_cap,
-    );
-    const weeklyCap = Number(
-      context.specialCapEligible ? conditions.special_weekly_cap : conditions.weekly_pharmacist_cap,
-    );
+    const monthlyCap = resolveMonthlyCap(conditions, context);
+    const weeklyCap = resolveWeeklyCap(conditions, context);
 
     if (!context.claimable) {
       exclusionReason = context.exclusionReason ?? '請求根拠の確認が必要です';
-    } else if (Number.isFinite(monthlyCap) && context.monthlyVisitCount > monthlyCap) {
+    } else if (monthlyCap != null && context.monthlyVisitCount > monthlyCap) {
       exclusionReason = `月内算定上限を超過しています（${context.monthlyVisitCount}/${monthlyCap}）`;
-    } else if (Number.isFinite(weeklyCap) && context.weeklyVisitCount > weeklyCap) {
+    } else if (weeklyCap != null && context.weeklyVisitCount > weeklyCap) {
       exclusionReason = `週内算定上限を超過しています（${context.weeklyVisitCount}/${weeklyCap}）`;
     }
 
@@ -214,6 +246,9 @@ export async function buildBillingCandidateSpecs(
         emergency_category: context.emergencyCategory,
         monthly_visit_count: context.monthlyVisitCount,
         weekly_visit_count: context.weeklyVisitCount,
+        monthly_cap: monthlyCap,
+        weekly_cap: weeklyCap,
+        monthly_cap_shared: conditions.monthly_cap_shared === true,
       },
       sourceSnapshot: {
         billing_scope: baseRule.billing_scope,
