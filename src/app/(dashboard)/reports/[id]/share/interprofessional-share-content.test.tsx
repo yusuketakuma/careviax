@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   buildCommunicationRequestApiPath,
@@ -259,14 +259,9 @@ function stubFetch(
 }
 
 function renderShare(reportId = 'rep_1') {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  return render(<InterprofessionalShareContent reportId={reportId} />, {
+    wrapper: createQueryClientWrapper(),
   });
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <InterprofessionalShareContent reportId={reportId} />
-    </QueryClientProvider>,
-  );
 }
 
 function expectFetchHeaders(

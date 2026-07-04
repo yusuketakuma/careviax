@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { QueryClient } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { createQueryClientWrapper, createTestQueryClient } from '@/test/query-client-test-utils';
 import { PrintHubContent } from './print-hub-content';
 
 const replaceMock = vi.hoisted(() => vi.fn());
@@ -38,25 +38,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function createTestQueryClient() {
-  return new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  });
-}
-
-function createWrapper(queryClient: QueryClient = createTestQueryClient()) {
-  return function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
-  };
-}
-
 function renderPrintHubContent(queryClient: QueryClient = createTestQueryClient()) {
   return {
     queryClient,
-    ...render(<PrintHubContent />, { wrapper: createWrapper(queryClient) }),
+    ...render(<PrintHubContent />, { wrapper: createQueryClientWrapper(queryClient) }),
   };
 }
 
