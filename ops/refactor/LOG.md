@@ -2837,3 +2837,24 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: R24/R46 は partial。keyset cursor encoding、scan-window、hidden-count、
   route-specific metadata を持つ route は個別分析後に継続。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
+## 2026-07-05 R24/R46 inquiry-records cursor helper slice
+
+- 分類: pattern-inconsistency / explicit-limit visible-row selection → `buildCursorPage` 収束。
+- 実施:
+  - `/api/inquiry-records` GET の explicit `limit` 指定時の `records.length > limit` と
+    `slice(0, limit)` を `buildCursorPage` へ移行。
+  - no-limit request は従来通り `take` なし、full-list response、`meta` なしのまま維持。
+- 挙動変更: API内部の重複 helper 収束のみ。外部 response shape、cycle/patient/status filters、
+  medication-cycle assignment access filter、no-limit/no-meta contract、POST create/audit/task
+  behavior は維持。
+- 安全性: `canVisit`、request auth context、authorization/access filter、DB query shape、
+  auth/authorization、PHI projection、billing、deployment、package dependency、live DB operation、
+  external send、secret handling、push、destructive operation は不変。
+- 検証: focused inquiry-records/pagination Vitest `2 files / 27 tests` green、
+  scoped ESLint green、targeted Prettier check green、targeted `git diff --check` green、
+  `pnpm typecheck` green。
+- commit: `b05e1880` (`refactor(api): reuse cursor page helper in inquiry records`)。
+- 残課題: R24/R46 は partial。keyset cursor encoding、scan-window、hidden-count、
+  route-specific metadata を持つ route は個別分析後に継続。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
