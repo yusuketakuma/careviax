@@ -67,7 +67,8 @@ function DispensingKpiStrip() {
         size="inline"
         title="調剤指標を取得できませんでした"
         description="時間をおいて再度お試しください。"
-        action={{ label: '再読み込み', onClick: () => void refetch() }}
+        onRetry={() => void refetch()}
+        retryLabel="再読み込み"
         live="assertive"
       />
     );
@@ -129,12 +130,10 @@ function DispensingKpiStrip() {
           variant="server"
           size="inline"
           description="最新の調剤指標を取得できませんでした。表示は前回取得した値です。"
-          action={{
-            label: '再読み込み',
-            onClick: () => void refetch(),
-            variant: 'outline',
-            size: 'sm',
-          }}
+          onRetry={() => void refetch()}
+          retryLabel="再読み込み"
+          retryVariant="outline"
+          retrySize="sm"
           live="polite"
         />
       )}
