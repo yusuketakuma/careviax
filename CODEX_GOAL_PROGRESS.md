@@ -1,5 +1,45 @@
 # CODEX Goal Progress
 
+## R40/R44 External Viewer readApiJson Partial - 2026-07-05 05:27 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/external/external-viewer-content.tsx`
+    - `src/app/(dashboard)/external/external-viewer-content.test.tsx`
+- Scope:
+  - Reused `readApiJson<{ data: ExternalGrant[] }>` for the external access
+    grant list GET.
+  - Reused `readApiJson<{ data: SelfReport[] }>` for the patient self-report
+    dashboard GET.
+  - Reused `readApiJson<{ data: CommunityActivity[] }>` for the follow-up
+    community activity GET.
+  - Preserved `/api/external-access`, `/api/patient-self-reports?limit=12`,
+    `/api/community-activities?limit=8&follow_up_required=true`,
+    `buildOrgHeaders`, React Query keys, response envelopes, retry/error UI,
+    and self-report/task mutation contracts.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/external/external-viewer-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `9` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `798e1e08`
+    (`refactor(ui): reuse readApiJson in external viewer`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Contact Profiles readApiJson Partial - 2026-07-05 03:50 JST
 
 - Status:
@@ -46,7 +86,7 @@
   - Reused `readApiJson<{ data: AnalyticsResponse }>` for the billing
     analytics GET helper.
   - Reused `readApiJson<{ data: ResourceMapResponse['data']; summary:
-    ResourceMapResponse['summary'] }>` for the resource-map GET helper.
+ResourceMapResponse['summary'] }>` for the resource-map GET helper.
   - Preserved `/api/billing-evidence/analytics`,
     `/api/pharmacy-sites?view=resource_map`, `buildOrgHeaders`, React Query
     keys, response envelopes, independent billing/resource-map error states,
@@ -2396,7 +2436,7 @@
 - Scope:
   - Migrated two admin analytics stale-data ErrorState retry actions from
     hand-written `action={{ label: '再読み込み', onClick, variant: 'outline',
-    size: 'sm' }}` objects to `onRetry` + `retryLabel`.
+size: 'sm' }}` objects to `onRetry` + `retryLabel`.
   - Preserved both stale retry buttons as `outline` + `sm` via
     `retryVariant="outline"` and `retrySize="sm"`.
 - Safety:

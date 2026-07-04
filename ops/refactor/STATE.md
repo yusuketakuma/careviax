@@ -178,6 +178,11 @@
   readApiJson へ収束し、feedback/readiness/summary/collaborator/audit/dossier read endpoints と
   POST/PATCH payload/invalidation contract は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 external-viewer readApiJson slice(798e1e08) land。focused Vitest 9、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。external access / patient self-reports /
+  community activities の org-scoped read GET を readApiJson へ収束し、queryKey/endpoint/header、
+  retry/error UI、self-report/task mutation contract は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 
