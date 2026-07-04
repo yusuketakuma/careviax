@@ -4,7 +4,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import { readStrictOptionalSearchParam } from '@/lib/api/search-params';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import { parsePaginationParams } from '@/lib/api/pagination';
+import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { createMedicationCycleSchema } from '@/lib/validations/medication';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -101,15 +101,14 @@ const authenticatedGET = withAuthContext(
       prisma.medicationCycle.count({ where }),
     ]);
 
-    const hasMore = cycles.length > limit;
-    const page = hasMore ? cycles.slice(0, limit) : cycles;
-    const data = page.map((cycle) => ({ id: cycle.id }));
+    const page = buildCursorPage(cycles, limit, () => String(offset + limit));
+    const data = page.data.map((cycle) => ({ id: cycle.id }));
 
     return success({
       data,
-      hasMore,
+      hasMore: page.hasMore,
       totalCount,
-      nextCursor: hasMore ? String(offset + limit) : undefined,
+      nextCursor: page.nextCursor,
     });
   },
   {

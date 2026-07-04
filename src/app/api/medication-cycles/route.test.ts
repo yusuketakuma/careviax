@@ -165,6 +165,33 @@ describe('/api/medication-cycles', () => {
     expect(body.data[0]).not.toHaveProperty('prescription_intakes');
   });
 
+  it('returns the next offset cursor from the shared pagination helper when rows overflow', async () => {
+    medicationCycleFindManyMock.mockResolvedValueOnce([{ id: 'cycle_1' }, { id: 'cycle_2' }]);
+    medicationCycleCountMock.mockResolvedValueOnce(2);
+
+    const response = (await GET(
+      createGetRequest('http://localhost/api/medication-cycles?limit=1'),
+      { params: Promise.resolve({}) },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(medicationCycleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 0,
+        take: 2,
+      }),
+    );
+    const body = await response.json();
+    expect(Object.keys(body)).toEqual(['data', 'hasMore', 'totalCount', 'nextCursor']);
+    expect(body).toEqual({
+      data: [{ id: 'cycle_1' }],
+      hasMore: true,
+      totalCount: 2,
+      nextCursor: '1',
+    });
+  });
+
   it('rejects unsupported status filters before querying cycles', async () => {
     const response = (await GET(
       createGetRequest('http://localhost/api/medication-cycles?status=bad_status'),
