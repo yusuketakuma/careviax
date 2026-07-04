@@ -9,6 +9,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError, notFound, conflict, internalError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { buildCursorPage } from '@/lib/api/pagination';
 import { hhmmToTimeDate } from '@/lib/datetime/time-of-day';
 import { timeDateToString } from '@/lib/visits/time-of-day';
 import { prisma } from '@/lib/db/client';
@@ -601,8 +602,8 @@ const authenticatedGET = withAuthContext(
         orderBy: [{ proposed_date: 'asc' }, { time_window_start: 'asc' }],
         take: paletteLimit + 1,
       });
-      const hasMore = proposals.length > paletteLimit;
-      const dataRows = hasMore ? proposals.slice(0, paletteLimit) : proposals;
+      const page = buildCursorPage(proposals, paletteLimit, (proposal) => proposal.id);
+      const dataRows = page.data;
       const pharmacistIds = Array.from(
         new Set(
           dataRows
@@ -647,7 +648,7 @@ const authenticatedGET = withAuthContext(
               ? { name: pharmacistById.get(proposal.proposed_pharmacist_id)!.name }
               : null,
         })),
-        hasMore,
+        hasMore: page.hasMore,
       });
     }
 
