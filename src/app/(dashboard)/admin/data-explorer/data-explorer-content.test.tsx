@@ -11,6 +11,7 @@ const useOrgIdMock = vi.hoisted(() => vi.fn(() => 'org_1'));
 const mutationMutateMock = vi.hoisted(() => vi.fn());
 const queryOptionsMock = vi.hoisted(() => vi.fn());
 const queryErrorKeysMock = vi.hoisted(() => new Set<string>());
+const queryLoadingKeysMock = vi.hoisted(() => new Set<string>());
 const queryRefetchMocks = vi.hoisted(() => new Map<string, ReturnType<typeof vi.fn>>());
 const rowsPayloadMock = vi.hoisted(() => ({
   value: {
@@ -119,6 +120,15 @@ vi.mock('@tanstack/react-query', () => ({
       };
     }
 
+    if (queryLoadingKeysMock.has(queryName)) {
+      return {
+        data: undefined,
+        isLoading: true,
+        isError: false,
+        refetch,
+      };
+    }
+
     if (key === 'admin-data-explorer-models') {
       return {
         data: {
@@ -170,6 +180,7 @@ describe('DataExplorerContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     queryErrorKeysMock.clear();
+    queryLoadingKeysMock.clear();
     queryRefetchMocks.clear();
     useOrgIdMock.mockReturnValue('org_1');
     resetRowsPayload();
@@ -281,6 +292,15 @@ describe('DataExplorerContent', () => {
     expect(queryRefetchMocks.get('admin-data-explorer-models')).toHaveBeenCalledTimes(1);
   });
 
+  it('uses an announced skeleton while models are loading', () => {
+    queryLoadingKeysMock.add('admin-data-explorer-models');
+
+    render(<DataExplorerContent />);
+
+    expect(screen.getByRole('status', { name: 'モデル一覧を読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('読み込み中...', { selector: 'div' })).toBeNull();
+  });
+
   it('shows a retryable error instead of an empty row list when rows fail to load', () => {
     queryErrorKeysMock.add('admin-data-explorer-rows');
 
@@ -291,5 +311,14 @@ describe('DataExplorerContent', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
     expect(queryRefetchMocks.get('admin-data-explorer-rows')).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses an announced skeleton while table rows are loading', () => {
+    queryLoadingKeysMock.add('admin-data-explorer-rows');
+
+    render(<DataExplorerContent />);
+
+    expect(screen.getByRole('status', { name: 'テーブルデータを読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('読み込み中...', { selector: 'div' })).toBeNull();
   });
 });

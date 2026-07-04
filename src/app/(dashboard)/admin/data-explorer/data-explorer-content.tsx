@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { SkeletonRows } from '@/components/ui/loading';
 import { parseJsonObjectText } from '@/lib/admin/json-editor';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -296,7 +297,9 @@ export function DataExplorerContent() {
 
             <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
               {modelsQuery.isLoading ? (
-                <div className="text-sm text-muted-foreground">読み込み中...</div>
+                <div role="status" aria-label="モデル一覧を読み込み中">
+                  <SkeletonRows rows={4} cols={2} status={false} />
+                </div>
               ) : modelsQuery.isError ? (
                 <ErrorState
                   title="モデル一覧を取得できませんでした"
@@ -372,7 +375,9 @@ export function DataExplorerContent() {
 
             <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
               {rowsQuery.isLoading ? (
-                <div className="text-sm text-muted-foreground">読み込み中...</div>
+                <div role="status" aria-label="テーブルデータを読み込み中">
+                  <SkeletonRows rows={4} cols={2} status={false} />
+                </div>
               ) : rowsQuery.isError ? (
                 <ErrorState
                   title="テーブルデータを取得できませんでした"
