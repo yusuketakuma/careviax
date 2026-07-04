@@ -40,6 +40,7 @@ import {
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { parseJsonObjectText } from '@/lib/admin/json-editor';
 import { BILLING_RULES_API_PATH, buildBillingRuleApiPath } from '@/lib/billing-rules/api-paths';
+import { messageFromError } from '@/lib/utils/error-message';
 
 // --- Types ---
 
@@ -423,7 +424,7 @@ export default function BillingRulesPage() {
       await queryClient.invalidateQueries({ queryKey: ['billing-rules'] });
       toast.success(result.message);
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err) => toast.error(messageFromError(err, 'Failed to sync billing SSOT')),
   });
 
   const createMutation = useMutation({
@@ -433,7 +434,7 @@ export default function BillingRulesPage() {
       setCreateOpen(false);
       toast.success('算定ルールを作成しました');
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err) => toast.error(messageFromError(err, 'Failed to create billing rule')),
   });
 
   const updateMutation = useMutation({
@@ -443,7 +444,7 @@ export default function BillingRulesPage() {
       setEditTarget(null);
       toast.success('算定ルールを更新しました');
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err) => toast.error(messageFromError(err, 'Failed to update billing rule')),
   });
 
   const deleteMutation = useMutation({
@@ -453,7 +454,7 @@ export default function BillingRulesPage() {
       setDeleteTarget(null);
       toast.success('算定ルールを削除しました');
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err) => toast.error(messageFromError(err, 'Failed to delete billing rule')),
   });
 
   const columns: ColumnDef<BillingRule>[] = [

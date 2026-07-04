@@ -21,7 +21,7 @@ const {
   mutationMutateMock: vi.fn(),
   mutationOptionsMock: [] as Array<{
     mutationFn?: (variables?: unknown) => Promise<unknown>;
-    onError?: (error: Error) => void;
+    onError?: (error: unknown) => void;
     onSuccess?: (data: unknown) => void | Promise<void>;
   }>,
   queryOptionsMock: [] as Array<{
@@ -49,7 +49,7 @@ vi.mock('@tanstack/react-query', () => ({
           .then(() => options.mutationFn?.(variables))
           .then(
             (data) => void options.onSuccess?.(data),
-            (error: Error) => options.onError?.(error),
+            (error: unknown) => options.onError?.(error),
           );
       },
       isPending: false,
@@ -322,6 +322,19 @@ describe('BillingRulesPage', () => {
         body: JSON.stringify({ action: 'seed_home_care_ssot' }),
       }),
     );
+  });
+
+  it('uses the SSOT sync fallback when mutation rejection is not an Error', async () => {
+    vi.mocked(global.fetch).mockImplementationOnce(async () => {
+      throw 'raw failure';
+    });
+    render(<BillingRulesPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '公式SSOT同期' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('Failed to sync billing SSOT');
+    });
   });
 
   it('create POST uses the collection API path and preserves the payload', async () => {
