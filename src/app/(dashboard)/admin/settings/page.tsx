@@ -19,7 +19,7 @@ export default function SettingsPage() {
         shortcuts={getAdminSettingsShortcutLinks()}
       />
 
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="管理設定を読み込み中..." />}>
         <SettingsContent />
       </Suspense>
     </PageScaffold>
