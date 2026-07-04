@@ -319,7 +319,7 @@ describe('PharmacistCredentialsContent', () => {
     expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
   });
 
-  it('surfaces reversed credential dates and invalid numeric fields inline', () => {
+  it('surfaces reversed credential dates and invalid numeric fields inline', async () => {
     render(<PharmacistCredentialsContent />);
 
     fireEvent.click(screen.getByRole('button', { name: '資格を登録' }));
@@ -355,7 +355,68 @@ describe('PharmacistCredentialsContent', () => {
     expect((saveButton as HTMLButtonElement).disabled).toBe(true);
     expect(saveButton.getAttribute('aria-describedby')).toBe('credential-save-blocker');
 
+    const formElement = screen
+      .getByRole('dialog', { name: '資格情報を登録' })
+      .querySelector('form');
+    if (!formElement) {
+      throw new Error('Expected credential form element');
+    }
+    fireEvent.submit(formElement);
+    expect(await screen.findByText('入力内容を確認してください')).toBeTruthy();
+    const summaryText = document.getElementById('credential-form-error-summary')?.textContent ?? '';
+    expect(summaryText).toContain('有効期限は交付日以降の日付を指定してください。');
+    expect(summaryText).toContain('在籍年数は0〜80の数値で入力してください。');
+    expect(summaryText).toContain('週勤務時間は0〜168の数値で入力してください。');
+
     fireEvent.click(saveButton);
+    expect(mutationMutateMock).not.toHaveBeenCalled();
+  });
+
+  it('mirrors required-field blockers into the RHF error summary without submitting', async () => {
+    render(<PharmacistCredentialsContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: '資格を登録' }));
+
+    const saveButton = screen.getByRole('button', { name: '保存' });
+    expect((saveButton as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText('対象スタッフを選択してください。')).toBeTruthy();
+
+    const formElement = screen
+      .getByRole('dialog', { name: '資格情報を登録' })
+      .querySelector('form');
+    if (!formElement) {
+      throw new Error('Expected credential form element');
+    }
+    fireEvent.submit(formElement);
+
+    expect(await screen.findByText('入力内容を確認してください')).toBeTruthy();
+    const summaryText = document.getElementById('credential-form-error-summary')?.textContent ?? '';
+    expect(summaryText).toContain('対象スタッフを選択してください。');
+    expect(summaryText).toContain('認定種別を入力してください。');
+    expect(mutationMutateMock).not.toHaveBeenCalled();
+  });
+
+  it('mirrors the certification-type blocker after staff selection into the RHF error summary', async () => {
+    render(<PharmacistCredentialsContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: '資格を登録' }));
+    fireEvent.change(screen.getByLabelText('対象スタッフ'), { target: { value: 'user_1' } });
+
+    const saveButton = screen.getByRole('button', { name: '保存' });
+    expect((saveButton as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText('認定種別を入力してください。')).toBeTruthy();
+
+    const formElement = screen
+      .getByRole('dialog', { name: '資格情報を登録' })
+      .querySelector('form');
+    if (!formElement) {
+      throw new Error('Expected credential form element');
+    }
+    fireEvent.submit(formElement);
+
+    expect(await screen.findByText('入力内容を確認してください')).toBeTruthy();
+    const summaryText = document.getElementById('credential-form-error-summary')?.textContent ?? '';
+    expect(summaryText).toContain('認定種別を入力してください。');
     expect(mutationMutateMock).not.toHaveBeenCalled();
   });
 
@@ -435,7 +496,7 @@ describe('PharmacistCredentialsContent', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '資格を登録' }));
     fireEvent.change(screen.getByLabelText('対象スタッフ'), { target: { value: 'user_1' } });
-    fireEvent.change(screen.getByLabelText('認定種別'), { target: { value: '研修認定' } });
+    fireEvent.change(screen.getByLabelText('認定種別'), { target: { value: '  研修認定  ' } });
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
 
     await waitFor(() => {
@@ -443,6 +504,23 @@ describe('PharmacistCredentialsContent', () => {
         PHARMACIST_CREDENTIALS_API_PATH,
         expect.objectContaining({ method: 'POST' }),
       );
+    });
+    const postCall = vi
+      .mocked(global.fetch)
+      .mock.calls.find(
+        ([input, init]) =>
+          String(input) === PHARMACIST_CREDENTIALS_API_PATH &&
+          (init as RequestInit | undefined)?.method === 'POST',
+      );
+    const init = postCall![1] as RequestInit;
+    expect(JSON.parse(init.body as string)).toEqual({
+      user_id: 'user_1',
+      certification_type: '  研修認定  ',
+      certification_number: null,
+      issued_date: null,
+      expiry_date: null,
+      tenure_years: null,
+      weekly_work_hours: null,
     });
   });
 
@@ -472,6 +550,23 @@ describe('PharmacistCredentialsContent', () => {
       );
     });
     expect(buildPharmacistCredentialApiPath).toHaveBeenCalledWith('credential/a b?x#y');
+    const patchCall = vi
+      .mocked(global.fetch)
+      .mock.calls.find(
+        ([input, init]) =>
+          String(input) === '/api/admin/pharmacist-credentials/credential%2Fa%20b%3Fx%23y' &&
+          (init as RequestInit | undefined)?.method === 'PATCH',
+      );
+    const init = patchCall![1] as RequestInit;
+    expect(JSON.parse(init.body as string)).toEqual({
+      user_id: 'user_1',
+      certification_type: '研修認定',
+      certification_number: 'CERT-001',
+      issued_date: '2025-04-01',
+      expiry_date: '2028-03-31',
+      tenure_years: '5.5',
+      weekly_work_hours: '32',
+    });
   });
 
   it('update (PATCH) with a dot-segment credential id fails closed before any PATCH fetch', async () => {

@@ -3,10 +3,13 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { differenceInDays, format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { AlertTriangle, Bell, CheckCircle2, XCircle } from 'lucide-react';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,6 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -31,6 +35,7 @@ import {
 } from '@/components/ui/select';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import { messageFromError } from '@/lib/utils/error-message';
 import {
   PHARMACIST_CREDENTIALS_API_PATH,
@@ -111,9 +116,14 @@ const CREDENTIAL_NUMERIC_LIMITS = {
 
 const PLAIN_DECIMAL_NUMBER_PATTERN = /^\d+(?:\.\d+)?$/;
 const CREDENTIAL_SAVE_BLOCKER_ID = 'credential-save-blocker';
+const CREDENTIAL_REQUIRED_MESSAGES = {
+  user_id: '対象スタッフを選択してください。',
+  certification_type: '認定種別を入力してください。',
+} as const;
 
 type CredentialNumericField = keyof typeof CREDENTIAL_NUMERIC_LIMITS;
 type CredentialFormErrors = Partial<Record<CredentialNumericField | 'expiry_date', string>>;
+type CredentialRequiredErrors = Partial<Record<keyof typeof CREDENTIAL_REQUIRED_MESSAGES, string>>;
 
 function ExpiryBadge({ expiryDate }: { expiryDate: string | null }) {
   if (!expiryDate) {
@@ -206,11 +216,53 @@ function getCredentialFormErrors(form: CredentialForm): CredentialFormErrors {
   return errors;
 }
 
+function getCredentialRequiredErrors(form: CredentialForm): CredentialRequiredErrors {
+  const errors: CredentialRequiredErrors = {};
+  if (!form.user_id) errors.user_id = CREDENTIAL_REQUIRED_MESSAGES.user_id;
+  if (!form.certification_type.trim()) {
+    errors.certification_type = CREDENTIAL_REQUIRED_MESSAGES.certification_type;
+  }
+  return errors;
+}
+
 function getCredentialSaveBlocker(form: CredentialForm, errors: CredentialFormErrors) {
-  if (!form.user_id) return '対象スタッフを選択してください。';
-  if (!form.certification_type.trim()) return '認定種別を入力してください。';
+  const requiredErrors = getCredentialRequiredErrors(form);
+  if (requiredErrors.user_id) return requiredErrors.user_id;
+  if (requiredErrors.certification_type) return requiredErrors.certification_type;
   return errors.expiry_date ?? errors.tenure_years ?? errors.weekly_work_hours ?? null;
 }
+
+const credentialFormSchema = z
+  .object({
+    user_id: z.string(),
+    certification_type: z.string(),
+    certification_number: z.string(),
+    issued_date: z.string(),
+    expiry_date: z.string(),
+    tenure_years: z.string(),
+    weekly_work_hours: z.string(),
+  })
+  .superRefine((form, ctx) => {
+    const requiredErrors = getCredentialRequiredErrors(form);
+    for (const [path, message] of Object.entries(requiredErrors)) {
+      if (!message) continue;
+      ctx.addIssue({
+        code: 'custom',
+        path: [path],
+        message,
+      });
+    }
+
+    const errors = getCredentialFormErrors(form);
+    for (const [path, message] of Object.entries(errors)) {
+      if (!message) continue;
+      ctx.addIssue({
+        code: 'custom',
+        path: [path],
+        message,
+      });
+    }
+  });
 
 function buildForm(credential: PharmacistCredential): CredentialForm {
   return {
@@ -229,8 +281,38 @@ export function PharmacistCredentialsContent() {
   const queryClient = useQueryClient();
   const [formOpen, setFormOpen] = useState(false);
   const [editingCredential, setEditingCredential] = useState<PharmacistCredential | null>(null);
-  const [form, setForm] = useState<CredentialForm>(EMPTY_FORM);
   const [deleteTarget, setDeleteTarget] = useState<PharmacistCredential | null>(null);
+  const errorSummaryId = 'credential-form-error-summary';
+  const {
+    control,
+    formState: { errors },
+    getValues,
+    handleSubmit,
+    register,
+    reset,
+  } = useForm<CredentialForm>({
+    resolver: zodResolver(credentialFormSchema),
+    defaultValues: EMPTY_FORM,
+  });
+  const watchedForm = useWatch({ control });
+  const form: CredentialForm = {
+    ...EMPTY_FORM,
+    ...watchedForm,
+  };
+  const errorSummaryItems = collectFormErrorSummaryItems(errors, {
+    user_id: '対象スタッフ',
+    certification_type: '認定種別',
+    certification_number: '認定番号',
+    issued_date: '交付日',
+    expiry_date: '有効期限',
+    tenure_years: '在籍年数',
+    weekly_work_hours: '週勤務時間',
+  });
+
+  function focusErrorSummary() {
+    if (typeof document === 'undefined') return;
+    document.getElementById(errorSummaryId)?.focus();
+  }
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['pharmacist-credentials', orgId],
@@ -276,34 +358,36 @@ export function PharmacistCredentialsContent() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      const currentForm = getValues();
+      const wasEditing = Boolean(editingCredential);
       const url = editingCredential
         ? buildPharmacistCredentialApiPath(editingCredential.id)
         : PHARMACIST_CREDENTIALS_API_PATH;
-      const method = editingCredential ? 'PATCH' : 'POST';
+      const method = wasEditing ? 'PATCH' : 'POST';
       const response = await fetch(url, {
         method,
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
-          user_id: form.user_id,
-          certification_type: form.certification_type,
-          certification_number: form.certification_number || null,
-          issued_date: form.issued_date || null,
-          expiry_date: form.expiry_date || null,
-          tenure_years: toNullableNumberText(form.tenure_years),
-          weekly_work_hours: toNullableNumberText(form.weekly_work_hours),
+          user_id: currentForm.user_id,
+          certification_type: currentForm.certification_type,
+          certification_number: currentForm.certification_number || null,
+          issued_date: currentForm.issued_date || null,
+          expiry_date: currentForm.expiry_date || null,
+          tenure_years: toNullableNumberText(currentForm.tenure_years),
+          weekly_work_hours: toNullableNumberText(currentForm.weekly_work_hours),
         }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error((payload as { message?: string }).message ?? '保存に失敗しました');
       }
-      return payload;
+      return { wasEditing };
     },
-    onSuccess: async () => {
-      toast.success(editingCredential ? '資格情報を更新しました' : '資格情報を登録しました');
+    onSuccess: async ({ wasEditing }) => {
+      toast.success(wasEditing ? '資格情報を更新しました' : '資格情報を登録しました');
       setFormOpen(false);
       setEditingCredential(null);
-      setForm(EMPTY_FORM);
+      reset(EMPTY_FORM);
       await queryClient.invalidateQueries({ queryKey: ['pharmacist-credentials', orgId] });
     },
     onError: (error) => {
@@ -410,7 +494,7 @@ export function PharmacistCredentialsContent() {
               aria-label={`${row.original.user_name} の ${row.original.certification_type} を編集`}
               onClick={() => {
                 setEditingCredential(row.original);
-                setForm(buildForm(row.original));
+                reset(buildForm(row.original));
                 setFormOpen(true);
               }}
             >
@@ -429,7 +513,7 @@ export function PharmacistCredentialsContent() {
         ),
       },
     ],
-    [],
+    [reset],
   );
 
   return (
@@ -460,7 +544,7 @@ export function PharmacistCredentialsContent() {
             className="h-11 min-h-[44px] sm:h-11 sm:min-h-[44px]"
             onClick={() => {
               setEditingCredential(null);
-              setForm(EMPTY_FORM);
+              reset(EMPTY_FORM);
               setFormOpen(true);
             }}
           >
@@ -498,7 +582,7 @@ export function PharmacistCredentialsContent() {
           setFormOpen(open);
           if (!open) {
             setEditingCredential(null);
-            setForm(EMPTY_FORM);
+            reset(EMPTY_FORM);
           }
         }}
       >
@@ -507,210 +591,183 @@ export function PharmacistCredentialsContent() {
             <DialogTitle>{editingCredential ? '資格情報を編集' : '資格情報を登録'}</DialogTitle>
             <DialogDescription>資格種別、番号、有効期限、在籍年数を管理します。</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-2 md:grid-cols-2">
-            <Field label="対象スタッフ" htmlFor="credential-user">
-              {pharmacistsQuery.isError ? (
-                // スタッフ一覧の取得失敗時は空の選択肢(false-empty)にせず、原因と再読み込み導線を示す。
-                <div
-                  id="credential-user-error"
-                  role="alert"
-                  className="flex items-center justify-between gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
-                >
-                  <span>スタッフ一覧を取得できませんでした。</span>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => void pharmacistsQuery.refetch()}
+          <form onSubmit={handleSubmit(() => saveMutation.mutate(), focusErrorSummary)} noValidate>
+            <FormErrorSummary id={errorSummaryId} items={errorSummaryItems} />
+            <div className="grid gap-4 py-2 md:grid-cols-2">
+              <Field label="対象スタッフ" htmlFor="credential-user">
+                {pharmacistsQuery.isError ? (
+                  // スタッフ一覧の取得失敗時は空の選択肢(false-empty)にせず、原因と再読み込み導線を示す。
+                  <div
+                    id="credential-user-error"
+                    role="alert"
+                    className="flex items-center justify-between gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
                   >
-                    再読み込み
-                  </Button>
-                </div>
-              ) : (
-                <Select
-                  value={form.user_id || 'unselected'}
-                  onValueChange={(value) =>
-                    setForm((current) => ({
-                      ...current,
-                      user_id: value && value !== 'unselected' ? value : '',
-                    }))
-                  }
-                >
-                  <SelectTrigger id="credential-user">
-                    <SelectValue placeholder="選択してください" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="unselected">選択してください</SelectItem>
-                    {pharmacistOptions.map((option) => (
-                      <SelectItem key={option.id} value={option.id}>
-                        {option.name}
-                        {option.site_name ? ` / ${option.site_name}` : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </Field>
-            <Field label="認定種別" htmlFor="credential-certification-type">
-              <Input
-                id="credential-certification-type"
-                value={form.certification_type}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    certification_type: event.target.value,
-                  }))
-                }
-                placeholder="かかりつけ薬剤師研修認定"
-              />
-            </Field>
-            <Field label="認定番号" htmlFor="credential-certification-number">
-              <Input
-                id="credential-certification-number"
-                value={form.certification_number}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    certification_number: event.target.value,
-                  }))
-                }
-              />
-            </Field>
-            <Field label="交付日" htmlFor="credential-issued-date">
-              <Input
-                id="credential-issued-date"
-                type="date"
-                max={form.expiry_date || undefined}
-                value={form.issued_date}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    issued_date: event.target.value,
-                  }))
-                }
-                aria-describedby="credential-issued-date-help"
-              />
-              <p id="credential-issued-date-help" className="text-xs text-muted-foreground">
-                有効期限以前の日付を指定します。空欄は未設定。
-              </p>
-            </Field>
-            <Field label="有効期限" htmlFor="credential-expiry-date">
-              <Input
-                id="credential-expiry-date"
-                type="date"
-                min={form.issued_date || undefined}
-                value={form.expiry_date}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    expiry_date: event.target.value,
-                  }))
-                }
-                aria-invalid={Boolean(formErrors.expiry_date)}
-                aria-describedby={descriptionIds(
-                  'credential-expiry-date-help',
-                  formErrors.expiry_date && 'credential-expiry-date-error',
+                    <span>スタッフ一覧を取得できませんでした。</span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void pharmacistsQuery.refetch()}
+                    >
+                      再読み込み
+                    </Button>
+                  </div>
+                ) : (
+                  <Controller
+                    control={control}
+                    name="user_id"
+                    render={({ field }) => (
+                      <Select
+                        value={field.value || 'unselected'}
+                        onValueChange={(value) =>
+                          field.onChange(value && value !== 'unselected' ? value : '')
+                        }
+                      >
+                        <SelectTrigger id="credential-user">
+                          <SelectValue placeholder="選択してください" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="unselected">選択してください</SelectItem>
+                          {pharmacistOptions.map((option) => (
+                            <SelectItem key={option.id} value={option.id}>
+                              {option.name}
+                              {option.site_name ? ` / ${option.site_name}` : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
                 )}
-              />
-              <p id="credential-expiry-date-help" className="text-xs text-muted-foreground">
-                交付日以降の日付を指定します。空欄は未設定。
-              </p>
-              {formErrors.expiry_date ? (
-                <p
-                  id="credential-expiry-date-error"
-                  className="text-xs text-destructive"
-                  role="alert"
-                >
-                  {formErrors.expiry_date}
+              </Field>
+              <Field label="認定種別" htmlFor="credential-certification-type">
+                <Input
+                  id="credential-certification-type"
+                  {...register('certification_type')}
+                  aria-invalid={Boolean(errors.certification_type)}
+                  placeholder="かかりつけ薬剤師研修認定"
+                />
+              </Field>
+              <Field label="認定番号" htmlFor="credential-certification-number">
+                <Input
+                  id="credential-certification-number"
+                  {...register('certification_number')}
+                  aria-invalid={Boolean(errors.certification_number)}
+                />
+              </Field>
+              <Field label="交付日" htmlFor="credential-issued-date">
+                <Input
+                  id="credential-issued-date"
+                  type="date"
+                  max={form.expiry_date || undefined}
+                  {...register('issued_date')}
+                  aria-invalid={Boolean(errors.issued_date)}
+                  aria-describedby="credential-issued-date-help"
+                />
+                <p id="credential-issued-date-help" className="text-xs text-muted-foreground">
+                  有効期限以前の日付を指定します。空欄は未設定。
+                </p>
+              </Field>
+              <Field label="有効期限" htmlFor="credential-expiry-date">
+                <Input
+                  id="credential-expiry-date"
+                  type="date"
+                  min={form.issued_date || undefined}
+                  {...register('expiry_date')}
+                  aria-invalid={Boolean(formErrors.expiry_date)}
+                  aria-describedby={descriptionIds(
+                    'credential-expiry-date-help',
+                    formErrors.expiry_date && 'credential-expiry-date-error',
+                  )}
+                />
+                <p id="credential-expiry-date-help" className="text-xs text-muted-foreground">
+                  交付日以降の日付を指定します。空欄は未設定。
+                </p>
+                {formErrors.expiry_date ? (
+                  <p
+                    id="credential-expiry-date-error"
+                    className="text-xs text-destructive"
+                    role="alert"
+                  >
+                    {formErrors.expiry_date}
+                  </p>
+                ) : null}
+              </Field>
+              <Field label="在籍年数" htmlFor="credential-tenure-years">
+                <Input
+                  id="credential-tenure-years"
+                  type="number"
+                  min={CREDENTIAL_NUMERIC_LIMITS.tenure_years.min}
+                  max={CREDENTIAL_NUMERIC_LIMITS.tenure_years.max}
+                  step={CREDENTIAL_NUMERIC_LIMITS.tenure_years.step}
+                  inputMode="decimal"
+                  {...register('tenure_years')}
+                  aria-invalid={Boolean(formErrors.tenure_years)}
+                  aria-describedby={descriptionIds(
+                    'credential-tenure-years-help',
+                    formErrors.tenure_years && 'credential-tenure-years-error',
+                  )}
+                />
+                <p id="credential-tenure-years-help" className="text-xs text-muted-foreground">
+                  {CREDENTIAL_NUMERIC_LIMITS.tenure_years.help}
+                </p>
+                {formErrors.tenure_years ? (
+                  <p
+                    id="credential-tenure-years-error"
+                    className="text-xs text-destructive"
+                    role="alert"
+                  >
+                    {formErrors.tenure_years}
+                  </p>
+                ) : null}
+              </Field>
+              <Field label="週勤務時間" htmlFor="credential-weekly-work-hours">
+                <Input
+                  id="credential-weekly-work-hours"
+                  type="number"
+                  min={CREDENTIAL_NUMERIC_LIMITS.weekly_work_hours.min}
+                  max={CREDENTIAL_NUMERIC_LIMITS.weekly_work_hours.max}
+                  step={CREDENTIAL_NUMERIC_LIMITS.weekly_work_hours.step}
+                  inputMode="decimal"
+                  {...register('weekly_work_hours')}
+                  aria-invalid={Boolean(formErrors.weekly_work_hours)}
+                  aria-describedby={descriptionIds(
+                    'credential-weekly-work-hours-help',
+                    formErrors.weekly_work_hours && 'credential-weekly-work-hours-error',
+                  )}
+                />
+                <p id="credential-weekly-work-hours-help" className="text-xs text-muted-foreground">
+                  {CREDENTIAL_NUMERIC_LIMITS.weekly_work_hours.help}
+                </p>
+                {formErrors.weekly_work_hours ? (
+                  <p
+                    id="credential-weekly-work-hours-error"
+                    className="text-xs text-destructive"
+                    role="alert"
+                  >
+                    {formErrors.weekly_work_hours}
+                  </p>
+                ) : null}
+              </Field>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setFormOpen(false)}>
+                キャンセル
+              </Button>
+              {saveBlocker ? (
+                <p id={CREDENTIAL_SAVE_BLOCKER_ID} className="self-center text-xs text-destructive">
+                  {saveBlocker}
                 </p>
               ) : null}
-            </Field>
-            <Field label="在籍年数" htmlFor="credential-tenure-years">
-              <Input
-                id="credential-tenure-years"
-                type="number"
-                min={CREDENTIAL_NUMERIC_LIMITS.tenure_years.min}
-                max={CREDENTIAL_NUMERIC_LIMITS.tenure_years.max}
-                step={CREDENTIAL_NUMERIC_LIMITS.tenure_years.step}
-                inputMode="decimal"
-                value={form.tenure_years}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    tenure_years: event.target.value,
-                  }))
-                }
-                aria-invalid={Boolean(formErrors.tenure_years)}
-                aria-describedby={descriptionIds(
-                  'credential-tenure-years-help',
-                  formErrors.tenure_years && 'credential-tenure-years-error',
-                )}
-              />
-              <p id="credential-tenure-years-help" className="text-xs text-muted-foreground">
-                {CREDENTIAL_NUMERIC_LIMITS.tenure_years.help}
-              </p>
-              {formErrors.tenure_years ? (
-                <p
-                  id="credential-tenure-years-error"
-                  className="text-xs text-destructive"
-                  role="alert"
-                >
-                  {formErrors.tenure_years}
-                </p>
-              ) : null}
-            </Field>
-            <Field label="週勤務時間" htmlFor="credential-weekly-work-hours">
-              <Input
-                id="credential-weekly-work-hours"
-                type="number"
-                min={CREDENTIAL_NUMERIC_LIMITS.weekly_work_hours.min}
-                max={CREDENTIAL_NUMERIC_LIMITS.weekly_work_hours.max}
-                step={CREDENTIAL_NUMERIC_LIMITS.weekly_work_hours.step}
-                inputMode="decimal"
-                value={form.weekly_work_hours}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    weekly_work_hours: event.target.value,
-                  }))
-                }
-                aria-invalid={Boolean(formErrors.weekly_work_hours)}
-                aria-describedby={descriptionIds(
-                  'credential-weekly-work-hours-help',
-                  formErrors.weekly_work_hours && 'credential-weekly-work-hours-error',
-                )}
-              />
-              <p id="credential-weekly-work-hours-help" className="text-xs text-muted-foreground">
-                {CREDENTIAL_NUMERIC_LIMITS.weekly_work_hours.help}
-              </p>
-              {formErrors.weekly_work_hours ? (
-                <p
-                  id="credential-weekly-work-hours-error"
-                  className="text-xs text-destructive"
-                  role="alert"
-                >
-                  {formErrors.weekly_work_hours}
-                </p>
-              ) : null}
-            </Field>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setFormOpen(false)}>
-              キャンセル
-            </Button>
-            {saveBlocker ? (
-              <p id={CREDENTIAL_SAVE_BLOCKER_ID} className="self-center text-xs text-destructive">
-                {saveBlocker}
-              </p>
-            ) : null}
-            <Button
-              onClick={() => saveMutation.mutate()}
-              disabled={saveMutation.isPending || Boolean(saveBlocker)}
-              aria-describedby={saveBlocker ? CREDENTIAL_SAVE_BLOCKER_ID : undefined}
-            >
-              {saveMutation.isPending ? '保存中...' : '保存'}
-            </Button>
-          </DialogFooter>
+              <Button
+                type="submit"
+                disabled={saveMutation.isPending || Boolean(saveBlocker)}
+                aria-describedby={saveBlocker ? CREDENTIAL_SAVE_BLOCKER_ID : undefined}
+              >
+                {saveMutation.isPending ? '保存中...' : '保存'}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
