@@ -1664,7 +1664,8 @@ export function VisitRecordForm({
         live="assertive"
         title="訪問予定を読み込めませんでした"
         description="訪問予定と患者情報を確認できないため、訪問記録を入力できません。再読み込みしてください。"
-        action={{ label: '再読み込み', onClick: () => void refetchSchedule() }}
+        onRetry={() => void refetchSchedule()}
+        retryLabel="再読み込み"
       />
     );
   }

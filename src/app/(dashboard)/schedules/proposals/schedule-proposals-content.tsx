@@ -2146,7 +2146,8 @@ export function ScheduleProposalsContent({
                 size="inline"
                 title="算定プレビューを読み込めませんでした"
                 description="各候補の請求サイクル警告や算定情報が一部欠落している可能性があります。再読み込みしてください。"
-                action={{ label: '再読み込み', onClick: () => void refetchProposalPreview() }}
+                onRetry={() => void refetchProposalPreview()}
+                retryLabel="再読み込み"
               />
             </div>
           ) : null}

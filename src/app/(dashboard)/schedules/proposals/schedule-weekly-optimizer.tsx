@@ -1505,7 +1505,8 @@ export function ScheduleWeeklyOptimizer({
                 size="inline"
                 title="週間ボードを取得できませんでした"
                 description="訪問予定・候補・シフトのいずれかの取得に失敗しました。空き枠は実際の状態と異なる可能性があるため、再読み込みしてから操作してください。"
-                action={{ label: '再読み込み', onClick: refetchBoard }}
+                onRetry={refetchBoard}
+                retryLabel="再読み込み"
               />
             </div>
           ) : pharmacists.length === 0 ? (

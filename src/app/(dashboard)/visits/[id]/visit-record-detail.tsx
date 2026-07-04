@@ -686,7 +686,8 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
           size="inline"
           title="訪問記録を読み込めませんでした"
           description="データの読み込みに失敗しました。時間をおいて再読み込みしてください。"
-          action={{ label: '再読み込み', onClick: () => void refetchRecord() }}
+          onRetry={() => void refetchRecord()}
+          retryLabel="再読み込み"
         />
       </div>
     );
