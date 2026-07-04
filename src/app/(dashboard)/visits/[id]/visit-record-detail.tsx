@@ -74,6 +74,7 @@ import {
   findDraftReportForType,
 } from './visit-record-report-generation';
 import { buildVisitRecordPdfHref } from '@/lib/visits/navigation';
+import { messageFromError } from '@/lib/utils/error-message';
 
 type ResidualMedication = {
   id: string;
@@ -467,7 +468,7 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
       if (firstId) router.push(`/reports/${firstId}`);
     },
     onError: (err: Error) => {
-      toast.error(err.message);
+      toast.error(messageFromError(err, '報告書の生成に失敗しました'));
     },
   });
 
@@ -515,7 +516,7 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
       router.push(`/schedules?selected=${schedule.id}`);
     },
     onError: (error: Error) => {
-      toast.error(error.message);
+      toast.error(messageFromError(error, '次回訪問予定の作成に失敗しました'));
     },
   });
 
@@ -613,7 +614,7 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
       queryClient.invalidateQueries({ queryKey: ['billing-candidates'] });
     },
     onError: (error: Error) => {
-      toast.error(error.message);
+      toast.error(messageFromError(error, '請求候補の生成に失敗しました'));
     },
   });
 

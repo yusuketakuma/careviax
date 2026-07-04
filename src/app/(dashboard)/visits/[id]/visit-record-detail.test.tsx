@@ -56,6 +56,7 @@ vi.mock('./visit-reflected-fields-card', () => ({
 }));
 
 import { VisitRecordDetail } from './visit-record-detail';
+import { toast } from 'sonner';
 
 setupDomTestEnv();
 
@@ -156,6 +157,10 @@ type QueryStubOptions = {
   record?: typeof RECORD;
 };
 
+type MutationConfig = {
+  onError?: (error: Error) => void;
+};
+
 function setupQueries(options: QueryStubOptions = {}) {
   const refetchSpies: Record<string, ReturnType<typeof vi.fn>> = {
     'care-reports-by-visit': vi.fn(),
@@ -164,9 +169,13 @@ function setupQueries(options: QueryStubOptions = {}) {
     'visit-preparation-care-team': vi.fn(),
     'patient-header-summary': vi.fn(),
   };
+  const mutationConfigs: MutationConfig[] = [];
   useOrgIdMock.mockReturnValue('org_1');
   useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
-  useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+  useMutationMock.mockImplementation((config: MutationConfig) => {
+    mutationConfigs.push(config);
+    return { mutate: vi.fn(), isPending: false };
+  });
   useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
     const key = String(queryKey[0]);
     if (key === 'visit-record') {
@@ -245,7 +254,15 @@ function setupQueries(options: QueryStubOptions = {}) {
     // visit-preparation-care-team and any other secondary queries
     return { data: undefined, isLoading: false, isError: false, refetch: vi.fn() };
   });
-  return { refetchSpies };
+  return { refetchSpies, mutationConfigs };
+}
+
+function expectMutationErrorToast(config: MutationConfig, serverMessage: string, fallback: string) {
+  config.onError?.(new Error(serverMessage));
+  expect(toast.error).toHaveBeenLastCalledWith(serverMessage);
+
+  config.onError?.(new Error(''));
+  expect(toast.error).toHaveBeenLastCalledWith(fallback);
 }
 
 describe('VisitRecordDetail fetch-error handling (no false-empty workflow)', () => {
@@ -257,6 +274,29 @@ describe('VisitRecordDetail fetch-error handling (no false-empty workflow)', () 
     setupQueries();
     render(<VisitRecordDetail recordId="record_1" />);
     expect(screen.queryByText(/データの一部を取得できませんでした/)).toBeNull();
+  });
+
+  it('keeps server messages and falls back for mutation error toasts', () => {
+    const { mutationConfigs } = setupQueries();
+    render(<VisitRecordDetail recordId="record_1" />);
+
+    expect(mutationConfigs).toHaveLength(3);
+    const [generateReport, createNextVisit, generateBillingCandidates] = mutationConfigs;
+    expectMutationErrorToast(
+      generateReport,
+      '報告書APIからの詳細エラー',
+      '報告書の生成に失敗しました',
+    );
+    expectMutationErrorToast(
+      createNextVisit,
+      '訪問予定APIからの詳細エラー',
+      '次回訪問予定の作成に失敗しました',
+    );
+    expectMutationErrorToast(
+      generateBillingCandidates,
+      '請求候補APIからの詳細エラー',
+      '請求候補の生成に失敗しました',
+    );
   });
 
   it('pins the patient identity and allergy safety tag above the visit summary (SSOT 2.3)', () => {
