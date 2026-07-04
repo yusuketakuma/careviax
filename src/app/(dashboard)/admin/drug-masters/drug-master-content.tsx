@@ -26,6 +26,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ActionRail } from '@/components/ui/action-rail';
 import { ErrorState } from '@/components/ui/error-state';
 import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
+import { SkeletonRows } from '@/components/ui/loading';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
@@ -1961,7 +1962,9 @@ function DrugMasterOperationalContent({
             </div>
           </div>
           {isLoadingLogs ? (
-            <p className="text-sm text-muted-foreground">履歴を読み込み中です…</p>
+            <div role="status" aria-label="取込履歴を読み込み中" aria-live="polite">
+              <SkeletonRows rows={3} cols={3} status={false} />
+            </div>
           ) : isImportLogsError ? (
             // 監査文脈: 取得失敗を「履歴なし」に潰すと取込が無かったと誤読される。
             <ErrorState

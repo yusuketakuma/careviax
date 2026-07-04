@@ -2861,6 +2861,17 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
     expect(screen.queryByText('この薬剤の採用品変更履歴はまだありません。')).toBeNull();
   });
 
+  it('uses an announced skeleton while import history loads', () => {
+    queryLoadingKeys.add('drug-master-import-logs');
+
+    render(<DrugMasterContent />);
+
+    expect(screen.getByRole('status', { name: '取込履歴を読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('履歴を読み込み中です…', { selector: 'p' })).toBeNull();
+    expect(screen.queryByText('取込履歴を読み込めませんでした')).toBeNull();
+    expect(screen.queryByText('まだ取込履歴はありません。')).toBeNull();
+  });
+
   it('shows a retryable error instead of an empty import history when the audit log fetch fails', () => {
     queryErrorKeys.add('drug-master-import-logs');
     render(<DrugMasterContent />);
