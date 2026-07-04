@@ -6,7 +6,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loading } from '@/components/ui/loading';
+import { Skeleton } from '@/components/ui/loading';
 import { ErrorState } from '@/components/ui/error-state';
 import { Button } from '@/components/ui/button';
 import { PageScaffold } from '@/components/layout/page-scaffold';
@@ -40,6 +40,42 @@ const CODE_COLORS: Record<string, string> = {
   labeling_error: 'bg-chart-1',
   other: 'bg-chart-5',
 };
+
+function DispenseAuditStatsLoadingState() {
+  return (
+    <div className="space-y-4" role="status" aria-label="調剤鑑査差戻し分析を読み込み中">
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">概要</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <Skeleton className="h-9 w-20" />
+          <Skeleton className="h-3 w-28" />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">理由コード別内訳</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <Skeleton className="h-6 w-24" />
+                  <Skeleton className="h-4 w-36 max-w-full" />
+                </div>
+                <Skeleton className="h-4 w-20 shrink-0" />
+              </div>
+              <Skeleton className="h-2 w-full rounded-full" />
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
 export default function DispenseAuditStatsPage() {
   const orgId = useOrgId();
@@ -82,7 +118,7 @@ export default function DispenseAuditStatsPage() {
       </div>
 
       {isLoading ? (
-        <Loading label="調剤鑑査差戻し分析を読み込み中..." />
+        <DispenseAuditStatsLoadingState />
       ) : isError ? (
         // 取得失敗時は空状態（false-empty）にせず、再読み込み導線つきの ErrorState を出す。
         <ErrorState

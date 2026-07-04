@@ -63,8 +63,11 @@ describe('DispenseAuditStatsPage', () => {
     );
     renderPage();
 
-    expect(screen.getByRole('status', { name: '調剤鑑査差戻し分析を読み込み中...' })).toBeTruthy();
+    expect(screen.getByRole('status', { name: '調剤鑑査差戻し分析を読み込み中' })).toBeTruthy();
+    expect(screen.queryByRole('status', { name: '調剤鑑査差戻し分析を読み込み中...' })).toBeNull();
     expect(screen.queryByRole('status', { name: '読み込み中...' })).toBeNull();
+    expect(screen.queryByText('12')).toBeNull();
+    expect(screen.queryByText('数量エラー')).toBeNull();
     expect(screen.queryByText('データがありません')).toBeNull();
   });
 
