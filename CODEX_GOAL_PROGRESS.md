@@ -1,5 +1,41 @@
 # CODEX Goal Progress
 
+## R55 Prescription History Loading State - 2026-07-04 19:21 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.tsx`
+    - `src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.test.tsx`
+- Scope:
+  - Replaced the generic `Loading` return in prescription history with a named
+    skeleton region that preserves the patient-header, stats, filter, and
+    intake-card shape without rendering final prescription content.
+  - Loading no longer exposes generic `読み込み中...` semantics, error copy, or
+    final patient-specific prescription history content before the query
+    resolves.
+- Safety:
+  - UI loading-state presentation and tests only.
+  - No API path, query key, fetcher, org header, `enabled` behavior,
+    drug-master enrichment, mutation behavior, cache timing, DB, auth,
+    authorization, billing, audit, deployment, package, print, or server
+    behavior changed.
+  - Loading copy is PHI-free and does not echo patient names, kana, prescriber
+    names, drug names, prescription lines, intake ids, cycle ids, org ids, or
+    raw errors.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `27` tests.
+  - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
+    the prescription history source/test files.
+  - `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `39087d5c`
+    (`fix(patients): show skeleton for prescription history loading`).
+- Remaining:
+  - Broader R55 residuals and Plans.md objective remain open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Notifications Inbox Loading State - 2026-07-04 19:17 JST
 
 - Status:
