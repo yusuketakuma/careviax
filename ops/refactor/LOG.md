@@ -5,6 +5,22 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-05 R23-schedule-optimizer 58c42de5
+
+- 分類: dup-helper / error message helper convergence
+- 対象: `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx`,
+  `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx`
+- 実施: facility aggregation failure reason を既存 `messageFromError` へ収束。
+  empty Error message の fallback reason テストを追加。
+- 挙動変更: 空の Error message は shared helper 契約どおり fallback へ正規化。
+  request payload、partial-batch behavior、toast summary、query invalidation は維持。
+- 安全: client/helper error formatting のみ。product API/DB/auth/authorization/PHI/billing/deploy/package
+  dependency は変更不要。audit semantics/live DB/external send/secret/push/destructive operation 不変。
+- 検証: focused schedule-optimizer/error-message vitest 2 files / 13 tests green。
+  scoped eslint/prettier/diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit 58c42de5。
+- 残課題: R23 は partial。残りは query detail optional / sentinel / API error-code checks が中心。
+
 ## 2026-07-05 R23-qr-scan 74b7e6ea
 
 - 分類: dup-helper / error message helper convergence

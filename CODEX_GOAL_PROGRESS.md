@@ -1,5 +1,36 @@
 # CODEX Goal Progress
 
+## R23 Schedule Optimizer Error Message Helper Partial - 2026-07-05 01:10 JST
+
+- Status:
+  - Implemented and validated the next bounded R23 slice:
+    - `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx`
+    - `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx`
+- Scope:
+  - Reused the existing `messageFromError` helper for facility aggregation
+    failure reason formatting.
+  - Added coverage that an empty thrown Error message falls back to
+    `不明なエラー` in the mutation result.
+- Safety:
+  - Client/helper error message formatting only.
+  - No product API, DB, auth, authorization, PHI projection, billing semantics,
+    audit semantics, deployment, package dependency, live DB operation,
+    external send, secret handling, push, or destructive operation changed.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx' src/lib/utils/error-message.test.ts --reporter=dot --testTimeout=30000`
+    passed `2` files / `13` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `58c42de5`
+    (`refactor(ui): reuse error message helper in schedule optimizer`).
+- Remaining:
+  - R23 is partial, but the remaining scan hits are mostly query-detail optional
+    descriptions, sentinel string comparisons, or API error-code checks.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R23 QR Scan Error Message Helper Partial - 2026-07-05 01:08 JST
 
 - Status:
