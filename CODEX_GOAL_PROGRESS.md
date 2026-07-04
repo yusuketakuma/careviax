@@ -1,5 +1,39 @@
 # CODEX Goal Progress
 
+## R05 Import CSV Helper Convergence - 2026-07-04 22:02 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/server/services/drug-master-import/shared.ts`
+    - `src/server/services/drug-master-import/shared.test.ts`
+    - `src/server/services/medical-institution-master-import.ts`
+    - `src/server/services/care-service-office-master-import.ts`
+- Scope:
+  - Added shared delimited-row helpers for BOM stripping, blank-line filtering,
+    quoted delimiter parsing, trimming, and safe cell reads.
+  - Removed local `stripBom`, `csvRows`, and `readCsvCell` duplicates from the
+    medical institution and care service office MHLW open-data importers.
+  - Confirmed the local duplicate helper grep now resolves to the shared
+    implementation only.
+- Safety:
+  - Import parsing helper consolidation only.
+  - No product API, DB, auth, authorization, PHI projection, billing semantics,
+    deployment, package dependency, query, mutation, org header, audit logging,
+    external fetch policy, URL allowlist, zip limits, importer upsert behavior,
+    or server behavior changed.
+- Validation:
+  - `pnpm exec vitest run src/server/services/drug-master-import/shared.test.ts src/server/services/medical-institution-master-import.test.ts src/server/services/care-service-office-master-import.test.ts --reporter=dot --testTimeout=30000`
+    passed `3` files / `46` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed for the changed files.
+- Commit:
+  - Implementation slice landed at `f2fe83df`
+    (`refactor(import): share delimited row helpers`).
+- Remaining:
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R10 Next Action Builder Convergence - 2026-07-04 21:56 JST
 
 - Status:

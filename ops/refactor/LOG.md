@@ -5,6 +5,20 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-04 R05 f2fe83df
+
+- 分類: refactor / import CSV helper convergence
+- 対象: `drug-master-import/shared.ts`, medical institution / care service MHLW open-data importers
+- 実施: BOM除去・空行除外・quoted delimiter split・trim・safe cell read を共有 helper 化し、
+  2 importer の local `stripBom`/`csvRows`/`readCsvCell` 複製を削除。
+- 挙動変更: なし。既存の空行除外、BOM除去、quoted comma、header/cell normalize は保持。
+- 安全: product API/DB/auth/authorization/PHI/billing/deploy/package dependency は変更不要。
+  fetch policy/URL allowlist/zip limit/upsert/server behavior 不変。
+- 検証: focused import vitest 3 files / 46 tests green。scoped eslint/prettier/diff-check green。
+  `pnpm typecheck` green。
+- レビュー: self-verified。commit f2fe83df。
+- 残課題: broad Plans.md objective は継続。
+
 ## 2026-07-04 R10-next-action 3d23dc1b
 
 - 分類: refactor / workspace rail helper convergence
