@@ -53,6 +53,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { ErrorState } from '@/components/ui/error-state';
+import { Skeleton, SkeletonRows } from '@/components/ui/loading';
 import {
   Select,
   SelectContent,
@@ -481,6 +482,50 @@ function formatVisitExecutionTimestamp(value: string | null | undefined) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return '未記録';
   return format(parsed, 'yyyy/MM/dd HH:mm');
+}
+
+function VisitRecordLoadingState() {
+  return (
+    <div
+      className="space-y-6 py-4"
+      role="status"
+      aria-label="訪問記録フォームを読み込み中"
+      aria-live="polite"
+    >
+      <div className="space-y-3">
+        <Skeleton className="h-4 w-32" />
+        <Skeleton className="h-8 w-56" />
+        <Skeleton className="h-4 w-full max-w-2xl" />
+      </div>
+      <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
+        <div className="space-y-3 rounded-lg border border-border/70 p-3" aria-hidden="true">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <Skeleton key={index} className="h-10 w-full rounded-md" />
+          ))}
+        </div>
+        <div className="space-y-4">
+          <div className="rounded-lg border border-border/70 p-4" aria-hidden="true">
+            <Skeleton className="h-5 w-40" />
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div key={index} className="space-y-2">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-10 w-full rounded-md" />
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-lg border border-border/70 p-4" aria-hidden="true">
+            <Skeleton className="h-5 w-36" />
+            <div className="mt-4">
+              <SkeletonRows rows={4} cols={3} status={false} />
+            </div>
+          </div>
+        </div>
+      </div>
+      <span className="sr-only">訪問記録フォームを読み込み中</span>
+    </div>
+  );
 }
 
 export function VisitRecordForm({
@@ -1608,11 +1653,7 @@ export function VisitRecordForm({
   }, [createRecord.isPending, isOffline, voiceRecognition]);
 
   if (isBootstrappingOrg || scheduleLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <p className="text-sm text-muted-foreground">読み込み中...</p>
-      </div>
-    );
+    return <VisitRecordLoadingState />;
   }
 
   if (scheduleError || !schedule) {

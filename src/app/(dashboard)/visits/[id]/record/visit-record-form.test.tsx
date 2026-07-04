@@ -376,6 +376,21 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
     vi.unstubAllGlobals();
   });
 
+  it('shows a visit-record skeleton instead of generic loading text while schedule loads', () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>(() => {})),
+    );
+
+    renderVisitRecordForm();
+
+    expect(screen.getByRole('status', { name: '訪問記録フォームを読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('読み込み中...', { selector: 'p' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '訪問完了' })).toBeNull();
+    expect(screen.queryByTestId('medication-management-section')).toBeNull();
+    expect(screen.queryByText('訪問時チェック')).toBeNull();
+  });
+
   it('surfaces a retryable warning instead of silently dropping the visit-preparation pack on fetch failure', async () => {
     // 準備パック取得失敗を「処方変更/その他薬/前回記録なし」に潰さず、再読込導線つきで明示する。
     vi.stubGlobal(
