@@ -1,7 +1,10 @@
-import Link from 'next/link';
-import type { ReactNode } from 'react';
 import { type LucideIcon } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import {
+  StateActionButton,
+  StateHeading,
+  type StateAction,
+  type StateHeadingLevel,
+} from '@/components/ui/state-elements';
 import { cn } from '@/lib/utils';
 
 interface EmptyStateProps {
@@ -9,32 +12,9 @@ interface EmptyStateProps {
   title: string;
   description?: string;
   guidance?: string;
-  action?: {
-    label: string;
-    href?: string;
-    onClick?: () => void;
-  };
-  headingLevel?: 2 | 3 | 4;
+  action?: StateAction;
+  headingLevel?: Exclude<StateHeadingLevel, 1>;
   className?: string;
-}
-
-function EmptyStateHeading({
-  level,
-  className,
-  children,
-}: {
-  level: 2 | 3 | 4;
-  className: string;
-  children: ReactNode;
-}) {
-  switch (level) {
-    case 2:
-      return <h2 className={className}>{children}</h2>;
-    case 3:
-      return <h3 className={className}>{children}</h3>;
-    case 4:
-      return <h4 className={className}>{children}</h4>;
-  }
 }
 
 export function EmptyState({
@@ -61,24 +41,15 @@ export function EmptyState({
         </div>
       )}
       <div className="min-w-0 w-full max-w-2xl space-y-2 break-words">
-        <EmptyStateHeading level={headingLevel} className="text-sm font-semibold text-foreground">
+        <StateHeading level={headingLevel} className="text-sm font-semibold text-foreground">
           {title}
-        </EmptyStateHeading>
+        </StateHeading>
         {description ? (
           <p className="text-sm leading-6 text-muted-foreground">{description}</p>
         ) : null}
         {guidance ? <p className="text-xs leading-5 text-muted-foreground">{guidance}</p> : null}
       </div>
-      {action &&
-        (action.href ? (
-          <Button asChild size="sm">
-            <Link href={action.href}>{action.label}</Link>
-          </Button>
-        ) : (
-          <Button onClick={action.onClick} size="sm">
-            {action.label}
-          </Button>
-        ))}
+      {action ? <StateActionButton action={action} defaultSize="sm" /> : null}
     </div>
   );
 }

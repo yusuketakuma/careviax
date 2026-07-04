@@ -1,19 +1,15 @@
-import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { AlertTriangle, Ban, CloudOff, FileQuestion, LockKeyhole } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import {
+  StateActionButton,
+  StateHeading,
+  type StateAction,
+  type StateHeadingLevel,
+} from '@/components/ui/state-elements';
 import { cn } from '@/lib/utils';
 
 type ErrorStateVariant = 'not-found' | 'server' | 'network' | 'forbidden' | 'unauthorized';
 type ErrorStateLive = 'off' | 'polite' | 'assertive';
-
-type ErrorStateAction = {
-  label: string;
-  href?: string;
-  onClick?: () => void;
-  variant?: 'default' | 'outline' | 'secondary' | 'ghost' | 'destructive' | 'link';
-  size?: 'default' | 'sm' | 'lg';
-};
 
 type ErrorStateProps = {
   variant?: ErrorStateVariant;
@@ -28,8 +24,8 @@ type ErrorStateProps = {
   /** 次の行動（利用者が取れる手）。例: 「通信状態を確認して再試行してください。」 */
   nextAction?: string;
   detail?: ReactNode;
-  action?: ErrorStateAction;
-  secondaryAction?: ErrorStateAction;
+  action?: StateAction;
+  secondaryAction?: StateAction;
   /**
    * 再試行ハンドラのショートハンド。指定すると「再試行」ボタンを主アクションとして描画する
    * （`action` 指定時はそちらが優先され、onRetry は無視される）。
@@ -37,7 +33,7 @@ type ErrorStateProps = {
    */
   onRetry?: () => void;
   size?: 'inline' | 'page';
-  headingLevel?: 1 | 2 | 3 | 4;
+  headingLevel?: StateHeadingLevel;
   live?: ErrorStateLive;
   className?: string;
 };
@@ -84,53 +80,6 @@ const VARIANT_META = {
     iconClassName: string;
   }
 >;
-
-function renderAction(action: ErrorStateAction) {
-  if (action.href) {
-    return (
-      <Button
-        asChild
-        type="button"
-        variant={action.variant ?? 'default'}
-        size={action.size ?? 'default'}
-      >
-        <Link href={action.href}>{action.label}</Link>
-      </Button>
-    );
-  }
-
-  return (
-    <Button
-      type="button"
-      variant={action.variant ?? 'default'}
-      size={action.size ?? 'default'}
-      onClick={action.onClick}
-    >
-      {action.label}
-    </Button>
-  );
-}
-
-function ErrorStateHeading({
-  level,
-  className,
-  children,
-}: {
-  level: 1 | 2 | 3 | 4;
-  className: string;
-  children: ReactNode;
-}) {
-  switch (level) {
-    case 1:
-      return <h1 className={className}>{children}</h1>;
-    case 2:
-      return <h2 className={className}>{children}</h2>;
-    case 3:
-      return <h3 className={className}>{children}</h3>;
-    case 4:
-      return <h4 className={className}>{children}</h4>;
-  }
-}
 
 export function ErrorState({
   variant = 'server',
@@ -194,9 +143,9 @@ export function ErrorState({
 
       <div className="space-y-2">
         <div className="flex items-center justify-center">
-          <ErrorStateHeading level={resolvedHeadingLevel} className={headingClassName}>
+          <StateHeading level={resolvedHeadingLevel} className={headingClassName}>
             {headingText}
-          </ErrorStateHeading>
+          </StateHeading>
         </div>
         <p className="mx-auto max-w-2xl text-sm leading-6 text-muted-foreground">{bodyText}</p>
         {detail ? <div className="text-xs leading-5 text-muted-foreground">{detail}</div> : null}
@@ -204,8 +153,8 @@ export function ErrorState({
 
       {(resolvedAction || secondaryAction) && (
         <div className="flex flex-wrap items-center justify-center gap-3">
-          {resolvedAction ? renderAction(resolvedAction) : null}
-          {secondaryAction ? renderAction(secondaryAction) : null}
+          {resolvedAction ? <StateActionButton action={resolvedAction} /> : null}
+          {secondaryAction ? <StateActionButton action={secondaryAction} /> : null}
         </div>
       )}
     </div>
