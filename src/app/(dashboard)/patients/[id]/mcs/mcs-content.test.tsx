@@ -76,6 +76,79 @@ describe('PatientMcsContent', () => {
     vi.clearAllMocks();
   });
 
+  it('shows an MCS overview skeleton instead of a generic spinner while org context loads', () => {
+    useOrgIdMock.mockReturnValue('');
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockReturnValue({ isPending: false, mutate: vi.fn() });
+    useQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(<PatientMcsContent patientId="patient_1" />);
+
+    expect(screen.getByRole('status', { name: 'MCS 連携情報を読み込み中' })).toBeTruthy();
+    expect(screen.queryByRole('status', { name: 'MCS 連携情報を読み込み中...' })).toBeNull();
+    expect(screen.queryByRole('status', { name: '読み込み中...' })).toBeNull();
+    expect(screen.queryByRole('heading', { level: 2, name: 'MCS 連携状況' })).toBeNull();
+    expect(screen.queryByText('MCS 同期に失敗しました')).toBeNull();
+  });
+
+  it('shows an MCS message skeleton without rendering message PHI while messages load', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockReturnValue({ isPending: false, mutate: vi.fn() });
+    useQueryMock.mockReturnValue({
+      data: {
+        link: {
+          sourceUrl: 'https://www.medical-care.net/patients/patient_1',
+          projectTitle: '在宅支援プロジェクト',
+          projectMemo: null,
+          memberCount: 3,
+          lastSyncAttemptAt: '2026-07-04T09:00:00.000Z',
+          lastSyncedAt: null,
+          lastSyncError: null,
+        },
+        profile: null,
+        summary: null,
+        messages: [
+          {
+            id: 'msg_1',
+            sourceMessageId: 'source_1',
+            authorName: '訪問看護 太郎',
+            authorRole: '訪問看護',
+            authorOrganization: '青葉訪問看護',
+            authorDescriptor: null,
+            postedAt: '2026-07-04T09:05:00.000Z',
+            postedAtLabel: '2026/07/04 18:05',
+            body: '訪問看護からのMCS本文。血圧と服薬状況の確認が必要です。',
+            reactionCount: 0,
+            replyCount: 0,
+            sortOrder: null,
+            sourceUrl: 'https://www.medical-care.net/messages/source_1',
+            syncedAt: '2026-07-04T09:10:00.000Z',
+          },
+        ],
+        checkLogs: [],
+      },
+      isLoading: true,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(<PatientMcsContent patientId="patient_1" />);
+
+    expect(screen.getByRole('status', { name: 'MCS メッセージを読み込み中' })).toBeTruthy();
+    expect(screen.queryByRole('status', { name: 'MCS メッセージを読み込み中...' })).toBeNull();
+    expect(screen.queryByText('MCS メッセージを読み込み中...')).toBeNull();
+    expect(screen.queryByText('訪問看護 太郎')).toBeNull();
+    expect(screen.queryByText(/血圧と服薬状況/)).toBeNull();
+  });
+
   it('encodes direct MCS mutation fetch path segments while keeping patient identity raw', async () => {
     const patientId = '../settings?x=1#frag';
     const encodedPatientId = encodeURIComponent(patientId);

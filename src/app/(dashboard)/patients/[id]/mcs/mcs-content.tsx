@@ -22,7 +22,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardAction, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
-import { Loading } from '@/components/ui/loading';
+import { Skeleton, SkeletonRows } from '@/components/ui/loading';
 import { Textarea } from '@/components/ui/textarea';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -136,6 +136,81 @@ async function copyTextToClipboard(value: string) {
     throw new Error('クリップボードにコピーできませんでした');
   }
   await navigator.clipboard.writeText(value);
+}
+
+function PatientMcsOverviewLoadingState() {
+  return (
+    <div
+      className="space-y-6"
+      role="status"
+      aria-label="MCS 連携情報を読み込み中"
+      aria-live="polite"
+    >
+      <Card aria-hidden="true">
+        <CardHeader>
+          <Skeleton className="h-5 w-36" />
+          <Skeleton className="h-4 w-full max-w-md" />
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <Skeleton className="h-6 w-20 rounded-full" />
+            <Skeleton className="h-6 w-24 rounded-full" />
+            <Skeleton className="h-4 w-36" />
+          </div>
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+            <Skeleton className="h-10 w-full rounded-md" />
+            <div className="flex flex-wrap gap-2">
+              <Skeleton className="h-10 w-28 rounded-md" />
+              <Skeleton className="h-10 w-24 rounded-md" />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        {Array.from({ length: 2 }).map((_, index) => (
+          <Card key={index} aria-hidden="true">
+            <CardHeader>
+              <Skeleton className="h-5 w-32" />
+              <Skeleton className="h-4 w-full max-w-sm" />
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <SkeletonRows rows={3} cols={2} status={false} />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      <span className="sr-only">MCS 連携情報を読み込み中</span>
+    </div>
+  );
+}
+
+function PatientMcsMessagesLoadingState() {
+  return (
+    <div
+      className="space-y-3"
+      role="status"
+      aria-label="MCS メッセージを読み込み中"
+      aria-live="polite"
+    >
+      {Array.from({ length: 3 }).map((_, index) => (
+        <div key={index} className="rounded-lg border p-4" aria-hidden="true">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Skeleton className="h-4 w-28" />
+                <Skeleton className="h-5 w-20 rounded-full" />
+              </div>
+              <Skeleton className="h-4 w-full max-w-xl" />
+              <Skeleton className="h-4 w-5/6 max-w-lg" />
+            </div>
+            <Skeleton className="h-4 w-24" />
+          </div>
+        </div>
+      ))}
+      <span className="sr-only">MCS メッセージを読み込み中</span>
+    </div>
+  );
 }
 
 function PatientMcsSyncPanel({
@@ -612,7 +687,7 @@ function PatientMcsMessagesPanel({
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <Loading label="MCS メッセージを読み込み中..." />
+          <PatientMcsMessagesLoadingState />
         ) : messages.length === 0 ? (
           <EmptyState
             icon={MessageSquareText}
@@ -933,7 +1008,7 @@ export function PatientMcsContent({ patientId }: { patientId: string }) {
   });
 
   if (orgId.length === 0) {
-    return <Loading label="MCS 連携情報を読み込み中..." />;
+    return <PatientMcsOverviewLoadingState />;
   }
 
   if (mcsQuery.isError) {
