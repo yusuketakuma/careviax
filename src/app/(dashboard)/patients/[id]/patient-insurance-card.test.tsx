@@ -3,6 +3,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { jsonResponse } from '@/test/fetch-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { PatientInsuranceCard } from './patient-insurance-card';
@@ -252,9 +253,7 @@ describe('PatientInsuranceCard', () => {
   }
 
   function okFetch() {
-    return vi
-      .fn<typeof fetch>()
-      .mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as unknown as Response);
+    return vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({}));
   }
 
   it('fetches the insurance list from an encoded patient path with org headers', async () => {
@@ -276,6 +275,28 @@ describe('PatientInsuranceCard', () => {
       expect(url).not.toContain('#z');
       expect(url).not.toContain('%25');
       expect(init.headers).toEqual(buildOrgHeaders('org_1'));
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('surfaces API error messages when insurance reads fail', async () => {
+    const { queryConfigs } = captureConfigs();
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ message: '患者保険情報の閲覧権限がありません' }, 403));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PatientInsuranceCard patientId="patient_1" orgId="org_1" />);
+
+      await expect(queryConfigs[0]?.queryFn?.()).rejects.toThrow(
+        '患者保険情報の閲覧権限がありません',
+      );
+      expect(fetchMock).toHaveBeenCalledWith('/api/patients/patient_1/insurance', {
+        headers: buildOrgHeaders('org_1'),
+      });
     } finally {
       vi.unstubAllGlobals();
       vi.clearAllMocks();

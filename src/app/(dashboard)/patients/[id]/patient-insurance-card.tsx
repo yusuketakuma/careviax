@@ -22,6 +22,7 @@ import {
   formatCareLevel,
   formatCopayRatio,
 } from '@/lib/patient/insurance-summary';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
@@ -582,8 +583,7 @@ export function PatientInsuranceCard({ patientId, orgId }: { patientId: string; 
       const response = await fetch(buildPatientApiPath(patientId, '/insurance'), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('患者保険情報の取得に失敗しました');
-      return response.json() as Promise<InsuranceResponse>;
+      return readApiJson<InsuranceResponse>(response, '患者保険情報の取得に失敗しました');
     },
     enabled: !!orgId,
   });
