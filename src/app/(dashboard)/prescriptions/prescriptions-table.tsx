@@ -3,7 +3,9 @@
 import { format, parseISO, differenceInCalendarDays } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { AlertTriangle, Clock, FileText, RefreshCw } from 'lucide-react';
+import type { ColumnDef } from '@tanstack/react-table';
 import { Badge } from '@/components/ui/badge';
+import { DataTable, type DataTableColumnMeta } from '@/components/ui/data-table';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { SkeletonRows } from '@/components/ui/loading';
@@ -103,6 +105,81 @@ type PrescriptionsTableProps = {
   onRowClick: (index: number) => void;
 };
 
+const PRESCRIPTION_TABLE_COLUMNS: ColumnDef<PrescriptionIntakeRow>[] = [
+  {
+    id: 'status',
+    header: '状態',
+    enableSorting: false,
+    cell: ({ row }) => <StatusDot status={row.original.cycle.overall_status} />,
+    meta: { mobileLabel: '状態' } satisfies DataTableColumnMeta<PrescriptionIntakeRow>,
+  },
+  {
+    id: 'patient',
+    header: '患者',
+    enableSorting: false,
+    cell: ({ row }) => {
+      const patient = row.original.cycle.case_.patient;
+      return (
+        <div className="leading-tight">
+          <div className="font-medium text-foreground">{patient.name}</div>
+          <div className="text-[10px] text-muted-foreground">{patient.name_kana}</div>
+        </div>
+      );
+    },
+    meta: { mobileLabel: '患者' } satisfies DataTableColumnMeta<PrescriptionIntakeRow>,
+  },
+  {
+    id: 'source',
+    header: '種別',
+    enableSorting: false,
+    cell: ({ row }) => (
+      <span className="text-xs text-muted-foreground">
+        {SOURCE_LABELS[row.original.source_type] ?? row.original.source_type}
+      </span>
+    ),
+    meta: { mobileLabel: '種別' } satisfies DataTableColumnMeta<PrescriptionIntakeRow>,
+  },
+  {
+    id: 'prescribed_date',
+    header: '処方日',
+    enableSorting: false,
+    cell: ({ row }) => (
+      <span className="text-xs tabular-nums text-muted-foreground">
+        {format(parseISO(row.original.prescribed_date), 'MM/dd', { locale: ja })}
+      </span>
+    ),
+    meta: { mobileLabel: '処方日' } satisfies DataTableColumnMeta<PrescriptionIntakeRow>,
+  },
+  {
+    id: 'prescriber',
+    header: '処方医',
+    enableSorting: false,
+    cell: ({ row }) => (
+      <span className="block max-w-[100px] truncate text-xs text-muted-foreground">
+        {row.original.prescriber_name ?? '—'}
+      </span>
+    ),
+    meta: { mobileLabel: '処方医' } satisfies DataTableColumnMeta<PrescriptionIntakeRow>,
+  },
+  {
+    id: 'notes',
+    header: '備考',
+    enableSorting: false,
+    cell: ({ row }) => (
+      <div className="flex items-center justify-end gap-1">
+        <ExpiryCell date={row.original.prescription_expiry_date} />
+        {row.original.source_type === 'refill' && row.original.refill_remaining_count != null && (
+          <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground">
+            <RefreshCw className="size-2.5" aria-hidden="true" />
+            {row.original.refill_remaining_count}
+          </span>
+        )}
+      </div>
+    ),
+    meta: { mobileLabel: '備考' } satisfies DataTableColumnMeta<PrescriptionIntakeRow>,
+  },
+];
+
 export function PrescriptionsTable({
   items,
   isLoading,
@@ -146,86 +223,19 @@ export function PrescriptionsTable({
     );
   }
 
+  const selectedRowIndex = items.findIndex((item) => item.id === selectedId);
+
   return (
-    <div className="overflow-y-auto" role="listbox" aria-label="処方受付一覧">
-      <table className="w-full text-xs" aria-label="処方受付一覧">
-        <thead className="sticky top-0 z-10 bg-muted/80 backdrop-blur-sm">
-          <tr className="border-b text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            <th scope="col" className="px-2 py-1.5">
-              状態
-            </th>
-            <th scope="col" className="px-2 py-1.5">
-              患者
-            </th>
-            <th scope="col" className="px-2 py-1.5">
-              種別
-            </th>
-            <th scope="col" className="px-2 py-1.5">
-              処方日
-            </th>
-            <th scope="col" className="px-2 py-1.5">
-              処方医
-            </th>
-            <th scope="col" className="px-2 py-1.5 text-right">
-              備考
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item, index) => {
-            const isSelected = item.id === selectedId;
-            const patient = item.cycle.case_.patient;
-            return (
-              <tr
-                key={item.id}
-                role="option"
-                aria-selected={isSelected}
-                tabIndex={isSelected ? 0 : -1}
-                onClick={() => onRowClick(index)}
-                className={cn(
-                  'cursor-pointer border-b border-border/30 transition-colors',
-                  // zebra stripe
-                  index % 2 === 0 ? 'bg-background' : 'bg-muted/20',
-                  // selected row — レセコン風の強調
-                  isSelected
-                    ? 'bg-primary/10 outline outline-1 outline-primary/40'
-                    : 'hover:bg-accent/50',
-                )}
-              >
-                <td className="px-2 py-1.5">
-                  <StatusDot status={item.cycle.overall_status} />
-                </td>
-                <td className="px-2 py-1.5">
-                  <div className="font-medium text-foreground leading-tight">{patient.name}</div>
-                  <div className="text-[10px] text-muted-foreground leading-tight">
-                    {patient.name_kana}
-                  </div>
-                </td>
-                <td className="px-2 py-1.5 text-muted-foreground">
-                  {SOURCE_LABELS[item.source_type] ?? item.source_type}
-                </td>
-                <td className="px-2 py-1.5 tabular-nums text-muted-foreground">
-                  {format(parseISO(item.prescribed_date), 'MM/dd', { locale: ja })}
-                </td>
-                <td className="max-w-[100px] truncate px-2 py-1.5 text-muted-foreground">
-                  {item.prescriber_name ?? '—'}
-                </td>
-                <td className="px-2 py-1.5 text-right">
-                  <div className="flex items-center justify-end gap-1">
-                    <ExpiryCell date={item.prescription_expiry_date} />
-                    {item.source_type === 'refill' && item.refill_remaining_count != null && (
-                      <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground">
-                        <RefreshCw className="size-2.5" aria-hidden="true" />
-                        {item.refill_remaining_count}
-                      </span>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      columns={PRESCRIPTION_TABLE_COLUMNS}
+      data={items}
+      getRowId={(item) => item.id}
+      getRowA11yLabel={(item) => item.cycle.case_.patient.name}
+      selectedRowIndex={selectedRowIndex >= 0 ? selectedRowIndex : undefined}
+      onRowClick={onRowClick}
+      rowInteractionMode="selectable-listbox"
+      listboxLabel="処方受付一覧"
+      caption="処方受付一覧"
+    />
   );
 }
