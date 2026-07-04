@@ -52,6 +52,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { toast } from 'sonner';
 import { DrugSuggest, type DrugSelection } from '@/components/features/pharmacy/drug-suggest';
 import { buildPrescriptionLineApiPath } from '@/lib/dispensing/api-paths';
+import { messageFromError } from '@/lib/utils/error-message';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -1466,7 +1467,7 @@ export function PrescriptionHistoryContent() {
       toast.success('FAX原本の回収を記録しました');
     },
     onError: (error: Error) => {
-      toast.error(error.message);
+      toast.error(messageFromError(error, '原本回収の記録に失敗しました'));
     },
   });
 
@@ -1498,7 +1499,7 @@ export function PrescriptionHistoryContent() {
       toast.success('医薬品マスターを確定しました');
     },
     onError: (error: Error) => {
-      toast.error(error.message);
+      toast.error(messageFromError(error, '医薬品マスター確定に失敗しました'));
     },
   });
   const resolvingLineId = resolveDrugMasterMutation.isPending

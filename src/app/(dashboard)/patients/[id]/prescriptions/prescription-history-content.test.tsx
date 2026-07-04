@@ -50,6 +50,8 @@ vi.mock('sonner', () => ({
   },
 }));
 
+import { toast } from 'sonner';
+
 vi.mock('@/components/features/pharmacy/drug-suggest', () => ({
   DrugSuggest: ({
     value,
@@ -1409,14 +1411,19 @@ describe('PrescriptionHistoryContent url/header convergence', () => {
     lines = [] as ReturnType<typeof buildLine>[],
   } = {}) {
     const queryConfigs = new Map<string, { queryKey: unknown[]; queryFn: () => unknown }>();
-    const mutationConfigs: Array<{ mutationFn: (input?: unknown) => unknown }> = [];
+    const mutationConfigs: Array<{
+      mutationFn: (input?: unknown) => unknown;
+      onError?: (error: Error) => void;
+    }> = [];
     useOrgIdMock.mockReturnValue('org_1');
     useParamsMock.mockReturnValue({ id: patientId });
     useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
-    useMutationMock.mockImplementation((cfg: { mutationFn: (input?: unknown) => unknown }) => {
-      mutationConfigs.push(cfg);
-      return { mutate: vi.fn(), isPending: false };
-    });
+    useMutationMock.mockImplementation(
+      (cfg: { mutationFn: (input?: unknown) => unknown; onError?: (error: Error) => void }) => {
+        mutationConfigs.push(cfg);
+        return { mutate: vi.fn(), isPending: false };
+      },
+    );
     useQueryMock.mockImplementation((cfg: { queryKey: unknown[]; queryFn: () => unknown }) => {
       queryConfigs.set(String((cfg.queryKey as unknown[])[0]), cfg);
       if (String((cfg.queryKey as unknown[])[0]) === 'drug-masters-batch') {
@@ -1587,6 +1594,22 @@ describe('PrescriptionHistoryContent url/header convergence', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it('keeps server messages and falls back for prescription history mutation error toasts', () => {
+    const { mutationConfigs } = renderHistory();
+    expect(mutationConfigs).toHaveLength(2);
+    const [markOriginalCollected, resolveDrugMaster] = mutationConfigs;
+
+    markOriginalCollected.onError?.(new Error('原本回収APIからの詳細エラー'));
+    expect(toast.error).toHaveBeenLastCalledWith('原本回収APIからの詳細エラー');
+    markOriginalCollected.onError?.(new Error(''));
+    expect(toast.error).toHaveBeenLastCalledWith('原本回収の記録に失敗しました');
+
+    resolveDrugMaster.onError?.(new Error('医薬品マスターAPIからの詳細エラー'));
+    expect(toast.error).toHaveBeenLastCalledWith('医薬品マスターAPIからの詳細エラー');
+    resolveDrugMaster.onError?.(new Error(''));
+    expect(toast.error).toHaveBeenLastCalledWith('医薬品マスター確定に失敗しました');
   });
 
   it.each(['.', '..'])(
