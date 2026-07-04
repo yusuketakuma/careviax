@@ -38,7 +38,7 @@ export default async function ExternalSharePage({ params }: { params: Promise<{ 
         description="患者単位の外部共有を、訪問時の確認と報告書送付へつながる連携接点として扱います。"
       />
 
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="他職種向け共有ページを読み込み中..." />}>
         <ExternalShareContent patientId={id} />
       </Suspense>
     </PageScaffold>

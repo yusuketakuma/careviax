@@ -24,7 +24,7 @@ export default async function PatientsComparePage({
 
   return (
     <PageScaffold variant="bare">
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="患者カード比較を読み込み中..." />}>
         <CompareBoard requestedPatientIds={parseComparePatientsParam(patients)} />
       </Suspense>
     </PageScaffold>

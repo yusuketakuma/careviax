@@ -21,7 +21,7 @@ export default async function PatientCollaborationPage({
 
   return (
     <PageScaffold variant="bare">
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="共同編集状況を読み込み中..." />}>
         <CollaborationContent patientId={id} />
       </Suspense>
     </PageScaffold>

@@ -35,7 +35,7 @@ export default async function SchedulesPage({ searchParams }: SchedulesPageProps
         <ScheduleTeamBoard initialDate={initialSelectedDate} activeView={activeView} />
         {activeView === 'calendar' ? (
           <div className="mt-4">
-            <Suspense fallback={<Loading />}>
+            <Suspense fallback={<Loading label="訪問カレンダーを読み込み中..." />}>
               <CalendarView />
             </Suspense>
           </div>

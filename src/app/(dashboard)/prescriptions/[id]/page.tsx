@@ -15,7 +15,7 @@ export default async function PrescriptionDetailPage({
   const { id } = await params;
 
   return (
-    <Suspense fallback={<Loading />}>
+    <Suspense fallback={<Loading label="処方受付詳細を読み込み中..." />}>
       <PrescriptionDetailContent intakeId={id} />
     </Suspense>
   );

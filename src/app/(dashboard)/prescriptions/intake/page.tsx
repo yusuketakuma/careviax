@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 export default function PrescriptionIntakeTriagePage() {
   return (
     <PageScaffold variant="bare">
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="処方取込を読み込み中..." />}>
         <IntakeTriageContent />
       </Suspense>
     </PageScaffold>

@@ -17,7 +17,7 @@ export default async function SafetyCheckPage({ params }: { params: Promise<{ id
 
   return (
     <PageScaffold variant="bare">
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="薬の安全チェックを読み込み中..." />}>
         <SafetyCheckContent patientId={id} />
       </Suspense>
     </PageScaffold>

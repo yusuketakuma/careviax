@@ -50,7 +50,7 @@ export default async function PatientDetailPage({ params }: { params: Promise<{ 
 
   return (
     <PageScaffold>
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="患者カードを読み込み中..." />}>
         <CardWorkspace patientId={id} initialPatient={initialPatient} />
       </Suspense>
     </PageScaffold>
