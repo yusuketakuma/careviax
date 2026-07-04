@@ -409,6 +409,42 @@ describe('ExternalProfessionalsContent', () => {
     expect(JSON.parse(init.body as string)).not.toHaveProperty('facility_id');
   });
 
+  it('keeps the existing name blocker reactive and prevents invalid create requests', async () => {
+    const fetchMock = stubFetchWithProfessional();
+    renderContent();
+
+    await screen.findByRole('button', { name: '青葉 訪問看護 を編集' });
+    fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
+
+    expect(screen.getByText('氏名は必須です。')).toBeTruthy();
+    let saveButton = screen.getByRole('button', { name: '保存' }) as HTMLButtonElement;
+    expect(saveButton.disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText('氏名'), {
+      target: { value: '佐藤 訪問看護' },
+    });
+    expect(screen.queryByText('氏名は必須です。')).toBeNull();
+    saveButton = screen.getByRole('button', { name: '保存' }) as HTMLButtonElement;
+    expect(saveButton.disabled).toBe(false);
+
+    fireEvent.change(screen.getByLabelText('氏名'), {
+      target: { value: '   ' },
+    });
+    expect(screen.getByText('氏名は必須です。')).toBeTruthy();
+    saveButton = screen.getByRole('button', { name: '保存' }) as HTMLButtonElement;
+    expect(saveButton.disabled).toBe(true);
+    fireEvent.click(saveButton);
+
+    expect(fetchMock.mock.calls).not.toEqual(
+      expect.arrayContaining([
+        expect.arrayContaining([
+          '/api/admin/external-professionals',
+          expect.objectContaining({ method: 'POST' }),
+        ]),
+      ]),
+    );
+  });
+
   it('prevents deleting an external professional that is linked to patients', async () => {
     renderContent();
 

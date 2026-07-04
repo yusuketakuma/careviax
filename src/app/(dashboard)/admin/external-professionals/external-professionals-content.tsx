@@ -1,15 +1,19 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { Plus } from 'lucide-react';
 import Link from 'next/link';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { DataTable } from '@/components/ui/data-table';
+import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { StateBadge } from '@/components/ui/state-badge';
@@ -29,6 +33,7 @@ import {
 } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import {
   ADMIN_EXTERNAL_PROFESSIONALS_API_PATH,
   buildAdminExternalProfessionalApiPath,
@@ -206,6 +211,23 @@ function toForm(item: ExternalProfessional): FormState {
   };
 }
 
+function normalizeForm(form?: Partial<FormState> | null): FormState {
+  return {
+    profession_type: form?.profession_type ?? 'nurse',
+    name: form?.name ?? '',
+    facility_id: form?.facility_id ?? NONE_VALUE,
+    organization_name: form?.organization_name ?? '',
+    department: form?.department ?? '',
+    phone: form?.phone ?? '',
+    email: form?.email ?? '',
+    fax: form?.fax ?? '',
+    preferred_contact_method: form?.preferred_contact_method ?? NONE_VALUE,
+    preferred_contact_time: form?.preferred_contact_time ?? '',
+    address: form?.address ?? '',
+    notes: form?.notes ?? '',
+  };
+}
+
 function trimOrUndefined(value: string) {
   const trimmed = value.trim();
   return trimmed ? trimmed : undefined;
@@ -299,6 +321,33 @@ function getFormBlocker(form: FormState) {
   return null;
 }
 
+const externalProfessionalFormSchema = z
+  .object({
+    profession_type: z.custom<ProfessionType>(),
+    name: z.string(),
+    facility_id: z.string(),
+    organization_name: z.string(),
+    department: z.string(),
+    phone: z.string(),
+    email: z.string(),
+    fax: z.string(),
+    preferred_contact_method: z.custom<FormState['preferred_contact_method']>(),
+    preferred_contact_time: z.string(),
+    address: z.string(),
+    notes: z.string(),
+  })
+  .superRefine((value, ctx) => {
+    const form = normalizeForm(value);
+    const blocker = getFormBlocker(form);
+    if (!blocker) return;
+
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['name'],
+      message: blocker,
+    });
+  });
+
 function matchesProfessionalQuery(item: ExternalProfessional, query: string) {
   const normalized = query.trim().toLowerCase();
   if (!normalized) return true;
@@ -331,11 +380,42 @@ function ContactLine({ label, value }: { label: string; value: string | null }) 
 export function ExternalProfessionalsContent() {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
+  const errorSummaryId = 'external-professional-form-error-summary';
   const [query, setQuery] = useState('');
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editingProfessional, setEditingProfessional] = useState<ExternalProfessional | null>(null);
-  const [form, setForm] = useState<FormState>(createEmptyForm);
   const [deleteTarget, setDeleteTarget] = useState<ExternalProfessional | null>(null);
+  const {
+    control,
+    formState: { errors },
+    getValues,
+    handleSubmit,
+    register,
+    reset,
+  } = useForm<FormState>({
+    resolver: zodResolver(externalProfessionalFormSchema),
+    defaultValues: createEmptyForm(),
+  });
+  const form = normalizeForm(useWatch({ control, defaultValue: createEmptyForm() }));
+  const errorSummaryItems = collectFormErrorSummaryItems(errors, {
+    profession_type: '職種',
+    name: '氏名',
+    facility_id: '所属施設',
+    organization_name: '所属名',
+    department: '部署',
+    phone: '電話番号',
+    email: 'メール',
+    fax: 'FAX',
+    preferred_contact_method: '優先連絡方法',
+    preferred_contact_time: '連絡しやすい時間',
+    address: '住所',
+    notes: '備考',
+  });
+
+  function focusErrorSummary() {
+    if (typeof document === 'undefined') return;
+    document.getElementById(errorSummaryId)?.focus();
+  }
 
   const professionalsQuery = useQuery({
     queryKey: ['admin-external-professionals', orgId],
@@ -391,7 +471,7 @@ export function ExternalProfessionalsContent() {
 
   function resetForm() {
     setEditingProfessional(null);
-    setForm(createEmptyForm());
+    reset(createEmptyForm());
   }
 
   function openCreate() {
@@ -401,33 +481,35 @@ export function ExternalProfessionalsContent() {
 
   function openEdit(item: ExternalProfessional) {
     setEditingProfessional(item);
-    setForm(toForm(item));
+    reset(toForm(item));
     setSheetOpen(true);
   }
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const blocker = getFormBlocker(form);
+      const currentForm = normalizeForm(getValues());
+      const blocker = getFormBlocker(currentForm);
       if (blocker) throw new Error(blocker);
-      const endpoint = editingProfessional
-        ? buildAdminExternalProfessionalApiPath(editingProfessional.id)
+      const professional = editingProfessional;
+      const endpoint = professional
+        ? buildAdminExternalProfessionalApiPath(professional.id)
         : ADMIN_EXTERNAL_PROFESSIONALS_API_PATH;
-      const method = editingProfessional ? 'PATCH' : 'POST';
+      const method = professional ? 'PATCH' : 'POST';
       const response = await fetch(endpoint, {
         method,
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(
-          editingProfessional ? buildUpdatePayload(form) : buildCreatePayload(form),
+          professional ? buildUpdatePayload(currentForm) : buildCreatePayload(currentForm),
         ),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error((payload as { message?: string }).message ?? '保存に失敗しました');
       }
-      return payload;
+      return { payload, wasEditing: Boolean(professional) };
     },
-    onSuccess: async () => {
-      toast.success(editingProfessional ? '他職種マスターを更新しました' : '他職種を登録しました');
+    onSuccess: async ({ wasEditing }) => {
+      toast.success(wasEditing ? '他職種マスターを更新しました' : '他職種を登録しました');
       setSheetOpen(false);
       resetForm();
       await queryClient.invalidateQueries({ queryKey: ['admin-external-professionals', orgId] });
@@ -655,7 +737,13 @@ export function ExternalProfessionalsContent() {
             </SheetDescription>
           </SheetHeader>
 
-          <div className="mt-6 space-y-6">
+          <form
+            className="mt-6 space-y-6"
+            onSubmit={handleSubmit(() => saveMutation.mutate(), focusErrorSummary)}
+            noValidate
+          >
+            <FormErrorSummary id={errorSummaryId} items={errorSummaryItems} />
+
             {facilitiesQuery.isError ? (
               <Alert variant="destructive" role="alert">
                 <AlertTitle>施設候補を取得できませんでした</AlertTitle>
@@ -671,75 +759,75 @@ export function ExternalProfessionalsContent() {
                 <Input
                   id="external-professional-name"
                   className="!h-11 !min-h-[44px]"
-                  value={form.name}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, name: event.target.value }))
-                  }
+                  aria-invalid={Boolean(errors.name)}
+                  {...register('name')}
                 />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="external-professional-type">職種</Label>
-                <Select
-                  value={form.profession_type}
-                  onValueChange={(value) =>
-                    setForm((current) => ({
-                      ...current,
-                      profession_type: value as ProfessionType,
-                    }))
-                  }
-                >
-                  <SelectTrigger id="external-professional-type" className="!h-11 !min-h-[44px]">
-                    <SelectValue placeholder="職種" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PROFESSION_TYPES.map((type) => (
-                      <SelectItem key={type.value} value={type.value}>
-                        {type.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Controller
+                  control={control}
+                  name="profession_type"
+                  render={({ field }) => (
+                    <Select
+                      value={field.value}
+                      onValueChange={(value) => field.onChange(value as ProfessionType)}
+                    >
+                      <SelectTrigger
+                        id="external-professional-type"
+                        className="!h-11 !min-h-[44px]"
+                        aria-invalid={Boolean(errors.profession_type)}
+                      >
+                        <SelectValue placeholder="職種" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PROFESSION_TYPES.map((type) => (
+                          <SelectItem key={type.value} value={type.value}>
+                            {type.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="external-professional-facility">所属施設</Label>
-                <Select
-                  value={form.facility_id}
-                  disabled={facilitiesQuery.isError}
-                  onValueChange={(value) =>
-                    setForm((current) => ({
-                      ...current,
-                      facility_id: value || NONE_VALUE,
-                    }))
-                  }
-                >
-                  <SelectTrigger
-                    id="external-professional-facility"
-                    className="!h-11 !min-h-[44px]"
-                  >
-                    <SelectValue placeholder="施設を選択" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NONE_VALUE}>施設未紐づけ</SelectItem>
-                    {facilityOptions.map((facility) => (
-                      <SelectItem key={facility.id} value={facility.id}>
-                        {facility.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Controller
+                  control={control}
+                  name="facility_id"
+                  render={({ field }) => (
+                    <Select
+                      value={field.value}
+                      disabled={facilitiesQuery.isError}
+                      onValueChange={(value) => field.onChange(value || NONE_VALUE)}
+                    >
+                      <SelectTrigger
+                        id="external-professional-facility"
+                        className="!h-11 !min-h-[44px]"
+                        aria-invalid={Boolean(errors.facility_id)}
+                      >
+                        <SelectValue placeholder="施設を選択" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NONE_VALUE}>施設未紐づけ</SelectItem>
+                        {facilityOptions.map((facility) => (
+                          <SelectItem key={facility.id} value={facility.id}>
+                            {facility.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="external-professional-organization">所属名</Label>
                 <Input
                   id="external-professional-organization"
                   className="!h-11 !min-h-[44px]"
-                  value={form.organization_name}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      organization_name: event.target.value,
-                    }))
-                  }
+                  aria-invalid={Boolean(errors.organization_name)}
+                  {...register('organization_name')}
                 />
               </div>
               <div className="space-y-1.5">
@@ -747,10 +835,8 @@ export function ExternalProfessionalsContent() {
                 <Input
                   id="external-professional-department"
                   className="!h-11 !min-h-[44px]"
-                  value={form.department}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, department: event.target.value }))
-                  }
+                  aria-invalid={Boolean(errors.department)}
+                  {...register('department')}
                 />
               </div>
               <div className="space-y-1.5">
@@ -758,10 +844,8 @@ export function ExternalProfessionalsContent() {
                 <Input
                   id="external-professional-phone"
                   className="!h-11 !min-h-[44px]"
-                  value={form.phone}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, phone: event.target.value }))
-                  }
+                  aria-invalid={Boolean(errors.phone)}
+                  {...register('phone')}
                 />
               </div>
               <div className="space-y-1.5">
@@ -769,10 +853,8 @@ export function ExternalProfessionalsContent() {
                 <Input
                   id="external-professional-fax"
                   className="!h-11 !min-h-[44px]"
-                  value={form.fax}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, fax: event.target.value }))
-                  }
+                  aria-invalid={Boolean(errors.fax)}
+                  {...register('fax')}
                 />
               </div>
               <div className="space-y-1.5">
@@ -781,48 +863,48 @@ export function ExternalProfessionalsContent() {
                   id="external-professional-email"
                   type="email"
                   className="!h-11 !min-h-[44px]"
-                  value={form.email}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, email: event.target.value }))
-                  }
+                  aria-invalid={Boolean(errors.email)}
+                  {...register('email')}
                 />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="external-professional-method">優先連絡方法</Label>
-                <Select
-                  value={form.preferred_contact_method}
-                  onValueChange={(value) =>
-                    setForm((current) => ({
-                      ...current,
-                      preferred_contact_method: value as FormState['preferred_contact_method'],
-                    }))
-                  }
-                >
-                  <SelectTrigger id="external-professional-method" className="!h-11 !min-h-[44px]">
-                    <SelectValue placeholder="優先連絡方法" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NONE_VALUE}>未設定</SelectItem>
-                    {CONTACT_METHODS.map((method) => (
-                      <SelectItem key={method.value} value={method.value}>
-                        {method.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Controller
+                  control={control}
+                  name="preferred_contact_method"
+                  render={({ field }) => (
+                    <Select
+                      value={field.value}
+                      onValueChange={(value) =>
+                        field.onChange(value as FormState['preferred_contact_method'])
+                      }
+                    >
+                      <SelectTrigger
+                        id="external-professional-method"
+                        className="!h-11 !min-h-[44px]"
+                        aria-invalid={Boolean(errors.preferred_contact_method)}
+                      >
+                        <SelectValue placeholder="優先連絡方法" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NONE_VALUE}>未設定</SelectItem>
+                        {CONTACT_METHODS.map((method) => (
+                          <SelectItem key={method.value} value={method.value}>
+                            {method.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="external-professional-contact-time">連絡しやすい時間</Label>
                 <Input
                   id="external-professional-contact-time"
                   className="!h-11 !min-h-[44px]"
-                  value={form.preferred_contact_time}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      preferred_contact_time: event.target.value,
-                    }))
-                  }
+                  aria-invalid={Boolean(errors.preferred_contact_time)}
+                  {...register('preferred_contact_time')}
                   placeholder="例: 平日13時以降"
                 />
               </div>
@@ -831,10 +913,8 @@ export function ExternalProfessionalsContent() {
                 <Input
                   id="external-professional-address"
                   className="!h-11 !min-h-[44px]"
-                  value={form.address}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, address: event.target.value }))
-                  }
+                  aria-invalid={Boolean(errors.address)}
+                  {...register('address')}
                 />
               </div>
               <div className="space-y-1.5 md:col-span-2">
@@ -842,10 +922,8 @@ export function ExternalProfessionalsContent() {
                 <Textarea
                   id="external-professional-notes"
                   rows={4}
-                  value={form.notes}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, notes: event.target.value }))
-                  }
+                  aria-invalid={Boolean(errors.notes)}
+                  {...register('notes')}
                 />
               </div>
             </div>
@@ -876,15 +954,14 @@ export function ExternalProfessionalsContent() {
                 キャンセル
               </Button>
               <Button
-                type="button"
+                type="submit"
                 className="!h-11 !min-h-[44px]"
-                onClick={() => saveMutation.mutate()}
                 disabled={saveMutation.isPending || Boolean(formBlocker)}
               >
                 {saveMutation.isPending ? '保存中...' : '保存'}
               </Button>
             </div>
-          </div>
+          </form>
         </SheetContent>
       </Sheet>
     </>
