@@ -1,5 +1,41 @@
 # CODEX Goal Progress
 
+## R23 Billing Rules Error Message Helper Partial - 2026-07-05 01:02 JST
+
+- Status:
+  - Implemented and validated the next bounded R23 slice:
+    - `src/app/(dashboard)/admin/billing-rules/page.tsx`
+    - `src/app/(dashboard)/admin/billing-rules/page.test.tsx`
+- Scope:
+  - Reused the existing `messageFromError` helper for billing rule JSON
+    validation error formatting.
+  - Added `role="alert"` to the existing dialog validation error surface.
+  - Added coverage that an empty thrown Error message falls back to
+    `JSONオブジェクト形式で入力してください` and does not submit the mutation.
+- Safety:
+  - Client/helper validation-error formatting only.
+  - No product API, DB, auth, authorization, PHI projection, billing semantics,
+    audit semantics, deployment, package dependency, live DB operation,
+    external send, secret handling, push, or destructive operation changed.
+  - The PH-OS UI/UX SSOT already records the 2026-07-04 user direction that
+    product API/DB/auth/authorization/PHI/billing/deploy/package dependency may
+    be changed when needed for the product contract; this slice did not need
+    those changes.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/billing-rules/page.test.tsx' src/lib/utils/error-message.test.ts src/lib/admin/json-editor.test.ts --reporter=dot --testTimeout=30000`
+    passed `3` files / `20` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `8c3b18aa`
+    (`refactor(ui): reuse error message helper in billing rules`).
+- Remaining:
+  - R23 is partial; remaining hand-rolled error-message ternaries should be
+    migrated by bounded domain chunks.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R23 Patient Medications Error Message Helper Partial - 2026-07-05 00:57 JST
 
 - Status:

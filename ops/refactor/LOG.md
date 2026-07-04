@@ -5,6 +5,23 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-05 R23-billing-rules 8c3b18aa
+
+- 分類: dup-helper / error message helper convergence
+- 対象: `src/app/(dashboard)/admin/billing-rules/page.tsx`,
+  `src/app/(dashboard)/admin/billing-rules/page.test.tsx`
+- 実施: billing rule JSON validation error を既存 `messageFromError` へ収束。
+  empty Error message の fallback alert テストを追加し、既存 validation 表示へ `role="alert"` を付与。
+- 挙動変更: 空の Error message は shared helper 契約どおり fallback へ正規化。
+  JSON object validation、mutation payload、API path、billing semantics は維持。
+- 安全: client/helper validation-error formatting のみ。product API/DB/auth/authorization/PHI/billing/deploy/package
+  dependency は変更不要。audit semantics/live DB/external send/secret/push/destructive operation 不変。
+  SSOT には必要時にそれらを product contract として変更可というユーザー指示が記録済み。
+- 検証: focused billing-rules/error-message/json-editor vitest 3 files / 20 tests green。
+  scoped eslint/prettier/diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit 8c3b18aa。
+- 残課題: R23 は partial。残りの hand-rolled error-message ternary は段階移行を継続。
+
 ## 2026-07-05 R23-patient-medications 318f04d1
 
 - 分類: dup-helper / error message helper convergence
