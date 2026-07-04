@@ -2756,3 +2756,23 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: R24/R46 は partial。keyset cursor encoding、scan-window、hidden-count、
   route-specific metadata を持つ route は個別分析後に継続。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
+## 2026-07-05 R24/R46 pca-pumps search cursor helper slice
+
+- 分類: pattern-inconsistency / q-filtered visible-row selection → `buildCursorPage` 収束。
+- 実施:
+  - `/api/pca-pumps` GET q-filtered search の `slice(0, limit)` と `length > limit` を
+    `buildCursorPage` へ移行。
+  - unfiltered full-ledger response は `meta` なしのまま維持し、q-filtered response は
+    `meta: { limit, has_more }` のまま維持。
+- 挙動変更: API内部の重複 helper 収束のみ。外部 response shape、q/status filter behavior、
+  PCA pump serialization、POST create/audit behavior は維持。
+- 安全性: `canReport`、request auth context、RLS request context、DB query shape、
+  auth/authorization、PHI projection、billing、deployment、package dependency、live DB operation、
+  external send、secret handling、push、destructive operation は不変。
+- 検証: focused pca-pumps/pagination Vitest `2 files / 22 tests` green、scoped ESLint
+  green、targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `682a17cc` (`refactor(api): reuse cursor page helper in pca pump search`)。
+- 残課題: R24/R46 は partial。keyset cursor encoding、scan-window、hidden-count、
+  route-specific metadata を持つ route は個別分析後に継続。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
