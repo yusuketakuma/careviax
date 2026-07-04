@@ -1,5 +1,42 @@
 # CODEX Goal Progress
 
+## R40/R44 Prescription Detail readApiJson Partial - 2026-07-05 07:41 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/prescriptions/[id]/prescription-detail-content.tsx`
+    - `src/app/(dashboard)/prescriptions/[id]/prescription-detail-content.test.tsx`
+- Scope:
+  - Reused `readApiJson` for the prescription intake detail read GET.
+  - Added queryFn contract coverage proving API JSON `message` from a failed
+    detail read is preserved.
+  - Preserved the prescription intake API path helper, hostile intake-id
+    encoding, dot-segment fail-closed behavior, org headers, React Query key,
+    enabled gate, retry/back error UI, display-id rendering, and patient
+    identity link helper.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/prescriptions/[id]/prescription-detail-content.test.tsx'`
+    passed `1` file / `8` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `d22ec557`
+    (`refactor(ui): reuse readApiJson in prescription detail`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Drug Masters readApiJson Partial - 2026-07-05 07:37 JST
 
 - Status:
