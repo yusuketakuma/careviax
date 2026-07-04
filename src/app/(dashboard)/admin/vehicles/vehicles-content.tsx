@@ -31,6 +31,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import { japanDateKey } from '@/lib/utils/date-boundary';
@@ -329,8 +330,10 @@ export function VehiclesContent() {
       const response = await fetch(buildListPath(), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('車両マスターの取得に失敗しました');
-      return response.json() as Promise<VisitVehicleResourcesResponse>;
+      return readApiJson<VisitVehicleResourcesResponse>(
+        response,
+        '車両マスターの取得に失敗しました',
+      );
     },
     enabled: !!orgId,
   });
@@ -341,8 +344,7 @@ export function VehiclesContent() {
       const response = await fetch(PHARMACY_SITES_API_PATH, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('店舗候補の取得に失敗しました');
-      return response.json() as Promise<PharmacySitesResponse>;
+      return readApiJson<PharmacySitesResponse>(response, '店舗候補の取得に失敗しました');
     },
     enabled: !!orgId,
   });
