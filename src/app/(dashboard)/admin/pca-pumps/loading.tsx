@@ -4,7 +4,7 @@ import { PageScaffold } from '@/components/layout/page-scaffold';
 export default function PcaPumpsLoading() {
   return (
     <PageScaffold aria-label="PCAポンプレンタルを読み込み中">
-      <Loading />
+      <Loading label="PCAポンプレンタルを読み込み中..." />
     </PageScaffold>
   );
 }

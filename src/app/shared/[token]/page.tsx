@@ -21,7 +21,7 @@ export default async function SharedViewerPage(props: SharedViewerPageProps) {
     <div className="min-h-dvh bg-gradient-to-b from-slate-50 via-white to-slate-100 px-4 py-8">
       <div className="mx-auto max-w-4xl">
         <QueryProvider>
-          <Suspense fallback={<Loading />}>
+          <Suspense fallback={<Loading label="共有ページを読み込み中..." />}>
             <SharedViewerContent token={params.token} />
           </Suspense>
         </QueryProvider>
