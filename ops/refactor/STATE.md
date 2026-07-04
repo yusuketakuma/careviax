@@ -308,6 +308,11 @@
   org header、queryKey、enabled gate、blocking error、fail-closed safety banner、retryable warning、
   CDS POST、save/upload/reflection mutations は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 patient-compare readApiJson slice(1bbbca61) land。focused Vitest 3、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。patient compare の overview read GET を
+  readApiJson へ収束し、patient API path helper、org header、queryKey、enabled gate、
+  compare card error UI、compare-card open link helper は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 
