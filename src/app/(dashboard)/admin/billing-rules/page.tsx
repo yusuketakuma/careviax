@@ -39,6 +39,7 @@ import {
 } from '@/components/ui/select';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { parseJsonObjectText } from '@/lib/admin/json-editor';
+import { readApiJson } from '@/lib/api/client-json';
 import { BILLING_RULES_API_PATH, buildBillingRuleApiPath } from '@/lib/billing-rules/api-paths';
 import { messageFromError } from '@/lib/utils/error-message';
 
@@ -102,8 +103,7 @@ const DEFAULT_FORM: RuleFormData = {
 
 async function fetchBillingRules(): Promise<BillingRulesResponse> {
   const res = await fetch(BILLING_RULES_API_PATH);
-  if (!res.ok) throw new Error('Failed to fetch billing rules');
-  return res.json();
+  return readApiJson<BillingRulesResponse>(res, 'Failed to fetch billing rules');
 }
 
 async function syncBillingSsot(): Promise<{ message: string }> {
