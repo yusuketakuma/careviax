@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { japanDateKey } from '@/lib/utils/date-boundary';
@@ -31,8 +32,7 @@ export function ResidualMedicationChart({ patientId }: { patientId: string }) {
       const res = await fetch(`/api/residual-medications?${params.toString()}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('残薬データの取得に失敗しました');
-      return res.json() as Promise<{ data: ResidualRecord[] }>;
+      return readApiJson<{ data: ResidualRecord[] }>(res, '残薬データの取得に失敗しました');
     },
     enabled: !!orgId && !!patientId,
   });
