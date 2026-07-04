@@ -1,5 +1,39 @@
 # CODEX Goal Progress
 
+## R32 Analytics/Statistics QueryClient Wrapper Convergence - 2026-07-04 22:42 JST
+
+- Status:
+  - Implemented and validated a twelfth bounded R32 slice:
+    - `src/app/(dashboard)/admin/analytics/analytics-content.test.tsx`
+    - `src/app/(dashboard)/admin/operations-insights/operations-insights-content.test.tsx`
+    - `src/app/(dashboard)/admin/document-templates/template-body-editor.render.test.tsx`
+    - `src/app/(dashboard)/statistics/statistics-content.test.tsx`
+- Scope:
+  - Replaced four more local `QueryClient` / `QueryClientProvider` wrapper
+    implementations with `createQueryClientWrapper`.
+  - Used `createTestQueryClient` where analytics/statistics tests still need
+    direct refetch or rerender control.
+  - Preserved retry-disabled test defaults and left product runtime code
+    untouched.
+- Safety:
+  - Test harness convergence only.
+  - No product API, DB, auth, authorization, PHI projection, billing semantics,
+    deployment, package dependency, query, mutation, org header, audit logging,
+    or runtime behavior changed.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/analytics/analytics-content.test.tsx' 'src/app/(dashboard)/admin/operations-insights/operations-insights-content.test.tsx' 'src/app/(dashboard)/admin/document-templates/template-body-editor.render.test.tsx' 'src/app/(dashboard)/statistics/statistics-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `4` files / `33` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `85f7963d`
+    (`test(analytics): share query client wrapper`).
+- Remaining:
+  - R32 remains partially open for the remaining local QueryClient wrappers.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R32 Admin Metrics/Capacity/Contact QueryClient Wrapper Convergence - 2026-07-04 22:38 JST
 
 - Status:
