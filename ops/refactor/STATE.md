@@ -130,6 +130,10 @@
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。false-empty / patient-safety
   false-default prevention と org-header/path helper contract を維持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 document-delivery-rules readApiJson slice(9570edef) land。focused Vitest 11、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。shared collection path/org header、
+  hostile-id encoding、false-empty contract を維持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 

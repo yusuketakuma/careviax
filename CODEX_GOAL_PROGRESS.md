@@ -46769,3 +46769,43 @@ false` for every migrated column.
     before converting additional client read fetchers.
   - Existing unrelated `refactor-instructions.md` and local skill install files
     remain outside this slice.
+
+## R40/R44 Document Delivery Rules readApiJson Slice - 2026-07-05 04:44 JST
+
+- Scope:
+  - `src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.tsx`
+  - `src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx`
+- Status:
+  - Implemented and committed as `9570edef`
+    (`refactor(ui): reuse readApiJson in delivery rules`).
+- Changes:
+  - Replaced the document delivery rule list GET helper for
+    `buildDocumentDeliveryRulesApiPath()` with
+    `readApiJson<DocumentDeliveryRulesResponse>` while preserving query key,
+    `buildOrgHeaders(orgId)`, response envelope/count metadata, and false-empty
+    error state.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, destructive operation, create/update/delete
+    mutations, and path helper encoding/fail-closed behavior.
+  - The 2026-07-04 user instruction allowing product
+    API/DB/auth/authorization/PHI/billing/deploy/package dependency changes when
+    necessary is recorded in `ops/refactor/STATE.md`; this slice did not require
+    those changes.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `11` tests.
+  - `pnpm exec eslint --max-warnings=0 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.tsx' 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx'`
+    passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.tsx' 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx'`
+    passed.
+  - `git diff --check -- 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.tsx' 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx'`
+    passed.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - R40/R44 remains partial and broad; continue per-fetcher body-read/PHI review
+    before converting additional client read fetchers.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
