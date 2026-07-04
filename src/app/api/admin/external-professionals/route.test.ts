@@ -178,7 +178,7 @@ describe('/api/admin/external-professionals', () => {
         },
       },
       orderBy: [{ profession_type: 'asc' }, { name: 'asc' }],
-      take: 500,
+      take: 501,
     });
     expect(externalProfessionalCountMock).toHaveBeenCalledWith({
       where: {
@@ -398,6 +398,7 @@ describe('/api/admin/external-professionals', () => {
     externalProfessionalFindManyMock.mockResolvedValue([
       createExternalProfessionalFixture('external_1', '訪問 看護'),
       createExternalProfessionalFixture('external_2', '訪看 ステーション'),
+      createExternalProfessionalFixture('external_3', '訪看 クリニック'),
     ]);
     externalProfessionalCountMock.mockResolvedValue(3);
 
@@ -409,7 +410,7 @@ describe('/api/admin/external-professionals', () => {
     expect(response.status).toBe(200);
     expect(externalProfessionalFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        take: 2,
+        take: 3,
       }),
     );
     await expect(response.json()).resolves.toMatchObject({
@@ -427,10 +428,10 @@ describe('/api/admin/external-professionals', () => {
   });
 
   it.each([
-    ['9999', 500],
-    ['0', 1],
-    ['abc', 500],
-  ])('bounds q-filtered limit "%s" to take %i', async (limit, expectedTake) => {
+    ['9999', 501],
+    ['0', 2],
+    ['abc', 501],
+  ])('bounds q-filtered limit "%s" to overflow take %i', async (limit, expectedTake) => {
     const response = (await GET(
       createAuthRequest(`http://localhost/api/admin/external-professionals?q=訪看&limit=${limit}`),
       emptyRouteContext,

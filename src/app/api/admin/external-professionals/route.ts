@@ -2,7 +2,7 @@ import { unstable_rethrow } from 'next/navigation';
 import type { Prisma } from '@prisma/client';
 import { NextRequest } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
-import { parseBoundedInteger } from '@/lib/api/pagination';
+import { buildCursorPage, parseBoundedInteger } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
@@ -155,7 +155,7 @@ const authenticatedGET = withAuthContext(
       ? await Promise.all([
           prisma.externalProfessional.findMany({
             ...queryOptions,
-            take: limit,
+            take: limit + 1,
           }),
           prisma.externalProfessional.count({ where }),
         ])
@@ -178,11 +178,12 @@ const authenticatedGET = withAuthContext(
       });
     }
 
-    const visibleCount = items.length;
+    const page = buildCursorPage(items, limit, (item) => item.id);
+    const visibleCount = page.data.length;
     const hiddenCount = Math.max((totalCount ?? visibleCount) - visibleCount, 0);
 
     return success({
-      data: items.map(toResponse),
+      data: page.data.map(toResponse),
       total_count: totalCount ?? visibleCount,
       visible_count: visibleCount,
       hidden_count: hiddenCount,
@@ -195,7 +196,7 @@ const authenticatedGET = withAuthContext(
         preferred_contact_method: parsedPreferredContactMethod.data ?? null,
       },
       limit,
-      meta: { limit, has_more: hiddenCount > 0 },
+      meta: { limit, has_more: page.hasMore || hiddenCount > 0 },
     });
   },
   {
