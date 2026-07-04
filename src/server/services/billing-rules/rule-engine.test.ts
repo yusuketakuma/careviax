@@ -210,8 +210,15 @@ describe('rule-engine: buildBillingCandidateSpecs', () => {
     expect(specs[0].points).toBe(200);
   });
 
-  // ── 5. emergency with no category defaults to other_exacerbation ──
-  it('defaults to other_exacerbation when emergency has no category', async () => {
+  // ── 5. emergency with no category fails closed ──
+  it('does not infer an emergency billing rule when emergency has no category', async () => {
+    const plannedEmergencyRule = makeBaseRule({
+      ssot_key: 'medical.emergency_visit.1',
+      code: 'MED_EMERGENCY_VISIT_1',
+      name: '在宅患者緊急訪問薬剤管理指導料1',
+      amount: 500,
+      conditions: { visit_type: 'emergency', emergency_category: 'planned_disease_exacerbation' },
+    });
     const emergencyRule = makeBaseRule({
       ssot_key: 'medical.emergency_visit.2',
       code: 'MED_EMERGENCY_VISIT_2',
@@ -219,7 +226,7 @@ describe('rule-engine: buildBillingCandidateSpecs', () => {
       amount: 200,
       conditions: { visit_type: 'emergency', emergency_category: 'other_exacerbation' },
     });
-    const tx = makeTx([emergencyRule]);
+    const tx = makeTx([plannedEmergencyRule, emergencyRule]);
 
     const specs = await buildBillingCandidateSpecs(
       tx,
@@ -229,9 +236,7 @@ describe('rule-engine: buildBillingCandidateSpecs', () => {
       }),
     );
 
-    expect(specs).toHaveLength(1);
-    expect(specs[0].ssotKey).toBe('medical.emergency_visit.2');
-    expect(specs[0].status).toBe('confirmed');
+    expect(specs).toHaveLength(0);
   });
 
   // ── 6. online visit ──

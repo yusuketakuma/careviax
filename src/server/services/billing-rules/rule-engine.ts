@@ -92,11 +92,10 @@ function chooseBaseRule(
   rules: Awaited<ReturnType<typeof getHomeCareBillingSsotSummary>>['rules'],
   context: BillingEvidenceContext,
 ) {
-  // 緊急訪問 → 在宅患者緊急訪問薬剤管理指導料を優先選択
-  // emergency_category がある場合はその区分を優先し、
-  // 未指定時のみ「2」（それ以外の急変 200点）を既定とする。
+  // 緊急訪問は算定区分が監査上の根拠になるため、欠落時は fee2 へ推定しない。
   if (context.visitType === 'emergency') {
-    const targetEmergencyCategory = context.emergencyCategory ?? 'other_exacerbation';
+    if (context.emergencyCategory == null) return null;
+    const targetEmergencyCategory = context.emergencyCategory;
     return (
       rules.find((rule) => {
         if (rule.rule_type !== 'base') return false;
@@ -139,6 +138,8 @@ function manualRuleCandidates(
   rules: Awaited<ReturnType<typeof getHomeCareBillingSsotSummary>>['rules'],
   context: BillingEvidenceContext,
 ) {
+  if (context.visitType === 'emergency' && context.emergencyCategory == null) return [];
+
   return rules.filter((rule) => {
     const conditions = readRuleConditions(rule);
     if (rule.service_type !== context.serviceType && rule.service_type !== 'generic') return false;

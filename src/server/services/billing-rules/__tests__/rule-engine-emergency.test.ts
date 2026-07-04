@@ -96,6 +96,33 @@ describe('buildBillingCandidateSpecs emergency category selection', () => {
     });
   });
 
+  it('does not infer emergency billing candidates without an authoritative category', async () => {
+    const tx = makeTx(
+      MEDICAL_RULES_2024.map((rule) => ({
+        ...rule,
+        id: rule.ssot_key,
+        billing_scope: 'home_care_ssot',
+        is_active: true,
+      })),
+    );
+
+    const specs = await buildBillingCandidateSpecs(tx, {
+      orgId: 'org_1',
+      payerBasis: 'medical',
+      serviceType: 'medical_home_visit',
+      providerScope: 'pharmacy',
+      buildingPatientCount: 1,
+      monthlyVisitCount: 1,
+      weeklyVisitCount: 1,
+      claimable: true,
+      visitType: 'emergency',
+      emergencyCategory: null,
+      onlineEligible: false,
+    });
+
+    expect(specs).toHaveLength(0);
+  });
+
   it('suggests the night emergency add-on when after-hours conditions match', async () => {
     const tx = makeTx(
       MEDICAL_RULES_2024.map((rule) => ({
