@@ -12,6 +12,7 @@ import { DataTable } from '@/components/ui/data-table';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 
 type AnalyticsResponse = {
@@ -173,8 +174,7 @@ export function AnalyticsContent() {
       const res = await fetch('/api/billing-evidence/analytics', {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('請求分析の取得に失敗しました');
-      return res.json() as Promise<{ data: AnalyticsResponse }>;
+      return readApiJson<{ data: AnalyticsResponse }>(res, '請求分析の取得に失敗しました');
     },
     enabled: !!orgId,
   });
@@ -190,11 +190,10 @@ export function AnalyticsContent() {
       const res = await fetch('/api/pharmacy-sites?view=resource_map', {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('地域資源マップの取得に失敗しました');
-      return res.json() as Promise<{
+      return readApiJson<{
         data: ResourceMapResponse['data'];
         summary: ResourceMapResponse['summary'];
-      }>;
+      }>(res, '地域資源マップの取得に失敗しました');
     },
     enabled: !!orgId,
   });
