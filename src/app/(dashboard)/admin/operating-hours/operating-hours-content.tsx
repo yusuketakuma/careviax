@@ -21,6 +21,7 @@ import { StatCard } from '@/components/ui/stat-card';
 import { StatusDot } from '@/components/ui/status-dot';
 import { MonthGrid, MonthGridNav } from '@/components/ui/month-grid';
 import { PageSection } from '@/components/layout/page-section';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { isValidOperatingWindow } from '@/lib/calendar/operating-day';
@@ -213,8 +214,7 @@ export function OperatingHoursContent() {
       const response = await fetch('/api/pharmacy-sites', {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('薬局拠点の取得に失敗しました');
-      return response.json() as Promise<{ data: SiteOption[] }>;
+      return readApiJson<{ data: SiteOption[] }>(response, '薬局拠点の取得に失敗しました');
     },
     enabled: !!orgId,
   });
@@ -236,8 +236,7 @@ export function OperatingHoursContent() {
       const response = await fetch(`/api/pharmacy-operating-hours?${params.toString()}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('営業時間設定の取得に失敗しました');
-      return response.json() as Promise<OperatingHoursResponse>;
+      return readApiJson<OperatingHoursResponse>(response, '営業時間設定の取得に失敗しました');
     },
     enabled: !!orgId && !!activeSiteId,
   });
