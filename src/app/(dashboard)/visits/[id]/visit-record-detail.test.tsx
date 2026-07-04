@@ -155,6 +155,7 @@ type QueryStubOptions = {
   residuals?: Array<Record<string, unknown>>;
   billingBlockers?: Array<{ key: string; reason: string; severity?: 'high' | 'normal' }>;
   record?: typeof RECORD;
+  recordLoading?: boolean;
 };
 
 type MutationConfig = {
@@ -179,6 +180,9 @@ function setupQueries(options: QueryStubOptions = {}) {
   useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
     const key = String(queryKey[0]);
     if (key === 'visit-record') {
+      if (options.recordLoading) {
+        return { data: undefined, isLoading: true, isError: false, refetch: vi.fn() };
+      }
       return { data: options.record ?? RECORD, isLoading: false, isError: false, refetch: vi.fn() };
     }
     if (key === 'patient-header-summary') {
@@ -359,6 +363,15 @@ describe('VisitRecordDetail fetch-error handling (no false-empty workflow)', () 
 
     expect(screen.getByRole('status', { name: '患者情報を読み込み中' })).toBeTruthy();
     expect(screen.queryByTestId('visit-patient-header-error')).toBeNull();
+  });
+
+  it('uses a named skeleton while the visit record is loading', () => {
+    setupQueries({ recordLoading: true });
+    render(<VisitRecordDetail recordId="record_1" />);
+
+    expect(screen.getByRole('status', { name: '訪問記録を読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('読み込み中...', { selector: 'p' })).toBeNull();
+    expect(screen.queryByText('訪問記録を読み込めませんでした')).toBeNull();
   });
 
   it('uses soap identity tokens instead of raw Tailwind colors (FEUX-4)', () => {

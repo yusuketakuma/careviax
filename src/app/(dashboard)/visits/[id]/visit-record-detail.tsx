@@ -656,8 +656,23 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
 
   if (isBootstrappingOrg || isLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <p className="text-sm text-muted-foreground">読み込み中...</p>
+      <div
+        className="space-y-4 py-12"
+        role="status"
+        aria-label="訪問記録を読み込み中"
+        aria-live="polite"
+      >
+        <Skeleton className="h-8 w-48" />
+        <div className="grid gap-3 md:grid-cols-3">
+          <Skeleton className="h-24" />
+          <Skeleton className="h-24" />
+          <Skeleton className="h-24" />
+        </div>
+        <div className="space-y-2">
+          <Skeleton className="h-10" />
+          <Skeleton className="h-10" />
+        </div>
+        <span className="sr-only">訪問記録を読み込み中...</span>
       </div>
     );
   }
