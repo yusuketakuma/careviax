@@ -926,27 +926,75 @@ describe('PharmacyCooperationWorkflowContent', () => {
     expect(screen.getByText('依頼中の訪問')).toBeTruthy();
     expect(screen.getByText('確認待ち記録')).toBeTruthy();
     expect(await screen.findByText('共有ケース 4 件')).toBeTruthy();
-    expect(await screen.findByText('share_case_1')).toBeTruthy();
-    expect(await screen.findByText('share_case_active')).toBeTruthy();
+    expect((await screen.findAllByText('share_case_1')).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('share_case_active')).length).toBeGreaterThan(0);
     expect((await screen.findAllByText('visit_request_1')).length).toBeGreaterThan(0);
     expect((await screen.findAllByText('partner_record_submitted')).length).toBeGreaterThan(0);
     expect((await screen.findAllByText('correction_1')).length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByRole('button', { name: 'CSV出力' })).toBeNull();
     expect(screen.queryByRole('button', { name: '印刷' })).toBeNull();
-    const shareCasesRegion = screen.getByRole('region', {
-      name: '患者共有ケース一覧 横スクロール領域',
-    });
-    expect(shareCasesRegion.getAttribute('tabindex')).toBe('0');
-    shareCasesRegion.focus();
-    expect(document.activeElement).toBe(shareCasesRegion);
-    expect(
-      within(shareCasesRegion).getByRole('table', { name: '患者共有ケース一覧' }).className,
-    ).toContain('lg:min-w-[72rem]');
+    const shareCasesTable = screen.getByRole('table', { name: '患者共有ケース一覧' });
+    expect(within(shareCasesTable).getByRole('columnheader', { name: '共有ケース' })).toBeTruthy();
+    expect(within(shareCasesTable).getByRole('columnheader', { name: '操作' })).toBeTruthy();
+    expect(screen.getAllByText('患者リンク').length).toBeGreaterThanOrEqual(2);
     expect(screen.getAllByText('協力薬局').length).toBeGreaterThanOrEqual(1);
     expect(document.body.textContent).not.toContain('山田');
     expect(document.body.textContent).not.toContain('訪問本文');
     expect(document.body.textContent).not.toContain('訪問記録本文');
     expect(document.body.textContent).not.toContain('服薬指導詳細');
+  });
+
+  it('shows the patient share case empty state only for genuine empty results', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/patient-share-cases?limit=8&view_context=pharmacy_cooperation_workflow') {
+        return new Response(
+          JSON.stringify({
+            data: [],
+            hasMore: false,
+            total_count: 0,
+            visible_count: 0,
+            hidden_count: 0,
+            status_counts: {
+              draft: 0,
+              consent_pending: 0,
+              partner_confirmation_pending: 0,
+              active: 0,
+              suspended: 0,
+              revoked: 0,
+              ended: 0,
+              declined: 0,
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    expect(await screen.findByText('患者共有ケースはまだありません')).toBeTruthy();
+    expect(screen.queryByText('薬局間協力ワークフローを表示できません')).toBeNull();
+  });
+
+  it('keeps patient share case query failures out of the empty state', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/patient-share-cases?limit=8&view_context=pharmacy_cooperation_workflow') {
+        return new Response(JSON.stringify({ error: 'boom' }), { status: 500 });
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    expect(await screen.findByText('薬局間協力ワークフローを表示できません')).toBeTruthy();
+    expect(screen.queryByText('患者共有ケースはまだありません')).toBeNull();
   });
 
   it('shows the pharmacy visit request empty state only for genuine empty results', async () => {
@@ -1112,7 +1160,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
     renderContent();
 
     expect(await screen.findByText('共有ケース 1 件')).toBeTruthy();
-    expect(await screen.findByText('share_case_legacy')).toBeTruthy();
+    expect((await screen.findAllByText('share_case_legacy')).length).toBeGreaterThan(0);
   });
 
   it('fails closed when share-case count metadata is internally inconsistent', async () => {
@@ -1289,9 +1337,12 @@ describe('PharmacyCooperationWorkflowContent', () => {
       expect(baseApprovalCall).toBeTruthy();
     });
 
-    fireEvent.change(screen.getByLabelText('share_case_1 の患者リンク辞退理由'), {
-      target: { value: '同一患者として扱えません' },
-    });
+    fireEvent.change(
+      within(baseRow as HTMLTableRowElement).getByLabelText('share_case_1 の患者リンク辞退理由'),
+      {
+        target: { value: '同一患者として扱えません' },
+      },
+    );
     fireEvent.click(
       within(baseRow as HTMLTableRowElement).getByRole('button', {
         name: 'share_case_1 協力薬局 の患者リンクを辞退',
@@ -1324,15 +1375,30 @@ describe('PharmacyCooperationWorkflowContent', () => {
       });
     });
 
-    fireEvent.change(screen.getByLabelText('share_case_accept_ready の協力側ID'), {
-      target: { value: 'partner_patient_1' },
-    });
-    fireEvent.change(screen.getByLabelText('share_case_accept_ready の協力側氏名'), {
-      target: { value: '佐藤 花子' },
-    });
-    fireEvent.change(screen.getByLabelText('share_case_accept_ready の協力側生年月日'), {
-      target: { value: '1940-01-02' },
-    });
+    fireEvent.change(
+      within(acceptReadyRow as HTMLTableRowElement).getByLabelText(
+        'share_case_accept_ready の協力側ID',
+      ),
+      {
+        target: { value: 'partner_patient_1' },
+      },
+    );
+    fireEvent.change(
+      within(acceptReadyRow as HTMLTableRowElement).getByLabelText(
+        'share_case_accept_ready の協力側氏名',
+      ),
+      {
+        target: { value: '佐藤 花子' },
+      },
+    );
+    fireEvent.change(
+      within(acceptReadyRow as HTMLTableRowElement).getByLabelText(
+        'share_case_accept_ready の協力側生年月日',
+      ),
+      {
+        target: { value: '1940-01-02' },
+      },
+    );
     fireEvent.click(
       within(acceptReadyRow as HTMLTableRowElement).getByRole('button', {
         name: 'share_case_accept_ready 協力薬局 の患者リンクを協力受諾',
@@ -1421,7 +1487,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
   it('creates a pharmacy visit request with contract-estimate fields and no raw clinical text in the list', async () => {
     renderContent();
 
-    await screen.findByText('share_case_active');
+    await screen.findAllByText('share_case_active');
 
     const createButton = screen.getByRole('button', { name: /訪問依頼を作成/ });
     expect((createButton as HTMLButtonElement).disabled).toBe(true);
@@ -1619,7 +1685,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
 
     renderContent();
 
-    await screen.findByText('share_case_active');
+    await screen.findAllByText('share_case_active');
     fireEvent.change(screen.getByRole('combobox', { name: '訪問依頼作成の共有ケース' }), {
       target: { value: 'share_case_active' },
     });

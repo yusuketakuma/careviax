@@ -1080,21 +1080,6 @@ function SectionShell({
   );
 }
 
-function TableFrame({ children, label }: { children: ReactNode; label: string }) {
-  return (
-    <div
-      role="region"
-      aria-label={`${label} 横スクロール領域`}
-      tabIndex={0}
-      className="overflow-x-auto rounded-lg border border-border/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring xl:max-h-[70vh] xl:overflow-y-auto"
-    >
-      <table className="w-full table-fixed text-sm lg:min-w-[72rem]" aria-label={label}>
-        {children}
-      </table>
-    </div>
-  );
-}
-
 function QueryFallback({
   isLoading,
   isError,
@@ -1484,218 +1469,281 @@ function ShareCasesTable({
     }));
   };
 
+  const shareCaseColumns: ColumnDef<PatientShareCaseRow>[] = [
+    {
+      id: 'share_case',
+      header: '共有ケース',
+      meta: { label: '共有ケース' },
+      cell: ({ row }) => (
+        <div>
+          <div className="font-medium">{row.original.id}</div>
+          <Badge className="mt-1" variant={statusVariant(row.original.status)}>
+            {statusLabel(row.original.status)}
+          </Badge>
+        </div>
+      ),
+      enableSorting: false,
+    },
+    {
+      id: 'partner_pharmacy',
+      header: '協力薬局',
+      meta: { label: '協力薬局' },
+      cell: ({ row }) => row.original.partnership.partner_pharmacy.name,
+      enableSorting: false,
+    },
+    {
+      id: 'patient_link',
+      header: '患者リンク',
+      meta: { label: '患者リンク' },
+      cell: ({ row }) => {
+        const link = row.original.patient_link;
+        const baseApproved = Boolean(link?.approved_by_base);
+        return (
+          <div>
+            <div>{statusLabel(link?.match_status ?? 'pending')}</div>
+            <TinyMeta>
+              base {baseApproved ? '承認済み' : '未承認'} / partner{' '}
+              {link?.approved_by_partner ? '承認済み' : '未承認'}
+            </TinyMeta>
+          </div>
+        );
+      },
+      enableSorting: false,
+    },
+    {
+      id: 'valid_period',
+      header: '有効期間',
+      meta: { label: '有効期間' },
+      cell: ({ row }) => (
+        <span className="tabular-nums">
+          {formatDate(row.original.starts_at)} - {formatDate(row.original.ends_at)}
+        </span>
+      ),
+      enableSorting: false,
+    },
+    {
+      id: 'action',
+      header: '操作',
+      meta: { label: '操作' },
+      cell: ({ row }) => {
+        const shareCase = row.original;
+        return (
+          <ShareCaseActionCell
+            row={shareCase}
+            acceptForm={linkAcceptForms[shareCase.id] ?? EMPTY_LINK_ACCEPT_FORM}
+            declineReason={linkDeclineReasons[shareCase.id] ?? ''}
+            updateAcceptForm={updateAcceptForm}
+            setLinkDeclineReasons={setLinkDeclineReasons}
+            isBusy={isBusy}
+            onActivate={onActivate}
+            onBaseApprove={onBaseApprove}
+            onAcceptLink={onAcceptLink}
+            onDeclineLink={onDeclineLink}
+            onSelectCorrectionCase={onSelectCorrectionCase}
+          />
+        );
+      },
+      enableSorting: false,
+    },
+  ];
+
   return (
-    <TableFrame label="患者共有ケース一覧">
-      <thead className="sticky top-0 z-10 bg-muted/80 text-xs text-muted-foreground backdrop-blur">
-        <tr>
-          <th scope="col" className="px-3 py-2 text-left font-medium">
-            共有ケース
-          </th>
-          <th scope="col" className="px-3 py-2 text-left font-medium">
-            協力薬局
-          </th>
-          <th scope="col" className="px-3 py-2 text-left font-medium">
-            患者リンク
-          </th>
-          <th scope="col" className="px-3 py-2 text-left font-medium">
-            有効期間
-          </th>
-          <th scope="col" className="px-3 py-2 text-left font-medium">
-            操作
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row) => {
-          const acceptForm = linkAcceptForms[row.id] ?? EMPTY_LINK_ACCEPT_FORM;
-          const declineReason = linkDeclineReasons[row.id] ?? '';
-          const link = row.patient_link;
-          const partnerPharmacyName = row.partnership.partner_pharmacy.name;
-          const isPendingLink = link?.match_status === 'pending';
-          const baseApproved = Boolean(link?.approved_by_base);
-          const partnerAccepted = link?.match_status === 'accepted';
-          const canAccept =
-            isPendingLink &&
-            baseApproved &&
-            acceptForm.partnerPatientId.trim().length > 0 &&
-            acceptForm.name.trim().length > 0 &&
-            acceptForm.birthDate.trim().length > 0;
-          const canActivate = row.status !== 'active' && partnerAccepted;
+    <DataTable
+      columns={shareCaseColumns}
+      data={rows}
+      caption="患者共有ケース一覧"
+      getRowId={(row) => row.id}
+      getRowA11yLabel={(row) =>
+        `${row.id} ${row.partnership.partner_pharmacy.name} ${statusLabel(row.status)}`
+      }
+      emptyMessage="患者共有ケースはまだありません"
+    />
+  );
+}
 
-          return (
-            <tr key={row.id} className="border-t border-border/70 align-top">
-              <td className="px-3 py-2">
-                <div className="font-medium">{row.id}</div>
-                <Badge className="mt-1" variant={statusVariant(row.status)}>
-                  {statusLabel(row.status)}
-                </Badge>
-              </td>
-              <td className="px-3 py-2">{partnerPharmacyName}</td>
-              <td className="px-3 py-2">
-                <div>{statusLabel(link?.match_status ?? 'pending')}</div>
-                <TinyMeta>
-                  base {baseApproved ? '承認済み' : '未承認'} / partner{' '}
-                  {link?.approved_by_partner ? '承認済み' : '未承認'}
-                </TinyMeta>
-              </td>
-              <td className="px-3 py-2 tabular-nums">
-                {formatDate(row.starts_at)} - {formatDate(row.ends_at)}
-              </td>
-              <td className="px-3 py-2 lg:min-w-[44rem]">
-                <div className="flex flex-col gap-3">
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={isBusy || !canActivate}
-                      onClick={() => onActivate(row)}
-                      aria-label={`${row.id} ${partnerPharmacyName} を共有開始`}
-                    >
-                      <CheckCircle2 className="size-4" aria-hidden="true" />
-                      共有開始
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      disabled={isBusy || !isPendingLink || baseApproved}
-                      onClick={() => onBaseApprove(row)}
-                      aria-label={`${row.id} ${partnerPharmacyName} の患者リンクを基幹承認`}
-                    >
-                      <Link2 className="size-4" aria-hidden="true" />
-                      基幹承認
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={isBusy}
-                      onClick={() => onSelectCorrectionCase(row.id)}
-                      aria-label={`${row.id} ${partnerPharmacyName} の修正依頼対象にする`}
-                    >
-                      <PencilLine className="size-4" aria-hidden="true" />
-                      修正依頼
-                    </Button>
-                  </div>
+function ShareCaseActionCell({
+  row,
+  acceptForm,
+  declineReason,
+  updateAcceptForm,
+  setLinkDeclineReasons,
+  isBusy,
+  onActivate,
+  onBaseApprove,
+  onAcceptLink,
+  onDeclineLink,
+  onSelectCorrectionCase,
+}: {
+  row: PatientShareCaseRow;
+  acceptForm: LinkAcceptForm;
+  declineReason: string;
+  updateAcceptForm: (
+    id: string,
+    patch: Partial<LinkAcceptForm>,
+    currentForm: LinkAcceptForm,
+  ) => void;
+  setLinkDeclineReasons: Dispatch<SetStateAction<Record<string, string>>>;
+  isBusy: boolean;
+  onActivate: (row: PatientShareCaseRow) => void;
+  onBaseApprove: (row: PatientShareCaseRow) => void;
+  onAcceptLink: (row: PatientShareCaseRow, form: LinkAcceptForm) => void;
+  onDeclineLink: (row: PatientShareCaseRow, reason: string) => void;
+  onSelectCorrectionCase: (id: string) => void;
+}) {
+  const link = row.patient_link;
+  const partnerPharmacyName = row.partnership.partner_pharmacy.name;
+  const isPendingLink = link?.match_status === 'pending';
+  const baseApproved = Boolean(link?.approved_by_base);
+  const partnerAccepted = link?.match_status === 'accepted';
+  const canAccept =
+    isPendingLink &&
+    baseApproved &&
+    acceptForm.partnerPatientId.trim().length > 0 &&
+    acceptForm.name.trim().length > 0 &&
+    acceptForm.birthDate.trim().length > 0;
+  const canActivate = row.status !== 'active' && partnerAccepted;
 
-                  {isPendingLink ? (
-                    <div className="grid gap-2 rounded-md border border-border/60 bg-muted/30 p-3 sm:grid-cols-2 xl:grid-cols-3">
-                      <label className="flex flex-col gap-1">
-                        <FieldLabel>協力側ID</FieldLabel>
-                        <Input
-                          value={acceptForm.partnerPatientId}
-                          onChange={(event) =>
-                            updateAcceptForm(
-                              row.id,
-                              { partnerPatientId: event.target.value },
-                              acceptForm,
-                            )
-                          }
-                          aria-label={`${row.id} の協力側ID`}
-                        />
-                      </label>
-                      <label className="flex flex-col gap-1">
-                        <FieldLabel>氏名</FieldLabel>
-                        <Input
-                          value={acceptForm.name}
-                          onChange={(event) =>
-                            updateAcceptForm(row.id, { name: event.target.value }, acceptForm)
-                          }
-                          aria-label={`${row.id} の協力側氏名`}
-                        />
-                      </label>
-                      <label className="flex flex-col gap-1">
-                        <FieldLabel>氏名カナ</FieldLabel>
-                        <Input
-                          value={acceptForm.nameKana}
-                          onChange={(event) =>
-                            updateAcceptForm(row.id, { nameKana: event.target.value }, acceptForm)
-                          }
-                          aria-label={`${row.id} の協力側氏名カナ`}
-                        />
-                      </label>
-                      <label className="flex flex-col gap-1">
-                        <FieldLabel>生年月日</FieldLabel>
-                        <Input
-                          type="date"
-                          value={acceptForm.birthDate}
-                          onChange={(event) =>
-                            updateAcceptForm(row.id, { birthDate: event.target.value }, acceptForm)
-                          }
-                          aria-label={`${row.id} の協力側生年月日`}
-                        />
-                      </label>
-                      <label className="flex flex-col gap-1">
-                        <FieldLabel>住所</FieldLabel>
-                        <Input
-                          value={acceptForm.address}
-                          onChange={(event) =>
-                            updateAcceptForm(row.id, { address: event.target.value }, acceptForm)
-                          }
-                          aria-label={`${row.id} の協力側住所`}
-                        />
-                      </label>
-                      <label className="flex flex-col gap-1">
-                        <FieldLabel>照合補足</FieldLabel>
-                        <Input
-                          value={acceptForm.overrideReason}
-                          onChange={(event) =>
-                            updateAcceptForm(
-                              row.id,
-                              { overrideReason: event.target.value },
-                              acceptForm,
-                            )
-                          }
-                          aria-label={`${row.id} の照合補足`}
-                        />
-                      </label>
-                      <div className="flex flex-wrap gap-2 sm:col-span-2 xl:col-span-3">
-                        <Button
-                          type="button"
-                          size="sm"
-                          disabled={isBusy || !canAccept}
-                          onClick={() => onAcceptLink(row, acceptForm)}
-                          aria-label={`${row.id} ${partnerPharmacyName} の患者リンクを協力受諾`}
-                        >
-                          <CheckCircle2 className="size-4" aria-hidden="true" />
-                          協力受諾
-                        </Button>
-                        <Input
-                          value={declineReason}
-                          onChange={(event) =>
-                            setLinkDeclineReasons((current) => ({
-                              ...current,
-                              [row.id]: event.target.value,
-                            }))
-                          }
-                          placeholder="辞退理由"
-                          aria-label={`${row.id} の患者リンク辞退理由`}
-                          className="min-w-0 flex-1 lg:min-w-52"
-                        />
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          disabled={isBusy || declineReason.trim().length === 0}
-                          onClick={() => onDeclineLink(row, declineReason)}
-                          aria-label={`${row.id} ${partnerPharmacyName} の患者リンクを辞退`}
-                        >
-                          <XCircle className="size-4" aria-hidden="true" />
-                          辞退
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <TinyMeta>患者リンクの状態遷移はありません</TinyMeta>
-                  )}
-                </div>
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </TableFrame>
+  return (
+    <div className="flex flex-col gap-3 text-left">
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={isBusy || !canActivate}
+          onClick={() => onActivate(row)}
+          aria-label={`${row.id} ${partnerPharmacyName} を共有開始`}
+        >
+          <CheckCircle2 className="size-4" aria-hidden="true" />
+          共有開始
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          disabled={isBusy || !isPendingLink || baseApproved}
+          onClick={() => onBaseApprove(row)}
+          aria-label={`${row.id} ${partnerPharmacyName} の患者リンクを基幹承認`}
+        >
+          <Link2 className="size-4" aria-hidden="true" />
+          基幹承認
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={isBusy}
+          onClick={() => onSelectCorrectionCase(row.id)}
+          aria-label={`${row.id} ${partnerPharmacyName} の修正依頼対象にする`}
+        >
+          <PencilLine className="size-4" aria-hidden="true" />
+          修正依頼
+        </Button>
+      </div>
+
+      {isPendingLink ? (
+        <div className="grid gap-2 rounded-md border border-border/60 bg-muted/30 p-3 sm:grid-cols-2 xl:grid-cols-3">
+          <label className="flex flex-col gap-1">
+            <FieldLabel>協力側ID</FieldLabel>
+            <Input
+              value={acceptForm.partnerPatientId}
+              onChange={(event) =>
+                updateAcceptForm(row.id, { partnerPatientId: event.target.value }, acceptForm)
+              }
+              aria-label={`${row.id} の協力側ID`}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <FieldLabel>氏名</FieldLabel>
+            <Input
+              value={acceptForm.name}
+              onChange={(event) =>
+                updateAcceptForm(row.id, { name: event.target.value }, acceptForm)
+              }
+              aria-label={`${row.id} の協力側氏名`}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <FieldLabel>氏名カナ</FieldLabel>
+            <Input
+              value={acceptForm.nameKana}
+              onChange={(event) =>
+                updateAcceptForm(row.id, { nameKana: event.target.value }, acceptForm)
+              }
+              aria-label={`${row.id} の協力側氏名カナ`}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <FieldLabel>生年月日</FieldLabel>
+            <Input
+              type="date"
+              value={acceptForm.birthDate}
+              onChange={(event) =>
+                updateAcceptForm(row.id, { birthDate: event.target.value }, acceptForm)
+              }
+              aria-label={`${row.id} の協力側生年月日`}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <FieldLabel>住所</FieldLabel>
+            <Input
+              value={acceptForm.address}
+              onChange={(event) =>
+                updateAcceptForm(row.id, { address: event.target.value }, acceptForm)
+              }
+              aria-label={`${row.id} の協力側住所`}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <FieldLabel>照合補足</FieldLabel>
+            <Input
+              value={acceptForm.overrideReason}
+              onChange={(event) =>
+                updateAcceptForm(row.id, { overrideReason: event.target.value }, acceptForm)
+              }
+              aria-label={`${row.id} の照合補足`}
+            />
+          </label>
+          <div className="flex flex-wrap gap-2 sm:col-span-2 xl:col-span-3">
+            <Button
+              type="button"
+              size="sm"
+              disabled={isBusy || !canAccept}
+              onClick={() => onAcceptLink(row, acceptForm)}
+              aria-label={`${row.id} ${partnerPharmacyName} の患者リンクを協力受諾`}
+            >
+              <CheckCircle2 className="size-4" aria-hidden="true" />
+              協力受諾
+            </Button>
+            <Input
+              value={declineReason}
+              onChange={(event) =>
+                setLinkDeclineReasons((current) => ({
+                  ...current,
+                  [row.id]: event.target.value,
+                }))
+              }
+              placeholder="辞退理由"
+              aria-label={`${row.id} の患者リンク辞退理由`}
+              className="min-w-0 flex-1 lg:min-w-52"
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={isBusy || declineReason.trim().length === 0}
+              onClick={() => onDeclineLink(row, declineReason)}
+              aria-label={`${row.id} ${partnerPharmacyName} の患者リンクを辞退`}
+            >
+              <XCircle className="size-4" aria-hidden="true" />
+              辞退
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <TinyMeta>患者リンクの状態遷移はありません</TinyMeta>
+      )}
+    </div>
   );
 }
 
