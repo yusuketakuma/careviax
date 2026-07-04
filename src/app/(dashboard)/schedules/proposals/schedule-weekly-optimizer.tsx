@@ -15,6 +15,7 @@ import {
 import { ja } from 'date-fns/locale';
 import { CalendarClock, Car, GripVertical, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
+import { readApiJson } from '@/lib/api/client-json';
 import { messageFromError } from '@/lib/utils/error-message';
 import type { ProposalGenerationDiagnosticsCardData } from '@/components/features/visits/visit-proposal-diagnostics-card';
 import {
@@ -506,8 +507,7 @@ export function ScheduleWeeklyOptimizer({
       const response = await fetch(`/api/cases?${params}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('ケース一覧の取得に失敗しました');
-      return response.json() as Promise<{ data: CaseOption[] }>;
+      return readApiJson<{ data: CaseOption[] }>(response, 'ケース一覧の取得に失敗しました');
     },
     enabled: !!orgId,
   });
@@ -522,8 +522,7 @@ export function ScheduleWeeklyOptimizer({
       const response = await fetch(`/api/cases?${params}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('ケース候補の取得に失敗しました');
-      return response.json() as Promise<{ data: CaseOption[] }>;
+      return readApiJson<{ data: CaseOption[] }>(response, 'ケース候補の取得に失敗しました');
     },
     enabled: !!orgId && deferredCaseSearchInput.length >= 2,
   });
@@ -552,8 +551,7 @@ export function ScheduleWeeklyOptimizer({
       const response = await fetch(`/api/visit-schedule-proposals?${params}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('週間候補の取得に失敗しました');
-      return response.json() as Promise<{ data: Proposal[] }>;
+      return readApiJson<{ data: Proposal[] }>(response, '週間候補の取得に失敗しました');
     },
     enabled: !!orgId,
     invalidateOn: ['workflow_refresh'],
@@ -569,8 +567,7 @@ export function ScheduleWeeklyOptimizer({
       const response = await fetch(`/api/pharmacist-shifts?${params}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('薬剤師シフトの取得に失敗しました');
-      return response.json() as Promise<{ data: PharmacistShift[] }>;
+      return readApiJson<{ data: PharmacistShift[] }>(response, '薬剤師シフトの取得に失敗しました');
     },
     enabled: !!orgId,
   });
@@ -581,8 +578,10 @@ export function ScheduleWeeklyOptimizer({
       const response = await fetch('/api/visit-vehicle-resources?available=true', {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('社用車リソースの取得に失敗しました');
-      return response.json() as Promise<VisitVehicleResourceScheduleOptionsResponse>;
+      return readApiJson<VisitVehicleResourceScheduleOptionsResponse>(
+        response,
+        '社用車リソースの取得に失敗しました',
+      );
     },
     enabled: !!orgId,
   });
@@ -635,8 +634,10 @@ export function ScheduleWeeklyOptimizer({
       const response = await fetch(`/api/visit-schedule-proposals/billing-preview?${params}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('算定プレビューの取得に失敗しました');
-      return response.json() as Promise<VisitScheduleBillingPreview>;
+      return readApiJson<VisitScheduleBillingPreview>(
+        response,
+        '算定プレビューの取得に失敗しました',
+      );
     },
     enabled: !!orgId && !!selectedCaseId,
   });

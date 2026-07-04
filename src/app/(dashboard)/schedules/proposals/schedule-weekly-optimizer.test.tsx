@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { jsonResponse } from '@/test/fetch-test-utils';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useRealtimeQueryMock = vi.hoisted(() => vi.fn());
@@ -74,6 +75,8 @@ setupDomTestEnv();
 
 import { ScheduleWeeklyOptimizer } from './schedule-weekly-optimizer';
 import { toast } from 'sonner';
+
+type QueryConfig = { queryKey: unknown[]; queryFn?: () => Promise<unknown> };
 
 function buildWeeklySchedule(overrides?: Record<string, unknown>) {
   return {
@@ -300,6 +303,59 @@ describe('ScheduleWeeklyOptimizer', () => {
         return content.includes('社用車候補が他2') && content.includes('全体の割当可否');
       }),
     ).toBeTruthy();
+  });
+
+  it('keeps API messages from failed weekly optimizer read fetches', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({ message: '週間最適化データを表示できません' }, 403),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ScheduleWeeklyOptimizer initialCaseId="case_1" />);
+
+    const queryConfigs = useQueryMock.mock.calls.map(([config]) => config as QueryConfig);
+    const realtimeQueryConfigs = useRealtimeQueryMock.mock.calls.map(
+      ([config]) => config as QueryConfig,
+    );
+    const findQuery = (key: unknown[]) =>
+      [...queryConfigs, ...realtimeQueryConfigs].find((config) =>
+        key.every((segment, index) => config.queryKey[index] === segment),
+      );
+
+    const readQueries = [
+      ['cases', 'weekly-optimizer'],
+      ['cases', 'weekly-optimizer-search'],
+      ['visit-schedule-proposals', 'weekly-optimizer'],
+      ['pharmacist-shifts', 'weekly-optimizer'],
+      ['visit-vehicle-resources'],
+      ['weekly-optimizer-billing-preview'],
+    ];
+
+    for (const key of readQueries) {
+      await expect(findQuery(key)?.queryFn?.()).rejects.toThrow('週間最適化データを表示できません');
+    }
+
+    expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual([
+      '/api/cases?status=active&limit=100',
+      '/api/cases?status=active&limit=8&q=',
+      expect.stringMatching(
+        /^\/api\/visit-schedule-proposals\?date_from=\d{4}-\d{2}-\d{2}&date_to=\d{4}-\d{2}-\d{2}$/,
+      ),
+      expect.stringMatching(
+        /^\/api\/pharmacist-shifts\?date_from=\d{4}-\d{2}-\d{2}&date_to=\d{4}-\d{2}-\d{2}$/,
+      ),
+      '/api/visit-vehicle-resources?available=true',
+      expect.stringMatching(
+        /^\/api\/visit-schedule-proposals\/billing-preview\?case_id=case_1&proposed_date=\d{4}-\d{2}-\d{2}$/,
+      ),
+    ]);
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(init).toEqual(
+        expect.objectContaining({
+          headers: expect.objectContaining({ 'x-org-id': 'org_1' }),
+        }),
+      );
+    }
   });
 
   it('keeps proposal generation disabled reasons visible until a case is selected', () => {
