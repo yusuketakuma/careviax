@@ -1,5 +1,44 @@
 # CODEX Goal Progress
 
+## R40/R44 Visits Today readApiJson Partial - 2026-07-05 05:35 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/visits/visits-today.tsx`
+    - `src/app/(dashboard)/visits/visits-today.test.tsx`
+- Scope:
+  - Reused `readApiJson<{ data: VisitPreparationBoardResponse }>` for the
+    `/api/visits/today-preparation` board GET.
+  - Preserved `buildOrgHeaders`, raw query key, realtime invalidation channels,
+    response envelope unwrap, board rendering, disabled primary-action reason,
+    action rail, blocked reasons, and evidence links.
+  - Updated the existing fetch contract test to use a standard `Response`
+    object, matching the shared helper's `Response.text()` parsing contract.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/visits/visits-today.test.tsx' --reporter=dot --testTimeout=30000`
+    initially failed on object identity after switching to parsed `Response`;
+    after changing the contract assertion to deep equality, it passed `1` file /
+    `6` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `6e911f36`
+    (`refactor(ui): reuse readApiJson in visits today`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 My Day readApiJson Partial - 2026-07-05 05:31 JST
 
 - Status:

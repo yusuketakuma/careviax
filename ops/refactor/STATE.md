@@ -188,6 +188,11 @@
   status-change audit-log read GET を readApiJson へ収束し、queryKey/enabled gates/JST day
   boundary/task pagination/cockpit fetch/status-change visibility は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 visits-today readApiJson slice(6e911f36) land。focused Vitest 6、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。today-preparation board read GET を
+  readApiJson へ収束し、buildOrgHeaders/queryKey/realtime invalidation/response unwrap/board UI は保持。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
+  維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 
