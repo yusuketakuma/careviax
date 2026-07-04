@@ -1385,7 +1385,9 @@ export function MedicationsContent({
               <ResidualMedicationChart patientId={patientId} />
               <div className="space-y-2">
                 {residualQuery.isLoading ? (
-                  <p className="text-sm text-muted-foreground">残薬提案を読み込み中...</p>
+                  <div role="status" aria-label="残薬提案を読み込み中" aria-live="polite">
+                    <SkeletonRows rows={2} cols={3} status={false} />
+                  </div>
                 ) : residualQuery.isError ? (
                   <ErrorState
                     variant="server"

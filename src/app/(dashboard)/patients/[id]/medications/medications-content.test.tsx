@@ -620,6 +620,34 @@ describe('MedicationsContent fetch-error surfaces (no false-empty)', () => {
     expect(screen.queryByText('疑義照会の記録はありません。')).toBeNull();
   });
 
+  it('uses a named skeleton while residual suggestions are loading', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (String(queryKey[0]) === 'residual-medications') {
+        return { data: undefined, isLoading: true, isError: false, refetch: vi.fn() };
+      }
+      return { data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() };
+    });
+
+    render(
+      <MedicationsContent
+        patientId="patient_1"
+        patientName="山田花子"
+        patientNameKana="ヤマダハナコ"
+        birthDate="1950-04-01"
+        gender="female"
+        allergyInfo={[]}
+      />,
+    );
+
+    expect(screen.getByRole('status', { name: '残薬提案を読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('残薬提案を読み込み中...', { selector: 'p' })).toBeNull();
+    expect(screen.queryByText(/残薬提案を読み込めませんでした/)).toBeNull();
+    expect(screen.queryByText(/7日超の余剰や減数禁止薬の注意はまだありません/)).toBeNull();
+  });
+
   // A failed fetch must surface an error + retry, never collapse into a "0 件 / 記録なし" state
   // that masks unresolved medical issues, pending inquiries, or excess-medication warnings.
   it.each([
