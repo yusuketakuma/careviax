@@ -1,5 +1,44 @@
 # CODEX Goal Progress
 
+## R35 ErrorState/EmptyState Renderer Convergence Completed - 2026-07-04 23:01 JST
+
+- Status:
+  - Implemented and validated R35:
+    - `src/components/ui/state-elements.tsx`
+    - `src/components/ui/error-state.tsx`
+    - `src/components/ui/empty-state.tsx`
+- Scope:
+  - Added shared state UI helpers: `StateHeading`, `StateActionButton`, and
+    `StateAction`.
+  - Replaced `ErrorState` local heading switch and action renderer with shared
+    helpers.
+  - Replaced `EmptyState` local heading switch and href/onClick action branch
+    with shared helpers.
+  - Preserved `ErrorState` default action size (`default`) and `EmptyState`
+    default action size (`sm`).
+- Safety:
+  - UI component internal refactor only.
+  - Existing props, heading level behavior, link/button action rendering,
+    live-region behavior, copy, and DOM contract are preserved.
+  - No product API, DB, auth, authorization, PHI projection, billing, audit,
+    deployment, package dependency, live DB operation, external send, secret
+    handling, push, or destructive operation changed.
+- Validation:
+  - `pnpm exec vitest run src/components/ui/error-state.test.tsx src/components/ui/empty-state.test.tsx --reporter=dot --testTimeout=30000`
+    passed `2` files / `8` tests.
+  - Duplicate local renderer scan returned no matches:
+    `rg -n "function (ErrorStateHeading|EmptyStateHeading)|function renderAction|type ErrorStateAction|<EmptyStateHeading|<ErrorStateHeading" src/components/ui/error-state.tsx src/components/ui/empty-state.tsx src/components/ui/state-elements.tsx`.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `80a77b03`
+    (`refactor(ui): share state action renderers`).
+- Remaining:
+  - R35 is complete.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R33 Billing-Evidence Date Boundary Convergence Completed - 2026-07-04 22:56 JST
 
 - Status:

@@ -2010,3 +2010,24 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - commit: `4561a33d` (`refactor(billing): use date boundary month helpers`)。
 - 残課題: R33 は closure。broad Plans.md objective は継続。未所有
   `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
+## 2026-07-04 R35 ErrorState/EmptyState renderer convergence
+
+- 分類: type-drift / UI state renderer convergence。
+- 実施:
+  - `src/components/ui/state-elements.tsx` を追加し、state UI 共通の
+    `StateHeading` / `StateActionButton` / `StateAction` を定義。
+  - `ErrorState` の local `renderAction` / `ErrorStateHeading` を削除し、共有 helper へ移行。
+  - `EmptyState` の local `EmptyStateHeading` と href/onClick action 分岐を削除し、共有 helper へ移行。
+  - `EmptyState` の既定 action size は従来どおり `sm`、`ErrorState` の既定 action size は
+    従来どおり `default` に維持。
+- 挙動変更: UI component 内部の renderer convergence のみ。既存 props、heading level、
+  link/button action rendering、live-region behavior、copy、DOM contract は維持。
+- 安全性: product API、DB、auth、authorization、PHI projection、billing、audit、deployment、
+  package dependency、live DB operation、external send、secret handling、push、destructive operation は不変。
+- 検証: focused `error-state.test.tsx` + `empty-state.test.tsx` は `2 files / 8 tests` green。
+  duplicate local renderer scan は no matches。scoped ESLint、targeted Prettier check、
+  targeted `git diff --check`、`pnpm typecheck` green。
+- commit: `80a77b03` (`refactor(ui): share state action renderers`)。
+- 残課題: R35 は closure。broad Plans.md objective は継続。未所有
+  `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
