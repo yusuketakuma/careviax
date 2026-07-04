@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { stubJsonFetch } from '@/test/fetch-test-utils';
 import { useUIStore } from '@/lib/stores/ui-store';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import {
@@ -278,6 +279,53 @@ describe('IntakeTriageContent', () => {
     expect(screen.getByText('読取モデルの版')).toBeTruthy();
     expect(screen.getByText('破棄ログ')).toBeTruthy();
     expect(screen.getByText('今月2件')).toBeTruthy();
+  });
+
+  it('fetches triage and cockpit queries with org headers and the shared JSON reader contract', async () => {
+    const fetchMock = stubJsonFetch({ data: buildTriageFixture() });
+    const captured: Array<{ queryKey: unknown[]; queryFn: () => Promise<unknown> }> = [];
+    useRealtimeQueryMock.mockImplementation(
+      (options: { queryKey: unknown[]; queryFn: () => Promise<unknown> }) => {
+        captured.push(options);
+        return {
+          data: options.queryKey[0] === 'dashboard' ? buildCockpitFixture() : buildTriageFixture(),
+          isLoading: false,
+          isError: false,
+          error: null,
+          refetch: refetchMock,
+        };
+      },
+    );
+
+    try {
+      render(<IntakeTriageContent />);
+
+      expect(captured.map((config) => config.queryKey)).toEqual([
+        ['prescription-intakes', 'triage', 'org_1'],
+        ['dashboard', 'cockpit', 'org_1'],
+      ]);
+
+      await expect(captured[0]?.queryFn()).resolves.toStrictEqual(buildTriageFixture());
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/prescription-intakes/triage');
+      expect((fetchMock.mock.calls[0]?.[1] as RequestInit).headers).toEqual({
+        'x-org-id': 'org_1',
+      });
+
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: buildCockpitFixture() }), {
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+      await expect(captured[1]?.queryFn()).resolves.toStrictEqual(buildCockpitFixture());
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/dashboard/cockpit');
+      expect((fetchMock.mock.calls[1]?.[1] as RequestInit).headers).toEqual({
+        'x-org-id': 'org_1',
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('レーンチップの再クリックで全件表示に切り替わる', () => {

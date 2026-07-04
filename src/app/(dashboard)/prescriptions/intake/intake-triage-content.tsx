@@ -17,6 +17,7 @@ import {
   WorkspaceActionRail,
   type EvidenceItem,
 } from '@/components/features/workspace/action-rail';
+import { readApiJson } from '@/lib/api/client-json';
 import { PROCESS_STEPS_9 } from '@/lib/prescription/cycle-workspace';
 import {
   buildDailyOpsBlockedReasons,
@@ -51,8 +52,10 @@ async function fetchIntakeTriage(orgId: string): Promise<IntakeTriageResponse> {
   const res = await fetch('/api/prescription-intakes/triage', {
     headers: buildOrgHeaders(orgId),
   });
-  if (!res.ok) throw new Error('取込キューの取得に失敗しました');
-  const json = await res.json();
+  const json = await readApiJson<{ data: IntakeTriageResponse }>(
+    res,
+    '取込キューの取得に失敗しました',
+  );
   return json.data;
 }
 
@@ -60,8 +63,10 @@ async function fetchCockpit(orgId: string): Promise<DashboardCockpitResponse> {
   const res = await fetch('/api/dashboard/cockpit', {
     headers: buildOrgHeaders(orgId),
   });
-  if (!res.ok) throw new Error('当日オペレーション状態の取得に失敗しました');
-  const json = await res.json();
+  const json = await readApiJson<{ data: DashboardCockpitResponse }>(
+    res,
+    '当日オペレーション状態の取得に失敗しました',
+  );
   return json.data;
 }
 
