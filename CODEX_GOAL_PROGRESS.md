@@ -1,5 +1,42 @@
 # CODEX Goal Progress
 
+## R25 Admin Panel ErrorState Retry Shorthand Partial - 2026-07-04 23:54 JST
+
+- Status:
+  - Implemented and validated the next bounded R25 slice:
+    - `src/app/(dashboard)/admin/staff/staff-kpi-panel.tsx`
+    - `src/app/(dashboard)/admin/facility-standards/facility-standards-content.tsx`
+- Scope:
+  - Migrated staff KPI and facility standards ErrorState retry actions from
+    hand-written `action={{ label: '再読み込み', onClick }}` objects to
+    `onRetry` + `retryLabel`.
+  - Preserved visible retry copy, existing refetch handlers, false-zero-safe
+    staff KPI behavior, and false-judgement-safe facility standards behavior.
+- Safety:
+  - UI presentation/refactor only.
+  - Visible retry copy, click handlers, ErrorState branches, staff metrics query
+    behavior, facility standards query behavior, and existing PHI-free error
+    copy are preserved.
+  - No product API, DB, auth, authorization, PHI projection, billing semantics,
+    audit, deployment, package dependency, live DB operation, external send,
+    secret handling, push, or destructive operation changed.
+- Validation:
+  - Targeted admin panel scan for hand-written `再読み込み` retry actions returned
+    no matches.
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/staff/staff-kpi-panel.test.tsx' 'src/app/(dashboard)/admin/facility-standards/facility-standards-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `2` files / `6` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `e56519ab`
+    (`refactor(ui): route admin panel retries through shorthand`).
+- Remaining:
+  - R25 is partial; remaining ErrorState retry action boilerplate should be
+    migrated in bounded screen/domain chunks.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R25 Work Coordination ErrorState Retry Shorthand Partial - 2026-07-04 23:51 JST
 
 - Status:
