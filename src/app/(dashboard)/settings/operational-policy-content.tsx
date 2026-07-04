@@ -24,6 +24,7 @@ import {
   type EvidenceItem,
   type NextActionPanelProps,
 } from '@/components/features/workspace/action-rail';
+import { readApiJson } from '@/lib/api/client-json';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
@@ -69,8 +70,10 @@ async function fetchOperationalPolicy(orgId: string): Promise<OperationalPolicyR
   const res = await fetch('/api/settings/operational-policy', {
     headers: buildOrgHeaders(orgId),
   });
-  if (!res.ok) throw new Error('運用ポリシーの取得に失敗しました');
-  const json = await res.json();
+  const json = await readApiJson<{ data: OperationalPolicyResponse }>(
+    res,
+    '運用ポリシーの取得に失敗しました',
+  );
   return json.data;
 }
 
@@ -95,8 +98,10 @@ async function fetchCockpitForRail(orgId: string): Promise<DashboardCockpitRespo
   const res = await fetch('/api/dashboard/cockpit', {
     headers: buildOrgHeaders(orgId),
   });
-  if (!res.ok) throw new Error('当日の優先タスク取得に失敗しました');
-  const json = await res.json();
+  const json = await readApiJson<{ data: DashboardCockpitResponse }>(
+    res,
+    '当日の優先タスク取得に失敗しました',
+  );
   return json.data;
 }
 

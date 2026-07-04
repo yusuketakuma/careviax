@@ -3,7 +3,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
-import { stubJsonFetch } from '@/test/fetch-test-utils';
+import { jsonResponse, stubJsonFetch } from '@/test/fetch-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useUIStore } from '@/lib/stores/ui-store';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
@@ -357,10 +357,13 @@ describe('OperationalPolicyContent', () => {
     const sentinel = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
     vi.mocked(buildOrgHeaders).mockReturnValue(sentinel);
     const { queryConfigs } = renderWithCapturedQueries();
-    const fetchMock = stubFetch({ data: buildPolicyFixture() });
+    const policyPayload = buildPolicyFixture();
+    const fetchMock = stubFetch({ data: policyPayload });
 
     try {
-      await queryConfigs.get('operational-policy')!.queryFn();
+      await expect(queryConfigs.get('operational-policy')!.queryFn()).resolves.toEqual(
+        policyPayload,
+      );
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [policyUrl, policyInit] = fetchMock.mock.calls[0] as [string, RequestInit];
       expect(policyUrl).toBe('/api/settings/operational-policy');
@@ -370,8 +373,12 @@ describe('OperationalPolicyContent', () => {
         'org_1',
       ]);
 
+      const cockpitPayload = buildCockpitFixture();
+      fetchMock.mockImplementation(async () => jsonResponse({ data: cockpitPayload }));
       fetchMock.mockClear();
-      await queryConfigs.get('settings-rail-cockpit')!.queryFn();
+      await expect(queryConfigs.get('settings-rail-cockpit')!.queryFn()).resolves.toEqual(
+        cockpitPayload,
+      );
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [cockpitUrl, cockpitInit] = fetchMock.mock.calls[0] as [string, RequestInit];
       expect(cockpitUrl).toBe('/api/dashboard/cockpit');
