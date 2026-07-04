@@ -21,7 +21,7 @@ export default function StaffPage() {
         supportingContent={null}
       />
 
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="スタッフ管理を読み込み中..." />}>
         <div className="space-y-4">
           <StaffKpiPanel />
           <UsersContent />

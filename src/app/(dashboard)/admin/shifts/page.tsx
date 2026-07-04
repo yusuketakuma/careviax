@@ -20,7 +20,7 @@ export default function ShiftsPage() {
         supportingContent={null}
       />
 
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="薬剤師シフト管理を読み込み中..." />}>
         <ShiftsContent />
       </Suspense>
     </PageScaffold>
