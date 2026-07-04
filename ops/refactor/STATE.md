@@ -63,6 +63,11 @@
 - codex: R55 schedule proposals loading/error states(8fee04d8) land。focused Vitest 48、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck`、`pnpm build`、memory-expanded
   `pnpm typecheck:no-unused` green。
+- codex: R40/R44 prescriptions-workspace readApiJson slice(7a079828) land。focused Vitest 10、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。prescription intake list read GET を
+  readApiJson へ収束し、limit/include_total/cursor/status/source params / realtime invalidation /
+  load-more / detail panel contract は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 - codex: R40/R44 prescription-detail readApiJson slice(d22ec557) land。focused Vitest 8、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。prescription intake detail read GET を
   readApiJson へ収束し、intake path helper / hostile-id encoding / retry-back error UI /

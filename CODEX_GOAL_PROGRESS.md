@@ -1,5 +1,43 @@
 # CODEX Goal Progress
 
+## R40/R44 Prescriptions Workspace readApiJson Partial - 2026-07-05 07:44 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/prescriptions/prescriptions-workspace.tsx`
+    - `src/app/(dashboard)/prescriptions/prescriptions-workspace.test.tsx`
+- Scope:
+  - Reused `readApiJson` for the prescription intake list infinite-query read
+    GET.
+  - Added queryFn contract coverage proving API JSON `message` from a failed
+    list read is preserved.
+  - Preserved `limit=50`, `include_total=1`, cursor/status/source filters, org
+    headers, React Query key, infinite-query pagination, realtime invalidation,
+    load-more behavior, error retry UI, and selected-row detail panel behavior.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/prescriptions/prescriptions-workspace.test.tsx'`
+    passed `1` file / `10` tests after updating the success fetch mock to
+    return a fresh `Response` per queryFn call.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `7a079828`
+    (`refactor(ui): reuse readApiJson in prescriptions workspace`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Prescription Detail readApiJson Partial - 2026-07-05 07:41 JST
 
 - Status:
