@@ -3,6 +3,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { stubJsonFetch } from '@/test/fetch-test-utils';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
@@ -193,11 +194,7 @@ describe('NotificationsContent', () => {
   });
 
   it('loads notifications through the shared path and org header helpers', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: vi.fn().mockResolvedValue({ data: [] }),
-    });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = stubJsonFetch({ data: [] });
 
     render(<NotificationsContent />);
 
@@ -213,8 +210,7 @@ describe('NotificationsContent', () => {
   });
 
   it('marks notifications read through the shared collection path and JSON org headers', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = stubJsonFetch({});
 
     render(<NotificationsContent />);
 

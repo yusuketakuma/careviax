@@ -4,6 +4,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { jsonResponse } from '@/test/fetch-test-utils';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
@@ -270,12 +271,11 @@ describe('CommunicationRequestsContent', () => {
       'x-test-helper': 'buildOrgJsonHeaders',
     };
     vi.mocked(buildOrgJsonHeaders).mockReturnValue(sentinelJsonHeaders);
-    const fetchMock = vi.fn().mockResolvedValueOnce(
-      new Response(JSON.stringify({ data: { request: { id: 'request_1', status: 'closed' } } }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
-    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({ data: { request: { id: 'request_1', status: 'closed' } } }),
+      );
     vi.stubGlobal('fetch', fetchMock);
 
     render(<CommunicationRequestsContent />);
