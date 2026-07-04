@@ -1500,3 +1500,34 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - commit: `7b030707` (`fix(admin): name site institution loading`)。
 - 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
   `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
+
+## 2026-07-04 R55 admin route-shell fallback closure
+
+- 分類: UI loading-state cleanup / R55 route-shell generic loading residual closure。
+- 実施:
+  - `admin/page.tsx` の route-level Suspense fallback を generic `Loading` から
+    `マスターを読み込み中...` の画面固有 status へ変更。
+  - `admin/analytics/page.tsx` を `KPI分析ダッシュボードを読み込み中...`、`admin/metrics/page.tsx` を
+    `経営指標ダッシュボードを読み込み中...`、`admin/audit-logs/page.tsx` を
+    `監査ログを読み込み中...`、`admin/pca-pumps/page.tsx` を
+    `PCAポンプレンタルを読み込み中...`、`admin/pharmacy-cooperation/page.tsx` を
+    `薬局間協力設定を読み込み中...` に変更。
+  - `admin/page.test.tsx` / `admin/analytics/page.test.tsx` / `admin/metrics/page.test.tsx` /
+    `admin/audit-logs/page.test.tsx` を追加し、既存 `admin/pca-pumps/page.test.tsx` /
+    `admin/pharmacy-cooperation/page.test.tsx` を拡張して、generic `読み込み中...` が出ないこと、
+    suspended content が出ないことを固定。
+- 挙動変更: route-shell loading label のみ。admin master hub、analytics/metrics/audit content query、
+  PCA pump content query、pharmacy cooperation setup query、route link contract、API path builder、
+  org header、mutation、billing semantics、API/DB/auth/authorization/audit は不変。
+- UI/UX根拠: `docs/ui-ux-design-guidelines.md` の Clear state / false-empty prevention と
+  route fallback は軽量で意味のある loading UI にする Next loading/Suspense guidance に整合。
+- 安全性: product API/DB/auth/authorization/PHI/billing/deploy/package dependency は不変。
+  Loading copy は PHI-free で、KPI value・audit actor・patient data・pump serial・pharmacy/cooperation contract detail・site/org id・raw error
+  を出さない。
+- 検証: focused final admin route fallback Vitest `6 files / 12 tests` green、targeted ESLint green、
+  targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+  `rg -n "<Suspense fallback=\\{<Loading />\\}" 'src/app/(dashboard)/admin' --glob 'page.tsx'`
+  は no matches。
+- commit: `f26b0bfd` (`fix(admin): close route loading fallbacks`)。
+- 残課題: admin route-shell generic fallback は closure。broad Plans.md / R55 residual scan は継続。
+  `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。

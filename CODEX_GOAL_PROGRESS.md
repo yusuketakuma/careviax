@@ -1,5 +1,60 @@
 # CODEX Goal Progress
 
+## R55 Admin Route Loading Fallback Closure - 2026-07-04 20:54 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/admin/page.tsx`
+    - `src/app/(dashboard)/admin/page.test.tsx`
+    - `src/app/(dashboard)/admin/analytics/page.tsx`
+    - `src/app/(dashboard)/admin/analytics/page.test.tsx`
+    - `src/app/(dashboard)/admin/metrics/page.tsx`
+    - `src/app/(dashboard)/admin/metrics/page.test.tsx`
+    - `src/app/(dashboard)/admin/audit-logs/page.tsx`
+    - `src/app/(dashboard)/admin/audit-logs/page.test.tsx`
+    - `src/app/(dashboard)/admin/pca-pumps/page.tsx`
+    - `src/app/(dashboard)/admin/pca-pumps/page.test.tsx`
+    - `src/app/(dashboard)/admin/pharmacy-cooperation/page.tsx`
+    - `src/app/(dashboard)/admin/pharmacy-cooperation/page.test.tsx`
+- Scope:
+  - Replaced the last admin route-level generic Suspense fallback `Loading`
+    instances with screen-specific statuses for:
+    - `マスターを読み込み中...`
+    - `KPI分析ダッシュボードを読み込み中...`
+    - `経営指標ダッシュボードを読み込み中...`
+    - `監査ログを読み込み中...`
+    - `PCAポンプレンタルを読み込み中...`
+    - `薬局間協力設定を読み込み中...`
+  - Added/extended route shell regression tests proving the static shell
+    remains visible, each fallback is screen-specific, generic `読み込み中...`
+    is absent, and suspended content is not rendered.
+  - Confirmed `rg -n "<Suspense fallback=\\{<Loading />\\}" 'src/app/(dashboard)/admin' --glob 'page.tsx'`
+    now returns no matches.
+- Safety:
+  - Route-shell loading presentation and tests only.
+  - No admin master hub behavior, analytics/metrics/audit content query, PCA
+    pump content query, pharmacy cooperation setup query, route link contract,
+    API path builder, org header, mutation, billing semantics, DB, auth,
+    authorization, PHI, audit, deployment, package, or server behavior changed.
+  - Loading copy is PHI-free and does not echo KPI values, audit actors,
+    patient data, pump serials, pharmacy/cooperation contract details, site
+    IDs, org IDs, or raw errors.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/page.test.tsx' 'src/app/(dashboard)/admin/analytics/page.test.tsx' 'src/app/(dashboard)/admin/metrics/page.test.tsx' 'src/app/(dashboard)/admin/audit-logs/page.test.tsx' 'src/app/(dashboard)/admin/pca-pumps/page.test.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/page.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `6` files / `12` tests.
+  - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
+    all six route source/test file pairs.
+  - `pnpm typecheck` passed.
+  - Admin route generic fallback closure scan returned no matches.
+- Commit:
+  - Implementation slice landed at `f26b0bfd`
+    (`fix(admin): close route loading fallbacks`).
+- Remaining:
+  - Broader R55 / Plans.md objective remains open beyond the admin route-shell
+    fallback closure.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Admin Site/Institution/Facility Route Loading Labels - 2026-07-04 20:49 JST
 
 - Status:
