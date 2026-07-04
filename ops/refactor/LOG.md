@@ -3104,3 +3104,28 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
   external-access grant page helper、dashboard/export/domain-specific preview limit など
   intentional/specialized truncation として別分類を継続。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
+## 2026-07-05 R40/R44 dashboard readApiJson slice
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 実施:
+  - billing check dashboard fetcher の `if (!res.ok) throw` + `res.json()` を
+    `readApiJson<{ data: BillingCheckResponse }>` へ移行。
+  - clerk support dashboard fetcher の `if (!res.ok) throw` + `res.json()` を
+    `readApiJson<{ data: ClerkSupportResponse }>` へ移行。
+  - billing fetcher test の簡易 Response mock を既存 `jsonResponse` helper に変更し、
+    `readApiJson` が使う標準 `Response.text()` contract に合わせた。
+- 挙動変更: fetch 実装内部の helper 収束のみ。API path、`buildOrgHeaders`、React Query key、
+  envelope unwrapping、画面表示は維持。
+- 安全性: product UI fetch internals のみ変更。DB/schema、auth/authorization、PHI projection、
+  billing/domain calculation、deployment、package dependency、live DB operation、external send、
+  secret handling、push、destructive operation は不変。
+  `use-nav-badges` は failed response body を読まない PHI-safe contract がテスト固定されていたため、
+  今回の helper 化対象から除外。
+- 検証: focused billing/clerk-support Vitest `2 files / 13 tests` green、
+  scoped ESLint green、targeted Prettier check green、targeted `git diff --check` green、
+  `pnpm typecheck` green。
+- commit: `ad86ed34` (`refactor(ui): reuse readApiJson in dashboard fetchers`)。
+- 残課題: R40/R44 は broad。追加の client fetcher は response body read が PHI-safe かを
+  個別確認してから段階移行する。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。

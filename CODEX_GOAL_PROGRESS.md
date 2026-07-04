@@ -1,5 +1,43 @@
 # CODEX Goal Progress
 
+## R40/R44 Dashboard readApiJson Partial - 2026-07-05 02:30 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/billing/billing-check-content.tsx`
+    - `src/app/(dashboard)/billing/billing-check-content.test.tsx`
+    - `src/app/(dashboard)/clerk-support/clerk-support-content.tsx`
+- Scope:
+  - Reused `readApiJson<{ data: ... }>` for billing check and clerk support
+    dashboard fetchers.
+  - Preserved API paths, `buildOrgHeaders`, React Query keys, response envelope
+    unwrapping, and rendered UI behavior.
+  - Updated the billing fetcher test mock to use the existing `jsonResponse`
+    helper so it matches the standard `Response.text()` contract used by
+    `readApiJson`.
+- Safety:
+  - Product UI fetch implementation internals changed only.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection,
+    billing/domain calculation behavior, deployment, package dependency,
+    live DB operation, external send, secret handling, push, and destructive
+    operation boundaries.
+  - Explicitly skipped `use-nav-badges` because its tests intentionally require
+    failed badge responses to avoid reading possibly sensitive response bodies.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/billing/billing-check-content.test.tsx' 'src/app/(dashboard)/clerk-support/clerk-support-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `2` files / `13` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `ad86ed34`
+    (`refactor(ui): reuse readApiJson in dashboard fetchers`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R24/R46 UAT Feedback Cursor Helper Partial - 2026-07-05 02:25 JST
 
 - Status:
