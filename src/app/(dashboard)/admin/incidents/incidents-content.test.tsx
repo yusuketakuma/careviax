@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { toast } from 'sonner';
@@ -11,6 +10,7 @@ import {
 } from '@/lib/incident-reports/api-paths';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import { IncidentsContent } from './incidents-content';
 import type { IncidentReportListItem } from './incidents-form';
 
@@ -153,19 +153,6 @@ vi.mock('@/components/ui/select', async () => {
 
 setupDomTestEnv();
 
-function createWrapper() {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  });
-
-  return function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
-  };
-}
-
 describe('IncidentsContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -177,7 +164,7 @@ describe('IncidentsContent', () => {
   });
 
   it('connects the empty-list disabled reason to memo controls and blocks direct submit', async () => {
-    render(<IncidentsContent />, { wrapper: createWrapper() });
+    render(<IncidentsContent />, { wrapper: createQueryClientWrapper() });
 
     // 空一覧は共通 EmptyState で表示される(タイトルに句点なし)
     expect(await screen.findByText('ヒヤリハット記録はまだありません')).toBeTruthy();
@@ -210,7 +197,7 @@ describe('IncidentsContent', () => {
 
   it('fetches incident reports from the shared collection API path with org header', async () => {
     const fetchMock = stubIncidentFetch([makeReport()]);
-    render(<IncidentsContent />, { wrapper: createWrapper() });
+    render(<IncidentsContent />, { wrapper: createQueryClientWrapper() });
 
     expect(await screen.findByText('取り違えヒヤリ')).toBeTruthy();
 
@@ -231,7 +218,7 @@ describe('IncidentsContent', () => {
         related_process: 'dispensing',
       }),
     ]);
-    render(<IncidentsContent />, { wrapper: createWrapper() });
+    render(<IncidentsContent />, { wrapper: createQueryClientWrapper() });
 
     const causeInput = await screen.findByLabelText('原因');
     fireEvent.change(causeInput, { target: { value: 'ダブルチェック不足' } });
@@ -271,7 +258,7 @@ describe('IncidentsContent', () => {
         new Response(JSON.stringify({ message: '同時更新されています' }), { status: 409 }),
       );
     vi.stubGlobal('fetch', fetchMock);
-    render(<IncidentsContent />, { wrapper: createWrapper() });
+    render(<IncidentsContent />, { wrapper: createQueryClientWrapper() });
 
     await screen.findByText('取り違えヒヤリ');
     fireEvent.submit(screen.getByTestId('incident-memo-form'));
@@ -289,7 +276,7 @@ describe('IncidentsContent', () => {
       )
       .mockResolvedValueOnce(new Response(JSON.stringify({}), { status: 500 }));
     vi.stubGlobal('fetch', fetchMock);
-    render(<IncidentsContent />, { wrapper: createWrapper() });
+    render(<IncidentsContent />, { wrapper: createQueryClientWrapper() });
 
     await screen.findByText('取り違えヒヤリ');
     fireEvent.submit(screen.getByTestId('incident-memo-form'));
@@ -309,7 +296,7 @@ describe('IncidentsContent', () => {
         related_process: 'dispensing',
       }),
     ]);
-    render(<IncidentsContent />, { wrapper: createWrapper() });
+    render(<IncidentsContent />, { wrapper: createQueryClientWrapper() });
 
     const whatHappened = await screen.findByLabelText('起きたこと');
     expect(whatHappened.tagName).toBe('TEXTAREA');
@@ -324,7 +311,7 @@ describe('IncidentsContent', () => {
   it('marks empty memo fields with a 未入力 chip that clears once the field is filled', async () => {
     // what_happened のみ記入済み → cause / immediate / prevention / related_process が未入力(4件)。
     stubReports([makeReport()]);
-    render(<IncidentsContent />, { wrapper: createWrapper() });
+    render(<IncidentsContent />, { wrapper: createQueryClientWrapper() });
 
     await screen.findByLabelText('起きたこと');
     expect(screen.getAllByText('未入力')).toHaveLength(4);
@@ -335,7 +322,7 @@ describe('IncidentsContent', () => {
 
   it('does not show per-field 未入力 chips when no record is selected', async () => {
     stubReports([]);
-    render(<IncidentsContent />, { wrapper: createWrapper() });
+    render(<IncidentsContent />, { wrapper: createQueryClientWrapper() });
 
     expect(await screen.findByText('ヒヤリハット記録はまだありません')).toBeTruthy();
     // 上部サマリー(『未入力: …』)とは別物の per-field チップは未選択時には出さない。
@@ -345,7 +332,7 @@ describe('IncidentsContent', () => {
 
   it('drops the fixed 640px min-height from both panels', async () => {
     stubReports([makeReport()]);
-    render(<IncidentsContent />, { wrapper: createWrapper() });
+    render(<IncidentsContent />, { wrapper: createQueryClientWrapper() });
 
     await screen.findByLabelText('起きたこと');
     expect(screen.getByRole('region', { name: '記録一覧' }).className).not.toContain(
@@ -359,7 +346,7 @@ describe('IncidentsContent', () => {
   describe('status/severity display and status change (canAdmin)', () => {
     it('shows severity and status badges for each record in the list', async () => {
       stubReports([makeReport({ severity: 'level2', status: 'reviewed' })]);
-      render(<IncidentsContent />, { wrapper: createWrapper() });
+      render(<IncidentsContent />, { wrapper: createQueryClientWrapper() });
 
       await screen.findByText('取り違えヒヤリ');
       expect(screen.getAllByText('レベル2以上（中等度以上）').length).toBeGreaterThan(0);
@@ -369,7 +356,7 @@ describe('IncidentsContent', () => {
     it('renders a read-only status badge (no select) for a non-admin role', async () => {
       useAuthStore.getState().setCurrentUser({ role: 'pharmacist' });
       stubReports([makeReport({ status: 'open' })]);
-      render(<IncidentsContent />, { wrapper: createWrapper() });
+      render(<IncidentsContent />, { wrapper: createQueryClientWrapper() });
 
       await screen.findByText('取り違えヒヤリ');
       expect(screen.queryByTestId('incident-status-select')).toBeNull();
@@ -379,7 +366,7 @@ describe('IncidentsContent', () => {
     it('shows a status change select for an admin role and PATCHes the new status', async () => {
       useAuthStore.getState().setCurrentUser({ role: 'admin' });
       const fetchMock = stubIncidentFetch([makeReport({ id: 'incident_1', status: 'open' })]);
-      render(<IncidentsContent />, { wrapper: createWrapper() });
+      render(<IncidentsContent />, { wrapper: createQueryClientWrapper() });
 
       await screen.findByText('取り違えヒヤリ');
       const statusSelect = screen.getByTestId('incident-status-select');
@@ -412,7 +399,7 @@ describe('IncidentsContent', () => {
         )
         .mockResolvedValueOnce(new Response(JSON.stringify({}), { status: 500 }));
       vi.stubGlobal('fetch', fetchMock);
-      render(<IncidentsContent />, { wrapper: createWrapper() });
+      render(<IncidentsContent />, { wrapper: createQueryClientWrapper() });
 
       await screen.findByText('取り違えヒヤリ');
       fireEvent.change(screen.getByTestId('incident-status-select'), {
@@ -439,7 +426,7 @@ describe('IncidentsContent', () => {
           ),
       );
       vi.stubGlobal('fetch', fetchMock);
-      render(<IncidentsContent />, { wrapper: createWrapper() });
+      render(<IncidentsContent />, { wrapper: createQueryClientWrapper() });
 
       await screen.findByText('ヒヤリハット記録はまだありません');
       fireEvent.click(screen.getByRole('button', { name: '新規記録' }));
@@ -477,7 +464,7 @@ describe('IncidentsContent', () => {
           ),
       );
       vi.stubGlobal('fetch', fetchMock);
-      render(<IncidentsContent />, { wrapper: createWrapper() });
+      render(<IncidentsContent />, { wrapper: createQueryClientWrapper() });
 
       await screen.findByText('ヒヤリハット記録はまだありません');
       fireEvent.click(screen.getByRole('button', { name: '新規記録' }));
