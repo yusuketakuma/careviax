@@ -82,6 +82,14 @@ function renderCreateEditDrawer(props?: {
   );
 }
 
+function getDrawerFormElement() {
+  const form = screen.getByLabelText('候補日').closest('form');
+  if (!(form instanceof HTMLFormElement)) {
+    throw new Error('schedule drawer form was not rendered');
+  }
+  return form;
+}
+
 describe('schedule create/edit drawer unsaved-changes guard (FEUX-8)', () => {
   it('intercepts drawer close while dirty and honors cancel', async () => {
     requestNavigationConfirmationMock.mockResolvedValue(false);
@@ -152,6 +160,9 @@ describe('schedule create/edit drawer unsaved-changes guard (FEUX-8)', () => {
   it('closes cleanly without confirmation when nothing changed', () => {
     const onOpenChange = vi.fn();
     renderCreateEditDrawer({ onOpenChange });
+
+    const lastGuardCall = useUnsavedChangesGuardMock.mock.calls.at(-1)?.[0];
+    expect(lastGuardCall?.enabled).toBe(false);
 
     fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
 
@@ -350,6 +361,53 @@ describe('schedule create/edit drawer helpers', () => {
     expect(draftButton.getAttribute('aria-describedby')).toBeNull();
   });
 
+  it('shows the RHF error summary without calling the API when submitted with an invalid save form', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      Response.json({ data: { id: 'proposal_1' } }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderCreateEditDrawer();
+    fireEvent.change(screen.getByLabelText('候補日'), { target: { value: '' } });
+    fireEvent.submit(getDrawerFormElement());
+
+    const summaryTitle = await screen.findByText('入力内容を確認してください');
+    const summary = summaryTitle.closest('[role="alert"]');
+    expect(summary?.textContent).toContain('候補日');
+    expect(summary?.textContent).toContain('保存するには 候補日 を選択してください。');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('omits empty time values from the drawer UI draft PUT body', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      Response.json({ data: { id: 'proposal_1' } }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderCreateEditDrawer();
+    fireEvent.click(screen.getByRole('button', { name: '下書き保存' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/visit-schedule-proposals',
+        expect.objectContaining({
+          method: 'PUT',
+          body: expect.any(String),
+        }),
+      );
+    });
+    const body = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string) as Record<string, unknown>;
+    expect(body).toEqual({
+      case_id: 'case_1',
+      visit_type: 'regular',
+      priority: 'normal',
+      proposed_date: '2026-06-30',
+      proposed_pharmacist_id: 'user_1',
+      travel_mode: 'DRIVE',
+      submit_for_contact: false,
+    });
+  });
+
   it('sends start and end time values from the drawer UI in the PUT body', async () => {
     const fetchMock = vi.fn<typeof fetch>(async () =>
       Response.json({ data: { id: 'proposal_1' } }),
@@ -371,9 +429,15 @@ describe('schedule create/edit drawer helpers', () => {
       );
     });
     const body = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string) as Record<string, unknown>;
-    expect(body).toMatchObject({
+    expect(body).toEqual({
+      case_id: 'case_1',
+      visit_type: 'regular',
+      priority: 'normal',
+      proposed_date: '2026-06-30',
       time_window_start: '09:00',
       time_window_end: '10:30',
+      proposed_pharmacist_id: 'user_1',
+      travel_mode: 'DRIVE',
       submit_for_contact: false,
     });
   });
@@ -399,9 +463,15 @@ describe('schedule create/edit drawer helpers', () => {
       );
     });
     const body = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string) as Record<string, unknown>;
-    expect(body).toMatchObject({
+    expect(body).toEqual({
+      case_id: 'case_1',
+      visit_type: 'regular',
+      priority: 'normal',
+      proposed_date: '2026-06-30',
       time_window_start: '09:00',
       time_window_end: '10:30',
+      proposed_pharmacist_id: 'user_1',
+      travel_mode: 'DRIVE',
       submit_for_contact: true,
     });
   });

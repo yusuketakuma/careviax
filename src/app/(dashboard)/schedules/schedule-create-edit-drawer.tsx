@@ -1,15 +1,20 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { messageFromError } from '@/lib/utils/error-message';
 import { requestNavigationConfirmation } from '@/components/providers/navigation-confirm-provider';
 import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
 import { Button } from '@/components/ui/button';
+import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import {
   Select,
   SelectContent,
@@ -68,6 +73,33 @@ export type ScheduleCreateEditDrawerForm = {
   travel_mode: TravelMode;
 };
 
+const SCHEDULE_DRAWER_EMPTY_FORM: ScheduleCreateEditDrawerForm = {
+  case_id: '',
+  visit_type: 'regular',
+  priority: 'normal',
+  proposed_date: '',
+  time_window_start: '',
+  time_window_end: '',
+  proposed_pharmacist_id: '',
+  travel_mode: 'DRIVE',
+};
+
+function normalizeScheduleCreateEditDrawerForm(
+  form?: Partial<ScheduleCreateEditDrawerForm> | null,
+): ScheduleCreateEditDrawerForm {
+  return {
+    case_id: form?.case_id ?? SCHEDULE_DRAWER_EMPTY_FORM.case_id,
+    visit_type: form?.visit_type ?? SCHEDULE_DRAWER_EMPTY_FORM.visit_type,
+    priority: form?.priority ?? SCHEDULE_DRAWER_EMPTY_FORM.priority,
+    proposed_date: form?.proposed_date ?? SCHEDULE_DRAWER_EMPTY_FORM.proposed_date,
+    time_window_start: form?.time_window_start ?? SCHEDULE_DRAWER_EMPTY_FORM.time_window_start,
+    time_window_end: form?.time_window_end ?? SCHEDULE_DRAWER_EMPTY_FORM.time_window_end,
+    proposed_pharmacist_id:
+      form?.proposed_pharmacist_id ?? SCHEDULE_DRAWER_EMPTY_FORM.proposed_pharmacist_id,
+    travel_mode: form?.travel_mode ?? SCHEDULE_DRAWER_EMPTY_FORM.travel_mode,
+  };
+}
+
 function normalizeProposalTime(value: string | null | undefined): string {
   if (!value) return '';
 
@@ -90,7 +122,7 @@ export function buildScheduleCreateEditDrawerForm(args: {
 }): ScheduleCreateEditDrawerForm {
   const { defaultDate, proposal, cases, pharmacists } = args;
   if (proposal) {
-    return {
+    return normalizeScheduleCreateEditDrawerForm({
       case_id: proposal.case_id,
       visit_type: proposal.visit_type,
       priority: proposal.priority,
@@ -99,11 +131,11 @@ export function buildScheduleCreateEditDrawerForm(args: {
       time_window_end: normalizeProposalTime(proposal.time_window_end),
       proposed_pharmacist_id: proposal.proposed_pharmacist_id,
       travel_mode: (proposal.vehicle_resource?.travel_mode as TravelMode | undefined) ?? 'DRIVE',
-    };
+    });
   }
   const firstCase = cases[0];
   const defaultPharmacistId = firstCase?.primary_pharmacist_id ?? pharmacists[0]?.id ?? '';
-  return {
+  return normalizeScheduleCreateEditDrawerForm({
     case_id: firstCase?.id ?? '',
     visit_type: 'regular',
     priority: 'normal',
@@ -112,7 +144,7 @@ export function buildScheduleCreateEditDrawerForm(args: {
     time_window_end: '',
     proposed_pharmacist_id: defaultPharmacistId,
     travel_mode: 'DRIVE',
-  };
+  });
 }
 
 export function isScheduleCreateEditDrawerFormValid(form: ScheduleCreateEditDrawerForm): boolean {
@@ -163,6 +195,47 @@ export function getScheduleCreateEditDrawerContactBlocker(
   return null;
 }
 
+function getScheduleCreateEditDrawerBlockerPath(
+  form: ScheduleCreateEditDrawerForm,
+): keyof ScheduleCreateEditDrawerForm {
+  if (!form.case_id) return 'case_id';
+  if (!form.proposed_date) return 'proposed_date';
+  if (!form.proposed_pharmacist_id) return 'proposed_pharmacist_id';
+  if (form.time_window_start && !form.time_window_end) return 'time_window_end';
+  if (!form.time_window_start && form.time_window_end) return 'time_window_start';
+  if (
+    form.time_window_start &&
+    form.time_window_end &&
+    timeToMinutes(form.time_window_end) <= timeToMinutes(form.time_window_start)
+  ) {
+    return 'time_window_end';
+  }
+  return 'case_id';
+}
+
+const scheduleCreateEditDrawerFormSchema = z
+  .object({
+    case_id: z.string(),
+    visit_type: z.custom<VisitType>(),
+    priority: z.custom<VisitPriority>(),
+    proposed_date: z.string(),
+    time_window_start: z.string(),
+    time_window_end: z.string(),
+    proposed_pharmacist_id: z.string(),
+    travel_mode: z.custom<TravelMode>(),
+  })
+  .superRefine((value, ctx) => {
+    const form = normalizeScheduleCreateEditDrawerForm(value);
+    const blocker = getScheduleCreateEditDrawerSaveBlocker(form);
+    if (!blocker) return;
+
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [getScheduleCreateEditDrawerBlockerPath(form)],
+      message: blocker,
+    });
+  });
+
 function nonEmptyString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value : null;
 }
@@ -207,7 +280,12 @@ type ScheduleCreateEditDrawerProps = {
   onSaved?: () => void;
 };
 
-export function ScheduleCreateEditDrawer({
+export function ScheduleCreateEditDrawer(props: ScheduleCreateEditDrawerProps) {
+  const formSessionKey = `${props.open ? '1' : '0'}:${props.editingProposal?.id ?? 'new'}`;
+  return <ScheduleCreateEditDrawerInner key={formSessionKey} {...props} />;
+}
+
+function ScheduleCreateEditDrawerInner({
   open,
   onOpenChange,
   orgId,
@@ -218,32 +296,42 @@ export function ScheduleCreateEditDrawer({
   onSaved,
 }: ScheduleCreateEditDrawerProps) {
   const queryClient = useQueryClient();
-  const [form, setForm] = useState<ScheduleCreateEditDrawerForm>(() =>
-    buildScheduleCreateEditDrawerForm({
-      defaultDate,
-      proposal: editingProposal,
-      cases,
-      pharmacists,
-    }),
-  );
+  const errorSummaryId = 'schedule-drawer-form-error-summary';
+  const initialForm = buildScheduleCreateEditDrawerForm({
+    defaultDate,
+    proposal: editingProposal,
+    cases,
+    pharmacists,
+  });
+  const [baselineForm] = useState<ScheduleCreateEditDrawerForm>(() => initialForm);
 
-  // ドロワーを開くたび / 編集対象が変わるたびにフォームを初期化する。
-  // React 推奨の「レンダー中に state を調整する」パターンで effect を回避する。
-  const formSessionKey = `${open ? '1' : '0'}:${editingProposal?.id ?? 'new'}`;
-  const [lastFormSessionKey, setLastFormSessionKey] = useState(formSessionKey);
-  const [baselineForm, setBaselineForm] = useState(form);
-  // close(open=false)遷移でもリセットする: 破棄確定で閉じた後に同じ対象を再オープンしたとき、
-  // 破棄済みの入力が復活しないようにする(Codex review 指摘)。
-  if (formSessionKey !== lastFormSessionKey) {
-    setLastFormSessionKey(formSessionKey);
-    const nextForm = buildScheduleCreateEditDrawerForm({
-      defaultDate,
-      proposal: editingProposal,
-      cases,
-      pharmacists,
-    });
-    setForm(nextForm);
-    setBaselineForm(nextForm);
+  const {
+    control,
+    formState: { errors },
+    getValues,
+    handleSubmit,
+    register,
+  } = useForm<ScheduleCreateEditDrawerForm>({
+    resolver: zodResolver(scheduleCreateEditDrawerFormSchema),
+    defaultValues: baselineForm,
+  });
+  const watchedForm = useWatch({ control, defaultValue: baselineForm });
+  const form = normalizeScheduleCreateEditDrawerForm(watchedForm);
+
+  const errorSummaryItems = collectFormErrorSummaryItems(errors, {
+    case_id: '患者',
+    visit_type: '訪問種別',
+    priority: '優先度',
+    proposed_date: '候補日',
+    time_window_start: '開始時刻',
+    time_window_end: '終了時刻',
+    proposed_pharmacist_id: '担当薬剤師',
+    travel_mode: '移動手段',
+  });
+
+  function focusErrorSummary() {
+    if (typeof document === 'undefined') return;
+    document.getElementById(errorSummaryId)?.focus();
   }
 
   // 未保存離脱ガード(SSOT 5.7 / FEUX-8): controlled-state フォームなので dirty をベースライン比較で判定。
@@ -258,12 +346,13 @@ export function ScheduleCreateEditDrawer({
 
   const saveMutation = useMutation({
     mutationFn: async (submitForContact: boolean) => {
+      const currentForm = normalizeScheduleCreateEditDrawerForm(getValues());
       const res = await fetch('/api/visit-schedule-proposals', {
         method: 'PUT',
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(
           buildScheduleCreateEditDrawerPayload({
-            form,
+            form: currentForm,
             proposalId: editingProposal?.id,
             submitForContact,
           }),
@@ -316,47 +405,66 @@ export function ScheduleCreateEditDrawer({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="mt-6 space-y-4">
+        <form
+          onSubmit={handleSubmit(() => undefined, focusErrorSummary)}
+          noValidate
+          className="mt-6 space-y-4"
+        >
+          <FormErrorSummary id={errorSummaryId} items={errorSummaryItems} />
+
           <div className="space-y-1.5">
             <Label htmlFor="drawer-case">患者</Label>
-            <Select
-              value={form.case_id}
-              onValueChange={(value) =>
-                setForm((current) => ({ ...current, case_id: value ?? '' }))
-              }
-            >
-              <SelectTrigger id="drawer-case" className="w-full">
-                <SelectValue placeholder="患者を選択" />
-              </SelectTrigger>
-              <SelectContent>
-                {cases.map((careCase) => (
-                  <SelectItem key={careCase.id} value={careCase.id}>
-                    {careCase.patient.name} 様
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Controller
+              control={control}
+              name="case_id"
+              render={({ field }) => (
+                <Select value={field.value} onValueChange={(value) => field.onChange(value ?? '')}>
+                  <SelectTrigger
+                    id="drawer-case"
+                    className="w-full"
+                    aria-invalid={Boolean(errors.case_id)}
+                  >
+                    <SelectValue placeholder="患者を選択" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {cases.map((careCase) => (
+                      <SelectItem key={careCase.id} value={careCase.id}>
+                        {careCase.patient.name} 様
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
           </div>
 
           <div className="space-y-1.5">
             <Label htmlFor="drawer-visit-type">訪問種別</Label>
-            <Select
-              value={form.visit_type}
-              onValueChange={(value) =>
-                setForm((current) => ({ ...current, visit_type: value as VisitType }))
-              }
-            >
-              <SelectTrigger id="drawer-visit-type" className="w-full">
-                <SelectValue placeholder="訪問種別を選択" />
-              </SelectTrigger>
-              <SelectContent>
-                {VISIT_TYPE_OPTIONS.map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Controller
+              control={control}
+              name="visit_type"
+              render={({ field }) => (
+                <Select
+                  value={field.value}
+                  onValueChange={(value) => field.onChange(value as VisitType)}
+                >
+                  <SelectTrigger
+                    id="drawer-visit-type"
+                    className="w-full"
+                    aria-invalid={Boolean(errors.visit_type)}
+                  >
+                    <SelectValue placeholder="訪問種別を選択" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {VISIT_TYPE_OPTIONS.map(([value, label]) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -365,10 +473,8 @@ export function ScheduleCreateEditDrawer({
               <Input
                 id="drawer-date"
                 type="date"
-                value={form.proposed_date}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, proposed_date: event.target.value }))
-                }
+                aria-invalid={Boolean(errors.proposed_date)}
+                {...register('proposed_date')}
               />
             </div>
             <div className="space-y-1.5">
@@ -376,10 +482,8 @@ export function ScheduleCreateEditDrawer({
               <Input
                 id="drawer-time-start"
                 type="time"
-                value={form.time_window_start}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, time_window_start: event.target.value }))
-                }
+                aria-invalid={Boolean(errors.time_window_start)}
+                {...register('time_window_start')}
               />
             </div>
             <div className="space-y-1.5">
@@ -387,33 +491,36 @@ export function ScheduleCreateEditDrawer({
               <Input
                 id="drawer-time-end"
                 type="time"
-                value={form.time_window_end}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, time_window_end: event.target.value }))
-                }
+                aria-invalid={Boolean(errors.time_window_end)}
+                {...register('time_window_end')}
               />
             </div>
           </div>
 
           <div className="space-y-1.5">
             <Label htmlFor="drawer-pharmacist">担当薬剤師</Label>
-            <Select
-              value={form.proposed_pharmacist_id}
-              onValueChange={(value) =>
-                setForm((current) => ({ ...current, proposed_pharmacist_id: value ?? '' }))
-              }
-            >
-              <SelectTrigger id="drawer-pharmacist" className="w-full">
-                <SelectValue placeholder="担当薬剤師を選択" />
-              </SelectTrigger>
-              <SelectContent>
-                {pharmacists.map((pharmacist) => (
-                  <SelectItem key={pharmacist.id} value={pharmacist.id}>
-                    {pharmacist.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Controller
+              control={control}
+              name="proposed_pharmacist_id"
+              render={({ field }) => (
+                <Select value={field.value} onValueChange={(value) => field.onChange(value ?? '')}>
+                  <SelectTrigger
+                    id="drawer-pharmacist"
+                    className="w-full"
+                    aria-invalid={Boolean(errors.proposed_pharmacist_id)}
+                  >
+                    <SelectValue placeholder="担当薬剤師を選択" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {pharmacists.map((pharmacist) => (
+                      <SelectItem key={pharmacist.id} value={pharmacist.id}>
+                        {pharmacist.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
           </div>
 
           <div className="space-y-1.5">
@@ -423,44 +530,60 @@ export function ScheduleCreateEditDrawer({
 
           <div className="space-y-1.5">
             <Label htmlFor="drawer-travel-mode">移動手段</Label>
-            <Select
-              value={form.travel_mode}
-              onValueChange={(value) =>
-                setForm((current) => ({ ...current, travel_mode: value as TravelMode }))
-              }
-            >
-              <SelectTrigger id="drawer-travel-mode" className="w-full">
-                <SelectValue placeholder="移動手段を選択" />
-              </SelectTrigger>
-              <SelectContent>
-                {TRAVEL_MODE_OPTIONS.map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Controller
+              control={control}
+              name="travel_mode"
+              render={({ field }) => (
+                <Select
+                  value={field.value}
+                  onValueChange={(value) => field.onChange(value as TravelMode)}
+                >
+                  <SelectTrigger
+                    id="drawer-travel-mode"
+                    className="w-full"
+                    aria-invalid={Boolean(errors.travel_mode)}
+                  >
+                    <SelectValue placeholder="移動手段を選択" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TRAVEL_MODE_OPTIONS.map(([value, label]) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
           </div>
 
           <div className="space-y-1.5">
             <Label htmlFor="drawer-priority">優先度</Label>
-            <Select
-              value={form.priority}
-              onValueChange={(value) =>
-                setForm((current) => ({ ...current, priority: value as VisitPriority }))
-              }
-            >
-              <SelectTrigger id="drawer-priority" className="w-full">
-                <SelectValue placeholder="優先度を選択" />
-              </SelectTrigger>
-              <SelectContent>
-                {PRIORITY_OPTIONS.map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Controller
+              control={control}
+              name="priority"
+              render={({ field }) => (
+                <Select
+                  value={field.value}
+                  onValueChange={(value) => field.onChange(value as VisitPriority)}
+                >
+                  <SelectTrigger
+                    id="drawer-priority"
+                    className="w-full"
+                    aria-invalid={Boolean(errors.priority)}
+                  >
+                    <SelectValue placeholder="優先度を選択" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PRIORITY_OPTIONS.map(([value, label]) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
           </div>
 
           <div className="rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-xs leading-5 text-muted-foreground">
@@ -483,7 +606,7 @@ export function ScheduleCreateEditDrawer({
               {displayedBlocker}
             </p>
           ) : null}
-        </div>
+        </form>
 
         <SheetFooter className="mt-2 flex-row justify-between gap-2">
           <Button
@@ -491,7 +614,7 @@ export function ScheduleCreateEditDrawer({
             variant="outline"
             disabled={draftDisabled}
             aria-describedby={draftDescriptionId}
-            onClick={() => saveMutation.mutate(false)}
+            onClick={() => void handleSubmit(() => saveMutation.mutate(false), focusErrorSummary)()}
           >
             {saveMutation.isPending ? '保存中...' : '下書き保存'}
           </Button>
@@ -499,7 +622,7 @@ export function ScheduleCreateEditDrawer({
             type="button"
             disabled={contactDisabled}
             aria-describedby={contactDescriptionId}
-            onClick={() => saveMutation.mutate(true)}
+            onClick={() => void handleSubmit(() => saveMutation.mutate(true), focusErrorSummary)()}
           >
             {saveMutation.isPending ? '送信中...' : '確認待ちにする'}
           </Button>
