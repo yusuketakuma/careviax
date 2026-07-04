@@ -5,6 +5,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { jsonResponse } from '@/test/fetch-test-utils';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { PatientLabsCard } from './patient-labs-card';
 
@@ -293,9 +294,19 @@ describe('PatientLabsCard', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       `/api/patients/${encodeURIComponent(hostilePatientId)}/labs?limit=30`,
-      { headers: { 'x-org-id': 'org_1' } },
+      { headers: buildOrgHeaders('org_1') },
     );
     expect(String(fetchMock.mock.calls[0]?.[0])).not.toContain('/api/patients/patient/a b');
+  });
+
+  it('surfaces API error messages when lab reads fail', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ message: '検査値の閲覧権限がありません' }, 403));
+    const { queryOptions } = setupComponent();
+
+    await expect(queryOptions.at(-1)?.queryFn()).rejects.toThrow('検査値の閲覧権限がありません');
+    expect(fetchMock).toHaveBeenCalledWith('/api/patients/patient_1/labs?limit=30', {
+      headers: buildOrgHeaders('org_1'),
+    });
   });
 
   it('encodes POST paths and keeps raw cache invalidation identity', async () => {

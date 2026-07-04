@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
@@ -323,8 +324,7 @@ export function PatientLabsCard({ patientId, orgId }: { patientId: string; orgId
       const response = await fetch(`${buildPatientApiPath(patientId, '/labs')}?limit=30`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('検査値一覧の取得に失敗しました');
-      return response.json() as Promise<LabsResponse>;
+      return readApiJson<LabsResponse>(response, '検査値一覧の取得に失敗しました');
     },
     enabled: !!orgId,
   });
