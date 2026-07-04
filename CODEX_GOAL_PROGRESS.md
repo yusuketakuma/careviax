@@ -1,5 +1,36 @@
 # CODEX Goal Progress
 
+## R23 Patient Form Error Message Helper Partial - 2026-07-05 00:32 JST
+
+- Status:
+  - Implemented and validated the next bounded R23 slice:
+    - `src/components/features/patients/patient-form.tsx`
+    - `src/components/features/patients/patient-form.test.tsx`
+- Scope:
+  - Reused the existing `messageFromError` helper for patient form query error
+    formatting and qualification-check thrown-error formatting.
+  - Added coverage that an empty thrown Error message falls back to
+    `資格確認に失敗しました` for the qualification-check alert/toast path.
+- Safety:
+  - Client/helper error message formatting only.
+  - No product API, DB, auth, authorization, PHI projection, billing semantics,
+    audit, deployment, package dependency, live DB operation, external send,
+    secret handling, push, or destructive operation changed.
+- Validation:
+  - `pnpm exec vitest run src/components/features/patients/patient-form.test.tsx src/lib/utils/error-message.test.ts --reporter=dot --testTimeout=30000`
+    passed `2` files / `26` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `a47b52fa`
+    (`refactor(ui): reuse error message helper in patient form`).
+- Remaining:
+  - R23 is partial; remaining hand-rolled error-message ternaries should be
+    migrated by bounded domain chunks.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R23 Prescription Intake Error Message Helper Partial - 2026-07-05 00:28 JST
 
 - Status:
