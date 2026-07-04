@@ -1,7 +1,14 @@
 import type { InsuranceApplicationStatus, PayerBasis, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
-import { japanCivilTimeParts, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import {
+  japanCivilTimeParts,
+  japanDateKey,
+  japanMonthInstantRange,
+  localDateKey,
+  utcDateFromLocalKey,
+  utcMonthDateRange,
+} from '@/lib/utils/date-boundary';
 import { findActiveVisitConsent, findCurrentManagementPlan } from '../management-plans';
 import { upsertOperationalTask, resolveOperationalTasks } from '../operational-tasks';
 import { resolveBillingPayerBasis } from '../billing-payer-basis';
@@ -254,34 +261,20 @@ function resolveAfterHoursVisitCategory(args: {
 }
 
 export function startOfMonth(value: Date) {
-  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), 1));
+  return utcMonthDateRange(monthLabel(value)).gte;
 }
 
 export function endOfMonth(value: Date) {
-  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth() + 1, 0, 23, 59, 59, 999));
-}
-
-const JAPAN_TIME_ZONE_OFFSET_MS = 9 * 60 * 60 * 1000;
-
-function japanCivilMonthParts(value: Date) {
-  const japanDate = new Date(value.getTime() + JAPAN_TIME_ZONE_OFFSET_MS);
-  return {
-    year: japanDate.getUTCFullYear(),
-    monthIndex: japanDate.getUTCMonth(),
-  };
+  return new Date(utcMonthDateRange(monthLabel(value)).lt.getTime() - 1);
 }
 
 export function billingMonthForJapanTimestamp(value: Date) {
-  const { year, monthIndex } = japanCivilMonthParts(value);
-  return new Date(Date.UTC(year, monthIndex, 1));
+  return utcMonthDateRange(japanDateKey(value).slice(0, 7)).gte;
 }
 
 export function japanMonthRangeForBillingMonth(value: Date) {
   const monthStart = startOfMonth(value);
-  const year = monthStart.getUTCFullYear();
-  const monthIndex = monthStart.getUTCMonth();
-  const start = new Date(Date.UTC(year, monthIndex, 1) - JAPAN_TIME_ZONE_OFFSET_MS);
-  const nextStart = new Date(Date.UTC(year, monthIndex + 1, 1) - JAPAN_TIME_ZONE_OFFSET_MS);
+  const { gte: start, lt: nextStart } = japanMonthInstantRange(monthLabel(monthStart));
   return {
     start,
     nextStart,

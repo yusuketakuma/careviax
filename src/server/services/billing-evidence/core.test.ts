@@ -33,6 +33,7 @@ vi.mock('../operational-tasks', () => ({
 }));
 
 import {
+  billingMonthForJapanTimestamp,
   buildValidationLayers,
   describeBillingEvidenceBlockers,
   endOfMonth,
@@ -260,6 +261,20 @@ describe('billing-evidence/core: billing month date helpers', () => {
 
     expect(startOfMonth(billingMonth).toISOString()).toBe('2026-12-01T00:00:00.000Z');
     expect(endOfMonth(billingMonth).toISOString()).toBe('2026-12-31T23:59:59.999Z');
+  });
+
+  it('derives billing months from Japan civil month boundaries on a UTC runtime', () => {
+    process.env.TZ = 'UTC';
+
+    expect(billingMonthForJapanTimestamp(new Date('2026-05-31T14:59:59.999Z')).toISOString()).toBe(
+      '2026-05-01T00:00:00.000Z',
+    );
+    expect(billingMonthForJapanTimestamp(new Date('2026-05-31T15:00:00.000Z')).toISOString()).toBe(
+      '2026-06-01T00:00:00.000Z',
+    );
+    expect(billingMonthForJapanTimestamp(new Date('2026-06-30T15:00:00.000Z')).toISOString()).toBe(
+      '2026-07-01T00:00:00.000Z',
+    );
   });
 });
 
