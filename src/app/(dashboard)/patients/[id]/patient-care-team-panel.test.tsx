@@ -272,6 +272,28 @@ describe('PatientCareTeamPanel', () => {
     }
   });
 
+  it('surfaces API error messages when external professional options fail to load', async () => {
+    const { queryConfigs } = captureConfigs();
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ message: '他職種マスターの閲覧権限がありません' }, 403));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PatientCareTeamPanel patientId="patient_1" orgId="org_1" cases={buildCases()} />);
+
+      await expect(queryConfigs[0]?.queryFn?.()).rejects.toThrow(
+        '他職種マスターの閲覧権限がありません',
+      );
+      expect(fetchMock).toHaveBeenCalledWith('/api/admin/external-professionals', {
+        headers: buildOrgHeaders('org_1'),
+      });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
   it('posts a quick-create master with JSON org headers (static path)', async () => {
     const { mutationConfigs } = captureConfigs();
     const fetchMock = okFetch();

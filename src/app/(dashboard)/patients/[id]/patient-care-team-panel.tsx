@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { careTeamContactBadges, type CareTeamContactBadge } from '@/lib/patient/care-team-contact';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { formatDisplayEntityLabel } from '@/lib/display-id/display-labels';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
@@ -194,8 +195,10 @@ export function PatientCareTeamPanel({
       const response = await fetch('/api/admin/external-professionals', {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('他職種マスターの取得に失敗しました');
-      return response.json() as Promise<ExternalProfessionalOptionsResponse>;
+      return readApiJson<ExternalProfessionalOptionsResponse>(
+        response,
+        '他職種マスターの取得に失敗しました',
+      );
     },
     enabled: !!orgId,
   });
