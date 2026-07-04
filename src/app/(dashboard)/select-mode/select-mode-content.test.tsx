@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { jsonResponse } from '@/test/fetch-test-utils';
 
 setupDomTestEnv();
 
@@ -52,7 +53,7 @@ describe('SelectModeContent', () => {
       ...extra,
     }));
     vi.stubGlobal('fetch', fetchMock);
-    fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+    fetchMock.mockResolvedValue(jsonResponse({}));
   });
 
   afterEach(() => {

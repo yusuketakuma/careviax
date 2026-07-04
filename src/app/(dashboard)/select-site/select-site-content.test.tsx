@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { jsonResponse } from '@/test/fetch-test-utils';
 
 setupDomTestEnv();
 
@@ -76,9 +77,9 @@ describe('SelectSiteContent', () => {
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/me/sites') {
-        return { ok: true, json: async () => ({ data: SITES }) };
+        return jsonResponse({ data: SITES });
       }
-      return { ok: true, json: async () => ({}) };
+      return jsonResponse({});
     });
   });
 

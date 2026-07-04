@@ -4,6 +4,7 @@ import { render } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
+import { jsonResponse } from '@/test/fetch-test-utils';
 import { VisitBriefReviewContent } from './visit-brief-review-content';
 
 setupDomTestEnv();
@@ -62,9 +63,7 @@ describe('VisitBriefReviewContent', () => {
       },
     );
 
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue({ ok: true, json: () => Promise.resolve({ data: null }) } as Response);
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ data: null }));
     vi.stubGlobal('fetch', fetchMock);
 
     try {

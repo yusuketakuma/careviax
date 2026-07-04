@@ -6,6 +6,7 @@ import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { jsonResponse } from '@/test/fetch-test-utils';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const usePresenceHeartbeatMock = vi.hoisted(() => vi.fn());
@@ -190,10 +191,7 @@ describe('CollaborationContent realtime presence policy', () => {
       return { isPending: false, mutate: vi.fn() };
     });
 
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ name: '田中 一郎' }),
-    } as unknown as Response);
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ name: '田中 一郎' }));
     vi.stubGlobal('fetch', fetchMock);
 
     try {
@@ -258,10 +256,7 @@ describe('CollaborationContent realtime presence policy', () => {
       },
     );
     vi.mocked(buildPatientApiPath).mockReturnValueOnce('/api/patients/__helper_patient__/overview');
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ name: '田中 一郎' }),
-    } as unknown as Response);
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ name: '田中 一郎' }));
     vi.stubGlobal('fetch', fetchMock);
 
     try {
