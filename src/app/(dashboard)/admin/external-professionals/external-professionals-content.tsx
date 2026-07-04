@@ -33,6 +33,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import {
@@ -424,8 +425,10 @@ export function ExternalProfessionalsContent() {
       const response = await fetch(buildAdminExternalProfessionalsApiPath(new URLSearchParams()), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('他職種マスターの取得に失敗しました');
-      return response.json() as Promise<ExternalProfessionalsResponse>;
+      return readApiJson<ExternalProfessionalsResponse>(
+        response,
+        '他職種マスターの取得に失敗しました',
+      );
     },
     enabled: !!orgId,
   });
@@ -436,8 +439,7 @@ export function ExternalProfessionalsContent() {
       const response = await fetch(buildAdminFacilitiesApiPath(new URLSearchParams()), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('施設候補の取得に失敗しました');
-      return response.json() as Promise<FacilitiesResponse>;
+      return readApiJson<FacilitiesResponse>(response, '施設候補の取得に失敗しました');
     },
     enabled: !!orgId,
   });
@@ -464,8 +466,7 @@ export function ExternalProfessionalsContent() {
           headers: buildOrgHeaders(orgId),
         },
       );
-      if (!response.ok) throw new Error('担当患者の取得に失敗しました');
-      return response.json() as Promise<LinkedPatientsResponse>;
+      return readApiJson<LinkedPatientsResponse>(response, '担当患者の取得に失敗しました');
     },
     enabled: Boolean(orgId && sheetOpen && editingProfessionalId),
   });
