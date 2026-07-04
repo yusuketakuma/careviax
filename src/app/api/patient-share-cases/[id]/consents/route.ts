@@ -109,7 +109,7 @@ const authenticatedGET = withAuthContext<{ id: string }>(
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
         orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
       });
-      const pageRows = consentRows.slice(0, limit);
+      const page = buildCursorPage(consentRows, limit, (row) => row.id);
 
       await createAuditLogEntry(tx, ctx, {
         action: 'patient_share_consents_viewed',
@@ -120,26 +120,25 @@ const authenticatedGET = withAuthContext<{ id: string }>(
           target_screen: 'patient_share_case_consents',
           viewer_role: ctx.role,
           share_case_id: id,
-          viewed_count: pageRows.length,
-          consent_ids: pageRows.map((row) => row.id),
-          consent_record_count: pageRows.filter((row) => row.consent_record_id).length,
-          file_asset_count: pageRows.filter((row) => row.file_asset_id).length,
-          revoked_count: pageRows.filter((row) => row.revoked_at).length,
+          viewed_count: page.data.length,
+          consent_ids: page.data.map((row) => row.id),
+          consent_record_count: page.data.filter((row) => row.consent_record_id).length,
+          file_asset_count: page.data.filter((row) => row.file_asset_id).length,
+          revoked_count: page.data.filter((row) => row.revoked_at).length,
           has_cursor: Boolean(cursor),
-          has_more: consentRows.length > limit,
+          has_more: page.hasMore,
           limit,
         },
       });
 
-      return consentRows;
+      return page;
     });
 
     if (!rows) return withSensitiveNoStore(notFound('患者共有ケースが見つかりません'));
-    const page = buildCursorPage(rows, limit, (row) => row.id);
     return withSensitiveNoStore(
       success({
-        ...page,
-        data: page.data.map(toSafePatientShareConsent),
+        ...rows,
+        data: rows.data.map(toSafePatientShareConsent),
       }),
     );
   },

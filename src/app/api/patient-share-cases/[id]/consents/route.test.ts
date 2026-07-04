@@ -177,6 +177,83 @@ describe('/api/patient-share-cases/[id]/consents', () => {
     expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain('consent_person');
   });
 
+  it('returns a cursor page and audits only visible consents when rows overflow', async () => {
+    patientShareConsentFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'share_consent_1',
+        share_case_id: 'share_case_1',
+        consent_record_id: 'consent_record_1',
+        consent_date: new Date('2026-06-19T00:00:00.000Z'),
+        consent_method: 'paper_scan',
+        scope: { pdf_output: true },
+        file_asset_id: 'file_1',
+        valid_until: null,
+        revoked_at: null,
+        revoked_by: null,
+        created_by: 'user_1',
+        created_at: new Date('2026-06-19T01:00:00.000Z'),
+        updated_at: new Date('2026-06-19T01:00:00.000Z'),
+        consent_person: '患者家族 山田花子',
+      },
+      {
+        id: 'share_consent_2',
+        share_case_id: 'share_case_1',
+        consent_record_id: null,
+        consent_date: new Date('2026-06-18T00:00:00.000Z'),
+        consent_method: 'digital',
+        scope: { attachments: true },
+        file_asset_id: null,
+        valid_until: null,
+        revoked_at: new Date('2026-06-20T00:00:00.000Z'),
+        revoked_by: 'user_2',
+        created_by: 'user_2',
+        created_at: new Date('2026-06-18T01:00:00.000Z'),
+        updated_at: new Date('2026-06-18T01:00:00.000Z'),
+        consent_person: '非表示 同意者',
+      },
+    ]);
+
+    const response = await rawGET(
+      createGetRequest('http://localhost/api/patient-share-cases/share_case_1/consents?limit=1'),
+      routeContext,
+    );
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(patientShareConsentFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 2,
+      }),
+    );
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: [{ id: 'share_consent_1', scope_keys: ['pdf_output'], has_file_asset: true }],
+      hasMore: true,
+      nextCursor: 'share_consent_1',
+    });
+    expect(body.data).toHaveLength(1);
+    const serializedBody = JSON.stringify(body);
+    expect(serializedBody).not.toContain('share_consent_2');
+    expect(serializedBody).not.toContain('山田花子');
+    expect(serializedBody).not.toContain('非表示 同意者');
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        changes: expect.objectContaining({
+          viewed_count: 1,
+          consent_ids: ['share_consent_1'],
+          consent_record_count: 1,
+          file_asset_count: 1,
+          revoked_count: 0,
+          has_more: true,
+          limit: 1,
+        }),
+      }),
+    );
+    expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain('非表示 同意者');
+  });
+
   it('fails closed when patient share consent list audit cannot be recorded', async () => {
     createAuditLogEntryMock.mockRejectedValueOnce(
       new Error('audit unavailable patient 山田花子 token secret consent_person'),
