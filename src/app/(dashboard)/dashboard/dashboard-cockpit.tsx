@@ -19,6 +19,7 @@ import {
   getHandlingTagBadgeClass,
   getHandlingTagLabel,
 } from '@/components/features/workspace/safety-board';
+import { readApiJson } from '@/lib/api/client-json';
 import { formatPrescriptionCardNumber } from '@/lib/prescription/rx-number';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -66,8 +67,10 @@ export async function fetchDashboardCockpit(
   const res = await fetch(`/api/dashboard/cockpit?${params.toString()}`, {
     headers: buildOrgHeaders(orgId),
   });
-  if (!res.ok) throw new Error('ダッシュボード集計の取得に失敗しました');
-  const json = await res.json();
+  const json = await readApiJson<{ data: DashboardCockpitResponse }>(
+    res,
+    'ダッシュボード集計の取得に失敗しました',
+  );
   return json.data;
 }
 
