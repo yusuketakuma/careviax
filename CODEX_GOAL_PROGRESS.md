@@ -1,5 +1,40 @@
 # CODEX Goal Progress
 
+## R24/R46 Patient Prescriptions Cursor Helper Partial - 2026-07-05 02:03 JST
+
+- Status:
+  - Implemented and validated the next bounded R24/R46 slice:
+    - `src/app/api/patients/[id]/prescriptions/route.ts`
+- Scope:
+  - Reused the existing `buildCursorPage` helper for patient prescription
+    overflow detection, visible-row selection, and keyset next-cursor assembly.
+  - Preserved decoded cursor filtering, first-page diff review/diff meta,
+    `hasMore`, and keyset `nextCursor` response shape.
+- Safety:
+  - Product API implementation internals changed; external response shape and
+    patient prescription semantics are unchanged.
+  - Preserved `canViewMedication`, request auth context, RLS request context,
+    patient/case assignment access filtering, DB query shape,
+    schema/migrations/data, auth/authorization semantics, PHI projection,
+    billing behavior, deployment, package dependency, live DB operation,
+    external send, secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm exec vitest run src/app/api/patients/[id]/prescriptions/route.test.ts src/lib/api/pagination.test.ts --reporter=dot --testTimeout=30000`
+    passed `2` files / `26` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `7771e6db`
+    (`refactor(api): reuse cursor page helper in patient prescriptions`).
+- Remaining:
+  - R24/R46 are partial; continue compatible hand-rolled cursor page routes.
+  - Routes with keyset cursor encoding, scan-window filtering, summary metadata,
+    or additive route-specific metadata need route-specific analysis before
+    helper convergence.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R24/R46 Drug Masters Cursor Helper Partial - 2026-07-05 02:00 JST
 
 - Status:
