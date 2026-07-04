@@ -31,12 +31,13 @@ describe('DispenseAuditStatsPage', () => {
   });
 
   it('renders aggregate stats on success', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response(JSON.stringify(okStats), { status: 200 })),
-    );
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(okStats), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
     renderPage();
     expect(await screen.findByText('12')).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledWith('/api/admin/reject-reason-stats?days=30', {
+      headers: { 'x-org-id': 'org_1' },
+    });
     expect(screen.getByText('数量エラー')).toBeTruthy();
     expect(screen.queryByText('最初に見るポイント')).toBeNull();
     for (const label of ['7日', '30日', '90日']) {
