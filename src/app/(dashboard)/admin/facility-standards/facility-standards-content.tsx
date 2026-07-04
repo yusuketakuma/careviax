@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { readApiJson } from '@/lib/api/client-json';
 
 // --- Types ---
 
@@ -145,8 +146,7 @@ export function FacilityStandardsContent() {
       const res = await fetch('/api/admin/facility-standards', {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('施設基準の取得に失敗しました');
-      return res.json() as Promise<FacilityStandardsResponse>;
+      return readApiJson<FacilityStandardsResponse>(res, '施設基準の取得に失敗しました');
     },
     enabled: !!orgId,
   });

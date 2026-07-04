@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 
 const useQueryMock = vi.hoisted(() => vi.fn());
@@ -69,6 +69,10 @@ describe('FacilityStandardsContent', () => {
     useQueryMock.mockReturnValue(SUCCESS_DATA);
   });
 
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('renders the standards table when the query succeeds', () => {
     render(<FacilityStandardsContent />);
 
@@ -76,6 +80,42 @@ describe('FacilityStandardsContent', () => {
     expect(table).toBeTruthy();
     expect(table.getAttribute('data-rows')).toBe('1');
     expect(screen.getByText('登録1件')).toBeTruthy();
+  });
+
+  it('fetches facility standards through the static API path with org headers', async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            data: SUCCESS_DATA.data.data,
+            total_count: 1,
+            visible_count: 1,
+            hidden_count: 0,
+            truncated: false,
+            count_basis: 'facility_standards',
+          }),
+          { status: 200 },
+        ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<FacilityStandardsContent />);
+
+    const queryOptions = useQueryMock.mock.calls.at(-1)?.[0] as
+      | { queryKey: unknown[]; queryFn: () => Promise<unknown> }
+      | undefined;
+    expect(queryOptions?.queryKey).toEqual(['facility-standards', 'org_1']);
+    await expect(queryOptions?.queryFn()).resolves.toMatchObject({
+      data: SUCCESS_DATA.data.data,
+      total_count: 1,
+      visible_count: 1,
+      hidden_count: 0,
+      truncated: false,
+      count_basis: 'facility_standards',
+    });
+    expect(fetchMock).toHaveBeenCalledWith('/api/admin/facility-standards', {
+      headers: { 'x-org-id': 'org_1' },
+    });
   });
 
   it('shows hidden counts and avoids whole-list claim judgement when standards are truncated', () => {
