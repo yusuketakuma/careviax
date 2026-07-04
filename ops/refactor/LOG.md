@@ -5,6 +5,23 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-05 R40/R44-contact-profiles dbe9853d
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 対象: `src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.tsx`,
+  `src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.test.tsx`
+- 実施: contact-profiles GET の `if (!response.ok) throw` + `response.json()` を
+  `readApiJson<{ data: ContactProfile[] }>` へ移行。test mock を標準 Response contract へ変更。
+- 挙動変更: read fetch 実装内部の helper 収束のみ。path helper、`buildOrgHeaders`、
+  React Query key、debounce、response envelope、delivery target edit、PATCH mutation は維持。
+- 安全: product UI read fetch internals のみ。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+  live DB/external send/secret/push/destructive operation 不変。
+- 検証: focused contact-profiles Vitest `1 file / 7 tests` green。
+  scoped eslint/prettier/diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit dbe9853d。
+- 残課題: R40/R44 は partial。追加 fetcher は response body read の PHI safety を個別確認して段階移行。
+
 ## 2026-07-05 R40/R44-admin-analytics 43f2afdf
 
 - 分類: query-helper / client fetch error handling → `readApiJson` 収束。

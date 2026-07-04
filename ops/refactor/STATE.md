@@ -84,6 +84,9 @@
 - codex: R40/R44 admin analytics readApiJson slice(43f2afdf) land。focused Vitest 9、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 contact-profiles readApiJson slice(dbe9853d) land。focused Vitest 7、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 
