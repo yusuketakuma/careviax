@@ -182,7 +182,9 @@ vi.mock('@/components/ui/data-table', async () => {
             <div key={rowIndex}>
               {columns.map((column, columnIndex) =>
                 column.cell ? (
-                  <div key={column.id ?? columnIndex}>{column.cell({ row: { original: row } })}</div>
+                  <div key={column.id ?? columnIndex}>
+                    {column.cell({ row: { original: row } })}
+                  </div>
                 ) : null,
               )}
             </div>

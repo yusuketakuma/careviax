@@ -35,9 +35,10 @@ import {
 import { StateBadge } from '@/components/ui/state-badge';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { readApiJson } from '@/lib/api/client-json';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { USER_ACCOUNT_STATUS_ROLE } from '@/lib/constants/status-labels';
 import { formatDateTimeLabel } from '@/lib/ui/date-format';
-import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   isOperationalMemberRole,
   roleRequiresSite,
@@ -285,8 +286,7 @@ export function UsersContent() {
         buildPharmacistsApiPath(new URLSearchParams({ include_collaborators: 'true' })),
         { headers: buildOrgHeaders(orgId) },
       );
-      if (!response.ok) throw new Error('ユーザー一覧の取得に失敗しました');
-      return response.json() as Promise<UsersListResponse>;
+      return readApiJson<UsersListResponse>(response, 'ユーザー一覧の取得に失敗しました');
     },
     enabled: !!orgId,
   });
@@ -297,8 +297,7 @@ export function UsersContent() {
       const response = await fetch(PHARMACY_SITES_API_PATH, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('店舗一覧の取得に失敗しました');
-      return response.json() as Promise<{ data: SiteOption[] }>;
+      return readApiJson<{ data: SiteOption[] }>(response, '店舗一覧の取得に失敗しました');
     },
     enabled: !!orgId,
   });
