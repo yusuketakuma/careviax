@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { render, screen } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import type { VisitBrief } from '@/types/visit-brief';
@@ -74,15 +74,13 @@ function buildBrief(): VisitBrief {
   };
 }
 
+function renderBriefCard(brief: VisitBrief) {
+  return render(<VisitBriefCard brief={brief} />, { wrapper: createQueryClientWrapper() });
+}
+
 describe('VisitBriefCard', () => {
   it('renders conference summary and highlighted risks when available', () => {
-    const queryClient = new QueryClient();
-
-    render(
-      <QueryClientProvider client={queryClient}>
-        <VisitBriefCard brief={buildBrief()} />
-      </QueryClientProvider>,
-    );
+    renderBriefCard(buildBrief());
 
     expect(screen.getByText('退院前カンファレンス')).toBeTruthy();
     expect(screen.getByText('退院後初回訪問。持参薬の確認と生活指導が優先。')).toBeTruthy();
@@ -91,7 +89,6 @@ describe('VisitBriefCard', () => {
   });
 
   it('surfaces archived patient state in the brief header', () => {
-    const queryClient = new QueryClient();
     const brief: VisitBrief = {
       ...buildBrief(),
       patient: {
@@ -104,29 +101,18 @@ describe('VisitBriefCard', () => {
       },
     };
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <VisitBriefCard brief={brief} />
-      </QueryClientProvider>,
-    );
+    renderBriefCard(brief);
 
     expect(screen.getByText('アーカイブ中')).toBeTruthy();
   });
 
   it('renders the empty state when there are no patient changes', () => {
-    const queryClient = new QueryClient();
-
-    render(
-      <QueryClientProvider client={queryClient}>
-        <VisitBriefCard brief={buildBrief()} />
-      </QueryClientProvider>,
-    );
+    renderBriefCard(buildBrief());
 
     expect(screen.getByText('前回訪問以降の患者情報変更はありません。')).toBeTruthy();
   });
 
   it('renders patient changes with a change-type badge and previous→current detail', () => {
-    const queryClient = new QueryClient();
     const brief: VisitBrief = {
       ...buildBrief(),
       patient_changes: [
@@ -140,11 +126,7 @@ describe('VisitBriefCard', () => {
       ],
     };
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <VisitBriefCard brief={brief} />
-      </QueryClientProvider>,
-    );
+    renderBriefCard(brief);
 
     expect(screen.getByText('介護度')).toBeTruthy();
     expect(screen.getByText('変更')).toBeTruthy();
@@ -152,7 +134,6 @@ describe('VisitBriefCard', () => {
   });
 
   it('shows drug codes for same-name medication changes so distinct drugs stay identifiable', () => {
-    const queryClient = new QueryClient();
     const brief: VisitBrief = {
       ...buildBrief(),
       medication_changes: [
@@ -177,11 +158,7 @@ describe('VisitBriefCard', () => {
       ],
     };
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <VisitBriefCard brief={brief} />
-      </QueryClientProvider>,
-    );
+    renderBriefCard(brief);
 
     expect(screen.getAllByText('同名薬')).toHaveLength(2);
     expect(screen.getByText('YJ_A')).toBeTruthy();
@@ -189,7 +166,6 @@ describe('VisitBriefCard', () => {
   });
 
   it('renders a removed change without a trailing arrow', () => {
-    const queryClient = new QueryClient();
     const brief: VisitBrief = {
       ...buildBrief(),
       patient_changes: [
@@ -203,11 +179,7 @@ describe('VisitBriefCard', () => {
       ],
     };
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <VisitBriefCard brief={brief} />
-      </QueryClientProvider>,
-    );
+    renderBriefCard(brief);
 
     expect(screen.getByText('多職種（主治医）')).toBeTruthy();
     expect(screen.getByText('解除')).toBeTruthy();
@@ -217,7 +189,6 @@ describe('VisitBriefCard', () => {
   });
 
   it('lists outside-med classification (その他薬) for classified dispensing items (§11-7)', () => {
-    const queryClient = new QueryClient();
     const brief: VisitBrief = {
       ...buildBrief(),
       dispensing_items: [
@@ -246,11 +217,7 @@ describe('VisitBriefCard', () => {
       ],
     };
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <VisitBriefCard brief={brief} />
-      </QueryClientProvider>,
-    );
+    renderBriefCard(brief);
 
     expect(screen.getByText('その他薬（セット外で持参）')).toBeTruthy();
     expect(screen.getByText('外用')).toBeTruthy();
@@ -259,19 +226,12 @@ describe('VisitBriefCard', () => {
   });
 
   it('omits the その他薬 section when no dispensing item is classified', () => {
-    const queryClient = new QueryClient();
-
-    render(
-      <QueryClientProvider client={queryClient}>
-        <VisitBriefCard brief={buildBrief()} />
-      </QueryClientProvider>,
-    );
+    renderBriefCard(buildBrief());
 
     expect(screen.queryByText('その他薬（セット外で持参）')).toBeNull();
   });
 
   it('renders multidisciplinary update actions beside the communication evidence', () => {
-    const queryClient = new QueryClient();
     const href = '/communications/requests?status=sent&patient_id=patient_1&request_id=request_1';
     const brief: VisitBrief = {
       ...buildBrief(),
@@ -289,18 +249,13 @@ describe('VisitBriefCard', () => {
       ],
     };
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <VisitBriefCard brief={brief} />
-      </QueryClientProvider>,
-    );
+    renderBriefCard(brief);
 
     const link = screen.getByRole('link', { name: /依頼を確認/ });
     expect(link.getAttribute('href')).toBe(href);
   });
 
   it('renders delivery status actions beside the report delivery evidence', () => {
-    const queryClient = new QueryClient();
     const href = '/reports/report_1';
     const brief: VisitBrief = {
       ...buildBrief(),
@@ -315,18 +270,13 @@ describe('VisitBriefCard', () => {
       ],
     };
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <VisitBriefCard brief={brief} />
-      </QueryClientProvider>,
-    );
+    renderBriefCard(brief);
 
     const link = screen.getByRole('link', { name: /共有を確認/ });
     expect(link.getAttribute('href')).toBe(href);
   });
 
   it('renders latest lab excerpts with abnormal and stale labels', () => {
-    const queryClient = new QueryClient();
     const brief: VisitBrief = {
       ...buildBrief(),
       latest_labs: [
@@ -345,11 +295,7 @@ describe('VisitBriefCard', () => {
       ],
     };
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <VisitBriefCard brief={brief} />
-      </QueryClientProvider>,
-    );
+    renderBriefCard(brief);
 
     expect(screen.getByText('最新検査値')).toBeTruthy();
     expect(screen.getByText('eGFR')).toBeTruthy();
@@ -360,7 +306,6 @@ describe('VisitBriefCard', () => {
   });
 
   it('renders unresolved item actions beside the blocker evidence', () => {
-    const queryClient = new QueryClient();
     const href = '/reports/report_2';
     const brief: VisitBrief = {
       ...buildBrief(),
@@ -375,11 +320,7 @@ describe('VisitBriefCard', () => {
       ],
     };
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <VisitBriefCard brief={brief} />
-      </QueryClientProvider>,
-    );
+    renderBriefCard(brief);
 
     const link = screen.getByRole('link', { name: /確認する/ });
     expect(link.getAttribute('href')).toBe(href);

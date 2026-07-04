@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
 
-import type { ReactNode } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createQueryClientWrapper, createTestQueryClient } from '@/test/query-client-test-utils';
 
 const {
   mutateCellMock,
@@ -63,12 +62,6 @@ import {
   workbenchQueryKey,
 } from './use-workbench-mutations';
 
-function createWrapper(queryClient: QueryClient) {
-  return function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
-  };
-}
-
 describe('useWorkbenchMutations recovery', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -90,12 +83,7 @@ describe('useWorkbenchMutations recovery', () => {
   });
 
   it('refetches the active calendar query and surfaces server conflict detail', async () => {
-    const queryClient = new QueryClient({
-      defaultOptions: {
-        queries: { retry: false },
-        mutations: { retry: false },
-      },
-    });
+    const queryClient = createTestQueryClient();
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
     const refetchSpy = vi.spyOn(queryClient, 'refetchQueries');
     mutateCellMock.mockRejectedValue(
@@ -106,7 +94,7 @@ describe('useWorkbenchMutations recovery', () => {
 
     const { result } = renderHook(
       () => useWorkbenchMutations({ patientId: 'patient_1', planId: 'plan_1', phase: 'setp' }),
-      { wrapper: createWrapper(queryClient) },
+      { wrapper: createQueryClientWrapper(queryClient) },
     );
 
     result.current.cellMutation.mutate({
@@ -153,15 +141,10 @@ describe('useWorkbenchMutations recovery', () => {
       },
     });
 
-    const queryClient = new QueryClient({
-      defaultOptions: {
-        queries: { retry: false },
-        mutations: { retry: false },
-      },
-    });
+    const queryClient = createTestQueryClient();
     const { result } = renderHook(
       () => useWorkbenchMutations({ patientId: 'patient_1', planId: 'plan_1', phase: 'setp' }),
-      { wrapper: createWrapper(queryClient) },
+      { wrapper: createQueryClientWrapper(queryClient) },
     );
 
     result.current.cellMutation.mutate({
@@ -227,17 +210,12 @@ describe('useWorkbenchMutations recovery', () => {
       },
     });
 
-    const queryClient = new QueryClient({
-      defaultOptions: {
-        queries: { retry: false },
-        mutations: { retry: false },
-      },
-    });
+    const queryClient = createTestQueryClient();
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
     const refetchSpy = vi.spyOn(queryClient, 'refetchQueries');
     const { result } = renderHook(
       () => useWorkbenchMutations({ patientId: 'patient_1', planId: null, phase: 'dispense' }),
-      { wrapper: createWrapper(queryClient) },
+      { wrapper: createQueryClientWrapper(queryClient) },
     );
 
     result.current.assignLines.mutate({
@@ -283,15 +261,10 @@ describe('useWorkbenchMutations recovery', () => {
       writeContext: { planId: 'plan_1', cycleId: 'cycle_1', cycleVersion: 8, cellMeta: {} },
     });
 
-    const queryClient = new QueryClient({
-      defaultOptions: {
-        queries: { retry: false },
-        mutations: { retry: false },
-      },
-    });
+    const queryClient = createTestQueryClient();
     const { result } = renderHook(
       () => useWorkbenchMutations({ patientId: 'patient_1', planId: 'plan_1', phase: 'setp' }),
-      { wrapper: createWrapper(queryClient) },
+      { wrapper: createQueryClientWrapper(queryClient) },
     );
 
     result.current.generateBatches.mutate({ force: false });
