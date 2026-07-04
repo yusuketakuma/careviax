@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { ActionRail } from '@/components/ui/action-rail';
 import { Button } from '@/components/ui/button';
 import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeInvalidation } from '@/lib/hooks/use-realtime-invalidation';
@@ -168,8 +169,7 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
       const res = await fetch(`/api/prescription-intakes?${params}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('処方受付一覧の取得に失敗しました');
-      return res.json() as Promise<PrescriptionIntakesPage>;
+      return readApiJson<PrescriptionIntakesPage>(res, '処方受付一覧の取得に失敗しました');
     },
     getNextPageParam: (lastPage) => lastPage.nextCursor,
     initialPageParam: undefined as string | undefined,

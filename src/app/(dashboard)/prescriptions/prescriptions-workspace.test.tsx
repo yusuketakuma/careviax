@@ -4,6 +4,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import type { AnchorHTMLAttributes } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { jsonResponse } from '@/test/fetch-test-utils';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 
 const fetchMock = vi.hoisted(() => vi.fn());
@@ -185,15 +186,14 @@ describe('PrescriptionsWorkspace', () => {
       hasNextPage: true,
       isFetchingNextPage: false,
     });
-    fetchMock.mockResolvedValue({
-      ok: true,
-      json: async () => ({
+    fetchMock.mockImplementation(async () =>
+      jsonResponse({
         data: [],
         hasMore: true,
         nextCursor: 'cursor_1',
         totalCount: 75,
       }),
-    });
+    );
   });
 
   it('fetches one server page with limit/cursor, no polling, and helper org headers', async () => {
@@ -230,6 +230,23 @@ describe('PrescriptionsWorkspace', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     url = parseFetchUrl();
     expect(url.searchParams.get('cursor')).toBe('cursor_1');
+  });
+
+  it('keeps the API message when the prescription intake list fetch fails', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ message: '処方受付一覧を表示できません' }, 403));
+
+    render(<PrescriptionsWorkspace />);
+
+    const options = latestInfiniteQueryOptions();
+    await expect(options.queryFn({ pageParam: 'cursor_1' })).rejects.toThrow(
+      '処方受付一覧を表示できません',
+    );
+
+    const url = parseFetchUrl();
+    expect(url.pathname).toBe('/api/prescription-intakes');
+    expect(url.searchParams.get('cursor')).toBe('cursor_1');
+    expect(url.searchParams.get('limit')).toBe('50');
+    expect(url.searchParams.get('include_total')).toBe('1');
   });
 
   it('passes status and source filters as API query params', async () => {
