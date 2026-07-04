@@ -1620,3 +1620,36 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - commit: `147c81bb` (`fix(routes): name general loading fallbacks`)。
 - 残課題: general route-shell generic fallback は closure。broad Plans.md / R55 residual scan は継続。
   `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
+
+## 2026-07-04 R55 patient/prescription/schedule route loading closure
+
+- 分類: UI loading-state cleanup / R55 route-shell generic loading residual closure。
+- 実施:
+  - `prescriptions/[id]/page.tsx` の route-level Suspense fallback を
+    `処方受付詳細を読み込み中...` の画面固有 status へ変更。
+  - `prescriptions/intake/page.tsx` を `処方取込を読み込み中...`、`schedules/page.tsx` の
+    calendar boundary を `訪問カレンダーを読み込み中...`、`patients/compare/page.tsx` を
+    `患者カード比較を読み込み中...`、`patients/[id]/page.tsx` を
+    `患者カードを読み込み中...`、`patients/[id]/share/page.tsx` を
+    `他職種向け共有ページを読み込み中...`、`patients/[id]/collaboration/page.tsx` を
+    `共同編集状況を読み込み中...`、`patients/[id]/safety-check/page.tsx` を
+    `薬の安全チェックを読み込み中...` に変更。
+  - 8 route の page test を追加/拡張し、generic `読み込み中...` が出ないこと、suspended content が出ないこと、
+    route param/search param wiring が保持されることを固定。
+- 挙動変更: route-shell loading label のみ。prescription detail query、intake triage query、
+  schedule board/calendar query、patient compare query、patient card overview resolution semantics、
+  external share query、collaboration query、safety-check query、route helper、search param parsing、
+  API path、org header、API/DB/auth/authorization/billing/audit は不変。
+- UI/UX根拠: `docs/ui-ux-design-guidelines.md` の Clear state / false-empty prevention と
+  route fallback は軽量で意味のある loading UI にする Next loading/Suspense guidance に整合。
+- 安全性: product API/DB/auth/authorization/PHI projection/billing/deploy/package dependency は不変。
+  Loading copy は PHI-free で、patient name/id・prescription detail・intake id・medication name・schedule date・visit detail・external-share recipient・collaboration note・safety-check finding・billing value・org id・raw error
+  を出さない。
+- 検証: focused patient/prescription/schedule route fallback Vitest `8 files / 16 tests` green、
+  targeted ESLint green、targeted Prettier check green、targeted `git diff --check` green、
+  `pnpm typecheck` green。dashboard-wide
+  `rg -n "<Suspense fallback=\\{<Loading />\\}" 'src/app/(dashboard)' --glob 'page.tsx'`
+  は no matches。
+- commit: `eec7e953` (`fix(routes): close patient loading fallbacks`)。
+- 残課題: dashboard route-level generic fallback は closure。broad Plans.md / R55 residual scan は継続。
+  `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。

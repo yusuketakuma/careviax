@@ -1,5 +1,67 @@
 # CODEX Goal Progress
 
+## R55 Patient/Prescription/Schedule Route Loading Closure - 2026-07-04 21:17 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/prescriptions/[id]/page.tsx`
+    - `src/app/(dashboard)/prescriptions/[id]/page.test.tsx`
+    - `src/app/(dashboard)/prescriptions/intake/page.tsx`
+    - `src/app/(dashboard)/prescriptions/intake/page.test.tsx`
+    - `src/app/(dashboard)/schedules/page.tsx`
+    - `src/app/(dashboard)/schedules/page.test.tsx`
+    - `src/app/(dashboard)/patients/compare/page.tsx`
+    - `src/app/(dashboard)/patients/compare/page.test.tsx`
+    - `src/app/(dashboard)/patients/[id]/page.tsx`
+    - `src/app/(dashboard)/patients/[id]/page.test.tsx`
+    - `src/app/(dashboard)/patients/[id]/share/page.tsx`
+    - `src/app/(dashboard)/patients/[id]/share/page.test.tsx`
+    - `src/app/(dashboard)/patients/[id]/collaboration/page.tsx`
+    - `src/app/(dashboard)/patients/[id]/collaboration/page.test.tsx`
+    - `src/app/(dashboard)/patients/[id]/safety-check/page.tsx`
+    - `src/app/(dashboard)/patients/[id]/safety-check/page.test.tsx`
+- Scope:
+  - Replaced the last eight dashboard route-level generic Suspense fallback
+    `Loading` instances with screen-specific statuses:
+    - `処方受付詳細を読み込み中...`
+    - `処方取込を読み込み中...`
+    - `訪問カレンダーを読み込み中...`
+    - `患者カード比較を読み込み中...`
+    - `患者カードを読み込み中...`
+    - `他職種向け共有ページを読み込み中...`
+    - `共同編集状況を読み込み中...`
+    - `薬の安全チェックを読み込み中...`
+  - Added/extended route shell regression tests proving each fallback is
+    screen-specific, generic `読み込み中...` is absent, suspended content is not
+    rendered, and route param/search param wiring remains intact.
+  - Confirmed the dashboard-wide generic fallback scan now returns no matches.
+- Safety:
+  - Route-shell loading presentation and tests only.
+  - No prescription detail query, intake triage query, schedule board/calendar
+    query, patient compare query, patient card overview resolution semantics,
+    external share query, collaboration query, safety-check query, route helper,
+    search param parsing, API path, org header, DB, auth, authorization, PHI
+    projection, billing semantics, audit, deployment, package, or server
+    behavior changed.
+  - Loading copy is PHI-free and does not echo patient names, patient IDs,
+    prescription details, intake IDs, medication names, schedule dates, visit
+    details, external-share recipients, collaboration notes, safety-check
+    findings, billing values, org IDs, or raw errors.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/prescriptions/[id]/page.test.tsx' 'src/app/(dashboard)/prescriptions/intake/page.test.tsx' 'src/app/(dashboard)/schedules/page.test.tsx' 'src/app/(dashboard)/patients/compare/page.test.tsx' 'src/app/(dashboard)/patients/[id]/page.test.tsx' 'src/app/(dashboard)/patients/[id]/share/page.test.tsx' 'src/app/(dashboard)/patients/[id]/collaboration/page.test.tsx' 'src/app/(dashboard)/patients/[id]/safety-check/page.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `8` files / `16` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed for the route source/test file pairs.
+  - Dashboard-wide generic route fallback scan returned no matches.
+- Commit:
+  - Implementation slice landed at `eec7e953`
+    (`fix(routes): close patient loading fallbacks`).
+- Remaining:
+  - Broader Plans.md objective remains open beyond this R55 route-level generic
+    fallback closure.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 General Route Loading Labels - 2026-07-04 21:11 JST
 
 - Status:
