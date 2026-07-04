@@ -1555,6 +1555,24 @@ describe('PrescriptionHistoryContent url/header convergence', () => {
     }
   });
 
+  it('prescriptions GET keeps the API message when fetch fails', async () => {
+    const { queryConfigs } = renderHistory({ patientId: 'patient_1' });
+    const fetchMock = stubJsonFetch({ message: '処方履歴を表示できません' }, 403);
+    try {
+      await expect(queryConfigs.get('patient-prescriptions')!.queryFn()).rejects.toThrow(
+        '処方履歴を表示できません',
+      );
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/patients/patient_1/prescriptions?limit=100',
+        expect.objectContaining({
+          headers: expect.objectContaining({ 'x-org-id': 'org_1' }),
+        }),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('drug-masters batch POST adopts json helper with yj_codes and drug_master_ids', async () => {
     const sentinel = {
       'Content-Type': 'application/json',
@@ -1589,6 +1607,33 @@ describe('PrescriptionHistoryContent url/header convergence', () => {
       expect(JSON.parse(init.body as string)).toEqual({
         yj_codes: ['YJ_STALE'],
         drug_master_ids: ['drug_master_current', 'drug_master_id_only'],
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('drug-masters batch POST keeps the API message when fetch fails', async () => {
+    const { queryConfigs } = renderHistory({
+      lines: [buildLine('YJ_STALE', { drug_master_id: 'drug_master_current' })],
+    });
+    const fetchMock = stubJsonFetch({ message: '薬剤マスタを表示できません' }, 403);
+    try {
+      await expect(queryConfigs.get('drug-masters-batch')!.queryFn()).rejects.toThrow(
+        '薬剤マスタを表示できません',
+      );
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('/api/drug-masters/batch');
+      expect(init.method).toBe('POST');
+      expect(init.headers).toEqual(
+        expect.objectContaining({
+          'Content-Type': 'application/json',
+          'x-org-id': 'org_1',
+        }),
+      );
+      expect(JSON.parse(String(init.body))).toEqual({
+        yj_codes: ['YJ_STALE'],
+        drug_master_ids: ['drug_master_current'],
       });
     } finally {
       vi.unstubAllGlobals();

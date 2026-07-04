@@ -35,6 +35,7 @@ import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/
 import { DataTable } from '@/components/ui/data-table';
 import { HelpPopover } from '@/components/ui/help-popover';
 import { formatDateKey } from '@/lib/date-key';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -1436,13 +1437,12 @@ export function PrescriptionHistoryContent() {
       const res = await fetch(`${buildPatientApiPath(patientId, '/prescriptions')}?limit=100`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('処方履歴の取得に失敗しました');
-      return res.json() as Promise<{
+      return readApiJson<{
         patient: PatientInfo;
         data: PrescriptionIntake[];
         diff_review: DiffReview | null;
         diff_meta: DiffMeta | null;
-      }>;
+      }>(res, '処方履歴の取得に失敗しました');
     },
     enabled: !!orgId && !!patientId,
   });
@@ -1488,8 +1488,7 @@ export function PrescriptionHistoryContent() {
       });
       // 取得失敗を黙って {} に潰さず error 状態へ。エンリッチは補助なので画面全体は止めず、
       // timeline 上部に非ブロッキング通知を出して「薬剤情報が欠けている可能性」を可視化する。
-      if (!res.ok) throw new Error('薬剤マスタの取得に失敗しました');
-      return res.json() as Promise<DrugMasterBatchResponse>;
+      return readApiJson<DrugMasterBatchResponse>(res, '薬剤マスタの取得に失敗しました');
     },
     enabled: !!orgId && (allDrugCodes.length > 0 || allDrugMasterIds.length > 0),
     staleTime: 5 * 60_000,
