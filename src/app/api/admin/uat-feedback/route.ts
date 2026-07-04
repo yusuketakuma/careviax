@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
+import { buildCursorPage } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
@@ -29,10 +30,10 @@ const authenticatedGET = withAuthContext(
       orderBy: [{ created_at: 'desc' }],
       take: UAT_FEEDBACK_LIST_LIMIT + 1,
     });
-    const hasMore = feedback.length > UAT_FEEDBACK_LIST_LIMIT;
+    const page = buildCursorPage(feedback, UAT_FEEDBACK_LIST_LIMIT, (item) => item.id);
 
     return success({
-      data: feedback.slice(0, UAT_FEEDBACK_LIST_LIMIT).map((item) => ({
+      data: page.data.map((item) => ({
         ...item,
         checked_items: Array.isArray(item.checked_items) ? item.checked_items : [],
         due_date: item.due_date?.toISOString() ?? null,
@@ -40,7 +41,7 @@ const authenticatedGET = withAuthContext(
         created_at: item.created_at.toISOString(),
         updated_at: item.updated_at.toISOString(),
       })),
-      meta: { limit: UAT_FEEDBACK_LIST_LIMIT, has_more: hasMore },
+      meta: { limit: UAT_FEEDBACK_LIST_LIMIT, has_more: page.hasMore },
     });
   },
   {
