@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 const { toastSuccessMock, toastErrorMock } = vi.hoisted(() => ({
   toastSuccessMock: vi.fn(),
   toastErrorMock: vi.fn(),
@@ -20,18 +20,7 @@ import { SharedViewerContent } from './shared-viewer-content';
 const SELF_REPORT_DRAFT_STORAGE_KEY = 'ph-os:self-report-draft:v1:token_1';
 
 function renderSharedViewerContent() {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  });
-
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <SharedViewerContent token="token_1" />
-    </QueryClientProvider>,
-  );
+  return render(<SharedViewerContent token="token_1" />, { wrapper: createQueryClientWrapper() });
 }
 
 function createSharedViewerPayload() {

@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 
 import { useState } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { jsonResponse } from '@/test/fetch-test-utils';
+import { createQueryClientWrapper, createTestQueryClient } from '@/test/query-client-test-utils';
 import { MentionInput } from './mention-input';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
@@ -28,14 +28,7 @@ vi.mock('@/lib/api/org-headers', () => ({
 setupDomTestEnv();
 
 function renderWithQueryClient(ui: React.ReactElement) {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  });
-
-  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+  return render(ui, { wrapper: createQueryClientWrapper() });
 }
 
 describe('MentionInput', () => {
@@ -102,15 +95,9 @@ async function renderWithLoadedStaff(
 ) {
   fetchMock.mockResolvedValue(jsonResponse({ data: staff }));
 
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
+  const queryClient = createTestQueryClient();
 
-  render(
-    <QueryClientProvider client={queryClient}>
-      <MentionHarness {...props} />
-    </QueryClientProvider>,
-  );
+  render(<MentionHarness {...props} />, { wrapper: createQueryClientWrapper(queryClient) });
 
   // スタッフ一覧が react-query に確定するまで待つ（handleChange の除去判定は
   // 解決済み staffList を前提とするため）。

@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { jsonResponse } from '@/test/fetch-test-utils';
+import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import { toast } from 'sonner';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
@@ -67,14 +67,7 @@ import { CommentThread } from './comment-thread';
 setupDomTestEnv();
 
 function renderWithQueryClient(ui: React.ReactElement) {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  });
-
-  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+  return render(ui, { wrapper: createQueryClientWrapper() });
 }
 
 describe('CommentThread', () => {
