@@ -1,5 +1,37 @@
 # CODEX Goal Progress
 
+## R32 Patient/Visit QueryClient Wrapper Convergence - 2026-07-04 22:22 JST
+
+- Status:
+  - Implemented and validated a sixth bounded R32 slice:
+    - `src/components/features/patients/patient-structured-care-panel.test.tsx`
+    - `src/components/features/visits/handoff-confirm-panel.test.tsx`
+    - `src/app/(dashboard)/visits/[id]/visit-reflected-fields-card.test.tsx`
+    - `src/app/(dashboard)/visits/[id]/voice-memo/voice-memo-content.test.tsx`
+- Scope:
+  - Replaced four more local `QueryClient` / `QueryClientProvider` wrapper
+    implementations with `createQueryClientWrapper`.
+  - Preserved retry-disabled test defaults and left product runtime code
+    untouched.
+- Safety:
+  - Test harness convergence only.
+  - No product API, DB, auth, authorization, PHI projection, billing semantics,
+    deployment, package dependency, query, mutation, org header, audit logging,
+    or runtime behavior changed.
+- Validation:
+  - `pnpm exec vitest run 'src/components/features/patients/patient-structured-care-panel.test.tsx' 'src/components/features/visits/handoff-confirm-panel.test.tsx' 'src/app/(dashboard)/visits/[id]/visit-reflected-fields-card.test.tsx' 'src/app/(dashboard)/visits/[id]/voice-memo/voice-memo-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `4` files / `15` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `e7965d31`
+    (`test(visits): share query client wrapper`).
+- Remaining:
+  - R32 remains partially open for the remaining local QueryClient wrappers.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R32 Admin Operations/Incidents QueryClient Wrapper Convergence - 2026-07-04 22:19 JST
 
 - Status:
