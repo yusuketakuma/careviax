@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { messageFromError } from '@/lib/utils/error-message';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
@@ -410,7 +411,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
       }
       toast.success('次回訪問の確認タスクを作成しました');
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(messageFromError(err, '次回タスクの作成に失敗しました')),
   });
 
   const createReplyRequestMutation = useMutation({
@@ -459,7 +460,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
         queryKey: ['communication-requests', 'patient', patientId, orgId],
       });
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(messageFromError(err, '返信依頼の起票に失敗しました')),
   });
 
   function toggleScope(key: string) {

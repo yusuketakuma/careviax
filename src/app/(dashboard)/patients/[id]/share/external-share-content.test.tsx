@@ -2,6 +2,7 @@
 
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
@@ -68,7 +69,7 @@ type QueryConfig = {
 type MutationConfig = {
   mutationFn?: () => Promise<unknown>;
   onSuccess?: () => Promise<void> | void;
-  onError?: (error: Error) => void;
+  onError?: (error: unknown) => void;
 };
 
 afterEach(() => {
@@ -512,6 +513,35 @@ describe('ExternalShareContent', () => {
       report_id: 'patient_1',
       communication_request_id: 'request_1',
     });
+  });
+
+  it('keeps server messages and falls back for patient-share mutation toasts', () => {
+    const mutationConfigs: MutationConfig[] = [];
+    useOrgIdMock.mockReturnValue('org_1');
+    useMutationMock.mockImplementation((config: MutationConfig) => {
+      mutationConfigs.push(config);
+      return { mutate: vi.fn(), isPending: false };
+    });
+    useQueryMock.mockReturnValue({
+      data: {
+        name: '佐藤 花子',
+        external_shares: [],
+        self_reports: [],
+        current_medications: [],
+        visit_schedules: [],
+        care_reports: [],
+      },
+      isLoading: false,
+      isError: false,
+    });
+
+    render(<ExternalShareContent patientId="patient_1" />);
+
+    mutationConfigs[1]?.onError?.(new Error('次回タスクは既に起票済みです'));
+    mutationConfigs[2]?.onError?.('reply-request-failure');
+
+    expect(toast.error).toHaveBeenCalledWith('次回タスクは既に起票済みです');
+    expect(toast.error).toHaveBeenCalledWith('返信依頼の起票に失敗しました');
   });
 
   it('links an active patient-share reply request back to the exact communication request', () => {

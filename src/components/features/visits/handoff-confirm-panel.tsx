@@ -11,6 +11,7 @@ import { StateBadge } from '@/components/ui/state-badge';
 import { Textarea } from '@/components/ui/textarea';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { messageFromError } from '@/lib/utils/error-message';
 import type { VisitHandoff } from '@/types/visit-brief';
 
 type HandoffConfirmPanelProps = {
@@ -154,7 +155,7 @@ export function HandoffConfirmPanel({
       onConfirmed?.();
     },
     onError: (err: Error) => {
-      toast.error(err.message);
+      toast.error(messageFromError(err, '申し送りの確定に失敗しました'));
     },
   });
 
