@@ -439,8 +439,8 @@ export function BillingCandidatesContent({
       await queryClient.invalidateQueries({ queryKey: ['billing-candidates', orgId] });
       await queryClient.invalidateQueries({ queryKey: ['billing-stats', orgId] });
     },
-    onError: (error: Error) => {
-      toast.error(error.message);
+    onError: (error) => {
+      toast.error(messageFromError(error, '請求候補の生成に失敗しました'));
     },
   });
 
@@ -469,8 +469,8 @@ export function BillingCandidatesContent({
       await queryClient.invalidateQueries({ queryKey: ['billing-candidates', orgId] });
       await queryClient.invalidateQueries({ queryKey: ['billing-stats', orgId] });
     },
-    onError: (error: Error) => {
-      toast.error(error.message);
+    onError: (error) => {
+      toast.error(messageFromError(error, '請求候補の更新に失敗しました'));
     },
   });
 
@@ -496,8 +496,8 @@ export function BillingCandidatesContent({
       await queryClient.invalidateQueries({ queryKey: ['billing-candidates', orgId] });
       await queryClient.invalidateQueries({ queryKey: ['billing-stats', orgId] });
     },
-    onError: (error: Error) => {
-      toast.error(error.message);
+    onError: (error) => {
+      toast.error(messageFromError(error, '月次締めに失敗しました'));
     },
   });
 

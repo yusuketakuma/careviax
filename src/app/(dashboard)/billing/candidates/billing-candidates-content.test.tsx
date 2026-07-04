@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import {
   BillingCandidatesContent,
@@ -318,6 +319,25 @@ describe('BillingCandidatesContent', () => {
         action: 'confirm',
         expected_updated_at: '2026-06-18T00:00:00.000Z',
       });
+    });
+  });
+
+  it('uses the generation fallback when mutation rejection is not an Error', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === '/api/billing-candidates' && init?.method === 'POST') {
+        throw 'raw failure';
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderBillingCandidatesContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: '医療・介護候補生成' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('請求候補の生成に失敗しました');
     });
   });
 });
