@@ -1,5 +1,41 @@
 # CODEX Goal Progress
 
+## R40/R44 Structured Care Panel readApiJson Partial - 2026-07-05 06:19 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/components/features/patients/patient-structured-care-panel.tsx`
+    - `src/components/features/patients/patient-structured-care-panel.test.tsx`
+- Scope:
+  - Reused `readApiJson` for the patient structured care panel read GET.
+  - Added a query error contract test proving API JSON `message` from a failed
+    read GET is preserved through the shared helper.
+  - Preserved patient API helper usage, `buildOrgHeaders`, React Query key,
+    enabled gate, retryable error UI, empty-card suppression, UTC date-only
+    display, and structured procedure/narcotic labels.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run src/components/features/patients/patient-structured-care-panel.test.tsx`
+    passed `1` file / `5` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `5b5c7e8f`
+    (`refactor(ui): reuse readApiJson in structured care panel`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Patient Field Revisions readApiJson Partial - 2026-07-05 06:16 JST
 
 - Status:
