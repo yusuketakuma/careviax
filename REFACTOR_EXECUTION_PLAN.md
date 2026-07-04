@@ -645,8 +645,8 @@ If any of those are needed, create a proposal first. Do not implement silently.
     name, and room-token sentinels.
 - Validation:
   - Focused room-token client test passed `1` file / `7` tests.
-  - Room-token client + collaborative form hook + Yjs provider + shared logger
-    tests passed `4` files / `49` tests.
+  - Room-token client plus the then-existing collaborative form/provider and
+    shared logger tests passed `4` files / `49` tests.
   - Scoped ESLint, Prettier, and diff-check for the changed client/test files
     passed.
   - Full typecheck, no-unused, lint, format check, diff check, and production

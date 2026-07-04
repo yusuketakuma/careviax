@@ -6,10 +6,9 @@ const SOURCE_ROOTS = ['src/lib', 'src/server', 'src/phos', 'tools/scripts', 'too
 const AWS_RUNTIME_SOURCE_ROOTS = ['src/phos', 'tools/infra'];
 const AWS_CLIENT_CONSTRUCTOR_PATTERN =
   /new\s+(?:[A-Za-z_$][\w$]*\.)?(?:ApiGatewayManagementApi|CloudWatch|CognitoIdentityProvider|DynamoDB|RDS|S3|SES|SNS|SecretsManager)Client\s*\(/g;
-const TIMEOUT_WRAPPER_PATTERN =
-  /with(?:Aws|PhosAws|ScriptAws|InfraAws|WebsocketAws)ClientTimeout\s*\(/;
+const TIMEOUT_WRAPPER_PATTERN = /with(?:Aws|PhosAws|ScriptAws|InfraAws)ClientTimeout\s*\(/;
 const BOUNDED_RETRY_CONFIG_PATTERN =
-  /(?:awsClientConfig|phosAwsClientConfig|scriptAwsClientConfig|infraAwsClientConfig|websocketAwsClientConfig)\s*\(/;
+  /(?:awsClientConfig|phosAwsClientConfig|scriptAwsClientConfig|infraAwsClientConfig)\s*\(/;
 const LEGACY_LAMBDA_RUNTIME_PATTERN =
   /\b(?:Runtime:\s*|lambda_runtime[^'"\n]*['"]|AWS_Lambda_)nodejs(?:18|20|22)\.x\b/g;
 

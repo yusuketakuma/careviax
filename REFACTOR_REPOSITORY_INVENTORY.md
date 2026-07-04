@@ -25,8 +25,8 @@ architecture. Secret values were not inspected or recorded.
   TanStack Table, Recharts, Zustand.
 - Backend/API: Next Route Handlers, NextAuth v4, Prisma `7.8.0`, PostgreSQL,
   Zod validation, server services and jobs under `src/server`.
-- Offline/realtime: Dexie/offline store, service worker via Serwist, Yjs,
-  y-websocket, Redis/ioredis adapters.
+- Offline/realtime: Dexie/offline store, service worker via Serwist,
+  Redis/ioredis adapters.
 - Cloud/infra: AWS Cognito, RDS/Aurora PostgreSQL, S3, KMS, Secrets Manager,
   SES, SNS, DynamoDB, CloudWatch, API Gateway Management API, Docker, GitHub
   Actions.
@@ -174,7 +174,7 @@ medical UI E2E gate.
 - Data/runtime: Prisma, PostgreSQL, date-fns, zod, bcryptjs.
 - UI/state: React, Next, React Query, React Hook Form, TanStack Table,
   Recharts, Zustand, Base UI, lucide-react.
-- Offline/realtime: Dexie, Serwist, Yjs, y-websocket, ioredis.
+- Offline/realtime: Dexie, Serwist, ioredis.
 - Documents/files: react-pdf, qrcode, fflate, exceljs, web-push.
 - Testing: Vitest, Testing Library, Playwright, axe, jsdom.
 - Tooling: TypeScript, ESLint, Prettier, tsx, Tailwind.

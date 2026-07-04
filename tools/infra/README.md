@@ -11,7 +11,6 @@
 - `eventbridge-schedules.json` : scheduled operational jobs
 - `cognito-advanced-security.json` : Cognito advanced security settings
 - `rate-limit-dynamodb.json` : DynamoDB table / TTL / IAM contract for production distributed rate limiting
-- `websocket/template.yaml` : API Gateway WebSocket, Lambda, and DynamoDB collaboration sync stack
 
 ## EventBridge Schedule Drift
 

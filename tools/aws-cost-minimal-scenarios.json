@@ -61,7 +61,7 @@
         { "name": "S3 evidence/audit storage starter allowance", "monthlyUsd": 1.5 },
         { "name": "ECR private repository image storage starter allowance", "monthlyUsd": 0.1 },
         { "name": "CloudWatch logs and alarms starter allowance", "monthlyUsd": 5 },
-        { "name": "DynamoDB rate-limit/Yjs starter allowance", "monthlyUsd": 5 },
+        { "name": "DynamoDB rate-limit starter allowance", "monthlyUsd": 5 },
         { "name": "SES pilot mail volume allowance", "monthlyUsd": 0 },
         { "name": "Cognito Lite/Essentials under direct-user free tier", "monthlyUsd": 0 }
       ],
@@ -86,7 +86,7 @@
         { "name": "S3 evidence/audit storage starter allowance", "monthlyUsd": 3 },
         { "name": "ECR private repository image storage starter allowance", "monthlyUsd": 0.2 },
         { "name": "CloudWatch logs and alarms starter allowance", "monthlyUsd": 10 },
-        { "name": "DynamoDB rate-limit/Yjs starter allowance", "monthlyUsd": 5 },
+        { "name": "DynamoDB rate-limit starter allowance", "monthlyUsd": 5 },
         { "name": "SES pilot mail volume allowance", "monthlyUsd": 0 },
         { "name": "Cognito Lite/Essentials under direct-user free tier", "monthlyUsd": 0 }
       ],

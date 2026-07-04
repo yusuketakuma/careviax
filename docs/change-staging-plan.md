@@ -211,7 +211,6 @@ Validation:
 Scope:
 
 - `src/phos/backend/lambda-observability-aws-client.test.ts`
-- `tools/infra/websocket/lambdas/**`
 - PH-OS readiness scripts and infra fixtures
 
 Review boundaries:
@@ -257,7 +256,7 @@ Recommended checkpoint commits:
 6. `refactor: harden file storage and webhook persistence`
 7. `refactor: replace legacy dashboard and patient surfaces`
 8. `feat: harden scheduling and visit route planning`
-9. `test: update phos and websocket infrastructure coverage`
+9. `test: update phos and infrastructure coverage`
 10. `docs: record release evidence and remaining db gates`
 
 Each commit should be followed by at least:

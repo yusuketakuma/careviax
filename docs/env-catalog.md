@@ -2,7 +2,7 @@
 
 Generated on 2026-06-12 from current source references to `process.env.*` under `src`, `tools`, `prisma`, and root TypeScript config files. Test files and generated build output are excluded.
 
-Current key count: 139. The earlier refactor note recorded 118 keys; the live repository now references 139.
+Current key count: 135. The earlier refactor note recorded 118 keys; the live repository now references 135.
 
 `src/lib/env/assert-env.ts` enforces the production safety subset from `src/instrumentation.ts` during the Node.js runtime startup path.
 
@@ -29,9 +29,6 @@ Current key count: 139. The earlier refactor note recorded 118 keys; the live re
 | `CI`                                         | tooling optional     |                                                                 |
 | `COGNITO_CLIENT_SECRET`                      | secret optional      | Secret or credential-like value; manage through secret storage. |
 | `COGNITO_USER_POOL_ID`                       | infra optional       |                                                                 |
-| `COLLABORATION_ROOM_TOKEN_SECRET`            | secret optional      | Secret or credential-like value; manage through secret storage. |
-| `COLLABORATION_ROOM_TOKEN_SECRET_ARN`        | secret optional      | Secret or credential-like value; manage through secret storage. |
-| `CONNECTIONS_TABLE`                          | optional             |                                                                 |
 | `DAILY_OPERATION_CONCURRENCY`                | optional             |                                                                 |
 | `DATABASE_POOL_SIZE`                         | optional             |                                                                 |
 | `DATABASE_URL`                               | required             | Core Prisma runtime connection.                                 |
@@ -145,4 +142,3 @@ Current key count: 139. The earlier refactor note recorded 118 keys; the live re
 | `VISIT_BRIEF_BATCH_CONCURRENCY`              | optional             |                                                                 |
 | `WEBHOOK_SECRET_ENCRYPTION_KEY`              | secret optional      | Secret or credential-like value; manage through secret storage. |
 | `WEBHOOK_SECRET_ENCRYPTION_KEY_ID`           | secret optional      | Secret or credential-like value; manage through secret storage. |
-| `WEBSOCKET_API_ENDPOINT`                     | optional             |                                                                 |

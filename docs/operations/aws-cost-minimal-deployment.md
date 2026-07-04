@@ -4,7 +4,7 @@ Updated: 2026-06-17
 
 ## Current System Fit
 
-PH-OS is a Next.js 16 / React 19 / Node 24 application with Prisma 7 and PostgreSQL. The repository already contains AWS SDK clients, Secrets Manager fallback support, S3/SES/Cognito integration points, DynamoDB rate-limit infrastructure, CloudWatch alarms, EventBridge schedule drift checks, PH-OS Lambda/API Gateway templates, and WebSocket/SAM infrastructure for Yjs collaboration.
+PH-OS is a Next.js 16 / React 19 / Node 24 application with Prisma 7 and PostgreSQL. The repository already contains AWS SDK clients, Secrets Manager fallback support, S3/SES/Cognito integration points, DynamoDB rate-limit infrastructure, CloudWatch alarms, EventBridge schedule drift checks, and PH-OS Lambda/API Gateway templates.
 
 The lowest-cost path is therefore not a new serverless rewrite. Build the existing app as a production Docker image, run one app instance for the pilot, keep PostgreSQL managed, and only add distributed Redis/DynamoDB/WebSocket components when multiple app instances make in-memory fallbacks unsafe.
 
@@ -12,7 +12,7 @@ The lowest-cost path is therefore not a new serverless rewrite. Build the existi
 
 1. Pilot floor: Lightsail Linux/Unix 2 GB bundle + Lightsail managed PostgreSQL 2 GB standard encrypted plan.
 2. Role-capable managed container path for new AWS customers: ECS Express Mode on Fargate with an Application Load Balancer, task roles, and the same PostgreSQL baseline or a concrete RDS PostgreSQL size selected in AWS Pricing Calculator.
-3. Production HA floor: two app instances + load balancer + high-availability encrypted database, then add DynamoDB rate limiting and Redis/WebSocket backing when horizontal scale is enabled.
+3. Production HA floor: two app instances + load balancer + high-availability encrypted database, then add DynamoDB rate limiting and Redis backing when horizontal scale is enabled.
 
 Do not use the Lightsail 1 GB database plan for PH-OS pilot data because the current Lightsail pricing table marks that tier as not encrypted. Start at the 2 GB encrypted database tier or use RDS PostgreSQL.
 

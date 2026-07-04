@@ -10,7 +10,7 @@ Snapshot: 2026-07-03 19:30 JST
   PostgreSQL, Zod, server services/jobs under `src/server`.
 - Frontend: Tailwind CSS 4, Base UI, lucide-react, React Query,
   React Hook Form, TanStack Table, Recharts, Zustand.
-- Offline/realtime: Dexie, Serwist, Yjs, y-websocket, Redis/ioredis.
+- Offline/realtime: Dexie, Serwist, Redis/ioredis.
 - Validation: Vitest, Testing Library, Playwright, axe, ESLint, Prettier.
 
 ## Main Entrypoints
