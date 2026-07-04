@@ -12,7 +12,7 @@ import {
 } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { parsePaginationParams } from '@/lib/api/pagination';
+import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { decodeKeysetCursor, encodeKeysetCursor } from '@/lib/api/keyset-cursor';
 import { formatDateKey } from '@/lib/date-key';
 import { allocateDisplayId } from '@/lib/db/display-id';
@@ -935,8 +935,10 @@ async function authenticatedGET(req: NextRequest) {
       select,
     });
 
-    const hasMore = records.length > limit;
-    const pageRecords = hasMore ? records.slice(0, limit) : records;
+    const page = buildCursorPage(records, limit, (record) =>
+      encodeKeysetCursor(VISIT_RECORD_CURSOR_KEYS, record),
+    );
+    const pageRecords = page.data;
     const patientHistorySummaries =
       includeHistorySummary && !isEvidenceGalleryView
         ? await buildVisitRecordPatientHistorySummaries(
@@ -964,15 +966,12 @@ async function authenticatedGET(req: NextRequest) {
             : {}),
           patient_history_summary: patientHistorySummaries?.get(record.id) ?? null,
         }));
-    const nextCursor = hasMore ? pageRecords[pageRecords.length - 1] : null;
 
     return withSensitiveNoStore(
       success({
         data,
-        hasMore,
-        nextCursor: nextCursor
-          ? encodeKeysetCursor(VISIT_RECORD_CURSOR_KEYS, nextCursor)
-          : undefined,
+        hasMore: page.hasMore,
+        nextCursor: page.nextCursor,
       }),
     );
   });
