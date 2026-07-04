@@ -2,9 +2,9 @@
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createElement } from 'react';
 import { toast } from 'sonner';
+import { createQueryClientWrapper, createTestQueryClient } from '@/test/query-client-test-utils';
 import {
   ScheduleCreateEditDrawer,
   buildScheduleCreateEditDrawerForm,
@@ -42,12 +42,7 @@ function renderCreateEditDrawer(props?: {
   editingProposal?: Proposal | null;
   onOpenChange?: (open: boolean) => void;
 }) {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  });
+  const queryClient = createTestQueryClient();
   const cases: CaseOption[] = [
     {
       id: 'case_1',
@@ -66,19 +61,16 @@ function renderCreateEditDrawer(props?: {
   ];
 
   return render(
-    createElement(
-      QueryClientProvider,
-      { client: queryClient },
-      createElement(ScheduleCreateEditDrawer, {
-        open: true,
-        onOpenChange: props?.onOpenChange ?? (() => undefined),
-        orgId: 'org_1',
-        cases,
-        pharmacists,
-        defaultDate: '2026-06-30',
-        editingProposal: props?.editingProposal,
-      }),
-    ),
+    createElement(ScheduleCreateEditDrawer, {
+      open: true,
+      onOpenChange: props?.onOpenChange ?? (() => undefined),
+      orgId: 'org_1',
+      cases,
+      pharmacists,
+      defaultDate: '2026-06-30',
+      editingProposal: props?.editingProposal,
+    }),
+    { wrapper: createQueryClientWrapper(queryClient) },
   );
 }
 
@@ -122,25 +114,20 @@ describe('schedule create/edit drawer unsaved-changes guard (FEUX-8)', () => {
   it('does not resurrect discarded input when reopening the same drawer', async () => {
     requestNavigationConfirmationMock.mockResolvedValue(true);
     const onOpenChange = vi.fn();
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-    });
+    const queryClient = createTestQueryClient();
     const cases: CaseOption[] = [];
     const pharmacists: Pharmacist[] = [];
+    const wrapper = createQueryClientWrapper(queryClient);
     const drawerProps = (open: boolean) =>
-      createElement(
-        QueryClientProvider,
-        { client: queryClient },
-        createElement(ScheduleCreateEditDrawer, {
-          open,
-          onOpenChange,
-          orgId: 'org_1',
-          cases,
-          pharmacists,
-          defaultDate: '2026-06-30',
-        }),
-      );
-    const { rerender } = render(drawerProps(true));
+      createElement(ScheduleCreateEditDrawer, {
+        open,
+        onOpenChange,
+        orgId: 'org_1',
+        cases,
+        pharmacists,
+        defaultDate: '2026-06-30',
+      });
+    const { rerender } = render(drawerProps(true), { wrapper });
 
     fireEvent.change(screen.getByLabelText('候補日'), { target: { value: '2026-07-01' } });
     fireEvent.click(screen.getByRole('button', { name: '閉じる' }));

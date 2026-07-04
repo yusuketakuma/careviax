@@ -1,12 +1,11 @@
 // @vitest-environment jsdom
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
-import { createElement, type ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { buildNavBadgesApiPath } from '@/lib/nav-badges/api-paths';
 import { jsonResponse } from '@/test/fetch-test-utils';
+import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 
 const { useOrgIdMock } = vi.hoisted(() => ({
   useOrgIdMock: vi.fn(),
@@ -58,13 +57,7 @@ describe('toBadgeCount', () => {
 
 describe('useNavBadges', () => {
   function createQueryWrapper() {
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-    });
-    function NavBadgeQueryWrapper({ children }: { children: ReactNode }) {
-      return createElement(QueryClientProvider, { client: queryClient }, children);
-    }
-    return NavBadgeQueryWrapper;
+    return createQueryClientWrapper();
   }
 
   beforeEach(() => {
