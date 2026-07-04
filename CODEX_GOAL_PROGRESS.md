@@ -1,5 +1,70 @@
 # CODEX Goal Progress
 
+## R55 General Route Loading Labels - 2026-07-04 21:11 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/reports/analytics/page.tsx`
+    - `src/app/(dashboard)/reports/analytics/page.test.tsx`
+    - `src/app/(dashboard)/communications/requests/page.tsx`
+    - `src/app/(dashboard)/communications/requests/page.test.tsx`
+    - `src/app/(dashboard)/notifications/page.tsx`
+    - `src/app/(dashboard)/notifications/page.test.tsx`
+    - `src/app/(dashboard)/search/page.tsx`
+    - `src/app/(dashboard)/search/page.test.tsx`
+    - `src/app/(dashboard)/external/page.tsx`
+    - `src/app/(dashboard)/external/page.test.tsx`
+    - `src/app/(dashboard)/conferences/page.tsx`
+    - `src/app/(dashboard)/conferences/page.test.tsx`
+    - `src/app/(dashboard)/settings/page.tsx`
+    - `src/app/(dashboard)/settings/page.test.tsx`
+- Scope:
+  - Replaced seven route-level generic Suspense fallback `Loading` instances
+    with screen-specific statuses:
+    - `報告書送達分析を読み込み中...`
+    - `依頼・照会一覧を読み込み中...`
+    - `お知らせを読み込み中...`
+    - `全体検索を読み込み中...`
+    - `外部連携ビューを読み込み中...`
+    - `カンファレンスノートを読み込み中...`
+    - `設定を読み込み中...`
+  - Added/extended route shell regression tests proving each fallback is
+    screen-specific, generic `読み込み中...` is absent, suspended content is not
+    rendered, and existing search param wiring remains intact where present.
+  - Confirmed the targeted generic fallback scan over these seven routes now
+    returns no matches.
+- Safety:
+  - Route-shell loading presentation and tests only.
+  - No report delivery query, communication request query, notification query,
+    search behavior, external viewer query, conference query, operational
+    policy content behavior, search param parsing semantics, API path, org
+    header, DB, auth, authorization, PHI handling, billing semantics, audit,
+    deployment, package, or server behavior changed.
+  - Loading copy is PHI-free and does not echo report recipients, request
+    details, notification content, search result details, external-share
+    details, conference-note content, policy values, patient identifiers,
+    billing values, org IDs, or raw errors.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/reports/analytics/page.test.tsx' 'src/app/(dashboard)/communications/requests/page.test.tsx' 'src/app/(dashboard)/notifications/page.test.tsx' 'src/app/(dashboard)/search/page.test.tsx' 'src/app/(dashboard)/external/page.test.tsx' 'src/app/(dashboard)/conferences/page.test.tsx' 'src/app/(dashboard)/settings/page.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `7` files / `14` tests.
+  - Scoped ESLint, targeted Prettier check after targeted formatting of
+    `src/app/(dashboard)/communications/requests/page.test.tsx`, targeted
+    `git diff --check`, and `pnpm typecheck` passed for the route source/test
+    file pairs.
+  - Targeted generic fallback closure scan returned no matches.
+  - Dashboard-wide generic route fallback scan now reports `8` remaining
+    matches.
+- Commit:
+  - Implementation slice landed at `147c81bb`
+    (`fix(routes): name general loading fallbacks`).
+- Remaining:
+  - Broader R55 / Plans.md objective remains open beyond this general
+    route-shell fallback slice.
+  - Remaining generic route fallbacks are now concentrated in patient,
+    prescription, and schedule route shells.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Workflow and Tasks Route Loading Labels - 2026-07-04 21:05 JST
 
 - Status:

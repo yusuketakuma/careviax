@@ -1589,3 +1589,34 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: workflow/tasks route-shell generic fallback は closure。dashboard-wide generic fallback scan は
   workflow/tasks 外で `15` matches。broad Plans.md / R55 residual scan は継続。
   `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
+
+## 2026-07-04 R55 general route loading labels
+
+- 分類: UI loading-state cleanup / R55 route-shell generic loading residual。
+- 実施:
+  - `reports/analytics/page.tsx` の route-level Suspense fallback を
+    `報告書送達分析を読み込み中...` の画面固有 status へ変更。
+  - `communications/requests/page.tsx` を `依頼・照会一覧を読み込み中...`、
+    `notifications/page.tsx` を `お知らせを読み込み中...`、`search/page.tsx` を
+    `全体検索を読み込み中...`、`external/page.tsx` を `外部連携ビューを読み込み中...`、
+    `conferences/page.tsx` を `カンファレンスノートを読み込み中...`、`settings/page.tsx` を
+    `設定を読み込み中...` に変更。
+  - 7 route の page test を追加/拡張し、generic `読み込み中...` が出ないこと、suspended content が出ないこと、
+    search param wiring がある route ではそれが保持されることを固定。
+- 挙動変更: route-shell loading label のみ。report delivery query、communication request query、
+  notification query、search behavior、external viewer query、conference query、
+  operational policy content behavior、search param parsing semantics、API path、org header、
+  API/DB/auth/authorization/billing/audit は不変。
+- UI/UX根拠: `docs/ui-ux-design-guidelines.md` の Clear state / false-empty prevention と
+  route fallback は軽量で意味のある loading UI にする Next loading/Suspense guidance に整合。
+- 安全性: product API/DB/auth/authorization/PHI/billing/deploy/package dependency は不変。
+  Loading copy は PHI-free で、report recipient・request detail・notification content・search result detail・external-share detail・conference-note content・policy value・patient identifier・billing value・org id・raw error
+  を出さない。
+- 検証: focused general route fallback Vitest `7 files / 14 tests` green、
+  targeted ESLint green、targeted Prettier check は `communications/requests/page.test.tsx` の
+  targeted format 後 green、targeted `git diff --check` green、`pnpm typecheck` green。
+  対象7 route の generic fallback scan は no matches。dashboard-wide generic fallback scan は
+  patient / prescription / schedule route shell に `8` matches。
+- commit: `147c81bb` (`fix(routes): name general loading fallbacks`)。
+- 残課題: general route-shell generic fallback は closure。broad Plans.md / R55 residual scan は継続。
+  `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
