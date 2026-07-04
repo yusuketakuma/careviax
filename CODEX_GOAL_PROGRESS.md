@@ -1,5 +1,45 @@
 # CODEX Goal Progress
 
+## R40/R44 Conferences readApiJson Partial - 2026-07-05 07:33 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/conferences/conferences-content.tsx`
+    - `src/app/(dashboard)/conferences/conferences-content.test.tsx`
+- Scope:
+  - Reused `readApiJson` for three conferences read GETs:
+    - selected conference note detail
+    - external professional options
+    - prescriber institution suggestion
+  - Added queryFn contract coverage proving API JSON `message` from failed read
+    GETs is preserved for all three reads.
+  - Preserved the conference detail path helper, hostile note-id encoding,
+    dot-segment fail-closed behavior, org headers, React Query keys, enabled
+    gates, conference list/calendar cursor pagination, create/community/
+    action-item/report mutations, and report/proposal/PDF href contracts.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/conferences/conferences-content.test.tsx'`
+    passed `1` file / `18` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `5da0de69`
+    (`refactor(ui): reuse readApiJson in conferences`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Route Compare readApiJson Partial - 2026-07-05 07:25 JST
 
 - Status:
