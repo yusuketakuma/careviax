@@ -716,6 +716,22 @@ export function splitDelimitedLine(line: string, delimiter = ',') {
   return values;
 }
 
+export function stripBom(value: string) {
+  return value.replace(/^\uFEFF/, '');
+}
+
+export function parseDelimitedRows(text: string, delimiter = ',') {
+  return text
+    .split(/\r?\n/)
+    .filter((line) => line.trim().length > 0)
+    .map((line) => splitDelimitedLine(line, delimiter).map((cell) => stripBom(cell).trim()));
+}
+
+export function readDelimitedCell(row: string[], index: number) {
+  if (index < 0) return null;
+  return normalizeCell(row[index]);
+}
+
 export function isZipBuffer(buffer: Buffer) {
   return buffer[0] === 0x50 && buffer[1] === 0x4b;
 }

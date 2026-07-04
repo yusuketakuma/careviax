@@ -4,8 +4,10 @@ import {
   fetchBytes,
   fetchText,
   normalizeCell,
+  parseDelimitedRows,
+  readDelimitedCell,
   resolveImportSourceUrl,
-  splitDelimitedLine,
+  stripBom,
   unzipWithLimits,
   type FetchLike,
   type DrugMasterImportUrlPolicy,
@@ -71,10 +73,6 @@ type SourceUrlCandidate = {
   snapshotDate: string;
 };
 
-function stripBom(value: string) {
-  return value.replace(/^\uFEFF/, '');
-}
-
 function normalizeSourceCode(value: string | null) {
   return normalizeCell(value)?.replace(/[^\dA-Za-z_-]/g, '') ?? null;
 }
@@ -85,13 +83,6 @@ function normalizePhoneLike(value: string | null) {
   return normalized.replace(/[^\d+()-]/g, '') || normalized;
 }
 
-function csvRows(text: string) {
-  return text
-    .split(/\r?\n/)
-    .filter((line) => line.trim().length > 0)
-    .map((line) => splitDelimitedLine(line).map((cell) => stripBom(cell).trim()));
-}
-
 function headerIndex(headers: string[], ...aliases: string[]) {
   return headers.findIndex((header) => aliases.some((alias) => header === alias));
 }
@@ -100,16 +91,11 @@ function findOptionalHeaderIndex(headers: string[], predicate: (header: string) 
   return headers.findIndex(predicate);
 }
 
-function readCsvCell(row: string[], index: number) {
-  if (index < 0) return null;
-  return normalizeCell(row[index]);
-}
-
 export function parseMedicalInstitutionFacilityCsv(
   text: string,
   sourceKind: MedicalInstitutionSourceKind,
 ) {
-  const rows = csvRows(text);
+  const rows = parseDelimitedRows(text);
   const headers = rows[0]?.map((header) => stripBom(header).replace(/^"|"$/g, '').trim()) ?? [];
   const idIndex = headerIndex(headers, 'ID');
   const nameIndex = headerIndex(headers, '正式名称');
@@ -123,8 +109,8 @@ export function parseMedicalInstitutionFacilityCsv(
   }
 
   return rows.slice(1).flatMap((row): MedicalInstitutionRecord[] => {
-    const sourceCode = normalizeSourceCode(readCsvCell(row, idIndex));
-    const name = normalizeCell(readCsvCell(row, nameIndex));
+    const sourceCode = normalizeSourceCode(readDelimitedCell(row, idIndex));
+    const name = normalizeCell(readDelimitedCell(row, nameIndex));
     if (!sourceCode || !name) return [];
 
     return [
@@ -132,10 +118,10 @@ export function parseMedicalInstitutionFacilityCsv(
         sourceCode,
         sourceKind,
         name,
-        prefectureCode: normalizeCell(readCsvCell(row, prefectureIndex)),
-        address: normalizeCell(readCsvCell(row, addressIndex)),
-        phone: normalizePhoneLike(readCsvCell(row, phoneIndex)),
-        fax: normalizePhoneLike(readCsvCell(row, faxIndex)),
+        prefectureCode: normalizeCell(readDelimitedCell(row, prefectureIndex)),
+        address: normalizeCell(readDelimitedCell(row, addressIndex)),
+        phone: normalizePhoneLike(readDelimitedCell(row, phoneIndex)),
+        fax: normalizePhoneLike(readDelimitedCell(row, faxIndex)),
       },
     ];
   });

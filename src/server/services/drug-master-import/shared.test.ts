@@ -16,8 +16,11 @@ import {
   extractImportSourceDateFromUrl,
   fetchBytes,
   normalizePreviewRowLimit,
+  parseDelimitedRows,
   parseImportSourceDateToken,
   parseJapaneseEraApplicableDateText,
+  readDelimitedCell,
+  stripBom,
   unzipWithLimits,
   validateImportSourceUrl,
   withImportLog,
@@ -134,6 +137,24 @@ describe('normalizePreviewRowLimit', () => {
   it('supports caller-specific defaults and caps', () => {
     expect(normalizePreviewRowLimit(undefined, { defaultLimit: 5, maxLimit: 8 })).toBe(5);
     expect(normalizePreviewRowLimit(12, { defaultLimit: 5, maxLimit: 8 })).toBe(8);
+  });
+});
+
+describe('delimited row helpers', () => {
+  it('strips BOM, skips blank lines, trims cells, and keeps quoted delimiters', () => {
+    expect(parseDelimitedRows('\uFEFFID, 正式名称\n"001","山田, 内科"\n\n')).toEqual([
+      ['ID', '正式名称'],
+      ['001', '山田, 内科'],
+    ]);
+  });
+
+  it('supports non-comma delimiters and safe cell reads', () => {
+    const rows = parseDelimitedRows('\uFEFFcode\tname\n001\tAlpha', '\t');
+
+    expect(stripBom('\uFEFFcode')).toBe('code');
+    expect(readDelimitedCell(rows[1], 0)).toBe('001');
+    expect(readDelimitedCell(rows[1], 9)).toBeNull();
+    expect(readDelimitedCell(rows[1], -1)).toBeNull();
   });
 });
 

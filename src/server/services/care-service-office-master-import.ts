@@ -4,8 +4,10 @@ import {
   fetchBytes,
   fetchText,
   normalizeCell,
+  parseDelimitedRows,
+  readDelimitedCell,
   resolveImportSourceUrl,
-  splitDelimitedLine,
+  stripBom,
   type DrugMasterImportUrlPolicy,
   type FetchLike,
 } from '@/server/services/drug-master-import/shared';
@@ -96,30 +98,14 @@ type ImportOptions = {
   fetchImpl?: FetchLike;
 };
 
-function stripBom(value: string) {
-  return value.replace(/^\uFEFF/, '');
-}
-
 function normalizePhoneLike(value: string | null) {
   const normalized = normalizeCell(value);
   if (!normalized) return null;
   return normalized.replace(/[^\d+()-]/g, '') || normalized;
 }
 
-function csvRows(text: string) {
-  return text
-    .split(/\r?\n/)
-    .filter((line) => line.trim().length > 0)
-    .map((line) => splitDelimitedLine(line).map((cell) => stripBom(cell).trim()));
-}
-
 function headerIndex(headers: string[], ...aliases: string[]) {
   return headers.findIndex((header) => aliases.some((alias) => header === alias));
-}
-
-function readCsvCell(row: string[], index: number) {
-  if (index < 0) return null;
-  return normalizeCell(row[index]);
 }
 
 function normalizeOfficeCode(value: string | null) {
@@ -135,7 +121,7 @@ function definitionByCode(code: string) {
 }
 
 export function parseCareServiceOfficeCsv(text: string, definition: CareServiceDefinition) {
-  const rows = csvRows(text);
+  const rows = parseDelimitedRows(text);
   const headers = rows[0]?.map((header) => stripBom(header).trim()) ?? [];
   const prefectureIndex = headerIndex(headers, '都道府県コード又は市町村コード');
   const officeNameIndex = headerIndex(headers, '事業所名');
@@ -151,24 +137,24 @@ export function parseCareServiceOfficeCsv(text: string, definition: CareServiceD
   }
 
   return rows.slice(1).flatMap((row): CareServiceOfficeRecord[] => {
-    const officeCode = normalizeOfficeCode(readCsvCell(row, officeCodeIndex));
-    const officeName = normalizeCell(readCsvCell(row, officeNameIndex));
+    const officeCode = normalizeOfficeCode(readDelimitedCell(row, officeCodeIndex));
+    const officeName = normalizeCell(readDelimitedCell(row, officeNameIndex));
     if (!officeCode || !officeName) return [];
 
-    const rawPrefecture = normalizeCell(readCsvCell(row, prefectureIndex));
+    const rawPrefecture = normalizeCell(readDelimitedCell(row, prefectureIndex));
     const prefectureCode = rawPrefecture?.slice(0, 2) ?? null;
 
     return [
       {
         serviceCode: definition.code,
-        serviceLabel: normalizeCell(readCsvCell(row, serviceLabelIndex)) ?? definition.label,
+        serviceLabel: normalizeCell(readDelimitedCell(row, serviceLabelIndex)) ?? definition.label,
         officeCode,
         prefectureCode,
         officeName,
-        corporationName: normalizeCell(readCsvCell(row, corporationIndex)),
-        address: normalizeCell(readCsvCell(row, addressIndex)),
-        phone: normalizePhoneLike(readCsvCell(row, phoneIndex)),
-        fax: normalizePhoneLike(readCsvCell(row, faxIndex)),
+        corporationName: normalizeCell(readDelimitedCell(row, corporationIndex)),
+        address: normalizeCell(readDelimitedCell(row, addressIndex)),
+        phone: normalizePhoneLike(readDelimitedCell(row, phoneIndex)),
+        fax: normalizePhoneLike(readDelimitedCell(row, faxIndex)),
         professionType: definition.professionType,
       },
     ];
