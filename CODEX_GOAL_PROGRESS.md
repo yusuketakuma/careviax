@@ -46724,6 +46724,54 @@ false` for every migrated column.
   - Existing unrelated `refactor-instructions.md` and local skill install files
     remain outside this slice.
 
+## R40/R44 Admin Settings readApiJson Slice - 2026-07-05 04:49 JST
+
+- Scope:
+  - `src/app/(dashboard)/admin/settings/settings-content.tsx`
+  - `src/app/(dashboard)/admin/settings/settings-content.test.tsx`
+- Status:
+  - Implemented and committed as `4ffa10db`
+    (`Converge admin settings reads on shared JSON helper`).
+- Changes:
+  - Replaced admin settings `GET /api/settings?...` queryFn body parsing with
+    `readApiJson<SettingResponse>` while preserving query key, scope/scope_id
+    search params, `buildOrgHeaders(orgId)`, response envelope, staleTime, and
+    server-provided error message propagation.
+  - Replaced admin settings profile and pharmacy-site list read GET queryFns
+    with `readApiJson` while preserving endpoints, org-scoped site headers,
+    response envelopes, selected-site fallback, and retryable site-list error
+    UI.
+  - Left `/api/health` unchanged because HTTP 503 is intentionally treated as a
+    parseable health monitor payload.
+  - Added a focused queryFn contract test that directly executes settings,
+    profile, and site read query functions and verifies endpoint/header usage.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, destructive operation, save mutation behavior,
+    settings range validation, health monitor 503-as-payload semantics, and
+    polling cadence.
+  - The 2026-07-04 user instruction allowing product
+    API/DB/auth/authorization/PHI/billing/deploy/package dependency changes when
+    necessary is recorded in `ops/refactor/STATE.md`; this slice did not require
+    those changes.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/settings/settings-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `10` tests.
+  - `pnpm exec eslint --max-warnings=0 'src/app/(dashboard)/admin/settings/settings-content.tsx' 'src/app/(dashboard)/admin/settings/settings-content.test.tsx'`
+    passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/admin/settings/settings-content.tsx' 'src/app/(dashboard)/admin/settings/settings-content.test.tsx'`
+    passed.
+  - `git diff --check -- 'src/app/(dashboard)/admin/settings/settings-content.tsx' 'src/app/(dashboard)/admin/settings/settings-content.test.tsx'`
+    passed.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - R40/R44 remains partial and broad; continue per-fetcher body-read/PHI review
+    before converting additional client read fetchers.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Alert Rules readApiJson Slice - 2026-07-05 04:41 JST
 
 - Scope:

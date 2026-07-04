@@ -134,6 +134,10 @@
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。shared collection path/org header、
   hostile-id encoding、false-empty contract を維持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 admin-settings readApiJson slice(4ffa10db) land。focused Vitest 10、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。settings/profile/site read GET を
+  readApiJson へ収束し、`/api/health` 503-as-payload semantics は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 

@@ -3792,6 +3792,32 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
   個別確認してから段階移行する。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
 
+## 2026-07-05 R40/R44 admin settings readApiJson slice
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 実施:
+  - admin settings の `/api/settings?scope=...` GET fetcher を
+    `readApiJson<SettingResponse>` へ移行。
+  - admin settings の `/api/me/profile` と `/api/pharmacy-sites` GET fetchers を
+    `readApiJson` へ移行。
+  - queryFn contract test を追加し、settings/profile/site endpoints と org-scoped
+    settings/site headers を固定。
+- 挙動変更: read fetch 実装内部の helper 収束のみ。endpoint paths/search params、
+  `buildOrgHeaders`、React Query keys、response envelopes、selected-site fallback、
+  retryable site-list error UI、settings range validation、save mutation、health monitor
+  503-as-payload semantics、polling cadence は維持。
+- 安全性: product UI read fetch internals のみ変更。DB/schema、auth/authorization、
+  PHI projection、billing、deployment、package dependency、live DB operation、external send、
+  secret handling、push、destructive operation は不変。SSOT では必要時の product
+  API/DB/auth/authorization/PHI/billing/deploy/package dependency 変更許可を確認済みだが、
+  この slice では不要。
+- 検証: focused admin settings Vitest `1 file / 10 tests` green、scoped ESLint green、
+  targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `4ffa10db` (`Converge admin settings reads on shared JSON helper`)。
+- 残課題: R40/R44 は broad。追加の client fetcher は response body read が PHI-safe かを
+  個別確認してから段階移行する。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
 ## 2026-07-05 R40/R44 admin realtime readApiJson slice
 
 - 分類: query-helper / client fetch error handling → `readApiJson` 収束。
