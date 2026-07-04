@@ -3840,4 +3840,29 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: R40/R44 は broad。追加の client fetcher は response body read が PHI-safe かを
   個別確認してから段階移行する。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
+## 2026-07-05 R40/R44 alert rules readApiJson slice
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 実施:
+  - admin alert-rules page の `DRUG_ALERT_RULES_API_PATH` GET fetcher を
+    `readApiJson<DrugAlertRulesResponse>` へ移行。
+  - admin alert-rules signal tuning panel の `DRUG_ALERT_RULES_API_PATH` GET fetcher を
+    `readApiJson<DrugAlertRulesResponse>` へ移行。
+- 挙動変更: read fetch 実装内部の helper 収束のみ。static collection path、
+  `buildOrgHeaders`、React Query keys、staleTime、response envelope/count metadata、
+  signal tuning `data ?? []` mapping、false-empty ErrorState、patient-safety false-default
+  prevention、create/update/delete mutations、path helper encode/fail-closed semantics は維持。
+- 安全性: product UI read fetch internals のみ変更。DB/schema、auth/authorization、
+  PHI projection、billing、deployment、package dependency、live DB operation、external send、
+  secret handling、push、destructive operation は不変。SSOT では必要時の product
+  API/DB/auth/authorization/PHI/billing/deploy/package dependency 変更許可を確認済みだが、
+  この slice では不要。
+- 検証: focused alert-rules Vitest `2 files / 24 tests` green、scoped ESLint green、
+  targeted Prettier check は touched page formatting 後 green、targeted `git diff --check`
+  green、`pnpm typecheck` green。
+- commit: `0d9788d6` (`refactor(ui): reuse readApiJson in alert rules`)。
+- 残課題: R40/R44 は broad。追加の client fetcher は response body read が PHI-safe かを
+  個別確認してから段階移行する。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。

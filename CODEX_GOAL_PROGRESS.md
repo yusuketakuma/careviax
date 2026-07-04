@@ -46723,3 +46723,49 @@ false` for every migrated column.
     before converting additional client read fetchers.
   - Existing unrelated `refactor-instructions.md` and local skill install files
     remain outside this slice.
+
+## R40/R44 Alert Rules readApiJson Slice - 2026-07-05 04:41 JST
+
+- Scope:
+  - `src/app/(dashboard)/admin/alert-rules/page.tsx`
+  - `src/app/(dashboard)/admin/alert-rules/page.test.tsx`
+  - `src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.tsx`
+  - `src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.test.tsx`
+- Status:
+  - Implemented and committed as `0d9788d6`
+    (`refactor(ui): reuse readApiJson in alert rules`).
+- Changes:
+  - Replaced the alert rules page GET helper for `DRUG_ALERT_RULES_API_PATH`
+    with `readApiJson<DrugAlertRulesResponse>` while preserving query key,
+    `buildOrgHeaders(orgId)`, staleTime, response envelope/count metadata, and
+    false-empty error state.
+  - Replaced the signal tuning GET helper for `DRUG_ALERT_RULES_API_PATH` with
+    `readApiJson<DrugAlertRulesResponse>` while preserving query key,
+    `buildOrgHeaders(orgId)`, response envelope/count metadata, and
+    `data ?? []` mapping.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, destructive operation, patient-safety false-default
+    prevention, create/update/delete mutations, and path helper
+    encoding/fail-closed behavior.
+  - The 2026-07-04 user instruction allowing product
+    API/DB/auth/authorization/PHI/billing/deploy/package dependency changes when
+    necessary is recorded in `ops/refactor/STATE.md`; this slice did not require
+    those changes.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/alert-rules/page.test.tsx' 'src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `2` files / `24` tests.
+  - `pnpm exec eslint --max-warnings=0 'src/app/(dashboard)/admin/alert-rules/page.tsx' 'src/app/(dashboard)/admin/alert-rules/page.test.tsx' 'src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.tsx' 'src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.test.tsx'`
+    passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/admin/alert-rules/page.tsx' 'src/app/(dashboard)/admin/alert-rules/page.test.tsx' 'src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.tsx' 'src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.test.tsx'`
+    initially required formatting the touched page file, then passed.
+  - `git diff --check -- 'src/app/(dashboard)/admin/alert-rules/page.tsx' 'src/app/(dashboard)/admin/alert-rules/page.test.tsx' 'src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.tsx' 'src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.test.tsx'`
+    passed.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - R40/R44 remains partial and broad; continue per-fetcher body-read/PHI review
+    before converting additional client read fetchers.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
