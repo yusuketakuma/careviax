@@ -4,17 +4,11 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import type { ColumnDef } from '@tanstack/react-table';
 import { buttonVariants } from '@/components/ui/button';
+import { DataTable, type DataTableColumnMeta } from '@/components/ui/data-table';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import {
   FilterChipBar,
   type FilterChipOption,
@@ -84,148 +78,155 @@ export function formatReceivedAt(iso: string, now: Date): string {
   return `${format(date, 'M/d', { locale: ja })} ${time}`;
 }
 
-function QueueRow({
-  row,
-  isPrimaryAction,
-  now,
-}: {
-  row: IntakeTriageRow;
-  isPrimaryAction: boolean;
-  now: Date;
-}) {
-  const statusPresentation = INTAKE_STATUS_PRESENTATIONS[row.status];
-  const action = INTAKE_ACTION_PRESENTATIONS[row.action];
-  const contentLabel = `${row.patient_name} 様 — ${row.content_label}${
-    row.rx_number ? ` ${row.rx_number}` : ''
-  }`;
+function buildContentLabel(row: IntakeTriageRow) {
+  return `${row.patient_name} 様 — ${row.content_label}${row.rx_number ? ` ${row.rx_number}` : ''}`;
+}
 
+function ReceivedAtCell({ row, now }: { row: IntakeTriageRow; now: Date }) {
   return (
-    <TableRow className={cn(statusPresentation.rowClassName)} data-testid="intake-triage-row">
-      <TableCell className="w-20 whitespace-nowrap text-sm tabular-nums text-foreground">
-        {formatReceivedAt(row.received_at, now)}
-      </TableCell>
-      <TableCell className="w-20">
-        <span
-          className={cn(
-            'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold',
-            INTAKE_LANE_BADGE_CLASSES[row.lane],
-          )}
-        >
-          {INTAKE_LANE_LABELS[row.lane]}
-        </span>
-      </TableCell>
-      <TableCell className="w-32 max-w-32 truncate whitespace-nowrap text-sm text-foreground">
-        {row.issuer ?? '—'}
-      </TableCell>
-      <TableCell
-        className="max-w-[360px] truncate text-sm font-medium text-foreground"
-        title={contentLabel}
-      >
-        {contentLabel}
-      </TableCell>
-      <TableCell className="w-20 whitespace-nowrap">
-        {row.auto_read_percent != null ? (
-          <span className="text-sm font-bold text-state-done">{row.auto_read_percent}%</span>
-        ) : (
-          <span className="text-sm text-muted-foreground">—</span>
-        )}
-      </TableCell>
-      <TableCell className="w-36">
-        <span
-          className={cn(
-            'inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold',
-            statusPresentation.badgeClassName,
-          )}
-        >
-          {buildStatusLabel(row)}
-        </span>
-      </TableCell>
-      <TableCell className="w-28 text-right">
-        <Link
-          href={action.href(row)}
-          className={buttonVariants({
-            variant: isPrimaryAction ? 'default' : 'outline',
-            size: 'sm',
-            className: '!h-auto !min-h-11 whitespace-nowrap px-3 py-2',
-          })}
-        >
-          {action.label}
-        </Link>
-      </TableCell>
-    </TableRow>
+    <span className="block w-20 whitespace-nowrap text-sm tabular-nums text-foreground">
+      {formatReceivedAt(row.received_at, now)}
+    </span>
   );
 }
 
-function QueueMobileCard({
-  row,
-  isPrimaryAction,
-  now,
-}: {
-  row: IntakeTriageRow;
-  isPrimaryAction: boolean;
-  now: Date;
-}) {
-  const statusPresentation = INTAKE_STATUS_PRESENTATIONS[row.status];
-  const action = INTAKE_ACTION_PRESENTATIONS[row.action];
-  const contentLabel = `${row.patient_name} 様 — ${row.content_label}${
-    row.rx_number ? ` ${row.rx_number}` : ''
-  }`;
+function LaneCell({ row }: { row: IntakeTriageRow }) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold',
+        INTAKE_LANE_BADGE_CLASSES[row.lane],
+      )}
+    >
+      {INTAKE_LANE_LABELS[row.lane]}
+    </span>
+  );
+}
+
+function IssuerCell({ row }: { row: IntakeTriageRow }) {
+  return (
+    <span className="block w-32 max-w-32 truncate whitespace-nowrap text-sm text-foreground">
+      {row.issuer ?? '—'}
+    </span>
+  );
+}
+
+function ContentCell({ row }: { row: IntakeTriageRow }) {
+  const contentLabel = buildContentLabel(row);
 
   return (
-    <article
-      className={cn(
-        'rounded-md border border-border/70 bg-background p-3',
-        statusPresentation.rowClassName,
-      )}
-      data-testid="intake-triage-card"
+    <span
+      className="block max-w-[360px] truncate text-sm font-medium text-foreground"
+      title={contentLabel}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-foreground">{contentLabel}</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {formatReceivedAt(row.received_at, now)} / {row.issuer ?? '発行元未設定'}
-          </p>
-        </div>
-        <span
-          className={cn(
-            'inline-flex shrink-0 items-center rounded-full px-2 py-1 text-xs font-semibold',
-            INTAKE_LANE_BADGE_CLASSES[row.lane],
-          )}
-        >
-          {INTAKE_LANE_LABELS[row.lane]}
-        </span>
-      </div>
+      {contentLabel}
+    </span>
+  );
+}
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <span
-          className={cn(
-            'inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold',
-            statusPresentation.badgeClassName,
-          )}
-        >
-          {buildStatusLabel(row)}
-        </span>
-        <span className="text-sm text-muted-foreground">
-          自動読取{' '}
-          {row.auto_read_percent != null ? (
-            <strong className="font-bold text-state-done">{row.auto_read_percent}%</strong>
-          ) : (
-            '未算出'
-          )}
-        </span>
-      </div>
+function AutoReadCell({ row }: { row: IntakeTriageRow }) {
+  return (
+    <span className="block w-20 whitespace-nowrap">
+      {row.auto_read_percent != null ? (
+        <span className="text-sm font-bold text-state-done">{row.auto_read_percent}%</span>
+      ) : (
+        <span className="text-sm text-muted-foreground">—</span>
+      )}
+    </span>
+  );
+}
 
+function StatusCell({ row }: { row: IntakeTriageRow }) {
+  const statusPresentation = INTAKE_STATUS_PRESENTATIONS[row.status];
+
+  return (
+    <span className="block w-36">
+      <span
+        className={cn(
+          'inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold',
+          statusPresentation.badgeClassName,
+        )}
+      >
+        {buildStatusLabel(row)}
+      </span>
+    </span>
+  );
+}
+
+function ActionCell({ row, isPrimaryAction }: { row: IntakeTriageRow; isPrimaryAction: boolean }) {
+  const action = INTAKE_ACTION_PRESENTATIONS[row.action];
+
+  return (
+    <span className="block w-28 text-right">
       <Link
         href={action.href(row)}
         className={buttonVariants({
           variant: isPrimaryAction ? 'default' : 'outline',
-          className: 'mt-3 min-h-11 w-full justify-center',
+          size: 'sm',
+          className: '!h-auto !min-h-11 whitespace-nowrap px-3 py-2',
         })}
       >
         {action.label}
       </Link>
-    </article>
+    </span>
   );
+}
+
+function buildQueueColumns(now: Date, primaryRowId: string | null): ColumnDef<IntakeTriageRow>[] {
+  return [
+    {
+      accessorKey: 'received_at',
+      header: '受信',
+      cell: ({ row }) => <ReceivedAtCell row={row.original} now={now} />,
+      meta: { mobileLabel: '受信' } satisfies DataTableColumnMeta<IntakeTriageRow>,
+      size: 80,
+    },
+    {
+      accessorKey: 'lane',
+      header: '経路',
+      cell: ({ row }) => <LaneCell row={row.original} />,
+      meta: { mobileLabel: '経路' } satisfies DataTableColumnMeta<IntakeTriageRow>,
+      size: 80,
+    },
+    {
+      accessorKey: 'issuer',
+      header: '発行元',
+      cell: ({ row }) => <IssuerCell row={row.original} />,
+      meta: { mobileLabel: '発行元' } satisfies DataTableColumnMeta<IntakeTriageRow>,
+      size: 128,
+    },
+    {
+      id: 'content',
+      accessorFn: (row) => buildContentLabel(row),
+      header: '内容',
+      cell: ({ row }) => <ContentCell row={row.original} />,
+      meta: { mobileLabel: '内容' } satisfies DataTableColumnMeta<IntakeTriageRow>,
+    },
+    {
+      accessorKey: 'auto_read_percent',
+      header: '自動読取',
+      cell: ({ row }) => <AutoReadCell row={row.original} />,
+      meta: { mobileLabel: '自動読取' } satisfies DataTableColumnMeta<IntakeTriageRow>,
+      size: 80,
+    },
+    {
+      accessorKey: 'status',
+      header: '状態',
+      cell: ({ row }) => <StatusCell row={row.original} />,
+      meta: { mobileLabel: '状態' } satisfies DataTableColumnMeta<IntakeTriageRow>,
+      size: 144,
+    },
+    {
+      id: 'action',
+      header: () => <span className="sr-only">アクション</span>,
+      cell: ({ row }) => (
+        <ActionCell row={row.original} isPrimaryAction={row.original.intake_id === primaryRowId} />
+      ),
+      meta: { mobileLabel: 'アクション' } satisfies DataTableColumnMeta<IntakeTriageRow>,
+      enableSorting: false,
+      size: 112,
+    },
+  ];
 }
 
 /**
@@ -333,6 +334,7 @@ export function IntakeTriageContent() {
   // 行内の青塗りは「入力へ送る」の先頭 1 行だけ(主操作の乱立を防ぐ)
   const primaryRowId =
     visibleRows.find((row) => INTAKE_ACTION_PRESENTATIONS[row.action].primary)?.intake_id ?? null;
+  const queueColumns = buildQueueColumns(now, primaryRowId);
 
   const duplicateNotices = data?.duplicate_notices ?? [];
   const evidence: EvidenceItem[] = [
@@ -414,51 +416,16 @@ export function IntakeTriageContent() {
                     className="ml-auto"
                   />
                 </div>
-                {visibleRows.length > 0 ? (
-                  <div className="mt-3 space-y-3 md:hidden">
-                    {visibleRows.map((row) => (
-                      <QueueMobileCard
-                        key={row.intake_id}
-                        row={row}
-                        isPrimaryAction={row.intake_id === primaryRowId}
-                        now={now}
-                      />
-                    ))}
-                  </div>
-                ) : null}
-                {visibleRows.length > 0 ? (
-                  <div className="mt-3 hidden max-h-[360px] overflow-y-auto rounded-md border border-border/70 md:block">
-                    <Table className="table-fixed">
-                      <TableHeader className="sticky top-0 z-10 bg-card">
-                        <TableRow>
-                          <TableHead className="w-20">受信</TableHead>
-                          <TableHead className="w-20">経路</TableHead>
-                          <TableHead className="w-32">発行元</TableHead>
-                          <TableHead>内容</TableHead>
-                          <TableHead className="w-20">自動読取</TableHead>
-                          <TableHead className="w-36">状態</TableHead>
-                          <TableHead className="w-28">
-                            <span className="sr-only">アクション</span>
-                          </TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {visibleRows.map((row) => (
-                          <QueueRow
-                            key={row.intake_id}
-                            row={row}
-                            isPrimaryAction={row.intake_id === primaryRowId}
-                            now={now}
-                          />
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                ) : (
-                  <p className="mt-3 text-sm text-muted-foreground">
-                    この経路の取込はいまありません。受信すると新着が上に並びます。
-                  </p>
-                )}
+                <div className="mt-3 max-h-[360px] overflow-y-auto">
+                  <DataTable
+                    columns={queueColumns}
+                    data={visibleRows}
+                    getRowId={(row) => row.intake_id}
+                    getRowA11yLabel={(row) => buildContentLabel(row)}
+                    caption="取込キュー"
+                    emptyMessage="この経路の取込はいまありません。受信すると新着が上に並びます。"
+                  />
+                </div>
               </section>
 
               {/* 重複検知バナー(注意=隠さない) */}

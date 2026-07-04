@@ -196,6 +196,10 @@ function mockQueries({
   });
 }
 
+function getDesktopDataRows() {
+  return within(screen.getByRole('table')).getAllByRole('row').slice(1);
+}
+
 describe('IntakeTriageContent', () => {
   beforeEach(() => {
     useUIStore.setState({ workspaceRailOpen: true });
@@ -220,11 +224,11 @@ describe('IntakeTriageContent', () => {
     expect(manualLink.getAttribute('href')).toBe('/prescriptions/new');
     expect(manualLink.className).toContain('!min-h-11');
 
-    // 取込キュー: 既定は FAX レーンの 3 行
+    // 取込キュー: 既定は FAX レーンの 3 行(DataTable desktop rows + mobile cards)
     expect(screen.getByRole('heading', { name: '取込キュー' })).toBeTruthy();
     expect(screen.getByText('新着が上・読取の確からしさは必ず人が確認してから入力へ')).toBeTruthy();
-    expect(screen.getAllByTestId('intake-triage-row')).toHaveLength(3);
-    expect(screen.getAllByTestId('intake-triage-card')).toHaveLength(3);
+    expect(getDesktopDataRows()).toHaveLength(3);
+    expect(screen.getAllByRole('link', { name: '入力へ送る' })).toHaveLength(2);
 
     // 行内容: 状態語彙 + 自動読取 % + RX 番号 + 動的アクション
     expect(screen.getAllByText('待ち解除に関連')).toHaveLength(2);
@@ -232,7 +236,7 @@ describe('IntakeTriageContent', () => {
     expect(screen.getAllByText('重複の疑い(6/9取込分と同一?)')).toHaveLength(2);
     expect(screen.getAllByText('入力済 → 監査中')).toHaveLength(2);
     expect(screen.getAllByText(/田中 一郎 様 — 定期処方 RX-2024-0500/)).toHaveLength(2);
-    const desktopRows = screen.getAllByTestId('intake-triage-row');
+    const desktopRows = getDesktopDataRows();
     expect(
       within(desktopRows[0]).getByRole('link', { name: '入力へ送る' }).getAttribute('href'),
     ).toBe('/prescriptions/intake_sasaki');
@@ -243,14 +247,13 @@ describe('IntakeTriageContent', () => {
       within(desktopRows[1]).getByRole('link', { name: '並べて比較' }).getAttribute('href'),
     ).toBe('/prescriptions/intake_takahashi');
     expect(within(desktopRows[2]).getByRole('link', { name: '→ 監査へ' })).toBeTruthy();
-    const mobileCards = screen.getAllByTestId('intake-triage-card');
-    expect(within(mobileCards[0]).getByText(/佐々木 ハル 様/)).toBeTruthy();
-    expect(within(mobileCards[0]).getByRole('link', { name: '入力へ送る' }).className).toContain(
-      'min-h-11',
-    );
+    expect(screen.getAllByText(/佐々木 ハル 様/)).toHaveLength(2);
+    expect(screen.getAllByRole('link', { name: '入力へ送る' })[1].className).toContain('min-h-11');
 
     // 受信時刻の相対表記(昨日)
-    expect(screen.getByText('昨日 17:20')).toBeTruthy();
+    expect(screen.getAllByText('昨日 17:20')).toHaveLength(2);
+    expect(screen.queryByRole('button', { name: 'CSV出力' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '印刷' })).toBeNull();
 
     // 重複検知バナー(破棄理由の記録に言及)
     const banner = screen.getByTestId('intake-duplicate-banner');
@@ -281,17 +284,16 @@ describe('IntakeTriageContent', () => {
     mockQueries({ triage: buildTriageFixture(), cockpit: buildCockpitFixture() });
     render(<IntakeTriageContent />);
 
-    expect(screen.getAllByTestId('intake-triage-row')).toHaveLength(3);
+    expect(getDesktopDataRows()).toHaveLength(3);
 
     // FAX(選択中)をもう一度押す → 全レーン表示
     fireEvent.click(screen.getByRole('button', { name: /FAX/ }));
-    expect(screen.getAllByTestId('intake-triage-row')).toHaveLength(5);
-    expect(screen.getAllByTestId('intake-triage-card')).toHaveLength(5);
+    expect(getDesktopDataRows()).toHaveLength(5);
+    expect(screen.getAllByRole('link', { name: '入力へ送る' })).toHaveLength(2);
 
     // オンラインを選ぶ → 1 行
     fireEvent.click(screen.getByRole('button', { name: /オンライン/ }));
-    expect(screen.getAllByTestId('intake-triage-row')).toHaveLength(1);
-    expect(screen.getAllByTestId('intake-triage-card')).toHaveLength(1);
+    expect(getDesktopDataRows()).toHaveLength(1);
     expect(screen.getAllByText('受入判断待ち')).toHaveLength(2);
   });
 
@@ -315,8 +317,8 @@ describe('IntakeTriageContent', () => {
     render(<IntakeTriageContent />);
 
     expect(
-      screen.getByText('この経路の取込はいまありません。受信すると新着が上に並びます。'),
-    ).toBeTruthy();
+      screen.getAllByText('この経路の取込はいまありません。受信すると新着が上に並びます。').length,
+    ).toBeGreaterThan(0);
   });
 });
 
