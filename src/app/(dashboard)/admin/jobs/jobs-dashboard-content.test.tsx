@@ -297,6 +297,10 @@ describe('JobsDashboardContent', () => {
 
     render(<JobsDashboardContent />);
 
+    expect(screen.queryByText('ジョブ状態を読み込み中です。')).toBeNull();
+    expect(
+      screen.getByText('ジョブ状態を確認できませんでした。下の一覧で再読み込みしてください。'),
+    ).toBeTruthy();
     expect(screen.getByRole('alert').textContent).toContain('ジョブ一覧を取得できませんでした');
     expect(screen.getAllByText('—')).toHaveLength(5);
     expect(screen.getByText('—件')).toBeTruthy();
@@ -304,5 +308,24 @@ describe('JobsDashboardContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
 
     expect(refetch).toHaveBeenCalled();
+  });
+
+  it('uses a named skeleton for the attention panel while job counts are loading', () => {
+    useQueryMock.mockReturnValue({
+      isLoading: true,
+      isError: false,
+      data: undefined,
+      refetch: vi.fn(),
+    });
+
+    render(<JobsDashboardContent />);
+
+    expect(screen.getByRole('status', { name: '対応が必要なジョブを読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('ジョブ状態を読み込み中です。')).toBeNull();
+    expect(
+      screen.queryByText('ジョブ状態を確認できませんでした。下の一覧で再読み込みしてください。'),
+    ).toBeNull();
+    expect(screen.getAllByText('—')).toHaveLength(5);
+    expect(screen.getByText('—件')).toBeTruthy();
   });
 });

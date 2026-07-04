@@ -7,6 +7,7 @@ import { AlertTriangle, Filter, Play } from 'lucide-react';
 import { toast } from 'sonner';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
+import { SkeletonRows } from '@/components/ui/loading';
 import { StateBadge } from '@/components/ui/state-badge';
 import type { StatusRole } from '@/lib/constants/status-tokens';
 import { Button } from '@/components/ui/button';
@@ -379,6 +380,8 @@ export function JobsDashboardContent() {
   const partialWarningCount = jobs.filter((e) => Boolean(getJobBulkExportRunSummary(e))).length;
   const attentionJobs = jobs.filter((entry) => getAttentionReason(entry));
   const jobCountsUnavailable = (isLoading || isError) && !data;
+  const jobCountsLoadingUnavailable = isLoading && !data;
+  const jobCountsErrorUnavailable = isError && !data;
 
   return (
     <div className="space-y-4 [&_[data-slot=select-trigger]]:!h-11 [&_[data-slot=select-trigger]]:!min-h-[44px] [&_button]:!min-h-[44px] [&_button]:!min-w-11">
@@ -398,9 +401,17 @@ export function JobsDashboardContent() {
           </Badge>
         </div>
 
-        {jobCountsUnavailable ? (
+        {jobCountsLoadingUnavailable ? (
+          <div
+            role="status"
+            aria-label="対応が必要なジョブを読み込み中"
+            className="rounded-lg border border-dashed border-border px-3 py-4"
+          >
+            <SkeletonRows rows={2} cols={1} status={false} />
+          </div>
+        ) : jobCountsErrorUnavailable ? (
           <p className="rounded-lg border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
-            ジョブ状態を読み込み中です。
+            ジョブ状態を確認できませんでした。下の一覧で再読み込みしてください。
           </p>
         ) : attentionJobs.length === 0 ? (
           <p className="rounded-lg border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
