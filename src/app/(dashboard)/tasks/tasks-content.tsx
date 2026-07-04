@@ -889,7 +889,8 @@ export function TasksContent({
           <ErrorState
             size="inline"
             description="タスクを取得できませんでした。時間をおいて再読み込みしてください。"
-            action={{ label: '再読み込み', onClick: () => void refetch() }}
+            onRetry={() => void refetch()}
+            retryLabel="再読み込み"
           />
         ) : (
           <>

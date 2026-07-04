@@ -559,7 +559,8 @@ function HandoffCommentFeed({
           variant="server"
           size="inline"
           description="やり取りを読み込めませんでした。あなた宛のコメントが表示されていない可能性があります。再読み込みしてください。"
-          action={{ label: '再読み込み', onClick: onRetry }}
+          onRetry={onRetry}
+          retryLabel="再読み込み"
           className="mt-3"
         />
       ) : (
