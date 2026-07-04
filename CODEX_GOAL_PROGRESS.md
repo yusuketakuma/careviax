@@ -1,5 +1,39 @@
 # CODEX Goal Progress
 
+## R55 Notifications Inbox Loading State - 2026-07-04 19:17 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/notifications/notifications-content.tsx`
+    - `src/app/(dashboard)/notifications/notifications-content.test.tsx`
+- Scope:
+  - Replaced the generic `Loading` return in the notifications inbox with a
+    named skeleton region that preserves the page heading, disabled bulk-action
+    affordance, filter-chip rhythm, and list-card shape.
+  - Loading no longer exposes generic `読み込み中...` semantics, error copy, or
+    final notification card content before the query resolves.
+- Safety:
+  - UI loading-state presentation and tests only.
+  - No API path, query key, realtime event wiring, fetcher, org header,
+    `enabled` behavior, offline-store refresh, cache timing, DB, auth,
+    authorization, billing, audit, deployment, package, or server behavior
+    changed.
+  - Loading copy is PHI-free and does not echo patient names, notification
+    messages, links, pending sync counts, org ids, or raw errors.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/notifications/notifications-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `11` tests.
+  - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
+    the notifications source/test files.
+  - `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `38ad97d2`
+    (`fix(notifications): show skeleton for inbox loading`).
+- Remaining:
+  - Broader R55 residuals and Plans.md objective remain open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Prescription Detail Loading State + Product Boundary SSOT - 2026-07-04 19:10 JST
 
 - Status:

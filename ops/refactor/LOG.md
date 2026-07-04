@@ -958,3 +958,25 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - commit: `b779a867` (`fix(prescriptions): show skeleton for detail loading`)。
 - 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
   `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
+
+## 2026-07-04 R55 notifications inbox loading skeleton
+
+- 分類: UI loading-state cleanup / R55 visible loading residual。
+- 実施:
+  - `notifications-content.tsx` の org 未解決 / query-loading 分岐で使っていた
+    generic `Loading` return を、通知ページの heading・bulk action・filter chip・list card の
+    形を保つ領域固有 `role="status"` + skeleton へ置換。
+  - loading 中に generic `読み込み中...` status、error copy、最終通知カード content が出ないことを
+    `notifications-content.test.tsx` に追加。
+- 挙動変更: loading presentation のみ。query key、realtime event wiring、fetcher、org header、
+  enabled behavior、offline-store refresh、cache timing、mutation behavior、API/DB/auth/authorization/billing/audit は不変。
+- UI/UX根拠: `docs/ui-ux-design-guidelines.md` の 5状態分離、領域固有 loading label、
+  generic loading copy 禁止、ヘッダを消さない skeleton loading に整合。
+- 安全性: product API/DB/auth/authorization/PHI/billing/deploy/package dependency は不変。
+  Loading copy は PHI-free で、patient name・notification message・link・pending sync count・org id・raw error
+  を出さない。
+- 検証: focused notifications Vitest `1 file / 11 tests` green、targeted ESLint green、
+  targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `38ad97d2` (`fix(notifications): show skeleton for inbox loading`)。
+- 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
+  `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
