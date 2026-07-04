@@ -1,5 +1,41 @@
 # CODEX Goal Progress
 
+## R55 Interprofessional Report Share Loading State - 2026-07-04 19:46 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.tsx`
+    - `src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx`
+- Scope:
+  - Replaced the generic `Loading` return in the interprofessional report-share
+    workspace with a named skeleton region that preserves the intro, audience,
+    preview, and reply/action column rhythm without rendering final share
+    content.
+  - Loading no longer exposes generic `読み込み中...` semantics or final patient /
+    report sharing details before org context and report data resolve.
+- Safety:
+  - UI loading-state presentation and tests only.
+  - No API path, query key, fetcher, org header, `enabled` behavior, report/share
+    navigation, communication-request creation, task creation, mutations, cache
+    invalidation, DB, auth, authorization, billing, audit, deployment, package,
+    or server behavior changed.
+  - Loading copy is PHI-free and does not echo patient names, report titles,
+    medication summaries, care-team names, reply content, request ids, org ids,
+    or raw errors.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `28` tests.
+  - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
+    the interprofessional share source/test files.
+  - `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `b7ab4166`
+    (`fix(reports): show skeleton for interprofessional share loading`).
+- Remaining:
+  - Broader R55 residuals and Plans.md objective remain open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 QR Scan Draft Loading State - 2026-07-04 19:42 JST
 
 - Status:
