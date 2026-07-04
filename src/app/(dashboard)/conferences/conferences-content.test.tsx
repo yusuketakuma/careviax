@@ -39,6 +39,7 @@ vi.mock('next/navigation', () => ({
 import { toast } from 'sonner';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildReportHref } from '@/lib/reports/navigation';
+import { jsonResponse } from '@/test/fetch-test-utils';
 import { ConferencesContent } from './conferences-content';
 
 setupDomTestEnv();
@@ -359,10 +360,7 @@ describe('ConferencesContent', () => {
       },
     });
     mockConferenceNoteQueries(note);
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: note }),
-    });
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ data: note }));
     vi.stubGlobal('fetch', fetchMock);
 
     render(<ConferencesContent initialFocus="notes" />);
@@ -401,6 +399,69 @@ describe('ConferencesContent', () => {
     expect(pdfHref).not.toContain('?download');
     expect(pdfHref).not.toContain('#frag');
     expect(pdfHref).not.toContain('%25');
+
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps read query server error messages for conference support data', async () => {
+    const hostileNoteId = 'note/id?download=1#frag';
+    const contextParams = new URLSearchParams({
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+    });
+    useSearchParamsMock.mockReturnValue(contextParams);
+    mockConferenceNoteQueries(makeConferenceNote({ id: hostileNoteId }));
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/conference-notes/note%2Fid%3Fdownload%3D1%23frag') {
+        return jsonResponse({ message: '詳細を表示できません' }, 403);
+      }
+      if (url === '/api/admin/external-professionals') {
+        return jsonResponse({ message: '他職種を表示できません' }, 403);
+      }
+      if (url === '/api/prescriber-institutions/suggestion?patient_id=patient_1&case_id=case_1') {
+        return jsonResponse({ message: '処方元候補を表示できません' }, 403);
+      }
+      return jsonResponse({ message: `unexpected fetch: ${url}` }, 500);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ConferencesContent initialFocus="notes" />);
+    fireEvent.click(screen.getByRole('button', { name: '詳細を開く' }));
+
+    const detailConfig = queryConfigs.find(
+      (config) =>
+        config.queryKey[0] === 'conference-note-detail' && config.queryKey[2] === hostileNoteId,
+    );
+    const externalProfessionalsConfig = queryConfigs.find(
+      (config) => config.queryKey[0] === 'conference-external-professionals',
+    );
+    const prescriberSuggestionConfig = queryConfigs.find(
+      (config) => config.queryKey[0] === 'conference-prescriber-institution-suggestion',
+    );
+
+    await expect(detailConfig?.queryFn?.()).rejects.toThrow('詳細を表示できません');
+    await expect(externalProfessionalsConfig?.queryFn?.()).rejects.toThrow(
+      '他職種を表示できません',
+    );
+    await expect(prescriberSuggestionConfig?.queryFn?.()).rejects.toThrow(
+      '処方元候補を表示できません',
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/conference-notes/note%2Fid%3Fdownload%3D1%23frag',
+      {
+        headers: buildOrgHeaders('org_1'),
+      },
+    );
+    expect(fetchMock).toHaveBeenCalledWith('/api/admin/external-professionals', {
+      headers: buildOrgHeaders('org_1'),
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/prescriber-institutions/suggestion?patient_id=patient_1&case_id=case_1',
+      {
+        headers: buildOrgHeaders('org_1'),
+      },
+    );
 
     vi.unstubAllGlobals();
   });

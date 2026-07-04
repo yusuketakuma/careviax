@@ -57,6 +57,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { readApiJson } from '@/lib/api/client-json';
 import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { buildReportHref } from '@/lib/reports/navigation';
@@ -631,8 +632,10 @@ export function ConferencesContent({
       const response = await fetch(buildConferenceNoteApiPath(selectedNoteId), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('カンファレンスノート詳細の取得に失敗しました');
-      const payload = (await response.json()) as { data: ConferenceNote };
+      const payload = await readApiJson<{ data: ConferenceNote }>(
+        response,
+        'カンファレンスノート詳細の取得に失敗しました',
+      );
       return payload.data;
     },
     enabled: Boolean(orgId && selectedNoteId),
@@ -658,8 +661,10 @@ export function ConferencesContent({
       const response = await fetch('/api/admin/external-professionals', {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('他職種マスターの取得に失敗しました');
-      return response.json() as Promise<{ data: ExternalProfessionalOption[] }>;
+      return readApiJson<{ data: ExternalProfessionalOption[] }>(
+        response,
+        '他職種マスターの取得に失敗しました',
+      );
     },
     enabled: !!orgId,
   });
@@ -720,8 +725,10 @@ export function ConferencesContent({
       const response = await fetch(`/api/prescriber-institutions/suggestion?${params.toString()}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('処方元医療機関候補の取得に失敗しました');
-      return response.json() as Promise<{ data: PrescriberInstitutionSuggestion | null }>;
+      return readApiJson<{ data: PrescriberInstitutionSuggestion | null }>(
+        response,
+        '処方元医療機関候補の取得に失敗しました',
+      );
     },
     enabled: !!orgId && (!!contextPatientId || !!contextCaseId),
   });
