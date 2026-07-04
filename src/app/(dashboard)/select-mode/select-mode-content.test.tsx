@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { jsonResponse } from '@/test/fetch-test-utils';
+import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 
 setupDomTestEnv();
 
@@ -32,16 +33,10 @@ vi.mock('@/lib/stores/ui-store', () => ({
     selector({ setWorkMode: setWorkModeMock }),
 }));
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SelectModeContent, WORK_MODE_OPTIONS } from './select-mode-content';
 
 function renderPage() {
-  const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
-  return render(
-    <QueryClientProvider client={client}>
-      <SelectModeContent />
-    </QueryClientProvider>,
-  );
+  return render(<SelectModeContent />, { wrapper: createQueryClientWrapper() });
 }
 
 describe('SelectModeContent', () => {

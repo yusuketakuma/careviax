@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { jsonResponse } from '@/test/fetch-test-utils';
+import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 
 setupDomTestEnv();
 
@@ -30,7 +31,6 @@ vi.mock('@/lib/api/org-headers', async (importActual) => {
   };
 });
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SelectSiteContent } from './select-site-content';
 
 const SITES = [
@@ -51,14 +51,7 @@ const SITES = [
 ];
 
 function renderPage() {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
-  return render(
-    <QueryClientProvider client={client}>
-      <SelectSiteContent />
-    </QueryClientProvider>,
-  );
+  return render(<SelectSiteContent />, { wrapper: createQueryClientWrapper() });
 }
 
 describe('SelectSiteContent', () => {

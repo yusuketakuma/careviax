@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 
 // useMonthSchedules は useRealtimeQuery 経由。これをモックして取得状態(error/empty)を制御する。
 const { realtimeQueryMock, refetchMock, orgIdMock } = vi.hoisted(() => ({
@@ -17,12 +17,7 @@ vi.mock('@/lib/hooks/use-realtime-query', () => ({ useRealtimeQuery: realtimeQue
 import { CalendarView } from './calendar-view';
 
 function renderCalendar() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={client}>
-      <CalendarView />
-    </QueryClientProvider>,
-  );
+  return render(<CalendarView />, { wrapper: createQueryClientWrapper() });
 }
 
 // カレンダーの日セルは aria-label="M月d日(件数)" を持つ。月ナビ(前月/翌月/今月)は「日」を含まない。

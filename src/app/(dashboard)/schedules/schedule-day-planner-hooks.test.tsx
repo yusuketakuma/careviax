@@ -1,25 +1,12 @@
 // @vitest-environment jsdom
 
-import { type PropsWithChildren } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import type { CaseOption, Pharmacist, VisitScheduleBillingPreview } from './day-view.shared';
 import { getDefaultScheduleDayPlannerForm } from './schedule-day-planner';
 import { useScheduleDayPlannerQueries } from './schedule-day-planner-hooks';
 import type { VisitVehicleResourceScheduleOption } from '@/types/api/visit-vehicle-resources';
-
-function createWrapper() {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-    },
-  });
-
-  return function Wrapper({ children }: PropsWithChildren) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
-  };
-}
 
 function caseOption(): CaseOption {
   return {
@@ -111,7 +98,7 @@ describe('useScheduleDayPlannerQueries', () => {
           cases: [caseOption()],
           pharmacists,
         }),
-      { wrapper: createWrapper() },
+      { wrapper: createQueryClientWrapper() },
     );
 
     expect(result.current.resolvedPlannerCaseId).toBe('case_1');
@@ -150,7 +137,7 @@ describe('useScheduleDayPlannerQueries', () => {
           cases: [caseOption()],
           pharmacists,
         }),
-      { wrapper: createWrapper() },
+      { wrapper: createQueryClientWrapper() },
     );
 
     expect(result.current.resolvedPlannerCaseId).toBe('case_1');
@@ -185,7 +172,7 @@ describe('useScheduleDayPlannerQueries', () => {
             pharmacist.id === 'pharmacist_2' ? { ...pharmacist, site_id: null } : pharmacist,
           ),
         }),
-      { wrapper: createWrapper() },
+      { wrapper: createQueryClientWrapper() },
     );
 
     expect(result.current.selectedPlannerSiteId).toBeNull();
@@ -238,7 +225,7 @@ describe('useScheduleDayPlannerQueries', () => {
           cases: [caseOption()],
           pharmacists,
         }),
-      { wrapper: createWrapper() },
+      { wrapper: createQueryClientWrapper() },
     );
 
     await waitFor(() => {
