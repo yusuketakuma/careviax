@@ -1,5 +1,43 @@
 # CODEX Goal Progress
 
+## R40/R44 Visit Brief Review readApiJson Partial - 2026-07-05 06:30 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/visits/[id]/brief/visit-brief-review-content.tsx`
+    - `src/app/(dashboard)/visits/[id]/brief/visit-brief-review-content.test.tsx`
+- Scope:
+  - Reused `readApiJson` for the visit brief review patient visit-brief read
+    GET.
+  - Added a queryFn contract test proving API JSON `message` from a failed read
+    GET is surfaced through the shared helper.
+  - Preserved visit schedule / visit record fallback patient resolution GETs,
+    patient API path helper usage, `buildOrgHeaders`, React Query keys, enabled
+    gates, error retry UI, pharmacist confirmation mutation,
+    corrected-summary validation, and evidence links.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/visits/[id]/brief/visit-brief-review-content.test.tsx'`
+    passed `1` file / `2` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `8f91ad17`
+    (`refactor(ui): reuse readApiJson in visit brief review`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Patient Visit Brief readApiJson Partial - 2026-07-05 06:27 JST
 
 - Status:

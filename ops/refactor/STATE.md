@@ -271,6 +271,11 @@
   readApiJson へ収束し、patient API helper/org header/queryKey/enabled gate/retryable error UI/
   loading skeleton/compact card rendering は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 visit-brief-review readApiJson slice(8f91ad17) land。focused Vitest 2、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。visit brief review の patient
+  visit-brief read GET を readApiJson へ収束し、patient resolution fallback GETs/patient API
+  helper/org header/queryKeys/enabled gates/retry UI/feedback mutation は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 
