@@ -39,7 +39,7 @@ export default async function CommunicationRequestsPage({
           ]}
         />
       </WorkflowPageHeader>
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="依頼・照会一覧を読み込み中..." />}>
         <CommunicationRequestsContent
           initialStatus={initialState.initialStatus}
           initialRequestType={initialState.initialRequestType}

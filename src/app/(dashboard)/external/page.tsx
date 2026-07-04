@@ -33,7 +33,7 @@ export default async function ExternalViewerPage({ searchParams }: ExternalViewe
         title="外部連携ビュー"
         description="家族・外部職種から届いた共有、自己申告、地域フォローを確認し、薬局内の次対応へ戻します。"
       />
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="外部連携ビューを読み込み中..." />}>
         <ExternalViewerContent
           initialFocus={initialState.initialFocus}
           initialContext={initialState.initialContext}

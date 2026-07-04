@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export default function SettingsPage() {
   return (
     <PageScaffold variant="bare">
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="設定を読み込み中..." />}>
         <OperationalPolicyContent />
       </Suspense>
     </PageScaffold>

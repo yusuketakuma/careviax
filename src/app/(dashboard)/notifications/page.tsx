@@ -19,7 +19,7 @@ export default async function NotificationsPage({ searchParams }: NotificationsP
 
   return (
     <PageScaffold>
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="お知らせを読み込み中..." />}>
         <NotificationsContent initialCategory={initialState.initialCategory} />
       </Suspense>
     </PageScaffold>

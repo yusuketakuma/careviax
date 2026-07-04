@@ -28,7 +28,7 @@ export default function ReportsAnalyticsPage() {
           />
         </WorkflowPageHeader>
       </div>
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="報告書送達分析を読み込み中..." />}>
         <ReportDeliveryDashboard />
       </Suspense>
     </div>

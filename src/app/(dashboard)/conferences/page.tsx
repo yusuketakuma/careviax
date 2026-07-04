@@ -37,7 +37,7 @@ export default async function ConferencesPage({ searchParams }: ConferencesPageP
           ]}
         />
       </WorkflowPageHeader>
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="カンファレンスノートを読み込み中..." />}>
         <ConferencesContent
           initialFocus={initialState.initialFocus}
           initialContext={initialState.initialContext}

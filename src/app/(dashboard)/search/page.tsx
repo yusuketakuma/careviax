@@ -37,7 +37,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   return (
     <PageScaffold>
       {/* useSearchParams を内部で使うため Suspense で包む */}
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="全体検索を読み込み中..." />}>
         <SearchContent initialQuery={q} initialCategory={initialCategory} />
       </Suspense>
     </PageScaffold>
