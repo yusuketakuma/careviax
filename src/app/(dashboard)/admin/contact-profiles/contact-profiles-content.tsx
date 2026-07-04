@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SkeletonRows } from '@/components/ui/loading';
 import {
   Select,
   SelectContent,
@@ -234,9 +235,9 @@ export function ContactProfilesContent() {
                 onRetry={() => profilesQuery.refetch()}
               />
             ) : profilesQuery.isLoading ? (
-              <p className="rounded-lg border border-dashed border-border/70 px-4 py-8 text-sm text-muted-foreground">
-                連携先を読み込んでいます。
-              </p>
+              <div role="status" aria-label="連携先を読み込み中" aria-live="polite">
+                <SkeletonRows rows={3} cols={3} status={false} />
+              </div>
             ) : rows.length === 0 ? (
               <p className="rounded-lg border border-dashed border-border/70 px-4 py-8 text-sm text-muted-foreground">
                 条件に一致する送付先がありません。

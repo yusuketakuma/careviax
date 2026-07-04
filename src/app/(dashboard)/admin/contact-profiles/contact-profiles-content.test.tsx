@@ -137,6 +137,16 @@ describe('ContactProfilesContent', () => {
     expect(screen.getByText('要整備: FAX')).toBeTruthy();
   });
 
+  it('uses an announced skeleton while contact profiles are loading', () => {
+    vi.spyOn(global, 'fetch').mockImplementation(() => new Promise<Response>(() => {}));
+
+    renderContent();
+
+    expect(screen.getByRole('status', { name: '連携先を読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('連携先を読み込んでいます。', { selector: 'p' })).toBeNull();
+    expect(screen.queryByText('条件に一致する送付先がありません。')).toBeNull();
+  });
+
   it('delegates contact profile paths and tenant headers to shared helpers', async () => {
     const fetchSpy = vi.spyOn(global, 'fetch');
 
