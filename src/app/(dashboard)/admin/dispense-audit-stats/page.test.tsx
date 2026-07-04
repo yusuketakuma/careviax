@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import DispenseAuditStatsPage from './page';
 
 setupDomTestEnv();
@@ -21,17 +20,8 @@ const okStats = {
   },
 };
 
-function createWrapper() {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
-  return function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
-  };
-}
-
 function renderPage() {
-  return render(<DispenseAuditStatsPage />, { wrapper: createWrapper() });
+  return render(<DispenseAuditStatsPage />, { wrapper: createQueryClientWrapper() });
 }
 
 describe('DispenseAuditStatsPage', () => {

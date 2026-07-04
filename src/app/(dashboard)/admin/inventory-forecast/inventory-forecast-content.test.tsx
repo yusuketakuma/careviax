@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
-import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import { InventoryForecastContent } from './inventory-forecast-content';
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
@@ -13,21 +12,8 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
 
 setupDomTestEnv();
 
-function createWrapper() {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  });
-
-  return function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
-  };
-}
-
 function renderContent() {
-  return render(<InventoryForecastContent />, { wrapper: createWrapper() });
+  return render(<InventoryForecastContent />, { wrapper: createQueryClientWrapper() });
 }
 
 describe('InventoryForecastContent', () => {

@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import { DocumentDeliveryRuleManager } from './document-delivery-rule-manager';
 
 setupDomTestEnv();
@@ -32,21 +31,8 @@ vi.mock('sonner', () => ({
   },
 }));
 
-function createWrapper() {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  });
-
-  return function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
-  };
-}
-
 function renderManager() {
-  return render(<DocumentDeliveryRuleManager />, { wrapper: createWrapper() });
+  return render(<DocumentDeliveryRuleManager />, { wrapper: createQueryClientWrapper() });
 }
 
 describe('DocumentDeliveryRuleManager', () => {
