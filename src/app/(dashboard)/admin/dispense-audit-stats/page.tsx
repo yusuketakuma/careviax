@@ -124,7 +124,8 @@ export default function DispenseAuditStatsPage() {
         <ErrorState
           variant="server"
           size="inline"
-          action={{ label: '再読み込み', onClick: () => void refetch() }}
+          onRetry={() => void refetch()}
+          retryLabel="再読み込み"
         />
       ) : !stats ? (
         <p className="text-sm text-muted-foreground">データがありません</p>

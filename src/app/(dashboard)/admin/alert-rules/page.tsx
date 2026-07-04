@@ -347,7 +347,8 @@ export default function AlertRulesPage() {
               <ErrorState
                 variant="server"
                 size="inline"
-                action={{ label: '再読み込み', onClick: () => void rulesQuery.refetch() }}
+                onRetry={() => void rulesQuery.refetch()}
+                retryLabel="再読み込み"
               />
             ) : rules.length === 0 ? (
               <p className="text-sm text-muted-foreground">
