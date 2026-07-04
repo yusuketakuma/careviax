@@ -5,6 +5,22 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-04 R25-admin-analytics-stale e45a869e
+
+- 分類: pattern-inconsistency / ErrorState retry action convergence
+- 対象: `src/app/(dashboard)/admin/analytics/analytics-content.tsx`
+- 実施: admin analytics stale-data ErrorState 2箇所を
+  `action={{ label: '再読み込み', onClick, variant: 'outline', size: 'sm' }}` から
+  `onRetry` + `retryLabel` + `retryVariant` + `retrySize` へ移行。
+- 挙動変更: なし。表示ラベル、refetch handler、live-region、stale-data copy、outline/sm button、
+  billing analytics/resource-map query behavior は不変。
+- 安全: UI presentation/refactor のみ。product API/DB/auth/authorization/PHI/billing/deploy/package
+  dependency は変更不要。audit/live DB/external send/secret/push/destructive operation 不変。
+- 検証: targeted admin analytics retry action scan 0件。focused admin analytics vitest 1 file / 9 tests green。
+  scoped eslint/prettier/diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit e45a869e。
+- 残課題: R25 は partial。残りの ErrorState retry action は段階移行を継続。
+
 ## 2026-07-04 R25-admin-metrics 90388a2e
 
 - 分類: pattern-inconsistency / ErrorState retry action convergence
