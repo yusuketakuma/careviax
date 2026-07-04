@@ -5,7 +5,10 @@ import type {
   EvidenceItem,
   NextActionPanelProps,
 } from '@/components/features/workspace/action-rail';
-import { buildDailyOpsBlockedReasons } from '@/lib/workspace/daily-ops-rail';
+import {
+  buildDailyOpsBlockedReasons,
+  buildDailyOpsNextAction,
+} from '@/lib/workspace/daily-ops-rail';
 import { formatElapsedLabel } from '@/lib/ui/relative-time';
 import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
 import { STATUS_TOKENS } from '@/lib/constants/status-tokens';
@@ -282,35 +285,15 @@ export function buildItemEntityAction(
 export function buildWorkspaceNextAction(
   cockpit: DashboardCockpitResponse | null,
 ): NextActionPanelProps {
-  const topAudit = cockpit?.audit_queue[0] ?? null;
-  if (topAudit) {
-    const auditLabel = topAudit.has_narcotic ? '麻薬監査' : '監査';
-    const visit =
-      cockpit?.today_visits.find(
-        (candidate) => candidate.patient_name === topAudit.patient_name && candidate.time_start,
-      ) ?? null;
-    return {
-      actionLabel: topAudit.due_at
-        ? `${auditLabel}を開始 — ${formatTimeOfDay(topAudit.due_at)}期限`
-        : `${auditLabel}を開始する`,
-      description: visit?.time_start
-        ? `${formatTimeOfDay(visit.time_start)}訪問(${familyNameOf(topAudit.patient_name)}様)の持参薬です。完了で午後の予定がすべて確定します。`
-        : `${topAudit.patient_name} 様の監査待ちです。完了で次の工程が動き出します。`,
-      actionHref: '/audit',
-    };
-  }
-  if ((cockpit?.today_visits.length ?? 0) > 0) {
-    return {
-      actionLabel: '訪問準備を確認する',
-      description: `本日の訪問 ${cockpit?.today_visits.length}件の準備状況を確認します。`,
-      actionHref: '/schedules',
-    };
-  }
-  return {
-    actionLabel: '今日の予定を確認する',
-    description: 'いま期限で止まっている作業はありません。',
+  const visitCount = cockpit?.today_visits.length ?? 0;
+  return buildDailyOpsNextAction(cockpit, {
+    actionLabel: visitCount > 0 ? '訪問準備を確認する' : '今日の予定を確認する',
+    description:
+      visitCount > 0
+        ? `本日の訪問 ${visitCount}件の準備状況を確認します。`
+        : 'いま期限で止まっている作業はありません。',
     actionHref: '/schedules',
-  };
+  });
 }
 
 /** 止まっている理由: cockpit の blocked_reasons をレール表示形へ変換 */
