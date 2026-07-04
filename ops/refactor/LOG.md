@@ -5,6 +5,23 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-05 R40/R44-facility-packet 4e57f877
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 対象: `src/app/(dashboard)/visits/[id]/facility-packet/facility-packet-content.tsx`,
+  `src/app/(dashboard)/visits/[id]/facility-packet/facility-packet-content.test.tsx`
+- 実施: facility packet の visit-preparation read GET を `readApiJson` へ移行し、
+  endpoint/org header/roster render/API JSON `message` の契約テストを新規追加。
+- 挙動変更: read fetch 実装内部の helper 収束のみ。visit-preparations path、
+  org header、queryKey、enabled gate、retry UI、no-facility fallback、save mutation は維持。
+- 安全: product UI read fetch internals のみ。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+  live DB/external send/secret/push/destructive operation 不変。
+- 検証: focused facility-packet-content Vitest `1 file / 2 tests` green。
+  scoped eslint green。prettier は new test formatting 後 green。diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit 4e57f877。
+- 残課題: R40/R44 は partial。追加 fetcher は response body read の PHI safety を個別確認して段階移行。
+
 ## 2026-07-05 R40/R44-visit-reflected-fields 198e6183
 
 - 分類: query-helper / client fetch error handling → `readApiJson` 収束。
