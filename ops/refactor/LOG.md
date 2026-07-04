@@ -2966,3 +2966,24 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: R24/R46 は partial。scan-window、summary/route-specific metadata を持つ route は
   個別分析後に継続。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
+## 2026-07-05 R24/R46 visit-records cursor helper slice
+
+- 分類: pattern-inconsistency / keyset visible-row selection → `buildCursorPage` 収束。
+- 実施:
+  - `/api/visit-records` GET の `records.length > limit`、`slice(0, limit)`、
+    last visible row の keyset cursor assembly を `buildCursorPage` へ移行。
+  - decoded cursor filtering、history-summary visible-row semantics、
+    evidence-gallery visible-row semantics、`hasMore`、keyset `nextCursor` は維持。
+- 挙動変更: API内部の重複 helper 収束のみ。外部 response shape、visit schedule assignment
+  access filter、RLS/request context、sensitive no-store は維持。
+- 安全性: auth context、authorization/access filter、DB query shape、auth/authorization、
+  PHI projection、billing、deployment、package dependency、live DB operation、external send、
+  secret handling、push、destructive operation は不変。
+- 検証: focused visit-records/pagination Vitest `2 files / 90 tests` green、
+  scoped ESLint green、targeted Prettier check green、targeted `git diff --check` green、
+  `pnpm typecheck` green。
+- commit: `048a55c4` (`refactor(api): reuse cursor page helper in visit records`)。
+- 残課題: R24/R46 は partial。scan-window、summary/route-specific metadata を持つ route は
+  個別分析後に継続。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
