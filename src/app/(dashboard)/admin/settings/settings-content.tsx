@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SkeletonRows } from '@/components/ui/loading';
 import {
   Select,
   SelectContent,
@@ -341,7 +342,9 @@ function ScopePanel({
       <Card>
         <CardContent className="px-4 py-0">
           {query.isLoading ? (
-            <div className="py-6 text-sm text-muted-foreground">設定を読み込んでいます...</div>
+            <div className="py-4" role="status" aria-label="設定を読み込み中" aria-live="polite">
+              <SkeletonRows rows={3} cols={2} status={false} />
+            </div>
           ) : query.error instanceof Error ? (
             <div className="py-6 text-sm text-destructive">{query.error.message}</div>
           ) : editorMode === 'json' ? (

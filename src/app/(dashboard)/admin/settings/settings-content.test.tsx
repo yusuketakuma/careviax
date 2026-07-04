@@ -88,6 +88,26 @@ describe('SettingsContent polling policy', () => {
     expect(SOURCE).toContain('aria-label="設定JSON"');
   });
 
+  it('uses an announced skeleton while settings are loading', () => {
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'me-profile') {
+        return { data: { data: { id: 'user_1', name: '管理者', defaultSiteId: 'site_1' } } };
+      }
+      if (queryKey[0] === 'pharmacy-sites') {
+        return { data: { data: [{ id: 'site_1', name: '本店' }] } };
+      }
+      if (queryKey[0] === 'admin-settings') {
+        return { data: undefined, isLoading: true };
+      }
+      return { data: { status: 'ok', timestamp: '2026-06-17T00:00:00.000Z', checks: {} } };
+    });
+
+    render(<SettingsContent />);
+
+    expect(screen.getByRole('status', { name: '設定を読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('設定を読み込んでいます...')).toBeNull();
+  });
+
   function mockQueryErrorFor(errorKey: string, message: string, refetch: () => void) {
     useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
       if (queryKey[0] === errorKey) {
