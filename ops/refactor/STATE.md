@@ -244,6 +244,12 @@
   enabled gates/hostile report-id encoding/send-permission gate/mutation error handling/
   idempotency headers/send safety は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 patient-history-summary readApiJson slice(5010c64d) land。focused Vitest 5、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。previous prescription / previous visit
+  summary の read GET を readApiJson へ収束し、patient API helper/limit query/visit-records query/
+  org header/queryKey/enabled gate/hostile-id encoding/href helper/current-item exclusion は保持。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
+  維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 
