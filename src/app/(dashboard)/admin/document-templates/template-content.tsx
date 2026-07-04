@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { parseJsonObjectText } from '@/lib/admin/json-editor';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import {
@@ -291,8 +292,7 @@ export function DocumentTemplateContent() {
       const res = await fetch(buildDocumentTemplatesApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('文書テンプレートの取得に失敗しました');
-      return res.json() as Promise<DocumentTemplatesResponse>;
+      return readApiJson<DocumentTemplatesResponse>(res, '文書テンプレートの取得に失敗しました');
     },
     enabled: !!orgId,
   });
