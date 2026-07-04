@@ -138,6 +138,11 @@
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。settings/profile/site read GET を
   readApiJson へ収束し、`/api/health` 503-as-payload semantics は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 admin-performance readApiJson slice(7168e8a9) land。focused Vitest 6、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。workflow/schedules/proposals/runtime
+  metrics read GET を readApiJson へ収束し、realtime invalidation/polling/false-zero ErrorState は保持。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
+  維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 

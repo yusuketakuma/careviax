@@ -46724,6 +46724,49 @@ false` for every migrated column.
   - Existing unrelated `refactor-instructions.md` and local skill install files
     remain outside this slice.
 
+## R40/R44 Admin Performance readApiJson Slice - 2026-07-05 04:54 JST
+
+- Scope:
+  - `src/app/(dashboard)/admin/performance/page.tsx`
+  - `src/app/(dashboard)/admin/performance/page.test.tsx`
+- Status:
+  - Implemented and committed as `7168e8a9`
+    (`Converge admin performance reads on shared JSON helper`).
+- Changes:
+  - Replaced admin performance workflow, visit-schedules, visit-schedule
+    proposals, and runtime metrics read GET queryFns with `readApiJson`.
+  - Preserved endpoint paths/search params, `buildOrgHeaders(orgId)`,
+    response envelopes, React Query keys, realtime invalidation events,
+    fallback refetch intervals, runtime polling, false-zero ErrorState behavior,
+    and update button refetch behavior.
+  - Added a focused queryFn contract test that directly executes all four read
+    query functions and verifies org-scoped endpoint/header usage.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, destructive operation, and all mutation/server
+    behavior.
+  - The 2026-07-04 user instruction allowing product
+    API/DB/auth/authorization/PHI/billing/deploy/package dependency changes when
+    necessary is recorded in `ops/refactor/STATE.md`; this slice did not require
+    those changes.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/performance/page.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `6` tests.
+  - `pnpm exec eslint --max-warnings=0 'src/app/(dashboard)/admin/performance/page.tsx' 'src/app/(dashboard)/admin/performance/page.test.tsx'`
+    passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/admin/performance/page.tsx' 'src/app/(dashboard)/admin/performance/page.test.tsx'`
+    initially required formatting the touched test file, then passed.
+  - `git diff --check -- 'src/app/(dashboard)/admin/performance/page.tsx' 'src/app/(dashboard)/admin/performance/page.test.tsx'`
+    passed.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - R40/R44 remains partial and broad; continue per-fetcher body-read/PHI review
+    before converting additional client read fetchers.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Admin Settings readApiJson Slice - 2026-07-05 04:49 JST
 
 - Scope:

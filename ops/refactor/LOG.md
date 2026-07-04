@@ -3792,6 +3792,29 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
   個別確認してから段階移行する。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
 
+## 2026-07-05 R40/R44 admin performance readApiJson slice
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 実施:
+  - admin performance の workflow/schedules/proposals/runtime metrics GET fetchers を
+    `readApiJson` へ移行。
+  - queryFn contract test を追加し、4つの read endpoints と org-scoped headers を固定。
+- 挙動変更: read fetch 実装内部の helper 収束のみ。endpoint paths/search params、
+  `buildOrgHeaders`、React Query keys、realtime invalidation events、fallback refetch intervals、
+  runtime polling、response envelopes、false-zero ErrorState、update button refetch behavior は維持。
+- 安全性: product UI read fetch internals のみ変更。DB/schema、auth/authorization、
+  PHI projection、billing、deployment、package dependency、live DB operation、external send、
+  secret handling、push、destructive operation、server/mutation behavior は不変。SSOT では必要時の
+  product API/DB/auth/authorization/PHI/billing/deploy/package dependency 変更許可を確認済みだが、
+  この slice では不要。
+- 検証: focused admin performance Vitest `1 file / 6 tests` green、scoped ESLint green、
+  targeted Prettier check は touched test formatting 後 green、targeted `git diff --check`
+  green、`pnpm typecheck` green。
+- commit: `7168e8a9` (`Converge admin performance reads on shared JSON helper`)。
+- 残課題: R40/R44 は broad。追加の client fetcher は response body read が PHI-safe かを
+  個別確認してから段階移行する。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
 ## 2026-07-05 R40/R44 admin settings readApiJson slice
 
 - 分類: query-helper / client fetch error handling → `readApiJson` 収束。
