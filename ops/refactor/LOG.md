@@ -5,6 +5,23 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-05 R40/R44-dispense-audit-stats a2d0e1bc
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 対象: `src/app/(dashboard)/admin/dispense-audit-stats/page.tsx`,
+  `src/app/(dashboard)/admin/dispense-audit-stats/page.test.tsx`
+- 実施: dispense audit stats GET の `if (!res.ok) throw` + `res.json()` を
+  `readApiJson<{ data: RejectReasonStats }>` へ移行。static path/org header を test 固定。
+- 挙動変更: read fetch 実装内部の helper 収束のみ。`/api/admin/reject-reason-stats?days=...`、
+  `buildOrgHeaders`、React Query key、response envelope、period switching、aggregate stats は維持。
+- 安全: product UI read fetch internals のみ。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+  live DB/external send/secret/push/destructive operation 不変。
+- 検証: focused dispense-audit stats Vitest `1 file / 5 tests` green。
+  scoped eslint/prettier/diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit a2d0e1bc。
+- 残課題: R40/R44 は partial。追加 fetcher は response body read の PHI safety を個別確認して段階移行。
+
 ## 2026-07-05 R40/R44-inventory-forecast ae862108
 
 - 分類: query-helper / client fetch error handling → `readApiJson` 収束。
