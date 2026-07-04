@@ -46199,3 +46199,46 @@ false` for every migrated column.
   - Read-only `rg`, `nl`, and `git status` only.
 - Remaining:
   - Await coordinator GO/leave/BUILD-LOCK release.
+
+## R40/R44 Service Areas readApiJson Slice - 2026-07-05 03:56 JST
+
+- Scope:
+  - `src/app/(dashboard)/admin/service-areas/page.tsx`
+  - `src/app/(dashboard)/admin/service-areas/page.test.tsx`
+- Status:
+  - Implemented and committed as `87f34d8a`
+    (`refactor(ui): reuse readApiJson in service areas`).
+- Changes:
+  - Replaced the sites GET helper for `/api/pharmacy-sites` with
+    `readApiJson<{ data: PharmacySite[] }>` while preserving
+    `buildOrgHeaders(orgId)`, the query key, and the response envelope.
+  - Replaced the service-area list GET helper for `SERVICE_AREAS_API_PATH` with
+    `readApiJson<ServiceAreasResponse>` while preserving count metadata,
+    loading/error/empty behavior, and area list rendering.
+  - Updated the focused false-empty test expectation to match the existing
+    `readApiJson` contract that surfaces server-provided error messages.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, destructive operation, form validation, mutating
+    POST/PATCH/DELETE behavior, and path helper encoding/fail-closed behavior.
+  - The 2026-07-04 user instruction allowing product
+    API/DB/auth/authorization/PHI/billing/deploy/package dependency changes when
+    necessary is recorded in `ops/refactor/STATE.md`; this slice did not require
+    those changes.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/service-areas/page.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `15` tests.
+  - `pnpm exec eslint --max-warnings=0 'src/app/(dashboard)/admin/service-areas/page.tsx' 'src/app/(dashboard)/admin/service-areas/page.test.tsx'`
+    passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/admin/service-areas/page.tsx' 'src/app/(dashboard)/admin/service-areas/page.test.tsx'`
+    passed.
+  - `git diff --check -- 'src/app/(dashboard)/admin/service-areas/page.tsx' 'src/app/(dashboard)/admin/service-areas/page.test.tsx'`
+    passed.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - R40/R44 remains partial and broad; continue per-fetcher body-read/PHI review
+    before converting additional client read fetchers.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.

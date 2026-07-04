@@ -3546,3 +3546,29 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: R40/R44 は broad。追加の client fetcher は response body read が PHI-safe かを
   個別確認してから段階移行する。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
+## 2026-07-05 R40/R44 service areas readApiJson slice
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 実施:
+  - admin service-areas の `/api/pharmacy-sites` GET fetcher を
+    `readApiJson<{ data: PharmacySite[] }>` へ移行。
+  - admin service-areas の `SERVICE_AREAS_API_PATH` GET fetcher を
+    `readApiJson<ServiceAreasResponse>` へ移行。
+  - false-empty 防止テストは、既存 `readApiJson` 契約どおり server-provided message を
+    surface する期待へ更新。
+- 挙動変更: read fetch 実装内部の helper 収束のみ。API paths、`buildOrgHeaders`、
+  React Query keys、response envelopes/count metadata、loading/error/empty 分岐、
+  form validation、POST/PATCH/DELETE mutation、path helper encode/fail-closed semantics は維持。
+- 安全性: product UI read fetch internals のみ変更。DB/schema、auth/authorization、
+  PHI projection、billing、deployment、package dependency、live DB operation、external send、
+  secret handling、push、destructive operation は不変。SSOT では必要時の product
+  API/DB/auth/authorization/PHI/billing/deploy/package dependency 変更許可を確認済みだが、
+  この slice では不要。
+- 検証: focused service-areas Vitest `1 file / 15 tests` green、
+  scoped ESLint green、targeted Prettier check green、targeted `git diff --check` green、
+  `pnpm typecheck` green。
+- commit: `87f34d8a` (`refactor(ui): reuse readApiJson in service areas`)。
+- 残課題: R40/R44 は broad。追加の client fetcher は response body read が PHI-safe かを
+  個別確認してから段階移行する。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
