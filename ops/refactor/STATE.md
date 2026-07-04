@@ -238,6 +238,12 @@
   helpers/org header/queryKey/enabled gates/hostile-id encoding/dot rejection/view-only gate/
   reply list-detail separation/POST mutation error handling は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 report-detail readApiJson slice(6402269d) land。focused Vitest 38、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。care report detail / external
+  professional suggestions の read GET を readApiJson へ収束し、path helpers/org header/queryKey/
+  enabled gates/hostile report-id encoding/send-permission gate/mutation error handling/
+  idempotency headers/send safety は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 
