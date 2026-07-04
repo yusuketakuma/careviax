@@ -393,6 +393,35 @@ describe('PatientWorkflowPreviewCard', () => {
     }
   });
 
+  it('keeps API messages from failed workflow-preview fetches', async () => {
+    const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
+    vi.mocked(buildOrgHeaders).mockReturnValue(sentinelHeaders);
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ message: 'workflow preview APIからの詳細エラー' }, 500));
+    vi.stubGlobal('fetch', fetchMock);
+    useOrgIdMock.mockReturnValue('org_1');
+
+    let captured: { queryKey: unknown[]; queryFn: () => Promise<unknown> } | undefined;
+    useQueryMock.mockImplementation(
+      (config: { queryKey: unknown[]; queryFn: () => Promise<unknown> }) => {
+        captured = config;
+        return { data: undefined, isLoading: true, error: null };
+      },
+    );
+
+    try {
+      render(<PatientWorkflowPreviewCard patientId="patient_1" />);
+
+      if (!captured) throw new Error('query config was not captured');
+      await expect(captured.queryFn()).rejects.toThrow('workflow preview APIからの詳細エラー');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.mocked(buildOrgHeaders).mockReset();
+    }
+  });
+
   it.each(['.', '..'])(
     'fails closed for exact dot-segment patientId %p instead of normalizing the API path',
     async (dotId) => {

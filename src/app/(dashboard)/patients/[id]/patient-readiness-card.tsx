@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import type { PatientReadinessSnapshot } from './patient-detail.types';
@@ -64,10 +65,10 @@ export function PatientReadinessCard({ patientId }: { patientId: string }) {
       const response = await fetch(buildPatientApiPath(patientId, '/readiness'), {
         headers: buildOrgHeaders(orgId ?? ''),
       });
-      if (!response.ok) {
-        throw new Error('オンボーディング状況の取得に失敗しました');
-      }
-      return response.json();
+      return readApiJson<PatientReadinessSnapshot>(
+        response,
+        'オンボーディング状況の取得に失敗しました',
+      );
     },
   });
 

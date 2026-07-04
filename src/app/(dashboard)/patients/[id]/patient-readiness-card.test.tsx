@@ -164,6 +164,32 @@ describe('PatientReadinessCard', () => {
     }
   });
 
+  it('keeps API messages from failed readiness fetches', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+
+    let captured: { queryKey: unknown[]; queryFn: () => Promise<unknown> } | undefined;
+    useQueryMock.mockImplementation(
+      (config: { queryKey: unknown[]; queryFn: () => Promise<unknown> }) => {
+        captured = config;
+        return { data: undefined, isLoading: true, error: null };
+      },
+    );
+
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ message: 'readiness APIからの詳細エラー' }, 500));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PatientReadinessCard patientId="patient_1" />);
+
+      await expect(captured?.queryFn()).rejects.toThrow('readiness APIからの詳細エラー');
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
   it.each(['.', '..'])(
     'fails closed without fetching for exact dot-segment patientId %p',
     async (dotId) => {

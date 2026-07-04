@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/ui/loading';
 import { PageSection } from '@/components/layout/page-section';
 import { ActionRail } from '@/components/ui/action-rail';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { buildPatientWorkflowPreviewApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
@@ -77,10 +78,10 @@ export function PatientWorkflowPreviewCard({ patientId }: { patientId: string })
       const response = await fetch(buildPatientWorkflowPreviewApiPath(patientId), {
         headers: buildOrgHeaders(orgId ?? ''),
       });
-      if (!response.ok) {
-        throw new Error('ワークフロープレビューの取得に失敗しました');
-      }
-      return response.json();
+      return readApiJson<PatientWorkflowPreviewSnapshot>(
+        response,
+        'ワークフロープレビューの取得に失敗しました',
+      );
     },
   });
 
