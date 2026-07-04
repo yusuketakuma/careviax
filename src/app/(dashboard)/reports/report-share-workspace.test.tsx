@@ -417,7 +417,7 @@ describe('ReportShareWorkspace', () => {
     expect(screen.getByText('加藤 ミサ 様 — 薬剤師確認待ち')).toBeTruthy();
     expect(screen.getByText('加藤 ミサ 様 — 保険・請求根拠未確定')).toBeTruthy();
     expect(screen.getByTestId('report-created-list')).toBeTruthy();
-    expect(screen.getByText('作成済み報告書')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '作成済み報告書' })).toBeTruthy();
 
     // Slice1: 即時対応優先(guidelines §68-76)。返信待ち(=止まっている)を残課題・作成済みより前に出す。
     const waiting = screen.getAllByTestId('report-waiting-reply')[0];
@@ -427,21 +427,30 @@ describe('ReportShareWorkspace', () => {
     expect(
       waiting.compareDocumentPosition(created) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(screen.getByRole('link', { name: '田中 一郎 様' }).getAttribute('href')).toBe(
-      '/patients/patient_1',
-    );
     expect(
-      screen.getByText((text) => text.includes('医師への報告 / 主治医への服薬状況報告')),
-    ).toBeTruthy();
-    expect(screen.getByText('他職種へ報告済み')).toBeTruthy();
-    expect(screen.getByText(/06\/11 11:10 \/ 山田 太郎 \/ FAX/)).toBeTruthy();
-    expect(screen.getByText('他職種未報告')).toBeTruthy();
+      screen
+        .getAllByRole('link', { name: '田中 一郎 様' })
+        .map((link) => link.getAttribute('href')),
+    ).toEqual(['/patients/patient_1', '/patients/patient_1']);
+    expect(
+      screen.getAllByText((text) => text.includes('医師への報告 / 主治医への服薬状況報告')),
+    ).not.toHaveLength(0);
+    expect(screen.getAllByText('他職種へ報告済み')).not.toHaveLength(0);
+    expect(screen.getAllByText(/06\/11 11:10 \/ 山田 太郎 \/ FAX/)).not.toHaveLength(0);
+    expect(screen.getAllByText('他職種未報告')).not.toHaveLength(0);
     expect(screen.getAllByText('送付失敗').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('メール / やまもと内科 / 再送1回')).toBeTruthy();
-    expect(screen.getByText('メール送信に失敗しました')).toBeTruthy();
-    expect(screen.getByRole('link', { name: '宛先確認・再送' }).getAttribute('href')).toBe(
+    expect(screen.getAllByText('メール / やまもと内科 / 再送1回')).not.toHaveLength(0);
+    expect(screen.getAllByText('メール送信に失敗しました')).not.toHaveLength(0);
+    expect(
+      screen
+        .getAllByRole('link', { name: '宛先確認・再送' })
+        .map((link) => link.getAttribute('href')),
+    ).toEqual([
       '/reports/report_failed?action=resend&delivery_id=delivery_failed',
-    );
+      '/reports/report_failed?action=resend&delivery_id=delivery_failed',
+    ]);
+    expect(screen.queryByRole('button', { name: 'CSV出力' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '印刷' })).toBeNull();
 
     // 返信待ち / 今日解決した待ち
     expect(screen.getByText('返信待ち')).toBeTruthy();
@@ -547,6 +556,51 @@ describe('ReportShareWorkspace', () => {
     expect(screen.getByText(/書く3件・課題抽出内5件・作成済み12件・待つ6件・解決4件/)).toBeTruthy();
   });
 
+  it('shows the created-reports empty state only after a successful empty response', async () => {
+    const workspace = JSON.parse(JSON.stringify(TODAY_WORKSPACE)) as ReportsTodayWorkspaceResponse;
+    workspace.created_reports = [];
+    workspace.counts = { ...workspace.counts, created: 0 };
+    workspace.count_metadata = {
+      ...workspace.count_metadata,
+      created: {
+        ...workspace.count_metadata.created,
+        total_count: 0,
+        visible_count: 0,
+        hidden_count: 0,
+        truncated: false,
+      },
+    };
+
+    stubFetch(workspace);
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('report-created-list')).toBeTruthy();
+    });
+    expect(screen.getByText('作成済み報告書はありません。')).toBeTruthy();
+    expect(screen.queryByText('報告・共有を表示できません')).toBeNull();
+  });
+
+  it('does not show the created-reports empty state when the workspace query fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('/api/care-reports/today-workspace')) {
+          return new Response(JSON.stringify({ error: 'workspace unavailable' }), {
+            status: 500,
+          });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+    renderWorkspace();
+
+    expect(await screen.findByText('報告・共有を表示できません')).toBeTruthy();
+    expect(screen.queryByTestId('report-created-list')).toBeNull();
+    expect(screen.queryByText('作成済み報告書はありません。')).toBeNull();
+  });
+
   it('renders billing candidate open issues using their own action href', async () => {
     stubFetch({
       ...TODAY_WORKSPACE,
@@ -625,15 +679,22 @@ describe('ReportShareWorkspace', () => {
       expect(screen.getByTestId('report-created-list')).toBeTruthy();
     });
 
-    const linkedPatient = screen.getByRole('link', { name: '田中 一郎 様' });
-    expect(linkedPatient.getAttribute('href')).toBe(
+    const linkedPatientHrefs = screen
+      .getAllByRole('link', { name: '田中 一郎 様' })
+      .map((link) => link.getAttribute('href'));
+    expect(linkedPatientHrefs).toEqual([
       `/patients/${encodeURIComponent('../settings?x=1#y')}`,
-    );
-    expect(linkedPatient.getAttribute('href')).not.toContain('/settings');
-    expect(linkedPatient.getAttribute('href')).not.toContain('?x=1');
-    expect(linkedPatient.getAttribute('href')).not.toContain('#y');
+      `/patients/${encodeURIComponent('../settings?x=1#y')}`,
+    ]);
+    for (const href of linkedPatientHrefs) {
+      expect(href).not.toContain('/settings');
+      expect(href).not.toContain('?x=1');
+      expect(href).not.toContain('#y');
+    }
 
-    expect(screen.getByText('患者未設定').closest('a')).toBeNull();
+    for (const unassignedPatient of screen.getAllByText('患者未設定')) {
+      expect(unassignedPatient.closest('a')).toBeNull();
+    }
   });
 
   it('uses the shared buildPatientHref return value for created-report patient links', async () => {
@@ -644,9 +705,16 @@ describe('ReportShareWorkspace', () => {
       stubFetch();
       renderWorkspace();
 
-      const linkedPatient = await screen.findByRole('link', { name: '田中 一郎 様' });
-      expect(linkedPatient.getAttribute('href')).toBe('/patients/__sentinel_patient_1__');
+      await screen.findAllByRole('link', { name: '田中 一郎 様' });
+      expect(
+        screen
+          .getAllByRole('link', { name: '田中 一郎 様' })
+          .map((link) => link.getAttribute('href')),
+      ).toEqual(['/patients/__sentinel_patient_1__', '/patients/__sentinel_patient_1__']);
       expect(vi.mocked(buildPatientHref).mock.calls).toEqual([
+        ['patient_1'],
+        ['patient_2'],
+        ['patient_3'],
         ['patient_1'],
         ['patient_2'],
         ['patient_3'],

@@ -3,8 +3,10 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import { Button, buttonVariants } from '@/components/ui/button';
+import { DataTable, type DataTableColumnMeta } from '@/components/ui/data-table';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import {
@@ -479,6 +481,45 @@ function CreatedReportStatusCell({ report }: { report: ReportCreatedRow }) {
   );
 }
 
+function CreatedReportPatientCell({ report }: { report: ReportCreatedRow }) {
+  return (
+    <div>
+      {report.patient_id ? (
+        <Link
+          href={buildPatientHref(report.patient_id)}
+          className="inline-flex min-h-8 items-center rounded-sm font-semibold text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
+          {report.patient_label}
+        </Link>
+      ) : (
+        <span className="block font-semibold text-foreground">{report.patient_label}</span>
+      )}
+      <span className="block text-xs leading-5 text-muted-foreground">
+        {report.report_type_label} / {report.title}
+      </span>
+      <span className="block text-xs text-muted-foreground">
+        作成 {formatDateTime(report.created_at)} / 更新 {formatDateTime(report.updated_at)}
+      </span>
+    </div>
+  );
+}
+
+function CreatedReportStatusBadge({ report }: { report: ReportCreatedRow }) {
+  return (
+    <span className="inline-flex rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+      {report.status_label}
+    </span>
+  );
+}
+
+function CreatedReportDetailLink({ report }: { report: ReportCreatedRow }) {
+  return (
+    <Link href={report.action.href} className={cn(reportOutlineActionClassName, 'text-primary')}>
+      {report.action.label}
+    </Link>
+  );
+}
+
 function CreatedReportsSection({
   reports,
   count,
@@ -486,6 +527,37 @@ function CreatedReportsSection({
   reports: ReportCreatedRow[];
   count: ReportsTodayWorkspaceResponse['count_metadata']['created'] | null | undefined;
 }) {
+  const createdReportColumns: ColumnDef<ReportCreatedRow>[] = [
+    {
+      id: 'patientReport',
+      header: '患者・報告書',
+      meta: { mobileLabel: '患者・報告書' } satisfies DataTableColumnMeta<ReportCreatedRow>,
+      cell: ({ row }) => <CreatedReportPatientCell report={row.original} />,
+      enableSorting: false,
+    },
+    {
+      id: 'status',
+      header: '状態',
+      meta: { mobileLabel: '状態' } satisfies DataTableColumnMeta<ReportCreatedRow>,
+      cell: ({ row }) => <CreatedReportStatusBadge report={row.original} />,
+      enableSorting: false,
+    },
+    {
+      id: 'professionalReport',
+      header: '他職種報告',
+      meta: { mobileLabel: '他職種報告' } satisfies DataTableColumnMeta<ReportCreatedRow>,
+      cell: ({ row }) => <CreatedReportStatusCell report={row.original} />,
+      enableSorting: false,
+    },
+    {
+      id: 'detail',
+      header: () => <span className="sr-only">詳細</span>,
+      meta: { mobileLabel: '詳細' } satisfies DataTableColumnMeta<ReportCreatedRow>,
+      cell: ({ row }) => <CreatedReportDetailLink report={row.original} />,
+      enableSorting: false,
+    },
+  ];
+
   return (
     <section
       className="rounded-lg border border-border/70 bg-card p-4"
@@ -503,61 +575,16 @@ function CreatedReportsSection({
       {reports.length === 0 ? (
         <p className="mt-3 text-sm text-muted-foreground">作成済み報告書はありません。</p>
       ) : (
-        <Table className="mt-3">
-          <TableHeader>
-            <TableRow>
-              <TableHead>患者・報告書</TableHead>
-              <TableHead className="w-28">状態</TableHead>
-              <TableHead className="w-56">他職種報告</TableHead>
-              <TableHead className="w-24">
-                <span className="sr-only">詳細</span>
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {reports.map((report) => (
-              <TableRow key={report.id}>
-                <TableCell>
-                  {report.patient_id ? (
-                    <Link
-                      href={buildPatientHref(report.patient_id)}
-                      className="inline-flex min-h-8 items-center rounded-sm font-semibold text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                    >
-                      {report.patient_label}
-                    </Link>
-                  ) : (
-                    <span className="block font-semibold text-foreground">
-                      {report.patient_label}
-                    </span>
-                  )}
-                  <span className="block text-xs leading-5 text-muted-foreground">
-                    {report.report_type_label} / {report.title}
-                  </span>
-                  <span className="block text-xs text-muted-foreground">
-                    作成 {formatDateTime(report.created_at)} / 更新{' '}
-                    {formatDateTime(report.updated_at)}
-                  </span>
-                </TableCell>
-                <TableCell>
-                  <span className="inline-flex rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
-                    {report.status_label}
-                  </span>
-                </TableCell>
-                <TableCell>
-                  <CreatedReportStatusCell report={report} />
-                </TableCell>
-                <TableCell>
-                  <Link
-                    href={report.action.href}
-                    className={cn(reportOutlineActionClassName, 'text-primary')}
-                  >
-                    {report.action.label}
-                  </Link>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <div className="mt-3">
+          <DataTable
+            columns={createdReportColumns}
+            data={reports}
+            caption="作成済み報告書"
+            emptyMessage="作成済み報告書はありません。"
+            getRowId={(report) => report.id}
+            getRowA11yLabel={(report) => `${report.patient_label} / ${report.title}`}
+          />
+        </div>
       )}
     </section>
   );
