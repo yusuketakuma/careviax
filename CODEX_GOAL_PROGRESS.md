@@ -1,5 +1,41 @@
 # CODEX Goal Progress
 
+## R40/R44 Patient MCS Overview readApiJson Partial - 2026-07-05 08:55 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/lib/patient-mcs/query.ts`
+- Scope:
+  - Reused `readApiJson` for the patient MCS overview read GET.
+  - Preserved API JSON `message` handling while retaining the existing
+    `PatientMcsOverviewQueryError` code mapping, including 403 `forbidden`.
+  - Preserved patient path helper and hostile-id encoding, normalized limit,
+    `x-org-id` header, `cache: no-store`, query key contract, malformed-payload
+    failed typed error behavior, MCS restricted card behavior, summary section
+    behavior, and MCS page query behavior.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run src/lib/patient-mcs/query.test.ts` passed `1` file / `11`
+    tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `ffb0a6a9`
+    (`refactor(ui): reuse readApiJson in patient MCS overview`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Workflow Phase Access readApiJson Partial - 2026-07-05 08:51 JST
 
 - Status:
