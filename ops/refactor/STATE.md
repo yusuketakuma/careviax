@@ -232,6 +232,12 @@
   dot-segment fail-closed/workflow back link/presence heartbeat-users/comment thread entity id/
   refresh invalidation は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 interprofessional-share readApiJson slice(058e183c) land。focused Vitest 28、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。care report detail / patient care team /
+  patient contacts / communication request list+detail の read GET を readApiJson へ収束し、path
+  helpers/org header/queryKey/enabled gates/hostile-id encoding/dot rejection/view-only gate/
+  reply list-detail separation/POST mutation error handling は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 

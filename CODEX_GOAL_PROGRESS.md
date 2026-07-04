@@ -1,5 +1,47 @@
 # CODEX Goal Progress
 
+## R40/R44 Interprofessional Share readApiJson Partial - 2026-07-05 06:07 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.tsx`
+- Scope:
+  - Reused `readApiJson` for five read GET helpers:
+    - care report detail
+    - patient care team
+    - patient contacts
+    - communication request list
+    - communication request detail
+  - Preserved the existing POST mutation error parsing for follow-up tasks and
+    reply request creation.
+  - Preserved API path helpers, `buildOrgHeaders`, React Query keys, enabled
+    gates, hostile report/patient/request id encoding, dot-segment rejection,
+    view-only permission gating, patient support suppression when patient
+    viewing is denied, reply list/detail separation, raw id payload semantics,
+    and query invalidation.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx'`
+    passed `1` file / `28` tests.
+  - Scoped ESLint, targeted Prettier check after formatting, targeted
+    `git diff --check`, and `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `058e183c`
+    (`refactor(ui): reuse readApiJson in interprofessional share`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Collaboration Overview readApiJson Partial - 2026-07-05 06:01 JST
 
 - Status:
