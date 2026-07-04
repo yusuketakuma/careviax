@@ -26,12 +26,10 @@ vi.mock('@tanstack/react-query', () => ({
   useQueryClient: useQueryClientMock,
 }));
 
-vi.mock('sonner', () => ({
-  toast: {
-    success: vi.fn(),
-    error: vi.fn(),
-  },
-}));
+vi.mock('sonner', async () => {
+  const { createSonnerToastMock } = await import('@/test/sonner-test-utils');
+  return createSonnerToastMock().module;
+});
 
 vi.mock('@/lib/api/org-headers', async (importActual) => {
   const actual = await importActual<typeof import('@/lib/api/org-headers')>();
