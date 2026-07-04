@@ -281,8 +281,10 @@ export function TasksContent({
       const res = await fetch('/api/staff-workload', {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('スタッフ別業務量の取得に失敗しました');
-      return res.json() as Promise<{ data: StaffWorkload[]; date: string }>;
+      return readApiJson<{ data: StaffWorkload[]; date: string }>(
+        res,
+        'スタッフ別業務量の取得に失敗しました',
+      );
     },
     enabled: !!orgId,
   });

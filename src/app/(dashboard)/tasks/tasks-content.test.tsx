@@ -3,7 +3,9 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { stubJsonFetch } from '@/test/fetch-test-utils';
 import { toast } from 'sonner';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import type { BulkCompleteTasksResponse } from '@/lib/tasks/bulk-completion-contract';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
@@ -38,6 +40,11 @@ vi.mock('next/navigation', () => ({
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn() },
 }));
+
+vi.mock('@/lib/api/org-headers', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api/org-headers')>();
+  return { ...actual, buildOrgHeaders: vi.fn(actual.buildOrgHeaders) };
+});
 
 vi.mock('@/components/ui/data-table', async () => {
   const { useState } = await import('react');
@@ -387,6 +394,31 @@ describe('TasksContent', () => {
     expect(screen.queryByText('スタッフ別業務量を読み込み中...', { selector: 'p' })).toBeNull();
     expect(screen.queryByText('スタッフ別業務量を取得できませんでした。')).toBeNull();
     expect(screen.queryByText('依頼可能なスタッフが見つかりません')).toBeNull();
+  });
+
+  it('loads staff workload through the org header helper and returns the response envelope', async () => {
+    const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
+    vi.mocked(buildOrgHeaders).mockReturnValueOnce(sentinelHeaders);
+    const workloadPayload = { data: [], date: '2026-04-10' };
+    const fetchMock = stubJsonFetch(workloadPayload);
+    let staffWorkloadQueryFn: (() => Promise<unknown>) | undefined;
+    useQueryMock.mockImplementation(
+      (options: { queryKey?: unknown[]; queryFn?: () => unknown }) => {
+        if (options.queryKey?.[0] === 'staff-workload') {
+          staffWorkloadQueryFn = options.queryFn as (() => Promise<unknown>) | undefined;
+        }
+        return { data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() };
+      },
+    );
+
+    render(<TasksContent />);
+
+    expect(staffWorkloadQueryFn).toBeTruthy();
+    await expect(staffWorkloadQueryFn?.()).resolves.toEqual(workloadPayload);
+    expect(fetchMock).toHaveBeenCalledWith('/api/staff-workload', {
+      headers: sentinelHeaders,
+    });
+    expect(buildOrgHeaders).toHaveBeenCalledWith('org_1');
   });
 
   it('prefills work request fields from visit or audit deep links', () => {
