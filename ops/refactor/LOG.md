@@ -1531,3 +1531,31 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - commit: `f26b0bfd` (`fix(admin): close route loading fallbacks`)。
 - 残課題: admin route-shell generic fallback は closure。broad Plans.md / R55 residual scan は継続。
   `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
+
+## 2026-07-04 R55 billing route-shell fallback closure
+
+- 分類: UI loading-state cleanup / R55 route-shell generic loading residual closure。
+- 実施:
+  - `billing/page.tsx` の route-level Suspense fallback を generic `Loading` から
+    `算定チェックを読み込み中...` の画面固有 status へ変更。
+  - `billing/partner-cooperation/page.tsx` を `薬局間協力 月次処理を読み込み中...`、
+    `billing/candidates/page.tsx` を `月次請求候補を読み込み中...` に変更。
+  - 3 route の page test を追加し、generic `読み込み中...` が出ないこと、suspended content が出ないこと、
+    `billing/candidates` の search param wiring が保持されることを固定。
+- 挙動変更: route-shell loading label のみ。billing check content query、partner cooperation monthly logic、
+  candidate search param parsing、validation/export behavior、API path、org header、mutation、
+  API/DB/auth/authorization/billing semantics/audit は不変。
+- UI/UX根拠: `docs/ui-ux-design-guidelines.md` の Clear state / false-empty prevention と
+  route fallback は軽量で意味のある loading UI にする Next loading/Suspense guidance に整合。
+- 安全性: product API/DB/auth/authorization/PHI/billing/deploy/package dependency は不変。
+  Loading copy は PHI-free で、patient name・candidate id・visit record id・billing month detail・fee value・partner pharmacy detail・org id・raw error
+  を出さない。
+- 検証: focused billing route fallback Vitest `3 files / 6 tests` green、targeted ESLint green、
+  targeted `git diff --check` green。初回 Prettier check は
+  `billing/partner-cooperation/page.test.tsx` を指摘したため、targeted `prettier --write` 後に
+  focused tests / Prettier check を再実行して green。`pnpm typecheck` green。
+  `rg -n "<Suspense fallback=\\{<Loading />\\}" 'src/app/(dashboard)/billing' --glob 'page.tsx'`
+  は no matches。
+- commit: `8f673aa4` (`fix(billing): close route loading fallbacks`)。
+- 残課題: billing route-shell generic fallback は closure。broad Plans.md / R55 residual scan は継続。
+  `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。

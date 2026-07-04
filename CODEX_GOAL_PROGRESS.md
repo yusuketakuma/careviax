@@ -1,5 +1,54 @@
 # CODEX Goal Progress
 
+## R55 Billing Route Loading Fallback Closure - 2026-07-04 20:59 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/billing/page.tsx`
+    - `src/app/(dashboard)/billing/page.test.tsx`
+    - `src/app/(dashboard)/billing/partner-cooperation/page.tsx`
+    - `src/app/(dashboard)/billing/partner-cooperation/page.test.tsx`
+    - `src/app/(dashboard)/billing/candidates/page.tsx`
+    - `src/app/(dashboard)/billing/candidates/page.test.tsx`
+- Scope:
+  - Replaced billing route-level generic Suspense fallback `Loading` instances
+    with screen-specific statuses:
+    - `算定チェックを読み込み中...`
+    - `薬局間協力 月次処理を読み込み中...`
+    - `月次請求候補を読み込み中...`
+  - Added route shell regression tests proving each fallback is
+    screen-specific, generic `読み込み中...` is absent, suspended content is not
+    rendered, and billing candidates preserve search param wiring.
+  - Confirmed `rg -n "<Suspense fallback=\\{<Loading />\\}" 'src/app/(dashboard)/billing' --glob 'page.tsx'`
+    now returns no matches.
+- Safety:
+  - Route-shell loading presentation and tests only.
+  - No billing check content query, partner cooperation monthly logic,
+    candidate search param parsing, validation/export behavior, API path,
+    org header, mutation, DB, auth, authorization, PHI, billing semantics,
+    audit, deployment, package, or server behavior changed.
+  - Loading copy is PHI-free and does not echo patient names, candidate IDs,
+    visit record IDs, billing month details, fee values, partner pharmacy
+    details, org IDs, or raw errors.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/billing/page.test.tsx' 'src/app/(dashboard)/billing/partner-cooperation/page.test.tsx' 'src/app/(dashboard)/billing/candidates/page.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `3` files / `6` tests.
+  - Scoped ESLint and targeted `git diff --check` passed for all three billing
+    route source/test file pairs.
+  - Initial Prettier check reported `src/app/(dashboard)/billing/partner-cooperation/page.test.tsx`;
+    after targeted `prettier --write`, the same focused tests and Prettier
+    check passed.
+  - `pnpm typecheck` passed.
+  - Billing route generic fallback closure scan returned no matches.
+- Commit:
+  - Implementation slice landed at `8f673aa4`
+    (`fix(billing): close route loading fallbacks`).
+- Remaining:
+  - Broader R55 / Plans.md objective remains open beyond the billing
+    route-shell fallback closure.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Admin Route Loading Fallback Closure - 2026-07-04 20:54 JST
 
 - Status:
