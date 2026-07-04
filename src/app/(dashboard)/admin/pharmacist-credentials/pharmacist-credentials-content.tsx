@@ -34,6 +34,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import { messageFromError } from '@/lib/utils/error-message';
@@ -320,8 +321,10 @@ export function PharmacistCredentialsContent() {
       const response = await fetch(PHARMACIST_CREDENTIALS_API_PATH, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('薬剤師認定情報の取得に失敗しました');
-      return response.json() as Promise<PharmacistCredentialListResponse>;
+      return readApiJson<PharmacistCredentialListResponse>(
+        response,
+        '薬剤師認定情報の取得に失敗しました',
+      );
     },
     enabled: !!orgId,
   });
@@ -332,8 +335,10 @@ export function PharmacistCredentialsContent() {
       const response = await fetch(buildPharmacistsApiPath(), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('スタッフ一覧の取得に失敗しました');
-      return response.json() as Promise<{ data: PharmacistOption[] }>;
+      return readApiJson<{ data: PharmacistOption[] }>(
+        response,
+        'スタッフ一覧の取得に失敗しました',
+      );
     },
     enabled: !!orgId,
   });
