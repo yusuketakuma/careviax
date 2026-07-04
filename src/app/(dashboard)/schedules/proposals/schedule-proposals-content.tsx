@@ -66,6 +66,7 @@ import {
 } from '@/components/ui/sheet';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
@@ -781,8 +782,7 @@ export function ScheduleProposalsContent({
       const response = await fetch(`/api/visit-schedule-proposals?${queryParams}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('訪問候補の取得に失敗しました');
-      return response.json() as Promise<ScheduleProposalsResponse>;
+      return readApiJson<ScheduleProposalsResponse>(response, '訪問候補の取得に失敗しました');
     },
     enabled: !!orgId,
     invalidateOn: ['workflow_refresh'],
@@ -800,8 +800,7 @@ export function ScheduleProposalsContent({
       const response = await fetch(`/api/cases?${params}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('ケース候補の取得に失敗しました');
-      return response.json() as Promise<CaseSearchResponse>;
+      return readApiJson<CaseSearchResponse>(response, 'ケース候補の取得に失敗しました');
     },
     enabled: !!orgId && deferredCaseSearchInput.length >= 2,
   });
@@ -827,8 +826,10 @@ export function ScheduleProposalsContent({
       const response = await fetch('/api/visit-vehicle-resources?available=true', {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('社用車リソースの取得に失敗しました');
-      return response.json() as Promise<VisitVehicleResourceScheduleOptionsResponse>;
+      return readApiJson<VisitVehicleResourceScheduleOptionsResponse>(
+        response,
+        '社用車リソースの取得に失敗しました',
+      );
     },
     enabled: !!orgId && shouldLoadDashboardEnhancements,
   });
@@ -899,10 +900,9 @@ export function ScheduleProposalsContent({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ items: proposalPreviewRequests }),
       });
-      if (!response.ok) throw new Error('候補の算定プレビュー取得に失敗しました');
-      const payload = (await response.json()) as {
+      const payload = await readApiJson<{
         data: Record<string, VisitScheduleBillingPreview>;
-      };
+      }>(response, '候補の算定プレビュー取得に失敗しました');
       return new Map(Object.entries(payload.data));
     },
     enabled: !!orgId && shouldLoadDashboardEnhancements && proposalPreviewRequests.length > 0,
@@ -973,8 +973,10 @@ export function ScheduleProposalsContent({
           headers: buildOrgHeaders(orgId),
         },
       );
-      if (!response.ok) throw new Error('確定フローの取得に失敗しました');
-      return response.json() as Promise<ScheduleProposalDetailResponse>;
+      return readApiJson<ScheduleProposalDetailResponse>(
+        response,
+        '確定フローの取得に失敗しました',
+      );
     },
     enabled: !!orgId && !!activeDetailId,
     invalidateOn: ['workflow_refresh'],

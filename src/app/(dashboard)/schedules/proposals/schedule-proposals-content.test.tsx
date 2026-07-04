@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import type { AnchorHTMLAttributes } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { jsonResponse } from '@/test/fetch-test-utils';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useRealtimeQueryMock = vi.hoisted(() => vi.fn());
@@ -67,6 +68,11 @@ vi.mock('@/components/features/visits/visit-route-map', () => ({
 import { ScheduleProposalsContent } from './schedule-proposals-content';
 
 setupDomTestEnv();
+
+type QueryConfig = {
+  queryKey: unknown[];
+  queryFn?: () => Promise<unknown>;
+};
 
 const PROPOSAL_UPDATED_AT = '2026-04-09T08:00:00.000Z';
 
@@ -392,6 +398,79 @@ describe('ScheduleProposalsContent', () => {
     expect(useRouterMock().replace).toHaveBeenCalledWith(expect.stringContaining('preset=today'), {
       scroll: false,
     });
+  });
+
+  it('keeps API messages from failed schedule proposal read fetches', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({ message: '訪問候補データを表示できません' }, 403),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <ScheduleProposalsContent
+        initialDateFrom="2026-04-09"
+        initialDateTo="2026-04-10"
+        initialDetailId="proposal_1"
+      />,
+    );
+
+    const realtimeConfigs = useRealtimeQueryMock.mock.calls.map(
+      ([config]) => config as QueryConfig,
+    );
+    const queryConfigs = useQueryMock.mock.calls.map(([config]) => config as QueryConfig);
+    const dashboardQuery = realtimeConfigs.find(
+      (config) => config.queryKey[0] === 'schedule-proposals-dashboard',
+    );
+    const detailQuery = realtimeConfigs.find(
+      (config) => config.queryKey[0] === 'schedule-proposal-detail',
+    );
+    const casesQuery = queryConfigs.find(
+      (config) => config.queryKey[0] === 'schedule-proposals-case-search',
+    );
+    const vehicleResourcesQuery = queryConfigs.find(
+      (config) => config.queryKey[0] === 'visit-vehicle-resources',
+    );
+    const billingPreviewQuery = queryConfigs.find(
+      (config) => config.queryKey[0] === 'schedule-proposals-dashboard-billing-preview',
+    );
+
+    await expect(dashboardQuery?.queryFn?.()).rejects.toThrow('訪問候補データを表示できません');
+    await expect(casesQuery?.queryFn?.()).rejects.toThrow('訪問候補データを表示できません');
+    await expect(vehicleResourcesQuery?.queryFn?.()).rejects.toThrow(
+      '訪問候補データを表示できません',
+    );
+    await expect(billingPreviewQuery?.queryFn?.()).rejects.toThrow(
+      '訪問候補データを表示できません',
+    );
+    await expect(detailQuery?.queryFn?.()).rejects.toThrow('訪問候補データを表示できません');
+
+    const calls = fetchMock.mock.calls;
+    expect(String(calls[0][0])).toBe(
+      '/api/visit-schedule-proposals?date_from=2026-04-09&date_to=2026-04-10',
+    );
+    expect(String(calls[1][0])).toBe('/api/cases?status=active&limit=8&q=');
+    expect(String(calls[2][0])).toBe('/api/visit-vehicle-resources?available=true');
+    expect(String(calls[3][0])).toBe('/api/visit-schedule-proposals/billing-preview-batch');
+    expect(String(calls[4][0])).toBe('/api/visit-schedule-proposals/proposal_1?travel_mode=DRIVE');
+    expect(calls[3][1]).toMatchObject({
+      method: 'POST',
+      headers: expect.objectContaining({
+        'Content-Type': 'application/json',
+        'x-org-id': 'org_1',
+      }),
+    });
+    expect(JSON.parse(String(calls[3][1]?.body))).toMatchObject({
+      items: [
+        expect.objectContaining({
+          key: 'proposal_1',
+          case_id: 'case_1',
+          proposed_date: '2026-04-09',
+        }),
+      ],
+    });
+    for (const [, init] of [calls[0], calls[1], calls[2], calls[4]]) {
+      expect(init?.headers).toMatchObject({ 'x-org-id': 'org_1' });
+    }
   });
 
   it('highlights the active detail proposal row from the URL state', () => {
