@@ -6,7 +6,7 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import { parseBoundedInteger } from '@/lib/api/pagination';
+import { buildCursorPage, parseBoundedInteger } from '@/lib/api/pagination';
 import { withOrgContext } from '@/lib/db/rls';
 import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
@@ -128,10 +128,9 @@ async function authenticatedGET(req: NextRequest) {
       return success({ data: [], meta: { limit, has_more: false } });
     }
 
-    const hasMore = shifts.length > limit;
-    const availableShifts = shifts.slice(0, limit);
+    const page = buildCursorPage(shifts, limit, (shift) => shift.id);
 
-    return success({ data: availableShifts, meta: { limit, has_more: hasMore } });
+    return success({ data: page.data, meta: { limit, has_more: page.hasMore } });
   });
 }
 
