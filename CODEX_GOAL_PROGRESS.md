@@ -24,6 +24,9 @@
   - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
     the patient field revision timeline source/test files.
   - `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `53f22742`
+    (`fix(patients): show skeleton for field revision loading`).
 - Remaining:
   - Broader R55 residuals and Plans.md objective remain open.
   - Existing unrelated `refactor-instructions.md` and local skill install files
