@@ -256,11 +256,28 @@ describe('CommunicationRequestsContent', () => {
 
     render(<CommunicationRequestsContent />);
 
-    expect(screen.getByRole('status').textContent).toContain('依頼一覧を読み込み中...');
+    expect(screen.getByRole('status', { name: '依頼一覧を読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('依頼一覧を読み込み中...')).toBeNull();
     expect(screen.queryByTestId('reply-followup-list')).toBeNull();
     expect(screen.queryByText('返信待ちの依頼はありません。')).toBeNull();
     expect(screen.queryByText('左の返信待ちリストから依頼を選択してください。')).toBeNull();
     expect(screen.queryByRole('button', { name: '対応済みにする' })).toBeNull();
+  });
+
+  it('uses an announced skeleton while refreshing the reply follow-up list', () => {
+    useQueryMock.mockReturnValue({
+      data: { data: [] },
+      isLoading: true,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    render(<CommunicationRequestsContent />);
+
+    expect(screen.getByTestId('reply-followup-list')).toBeTruthy();
+    expect(screen.getByRole('status', { name: '返信待ちの依頼を読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('読み込み中...', { selector: 'p' })).toBeNull();
+    expect(screen.queryByText('返信待ちの依頼はありません。')).toBeNull();
   });
 
   it('sends reply, follow-up, and the OCC token through one encoded resolve action', async () => {

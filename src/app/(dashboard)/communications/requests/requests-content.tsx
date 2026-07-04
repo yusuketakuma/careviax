@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { StateBadge } from '@/components/ui/state-badge';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
+import { SkeletonRows } from '@/components/ui/loading';
 import { ActionRail } from '@/components/ui/action-rail';
 import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
 import { Label } from '@/components/ui/label';
@@ -304,10 +305,11 @@ export function CommunicationRequestsContent({
         ) : isInitialLoading ? (
           <div
             role="status"
+            aria-label="依頼一覧を読み込み中"
             aria-live="polite"
-            className="rounded-xl border border-dashed border-border bg-card px-6 py-10 text-center text-sm text-muted-foreground"
+            className="rounded-xl border border-dashed border-border bg-card px-6 py-6"
           >
-            依頼一覧を読み込み中...
+            <SkeletonRows rows={3} cols={2} status={false} />
           </div>
         ) : (
           <>
@@ -319,7 +321,9 @@ export function CommunicationRequestsContent({
             >
               <h3 className="px-1 text-sm font-semibold text-foreground">返信待ち</h3>
               {isLoading ? (
-                <p className="px-1 text-sm text-muted-foreground">読み込み中...</p>
+                <div role="status" aria-label="返信待ちの依頼を読み込み中" aria-live="polite">
+                  <SkeletonRows rows={3} cols={1} status={false} />
+                </div>
               ) : focusedRequests.length === 0 ? (
                 <p className="rounded-md border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
                   返信待ちの依頼はありません。
