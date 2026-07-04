@@ -1,6 +1,8 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
+import { formatUtcDateKey } from '@/lib/date-key';
 import { buildPatientHref } from '@/lib/patient/navigation';
+import { japanDateKey } from '@/lib/utils/date-boundary';
 import { dispatchNotificationEvent } from './notifications';
 import { upsertOperationalTask, resolveOperationalTasks } from './operational-tasks';
 
@@ -58,6 +60,11 @@ type VisitWorkflowGateResult = {
 
 function isDateActive(date: Date | null | undefined, asOf: Date) {
   return !date || date >= asOf;
+}
+
+function isReviewDateOverdue(nextReviewDate: Date | null | undefined, asOf: Date) {
+  if (!nextReviewDate) return false;
+  return formatUtcDateKey(nextReviewDate) < japanDateKey(asOf);
 }
 
 function compareConsentRecords(left: ConsentGateRecord, right: ConsentGateRecord) {
@@ -146,8 +153,7 @@ export async function findCurrentManagementPlan(
 
   return {
     current: approvedPlan,
-    reviewOverdue:
-      approvedPlan.next_review_date != null && !isDateActive(approvedPlan.next_review_date, asOf),
+    reviewOverdue: isReviewDateOverdue(approvedPlan.next_review_date, asOf),
   };
 }
 
@@ -231,8 +237,7 @@ export async function evaluateVisitWorkflowGates(
       ) ?? null;
     const plan = {
       current: currentPlan,
-      reviewOverdue:
-        currentPlan?.next_review_date != null && !isDateActive(currentPlan.next_review_date, asOf),
+      reviewOverdue: isReviewDateOverdue(currentPlan?.next_review_date, asOf),
     };
 
     return buildVisitWorkflowGateResult({ consent, plan });

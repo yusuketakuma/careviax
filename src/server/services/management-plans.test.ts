@@ -136,6 +136,62 @@ describe('findCurrentManagementPlan', () => {
     expect(result.reviewOverdue).toBe(true);
   });
 
+  it('does not mark a review due today in Japan as overdue under a non-Tokyo runtime TZ', async () => {
+    const previousTz = process.env.TZ;
+    process.env.TZ = 'America/New_York';
+    try {
+      const plan = {
+        id: 'plan-1',
+        next_review_date: new Date('2026-06-12T00:00:00.000Z'),
+        approved_at: new Date(),
+      };
+      managementPlanFindFirstMock.mockResolvedValue(plan);
+
+      const result = await findCurrentManagementPlan(makeGateDb(), {
+        orgId: 'org-1',
+        caseId: 'case-1',
+        asOf: new Date('2026-06-12T14:30:00.000Z'),
+      });
+
+      expect(result.current).toEqual(plan);
+      expect(result.reviewOverdue).toBe(false);
+    } finally {
+      if (previousTz === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = previousTz;
+      }
+    }
+  });
+
+  it('marks a review due yesterday in Japan as overdue under a non-Tokyo runtime TZ', async () => {
+    const previousTz = process.env.TZ;
+    process.env.TZ = 'America/New_York';
+    try {
+      const plan = {
+        id: 'plan-1',
+        next_review_date: new Date('2026-06-12T00:00:00.000Z'),
+        approved_at: new Date(),
+      };
+      managementPlanFindFirstMock.mockResolvedValue(plan);
+
+      const result = await findCurrentManagementPlan(makeGateDb(), {
+        orgId: 'org-1',
+        caseId: 'case-1',
+        asOf: new Date('2026-06-12T15:30:00.000Z'),
+      });
+
+      expect(result.current).toEqual(plan);
+      expect(result.reviewOverdue).toBe(true);
+    } finally {
+      if (previousTz === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = previousTz;
+      }
+    }
+  });
+
   it('returns null current when no approved plan exists', async () => {
     managementPlanFindFirstMock.mockResolvedValue(null);
 
@@ -320,6 +376,53 @@ describe('evaluateVisitWorkflowGates', () => {
       issues: [],
       managementPlanId: 'plan-new',
     });
+  });
+
+  it('uses Japan business-day review boundaries for batch workflow gates under a non-Tokyo runtime TZ', async () => {
+    const previousTz = process.env.TZ;
+    process.env.TZ = 'America/New_York';
+    try {
+      consentRecordFindManyMock.mockResolvedValue([
+        {
+          id: 'consent-1',
+          expiry_date: null,
+          obtained_date: new Date('2026-01-01T00:00:00.000Z'),
+        },
+      ]);
+      managementPlanFindManyMock.mockResolvedValue([
+        {
+          id: 'plan-1',
+          next_review_date: new Date('2026-06-12T00:00:00.000Z'),
+          effective_from: new Date('2026-06-01T00:00:00.000Z'),
+          version: 1,
+          approved_at: new Date('2026-05-20T00:00:00.000Z'),
+        },
+      ]);
+
+      const result = await evaluateVisitWorkflowGates(makeGateDb(), {
+        orgId: 'org-1',
+        patientId: 'p-1',
+        caseId: 'case-1',
+        asOfDates: [new Date('2026-06-12T14:30:00.000Z'), new Date('2026-06-12T15:30:00.000Z')],
+      });
+
+      expect(result[0]).toMatchObject({
+        ok: true,
+        issues: [],
+        managementPlanId: 'plan-1',
+      });
+      expect(result[1]).toMatchObject({
+        ok: false,
+        issues: ['management_plan_review_overdue'],
+        managementPlanId: 'plan-1',
+      });
+    } finally {
+      if (previousTz === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = previousTz;
+      }
+    }
   });
 });
 
