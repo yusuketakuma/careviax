@@ -193,6 +193,20 @@ describe('NotificationsContent', () => {
     expect(useQueryMock).toHaveBeenCalledWith(expect.objectContaining({ enabled: false }));
   });
 
+  it('shows screen-specific loading status while the inbox is loading', () => {
+    useQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      isError: false,
+    });
+
+    render(<NotificationsContent />);
+
+    expect(screen.getByRole('status', { name: 'お知らせを読み込み中...' })).toBeTruthy();
+    expect(screen.queryByRole('status', { name: '読み込み中...' })).toBeNull();
+    expect(screen.queryByTestId('notifications-inbox')).toBeNull();
+  });
+
   it('loads notifications through the shared path and org header helpers', async () => {
     const fetchMock = stubJsonFetch({ data: [] });
 

@@ -202,7 +202,7 @@ export function NotificationsContent({ initialCategory = 'all' }: NotificationsC
     }
   };
 
-  if (!orgId || isLoading) return <Loading />;
+  if (!orgId || isLoading) return <Loading label="お知らせを読み込み中..." />;
 
   return (
     <div className="w-full space-y-5" data-testid="notifications-inbox">
