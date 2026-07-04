@@ -12,6 +12,7 @@ const mutationMutateMock = vi.hoisted(() => vi.fn());
 // Tests can mark specific query keys as failed (isError) to exercise the
 // supporting-master fetch-error banner without touching the success-path tests.
 const queryErrorKeys = vi.hoisted(() => new Set<string>());
+const queryLoadingKeys = vi.hoisted(() => new Set<string>());
 const refetchSpies = vi.hoisted(() => new Map<string, ReturnType<typeof vi.fn>>());
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
@@ -34,6 +35,10 @@ vi.mock('@tanstack/react-query', () => ({
 
     if (queryErrorKeys.has(key)) {
       return { data: undefined, isLoading: false, isError: true, refetch };
+    }
+
+    if (queryLoadingKeys.has(key)) {
+      return { data: undefined, isLoading: true, isError: false, refetch };
     }
 
     const success = (data: unknown) => ({ data, isLoading: false, isError: false, refetch });
@@ -129,6 +134,7 @@ describe('ShiftsContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     queryErrorKeys.clear();
+    queryLoadingKeys.clear();
     refetchSpies.clear();
   });
 
@@ -165,6 +171,16 @@ describe('ShiftsContent', () => {
     expect(toTimeValue('1970-01-01T09:00:00.000+09:00')).toBe('09:00');
     expect(toTimeValue('1970-01-01T09:00:00.000-08:00')).toBe('09:00');
     expect(toTimeValue('1970-01-01T09:00:00.000-0800')).toBe('09:00');
+  });
+
+  it('uses an announced skeleton while shift data is loading', () => {
+    queryLoadingKeys.add('pharmacist-shifts');
+
+    render(<ShiftsContent />);
+
+    expect(screen.getByRole('status', { name: 'シフトを読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('シフトを読み込んでいます...')).toBeNull();
+    expect(screen.queryByText('シフト対象メンバーが登録されていません')).toBeNull();
   });
 
   it('requires confirmation before deleting a shift template', () => {

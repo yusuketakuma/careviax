@@ -35,6 +35,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SkeletonRows } from '@/components/ui/loading';
 import {
   Select,
   SelectContent,
@@ -969,8 +970,8 @@ export function ShiftsContent() {
               }}
             />
           ) : pharmacistsLoading || shiftsLoading ? (
-            <div className="py-12 text-center text-sm text-muted-foreground">
-              シフトを読み込んでいます...
+            <div role="status" aria-label="シフトを読み込み中" aria-live="polite">
+              <SkeletonRows rows={4} cols={5} status={false} />
             </div>
           ) : shiftPharmacists.length === 0 ? (
             <div className="py-12 text-center text-sm text-muted-foreground">
