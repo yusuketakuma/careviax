@@ -1,5 +1,32 @@
 # CODEX Goal Progress
 
+## R21 Comment Thread Sonner Mock - 2026-07-04 17:40 JST
+
+- Status:
+  - Implemented, validated, and found landed at:
+    - `7bb192e9 test(comments): use shared sonner mock`
+- Scope:
+  - `comment-thread.test.tsx` now uses the shared
+    `createSonnerToastMock()` helper instead of a local partial `sonner` mock.
+  - Product runtime code was not changed.
+- Safety:
+  - Test-only change.
+  - No API, DB, auth, authorization, PHI, audit, billing, deployment, payload,
+    query, or component runtime behavior changed.
+  - A `pnpm exec` side effect temporarily removed
+    `@aws-sdk/client-apigatewaymanagementapi` from `package.json` and
+    `pnpm-lock.yaml`; that out-of-scope dependency diff was restored before
+    closing the slice.
+- Validation:
+  - `pnpm exec vitest run src/components/features/comments/comment-thread.test.tsx src/test/sonner-test-utils.test.ts --reporter=dot --testTimeout=30000`
+    passed `2` files / `12` tests.
+  - Targeted ESLint passed for the exact test/helper files.
+  - Targeted Prettier check passed for the exact test/helper files.
+  - Targeted `git diff --check` passed.
+- Remaining:
+  - Existing docs/ops dirty files remain unrelated and were not touched by this
+    slice.
+
 ## R22b Orphaned WebSocket Infra Removal - 2026-07-04 17:36 JST
 
 - Status:

@@ -554,3 +554,14 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 安全性: app runtime/API/DB/auth/authorization/PHI/audit/billing/deploy は不変。削除対象は tracked
   infra tooling の未参照 stack のみ。`refactor-instructions.md` の広範な Markdown formatting churn は
   commit に含めず未処理として残置。
+
+## 2026-07-04 R21 comment-thread sonner mock 7bb192e9
+
+- 分類: test-harness cleanup / R21 sonner mock residual。
+- land: `7bb192e9 test(comments): use shared sonner mock`。`comment-thread.test.tsx` の
+  local partial `sonner` mock を既存 `createSonnerToastMock()` helper に置換。
+- 検証: focused Vitest `comment-thread.test.tsx` + `sonner-test-utils.test.ts` が
+  `2 files / 12 tests` green。exact ESLint / Prettier check / `git diff --check` green。
+- 安全性: test-only。runtime component/API/DB/auth/authorization/PHI/audit/billing/deploy/payload は不変。
+  `pnpm exec` により一時的に `@aws-sdk/client-apigatewaymanagementapi` の package/lock diff が出たが、
+  out-of-scope 副作用として復元済み。
