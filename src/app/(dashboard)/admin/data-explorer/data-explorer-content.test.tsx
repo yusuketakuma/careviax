@@ -88,6 +88,7 @@ function resetRowsPayload() {
 type QueryMockOptions = {
   queryKey: readonly unknown[];
   enabled?: boolean;
+  queryFn?: () => Promise<unknown>;
 };
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
@@ -217,6 +218,71 @@ describe('DataExplorerContent', () => {
     expect(modelsQuery?.enabled).not.toBe(false);
     expect(rowsQuery?.queryKey).toEqual(['admin-data-explorer-rows', '', 'patients', '']);
     expect(rowsQuery?.enabled).toBe(true);
+  });
+
+  it('reads models and rows through org-scoped data explorer endpoints', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/admin/data-explorer/models') {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                modelName: 'Patient',
+                tableName: 'patients',
+                coverageCategory: 'patient',
+                coverageLabel: '患者',
+                rowCount: 1,
+                scalarFieldCount: 2,
+                editableFieldCount: 1,
+                searchableField: 'name',
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url === '/api/admin/data-explorer/patients?limit=25') {
+        return new Response(JSON.stringify({ data: rowsPayloadMock.value }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<DataExplorerContent />);
+
+    const queryOptions = queryOptionsMock.mock.calls.map(
+      ([options]) => options as QueryMockOptions,
+    );
+    const modelsQuery = queryOptions.find(
+      (options) => options.queryKey[0] === 'admin-data-explorer-models',
+    );
+    const rowsQuery = queryOptions.find(
+      (options) => options.queryKey[0] === 'admin-data-explorer-rows',
+    );
+
+    await expect(modelsQuery?.queryFn?.()).resolves.toEqual({
+      data: [
+        {
+          modelName: 'Patient',
+          tableName: 'patients',
+          coverageCategory: 'patient',
+          coverageLabel: '患者',
+          rowCount: 1,
+          scalarFieldCount: 2,
+          editableFieldCount: 1,
+          searchableField: 'name',
+        },
+      ],
+    });
+    await expect(rowsQuery?.queryFn?.()).resolves.toEqual({ data: rowsPayloadMock.value });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/admin/data-explorer/models', {
+      headers: { 'x-org-id': 'org_1' },
+    });
+    expect(fetchMock).toHaveBeenCalledWith('/api/admin/data-explorer/patients?limit=25', {
+      headers: { 'x-org-id': 'org_1' },
+    });
   });
 
   it('keeps PHI out of row selection accessible names', () => {

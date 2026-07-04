@@ -23,6 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { SkeletonRows } from '@/components/ui/loading';
 import { parseJsonObjectText } from '@/lib/admin/json-editor';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { PageScaffold } from '@/components/layout/page-scaffold';
@@ -131,8 +132,7 @@ export function DataExplorerContent() {
       const response = await fetch('/api/admin/data-explorer/models', {
         headers: orgScopedHeaders(orgId),
       });
-      if (!response.ok) throw new Error('モデル一覧の取得に失敗しました');
-      return response.json() as Promise<{ data: ExplorerModel[] }>;
+      return readApiJson<{ data: ExplorerModel[] }>(response, 'モデル一覧の取得に失敗しました');
     },
   });
 
@@ -167,8 +167,10 @@ export function DataExplorerContent() {
           headers: orgScopedHeaders(orgId),
         },
       );
-      if (!response.ok) throw new Error('テーブルデータの取得に失敗しました');
-      return response.json() as Promise<{ data: ExplorerRowsPayload }>;
+      return readApiJson<{ data: ExplorerRowsPayload }>(
+        response,
+        'テーブルデータの取得に失敗しました',
+      );
     },
     enabled: !!effectiveSelectedTable,
   });
