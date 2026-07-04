@@ -2652,3 +2652,24 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: R24/R46 は partial。`meta.has_more`、keyset cursor encoding、scan-window、
   hidden-count、route-specific metadata を持つ route は個別分析後に継続。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
+## 2026-07-05 R24/R46 consent-records cursor helper slice
+
+- 分類: pattern-inconsistency / 手組み cursor page assembly → `buildCursorPage` 収束。
+- 実施:
+  - `/api/consent-records` GET の route-local `hasMore` / `slice` / `nextCursor`
+    assembly を `buildCursorPage` へ移行。
+  - `limit=1` overflow で visible consent 1件、`nextCursor: consent_1`、`totalCount` 維持、
+    document URL redaction、view-audit が visible record metadata のみを受け取ることを test-lock。
+- 挙動変更: API内部の重複 helper 収束のみ。外部 response envelope/key order、consent list
+  semantics、GET audit behavior、POST create behavior は維持。
+- 安全性: `canVisit`、request auth context、patient access checks、consent-type/is-active/cursor behavior、
+  sensitive no-store、document URL redaction、view-audit fail-closed behavior、visible-record-only
+  audit metadata、DB query shape、schema/migrations/data、billing、deployment、package dependency、
+  live DB operation、external send、secret handling、push、destructive operation は不変。
+- 検証: focused consent-records/pagination Vitest `2 files / 23 tests` green、scoped ESLint
+  green、targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `fd774353` (`refactor(api): reuse cursor page helper in consent records`)。
+- 残課題: R24/R46 は partial。`meta.has_more`、keyset cursor encoding、scan-window、
+  hidden-count、route-specific metadata を持つ route は個別分析後に継続。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。

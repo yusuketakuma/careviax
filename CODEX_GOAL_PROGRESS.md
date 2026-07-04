@@ -1,5 +1,43 @@
 # CODEX Goal Progress
 
+## R24/R46 Consent Records Cursor Helper Partial - 2026-07-05 01:21 JST
+
+- Status:
+  - Implemented and validated the next bounded R24/R46 slice:
+    - `src/app/api/consent-records/route.ts`
+    - `src/app/api/consent-records/route.test.ts`
+- Scope:
+  - Reused the existing `buildCursorPage` helper for `/api/consent-records`
+    GET overflow detection and `nextCursor` assembly.
+  - Added route coverage that `limit=1` fetches `take: 2`, returns only the
+    visible consent record, emits `nextCursor: consent_1`, keeps `totalCount`,
+    redacts document URLs, and audits only the visible record metadata.
+- Safety:
+  - Product API implementation internals changed; the external response
+    envelope/key order and consent-record semantics are unchanged.
+  - Preserved `canVisit`, request auth context, patient access checks,
+    consent-type/is-active/cursor behavior, sensitive no-store wrapping,
+    document URL redaction, view-audit fail-closed behavior, visible-record-only
+    audit metadata, POST create behavior, DB query shape, schema/migrations/data,
+    billing behavior, deployment, package dependency, live DB operation,
+    external send, secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm exec vitest run src/app/api/consent-records/route.test.ts src/lib/api/pagination.test.ts --reporter=dot --testTimeout=30000`
+    passed `2` files / `23` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `fd774353`
+    (`refactor(api): reuse cursor page helper in consent records`).
+- Remaining:
+  - R24/R46 are partial; continue compatible hand-rolled cursor page routes.
+  - Routes with `meta.has_more`, keyset cursor encoding, scan-window filtering,
+    hidden-count semantics, or additive route-specific metadata need
+    route-specific analysis before helper convergence.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R24/R46 Medication Cycles Cursor Helper Partial - 2026-07-05 01:17 JST
 
 - Status:
