@@ -3,9 +3,9 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
-import { createQueryClientWrapper } from '@/test/query-client-test-utils';
+import { createQueryClientWrapper, createTestQueryClient } from '@/test/query-client-test-utils';
 import { VisitReflectedFieldsCard } from './visit-reflected-fields-card';
-import { stubJsonFetch as stubFetch } from '@/test/fetch-test-utils';
+import { jsonResponse, stubJsonFetch as stubFetch } from '@/test/fetch-test-utils';
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
@@ -99,5 +99,24 @@ describe('VisitReflectedFieldsCard', () => {
     expect(await screen.findByTestId('visit-reflected-fields-card-error')).toBeTruthy();
     expect(screen.getByText('反映済み項目の取得に失敗しました。')).toBeTruthy();
     expect(screen.getByRole('button', { name: '再読み込み' })).toBeTruthy();
+  });
+
+  it('取得失敗時にAPIメッセージをquery errorへ残す', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({ message: 'API側の反映項目エラー' }, 500)),
+    );
+    const queryClient = createTestQueryClient();
+
+    render(<VisitReflectedFieldsCard recordId="vr_1" />, {
+      wrapper: createQueryClientWrapper(queryClient),
+    });
+
+    expect(await screen.findByTestId('visit-reflected-fields-card-error')).toBeTruthy();
+    await waitFor(() => {
+      expect(queryClient.getQueryState(['visit-reflected-fields', 'vr_1', 'org_1'])?.error).toEqual(
+        new Error('API側の反映項目エラー'),
+      );
+    });
   });
 });
