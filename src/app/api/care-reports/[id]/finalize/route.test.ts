@@ -41,8 +41,8 @@ vi.mock('@/lib/db/display-id', () => ({
 import {
   buildFinalizedCareReportContentSnapshot,
   computeFinalizedCareReportContentHash,
-  POST,
-} from './route';
+} from '@/server/services/care-report-finalization';
+import { POST } from './route';
 
 const REPORT_UPDATED_AT = new Date('2026-03-30T00:10:00.000Z');
 const REPORT_UPDATED_AT_ISO = REPORT_UPDATED_AT.toISOString();
