@@ -1,5 +1,41 @@
 # CODEX Goal Progress
 
+## R25 ErrorState Retry Shorthand Complete - 2026-07-05 00:20 JST
+
+- Status:
+  - Completed the R25 residual audit and migrated the AST-discovered retry
+    actions that the earlier narrow grep missed.
+- Scope:
+  - Migrated report sharing candidate retries, partner contract retry,
+    prescription table retry, patient allergy summary retry, notification
+    settings retries, PCA return inspection retry, drug-master detail/formulary
+    retries, and shifts retry to `onRetry` + `retryLabel`.
+  - Preserved visible labels, existing refetch/reset handlers, `outline`/`sm`
+    styling where present, and false-empty/false-negative-safe error behavior.
+- Safety:
+  - UI presentation/refactor only.
+  - No product API, DB, auth, authorization, PHI projection, billing semantics,
+    audit, deployment, package dependency, live DB operation, external send,
+    secret handling, push, or destructive operation changed.
+- Validation:
+  - AST scan over `src/app` and `src/components` TSX now reports only five
+    non-retry href `ErrorState action` usages (`not-found`, `offline`,
+    `forbidden`, `unauthorized`, tenant not-found); no ErrorState retry action
+    object remains outside the explicit `error-state.test.tsx` precedence
+    fixture.
+  - Focused panel Vitest passed `6` files / `113` tests.
+  - Focused drug-master/shifts Vitest passed `2` files / `99` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commits:
+  - `0f3d0151` (`refactor(ui): route remaining panel retries through shorthand`)
+  - `3ed6ad78` (`refactor(ui): route drug master retries through shorthand`)
+- Remaining:
+  - R25 is complete by the retry-action contract.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R25 Schedule/Visit ErrorState Retry Shorthand Partial - 2026-07-05 00:11 JST
 
 - Status:

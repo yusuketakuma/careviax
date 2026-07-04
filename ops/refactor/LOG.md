@@ -5,6 +5,23 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-05 R25-complete 0f3d0151+3ed6ad78
+
+- 分類: pattern-inconsistency / ErrorState retry action convergence
+- 対象: reports, partner billing, prescriptions table, patient medications,
+  notification settings, PCA pumps, drug-master detail/formulary panels, shifts.
+- 実施: ASTで残存していた ErrorState retry action を `onRetry` + `retryLabel`
+  へ移行。outline/sm retry は `retryVariant`/`retrySize` で維持。
+- 挙動変更: なし。表示ラベル、refetch/reset handlers、false-empty/false-negative-safe
+  error branch は不変。
+- 安全: UI presentation/refactor のみ。product API/DB/auth/authorization/PHI/billing/deploy/package
+  dependency は変更不要。audit/live DB/external send/secret/push/destructive operation 不変。
+- 検証: AST scan は non-retry href ErrorState action 5件のみ残存。focused panel vitest
+  6 files / 113 tests green。focused drug-master/shifts vitest 2 files / 99 tests green。
+  scoped eslint/prettier/diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commits 0f3d0151, 3ed6ad78。
+- 残課題: R25 は retry-action contract として complete。broader Plans.md objective は継続。
+
 ## 2026-07-05 R25-schedule-visit 72b1f57c
 
 - 分類: pattern-inconsistency / ErrorState retry action convergence
