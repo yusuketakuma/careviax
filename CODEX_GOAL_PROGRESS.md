@@ -26,6 +26,9 @@
   - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
     the patient workflow preview source/test files.
   - `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `437cfeb6`
+    (`fix(patients): show skeleton for workflow preview loading`).
 - Remaining:
   - Broader R55 residuals and Plans.md objective remain open.
   - Existing unrelated `refactor-instructions.md` and local skill install files
