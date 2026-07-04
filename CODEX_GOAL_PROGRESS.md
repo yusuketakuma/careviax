@@ -1,5 +1,49 @@
 # CODEX Goal Progress
 
+## R40/R44 Visit Record Detail readApiJson Partial - 2026-07-05 06:49 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/visits/[id]/visit-record-detail.tsx`
+    - `src/app/(dashboard)/visits/[id]/visit-record-detail.test.tsx`
+- Scope:
+  - Reused `readApiJson` for six visit record detail read GETs:
+    - visit record detail
+    - patient header summary
+    - care reports by visit
+    - billing candidates by visit
+    - residual medications by visit
+    - visit-preparation care team/readiness source
+  - Added queryFn contract coverage proving API JSON `message` from each failed
+    read GET is surfaced through the shared helper.
+  - Preserved path/query shapes, org headers, React Query keys, enabled gates,
+    patient header fail-closed banner, secondary data warning/retry behavior,
+    residual medications no-false-empty behavior, visit-preparation
+    no-false-complete readiness behavior, report generation mutation, next visit
+    mutation, and billing generation mutation.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/visits/[id]/visit-record-detail.test.tsx'`
+    passed `1` file / `18` tests.
+  - Scoped ESLint, targeted Prettier check after formatting, targeted
+    `git diff --check`, and `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `500507ef`
+    (`refactor(ui): reuse readApiJson in visit record detail`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Safety Check readApiJson Partial - 2026-07-05 06:45 JST
 
 - Status:

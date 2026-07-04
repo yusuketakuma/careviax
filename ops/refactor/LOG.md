@@ -5,6 +5,24 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-05 R40/R44-visit-record-detail 500507ef
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 対象: `src/app/(dashboard)/visits/[id]/visit-record-detail.tsx`,
+  `src/app/(dashboard)/visits/[id]/visit-record-detail.test.tsx`
+- 実施: visit record detail / patient header / care reports / billing candidates /
+  residual medications / visit-preparation の read GET 6本を `readApiJson` へ移行し、
+  failed GET の API JSON `message` 表面化テストを追加。
+- 挙動変更: read fetch 実装内部の helper 収束のみ。path/query/header/queryKey/enabled gates、
+  fail-closed banners、no-false-empty/no-false-complete readiness、mutations は維持。
+- 安全: product UI read fetch internals のみ。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+  live DB/external send/secret/push/destructive operation 不変。
+- 検証: focused visit-record-detail Vitest `1 file / 18 tests` green。
+  scoped eslint green。prettier は test file formatting 後 green。diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit 500507ef。
+- 残課題: R40/R44 は partial。mutation/generation fetcher は未変更。
+
 ## 2026-07-05 R40/R44-safety-check 6231bed5
 
 - 分類: query-helper / client fetch error handling → `readApiJson` 収束。

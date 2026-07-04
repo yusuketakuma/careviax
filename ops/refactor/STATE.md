@@ -296,6 +296,12 @@
   summary read GET を readApiJson へ収束し、raw patient_id query/patient API helper/org header/
   queryKeys/enabled gates/CDS degraded fail-closed/CDS 4xx-as-empty/mutations は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 visit-record-detail readApiJson slice(500507ef) land。focused Vitest 18、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。visit record detail / patient header /
+  care reports / billing candidates / residual medications / visit-preparation read GET を readApiJson へ収束し、
+  path/query/header/queryKey/enabled gates/fail-closed banners/no-false-empty/no-false-complete/mutations は保持。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
+  維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 
