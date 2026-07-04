@@ -549,7 +549,8 @@ export default function QrDraftReviewPage() {
           headingLevel={1}
           title="QRスキャン下書きを読み込めませんでした"
           description="下書きの取得に失敗しました。通信状態を確認して再読み込みしてください。"
-          action={{ label: '再読み込み', onClick: () => void refetchDraft() }}
+          onRetry={() => void refetchDraft()}
+          retryLabel="再読み込み"
         />
       </div>
     );
@@ -839,12 +840,10 @@ export default function QrDraftReviewPage() {
                 headingLevel={3}
                 title="ケース一覧を読み込めませんでした"
                 description="アクティブなケースがない状態ではなく、ケース一覧の取得に失敗しています。処方を確定するには再読み込みしてください。"
-                action={{
-                  label: '再読み込み',
-                  onClick: () => void refetchCases(),
-                  variant: 'outline',
-                  size: 'sm',
-                }}
+                onRetry={() => void refetchCases()}
+                retryLabel="再読み込み"
+                retryVariant="outline"
+                retrySize="sm"
               />
             ) : cases.length === 0 ? (
               <p className="text-sm text-muted-foreground">

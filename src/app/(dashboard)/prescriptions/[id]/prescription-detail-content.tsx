@@ -325,7 +325,8 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
           size="page"
           title="処方受付を取得できませんでした"
           description="通信状態を確認し、再読み込みしてください。"
-          action={{ label: '再読み込み', onClick: () => void refetch() }}
+          onRetry={() => void refetch()}
+          retryLabel="再読み込み"
           secondaryAction={{ label: '戻る', onClick: () => router.back() }}
         />
       </PageScaffold>
