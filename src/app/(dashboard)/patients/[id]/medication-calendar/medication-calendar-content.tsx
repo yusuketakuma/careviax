@@ -24,6 +24,7 @@ import {
 import { Button, buttonVariants } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/loading';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
@@ -232,11 +233,7 @@ export function MedicationCalendarContent({ patientId }: { patientId: string }) 
         headers: buildOrgHeaders(orgId),
       });
 
-      if (!response.ok) {
-        throw new Error('服薬中薬剤の取得に失敗しました');
-      }
-
-      return response.json() as Promise<{ data: MedicationProfile[] }>;
+      return readApiJson<{ data: MedicationProfile[] }>(response, '服薬中薬剤の取得に失敗しました');
     },
     enabled: !!orgId,
   });

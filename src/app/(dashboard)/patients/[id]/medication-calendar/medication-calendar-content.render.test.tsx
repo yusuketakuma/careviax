@@ -3,6 +3,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { jsonResponse } from '@/test/fetch-test-utils';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
@@ -71,10 +72,7 @@ describe('MedicationCalendarContent states', () => {
   });
 
   it('encodes the medication profile query and calendar PDF href at URL boundaries', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: [] }),
-    });
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse({ data: [] }));
     vi.stubGlobal('fetch', fetchMock);
     vi.mocked(buildPatientApiPath).mockReturnValueOnce(
       '/api/patients/__helper_patient_1__/medication-calendar/pdf',
@@ -106,6 +104,28 @@ describe('MedicationCalendarContent states', () => {
     expect(fetchMock).not.toHaveBeenCalledWith(
       '/api/medication-profiles?patient_id=patient_1?x=1#frag&is_current=true&limit=200',
       expect.anything(),
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps the API message when medication profile lookup fetch fails', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({ message: '服薬中薬剤を表示できません' }, 403),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    let capturedQueryFn: (() => Promise<unknown>) | undefined;
+    useQueryMock.mockImplementation((options) => {
+      capturedQueryFn = options.queryFn;
+      return { isLoading: false, error: null, data: { data: [] } };
+    });
+
+    render(<MedicationCalendarContent patientId="patient_1" />);
+
+    await expect(capturedQueryFn?.()).rejects.toThrow('服薬中薬剤を表示できません');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/medication-profiles?patient_id=patient_1&is_current=true&limit=200',
+      { headers: { 'x-org-id': 'org_1' } },
     );
 
     vi.unstubAllGlobals();
