@@ -1,14 +1,18 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { Plus } from 'lucide-react';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { DataTable } from '@/components/ui/data-table';
+import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { StateBadge } from '@/components/ui/state-badge';
@@ -28,6 +32,7 @@ import {
 } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import { japanDateKey } from '@/lib/utils/date-boundary';
 import { messageFromError } from '@/lib/utils/error-message';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -110,6 +115,20 @@ function toForm(item: VisitVehicleResource): FormState {
   };
 }
 
+function normalizeVehicleForm(form?: Partial<FormState> | null): FormState {
+  return {
+    site_id: form?.site_id ?? NONE_VALUE,
+    label: form?.label ?? '',
+    vehicle_code: form?.vehicle_code ?? '',
+    travel_mode: form?.travel_mode ?? 'DRIVE',
+    max_stops: form?.max_stops ?? '8',
+    max_route_duration_minutes: form?.max_route_duration_minutes ?? '',
+    available: form?.available ?? true,
+    next_inspection_date: form?.next_inspection_date ?? '',
+    notes: form?.notes ?? '',
+  };
+}
+
 function trimOrUndefined(value: string) {
   const trimmed = value.trim();
   return trimmed ? trimmed : undefined;
@@ -160,6 +179,56 @@ function getFormBlocker(form: FormState, editingVehicle: VisitVehicleResource | 
   }
 
   return null;
+}
+
+function getFormBlockerPath(
+  form: FormState,
+  editingVehicle: VisitVehicleResource | null,
+): keyof FormState {
+  if (!form.label.trim()) return 'label';
+  if (!editingVehicle && form.site_id === NONE_VALUE) return 'site_id';
+
+  const maxStops = readIntegerInput(form.max_stops);
+  if (maxStops == null || maxStops < 1 || maxStops > 50) return 'max_stops';
+
+  if (form.max_route_duration_minutes.trim()) {
+    const maxRouteDuration = readIntegerInput(form.max_route_duration_minutes);
+    if (maxRouteDuration == null || maxRouteDuration < 1 || maxRouteDuration > 24 * 60) {
+      return 'max_route_duration_minutes';
+    }
+  }
+
+  if (form.next_inspection_date.trim() && !DATE_KEY_PATTERN.test(form.next_inspection_date)) {
+    return 'next_inspection_date';
+  }
+
+  return 'label';
+}
+
+function createVehicleFormSchema(editingVehicle: VisitVehicleResource | null) {
+  return z
+    .object({
+      site_id: z.string(),
+      label: z.string(),
+      vehicle_code: z.string(),
+      travel_mode: z.custom<VisitVehicleResourceTravelMode>(),
+      max_stops: z.string(),
+      max_route_duration_minutes: z.string(),
+      available: z.boolean(),
+      next_inspection_date: z.string(),
+      notes: z.string(),
+    })
+    .superRefine((value, ctx) => {
+      const form = normalizeVehicleForm(value);
+      const blocker = getFormBlocker(form, editingVehicle);
+      if (!blocker) return;
+
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [getFormBlockerPath(form, editingVehicle)],
+        message: blocker,
+      });
+    });
 }
 
 function buildCreatePayload(form: FormState) {
@@ -216,14 +285,43 @@ function buildListPath() {
 export function VehiclesContent() {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
+  const errorSummaryId = 'vehicle-resource-form-error-summary';
   const [query, setQuery] = useState('');
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editingVehicle, setEditingVehicle] = useState<VisitVehicleResource | null>(null);
-  const [form, setForm] = useState<FormState>(createEmptyForm);
   const [availabilityTarget, setAvailabilityTarget] = useState<{
     item: VisitVehicleResource;
     available: boolean;
   } | null>(null);
+  const vehicleFormSchema = createVehicleFormSchema(editingVehicle);
+  const {
+    control,
+    formState: { errors },
+    handleSubmit,
+    register,
+    reset,
+  } = useForm<FormState>({
+    resolver: zodResolver(vehicleFormSchema),
+    defaultValues: createEmptyForm(),
+  });
+  const watchedForm = useWatch({ control, defaultValue: createEmptyForm() });
+  const form = normalizeVehicleForm(watchedForm);
+  const errorSummaryItems = collectFormErrorSummaryItems(errors, {
+    site_id: '所属店舗',
+    label: '車両名',
+    vehicle_code: '管理番号',
+    travel_mode: '移動モード',
+    max_stops: '最大訪問件数',
+    max_route_duration_minutes: '最大ルート時間',
+    available: '運用状態',
+    next_inspection_date: '次回点検期限',
+    notes: '備考',
+  });
+
+  function focusErrorSummary() {
+    if (typeof document === 'undefined') return;
+    document.getElementById(errorSummaryId)?.focus();
+  }
 
   const vehiclesQuery = useQuery({
     queryKey: ['admin-visit-vehicle-resources', orgId],
@@ -263,41 +361,42 @@ export function VehiclesContent() {
 
   function resetForm() {
     setEditingVehicle(null);
-    setForm(createEmptyForm());
+    reset(createEmptyForm());
   }
 
   function openCreate() {
     setEditingVehicle(null);
-    setForm(createEmptyForm(siteOptions[0]?.id ?? NONE_VALUE));
+    reset(createEmptyForm(siteOptions[0]?.id ?? NONE_VALUE));
     setSheetOpen(true);
   }
 
   function openEdit(item: VisitVehicleResource) {
     setEditingVehicle(item);
-    setForm(toForm(item));
+    reset(toForm(item));
     setSheetOpen(true);
   }
 
   const saveMutation = useMutation({
-    mutationFn: async () => {
-      const blocker = getFormBlocker(form, editingVehicle);
+    mutationFn: async (values: FormState) => {
+      const vehicle = editingVehicle;
+      const blocker = getFormBlocker(values, vehicle);
       if (blocker) throw new Error(blocker);
-      const endpoint = editingVehicle
-        ? buildVisitVehicleResourceApiPath(editingVehicle.id)
+      const endpoint = vehicle
+        ? buildVisitVehicleResourceApiPath(vehicle.id)
         : VISIT_VEHICLE_RESOURCES_API_PATH;
       const response = await fetch(endpoint, {
-        method: editingVehicle ? 'PATCH' : 'POST',
+        method: vehicle ? 'PATCH' : 'POST',
         headers: buildOrgJsonHeaders(orgId),
-        body: JSON.stringify(editingVehicle ? buildUpdatePayload(form) : buildCreatePayload(form)),
+        body: JSON.stringify(vehicle ? buildUpdatePayload(values) : buildCreatePayload(values)),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error((payload as { message?: string }).message ?? '保存に失敗しました');
       }
-      return payload;
+      return { payload, wasEditing: Boolean(vehicle) };
     },
-    onSuccess: async () => {
-      toast.success(editingVehicle ? '車両マスターを更新しました' : '車両を登録しました');
+    onSuccess: async ({ wasEditing }) => {
+      toast.success(wasEditing ? '車両マスターを更新しました' : '車両を登録しました');
       setSheetOpen(false);
       resetForm();
       await queryClient.invalidateQueries({ queryKey: ['admin-visit-vehicle-resources', orgId] });
@@ -522,7 +621,13 @@ export function VehiclesContent() {
             </SheetDescription>
           </SheetHeader>
 
-          <div className="mt-6 space-y-6">
+          <form
+            className="mt-6 space-y-6"
+            onSubmit={handleSubmit((values) => saveMutation.mutate(values), focusErrorSummary)}
+            noValidate
+          >
+            <FormErrorSummary id={errorSummaryId} items={errorSummaryItems} />
+
             {sitesQuery.isError ? (
               <Alert variant="destructive" role="alert">
                 <AlertTitle>店舗候補を取得できませんでした</AlertTitle>
@@ -538,34 +643,40 @@ export function VehiclesContent() {
                 <Input
                   id="vehicle-resource-label"
                   className="!h-11 !min-h-[44px]"
-                  value={form.label}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, label: event.target.value }))
-                  }
+                  aria-invalid={Boolean(errors.label)}
+                  {...register('label')}
                 />
               </div>
 
               <div className="space-y-1.5">
                 <Label htmlFor="vehicle-resource-site">所属店舗</Label>
-                <Select
-                  value={form.site_id}
-                  disabled={Boolean(editingVehicle) || sitesQuery.isError}
-                  onValueChange={(value) =>
-                    setForm((current) => ({ ...current, site_id: value || NONE_VALUE }))
-                  }
-                >
-                  <SelectTrigger id="vehicle-resource-site" className="!h-11 !min-h-[44px]">
-                    <SelectValue placeholder="所属店舗" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NONE_VALUE}>店舗未選択</SelectItem>
-                    {siteOptions.map((site) => (
-                      <SelectItem key={site.id} value={site.id}>
-                        {site.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Controller
+                  control={control}
+                  name="site_id"
+                  render={({ field }) => (
+                    <Select
+                      value={field.value}
+                      disabled={Boolean(editingVehicle) || sitesQuery.isError}
+                      onValueChange={(value) => field.onChange(value || NONE_VALUE)}
+                    >
+                      <SelectTrigger
+                        id="vehicle-resource-site"
+                        className="!h-11 !min-h-[44px]"
+                        aria-invalid={Boolean(errors.site_id)}
+                      >
+                        <SelectValue placeholder="所属店舗" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NONE_VALUE}>店舗未選択</SelectItem>
+                        {siteOptions.map((site) => (
+                          <SelectItem key={site.id} value={site.id}>
+                            {site.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
               </div>
 
               <div className="space-y-1.5">
@@ -573,53 +684,66 @@ export function VehiclesContent() {
                 <Input
                   id="vehicle-resource-code"
                   className="!h-11 !min-h-[44px]"
-                  value={form.vehicle_code}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, vehicle_code: event.target.value }))
-                  }
+                  aria-invalid={Boolean(errors.vehicle_code)}
+                  {...register('vehicle_code')}
                 />
               </div>
 
               <div className="space-y-1.5">
                 <Label htmlFor="vehicle-resource-travel-mode">移動モード</Label>
-                <Select
-                  value={form.travel_mode}
-                  onValueChange={(value) =>
-                    setForm((current) => ({
-                      ...current,
-                      travel_mode: value as VisitVehicleResourceTravelMode,
-                    }))
-                  }
-                >
-                  <SelectTrigger id="vehicle-resource-travel-mode" className="!h-11 !min-h-[44px]">
-                    <SelectValue placeholder="移動モード" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TRAVEL_MODES.map((mode) => (
-                      <SelectItem key={mode.value} value={mode.value}>
-                        {mode.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Controller
+                  control={control}
+                  name="travel_mode"
+                  render={({ field }) => (
+                    <Select
+                      value={field.value}
+                      onValueChange={(value) =>
+                        field.onChange(value as VisitVehicleResourceTravelMode)
+                      }
+                    >
+                      <SelectTrigger
+                        id="vehicle-resource-travel-mode"
+                        className="!h-11 !min-h-[44px]"
+                        aria-invalid={Boolean(errors.travel_mode)}
+                      >
+                        <SelectValue placeholder="移動モード" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TRAVEL_MODES.map((mode) => (
+                          <SelectItem key={mode.value} value={mode.value}>
+                            {mode.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
               </div>
 
               <div className="space-y-1.5">
                 <Label htmlFor="vehicle-resource-available">運用状態</Label>
-                <Select
-                  value={form.available ? 'true' : 'false'}
-                  onValueChange={(value) =>
-                    setForm((current) => ({ ...current, available: value === 'true' }))
-                  }
-                >
-                  <SelectTrigger id="vehicle-resource-available" className="!h-11 !min-h-[44px]">
-                    <SelectValue placeholder="運用状態" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="true">運用中</SelectItem>
-                    <SelectItem value="false">無効</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Controller
+                  control={control}
+                  name="available"
+                  render={({ field }) => (
+                    <Select
+                      value={field.value ? 'true' : 'false'}
+                      onValueChange={(value) => field.onChange(value === 'true')}
+                    >
+                      <SelectTrigger
+                        id="vehicle-resource-available"
+                        className="!h-11 !min-h-[44px]"
+                        aria-invalid={Boolean(errors.available)}
+                      >
+                        <SelectValue placeholder="運用状態" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="true">運用中</SelectItem>
+                        <SelectItem value="false">無効</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
               </div>
 
               <div className="space-y-1.5">
@@ -628,10 +752,8 @@ export function VehiclesContent() {
                   id="vehicle-resource-max-stops"
                   className="!h-11 !min-h-[44px]"
                   inputMode="numeric"
-                  value={form.max_stops}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, max_stops: event.target.value }))
-                  }
+                  aria-invalid={Boolean(errors.max_stops)}
+                  {...register('max_stops')}
                 />
               </div>
 
@@ -641,13 +763,8 @@ export function VehiclesContent() {
                   id="vehicle-resource-max-route-duration"
                   className="!h-11 !min-h-[44px]"
                   inputMode="numeric"
-                  value={form.max_route_duration_minutes}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      max_route_duration_minutes: event.target.value,
-                    }))
-                  }
+                  aria-invalid={Boolean(errors.max_route_duration_minutes)}
+                  {...register('max_route_duration_minutes')}
                   placeholder="空欄=上限なし"
                 />
               </div>
@@ -658,13 +775,8 @@ export function VehiclesContent() {
                   id="vehicle-resource-next-inspection-date"
                   type="date"
                   className="!h-11 !min-h-[44px]"
-                  value={form.next_inspection_date}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      next_inspection_date: event.target.value,
-                    }))
-                  }
+                  aria-invalid={Boolean(errors.next_inspection_date)}
+                  {...register('next_inspection_date')}
                 />
               </div>
 
@@ -673,10 +785,8 @@ export function VehiclesContent() {
                 <Textarea
                   id="vehicle-resource-notes"
                   rows={4}
-                  value={form.notes}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, notes: event.target.value }))
-                  }
+                  aria-invalid={Boolean(errors.notes)}
+                  {...register('notes')}
                 />
               </div>
             </div>
@@ -698,15 +808,14 @@ export function VehiclesContent() {
                 キャンセル
               </Button>
               <Button
-                type="button"
+                type="submit"
                 className="!h-11 !min-h-[44px]"
-                onClick={() => saveMutation.mutate()}
                 disabled={saveMutation.isPending || Boolean(formBlocker)}
               >
                 {saveMutation.isPending ? '保存中...' : '保存'}
               </Button>
             </div>
-          </div>
+          </form>
         </SheetContent>
       </Sheet>
     </>

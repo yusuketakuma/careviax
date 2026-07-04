@@ -254,6 +254,34 @@ describe('VehiclesContent', () => {
     });
   });
 
+  it('keeps existing save blockers reactive and prevents invalid create requests', async () => {
+    const fetchMock = stubFetchWithVehicle();
+    renderContent();
+
+    await screen.findByRole('button', { name: '軽バン1号 を編集' });
+    fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
+    fireEvent.change(screen.getByLabelText('車両名'), {
+      target: { value: '社用車3号' },
+    });
+    fireEvent.change(screen.getByLabelText('最大訪問件数'), {
+      target: { value: '0' },
+    });
+
+    expect(screen.getByText('最大訪問件数は1〜50件で指定してください。')).toBeTruthy();
+    const saveButton = screen.getByRole('button', { name: '保存' }) as HTMLButtonElement;
+    expect(saveButton.disabled).toBe(true);
+    fireEvent.click(saveButton);
+
+    expect(fetchMock.mock.calls).not.toEqual(
+      expect.arrayContaining([
+        expect.arrayContaining([
+          '/api/visit-vehicle-resources',
+          expect.objectContaining({ method: 'POST' }),
+        ]),
+      ]),
+    );
+  });
+
   it('PATCH uses the encoded vehicle path and buildOrgJsonHeaders', async () => {
     const vehicle = vehicleFixture('vehicle/1?x');
     const fetchMock = stubFetchWithVehicle(vehicle);
