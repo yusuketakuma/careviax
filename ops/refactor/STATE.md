@@ -35,6 +35,10 @@
 
 ## 直近の land（本日・要点）
 
+- coordinator mode refresh(0164b797) / agmsg turn hook(025ee516) / W3-E1 shifts RHF(c5ec2727)
+  / W3-E2 DataTable selectable-listbox contract(757ca20c) / prescriptions-table DataTable migration(2d0d80b4)
+  / W3-E1 facilities RHF(a18abc1c) — coordinator review + focused validation green。DataTable contract は
+  typecheck / typecheck:no-unused / build まで中央gate green。
 - Wave 2 完了 / W3-C2/E2/E3 / W3-B4 中核(52ce1f66) / B6 設計ラティファイ(3a39f69e) / v0.2 実証
 - codex lane: BE-1 / RT1 / RR-QP-A/B / JOB1/2 / CW1 / BM1(5be6ebca) / 9d1567ba /
   PERF-01(981f1a58) / MFA1(f7bf2e97) / F84(c22c7fe3) / CE17(5205fc48) / R07(f3733036) /
@@ -49,6 +53,13 @@
 
 ## 進行中 / 凍結
 
+- codex2: W3-E1 low-risk frontend/RHF lane。`W3-E1-FACILITIES-RHF` は a18abc1c で land。
+  users invite / consent create は read-only mapping 済みだが、auth-adjacent / PHI+file upload のため次候補としては保留。
+- codex3: W3-E2/R55 cleanup lane。DataTable contract と prescriptions migration は land 済み。
+  `R55-COMMENT-THREAD-LOADING-SKELETON` を exact path で GO 済み。
+- codex4: W3-B9 billing-cycle recon lane。初回 read-only recon で cycle-null emergency が
+  missing emergency_category のまま fee2 fallback しうる算定リスクを検出。次は
+  `B9-EMERGENCY-NULLSOURCE-FAILCLOSED` の design-only recon（実装禁止・billing byte-preservation確認）。
 - codex: `ID-1a` / `ID-1b` / `ID-2-W1` / `ID-2-W2` / `ID-2-W3` / `ID-2-W4` は land 済み。
   `ID-2-W5` も land 済み(86d9d273)。
   E1 は基準1 FAIL、E2（明示 tx allocator）正式採用。
@@ -61,10 +72,10 @@
 
 ## 次の一手
 
-1. codex2: `W3-E1-SHIFTS-TEMPLATE-RHF`（weekly template form のみ。mapping 承認済み、実装中）。
-2. codex3: `W3-E2-DATATABLE-SELECTABLE-LISTBOX-RECON` → DataTable 契約拡張を先に設計し、
-   prescriptions-table 変換は contract land 後に別 slice。
-3. codex4: `W3-B9-BILLING-CYCLE-RECON`（read-only。cycle_id 任意化、緊急訪問薬剤管理指導料、
-   オンライン46単位、月キャップ、evidence map、実装可能 slice/gate を提出）。
-4. codex: Plans.md の未完了40件を継続棚卸しし、human/external gate と実装候補を分離して task supply を維持。
-5. held: `R40-PRINT-HUB-READAPIJSON` は coordinator の path/risk check 後に GO/leave。
+1. codex3: `R55-COMMENT-THREAD-LOADING-SKELETON` PATCH_REPORT 待ち（UI loading-only、comment-thread exact paths）。
+2. codex2: 次の W3-E1 低リスク frontend 候補を recon。users invite / consent create は保留し、
+   auth/PHI/file-upload を避けた候補を優先。
+3. codex4: `B9-EMERGENCY-NULLSOURCE-FAILCLOSED` design recon 待ち。実装する場合は billing reviewer相当の
+   byte-preservation確認と focused billing-evidence tests を必須にする。
+4. codex: Plans.md 未完了40件（open 37 + partial 3）を継続棚卸しし、human/external gate と実装候補を分離して task supply を維持。
+5. held: `R40-PRINT-HUB-READAPIJSON` / high-risk W3-B6/ID migration/PMDA/AWS/UAT/legal は明示GOまたは human gate まで保留。
