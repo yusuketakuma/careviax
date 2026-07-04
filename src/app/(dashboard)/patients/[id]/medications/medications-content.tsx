@@ -966,7 +966,8 @@ export function MedicationsContent({
             variant="server"
             size="inline"
             description="服薬中薬剤を読み込めませんでした。現在の処方が表示されていない可能性があります。再読み込みしてください。"
-            action={{ label: '再読み込み', onClick: () => void refetchProfiles() }}
+            onRetry={() => void refetchProfiles()}
+            retryLabel="再読み込み"
           />
         ) : profiles.length === 0 ? (
           <EmptyState
@@ -1129,7 +1130,8 @@ export function MedicationsContent({
                   variant="server"
                   size="inline"
                   description="薬学的課題を読み込めませんでした。未解決の課題が隠れている可能性があります。再読み込みしてください。"
-                  action={{ label: '再読み込み', onClick: () => void issuesQuery.refetch() }}
+                  onRetry={() => void issuesQuery.refetch()}
+                  retryLabel="再読み込み"
                 />
               ) : issues.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
@@ -1238,7 +1240,8 @@ export function MedicationsContent({
                     variant="server"
                     size="inline"
                     description="疑義照会の記録を読み込めませんでした。回答待ちの照会が隠れている可能性があります。再読み込みしてください。"
-                    action={{ label: '再読み込み', onClick: () => void inquiryQuery.refetch() }}
+                    onRetry={() => void inquiryQuery.refetch()}
+                    retryLabel="再読み込み"
                   />
                 ) : inquiries.length === 0 ? (
                   <p className="text-sm text-muted-foreground">疑義照会の記録はありません。</p>
@@ -1336,7 +1339,8 @@ export function MedicationsContent({
                       variant="server"
                       size="inline"
                       description="副作用歴を読み込めませんでした。登録済みの副作用が表示されていない可能性があります。再読み込みしてください。"
-                      action={{ label: '再読み込み', onClick: () => void issuesQuery.refetch() }}
+                      onRetry={() => void issuesQuery.refetch()}
+                      retryLabel="再読み込み"
                     />
                   ) : sideEffectHistory.length > 0 ? (
                     sideEffectHistory.map((item) => (
@@ -1393,7 +1397,8 @@ export function MedicationsContent({
                     variant="server"
                     size="inline"
                     description="残薬提案を読み込めませんでした。減数禁止薬や余剰の注意が隠れている可能性があります。再読み込みしてください。"
-                    action={{ label: '再読み込み', onClick: () => void residualQuery.refetch() }}
+                    onRetry={() => void residualQuery.refetch()}
+                    retryLabel="再読み込み"
                   />
                 ) : residualSuggestions.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
