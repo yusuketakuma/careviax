@@ -3,6 +3,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { jsonResponse } from '@/test/fetch-test-utils';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 
@@ -247,9 +248,7 @@ describe('PatientContactsPanel', () => {
       return { mutate: vi.fn(), isPending: false };
     });
 
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as unknown as Response);
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({}));
     vi.stubGlobal('fetch', fetchMock);
 
     try {
@@ -320,9 +319,7 @@ describe('PatientContactsPanel', () => {
       return { mutate: vi.fn(), isPending: false };
     });
 
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as unknown as Response);
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({}));
     vi.stubGlobal('fetch', fetchMock);
 
     try {
