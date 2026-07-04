@@ -14,9 +14,10 @@ import { Badge } from '@/components/ui/badge';
 import { ErrorState } from '@/components/ui/error-state';
 import { SkeletonRows } from '@/components/ui/loading';
 import { StateBadge } from '@/components/ui/state-badge';
+import { readApiJson } from '@/lib/api/client-json';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import type { StatusRole } from '@/lib/constants/status-tokens';
 import { PRIORITY_DISPLAY_LABELS, PRIORITY_ROLE } from '@/lib/constants/status-labels';
-import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { normalizeNotificationStreamPayload } from '@/lib/notifications/stream-payload';
@@ -104,8 +105,7 @@ export default function RealtimePage() {
       const res = await fetch('/api/dashboard/workflow?view=realtime', {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('ワークフローの取得に失敗しました');
-      return res.json() as Promise<{ data: WorkflowSnapshot }>;
+      return readApiJson<{ data: WorkflowSnapshot }>(res, 'ワークフローの取得に失敗しました');
     },
     enabled: !!orgId,
     invalidateOn: ADMIN_REALTIME_WORKFLOW_EVENTS,
@@ -118,8 +118,7 @@ export default function RealtimePage() {
       const res = await fetch('/api/notifications?limit=12&is_read=false', {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('通知の取得に失敗しました');
-      return res.json() as Promise<{ data: Notification[] }>;
+      return readApiJson<{ data: Notification[] }>(res, '通知の取得に失敗しました');
     },
     enabled: !!orgId,
     invalidateOn: false,

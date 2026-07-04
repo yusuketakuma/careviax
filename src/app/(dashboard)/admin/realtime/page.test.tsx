@@ -117,6 +117,39 @@ describe('RealtimePage', () => {
     );
   });
 
+  it('reads realtime workflow and notification queries through org-scoped endpoints', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/dashboard/workflow?view=realtime') {
+        return new Response(JSON.stringify(WORKFLOW_DATA), { status: 200 });
+      }
+      if (url === '/api/notifications?limit=12&is_read=false') {
+        return new Response(JSON.stringify(NOTIFICATIONS_DATA), { status: 200 });
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<RealtimePage />);
+
+    const workflowCall = useRealtimeQueryMock.mock.calls.find(
+      ([options]) => options.queryKey[0] === 'admin-realtime-workflow',
+    );
+    const notificationsCall = useRealtimeQueryMock.mock.calls.find(
+      ([options]) => options.queryKey[0] === 'admin-realtime-notifications',
+    );
+
+    await expect(workflowCall?.[0].queryFn()).resolves.toEqual(WORKFLOW_DATA);
+    await expect(notificationsCall?.[0].queryFn()).resolves.toEqual(NOTIFICATIONS_DATA);
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/dashboard/workflow?view=realtime', {
+      headers: { 'x-org-id': 'org_1' },
+    });
+    expect(fetchMock).toHaveBeenCalledWith('/api/notifications?limit=12&is_read=false', {
+      headers: { 'x-org-id': 'org_1' },
+    });
+  });
+
   it('prioritizes actionable realtime signals before routine route KPIs', () => {
     render(<RealtimePage />);
 
