@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { parseJsonObjectText } from '@/lib/admin/json-editor';
 import { BILLING_RULES_API_PATH, buildBillingRuleApiPath } from '@/lib/billing-rules/api-paths';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { toast } from 'sonner';
@@ -130,6 +131,14 @@ vi.mock('@/lib/billing-rules/api-paths', async (importActual) => {
   return {
     ...actual,
     buildBillingRuleApiPath: vi.fn(actual.buildBillingRuleApiPath),
+  };
+});
+
+vi.mock('@/lib/admin/json-editor', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/admin/json-editor')>();
+  return {
+    ...actual,
+    parseJsonObjectText: vi.fn(actual.parseJsonObjectText),
   };
 });
 
@@ -299,6 +308,22 @@ describe('BillingRulesPage', () => {
       '公式SSOTルールは編集・削除できません。',
     );
     expect(screen.getByText('公式SSOTルールは編集・削除できません。')).toBeTruthy();
+  });
+
+  it('falls back for billing rule JSON validation errors with empty Error messages', () => {
+    vi.mocked(parseJsonObjectText).mockImplementationOnce(() => {
+      throw new Error('');
+    });
+    render(<BillingRulesPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '任意ルール追加' }));
+    fireEvent.change(screen.getByLabelText('ルール名'), {
+      target: { value: '休日加算' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+    expect(screen.getByRole('alert').textContent).toBe('JSONオブジェクト形式で入力してください');
+    expect(mutationMutateMock).not.toHaveBeenCalled();
   });
 
   it('collection GET uses the billing-rules collection API path', async () => {

@@ -267,9 +267,7 @@ function RuleFormDialog({
       parseJsonObjectText(form.conditions, 'JSONオブジェクト形式で入力してください');
       setConditionsError('');
     } catch (error) {
-      setConditionsError(
-        error instanceof Error ? error.message : 'JSONオブジェクト形式で入力してください',
-      );
+      setConditionsError(messageFromError(error, 'JSONオブジェクト形式で入力してください'));
       return;
     }
     onSubmit(form);
@@ -348,7 +346,11 @@ function RuleFormDialog({
               className="min-h-24 font-mono text-xs"
               placeholder='{"visit_count_min": 1}'
             />
-            {conditionsError && <p className="text-xs text-destructive">{conditionsError}</p>}
+            {conditionsError && (
+              <p role="alert" className="text-xs text-destructive">
+                {conditionsError}
+              </p>
+            )}
           </div>
 
           {/* Amount */}
