@@ -1,5 +1,41 @@
 # CODEX Goal Progress
 
+## R25 Patient Medications ErrorState Retry Shorthand Partial - 2026-07-04 23:12 JST
+
+- Status:
+  - Implemented and validated the next bounded R25 slice:
+    - `src/app/(dashboard)/patients/[id]/medications/medications-content.tsx`
+- Scope:
+  - Migrated five patient medication ErrorState retry actions from hand-written
+    `action={{ label: '再読み込み', onClick }}` objects to `onRetry` +
+    `retryLabel`.
+  - Preserved visible retry copy and existing refetch handlers for medication
+    profiles, medication issues, inquiry records, side-effect history, and
+    residual suggestions.
+- Safety:
+  - UI presentation/refactor only.
+  - Visible labels, click handlers, error branch behavior, and patient
+    medication query behavior are preserved.
+  - No product API, DB, auth, authorization, PHI projection, billing, audit,
+    deployment, package dependency, live DB operation, external send, secret
+    handling, push, or destructive operation changed.
+- Validation:
+  - Targeted scan for hand-written `再読み込み` ErrorState actions in
+    `patients/[id]/medications/medications-content.tsx` returned no matches.
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/medications/medications-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `27` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `06430afb`
+    (`refactor(ui): route patient medication error retries through shorthand`).
+- Remaining:
+  - R25 is partial; remaining ErrorState retry action boilerplate should be
+    migrated in bounded screen/domain chunks.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R25 Admin Performance ErrorState Retry Shorthand Partial - 2026-07-04 23:09 JST
 
 - Status:
