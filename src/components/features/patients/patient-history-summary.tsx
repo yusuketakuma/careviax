@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { Clock, FileText, History, Pill } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { OUTCOME_LABELS } from '@/lib/constants/visit';
@@ -71,8 +72,7 @@ export function PatientHistorySummary({
       const response = await fetch(`${buildPatientApiPath(patientId, '/prescriptions')}?limit=5`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('処方履歴の取得に失敗しました');
-      return response.json() as Promise<PatientPrescriptionsResponse>;
+      return readApiJson<PatientPrescriptionsResponse>(response, '処方履歴の取得に失敗しました');
     },
     enabled: Boolean(orgId && patientId),
   });
@@ -84,8 +84,7 @@ export function PatientHistorySummary({
       const response = await fetch(`/api/visit-records?${params.toString()}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('訪問履歴の取得に失敗しました');
-      return response.json() as Promise<PatientVisitsResponse>;
+      return readApiJson<PatientVisitsResponse>(response, '訪問履歴の取得に失敗しました');
     },
     enabled: Boolean(orgId && patientId),
   });

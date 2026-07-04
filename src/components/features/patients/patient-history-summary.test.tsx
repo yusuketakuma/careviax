@@ -166,10 +166,7 @@ describe('PatientHistorySummary', () => {
     });
 
     it('routes the prescriptions summary fetch through the shared patient API path helper', async () => {
-      const fetchMock = vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({ data: [] }),
-      });
+      const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: [] })));
       vi.stubGlobal('fetch', fetchMock);
       vi.mocked(buildPatientApiPath).mockReturnValueOnce(
         '/api/patients/__helper_pt__/prescriptions',
@@ -195,6 +192,45 @@ describe('PatientHistorySummary', () => {
       expect(fetchMock).not.toHaveBeenCalledWith(
         '/api/patients/pt/1?tab=x#frag/prescriptions?limit=5',
         expect.anything(),
+      );
+
+      vi.unstubAllGlobals();
+    });
+
+    it('surfaces API messages from prescriptions and visits read queries', async () => {
+      const queryFns: Record<string, () => Promise<unknown>> = {};
+      const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('/prescriptions')) {
+          return new Response(JSON.stringify({ message: '処方履歴の閲覧権限がありません' }), {
+            status: 403,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url.startsWith('/api/visit-records?')) {
+          return new Response(JSON.stringify({ message: '訪問履歴の閲覧権限がありません' }), {
+            status: 403,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      });
+      vi.stubGlobal('fetch', fetchMock);
+      useOrgIdMock.mockReturnValue('org_1');
+      useQueryMock.mockImplementation(
+        ({ queryKey, queryFn }: { queryKey: string[]; queryFn: () => Promise<unknown> }) => {
+          queryFns[queryKey[0]] = queryFn;
+          return { data: { data: [] }, isLoading: false, error: null };
+        },
+      );
+
+      render(<PatientHistorySummary patientId="patient_1" />);
+
+      await expect(queryFns['patient-history-summary-prescriptions']?.()).rejects.toThrow(
+        '処方履歴の閲覧権限がありません',
+      );
+      await expect(queryFns['patient-history-summary-visits']?.()).rejects.toThrow(
+        '訪問履歴の閲覧権限がありません',
       );
 
       vi.unstubAllGlobals();
