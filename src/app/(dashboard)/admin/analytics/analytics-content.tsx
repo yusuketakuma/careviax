@@ -259,7 +259,8 @@ export function AnalyticsContent() {
           size="inline"
           title="請求分析を取得できませんでした"
           description="時間をおいて再度お試しください。"
-          action={{ label: '再読み込み', onClick: () => void refetch() }}
+          onRetry={() => void refetch()}
+          retryLabel="再読み込み"
           live="assertive"
         />
       ) : (
@@ -403,7 +404,8 @@ export function AnalyticsContent() {
           size="inline"
           title="地域資源マップを取得できませんでした"
           description="時間をおいて再度お試しください。"
-          action={{ label: '再読み込み', onClick: () => void resourceMapRefetch() }}
+          onRetry={() => void resourceMapRefetch()}
+          retryLabel="再読み込み"
           live="assertive"
         />
       ) : (

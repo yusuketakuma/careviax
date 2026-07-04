@@ -236,7 +236,8 @@ export default function RealtimePage() {
         <ErrorState
           variant="server"
           size="inline"
-          action={{ label: '再読み込み', onClick: () => void workflowQuery.refetch() }}
+          onRetry={() => void workflowQuery.refetch()}
+          retryLabel="再読み込み"
         />
       ) : (
         <section className="space-y-3" aria-labelledby="realtime-route-health">
@@ -293,7 +294,8 @@ export default function RealtimePage() {
               <ErrorState
                 variant="server"
                 size="inline"
-                action={{ label: '再読み込み', onClick: () => void workflowQuery.refetch() }}
+                onRetry={() => void workflowQuery.refetch()}
+                retryLabel="再読み込み"
               />
             ) : workbenchItems.length === 0 ? (
               <p className="text-sm text-muted-foreground">未処理項目はありません</p>
@@ -367,7 +369,8 @@ export default function RealtimePage() {
               <ErrorState
                 variant="server"
                 size="inline"
-                action={{ label: '再読み込み', onClick: () => void notificationsQuery.refetch() }}
+                onRetry={() => void notificationsQuery.refetch()}
+                retryLabel="再読み込み"
               />
             ) : liveNotifications.length === 0 ? (
               <p className="text-sm text-muted-foreground">未読通知はありません</p>

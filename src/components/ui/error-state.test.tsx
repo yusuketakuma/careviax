@@ -62,6 +62,14 @@ describe('ErrorState', () => {
     expect(screen.getByRole('link', { name: '一覧へ戻る' })).toBeTruthy();
   });
 
+  it('keeps retry copy configurable while using the onRetry shorthand', () => {
+    const onRetry = vi.fn();
+    render(<ErrorState title="取得失敗" onRetry={onRetry} retryLabel="再読み込み" />);
+
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
   it('uses the shared button styling for link actions', () => {
     render(
       <ErrorState

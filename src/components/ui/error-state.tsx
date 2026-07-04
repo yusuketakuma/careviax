@@ -32,6 +32,8 @@ type ErrorStateProps = {
    * SSOT 6.3: 再試行可能な失敗には再試行導線を必ず付ける。
    */
   onRetry?: () => void;
+  /** onRetry から描画する主アクションのラベル。既定は「再試行」。 */
+  retryLabel?: string;
   size?: 'inline' | 'page';
   headingLevel?: StateHeadingLevel;
   live?: ErrorStateLive;
@@ -91,6 +93,7 @@ export function ErrorState({
   action,
   secondaryAction,
   onRetry,
+  retryLabel = '再試行',
   size = 'inline',
   headingLevel,
   live = 'polite',
@@ -110,7 +113,7 @@ export function ErrorState({
     cause || nextAction ? [cause, nextAction].filter(Boolean).join(' ') : undefined;
   const bodyText = description ?? structuredBody ?? meta.description;
   // 再試行導線(SSOT 6.3): action 未指定時のみ onRetry を主アクションに昇格する。
-  const resolvedAction = action ?? (onRetry ? { label: '再試行', onClick: onRetry } : undefined);
+  const resolvedAction = action ?? (onRetry ? { label: retryLabel, onClick: onRetry } : undefined);
   const liveRegionProps =
     live === 'off'
       ? {}
