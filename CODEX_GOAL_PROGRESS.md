@@ -1,5 +1,40 @@
 # CODEX Goal Progress
 
+## R40/R44 Workflow Dashboard readApiJson Partial - 2026-07-05 02:36 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/workflow/workflow-dashboard-content.tsx`
+    - `src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx`
+- Scope:
+  - Reused `readApiJson<{ data: WorkflowData }>` for the workflow dashboard GET
+    query fetcher.
+  - Added a focused queryFn contract test using the existing `stubJsonFetch`
+    standard Response helper.
+  - Preserved API path, `buildOrgHeaders`, React Query key, response envelope
+    unwrapping, rendered UI behavior, and mutation behavior.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+  - Left mutation server-message parsing unchanged because those paths consume
+    route-specific error messages.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `8` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `f739f085`
+    (`refactor(ui): reuse readApiJson in workflow dashboard`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Dashboard Cockpit readApiJson Partial - 2026-07-05 02:33 JST
 
 - Status:

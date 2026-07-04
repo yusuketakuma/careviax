@@ -3148,3 +3148,25 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: R40/R44 は broad。追加の client fetcher は response body read が PHI-safe かを
   個別確認してから段階移行する。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
+## 2026-07-05 R40/R44 workflow dashboard readApiJson slice
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 実施:
+  - workflow dashboard GET query fetcher の `if (!res.ok) throw` + `res.json()` を
+    `readApiJson<{ data: WorkflowData }>` へ移行。
+  - queryFn contract test を追加し、既存 `stubJsonFetch` の標準 Response で API path、
+    `x-org-id` header、query key、envelope を固定。
+- 挙動変更: read fetch 実装内部の helper 収束のみ。API path、`buildOrgHeaders`、
+  React Query key、envelope unwrapping、画面表示、mutation behavior は維持。
+- 安全性: product UI read fetch internals のみ変更。DB/schema、auth/authorization、
+  PHI projection、billing、deployment、package dependency、live DB operation、external send、
+  secret handling、push、destructive operation は不変。mutation の server-message parsing は
+  route-specific error message 消費のため今回は維持。
+- 検証: focused workflow dashboard Vitest `1 file / 8 tests` green、
+  scoped ESLint green、targeted Prettier check green、targeted `git diff --check` green、
+  `pnpm typecheck` green。
+- commit: `f739f085` (`refactor(ui): reuse readApiJson in workflow dashboard`)。
+- 残課題: R40/R44 は broad。追加の client fetcher は response body read が PHI-safe かを
+  個別確認してから段階移行する。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
