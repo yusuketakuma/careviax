@@ -1,5 +1,43 @@
 # CODEX Goal Progress
 
+## R25 Work Coordination ErrorState Retry Shorthand Partial - 2026-07-04 23:51 JST
+
+- Status:
+  - Implemented and validated the next bounded R25 slice:
+    - `src/app/(dashboard)/tasks/tasks-content.tsx`
+    - `src/app/(dashboard)/handoff/handoff-workspace.tsx`
+- Scope:
+  - Migrated the tasks list ErrorState and handoff comment-feed ErrorState from
+    hand-written `action={{ label: '再読み込み', onClick }}` objects to
+    `onRetry` + `retryLabel`.
+  - Preserved visible retry copy, existing refetch/onRetry handlers, and
+    false-empty-safe error branches.
+- Safety:
+  - UI presentation/refactor only.
+  - Visible retry copy, click handlers, ErrorState branches, task query
+    behavior, handoff comment-feed behavior, and existing PHI-free error copy
+    are preserved.
+  - No product API, DB, auth, authorization, PHI projection, billing semantics,
+    audit, deployment, package dependency, live DB operation, external send,
+    secret handling, push, or destructive operation changed.
+- Validation:
+  - Targeted tasks/handoff scan for hand-written `再読み込み` retry actions
+    returned no matches.
+  - `pnpm exec vitest run 'src/app/(dashboard)/tasks/tasks-content.test.tsx' 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `2` files / `33` tests; handoff tests emitted existing React
+    `act(...)` warnings.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `fc496fa2`
+    (`refactor(ui): route work coordination retries through shorthand`).
+- Remaining:
+  - R25 is partial; remaining ErrorState retry action boilerplate should be
+    migrated in bounded screen/domain chunks.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R25 Admin Analytics Stale Retry Shorthand Partial - 2026-07-04 23:48 JST
 
 - Status:
