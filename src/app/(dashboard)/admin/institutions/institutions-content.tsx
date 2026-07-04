@@ -3,13 +3,17 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { differenceInDays } from 'date-fns';
 import { Copy } from 'lucide-react';
+import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { DataTable } from '@/components/ui/data-table';
+import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { StateBadge } from '@/components/ui/state-badge';
@@ -23,6 +27,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { hasPermission } from '@/lib/auth/permission-matrix';
+import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import {
@@ -114,6 +119,15 @@ type FormState = {
   notes: string;
 };
 
+const institutionFormSchema = z.object({
+  name: z.string(),
+  institution_code: z.string(),
+  address: z.string(),
+  phone: z.string(),
+  fax: z.string(),
+  notes: z.string(),
+});
+
 const EMPTY_FORM: FormState = {
   name: '',
   institution_code: '',
@@ -133,8 +147,31 @@ export function InstitutionsContent() {
   const debouncedQuery = useDebouncedValue(query, 300);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [deleteTarget, setDeleteTarget] = useState<Institution | null>(null);
+  const errorSummaryId = 'institution-form-error-summary';
+  const {
+    formState: { errors },
+    getValues,
+    handleSubmit,
+    register,
+    reset,
+  } = useForm<FormState>({
+    resolver: zodResolver(institutionFormSchema),
+    defaultValues: EMPTY_FORM,
+  });
+  const errorSummaryItems = collectFormErrorSummaryItems(errors, {
+    name: '医療機関名',
+    institution_code: '医療機関コード',
+    address: '住所',
+    phone: '電話番号',
+    fax: 'FAX',
+    notes: '備考',
+  });
+
+  function focusErrorSummary() {
+    if (typeof document === 'undefined') return;
+    document.getElementById(errorSummaryId)?.focus();
+  }
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['prescriber-institutions', orgId, debouncedQuery],
@@ -154,7 +191,7 @@ export function InstitutionsContent() {
 
   function resetForm() {
     setEditingId(null);
-    setForm(EMPTY_FORM);
+    reset(EMPTY_FORM);
   }
 
   function openCreate() {
@@ -164,7 +201,7 @@ export function InstitutionsContent() {
 
   function openEdit(item: Institution) {
     setEditingId(item.id);
-    setForm({
+    reset({
       name: item.name,
       institution_code: item.institution_code ?? '',
       address: item.address ?? '',
@@ -177,6 +214,7 @@ export function InstitutionsContent() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      const form = getValues();
       const endpoint = editingId
         ? buildPrescriberInstitutionApiPath(editingId)
         : PRESCRIBER_INSTITUTIONS_API_PATH;
@@ -190,10 +228,10 @@ export function InstitutionsContent() {
       if (!response.ok) {
         throw new Error((payload as { message?: string }).message ?? '保存に失敗しました');
       }
-      return payload;
+      return { wasEditing: Boolean(editingId) };
     },
-    onSuccess: async () => {
-      toast.success(editingId ? '医療機関マスターを更新しました' : '医療機関を登録しました');
+    onSuccess: async ({ wasEditing }) => {
+      toast.success(wasEditing ? '医療機関マスターを更新しました' : '医療機関を登録しました');
       setSheetOpen(false);
       resetForm();
       await queryClient.invalidateQueries({ queryKey: ['prescriber-institutions', orgId] });
@@ -374,38 +412,30 @@ export function InstitutionsContent() {
             </SheetDescription>
           </SheetHeader>
 
-          <div className="mt-6 space-y-4">
+          <form
+            className="mt-6 space-y-4"
+            onSubmit={handleSubmit(() => saveMutation.mutate(), focusErrorSummary)}
+            noValidate
+          >
+            <FormErrorSummary id={errorSummaryId} items={errorSummaryItems} />
             <div className="space-y-1.5">
               <Label htmlFor="institution-name">医療機関名</Label>
-              <Input
-                id="institution-name"
-                value={form.name}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, name: event.target.value }))
-                }
-              />
+              <Input id="institution-name" {...register('name')} aria-invalid={!!errors.name} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="institution-code">医療機関コード</Label>
               <Input
                 id="institution-code"
-                value={form.institution_code}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    institution_code: event.target.value,
-                  }))
-                }
+                {...register('institution_code')}
+                aria-invalid={!!errors.institution_code}
               />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="institution-address">住所</Label>
               <Input
                 id="institution-address"
-                value={form.address}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, address: event.target.value }))
-                }
+                {...register('address')}
+                aria-invalid={!!errors.address}
               />
             </div>
             <div className="grid gap-4 md:grid-cols-2">
@@ -413,21 +443,13 @@ export function InstitutionsContent() {
                 <Label htmlFor="institution-phone">電話番号</Label>
                 <Input
                   id="institution-phone"
-                  value={form.phone}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, phone: event.target.value }))
-                  }
+                  {...register('phone')}
+                  aria-invalid={!!errors.phone}
                 />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="institution-fax">FAX</Label>
-                <Input
-                  id="institution-fax"
-                  value={form.fax}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, fax: event.target.value }))
-                  }
-                />
+                <Input id="institution-fax" {...register('fax')} aria-invalid={!!errors.fax} />
               </div>
             </div>
             <div className="space-y-1.5">
@@ -435,10 +457,8 @@ export function InstitutionsContent() {
               <Textarea
                 id="institution-notes"
                 rows={4}
-                value={form.notes}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, notes: event.target.value }))
-                }
+                {...register('notes')}
+                aria-invalid={!!errors.notes}
               />
             </div>
             <div className="flex justify-end gap-2">
@@ -450,14 +470,14 @@ export function InstitutionsContent() {
                 キャンセル
               </Button>
               <Button
+                type="submit"
                 className="!h-11 !min-h-[44px]"
-                onClick={() => saveMutation.mutate()}
                 disabled={saveMutation.isPending}
               >
                 {saveMutation.isPending ? '保存中...' : '保存'}
               </Button>
             </div>
-          </div>
+          </form>
         </SheetContent>
       </Sheet>
     </>

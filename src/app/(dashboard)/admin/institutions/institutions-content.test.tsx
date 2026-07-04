@@ -306,7 +306,14 @@ describe('InstitutionsContent', () => {
     );
     const init = postCall![1] as RequestInit;
     expect(init.headers).toEqual(buildOrgJsonHeaders('org_1'));
-    expect(JSON.parse(init.body as string)).toMatchObject({ name: '連携クリニック' });
+    expect(JSON.parse(init.body as string)).toEqual({
+      name: '連携クリニック',
+      institution_code: '',
+      address: '',
+      phone: '',
+      fax: '',
+      notes: '',
+    });
   });
 
   it('update (PATCH) encodes a hostile institution id via encodePathSegment and uses buildOrgJsonHeaders', async () => {
@@ -324,6 +331,20 @@ describe('InstitutionsContent', () => {
     });
     expect(buildPrescriberInstitutionApiPath).toHaveBeenCalledWith('a/b c');
     expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
+    const patchCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        String(input) === '/api/prescriber-institutions/a%2Fb%20c' &&
+        (init as RequestInit | undefined)?.method === 'PATCH',
+    );
+    const init = patchCall![1] as RequestInit;
+    expect(JSON.parse(init.body as string)).toEqual({
+      name: '在宅内科クリニック',
+      institution_code: '1312345678',
+      address: '東京都千代田区1-1',
+      phone: '03-1111-2222',
+      fax: '03-1111-2223',
+      notes: '報告書はFAX優先',
+    });
   });
 
   it('update (PATCH) with a dot-segment institution id fails closed before any PATCH fetch', async () => {
