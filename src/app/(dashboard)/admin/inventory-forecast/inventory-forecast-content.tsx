@@ -11,6 +11,7 @@ import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { StateBadge } from '@/components/ui/state-badge';
 import type { StatusRole } from '@/lib/constants/status-tokens';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import {
@@ -202,8 +203,10 @@ export function InventoryForecastContent() {
       const res = await fetch('/api/admin/inventory-forecast', {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('在庫予測の取得に失敗しました');
-      const json = await res.json();
+      const json = await readApiJson<{ data: InventoryForecast }>(
+        res,
+        '在庫予測の取得に失敗しました',
+      );
       return json.data as InventoryForecast;
     },
     enabled: !!orgId,

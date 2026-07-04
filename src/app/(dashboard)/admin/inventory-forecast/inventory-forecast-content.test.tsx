@@ -118,6 +118,9 @@ describe('InventoryForecastContent', () => {
     renderContent();
 
     expect(await screen.findByRole('heading', { name: '在庫と定期処方の予測' })).toBeTruthy();
+    expect(vi.mocked(globalThis.fetch)).toHaveBeenCalledWith('/api/admin/inventory-forecast', {
+      headers: { 'x-org-id': 'org_1' },
+    });
     expect((await screen.findAllByText('アムロジピン')).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByLabelText('薬剤別必要量内検索')).toBeTruthy();
     expect(screen.getByRole('button', { name: '列' })).toBeTruthy();
