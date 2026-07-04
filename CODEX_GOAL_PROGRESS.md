@@ -1,5 +1,46 @@
 # CODEX Goal Progress
 
+## R55 Staff and Shifts Route Loading Labels - 2026-07-04 20:44 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/admin/staff/page.tsx`
+    - `src/app/(dashboard)/admin/staff/page.test.tsx`
+    - `src/app/(dashboard)/admin/shifts/page.tsx`
+    - `src/app/(dashboard)/admin/shifts/page.test.tsx`
+- Scope:
+  - Replaced route-level generic Suspense fallback `Loading` with
+    screen-specific statuses for:
+    - `スタッフ管理を読み込み中...`
+    - `薬剤師シフト管理を読み込み中...`
+  - Added/extended route shell regression tests proving the admin header
+    remains visible, each fallback is screen-specific, generic `読み込み中...`
+    is absent, and suspended content is not rendered.
+- Safety:
+  - Route-shell loading presentation and tests only.
+  - No staff KPI, users content query, shifts content query, user invite,
+    role/status mutation, schedule/holiday/template logic, DB, auth,
+    authorization, PHI, billing, audit, deployment, package, or server behavior
+    changed.
+  - Loading copy is PHI-free and does not echo staff names, pharmacist names,
+    shift dates/times, site IDs, org IDs, role/status values, or raw errors.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/staff/page.test.tsx' 'src/app/(dashboard)/admin/shifts/page.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `2` files / `4` tests.
+  - Scoped ESLint and targeted `git diff --check` passed for the staff and
+    shifts route source/test files.
+  - Initial Prettier check reported `src/app/(dashboard)/admin/shifts/page.test.tsx`;
+    after targeted `prettier --write`, the same focused tests and Prettier
+    check passed.
+  - `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `c4965984`
+    (`fix(admin): name staff shift route loading`).
+- Remaining:
+  - Broader R55 residuals and Plans.md objective remain open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Admin Master Route Loading Labels - 2026-07-04 20:39 JST
 
 - Status:

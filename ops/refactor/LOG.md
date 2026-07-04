@@ -1445,3 +1445,29 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - commit: `6c74f719` (`fix(admin): name master route loading`)。
 - 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
   `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
+
+## 2026-07-04 R55 admin staff and shifts route loading labels
+
+- 分類: UI loading-state cleanup / R55 route-shell generic loading residual。
+- 実施:
+  - `admin/staff/page.tsx` の route-level Suspense fallback を generic `Loading` から
+    `スタッフ管理を読み込み中...` の画面固有 status へ変更。
+  - `admin/shifts/page.tsx` の route-level Suspense fallback を generic `Loading` から
+    `薬剤師シフト管理を読み込み中...` の画面固有 status へ変更。
+  - `admin/staff/page.test.tsx` を追加し、`admin/shifts/page.test.tsx` を拡張して、
+    header shell が維持されること、generic `読み込み中...` が出ないこと、suspended content が出ないことを固定。
+- 挙動変更: route-shell loading label のみ。staff KPI、users content query、shifts content query、
+  user invite、role/status mutation、schedule/holiday/template logic、
+  API/DB/auth/authorization/billing/audit は不変。
+- UI/UX根拠: `docs/ui-ux-design-guidelines.md` の Clear state / false-empty prevention と
+  route fallback は軽量で意味のある loading UI にする Next loading/Suspense guidance に整合。
+- 安全性: product API/DB/auth/authorization/PHI/billing/deploy/package dependency は不変。
+  Loading copy は PHI-free で、staff/pharmacist name・shift date/time・site/org id・role/status value・raw error
+  を出さない。
+- 検証: focused staff + shifts route Vitest `2 files / 4 tests` green、targeted ESLint green、
+  targeted `git diff --check` green。初回 Prettier check は `shifts/page.test.tsx` を指摘したため、
+  targeted `prettier --write` 後に focused tests / Prettier check を再実行して green。
+  `pnpm typecheck` green。
+- commit: `c4965984` (`fix(admin): name staff shift route loading`)。
+- 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
+  `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
