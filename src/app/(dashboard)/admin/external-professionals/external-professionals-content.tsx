@@ -16,6 +16,7 @@ import { DataTable } from '@/components/ui/data-table';
 import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SkeletonRows } from '@/components/ui/loading';
 import { StateBadge } from '@/components/ui/state-badge';
 import {
   Select,
@@ -1023,7 +1024,9 @@ function LinkedPatientsPanel({
       ) : null}
 
       {isLoading ? (
-        <p className="mt-4 text-sm text-muted-foreground">担当患者を読み込み中...</p>
+        <div className="mt-4" role="status" aria-label="担当患者を読み込み中" aria-live="polite">
+          <SkeletonRows rows={2} cols={2} status={false} />
+        </div>
       ) : null}
 
       {!isLoading && !isError && linkedPatients.length === 0 ? (

@@ -336,6 +336,51 @@ describe('ExternalProfessionalsContent', () => {
     expect(buildPatientHref).toHaveBeenCalledWith('patient_1');
   });
 
+  it('announces a linked-patient skeleton while assigned patients are loading', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method;
+
+      if (url === '/api/admin/external-professionals?' && !method) {
+        return new Response(
+          JSON.stringify({
+            data: [professionalFixture()],
+            total_count: 1,
+            visible_count: 1,
+            hidden_count: 0,
+            truncated: false,
+          }),
+          { status: 200 },
+        );
+      }
+      if (url === '/api/admin/facilities?' && !method) {
+        return new Response(JSON.stringify({ data: [{ id: 'facility_1', name: 'さくら荘' }] }), {
+          status: 200,
+        });
+      }
+      if (url === '/api/admin/external-professionals/external_1/patients?limit=20' && !method) {
+        return new Promise<Response>(() => {});
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: '青葉 訪問看護 を編集' }));
+
+    const linkedPatientsRegion = await screen.findByRole('region', { name: '担当患者' });
+    expect(
+      await within(linkedPatientsRegion).findByRole('status', {
+        name: '担当患者を読み込み中',
+      }),
+    ).toBeTruthy();
+    expect(within(linkedPatientsRegion).queryByText('担当患者を読み込み中...')).toBeNull();
+    expect(
+      within(linkedPatientsRegion).queryByText('この他職種に紐づく患者はありません。'),
+    ).toBeNull();
+  });
+
   it('does not collapse linked-patient query failures into an empty assigned-patient state', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
