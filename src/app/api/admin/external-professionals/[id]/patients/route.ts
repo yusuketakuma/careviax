@@ -8,6 +8,7 @@ import { withAuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { optionalBoundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
+import { buildCursorPage } from '@/lib/api/pagination';
 
 const linkedPatientsQuerySchema = z.object({
   archive_status: z.enum(['active', 'archived', 'all']).optional(),
@@ -87,8 +88,8 @@ const authenticatedGET = withAuthContext<{ id: string }>(
         },
       }),
     ]);
-    const hasMore = fetchedLinks.length > limit;
-    const links = hasMore ? fetchedLinks.slice(0, limit) : fetchedLinks;
+    const page = buildCursorPage(fetchedLinks, limit, (link) => link.id);
+    const links = page.data;
     const visibleCount = links.length;
     const hiddenCount = Math.max(totalCount - visibleCount, 0);
 
@@ -117,7 +118,7 @@ const authenticatedGET = withAuthContext<{ id: string }>(
         total_count: totalCount,
         visible_count: visibleCount,
         hidden_count: hiddenCount,
-        has_more: hasMore || hiddenCount > 0,
+        has_more: page.hasMore || hiddenCount > 0,
         count_basis: 'care_team_links',
         filters_applied: {
           external_professional_id: professional.id,
