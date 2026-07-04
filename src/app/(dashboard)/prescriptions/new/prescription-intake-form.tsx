@@ -1222,7 +1222,7 @@ export function PrescriptionIntakeForm() {
         originalDocumentName: uploaded.fileName,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : '処方箋原本の登録に失敗しました');
+      setError(messageFromError(err, '処方箋原本の登録に失敗しました'));
     } finally {
       setDocumentUploading(false);
     }

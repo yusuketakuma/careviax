@@ -1,3 +1,5 @@
+import { messageFromError } from '@/lib/utils/error-message';
+
 type PrescriptionLineDraft = {
   drug_name: string;
   dose: string;
@@ -55,8 +57,7 @@ export function formatPrescriptionSubmitError(error: unknown, fallbackMessage: s
     ].join('\n');
   }
 
-  if (error instanceof Error) return error.message;
-  return fallbackMessage;
+  return messageFromError(error, fallbackMessage);
 }
 
 export async function parsePrescriptionSubmitError(

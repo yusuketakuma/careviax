@@ -146,4 +146,13 @@ describe('prescription submit API errors', () => {
       ].join('\n'),
     );
   });
+
+  it('uses the shared fallback behavior for empty or non-Error failures', () => {
+    expect(formatPrescriptionSubmitError(new Error(''), '処方受付に失敗しました')).toBe(
+      '処方受付に失敗しました',
+    );
+    expect(formatPrescriptionSubmitError('raw failure', '処方受付に失敗しました')).toBe(
+      '処方受付に失敗しました',
+    );
+  });
 });
