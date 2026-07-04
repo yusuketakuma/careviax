@@ -66,6 +66,9 @@
 - codex: R40/R44 master-hub readApiJson slice(67f3b081) land。focused Vitest 11、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 capacity dashboard readApiJson slice(dd8fe888) land。focused Vitest 12、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 

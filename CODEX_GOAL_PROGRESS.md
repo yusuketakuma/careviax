@@ -1,5 +1,42 @@
 # CODEX Goal Progress
 
+## R40/R44 Capacity Dashboard readApiJson Partial - 2026-07-05 03:30 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/admin/capacity/capacity-content.tsx`
+    - `src/app/(dashboard)/admin/capacity/capacity-content.test.tsx`
+- Scope:
+  - Reused `readApiJson<{ data: CapacitySummary }>` for the admin capacity
+    dashboard GET helper.
+  - Preserved `/api/admin/capacity`, `buildOrgHeaders`, React Query key,
+    response envelope unwrapping, aggregate KPI rendering, and loading/error
+    behavior.
+  - Added a focused fetch contract test to assert the static API path,
+    `x-org-id` header, and data envelope unwrap behavior.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/capacity/capacity-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `12` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `dd8fe888`
+    (`refactor(ui): reuse readApiJson in capacity dashboard`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Master Hub readApiJson Partial - 2026-07-05 03:27 JST
 
 - Status:
