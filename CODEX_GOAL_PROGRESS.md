@@ -1,5 +1,42 @@
 # CODEX Goal Progress
 
+## R40/R44 Report Delivery Dashboard readApiJson Partial - 2026-07-05 02:45 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/reports/report-delivery-dashboard.tsx`
+    - `src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx`
+- Scope:
+  - Reused `readApiJson<DeliveryAnalyticsResponse>` for the report delivery
+    analytics GET fetcher.
+  - Strengthened the existing queryFn contract test to assert the shared
+    Response reader returns the analytics envelope.
+  - Preserved the API path, `buildOrgHeaders`, React Query key, response
+    envelope, rendered UI behavior, and reminder mutation error payload
+    behavior.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `9` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `ee0a3856`
+    (`refactor(ui): reuse readApiJson in report delivery dashboard`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Schedule Planner Hooks readApiJson Partial - 2026-07-05 02:42 JST
 
 - Status:

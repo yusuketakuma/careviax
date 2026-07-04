@@ -5,6 +5,24 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-05 R40/R44-report-delivery ee0a3856
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 対象: `src/app/(dashboard)/reports/report-delivery-dashboard.tsx`,
+  `src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx`
+- 実施: report delivery analytics GET fetcher の `if (!response.ok) throw` +
+  `response.json()` を `readApiJson<DeliveryAnalyticsResponse>` へ移行。
+  既存 queryFn contract test で envelope 返却も固定。
+- 挙動変更: read fetch 実装内部の helper 収束のみ。API path、`buildOrgHeaders`、
+  React Query key、response envelope、画面表示、reminder mutation error payload parsing は維持。
+- 安全: product UI read fetch internals のみ。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+  live DB/external send/secret/push/destructive operation 不変。
+- 検証: focused report delivery dashboard Vitest `1 file / 9 tests` green。
+  scoped eslint/prettier/diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit ee0a3856。
+- 残課題: R40/R44 は partial。追加 fetcher は response body read の PHI safety を個別確認して段階移行。
+
 ## 2026-07-05 R23-schedule-optimizer 58c42de5
 
 - 分類: dup-helper / error message helper convergence
