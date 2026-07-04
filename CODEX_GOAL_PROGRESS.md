@@ -1,5 +1,42 @@
 # CODEX Goal Progress
 
+## R40/R44 Evidence Gallery readApiJson Partial - 2026-07-05 06:34 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/visits/evidence/evidence-gallery-content.tsx`
+    - `src/app/(dashboard)/visits/evidence/evidence-gallery-content.test.ts`
+- Scope:
+  - Reused `readApiJson` for the evidence gallery visit-record list read GET.
+  - Added a contract test proving API JSON `message` from a failed read GET is
+    surfaced through the shared helper.
+  - Preserved visit-records evidence gallery list path, `limit=12`,
+    `include_attachments=true`, `view=evidence_gallery`, `buildOrgHeaders`,
+    React Query key, enabled gate, offline draft IndexedDB merge,
+    offline retry/sync behavior, demo seed hook, and attachment slicing cap.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/visits/evidence/evidence-gallery-content.test.ts'`
+    passed `2` files / `6` tests.
+  - Scoped ESLint, targeted Prettier check after formatting, targeted
+    `git diff --check`, and `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `4905eff3`
+    (`refactor(ui): reuse readApiJson in evidence gallery`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Visit Brief Review readApiJson Partial - 2026-07-05 06:30 JST
 
 - Status:

@@ -276,6 +276,11 @@
   visit-brief read GET を readApiJson へ収束し、patient resolution fallback GETs/patient API
   helper/org header/queryKeys/enabled gates/retry UI/feedback mutation は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 evidence-gallery readApiJson slice(4905eff3) land。focused Vitest 6、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。evidence gallery の visit-record
+  list read GET を readApiJson へ収束し、visit-records query path/org header/queryKey/enabled
+  gate/offline draft merge/retry/sync/attachment cap は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 
