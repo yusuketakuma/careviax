@@ -524,8 +524,13 @@ describe('ReportPrintPage', () => {
 
     render(<ReportPrintPage />);
 
-    expect(screen.getByText('印刷監査を記録中...')).toBeTruthy();
+    expect(screen.getByRole('status', { name: '報告書の印刷監査を記録中' })).toBeTruthy();
+    expect(screen.queryByRole('status', { name: '印刷監査を記録中...' })).toBeNull();
+    expect(screen.queryByText('印刷監査を記録中...')).toBeNull();
     expect(screen.queryByTestId('print-layout')).toBeNull();
+    expect(screen.queryByText('佐藤 花子 様')).toBeNull();
+    expect(screen.queryByText('服薬管理は安定しています')).toBeNull();
+    expect(screen.queryByRole('button', { name: '手動印刷' })).toBeNull();
 
     act(() => {
       vi.advanceTimersByTime(1000);

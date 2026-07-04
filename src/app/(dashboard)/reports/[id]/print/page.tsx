@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { getReportPrintShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
 import { PrintPageToolbar } from '@/components/features/workflow/print-page-toolbar';
 import { PrintLayout } from '@/components/features/reports/print-layout';
-import { Loading } from '@/components/ui/loading';
+import { Skeleton } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
@@ -453,6 +453,47 @@ function AudienceReportPrint({ content }: { content: AudienceReportContent }) {
 
 // ─── Print page ───────────────────────────────────────────────────────────────
 
+function PrintAuditLoadingState() {
+  return (
+    <div
+      className="min-h-dvh bg-background p-6"
+      role="status"
+      aria-label="報告書の印刷監査を記録中"
+      aria-live="polite"
+    >
+      <div className="mx-auto max-w-4xl space-y-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-7 w-48" />
+          </div>
+          <Skeleton className="h-9 w-24 rounded-md" />
+        </div>
+
+        <div className="space-y-4 border border-border/70 bg-card p-6 shadow-sm">
+          <Skeleton className="mx-auto h-7 w-72" />
+          <div className="grid gap-px overflow-hidden border border-border/70 text-xs sm:grid-cols-4">
+            {Array.from({ length: 8 }).map((_, index) => (
+              <Skeleton key={index} className="h-8 rounded-none" />
+            ))}
+          </div>
+          {Array.from({ length: 4 }).map((_, sectionIndex) => (
+            <section key={sectionIndex} className="space-y-2" aria-hidden="true">
+              <Skeleton className="h-6 w-40 rounded-none" />
+              <div className="grid gap-px overflow-hidden border border-border/70 sm:grid-cols-4">
+                {Array.from({ length: 8 }).map((_, cellIndex) => (
+                  <Skeleton key={cellIndex} className="h-7 rounded-none" />
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+        <span className="sr-only">報告書の印刷監査を記録中</span>
+      </div>
+    </div>
+  );
+}
+
 export default function ReportPrintPage() {
   const params = useParams<{ id: string }>();
   const reportId = params.id;
@@ -548,11 +589,7 @@ export default function ReportPrintPage() {
   };
 
   if (printAuditQuery.isLoading) {
-    return (
-      <div className="flex min-h-dvh items-center justify-center">
-        <Loading label="印刷監査を記録中..." />
-      </div>
-    );
+    return <PrintAuditLoadingState />;
   }
 
   if (isPrintForbidden) {
