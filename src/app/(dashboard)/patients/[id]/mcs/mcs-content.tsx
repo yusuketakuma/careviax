@@ -272,7 +272,9 @@ function PatientMcsSyncPanel({
                     if (!mcsUrl) return;
                     copyTextToClipboard(mcsUrl)
                       .then(() => toast.success('MCS URLをコピーしました'))
-                      .catch((error: Error) => toast.error(error.message));
+                      .catch((error: Error) =>
+                        toast.error(messageFromError(error, 'MCS URLのコピーに失敗しました')),
+                      );
                   }}
                 >
                   <Clipboard className="mr-1.5 size-4" aria-hidden="true" />

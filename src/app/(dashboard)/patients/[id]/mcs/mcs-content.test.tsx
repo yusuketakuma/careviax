@@ -682,6 +682,18 @@ describe('PatientMcsContent', () => {
       );
     });
 
+    writeText.mockRejectedValueOnce(new Error('クリップボードAPIからの詳細エラー'));
+    fireEvent.click(screen.getByRole('button', { name: 'URLをコピー' }));
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenLastCalledWith('クリップボードAPIからの詳細エラー'),
+    );
+
+    writeText.mockRejectedValueOnce(new Error(''));
+    fireEvent.click(screen.getByRole('button', { name: 'URLをコピー' }));
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenLastCalledWith('MCS URLのコピーに失敗しました'),
+    );
+
     fireEvent.click(screen.getByRole('button', { name: '最終確認を今に更新' }));
 
     expect(profileMutate).toHaveBeenCalledWith(
