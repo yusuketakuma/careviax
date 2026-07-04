@@ -33,6 +33,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { formatDateKey } from '@/lib/date-key';
 import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   buildPcaPumpApiPath,
@@ -470,8 +471,7 @@ export function PcaPumpsContent() {
       const response = await fetch(buildPcaPumpsApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('PCAポンプ台帳の取得に失敗しました');
-      return response.json() as Promise<{ data: PcaPump[] }>;
+      return readApiJson<{ data: PcaPump[] }>(response, 'PCAポンプ台帳の取得に失敗しました');
     },
     enabled: !!orgId,
   });
@@ -482,8 +482,10 @@ export function PcaPumpsContent() {
       const response = await fetch(buildPcaPumpRentalsApiPath({ status: 'open' }), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('PCAポンプレンタル履歴の取得に失敗しました');
-      return response.json() as Promise<{ data: PcaPumpRental[] }>;
+      return readApiJson<{ data: PcaPumpRental[] }>(
+        response,
+        'PCAポンプレンタル履歴の取得に失敗しました',
+      );
     },
     enabled: !!orgId,
   });
@@ -497,8 +499,10 @@ export function PcaPumpsContent() {
           headers: buildOrgHeaders(orgId),
         },
       );
-      if (!response.ok) throw new Error('PCAポンプ返却検品待ちの取得に失敗しました');
-      return response.json() as Promise<{ data: PcaPumpRental[] }>;
+      return readApiJson<{ data: PcaPumpRental[] }>(
+        response,
+        'PCAポンプ返却検品待ちの取得に失敗しました',
+      );
     },
     enabled: !!orgId,
   });
@@ -509,8 +513,7 @@ export function PcaPumpsContent() {
       const response = await fetch(PRESCRIBER_INSTITUTIONS_API_PATH, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('医療機関マスターの取得に失敗しました');
-      return response.json() as Promise<{ data: Institution[] }>;
+      return readApiJson<{ data: Institution[] }>(response, '医療機関マスターの取得に失敗しました');
     },
     enabled: !!orgId,
   });
