@@ -1,12 +1,14 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import type { ColumnDef } from '@tanstack/react-table';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { CheckCircle2, Clock, ExternalLink, MessageSquare, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { DataTable, type DataTableColumnMeta } from '@/components/ui/data-table';
 import { PatientHistoryQuickLinks } from '@/components/features/patients/patient-history-quick-links';
 import { PatientHistorySummary } from '@/components/features/patients/patient-history-summary';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
@@ -83,6 +85,79 @@ const GENDER_LABELS: Record<string, string> = {
   female: '女',
   other: '他',
 };
+
+const prescriptionLineColumns: ColumnDef<PrescriptionLine>[] = [
+  {
+    accessorKey: 'line_number',
+    header: '#',
+    enableSorting: false,
+    meta: { mobileLabel: '#' } satisfies DataTableColumnMeta<PrescriptionLine>,
+    cell: ({ row }) => (
+      <span className="tabular-nums text-muted-foreground">{row.original.line_number}</span>
+    ),
+  },
+  {
+    accessorKey: 'drug_name',
+    header: '薬剤名',
+    enableSorting: false,
+    meta: { mobileLabel: '薬剤名' } satisfies DataTableColumnMeta<PrescriptionLine>,
+    cell: ({ row }) => (
+      <div>
+        <div className="font-medium leading-tight">{row.original.drug_name}</div>
+        {row.original.drug_code ? (
+          <span className="text-[10px] text-muted-foreground">{row.original.drug_code}</span>
+        ) : null}
+        {row.original.dosage_form ? (
+          <span className="ml-1 text-[10px] text-muted-foreground">{row.original.dosage_form}</span>
+        ) : null}
+        {row.original.packaging_instructions ? (
+          <div className="text-[10px] text-state-confirm">
+            包: {row.original.packaging_instructions}
+          </div>
+        ) : null}
+      </div>
+    ),
+  },
+  {
+    accessorKey: 'dose',
+    header: '用量',
+    enableSorting: false,
+    meta: { mobileLabel: '用量' } satisfies DataTableColumnMeta<PrescriptionLine>,
+    cell: ({ row }) => <span className="text-muted-foreground">{row.original.dose}</span>,
+  },
+  {
+    accessorKey: 'frequency',
+    header: '用法',
+    enableSorting: false,
+    meta: { mobileLabel: '用法' } satisfies DataTableColumnMeta<PrescriptionLine>,
+    cell: ({ row }) => <span className="text-muted-foreground">{row.original.frequency}</span>,
+  },
+  {
+    accessorKey: 'days',
+    header: '日数',
+    enableSorting: false,
+    meta: { mobileLabel: '日数' } satisfies DataTableColumnMeta<PrescriptionLine>,
+    cell: ({ row }) => <span className="tabular-nums">{row.original.days}日</span>,
+  },
+  {
+    id: 'classification',
+    header: '区分',
+    enableSorting: false,
+    meta: { mobileLabel: '区分' } satisfies DataTableColumnMeta<PrescriptionLine>,
+    cell: ({ row }) =>
+      row.original.is_generic ? (
+        <span className="rounded bg-tag-info/10 px-1 py-0.5 text-[9px] font-medium text-tag-info">
+          後発
+        </span>
+      ) : row.original.is_generic_name_prescription ? (
+        <span className="rounded bg-state-done/10 px-1 py-0.5 text-[9px] font-medium text-state-done">
+          一般名
+        </span>
+      ) : (
+        <span className="text-[10px] text-muted-foreground">先発</span>
+      ),
+  },
+];
 
 // ---------------------------------------------------------------------------
 // Main component
@@ -204,74 +279,14 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
 
       {/* ── 処方明細テーブル (メイン領域) ── */}
       <div className="flex-1 overflow-y-auto">
-        <table className="w-full text-xs" aria-label="処方明細">
-          <thead className="sticky top-0 z-10 bg-muted/80 backdrop-blur-sm">
-            <tr className="border-b text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              <th scope="col" className="w-8 px-2 py-1">
-                #
-              </th>
-              <th scope="col" className="px-2 py-1">
-                薬剤名
-              </th>
-              <th scope="col" className="px-2 py-1">
-                用量
-              </th>
-              <th scope="col" className="px-2 py-1">
-                用法
-              </th>
-              <th scope="col" className="w-14 px-2 py-1">
-                日数
-              </th>
-              <th scope="col" className="w-12 px-2 py-1">
-                区分
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.lines.map((line, i) => (
-              <tr
-                key={line.id}
-                className={`border-b border-border/30 ${i % 2 === 0 ? 'bg-background' : 'bg-muted/15'}`}
-              >
-                <td className="px-2 py-1 tabular-nums text-muted-foreground">{line.line_number}</td>
-                <td className="px-2 py-1">
-                  <div className="font-medium leading-tight">{line.drug_name}</div>
-                  {line.drug_code && (
-                    <span className="text-[10px] text-muted-foreground">{line.drug_code}</span>
-                  )}
-                  {line.dosage_form && (
-                    <span className="ml-1 text-[10px] text-muted-foreground">
-                      {line.dosage_form}
-                    </span>
-                  )}
-                  {line.packaging_instructions && (
-                    <div className="text-[10px] text-state-confirm">
-                      包: {line.packaging_instructions}
-                    </div>
-                  )}
-                </td>
-                <td className="px-2 py-1 text-muted-foreground">{line.dose}</td>
-                <td className="px-2 py-1 text-muted-foreground">{line.frequency}</td>
-                <td className="px-2 py-1 tabular-nums">{line.days}日</td>
-                <td className="px-2 py-1">
-                  {line.is_generic ? (
-                    <span className="rounded bg-tag-info/10 px-1 py-0.5 text-[9px] font-medium text-tag-info">
-                      後発
-                    </span>
-                  ) : line.is_generic_name_prescription ? (
-                    <span className="rounded bg-state-done/10 px-1 py-0.5 text-[9px] font-medium text-state-done">
-                      一般名
-                    </span>
-                  ) : (
-                    <span className="text-[10px] text-muted-foreground">先発</span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        {data.lines.length === 0 && (
+        {data.lines.length > 0 ? (
+          <DataTable
+            columns={prescriptionLineColumns}
+            data={data.lines}
+            caption="処方明細"
+            getRowId={(line) => line.id}
+          />
+        ) : (
           <div className="py-6 text-center text-xs text-muted-foreground">明細なし</div>
         )}
       </div>

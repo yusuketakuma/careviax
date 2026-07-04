@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { jsonResponse } from '@/test/fetch-test-utils';
@@ -304,6 +304,51 @@ describe('PrescriptionInlineDetail', () => {
     render(<PrescriptionInlineDetail intakeId="intake_cuid_12345678" />);
 
     expect(screen.getByText('ID: 12345678')).toBeTruthy();
+  });
+
+  it('renders prescription lines through a labeled data table while preserving line copy', () => {
+    const detailData = buildDetailData('rx_1', 'patient_1');
+    detailData.lines[0] = {
+      ...detailData.lines[0],
+      is_generic: true,
+      packaging_instructions: '一包化',
+    };
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({
+      data: detailData,
+      isLoading: false,
+      error: null,
+    });
+
+    render(<PrescriptionInlineDetail intakeId="rx_1" />);
+
+    const table = screen.getByRole('table', { name: '処方明細' });
+    expect(within(table).getByText('アムロジピン錠5mg')).toBeTruthy();
+    expect(within(table).getByText('2149001')).toBeTruthy();
+    expect(within(table).getByText('錠')).toBeTruthy();
+    expect(within(table).getByText('包: 一包化')).toBeTruthy();
+    expect(within(table).getByText('1錠')).toBeTruthy();
+    expect(within(table).getByText('1日1回朝食後')).toBeTruthy();
+    expect(within(table).getByText('14日')).toBeTruthy();
+    expect(within(table).getByText('後発')).toBeTruthy();
+    expect(screen.queryByText('明細なし')).toBeNull();
+  });
+
+  it('keeps the explicit no-lines copy instead of showing a DataTable empty state', () => {
+    const detailData = buildDetailData('rx_1', 'patient_1');
+    detailData.lines = [];
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({
+      data: detailData,
+      isLoading: false,
+      error: null,
+    });
+
+    render(<PrescriptionInlineDetail intakeId="rx_1" />);
+
+    expect(screen.getByText('明細なし')).toBeTruthy();
+    expect(screen.queryByRole('table', { name: '処方明細' })).toBeNull();
+    expect(screen.queryByText('該当する行がありません')).toBeNull();
   });
 
   it('delegates 詳細/全画面表示 to buildPrescriptionHref and 患者 to buildPatientHref (return-value)', () => {
