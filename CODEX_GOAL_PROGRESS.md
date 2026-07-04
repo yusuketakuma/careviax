@@ -1,5 +1,40 @@
 # CODEX Goal Progress
 
+## R25 Schedule Calendar ErrorState Retry Shorthand Partial - 2026-07-04 23:34 JST
+
+- Status:
+  - Implemented and validated the next bounded R25 slice:
+    - `src/app/(dashboard)/schedules/calendar-view.tsx`
+- Scope:
+  - Migrated two schedule calendar ErrorState retry actions from hand-written
+    `action={{ label: '再読み込み', onClick }}` objects to `onRetry` +
+    `retryLabel`.
+  - Preserved visible retry copy and existing refetch handlers for billing
+    preview and calendar data lookup.
+- Safety:
+  - UI presentation/refactor only.
+  - Visible labels, click handlers, error branch behavior, billing preview
+    display behavior, and schedule query behavior are preserved.
+  - No product API, DB, auth, authorization, PHI projection, billing semantics,
+    audit, deployment, package dependency, live DB operation, external send,
+    secret handling, push, or destructive operation changed.
+- Validation:
+  - Targeted scan for hand-written `再読み込み` ErrorState actions in
+    `schedules/calendar-view.tsx` returned no matches.
+  - `pnpm exec vitest run 'src/app/(dashboard)/schedules/calendar-view.test.tsx' 'src/app/(dashboard)/schedules/calendar-view.helpers.test.ts' --reporter=dot --testTimeout=30000`
+    passed `2` files / `15` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `7461d41f`
+    (`refactor(ui): route calendar error retries through shorthand`).
+- Remaining:
+  - R25 is partial; remaining ErrorState retry action boilerplate should be
+    migrated in bounded screen/domain chunks.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R25 Dispense Patient List ErrorState Retry Shorthand Partial - 2026-07-04 23:32 JST
 
 - Status:
