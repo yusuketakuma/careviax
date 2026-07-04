@@ -3,7 +3,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import type { Row } from '@tanstack/react-table';
 import type { ReactNode } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
@@ -100,6 +100,10 @@ describe('JobsDashboardContent', () => {
     useMutationMock.mockReturnValue({ mutate: mutationMutateMock, isPending: false });
   });
 
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('surfaces completed bulk export partial failures from job output', () => {
     useQueryMock.mockReturnValue({
       isLoading: false,
@@ -165,6 +169,51 @@ describe('JobsDashboardContent', () => {
       name: 'medication-history-bulk-export-drain を再実行',
     });
     expect(rerunButtons[0]?.className).toContain('!min-h-[44px]');
+  });
+
+  it('fetches jobs through the static API path with org headers and unwraps the data envelope', async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            data: [
+              {
+                job_type: 'daily',
+                schedule_hint: '毎朝',
+                endpoint: '/api/jobs/daily',
+                latest_run: null,
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    useQueryMock.mockReturnValue({
+      isLoading: false,
+      data: { data: [] },
+      refetch: vi.fn(),
+    });
+
+    render(<JobsDashboardContent />);
+
+    const queryOptions = useQueryMock.mock.calls.at(-1)?.[0] as
+      | { queryKey: unknown[]; queryFn: () => Promise<{ data: unknown[] }> }
+      | undefined;
+    expect(queryOptions?.queryKey).toEqual(['integration-jobs', 'org_1']);
+    await expect(queryOptions?.queryFn()).resolves.toEqual({
+      data: [
+        {
+          job_type: 'daily',
+          schedule_hint: '毎朝',
+          endpoint: '/api/jobs/daily',
+          latest_run: null,
+        },
+      ],
+    });
+    expect(fetchMock).toHaveBeenCalledWith('/api/jobs', {
+      headers: { 'x-org-id': 'org_1' },
+    });
   });
 
   it('ignores malformed or successful bulk export output', () => {

@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { formatDateTimeLabel } from '@/lib/ui/date-format';
@@ -162,8 +163,7 @@ export function JobsDashboardContent() {
       const res = await fetch('/api/jobs', {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('ジョブ一覧の取得に失敗しました');
-      return res.json() as Promise<{ data: JobDefinitionEntry[] }>;
+      return readApiJson<{ data: JobDefinitionEntry[] }>(res, 'ジョブ一覧の取得に失敗しました');
     },
     enabled: !!orgId,
     refetchInterval: JOBS_REFETCH_INTERVAL_MS,
