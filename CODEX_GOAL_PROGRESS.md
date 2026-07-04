@@ -1,5 +1,42 @@
 # CODEX Goal Progress
 
+## R40/R44 Facility Standards readApiJson Partial - 2026-07-05 03:44 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/admin/facility-standards/facility-standards-content.tsx`
+    - `src/app/(dashboard)/admin/facility-standards/facility-standards-content.test.tsx`
+- Scope:
+  - Reused `readApiJson<FacilityStandardsResponse>` for the admin
+    facility-standards GET helper.
+  - Preserved `/api/admin/facility-standards`, `buildOrgHeaders`, React Query
+    key, response envelope/count metadata, hidden-count handling, claim
+    judgement behavior, and loading/error/retry behavior.
+  - Added a focused queryFn contract test to assert the static API path,
+    `x-org-id` header, and response envelope/count metadata.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/facility-standards/facility-standards-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `4` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `e0324a79`
+    (`refactor(ui): reuse readApiJson in facility standards`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Dispense Audit Stats readApiJson Partial - 2026-07-05 03:40 JST
 
 - Status:

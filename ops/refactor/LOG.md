@@ -5,6 +5,23 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-05 R40/R44-facility-standards e0324a79
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 対象: `src/app/(dashboard)/admin/facility-standards/facility-standards-content.tsx`,
+  `src/app/(dashboard)/admin/facility-standards/facility-standards-content.test.tsx`
+- 実施: facility standards GET の `if (!res.ok) throw` + `res.json()` を
+  `readApiJson<FacilityStandardsResponse>` へ移行。static path/org header/envelope metadata を test 固定。
+- 挙動変更: read fetch 実装内部の helper 収束のみ。`/api/admin/facility-standards`、
+  `buildOrgHeaders`、React Query key、count metadata、hidden-count/claim judgement は維持。
+- 安全: product UI read fetch internals のみ。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+  live DB/external send/secret/push/destructive operation 不変。
+- 検証: focused facility-standards Vitest `1 file / 4 tests` green。
+  scoped eslint/prettier/diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit e0324a79。
+- 残課題: R40/R44 は partial。追加 fetcher は response body read の PHI safety を個別確認して段階移行。
+
 ## 2026-07-05 R40/R44-dispense-audit-stats a2d0e1bc
 
 - 分類: query-helper / client fetch error handling → `readApiJson` 収束。
