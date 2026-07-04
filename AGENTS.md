@@ -138,6 +138,20 @@ Include:
 - logging/error paths
 - performance-sensitive paths
 
+## Product Boundary Change Scope
+
+User clarification on 2026-07-04: product code and runtime boundaries are not
+off-limits when they are necessary to satisfy the active objective. Changes may
+touch product API, DB/schema/migrations, authentication, authorization, PHI
+handling, billing, deployment, and package dependencies when the requirement
+actually needs them.
+
+This permission does not weaken safety gates. Keep such changes narrowly
+scoped, inspect the blast radius first, add/update tests, preserve PHI/privacy
+and audit guarantees, and do not perform migrations, deploys, secret rotation,
+production data mutation, destructive operations, or pushes without explicit
+current-task authorization.
+
 ## Priorities
 
 1. Bugs and broken behavior.

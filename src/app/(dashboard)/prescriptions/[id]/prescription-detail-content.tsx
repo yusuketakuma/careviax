@@ -26,7 +26,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
-import { Loading } from '@/components/ui/loading';
+import { Skeleton } from '@/components/ui/loading';
 import { ErrorState } from '@/components/ui/error-state';
 import { Separator } from '@/components/ui/separator';
 import { PageScaffold } from '@/components/layout/page-scaffold';
@@ -225,6 +225,77 @@ const prescriptionLineColumns: ColumnDef<PrescriptionLine>[] = [
   },
 ];
 
+function PrescriptionDetailLoadingState() {
+  return (
+    <PageScaffold>
+      <WorkflowPageHeader
+        title="処方受付詳細"
+        description="受付内容と調剤サイクルを確認します。"
+        action={{
+          href: '/prescriptions',
+          label: '一覧へ戻る',
+          icon: <ArrowLeft className="size-4" aria-hidden="true" />,
+        }}
+        mainWorkflowSteps={['prescriptions']}
+        mainWorkflowDescription="処方受付の詳細画面でも、主業務フローのどこを見ているかを固定表示します。"
+        childrenLabel="関連導線"
+      />
+
+      <div className="space-y-6" role="status" aria-label="処方受付詳細を読み込み中">
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border/70 bg-card/70 px-4 py-3">
+          <Skeleton className="h-6 w-20 rounded-full" />
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-4 w-36" />
+          <Skeleton className="h-4 w-28" />
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
+          <Card>
+            <CardHeader>
+              <Skeleton className="h-5 w-32" />
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div key={index} className="grid gap-2 sm:grid-cols-[8rem_minmax(0,1fr)]">
+                  <Skeleton className="h-3 w-20" />
+                  <Skeleton className="h-4 w-full" />
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <Skeleton className="h-5 w-28" />
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Skeleton className="h-4 w-40" />
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-9 w-full rounded-md" />
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-5 w-28" />
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="grid gap-3 sm:grid-cols-[3rem_1.5fr_1fr_1fr]">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-full" />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+        <span className="sr-only">処方受付詳細を読み込んでいます。</span>
+      </div>
+    </PageScaffold>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
@@ -261,7 +332,7 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
     );
   }
 
-  if (isLoading || !data) return <Loading />;
+  if (isLoading || !data) return <PrescriptionDetailLoadingState />;
 
   const patient = data.cycle.case_.patient;
   const patientHref = buildPatientHref(patient.id);

@@ -14,6 +14,10 @@
   focused validation → 台帳更新 → explicit path staging → scoped commit。
 - gate: lint / typecheck / typecheck:no-unused / format:check / test / build / colors:check
   （build と typecheck は並列禁止。長い Next.js gate は同時実行しない）
+- 2026-07-04 ユーザー明示: active objective 達成に必要なら product API / DB / auth /
+  authorization / PHI / billing / deploy / package dependency も変更対象に含めてよい。
+  ただし安全ゲートは緩和しない。migration 適用、deploy、secret rotation、production data mutation、
+  destructive operation、push は current-task の明示許可が必要。
 
 ## Codex 単独運用の自律待機方針（2026-07-04 ユーザー指示）
 

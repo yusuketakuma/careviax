@@ -1,5 +1,42 @@
 # CODEX Goal Progress
 
+## R55 Prescription Detail Loading State + Product Boundary SSOT - 2026-07-04 19:10 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/prescriptions/[id]/prescription-detail-content.tsx`
+    - `src/app/(dashboard)/prescriptions/[id]/prescription-detail-content.test.tsx`
+    - `AGENTS.md`
+    - `ops/refactor/STATE.md`
+    - `docs/ui-ux-design-guidelines.md`
+- Scope:
+  - Replaced the generic `Loading` return in the prescription detail page with
+    a named skeleton region inside the PH-OS workflow page shell.
+  - Loading no longer exposes generic `読み込み中...` semantics, error copy, or
+    final patient-specific detail content before the query resolves.
+  - Recorded the 2026-07-04 user clarification in SSOT docs: product API, DB,
+    auth, authorization, PHI, billing, deploy, and package dependency changes
+    are allowed when required by the active objective, while destructive or
+    externally applied operations still require explicit current-task
+    authorization.
+- Safety:
+  - UI loading-state presentation, tests, and SSOT documentation only.
+  - No API path, query key, fetcher, org header, `enabled` behavior, route
+    helper, cache timing, DB, auth, authorization, billing, deployment, package,
+    or server behavior changed in this slice.
+  - Loading copy is PHI-free and does not echo patient names, intake ids, cycle
+    ids, prescription lines, prescriber details, org ids, or raw errors.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/prescriptions/[id]/prescription-detail-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `7` tests.
+  - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
+    the prescription detail source/test and SSOT docs.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - Broader R55 residuals and Plans.md objective remain open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Patient Workflow Preview Loading State - 2026-07-04 19:05 JST
 
 - Status:

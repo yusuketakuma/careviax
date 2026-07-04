@@ -934,3 +934,26 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - commit: `437cfeb6` (`fix(patients): show skeleton for workflow preview loading`)。
 - 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
   `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
+
+## 2026-07-04 R55 prescription detail loading skeleton + product boundary SSOT
+
+- 分類: UI loading-state cleanup / R55 visible loading residual + operating SSOT clarification。
+- 実施:
+  - `prescription-detail-content.tsx` の generic `Loading` return を、処方受付詳細の workflow
+    page shell に沿う領域固有 `role="status"` + skeleton へ置換。
+  - loading 中に generic `読み込み中...` status、error copy、患者名を含む最終 detail content が
+    出ないことを `prescription-detail-content.test.tsx` に追加。
+  - 2026-07-04 ユーザー明示を `AGENTS.md` / `ops/refactor/STATE.md` /
+    `docs/ui-ux-design-guidelines.md` に反映。active objective 達成に必要なら product API / DB /
+    auth / authorization / PHI / billing / deploy / package dependency も変更対象に含める。
+- 挙動変更: loading presentation と SSOT 文書のみ。query key、fetcher、org header、enabled behavior、
+  route helper、cache timing、API/DB/auth/authorization/billing/deploy/package dependency は本 slice では不変。
+- UI/UX根拠: `docs/ui-ux-design-guidelines.md` の 5状態分離、領域固有 loading label、
+  generic loading copy 禁止、backend/API/UI 連動責任に整合。
+- 安全性: Loading copy は PHI-free で、patient name・intake id・cycle id・prescription line・prescriber detail・org id・raw error
+  を出さない。SSOT 上も migration 適用・deploy・secret rotation・production data mutation・destructive operation・push は
+  current-task の明示許可が必要と明記。
+- 検証: focused prescription detail Vitest `1 file / 7 tests` green、targeted ESLint green、
+  targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
+  `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。

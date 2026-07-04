@@ -116,6 +116,23 @@ describe('PrescriptionDetailContent', () => {
     vi.stubGlobal('fetch', fetchMock);
   });
 
+  it('renders a PH-OS skeleton while prescription intake details load', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(<PrescriptionDetailContent intakeId="intake_1" />);
+
+    expect(screen.getByRole('status', { name: '処方受付詳細を読み込み中' })).toBeTruthy();
+    expect(screen.queryByRole('status', { name: '読み込み中...' })).toBeNull();
+    expect(screen.queryByText('処方受付を取得できませんでした')).toBeNull();
+    expect(screen.queryByText(/田中 一郎 の処方受付/)).toBeNull();
+  });
+
   it('encodes decoded route ids before fetching prescription intake details', async () => {
     const hostileId = '../settings?x=1#frag';
     const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
