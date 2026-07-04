@@ -819,7 +819,7 @@ export function DataTable<TData>({
             size="sm"
             className="min-h-[44px] sm:min-h-0"
             loading={isLoading}
-            loadingLabel="読み込み中..."
+            loadingLabel="追加行を読み込み中..."
           >
             さらに表示
           </LoadingButton>

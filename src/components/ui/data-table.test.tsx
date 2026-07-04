@@ -457,6 +457,21 @@ describe('DataTable', () => {
     );
   });
 
+  it('uses a table-specific load-more loading label instead of generic loading copy', () => {
+    render(
+      <DataTable
+        columns={columns}
+        data={[{ id: 'row-1', name: '山田 太郎' }]}
+        hasMore
+        isLoading
+        onLoadMore={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: '追加行を読み込み中...' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '読み込み中...' })).toBeNull();
+  });
+
   it('resets to the first page when a filter narrows the paginated result set', () => {
     const manyRows: RowData[] = Array.from({ length: 250 }, (_, index) => ({
       id: `row-${index}`,

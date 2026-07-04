@@ -228,7 +228,7 @@ export function DataExplorerPanel({ orgId }: { orgId: string }) {
                   {selectedModelSummary
                     ? `${selectedModelSummary.tableName}（${selectedModelSummary.rowCount}件）`
                     : modelsQuery.isLoading
-                      ? '読み込み中...'
+                      ? 'データモデルを読み込み中...'
                       : 'モデルを選択'}
                 </SelectValue>
               </SelectTrigger>
