@@ -304,7 +304,8 @@ export function DataExplorerContent() {
                 <ErrorState
                   title="モデル一覧を取得できませんでした"
                   description="監査対象テーブルの一覧を表示できていません。時間をおいて再読み込みしてください。"
-                  action={{ label: '再読み込み', onClick: () => void modelsQuery.refetch() }}
+                  onRetry={() => void modelsQuery.refetch()}
+                  retryLabel="再読み込み"
                   headingLevel={3}
                 />
               ) : filteredModels.length ? (
@@ -382,7 +383,8 @@ export function DataExplorerContent() {
                 <ErrorState
                   title="テーブルデータを取得できませんでした"
                   description="レコード一覧を表示できていません。「レコードなし」ではなく取得エラーです。再読み込みしてください。"
-                  action={{ label: '再読み込み', onClick: () => void rowsQuery.refetch() }}
+                  onRetry={() => void rowsQuery.refetch()}
+                  retryLabel="再読み込み"
                   headingLevel={3}
                 />
               ) : tableData?.rows.length ? (
