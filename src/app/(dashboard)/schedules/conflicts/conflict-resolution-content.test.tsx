@@ -34,7 +34,7 @@ import { toast } from 'sonner';
 type MutationConfig = {
   mutationFn: (variables: unknown) => Promise<unknown>;
   onSuccess?: (data: unknown, variables: unknown) => Promise<unknown> | unknown;
-  onError?: (error: Error, variables: unknown) => void;
+  onError?: (error: unknown, variables: unknown) => void;
 };
 
 function installExecutableMutationMock() {
@@ -245,6 +245,15 @@ describe('ConflictResolutionContent', () => {
     expect(screen.queryByRole('button', { name: '採用済み' })).toBeNull();
   });
 
+  it('falls back to the visit route update message when Plan A fails without an Error', () => {
+    render(<ConflictResolutionContent initialDate="2026-04-09" />);
+
+    const applyPlanConfig = useMutationMock.mock.calls[0]?.[0] as MutationConfig;
+    applyPlanConfig.onError?.({}, {});
+
+    expect(toast.error).toHaveBeenCalledWith('訪問予定の順路更新に失敗しました');
+  });
+
   it('creates a reconfirmation task through the validated schedule endpoint', async () => {
     render(<ConflictResolutionContent initialDate="2026-04-09" />);
 
@@ -276,5 +285,14 @@ describe('ConflictResolutionContent', () => {
       expect(screen.getByRole('button', { name: '再確認依頼済み' })).toBeTruthy();
     });
     expect(toast.success).toHaveBeenCalledWith('患者再確認依頼を作成しました');
+  });
+
+  it('falls back to the reconfirmation task message when task creation fails without an Error', () => {
+    render(<ConflictResolutionContent initialDate="2026-04-09" />);
+
+    const reconfirmationConfig = useMutationMock.mock.calls[1]?.[0] as MutationConfig;
+    reconfirmationConfig.onError?.({}, {});
+
+    expect(toast.error).toHaveBeenCalledWith('患者再確認依頼の作成に失敗しました');
   });
 });

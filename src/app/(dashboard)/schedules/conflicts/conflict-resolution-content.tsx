@@ -17,6 +17,7 @@ import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
 import { timeIsoToMinutes } from '@/lib/visits/time-of-day';
+import { messageFromError } from '@/lib/utils/error-message';
 import { ScheduleDateNavigator } from '../schedule-date-navigator';
 import type { Pharmacist, VisitSchedule } from '../day-view.shared';
 import { applyVisitScheduleRouteUpdates } from '../visit-route-client';
@@ -361,8 +362,8 @@ export function ConflictResolutionContent({ initialDate }: { initialDate?: strin
       await invalidateConflictQueries();
       toast.success(`担当を${draft.targetPharmacist.name}へ変更しました`);
     },
-    onError: (error: Error) => {
-      toast.error(error.message);
+    onError: (error) => {
+      toast.error(messageFromError(error, '訪問予定の順路更新に失敗しました'));
     },
   });
 
@@ -384,8 +385,8 @@ export function ConflictResolutionContent({ initialDate }: { initialDate?: strin
       ]);
       toast.success('患者再確認依頼を作成しました');
     },
-    onError: (error: Error) => {
-      toast.error(error.message);
+    onError: (error) => {
+      toast.error(messageFromError(error, '患者再確認依頼の作成に失敗しました'));
     },
   });
 
