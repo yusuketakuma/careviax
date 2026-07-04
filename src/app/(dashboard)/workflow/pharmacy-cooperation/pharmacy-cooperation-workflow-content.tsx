@@ -1128,6 +1128,82 @@ function QueryFallback({
   return <>{children}</>;
 }
 
+function PatientShareConsentSummaryCell({ consent }: { consent: PatientShareConsentRow }) {
+  return (
+    <div>
+      <div className="font-medium">{consent.id}</div>
+      <TinyMeta>
+        {formatDate(consent.consent_date)} /{' '}
+        {consent.consent_method === 'digital' ? 'デジタル' : '紙署名'}
+      </TinyMeta>
+    </div>
+  );
+}
+
+function PatientShareConsentStatusCell({ consent }: { consent: PatientShareConsentRow }) {
+  return (
+    <div>
+      <Badge variant={consent.revoked_at ? 'destructive' : 'default'}>
+        {consent.revoked_at ? '撤回済み' : '有効'}
+      </Badge>
+      <div className="mt-1">
+        <TinyMeta>{consent.has_file_asset ? '添付あり' : '添付なし'}</TinyMeta>
+      </div>
+    </div>
+  );
+}
+
+function PatientShareConsentScopeCell({ consent }: { consent: PatientShareConsentRow }) {
+  return <TinyMeta>{consent.scope_keys.length > 0 ? consent.scope_keys.join(', ') : '-'}</TinyMeta>;
+}
+
+function PatientShareConsentActionCell({
+  consent,
+  revokeReason,
+  setRevokeReasons,
+  isBusy,
+  onRevoke,
+}: {
+  consent: PatientShareConsentRow;
+  revokeReason: string;
+  setRevokeReasons: Dispatch<SetStateAction<Record<string, string>>>;
+  isBusy: boolean;
+  onRevoke: (consent: PatientShareConsentRow, reason: string) => void;
+}) {
+  const canRevoke = !isBusy && revokeReason.trim().length > 0;
+
+  if (consent.revoked_at) {
+    return <TinyMeta>状態遷移はありません</TinyMeta>;
+  }
+
+  return (
+    <div className="flex min-w-64 flex-col gap-2">
+      <Input
+        value={revokeReason}
+        onChange={(event) =>
+          setRevokeReasons((current) => ({
+            ...current,
+            [consent.id]: event.target.value,
+          }))
+        }
+        placeholder="撤回理由"
+        aria-label={`${consent.id} の患者共有同意撤回理由`}
+      />
+      <Button
+        type="button"
+        size="sm"
+        variant="destructive"
+        disabled={!canRevoke}
+        onClick={() => onRevoke(consent, revokeReason)}
+        aria-label={`${consent.id} の患者共有同意を撤回`}
+      >
+        <XCircle className="size-4" aria-hidden="true" />
+        撤回
+      </Button>
+    </div>
+  );
+}
+
 function ShareCasesTable({
   rows,
   linkAcceptForms,
@@ -1447,6 +1523,44 @@ function PatientShareConsentsPanel({
     selectedShareCase?.status !== 'declined' &&
     form.consentDate.trim().length > 0 &&
     form.consentPerson.trim().length > 0;
+  const consentColumns: ColumnDef<PatientShareConsentRow>[] = [
+    {
+      id: 'consent',
+      header: '同意',
+      meta: { label: '同意' },
+      cell: ({ row }) => <PatientShareConsentSummaryCell consent={row.original} />,
+      enableSorting: false,
+    },
+    {
+      id: 'status',
+      header: '状態',
+      meta: { label: '状態' },
+      cell: ({ row }) => <PatientShareConsentStatusCell consent={row.original} />,
+      enableSorting: false,
+    },
+    {
+      id: 'scope',
+      header: '範囲',
+      meta: { label: '範囲' },
+      cell: ({ row }) => <PatientShareConsentScopeCell consent={row.original} />,
+      enableSorting: false,
+    },
+    {
+      id: 'action',
+      header: '操作',
+      meta: { label: '操作' },
+      cell: ({ row }) => (
+        <PatientShareConsentActionCell
+          consent={row.original}
+          revokeReason={revokeReasons[row.original.id] ?? ''}
+          setRevokeReasons={setRevokeReasons}
+          isBusy={isBusy}
+          onRevoke={onRevoke}
+        />
+      ),
+      enableSorting: false,
+    },
+  ];
 
   return (
     <div className="space-y-4">
@@ -1567,84 +1681,18 @@ function PatientShareConsentsPanel({
         {consents.length === 0 ? (
           <EmptyState title="患者共有同意はまだありません" />
         ) : (
-          <TableFrame label="患者共有同意一覧">
-            <thead className="sticky top-0 z-10 bg-muted/80 text-xs text-muted-foreground backdrop-blur">
-              <tr>
-                <th scope="col" className="px-3 py-2 text-left font-medium">
-                  同意
-                </th>
-                <th scope="col" className="px-3 py-2 text-left font-medium">
-                  状態
-                </th>
-                <th scope="col" className="px-3 py-2 text-left font-medium">
-                  範囲
-                </th>
-                <th scope="col" className="px-3 py-2 text-left font-medium">
-                  操作
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {consents.map((row) => {
-                const revokeReason = revokeReasons[row.id] ?? '';
-                const canRevoke = !isBusy && revokeReason.trim().length > 0;
-                return (
-                  <tr key={row.id} className="border-t border-border/70 align-top">
-                    <td className="px-3 py-2">
-                      <div className="font-medium">{row.id}</div>
-                      <TinyMeta>
-                        {formatDate(row.consent_date)} /{' '}
-                        {row.consent_method === 'digital' ? 'デジタル' : '紙署名'}
-                      </TinyMeta>
-                    </td>
-                    <td className="px-3 py-2">
-                      <Badge variant={row.revoked_at ? 'destructive' : 'default'}>
-                        {row.revoked_at ? '撤回済み' : '有効'}
-                      </Badge>
-                      <div className="mt-1">
-                        <TinyMeta>{row.has_file_asset ? '添付あり' : '添付なし'}</TinyMeta>
-                      </div>
-                    </td>
-                    <td className="px-3 py-2">
-                      <TinyMeta>
-                        {row.scope_keys.length > 0 ? row.scope_keys.join(', ') : '-'}
-                      </TinyMeta>
-                    </td>
-                    <td className="px-3 py-2 lg:min-w-64">
-                      {row.revoked_at ? (
-                        <TinyMeta>状態遷移はありません</TinyMeta>
-                      ) : (
-                        <div className="flex flex-col gap-2">
-                          <Input
-                            value={revokeReason}
-                            onChange={(event) =>
-                              setRevokeReasons((current) => ({
-                                ...current,
-                                [row.id]: event.target.value,
-                              }))
-                            }
-                            placeholder="撤回理由"
-                            aria-label={`${row.id} の患者共有同意撤回理由`}
-                          />
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="destructive"
-                            disabled={!canRevoke}
-                            onClick={() => onRevoke(row, revokeReason)}
-                            aria-label={`${row.id} の患者共有同意を撤回`}
-                          >
-                            <XCircle className="size-4" aria-hidden="true" />
-                            撤回
-                          </Button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </TableFrame>
+          <DataTable
+            columns={consentColumns}
+            data={consents}
+            caption="患者共有同意一覧"
+            getRowId={(row) => row.id}
+            getRowA11yLabel={(row) =>
+              `${row.id} ${row.revoked_at ? '撤回済み' : '有効'} ${
+                row.scope_keys.length > 0 ? row.scope_keys.join(', ') : '-'
+              }`
+            }
+            emptyMessage="患者共有同意はまだありません"
+          />
         )}
       </QueryFallback>
     </div>

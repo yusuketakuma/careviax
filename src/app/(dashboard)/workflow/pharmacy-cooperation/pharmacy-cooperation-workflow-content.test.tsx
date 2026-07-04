@@ -783,8 +783,10 @@ describe('PharmacyCooperationWorkflowContent', () => {
   it('registers and revokes patient share consents without rendering raw consent person', async () => {
     renderContent();
 
-    expect(await screen.findByText('share_consent_1')).toBeTruthy();
+    expect((await screen.findAllByText('share_consent_1')).length).toBeGreaterThan(0);
     expect(document.body.textContent).not.toContain('山田花子');
+    expect(screen.queryByRole('button', { name: 'CSV出力' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '印刷' })).toBeNull();
 
     fireEvent.change(screen.getByLabelText('患者共有同意日'), {
       target: { value: '2026-06-19' },
@@ -824,23 +826,31 @@ describe('PharmacyCooperationWorkflowContent', () => {
       });
     });
 
-    const consentRow = screen.getByText('share_consent_1').closest('tr');
-    expect(consentRow).toBeTruthy();
-    const revokeButton = within(consentRow as HTMLTableRowElement).getByRole('button', {
-      name: 'share_consent_1 の患者共有同意を撤回',
-    }) as HTMLButtonElement;
-    expect(revokeButton.disabled).toBe(true);
+    const revokeButtonName = 'share_consent_1 の患者共有同意を撤回';
+    const revokeReasonLabel = 'share_consent_1 の患者共有同意撤回理由';
+    expect(
+      screen
+        .getAllByRole('button', { name: revokeButtonName })
+        .every((button) => (button as HTMLButtonElement).disabled),
+    ).toBe(true);
 
-    fireEvent.change(
-      within(consentRow as HTMLTableRowElement).getByLabelText(
-        'share_consent_1 の患者共有同意撤回理由',
-      ),
-      {
-        target: { value: '撤回連絡あり' },
-      },
-    );
-    expect(revokeButton.disabled).toBe(false);
-    fireEvent.click(revokeButton);
+    fireEvent.change(screen.getAllByLabelText(revokeReasonLabel)[0], {
+      target: { value: '撤回連絡あり' },
+    });
+    await waitFor(() => {
+      expect(
+        screen
+          .getAllByRole('button', { name: revokeButtonName })
+          .some((button) => !(button as HTMLButtonElement).disabled),
+      ).toBe(true);
+    });
+    const revokeButton = screen
+      .getAllByRole('button', {
+        name: revokeButtonName,
+      })
+      .find((button) => !(button as HTMLButtonElement).disabled);
+    expect(revokeButton).toBeTruthy();
+    fireEvent.click(revokeButton as HTMLButtonElement);
     expect(
       findFetchCall(
         (input, init) =>
@@ -868,6 +878,40 @@ describe('PharmacyCooperationWorkflowContent', () => {
         reason: '撤回連絡あり',
       });
     });
+  });
+
+  it('shows the patient share consent empty state only for genuine empty results', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/patient-share-cases/share_case_1/consents?limit=8') {
+        return new Response(JSON.stringify({ data: [], hasMore: false }), { status: 200 });
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    expect(await screen.findByText('患者共有同意はまだありません')).toBeTruthy();
+    expect(screen.queryByText('薬局間協力ワークフローを表示できません')).toBeNull();
+  });
+
+  it('keeps patient share consent query failures out of the empty state', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/patient-share-cases/share_case_1/consents?limit=8') {
+        return new Response(JSON.stringify({ error: 'boom' }), { status: 500 });
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    expect(await screen.findByText('薬局間協力ワークフローを表示できません')).toBeTruthy();
+    expect(screen.queryByText('患者共有同意はまだありません')).toBeNull();
   });
 
   it('renders PHI-minimized share cases, visit requests, and partner visit records', async () => {
@@ -1465,7 +1509,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
 
     renderContent();
 
-    await screen.findByText('share_consent_1');
+    await screen.findAllByText('share_consent_1');
     fireEvent.change(screen.getByLabelText('患者共有同意日'), {
       target: { value: '2026-06-19' },
     });
