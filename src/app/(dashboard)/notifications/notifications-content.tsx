@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
-import { Loading } from '@/components/ui/loading';
+import { Skeleton } from '@/components/ui/loading';
 import { FilterChipBar } from '@/components/features/workspace/filter-chip-bar';
 import { ListOpenCard } from '@/components/features/workspace/list-open-card';
 import {
@@ -56,6 +56,51 @@ const CATEGORY_FILTERS: NotificationCategoryFilter[] = [
 type NotificationsContentProps = {
   initialCategory?: NotificationCategoryFilter;
 };
+
+function NotificationsLoadingState() {
+  return (
+    <div className="w-full space-y-5" data-testid="notifications-inbox-loading">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">お知らせ</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            急ぎの確認、返信待ち、未同期をまとめて見ます。
+          </p>
+        </div>
+        <Button type="button" variant="outline" size="sm" className="!h-auto !min-h-11" disabled>
+          全て既読にする
+        </Button>
+      </div>
+
+      <div className="flex flex-wrap gap-2" aria-hidden="true">
+        {[72, 64, 96, 104, 88, 80].map((width) => (
+          <Skeleton key={width} className="h-9 rounded-full" style={{ width }} />
+        ))}
+      </div>
+
+      <div
+        className="space-y-3"
+        role="status"
+        aria-label="お知らせ一覧を読み込み中"
+        aria-live="polite"
+      >
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div key={index} className="rounded-lg border border-border bg-card p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1 space-y-2">
+                <Skeleton className="h-5 w-24 rounded-full" />
+                <Skeleton className="h-5 w-full max-w-md" />
+                <Skeleton className="h-4 w-4/5 max-w-lg" />
+              </div>
+              <Skeleton className="h-10 w-16 rounded-md" />
+            </div>
+          </div>
+        ))}
+        <span className="sr-only">お知らせ一覧を読み込み中</span>
+      </div>
+    </div>
+  );
+}
 
 function mergeNotificationItems(current: NotificationItem[], incoming: NotificationItem[]) {
   return [...incoming, ...current]
@@ -202,7 +247,7 @@ export function NotificationsContent({ initialCategory = 'all' }: NotificationsC
     }
   };
 
-  if (!orgId || isLoading) return <Loading label="お知らせを読み込み中..." />;
+  if (!orgId || isLoading) return <NotificationsLoadingState />;
 
   return (
     <div className="w-full space-y-5" data-testid="notifications-inbox">

@@ -193,7 +193,7 @@ describe('NotificationsContent', () => {
     expect(useQueryMock).toHaveBeenCalledWith(expect.objectContaining({ enabled: false }));
   });
 
-  it('shows screen-specific loading status while the inbox is loading', () => {
+  it('keeps the inbox shell and shows skeleton rows while the inbox is loading', () => {
     useQueryMock.mockReturnValue({
       data: undefined,
       isLoading: true,
@@ -202,9 +202,15 @@ describe('NotificationsContent', () => {
 
     render(<NotificationsContent />);
 
-    expect(screen.getByRole('status', { name: 'お知らせを読み込み中...' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'お知らせ', level: 1 })).toBeTruthy();
+    expect(screen.getByRole('status', { name: 'お知らせ一覧を読み込み中' })).toBeTruthy();
     expect(screen.queryByRole('status', { name: '読み込み中...' })).toBeNull();
+    expect(screen.queryByText('読み込み中...', { selector: 'p' })).toBeNull();
+    expect(screen.getByTestId('notifications-inbox-loading')).toBeTruthy();
     expect(screen.queryByTestId('notifications-inbox')).toBeNull();
+    expect(
+      (screen.getByRole('button', { name: '全て既読にする' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
   });
 
   it('loads notifications through the shared path and org header helpers', async () => {
