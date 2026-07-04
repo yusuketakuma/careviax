@@ -5,10 +5,13 @@ import {
   ZipExpansionLimits,
   fetchBytes,
   fetchText,
+  normalizeCell,
+  normalizePreviewRowLimit,
   normalizeImportSourceUrl,
   resolveImportSourceUrl,
   extractImportSourceDateFromUrl,
   sha256ImportPayload,
+  splitDelimitedLine,
   unzipWithLimits,
 } from './shared';
 
@@ -18,8 +21,6 @@ export const SSK_DRUG_MASTER_PAGE_URL =
 const SSK_TOTAL_COLUMNS = 42;
 const UPSERT_CHUNK_SIZE = 200;
 const PREVIEW_READ_CHUNK_SIZE = 500;
-const DEFAULT_PREVIEW_ROW_LIMIT = 20;
-const MAX_PREVIEW_ROW_LIMIT = 100;
 const SSK_ZIP_EXPANSION_LIMITS: ZipExpansionLimits = {
   maxEntries: 20,
   maxEntryBytes: 128 * 1024 * 1024,
@@ -129,44 +130,6 @@ const SSK_PREVIEW_COMPARE_FIELDS = [
   'max_administration_days',
   'transitional_expiry_date',
 ] as const;
-
-function normalizeCell(value: string | undefined) {
-  const trimmed = value?.trim() ?? '';
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function parseCsvLine(line: string) {
-  const values: string[] = [];
-  let current = '';
-  let inQuotes = false;
-
-  for (let index = 0; index < line.length; index += 1) {
-    const char = line[index];
-    const next = line[index + 1];
-
-    if (char === '"') {
-      if (inQuotes && next === '"') {
-        current += '"';
-        index += 1;
-        continue;
-      }
-
-      inQuotes = !inQuotes;
-      continue;
-    }
-
-    if (char === ',' && !inQuotes) {
-      values.push(current);
-      current = '';
-      continue;
-    }
-
-    current += char;
-  }
-
-  values.push(current);
-  return values;
-}
 
 function parseSskDecimal(value: string | null) {
   if (!value || value === '0') return null;
@@ -328,14 +291,6 @@ export function buildSskDrugMasterDedupeKey(sourceFileHash: string) {
   return `ssk:${sourceFileHash}`;
 }
 
-function normalizePreviewLimit(value: number | undefined) {
-  if (value == null) return DEFAULT_PREVIEW_ROW_LIMIT;
-  if (!Number.isFinite(value)) return DEFAULT_PREVIEW_ROW_LIMIT;
-  const normalized = Math.trunc(value);
-  if (!Number.isSafeInteger(normalized) || normalized < 0) return DEFAULT_PREVIEW_ROW_LIMIT;
-  return Math.min(normalized, MAX_PREVIEW_ROW_LIMIT);
-}
-
 export async function parseSskDrugMasterZip(
   options: Pick<
     ImportSskDrugMasterOptions,
@@ -367,7 +322,7 @@ export async function parseSskDrugMasterZip(
   const deduped = new Map<string, ParsedSskDrugMasterRecord>();
 
   for (const line of lines) {
-    const record = mapSskRowToDrugMaster(parseCsvLine(line));
+    const record = mapSskRowToDrugMaster(splitDelimitedLine(line));
     if (!record) continue;
 
     const current = deduped.get(record.yj_code);
@@ -488,7 +443,7 @@ export async function previewSskDrugMasterImport(
   options: PreviewSskDrugMasterImportOptions = {},
 ): Promise<SskDrugMasterImportPreview> {
   const parsed = await parseSskDrugMasterZip(options);
-  const previewLimit = normalizePreviewLimit(options.previewLimit);
+  const previewLimit = normalizePreviewRowLimit(options.previewLimit);
   const existingByYjCode = await fetchExistingSskDrugMastersByYjCode(
     db,
     parsed.records.map((record) => record.yj_code),

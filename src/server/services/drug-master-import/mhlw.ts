@@ -8,6 +8,7 @@ import {
   fetchBytes,
   fetchText,
   normalizeCell,
+  normalizePreviewRowLimit,
   normalizeImportSourceUrl,
   extractImportSourceDateFromUrl,
   parseJapaneseEraApplicableDateText,
@@ -245,9 +246,6 @@ export type MhlwGenericMappingImportPreview = {
   };
 };
 
-const DEFAULT_PREVIEW_ROW_LIMIT = 20;
-const MAX_PREVIEW_ROW_LIMIT = 100;
-
 function findHeaderIndex(rows: Array<Array<string | null>>, requiredHeader: string) {
   const index = rows.findIndex((row) => row.some((cell) => normalizeCell(cell) === requiredHeader));
   if (index < 0) {
@@ -450,14 +448,6 @@ export async function parseMhlwPriceWorkbook(
     records,
     skippedInvalidYjCount,
   };
-}
-
-function normalizePreviewLimit(value: number | undefined) {
-  if (value == null) return DEFAULT_PREVIEW_ROW_LIMIT;
-  if (!Number.isFinite(value)) return DEFAULT_PREVIEW_ROW_LIMIT;
-  const normalized = Math.trunc(value);
-  if (!Number.isSafeInteger(normalized) || normalized < 0) return DEFAULT_PREVIEW_ROW_LIMIT;
-  return Math.min(normalized, MAX_PREVIEW_ROW_LIMIT);
 }
 
 async function resolveMhlwPriceWorkbookSources(
@@ -824,7 +814,7 @@ export async function previewMhlwPriceList(
   const fetchImpl = options.fetchImpl ?? fetch;
   const workbookSources = await resolveMhlwPriceWorkbookSources(options);
   const { workbookUrls } = workbookSources;
-  const previewLimit = normalizePreviewLimit(options.previewLimit);
+  const previewLimit = normalizePreviewRowLimit(options.previewLimit);
   const sourceFingerprints: Array<{ sourceUrl: string; sourceFileHash: string }> = [];
   const rows: MhlwPricePreviewRow[] = [];
   let recordCount = 0;
@@ -1033,7 +1023,7 @@ export async function previewMhlwGenericFlags(
   options: PreviewMhlwGenericOptions = {},
 ): Promise<MhlwGenericFlagImportPreview> {
   const parsed = await parseMhlwPriceWorkbook(options);
-  const previewLimit = normalizePreviewLimit(options.previewLimit);
+  const previewLimit = normalizePreviewRowLimit(options.previewLimit);
   const rows: MhlwGenericFlagPreviewRow[] = [];
   let changedFlagCount = 0;
 
@@ -1250,7 +1240,7 @@ export async function previewGenericNameMappings(
   options: PreviewMhlwGenericOptions = {},
 ): Promise<MhlwGenericMappingImportPreview> {
   const parsed = await parseGenericNameWorkbook(options);
-  const previewLimit = normalizePreviewLimit(options.previewLimit);
+  const previewLimit = normalizePreviewRowLimit(options.previewLimit);
   const masters = await db.drugMaster.findMany({
     select: {
       id: true,

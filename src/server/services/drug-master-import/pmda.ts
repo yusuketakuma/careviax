@@ -12,6 +12,7 @@ import {
   isZipBuffer,
   normalizeCell,
   normalizeImportSourceUrl,
+  normalizePreviewRowLimit,
   parseDate,
   sha256ImportPayload,
   unzipWithLimits,
@@ -106,8 +107,6 @@ export type PmdaPackageInsertImportPreview = {
 
 const PMDA_FULL_URL_ENV = 'PMDA_PACKAGE_INSERT_FULL_URL';
 const PMDA_DELTA_URL_ENV = 'PMDA_PACKAGE_INSERT_DELTA_URL';
-const DEFAULT_PREVIEW_ROW_LIMIT = 20;
-const MAX_PREVIEW_ROW_LIMIT = 100;
 const PMDA_ZIP_EXPANSION_LIMITS: ZipExpansionLimits = {
   maxEntries: 80_000,
   maxEntryBytes: 8 * 1024 * 1024,
@@ -134,14 +133,6 @@ function resolvePmdaZipLimits(overrides?: Partial<ZipExpansionLimits>) {
     ...PMDA_ZIP_EXPANSION_LIMITS,
     ...overrides,
   };
-}
-
-function normalizePreviewLimit(value: number | undefined) {
-  if (value == null) return DEFAULT_PREVIEW_ROW_LIMIT;
-  if (!Number.isFinite(value)) return DEFAULT_PREVIEW_ROW_LIMIT;
-  const normalized = Math.trunc(value);
-  if (!Number.isSafeInteger(normalized) || normalized < 0) return DEFAULT_PREVIEW_ROW_LIMIT;
-  return Math.min(normalized, MAX_PREVIEW_ROW_LIMIT);
 }
 
 function unzipPmdaPackageInsertArchive(
@@ -519,7 +510,7 @@ export async function previewPmdaPackageInserts(
   options: PreviewPmdaPackageInsertOptions = {},
 ): Promise<PmdaPackageInsertImportPreview> {
   const parsed = await parsePmdaPackageInsertArchive(options);
-  const previewLimit = normalizePreviewLimit(options.previewLimit);
+  const previewLimit = normalizePreviewRowLimit(options.previewLimit);
   const masters = await db.drugMaster.findMany({
     select: {
       id: true,

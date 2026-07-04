@@ -8,6 +8,7 @@ import {
   extractImportSourceDateFromUrl,
   isZipBuffer,
   normalizeCell,
+  normalizePreviewRowLimit,
   resolveImportSourceUrl,
   sha256ImportPayload,
   splitDelimitedLine,
@@ -91,9 +92,6 @@ export type HotMasterImportPreview = {
     rows: HotMasterPreviewRow[];
   };
 };
-
-const DEFAULT_PREVIEW_ROW_LIMIT = 20;
-const MAX_PREVIEW_ROW_LIMIT = 100;
 
 function resolveConfiguredHotUrl(fileUrl?: string) {
   const configured = fileUrl ?? process.env.HOT_MASTER_URL;
@@ -277,14 +275,6 @@ function normalizeHotYjCode(value: string | null) {
   return { status: 'valid' as const, yjCode: normalized };
 }
 
-function normalizePreviewLimit(value: number | undefined) {
-  if (value == null) return DEFAULT_PREVIEW_ROW_LIMIT;
-  if (!Number.isFinite(value)) return DEFAULT_PREVIEW_ROW_LIMIT;
-  const normalized = Math.trunc(value);
-  if (!Number.isSafeInteger(normalized) || normalized < 0) return DEFAULT_PREVIEW_ROW_LIMIT;
-  return Math.min(normalized, MAX_PREVIEW_ROW_LIMIT);
-}
-
 function collectValidHotPackageGtins(records: ParsedHotRecord[]) {
   return [
     ...new Set(
@@ -360,7 +350,7 @@ export async function previewHotMaster(
   options: PreviewHotMasterOptions = {},
 ): Promise<HotMasterImportPreview> {
   const parsed = await parseHotMasterFile(options);
-  const previewLimit = normalizePreviewLimit(options.previewLimit);
+  const previewLimit = normalizePreviewRowLimit(options.previewLimit);
   const existingPackageByGtin = await fetchExistingHotPackagesByGtin(
     db,
     collectValidHotPackageGtins(parsed.records),

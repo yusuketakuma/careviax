@@ -15,6 +15,7 @@ import {
   MHLW_IMPORT_URL_POLICY,
   extractImportSourceDateFromUrl,
   fetchBytes,
+  normalizePreviewRowLimit,
   parseImportSourceDateToken,
   parseJapaneseEraApplicableDateText,
   unzipWithLimits,
@@ -112,6 +113,27 @@ describe('import source date helpers', () => {
     expect(parseJapaneseEraApplicableDateText('令和8年13月1日適用')).toBeNull();
     expect(parseJapaneseEraApplicableDateText('令和8年2月31日適用')).toBeNull();
     expect(parseJapaneseEraApplicableDateText('適用日未掲載')).toBeNull();
+  });
+});
+
+describe('normalizePreviewRowLimit', () => {
+  it.each([
+    [undefined, 20],
+    [Number.POSITIVE_INFINITY, 20],
+    [Number.NaN, 20],
+    [Number.MAX_SAFE_INTEGER + 1, 20],
+    [-1, 20],
+    [0, 0],
+    [10.9, 10],
+    [100, 100],
+    [101, 100],
+  ])('normalizes %s to %s with the shared import preview defaults', (input, expected) => {
+    expect(normalizePreviewRowLimit(input)).toBe(expected);
+  });
+
+  it('supports caller-specific defaults and caps', () => {
+    expect(normalizePreviewRowLimit(undefined, { defaultLimit: 5, maxLimit: 8 })).toBe(5);
+    expect(normalizePreviewRowLimit(12, { defaultLimit: 5, maxLimit: 8 })).toBe(8);
   });
 });
 

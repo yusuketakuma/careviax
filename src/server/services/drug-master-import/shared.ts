@@ -42,6 +42,8 @@ const DEFAULT_IMPORT_MAX_REDIRECTS = 3;
 const MAX_IMPORT_MAX_REDIRECTS = 10;
 const DEFAULT_IMPORT_TEXT_MAX_BYTES = 2 * BYTES_PER_MIB;
 const MAX_IMPORT_POLICY_MAX_BYTES = 512 * BYTES_PER_MIB;
+export const DEFAULT_IMPORT_PREVIEW_ROW_LIMIT = 20;
+export const MAX_IMPORT_PREVIEW_ROW_LIMIT = 100;
 const EXTRA_ALLOWED_IMPORT_HOSTS_ENV = 'DRUG_MASTER_IMPORT_ALLOWED_HOSTS';
 const DRUG_MASTER_IMPORT_FAILURE_MESSAGE = '医薬品マスタ取込に失敗しました';
 
@@ -627,6 +629,22 @@ export function normalizeCell(value: unknown) {
   if (value == null) return null;
   const normalized = String(value).trim();
   return normalized.length > 0 ? normalized : null;
+}
+
+export function normalizePreviewRowLimit(
+  value: number | undefined,
+  options: {
+    defaultLimit?: number;
+    maxLimit?: number;
+  } = {},
+) {
+  const defaultLimit = options.defaultLimit ?? DEFAULT_IMPORT_PREVIEW_ROW_LIMIT;
+  const maxLimit = options.maxLimit ?? MAX_IMPORT_PREVIEW_ROW_LIMIT;
+  if (value == null) return defaultLimit;
+  if (!Number.isFinite(value)) return defaultLimit;
+  const normalized = Math.trunc(value);
+  if (!Number.isSafeInteger(normalized) || normalized < 0) return defaultLimit;
+  return Math.min(normalized, maxLimit);
 }
 
 export function normalizeDigits(value: string) {
