@@ -327,10 +327,8 @@ export function FormularyOperationsPanel({
               headingLevel={3}
               title="レビュー期限超過を読み込めませんでした"
               description="採用薬レビュー対象を表示できていません。0件ではなく取得エラーです。再読み込みしてください。"
-              action={{
-                label: '再読み込み',
-                onClick: () => void formularyReviewQuery.refetch(),
-              }}
+              onRetry={() => void formularyReviewQuery.refetch()}
+              retryLabel="再読み込み"
               className="px-4 py-6"
             />
           ) : null}
@@ -341,10 +339,8 @@ export function FormularyOperationsPanel({
               headingLevel={3}
               title="在庫下限未設定を読み込めませんでした"
               description="在庫下限未設定の採用品を表示できていません。0件ではなく取得エラーです。再読み込みしてください。"
-              action={{
-                label: '再読み込み',
-                onClick: () => void formularyMissingReorderQuery.refetch(),
-              }}
+              onRetry={() => void formularyMissingReorderQuery.refetch()}
+              retryLabel="再読み込み"
               className="px-4 py-6"
             />
           ) : null}
@@ -388,10 +384,8 @@ export function FormularyOperationsPanel({
               headingLevel={3}
               title="採用品変更申請を読み込めませんでした"
               description="未承認申請を表示できていません。「申請なし」ではなく取得エラーです。再読み込みしてください。"
-              action={{
-                label: '再読み込み',
-                onClick: () => void formularyRequestsQuery.refetch(),
-              }}
+              onRetry={() => void formularyRequestsQuery.refetch()}
+              retryLabel="再読み込み"
               className="px-4 py-6"
             />
           </div>
@@ -523,10 +517,8 @@ export function FormularyOperationsPanel({
               headingLevel={3}
               title="処方・採用品不一致を読み込めませんでした"
               description="処方頻度と採用品状態の突合結果を表示できていません。候補なしではなく取得エラーです。"
-              action={{
-                label: '再読み込み',
-                onClick: () => void formularyUsageMismatchQuery.refetch(),
-              }}
+              onRetry={() => void formularyUsageMismatchQuery.refetch()}
+              retryLabel="再読み込み"
               className="px-4 py-6"
             />
           </div>
@@ -644,10 +636,8 @@ export function FormularyOperationsPanel({
               headingLevel={3}
               title="採用薬影響レビューを読み込めませんでした"
               description="安全属性・期限・薬価差分の影響キューを表示できていません。対象なしではなく取得エラーです。"
-              action={{
-                label: '再読み込み',
-                onClick: () => void formularyImpactQuery.refetch(),
-              }}
+              onRetry={() => void formularyImpactQuery.refetch()}
+              retryLabel="再読み込み"
               className="px-4 py-6"
             />
           </div>
@@ -1098,10 +1088,8 @@ export function FormularyOperationsPanel({
               headingLevel={3}
               title="採用品テンプレートを読み込めませんでした"
               description="施設別採用品テンプレートを表示できていません。0件ではなく取得エラーです。再読み込みしてください。"
-              action={{
-                label: '再読み込み',
-                onClick: () => void formularyTemplatesQuery.refetch(),
-              }}
+              onRetry={() => void formularyTemplatesQuery.refetch()}
+              retryLabel="再読み込み"
               className="mt-3 px-4 py-6"
             />
           ) : null}

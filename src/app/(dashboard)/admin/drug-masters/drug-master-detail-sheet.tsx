@@ -226,10 +226,8 @@ export function DrugMasterDetailSheet({
                       headingLevel={3}
                       title="採用品設定を読み込めませんでした"
                       description="採用品状態、在庫下限、採用後発薬を表示できていません。未登録ではなく取得エラーです。再読み込みしてください。"
-                      action={{
-                        label: '再読み込み',
-                        onClick: () => void stockConfigQuery.refetch(),
-                      }}
+                      onRetry={() => void stockConfigQuery.refetch()}
+                      retryLabel="再読み込み"
                       className="px-4 py-6"
                     />
                   ) : (
@@ -358,10 +356,8 @@ export function DrugMasterDetailSheet({
                               headingLevel={3}
                               title="採用後発薬候補を読み込めませんでした"
                               description="採用後発薬の候補を表示できていません。候補なしではなく取得エラーです。再読み込みしてください。"
-                              action={{
-                                label: '再読み込み',
-                                onClick: () => void preferredGenericCandidatesQuery.refetch(),
-                              }}
+                              onRetry={() => void preferredGenericCandidatesQuery.refetch()}
+                              retryLabel="再読み込み"
                               className="px-4 py-6"
                             />
                           ) : null}
@@ -372,10 +368,8 @@ export function DrugMasterDetailSheet({
                               headingLevel={3}
                               title="推奨後発品を読み込めませんでした"
                               description="推奨候補を表示できていません。候補なしではなく取得エラーです。再読み込みしてください。"
-                              action={{
-                                label: '再読み込み',
-                                onClick: () => void genericRecommendationsQuery.refetch(),
-                              }}
+                              onRetry={() => void genericRecommendationsQuery.refetch()}
+                              retryLabel="再読み込み"
                               className="px-4 py-6"
                             />
                           ) : genericRecommendations.length > 0 ? (
@@ -640,10 +634,8 @@ export function DrugMasterDetailSheet({
                         headingLevel={3}
                         title="同一成分グループを読み込めませんでした"
                         description="同一一般名の比較データを表示できていません。未設定ではなく取得エラーです。再読み込みしてください。"
-                        action={{
-                          label: '再読み込み',
-                          onClick: () => void ingredientGroupQuery.refetch(),
-                        }}
+                        onRetry={() => void ingredientGroupQuery.refetch()}
+                        retryLabel="再読み込み"
                       />
                     ) : ingredientGroup && ingredientGroup.summary ? (
                       <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
@@ -728,10 +720,8 @@ export function DrugMasterDetailSheet({
                       headingLevel={3}
                       title="採用品変更履歴を読み込めませんでした"
                       description="採用品変更履歴を表示できていません。履歴なしではなく取得エラーです。再読み込みしてください。"
-                      action={{
-                        label: '再読み込み',
-                        onClick: () => void stockHistoryQuery.refetch(),
-                      }}
+                      onRetry={() => void stockHistoryQuery.refetch()}
+                      retryLabel="再読み込み"
                       className="px-4 py-6"
                     />
                   ) : stockHistory.length === 0 ? (

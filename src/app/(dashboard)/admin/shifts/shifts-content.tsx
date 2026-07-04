@@ -984,13 +984,11 @@ export function ShiftsContent() {
               size="inline"
               title="シフトを読み込めませんでした"
               description="データの読み込みに失敗しました。時間をおいて再読み込みしてください。"
-              action={{
-                label: '再読み込み',
-                onClick: () => {
-                  void refetchPharmacists();
-                  void refetchShifts();
-                },
+              onRetry={() => {
+                void refetchPharmacists();
+                void refetchShifts();
               }}
+              retryLabel="再読み込み"
             />
           ) : pharmacistsLoading || shiftsLoading ? (
             <div role="status" aria-label="シフトを読み込み中" aria-live="polite">
