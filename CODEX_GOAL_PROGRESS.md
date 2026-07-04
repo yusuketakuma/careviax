@@ -1,5 +1,36 @@
 # CODEX Goal Progress
 
+## R23 Workbench Mutations Error Message Helper Partial - 2026-07-05 00:34 JST
+
+- Status:
+  - Implemented and validated the next bounded R23 slice:
+    - `src/components/features/dispense-workbench/use-workbench-mutations.ts`
+    - `src/components/features/dispense-workbench/use-workbench-mutations.test.tsx`
+- Scope:
+  - Reused the existing `messageFromError` helper for generic workbench write
+    error toast formatting.
+  - Added coverage that an empty generic Error message falls back to
+    `保存に失敗しました`.
+- Safety:
+  - Client/helper error message formatting only.
+  - No product API, DB, auth, authorization, PHI projection, billing semantics,
+    audit, deployment, package dependency, live DB operation, external send,
+    secret handling, push, or destructive operation changed.
+- Validation:
+  - `pnpm exec vitest run src/components/features/dispense-workbench/use-workbench-mutations.test.tsx src/lib/utils/error-message.test.ts --reporter=dot --testTimeout=30000`
+    passed `2` files / `8` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `ad956006`
+    (`refactor(ui): reuse error message helper in workbench mutations`).
+- Remaining:
+  - R23 is partial; remaining hand-rolled error-message ternaries should be
+    migrated by bounded domain chunks.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R23 Patient Form Error Message Helper Partial - 2026-07-05 00:32 JST
 
 - Status:
