@@ -6,7 +6,11 @@ import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { conflict, forbidden, internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import { parseOptionalBoundedIntegerParam, parsePaginationParams } from '@/lib/api/pagination';
+import {
+  buildCursorPage,
+  parseOptionalBoundedIntegerParam,
+  parsePaginationParams,
+} from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject, readJsonObjectString, toPrismaJsonInput } from '@/lib/db/json';
 import { dateKeySchema } from '@/lib/validations/date-key';
@@ -740,8 +744,8 @@ async function authenticatedGET(req: NextRequest) {
         },
         take: resolvedPaletteLimit + 1,
       });
-      const hasMore = reports.length > resolvedPaletteLimit;
-      const dataRows = hasMore ? reports.slice(0, resolvedPaletteLimit) : reports;
+      const page = buildCursorPage(reports, resolvedPaletteLimit, (report) => report.id);
+      const dataRows = page.data;
       const patientIds = Array.from(new Set(dataRows.map((report) => report.patient_id)));
       const patientRows =
         paletteMatchingPatients.length > 0 && !patientId
@@ -772,7 +776,7 @@ async function authenticatedGET(req: NextRequest) {
               ? { name: patientNameById.get(report.patient_id)! }
               : null,
           })),
-          hasMore,
+          hasMore: page.hasMore,
         }),
       );
     }
@@ -879,18 +883,19 @@ async function authenticatedGET(req: NextRequest) {
       : filteredData.slice(
           cursor ? Math.max(filteredData.findIndex((report) => report.id === cursor) + 1, 0) : 0,
         );
-    const hasMore = paginated.length > limit;
-    const data = (hasMore ? paginated.slice(0, limit) : paginated).map((report) => {
+    const page = buildCursorPage(paginated, limit, (report) => report.id);
+    const data = page.data.map((report) => {
       const { _searchable_report_text: searchableReportText, ...reportForResponse } = report;
       void searchableReportText;
       return reportForResponse;
     });
-    const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
     const deliverySummary = canUseDbPagination
       ? await buildDeliverySummaryForWhere(where)
       : buildDeliverySummary(filteredData);
 
-    return withSensitiveNoStore(success({ data, hasMore, nextCursor, deliverySummary }));
+    return withSensitiveNoStore(
+      success({ data, hasMore: page.hasMore, nextCursor: page.nextCursor, deliverySummary }),
+    );
   });
 }
 
