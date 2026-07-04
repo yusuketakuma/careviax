@@ -42,16 +42,15 @@ const BASE_PAYLOAD: CapacityPayload = {
 };
 
 function stubCapacityFetch(payload: CapacityPayload) {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url === '/api/admin/capacity') {
-        return new Response(JSON.stringify({ data: payload }), { status: 200 });
-      }
-      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
-    }),
-  );
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === '/api/admin/capacity') {
+      return new Response(JSON.stringify({ data: payload }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
 }
 
 function renderContent() {
@@ -105,6 +104,16 @@ describe('CapacityContent', () => {
       expect(screen.getByText('いま注意が必要な詰まりはありません。')).toBeTruthy(),
     );
     expect(screen.getByText('勤務中のスタッフがいません。')).toBeTruthy();
+  });
+
+  it('fetches capacity through the admin API with org headers and unwraps the data envelope', async () => {
+    const fetchMock = stubCapacityFetch(BASE_PAYLOAD);
+    renderContent();
+
+    await screen.findByTestId('capacity-kpis');
+    expect(fetchMock).toHaveBeenCalledWith('/api/admin/capacity', {
+      headers: { 'x-org-id': 'org_1' },
+    });
   });
 
   it('loading state mirrors the loaded layout: KPI skeletons → attention skeleton → 2 chart skeletons', async () => {
