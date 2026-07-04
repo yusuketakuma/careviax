@@ -32,7 +32,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loading } from '@/components/ui/loading';
+import { Skeleton } from '@/components/ui/loading';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -366,6 +366,77 @@ function SectionCard({ children, className, ...props }: React.ComponentProps<'se
     <section className={cn('rounded-lg border border-border/70 bg-card p-4', className)} {...props}>
       {children}
     </section>
+  );
+}
+
+function PatientCardDocumentsLoadingState() {
+  return (
+    <div className="space-y-4" role="status" aria-label="初回訪問文書・交付記録を読み込み中">
+      <div className="space-y-2">
+        <h3 className="text-base font-semibold text-foreground">初回訪問文書・交付記録</h3>
+        <Skeleton className="h-4 w-72 max-w-full" />
+      </div>
+      <div className="grid gap-3 md:grid-cols-3">
+        <Skeleton className="h-24" />
+        <Skeleton className="h-24" />
+        <Skeleton className="h-24" />
+      </div>
+      <div className="space-y-2 rounded-lg border border-border/60 p-3">
+        <Skeleton className="h-4 w-40" />
+        <Skeleton className="h-3 w-full" />
+        <Skeleton className="h-3 w-5/6" />
+      </div>
+    </div>
+  );
+}
+
+function PatientCardWorkspaceLoadingState() {
+  return (
+    <div
+      className="space-y-6"
+      data-testid="card-workspace-loading"
+      role="status"
+      aria-label="処方カード作業台を読み込み中"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-2">
+          <h1 className="text-xl font-bold leading-snug text-foreground">処方カード作業台</h1>
+          <Skeleton className="h-4 w-44" />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Skeleton className="h-11 w-32" />
+          <Skeleton className="h-11 w-36" />
+          <Skeleton className="h-11 w-36 max-sm:hidden" />
+        </div>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="space-y-4">
+          <SectionCard>
+            <div className="space-y-3">
+              <Skeleton className="h-5 w-40" />
+              <div className="grid gap-3 md:grid-cols-3">
+                <Skeleton className="h-20" />
+                <Skeleton className="h-20" />
+                <Skeleton className="h-20" />
+              </div>
+            </div>
+          </SectionCard>
+          <SectionCard>
+            <div className="space-y-3">
+              <Skeleton className="h-5 w-48" />
+              <Skeleton className="h-24" />
+              <Skeleton className="h-24" />
+            </div>
+          </SectionCard>
+        </div>
+        <SectionCard className="space-y-3">
+          <Skeleton className="h-5 w-32" />
+          <Skeleton className="h-16" />
+          <Skeleton className="h-16" />
+          <Skeleton className="h-16" />
+        </SectionCard>
+      </div>
+    </div>
   );
 }
 
@@ -1434,7 +1505,7 @@ function PatientCardDocumentsPanel({
   if (!orgId || documentsQuery.isLoading) {
     return (
       <SectionCard id="patient-documents" data-testid="patient-card-documents-panel">
-        <Loading label="文書情報を読み込み中..." />
+        <PatientCardDocumentsLoadingState />
       </SectionCard>
     );
   }
@@ -4312,7 +4383,7 @@ export function CardWorkspace({
     },
   });
 
-  if (!orgId || isLoading) return <Loading />;
+  if (!orgId || isLoading) return <PatientCardWorkspaceLoadingState />;
   if (!patient) {
     // 取得失敗(error)を「患者が見つかりません」(=不在)に潰さない。
     // error 時は再試行導線付き ErrorState、患者データが無く error も無い場合のみ not-found。

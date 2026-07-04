@@ -351,6 +351,7 @@ function mockPatientQuery(
       next_prescription_expected_date: string | null;
     };
     headerSummaryError?: boolean;
+    patientOverviewLoading?: boolean;
     executePatientShareCaseMutation?: boolean;
   } = {},
 ) {
@@ -764,8 +765,11 @@ function mockPatientQuery(
 
     if (queryKey[0] === 'patient-overview') {
       return {
-        data: options.patientOverviewMissing ? undefined : patientData,
-        isLoading: false,
+        data:
+          options.patientOverviewLoading || options.patientOverviewMissing
+            ? undefined
+            : patientData,
+        isLoading: Boolean(options.patientOverviewLoading),
         error: options.patientOverviewError ?? null,
         refetch: vi.fn(),
       };
@@ -811,6 +815,19 @@ function buildActivePatientCase(): PatientOverview['cases'][number] {
 }
 
 describe('CardWorkspace', () => {
+  it('shows a patient workspace skeleton while the overview query is loading', () => {
+    mockPatientQuery(buildWorkspace(), null, {}, { patientOverviewLoading: true });
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    expect(screen.getByRole('status', { name: '処方カード作業台を読み込み中' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '処方カード作業台', level: 1 })).toBeTruthy();
+    expect(screen.queryByRole('status', { name: '読み込み中...' })).toBeNull();
+    expect(screen.queryByText('田中 一郎')).toBeNull();
+    expect(screen.queryByText('患者情報を表示できません')).toBeNull();
+    expect(screen.queryByText('患者が見つかりません')).toBeNull();
+  });
+
   it('shows a retryable error state instead of a not-found when the patient overview fetch fails', () => {
     mockPatientQuery(
       buildWorkspace(),
@@ -1479,6 +1496,38 @@ describe('CardWorkspace', () => {
     expect(within(documentsPanel).getByText('文書情報の取得に失敗しました')).toBeTruthy();
     expect(within(documentsPanel).queryByRole('link', { name: '印刷プレビュー' })).toBeNull();
     expect(within(documentsPanel).queryByText('契約書')).toBeNull();
+  });
+
+  it('shows a documents-panel skeleton while first-visit documents are loading', () => {
+    mockPatientQuery(
+      buildWorkspace(),
+      null,
+      {},
+      {
+        patientDocuments: {
+          data: undefined,
+          isLoading: true,
+        },
+      },
+    );
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    const documentsPanel = screen.getByTestId('patient-card-documents-panel');
+    expect(
+      within(documentsPanel).getByRole('status', {
+        name: '初回訪問文書・交付記録を読み込み中',
+      }),
+    ).toBeTruthy();
+    expect(
+      within(documentsPanel).getByRole('heading', { name: '初回訪問文書・交付記録' }),
+    ).toBeTruthy();
+    expect(
+      within(documentsPanel).queryByRole('status', { name: '文書情報を読み込み中...' }),
+    ).toBeNull();
+    expect(within(documentsPanel).queryByRole('link', { name: '印刷プレビュー' })).toBeNull();
+    expect(within(documentsPanel).queryByText('契約書')).toBeNull();
+    expect(within(documentsPanel).queryByText('文書情報の取得に失敗しました')).toBeNull();
   });
 
   it('keeps the embedded documents panel in place when document data is missing', () => {
