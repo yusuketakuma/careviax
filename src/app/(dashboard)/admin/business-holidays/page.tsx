@@ -20,7 +20,7 @@ export default function BusinessHolidaysPage() {
         supportingContent={null}
       />
 
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="休日カレンダーを読み込み中..." />}>
         <BusinessHolidaysContent />
       </Suspense>
     </PageScaffold>

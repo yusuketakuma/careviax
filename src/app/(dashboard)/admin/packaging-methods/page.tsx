@@ -19,7 +19,7 @@ export default function PackagingMethodsPage() {
         shortcuts={getAdminPackagingMethodsShortcutLinks()}
       />
 
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="配薬方法マスターを読み込み中..." />}>
         <PackagingMethodsContent />
       </Suspense>
     </PageScaffold>
