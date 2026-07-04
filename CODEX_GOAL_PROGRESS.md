@@ -1,5 +1,41 @@
 # CODEX Goal Progress
 
+## R24/R46 External Professional Patients Cursor Helper Partial - 2026-07-05 01:53 JST
+
+- Status:
+  - Implemented and validated the next bounded R24/R46 slice:
+    - `src/app/api/admin/external-professionals/[id]/patients/route.ts`
+- Scope:
+  - Reused the existing `buildCursorPage` helper for external-professional
+    linked-patient visible-row selection.
+  - Preserved `metadata.total_count`, `visible_count`, `hidden_count`,
+    `has_more`, archive filters, and assignment-scoped behavior.
+- Safety:
+  - Product API implementation internals changed; external response shape and
+    linked-patient semantics are unchanged.
+  - Preserved `canReport`, external-professional/org scoping, archive
+    filtering, care-case assignment access filtering, sensitive no-store
+    wrapping, DB query shape, schema/migrations/data, auth/authorization
+    semantics, PHI projection, billing behavior, deployment, package dependency,
+    live DB operation, external send, secret handling, push, and destructive
+    operation boundaries.
+- Validation:
+  - `pnpm exec vitest run src/app/api/admin/external-professionals/[id]/patients/route.test.ts src/lib/api/pagination.test.ts --reporter=dot --testTimeout=30000`
+    passed `2` files / `12` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `94aedb79`
+    (`refactor(api): reuse cursor page helper in external professional patients`).
+- Remaining:
+  - R24/R46 are partial; continue compatible hand-rolled cursor page routes.
+  - Routes with keyset cursor encoding, scan-window filtering, hidden-count
+    variants, or additive route-specific metadata need route-specific analysis
+    before helper convergence.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R24/R46 Facility Patients Cursor Helper Partial - 2026-07-05 01:51 JST
 
 - Status:
