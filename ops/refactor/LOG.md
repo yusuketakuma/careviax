@@ -1560,6 +1560,30 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: billing route-shell generic fallback は closure。broad Plans.md / R55 residual scan は継続。
   `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
 
+## 2026-07-04 R55 generic visible loading closure
+
+- 分類: UI loading-state cleanup / R55 component-level generic visible loading residual closure。
+- 実施:
+  - `DataTable` の load-more pending label を generic `読み込み中...` から
+    `追加行を読み込み中...` へ変更。
+  - platform tenant data explorer の model selector loading copy を
+    `データモデルを読み込み中...` へ変更。
+  - `data-table.test.tsx` と `data-explorer-panel.test.tsx` で、画面/領域固有 loading label と
+    generic copy absence を固定。
+- 挙動変更: loading label のみ。DataTable pagination/filter/export behavior、platform break-glass requirement、
+  tenant data explorer query、API path、org header、API/DB/auth/authorization/billing/audit は不変。
+- UI/UX根拠: `docs/ui-ux-design-guidelines.md` の Clear state / false-empty prevention と
+  loading は画面/領域固有 label を持つ規範に整合。
+- 安全性: product API/DB/auth/authorization/PHI projection/billing/deploy/package dependency は不変。
+  Loading copy は PHI-free で、row value・patient identifier・table data・tenant/org id・request detail・raw error・billing value・break-glass reason
+  を出さない。
+- 検証: focused DataTable/platform data explorer Vitest `2 files / 16 tests` green、
+  targeted ESLint green、targeted Prettier check green、targeted `git diff --check` green、
+  `pnpm typecheck` green。targeted generic visible loading scan は no matches。
+- commit: `07696837` (`fix(loading): close generic visible labels`)。
+- 残課題: targeted R55 generic visible loading residual は closure。broad Plans.md は継続。
+  `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
+
 ## 2026-07-04 R55 component loading copy closure
 
 - 分類: UI loading-state cleanup / R55 component-level generic visible loading residual。

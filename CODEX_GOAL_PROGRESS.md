@@ -1,5 +1,44 @@
 # CODEX Goal Progress
 
+## R55 Generic Visible Loading Closure - 2026-07-04 21:34 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/components/ui/data-table.tsx`
+    - `src/components/ui/data-table.test.tsx`
+    - `src/app/platform/tenants/[orgId]/data-explorer-panel.tsx`
+    - `src/app/platform/tenants/[orgId]/data-explorer-panel.test.tsx`
+- Scope:
+  - Replaced the final two targeted generic visible loading labels:
+    - DataTable load-more button: `追加行を読み込み中...`
+    - Platform data explorer model selector:
+      `データモデルを読み込み中...`
+  - Added focused regression coverage for both labels.
+  - Confirmed the targeted generic visible loading scan now returns no matches.
+- Safety:
+  - Loading presentation and tests only.
+  - No DataTable pagination/filter/export behavior, platform break-glass
+    requirement, tenant data explorer query, API path, org header, DB, auth,
+    authorization, PHI projection, billing semantics, deployment, package
+    dependency, or server behavior changed.
+  - Loading copy is PHI-free and does not echo row values, patient identifiers,
+    table data, tenant IDs, org IDs, request details, raw errors, billing
+    values, or break-glass reasons.
+- Validation:
+  - `pnpm exec vitest run src/components/ui/data-table.test.tsx 'src/app/platform/tenants/[orgId]/data-explorer-panel.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `2` files / `16` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed for the changed source/test files.
+  - `rg -n "loadingLabel=\"読み込み中\\.\\.\\.\"|aria-label=\"読み込み中\"|\\? '読み込み中\\.\\.\\.'" src --glob '!**/*.test.*' --glob '!**/*.spec.*'`
+    returned no matches.
+- Commit:
+  - Implementation slice landed at `07696837`
+    (`fix(loading): close generic visible labels`).
+- Remaining:
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Component Loading Copy Closure - 2026-07-04 21:29 JST
 
 - Status:
