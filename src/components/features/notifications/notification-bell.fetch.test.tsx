@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { AnchorHTMLAttributes, ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { jsonResponse } from '@/test/fetch-test-utils';
 
 const {
   buildOrgHeadersMock,
@@ -88,21 +89,12 @@ function createFetchMock() {
   return vi.fn((input: RequestInfo | URL) => {
     const url = String(input);
     if (url === '/api/notifications?summary=1') {
-      return Promise.resolve({
-        ok: true,
-        json: vi.fn().mockResolvedValue({ data: { unreadCount: 1 } }),
-      } as Partial<Response> as Response);
+      return Promise.resolve(jsonResponse({ data: { unreadCount: 1 } }));
     }
     if (url === '/api/notifications?limit=20') {
-      return Promise.resolve({
-        ok: true,
-        json: vi.fn().mockResolvedValue({ data: [notification] }),
-      } as Partial<Response> as Response);
+      return Promise.resolve(jsonResponse({ data: [notification] }));
     }
-    return Promise.resolve({
-      ok: true,
-      json: vi.fn().mockResolvedValue({ data: [] }),
-    } as Partial<Response> as Response);
+    return Promise.resolve(jsonResponse({ data: [] }));
   });
 }
 

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { stubJsonFetch } from '@/test/fetch-test-utils';
 import { DrugSuggest } from './drug-suggest';
 
 const useQueryMock = vi.hoisted(() => vi.fn());
@@ -64,11 +65,7 @@ describe('DrugSuggest', () => {
   });
 
   it('uses the lightweight drug-master search endpoint for typeahead results', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: [] }),
-    });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = stubJsonFetch({ data: [] });
 
     render(<DrugSuggest value="アム" onTextChange={vi.fn()} onSelect={vi.fn()} />);
 
