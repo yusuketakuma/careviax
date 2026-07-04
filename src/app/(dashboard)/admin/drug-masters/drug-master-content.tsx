@@ -598,8 +598,7 @@ function DrugMasterOperationalContent({
       });
       toast.success(`${definition.label}の差分確認が完了しました`);
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : `${definition.label}の差分確認に失敗しました`;
+      const message = messageFromError(error, `${definition.label}の差分確認に失敗しました`);
       setOfficialImportPreviewError(message);
       toast.error(message);
     } finally {

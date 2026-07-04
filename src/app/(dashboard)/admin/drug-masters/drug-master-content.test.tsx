@@ -920,6 +920,32 @@ describe('DrugMasterContent', () => {
     }
   });
 
+  it('falls back to the import preview label when the preview failure has no message', async () => {
+    const fetchMock = vi.fn(async () => {
+      throw new Error('');
+    });
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
+
+    try {
+      render(<DrugMasterContent />);
+
+      fireEvent.click(screen.getByRole('button', { name: '一般名/後発更新' }));
+      fireEvent.click(screen.getByRole('button', { name: '差分確認' }));
+
+      const alert = await screen.findByRole('alert');
+      expect(alert.textContent).toContain('一般名/後発更新の差分確認に失敗しました');
+      expect(toastErrorMock).toHaveBeenCalledWith('一般名/後発更新の差分確認に失敗しました');
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/drug-master-imports/mhlw-generic',
+        expect.objectContaining({
+          method: 'POST',
+        }),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('requires typed confirmation before running free master auto-refresh', () => {
     render(<DrugMasterContent />);
 
