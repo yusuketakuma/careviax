@@ -1,5 +1,37 @@
 # CODEX Goal Progress
 
+## R32 Patient/Visit QueryClient Wrapper Convergence - 2026-07-04 22:46 JST
+
+- Status:
+  - Implemented and validated a thirteenth bounded R32 slice:
+    - `src/app/(dashboard)/views/saved-views-content.test.tsx`
+    - `src/app/(dashboard)/patients/[id]/consent/consent-records-content.test.tsx`
+    - `src/app/(dashboard)/patients/[id]/residual-adjustment/residual-adjustment-content.headers.test.tsx`
+    - `src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx`
+- Scope:
+  - Replaced four more local `QueryClient` / `QueryClientProvider` wrapper
+    implementations with `createQueryClientWrapper`.
+  - Preserved retry-disabled test defaults and left product runtime code
+    untouched.
+- Safety:
+  - Test harness convergence only.
+  - No product API, DB, auth, authorization, PHI projection, billing semantics,
+    deployment, package dependency, query, mutation, org header, audit logging,
+    or runtime behavior changed.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/views/saved-views-content.test.tsx' 'src/app/(dashboard)/patients/[id]/consent/consent-records-content.test.tsx' 'src/app/(dashboard)/patients/[id]/residual-adjustment/residual-adjustment-content.headers.test.tsx' 'src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `4` files / `46` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `92be298a`
+    (`test(patient): share query client wrapper`).
+- Remaining:
+  - R32 remains partially open for the remaining local QueryClient wrappers.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R32 Analytics/Statistics QueryClient Wrapper Convergence - 2026-07-04 22:42 JST
 
 - Status:
