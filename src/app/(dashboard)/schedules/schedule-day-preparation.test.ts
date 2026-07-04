@@ -492,9 +492,10 @@ describe('schedule day preparation helpers', () => {
     },
   );
 
-  it('throws the legacy generic fetch error when preparation details cannot be fetched', async () => {
+  it('keeps API messages when preparation details cannot be fetched', async () => {
     const fetchImpl = vi.fn(
-      async () => new Response(JSON.stringify({ message: 'ignored' }), { status: 500 }),
+      async () =>
+        new Response(JSON.stringify({ message: '訪問準備情報を表示できません' }), { status: 500 }),
     );
 
     await expect(
@@ -503,7 +504,7 @@ describe('schedule day preparation helpers', () => {
         scheduleId: 'schedule_1',
         fetchImpl,
       }),
-    ).rejects.toThrow('訪問準備情報の取得に失敗しました');
+    ).rejects.toThrow('訪問準備情報を表示できません');
   });
 
   it('saves preparation checklist without ready transition', async () => {

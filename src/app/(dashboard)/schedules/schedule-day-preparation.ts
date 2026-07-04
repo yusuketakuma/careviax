@@ -2,6 +2,7 @@ import {
   buildHomeVisit2026ReadinessItems,
   type HomeVisit2026EvidenceItem,
 } from '@/lib/visits/home-visit-2026-evidence';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import {
@@ -269,13 +270,9 @@ export async function fetchScheduleDayPreparationDetails({
     headers: buildOrgHeaders(orgId),
   });
 
-  if (!res.ok) {
-    throw new Error('訪問準備情報の取得に失敗しました');
-  }
-
-  const payload = (await res.json()) as {
+  const payload = await readApiJson<{
     data: ScheduleDayPreparationDetails;
-  };
+  }>(res, '訪問準備情報の取得に失敗しました');
   return payload.data;
 }
 
