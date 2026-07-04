@@ -2776,3 +2776,24 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: R24/R46 は partial。keyset cursor encoding、scan-window、hidden-count、
   route-specific metadata を持つ route は個別分析後に継続。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
+## 2026-07-05 R24/R46 prescriber-institutions search cursor helper slice
+
+- 分類: pattern-inconsistency / q-filtered visible-row selection → `buildCursorPage` 収束。
+- 実施:
+  - `/api/prescriber-institutions` GET q-filtered search の `slice(0, limit)` と
+    `length > limit` を `buildCursorPage` へ移行。
+  - unfiltered full-list response は `meta` なしのまま維持し、q-filtered response は
+    `meta: { limit, has_more }` のまま維持。
+- 挙動変更: API内部の重複 helper 収束のみ。外部 response shape、q filter behavior、
+  prescriber institution serialization、POST create behavior は維持。
+- 安全性: `canReport`、request auth context、RLS org filtering、DB query shape、
+  auth/authorization、PHI projection、billing、deployment、package dependency、live DB operation、
+  external send、secret handling、push、destructive operation は不変。
+- 検証: focused prescriber-institutions/pagination Vitest `2 files / 21 tests` green、
+  scoped ESLint green、targeted Prettier check green、targeted `git diff --check` green、
+  `pnpm typecheck` green。
+- commit: `900d0c1d` (`refactor(api): reuse cursor page helper in prescriber institutions`)。
+- 残課題: R24/R46 は partial。keyset cursor encoding、scan-window、hidden-count、
+  optional-limit semantics、route-specific metadata を持つ route は個別分析後に継続。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
