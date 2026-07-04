@@ -3,7 +3,7 @@
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
-import { readJsonResponseBody } from '@/lib/api/response-body';
+import { readApiJson } from '@/lib/api/client-json';
 import { readJsonObject } from '@/lib/db/json';
 import type { WorkflowDashboardResponse } from '@/types/api/workflow-dashboard';
 
@@ -363,24 +363,27 @@ export function buildWorkflowPhaseAccess(
   };
 }
 
+export async function fetchWorkflowDashboardPhaseAccess(
+  orgId: string,
+): Promise<WorkflowDashboardResponse> {
+  const response = await fetch('/api/dashboard/workflow?view=phase', {
+    headers: buildOrgHeaders(orgId),
+  });
+  const payload = normalizeWorkflowDashboardResponse(
+    await readApiJson<unknown>(response, '工程ナビゲーションの取得に失敗しました'),
+  );
+  if (!payload) {
+    throw new Error('工程ナビゲーションの取得に失敗しました');
+  }
+  return payload;
+}
+
 export function useWorkflowPhaseAccess() {
   const orgId = useOrgId();
 
   const query = useRealtimeQuery({
     queryKey: ['dashboard-workflow', orgId],
-    queryFn: async () => {
-      const response = await fetch('/api/dashboard/workflow?view=phase', {
-        headers: buildOrgHeaders(orgId),
-      });
-      if (!response.ok) {
-        throw new Error('工程ナビゲーションの取得に失敗しました');
-      }
-      const payload = normalizeWorkflowDashboardResponse(await readJsonResponseBody(response));
-      if (!payload) {
-        throw new Error('工程ナビゲーションの取得に失敗しました');
-      }
-      return payload;
-    },
+    queryFn: () => fetchWorkflowDashboardPhaseAccess(orgId),
     enabled: Boolean(orgId),
     staleTime: 30_000,
     invalidateOn: ['cycle_transition', 'workflow_refresh'],

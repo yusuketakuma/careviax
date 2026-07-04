@@ -1,9 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildWorkflowPhaseAccess,
+  fetchWorkflowDashboardPhaseAccess,
   normalizeWorkflowDashboardResponse,
 } from './use-workflow-phase-access';
 import { MAIN_WORKFLOW_STEPS } from '@/components/features/workflow/main-workflow-route';
+import { jsonResponse } from '@/test/fetch-test-utils';
 import type { WorkflowDashboardResponse } from '@/types/api/workflow-dashboard';
 
 function createWorkflowPayload(
@@ -87,6 +89,10 @@ function createWorkflowPayload(
     ...overrides,
   };
 }
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe('buildWorkflowPhaseAccess', () => {
   it('covers every main workflow step key', () => {
@@ -210,5 +216,38 @@ describe('buildWorkflowPhaseAccess', () => {
 
     expect(phaseAccess.dispensing.pending_count).toBe(0);
     expect(phaseAccess.dispensing.next_action).toBeNull();
+  });
+});
+
+describe('fetchWorkflowDashboardPhaseAccess', () => {
+  it('uses the workflow phase endpoint and tenant header before normalizing the payload', async () => {
+    const payload = { data: createWorkflowPayload() };
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(payload));
+
+    await expect(fetchWorkflowDashboardPhaseAccess('org_1')).resolves.toEqual(payload);
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/dashboard/workflow?view=phase', {
+      headers: { 'x-org-id': 'org_1' },
+    });
+  });
+
+  it('keeps API messages from failed workflow phase access responses', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({ message: '工程ナビゲーションを表示できません' }, 403),
+    );
+
+    await expect(fetchWorkflowDashboardPhaseAccess('org_1')).rejects.toThrow(
+      '工程ナビゲーションを表示できません',
+    );
+  });
+
+  it('fails closed when the workflow phase access response shape is malformed', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({ data: { unified_workbench: [] } }),
+    );
+
+    await expect(fetchWorkflowDashboardPhaseAccess('org_1')).rejects.toThrow(
+      '工程ナビゲーションの取得に失敗しました',
+    );
   });
 });
