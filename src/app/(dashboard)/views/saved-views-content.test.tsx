@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { jsonResponse } from '@/test/fetch-test-utils';
 
 setupDomTestEnv();
 
@@ -48,16 +49,16 @@ function mockPreferences(value: Record<string, unknown>, savedViews: SavedViewRe
     const target = String(url);
     if (target.startsWith('/api/saved-views')) {
       if (init?.method === 'POST' || init?.method === 'PATCH' || init?.method === 'DELETE') {
-        return { ok: true, json: async () => ({ data: null }) };
+        return jsonResponse({ data: null });
       }
-      return { ok: true, json: async () => ({ data: savedViews }) };
+      return jsonResponse({ data: savedViews });
     }
 
     if (init?.method === 'PATCH') {
       const body = JSON.parse(String(init.body)) as Record<string, unknown>;
-      return { ok: true, json: async () => ({ data: { ...value, ...body } }) };
+      return jsonResponse({ data: { ...value, ...body } });
     }
-    return { ok: true, json: async () => ({ data: value }) };
+    return jsonResponse({ data: value });
   });
 }
 

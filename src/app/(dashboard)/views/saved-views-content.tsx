@@ -13,6 +13,7 @@ import { Switch } from '@/components/ui/switch';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Skeleton } from '@/components/ui/loading';
 import { EmptyState } from '@/components/ui/empty-state';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
@@ -49,8 +50,10 @@ async function fetchPreferences(orgId: string): Promise<PreferencesValue> {
   const res = await fetch(ME_PREFERENCES_API_PATH, {
     headers: buildOrgHeaders(orgId),
   });
-  if (!res.ok) throw new Error('保存済み条件の取得に失敗しました');
-  const json = await res.json();
+  const json = await readApiJson<{ data?: PreferencesValue }>(
+    res,
+    '保存済み条件の取得に失敗しました',
+  );
   return (json.data ?? {}) as PreferencesValue;
 }
 
@@ -205,8 +208,10 @@ async function fetchSavedViews(orgId: string): Promise<SavedViewRecord[]> {
   const res = await fetch(buildSavedViewsApiPath(VIEWS_PAGE_SCOPE), {
     headers: buildOrgHeaders(orgId),
   });
-  if (!res.ok) throw new Error('保存ビューの取得に失敗しました');
-  const json = (await res.json()) as Partial<SavedViewsApiResponse>;
+  const json = await readApiJson<Partial<SavedViewsApiResponse>>(
+    res,
+    '保存ビューの取得に失敗しました',
+  );
   // 配列以外(想定外の応答)は空一覧として扱い、描画を壊さない。
   return Array.isArray(json.data) ? json.data : [];
 }
