@@ -49,6 +49,7 @@ import {
 import { describePatientMcsStatus, describePatientMcsSyncResult } from '@/lib/patient-mcs/status';
 import { formatDateTimeLabel } from '@/lib/ui/date-format';
 import { cn } from '@/lib/utils';
+import { messageFromError } from '@/lib/utils/error-message';
 
 function isOtherProfessionalRole(role: string | null) {
   if (!role) return false;
@@ -895,7 +896,7 @@ export function PatientMcsContent({ patientId }: { patientId: string }) {
     },
     onError: async (error: Error) => {
       await queryClient.invalidateQueries({ queryKey: queryKeyPrefix });
-      toast.error(error.message);
+      toast.error(messageFromError(error, 'MCS 連携の同期に失敗しました'));
     },
   });
 
@@ -907,7 +908,7 @@ export function PatientMcsContent({ patientId }: { patientId: string }) {
       toast.success('MCS 確認ログを登録しました');
     },
     onError: (error: Error) => {
-      toast.error(error.message);
+      toast.error(messageFromError(error, 'MCS 確認ログの登録に失敗しました'));
     },
   });
 
@@ -925,7 +926,7 @@ export function PatientMcsContent({ patientId }: { patientId: string }) {
       toast.success('MCS 参加情報を保存しました');
     },
     onError: (error: Error) => {
-      toast.error(error.message);
+      toast.error(messageFromError(error, 'MCS 参加情報の保存に失敗しました'));
     },
   });
 

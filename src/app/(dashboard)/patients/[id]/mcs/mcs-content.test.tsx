@@ -69,6 +69,8 @@ vi.mock('sonner', () => ({
   },
 }));
 
+import { toast } from 'sonner';
+
 describe('PatientMcsContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -364,6 +366,45 @@ describe('PatientMcsContent', () => {
     for (const call of invalidateQueries.mock.calls) {
       expect(call[0]).toEqual(rawPrefix);
     }
+  });
+
+  it('keeps server messages and falls back for MCS mutation error toasts', async () => {
+    const patientId = 'patient_1';
+    const mutationOptions: MutationOptions[] = [];
+
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockImplementation((options: MutationOptions) => {
+      mutationOptions.push(options);
+      return { isPending: false, mutate: vi.fn() };
+    });
+    useQueryMock.mockReturnValue({
+      data: { link: null, profile: null, summary: null, messages: [], checkLogs: [] },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(<PatientMcsContent patientId={patientId} />);
+
+    expect(mutationOptions).toHaveLength(3);
+    const [sync, checkLog, profile] = mutationOptions;
+
+    await sync.onError?.(new Error('MCS同期APIからの詳細エラー'));
+    expect(toast.error).toHaveBeenLastCalledWith('MCS同期APIからの詳細エラー');
+    await sync.onError?.(new Error(''));
+    expect(toast.error).toHaveBeenLastCalledWith('MCS 連携の同期に失敗しました');
+
+    checkLog.onError?.(new Error('確認ログAPIからの詳細エラー'));
+    expect(toast.error).toHaveBeenLastCalledWith('確認ログAPIからの詳細エラー');
+    checkLog.onError?.(new Error(''));
+    expect(toast.error).toHaveBeenLastCalledWith('MCS 確認ログの登録に失敗しました');
+
+    profile.onError?.(new Error('参加情報APIからの詳細エラー'));
+    expect(toast.error).toHaveBeenLastCalledWith('参加情報APIからの詳細エラー');
+    profile.onError?.(new Error(''));
+    expect(toast.error).toHaveBeenLastCalledWith('MCS 参加情報の保存に失敗しました');
   });
 
   it('shows an inline validation error and keeps actions disabled for invalid draft urls', async () => {
