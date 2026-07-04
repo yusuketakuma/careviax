@@ -109,6 +109,31 @@ import { PrescriptionHistoryContent } from './prescription-history-content';
 setupDomTestEnv();
 
 describe('PrescriptionHistoryContent', () => {
+  it('shows a prescription-history skeleton instead of a generic spinner while loading', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useParamsMock.mockReturnValue({ id: 'patient_1' });
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: string[] }) => {
+      if (queryKey[0] === 'drug-masters-batch') {
+        return { data: {}, isLoading: false };
+      }
+      return {
+        data: undefined,
+        isLoading: true,
+        isError: false,
+      };
+    });
+
+    render(<PrescriptionHistoryContent />);
+
+    expect(screen.getByRole('status', { name: '処方履歴を読み込み中' })).toBeTruthy();
+    expect(screen.queryByRole('status', { name: '読み込み中...' })).toBeNull();
+    expect(screen.queryByText('読み込み中...', { selector: 'p' })).toBeNull();
+    expect(screen.queryByText('山田花子')).toBeNull();
+    expect(screen.queryByRole('heading', { level: 2, name: '処方変更ダッシュボード' })).toBeNull();
+  });
+
   it('renders prescription dashboard groups as semantic headings', () => {
     useOrgIdMock.mockReturnValue('org_1');
     useParamsMock.mockReturnValue({ id: 'patient_1' });

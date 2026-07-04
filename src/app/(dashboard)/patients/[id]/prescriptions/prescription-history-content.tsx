@@ -47,7 +47,7 @@ import type {
 } from '@/lib/prescriptions/diff-review-contract';
 import { CYCLE_STATUS_LABELS } from '@/lib/prescription/cycle-workspace';
 import { medicationIdentityKey, prescriptionLineKey } from '@/lib/prescription/medication-diff';
-import { Loading } from '@/components/ui/loading';
+import { Skeleton } from '@/components/ui/loading';
 import { ErrorState } from '@/components/ui/error-state';
 import { toast } from 'sonner';
 import { DrugSuggest, type DrugSelection } from '@/components/features/pharmacy/drug-suggest';
@@ -161,6 +161,59 @@ type ResolveDrugMasterInput = {
   expectedUpdatedAt: string;
   drugMasterId: string;
 };
+
+function PrescriptionHistoryLoadingState() {
+  return (
+    <div className="space-y-4" role="status" aria-label="処方履歴を読み込み中" aria-live="polite">
+      <div className="flex items-center justify-between gap-3 print:justify-start">
+        <div className="space-y-2">
+          <Skeleton className="h-6 w-40" />
+          <Skeleton className="h-4 w-28" />
+        </div>
+        <Skeleton className="h-10 w-20 rounded-md print:hidden" />
+      </div>
+
+      <div className="flex flex-wrap gap-2 print:hidden" aria-hidden="true">
+        {Array.from({ length: 5 }).map((_, index) => (
+          <Skeleton key={index} className="h-7 w-24 rounded-full" />
+        ))}
+      </div>
+
+      <div className="grid gap-3 print:hidden md:grid-cols-3" aria-hidden="true">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <Card key={index} className="border-border shadow-sm">
+            <CardContent className="space-y-3 p-4">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-7 w-16" />
+              <Skeleton className="h-4 w-full" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-2 print:hidden" aria-hidden="true">
+        <Skeleton className="h-9 w-full rounded-md" />
+        <Skeleton className="h-9 w-full rounded-md" />
+      </div>
+
+      <div className="space-y-3" aria-hidden="true">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <Card key={index} className="border-border shadow-sm">
+            <CardHeader className="space-y-2 pb-2">
+              <Skeleton className="h-5 w-36" />
+              <Skeleton className="h-4 w-52 max-w-full" />
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-11/12" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      <span className="sr-only">処方履歴を読み込み中</span>
+    </div>
+  );
+}
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -1570,7 +1623,7 @@ export function PrescriptionHistoryContent() {
 
   const handlePrint = useCallback(() => window.print(), []);
 
-  if (isLoading) return <Loading />;
+  if (isLoading) return <PrescriptionHistoryLoadingState />;
 
   if (isError) {
     // 取得失敗を空表示に潰さず、再試行導線つきの ErrorState を出す。
