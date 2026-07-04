@@ -251,6 +251,28 @@ describe('RealtimePage', () => {
     );
   });
 
+  it('uses announced skeletons while realtime workbench and notifications are loading', () => {
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      const [scope] = queryKey;
+      if (scope === 'admin-realtime-workflow') {
+        return { data: undefined, isLoading: true, connected: false };
+      }
+      if (scope === 'admin-realtime-notifications') {
+        return { data: undefined, isLoading: true, connected: false };
+      }
+      throw new Error(`Unexpected query key: ${JSON.stringify(queryKey)}`);
+    });
+
+    render(<RealtimePage />);
+
+    expect(screen.getByRole('status', { name: 'ワークベンチを読み込み中' })).toBeTruthy();
+    expect(screen.getByRole('status', { name: '通知を読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('ワークベンチを読み込んでいます...', { selector: 'p' })).toBeNull();
+    expect(screen.queryByText('通知を読み込んでいます...', { selector: 'p' })).toBeNull();
+    expect(screen.queryByText('未処理項目はありません')).toBeNull();
+    expect(screen.queryByText('未読通知はありません')).toBeNull();
+  });
+
   it('ignores malformed notification realtime payloads', () => {
     const setQueryData = vi.fn();
     useQueryClientMock.mockReturnValue({ setQueryData });

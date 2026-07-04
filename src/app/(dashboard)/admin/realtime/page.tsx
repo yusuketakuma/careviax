@@ -12,6 +12,7 @@ import { PageScaffold } from '@/components/layout/page-scaffold';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ErrorState } from '@/components/ui/error-state';
+import { SkeletonRows } from '@/components/ui/loading';
 import { StateBadge } from '@/components/ui/state-badge';
 import type { StatusRole } from '@/lib/constants/status-tokens';
 import { PRIORITY_DISPLAY_LABELS, PRIORITY_ROLE } from '@/lib/constants/status-labels';
@@ -284,7 +285,9 @@ export default function RealtimePage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {workflowQuery.isLoading ? (
-              <p className="text-sm text-muted-foreground">ワークベンチを読み込んでいます...</p>
+              <div role="status" aria-label="ワークベンチを読み込み中" aria-live="polite">
+                <SkeletonRows rows={3} cols={3} status={false} />
+              </div>
             ) : workflowQuery.isError ? (
               // 取得失敗時は空状態（false-empty）にせず、再読み込み導線つきの ErrorState を出す。
               <ErrorState
@@ -356,7 +359,9 @@ export default function RealtimePage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {notificationsQuery.isLoading ? (
-              <p className="text-sm text-muted-foreground">通知を読み込んでいます...</p>
+              <div role="status" aria-label="通知を読み込み中" aria-live="polite">
+                <SkeletonRows rows={3} cols={2} status={false} />
+              </div>
             ) : notificationsQuery.isError ? (
               // 取得失敗時は空状態（false-empty）にせず、再読み込み導線つきの ErrorState を出す。
               <ErrorState
