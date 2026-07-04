@@ -3,7 +3,7 @@ import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { withOrgContext } from '@/lib/db/rls';
-import { parseBoundedInteger } from '@/lib/api/pagination';
+import { buildCursorPage, parseBoundedInteger } from '@/lib/api/pagination';
 import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { validateOrgReferences } from '@/lib/api/org-reference';
@@ -105,12 +105,14 @@ async function authenticatedGET(req: NextRequest) {
       { requestContext: ctx },
     );
 
-    const hasMore = limit === undefined ? false : shifts.length > limit;
-    const data = limit === undefined ? shifts : shifts.slice(0, limit);
+    const page =
+      limit === undefined
+        ? { data: shifts, hasMore: false }
+        : buildCursorPage(shifts, limit, (shift) => shift.id);
 
     return success({
-      data,
-      ...(limit === undefined ? {} : { meta: { limit, has_more: hasMore } }),
+      data: page.data,
+      ...(limit === undefined ? {} : { meta: { limit, has_more: page.hasMore } }),
     });
   });
 }
