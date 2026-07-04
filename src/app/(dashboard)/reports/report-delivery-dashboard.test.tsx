@@ -295,7 +295,8 @@ describe('ReportDeliveryDashboard', () => {
   it('fetches delivery analytics with the org-header helper and stable query key', async () => {
     const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
     vi.mocked(buildOrgHeaders).mockReturnValue(sentinelHeaders);
-    const fetchMock = stubJsonFetch({ data: {} });
+    const analyticsPayload = { data: {} };
+    const fetchMock = stubJsonFetch(analyticsPayload);
     primeDashboard();
 
     render(<ReportDeliveryDashboard />);
@@ -306,7 +307,7 @@ describe('ReportDeliveryDashboard', () => {
     };
     expect(queryOptions.queryKey).toEqual(['care-report-analytics', 'org_1', 7]);
 
-    await queryOptions.queryFn();
+    await expect(queryOptions.queryFn()).resolves.toEqual(analyticsPayload);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];

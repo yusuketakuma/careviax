@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Skeleton, SkeletonRows } from '@/components/ui/loading';
 import { StatCard } from '@/components/ui/stat-card';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   CHANNEL_LABELS,
@@ -113,8 +114,7 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
           headers: buildOrgHeaders(orgId),
         },
       );
-      if (!response.ok) throw new Error('報告書分析の取得に失敗しました');
-      return response.json() as Promise<DeliveryAnalyticsResponse>;
+      return readApiJson<DeliveryAnalyticsResponse>(response, '報告書分析の取得に失敗しました');
     },
     enabled: !!orgId,
   });
