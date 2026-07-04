@@ -395,22 +395,24 @@ describe('ReportShareWorkspace', () => {
       Boolean(drafts.compareDocumentPosition(workflow) & Node.DOCUMENT_POSITION_FOLLOWING),
     ).toBe(true);
     expect(screen.getByText('未作成・下書き一覧 — 訪問完了後に選択して作成')).toBeTruthy();
-    expect(screen.getByText('伊藤 キヨ 様')).toBeTruthy();
-    expect(screen.getByText('ケアマネ(中島様)')).toBeTruthy();
-    expect(screen.getByText('医師(山本先生)+ケアマネ')).toBeTruthy();
-    expect(screen.getAllByText('訪問後に下書き')).toHaveLength(2);
-    expect(screen.getByText('未作成')).toBeTruthy();
+    expect(screen.getAllByText('伊藤 キヨ 様')).not.toHaveLength(0);
+    expect(screen.getAllByText('ケアマネ(中島様)')).not.toHaveLength(0);
+    expect(screen.getAllByText('医師(山本先生)+ケアマネ')).not.toHaveLength(0);
+    expect(screen.getAllByText('訪問後に下書き').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText('未作成')).not.toHaveLength(0);
     // 危険区分メモは隠さない
-    expect(screen.getByText('麻薬使用状況を含む')).toBeTruthy();
-    expect(screen.getByText('12名分を1通に集約')).toBeTruthy();
+    expect(screen.getAllByText('麻薬使用状況を含む')).not.toHaveLength(0);
+    expect(screen.getAllByText('12名分を1通に集約')).not.toHaveLength(0);
     // メモがある行でも下書き/訪問導線を隠さない
-    expect(screen.getAllByRole('link', { name: '→ 訪問へ' })).toHaveLength(1);
     expect(
-      screen.getByRole('button', { name: '田中 一郎 様 医師向けの下書きを自動作成' }),
-    ).toBeTruthy();
+      screen.getAllByRole('link', { name: '→ 訪問へ' }).map((link) => link.getAttribute('href')),
+    ).toEqual(['/visits', '/visits']);
     expect(
-      screen.getByRole('button', { name: '田中 一郎 様 ケアマネ向けの下書きを自動作成' }),
-    ).toBeTruthy();
+      screen.getAllByRole('button', { name: '田中 一郎 様 医師向けの下書きを自動作成' }),
+    ).toHaveLength(2);
+    expect(
+      screen.getAllByRole('button', { name: '田中 一郎 様 ケアマネ向けの下書きを自動作成' }),
+    ).toHaveLength(2);
 
     // 残課題 / 作成済み報告書: 他職種報告済みかどうかと送信日時を表示する
     expect(screen.getByTestId('report-open-issues')).toBeTruthy();
@@ -581,6 +583,35 @@ describe('ReportShareWorkspace', () => {
     expect(screen.queryByText('報告・共有を表示できません')).toBeNull();
   });
 
+  it('shows the drafts empty state only after a successful empty response', async () => {
+    const workspace = JSON.parse(JSON.stringify(TODAY_WORKSPACE)) as ReportsTodayWorkspaceResponse;
+    workspace.draft_rows = [];
+    workspace.counts = { ...workspace.counts, to_write: 0 };
+    workspace.count_metadata = {
+      ...workspace.count_metadata,
+      to_write: {
+        ...workspace.count_metadata.to_write,
+        total_count: 0,
+        visible_count: 0,
+        hidden_count: 0,
+        truncated: false,
+      },
+    };
+
+    stubFetch(workspace);
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('report-today-drafts')).toBeTruthy();
+    });
+    expect(
+      screen.getByText(
+        '本日の訪問予定はありません。訪問が完了すると、ここに報告の下書きが並びます。',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('報告・共有を表示できません')).toBeNull();
+  });
+
   it('does not show the created-reports empty state when the workspace query fails', async () => {
     vi.stubGlobal(
       'fetch',
@@ -597,6 +628,12 @@ describe('ReportShareWorkspace', () => {
     renderWorkspace();
 
     expect(await screen.findByText('報告・共有を表示できません')).toBeTruthy();
+    expect(screen.queryByTestId('report-today-drafts')).toBeNull();
+    expect(
+      screen.queryByText(
+        '本日の訪問予定はありません。訪問が完了すると、ここに報告の下書きが並びます。',
+      ),
+    ).toBeNull();
     expect(screen.queryByTestId('report-created-list')).toBeNull();
     expect(screen.queryByText('作成済み報告書はありません。')).toBeNull();
   });
@@ -653,8 +690,8 @@ describe('ReportShareWorkspace', () => {
     await waitFor(() => {
       expect(screen.getByTestId('report-today-drafts')).toBeTruthy();
     });
-    expect(screen.getByText('09:00')).toBeTruthy();
-    expect(screen.queryByText('18:00')).toBeNull();
+    expect(screen.getAllByText('09:00')).not.toHaveLength(0);
+    expect(screen.queryAllByText('18:00')).toHaveLength(0);
   });
 
   it('encodes created-report patient links and keeps unassigned reports as text', async () => {
@@ -730,9 +767,11 @@ describe('ReportShareWorkspace', () => {
     const fetchMock = stubFetch();
     renderWorkspace();
 
-    const generateButton = await screen.findByRole('button', {
-      name: '田中 一郎 様 ケアマネ向けの下書きを自動作成',
-    });
+    const generateButton = (
+      await screen.findAllByRole('button', {
+        name: '田中 一郎 様 ケアマネ向けの下書きを自動作成',
+      })
+    )[0];
     fireEvent.click(generateButton);
 
     await waitFor(() => {
@@ -751,6 +790,30 @@ describe('ReportShareWorkspace', () => {
     });
   });
 
+  it('preserves the physician draft generation optimistic-lock payload', async () => {
+    const fetchMock = stubFetch();
+    renderWorkspace();
+
+    const generateButton = (
+      await screen.findAllByRole('button', {
+        name: '田中 一郎 様 医師向けの下書きを自動作成',
+      })
+    )[0];
+    fireEvent.click(generateButton);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/care-reports/generate-from-visit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-org-id': 'org_1' },
+        body: JSON.stringify({
+          visit_record_id: 'vr_2',
+          expected_visit_record_updated_at: '2026-06-11T04:45:00.000Z',
+          report_type: 'physician_report',
+        }),
+      });
+    });
+  });
+
   it('navigates to the generated draft via the shared buildReportHref return value', async () => {
     stubFetch();
     const realImpl = vi.mocked(buildReportHref).getMockImplementation();
@@ -760,9 +823,11 @@ describe('ReportShareWorkspace', () => {
       renderWorkspace();
 
       fireEvent.click(
-        await screen.findByRole('button', {
-          name: '田中 一郎 様 医師向けの下書きを自動作成',
-        }),
+        (
+          await screen.findAllByRole('button', {
+            name: '田中 一郎 様 医師向けの下書きを自動作成',
+          })
+        )[0],
       );
 
       await waitFor(() => {
@@ -781,9 +846,11 @@ describe('ReportShareWorkspace', () => {
     renderWorkspace();
 
     fireEvent.click(
-      await screen.findByRole('button', {
-        name: '田中 一郎 様 医師向けの下書きを自動作成',
-      }),
+      (
+        await screen.findAllByRole('button', {
+          name: '田中 一郎 様 医師向けの下書きを自動作成',
+        })
+      )[0],
     );
 
     await waitFor(() => {

@@ -9,14 +9,6 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { DataTable, type DataTableColumnMeta } from '@/components/ui/data-table';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { WorkspaceActionRail } from '@/components/features/workspace/action-rail';
 import { MainWorkflowCompactNav } from '@/components/features/workflow/main-workflow-route';
 import { readApiJson } from '@/lib/api/client-json';
@@ -32,6 +24,7 @@ import { timeIsoToString } from '@/lib/visits/time-of-day';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import type {
   ReportDraftGenerationTarget,
+  ReportDraftRow,
   ReportsTodayWorkspaceResponse,
   ReportCreatedRow,
   ReportOpenIssue,
@@ -126,6 +119,90 @@ async function fetchOperationCockpit(orgId: string): Promise<DashboardCockpitRes
 // 今日書く報告
 // ---------------------------------------------------------------------------
 
+function DraftVisitTimeCell({ row }: { row: ReportDraftRow }) {
+  return (
+    <span className="font-semibold tabular-nums text-foreground">
+      {row.time_start ? (timeIsoToString(row.time_start) ?? '--:--') : '--:--'}
+    </span>
+  );
+}
+
+function DraftPatientCell({ row }: { row: ReportDraftRow }) {
+  return <span className="font-medium text-foreground">{row.patient_label}</span>;
+}
+
+function DraftRecipientCell({ row }: { row: ReportDraftRow }) {
+  return <span className="text-sm text-foreground">{row.recipient_label}</span>;
+}
+
+function DraftStatusBadge({ row }: { row: ReportDraftRow }) {
+  return (
+    <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+      {DRAFT_STATUS_LABELS[row.status] ?? row.status}
+    </span>
+  );
+}
+
+function DraftSupplementalActionCell({
+  row,
+  onGenerateDraft,
+  generatingDraftKey,
+  isGeneratingDraft,
+}: {
+  row: ReportDraftRow;
+  onGenerateDraft: (input: DraftGenerationInput) => void;
+  generatingDraftKey: string | null;
+  isGeneratingDraft: boolean;
+}) {
+  return (
+    <div className="flex flex-col items-start gap-2 md:items-end">
+      {row.note ? (
+        // 危険区分メモ(麻薬使用状況を含む 等)は隠さず常時表示する
+        <span className="text-xs text-muted-foreground">{row.note}</span>
+      ) : null}
+      {row.action ? (
+        <Link
+          href={row.action.href}
+          className="inline-flex min-h-[44px] items-center rounded-md border border-primary/30 bg-primary/5 px-3 text-sm font-medium text-primary hover:bg-primary/10 sm:min-h-[44px]"
+        >
+          {row.action.label}
+        </Link>
+      ) : null}
+      {row.status === 'ready_to_generate' && row.visit_record_id && row.visit_record_updated_at ? (
+        <span className="flex flex-wrap justify-start gap-2 md:justify-end">
+          {row.generation_targets.map((target) => {
+            const draftKey = `${row.visit_record_id}:${target.report_type}`;
+            const isButtonGenerating = generatingDraftKey === draftKey;
+            return (
+              <Button
+                key={target.report_type}
+                type="button"
+                size="sm"
+                onClick={() =>
+                  onGenerateDraft({
+                    visitRecordId: row.visit_record_id!,
+                    visitRecordUpdatedAt: row.visit_record_updated_at!,
+                    reportType: target.report_type,
+                  })
+                }
+                disabled={isGeneratingDraft}
+                aria-label={`${row.patient_label} ${target.label}の下書きを自動作成`}
+                className="h-auto min-h-[44px] px-3 sm:min-h-[44px]"
+              >
+                {isButtonGenerating
+                  ? '作成中...'
+                  : row.generation_targets.length === 1
+                    ? '下書きを自動作成'
+                    : `${target.label}を作成`}
+              </Button>
+            );
+          })}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 function TodayDraftsCard({
   data,
   onGenerateDraft,
@@ -137,6 +214,51 @@ function TodayDraftsCard({
   generatingDraftKey: string | null;
   isGeneratingDraft: boolean;
 }) {
+  const draftColumns: ColumnDef<ReportDraftRow>[] = [
+    {
+      id: 'visitTime',
+      header: '訪問',
+      meta: { mobileLabel: '訪問' } satisfies DataTableColumnMeta<ReportDraftRow>,
+      cell: ({ row }) => <DraftVisitTimeCell row={row.original} />,
+      enableSorting: false,
+    },
+    {
+      id: 'patient',
+      header: '患者',
+      meta: { mobileLabel: '患者' } satisfies DataTableColumnMeta<ReportDraftRow>,
+      cell: ({ row }) => <DraftPatientCell row={row.original} />,
+      enableSorting: false,
+    },
+    {
+      id: 'recipient',
+      header: '宛先',
+      meta: { mobileLabel: '宛先' } satisfies DataTableColumnMeta<ReportDraftRow>,
+      cell: ({ row }) => <DraftRecipientCell row={row.original} />,
+      enableSorting: false,
+    },
+    {
+      id: 'status',
+      header: '状態',
+      meta: { mobileLabel: '状態' } satisfies DataTableColumnMeta<ReportDraftRow>,
+      cell: ({ row }) => <DraftStatusBadge row={row.original} />,
+      enableSorting: false,
+    },
+    {
+      id: 'supplementalAction',
+      header: () => <span className="sr-only">補足・アクション</span>,
+      meta: { mobileLabel: '補足・アクション' } satisfies DataTableColumnMeta<ReportDraftRow>,
+      cell: ({ row }) => (
+        <DraftSupplementalActionCell
+          row={row.original}
+          onGenerateDraft={onGenerateDraft}
+          generatingDraftKey={generatingDraftKey}
+          isGeneratingDraft={isGeneratingDraft}
+        />
+      ),
+      enableSorting: false,
+    },
+  ];
+
   return (
     <section
       className="rounded-lg border border-border/70 bg-card p-4"
@@ -156,100 +278,16 @@ function TodayDraftsCard({
           本日の訪問予定はありません。訪問が完了すると、ここに報告の下書きが並びます。
         </p>
       ) : (
-        <Table className="mt-3 block md:table">
-          <TableHeader className="hidden md:table-header-group">
-            <TableRow>
-              <TableHead className="w-20">訪問</TableHead>
-              <TableHead>患者</TableHead>
-              <TableHead>宛先</TableHead>
-              <TableHead className="w-36">状態</TableHead>
-              <TableHead className="w-44">
-                <span className="sr-only">補足・アクション</span>
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody className="block space-y-2 md:table-row-group md:space-y-0">
-            {data.draft_rows.map((row) => (
-              <TableRow
-                key={row.id}
-                className="block rounded-md border border-border/70 bg-card px-3 py-2.5 md:table-row md:rounded-none md:border-x-0 md:border-t-0 md:bg-transparent md:p-0"
-                data-testid="report-draft-row"
-              >
-                <TableCell className="block p-0 font-semibold tabular-nums text-foreground md:table-cell md:p-2">
-                  <span className="mr-2 text-xs font-medium text-muted-foreground md:hidden">
-                    訪問
-                  </span>
-                  <span>
-                    {row.time_start ? (timeIsoToString(row.time_start) ?? '--:--') : '--:--'}
-                  </span>
-                </TableCell>
-                <TableCell className="mt-1 block p-0 font-medium text-foreground md:table-cell md:mt-0 md:p-2">
-                  {row.patient_label}
-                </TableCell>
-                <TableCell className="mt-1 block p-0 text-sm text-foreground md:table-cell md:mt-0 md:p-2">
-                  <span className="mr-2 text-xs font-medium text-muted-foreground md:hidden">
-                    宛先
-                  </span>
-                  <span>{row.recipient_label}</span>
-                </TableCell>
-                <TableCell className="mt-2 block p-0 md:table-cell md:mt-0 md:p-2">
-                  <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
-                    {DRAFT_STATUS_LABELS[row.status] ?? row.status}
-                  </span>
-                </TableCell>
-                <TableCell className="mt-2 block p-0 md:table-cell md:mt-0 md:p-2">
-                  <div className="flex flex-col items-start gap-2 md:items-end">
-                    {row.note ? (
-                      // 危険区分メモ(麻薬使用状況を含む 等)は隠さず常時表示する
-                      <span className="text-xs text-muted-foreground">{row.note}</span>
-                    ) : null}
-                    {row.action ? (
-                      <Link
-                        href={row.action.href}
-                        className="inline-flex min-h-[44px] items-center rounded-md border border-primary/30 bg-primary/5 px-3 text-sm font-medium text-primary hover:bg-primary/10 sm:min-h-[44px]"
-                      >
-                        {row.action.label}
-                      </Link>
-                    ) : null}
-                    {row.status === 'ready_to_generate' &&
-                    row.visit_record_id &&
-                    row.visit_record_updated_at ? (
-                      <span className="flex flex-wrap justify-start gap-2 md:justify-end">
-                        {row.generation_targets.map((target) => {
-                          const draftKey = `${row.visit_record_id}:${target.report_type}`;
-                          const isButtonGenerating = generatingDraftKey === draftKey;
-                          return (
-                            <Button
-                              key={target.report_type}
-                              type="button"
-                              size="sm"
-                              onClick={() =>
-                                onGenerateDraft({
-                                  visitRecordId: row.visit_record_id!,
-                                  visitRecordUpdatedAt: row.visit_record_updated_at!,
-                                  reportType: target.report_type,
-                                })
-                              }
-                              disabled={isGeneratingDraft}
-                              aria-label={`${row.patient_label} ${target.label}の下書きを自動作成`}
-                              className="h-auto min-h-[44px] px-3 sm:min-h-[44px]"
-                            >
-                              {isButtonGenerating
-                                ? '作成中...'
-                                : row.generation_targets.length === 1
-                                  ? '下書きを自動作成'
-                                  : `${target.label}を作成`}
-                            </Button>
-                          );
-                        })}
-                      </span>
-                    ) : null}
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <div className="mt-3">
+          <DataTable
+            columns={draftColumns}
+            data={data.draft_rows}
+            caption="未作成・下書き一覧"
+            emptyMessage="本日の訪問予定はありません。訪問が完了すると、ここに報告の下書きが並びます。"
+            getRowId={(row) => row.id}
+            getRowA11yLabel={(row) => `${row.patient_label} / ${row.recipient_label}`}
+          />
+        </div>
       )}
     </section>
   );
