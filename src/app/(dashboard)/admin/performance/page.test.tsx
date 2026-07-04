@@ -40,6 +40,11 @@ import PerformancePage from './page';
 
 setupDomTestEnv();
 
+type QueryOption = {
+  queryKey: readonly unknown[];
+  queryFn?: () => Promise<unknown>;
+};
+
 describe('PerformancePage polling policy', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -151,5 +156,101 @@ describe('PerformancePage polling policy', () => {
     const retryButtons = screen.getAllByRole('button', { name: '再読み込み' });
     fireEvent.click(retryButtons[0]);
     expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses the shared JSON reader for performance read queries', async () => {
+    const workflowPayload = {
+      data: {
+        route_control: {
+          locked_schedules: 1,
+          pending_override_requests: 0,
+          emergency_impact_items: 0,
+        },
+        outcome_metrics: {
+          completed_last_7_days: 3,
+          disrupted_last_7_days: 0,
+          urgent_completed_last_7_days: 1,
+          awaiting_reports: 0,
+          open_exceptions: 0,
+        },
+        workload_metrics: { pharmacists: [] },
+      },
+    };
+    const schedulesPayload = { data: [] };
+    const proposalsPayload = { data: [] };
+    const runtimePayload = {
+      data: {
+        scope: 'current-process',
+        target_ms: 500,
+        collected_since: '2026-07-05T00:00:00.000Z',
+        summary: {
+          route_count: 1,
+          total_requests: 10,
+          slow_requests: 0,
+          error_requests: 0,
+          slow_request_rate: 0,
+          overall_p50_ms: 20,
+          overall_p95_ms: 50,
+          routes_over_target: 0,
+        },
+        routes: [],
+      },
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      expect(init?.headers).toEqual({ 'x-org-id': 'org_1' });
+      if (url === '/api/dashboard/workflow?view=performance') {
+        return Response.json(workflowPayload);
+      }
+      if (url.startsWith('/api/visit-schedules?')) {
+        expect(url).toContain('limit=200');
+        return Response.json(schedulesPayload);
+      }
+      if (url.startsWith('/api/visit-schedule-proposals?')) {
+        return Response.json(proposalsPayload);
+      }
+      if (url === '/api/admin/performance-metrics?top=6') {
+        return Response.json(runtimePayload);
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<PerformancePage />);
+
+    const realtimeQueries = useRealtimeQueryMock.mock.calls.map(
+      ([options]) => options as QueryOption,
+    );
+    const workflowQuery = realtimeQueries.find(
+      (option) => option.queryKey[0] === 'admin-performance-workflow',
+    );
+    const schedulesQuery = realtimeQueries.find(
+      (option) => option.queryKey[0] === 'admin-performance-schedules',
+    );
+    const proposalsQuery = realtimeQueries.find(
+      (option) => option.queryKey[0] === 'admin-performance-proposals',
+    );
+    const runtimeQuery = useQueryMock.mock.calls.find(
+      ([options]) => (options as QueryOption).queryKey[0] === 'admin-performance-runtime',
+    )?.[0] as QueryOption | undefined;
+
+    await expect(workflowQuery?.queryFn?.()).resolves.toEqual(workflowPayload);
+    await expect(schedulesQuery?.queryFn?.()).resolves.toEqual(schedulesPayload);
+    await expect(proposalsQuery?.queryFn?.()).resolves.toEqual(proposalsPayload);
+    await expect(runtimeQuery?.queryFn?.()).resolves.toEqual(runtimePayload);
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/dashboard/workflow?view=performance', {
+      headers: { 'x-org-id': 'org_1' },
+    });
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringMatching(/^\/api\/visit-schedules\?/), {
+      headers: { 'x-org-id': 'org_1' },
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/^\/api\/visit-schedule-proposals\?/),
+      { headers: { 'x-org-id': 'org_1' } },
+    );
+    expect(fetchMock).toHaveBeenCalledWith('/api/admin/performance-metrics?top=6', {
+      headers: { 'x-org-id': 'org_1' },
+    });
   });
 });

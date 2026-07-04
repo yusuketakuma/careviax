@@ -23,6 +23,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
 import { HelpPopover } from '@/components/ui/help-popover';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
@@ -189,8 +190,7 @@ export default function PerformancePage() {
       const res = await fetch('/api/dashboard/workflow?view=performance', {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('ワークフローの取得に失敗しました');
-      return res.json() as Promise<{ data: WorkflowData }>;
+      return readApiJson<{ data: WorkflowData }>(res, 'ワークフローの取得に失敗しました');
     },
     enabled: !!orgId,
     invalidateOn: ['workflow_refresh', 'cycle_transition'],
@@ -208,8 +208,7 @@ export default function PerformancePage() {
       const res = await fetch(`/api/visit-schedules?${params}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('訪問予定の取得に失敗しました');
-      return res.json() as Promise<{ data: VisitSchedule[] }>;
+      return readApiJson<{ data: VisitSchedule[] }>(res, '訪問予定の取得に失敗しました');
     },
     enabled: !!orgId,
     invalidateOn: ['workflow_refresh'],
@@ -226,8 +225,7 @@ export default function PerformancePage() {
       const res = await fetch(`/api/visit-schedule-proposals?${params}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('訪問候補の取得に失敗しました');
-      return res.json() as Promise<{ data: Proposal[] }>;
+      return readApiJson<{ data: Proposal[] }>(res, '訪問候補の取得に失敗しました');
     },
     enabled: !!orgId,
     invalidateOn: ['workflow_refresh'],
@@ -240,8 +238,10 @@ export default function PerformancePage() {
       const res = await fetch('/api/admin/performance-metrics?top=6', {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('API 応答指標の取得に失敗しました');
-      return res.json() as Promise<{ data: RuntimePerformanceSnapshot }>;
+      return readApiJson<{ data: RuntimePerformanceSnapshot }>(
+        res,
+        'API 応答指標の取得に失敗しました',
+      );
     },
     enabled: !!orgId,
     refetchInterval: 60_000,
