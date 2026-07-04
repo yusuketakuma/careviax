@@ -28,10 +28,19 @@ import {
   type LatestPatientLabObservation,
 } from '@/server/services/patient-detail-labs';
 import {
+  getCareReportSourceBillingEvidence,
+  getCareReportSourceCareCase,
   getCareReportSourceMedicationCycle,
   getCareReportSourcePatient,
+  getCareReportSourcePharmacistUser,
+  getCareReportSourceVisitRecord,
+  getCareReportSourceVisitSchedule,
   listCareReportSourceCareTeamLinks,
+  listCareReportSourceConferenceNotes,
+  listCareReportSourceExistingReports,
+  listCareReportSourcePrescriptionLines,
   listCareReportSourceResidualMedications,
+  type CareReportSourceConferenceNoteDb,
 } from '@/server/services/care-report-source-readers';
 
 // CareReport.report_type は Prisma enum ReportType に対応する。
@@ -172,19 +181,9 @@ export async function generateReportsFromVisit(
   reports: Array<{ id: string; report_type: string; status: string; updated_at: Date }>;
 }> {
   // ─── 1. VisitRecord 取得 ────────────────────────────────────────────────────
-  const visitRecord = await prisma.visitRecord.findFirst({
-    where: { id: visitRecordId, org_id: orgId },
-    select: {
-      id: true,
-      org_id: true,
-      patient_id: true,
-      pharmacist_id: true,
-      visit_date: true,
-      structured_soap: true,
-      schedule_id: true,
-      version: true,
-      updated_at: true,
-    },
+  const visitRecord = await getCareReportSourceVisitRecord(prisma, {
+    orgId,
+    visitRecordId,
   });
 
   if (!visitRecord) {
@@ -199,9 +198,8 @@ export async function generateReportsFromVisit(
   }
 
   // ─── 2. Schedule → Case 取得 ───────────────────────────────────────────────
-  const schedule = await prisma.visitSchedule.findUnique({
-    where: { id: visitRecord.schedule_id },
-    select: { case_id: true, cycle_id: true, org_id: true },
+  const schedule = await getCareReportSourceVisitSchedule(prisma, {
+    scheduleId: visitRecord.schedule_id,
   });
 
   // required_visit_support は schedule 確定後に取得（case_id が必要）
@@ -236,24 +234,6 @@ export async function generateReportsFromVisit(
   ) {
     throw new Error(`VisitRecord not accessible: ${visitRecordId}`);
   }
-  const conferenceNoteClient = (
-    prisma as unknown as {
-      conferenceNote?: {
-        findMany?: (args: Record<string, unknown>) => Promise<
-          Array<{
-            id: string;
-            note_type: string;
-            title: string;
-            conference_date: Date;
-            structured_content: unknown;
-            metadata: unknown;
-            action_items: unknown;
-          }>
-        >;
-      };
-    }
-  ).conferenceNote;
-
   // ─── 3-7. 独立クエリを並列実行 ────────────────────────────────────────────
   const [
     patient,
@@ -270,52 +250,19 @@ export async function generateReportsFromVisit(
     getCareReportSourceMedicationCycle(prisma, { orgId, cycleId: schedule.cycle_id }),
     listCareReportSourceResidualMedications(prisma, { orgId, visitRecordId }),
     listCareReportSourceCareTeamLinks(prisma, { orgId, caseId }),
-    prisma.user.findFirst({
-      where: { id: visitRecord.pharmacist_id },
-      select: { name: true },
+    getCareReportSourcePharmacistUser(prisma, {
+      pharmacistId: visitRecord.pharmacist_id,
     }),
-    prisma.billingEvidence.findFirst({
-      where: { visit_record_id: visitRecordId, org_id: orgId },
-      select: {
-        id: true,
-        cycle_id: true,
-        patient_id: true,
-        claimable: true,
-        exclusion_reason: true,
-        report_delivery_ref: true,
-        updated_at: true,
-        payer_basis: true,
-        applied_rule_keys: true,
-        recommended_rule_keys: true,
-        validation_notes: true,
-        calculation_context: true,
-      },
-      orderBy: { created_at: 'desc' },
+    getCareReportSourceBillingEvidence(prisma, {
+      orgId,
+      visitRecordId,
     }),
-    prisma.careCase.findFirst({
-      where: { id: caseId, org_id: orgId },
-      select: { required_visit_support: true },
+    getCareReportSourceCareCase(prisma, { orgId, caseId }),
+    listCareReportSourceConferenceNotes(prisma as unknown as CareReportSourceConferenceNoteDb, {
+      orgId,
+      patientId: visitRecord.patient_id,
+      caseId,
     }),
-    conferenceNoteClient?.findMany
-      ? conferenceNoteClient.findMany({
-          where: {
-            org_id: orgId,
-            OR: [{ patient_id: visitRecord.patient_id }, { case_id: caseId }],
-            note_type: { in: ['pre_discharge', 'service_manager'] },
-          },
-          orderBy: [{ conference_date: 'desc' }],
-          take: 4,
-          select: {
-            id: true,
-            note_type: true,
-            title: true,
-            conference_date: true,
-            structured_content: true,
-            metadata: true,
-            action_items: true,
-          },
-        })
-      : Promise.resolve([]),
     listLatestPatientLabObservations(prisma, { orgId, patientId: visitRecord.patient_id }),
   ]);
 
@@ -330,31 +277,9 @@ export async function generateReportsFromVisit(
   const intake = getHomeVisitIntake(careCase?.required_visit_support) ?? undefined;
 
   // ─── PrescriptionLines（medicationCycle に依存） ───────────────────────────
-  const prescriptionLines = await prisma.prescriptionLine.findMany({
-    where: { org_id: orgId, intake: { cycle_id: medicationCycle.id } },
-    select: {
-      id: true,
-      intake_id: true,
-      drug_name: true,
-      drug_code: true,
-      dose: true,
-      frequency: true,
-      days: true,
-      dosage_form: true,
-      quantity: true,
-      unit: true,
-      route: true,
-      dispensing_method: true,
-      packaging_instructions: true,
-      packaging_instruction_tags: true,
-      notes: true,
-      intake: {
-        select: {
-          prescribed_date: true,
-        },
-      },
-    },
-    orderBy: [{ intake: { prescribed_date: 'desc' } }, { line_number: 'asc' }],
+  const prescriptionLines = await listCareReportSourcePrescriptionLines(prisma, {
+    orgId,
+    medicationCycleId: medicationCycle.id,
   });
 
   const prescriptionLinesNormalized = prescriptionLines.map((l) => ({
@@ -431,13 +356,10 @@ export async function generateReportsFromVisit(
     }
   }
 
-  const existingReports = await prisma.careReport.findMany({
-    where: {
-      org_id: orgId,
-      visit_record_id: visitRecordId,
-      report_type: { in: typesToGenerate },
-    },
-    select: { id: true, report_type: true, status: true, updated_at: true },
+  const existingReports = await listCareReportSourceExistingReports(prisma, {
+    orgId,
+    visitRecordId,
+    reportTypes: typesToGenerate,
   });
   const existingByType = new Map<ReportType, ExistingCareReport>();
   for (const report of existingReports) {
