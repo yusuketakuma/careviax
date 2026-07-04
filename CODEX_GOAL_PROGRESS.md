@@ -1,5 +1,43 @@
 # CODEX Goal Progress
 
+## R24/R46 Conference Notes Cursor Helper Partial - 2026-07-05 02:18 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R24/R46 slice:
+    - `src/app/api/conference-notes/route.ts`
+    - `src/app/api/conference-notes/route.test.ts`
+- Scope:
+  - Reused the existing `buildCursorPage` helper for billing-filtered
+    conference note visible-row selection.
+  - Preserved stable DB keyset cursor filtering, summary detail projection,
+    billing eligibility filtering, scan-window cursor semantics, `hasMore`,
+    and `nextCursor` response shape.
+  - Added a regression test for the under-filled billing eligibility filter
+    case where the next cursor must come from the scan-window tail.
+- Safety:
+  - Product API implementation internals changed; external response shape and
+    conference note scan-window semantics are unchanged.
+  - Preserved `canReport`, request auth context, RLS request context, DB query
+    shape, schema/migrations/data, auth/authorization semantics, PHI
+    projection, billing behavior, deployment, package dependency, live DB
+    operation, external send, secret handling, push, and destructive operation
+    boundaries.
+- Validation:
+  - `pnpm exec vitest run src/app/api/conference-notes/route.test.ts src/lib/api/pagination.test.ts --reporter=dot --testTimeout=30000`
+    passed `2` files / `53` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `aa56ad04`
+    (`refactor(api): reuse cursor page helper in conference notes`).
+- Remaining:
+  - R24/R46 are partial; continue compatible hand-rolled cursor page routes.
+  - Admin/external-professionals count-based q search still needs
+    route-specific analysis before helper convergence.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R24/R46 Visit Schedule Proposals Cursor Helper Partial - 2026-07-05 02:14 JST
 
 - Status:

@@ -3034,3 +3034,27 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: R24/R46 は partial。conference-notes scan-window と
   admin/external-professionals count-based q search は個別分析後に継続。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
+## 2026-07-05 R24/R46 conference-notes cursor helper slice
+
+- 分類: pattern-inconsistency / billing-filtered scan-window visible-row selection →
+  `buildCursorPage` 収束。
+- 実施:
+  - `/api/conference-notes` GET の billing-filtered path に残っていた
+    `filteredRecords.length > limit`、`slice(0, limit)`、next-cursor assembly を
+    `buildCursorPage` へ移行。
+  - filter 後の visible page が under-fill しても scan window に overflow がある場合、
+    `nextCursor` は scan-window 末尾 row id のままにする契約を test-lock。
+- 挙動変更: API内部の重複 helper 収束のみ。外部 response shape、stable DB keyset cursor、
+  summary projection、billing eligibility filtering、scan-window cursor semantics、
+  sensitive no-store は維持。
+- 安全性: `canReport`、auth context、authorization/access filter、DB query shape、
+  auth/authorization、PHI projection、billing、deployment、package dependency、
+  live DB operation、external send、secret handling、push、destructive operation は不変。
+- 検証: focused conference-notes/pagination Vitest `2 files / 53 tests` green、
+  scoped ESLint green、targeted Prettier check green、targeted `git diff --check` green、
+  `pnpm typecheck` green。
+- commit: `aa56ad04` (`refactor(api): reuse cursor page helper in conference notes`)。
+- 残課題: R24/R46 は partial。admin/external-professionals count-based q search は
+  個別分析後に継続。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
