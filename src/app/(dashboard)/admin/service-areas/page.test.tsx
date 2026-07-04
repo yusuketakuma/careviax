@@ -142,6 +142,14 @@ function renderPage() {
   return render(<ServiceAreasPage />, { wrapper: createWrapper() });
 }
 
+function getServiceAreaFormElement() {
+  const form = screen.getByLabelText('エリア名').closest('form');
+  if (!(form instanceof HTMLFormElement)) {
+    throw new Error('service area form was not rendered');
+  }
+  return form;
+}
+
 describe('ServiceAreasPage', () => {
   beforeEach(() => {
     orgIdMock.value = 'org_1';
@@ -225,6 +233,24 @@ describe('ServiceAreasPage', () => {
     expect(document.getElementById('service-area-save-blocker')?.textContent).toBe(
       'エリア定義(JSON) の形式が不正です',
     );
+  });
+
+  it('shows the RHF error summary without mutating when the form is submitted invalid', async () => {
+    renderPage();
+
+    await screen.findByRole('option', { name: '本店' });
+    vi.mocked(global.fetch).mockClear();
+
+    fireEvent.submit(getServiceAreaFormElement());
+
+    const summaryTitle = await screen.findByText('入力内容を確認してください');
+    const summary = summaryTitle.closest('[role="alert"]');
+    expect(summary?.textContent).toContain('拠点');
+    expect(summary?.textContent).toContain('拠点を選択してください。');
+    const mutationCalls = vi
+      .mocked(global.fetch)
+      .mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method);
+    expect(mutationCalls).toHaveLength(0);
   });
 
   it('requires confirmation before deleting a service area', async () => {
@@ -399,6 +425,15 @@ describe('ServiceAreasPage', () => {
         (init as RequestInit | undefined)?.method === 'POST',
     );
     expect((postCall![1] as RequestInit).headers).toEqual(buildOrgJsonHeaders('org_1'));
+    expect(JSON.parse(String((postCall![1] as RequestInit).body))).toEqual({
+      site_id: 'site_1',
+      name: '新規エリア',
+      area_type: 'radius',
+      geo_data: {
+        match_keywords: [],
+        facility_ids: [],
+      },
+    });
   });
 
   it('update (PATCH) encodes a hostile area id via encodePathSegment and uses buildOrgJsonHeaders', async () => {

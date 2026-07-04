@@ -1,8 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { getAdminServiceAreasShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,10 +19,12 @@ import {
 } from '@/components/ui/select';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ErrorState } from '@/components/ui/error-state';
+import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { SERVICE_AREAS_API_PATH, buildServiceAreaApiPath } from '@/lib/service-areas/api-paths';
@@ -72,6 +77,28 @@ const EMPTY_SERVICE_AREA_FORM: ServiceAreaForm = {
 const SERVICE_AREA_SAVE_BLOCKER_ID = 'service-area-save-blocker';
 const SERVICE_AREA_GEO_ERROR_ID = 'service-area-geo-error';
 
+function normalizeServiceAreaForm(form?: Partial<ServiceAreaForm> | null): ServiceAreaForm {
+  return {
+    id: form?.id ?? EMPTY_SERVICE_AREA_FORM.id,
+    site_id: form?.site_id ?? EMPTY_SERVICE_AREA_FORM.site_id,
+    name: form?.name ?? EMPTY_SERVICE_AREA_FORM.name,
+    area_type: form?.area_type ?? EMPTY_SERVICE_AREA_FORM.area_type,
+    geoText: form?.geoText ?? EMPTY_SERVICE_AREA_FORM.geoText,
+    notes: form?.notes ?? EMPTY_SERVICE_AREA_FORM.notes,
+  };
+}
+
+function toServiceAreaForm(area: ServiceArea): ServiceAreaForm {
+  return normalizeServiceAreaForm({
+    id: area.id,
+    site_id: area.site_id,
+    name: area.name,
+    area_type: area.area_type,
+    geoText: JSON.stringify(area.geo_data ?? {}, null, 2),
+    notes: area.notes ?? '',
+  });
+}
+
 function getServiceAreaGeoError(geoText: string) {
   try {
     parseJsonObjectText(geoText, 'エリア定義(JSON) の形式が不正です');
@@ -87,13 +114,69 @@ function getServiceAreaSaveBlocker(form: ServiceAreaForm, geoError: string | nul
   return geoError;
 }
 
+function getServiceAreaBlockerPath(
+  form: ServiceAreaForm,
+  geoError: string | null,
+): keyof ServiceAreaForm {
+  if (!form.site_id) return 'site_id';
+  if (form.name.trim().length === 0) return 'name';
+  if (geoError) return 'geoText';
+  return 'site_id';
+}
+
+const serviceAreaFormSchema = z
+  .object({
+    id: z.string(),
+    site_id: z.string(),
+    name: z.string(),
+    area_type: z.custom<ServiceArea['area_type']>(),
+    geoText: z.string(),
+    notes: z.string(),
+  })
+  .superRefine((value, ctx) => {
+    const form = normalizeServiceAreaForm(value);
+    const geoError = getServiceAreaGeoError(form.geoText);
+    const blocker = getServiceAreaSaveBlocker(form, geoError);
+    if (!blocker) return;
+
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [getServiceAreaBlockerPath(form, geoError)],
+      message: blocker,
+    });
+  });
+
 export default function ServiceAreasPage() {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
-  const [form, setForm] = useState<ServiceAreaForm>(EMPTY_SERVICE_AREA_FORM);
+  const errorSummaryId = 'service-area-form-error-summary';
   const [deleteTarget, setDeleteTarget] = useState<ServiceArea | null>(null);
+  const {
+    control,
+    formState: { errors },
+    handleSubmit,
+    register,
+    reset,
+  } = useForm<ServiceAreaForm>({
+    resolver: zodResolver(serviceAreaFormSchema),
+    defaultValues: EMPTY_SERVICE_AREA_FORM,
+  });
+  const watchedForm = useWatch({ control, defaultValue: EMPTY_SERVICE_AREA_FORM });
+  const form = normalizeServiceAreaForm(watchedForm);
   const geoError = getServiceAreaGeoError(form.geoText);
   const saveBlocker = getServiceAreaSaveBlocker(form, geoError);
+  const errorSummaryItems = collectFormErrorSummaryItems(errors, {
+    site_id: '拠点',
+    name: 'エリア名',
+    area_type: 'エリア種別',
+    geoText: 'エリア定義(JSON)',
+    notes: '備考',
+  });
+
+  function focusErrorSummary() {
+    if (typeof document === 'undefined') return;
+    document.getElementById(errorSummaryId)?.focus();
+  }
 
   const sitesQuery = useQuery({
     queryKey: ['service-areas-sites', orgId],
@@ -120,33 +203,37 @@ export default function ServiceAreasPage() {
   });
 
   const saveMutation = useMutation({
-    mutationFn: async () => {
-      const blocker = getServiceAreaSaveBlocker(form, getServiceAreaGeoError(form.geoText));
+    mutationFn: async (values: ServiceAreaForm) => {
+      const blocker = getServiceAreaSaveBlocker(values, getServiceAreaGeoError(values.geoText));
       if (blocker) throw new Error(blocker);
 
-      const geoData = parseJsonObjectText(form.geoText, 'エリア定義(JSON) の形式が不正です');
+      const geoData = parseJsonObjectText(values.geoText, 'エリア定義(JSON) の形式が不正です');
 
       // buildServiceAreaApiPath validates during URL construction, so a dot
       // segment id fails closed before the mutating PATCH side effect.
-      const res = await fetch(form.id ? buildServiceAreaApiPath(form.id) : SERVICE_AREAS_API_PATH, {
-        method: form.id ? 'PATCH' : 'POST',
-        headers: buildOrgJsonHeaders(orgId),
-        body: JSON.stringify({
-          site_id: form.site_id,
-          name: form.name.trim(),
-          area_type: form.area_type,
-          geo_data: geoData,
-          notes: form.notes.trim() || undefined,
-        }),
-      });
+      const res = await fetch(
+        values.id ? buildServiceAreaApiPath(values.id) : SERVICE_AREAS_API_PATH,
+        {
+          method: values.id ? 'PATCH' : 'POST',
+          headers: buildOrgJsonHeaders(orgId),
+          body: JSON.stringify({
+            site_id: values.site_id,
+            name: values.name.trim(),
+            area_type: values.area_type,
+            geo_data: geoData,
+            notes: values.notes.trim() || undefined,
+          }),
+        },
+      );
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.message ?? '訪問エリアの保存に失敗しました');
       }
+      return values;
     },
-    onSuccess: async () => {
-      toast.success(form.id ? '訪問エリアを更新しました' : '訪問エリアを登録しました');
-      setForm(EMPTY_SERVICE_AREA_FORM);
+    onSuccess: async (savedForm) => {
+      toast.success(savedForm.id ? '訪問エリアを更新しました' : '訪問エリアを登録しました');
+      reset(EMPTY_SERVICE_AREA_FORM);
       await queryClient.invalidateQueries({ queryKey: ['service-areas', orgId] });
     },
     onError: (error) => {
@@ -167,7 +254,7 @@ export default function ServiceAreasPage() {
     onSuccess: async (_data, deletedId) => {
       toast.success('訪問エリアを削除しました');
       if (form.id === deletedId) {
-        setForm(EMPTY_SERVICE_AREA_FORM);
+        reset(EMPTY_SERVICE_AREA_FORM);
       }
       setDeleteTarget(null);
       await queryClient.invalidateQueries({ queryKey: ['service-areas', orgId] });
@@ -208,140 +295,148 @@ export default function ServiceAreasPage() {
               `facility_ids` を利用します。
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="service-area-site">拠点</Label>
-              <Select
-                value={form.site_id}
-                onValueChange={(value) =>
-                  setForm((current) => ({ ...current, site_id: value ?? '' }))
-                }
-              >
-                <SelectTrigger
-                  id="service-area-site"
-                  className="min-h-[44px] w-full sm:min-h-[44px]"
+          <CardContent>
+            <form
+              className="space-y-4"
+              onSubmit={handleSubmit((values) => saveMutation.mutate(values), focusErrorSummary)}
+              noValidate
+            >
+              <FormErrorSummary id={errorSummaryId} items={errorSummaryItems} />
+              <div className="space-y-2">
+                <Label htmlFor="service-area-site">拠点</Label>
+                <Controller
+                  control={control}
+                  name="site_id"
+                  render={({ field }) => (
+                    <Select
+                      value={field.value}
+                      onValueChange={(value) => field.onChange(value ?? '')}
+                    >
+                      <SelectTrigger
+                        id="service-area-site"
+                        className="min-h-[44px] w-full sm:min-h-[44px]"
+                        aria-invalid={Boolean(errors.site_id)}
+                      >
+                        <SelectValue placeholder="拠点を選択" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {sites.map((site) => (
+                          <SelectItem key={site.id} value={site.id}>
+                            {site.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+                {sitesQuery.isError ? (
+                  <p
+                    role="status"
+                    aria-live="polite"
+                    className="flex flex-wrap items-center gap-x-2 text-sm text-destructive"
+                  >
+                    <span>
+                      {sitesQuery.error instanceof Error
+                        ? sitesQuery.error.message
+                        : '拠点一覧の取得に失敗しました'}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      className="h-auto p-0 text-sm"
+                      onClick={() => void sitesQuery.refetch()}
+                    >
+                      再試行
+                    </Button>
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="service-area-name">エリア名</Label>
+                <Input
+                  id="service-area-name"
+                  aria-invalid={Boolean(errors.name)}
+                  placeholder="北多摩エリア"
+                  {...register('name')}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="service-area-type">エリア種別</Label>
+                <Controller
+                  control={control}
+                  name="area_type"
+                  render={({ field }) => (
+                    <Select
+                      value={field.value}
+                      onValueChange={(value) =>
+                        field.onChange((value ?? 'radius') as 'radius' | 'polygon')
+                      }
+                    >
+                      <SelectTrigger
+                        id="service-area-type"
+                        className="min-h-[44px] w-full sm:min-h-[44px]"
+                        aria-invalid={Boolean(errors.area_type)}
+                      >
+                        <SelectValue>{form.area_type}</SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="radius">radius</SelectItem>
+                        <SelectItem value="polygon">polygon</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="service-area-geo">エリア定義(JSON)</Label>
+                <Textarea
+                  id="service-area-geo"
+                  rows={12}
+                  className="font-mono text-xs"
+                  aria-invalid={geoError ? true : undefined}
+                  aria-describedby={geoError ? SERVICE_AREA_GEO_ERROR_ID : undefined}
+                  {...register('geoText')}
+                />
+                {geoError ? (
+                  <p id={SERVICE_AREA_GEO_ERROR_ID} className="text-xs text-destructive">
+                    {geoError}
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="service-area-notes">備考</Label>
+                <Textarea id="service-area-notes" rows={3} {...register('notes')} />
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  type="submit"
+                  disabled={saveMutation.isPending || Boolean(saveBlocker)}
+                  aria-describedby={saveBlocker ? SERVICE_AREA_SAVE_BLOCKER_ID : undefined}
                 >
-                  <SelectValue placeholder="拠点を選択" />
-                </SelectTrigger>
-                <SelectContent>
-                  {sites.map((site) => (
-                    <SelectItem key={site.id} value={site.id}>
-                      {site.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {sitesQuery.isError ? (
-                <p
-                  role="status"
-                  aria-live="polite"
-                  className="flex flex-wrap items-center gap-x-2 text-sm text-destructive"
-                >
-                  <span>
-                    {sitesQuery.error instanceof Error
-                      ? sitesQuery.error.message
-                      : '拠点一覧の取得に失敗しました'}
-                  </span>
+                  {saveMutation.isPending ? '保存中...' : form.id ? '更新する' : '登録する'}
+                </Button>
+                {form.id ? (
                   <Button
                     type="button"
-                    variant="link"
-                    size="sm"
-                    className="h-auto p-0 text-sm"
-                    onClick={() => void sitesQuery.refetch()}
+                    variant="outline"
+                    onClick={() => reset(EMPTY_SERVICE_AREA_FORM)}
                   >
-                    再試行
+                    キャンセル
                   </Button>
+                ) : null}
+              </div>
+              {saveBlocker ? (
+                <p id={SERVICE_AREA_SAVE_BLOCKER_ID} className="text-xs text-destructive">
+                  {saveBlocker}
                 </p>
               ) : null}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="service-area-name">エリア名</Label>
-              <Input
-                id="service-area-name"
-                value={form.name}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, name: event.target.value }))
-                }
-                placeholder="北多摩エリア"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="service-area-type">エリア種別</Label>
-              <Select
-                value={form.area_type}
-                onValueChange={(value) =>
-                  setForm((current) => ({
-                    ...current,
-                    area_type: (value ?? 'radius') as 'radius' | 'polygon',
-                  }))
-                }
-              >
-                <SelectTrigger
-                  id="service-area-type"
-                  className="min-h-[44px] w-full sm:min-h-[44px]"
-                >
-                  <SelectValue>{form.area_type}</SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="radius">radius</SelectItem>
-                  <SelectItem value="polygon">polygon</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="service-area-geo">エリア定義(JSON)</Label>
-              <Textarea
-                id="service-area-geo"
-                rows={12}
-                className="font-mono text-xs"
-                value={form.geoText}
-                aria-invalid={geoError ? true : undefined}
-                aria-describedby={geoError ? SERVICE_AREA_GEO_ERROR_ID : undefined}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, geoText: event.target.value }))
-                }
-              />
-              {geoError ? (
-                <p id={SERVICE_AREA_GEO_ERROR_ID} className="text-xs text-destructive">
-                  {geoError}
-                </p>
-              ) : null}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="service-area-notes">備考</Label>
-              <Textarea
-                id="service-area-notes"
-                rows={3}
-                value={form.notes}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, notes: event.target.value }))
-                }
-              />
-            </div>
-
-            <div className="flex gap-2">
-              <Button
-                onClick={() => saveMutation.mutate()}
-                disabled={saveMutation.isPending || Boolean(saveBlocker)}
-                aria-describedby={saveBlocker ? SERVICE_AREA_SAVE_BLOCKER_ID : undefined}
-              >
-                {saveMutation.isPending ? '保存中...' : form.id ? '更新する' : '登録する'}
-              </Button>
-              {form.id ? (
-                <Button variant="outline" onClick={() => setForm(EMPTY_SERVICE_AREA_FORM)}>
-                  キャンセル
-                </Button>
-              ) : null}
-            </div>
-            {saveBlocker ? (
-              <p id={SERVICE_AREA_SAVE_BLOCKER_ID} className="text-xs text-destructive">
-                {saveBlocker}
-              </p>
-            ) : null}
+            </form>
           </CardContent>
         </Card>
 
@@ -389,16 +484,7 @@ export default function ServiceAreasPage() {
                         size="sm"
                         variant="outline"
                         aria-label={`${area.name}（${area.site.name}）を編集`}
-                        onClick={() =>
-                          setForm({
-                            id: area.id,
-                            site_id: area.site_id,
-                            name: area.name,
-                            area_type: area.area_type,
-                            geoText: JSON.stringify(area.geo_data ?? {}, null, 2),
-                            notes: area.notes ?? '',
-                          })
-                        }
+                        onClick={() => reset(toServiceAreaForm(area))}
                       >
                         編集
                       </Button>
