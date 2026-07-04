@@ -13,6 +13,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { DataTable } from '@/components/ui/data-table';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SkeletonRows } from '@/components/ui/loading';
 import { StateBadge } from '@/components/ui/state-badge';
 import {
   Select,
@@ -1088,9 +1089,13 @@ export function FacilitiesContent() {
                   </AlertDescription>
                 </Alert>
               ) : unitsQuery.isLoading ? (
-                <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
-                  ユニットを読み込み中...
-                </p>
+                <div
+                  role="status"
+                  aria-label="施設ユニットを読み込み中"
+                  className="rounded-lg border border-dashed border-border p-4"
+                >
+                  <SkeletonRows rows={2} cols={1} status={false} />
+                </div>
               ) : units.length === 0 ? (
                 <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
                   ユニットは未登録です。施設内で訪問順や居室管理を分ける場合に追加してください。

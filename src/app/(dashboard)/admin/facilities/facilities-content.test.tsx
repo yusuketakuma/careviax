@@ -344,6 +344,48 @@ describe('FacilitiesContent', () => {
     });
   });
 
+  it('uses a named skeleton while facility units are loading', async () => {
+    const facility = facilityFixture();
+    let resolveUnits: (response: Response) => void = () => {};
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === '/api/admin/facilities?' && !init?.method) {
+          return new Response(
+            JSON.stringify({
+              data: [facility],
+              total_count: 1,
+              visible_count: 1,
+              hidden_count: 0,
+              truncated: false,
+            }),
+            { status: 200 },
+          );
+        }
+        if (
+          url === `/api/admin/facilities/${encodeURIComponent(facility.id)}/units` &&
+          !init?.method
+        ) {
+          return new Promise<Response>((resolve) => {
+            resolveUnits = resolve;
+          });
+        }
+        return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+      }),
+    );
+
+    renderContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'グリーンヒル を編集' }));
+
+    expect(screen.getByRole('status', { name: '施設ユニットを読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('ユニットを読み込み中...', { selector: 'p' })).toBeNull();
+
+    resolveUnits(new Response(JSON.stringify({ data: [unitFixture()] }), { status: 200 }));
+    expect(await screen.findByText('2F 東')).toBeTruthy();
+  });
+
   it('POST creates a facility unit through the encoded facility units path', async () => {
     const fetchMock = stubFetchWithFacility();
     renderContent();
