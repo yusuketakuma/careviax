@@ -171,10 +171,61 @@ describe('DataTable', () => {
 
     const rowButtons = screen.getAllByRole('button', { name: 'QR下書き 1件目 の詳細を表示' });
     expect(rowButtons.length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByRole('listbox')).toBeNull();
 
     fireEvent.keyDown(rowButtons[0], { key: 'Enter', code: 'Enter' });
 
     expect(onRowClick).toHaveBeenCalledWith(0);
+  });
+
+  it('can expose clickable rows as a selected listbox without changing source-index activation', () => {
+    const onRowClick = vi.fn();
+
+    render(
+      <DataTable
+        columns={columns}
+        data={[
+          { id: 'row-0', name: 'Zulu' },
+          { id: 'row-1', name: 'Alpha' },
+        ]}
+        selectedRowIndex={1}
+        getRowId={(row) => row.id}
+        getRowA11yLabel={(row) => row.name}
+        onRowClick={onRowClick}
+        rowInteractionMode="selectable-listbox"
+        listboxLabel="処方受付一覧"
+      />,
+    );
+
+    expect(screen.getAllByRole('listbox', { name: '処方受付一覧' }).length).toBeGreaterThanOrEqual(
+      2,
+    );
+    expect(screen.queryByRole('button', { name: 'Alpha の詳細を表示' })).toBeNull();
+
+    const alphaOptions = screen.getAllByRole('option', { name: 'Alpha' });
+    const zuluOptions = screen.getAllByRole('option', { name: 'Zulu' });
+    expect(alphaOptions.length).toBeGreaterThanOrEqual(2);
+    expect(zuluOptions.length).toBeGreaterThanOrEqual(2);
+    for (const option of alphaOptions) {
+      expect(option.getAttribute('aria-selected')).toBe('true');
+      expect(option.getAttribute('tabindex')).toBe('0');
+      expect(option.className).toContain('ring');
+    }
+    for (const option of zuluOptions) {
+      expect(option.getAttribute('aria-selected')).toBe('false');
+      expect(option.getAttribute('tabindex')).toBe('-1');
+    }
+
+    fireEvent.click(alphaOptions[0]);
+    expect(onRowClick).toHaveBeenCalledWith(1);
+
+    onRowClick.mockClear();
+    fireEvent.keyDown(alphaOptions[0], { key: 'Enter', code: 'Enter' });
+    expect(onRowClick).toHaveBeenCalledWith(1);
+
+    onRowClick.mockClear();
+    fireEvent.keyDown(alphaOptions[0], { key: ' ', code: 'Space' });
+    expect(onRowClick).toHaveBeenCalledWith(1);
   });
 
   it('keeps desktop row activation tied to the source data index after sorting', () => {
@@ -245,6 +296,82 @@ describe('DataTable', () => {
     onRowClick.mockClear();
     fireEvent.keyDown(alphaDesktopRow, { key: 'Enter', code: 'Enter' });
     expect(onRowClick).toHaveBeenCalledWith(1);
+  });
+
+  it('keeps selectable-listbox row activation tied to the source data index after sorting and filtering', () => {
+    const onRowClick = vi.fn();
+
+    render(
+      <DataTable
+        columns={columns}
+        data={[
+          { id: 'row-0', name: 'Bravo' },
+          { id: 'row-1', name: 'Alpha' },
+          { id: 'row-2', name: 'Zulu' },
+        ]}
+        selectedRowIndex={1}
+        getRowId={(row) => row.id}
+        getRowA11yLabel={(row) => row.name}
+        onRowClick={onRowClick}
+        rowInteractionMode="selectable-listbox"
+        listboxLabel="処方受付一覧"
+        toolbar={{ enableGlobalFilter: true }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '氏名 で並び替え' }));
+    fireEvent.change(screen.getByPlaceholderText('テーブル内を絞り込み'), {
+      target: { value: 'Alpha' },
+    });
+
+    const alphaDesktopOption = within(screen.getByRole('table')).getByRole('option', {
+      name: 'Alpha',
+    });
+    expect(alphaDesktopOption.getAttribute('aria-selected')).toBe('true');
+    expect(alphaDesktopOption.getAttribute('tabindex')).toBe('0');
+
+    fireEvent.click(alphaDesktopOption);
+    expect(onRowClick).toHaveBeenCalledWith(1);
+  });
+
+  it('does not emit stale option rows while selectable-listbox data is loading, failed, or empty', () => {
+    const onRowClick = vi.fn();
+
+    const { rerender } = render(
+      <DataTable
+        columns={columns}
+        data={[]}
+        isLoading
+        onRowClick={onRowClick}
+        rowInteractionMode="selectable-listbox"
+        listboxLabel="処方受付一覧"
+      />,
+    );
+
+    expect(screen.queryAllByRole('option')).toHaveLength(0);
+
+    rerender(
+      <DataTable
+        columns={columns}
+        data={[]}
+        errorMessage="取得できませんでした"
+        onRowClick={onRowClick}
+        rowInteractionMode="selectable-listbox"
+        listboxLabel="処方受付一覧"
+      />,
+    );
+    expect(screen.queryAllByRole('option')).toHaveLength(0);
+
+    rerender(
+      <DataTable
+        columns={columns}
+        data={[]}
+        onRowClick={onRowClick}
+        rowInteractionMode="selectable-listbox"
+        listboxLabel="処方受付一覧"
+      />,
+    );
+    expect(screen.queryAllByRole('option')).toHaveLength(0);
   });
 
   it('neutralizes CSV formula-prefix cells on client export (matches server-side safe-csv)', async () => {

@@ -17,7 +17,16 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import {
+  Fragment,
+  type KeyboardEvent,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   AlertTriangle,
   ChevronDown,
@@ -69,6 +78,8 @@ type DataTableToolbarOptions = {
   }>;
 };
 
+type DataTableRowInteractionMode = 'button' | 'selectable-listbox';
+
 interface DataTableProps<TData> {
   columns: ColumnDef<TData>[];
   data: TData[];
@@ -78,6 +89,8 @@ interface DataTableProps<TData> {
   caption?: string;
   selectedRowIndex?: number;
   onRowClick?: (index: number) => void;
+  rowInteractionMode?: DataTableRowInteractionMode;
+  listboxLabel?: string;
   enableRowSelection?: boolean;
   onSelectionChange?: (rows: TData[]) => void;
   getRowId?: (originalRow: TData, index: number, parent?: Row<TData>) => string;
@@ -130,6 +143,8 @@ export function DataTable<TData>({
   caption,
   selectedRowIndex,
   onRowClick,
+  rowInteractionMode = 'button',
+  listboxLabel,
   enableRowSelection,
   onSelectionChange,
   getRowId,
@@ -161,6 +176,39 @@ export function DataTable<TData>({
   const getRowActivationA11yLabel = useCallback(
     (row: Row<TData>) => `${getResolvedRowA11yLabel(row)} の詳細を表示`,
     [getResolvedRowA11yLabel],
+  );
+  const useSelectableListbox = Boolean(onRowClick && rowInteractionMode === 'selectable-listbox');
+  const resolvedListboxLabel = listboxLabel ?? caption ?? '一覧';
+  const getInteractiveRowProps = useCallback(
+    (row: Row<TData>) => {
+      if (!onRowClick) {
+        return {};
+      }
+
+      const isSelectedOption = selectedRowIndex === row.index;
+      return {
+        onClick: () => onRowClick(row.index),
+        onKeyDown: (event: KeyboardEvent<HTMLElement>) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onRowClick(row.index);
+          }
+        },
+        role: useSelectableListbox ? 'option' : 'button',
+        tabIndex: useSelectableListbox ? (isSelectedOption ? 0 : -1) : 0,
+        'aria-label': useSelectableListbox
+          ? getResolvedRowA11yLabel(row)
+          : getRowActivationA11yLabel(row),
+        'aria-selected': useSelectableListbox ? isSelectedOption : undefined,
+      };
+    },
+    [
+      getResolvedRowA11yLabel,
+      getRowActivationA11yLabel,
+      onRowClick,
+      selectedRowIndex,
+      useSelectableListbox,
+    ],
   );
 
   const effectiveColumns = useMemo<ColumnDef<TData>[]>(() => {
@@ -554,7 +602,11 @@ export function DataTable<TData>({
         </div>
       ) : null}
 
-      <div className="hidden overflow-auto rounded-md border border-border md:block">
+      <div
+        className="hidden overflow-auto rounded-md border border-border md:block"
+        role={useSelectableListbox ? 'listbox' : undefined}
+        aria-label={useSelectableListbox ? resolvedListboxLabel : undefined}
+      >
         {showLoadingSkeleton ? (
           <div className="p-4">
             <SkeletonRows rows={6} cols={Math.max(effectiveColumns.length, 3)} />
@@ -590,17 +642,7 @@ export function DataTable<TData>({
                           'ring-2 ring-inset ring-primary/50 bg-primary/5',
                         row.getIsSelected() && 'bg-primary/5',
                       )}
-                      onClick={() => onRowClick?.(row.index)}
-                      onKeyDown={(event) => {
-                        if (!onRowClick) return;
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault();
-                          onRowClick(row.index);
-                        }
-                      }}
-                      role={onRowClick ? 'button' : undefined}
-                      tabIndex={onRowClick ? 0 : undefined}
-                      aria-label={onRowClick ? getRowActivationA11yLabel(row) : undefined}
+                      {...getInteractiveRowProps(row)}
                     >
                       {row.getVisibleCells().map((cell) => {
                         const meta = getColumnMeta(cell.column.columnDef);
@@ -632,7 +674,11 @@ export function DataTable<TData>({
         )}
       </div>
 
-      <div className="space-y-2 md:hidden">
+      <div
+        className="space-y-2 md:hidden"
+        role={useSelectableListbox ? 'listbox' : undefined}
+        aria-label={useSelectableListbox ? resolvedListboxLabel : undefined}
+      >
         {showLoadingSkeleton ? (
           Array.from({ length: 3 }).map((_, index) => (
             <div key={index} className="rounded-md border border-border bg-card p-4 shadow-sm">
@@ -665,19 +711,12 @@ export function DataTable<TData>({
                 className={cn(
                   'rounded-md border border-border bg-card p-4 shadow-sm',
                   onRowClick && 'cursor-pointer transition-colors hover:bg-muted/20',
+                  useSelectableListbox &&
+                    selectedRowIndex === row.index &&
+                    'ring-2 ring-primary/40 bg-primary/5',
                   row.getIsSelected() && 'ring-2 ring-primary/40',
                 )}
-                onClick={() => onRowClick?.(row.index)}
-                onKeyDown={(event) => {
-                  if (!onRowClick) return;
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    onRowClick(row.index);
-                  }
-                }}
-                role={onRowClick ? 'button' : undefined}
-                tabIndex={onRowClick ? 0 : undefined}
-                aria-label={onRowClick ? getRowActivationA11yLabel(row) : undefined}
+                {...getInteractiveRowProps(row)}
               >
                 {(enableRowSelection || renderExpandedRow) && (
                   <div className="mb-2 flex items-center justify-end gap-2">
