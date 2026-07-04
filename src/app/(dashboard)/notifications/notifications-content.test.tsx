@@ -214,14 +214,15 @@ describe('NotificationsContent', () => {
   });
 
   it('loads notifications through the shared path and org header helpers', async () => {
-    const fetchMock = stubJsonFetch({ data: [] });
+    const notificationsPayload = { data: [] };
+    const fetchMock = stubJsonFetch(notificationsPayload);
 
     render(<NotificationsContent />);
 
     const queryOptions = useQueryMock.mock.calls.at(-1)?.[0] as
       | { queryFn: () => Promise<unknown> }
       | undefined;
-    await queryOptions?.queryFn();
+    await expect(queryOptions?.queryFn()).resolves.toEqual(notificationsPayload);
 
     expect(fetchMock).toHaveBeenCalledWith('/api/notifications?limit=50', {
       headers: { 'x-test-org-id': 'org_1' },

@@ -20,6 +20,7 @@ import {
 import { useOfflineStore } from '@/lib/stores/offline-store';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { NOTIFICATIONS_API_PATH, buildNotificationsApiPath } from '@/lib/notifications/api-paths';
 import { normalizeNotificationStreamPayload } from '@/lib/notifications/stream-payload';
@@ -153,8 +154,7 @@ export function NotificationsContent({ initialCategory = 'all' }: NotificationsC
       const res = await fetch(buildNotificationsApiPath(new URLSearchParams({ limit: '50' })), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('お知らせの取得に失敗しました');
-      return res.json();
+      return readApiJson<{ data: NotificationItem[] }>(res, 'お知らせの取得に失敗しました');
     },
     enabled: Boolean(orgId),
     fallbackRefetchInterval: 30_000,
