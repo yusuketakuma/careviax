@@ -380,7 +380,8 @@ export function CalendarView() {
             size="inline"
             title="算定プレビューを読み込めませんでした"
             description="請求サイクルの警告や次回算定日の表示が一部欠落している可能性があります。再読み込みしてください。"
-            action={{ label: '再読み込み', onClick: () => void refetchSchedulePreview() }}
+            onRetry={() => void refetchSchedulePreview()}
+            retryLabel="再読み込み"
           />
         </div>
       ) : null}
@@ -413,7 +414,8 @@ export function CalendarView() {
               size="inline"
               title="スケジュールを取得できませんでした"
               description="通信状態を確認し、再読み込みしてください。"
-              action={{ label: '再読み込み', onClick: () => void refetch() }}
+              onRetry={() => void refetch()}
+              retryLabel="再読み込み"
             />
           </div>
         ) : (
