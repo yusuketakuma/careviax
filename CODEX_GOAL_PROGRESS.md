@@ -45467,6 +45467,43 @@ false` for every migrated column.
 - Remaining:
   - Await coordinator GO/leave/BUILD-LOCK release.
 
+## R40/R44 operational policy readApiJson slice - 2026-07-05 03:04 JST
+
+- Status:
+  - Implemented and committed `057a14f2`
+    (`refactor(ui): reuse readApiJson in operational policy`).
+- Scope:
+  - `src/app/(dashboard)/settings/operational-policy-content.tsx`
+  - `src/app/(dashboard)/settings/operational-policy-content.test.tsx`
+- Change:
+  - Settings operational-policy GET and settings rail cockpit GET fetchers now
+    use `readApiJson` while preserving static API paths, `buildOrgHeaders`,
+    React Query keys, response envelope unwrapping, rendered UI, and the PATCH
+    mutation's route-specific error message parsing.
+  - Test coverage now asserts both GET query functions return the `data`
+    envelope payload while preserving URL/header/queryKey contracts.
+- Safety:
+  - Product UI read fetch internals only. API/DB/auth/authorization/PHI/
+    billing/deploy/package dependency changes were permitted by SSOT if needed
+    but not needed for this slice.
+  - No migration, deploy, secret rotation, production data mutation, push, or
+    destructive operation was performed.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/settings/operational-policy-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `7` tests.
+  - `pnpm exec eslint --max-warnings=0 'src/app/(dashboard)/settings/operational-policy-content.tsx' 'src/app/(dashboard)/settings/operational-policy-content.test.tsx'`
+    passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/settings/operational-policy-content.tsx' 'src/app/(dashboard)/settings/operational-policy-content.test.tsx'`
+    passed.
+  - `git diff --check -- 'src/app/(dashboard)/settings/operational-policy-content.tsx' 'src/app/(dashboard)/settings/operational-policy-content.test.tsx'`
+    passed.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - R40/R44 remain broad; continue per-fetcher PHI/body-read review before
+    helper conversion.
+  - Existing unrelated `refactor-instructions.md` and `.agents/skills/**` /
+    `skills-lock.json` remain unstaged and outside this slice.
+
 ## OPS-SUBAGENT-DOC Direct Subagent Policy Reconciliation - 2026-07-04 18:04 JST
 
 - Scope:
