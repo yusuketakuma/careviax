@@ -1,5 +1,35 @@
 # CODEX Goal Progress
 
+## R40/R44 Dashboard Cockpit readApiJson Partial - 2026-07-05 02:33 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`
+- Scope:
+  - Reused `readApiJson<{ data: DashboardCockpitResponse }>` for the dashboard
+    cockpit fetcher.
+  - Preserved scope query construction, API path, `buildOrgHeaders`, React
+    Query keys, response envelope unwrapping, and rendered UI behavior.
+- Safety:
+  - Product UI fetch implementation internals changed only.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `15` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `200d24a0`
+    (`refactor(ui): reuse readApiJson in dashboard cockpit`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Dashboard readApiJson Partial - 2026-07-05 02:30 JST
 
 - Status:

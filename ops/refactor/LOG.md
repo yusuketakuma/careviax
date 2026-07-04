@@ -3129,3 +3129,22 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: R40/R44 は broad。追加の client fetcher は response body read が PHI-safe かを
   個別確認してから段階移行する。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
+## 2026-07-05 R40/R44 dashboard cockpit readApiJson slice
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 実施:
+  - dashboard cockpit fetcher の `if (!res.ok) throw` + `res.json()` を
+    `readApiJson<{ data: DashboardCockpitResponse }>` へ移行。
+- 挙動変更: fetch 実装内部の helper 収束のみ。scope query construction、API path、
+  `buildOrgHeaders`、React Query key、envelope unwrapping、画面表示は維持。
+- 安全性: product UI fetch internals のみ変更。DB/schema、auth/authorization、PHI projection、
+  billing、deployment、package dependency、live DB operation、external send、secret handling、
+  push、destructive operation は不変。
+- 検証: focused dashboard cockpit Vitest `1 file / 15 tests` green、
+  scoped ESLint green、targeted Prettier check green、targeted `git diff --check` green、
+  `pnpm typecheck` green。
+- commit: `200d24a0` (`refactor(ui): reuse readApiJson in dashboard cockpit`)。
+- 残課題: R40/R44 は broad。追加の client fetcher は response body read が PHI-safe かを
+  個別確認してから段階移行する。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
