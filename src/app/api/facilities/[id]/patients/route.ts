@@ -7,6 +7,7 @@ import { prisma } from '@/lib/db/client';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { optionalBoundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
+import { buildCursorPage } from '@/lib/api/pagination';
 
 const patientSelectorQuerySchema = z.object({
   archive_status: z.enum(['active', 'archived', 'all']).optional(),
@@ -85,8 +86,8 @@ const authenticatedGET = withAuthContext<{ id: string }>(
         },
       }),
     ]);
-    const hasMore = fetchedResidences.length > limit;
-    const residences = hasMore ? fetchedResidences.slice(0, limit) : fetchedResidences;
+    const page = buildCursorPage(fetchedResidences, limit, (residence) => residence.id);
+    const residences = page.data;
     const visibleCount = residences.length;
     const hiddenCount = Math.max(totalCount - visibleCount, 0);
 
@@ -120,7 +121,7 @@ const authenticatedGET = withAuthContext<{ id: string }>(
         total_count: totalCount,
         visible_count: visibleCount,
         hidden_count: hiddenCount,
-        has_more: hasMore || hiddenCount > 0,
+        has_more: page.hasMore || hiddenCount > 0,
         count_basis: 'primary_residences',
         filters_applied: {
           facility_id: facility.id,
