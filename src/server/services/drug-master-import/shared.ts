@@ -549,6 +549,32 @@ export function extractImportSourceDateFromUrl(url: string, patterns: readonly R
   return null;
 }
 
+export function parseJapaneseEraApplicableDateText(value: string | null | undefined) {
+  if (!value) return null;
+  const normalized = normalizeDigits(value);
+  const match = normalized.match(/(令和|平成)(\d{1,2})年(\d{1,2})月(\d{1,2})日(?:\s*適用)?/);
+  if (!match) return null;
+
+  const era = match[1];
+  const eraYear = Number(match[2]);
+  const month = Number(match[3]);
+  const day = Number(match[4]);
+  if (eraYear < 1) return null;
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+
+  const baseYear = era === '令和' ? 2018 : 1988;
+  const year = baseYear + eraYear;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return date;
+}
+
 export async function fetchText(url: string, options: FetchImportOptions) {
   const textPolicyMaxBytes = Math.min(
     normalizeImportPolicyMaxBytes(options.policy.maxBytes),

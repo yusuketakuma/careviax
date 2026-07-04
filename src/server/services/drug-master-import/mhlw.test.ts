@@ -19,6 +19,7 @@ import {
   previewMhlwPriceList,
   resolveLatestGenericNameWorkbookUrl,
   resolveLatestMhlwPriceListPageUrl,
+  resolveLatestMhlwPriceListPageMetadata,
   resolveLatestMhlwPriceWorkbookUrl,
   resolveLatestMhlwPriceWorkbookUrls,
 } from './mhlw';
@@ -139,6 +140,19 @@ describe('resolveLatestMhlwPriceWorkbookUrl', () => {
     expect(resolveLatestMhlwPriceListPageUrl(html)).toBe(
       'https://www.mhlw.go.jp/topics/2026/04/tp20260401-01.html',
     );
+  });
+
+  it('extracts the latest price list applicable date from the MHLW index page text', () => {
+    const html = `
+      <ul>
+        <li><a href="/topics/2026/04/tp20260401-01.html">薬価基準収載品目リストについて（令和8年5月20日適用）</a></li>
+      </ul>
+    `;
+
+    expect(resolveLatestMhlwPriceListPageMetadata(html)).toEqual({
+      priceListPageUrl: 'https://www.mhlw.go.jp/topics/2026/04/tp20260401-01.html',
+      applicableDate: new Date(Date.UTC(2026, 4, 20)),
+    });
   });
 
   it('extracts the latest price workbook url from the index page', () => {
@@ -643,6 +657,37 @@ describe('importMhlwPriceList', () => {
     expect(db.drugMasterImportLog.update).not.toHaveBeenCalled();
     expect(db.drugMaster.upsert).not.toHaveBeenCalled();
     expect(db.drugMasterChangeEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('keeps the workbook tp date ahead of a mismatched page applicable date', async () => {
+    const workbook = await workbookBlob({
+      ＨＰ用: [
+        ['区分', '薬価基準収載医薬品コード', '品名', '薬価'],
+        ['内用薬', '1124001F1022', 'ユーロジン１ｍｇ錠', '6.30'],
+      ],
+    });
+    const indexHtml = `
+      <a href="/topics/2026/04/tp20260401-01.html">薬価基準収載品目リストについて（令和8年5月20日適用）</a>
+    `;
+    const detailHtml = `<a href="/topics/2026/04/xls/tp20260401-01_01.xlsx">Excel</a>`;
+    const fetchImpl = vi.fn(async (input: URL | RequestInfo) => {
+      const url = String(input);
+      if (url.endsWith('0000078916.html')) {
+        return new Response(indexHtml, { status: 200, headers: { 'content-type': 'text/html' } });
+      }
+      if (url.endsWith('tp20260401-01.html')) {
+        return new Response(detailHtml, { status: 200, headers: { 'content-type': 'text/html' } });
+      }
+      return toWorkbookResponse(workbook);
+    });
+
+    const result = await previewMhlwPriceList(db, { fetchImpl, previewLimit: 10 });
+
+    expect(result.sourcePublishedAt).toBe('2026-04-01T00:00:00.000Z');
+    expect(result.preview.rows[0]).toMatchObject({
+      price_version_action: 'create',
+      price_version_effective_from: '2026-04-01T00:00:00.000Z',
+    });
   });
 
   it('previews malformed short YJ skips without writing rows', async () => {

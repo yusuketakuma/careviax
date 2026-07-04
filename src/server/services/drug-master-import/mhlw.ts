@@ -10,6 +10,7 @@ import {
   normalizeCell,
   normalizeImportSourceUrl,
   extractImportSourceDateFromUrl,
+  parseJapaneseEraApplicableDateText,
   parseDate,
   parseDecimal,
   resolveImportSourceUrl,
@@ -39,6 +40,11 @@ type ParsedMhlwPriceWorkbook = {
   sourceFileHash: string;
   records: ParsedMhlwPriceRecord[];
   skippedInvalidYjCount: number;
+};
+
+type MhlwPriceWorkbookSources = {
+  workbookUrls: string[];
+  applicableDate: Date | null;
 };
 
 type ParseMhlwPriceWorkbookOptions = {
@@ -292,11 +298,23 @@ export function resolveLatestMhlwPriceListPageUrl(
   html: string,
   pageUrl = MHLW_MASTER_INDEX_PAGE_URL,
 ) {
-  const match = html.match(/href="([^"]*\/topics\/\d{4}\/\d{2}\/tp\d{8}-01\.html)"/i);
+  return resolveLatestMhlwPriceListPageMetadata(html, pageUrl).priceListPageUrl;
+}
+
+export function resolveLatestMhlwPriceListPageMetadata(
+  html: string,
+  pageUrl = MHLW_MASTER_INDEX_PAGE_URL,
+) {
+  const match = html.match(
+    /<a\b[^>]*href="([^"]*\/topics\/\d{4}\/\d{2}\/tp\d{8}-01\.html)"[^>]*>([\s\S]*?)<\/a>/i,
+  );
   if (!match) {
     throw new Error('最新の薬価基準収載品目ページを解決できませんでした');
   }
-  return resolveImportSourceUrl(match[1], pageUrl, MHLW_IMPORT_URL_POLICY);
+  return {
+    priceListPageUrl: resolveImportSourceUrl(match[1], pageUrl, MHLW_IMPORT_URL_POLICY),
+    applicableDate: parseJapaneseEraApplicableDateText(match[2]),
+  };
 }
 
 async function fetchLatestMhlwPriceListPage(
@@ -307,14 +325,15 @@ async function fetchLatestMhlwPriceListPage(
     fetchImpl,
     policy: MHLW_IMPORT_URL_POLICY,
   });
-  const priceListPageUrl = resolveLatestMhlwPriceListPageUrl(indexHtml, pageUrl);
-  const priceListHtml = await fetchText(priceListPageUrl, {
+  const metadata = resolveLatestMhlwPriceListPageMetadata(indexHtml, pageUrl);
+  const priceListHtml = await fetchText(metadata.priceListPageUrl, {
     fetchImpl,
     policy: MHLW_IMPORT_URL_POLICY,
   });
 
   return {
-    priceListPageUrl,
+    priceListPageUrl: metadata.priceListPageUrl,
+    applicableDate: metadata.applicableDate ?? parseJapaneseEraApplicableDateText(priceListHtml),
     html: priceListHtml,
   };
 }
@@ -423,16 +442,33 @@ function normalizePreviewLimit(value: number | undefined) {
   return Math.min(normalized, MAX_PREVIEW_ROW_LIMIT);
 }
 
-async function resolveMhlwPriceWorkbookUrls(options: ImportMhlwPriceListOptions) {
+async function resolveMhlwPriceWorkbookSources(
+  options: ImportMhlwPriceListOptions,
+): Promise<MhlwPriceWorkbookSources> {
   const fetchImpl = options.fetchImpl ?? fetch;
   if (options.workbookUrls) {
-    return options.workbookUrls.map((url) => normalizeImportSourceUrl(url, MHLW_IMPORT_URL_POLICY));
+    return {
+      workbookUrls: options.workbookUrls.map((url) =>
+        normalizeImportSourceUrl(url, MHLW_IMPORT_URL_POLICY),
+      ),
+      applicableDate: null,
+    };
   }
   if (options.workbookUrl) {
-    return [normalizeImportSourceUrl(options.workbookUrl, MHLW_IMPORT_URL_POLICY)];
+    return {
+      workbookUrls: [normalizeImportSourceUrl(options.workbookUrl, MHLW_IMPORT_URL_POLICY)],
+      applicableDate: null,
+    };
   }
   const page = await fetchLatestMhlwPriceListPage(fetchImpl);
-  return resolveLatestMhlwPriceWorkbookUrls(page.html, page.priceListPageUrl);
+  return {
+    workbookUrls: resolveLatestMhlwPriceWorkbookUrls(page.html, page.priceListPageUrl),
+    applicableDate: page.applicableDate,
+  };
+}
+
+function resolveMhlwPriceEffectiveDate(workbookUrl: string, fallbackApplicableDate: Date | null) {
+  return extractImportSourceDateFromUrl(workbookUrl, [/tp(\d{8})-/i]) ?? fallbackApplicableDate;
 }
 
 function collectMhlwPriceChanges(
@@ -687,7 +723,8 @@ export async function previewMhlwPriceList(
   options: PreviewMhlwPriceListOptions = {},
 ): Promise<MhlwPriceImportPreview> {
   const fetchImpl = options.fetchImpl ?? fetch;
-  const workbookUrls = await resolveMhlwPriceWorkbookUrls(options);
+  const workbookSources = await resolveMhlwPriceWorkbookSources(options);
+  const { workbookUrls } = workbookSources;
   const previewLimit = normalizePreviewLimit(options.previewLimit);
   const sourceFingerprints: Array<{ sourceUrl: string; sourceFileHash: string }> = [];
   const rows: MhlwPricePreviewRow[] = [];
@@ -707,8 +744,10 @@ export async function previewMhlwPriceList(
       sourceUrl: parsed.workbookUrl,
       sourceFileHash: parsed.sourceFileHash,
     });
-    const sourcePublishedAt =
-      extractImportSourceDateFromUrl(parsed.workbookUrl, [/tp(\d{8})-/i]) ?? null;
+    const sourcePublishedAt = resolveMhlwPriceEffectiveDate(
+      parsed.workbookUrl,
+      workbookSources.applicableDate,
+    );
 
     for (let index = 0; index < parsed.records.length; index += 200) {
       const chunk = parsed.records.slice(index, index + 200);
@@ -769,7 +808,10 @@ export async function previewMhlwPriceList(
     sourceFileHash: combineImportSourceFingerprints(sourceFingerprints),
     sourcePublishedAt:
       workbookUrls[0] != null
-        ? (extractImportSourceDateFromUrl(workbookUrls[0], [/tp(\d{8})-/i])?.toISOString() ?? null)
+        ? (resolveMhlwPriceEffectiveDate(
+            workbookUrls[0],
+            workbookSources.applicableDate,
+          )?.toISOString() ?? null)
         : null,
     preview: {
       summary: {
@@ -795,7 +837,8 @@ export async function importMhlwPriceList(
 ) {
   return withImportLog(db, 'mhlw_price', async (log) => {
     const fetchImpl = options.fetchImpl ?? fetch;
-    const workbookUrls = await resolveMhlwPriceWorkbookUrls(options);
+    const workbookSources = await resolveMhlwPriceWorkbookSources(options);
+    const { workbookUrls } = workbookSources;
 
     let recordCount = 0;
     let skippedInvalidYjCount = 0;
@@ -806,8 +849,10 @@ export async function importMhlwPriceList(
     const sourceFingerprints: Array<{ sourceUrl: string; sourceFileHash: string }> = [];
     for (const workbookUrl of workbookUrls) {
       const parsed = await parseMhlwPriceWorkbook({ workbookUrl, fetchImpl });
-      const sourcePublishedAt =
-        extractImportSourceDateFromUrl(parsed.workbookUrl, [/tp(\d{8})-/i]) ?? null;
+      const sourcePublishedAt = resolveMhlwPriceEffectiveDate(
+        parsed.workbookUrl,
+        workbookSources.applicableDate,
+      );
       recordCount += parsed.records.length;
       skippedInvalidYjCount += parsed.skippedInvalidYjCount;
       sourceFingerprints.push({
@@ -841,7 +886,7 @@ export async function importMhlwPriceList(
       sourceFileHash: combineImportSourceFingerprints(sourceFingerprints),
       sourcePublishedAt:
         workbookUrls[0] != null
-          ? extractImportSourceDateFromUrl(workbookUrls[0], [/tp(\d{8})-/i])
+          ? resolveMhlwPriceEffectiveDate(workbookUrls[0], workbookSources.applicableDate)
           : null,
       importMode: 'full',
       changeSummary: {

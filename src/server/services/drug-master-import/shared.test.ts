@@ -16,6 +16,7 @@ import {
   extractImportSourceDateFromUrl,
   fetchBytes,
   parseImportSourceDateToken,
+  parseJapaneseEraApplicableDateText,
   unzipWithLimits,
   validateImportSourceUrl,
   withImportLog,
@@ -96,6 +97,21 @@ describe('import source date helpers', () => {
         /tp(\d{8})-/i,
       ]),
     ).toBeNull();
+  });
+
+  it('parses Japanese era applicable dates without timezone drift', () => {
+    expect(parseJapaneseEraApplicableDateText('令和8年5月20日適用')?.toISOString()).toBe(
+      '2026-05-20T00:00:00.000Z',
+    );
+    expect(parseJapaneseEraApplicableDateText('令和８年５月２０日')?.toISOString()).toBe(
+      '2026-05-20T00:00:00.000Z',
+    );
+    expect(parseJapaneseEraApplicableDateText('平成1年1月8日適用')?.toISOString()).toBe(
+      '1989-01-08T00:00:00.000Z',
+    );
+    expect(parseJapaneseEraApplicableDateText('令和8年13月1日適用')).toBeNull();
+    expect(parseJapaneseEraApplicableDateText('令和8年2月31日適用')).toBeNull();
+    expect(parseJapaneseEraApplicableDateText('適用日未掲載')).toBeNull();
   });
 });
 
