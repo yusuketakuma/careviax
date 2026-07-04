@@ -11,6 +11,7 @@ import { DataTable } from '@/components/ui/data-table';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { BlockedReasonsPanel } from '@/components/features/workspace/action-rail';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { downscaleImage } from '@/lib/files/downscale-image';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -75,8 +76,10 @@ export function ResidualAdjustmentContent({ patientId }: { patientId: string }) 
       const res = await fetch(`/api/residual-medications?${params.toString()}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('残薬データの取得に失敗しました');
-      return res.json() as Promise<{ data: ResidualMedicationRecord[] }>;
+      return readApiJson<{ data: ResidualMedicationRecord[] }>(
+        res,
+        '残薬データの取得に失敗しました',
+      );
     },
     enabled: !!orgId && !!patientId,
   });
@@ -88,8 +91,10 @@ export function ResidualAdjustmentContent({ patientId }: { patientId: string }) 
       const res = await fetch(`/api/inquiry-records?${params.toString()}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('医師の指示記録の取得に失敗しました');
-      return res.json() as Promise<{ data: PhysicianInstructionSource[] }>;
+      return readApiJson<{ data: PhysicianInstructionSource[] }>(
+        res,
+        '医師の指示記録の取得に失敗しました',
+      );
     },
     enabled: !!orgId && !!patientId,
   });

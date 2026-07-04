@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { createQueryClientWrapper } from '@/test/query-client-test-utils';
+import { jsonResponse } from '@/test/fetch-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 
 vi.mock('@/lib/hooks/use-org-id', () => ({ useOrgId: () => 'org_1' }));
@@ -60,10 +61,10 @@ describe('ResidualAdjustmentContent tenant headers', () => {
       const url = String(input);
       calls.push({ url, init });
       if (url.startsWith('/api/residual-medications')) {
-        return { ok: true, json: async () => ({ data: [RESIDUAL_RECORD] }) } as unknown as Response;
+        return jsonResponse({ data: [RESIDUAL_RECORD] });
       }
       if (url.startsWith('/api/inquiry-records')) {
-        return { ok: true, json: async () => ({ data: [] }) } as unknown as Response;
+        return jsonResponse({ data: [] });
       }
       if (url === '/api/files/presigned-upload') {
         return {
