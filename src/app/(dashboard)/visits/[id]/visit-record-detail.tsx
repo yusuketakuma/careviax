@@ -43,6 +43,7 @@ import type { PatientHeaderSummary } from '@/server/services/patient-detail';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { formatFileSize } from '@/lib/files/format-file-size';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { generateCareReportFromVisit } from '@/lib/reports/generate-from-visit-client';
@@ -531,8 +532,7 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
       const res = await fetch(`/api/visit-records/${recordId}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('訪問記録の取得に失敗しました');
-      return res.json();
+      return readApiJson<VisitRecordFull>(res, '訪問記録の取得に失敗しました');
     },
     enabled: !!orgId && !!recordId,
   });
@@ -549,8 +549,7 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
       const res = await fetch(buildPatientApiPath(record?.patient_id ?? '', '/header-summary'), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('患者ヘッダー情報の取得に失敗しました');
-      return res.json();
+      return readApiJson<PatientHeaderSummary>(res, '患者ヘッダー情報の取得に失敗しました');
     },
     enabled: !!orgId && !!record?.patient_id,
   });
@@ -566,8 +565,7 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
       const res = await fetch(`/api/care-reports?visit_record_id=${recordId}&limit=10`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('報告書の取得に失敗しました');
-      return res.json();
+      return readApiJson<CareReportsResponse>(res, '報告書の取得に失敗しました');
     },
     enabled: !!orgId && !!recordId,
   });
@@ -586,8 +584,7 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
       const res = await fetch(`/api/billing-candidates?${params.toString()}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('請求候補の取得に失敗しました');
-      return res.json();
+      return readApiJson<BillingCandidatesResponse>(res, '請求候補の取得に失敗しました');
     },
     enabled: !!orgId && !!record?.patient_id && !!billingMonth,
   });
@@ -631,8 +628,10 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
       });
       // 取得失敗を空配列に潰すと残薬ゼロ(=訪問準備の根拠なし)と区別できないため、
       // throw して isError を立て、利用側で「取得失敗」を明示する。
-      if (!res.ok) throw new Error('残薬データの取得に失敗しました');
-      const json = await res.json();
+      const json = await readApiJson<{ data?: ResidualMedication[] }>(
+        res,
+        '残薬データの取得に失敗しました',
+      );
       return json.data ?? [];
     },
     enabled: !!orgId && !!recordId,
@@ -648,8 +647,7 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
       const res = await fetch(`/api/visit-preparations/${record?.schedule?.id}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('訪問準備情報の取得に失敗しました');
-      return res.json();
+      return readApiJson<VisitPreparationSnapshot>(res, '訪問準備情報の取得に失敗しました');
     },
     enabled: !!orgId && !!record?.schedule?.id,
   });

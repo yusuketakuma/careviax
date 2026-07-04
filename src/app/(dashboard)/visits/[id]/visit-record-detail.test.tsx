@@ -3,6 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { jsonResponse } from '@/test/fetch-test-utils';
 
 const { useQueryMock, useMutationMock, useQueryClientMock, useOrgIdMock, routerPushMock } =
   vi.hoisted(() => ({
@@ -162,7 +163,13 @@ type MutationConfig = {
   onError?: (error: Error) => void;
 };
 
+type QueryConfig = {
+  queryKey: unknown[];
+  queryFn: () => unknown;
+};
+
 function setupQueries(options: QueryStubOptions = {}) {
+  const queryConfigs = new Map<string, QueryConfig>();
   const refetchSpies: Record<string, ReturnType<typeof vi.fn>> = {
     'care-reports-by-visit': vi.fn(),
     'billing-candidates-by-visit': vi.fn(),
@@ -177,8 +184,10 @@ function setupQueries(options: QueryStubOptions = {}) {
     mutationConfigs.push(config);
     return { mutate: vi.fn(), isPending: false };
   });
-  useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+  useQueryMock.mockImplementation((config: QueryConfig) => {
+    const { queryKey } = config;
     const key = String(queryKey[0]);
+    queryConfigs.set(key, config);
     if (key === 'visit-record') {
       if (options.recordLoading) {
         return { data: undefined, isLoading: true, isError: false, refetch: vi.fn() };
@@ -258,7 +267,7 @@ function setupQueries(options: QueryStubOptions = {}) {
     // visit-preparation-care-team and any other secondary queries
     return { data: undefined, isLoading: false, isError: false, refetch: vi.fn() };
   });
-  return { refetchSpies, mutationConfigs };
+  return { refetchSpies, mutationConfigs, queryConfigs };
 }
 
 function expectMutationErrorToast(config: MutationConfig, serverMessage: string, fallback: string) {
@@ -471,5 +480,27 @@ describe('VisitRecordDetail fetch-error handling (no false-empty workflow)', () 
     const item = screen.getByTestId('readiness-item-medication_management');
     expect(item.getAttribute('data-done')).toBe('true');
     expect(screen.queryByText(/一部を取得できませんでした/)).toBeNull();
+  });
+
+  it.each([
+    ['visit-record', 'API側の訪問記録エラー'],
+    ['patient-header-summary', 'API側の患者ヘッダーエラー'],
+    ['care-reports-by-visit', 'API側の報告書エラー'],
+    ['billing-candidates-by-visit', 'API側の請求候補エラー'],
+    ['residual-medications', 'API側の残薬エラー'],
+    ['visit-preparation-care-team', 'API側の訪問準備エラー'],
+  ] as const)('surfaces API messages from %s read query', async (queryKey, message) => {
+    const { queryConfigs } = setupQueries();
+    render(<VisitRecordDetail recordId="record_1" />);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({ message }, 500)),
+    );
+
+    try {
+      await expect(queryConfigs.get(queryKey)!.queryFn()).rejects.toThrow(message);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
