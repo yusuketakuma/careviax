@@ -691,4 +691,55 @@ describe('ScheduleWeeklyOptimizer', () => {
       expect(vi.mocked(toast.warning)).toHaveBeenCalledWith(expect.stringContaining('失敗'));
     });
   });
+
+  it('falls back for facility-aggregation failure reasons with empty Error messages', async () => {
+    useMutationMock.mockImplementation(
+      (options: {
+        mutationFn?: (variables?: unknown) => unknown;
+        onSuccess?: (data: unknown, variables?: unknown) => unknown;
+      }) => ({
+        mutate: vi.fn((variables?: unknown) => {
+          void Promise.resolve(options.mutationFn?.(variables)).then((data) =>
+            options.onSuccess?.(data, variables),
+          );
+        }),
+        mutateAsync: vi.fn(),
+        isPending: false,
+      }),
+    );
+    useRealtimeQueryMock.mockImplementation(() => ({
+      data: { data: [] },
+      isLoading: false,
+      isError: false,
+      connected: true,
+    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('');
+      }),
+    );
+    render(<ScheduleWeeklyOptimizer initialDate="2026-04-09" />);
+
+    const aggregateOptions = useMutationMock.mock.calls[2]?.[0] as
+      | { mutationFn?: (variables?: unknown) => Promise<{ failed: Array<{ reason: string }> }> }
+      | undefined;
+    const result = await aggregateOptions?.mutationFn?.({
+      targetDate: '2026-04-09',
+      targetPharmacistId: 'pharmacist_1',
+      outliers: [
+        buildWeeklyProposal({
+          case_: {
+            patient: {
+              id: 'patient_o1',
+              name: '外れ患者1',
+              residences: [{ address: '東京都渋谷区9-9-9', lat: 35.3, lng: 139.3 }],
+            },
+          },
+        }),
+      ],
+    });
+
+    expect(result?.failed).toEqual([{ name: '外れ患者1', reason: '不明なエラー' }]);
+  });
 });

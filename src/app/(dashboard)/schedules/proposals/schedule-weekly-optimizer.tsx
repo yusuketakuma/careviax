@@ -917,7 +917,7 @@ export function ScheduleWeeklyOptimizer({
         } else {
           failed.push({
             name,
-            reason: result.reason instanceof Error ? result.reason.message : '不明なエラー',
+            reason: messageFromError(result.reason, '不明なエラー'),
           });
         }
       });
