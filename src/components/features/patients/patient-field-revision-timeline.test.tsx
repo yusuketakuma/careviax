@@ -25,6 +25,22 @@ vi.mock('@/lib/patient/api-paths', async (importActual) => {
 });
 
 describe('PatientFieldRevisionTimeline', () => {
+  it('renders a PH-OS skeleton while field revisions load', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      error: null,
+    });
+
+    render(<PatientFieldRevisionTimeline patientId="patient_1" />);
+
+    expect(screen.getByRole('status', { name: '変更履歴を読み込み中' })).toBeTruthy();
+    expect(screen.queryByRole('status', { name: '読み込み中...' })).toBeNull();
+    expect(screen.queryByText('変更履歴はまだありません。')).toBeNull();
+    expect(screen.queryByText('変更履歴を取得できませんでした。')).toBeNull();
+  });
+
   it('shows hidden count metadata when the revision list is truncated', () => {
     useOrgIdMock.mockReturnValue('org_1');
     useQueryMock.mockReturnValue({

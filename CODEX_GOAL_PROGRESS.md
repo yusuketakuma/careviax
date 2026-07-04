@@ -1,5 +1,34 @@
 # CODEX Goal Progress
 
+## R55 Patient Field Revision Timeline Loading State - 2026-07-04 18:57 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/components/features/patients/patient-field-revision-timeline.tsx`
+    - `src/components/features/patients/patient-field-revision-timeline.test.tsx`
+- Scope:
+  - Replaced the generic `Loading` return in the patient field revision
+    timeline with a named skeleton region for revision loading.
+  - Loading no longer exposes generic `読み込み中...` semantics, empty copy, or
+    error copy before the query resolves.
+- Safety:
+  - UI loading-state presentation and tests only.
+  - No API path, query key, fetcher, org header, filter behavior, cache timing,
+    DB, auth, authorization, billing, audit, deployment, package, or server
+    behavior changed.
+  - Loading copy is PHI-free and does not echo patient identifiers, field
+    values, updater names, source ids, org ids, or raw errors.
+- Validation:
+  - `pnpm exec vitest run src/components/features/patients/patient-field-revision-timeline.test.tsx --reporter=dot --testTimeout=30000`
+    passed `1` file / `5` tests.
+  - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
+    the patient field revision timeline source/test files.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - Broader R55 residuals and Plans.md objective remain open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Patient Visit Brief Loading State - 2026-07-04 18:54 JST
 
 - Status:

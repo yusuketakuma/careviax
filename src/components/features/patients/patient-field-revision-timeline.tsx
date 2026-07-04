@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
-import { Loading } from '@/components/ui/loading';
+import { Skeleton } from '@/components/ui/loading';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
@@ -50,6 +50,24 @@ type PatientFieldRevisionTimelineResponse = {
   meta?: PatientFieldRevisionListMeta;
 };
 
+function PatientFieldRevisionLoadingState() {
+  return (
+    <div className="space-y-2" role="status" aria-label="変更履歴を読み込み中">
+      {Array.from({ length: 3 }).map((_, index) => (
+        <div key={index} className="rounded-lg border border-border/70 bg-background px-3 py-2">
+          <div className="flex items-center justify-between gap-2">
+            <Skeleton className="h-5 w-16 rounded-full" />
+            <Skeleton className="h-5 w-14 rounded-full" />
+          </div>
+          <Skeleton className="mt-2 h-3 w-3/4" />
+          <Skeleton className="mt-2 h-3 w-1/2" />
+        </div>
+      ))}
+      <span className="sr-only">変更履歴を読み込んでいます。</span>
+    </div>
+  );
+}
+
 export function PatientFieldRevisionTimeline({ patientId }: { patientId: string }) {
   const orgId = useOrgId();
   const [category, setCategory] = useState<string | null>(null);
@@ -90,7 +108,7 @@ export function PatientFieldRevisionTimeline({ patientId }: { patientId: string 
       </div>
 
       {isLoading ? (
-        <Loading />
+        <PatientFieldRevisionLoadingState />
       ) : error ? (
         <p className="text-xs text-muted-foreground">変更履歴を取得できませんでした。</p>
       ) : revisions.length === 0 ? (
