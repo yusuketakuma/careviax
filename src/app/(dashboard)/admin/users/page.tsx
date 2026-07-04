@@ -20,7 +20,7 @@ export default function UsersPage() {
         supportingContent={null}
       />
 
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="ユーザー管理を読み込み中..." />}>
         <UsersContent />
       </Suspense>
     </PageScaffold>
