@@ -37,8 +37,8 @@ import { STATUS_TOKENS, type StatusRole } from '@/lib/constants/status-tokens';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { buildPatientHref } from '@/lib/patient/navigation';
-import { formatElapsedLabel } from '@/lib/ui/relative-time';
 import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
+import { buildDailyOpsBlockedReasons } from '@/lib/workspace/daily-ops-rail';
 import { cn } from '@/lib/utils';
 import type {
   PatientAttentionKey,
@@ -224,9 +224,6 @@ function countCards(
 ): number {
   return cards.reduce((count, card) => count + (predicate(card) ? 1 : 0), 0);
 }
-
-/** 経過分 → 「30分」「2時間」「1日」(止まっている理由の経過時間)。 */
-const formatAgeLabel = formatElapsedLabel;
 
 function normalizeSearchText(value: string | null | undefined): string {
   return (value ?? '').trim().toLocaleLowerCase('ja-JP');
@@ -649,15 +646,7 @@ export function PatientsBoard() {
     [data, todayKey],
   );
 
-  const blockedReasons: BlockedReason[] = (data?.blocked_reasons ?? []).map((reason) => ({
-    id: reason.id,
-    label: reason.label,
-    severity: reason.severity,
-    categoryLabel: reason.category,
-    ageLabel: formatAgeLabel(reason.age_minutes),
-    actionLabel: reason.action_label,
-    actionHref: reason.action_href,
-  }));
+  const blockedReasons: BlockedReason[] = buildDailyOpsBlockedReasons(data);
 
   const evidence: EvidenceItem[] = data
     ? [

@@ -15,7 +15,7 @@ import {
   type EvidenceItem,
 } from '@/components/features/workspace/action-rail';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import { formatElapsedLabel } from '@/lib/ui/relative-time';
+import { buildDailyOpsBlockedReasons } from '@/lib/workspace/daily-ops-rail';
 import type { MasterHubCard, MasterHubResponse } from '@/types/master-hub';
 
 /**
@@ -32,9 +32,6 @@ async function fetchMasterHub(): Promise<MasterHubResponse> {
   const json = await res.json();
   return json.data;
 }
-
-/** 経過時間ラベル(「1日」「30分」)。 */
-const formatAgeLabel = formatElapsedLabel;
 
 /** 最終更新: 当日は M/d HH:mm、それ以外は M/d。 */
 export function formatLastUpdatedLabel(value: string | null, now: Date = new Date()): string {
@@ -154,15 +151,7 @@ export function MasterHubContent() {
 
   const data = hubQuery.data ?? null;
   const summary = data ? buildMasterHubSummary(data) : null;
-  const blockedReasons: BlockedReason[] = (data?.rail.blocked_reasons ?? []).map((reason) => ({
-    id: reason.id,
-    label: reason.label,
-    severity: reason.severity,
-    categoryLabel: reason.category,
-    ageLabel: formatAgeLabel(reason.age_minutes),
-    actionLabel: reason.action_label,
-    actionHref: reason.action_href,
-  }));
+  const blockedReasons: BlockedReason[] = buildDailyOpsBlockedReasons(data?.rail ?? null);
   const evidence: EvidenceItem[] = data
     ? [
         {

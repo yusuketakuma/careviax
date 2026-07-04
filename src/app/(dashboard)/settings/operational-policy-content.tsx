@@ -26,8 +26,8 @@ import {
 } from '@/components/features/workspace/action-rail';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
-import { formatElapsedLabel } from '@/lib/ui/relative-time';
 import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
+import { buildDailyOpsBlockedReasons } from '@/lib/workspace/daily-ops-rail';
 import { cn } from '@/lib/utils';
 import { messageFromError } from '@/lib/utils/error-message';
 import {
@@ -99,8 +99,6 @@ async function fetchCockpitForRail(orgId: string): Promise<DashboardCockpitRespo
   const json = await res.json();
   return json.data;
 }
-
-const formatAgeLabel = formatElapsedLabel;
 
 // ---------------------------------------------------------------------------
 // 行コントロール(ロックピル / 低・標準・高 / ON-OFF ピル)
@@ -581,15 +579,7 @@ export function OperationalPolicyContent() {
           description: 'いま期限で止まっている作業はありません。',
           actionHref: '/schedules',
         };
-  const blockedReasons: BlockedReason[] = (cockpit?.blocked_reasons ?? []).map((reason) => ({
-    id: reason.id,
-    label: reason.label,
-    severity: reason.severity,
-    categoryLabel: reason.category ?? undefined,
-    ageLabel: formatAgeLabel(reason.age_minutes),
-    actionLabel: reason.action_label,
-    actionHref: reason.action_href,
-  }));
+  const blockedReasons: BlockedReason[] = buildDailyOpsBlockedReasons(cockpit);
   const evidence: EvidenceItem[] = [
     {
       id: 'change-log',

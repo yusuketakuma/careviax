@@ -49,6 +49,20 @@ export type DailyOpsBlockedReason = {
   actionHref?: string;
 };
 
+export type DailyOpsBlockedReasonSource = {
+  id: string;
+  label: string;
+  severity: 'critical' | 'warning';
+  category: string | null;
+  age_minutes: number;
+  action_label: string;
+  action_href: string;
+};
+
+type DailyOpsBlockedReasonsSource = {
+  blocked_reasons?: DailyOpsBlockedReasonSource[];
+};
+
 /**
  * 右レール「次にやること」(主操作はこの 1 つだけ青)。
  * 監査キュー先頭(麻薬優先)があれば「(麻薬)監査を開始 — HH:mm期限」、
@@ -78,7 +92,7 @@ export function buildDailyOpsNextAction(
 
 /** 右レール「止まっている理由」(カテゴリ色チップ+経過時間+個別アクション)。 */
 export function buildDailyOpsBlockedReasons(
-  data: DashboardCockpitResponse | null,
+  data: DailyOpsBlockedReasonsSource | null,
 ): DailyOpsBlockedReason[] {
   return (data?.blocked_reasons ?? []).map((reason) => ({
     id: reason.id,

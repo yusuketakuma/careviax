@@ -27,7 +27,7 @@ import { encodePathSegment } from '@/lib/http/path-segment';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
 import { buildWorkRequestHref } from '@/lib/tasks/work-request-navigation';
-import { formatElapsedLabel } from '@/lib/ui/relative-time';
+import { buildDailyOpsBlockedReasons } from '@/lib/workspace/daily-ops-rail';
 import { familyNameOf } from '@/lib/utils/person-name';
 import { cn } from '@/lib/utils';
 import type { ScheduleStatus } from '@/lib/validations/visit-schedule';
@@ -142,9 +142,6 @@ async function patchVisitSchedule({
     throw new Error(detail?.error ?? detail?.message ?? '訪問予定の更新に失敗しました');
   }
 }
-
-/** 経過分 → 「30分」「2時間」「1日」(止まっている理由の経過時間)。 */
-const formatAgeLabel = formatElapsedLabel;
 
 function familyName(name: string): string {
   return familyNameOf(name) || name;
@@ -1817,15 +1814,7 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
   const operationalTasks = board?.operational_tasks ?? [];
   const proposalCounts = board ? pendingProposalCounts(board) : null;
 
-  const blockedReasons: BlockedReason[] = (cockpit?.blocked_reasons ?? []).map((reason) => ({
-    id: reason.id,
-    label: reason.label,
-    severity: reason.severity,
-    categoryLabel: reason.category ?? undefined,
-    ageLabel: formatAgeLabel(reason.age_minutes),
-    actionLabel: reason.action_label,
-    actionHref: reason.action_href,
-  }));
+  const blockedReasons: BlockedReason[] = buildDailyOpsBlockedReasons(cockpit);
   const evidence: EvidenceItem[] = [
     {
       id: 'travel-evidence',

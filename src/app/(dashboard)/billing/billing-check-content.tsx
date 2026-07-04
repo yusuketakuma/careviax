@@ -17,6 +17,7 @@ import {
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { formatElapsedLabel } from '@/lib/ui/relative-time';
+import { buildDailyOpsBlockedReasons } from '@/lib/workspace/daily-ops-rail';
 import { cn } from '@/lib/utils';
 import type {
   BillingCheckMonth,
@@ -331,15 +332,7 @@ export function BillingCheckContent() {
   });
 
   const data = checkQuery.data ?? null;
-  const blockedReasons: BlockedReason[] = (data?.rail.blocked_reasons ?? []).map((reason) => ({
-    id: reason.id,
-    label: reason.label,
-    severity: reason.severity,
-    categoryLabel: reason.category,
-    ageLabel: formatAgeLabel(reason.age_minutes),
-    actionLabel: reason.action_label,
-    actionHref: reason.action_href,
-  }));
+  const blockedReasons: BlockedReason[] = buildDailyOpsBlockedReasons(data?.rail ?? null);
   const evidence: EvidenceItem[] = data
     ? [
         {

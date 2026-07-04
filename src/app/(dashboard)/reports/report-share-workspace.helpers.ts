@@ -7,6 +7,7 @@ import type {
 } from '@/components/features/workspace/action-rail';
 import { buildExternalHref } from '@/lib/dashboard/home-link-builders';
 import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
+import { buildDailyOpsBlockedReasons } from '@/lib/workspace/daily-ops-rail';
 import { formatElapsedLabel } from '@/lib/ui/relative-time';
 import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
 import { familyNameOf as sharedFamilyNameOf } from '@/lib/utils/person-name';
@@ -109,15 +110,7 @@ export function buildWorkspaceNextAction(
 export function buildWorkspaceBlockedReasons(
   cockpit: DashboardCockpitResponse | null,
 ): BlockedReason[] {
-  return (cockpit?.blocked_reasons ?? []).map((reason) => ({
-    id: reason.id,
-    label: reason.label,
-    severity: reason.severity,
-    categoryLabel: reason.category ?? undefined,
-    ageLabel: formatAgeLabel(reason.age_minutes),
-    actionLabel: reason.action_label,
-    actionHref: reason.action_href,
-  }));
+  return buildDailyOpsBlockedReasons(cockpit);
 }
 
 /** 根拠・記録: 送付テンプレート / 送付履歴 / 既読確認 */

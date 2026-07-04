@@ -17,9 +17,9 @@ import { SafetyTagBadge } from '@/components/features/patients/safety-tag-badge'
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
-import { formatElapsedLabel } from '@/lib/ui/relative-time';
 import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
 import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
+import { buildDailyOpsBlockedReasons } from '@/lib/workspace/daily-ops-rail';
 import { cn } from '@/lib/utils';
 import type {
   VisitPrepCheck,
@@ -63,9 +63,6 @@ const NOTE_TONE_CLASSES = {
   warning: 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm',
   info: 'border-tag-info/30 bg-tag-info/10 text-tag-info',
 } as const;
-
-/** 経過分 → 「30分」「2時間」「1日」(止まっている理由の経過時間)。 */
-const formatAgeLabel = formatElapsedLabel;
 
 function buildVisitCardActionHref(card: VisitPreparationCard, href: string) {
   return href === '/schedules' ? buildScheduleFocusHref(card.schedule_id) : href;
@@ -236,15 +233,7 @@ export function VisitsToday() {
     ? buildScheduleFocusHref(data.cards[0].schedule_id)
     : '/schedules';
 
-  const blockedReasons: BlockedReason[] = (data?.blocked_reasons ?? []).map((reason) => ({
-    id: reason.id,
-    label: reason.label,
-    severity: reason.severity,
-    categoryLabel: reason.category,
-    ageLabel: formatAgeLabel(reason.age_minutes),
-    actionLabel: reason.action_label,
-    actionHref: reason.action_href,
-  }));
+  const blockedReasons: BlockedReason[] = buildDailyOpsBlockedReasons(data);
 
   const evidence: EvidenceItem[] = data
     ? [

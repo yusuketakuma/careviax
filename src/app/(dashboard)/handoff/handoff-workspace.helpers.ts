@@ -5,6 +5,7 @@ import type {
   EvidenceItem,
   NextActionPanelProps,
 } from '@/components/features/workspace/action-rail';
+import { buildDailyOpsBlockedReasons } from '@/lib/workspace/daily-ops-rail';
 import { formatElapsedLabel } from '@/lib/ui/relative-time';
 import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
 import { STATUS_TOKENS } from '@/lib/constants/status-tokens';
@@ -316,15 +317,7 @@ export function buildWorkspaceNextAction(
 export function buildWorkspaceBlockedReasons(
   cockpit: DashboardCockpitResponse | null,
 ): BlockedReason[] {
-  return (cockpit?.blocked_reasons ?? []).map((reason) => ({
-    id: reason.id,
-    label: reason.label,
-    severity: reason.severity,
-    categoryLabel: reason.category ?? undefined,
-    ageLabel: formatAgeLabel(reason.age_minutes),
-    actionLabel: reason.action_label,
-    actionHref: reason.action_href,
-  }));
+  return buildDailyOpsBlockedReasons(cockpit);
 }
 
 /**
