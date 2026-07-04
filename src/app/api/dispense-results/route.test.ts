@@ -1245,6 +1245,174 @@ describe('/api/dispense-results POST', () => {
     expect(checkDispenseAlertsMock).toHaveBeenCalledWith('org_1', 'cycle_1', 'patient_1');
   });
 
+  it('captures the effective drug price version after safety, barcode, and CDS gates pass', async () => {
+    const dispenseResultUpsertMock = vi.fn().mockResolvedValue({
+      id: 'result_1',
+      line_id: 'line_1',
+      actual_drug_name: 'アムロジピン',
+      actual_drug_code: '123',
+      actual_quantity: 14,
+      actual_unit: '錠',
+      carry_type: 'carry',
+      special_notes: null,
+    });
+    const drugPriceVersionFindManyMock = vi.fn().mockResolvedValue([
+      {
+        id: 'dpv_1',
+        drug_master_id: 'drug_1',
+        source: 'mhlw_price',
+        source_url: 'https://www.mhlw.go.jp/topics/2026/04/xls/tp20260520-01_01.xlsx',
+        source_file_hash: 'hash_1',
+        source_published_at: new Date(Date.UTC(2026, 4, 20)),
+        effective_from: new Date(Date.UTC(2026, 4, 20)),
+        drug_price: 7.1,
+        import_log_id: 'log_1',
+      },
+    ]);
+    const dispenseTaskUpdateMock = vi.fn().mockResolvedValue({});
+    const medicationCycleFindFirstMock = vi.fn().mockResolvedValue({
+      id: 'cycle_1',
+      overall_status: 'dispensing',
+      version: 1,
+      patient_id: 'patient_1',
+    });
+    const medicationCycleUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+    const drugMasterFindFirstMock = vi.fn().mockResolvedValue({ yj_code: '123' });
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        dispenseTask: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'task_1',
+            cycle_id: 'cycle_1',
+            priority: 'normal',
+            results: [],
+            cycle: {
+              id: 'cycle_1',
+              patient_id: 'patient_1',
+              overall_status: 'dispensing',
+              version: 1,
+              inquiries: [],
+              prescription_intakes: [
+                {
+                  id: 'intake_1',
+                  source_type: 'paper',
+                  original_collected_at: null,
+                  lines: [
+                    {
+                      id: 'line_1',
+                      drug_name: 'アムロジピン',
+                      drug_code: '123',
+                      drug_master_id: 'drug_1',
+                      quantity: 14,
+                      unit: '錠',
+                    },
+                  ],
+                },
+              ],
+              visit_schedules: [],
+              case_: { patient: { name: '山田 太郎' } },
+            },
+          }),
+          update: dispenseTaskUpdateMock,
+        },
+        dispenseResult: {
+          upsert: dispenseResultUpsertMock,
+          findMany: vi.fn().mockResolvedValue([]),
+        },
+        drugPriceVersion: { findMany: drugPriceVersionFindManyMock },
+        medicationCycle: {
+          findFirst: medicationCycleFindFirstMock,
+          updateMany: medicationCycleUpdateManyMock,
+        },
+        cycleTransitionLog: { create: vi.fn().mockResolvedValue({}) },
+        visitSchedule: { update: vi.fn().mockResolvedValue({}) },
+        workflowException: {
+          create: vi.fn().mockResolvedValue({}),
+          updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        },
+        membership: { findMany: vi.fn().mockResolvedValue([]) },
+        drugMaster: { findFirst: drugMasterFindFirstMock },
+        auditLog: { create: vi.fn().mockResolvedValue({ id: 'audit_log_1' }) },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        task_id: 'task_1',
+        safety_checklist: safetyChecklist,
+        lines: [
+          {
+            line_id: 'line_1',
+            actual_drug_name: 'アムロジピン',
+            actual_drug_code: '123',
+            actual_quantity: 14,
+            ...prescriptionQuantityConfirmed,
+            carry_type: 'carry',
+            barcode_scan: {
+              barcode: '01012345678901231726123110LOT-1',
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(checkDispenseAlertsMock).toHaveBeenCalledWith('org_1', 'cycle_1', 'patient_1');
+    expect(drugPriceVersionFindManyMock).toHaveBeenCalledWith({
+      where: {
+        drug_master_id: { in: ['drug_1'] },
+        effective_from: { lte: expect.any(Date) },
+        OR: [{ effective_to: null }, { effective_to: { gte: expect.any(Date) } }],
+      },
+      orderBy: [{ drug_master_id: 'asc' }, { effective_from: 'desc' }],
+      select: {
+        id: true,
+        drug_master_id: true,
+        source: true,
+        source_url: true,
+        source_file_hash: true,
+        source_published_at: true,
+        effective_from: true,
+        drug_price: true,
+        import_log_id: true,
+      },
+    });
+    expect(checkDispenseAlertsMock.mock.invocationCallOrder[0]).toBeLessThan(
+      drugPriceVersionFindManyMock.mock.invocationCallOrder[0],
+    );
+    expect(dispenseResultUpsertMock).toHaveBeenCalledWith({
+      where: {
+        org_id_task_id_line_id: {
+          org_id: 'org_1',
+          task_id: 'task_1',
+          line_id: 'line_1',
+        },
+      },
+      create: expect.objectContaining({
+        drug_price_version_id: 'dpv_1',
+        drug_price_snapshot: 7.1,
+        drug_price_effective_from_snapshot: new Date(Date.UTC(2026, 4, 20)),
+        drug_price_source_snapshot: {
+          source: 'mhlw_price',
+          source_url: 'https://www.mhlw.go.jp/topics/2026/04/xls/tp20260520-01_01.xlsx',
+          source_file_hash: 'hash_1',
+          source_published_at: '2026-05-20T00:00:00.000Z',
+          import_log_id: 'log_1',
+        },
+      }),
+      update: expect.objectContaining({
+        drug_price_version_id: 'dpv_1',
+        drug_price_snapshot: 7.1,
+        drug_price_effective_from_snapshot: new Date(Date.UTC(2026, 4, 20)),
+        drug_price_source_snapshot: expect.objectContaining({
+          source: 'mhlw_price',
+          import_log_id: 'log_1',
+        }),
+      }),
+    });
+  });
+
   it('rejects barcode mismatches before dispensing side effects', async () => {
     const dispenseResultUpsertMock = vi.fn();
     const dispenseTaskUpdateMock = vi.fn();

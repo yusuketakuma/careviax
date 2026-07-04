@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { allocateGlobalDisplayId } from '@/lib/db/display-id';
 import {
   FetchLike,
   MHLW_IMPORT_URL_POLICY,
@@ -52,10 +53,19 @@ type PreviewMhlwPriceListOptions = ImportMhlwPriceListOptions & {
   previewLimit?: number;
 };
 type MhlwPriceImportDbClient = DrugMasterImportLogDbClient & {
+  $queryRaw: Prisma.TransactionClient['$queryRaw'];
   drugMaster: Pick<Prisma.TransactionClient['drugMaster'], 'findMany' | 'upsert'>;
   drugMasterChangeEvent: Pick<Prisma.TransactionClient['drugMasterChangeEvent'], 'create'>;
+  drugPriceVersion: Pick<
+    Prisma.TransactionClient['drugPriceVersion'],
+    'findUnique' | 'create' | 'update'
+  >;
 };
 type MhlwPricePreviewDbClient = {
+  drugMaster: Pick<Prisma.TransactionClient['drugMaster'], 'findMany'>;
+  drugPriceVersion?: Pick<Prisma.TransactionClient['drugPriceVersion'], 'findMany'>;
+};
+type MhlwPriceDrugLookupDbClient = {
   drugMaster: Pick<Prisma.TransactionClient['drugMaster'], 'findMany'>;
 };
 type MhlwGenericMappingImportDbClient = DrugMasterImportLogDbClient & {
@@ -97,8 +107,14 @@ type ParsedGenericNameWorkbook = {
 };
 
 type ExistingMhlwPriceDrug = {
-  id?: string;
+  id: string;
   yj_code: string;
+  drug_price: { toString: () => string } | null;
+  transitional_expiry_date: Date | null;
+};
+type ExistingMhlwPriceVersion = {
+  drug_master_id: string;
+  effective_from: Date;
   drug_price: { toString: () => string } | null;
   transitional_expiry_date: Date | null;
 };
@@ -118,6 +134,8 @@ export type MhlwPricePreviewRow = {
   yj_code: string;
   drug_name: string;
   action: 'upsert';
+  price_version_action: 'create' | 'update' | 'noop' | 'skipped_missing_effective_from';
+  price_version_effective_from: string | null;
   change_event_types: Array<'price_changed' | 'transitional_expiry_changed'>;
   previous_drug_price: string | null;
   next_drug_price: string | null;
@@ -139,6 +157,9 @@ export type MhlwPriceImportPreview = {
       skipped_invalid_yj: number;
       records_with_change_event: number;
       change_event_count: number;
+      price_version_create_count: number;
+      price_version_update_count: number;
+      price_version_skipped_missing_effective_from: number;
       sampled_rows: number;
     };
     rows: MhlwPricePreviewRow[];
@@ -461,7 +482,7 @@ function collectMhlwPriceChanges(
 }
 
 async function fetchExistingMhlwPriceDrugsByYjCode(
-  db: MhlwPricePreviewDbClient,
+  db: MhlwPriceDrugLookupDbClient,
   records: ParsedMhlwPriceRecord[],
 ) {
   if (records.length === 0) return new Map<string, ExistingMhlwPriceDrug>();
@@ -475,6 +496,46 @@ async function fetchExistingMhlwPriceDrugsByYjCode(
     },
   });
   return new Map(rows.map((drug) => [drug.yj_code, drug]));
+}
+
+async function fetchExistingMhlwPriceVersionsByDrugId(
+  db: MhlwPricePreviewDbClient,
+  drugIds: string[],
+  effectiveFrom: Date | null,
+) {
+  if (!db.drugPriceVersion || !effectiveFrom || drugIds.length === 0) {
+    return new Map<string, ExistingMhlwPriceVersion>();
+  }
+
+  const rows = await db.drugPriceVersion.findMany({
+    where: {
+      drug_master_id: { in: drugIds },
+      effective_from: effectiveFrom,
+    },
+    select: {
+      drug_master_id: true,
+      effective_from: true,
+      drug_price: true,
+      transitional_expiry_date: true,
+    },
+  });
+  return new Map(rows.map((version) => [version.drug_master_id, version]));
+}
+
+function resolveMhlwPriceVersionAction(args: {
+  record: ParsedMhlwPriceRecord;
+  existing: ExistingMhlwPriceDrug | undefined;
+  existingVersion: ExistingMhlwPriceVersion | undefined;
+  effectiveFrom: Date | null;
+}): MhlwPricePreviewRow['price_version_action'] {
+  if (!args.effectiveFrom) return 'skipped_missing_effective_from';
+  if (!args.existing || !args.existingVersion) return 'create';
+
+  const previousPrice = args.existingVersion.drug_price?.toString() ?? null;
+  const currentPrice = args.record.drug_price?.toString() ?? null;
+  const previousExpiry = args.existingVersion.transitional_expiry_date?.toISOString() ?? null;
+  const currentExpiry = args.record.transitional_expiry_date?.toISOString() ?? null;
+  return previousPrice === currentPrice && previousExpiry === currentExpiry ? 'noop' : 'update';
 }
 
 async function fetchExistingMhlwGenericFlagsByYjCode(
@@ -497,11 +558,16 @@ async function upsertPriceChunk(
   records: ParsedMhlwPriceRecord[],
   mode: 'price' | 'generic',
   importLogId?: string,
+  priceVersionMetadata?: {
+    sourceUrl: string;
+    sourceFileHash: string;
+    sourcePublishedAt: Date | null;
+  },
 ) {
   const existingByYjCode =
     mode === 'price' ? await fetchExistingMhlwPriceDrugsByYjCode(db, records) : new Map();
 
-  const changeCounts = await Promise.all(
+  const results = await Promise.all(
     records.map(async (record) => {
       const existing = existingByYjCode.get(record.yj_code);
       const saved = await db.drugMaster.upsert({
@@ -535,10 +601,58 @@ async function upsertPriceChunk(
               },
       });
 
-      if (mode !== 'price' || !existing || !importLogId) return 0;
+      let versionAction: MhlwPricePreviewRow['price_version_action'] | null = null;
+      if (mode === 'price' && priceVersionMetadata) {
+        if (priceVersionMetadata.sourcePublishedAt) {
+          const existingVersion = await db.drugPriceVersion.findUnique({
+            where: {
+              drug_master_id_effective_from: {
+                drug_master_id: saved.id,
+                effective_from: priceVersionMetadata.sourcePublishedAt,
+              },
+            },
+            select: {
+              id: true,
+            },
+          });
+          const versionData = {
+            import_log_id: importLogId ?? null,
+            source: 'mhlw_price' as const,
+            source_url: priceVersionMetadata.sourceUrl,
+            source_file_hash: priceVersionMetadata.sourceFileHash,
+            source_published_at: priceVersionMetadata.sourcePublishedAt,
+            drug_price: record.drug_price,
+            transitional_expiry_date: record.transitional_expiry_date,
+          };
+          if (existingVersion) {
+            await db.drugPriceVersion.update({
+              where: { id: existingVersion.id },
+              data: versionData,
+            });
+            versionAction = 'update';
+          } else {
+            const displayId = await allocateGlobalDisplayId(db, 'DrugPriceVersion');
+            await db.drugPriceVersion.create({
+              data: {
+                display_id: displayId,
+                drug_master_id: saved.id,
+                effective_from: priceVersionMetadata.sourcePublishedAt,
+                ...versionData,
+              },
+            });
+            versionAction = 'create';
+          }
+        } else {
+          versionAction = 'skipped_missing_effective_from';
+        }
+      }
+
+      if (mode !== 'price' || !existing || !importLogId) {
+        return { changeCount: 0, versionAction };
+      }
 
       const changes = collectMhlwPriceChanges(record, existing);
-      if (changes.length === 0) return 0;
+      if (changes.length === 0) return { changeCount: 0, versionAction };
       await Promise.all(
         changes.map((change) =>
           db.drugMasterChangeEvent.create({
@@ -554,11 +668,18 @@ async function upsertPriceChunk(
           }),
         ),
       );
-      return changes.length;
+      return { changeCount: changes.length, versionAction };
     }),
   );
 
-  return changeCounts.reduce((sum, count) => sum + count, 0);
+  return {
+    changeCount: results.reduce((sum, result) => sum + result.changeCount, 0),
+    priceVersionCreateCount: results.filter((result) => result.versionAction === 'create').length,
+    priceVersionUpdateCount: results.filter((result) => result.versionAction === 'update').length,
+    priceVersionSkippedMissingEffectiveFrom: results.filter(
+      (result) => result.versionAction === 'skipped_missing_effective_from',
+    ).length,
+  };
 }
 
 export async function previewMhlwPriceList(
@@ -574,6 +695,9 @@ export async function previewMhlwPriceList(
   let skippedInvalidYjCount = 0;
   let recordsWithChangeEvent = 0;
   let changeEventCount = 0;
+  let priceVersionCreateCount = 0;
+  let priceVersionUpdateCount = 0;
+  let priceVersionSkippedMissingEffectiveFrom = 0;
 
   for (const workbookUrl of workbookUrls) {
     const parsed = await parseMhlwPriceWorkbook({ workbookUrl, fetchImpl });
@@ -583,13 +707,31 @@ export async function previewMhlwPriceList(
       sourceUrl: parsed.workbookUrl,
       sourceFileHash: parsed.sourceFileHash,
     });
+    const sourcePublishedAt =
+      extractImportSourceDateFromUrl(parsed.workbookUrl, [/tp(\d{8})-/i]) ?? null;
 
     for (let index = 0; index < parsed.records.length; index += 200) {
       const chunk = parsed.records.slice(index, index + 200);
       const existingByYjCode = await fetchExistingMhlwPriceDrugsByYjCode(db, chunk);
+      const existingVersionsByDrugId = await fetchExistingMhlwPriceVersionsByDrugId(
+        db,
+        [...existingByYjCode.values()].map((drug) => drug.id),
+        sourcePublishedAt,
+      );
       for (const record of chunk) {
         const existing = existingByYjCode.get(record.yj_code);
         const changes = collectMhlwPriceChanges(record, existing);
+        const versionAction = resolveMhlwPriceVersionAction({
+          record,
+          existing,
+          existingVersion: existing ? existingVersionsByDrugId.get(existing.id) : undefined,
+          effectiveFrom: sourcePublishedAt,
+        });
+        if (versionAction === 'create') priceVersionCreateCount += 1;
+        if (versionAction === 'update') priceVersionUpdateCount += 1;
+        if (versionAction === 'skipped_missing_effective_from') {
+          priceVersionSkippedMissingEffectiveFrom += 1;
+        }
         if (changes.length > 0) {
           recordsWithChangeEvent += 1;
           changeEventCount += changes.length;
@@ -605,6 +747,8 @@ export async function previewMhlwPriceList(
             yj_code: record.yj_code,
             drug_name: record.drug_name,
             action: 'upsert',
+            price_version_action: versionAction,
+            price_version_effective_from: sourcePublishedAt?.toISOString() ?? null,
             change_event_types: changes.map((change) => change.change_type),
             previous_drug_price: firstChange?.previous_drug_price ?? previousPrice,
             next_drug_price: firstChange?.next_drug_price ?? currentPrice,
@@ -635,6 +779,9 @@ export async function previewMhlwPriceList(
         skipped_invalid_yj: skippedInvalidYjCount,
         records_with_change_event: recordsWithChangeEvent,
         change_event_count: changeEventCount,
+        price_version_create_count: priceVersionCreateCount,
+        price_version_update_count: priceVersionUpdateCount,
+        price_version_skipped_missing_effective_from: priceVersionSkippedMissingEffectiveFrom,
         sampled_rows: rows.length,
       },
       rows,
@@ -653,9 +800,14 @@ export async function importMhlwPriceList(
     let recordCount = 0;
     let skippedInvalidYjCount = 0;
     let changeEventCount = 0;
+    let priceVersionCreateCount = 0;
+    let priceVersionUpdateCount = 0;
+    let priceVersionSkippedMissingEffectiveFrom = 0;
     const sourceFingerprints: Array<{ sourceUrl: string; sourceFileHash: string }> = [];
     for (const workbookUrl of workbookUrls) {
       const parsed = await parseMhlwPriceWorkbook({ workbookUrl, fetchImpl });
+      const sourcePublishedAt =
+        extractImportSourceDateFromUrl(parsed.workbookUrl, [/tp(\d{8})-/i]) ?? null;
       recordCount += parsed.records.length;
       skippedInvalidYjCount += parsed.skippedInvalidYjCount;
       sourceFingerprints.push({
@@ -664,12 +816,22 @@ export async function importMhlwPriceList(
       });
 
       for (let index = 0; index < parsed.records.length; index += 200) {
-        changeEventCount += await upsertPriceChunk(
+        const chunkResult = await upsertPriceChunk(
           db,
           parsed.records.slice(index, index + 200),
           'price',
           log.id,
+          {
+            sourceUrl: parsed.workbookUrl,
+            sourceFileHash: parsed.sourceFileHash,
+            sourcePublishedAt,
+          },
         );
+        changeEventCount += chunkResult.changeCount;
+        priceVersionCreateCount += chunkResult.priceVersionCreateCount;
+        priceVersionUpdateCount += chunkResult.priceVersionUpdateCount;
+        priceVersionSkippedMissingEffectiveFrom +=
+          chunkResult.priceVersionSkippedMissingEffectiveFrom;
       }
     }
 
@@ -689,6 +851,10 @@ export async function importMhlwPriceList(
         imported_records: recordCount,
         skipped_invalid_yj: skippedInvalidYjCount,
         change_event_count: changeEventCount,
+        price_version_effective_from_source: 'source_published_at',
+        price_version_create_count: priceVersionCreateCount,
+        price_version_update_count: priceVersionUpdateCount,
+        price_version_skipped_missing_effective_from: priceVersionSkippedMissingEffectiveFrom,
       },
       payload: {
         workbookUrl: workbookUrls[0] ?? null,

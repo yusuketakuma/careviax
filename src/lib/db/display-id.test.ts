@@ -42,6 +42,8 @@ const RESIDUAL_DISPLAY_ID_W7_MIGRATION =
   'prisma/migrations/20260703161000_add_residual_display_ids/migration.sql';
 const DRUG_GLOBAL_DISPLAY_ID_W8A_MIGRATION =
   'prisma/migrations/20260704083000_add_drug_global_display_ids/migration.sql';
+const DRUG_PRICE_VERSION_DISPLAY_ID_C1A_MIGRATION =
+  'prisma/migrations/20260704090000_add_drug_price_versions/migration.sql';
 const PATIENT_DISPLAY_ID_W1_MODELS = [
   'Patient',
   'Residence',
@@ -197,6 +199,9 @@ const DRUG_GLOBAL_DISPLAY_ID_W8A_MODELS = [
   'DrugMasterImportLog',
   'DrugMasterChangeEvent',
 ] as const satisfies readonly DisplayIdModel[];
+const DRUG_PRICE_VERSION_DISPLAY_ID_C1A_MODELS = [
+  'DrugPriceVersion',
+] as const satisfies readonly DisplayIdModel[];
 // Permanent defer: nullable/hybrid org_id requires explicit tenant-vs-global semantics.
 const PERMANENT_DEFERRED_DISPLAY_ID_SCHEMA_MODELS = [
   'DrugAlertRule',
@@ -296,6 +301,13 @@ const DISPLAY_ID_GLOBAL_SCHEMA_WAVES = [
     schemaFile: 'drug.prisma',
     migrationPath: DRUG_GLOBAL_DISPLAY_ID_W8A_MIGRATION,
     models: DRUG_GLOBAL_DISPLAY_ID_W8A_MODELS,
+  },
+  {
+    label: 'W3-C1-A drug-price-version-domain',
+    schemaFile: 'drug.prisma',
+    migrationPath: DRUG_PRICE_VERSION_DISPLAY_ID_C1A_MIGRATION,
+    models: DRUG_PRICE_VERSION_DISPLAY_ID_C1A_MODELS,
+    displayIdRequired: true,
   },
 ] as const;
 const DISPLAY_ID_DIRECT_WAVE_MODELS = DISPLAY_ID_SCHEMA_WAVES.flatMap((wave) => wave.models);
@@ -402,8 +414,8 @@ function parseSequence(id: string): bigint {
 describe('display_id registry and format contract', () => {
   it('covers every Prisma model through registry, explicit business exclusion, or infrastructure exclusion', () => {
     const schemaModels = readSchemaModels();
-    expect(schemaModels).toHaveLength(140);
-    expect(Object.keys(DISPLAY_ID_REGISTRY)).toHaveLength(138);
+    expect(schemaModels).toHaveLength(141);
+    expect(Object.keys(DISPLAY_ID_REGISTRY)).toHaveLength(139);
     expect(DISPLAY_ID_EXCLUDED_MODELS).toEqual(['Setting']);
     expect(DISPLAY_ID_INFRASTRUCTURE_MODELS).toEqual(['IdSequence']);
 
@@ -420,7 +432,7 @@ describe('display_id registry and format contract', () => {
     const entries = Object.entries(DISPLAY_ID_REGISTRY);
     const prefixes = entries.map(([, entry]) => entry.prefix);
     expect(new Set(prefixes).size).toBe(prefixes.length);
-    expect(prefixes).toHaveLength(138);
+    expect(prefixes).toHaveLength(139);
     for (const prefix of prefixes) {
       expect(prefix).toMatch(/^[a-z]{1,6}$/);
     }
@@ -431,7 +443,7 @@ describe('display_id registry and format contract', () => {
       counts[entry.scope] = (counts[entry.scope] ?? 0) + 1;
       return counts;
     }, {});
-    expect(scopeCounts).toEqual({ global: 12, org: 125, orgViaParent: 1 });
+    expect(scopeCounts).toEqual({ global: 13, org: 125, orgViaParent: 1 });
 
     expect(
       entries
@@ -446,6 +458,7 @@ describe('display_id registry and format contract', () => {
       'DrugMasterImportLog',
       'DrugPackage',
       'DrugPackageInsert',
+      'DrugPriceVersion',
       'GenericDrugMapping',
       'LabelDictionary',
       'Organization',
@@ -574,7 +587,7 @@ describe('display_id registry and format contract', () => {
     expect(migration).not.toContain('CREATE UNIQUE INDEX "HandoffItem');
   });
 
-  it('declares global display ID waves as nullable globally unique identifiers', () => {
+  it('declares global display ID waves as globally unique identifiers', () => {
     for (const wave of DISPLAY_ID_GLOBAL_SCHEMA_WAVES) {
       const schema = readFileSync(join(SCHEMA_DIR, wave.schemaFile), 'utf8');
       const migration = readFileSync(wave.migrationPath, 'utf8');
@@ -585,19 +598,32 @@ describe('display_id registry and format contract', () => {
         const block = readModelBlock(schema, model);
         expect(block, `${wave.label}:${model}`).not.toMatch(/\n\s+org_id\s+String(?:\s|$)/);
         expect(block, `${wave.label}:${model}`).toMatch(/\n\s+created_at\s+DateTime(?:\s|$)/);
-        expect(block, `${wave.label}:${model}`).toMatch(
-          /\n\s+display_id\s+String\?\s+@unique(?:\s|$)/,
-        );
+        if ('displayIdRequired' in wave && wave.displayIdRequired) {
+          expect(block, `${wave.label}:${model}`).toMatch(
+            /\n\s+display_id\s+String\s+@unique(?:\s|$)/,
+          );
+        } else {
+          expect(block, `${wave.label}:${model}`).toMatch(
+            /\n\s+display_id\s+String\?\s+@unique(?:\s|$)/,
+          );
+        }
         expect(block, `${wave.label}:${model}`).not.toContain('@@unique([org_id, display_id])');
 
-        expect(migration, `${wave.label}:${model}`).toMatch(
-          new RegExp(`ALTER TABLE "${model}" ADD COLUMN\\s+"display_id" TEXT;`),
-        );
+        if ('displayIdRequired' in wave && wave.displayIdRequired) {
+          expect(migration, `${wave.label}:${model}`).toContain('"display_id" TEXT NOT NULL');
+          expect(migration, `${wave.label}:${model}`).not.toMatch(
+            new RegExp(`ALTER TABLE "${model}" ADD COLUMN\\s+"display_id" TEXT;`),
+          );
+        } else {
+          expect(migration, `${wave.label}:${model}`).toMatch(
+            new RegExp(`ALTER TABLE "${model}" ADD COLUMN\\s+"display_id" TEXT;`),
+          );
+          expect(migration, `${wave.label}:${model}`).not.toContain(
+            `ALTER TABLE "${model}" ALTER COLUMN "display_id" SET NOT NULL`,
+          );
+        }
         expect(migration, `${wave.label}:${model}`).toContain(
           `CREATE UNIQUE INDEX "${model}_display_id_key" ON "${model}"("display_id");`,
-        );
-        expect(migration, `${wave.label}:${model}`).not.toContain(
-          `ALTER TABLE "${model}" ALTER COLUMN "display_id" SET NOT NULL`,
         );
         expect(migration, `${wave.label}:${model}`).not.toContain(
           `ON "${model}"("org_id", "display_id")`,
@@ -692,7 +718,7 @@ describeDb('display_id allocator integration (local e2e DB)', () => {
     await prisma.$executeRaw`
       DELETE FROM id_sequence
       WHERE (org_id LIKE ${`dispid${RUN_ID}%`})
-         OR (org_id = ${DISPLAY_ID_GLOBAL_ORG_ID} AND prefix IN ('bg', 'drug'))
+         OR (org_id = ${DISPLAY_ID_GLOBAL_ORG_ID} AND prefix IN ('bg', 'drug', 'dpv'))
     `;
   }
 

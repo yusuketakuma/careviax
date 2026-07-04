@@ -48,6 +48,7 @@ export const DISPLAY_ID_REGISTRY = {
   DrugMasterImportLog: { prefix: 'dmil', scope: 'global' },
   DrugPackage: { prefix: 'dpkg', scope: 'global' },
   DrugPackageInsert: { prefix: 'dpki', scope: 'global' },
+  DrugPriceVersion: { prefix: 'dpv', scope: 'global' },
   EscalationRule: { prefix: 'esc', scope: 'org' },
   ExternalAccessGrant: { prefix: 'e', scope: 'org' },
   ExternalProfessional: { prefix: 'extp', scope: 'org' },

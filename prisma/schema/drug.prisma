@@ -85,6 +85,7 @@ model DrugMaster {
   interactions_as_b    DrugInteraction[]    @relation("DrugB")
   drug_stocks          PharmacyDrugStock[]
   preferred_stocks     PharmacyDrugStock[]  @relation("PreferredGeneric")
+  price_versions       DrugPriceVersion[]
   prescription_lines   PrescriptionLine[]   @relation("PrescriptionLineDrugMaster")
   residual_medications ResidualMedication[]
 
@@ -150,6 +151,33 @@ model DrugPackageInsert {
   updated_at              DateTime              @updatedAt
 
   @@index([drug_master_id])
+}
+
+// グローバルマスタ（org_id なし）
+model DrugPriceVersion {
+  id                       String               @id @default(cuid())
+  display_id               String               @unique
+  drug_master_id           String
+  drug_master              DrugMaster           @relation(fields: [drug_master_id], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  import_log_id            String?
+  import_log               DrugMasterImportLog? @relation(fields: [import_log_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  source                   ImportSource         @default(mhlw_price)
+  source_url               String?
+  source_file_hash         String?
+  source_published_at      DateTime?            @db.Date
+  effective_from           DateTime             @db.Date
+  effective_to             DateTime?            @db.Date
+  drug_price               Decimal?             @db.Decimal(12, 2)
+  transitional_expiry_date DateTime?            @db.Date
+  created_at               DateTime             @default(now())
+  updated_at               DateTime             @updatedAt
+  dispense_results         DispenseResult[]
+
+  @@unique([drug_master_id, effective_from])
+  @@index([drug_master_id, effective_from, effective_to])
+  @@index([source, effective_from])
+  @@index([source_file_hash])
+  @@index([import_log_id])
 }
 
 // グローバルマスタ（org_id なし）
@@ -298,6 +326,8 @@ model DrugMasterImportLog {
   change_summary      Json?
   created_at          DateTime     @default(now())
   updated_at          DateTime     @updatedAt
+
+  price_versions DrugPriceVersion[]
 
   @@index([source, imported_at])
   @@index([source, source_file_hash])

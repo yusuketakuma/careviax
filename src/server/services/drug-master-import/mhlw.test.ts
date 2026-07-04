@@ -1,4 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { allocateGlobalDisplayIdMock } = vi.hoisted(() => ({
+  allocateGlobalDisplayIdMock: vi.fn(),
+}));
+
+vi.mock('@/lib/db/display-id', () => ({
+  allocateGlobalDisplayId: allocateGlobalDisplayIdMock,
+}));
+
 import {
   importMhlwGenericFlags,
   importMhlwPriceList,
@@ -283,6 +292,13 @@ describe('importMhlwPriceList', () => {
     drugMasterChangeEvent: {
       create: vi.fn(),
     },
+    $queryRaw: vi.fn(),
+    drugPriceVersion: {
+      findUnique: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      findMany: vi.fn(),
+    },
   } as const;
 
   beforeEach(() => {
@@ -292,6 +308,15 @@ describe('importMhlwPriceList', () => {
     db.drugMaster.findMany.mockResolvedValue([]);
     db.drugMaster.upsert.mockResolvedValue({ id: 'drug_1' });
     db.drugMasterChangeEvent.create.mockResolvedValue({ id: 'change_1' });
+    let displayIdSequence = 0;
+    allocateGlobalDisplayIdMock.mockImplementation(async () => {
+      displayIdSequence += 1;
+      return `dpv_${String(displayIdSequence).padStart(12, '0')}`;
+    });
+    db.drugPriceVersion.findUnique.mockResolvedValue(null);
+    db.drugPriceVersion.create.mockResolvedValue({ id: 'dpv_1' });
+    db.drugPriceVersion.update.mockResolvedValue({ id: 'dpv_1' });
+    db.drugPriceVersion.findMany.mockResolvedValue([]);
   });
 
   it('imports all MHLW price category workbooks by default', async () => {
@@ -350,10 +375,28 @@ describe('importMhlwPriceList', () => {
           imported_records: 2,
           skipped_invalid_yj: 0,
           change_event_count: 0,
+          price_version_effective_from_source: 'source_published_at',
+          price_version_create_count: 2,
+          price_version_update_count: 0,
+          price_version_skipped_missing_effective_from: 0,
         },
       }),
     });
     expect(db.drugMaster.upsert).toHaveBeenCalledTimes(2);
+    expect(db.drugPriceVersion.create).toHaveBeenCalledTimes(2);
+    expect(db.drugPriceVersion.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          display_id: expect.stringMatching(/^dpv_\d{12}$/),
+          drug_master_id: 'drug_1',
+          source: 'mhlw_price',
+          source_published_at: new Date(Date.UTC(2026, 4, 20)),
+          effective_from: new Date(Date.UTC(2026, 4, 20)),
+          source_url: 'https://www.mhlw.go.jp/topics/2026/04/xls/tp20260520-01_01.xlsx',
+          source_file_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        }),
+      }),
+    );
     expect(db.drugMaster.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         create: expect.objectContaining({
@@ -459,6 +502,9 @@ describe('importMhlwPriceList', () => {
             imported_records: 0,
             skipped_invalid_yj: 1,
             change_event_count: 0,
+            price_version_create_count: 0,
+            price_version_update_count: 0,
+            price_version_skipped_missing_effective_from: 0,
           }),
         }),
       });
@@ -487,6 +533,9 @@ describe('importMhlwPriceList', () => {
       skipped_invalid_yj: 2,
       records_with_change_event: 0,
       change_event_count: 0,
+      price_version_create_count: 0,
+      price_version_update_count: 0,
+      price_version_skipped_missing_effective_from: 1,
       sampled_rows: 1,
     });
     expect(result.preview.rows).toEqual([
@@ -562,6 +611,9 @@ describe('importMhlwPriceList', () => {
           skipped_invalid_yj: 0,
           records_with_change_event: 1,
           change_event_count: 2,
+          price_version_create_count: 2,
+          price_version_update_count: 0,
+          price_version_skipped_missing_effective_from: 0,
           sampled_rows: 2,
         },
       },
@@ -571,6 +623,8 @@ describe('importMhlwPriceList', () => {
       expect.objectContaining({
         yj_code: '1124001F1022',
         action: 'upsert',
+        price_version_action: 'create',
+        price_version_effective_from: '2026-05-20T00:00:00.000Z',
         change_event_types: ['price_changed', 'transitional_expiry_changed'],
         previous_drug_price: '6.30',
         next_drug_price: '7.1',
@@ -580,6 +634,8 @@ describe('importMhlwPriceList', () => {
       expect.objectContaining({
         yj_code: '1124001F1030',
         action: 'upsert',
+        price_version_action: 'create',
+        price_version_effective_from: '2026-05-20T00:00:00.000Z',
         change_event_types: [],
       }),
     ]);
@@ -610,6 +666,9 @@ describe('importMhlwPriceList', () => {
       skipped_invalid_yj: 1,
       records_with_change_event: 0,
       change_event_count: 0,
+      price_version_create_count: 0,
+      price_version_update_count: 0,
+      price_version_skipped_missing_effective_from: 1,
       sampled_rows: 1,
     });
     expect(result.preview.rows).toEqual([
@@ -636,6 +695,12 @@ describe('importMhlwGenericFlags', () => {
     drugMasterChangeEvent: {
       create: vi.fn(),
     },
+    $queryRaw: vi.fn(),
+    drugPriceVersion: {
+      findUnique: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+    },
   } as const;
 
   beforeEach(() => {
@@ -645,6 +710,9 @@ describe('importMhlwGenericFlags', () => {
     db.drugMaster.findMany.mockResolvedValue([]);
     db.drugMaster.upsert.mockResolvedValue({ id: 'drug_1' });
     db.drugMasterChangeEvent.create.mockResolvedValue({ id: 'change_1' });
+    db.drugPriceVersion.findUnique.mockResolvedValue(null);
+    db.drugPriceVersion.create.mockResolvedValue({ id: 'dpv_1' });
+    db.drugPriceVersion.update.mockResolvedValue({ id: 'dpv_1' });
   });
 
   it('imports generic flags while reporting malformed YJ skips', async () => {

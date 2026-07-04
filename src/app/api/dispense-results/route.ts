@@ -7,6 +7,7 @@ import { ADMIN_MEMBER_ROLES } from '@/lib/auth/member-roles';
 import { withOrgContext } from '@/lib/db/rls';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { toPrismaJsonInput } from '@/lib/db/json';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { success, validationError, notFound, conflict, internalError } from '@/lib/api/response';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
@@ -127,7 +128,15 @@ type ReplayablePrescriptionLine = {
   id: string;
   drug_name: string;
   drug_code: string | null;
+  drug_master_id: string | null;
   unit: string | null;
+};
+
+type DrugPriceSnapshot = {
+  drug_price_version_id: string | null;
+  drug_price_snapshot: Prisma.Decimal | null;
+  drug_price_effective_from_snapshot: Date | null;
+  drug_price_source_snapshot: Prisma.InputJsonValue | typeof Prisma.DbNull | typeof Prisma.JsonNull;
 };
 
 function resolveCarryItemsStatus(lines: Array<{ carry_type: string | null | undefined }>) {
@@ -328,6 +337,71 @@ async function buildBarcodeVerificationEvidence(args: {
   return evidence;
 }
 
+async function buildDrugPriceSnapshotByLineId(args: {
+  tx: Prisma.TransactionClient;
+  lines: Array<SubmittedDispenseResultLine>;
+  prescribedLineById: Map<string, ReplayablePrescriptionLine>;
+  asOf: Date;
+}) {
+  const drugMasterIds = Array.from(
+    new Set(
+      args.lines
+        .map((line) => args.prescribedLineById.get(line.line_id)?.drug_master_id ?? null)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+  if (drugMasterIds.length === 0) return new Map<string, DrugPriceSnapshot>();
+
+  const versions = await args.tx.drugPriceVersion.findMany({
+    where: {
+      drug_master_id: { in: drugMasterIds },
+      effective_from: { lte: args.asOf },
+      OR: [{ effective_to: null }, { effective_to: { gte: args.asOf } }],
+    },
+    orderBy: [{ drug_master_id: 'asc' }, { effective_from: 'desc' }],
+    select: {
+      id: true,
+      drug_master_id: true,
+      source: true,
+      source_url: true,
+      source_file_hash: true,
+      source_published_at: true,
+      effective_from: true,
+      drug_price: true,
+      import_log_id: true,
+    },
+  });
+
+  const latestVersionByDrugMasterId = new Map<string, (typeof versions)[number]>();
+  for (const version of versions) {
+    if (!latestVersionByDrugMasterId.has(version.drug_master_id)) {
+      latestVersionByDrugMasterId.set(version.drug_master_id, version);
+    }
+  }
+
+  const snapshots = new Map<string, DrugPriceSnapshot>();
+  for (const line of args.lines) {
+    const drugMasterId = args.prescribedLineById.get(line.line_id)?.drug_master_id ?? null;
+    const version = drugMasterId ? latestVersionByDrugMasterId.get(drugMasterId) : null;
+    if (!version) continue;
+
+    snapshots.set(line.line_id, {
+      drug_price_version_id: version.id,
+      drug_price_snapshot: version.drug_price,
+      drug_price_effective_from_snapshot: version.effective_from,
+      drug_price_source_snapshot: toPrismaJsonInput({
+        source: version.source,
+        source_url: version.source_url,
+        source_file_hash: version.source_file_hash,
+        source_published_at: version.source_published_at?.toISOString() ?? null,
+        import_log_id: version.import_log_id,
+      }),
+    });
+  }
+
+  return snapshots;
+}
+
 async function promoteCycleToDispensingIfNeeded(args: {
   tx: Parameters<typeof transitionCycleStatus>[0];
   cycleId: string;
@@ -430,6 +504,7 @@ async function authenticatedPOST(req: NextRequest) {
                         id: true,
                         drug_name: true,
                         drug_code: true,
+                        drug_master_id: true,
                         quantity: true,
                         unit: true,
                       },
@@ -673,6 +748,13 @@ async function authenticatedPOST(req: NextRequest) {
           throw err;
         }
 
+        const priceSnapshotByLineId = await buildDrugPriceSnapshotByLineId({
+          tx,
+          lines,
+          prescribedLineById: latestIntakeLineById,
+          asOf: now,
+        });
+
         // CXR1-CONC01: for partial dispenses, serialize concurrent submissions on
         // this cycle by row-locking it FOR UPDATE before any writes. This both
         // makes the open partial_dispense exception dedup below atomic and keeps
@@ -731,6 +813,12 @@ async function authenticatedPOST(req: NextRequest) {
               discrepancy_reason: line.discrepancy_reason,
               carry_type: line.carry_type,
               special_notes: line.special_notes,
+              ...(priceSnapshotByLineId.get(line.line_id) ?? {
+                drug_price_version_id: null,
+                drug_price_snapshot: null,
+                drug_price_effective_from_snapshot: null,
+                drug_price_source_snapshot: Prisma.DbNull,
+              }),
               dispensed_by: ctx.userId,
               dispensed_at: now,
             };

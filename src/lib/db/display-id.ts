@@ -36,7 +36,9 @@ const DISPLAY_ID_ORG_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 const MAX_DISPLAY_ID_SEQUENCE_DIGITS = 15;
 
 type DisplayIdSqlExecutor = Pick<Prisma.TransactionClient, '$queryRaw'>;
-type DisplayIdGlobalSqlExecutor = Pick<PrismaClient, '$queryRaw'>;
+type DisplayIdGlobalSqlExecutor =
+  | Pick<Prisma.TransactionClient, '$queryRaw'>
+  | Pick<PrismaClient, '$queryRaw'>;
 
 interface DisplayIdAllocationRow {
   readonly first_value: bigint | number | string;
