@@ -4,7 +4,7 @@ import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { requireAuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { withOrgContext } from '@/lib/db/rls';
-import { parseBoundedInteger } from '@/lib/api/pagination';
+import { buildCursorPage, parseBoundedInteger } from '@/lib/api/pagination';
 import { internalError, success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
@@ -130,13 +130,14 @@ async function authenticatedGET(req: NextRequest) {
       },
     });
 
-    const hasMore = shouldLimit && records.length > limit;
-    const data = shouldLimit && hasMore ? records.slice(0, limit) : records;
+    const page = shouldLimit
+      ? buildCursorPage(records, limit, (record) => record.id)
+      : { data: records, hasMore: false };
 
     return withSensitiveNoStore(
       success({
-        data,
-        ...(shouldLimit ? { meta: { limit, has_more: hasMore } } : {}),
+        data: page.data,
+        ...(shouldLimit ? { meta: { limit, has_more: page.hasMore } } : {}),
       }),
     );
   });
