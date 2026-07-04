@@ -1,6 +1,6 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { success } from '@/lib/api/response';
-import { parseBoundedInteger } from '@/lib/api/pagination';
+import { buildCursorPage, parseBoundedInteger } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
 import { todayUtcRange } from '@/lib/utils/date-boundary';
 
@@ -40,8 +40,8 @@ export const GET = withAuthContext(async (req, ctx) => {
     orderBy: { name: 'asc' },
     take: limit + 1,
   });
-  const hasMore = sites.length > limit;
-  const returnedSites = sites.slice(0, limit);
+  const page = buildCursorPage(sites, limit, (site) => site.id);
+  const returnedSites = page.data;
 
   const siteIds = returnedSites.map((s) => s.id);
 
@@ -74,5 +74,5 @@ export const GET = withAuthContext(async (req, ctx) => {
     is_current: user?.default_site_id === site.id,
   }));
 
-  return success({ data: result, meta: { limit, has_more: hasMore } });
+  return success({ data: result, meta: { limit, has_more: page.hasMore } });
 });
