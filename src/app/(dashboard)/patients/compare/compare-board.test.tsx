@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
+import { jsonResponse } from '@/test/fetch-test-utils';
 import { CompareBoard } from './compare-board';
 import type { PatientOverview } from '../[id]/patient-detail.types';
 
@@ -78,10 +79,7 @@ describe('CompareBoard', () => {
       return queries.map(() => ({ data: undefined, isLoading: true, error: null }));
     });
 
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve(overview),
-    } as Response);
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(overview));
     vi.stubGlobal('fetch', fetchMock);
 
     try {

@@ -4,6 +4,7 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
+import { jsonResponse } from '@/test/fetch-test-utils';
 import { PatientReadinessCard } from './patient-readiness-card';
 
 setupDomTestEnv();
@@ -86,9 +87,7 @@ describe('PatientReadinessCard', () => {
       },
     );
 
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as unknown as Response);
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({}));
     vi.stubGlobal('fetch', fetchMock);
 
     try {
@@ -126,9 +125,7 @@ describe('PatientReadinessCard', () => {
       },
     );
 
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as unknown as Response);
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({}));
     vi.stubGlobal('fetch', fetchMock);
 
     try {
