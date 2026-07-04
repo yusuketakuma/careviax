@@ -4278,7 +4278,7 @@ export function CardWorkspace({
       toast.success('会議要点を保存しました');
     },
     onError: (error: Error) => {
-      toast.error(error.message);
+      toast.error(messageFromError(error, '会議要点の保存に失敗しました'));
     },
   });
 
@@ -4308,7 +4308,7 @@ export function CardWorkspace({
       toast.success('MCS確認ログを保存しました');
     },
     onError: (error: Error) => {
-      toast.error(error.message);
+      toast.error(messageFromError(error, 'MCS確認ログの保存に失敗しました'));
     },
   });
 

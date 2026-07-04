@@ -2944,6 +2944,46 @@ describe('CardWorkspace', () => {
     });
   });
 
+  it('keeps server messages and falls back for communication home-operation mutation error toasts', () => {
+    mockPatientQuery(buildWorkspace());
+    const baseMutation = useMutationMock.getMockImplementation();
+    const mutationConfigs: Array<{ onError?: (error: Error) => void }> = [];
+    useMutationMock.mockImplementation((config: { onError?: (error: Error) => void }) => {
+      mutationConfigs.push(config);
+      return baseMutation?.(config);
+    });
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    const findMutationByFallback = (fallback: string) => {
+      const config = mutationConfigs.find((candidate) =>
+        String(candidate.onError).includes(fallback),
+      );
+      expect(config).toBeTruthy();
+      return config;
+    };
+
+    const cases = [
+      {
+        config: findMutationByFallback('会議要点の保存に失敗しました'),
+        serverMessage: '会議要点APIからの詳細エラー',
+        fallback: '会議要点の保存に失敗しました',
+      },
+      {
+        config: findMutationByFallback('MCS確認ログの保存に失敗しました'),
+        serverMessage: 'MCS確認ログAPIからの詳細エラー',
+        fallback: 'MCS確認ログの保存に失敗しました',
+      },
+    ];
+
+    for (const { config, serverMessage, fallback } of cases) {
+      config?.onError?.(new Error(serverMessage));
+      expect(toast.error).toHaveBeenLastCalledWith(serverMessage);
+      config?.onError?.(new Error(''));
+      expect(toast.error).toHaveBeenLastCalledWith(fallback);
+    }
+  });
+
   it('blocks incomplete conference quick-note submissions before mutation', () => {
     const { conferenceMutate } = mockPatientQuery(buildWorkspace(), {
       generated_at: '2026-06-16T00:00:00.000Z',
