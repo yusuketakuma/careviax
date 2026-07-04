@@ -255,6 +255,68 @@ describe('/api/consent-records', () => {
     );
   });
 
+  it('returns a cursor page and audits only visible consent records when rows overflow', async () => {
+    consentRecordFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'consent_1',
+        patient_id: 'patient_1',
+        consent_type: 'external_sharing',
+        document_url: 'https://files.example.test/visible-consent.pdf',
+      },
+      {
+        id: 'consent_2',
+        patient_id: 'patient_1',
+        consent_type: 'external_sharing',
+        document_url: 'https://files.example.test/hidden-consent.pdf',
+      },
+    ]);
+    consentRecordCountMock.mockResolvedValueOnce(2);
+
+    const response = (await GET(
+      createRequest('http://localhost/api/consent-records?patient_id=patient_1&limit=1'),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    expect(consentRecordFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 2,
+      }),
+    );
+
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: [
+        {
+          id: 'consent_1',
+          document_url: null,
+          has_document_url: true,
+          document_url_redacted: true,
+        },
+      ],
+      nextCursor: 'consent_1',
+      hasMore: true,
+      totalCount: 2,
+    });
+    expect(body.data).toHaveLength(1);
+    expect(JSON.stringify(body)).not.toContain('hidden-consent.pdf');
+    expect(recordConsentRecordsViewedAuditMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.any(Object),
+      expect.objectContaining({
+        limit: 1,
+        hasMore: true,
+        totalCount: 2,
+        records: [
+          {
+            id: 'consent_1',
+            document_url: 'https://files.example.test/visible-consent.pdf',
+          },
+        ],
+      }),
+    );
+  });
+
   it('fails closed when consent list view audit cannot be recorded', async () => {
     const unsafeError = new Error(
       'audit unavailable for raw consent document https://files.example.test/leak.pdf',

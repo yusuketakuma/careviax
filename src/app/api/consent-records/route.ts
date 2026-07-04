@@ -7,7 +7,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { parsePaginationParams } from '@/lib/api/pagination';
+import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { prisma } from '@/lib/db/client';
 import { acquireAdvisoryTxLock } from '@/lib/db/advisory-lock';
@@ -193,10 +193,8 @@ async function authenticatedGET(req: NextRequest) {
       prisma.consentRecord.count({ where }),
     ]);
 
-    const hasMore = records.length > limit;
-    const pageRecords = hasMore ? records.slice(0, limit) : records;
-    const data = pageRecords.map(serializeConsentRecordDocumentUrl);
-    const nextCursor = hasMore ? data[data.length - 1].id : undefined;
+    const page = buildCursorPage(records, limit, (record) => record.id);
+    const data = page.data.map(serializeConsentRecordDocumentUrl);
 
     await recordConsentRecordsViewedAudit(prisma, ctx, {
       patientId,
@@ -205,15 +203,15 @@ async function authenticatedGET(req: NextRequest) {
       isActive,
       limit,
       hasCursor: Boolean(cursor),
-      hasMore,
+      hasMore: page.hasMore,
       totalCount,
-      records: pageRecords.map((record) => ({
+      records: page.data.map((record) => ({
         id: record.id,
         document_url: record.document_url,
       })),
     });
 
-    return success({ data, nextCursor, hasMore, totalCount });
+    return success({ data, nextCursor: page.nextCursor, hasMore: page.hasMore, totalCount });
   });
 }
 
