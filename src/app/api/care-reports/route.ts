@@ -20,7 +20,11 @@ import {
   canAccessCareReportSource,
   getCareReportAccessScope,
 } from '@/server/services/care-report-access';
-import { buildManualCareReportSourceProvenance } from '@/server/services/care-report-source-provenance';
+import {
+  buildCareReportBillingContext,
+  buildManualCareReportSourceProvenance,
+} from '@/server/services/care-report-source-provenance';
+import { getCareReportSourceBillingEvidence } from '@/server/services/care-report-source-readers';
 import { canOutputCareReport } from '@/server/services/care-report-output-policy';
 import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
@@ -88,6 +92,7 @@ type CareReportListRow = Prisma.CareReportGetPayload<{
 };
 type CareReportSourceDb = Pick<Prisma.TransactionClient, 'careCase' | 'patient' | 'visitRecord'>;
 type CareReportVisitLockDb = Pick<Prisma.TransactionClient, '$queryRaw'>;
+type CareReportBillingContextDb = Pick<Prisma.TransactionClient, 'billingEvidence'>;
 type CareReportCreateResult =
   | { kind: 'validation_error'; response: Response }
   | { kind: 'created'; report: CareReport };
@@ -410,6 +415,18 @@ async function lockCareReportVisitRecordSource(
   await db.$queryRaw(
     Prisma.sql`SELECT "id" FROM "VisitRecord" WHERE "id" = ${visitRecordId} AND "org_id" = ${orgId} FOR UPDATE`,
   );
+}
+
+async function buildManualCareReportBillingContext(
+  db: CareReportBillingContextDb,
+  args: { orgId: string; visitRecordId?: string },
+) {
+  if (!args.visitRecordId) return null;
+  const billingEvidence = await getCareReportSourceBillingEvidence(db, {
+    orgId: args.orgId,
+    visitRecordId: args.visitRecordId,
+  });
+  return buildCareReportBillingContext(billingEvidence);
 }
 
 async function validateCareReportSource(
@@ -1031,12 +1048,15 @@ async function authenticatedPOST(req: NextRequest) {
           orgId: ctx.orgId,
           visitRecordId: parsed.data.visit_record_id,
         });
-        const finalContent = sourceProvenance
-          ? {
-              ...enrichedContent,
-              source_provenance: sourceProvenance,
-            }
-          : enrichedContent;
+        const billingContext = await buildManualCareReportBillingContext(tx, {
+          orgId: ctx.orgId,
+          visitRecordId: parsed.data.visit_record_id,
+        });
+        const finalContent = {
+          ...enrichedContent,
+          billing_context: billingContext,
+          ...(sourceProvenance ? { source_provenance: sourceProvenance } : {}),
+        };
 
         return {
           kind: 'created' as const,

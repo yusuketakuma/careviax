@@ -12,6 +12,7 @@ const {
   careReportCreateMock,
   careReportFindFirstMock,
   careReportFindManyMock,
+  billingEvidenceFindFirstMock,
   careCaseFindFirstMock,
   careCaseFindManyMock,
   deliveryRecordCountMock,
@@ -30,6 +31,7 @@ const {
   careReportCreateMock: vi.fn(),
   careReportFindFirstMock: vi.fn(),
   careReportFindManyMock: vi.fn(),
+  billingEvidenceFindFirstMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
   deliveryRecordCountMock: vi.fn(),
@@ -71,6 +73,9 @@ vi.mock('@/lib/db/client', () => ({
       create: careReportCreateMock,
       findFirst: careReportFindFirstMock,
       findMany: careReportFindManyMock,
+    },
+    billingEvidence: {
+      findFirst: billingEvidenceFindFirstMock,
     },
     deliveryRecord: {
       count: deliveryRecordCountMock,
@@ -1085,6 +1090,7 @@ describe('/api/care-reports POST', () => {
     vi.clearAllMocks();
     setupAuthMocks();
     careReportFindFirstMock.mockResolvedValue(null);
+    billingEvidenceFindFirstMock.mockResolvedValue(null);
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
     careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
     careCaseFindFirstMock.mockResolvedValue({
@@ -1123,6 +1129,9 @@ describe('/api/care-reports POST', () => {
         $queryRaw: txQueryRawMock,
         careReport: {
           create: careReportCreateMock,
+        },
+        billingEvidence: {
+          findFirst: billingEvidenceFindFirstMock,
         },
         careCase: {
           findFirst: careCaseFindFirstMock,
@@ -1192,6 +1201,7 @@ describe('/api/care-reports POST', () => {
           visit_record_id: 'visit_1',
           content: {
             summary: '訪問後報告',
+            billing_context: null,
             source_provenance: expect.objectContaining({
               schema_version: 1,
               visit_record_id: 'visit_1',
@@ -1203,6 +1213,145 @@ describe('/api/care-reports POST', () => {
         }),
       }),
     );
+  });
+
+  it('adds billing_context from existing billing evidence without changing report status or delivery state', async () => {
+    billingEvidenceFindFirstMock.mockResolvedValue({
+      id: 'billing_1',
+      cycle_id: 'cycle_1',
+      patient_id: 'patient_1',
+      claimable: false,
+      exclusion_reason: 'report_delivery_pending',
+      report_delivery_ref: 'delivery_1',
+      updated_at: new Date('2026-03-29T09:30:00.000Z'),
+      payer_basis: 'medical',
+      applied_rule_keys: ['home_visit_base'],
+      recommended_rule_keys: ['report_delivery_confirmation'],
+      validation_notes: '送付確認待ち',
+      calculation_context: {
+        effective_revision_code: '2026R1',
+        site_config_status: 'active',
+        site_config_revision_code: 'site-2026',
+        jahis_supplemental_record_count: 2,
+        jahis_residual_confirmation_count: 1,
+      },
+    });
+
+    const response = await createCareReport(
+      createPostRequest({
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        visit_record_id: 'visit_1',
+        report_type: 'physician_report',
+        content: { summary: '訪問後報告' },
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(billingEvidenceFindFirstMock).toHaveBeenCalledWith({
+      where: { visit_record_id: 'visit_1', org_id: 'org_1' },
+      select: {
+        id: true,
+        cycle_id: true,
+        patient_id: true,
+        claimable: true,
+        exclusion_reason: true,
+        report_delivery_ref: true,
+        updated_at: true,
+        payer_basis: true,
+        applied_rule_keys: true,
+        recommended_rule_keys: true,
+        validation_notes: true,
+        calculation_context: true,
+      },
+      orderBy: { created_at: 'desc' },
+    });
+    expect(txQueryRawMock.mock.invocationCallOrder[0]).toBeLessThan(
+      billingEvidenceFindFirstMock.mock.invocationCallOrder[0],
+    );
+    expect(visitRecordFindFirstMock.mock.invocationCallOrder.at(-1)).toBeLessThan(
+      billingEvidenceFindFirstMock.mock.invocationCallOrder[0],
+    );
+    expect(careReportCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          content: expect.objectContaining({
+            billing_context: {
+              billing_evidence_id: 'billing_1',
+              payer_basis: 'medical',
+              claimable: false,
+              exclusion_reason: 'report_delivery_pending',
+              report_delivery_ref: 'delivery_1',
+              applied_rule_keys: ['home_visit_base'],
+              recommended_rule_keys: ['report_delivery_confirmation'],
+              validation_notes: '送付確認待ち',
+              updated_at: '2026-03-29T09:30:00.000Z',
+              effective_revision_code: '2026R1',
+              site_config_status: 'active',
+              site_config_revision_code: 'site-2026',
+              jahis_supplemental_record_count: 2,
+              jahis_residual_confirmation_count: 1,
+            },
+          }),
+        }),
+      }),
+    );
+    const createdData = careReportCreateMock.mock.calls[0]?.[0].data;
+    expect(createdData).not.toHaveProperty('status');
+    expect(createdData).not.toHaveProperty('delivery_records');
+    expect(createdData).not.toHaveProperty('delivery_status');
+  });
+
+  it('stores billing_context as null when a visit has no billing evidence', async () => {
+    const response = await createCareReport(
+      createPostRequest({
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        visit_record_id: 'visit_1',
+        report_type: 'physician_report',
+        content: { summary: '訪問後報告' },
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(billingEvidenceFindFirstMock).toHaveBeenCalledTimes(1);
+    expect(careReportCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          content: expect.objectContaining({
+            billing_context: null,
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('stores billing_context as null without reading billing evidence when no visit is linked', async () => {
+    const response = await createCareReport(
+      createPostRequest({
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        report_type: 'care_manager_report',
+        content: { summary: 'ケース報告' },
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(billingEvidenceFindFirstMock).not.toHaveBeenCalled();
+    expect(careReportCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          content: {
+            summary: 'ケース報告',
+            billing_context: null,
+          },
+        }),
+      }),
+    );
+    expect(careReportCreateMock.mock.calls[0]?.[0].data).not.toHaveProperty('visit_record_id');
   });
 
   it('normalizes source IDs before validation and persistence', async () => {
