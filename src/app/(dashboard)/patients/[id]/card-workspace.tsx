@@ -4012,7 +4012,7 @@ export function CardWorkspace({
       toast.success('FAX原本の到着を記録しました');
     },
     onError: (error: Error) => {
-      toast.error(error.message);
+      toast.error(messageFromError(error, 'FAX原本到着の記録に失敗しました'));
     },
   });
 
@@ -4043,7 +4043,7 @@ export function CardWorkspace({
       toast.success('処方せん画像/PDFを保存しました');
     },
     onError: (error: Error) => {
-      toast.error(error.message);
+      toast.error(messageFromError(error, '処方せん画像/PDFの保存に失敗しました'));
     },
   });
 
@@ -4131,7 +4131,7 @@ export function CardWorkspace({
       toast.success('処方せん原本管理を保存しました');
     },
     onError: (error: Error) => {
-      toast.error(error.message);
+      toast.error(messageFromError(error, '処方せん原本管理の保存に失敗しました'));
     },
   });
 

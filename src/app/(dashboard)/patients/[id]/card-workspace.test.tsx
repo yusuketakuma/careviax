@@ -2,6 +2,7 @@
 
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
@@ -1989,6 +1990,51 @@ describe('CardWorkspace', () => {
     fireEvent.click(screen.getByRole('button', { name: /原本到着を記録/ }));
 
     expect(faxMutate).toHaveBeenCalledWith('intake_0500');
+  });
+
+  it('keeps server messages and falls back for prescription home-operation mutation error toasts', () => {
+    mockPatientQuery(buildWorkspace());
+    const baseMutation = useMutationMock.getMockImplementation();
+    const mutationConfigs: Array<{ onError?: (error: Error) => void }> = [];
+    useMutationMock.mockImplementation((config: { onError?: (error: Error) => void }) => {
+      mutationConfigs.push(config);
+      return baseMutation?.(config);
+    });
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    const findMutationByFallback = (fallback: string) => {
+      const config = mutationConfigs.find((candidate) =>
+        String(candidate.onError).includes(fallback),
+      );
+      expect(config).toBeTruthy();
+      return config;
+    };
+
+    const cases = [
+      {
+        config: findMutationByFallback('FAX原本到着の記録に失敗しました'),
+        serverMessage: 'FAX原本APIからの詳細エラー',
+        fallback: 'FAX原本到着の記録に失敗しました',
+      },
+      {
+        config: findMutationByFallback('処方せん画像/PDFの保存に失敗しました'),
+        serverMessage: '処方せん画像APIからの詳細エラー',
+        fallback: '処方せん画像/PDFの保存に失敗しました',
+      },
+      {
+        config: findMutationByFallback('処方せん原本管理の保存に失敗しました'),
+        serverMessage: '処方せん原本管理APIからの詳細エラー',
+        fallback: '処方せん原本管理の保存に失敗しました',
+      },
+    ];
+
+    for (const { config, serverMessage, fallback } of cases) {
+      config?.onError?.(new Error(serverMessage));
+      expect(toast.error).toHaveBeenLastCalledWith(serverMessage);
+      config?.onError?.(new Error(''));
+      expect(toast.error).toHaveBeenLastCalledWith(fallback);
+    }
   });
 
   it('records an MCS check log from the home operations panel', () => {
