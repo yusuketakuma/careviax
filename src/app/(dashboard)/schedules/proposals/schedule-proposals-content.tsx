@@ -1158,7 +1158,7 @@ export function ScheduleProposalsContent({
           body: JSON.stringify(payload),
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : '候補更新に失敗しました';
+        const message = messageFromError(error, '候補更新に失敗しました');
         throw new Error(proposalActionFailureDisplayMessage(message, false));
       }
       if (!response.ok) {
@@ -1249,7 +1249,7 @@ export function ScheduleProposalsContent({
             return {
               proposal,
               ok: false as const,
-              message: error instanceof Error ? error.message : '一括更新に失敗しました',
+              message: messageFromError(error, '一括更新に失敗しました'),
               reachedServer: false,
             } satisfies BulkActionFailure;
           }
@@ -1271,7 +1271,7 @@ export function ScheduleProposalsContent({
             return {
               proposal,
               ok: false as const,
-              message: error instanceof Error ? error.message : '一括更新に失敗しました',
+              message: messageFromError(error, '一括更新に失敗しました'),
               reachedServer: true,
             } satisfies BulkActionFailure;
           }
