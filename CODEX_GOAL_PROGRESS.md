@@ -1,5 +1,36 @@
 # CODEX Goal Progress
 
+## R23 QR Scan Error Message Helper Partial - 2026-07-05 01:08 JST
+
+- Status:
+  - Implemented and validated the next bounded R23 slice:
+    - `src/app/(dashboard)/qr-scan/page.tsx`
+    - `src/app/(dashboard)/qr-scan/page.contract.test.ts`
+- Scope:
+  - Reused the existing `messageFromError` helper for QR scan draft-send error
+    formatting.
+  - Extended the existing source contract test to require helper usage; empty
+    Error fallback behavior is covered by `src/lib/utils/error-message.test.ts`.
+- Safety:
+  - Client/helper error message formatting only.
+  - No product API, DB, auth, authorization, PHI projection, billing semantics,
+    audit semantics, deployment, package dependency, live DB operation,
+    external send, secret handling, push, or destructive operation changed.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/qr-scan/page.contract.test.ts' src/lib/utils/error-message.test.ts --reporter=dot --testTimeout=30000`
+    passed `2` files / `14` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `74b7e6ea`
+    (`refactor(ui): reuse error message helper in qr scan`).
+- Remaining:
+  - R23 is partial; remaining hand-rolled error-message ternaries should be
+    migrated by bounded domain chunks.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R23 MFA Setup Error Message Helper Partial - 2026-07-05 01:05 JST
 
 - Status:
