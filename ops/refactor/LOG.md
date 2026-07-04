@@ -3717,4 +3717,30 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - commit: `ec83c0e1` (`refactor(ui): reuse readApiJson in pharmacy sites`)。
 - 残課題: R40/R44 は broad。追加の client fetcher は response body read が PHI-safe かを
   個別確認してから段階移行する。
+
+## 2026-07-05 R40/R44 pharmacist credentials readApiJson slice
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 実施:
+  - admin pharmacist-credentials の `PHARMACIST_CREDENTIALS_API_PATH` GET fetcher を
+    `readApiJson<PharmacistCredentialListResponse>` へ移行。
+  - admin pharmacist-credentials の `buildPharmacistsApiPath()` GET fetcher を
+    `readApiJson<{ data: PharmacistOption[] }>` へ移行。
+- 挙動変更: read fetch 実装内部の helper 収束のみ。API path helpers、
+  `buildOrgHeaders`、React Query keys、response envelopes/count metadata、
+  credential/staff false-empty error states、staff selector、POST/PATCH/DELETE mutation、
+  path helper encode/fail-closed semantics は維持。
+- 安全性: product UI read fetch internals のみ変更。DB/schema、auth/authorization、
+  PHI projection、staff credential/personnel display semantics、billing、deployment、
+  package dependency、live DB operation、external send、secret handling、push、
+  destructive operation は不変。SSOT では必要時の product
+  API/DB/auth/authorization/PHI/billing/deploy/package dependency 変更許可を確認済みだが、
+  この slice では不要。
+- 検証: focused pharmacist-credentials Vitest `1 file / 17 tests` green、
+  scoped ESLint green、targeted Prettier check green、targeted `git diff --check` green、
+  `pnpm typecheck` green。
+- commit: `ac1a88d1` (`refactor(ui): reuse readApiJson in pharmacist credentials`)。
+- 残課題: R40/R44 は broad。追加の client fetcher は response body read が PHI-safe かを
+  個別確認してから段階移行する。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
