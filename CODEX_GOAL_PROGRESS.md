@@ -46367,3 +46367,48 @@ false` for every migrated column.
     before converting additional client read fetchers.
   - Existing unrelated `refactor-instructions.md` and local skill install files
     remain outside this slice.
+
+## R40/R44 Facilities readApiJson Slice - 2026-07-05 04:10 JST
+
+- Scope:
+  - `src/app/(dashboard)/admin/facilities/facilities-content.tsx`
+  - `src/app/(dashboard)/admin/facilities/facilities-content.test.tsx`
+- Status:
+  - Implemented and committed as `51c53180`
+    (`refactor(ui): reuse readApiJson in facilities`).
+- Changes:
+  - Replaced the facility-list GET helper for
+    `buildAdminFacilitiesApiPath(new URLSearchParams())` with
+    `readApiJson<FacilitiesResponse>` while preserving query key,
+    `buildOrgHeaders(orgId)`, and count metadata.
+  - Replaced the facility-unit GET helper for
+    `buildAdminFacilityUnitsApiPath(editingFacility.id)` with
+    `readApiJson<FacilityUnitsResponse>` while preserving the edit-sheet unit
+    loading and unit list behavior.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, destructive operation, facility/contact/unit
+    rendering, DataTable false-empty error state, named units loading state,
+    mutating POST/PATCH/DELETE behavior, and path helper encoding/fail-closed
+    behavior.
+  - The 2026-07-04 user instruction allowing product
+    API/DB/auth/authorization/PHI/billing/deploy/package dependency changes when
+    necessary is recorded in `ops/refactor/STATE.md`; this slice did not require
+    those changes.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/facilities/facilities-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `11` tests.
+  - `pnpm exec eslint --max-warnings=0 'src/app/(dashboard)/admin/facilities/facilities-content.tsx' 'src/app/(dashboard)/admin/facilities/facilities-content.test.tsx'`
+    passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/admin/facilities/facilities-content.tsx' 'src/app/(dashboard)/admin/facilities/facilities-content.test.tsx'`
+    passed.
+  - `git diff --check -- 'src/app/(dashboard)/admin/facilities/facilities-content.tsx' 'src/app/(dashboard)/admin/facilities/facilities-content.test.tsx'`
+    passed.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - R40/R44 remains partial and broad; continue per-fetcher body-read/PHI review
+    before converting additional client read fetchers.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
