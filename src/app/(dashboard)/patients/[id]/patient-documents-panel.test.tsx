@@ -598,6 +598,73 @@ describe('FirstVisitDocumentsPanel', () => {
     expect(invalidateSpy).not.toHaveBeenCalled();
   });
 
+  it('keeps the server message when first-visit document creation fails', async () => {
+    const queryClient = new QueryClient();
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+    const successSpy = vi.spyOn(toast, 'success').mockReturnValue('1' as never);
+    const errorSpy = vi.spyOn(toast, 'error').mockReturnValue('1' as never);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ message: '書類作成APIからの詳細エラー' }), {
+          status: 500,
+        }),
+      ),
+    );
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <FirstVisitDocumentsPanel
+          orgId="org_1"
+          patientId="patient_1"
+          cases={[{ id: 'case_1', status: 'active' } as never]}
+          documents={[]}
+          documentStatuses={[
+            {
+              document_type: 'important_matters',
+              label: '重要事項説明書',
+              status: 'not_created',
+              status_label: '未作成',
+              template_name: null,
+              template_version: null,
+              storage_location: null,
+              latest_action_at: null,
+              latest_printed_at: null,
+              latest_print_batch_id: null,
+              latest_document_id: null,
+              has_file: false,
+              delivered_at: null,
+              alerts: ['重要事項説明書が未作成です'],
+            },
+          ]}
+          printReadiness={{
+            overall_status: 'ready',
+            missing_required_count: 0,
+            warning_count: 0,
+            template_versions: [
+              {
+                document_type: 'important_matters',
+                label: '重要事項説明書',
+                template_id: 'template_important',
+                template_name: '重要事項説明書 2026年版',
+                template_version: 'v2',
+                effective_from: '2026-04-01T00:00:00.000Z',
+                effective_to: null,
+              },
+            ],
+            checks: [],
+          }}
+        />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '未作成書類を作成' }));
+
+    await waitFor(() => expect(errorSpy).toHaveBeenCalledWith('書類作成APIからの詳細エラー'));
+    expect(successSpy).not.toHaveBeenCalled();
+    expect(invalidateSpy).not.toHaveBeenCalled();
+  });
+
   it('fails closed when the save mutation returns a malformed 2xx (no success toast, no invalidation)', async () => {
     const queryClient = new QueryClient();
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');

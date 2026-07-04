@@ -19,6 +19,7 @@ import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { apiDataSchema } from '@/lib/api/response-schemas';
 import { encodePathSegment } from '@/lib/http/path-segment';
+import { messageFromError } from '@/lib/utils/error-message';
 import type { PatientDocumentsSnapshot, PatientOverview } from './patient-detail.types';
 
 type FirstVisitDocumentItem = PatientDocumentsSnapshot['first_visit_documents'][number];
@@ -365,7 +366,7 @@ function MissingFirstVisitDocumentsCreatePanel({
       ]);
     },
     onError: (error: Error) => {
-      toast.error(error.message);
+      toast.error(messageFromError(error, '初回訪問書類の作成に失敗しました'));
     },
   });
   const labels = statuses.map((status) => status.label).join('、');
@@ -668,7 +669,7 @@ function FirstVisitDocumentStatusForm({
       ]);
     },
     onError: (error: Error) => {
-      toast.error(error.message);
+      toast.error(messageFromError(error, '初回訪問文書の更新に失敗しました'));
     },
   });
 
