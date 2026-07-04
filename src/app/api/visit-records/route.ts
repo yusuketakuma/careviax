@@ -260,8 +260,6 @@ const FIRST_VISIT_DOCUMENT_TYPE_BY_TEMPLATE: Record<
   consent_form: 'consent',
 };
 
-type VisitRecordConflictDetail = VisitRecordConflictServerSnapshot;
-
 type VisitRecordHandoffExtractionPayload = {
   patientId: string;
   patientName: string;
@@ -297,7 +295,7 @@ async function loadExistingVisitRecordConflict(
   tx: Prisma.TransactionClient,
   orgId: string,
   scheduleId: string,
-): Promise<VisitRecordConflictDetail | null> {
+): Promise<VisitRecordConflictServerSnapshot | null> {
   const existing = await tx.visitRecord.findFirst({
     where: {
       org_id: orgId,
