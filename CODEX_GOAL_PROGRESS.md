@@ -1,5 +1,46 @@
 # CODEX Goal Progress
 
+## R40/R44 Drug Masters readApiJson Partial - 2026-07-05 07:37 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`
+    - `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`
+- Scope:
+  - Reused `readApiJson` for four admin drug master core read GETs:
+    - pharmacy site list
+    - drug master cursor page
+    - drug master import status
+    - drug master import logs
+  - Added queryFn contract coverage proving API JSON `message` from failed read
+    GETs is preserved for all four reads.
+  - Preserved site scoping, cursor/page query params, import log filters, org
+    headers, React Query keys, enabled gates, DataTable load-more pagination,
+    formulary operation queries, detail sheet queries, and mutation flows.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`
+    passed `1` file / `88` tests after aligning the new test to current
+    `site_id=site_1` query behavior.
+  - Scoped ESLint, targeted Prettier check after formatting both touched files,
+    targeted `git diff --check`, and `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `fe9edc77`
+    (`refactor(ui): reuse readApiJson in drug masters`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Conferences readApiJson Partial - 2026-07-05 07:33 JST
 
 - Status:
