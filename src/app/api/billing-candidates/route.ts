@@ -3,7 +3,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { parsePaginationParams } from '@/lib/api/pagination';
+import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { readStrictOptionalSearchParam } from '@/lib/api/search-params';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject, readJsonObjectString } from '@/lib/db/json';
@@ -274,11 +274,9 @@ const authenticatedGET = withAuthContext(
       };
     });
 
-    const hasMore = candidates.length > limit;
-    const data = hasMore ? candidates.slice(0, limit) : candidates;
-    const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
+    const page = buildCursorPage(candidates, limit, (candidate) => candidate.id);
 
-    return success({ data, hasMore, nextCursor, summary: result.summary });
+    return success({ ...page, summary: result.summary });
   },
   {
     permission: 'canManageBilling',

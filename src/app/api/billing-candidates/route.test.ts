@@ -310,6 +310,35 @@ describe('/api/billing-candidates', () => {
     );
   });
 
+  it('returns a cursor page from the shared pagination helper when rows overflow the requested limit', async () => {
+    const response = await GET(createGetRequest('http://localhost/api/billing-candidates?limit=1'));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(billingCandidateFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 2,
+      }),
+    );
+
+    const body = await response.json();
+    expect(Object.keys(body)).toEqual(['data', 'hasMore', 'nextCursor', 'summary']);
+    expect(body).toMatchObject({
+      data: [
+        {
+          id: 'candidate_1',
+          patient_name: '佐藤 花子',
+        },
+      ],
+      hasMore: true,
+      nextCursor: 'candidate_1',
+      summary: null,
+    });
+    expect(body.data).toHaveLength(1);
+    expect(JSON.stringify(body)).not.toContain('candidate_2');
+  });
+
   it('normalizes malformed source snapshot metadata on read', async () => {
     billingCandidateFindManyMock.mockResolvedValueOnce([
       {
