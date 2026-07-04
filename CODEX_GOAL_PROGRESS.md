@@ -46809,6 +46809,48 @@ false` for every migrated column.
   - Existing unrelated `refactor-instructions.md` and local skill install files
     remain outside this slice.
 
+## R40/R44 Notification Settings readApiJson Slice - 2026-07-05 05:14 JST
+
+- Scope:
+  - `src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx`
+  - `src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx`
+- Status:
+  - Implemented and committed as `3d6219bf`
+    (`Converge notification setting reads on shared JSON helper`).
+- Changes:
+  - Replaced notification-rule and escalation-rule list read GET effects with
+    `readApiJson<NotificationRulesResponse>` and
+    `readApiJson<EscalationRulesResponse>`.
+  - Preserved shared path helpers, `buildOrgHeaders(orgId)`, response envelope
+    and list metadata handling, loading/error UI, active-effect cleanup,
+    reload keys, and all mutation behavior.
+  - Reused focused tests that verify list read endpoint/header delegation.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, destructive operation, notification-rule mutations,
+    and escalation-rule mutations.
+  - The 2026-07-04 user instruction allowing product
+    API/DB/auth/authorization/PHI/billing/deploy/package dependency changes when
+    necessary is recorded in `ops/refactor/STATE.md`; this slice did not require
+    those changes.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `12` tests.
+  - `pnpm exec eslint --max-warnings=0 'src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx' 'src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx'`
+    passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx' 'src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx'`
+    passed.
+  - `git diff --check -- 'src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx' 'src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx'`
+    passed.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - R40/R44 remains partial and broad; continue per-fetcher body-read/PHI review
+    before converting additional client read fetchers.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 External Professionals readApiJson Slice - 2026-07-05 05:02 JST
 
 - Scope:

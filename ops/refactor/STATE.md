@@ -163,6 +163,11 @@
   readApiJson へ収束し、collection path/org-header/response envelope/error UI/mutation contract は保持。
   SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
   維持しつつ、本sliceでは不要。
+- codex: R40/R44 notification-settings readApiJson slice(3d6219bf) land。focused Vitest 12、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。notification-rule/escalation-rule list
+  read GET effects を readApiJson へ収束し、path helper/org-header/list metadata/error UI/mutation
+  contract は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 
