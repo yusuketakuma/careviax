@@ -83,4 +83,37 @@ describe('VisitBriefReviewContent', () => {
       vi.clearAllMocks();
     }
   });
+
+  it('surfaces API messages from the patient visit brief read query', async () => {
+    const patientId = 'pt_1';
+    useOrgIdMock.mockReturnValue('org_1');
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+
+    let briefQueryFn: (() => Promise<unknown>) | undefined;
+    useQueryMock.mockImplementation(
+      (config: { queryKey: unknown[]; queryFn: () => Promise<unknown> }) => {
+        if (config.queryKey[0] === 'visit-brief-review-patient') {
+          return { data: { patientId }, isLoading: false, error: null };
+        }
+        if (config.queryKey[0] === 'patient-visit-brief') {
+          briefQueryFn = config.queryFn;
+        }
+        return { data: undefined, isLoading: true, error: null };
+      },
+    );
+
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ message: 'API側の訪問前まとめエラー' }, 502));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<VisitBriefReviewContent visitId="visit_1" />);
+
+      await expect(briefQueryFn?.()).rejects.toThrow('API側の訪問前まとめエラー');
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
 });
