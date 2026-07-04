@@ -20,7 +20,7 @@ export default function VehiclesPage() {
         supportingContent={null}
       />
 
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="車両マスターを読み込み中..." />}>
         <VehiclesContent />
       </Suspense>
     </PageScaffold>

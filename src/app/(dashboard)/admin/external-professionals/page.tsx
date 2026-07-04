@@ -20,7 +20,7 @@ export default function ExternalProfessionalsPage() {
         supportingContent={null}
       />
 
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="他職種マスターを読み込み中..." />}>
         <ExternalProfessionalsContent />
       </Suspense>
     </PageScaffold>
