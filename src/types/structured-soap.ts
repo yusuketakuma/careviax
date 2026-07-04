@@ -170,6 +170,87 @@ export type SpecialPatientStatusCapture = {
   valid_to?: string | null;
 };
 
+export type AddOnEvidenceBase = {
+  billing_rule_keys?: string[];
+  evidence_summary?: string;
+  confirmed_at?: string;
+  confirmed_by?: string;
+};
+
+export type NarcoticGuidanceEvidence = AddOnEvidenceBase & {
+  narcotic_prescription_confirmed?: boolean;
+  storage_status_checked?: boolean;
+  administration_status_checked?: boolean;
+  residual_status_checked?: boolean;
+  handling_guidance_provided?: boolean;
+  physician_information_provided?: boolean;
+};
+
+export type ContinuousNarcoticInfusionEvidence = AddOnEvidenceBase & {
+  infusion_device_checked?: boolean;
+  administration_status_checked?: boolean;
+  storage_status_checked?: boolean;
+  adverse_effects_checked?: boolean;
+  handling_guidance_provided?: boolean;
+};
+
+export type HomeCentralVenousNutritionEvidence = AddOnEvidenceBase & {
+  route_device_checked?: boolean;
+  administration_status_checked?: boolean;
+  storage_status_checked?: boolean;
+  compatibility_or_mixing_change_checked?: boolean;
+  complication_signs_checked?: boolean;
+};
+
+export type InfantGuidanceEvidence = AddOnEvidenceBase & {
+  direct_guidance_provided?: boolean;
+  caregiver_guidance_provided?: boolean;
+  age_basis_confirmed?: boolean;
+};
+
+export type DrugAdherenceEvidenceEntry = {
+  drug_master_id?: string | null;
+  drug_code?: string | null;
+  drug_name: string;
+  adherence_status?: string;
+  issue_summary?: string;
+  intervention_summary?: string;
+};
+
+export type DrugAdherenceEvidence = {
+  medication_status_reviewed?: boolean;
+  adherence_by_drug?: DrugAdherenceEvidenceEntry[];
+  evidence_summary?: string;
+};
+
+export type QrResidualReconciliationItem = {
+  drug_master_id?: string | null;
+  drug_code?: string | null;
+  drug_name: string;
+  expected_quantity?: number;
+  observed_quantity?: number;
+  discrepancy_reason?: string;
+};
+
+export type QrResidualReconciliation = {
+  performed?: boolean;
+  reconciled_at?: string;
+  scanner_type?: 'qr' | 'barcode' | 'manual' | 'unknown';
+  items?: QrResidualReconciliationItem[];
+  evidence_summary?: string;
+};
+
+export type LegalRecordFlags = {
+  visit_date_recorded?: boolean;
+  pharmacist_recorded?: boolean;
+  prescriber_summary_recorded?: boolean;
+  pharmacological_management_recorded?: boolean;
+  physician_report_summary_recorded?: boolean;
+  interprofessional_share_summary_recorded?: boolean;
+  online_medication_info_recorded?: boolean;
+  evidence_summary?: string;
+};
+
 export type PreviousVisitReuseSource = {
   source_visit_record_id: string;
   source_visit_record_version: number | null;
@@ -185,6 +266,13 @@ export type StructuredSoap = {
   residual_medications?: ResidualMedicationEntry[];
   home_visit_2026?: HomeVisit2026Evidence;
   special_patient_statuses?: SpecialPatientStatusCapture[];
+  narcotic_guidance_evidence?: NarcoticGuidanceEvidence;
+  continuous_narcotic_infusion_evidence?: ContinuousNarcoticInfusionEvidence;
+  home_central_venous_nutrition_evidence?: HomeCentralVenousNutritionEvidence;
+  infant_guidance_evidence?: InfantGuidanceEvidence;
+  drug_adherence_evidence?: DrugAdherenceEvidence;
+  qr_residual_reconciliation?: QrResidualReconciliation;
+  legal_record_flags?: LegalRecordFlags;
   handoff?: HandoffData | null;
   previous_visit_reuse?: PreviousVisitReuseSource;
 };

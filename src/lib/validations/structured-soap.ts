@@ -2,7 +2,9 @@ import { z } from 'zod';
 import { dateKeySchema } from './date-key';
 
 const numberFieldSchema = z.number().finite();
+const nonnegativeNumberFieldSchema = z.number().finite().min(0);
 const optionalStringArraySchema = z.array(z.string());
+const billingRuleKeysSchema = z.array(z.string().min(1));
 
 const vitalSignsSchema = z
   .object({
@@ -160,6 +162,109 @@ const specialPatientStatusSchema = z
   })
   .passthrough();
 
+const addOnEvidenceBaseSchema = {
+  billing_rule_keys: billingRuleKeysSchema.optional(),
+  evidence_summary: z.string().optional(),
+  confirmed_at: z.string().datetime().optional(),
+  confirmed_by: z.string().optional(),
+};
+
+const narcoticGuidanceEvidenceSchema = z
+  .object({
+    ...addOnEvidenceBaseSchema,
+    narcotic_prescription_confirmed: z.boolean().optional(),
+    storage_status_checked: z.boolean().optional(),
+    administration_status_checked: z.boolean().optional(),
+    residual_status_checked: z.boolean().optional(),
+    handling_guidance_provided: z.boolean().optional(),
+    physician_information_provided: z.boolean().optional(),
+  })
+  .passthrough();
+
+const continuousNarcoticInfusionEvidenceSchema = z
+  .object({
+    ...addOnEvidenceBaseSchema,
+    infusion_device_checked: z.boolean().optional(),
+    administration_status_checked: z.boolean().optional(),
+    storage_status_checked: z.boolean().optional(),
+    adverse_effects_checked: z.boolean().optional(),
+    handling_guidance_provided: z.boolean().optional(),
+  })
+  .passthrough();
+
+const homeCentralVenousNutritionEvidenceSchema = z
+  .object({
+    ...addOnEvidenceBaseSchema,
+    route_device_checked: z.boolean().optional(),
+    administration_status_checked: z.boolean().optional(),
+    storage_status_checked: z.boolean().optional(),
+    compatibility_or_mixing_change_checked: z.boolean().optional(),
+    complication_signs_checked: z.boolean().optional(),
+  })
+  .passthrough();
+
+const infantGuidanceEvidenceSchema = z
+  .object({
+    ...addOnEvidenceBaseSchema,
+    direct_guidance_provided: z.boolean().optional(),
+    caregiver_guidance_provided: z.boolean().optional(),
+    age_basis_confirmed: z.boolean().optional(),
+  })
+  .passthrough();
+
+const drugAdherenceEvidenceEntrySchema = z
+  .object({
+    drug_master_id: z.string().trim().nullable().optional(),
+    drug_code: z.string().trim().nullable().optional(),
+    drug_name: z.string().min(1),
+    adherence_status: z.string().optional(),
+    issue_summary: z.string().optional(),
+    intervention_summary: z.string().optional(),
+  })
+  .passthrough();
+
+const drugAdherenceEvidenceSchema = z
+  .object({
+    medication_status_reviewed: z.boolean().optional(),
+    adherence_by_drug: z.array(drugAdherenceEvidenceEntrySchema).optional(),
+    evidence_summary: z.string().optional(),
+  })
+  .passthrough();
+
+const qrResidualReconciliationItemSchema = z
+  .object({
+    drug_master_id: z.string().trim().nullable().optional(),
+    drug_code: z.string().trim().nullable().optional(),
+    drug_name: z.string().min(1),
+    expected_quantity: nonnegativeNumberFieldSchema.optional(),
+    observed_quantity: nonnegativeNumberFieldSchema.optional(),
+    discrepancy_reason: z.string().optional(),
+  })
+  .passthrough();
+
+const qrResidualReconciliationSchema = z
+  .object({
+    performed: z.boolean().optional(),
+    reconciled_at: z.string().datetime().optional(),
+    scanner_type: z.enum(['qr', 'barcode', 'manual', 'unknown']).optional(),
+    items: z.array(qrResidualReconciliationItemSchema).optional(),
+    evidence_summary: z.string().optional(),
+  })
+  .passthrough();
+
+const legalRecordFlagsSchema = z
+  .object({
+    visit_date_recorded: z.boolean().optional(),
+    pharmacist_recorded: z.boolean().optional(),
+    prescriber_summary_recorded: z.boolean().optional(),
+    pharmacological_management_recorded: z.boolean().optional(),
+    physician_report_summary_recorded: z.boolean().optional(),
+    interprofessional_share_summary_recorded: z.boolean().optional(),
+    online_medication_info_recorded: z.boolean().optional(),
+    evidence_summary: z.string().optional(),
+  })
+  .passthrough();
+
 const previousVisitReuseSchema = z
   .object({
     source_visit_record_id: z.string().optional(),
@@ -178,6 +283,13 @@ export const structuredSoapInputSchema = z
     residual_medications: z.array(residualMedicationSchema).optional(),
     home_visit_2026: homeVisit2026EvidenceSchema.optional(),
     special_patient_statuses: z.array(specialPatientStatusSchema).optional(),
+    narcotic_guidance_evidence: narcoticGuidanceEvidenceSchema.optional(),
+    continuous_narcotic_infusion_evidence: continuousNarcoticInfusionEvidenceSchema.optional(),
+    home_central_venous_nutrition_evidence: homeCentralVenousNutritionEvidenceSchema.optional(),
+    infant_guidance_evidence: infantGuidanceEvidenceSchema.optional(),
+    drug_adherence_evidence: drugAdherenceEvidenceSchema.optional(),
+    qr_residual_reconciliation: qrResidualReconciliationSchema.optional(),
+    legal_record_flags: legalRecordFlagsSchema.optional(),
     handoff: handoffSchema.nullable().optional(),
     previous_visit_reuse: previousVisitReuseSchema.optional(),
   })
