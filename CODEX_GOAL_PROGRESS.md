@@ -46582,3 +46582,50 @@ false` for every migrated column.
     before converting additional client read fetchers.
   - Existing unrelated `refactor-instructions.md` and local skill install files
     remain outside this slice.
+
+## R40/R44 Admin Users readApiJson Slice - 2026-07-05 04:31 JST
+
+- Scope:
+  - `src/app/(dashboard)/admin/users/users-content.tsx`
+  - `src/app/(dashboard)/admin/users/users-content.test.tsx`
+- Status:
+  - Implemented and committed as `56b8d130`
+    (`refactor(ui): reuse readApiJson in admin users`).
+- Changes:
+  - Replaced the admin users list GET helper for
+    `buildPharmacistsApiPath(new URLSearchParams({ include_collaborators: 'true' }))`
+    with `readApiJson<UsersListResponse>` while preserving query key,
+    `buildOrgHeaders(orgId)`, response envelope/count metadata, and user table
+    behavior.
+  - Replaced the pharmacy site option GET helper for `PHARMACY_SITES_API_PATH`
+    with `readApiJson<{ data: SiteOption[] }>` while preserving query key,
+    `buildOrgHeaders(orgId)`, and site filter behavior.
+  - Formatted the related `users-content.test.tsx` DataTable mock so the
+    targeted Prettier gate covers the test file cleanly.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - Preserved DB/schema, auth/authorization semantics, PHI/personnel projection,
+    billing behavior, deployment, package dependency, live DB operation,
+    external send, secret handling, push, destructive operation, false-empty
+    error/table behavior, invite/update/status mutations, and path helper
+    encoding/fail-closed behavior.
+  - The 2026-07-04 user instruction allowing product
+    API/DB/auth/authorization/PHI/billing/deploy/package dependency changes when
+    necessary is recorded in `ops/refactor/STATE.md`; this slice did not require
+    those changes.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/users/users-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `12` tests.
+  - `pnpm exec eslint --max-warnings=0 'src/app/(dashboard)/admin/users/users-content.tsx' 'src/app/(dashboard)/admin/users/users-content.test.tsx'`
+    passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/admin/users/users-content.tsx' 'src/app/(dashboard)/admin/users/users-content.test.tsx'`
+    initially failed on pre-existing formatting in the related test file, then
+    passed after formatting `users-content.test.tsx`.
+  - `git diff --check -- 'src/app/(dashboard)/admin/users/users-content.tsx' 'src/app/(dashboard)/admin/users/users-content.test.tsx'`
+    passed.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - R40/R44 remains partial and broad; continue per-fetcher body-read/PHI review
+    before converting additional client read fetchers.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.

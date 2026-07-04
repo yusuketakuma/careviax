@@ -3766,4 +3766,29 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: R40/R44 は broad。追加の client fetcher は response body read が PHI-safe かを
   個別確認してから段階移行する。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
+## 2026-07-05 R40/R44 admin users readApiJson slice
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 実施:
+  - admin users の `buildPharmacistsApiPath(...include_collaborators=true)` GET fetcher を
+    `readApiJson<UsersListResponse>` へ移行。
+  - admin users の `PHARMACY_SITES_API_PATH` GET fetcher を
+    `readApiJson<{ data: SiteOption[] }>` へ移行。
+  - 関連 test の DataTable mock を Prettier 整形し、targeted Prettier gate を green 化。
+- 挙動変更: read fetch 実装内部の helper 収束のみ。API path helpers、
+  `buildOrgHeaders`、React Query keys、response envelope/count metadata、user/site table 表示、
+  filters、invite/update/status mutations、path helper encode/fail-closed semantics は維持。
+- 安全性: product UI read fetch internals のみ変更。DB/schema、auth/authorization、
+  PHI/personnel projection、billing、deployment、package dependency、live DB operation、
+  external send、secret handling、push、destructive operation は不変。SSOT では必要時の product
+  API/DB/auth/authorization/PHI/billing/deploy/package dependency 変更許可を確認済みだが、
+  この slice では不要。
+- 検証: focused admin users Vitest `1 file / 12 tests` green、scoped ESLint green、
+  targeted Prettier check は関連 test の既存 formatting で一度 fail 後、整形して green、
+  targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `56b8d130` (`refactor(ui): reuse readApiJson in admin users`)。
+- 残課題: R40/R44 は broad。追加の client fetcher は response body read が PHI-safe かを
+  個別確認してから段階移行する。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
