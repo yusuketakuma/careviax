@@ -3,6 +3,8 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { jsonResponse } from '@/test/fetch-test-utils';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
@@ -36,6 +38,13 @@ type MutationConfig = {
   onSuccess?: (data: unknown, variables: unknown) => Promise<unknown> | unknown;
   onError?: (error: unknown, variables: unknown) => void;
 };
+
+type QueryConfig = {
+  queryKey: unknown[];
+  queryFn?: () => Promise<unknown>;
+};
+
+const queryConfigs: QueryConfig[] = [];
 
 function installExecutableMutationMock() {
   useMutationMock.mockImplementation((config: MutationConfig) => ({
@@ -101,7 +110,10 @@ describe('ConflictResolutionContent', () => {
     useRouterMock.mockReturnValue({ replace: vi.fn() });
     usePathnameMock.mockReturnValue('/schedules/conflicts');
     useSearchParamsMock.mockReturnValue(new URLSearchParams());
-    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+    queryConfigs.length = 0;
+    useQueryMock.mockImplementation((config: QueryConfig) => {
+      const { queryKey } = config;
+      queryConfigs.push(config);
       if (queryKey[0] === 'visit-schedules') {
         return {
           data: conflictingSchedules,
@@ -174,6 +186,18 @@ describe('ConflictResolutionContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '再試行' }));
 
     expect(refetchPharmacistsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the API message when pharmacist lookup fetch fails', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ message: '薬剤師一覧を表示できません' }, 403));
+
+    render(<ConflictResolutionContent initialDate="2026-04-09" />);
+
+    const pharmacistsConfig = queryConfigs.find((config) => config.queryKey[0] === 'pharmacists');
+    await expect(pharmacistsConfig?.queryFn?.()).rejects.toThrow('薬剤師一覧を表示できません');
+    expect(fetchMock).toHaveBeenCalledWith('/api/pharmacists', {
+      headers: buildOrgHeaders('org_1'),
+    });
   });
 
   it('persists Plan A adoption through the visit schedule reorder API', async () => {

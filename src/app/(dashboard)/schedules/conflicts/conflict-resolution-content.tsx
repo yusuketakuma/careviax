@@ -13,6 +13,7 @@ import { DataTable } from '@/components/ui/data-table';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
@@ -280,8 +281,7 @@ export function ConflictResolutionContent({ initialDate }: { initialDate?: strin
     queryKey: ['pharmacists', orgId, 'conflicts'],
     queryFn: async () => {
       const res = await fetch('/api/pharmacists', { headers: buildOrgHeaders(orgId) });
-      if (!res.ok) throw new Error('薬剤師一覧の取得に失敗しました');
-      return res.json() as Promise<{ data: Pharmacist[] }>;
+      return readApiJson<{ data: Pharmacist[] }>(res, '薬剤師一覧の取得に失敗しました');
     },
     enabled: !!orgId,
     staleTime: 60_000,
