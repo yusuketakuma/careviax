@@ -814,6 +814,28 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
   `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
 
+## 2026-07-04 R55 report print audit loading skeleton
+
+- 分類: UI loading-state cleanup / R55 visible loading residual。
+- 実施:
+  - `reports/[id]/print/page.tsx` の preview-rendered print audit loading 分岐で使っていた generic
+    `Loading label="印刷監査を記録中..."` を、print report outline の形を保つ領域固有
+    `role="status"` + skeleton へ置換。
+  - loading 中に generic `印刷監査を記録中...` status、最終 print layout、患者名、報告本文、手動印刷ボタンが出ないことを
+    `page.test.tsx` に追加。
+- 挙動変更: loading presentation のみ。query key、print-audit POST payload、org header、
+  fail-closed audit behavior、auto-print timing、manual print audit behavior、navigation helper、
+  API/DB/auth/authorization/billing/audit semantics は不変。
+- UI/UX根拠: `docs/ui-ux-design-guidelines.md` の 5状態分離、領域固有 loading label、
+  generic loading copy 禁止、print report shape に沿う skeleton loading に整合。
+- 安全性: Loading copy は PHI-free で、patient name・report body・pharmacist name・report id・patient id・visit date・prescription content・org id・raw error
+  を出さない。
+- 検証: focused report print Vitest `1 file / 20 tests` green、targeted ESLint green、
+  targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `994c459f` (`fix(reports): show skeleton for print audit loading`)。
+- 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
+  `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
+
 ## 2026-07-04 R55 report detail loading skeleton
 
 - 分類: UI loading-state cleanup / R55 visible loading residual。

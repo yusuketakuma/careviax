@@ -1,5 +1,40 @@
 # CODEX Goal Progress
 
+## R55 Report Print Audit Loading State - 2026-07-04 19:53 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/reports/[id]/print/page.tsx`
+    - `src/app/(dashboard)/reports/[id]/print/page.test.tsx`
+- Scope:
+  - Replaced the generic `Loading` return in the report print-audit loading
+    branch with a named skeleton region that preserves the printable report
+    outline without rendering final print content.
+  - Loading no longer exposes generic `印刷監査を記録中...` status or final
+    patient/report print details before the preview audit succeeds.
+- Safety:
+  - UI loading-state presentation and tests only.
+  - No API path, query key, print-audit POST payload, org header, fail-closed
+    audit behavior, auto-print timing, manual print audit behavior, navigation,
+    DB, auth, authorization, billing, audit semantics, deployment, package, or
+    server behavior changed.
+  - Loading copy is PHI-free and does not echo patient names, report body,
+    pharmacist names, report ids, patient ids, visit dates, prescription
+    content, org ids, or raw errors.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/reports/[id]/print/page.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `20` tests.
+  - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
+    the report print source/test files.
+  - `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `994c459f`
+    (`fix(reports): show skeleton for print audit loading`).
+- Remaining:
+  - Broader R55 residuals and Plans.md objective remain open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Report Detail Loading State - 2026-07-04 19:50 JST
 
 - Status:
