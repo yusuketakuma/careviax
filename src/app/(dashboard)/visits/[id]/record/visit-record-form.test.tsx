@@ -799,6 +799,47 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
     expect(fetchUrls.some((url) => url.includes('/labs'))).toBe(false);
   });
 
+  it('keeps server messages and falls back for visit record save error toasts', async () => {
+    const baseFetch = globalThis.fetch as typeof fetch;
+    const responseMessages = ['訪問記録APIからの詳細エラー', ''];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === '/api/visit-records') {
+          visitRecordPostBodies.push(JSON.parse(String(init?.body ?? '{}')));
+          return new Response(JSON.stringify({ message: responseMessages.shift() ?? '' }), {
+            status: 500,
+          });
+        }
+        return baseFetch(input, init);
+      }),
+    );
+
+    renderVisitRecordForm();
+
+    await waitFor(() => {
+      expect((document.querySelector('input[name="patient_id"]') as HTMLInputElement)?.value).toBe(
+        'patient_1',
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '延期' }));
+    fireEvent.submit(document.querySelector('form')!);
+
+    await waitFor(() => {
+      expect(toastErrorMock).toHaveBeenLastCalledWith('訪問記録APIからの詳細エラー');
+    });
+
+    toastErrorMock.mockClear();
+    fireEvent.submit(document.querySelector('form')!);
+
+    await waitFor(() => {
+      expect(toastErrorMock).toHaveBeenLastCalledWith('保存に失敗しました');
+    });
+    expect(visitRecordPostBodies).toHaveLength(2);
+  });
+
   it('does not infer visit end time from form save alone', async () => {
     renderVisitRecordForm();
 

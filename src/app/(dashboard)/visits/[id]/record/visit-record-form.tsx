@@ -1244,7 +1244,7 @@ export function VisitRecordForm({
       router.push(`/visits/${record.id}`);
     },
     onError: (err: Error) => {
-      toast.error(err.message ?? '保存に失敗しました');
+      toast.error(messageFromError(err, '保存に失敗しました'));
     },
   });
 
