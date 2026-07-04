@@ -20,7 +20,7 @@ export default function PharmacistCredentialsPage() {
         supportingContent={null}
       />
 
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="かかりつけ薬剤師管理を読み込み中..." />}>
         <PharmacistCredentialsContent />
       </Suspense>
     </PageScaffold>
