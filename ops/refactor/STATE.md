@@ -63,7 +63,7 @@
 
 - codex: Codex CLI 0.142.5 最適化と subagent persona 強化は検証済み。
   user/profile config は fast/cached/direct-subagent 既定、global/project custom-agent personas は
-  v3/direct-child verdict ルールへ更新済み。repo docs は direct subagents 体制へ整合中。
+  v3/direct-child verdict ルールへ更新済み。repo docs は direct subagents 体制へ整合済み。
 - codex: W3-B9 `monthly_cap_shared` rule-engine fix は ae81a9f7 で land 済み。
   ledger-only evidence 差分は本 Codex CLI/persona スライスと一緒に保存対象。
 - codex: `ID-1a` / `ID-1b` / `ID-2-W1` / `ID-2-W2` / `ID-2-W3` / `ID-2-W4` は land 済み。
@@ -78,7 +78,7 @@
 
 ## 次の一手
 
-1. codex: direct subagents 体制の文書差分を focused validation して scoped commit。
+1. codex: direct subagents 体制の文書差分は 70f8561a で land 済み。残 dirty と競合しないよう監視する。
 2. codex: W3-B9 `monthly_cap_shared` rule-engine fix は ae81a9f7 で land 済み。長い gate が走っていないことを確認後、
    次の backend/business-domain 候補を read-only triage。
 3. codex: Plans.md 未完了40件（open 37 + partial 3）を継続棚卸しし、human/external gate と実装候補を分離して task supply を維持。
