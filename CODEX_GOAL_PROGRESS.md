@@ -1,5 +1,39 @@
 # CODEX Goal Progress
 
+## R55 Contact Profiles Route Loading Label - 2026-07-04 20:32 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/admin/contact-profiles/page.tsx`
+    - `src/app/(dashboard)/admin/contact-profiles/page.test.tsx`
+- Scope:
+  - Replaced the route-level generic Suspense fallback `Loading` with a
+    screen-specific `連携先プロファイルを読み込み中...` status.
+  - Added a route shell regression test proving the admin header remains
+    visible, the fallback is screen-specific, generic `読み込み中...` is absent,
+    and suspended contact-profiles content is not rendered.
+- Safety:
+  - Route-shell loading presentation and tests only.
+  - No contact profiles content query, API path builder, org header, patch
+    mutation, contact method preference, DB, auth, authorization, PHI, billing,
+    audit, deployment, package, or server behavior changed.
+  - Loading copy is PHI-free and does not echo contact names, phone/fax
+    numbers, emails, patient counts, pending-response counts, org IDs, or raw
+    errors.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/contact-profiles/page.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `2` tests.
+  - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
+    the contact-profiles route source/test files.
+  - `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `ba35d4be`
+    (`fix(admin): name contact profiles route loading`).
+- Remaining:
+  - Broader R55 residuals and Plans.md objective remain open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Facilities Route Loading Label - 2026-07-04 20:29 JST
 
 - Status:

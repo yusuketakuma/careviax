@@ -1378,3 +1378,24 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - commit: `e248ba1e` (`fix(admin): name facilities route loading`)。
 - 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
   `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
+
+## 2026-07-04 R55 admin contact-profiles route loading label
+
+- 分類: UI loading-state cleanup / R55 route-shell generic loading residual。
+- 実施:
+  - `admin/contact-profiles/page.tsx` の route-level Suspense fallback を generic `Loading` から
+    `連携先プロファイルを読み込み中...` の画面固有 status へ変更。
+  - `admin/contact-profiles/page.test.tsx` を追加し、header shell が維持されること、generic
+    `読み込み中...` が出ないこと、suspended content が出ないことを固定。
+- 挙動変更: route-shell loading label のみ。contact profiles content query、API path builder、
+  org header、patch mutation、contact method preference、API/DB/auth/authorization/billing/audit は不変。
+- UI/UX根拠: `docs/ui-ux-design-guidelines.md` の Clear state / false-empty prevention と
+  route fallback は軽量で意味のある loading UI にする Next loading/Suspense guidance に整合。
+- 安全性: product API/DB/auth/authorization/PHI/billing/deploy/package dependency は不変。
+  Loading copy は PHI-free で、contact name・phone/fax・email・patient count・pending response count・org id・raw error
+  を出さない。
+- 検証: focused contact-profiles route Vitest `1 file / 2 tests` green、targeted ESLint green、
+  targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `ba35d4be` (`fix(admin): name contact profiles route loading`)。
+- 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
+  `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
