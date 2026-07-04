@@ -506,7 +506,7 @@ describe('ServiceAreasPage', () => {
     renderPage();
 
     const retry = await screen.findByRole('button', { name: '再試行' });
-    expect(screen.getByText('拠点一覧の取得に失敗しました')).toBeTruthy();
+    expect(screen.getByText('boom')).toBeTruthy();
 
     fireEvent.click(retry);
     await waitFor(() => {

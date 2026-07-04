@@ -27,6 +27,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { SERVICE_AREAS_API_PATH, buildServiceAreaApiPath } from '@/lib/service-areas/api-paths';
 import { messageFromError } from '@/lib/utils/error-message';
@@ -185,8 +186,7 @@ export default function ServiceAreasPage() {
       const res = await fetch('/api/pharmacy-sites', {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('拠点一覧の取得に失敗しました');
-      return res.json() as Promise<{ data: PharmacySite[] }>;
+      return readApiJson<{ data: PharmacySite[] }>(res, '拠点一覧の取得に失敗しました');
     },
     enabled: !!orgId,
   });
@@ -197,8 +197,7 @@ export default function ServiceAreasPage() {
       const res = await fetch(SERVICE_AREAS_API_PATH, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('訪問エリアの取得に失敗しました');
-      return res.json() as Promise<ServiceAreasResponse>;
+      return readApiJson<ServiceAreasResponse>(res, '訪問エリアの取得に失敗しました');
     },
     enabled: !!orgId,
   });
