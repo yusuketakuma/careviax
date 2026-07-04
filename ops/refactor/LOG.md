@@ -1093,3 +1093,26 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - commit: `a3877ee2` (`fix(patients): show skeleton for management plan print loading`)。
 - 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
   `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
+
+## 2026-07-04 R55 patient external-share loading skeleton
+
+- 分類: UI loading-state cleanup / R55 visible loading residual。
+- 実施:
+  - `external-share-content.tsx` の org 未解決 / overview loading 分岐で使っていた generic
+    `Loading` return を、warning・audience/setup・preview・reply/request の 3 カラム構成を保つ
+    領域固有 `role="status"` + skeleton へ置換。
+  - loading 中に generic `読み込み中...` status、共有設定 heading、共有先名が出ないことを
+    `external-share-content.test.tsx` に追加。
+- 挙動変更: loading presentation のみ。query key、fetcher、org header、enabled behavior、
+  share generation、communication-request creation、task creation、mutation/cache invalidation、
+  navigation helper usage、clipboard behavior、API/DB/auth/authorization/billing/audit は不変。
+- UI/UX根拠: `docs/ui-ux-design-guidelines.md` の 5状態分離、領域固有 loading label、
+  generic loading copy 禁止、3カラム workspace 形状に沿う skeleton loading に整合。
+- 安全性: product API/DB/auth/authorization/PHI/billing/deploy/package dependency は不変。
+  Loading copy は PHI-free で、patient name・share recipient name・self-report subject・medication name・schedule date・care-report status・request id・reply content・contact detail・org id・raw error
+  を出さない。
+- 検証: focused external-share Vitest `1 file / 11 tests` green、targeted ESLint green、
+  targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `c716a9e2` (`fix(patients): show skeleton for external share loading`)。
+- 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
+  `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。

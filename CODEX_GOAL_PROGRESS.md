@@ -1,5 +1,43 @@
 # CODEX Goal Progress
 
+## R55 Patient External Share Loading State - 2026-07-04 19:37 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/patients/[id]/share/external-share-content.tsx`
+    - `src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx`
+- Scope:
+  - Replaced the generic `Loading` return in the patient external-share
+    workspace with a named skeleton region that preserves the warning,
+    audience/setup, preview, and reply/request column rhythm without rendering
+    final sharing content.
+  - Loading no longer exposes generic `読み込み中...` semantics or final patient
+    sharing details before the overview query resolves.
+- Safety:
+  - UI loading-state presentation and tests only.
+  - No API path, query key, fetcher, org header, `enabled` behavior, share
+    generation, communication-request creation, task creation, mutations, cache
+    invalidation, navigation helper usage, clipboard behavior, DB, auth,
+    authorization, billing, audit, deployment, package, or server behavior
+    changed.
+  - Loading copy is PHI-free and does not echo patient names, share recipient
+    names, self-report subjects, medication names, schedule dates, care-report
+    statuses, request ids, reply contents, contact details, org ids, or raw
+    errors.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `11` tests.
+  - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
+    the external-share source/test files.
+  - `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `c716a9e2`
+    (`fix(patients): show skeleton for external share loading`).
+- Remaining:
+  - Broader R55 residuals and Plans.md objective remain open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Management Plan Print Loading State - 2026-07-04 19:34 JST
 
 - Status:
