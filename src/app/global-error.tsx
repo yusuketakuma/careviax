@@ -26,7 +26,8 @@ export default function GlobalError({
           variant="server"
           size="page"
           detail={error.digest ? <span>エラーID: {error.digest}</span> : null}
-          action={{ label: '再試行', onClick: unstable_retry, variant: 'outline' }}
+          onRetry={unstable_retry}
+          retryVariant="outline"
           secondaryAction={{ label: 'ダッシュボードへ戻る', href: '/dashboard' }}
         />
       </body>

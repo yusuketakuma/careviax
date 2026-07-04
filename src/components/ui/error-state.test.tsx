@@ -70,6 +70,18 @@ describe('ErrorState', () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps retry button variant configurable while using the onRetry shorthand', () => {
+    const onRetry = vi.fn();
+    render(
+      <ErrorState title="取得失敗" onRetry={onRetry} retryLabel="再試行" retryVariant="outline" />,
+    );
+
+    const button = screen.getByRole('button', { name: '再試行' });
+    expect(button.className).toContain('border-border');
+    fireEvent.click(button);
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
   it('uses the shared button styling for link actions', () => {
     render(
       <ErrorState

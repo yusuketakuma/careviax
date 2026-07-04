@@ -34,6 +34,8 @@ type ErrorStateProps = {
   onRetry?: () => void;
   /** onRetry から描画する主アクションのラベル。既定は「再試行」。 */
   retryLabel?: string;
+  /** onRetry から描画する主アクションのボタン variant。既定は Button の default。 */
+  retryVariant?: StateAction['variant'];
   size?: 'inline' | 'page';
   headingLevel?: StateHeadingLevel;
   live?: ErrorStateLive;
@@ -94,6 +96,7 @@ export function ErrorState({
   secondaryAction,
   onRetry,
   retryLabel = '再試行',
+  retryVariant,
   size = 'inline',
   headingLevel,
   live = 'polite',
@@ -113,7 +116,14 @@ export function ErrorState({
     cause || nextAction ? [cause, nextAction].filter(Boolean).join(' ') : undefined;
   const bodyText = description ?? structuredBody ?? meta.description;
   // 再試行導線(SSOT 6.3): action 未指定時のみ onRetry を主アクションに昇格する。
-  const resolvedAction = action ?? (onRetry ? { label: retryLabel, onClick: onRetry } : undefined);
+  const retryAction = onRetry
+    ? {
+        label: retryLabel,
+        onClick: onRetry,
+        ...(retryVariant ? { variant: retryVariant } : {}),
+      }
+    : undefined;
+  const resolvedAction = action ?? retryAction;
   const liveRegionProps =
     live === 'off'
       ? {}
