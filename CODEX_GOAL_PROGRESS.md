@@ -1,5 +1,42 @@
 # CODEX Goal Progress
 
+## R24/R46 Pharmacy Drug Stocks Cursor Helper Partial - 2026-07-05 01:56 JST
+
+- Status:
+  - Implemented and validated the next bounded R24/R46 slice:
+    - `src/app/api/pharmacy-drug-stocks/route.ts`
+- Scope:
+  - Reused the existing `buildCursorPage` helper for pharmacy drug stock
+    visible-row selection.
+  - Preserved `metadata.total_count`, `visible_count`, `hidden_count`,
+    `has_more`, site/q/review_due/missing_reorder_point filters, and response
+    shape.
+- Safety:
+  - Product API implementation internals changed; external response shape and
+    pharmacy drug stock semantics are unchanged.
+  - Preserved `canAdmin`, site/org scoping, sensitive no-store wrapping,
+    sanitized 500 behavior, DB query shape, schema/migrations/data,
+    auth/authorization semantics, PHI projection, billing behavior, deployment,
+    package dependency, live DB operation, external send, secret handling, push,
+    and destructive operation boundaries.
+- Validation:
+  - `pnpm exec vitest run src/app/api/pharmacy-drug-stocks/route.test.ts src/lib/api/pagination.test.ts --reporter=dot --testTimeout=30000`
+    passed `2` files / `22` tests; expected sanitized 500 logger stderr was
+    emitted by the route test.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `c5563371`
+    (`refactor(api): reuse cursor page helper in pharmacy drug stocks`).
+- Remaining:
+  - R24/R46 are partial; continue compatible hand-rolled cursor page routes.
+  - Routes with keyset cursor encoding, scan-window filtering, hidden-count
+    variants, summary metadata, or additive route-specific metadata need
+    route-specific analysis before helper convergence.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R24/R46 External Professional Patients Cursor Helper Partial - 2026-07-05 01:53 JST
 
 - Status:

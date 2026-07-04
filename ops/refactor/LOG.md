@@ -2902,3 +2902,25 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: R24/R46 は partial。keyset cursor encoding、scan-window、hidden-count variants、
   route-specific metadata を持つ route は個別分析後に継続。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
+## 2026-07-05 R24/R46 pharmacy-drug-stocks cursor helper slice
+
+- 分類: pattern-inconsistency / hidden-count visible-row selection → `buildCursorPage` 収束。
+- 実施:
+  - `/api/pharmacy-drug-stocks` GET の `fetchedStocks.length > limit` と
+    `slice(0, limit)` を `buildCursorPage` へ移行。
+  - `metadata.total_count`、`visible_count`、`hidden_count`、
+    `has_more = page overflow || hidden_count > 0`、site/q/review_due/missing_reorder_point
+    filters は維持。
+- 挙動変更: API内部の重複 helper 収束のみ。外部 response shape、site/org scoping、
+  stock filters、sensitive no-store、sanitized 500 behavior は維持。
+- 安全性: `canAdmin`、authorization/access filter、DB query shape、auth/authorization、
+  PHI projection、billing、deployment、package dependency、live DB operation、external send、
+  secret handling、push、destructive operation は不変。
+- 検証: focused pharmacy-drug-stocks/pagination Vitest `2 files / 22 tests` green
+  (sanitized 500 test の expected logger stderr あり)、scoped ESLint green、
+  targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `c5563371` (`refactor(api): reuse cursor page helper in pharmacy drug stocks`)。
+- 残課題: R24/R46 は partial。keyset cursor encoding、scan-window、hidden-count variants、
+  summary/route-specific metadata を持つ route は個別分析後に継続。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
