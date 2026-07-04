@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Textarea } from '@/components/ui/textarea';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPharmacistsApiPath } from '@/lib/pharmacists/api-paths';
@@ -61,8 +62,7 @@ export function MentionInput({
       const res = await fetch(buildPharmacistsApiPath(), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('スタッフの取得に失敗しました');
-      return res.json();
+      return readApiJson<{ data: StaffMember[] }>(res, 'スタッフの取得に失敗しました');
     },
     enabled: !!orgId,
     staleTime: 5 * 60 * 1000,
