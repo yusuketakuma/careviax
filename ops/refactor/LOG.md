@@ -3792,6 +3792,30 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
   個別確認してから段階移行する。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
 
+## 2026-07-05 R40/R44 external professionals readApiJson slice
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 実施:
+  - external professional list / facility options / linked patients GET fetchers を
+    `readApiJson` へ移行。
+  - 既存 focused tests で real fetch responses、org headers、linked-patient metadata、
+    patient navigation helper、query failure false-empty prevention を継続検証。
+- 挙動変更: read fetch 実装内部の helper 収束のみ。admin external professional path helpers、
+  facility path helper、linked-patient path helper、`buildOrgHeaders`、React Query keys、
+  linked-patient limit、response envelopes、false-empty/error UI、mutation behavior は維持。
+- 安全性: product UI read fetch internals のみ変更。DB/schema、auth/authorization、
+  PHI projection、billing、deployment、package dependency、live DB operation、external send、
+  secret handling、push、destructive operation、path helper encode/fail-closed semantics、
+  server/mutation behavior は不変。SSOT では必要時の product
+  API/DB/auth/authorization/PHI/billing/deploy/package dependency 変更許可を確認済みだが、
+  この slice では不要。
+- 検証: focused external-professionals Vitest `1 file / 13 tests` green、scoped ESLint green、
+  targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `512e2c34` (`Converge external professional reads on shared JSON helper`)。
+- 残課題: R40/R44 は broad。追加の client fetcher は response body read が PHI-safe かを
+  個別確認してから段階移行する。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
 ## 2026-07-05 R40/R44 PCA pumps readApiJson slice
 
 - 分類: query-helper / client fetch error handling → `readApiJson` 収束。
