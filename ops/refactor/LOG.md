@@ -5,6 +5,23 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-05 R40/R44-staff-workload 478ff2a8
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 対象: `src/app/(dashboard)/tasks/tasks-content.tsx`,
+  `src/app/(dashboard)/tasks/tasks-content.test.tsx`
+- 実施: tasks staff-workload GET fetcher の `if (!res.ok) throw` + `res.json()` を
+  `readApiJson<{ data: StaffWorkload[]; date: string }>` へ移行。queryFn contract test を追加。
+- 挙動変更: read fetch 実装内部の helper 収束のみ。API path、`buildOrgHeaders`、
+  React Query key、response envelope、画面表示、task list pagination、task mutations は維持。
+- 安全: product UI read fetch internals のみ。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+  live DB/external send/secret/push/destructive operation 不変。
+- 検証: focused tasks content Vitest `1 file / 12 tests` green。
+  scoped eslint/prettier/diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit 478ff2a8。
+- 残課題: R40/R44 は partial。追加 fetcher は response body read の PHI safety を個別確認して段階移行。
+
 ## 2026-07-05 R40/R44-notifications 0182c928
 
 - 分類: query-helper / client fetch error handling → `readApiJson` 収束。
