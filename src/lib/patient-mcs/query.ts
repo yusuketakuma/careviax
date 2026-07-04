@@ -1,5 +1,5 @@
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
-import { readJsonObjectResponseBody } from '@/lib/api/response-body';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { parsePatientMcsViewData } from './dto';
 
@@ -28,18 +28,17 @@ export async function fetchPatientMcsOverview(patientId: string, orgId: string, 
     headers: buildOrgHeaders(orgId),
     cache: 'no-store',
   });
-  const payload = await readJsonObjectResponseBody(response);
-  const message = typeof payload?.message === 'string' ? payload.message : undefined;
-
-  if (response.status === 403) {
+  const failureMessage =
+    response.status === 403 ? 'MCS 連携の閲覧権限がありません' : 'MCS 連携情報の取得に失敗しました';
+  let payload: unknown;
+  try {
+    payload = await readApiJson<unknown>(response, failureMessage);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : failureMessage;
     throw new PatientMcsOverviewQueryError(
-      'forbidden',
-      message ?? 'MCS 連携の閲覧権限がありません',
+      response.status === 403 ? 'forbidden' : 'failed',
+      message,
     );
-  }
-
-  if (!response.ok) {
-    throw new PatientMcsOverviewQueryError('failed', message ?? 'MCS 連携情報の取得に失敗しました');
   }
 
   try {
