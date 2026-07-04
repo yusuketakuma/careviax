@@ -34,6 +34,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Skeleton, SkeletonRows } from '@/components/ui/loading';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
@@ -574,8 +575,7 @@ export default function ReportDetailPage() {
       const res = await fetch(buildCareReportApiPath(id), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('報告書の取得に失敗しました');
-      return res.json() as Promise<{ data: CareReport }>;
+      return readApiJson<{ data: CareReport }>(res, '報告書の取得に失敗しました');
     },
     enabled: !!orgId && !!id,
   });
@@ -601,8 +601,10 @@ export default function ReportDetailPage() {
       const res = await fetch(`/api/external-professionals/suggestions?${params.toString()}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('他職種候補の取得に失敗しました');
-      return res.json() as Promise<{ data: ExternalProfessionalSuggestion[] }>;
+      return readApiJson<{ data: ExternalProfessionalSuggestion[] }>(
+        res,
+        '他職種候補の取得に失敗しました',
+      );
     },
     enabled: !!orgId && !!report?.patient_id && canSendReportForSupportQuery,
   });

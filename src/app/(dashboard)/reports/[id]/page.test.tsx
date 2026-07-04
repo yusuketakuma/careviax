@@ -930,6 +930,51 @@ describe('ReportDetailPage send safety dialog', () => {
     );
   });
 
+  it('surfaces API messages from report detail and external suggestion read queries', async () => {
+    const queryConfigs: QueryConfig[] = [];
+    useQueryMock.mockImplementation((options: QueryConfig) => {
+      queryConfigs.push(options);
+      const scope = options.queryKey?.[0];
+      if (scope === 'care-report-external-professionals') {
+        return {
+          data: { data: [] },
+          isLoading: false,
+        };
+      }
+
+      return {
+        data: { data: mockReport() },
+        isLoading: false,
+      };
+    });
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith('/api/care-reports/')) {
+        return new Response(JSON.stringify({ message: '報告書の閲覧権限がありません' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.startsWith('/api/external-professionals/suggestions?')) {
+        return new Response(JSON.stringify({ message: '共有候補の閲覧権限がありません' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    render(<ReportDetailPage />);
+
+    const detailQuery = queryConfigs.find((config) => config.queryKey?.[0] === 'care-report');
+    const suggestionsQuery = queryConfigs.find(
+      (config) => config.queryKey?.[0] === 'care-report-external-professionals',
+    );
+
+    await expect(detailQuery?.queryFn?.()).rejects.toThrow('報告書の閲覧権限がありません');
+    await expect(suggestionsQuery?.queryFn?.()).rejects.toThrow('共有候補の閲覧権限がありません');
+  });
+
   it('encodes hostile report ids for draft confirmation without changing the body', async () => {
     const mutationConfigs: Array<MutationConfig> = [];
     useParamsMock.mockReturnValue({ id: HOSTILE_REPORT_ID });
