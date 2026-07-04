@@ -47,6 +47,7 @@ import { hasPermission } from '@/lib/auth/permission-matrix';
 import { formatUtcDateKey } from '@/lib/date-key';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useAuthStore } from '@/lib/stores/auth-store';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { messageFromError } from '@/lib/utils/error-message';
 import {
@@ -189,8 +190,7 @@ export function PharmacySitesContent() {
       const response = await fetch(PHARMACY_SITES_API_PATH, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('薬局情報の取得に失敗しました');
-      return response.json() as Promise<{ data: PharmacySite[] }>;
+      return readApiJson<{ data: PharmacySite[] }>(response, '薬局情報の取得に失敗しました');
     },
     enabled: !!orgId,
   });
@@ -206,8 +206,7 @@ export function PharmacySitesContent() {
       const response = await fetch(buildPharmacySiteInsuranceConfigsApiPath(configSiteId), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('保険設定の取得に失敗しました');
-      return response.json() as Promise<{ data: InsuranceConfig[] }>;
+      return readApiJson<{ data: InsuranceConfig[] }>(response, '保険設定の取得に失敗しました');
     },
     enabled: !!orgId && !!configSiteId,
   });
