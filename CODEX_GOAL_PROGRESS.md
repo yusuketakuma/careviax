@@ -1,5 +1,46 @@
 # CODEX Goal Progress
 
+## R40/R44 Patient Medications readApiJson Partial - 2026-07-05 07:13 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/patients/[id]/medications/medications-content.tsx`
+    - `src/app/(dashboard)/patients/[id]/medications/medications-content.test.tsx`
+- Scope:
+  - Reused `readApiJson` for five patient medications read GETs:
+    - medication profiles
+    - patient summary
+    - medication issues
+    - inquiry records
+    - residual medications
+  - Added queryFn contract coverage proving API JSON `message` from failed read
+    GETs is surfaced through the shared helper.
+  - Preserved query paths, encoded query values, patient API path helper, org
+    headers, React Query keys, enabled gates, no-false-empty/error UI behavior,
+    residual adjustment link helper, mutations, and QR/export behavior.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/patients/[id]/medications/medications-content.test.tsx'`
+    passed `1` file / `33` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `c54ff5d4`
+    (`refactor(ui): reuse readApiJson in patient medications`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Residual Adjustment readApiJson Partial - 2026-07-05 07:09 JST
 
 - Status:

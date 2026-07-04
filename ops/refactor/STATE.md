@@ -329,6 +329,12 @@
   GET を readApiJson へ収束し、query path、encoded patient_id、org header、queryKey、enabled gate、
   error UI、intervention mutation、presigned upload flow は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 patient-medications readApiJson slice(c54ff5d4) land。focused Vitest 33、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。medication profiles / patient summary /
+  medication issues / inquiry records / residual medications read GET を readApiJson へ収束し、query paths、
+  encoded query values、patient API helper、org header、queryKey、enabled gates、no-false-empty/error UI、
+  mutations、QR/export は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 
