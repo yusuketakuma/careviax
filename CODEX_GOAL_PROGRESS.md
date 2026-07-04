@@ -1,5 +1,40 @@
 # CODEX Goal Progress
 
+## R23 Patient Medications Error Message Helper Partial - 2026-07-05 00:57 JST
+
+- Status:
+  - Implemented and validated the next bounded R23 slice:
+    - `src/app/(dashboard)/patients/[id]/medications/medications-content.tsx`
+    - `src/app/(dashboard)/patients/[id]/medications/medications-content.test.tsx`
+- Scope:
+  - Reused the existing `messageFromError` helper for patient medication
+    add-dialog mutation error alert formatting.
+  - Added coverage that an empty thrown Error message falls back to
+    `登録に失敗しました`.
+- Safety:
+  - Client/helper error message formatting only.
+  - No product API, DB, auth, authorization, PHI projection, billing semantics,
+    audit semantics, deployment, package dependency, live DB operation,
+    external send, secret handling, push, or destructive operation changed.
+  - The PH-OS UI/UX SSOT already records the 2026-07-04 user direction that
+    product API/DB/auth/authorization/PHI/billing/deploy/package dependency may
+    be changed when needed for the product contract; this slice did not need
+    those changes.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/medications/medications-content.test.tsx' src/lib/utils/error-message.test.ts --reporter=dot --testTimeout=30000`
+    passed `2` files / `31` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `318f04d1`
+    (`refactor(ui): reuse error message helper in patient medications`).
+- Remaining:
+  - R23 is partial; remaining hand-rolled error-message ternaries should be
+    migrated by bounded domain chunks.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R23 Drug Master Error Message Helper Partial - 2026-07-05 00:54 JST
 
 - Status:
