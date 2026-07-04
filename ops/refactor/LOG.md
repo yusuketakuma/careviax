@@ -3082,3 +3082,25 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
   management-plans safety-limit、fixed-size admin utility list、external-access 専用 pagination
   などに分類し、別候補として扱う。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
+## 2026-07-05 R24/R46 uat-feedback cursor helper slice
+
+- 分類: pattern-inconsistency / fixed-limit visible-row selection → `buildCursorPage` 収束。
+- 実施:
+  - `/api/admin/uat-feedback` GET の固定上限 list で
+    `feedback.length > UAT_FEEDBACK_LIST_LIMIT` と `slice(0, limit)` を
+    `buildCursorPage` へ移行。
+  - fixed `limit: 100`、`meta.has_more`、org scoping、sensitive no-store、
+    POST/create audit behavior は維持。
+- 挙動変更: API内部の重複 helper 収束のみ。外部 response shape と UAT feedback semantics は維持。
+- 安全性: `canAdmin`、auth context、DB query shape、auth/authorization、PHI projection、
+  billing、deployment、package dependency、live DB operation、external send、secret handling、
+  push、destructive operation は不変。
+- 検証: focused UAT feedback/pagination Vitest `2 files / 15 tests` green、
+  scoped ESLint green、targeted Prettier check green、targeted `git diff --check` green、
+  `pnpm typecheck` green。
+- commit: `dd0a2022` (`refactor(api): reuse cursor page helper in uat feedback`)。
+- 残課題: R24/R46 current-code residual hits は management-plans safety cap、
+  external-access grant page helper、dashboard/export/domain-specific preview limit など
+  intentional/specialized truncation として別分類を継続。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
