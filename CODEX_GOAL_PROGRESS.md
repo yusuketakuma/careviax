@@ -1,5 +1,44 @@
 # CODEX Goal Progress
 
+## R55 Admin Master Route Loading Labels - 2026-07-04 20:39 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/admin/external-professionals/page.tsx`
+    - `src/app/(dashboard)/admin/external-professionals/page.test.tsx`
+    - `src/app/(dashboard)/admin/vehicles/page.tsx`
+    - `src/app/(dashboard)/admin/vehicles/page.test.tsx`
+- Scope:
+  - Replaced route-level generic Suspense fallback `Loading` with
+    screen-specific statuses for:
+    - `他職種マスターを読み込み中...`
+    - `車両マスターを読み込み中...`
+  - Added/extended route shell regression tests proving the admin header
+    remains visible, each fallback is screen-specific, generic `読み込み中...`
+    is absent, and suspended content is not rendered.
+- Safety:
+  - Route-shell loading presentation and tests only.
+  - No external professional or vehicle content query, API path builder, org
+    header, create/update/delete mutation, patient linkage, schedule proposal
+    integration, DB, auth, authorization, PHI, billing, audit, deployment,
+    package, or server behavior changed.
+  - Loading copy is PHI-free and does not echo professional names, vehicle
+    names, license plates, contact details, linked patient data, site IDs, org
+    IDs, or raw errors.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/external-professionals/page.test.tsx' 'src/app/(dashboard)/admin/vehicles/page.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `2` files / `4` tests.
+  - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
+    the external-professionals and vehicles route source/test files.
+  - `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `6c74f719`
+    (`fix(admin): name master route loading`).
+- Remaining:
+  - Broader R55 residuals and Plans.md objective remain open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Pharmacist Credentials Route Loading Label - 2026-07-04 20:35 JST
 
 - Status:

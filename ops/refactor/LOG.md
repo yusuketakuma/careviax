@@ -1420,3 +1420,28 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - commit: `a821ded7` (`fix(admin): name pharmacist credentials route loading`)。
 - 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
   `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
+
+## 2026-07-04 R55 admin master route loading labels
+
+- 分類: UI loading-state cleanup / R55 route-shell generic loading residual。
+- 実施:
+  - `admin/external-professionals/page.tsx` の route-level Suspense fallback を generic `Loading` から
+    `他職種マスターを読み込み中...` の画面固有 status へ変更。
+  - `admin/vehicles/page.tsx` の route-level Suspense fallback を generic `Loading` から
+    `車両マスターを読み込み中...` の画面固有 status へ変更。
+  - `admin/external-professionals/page.test.tsx` を追加し、`admin/vehicles/page.test.tsx` を拡張して、
+    header shell が維持されること、generic `読み込み中...` が出ないこと、suspended content が出ないことを固定。
+- 挙動変更: route-shell loading label のみ。external professional / vehicle content query、API path builder、
+  org header、create/update/delete mutation、patient linkage、schedule proposal integration、
+  API/DB/auth/authorization/billing/audit は不変。
+- UI/UX根拠: `docs/ui-ux-design-guidelines.md` の Clear state / false-empty prevention と
+  route fallback は軽量で意味のある loading UI にする Next loading/Suspense guidance に整合。
+- 安全性: product API/DB/auth/authorization/PHI/billing/deploy/package dependency は不変。
+  Loading copy は PHI-free で、professional name・vehicle name・license plate・contact detail・linked patient data・site/org id・raw error
+  を出さない。
+- 検証: focused external-professionals + vehicles route Vitest `2 files / 4 tests` green、
+  targeted ESLint green、targeted Prettier check green、targeted `git diff --check` green、
+  `pnpm typecheck` green。
+- commit: `6c74f719` (`fix(admin): name master route loading`)。
+- 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
+  `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
