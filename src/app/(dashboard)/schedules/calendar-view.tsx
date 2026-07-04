@@ -18,6 +18,7 @@ import {
 import { ja } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { ErrorState } from '@/components/ui/error-state';
+import { SkeletonRows } from '@/components/ui/loading';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
@@ -397,8 +398,13 @@ export function CalendarView() {
 
         {/* Day cells */}
         {isCalendarLoading ? (
-          <div className="flex items-center justify-center py-16">
-            <p className="text-sm text-muted-foreground">読み込み中...</p>
+          <div
+            className="px-4 py-12"
+            role="status"
+            aria-label="スケジュールを読み込み中"
+            aria-live="polite"
+          >
+            <SkeletonRows rows={6} cols={7} status={false} />
           </div>
         ) : isCalendarError ? (
           <div className="px-4 py-12">

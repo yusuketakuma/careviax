@@ -87,7 +87,8 @@ describe('CalendarView false-empty', () => {
 
     renderCalendar();
 
-    expect(screen.getByText('読み込み中...')).toBeTruthy();
+    expect(screen.getByRole('status', { name: 'スケジュールを読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('読み込み中...', { selector: 'p' })).toBeNull();
     expect(screen.queryByText('スケジュールを取得できませんでした')).toBeNull();
     expect(screen.queryAllByRole('button', { name: DAY_CELL_NAME })).toHaveLength(0);
   });
@@ -105,7 +106,8 @@ describe('CalendarView false-empty', () => {
 
     renderCalendar();
 
-    expect(screen.getByText('読み込み中...')).toBeTruthy();
+    expect(screen.getByRole('status', { name: 'スケジュールを読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('読み込み中...', { selector: 'p' })).toBeNull();
     expect(screen.queryByText('スケジュールを取得できませんでした')).toBeNull();
   });
 
