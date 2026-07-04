@@ -1,5 +1,34 @@
 # CODEX Goal Progress
 
+## R55 Patient Visit Brief Loading State - 2026-07-04 18:54 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/components/visit-brief/patient-visit-brief-section.tsx`
+    - `src/components/visit-brief/patient-visit-brief-section.test.tsx`
+- Scope:
+  - Replaced the generic `Loading` return in the patient visit brief section
+    with a named skeleton region for the visit brief query.
+  - Loading no longer exposes generic `読み込み中...` semantics or renders the
+    final visit brief card before the query resolves.
+- Safety:
+  - UI loading-state presentation and tests only.
+  - No API path, query key, fetcher, org header, cache timing, DB, auth,
+    authorization, billing, audit, deployment, package, or server behavior
+    changed.
+  - Loading copy is PHI-free and does not echo patient identifiers, visit brief
+    contents, org ids, or raw errors.
+- Validation:
+  - `pnpm exec vitest run src/components/visit-brief/patient-visit-brief-section.test.tsx --reporter=dot --testTimeout=30000`
+    passed `1` file / `3` tests.
+  - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
+    the patient visit brief source/test files.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - Broader R55 residuals and Plans.md objective remain open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Workflow Stage Timeline Loading State - 2026-07-04 18:51 JST
 
 - Status:

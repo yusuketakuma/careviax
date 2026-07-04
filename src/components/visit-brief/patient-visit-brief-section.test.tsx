@@ -18,7 +18,9 @@ vi.mock('@tanstack/react-query', () => ({
 }));
 
 vi.mock('@/components/ui/loading', () => ({
-  Loading: () => <div data-testid="loading" />,
+  Skeleton: ({ className }: { className?: string }) => (
+    <div className={className} aria-hidden="true" data-testid="skeleton" />
+  ),
 }));
 
 vi.mock('@/components/visit-brief/visit-brief-card', () => ({
@@ -128,5 +130,28 @@ describe('PatientVisitBriefSection', () => {
     fireEvent.click(screen.getByRole('button', { name: '再試行' }));
 
     expect(refetchVisitBriefMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders a PH-OS skeleton while the visit brief loads', () => {
+    useQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    render(
+      <PatientVisitBriefSection
+        patientId="patient_1"
+        title="訪問前要約"
+        description="確認事項"
+        compact
+      />,
+    );
+
+    expect(screen.getByRole('status', { name: '訪問前要約を読み込み中' })).toBeTruthy();
+    expect(screen.getAllByTestId('skeleton').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('status', { name: '読み込み中...' })).toBeNull();
+    expect(screen.queryByTestId('visit-brief-card')).toBeNull();
   });
 });

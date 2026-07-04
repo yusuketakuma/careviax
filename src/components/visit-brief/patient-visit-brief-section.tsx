@@ -3,11 +3,30 @@
 import { useQuery } from '@tanstack/react-query';
 import { VisitBriefCard } from '@/components/visit-brief/visit-brief-card';
 import { ErrorState } from '@/components/ui/error-state';
-import { Loading } from '@/components/ui/loading';
+import { Skeleton } from '@/components/ui/loading';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import type { VisitBrief } from '@/types/visit-brief';
+
+function PatientVisitBriefLoadingState({ compact }: { compact: boolean }) {
+  return (
+    <section
+      className={compact ? 'space-y-2' : 'space-y-3 rounded-lg border bg-card p-4'}
+      role="status"
+      aria-label="訪問前要約を読み込み中"
+    >
+      <Skeleton className="h-4 w-36" />
+      <Skeleton className="h-3 w-56 max-w-full" />
+      <div className="space-y-2 pt-1">
+        <Skeleton className="h-3 w-full" />
+        <Skeleton className="h-3 w-5/6" />
+        <Skeleton className="h-3 w-2/3" />
+      </div>
+      <span className="sr-only">訪問前要約を読み込んでいます。</span>
+    </section>
+  );
+}
 
 export function PatientVisitBriefSection({
   patientId,
@@ -41,7 +60,7 @@ export function PatientVisitBriefSection({
     enabled: !!orgId,
   });
 
-  if (isLoading) return <Loading />;
+  if (isLoading) return <PatientVisitBriefLoadingState compact={compact} />;
   if (isError) {
     return (
       <ErrorState
