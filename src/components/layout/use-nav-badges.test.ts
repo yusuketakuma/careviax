@@ -6,6 +6,7 @@ import { createElement, type ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { buildNavBadgesApiPath } from '@/lib/nav-badges/api-paths';
+import { jsonResponse } from '@/test/fetch-test-utils';
 
 const { useOrgIdMock } = vi.hoisted(() => ({
   useOrgIdMock: vi.fn(),
@@ -71,10 +72,7 @@ describe('useNavBadges', () => {
     useOrgIdMock.mockReturnValue('org_1');
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({ data: { audit: 6, handoff: 3 } }),
-      }),
+      vi.fn().mockResolvedValue(jsonResponse({ data: { audit: 6, handoff: 3 } })),
     );
   });
 

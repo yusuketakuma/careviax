@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { jsonResponse } from '@/test/fetch-test-utils';
 import { AppHeader, formatSyncTime } from './app-header';
 
 setupDomTestEnv();
@@ -119,7 +120,7 @@ describe('AppHeader', () => {
     mockSetWorkspaceRailOpen.mockClear();
     toastErrorMock.mockClear();
     mockFetch.mockReset();
-    mockFetch.mockResolvedValue({ ok: true });
+    mockFetch.mockResolvedValue(jsonResponse({}));
     vi.stubGlobal('fetch', mockFetch);
     mockUseUIStore.mockReturnValue(uiStoreState());
   });
@@ -260,7 +261,7 @@ describe('AppHeader', () => {
 
   it('rolls back the care mode and shows feedback when preference saving fails', async () => {
     const setCareMode = vi.fn();
-    mockFetch.mockResolvedValueOnce({ ok: false, status: 500 });
+    mockFetch.mockResolvedValueOnce(jsonResponse({}, 500));
     mockUseUIStore.mockReturnValue(uiStoreState({ careMode: 'home_visit', setCareMode }));
     render(<AppHeader />);
 
