@@ -12,6 +12,7 @@ import { DataTable, type DataTableColumnMeta } from '@/components/ui/data-table'
 import { PatientHistoryQuickLinks } from '@/components/features/patients/patient-history-quick-links';
 import { PatientHistorySummary } from '@/components/features/patients/patient-history-summary';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
+import { readApiJson } from '@/lib/api/client-json';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { formatDisplayEntityLabel } from '@/lib/display-id/display-labels';
 import { buildPrescriptionIntakeApiPath } from '@/lib/prescriptions/api-paths';
@@ -172,8 +173,7 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
       const res = await fetch(buildPrescriptionIntakeApiPath(intakeId), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('取得失敗');
-      return res.json() as Promise<IntakeDetail>;
+      return readApiJson<IntakeDetail>(res, '取得失敗');
     },
     enabled: !!orgId && !!intakeId,
   });
