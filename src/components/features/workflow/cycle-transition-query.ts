@@ -1,3 +1,4 @@
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 
 export type TransitionLog = {
@@ -37,6 +38,5 @@ export async function fetchCycleTransitionLogs(args: { cycleId: string; orgId: s
   const res = await fetch(`/api/medication-cycles/${args.cycleId}/history`, {
     headers: buildOrgHeaders(args.orgId),
   });
-  if (!res.ok) throw new Error('履歴の取得に失敗しました');
-  return res.json() as Promise<TransitionLog[]>;
+  return readApiJson<TransitionLog[]>(res, '履歴の取得に失敗しました');
 }
