@@ -1,5 +1,45 @@
 # CODEX Goal Progress
 
+## R40/R44 Saved Views readApiJson Partial - 2026-07-05 03:08 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/views/saved-views-content.tsx`
+    - `src/app/(dashboard)/views/saved-views-content.test.tsx`
+- Scope:
+  - Reused `readApiJson<{ data?: PreferencesValue }>` for the
+    `/api/me/preferences` saved-view preference GET helper.
+  - Reused `readApiJson<Partial<SavedViewsApiResponse>>` for the
+    `/api/saved-views?scope=schedules` named-view GET helper.
+  - Preserved `buildOrgHeaders`, API path helpers, React Query keys, response
+    envelope fallback behavior, rendered UI, mutation error-message parsing,
+    and hostile-id mutation path encoding.
+  - Updated the focused test mock to use the shared `jsonResponse` helper so
+    the test exercises the standard `Response.text()` contract used by
+    `readApiJson`.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/views/saved-views-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `13` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `cd3e3c05`
+    (`refactor(ui): reuse readApiJson in saved views`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Site Selection readApiJson Partial - 2026-07-05 03:00 JST
 
 - Status:
