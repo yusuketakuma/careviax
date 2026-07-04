@@ -32,6 +32,7 @@ import {
   INCIDENT_REPORTS_API_PATH,
   buildIncidentReportApiPath,
 } from '@/lib/incident-reports/api-paths';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { cn } from '@/lib/utils';
@@ -100,8 +101,10 @@ export function IncidentsContent() {
       const res = await fetch(INCIDENT_REPORTS_API_PATH, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('ヒヤリハット記録の取得に失敗しました');
-      const json = (await res.json()) as { data: IncidentReportListItem[] };
+      const json = await readApiJson<{ data: IncidentReportListItem[] }>(
+        res,
+        'ヒヤリハット記録の取得に失敗しました',
+      );
       return json.data;
     },
     enabled: !!orgId,
