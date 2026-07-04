@@ -541,3 +541,16 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
   exact Prettier check / exact `git diff --check` green。
 - 安全性: report slice は test-only。schedule slice は query/action/API/DB/auth/billing/audit/PHI
   と empty-state semantics 不変。R22b infra deletion / AWS timeout/env-catalog dirt は混ぜず別スライスとして保持。
+
+## 2026-07-04 R22b orphaned websocket infra deletion 96ead96b
+
+- land: `R22b` の残りとして、`96ead96b refactor(infra): remove orphaned websocket stack`
+  を scoped commit。`tools/infra/websocket/**` の orphaned SAM/Yjs WebSocket stack を削除し、
+  infra README / AWS cost docs / env catalog / code map / repository inventory / staging docs /
+  AWS client timeout contract から stale websocket/Yjs 参照を除去。
+- 検証: `src/tools/aws-client-timeout-contract.test.ts` focused Vitest `1 file / 3 tests` green、
+  targeted ESLint green、exact docs/tooling Prettier check green、targeted `git diff --check` green、
+  websocket/Yjs/env residual `rg` no live refs、`NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。
+- 安全性: app runtime/API/DB/auth/authorization/PHI/audit/billing/deploy は不変。削除対象は tracked
+  infra tooling の未参照 stack のみ。`refactor-instructions.md` の広範な Markdown formatting churn は
+  commit に含めず未処理として残置。

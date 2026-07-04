@@ -1,5 +1,30 @@
 # CODEX Goal Progress
 
+## R22b Orphaned WebSocket Infra Removal - 2026-07-04 17:36 JST
+
+- Status:
+  - Validated and landed:
+    - `96ead96b refactor(infra): remove orphaned websocket stack`
+- Scope:
+  - Deleted the unreferenced `tools/infra/websocket/**` SAM/Yjs WebSocket stack.
+  - Removed stale websocket/Yjs references from infra README, AWS cost docs,
+    code map, repository inventory, env catalog, cost scenarios, staging docs,
+    and the AWS client timeout contract.
+- Safety:
+  - No app runtime path, API, DB, auth, authorization, PHI, audit, billing,
+    deployment, or production setting changed.
+  - `refactor-instructions.md` still has unrelated formatting churn and was not
+    included in the R22b commit.
+- Validation:
+  - `pnpm vitest run src/tools/aws-client-timeout-contract.test.ts --reporter=dot --testTimeout=30000`
+    passed `1` file / `3` tests.
+  - Targeted ESLint passed for `src/tools/aws-client-timeout-contract.test.ts`.
+  - Targeted Prettier check passed for exact docs/tooling paths.
+  - Targeted `git diff --check` passed.
+  - Residual `rg` for websocket/Yjs/env symbols returned no live refs outside
+    historical ledger/backlog exclusions.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+
 ## R55 Schedule Operational Tasks + R21 Sonner Mock - 2026-07-04 17:33 JST
 
 - Status:
@@ -23,6 +48,9 @@
     exact path groups.
 - Routing:
   - Notified codex2 and codex3 of landed commits.
+  - Assigned codex2 `R55-VISIT-RECORD-BOOTSTRAP-LOADING-SKELETON`.
+  - Assigned codex3 `R21-SONNER-MOCK-REPORT-EDIT-FORM`.
+  - Assigned codex4 read-only `W3-B9-ONLINE-SHARED-MONTHLY-CAP-RECON`.
   - R22b infra deletion remains a separate dirty slice and was not mixed into
     either commit.
 
