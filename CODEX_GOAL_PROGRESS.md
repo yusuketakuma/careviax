@@ -1,5 +1,45 @@
 # CODEX Goal Progress
 
+## R40/R44 Prescription History readApiJson Partial - 2026-07-05 08:04 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.tsx`
+    - `src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.test.tsx`
+- Scope:
+  - Reused `readApiJson` for patient prescription history and drug-master batch
+    enrichment query fetchers.
+  - Added queryFn contract coverage proving API JSON `message` from failed
+    prescription-history and drug-master batch lookups is preserved.
+  - Preserved the patient API path helper, hostile patient-id encoding,
+    `limit=100`, org headers, React Query keys, enabled gates, drug-master
+    batch endpoint/body, non-blocking drug-master error notice, history
+    skeleton/error UI, mark-original-collected mutation, drug-master resolution
+    mutation, and cache invalidation behavior.
+- Safety:
+  - Product UI read/enrichment fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.test.tsx'`
+    passed `1` file / `29` tests after narrowing one mocked-header assertion to
+    the required header subset.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `d65d08d5`
+    (`refactor(ui): reuse readApiJson in prescription history`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 QR Draft Review readApiJson Partial - 2026-07-05 08:00 JST
 
 - Status:

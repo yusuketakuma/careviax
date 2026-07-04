@@ -5,6 +5,23 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-05 R40/R44-prescription-history d65d08d5
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 対象: `src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.tsx`,
+  `src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.test.tsx`
+- 実施: patient prescription history GET / drug-master batch enrichment POST を `readApiJson` へ移行し、
+  failed response の API JSON `message` 表面化テストを追加。
+- 挙動変更: read/enrichment fetch 実装内部の helper 収束のみ。patient path helper、limit、
+  org headers、queryKeys、enabled gates、batch body、non-blocking notice、mutations/cache invalidation は維持。
+- 安全: product UI read/enrichment fetch internals のみ。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+  live DB/external send/secret/push/destructive operation 不変。
+- 検証: focused prescription-history Vitest `1 file / 29 tests` green。
+  scoped eslint/prettier/diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit d65d08d5。
+- 残課題: R40/R44 は partial。
+
 ## 2026-07-05 R40/R44-qr-draft-review d08fb9e5
 
 - 分類: query-helper / client fetch error handling → `readApiJson` 収束。
