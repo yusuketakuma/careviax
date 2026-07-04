@@ -3,6 +3,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactElement, ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 
 const {
@@ -111,7 +112,7 @@ import QrDraftReviewPage from './page';
 setupDomTestEnv();
 
 type QueryConfig = { queryKey: unknown[]; queryFn?: () => Promise<unknown> };
-type MutationConfig = { mutationFn?: () => Promise<unknown> };
+type MutationConfig = { mutationFn?: () => Promise<unknown>; onError?: (error: Error) => void };
 
 const baseDraft = {
   id: 'draft_1',
@@ -261,6 +262,25 @@ describe('QrDraftReviewPage case lookup error handling', () => {
     expect(
       screen.getByRole('link', { name: '処方登録画面で編集' }).getAttribute('href'),
     ).not.toContain('case_id=case_2');
+  });
+
+  it('keeps the discard toast title and falls back for empty discard error descriptions', () => {
+    render(<QrDraftReviewPage />);
+
+    const discardMutation = mutationConfigs.find((config) =>
+      String(config.onError).includes('破棄エラー'),
+    );
+    expect(discardMutation).toBeTruthy();
+
+    discardMutation?.onError?.(new Error('下書きは既に破棄されています'));
+    expect(toast.error).toHaveBeenLastCalledWith('破棄エラー', {
+      description: '下書きは既に破棄されています',
+    });
+
+    discardMutation?.onError?.(new Error(''));
+    expect(toast.error).toHaveBeenLastCalledWith('破棄エラー', {
+      description: '破棄に失敗しました',
+    });
   });
 
   it('encodes hostile patient and case ids in lookup URLs and registration links', async () => {

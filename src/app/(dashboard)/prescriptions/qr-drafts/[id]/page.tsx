@@ -40,6 +40,7 @@ import { LoadingButton } from '@/components/ui/loading-button';
 import { cn } from '@/lib/utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { formatDisplayEntityLabel } from '@/lib/display-id/display-labels';
+import { messageFromError } from '@/lib/utils/error-message';
 import { buildQrDraftShortcutLinks, QR_DRAFT_CONFIRM_SUCCESS_HREF } from './page.helpers';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { JahisSupplementalRecordsCard } from '@/components/features/prescriptions/jahis-supplemental-records-card';
@@ -450,7 +451,7 @@ export default function QrDraftReviewPage() {
       router.push('/prescriptions/qr-drafts');
     },
     onError: (err: Error) => {
-      toast.error('破棄エラー', { description: err.message });
+      toast.error('破棄エラー', { description: messageFromError(err, '破棄に失敗しました') });
     },
   });
 
