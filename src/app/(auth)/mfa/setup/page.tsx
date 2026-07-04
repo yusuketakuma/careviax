@@ -17,6 +17,7 @@ import {
   LoaderCircle,
 } from 'lucide-react';
 import { useSafeCallbackUrl } from '@/lib/auth/browser-auth-state';
+import { messageFromError } from '@/lib/utils/error-message';
 
 type Step = 1 | 2 | 3;
 
@@ -78,7 +79,7 @@ export default function MfaSetupPage() {
         setOtpauthUri(payload.otpauthUri);
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'MFA設定情報の取得に失敗しました');
+          setError(messageFromError(err, 'MFA設定情報の取得に失敗しました'));
         }
       } finally {
         if (!cancelled) {
@@ -183,11 +184,7 @@ export default function MfaSetupPage() {
       setRecoveryCodes(payload.recoveryCodes ?? []);
       setStep(3);
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : '確認コードが正しくありません。もう一度お試しください。',
-      );
+      setError(messageFromError(err, '確認コードが正しくありません。もう一度お試しください。'));
       setDigits(['', '', '', '', '', '']);
       inputRefs.current[0]?.focus();
     } finally {
