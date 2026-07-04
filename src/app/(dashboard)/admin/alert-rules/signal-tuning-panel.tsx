@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
 import { SkeletonRows } from '@/components/ui/loading';
+import { readApiJson } from '@/lib/api/client-json';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
@@ -53,8 +54,10 @@ export function SignalTuningPanel() {
     queryKey: ['drug-alert-rules', orgId],
     queryFn: async () => {
       const res = await fetch(DRUG_ALERT_RULES_API_PATH, { headers: buildOrgHeaders(orgId) });
-      if (!res.ok) throw new Error('アラートルールの取得に失敗しました');
-      const json = (await res.json()) as DrugAlertRulesResponse;
+      const json = await readApiJson<DrugAlertRulesResponse>(
+        res,
+        'アラートルールの取得に失敗しました',
+      );
       return { ...json, data: json.data ?? [] };
     },
     enabled: !!orgId,

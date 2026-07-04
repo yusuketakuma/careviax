@@ -24,6 +24,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
+import { readApiJson } from '@/lib/api/client-json';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
@@ -208,8 +209,7 @@ export default function AlertRulesPage() {
       const res = await fetch(DRUG_ALERT_RULES_API_PATH, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('処方安全アラートルールの取得に失敗しました');
-      return res.json() as Promise<DrugAlertRulesResponse>;
+      return readApiJson<DrugAlertRulesResponse>(res, '処方安全アラートルールの取得に失敗しました');
     },
     enabled: !!orgId,
     staleTime: 300_000,
