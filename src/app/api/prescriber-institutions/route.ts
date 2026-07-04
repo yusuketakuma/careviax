@@ -1,6 +1,6 @@
 import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
-import { parseBoundedInteger } from '@/lib/api/pagination';
+import { buildCursorPage, parseBoundedInteger } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { internalError, success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
@@ -83,9 +83,11 @@ const authenticatedGET = withAuthContext(
       return success({ data: items.map(toResponse) });
     }
 
+    const page = buildCursorPage(items, limit, (item) => item.id);
+
     return success({
-      data: items.slice(0, limit).map(toResponse),
-      meta: { limit, has_more: items.length > limit },
+      data: page.data.map(toResponse),
+      meta: { limit, has_more: page.hasMore },
     });
   },
   {
