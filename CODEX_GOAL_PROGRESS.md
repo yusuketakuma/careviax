@@ -24,6 +24,9 @@
   - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
     the patient readiness card source/test files.
   - `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `72f397dc`
+    (`fix(patients): show skeleton for readiness loading`).
 - Remaining:
   - Broader R55 residuals and Plans.md objective remain open.
   - Existing unrelated `refactor-instructions.md` and local skill install files

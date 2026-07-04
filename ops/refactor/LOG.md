@@ -910,5 +910,6 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
   を出さない。
 - 検証: focused patient readiness card Vitest `1 file / 6 tests` green、targeted ESLint green、
   targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `72f397dc` (`fix(patients): show skeleton for readiness loading`)。
 - 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
   `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
