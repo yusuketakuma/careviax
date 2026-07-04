@@ -1,11 +1,10 @@
 // @vitest-environment jsdom
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import { PharmacyCooperationSetupContent } from './pharmacy-cooperation-setup-content';
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
@@ -27,21 +26,8 @@ function isoDateAfterDays(days: number) {
   return new Date(Date.now() + days * DAY_MS).toISOString();
 }
 
-function createWrapper() {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  });
-
-  return function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
-  };
-}
-
 function renderContent() {
-  return render(<PharmacyCooperationSetupContent />, { wrapper: createWrapper() });
+  return render(<PharmacyCooperationSetupContent />, { wrapper: createQueryClientWrapper() });
 }
 
 describe('PharmacyCooperationSetupContent', () => {

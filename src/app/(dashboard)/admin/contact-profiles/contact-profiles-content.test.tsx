@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import { ContactProfilesContent } from './contact-profiles-content';
 
 setupDomTestEnv();
@@ -87,17 +87,7 @@ const profiles = [
 ];
 
 function renderContent() {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  });
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <ContactProfilesContent />
-    </QueryClientProvider>,
-  );
+  return render(<ContactProfilesContent />, { wrapper: createQueryClientWrapper() });
 }
 
 describe('ContactProfilesContent', () => {

@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { QueryClient } from '@tanstack/react-query';
 import { act, render, screen } from '@testing-library/react';
-import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { createQueryClientWrapper, createTestQueryClient } from '@/test/query-client-test-utils';
 import { MetricsDashboardContent } from './metrics-dashboard-content';
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
@@ -14,19 +14,12 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
 setupDomTestEnv();
 
 function makeClient() {
-  return new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  });
+  return createTestQueryClient();
 }
 
 function renderWith(queryClient: QueryClient) {
   return render(<MetricsDashboardContent />, {
-    wrapper: ({ children }: { children: ReactNode }) => (
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    ),
+    wrapper: createQueryClientWrapper(queryClient),
   });
 }
 

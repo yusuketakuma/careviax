@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import { CapacityContent, emergencyCapacityState, staffUtilizationState } from './capacity-content';
 
 setupDomTestEnv();
@@ -55,14 +55,7 @@ function stubCapacityFetch(payload: CapacityPayload) {
 }
 
 function renderContent() {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <CapacityContent />
-    </QueryClientProvider>,
-  );
+  return render(<CapacityContent />, { wrapper: createQueryClientWrapper() });
 }
 
 describe('CapacityContent', () => {
