@@ -212,6 +212,11 @@ CREATE POLICY tenant_isolation ON "CareReport"
   USING (org_id = current_setting('app.current_org_id', true))
   WITH CHECK (org_id = current_setting('app.current_org_id', true));
 
+ALTER TABLE "CareReportRevision" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON "CareReportRevision"
+  USING (org_id = public.app_enforced_org_id())
+  WITH CHECK (org_id = public.app_enforced_org_id());
+
 ALTER TABLE "CareReportSendRequest" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON "CareReportSendRequest"
   USING (org_id = public.app_enforced_org_id())
@@ -734,6 +739,7 @@ ALTER TABLE "CommunicationEvent" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "CommunicationRequest" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "CommunicationResponse" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "CareReport" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "CareReportRevision" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "CareReportSendRequest" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "DeliveryRecord" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "ConferenceNote" FORCE ROW LEVEL SECURITY;

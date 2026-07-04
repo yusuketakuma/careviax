@@ -279,21 +279,23 @@ model FacilityStandardRegistration {
 }
 
 model PharmacistCredential {
-  id                   String    @id @default(cuid())
-  org_id               String
-  display_id           String?
-  user_id              String
-  user                 User      @relation(fields: [user_id], references: [id])
-  certification_type   String // 研修認定証タイプ
-  certification_number String?
-  issued_date          DateTime?
-  expiry_date          DateTime?
-  tenure_years         Float? // 在籍継続年数
-  weekly_work_hours    Float? // 週勤務時間実績
-  created_at           DateTime  @default(now())
-  updated_at           DateTime  @updatedAt
+  id                     String       @id @default(cuid())
+  org_id                 String
+  display_id             String?
+  user_id                String
+  user                   User         @relation(fields: [user_id], references: [id])
+  certification_type     String // 研修認定証タイプ
+  certification_number   String?
+  issued_date            DateTime?
+  expiry_date            DateTime?
+  tenure_years           Float? // 在籍継続年数
+  weekly_work_hours      Float? // 週勤務時間実績
+  created_at             DateTime     @default(now())
+  updated_at             DateTime     @updatedAt
+  finalized_care_reports CareReport[] @relation("CareReportFinalizedPharmacistCredential")
 
   @@unique([org_id, display_id])
+  @@unique([id, org_id])
   @@index([org_id])
   @@index([user_id])
 }

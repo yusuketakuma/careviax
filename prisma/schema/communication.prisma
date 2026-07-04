@@ -126,25 +126,45 @@ model CommunicationResponse {
 }
 
 model CareReport {
-  id                      String              @id @default(cuid())
-  org_id                  String
-  display_id              String?
-  visit_record_id         String?
-  partner_visit_record_id String?
-  partner_visit_record    PartnerVisitRecord? @relation("CareReportPartnerVisitRecord", fields: [partner_visit_record_id, org_id], references: [id, org_id])
-  patient_id              String
-  case_id                 String?
-  case_                   CareCase?           @relation(fields: [case_id], references: [id])
-  report_type             ReportType
-  status                  ReportStatus        @default(draft)
-  content                 Json
-  template_id             String?
-  pdf_url                 String? // S3
-  created_by              String // User ID
-  created_at              DateTime            @default(now())
-  updated_at              DateTime            @updatedAt
+  id                                 String                @id @default(cuid())
+  org_id                             String
+  display_id                         String?
+  visit_record_id                    String?
+  partner_visit_record_id            String?
+  partner_visit_record               PartnerVisitRecord?   @relation("CareReportPartnerVisitRecord", fields: [partner_visit_record_id, org_id], references: [id, org_id])
+  patient_id                         String
+  case_id                            String?
+  case_                              CareCase?             @relation(fields: [case_id], references: [id])
+  report_type                        ReportType
+  status                             ReportStatus          @default(draft)
+  content                            Json
+  template_id                        String?
+  pdf_url                            String? // S3
+  finalized_at                       DateTime?
+  finalized_by                       String?
+  locked_at                          DateTime?
+  locked_by                          String?
+  report_revision                    Int                   @default(1)
+  content_hash                       String?
+  pdf_hash                           String?
+  voided_at                          DateTime?
+  voided_by                          String?
+  void_reason                        String?
+  unlocked_at                        DateTime?
+  unlocked_by                        String?
+  unlock_reason                      String?
+  finalized_pharmacist_credential_id String?
+  finalized_pharmacist_credential    PharmacistCredential? @relation("CareReportFinalizedPharmacistCredential", fields: [finalized_pharmacist_credential_id, org_id], references: [id, org_id], onDelete: Restrict, onUpdate: Cascade)
+  finalized_credential_type          String?
+  finalized_credential_number        String?
+  finalized_credential_role_snapshot String?
+  finalized_credential_checked_at    DateTime?
+  created_by                         String // User ID
+  created_at                         DateTime              @default(now())
+  updated_at                         DateTime              @updatedAt
 
   delivery_records DeliveryRecord[]
+  revisions        CareReportRevision[]
   send_requests    CareReportSendRequest[]
 
   // DB contract: migration 20260512021000_add_care_report_visit_type_unique_index
@@ -162,6 +182,29 @@ model CareReport {
   @@index([status])
   @@index([case_id])
   @@index([org_id, partner_visit_record_id])
+  @@index([org_id, finalized_pharmacist_credential_id])
+}
+
+model CareReportRevision {
+  id                     String     @id @default(cuid())
+  org_id                 String
+  display_id             String
+  report_id              String
+  report                 CareReport @relation(fields: [report_id, org_id], references: [id, org_id], onDelete: Restrict, onUpdate: Cascade)
+  revision_no            Int
+  content_snapshot       Json
+  content_hash           String
+  pdf_hash               String?
+  created_by             String
+  created_at             DateTime   @default(now())
+  amend_reason           String?
+  supersedes_revision_no Int?
+
+  @@unique([org_id, display_id])
+  @@unique([id, org_id])
+  @@unique([org_id, report_id, revision_no])
+  @@unique([org_id, report_id, content_hash])
+  @@index([org_id, report_id])
 }
 
 model CareReportSendRequest {

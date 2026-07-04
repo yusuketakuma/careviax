@@ -21,6 +21,7 @@ export const DISPLAY_ID_REGISTRY = {
   BusinessHoliday: { prefix: 'bhol', scope: 'org' },
   CareCase: { prefix: 'cc', scope: 'org' },
   CareReport: { prefix: 'c', scope: 'org' },
+  CareReportRevision: { prefix: 'crev', scope: 'org' },
   CareReportSendRequest: { prefix: 'crsr', scope: 'org' },
   CareTeamLink: { prefix: 'ctl', scope: 'org' },
   ClaimCooperationNote: { prefix: 'ccn', scope: 'org' },

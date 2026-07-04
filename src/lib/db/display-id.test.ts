@@ -46,6 +46,8 @@ const DRUG_PRICE_VERSION_DISPLAY_ID_C1A_MIGRATION =
   'prisma/migrations/20260704090000_add_drug_price_versions/migration.sql';
 const VISIT_BILLING_DISPLAY_ID_B2_MIGRATION =
   'prisma/migrations/20260704092500_add_visit_instruction_special_patient_status/migration.sql';
+const CARE_REPORT_REVISION_DISPLAY_ID_B6A_MIGRATION =
+  'prisma/migrations/20260704124000_add_care_report_revision_schema/migration.sql';
 const PATIENT_DISPLAY_ID_W1_MODELS = [
   'Patient',
   'Residence',
@@ -208,6 +210,9 @@ const VISIT_BILLING_DISPLAY_ID_B2_MODELS = [
   'VisitInstruction',
   'SpecialPatientStatus',
 ] as const satisfies readonly DisplayIdModel[];
+const CARE_REPORT_REVISION_DISPLAY_ID_B6A_MODELS = [
+  'CareReportRevision',
+] as const satisfies readonly DisplayIdModel[];
 // Permanent defer: nullable/hybrid org_id requires explicit tenant-vs-global semantics.
 const PERMANENT_DEFERRED_DISPLAY_ID_SCHEMA_MODELS = [
   'DrugAlertRule',
@@ -297,6 +302,13 @@ const DISPLAY_ID_SCHEMA_WAVES = [
     schemaFile: 'visit.prisma',
     migrationPath: VISIT_BILLING_DISPLAY_ID_B2_MIGRATION,
     models: VISIT_BILLING_DISPLAY_ID_B2_MODELS,
+    displayIdRequired: true,
+  },
+  {
+    label: 'W3-B6a care-report-revision-domain',
+    schemaFile: 'communication.prisma',
+    migrationPath: CARE_REPORT_REVISION_DISPLAY_ID_B6A_MIGRATION,
+    models: CARE_REPORT_REVISION_DISPLAY_ID_B6A_MODELS,
     displayIdRequired: true,
   },
 ] as const;
@@ -427,8 +439,8 @@ function parseSequence(id: string): bigint {
 describe('display_id registry and format contract', () => {
   it('covers every Prisma model through registry, explicit business exclusion, or infrastructure exclusion', () => {
     const schemaModels = readSchemaModels();
-    expect(schemaModels).toHaveLength(143);
-    expect(Object.keys(DISPLAY_ID_REGISTRY)).toHaveLength(141);
+    expect(schemaModels).toHaveLength(144);
+    expect(Object.keys(DISPLAY_ID_REGISTRY)).toHaveLength(142);
     expect(DISPLAY_ID_EXCLUDED_MODELS).toEqual(['Setting']);
     expect(DISPLAY_ID_INFRASTRUCTURE_MODELS).toEqual(['IdSequence']);
 
@@ -445,7 +457,7 @@ describe('display_id registry and format contract', () => {
     const entries = Object.entries(DISPLAY_ID_REGISTRY);
     const prefixes = entries.map(([, entry]) => entry.prefix);
     expect(new Set(prefixes).size).toBe(prefixes.length);
-    expect(prefixes).toHaveLength(141);
+    expect(prefixes).toHaveLength(142);
     for (const prefix of prefixes) {
       expect(prefix).toMatch(/^[a-z]{1,6}$/);
     }
@@ -456,7 +468,7 @@ describe('display_id registry and format contract', () => {
       counts[entry.scope] = (counts[entry.scope] ?? 0) + 1;
       return counts;
     }, {});
-    expect(scopeCounts).toEqual({ global: 13, org: 127, orgViaParent: 1 });
+    expect(scopeCounts).toEqual({ global: 13, org: 128, orgViaParent: 1 });
 
     expect(
       entries

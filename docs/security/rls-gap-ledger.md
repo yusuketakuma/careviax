@@ -13,8 +13,8 @@ prisma/migrations と prisma/rls-policies.sql の RLS 有効化実態（ENABLE /
 
 | 指標 | 件数 |
 | --- | ---: |
-| テナントテーブル（org_id 列を持つモデル） | 128 |
-| RLS 完全被覆（ENABLE+FORCE+POLICY） | 125 |
+| テナントテーブル（org_id 列を持つモデル） | 129 |
+| RLS 完全被覆（ENABLE+FORCE+POLICY） | 126 |
 | RLS 完全欠落（ギャップ 1a） | 3 |
 | ENABLE のみ/policy 不完全（即修正対象） | 0 |
 | SSOT ドリフト（migration 済・rls-policies.sql 欠、ギャップ 1b） | 0 |
@@ -40,7 +40,7 @@ migration で ENABLE+FORCE+POLICY 済のため本番 DB は保護されている
 
 ## 参考: RLS 完全被覆テーブル一覧
 
-以下 125 テーブルは ENABLE+FORCE+POLICY が揃い、SSOT にも反映済み（contract テストで機械検証）。
+以下 126 テーブルは ENABLE+FORCE+POLICY が揃い、SSOT にも反映済み（contract テストで機械検証）。
 
 <details><summary>展開</summary>
 
@@ -51,6 +51,7 @@ migration で ENABLE+FORCE+POLICY 済のため本番 DB は保護されている
 - `BusinessHoliday`
 - `CareCase`
 - `CareReport`
+- `CareReportRevision`
 - `CareReportSendRequest`
 - `CareTeamLink`
 - `ClaimCooperationNote`
