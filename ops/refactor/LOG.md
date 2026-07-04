@@ -5,6 +5,21 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-05 R40/R44-prescription-inline-detail 683a8c59
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 対象: `src/app/(dashboard)/prescriptions/prescription-inline-detail.tsx`
+- 実施: prescription intake detail GET を `readApiJson<IntakeDetail>` へ移行。
+- 挙動変更: read fetch 実装内部の helper 収束のみ。path helper、org header、queryKey、
+  hostile-id encoding/dot rejection、処方/患者リンク、display_id 表示、明細 table は維持。
+- 安全: product UI read fetch internals のみ。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+  live DB/external send/secret/push/destructive operation 不変。
+- 検証: focused prescription-inline-detail Vitest `1 file / 10 tests` green。
+  scoped eslint/prettier/diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit 683a8c59。
+- 残課題: R40/R44 は partial。追加 fetcher は response body read の PHI safety を個別確認して段階移行。
+
 ## 2026-07-05 R40/R44-visits-today 6e911f36
 
 - 分類: query-helper / client fetch error handling → `readApiJson` 収束。

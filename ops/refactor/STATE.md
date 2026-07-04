@@ -193,6 +193,11 @@
   readApiJson へ収束し、buildOrgHeaders/queryKey/realtime invalidation/response unwrap/board UI は保持。
   SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
   維持しつつ、本sliceでは不要。
+- codex: R40/R44 prescription-inline-detail readApiJson slice(683a8c59) land。focused Vitest 10、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。prescription intake detail read GET を
+  readApiJson へ収束し、path helper/org header/queryKey/hostile-id encoding/display_id/table rendering は保持。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
+  維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 
