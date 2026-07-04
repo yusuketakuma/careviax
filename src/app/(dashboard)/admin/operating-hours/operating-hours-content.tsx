@@ -338,7 +338,8 @@ export function OperatingHoursContent() {
         variant="server"
         size="inline"
         description="薬局拠点を取得できませんでした。"
-        action={{ label: '再読み込み', onClick: () => void sitesQuery.refetch() }}
+        onRetry={() => void sitesQuery.refetch()}
+        retryLabel="再読み込み"
       />
     );
   }
@@ -412,7 +413,8 @@ export function OperatingHoursContent() {
             variant="server"
             size="inline"
             description="営業時間設定を取得できませんでした。"
-            action={{ label: '再読み込み', onClick: () => void operatingQuery.refetch() }}
+            onRetry={() => void operatingQuery.refetch()}
+            retryLabel="再読み込み"
           />
         ) : (
           <div className="space-y-2">
@@ -511,7 +513,8 @@ export function OperatingHoursContent() {
             variant="server"
             size="inline"
             description="稼働日カレンダーを取得できませんでした。"
-            action={{ label: '再読み込み', onClick: () => void operatingQuery.refetch() }}
+            onRetry={() => void operatingQuery.refetch()}
+            retryLabel="再読み込み"
           />
         ) : (
           <>
