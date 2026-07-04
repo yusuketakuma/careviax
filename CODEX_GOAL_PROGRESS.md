@@ -1,5 +1,42 @@
 # CODEX Goal Progress
 
+## R40/R44 Jobs Dashboard readApiJson Partial - 2026-07-05 03:34 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/admin/jobs/jobs-dashboard-content.tsx`
+    - `src/app/(dashboard)/admin/jobs/jobs-dashboard-content.test.tsx`
+- Scope:
+  - Reused `readApiJson<{ data: JobDefinitionEntry[] }>` for the admin jobs
+    dashboard GET helper.
+  - Preserved `/api/jobs`, `buildOrgHeaders`, React Query key, response
+    envelope, structured pre-redacted error-summary rendering, raw job-log
+    non-display behavior, rerun mutation behavior, and loading/error behavior.
+  - Added a focused queryFn contract test to assert the static API path,
+    `x-org-id` header, and data envelope unwrap behavior.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/jobs/jobs-dashboard-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `8` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `42048531`
+    (`refactor(ui): reuse readApiJson in jobs dashboard`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Capacity Dashboard readApiJson Partial - 2026-07-05 03:30 JST
 
 - Status:
