@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
@@ -40,6 +40,23 @@ import { PatientEditContent } from './patient-edit-content';
 setupDomTestEnv();
 
 describe('PatientEditContent patient overview fetch', () => {
+  it('shows a patient-edit skeleton instead of a generic spinner while loading', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      error: null,
+    });
+
+    render(<PatientEditContent patientId="patient_1" />);
+
+    expect(screen.getByRole('status', { name: '患者編集フォームを読み込み中' })).toBeTruthy();
+    expect(screen.queryByRole('status', { name: '読み込み中...' })).toBeNull();
+    expect(screen.queryByText('読み込み中...', { selector: 'p' })).toBeNull();
+    expect(screen.queryByText('patient form')).toBeNull();
+    expect(patientFormMock).not.toHaveBeenCalled();
+  });
+
   it('routes patient overview reads through the shared patient API path helper', async () => {
     const patientId = 'patient_1';
     vi.mocked(buildPatientApiPath).mockReturnValueOnce(

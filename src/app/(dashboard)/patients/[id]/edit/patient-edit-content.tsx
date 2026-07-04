@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { FileQuestion } from 'lucide-react';
 import { PatientForm } from '@/components/features/patients/patient-form';
-import { Loading } from '@/components/ui/loading';
+import { Skeleton } from '@/components/ui/loading';
 import { EmptyState } from '@/components/ui/empty-state';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -13,6 +13,49 @@ import { buildPatientHref } from '@/lib/patient/navigation';
 import type { CreatePatientInput } from '@/lib/validations/patient';
 import { allergyEntrySchema, type AllergyEntry } from '@/lib/validations/patient-allergy';
 import type { PatientOverview } from '../patient-detail.types';
+
+function PatientEditLoadingState() {
+  return (
+    <div
+      className="mx-auto max-w-7xl space-y-6"
+      role="status"
+      aria-label="患者編集フォームを読み込み中"
+      aria-live="polite"
+    >
+      <div className="space-y-2">
+        <Skeleton className="h-6 w-44" />
+        <Skeleton className="h-4 w-full max-w-xl" />
+      </div>
+
+      {Array.from({ length: 3 }).map((_, sectionIndex) => (
+        <section
+          key={sectionIndex}
+          className="space-y-4 rounded-lg border border-border bg-card p-4"
+          aria-hidden="true"
+        >
+          <div className="space-y-2">
+            <Skeleton className="h-5 w-36" />
+            <Skeleton className="h-4 w-64 max-w-full" />
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            {Array.from({ length: 4 }).map((__, fieldIndex) => (
+              <div key={fieldIndex} className="space-y-2">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-11 w-full rounded-md" />
+              </div>
+            ))}
+          </div>
+        </section>
+      ))}
+
+      <div className="flex justify-end gap-3" aria-hidden="true">
+        <Skeleton className="h-11 w-24 rounded-md" />
+        <Skeleton className="h-11 w-28 rounded-md" />
+      </div>
+      <span className="sr-only">患者編集フォームを読み込み中</span>
+    </div>
+  );
+}
 
 export function normalizeAllergyInfoForPatientForm(
   allergyInfo: unknown,
@@ -175,7 +218,7 @@ export function PatientEditContent({ patientId }: { patientId: string }) {
   });
 
   if (!orgId || patientQuery.isLoading) {
-    return <Loading label="患者情報を読み込み中..." />;
+    return <PatientEditLoadingState />;
   }
 
   if (patientQuery.error instanceof Error || !patientQuery.data) {
