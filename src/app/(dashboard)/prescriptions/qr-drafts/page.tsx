@@ -12,6 +12,7 @@ import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
 import { buttonVariants } from '@/components/ui/button';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
@@ -142,8 +143,7 @@ function QrDraftList() {
       const res = await fetch('/api/qr-scan-drafts?include_unmatched_count=1', {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('QRスキャン下書きの取得に失敗しました');
-      return res.json() as Promise<QrDraftListResponse>;
+      return readApiJson<QrDraftListResponse>(res, 'QRスキャン下書きの取得に失敗しました');
     },
     enabled: !!orgId,
     fallbackRefetchInterval: 30_000,
@@ -160,8 +160,7 @@ function QrDraftList() {
       const res = await fetch('/api/qr-scan-drafts?unmatched=true', {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('QRスキャン下書きの取得に失敗しました');
-      return res.json() as Promise<QrDraftListResponse>;
+      return readApiJson<QrDraftListResponse>(res, 'QRスキャン下書きの取得に失敗しました');
     },
     enabled: !!orgId && filterMode === 'unmatched',
     fallbackRefetchInterval: 30_000,
