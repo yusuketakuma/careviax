@@ -36,9 +36,10 @@ vi.mock('@/lib/hooks/use-realtime-query', () => ({
   useRealtimeQuery: useRealtimeQueryMock,
 }));
 
-vi.mock('sonner', () => ({
-  toast: { error: vi.fn() },
-}));
+vi.mock('sonner', async () => {
+  const { createSonnerToastMock } = await import('@/test/sonner-test-utils');
+  return createSonnerToastMock().module;
+});
 
 vi.mock('./mention-input', () => ({
   MentionInput: ({
