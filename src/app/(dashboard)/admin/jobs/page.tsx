@@ -17,7 +17,7 @@ export default function JobsDashboardPage() {
         shortcuts={getAdminJobsShortcutLinks()}
         supportingContent={null}
       />
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="ジョブ監視を読み込み中..." />}>
         <JobsDashboardContent />
       </Suspense>
     </PageScaffold>
