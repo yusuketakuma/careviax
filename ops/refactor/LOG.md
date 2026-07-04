@@ -5,6 +5,24 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-05 R40/R44-route-compare 7f4c222b
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 対象: `src/app/(dashboard)/schedules/route-compare/route-compare-content.tsx`,
+  `src/app/(dashboard)/schedules/route-compare/route-compare-content.test.tsx`
+- 実施: route compare の day-board read GET を `readApiJson` へ移行し、
+  failed GET の API JSON `message` 表面化テストを追加。
+- 挙動変更: read fetch 実装内部の helper 収束のみ。day-board query path、org header、
+  queryKey、enabled gate、visit schedule window fetcher、route calculation POST、route adoption mutation、
+  confirmation payload redaction は維持。
+- 安全: product UI read fetch internals のみ。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+  live DB/external send/secret/push/destructive operation 不変。
+- 検証: focused route-compare Vitest `1 file / 5 tests` green。
+  scoped eslint green。prettier は test formatting 後 green。diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit 7f4c222b。
+- 残課題: R40/R44 は partial。visit-routes POST fetcher は未変更。
+
 ## 2026-07-05 R40/R44-print-hub 8acdefdb
 
 - 分類: query-helper / client fetch error handling → `readApiJson` 収束。
