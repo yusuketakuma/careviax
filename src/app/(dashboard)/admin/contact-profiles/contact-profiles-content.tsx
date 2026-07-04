@@ -2,7 +2,10 @@
 
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import { Badge } from '@/components/ui/badge';
 import { ErrorState } from '@/components/ui/error-state';
 import { Button } from '@/components/ui/button';
@@ -74,6 +77,16 @@ type ContactForm = {
 };
 
 const NONE_METHOD = 'none';
+const fieldClassName = 'space-y-1.5';
+
+const contactFormSchema = z.object({
+  name: z.string(),
+  contactPerson: z.string(),
+  phone: z.string(),
+  fax: z.string(),
+  email: z.string(),
+  preferred_contact_method: z.string(),
+});
 
 function toForm(profile: ContactProfile): ContactForm {
   return {
@@ -86,16 +99,24 @@ function toForm(profile: ContactProfile): ContactForm {
   };
 }
 
+function normalizeContactForm(value: Partial<ContactForm> | undefined): ContactForm {
+  return {
+    name: value?.name ?? '',
+    contactPerson: value?.contactPerson ?? '',
+    phone: value?.phone ?? '',
+    fax: value?.fax ?? '',
+    email: value?.email ?? '',
+    preferred_contact_method: value?.preferred_contact_method ?? NONE_METHOD,
+  };
+}
+
 export function ContactProfilesContent() {
   const orgId = useOrgId();
-  const queryClient = useQueryClient();
   const [kind, setKind] = useState<'all' | ContactProfile['kind']>('all');
   const [query, setQuery] = useState('');
   // 検索は debounce(300ms)してからサーバ fetch に渡す(打鍵ごとの fetch を抑制)。入力は即時反映。
   const debouncedQuery = useDebouncedValue(query, 300);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  // フォーム編集状態。選択した連絡先 id を保持し、選択が変わったら描画中に再初期化する
-  const [editState, setEditState] = useState<{ id: string; form: ContactForm } | null>(null);
 
   const profilesQuery = useQuery({
     queryKey: ['contact-profiles', orgId, kind, debouncedQuery],
@@ -119,94 +140,10 @@ export function ContactProfilesContent() {
     [rows, selectedId],
   );
 
-  const form = selected
-    ? editState?.id === selected.id
-      ? editState.form
-      : toForm(selected)
-    : null;
-  const setForm = (updater: (prev: ContactForm) => ContactForm) => {
-    if (!selected || !form) return;
-    setEditState({ id: selected.id, form: updater(form) });
-  };
-
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      if (!selected || !form) throw new Error('編集対象が選択されていません');
-      const response = await fetch(buildContactProfilesApiPath(), {
-        method: 'PATCH',
-        headers: buildOrgJsonHeaders(orgId),
-        body: JSON.stringify({
-          kind: selected.kind,
-          id: selected.id,
-          name: form.name.trim(),
-          ...(selected.kind === 'facility_contact'
-            ? { role: form.contactPerson.trim() || null }
-            : {}),
-          ...(selected.kind === 'external_professional'
-            ? { department: form.contactPerson.trim() || null }
-            : {}),
-          phone: form.phone.trim() || null,
-          fax: form.fax.trim() || null,
-          ...(selected.kind !== 'prescriber_institution'
-            ? { email: form.email.trim() || null }
-            : {}),
-          preferred_contact_method:
-            form.preferred_contact_method === NONE_METHOD ? null : form.preferred_contact_method,
-        }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error((payload as { message?: string }).message ?? '保存に失敗しました');
-      }
-      return payload;
-    },
-    onSuccess: async () => {
-      toast.success('連絡先を保存しました');
-      await queryClient.invalidateQueries({ queryKey: ['contact-profiles', orgId] });
-    },
-    onError: (error) => {
-      toast.error(messageFromError(error, '保存に失敗しました'));
-    },
-  });
-
-  const contactPersonLabel = selected?.kind === 'external_professional' ? '部署' : '担当者';
-  const showContactPerson = selected?.kind !== 'prescriber_institution';
-  const showEmail = selected?.kind !== 'prescriber_institution';
   const pendingRowsCount = rows.filter((row) => row.pending_response_count > 0).length;
   // 未完了 KPI は全面塗りを引き算し左ボーダー+文字で示す。0件は中立(偽シグナル回避)。
   const hasPendingRows = pendingRowsCount > 0;
   const missingMethodRowsCount = rows.filter((row) => !row.preferred_contact_method).length;
-  const selectedRecommendedChannels = selected?.recommended_channels.length
-    ? selected.recommended_channels.map((channel) => labelOf(channel)).join(' → ')
-    : selected
-      ? labelOf(selected.preferred_contact_method)
-      : '未設定';
-  const hasUnsavedChanges =
-    selected && form ? JSON.stringify(form) !== JSON.stringify(toForm(selected)) : false;
-  const contactRouteLabel = form
-    ? form.preferred_contact_method === NONE_METHOD
-      ? '送付方法未設定'
-      : `${labelOf(form.preferred_contact_method)}で送付`
-    : '送付方法未設定';
-  const contactFieldReady =
-    !!form &&
-    (form.preferred_contact_method === 'fax'
-      ? !!form.fax.trim()
-      : form.preferred_contact_method === 'phone'
-        ? !!form.phone.trim()
-        : form.preferred_contact_method === 'email'
-          ? !!form.email.trim()
-          : form.preferred_contact_method !== NONE_METHOD);
-  const saveReviewLabel = !form
-    ? '編集対象なし'
-    : form.preferred_contact_method === NONE_METHOD
-      ? '送付方法を選択してください'
-      : contactFieldReady
-        ? `${contactRouteLabel}できます`
-        : `${labelOf(form.preferred_contact_method)}の連絡先を入力してください`;
-
-  const fieldClassName = 'space-y-1.5';
-
   return (
     <div className="space-y-6">
       <Card>
@@ -333,7 +270,6 @@ export function ContactProfilesContent() {
                     aria-pressed={isSelected}
                     onClick={() => {
                       setSelectedId(row.id);
-                      setEditState({ id: row.id, form: toForm(row) });
                     }}
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -368,137 +304,200 @@ export function ContactProfilesContent() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <div className="space-y-1.5">
-              <h2 className="font-heading text-base leading-snug font-medium">連絡先の編集</h2>
-              {selected ? (
-                <>
-                  <p className="text-xs text-muted-foreground">
-                    {KIND_LABELS[selected.kind]} / {selected.subtitle ?? '担当情報未設定'}
-                  </p>
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    <Badge variant={selected.pending_response_count > 0 ? 'secondary' : 'outline'}>
-                      {selected.pending_response_count > 0
-                        ? `未完了 ${selected.pending_response_count}件`
-                        : '未完了なし'}
-                    </Badge>
-                    <Badge variant={hasUnsavedChanges ? 'secondary' : 'outline'}>
-                      {hasUnsavedChanges ? '未保存の変更あり' : '保存済み内容'}
-                    </Badge>
-                    <Badge variant="outline">推奨 {selectedRecommendedChannels}</Badge>
-                  </div>
-                </>
-              ) : null}
-            </div>
-          </CardHeader>
-          <CardContent>
-            {!selected || !form ? (
-              <p className="text-sm text-muted-foreground">
-                左の一覧から送付先を選択すると、連絡先を編集できます。
+        <ContactProfileEditor key={selected?.id ?? 'none'} orgId={orgId} selected={selected} />
+      </div>
+    </div>
+  );
+}
+
+function ContactProfileEditor({
+  orgId,
+  selected,
+}: {
+  orgId: string;
+  selected: ContactProfile | null;
+}) {
+  const queryClient = useQueryClient();
+  const formMethods = useForm<ContactForm>({
+    resolver: zodResolver(contactFormSchema),
+    defaultValues: selected ? toForm(selected) : normalizeContactForm(undefined),
+  });
+  const { control, getValues, handleSubmit, register } = formMethods;
+  const form = normalizeContactForm(useWatch({ control }));
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (!selected) throw new Error('編集対象が選択されていません');
+      const currentForm = getValues();
+      const response = await fetch(buildContactProfilesApiPath(), {
+        method: 'PATCH',
+        headers: buildOrgJsonHeaders(orgId),
+        body: JSON.stringify({
+          kind: selected.kind,
+          id: selected.id,
+          name: currentForm.name.trim(),
+          ...(selected.kind === 'facility_contact'
+            ? { role: currentForm.contactPerson.trim() || null }
+            : {}),
+          ...(selected.kind === 'external_professional'
+            ? { department: currentForm.contactPerson.trim() || null }
+            : {}),
+          phone: currentForm.phone.trim() || null,
+          fax: currentForm.fax.trim() || null,
+          ...(selected.kind !== 'prescriber_institution'
+            ? { email: currentForm.email.trim() || null }
+            : {}),
+          preferred_contact_method:
+            currentForm.preferred_contact_method === NONE_METHOD
+              ? null
+              : currentForm.preferred_contact_method,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error((payload as { message?: string }).message ?? '保存に失敗しました');
+      }
+      return payload;
+    },
+    onSuccess: async () => {
+      toast.success('連絡先を保存しました');
+      await queryClient.invalidateQueries({ queryKey: ['contact-profiles', orgId] });
+    },
+    onError: (error) => {
+      toast.error(messageFromError(error, '保存に失敗しました'));
+    },
+  });
+
+  const contactPersonLabel = selected?.kind === 'external_professional' ? '部署' : '担当者';
+  const showContactPerson = selected?.kind !== 'prescriber_institution';
+  const showEmail = selected?.kind !== 'prescriber_institution';
+  const selectedRecommendedChannels = selected?.recommended_channels.length
+    ? selected.recommended_channels.map((channel) => labelOf(channel)).join(' → ')
+    : selected
+      ? labelOf(selected.preferred_contact_method)
+      : '未設定';
+  const hasUnsavedChanges = selected
+    ? JSON.stringify(form) !== JSON.stringify(toForm(selected))
+    : false;
+  const contactRouteLabel =
+    form.preferred_contact_method === NONE_METHOD
+      ? '送付方法未設定'
+      : `${labelOf(form.preferred_contact_method)}で送付`;
+  const contactFieldReady =
+    form.preferred_contact_method === 'fax'
+      ? !!form.fax.trim()
+      : form.preferred_contact_method === 'phone'
+        ? !!form.phone.trim()
+        : form.preferred_contact_method === 'email'
+          ? !!form.email.trim()
+          : form.preferred_contact_method !== NONE_METHOD;
+  const saveReviewLabel = !selected
+    ? '編集対象なし'
+    : form.preferred_contact_method === NONE_METHOD
+      ? '送付方法を選択してください'
+      : contactFieldReady
+        ? `${contactRouteLabel}できます`
+        : `${labelOf(form.preferred_contact_method)}の連絡先を入力してください`;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="space-y-1.5">
+          <h2 className="font-heading text-base leading-snug font-medium">連絡先の編集</h2>
+          {selected ? (
+            <>
+              <p className="text-xs text-muted-foreground">
+                {KIND_LABELS[selected.kind]} / {selected.subtitle ?? '担当情報未設定'}
               </p>
-            ) : (
-              <form
-                className="space-y-5"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  saveMutation.mutate();
-                }}
-              >
-                <section
-                  aria-label="保存前チェック"
-                  className="grid gap-3 rounded-lg border border-border/70 bg-muted/20 p-3 text-sm sm:grid-cols-3"
-                >
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground">保存後の送付</p>
-                    <p className="mt-1 font-semibold text-foreground">{saveReviewLabel}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground">最終連絡</p>
-                    <p className="mt-1 font-semibold text-foreground">
-                      {formatLastContacted(selected.last_contacted_at)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground">成功チャネル</p>
-                    <p className="mt-1 font-semibold text-foreground">
-                      {labelOf(selected.last_success_channel)}
-                    </p>
-                  </div>
-                </section>
+              <div className="flex flex-wrap gap-2 pt-2">
+                <Badge variant={selected.pending_response_count > 0 ? 'secondary' : 'outline'}>
+                  {selected.pending_response_count > 0
+                    ? `未完了 ${selected.pending_response_count}件`
+                    : '未完了なし'}
+                </Badge>
+                <Badge variant={hasUnsavedChanges ? 'secondary' : 'outline'}>
+                  {hasUnsavedChanges ? '未保存の変更あり' : '保存済み内容'}
+                </Badge>
+                <Badge variant="outline">推奨 {selectedRecommendedChannels}</Badge>
+              </div>
+            </>
+          ) : null}
+        </div>
+      </CardHeader>
+      <CardContent>
+        {!selected ? (
+          <p className="text-sm text-muted-foreground">
+            左の一覧から送付先を選択すると、連絡先を編集できます。
+          </p>
+        ) : (
+          <form className="space-y-5" onSubmit={handleSubmit(() => saveMutation.mutate())}>
+            <section
+              aria-label="保存前チェック"
+              className="grid gap-3 rounded-lg border border-border/70 bg-muted/20 p-3 text-sm sm:grid-cols-3"
+            >
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">保存後の送付</p>
+                <p className="mt-1 font-semibold text-foreground">{saveReviewLabel}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">最終連絡</p>
+                <p className="mt-1 font-semibold text-foreground">
+                  {formatLastContacted(selected.last_contacted_at)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">成功チャネル</p>
+                <p className="mt-1 font-semibold text-foreground">
+                  {labelOf(selected.last_success_channel)}
+                </p>
+              </div>
+            </section>
 
-                <div className={fieldClassName}>
-                  <Label htmlFor="contact-name">宛先</Label>
-                  <Input
-                    id="contact-name"
-                    value={form.name}
-                    onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
-                    placeholder="送付先の名称"
-                  />
-                </div>
+            <div className={fieldClassName}>
+              <Label htmlFor="contact-name">宛先</Label>
+              <Input id="contact-name" {...register('name')} placeholder="送付先の名称" />
+            </div>
 
-                {showContactPerson && (
-                  <div className={fieldClassName}>
-                    <Label htmlFor="contact-person">{contactPersonLabel}</Label>
-                    <Input
-                      id="contact-person"
-                      value={form.contactPerson}
-                      onChange={(event) =>
-                        setForm((prev) => ({ ...prev, contactPerson: event.target.value }))
-                      }
-                      placeholder={contactPersonLabel}
-                    />
-                  </div>
-                )}
+            {showContactPerson && (
+              <div className={fieldClassName}>
+                <Label htmlFor="contact-person">{contactPersonLabel}</Label>
+                <Input
+                  id="contact-person"
+                  {...register('contactPerson')}
+                  placeholder={contactPersonLabel}
+                />
+              </div>
+            )}
 
-                <div className={fieldClassName}>
-                  <Label htmlFor="contact-fax">FAX</Label>
-                  <Input
-                    id="contact-fax"
-                    value={form.fax}
-                    onChange={(event) => setForm((prev) => ({ ...prev, fax: event.target.value }))}
-                    placeholder="03-1234-5678"
-                  />
-                </div>
+            <div className={fieldClassName}>
+              <Label htmlFor="contact-fax">FAX</Label>
+              <Input id="contact-fax" {...register('fax')} placeholder="03-1234-5678" />
+            </div>
 
-                <div className={fieldClassName}>
-                  <Label htmlFor="contact-phone">電話</Label>
-                  <Input
-                    id="contact-phone"
-                    value={form.phone}
-                    onChange={(event) =>
-                      setForm((prev) => ({ ...prev, phone: event.target.value }))
-                    }
-                    placeholder="03-1234-1111"
-                  />
-                </div>
+            <div className={fieldClassName}>
+              <Label htmlFor="contact-phone">電話</Label>
+              <Input id="contact-phone" {...register('phone')} placeholder="03-1234-1111" />
+            </div>
 
-                {showEmail && (
-                  <div className={fieldClassName}>
-                    <Label htmlFor="contact-email">メール</Label>
-                    <Input
-                      id="contact-email"
-                      type="email"
-                      value={form.email}
-                      onChange={(event) =>
-                        setForm((prev) => ({ ...prev, email: event.target.value }))
-                      }
-                      placeholder="contact@example.com"
-                    />
-                  </div>
-                )}
+            {showEmail && (
+              <div className={fieldClassName}>
+                <Label htmlFor="contact-email">メール</Label>
+                <Input
+                  id="contact-email"
+                  type="email"
+                  {...register('email')}
+                  placeholder="contact@example.com"
+                />
+              </div>
+            )}
 
-                <div className={fieldClassName}>
-                  <Label htmlFor="contact-preferred-method">送付方法</Label>
-                  <Select
-                    value={form.preferred_contact_method}
-                    onValueChange={(value) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        preferred_contact_method: value ?? NONE_METHOD,
-                      }))
-                    }
-                  >
+            <div className={fieldClassName}>
+              <Label htmlFor="contact-preferred-method">送付方法</Label>
+              <Controller
+                control={control}
+                name="preferred_contact_method"
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
                     <SelectTrigger id="contact-preferred-method">
                       <SelectValue placeholder="送付方法を選択" />
                     </SelectTrigger>
@@ -511,27 +510,23 @@ export function ContactProfilesContent() {
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
+                )}
+              />
+            </div>
 
-                <div className="rounded-lg border border-border/70 bg-muted/30 p-3 text-xs text-muted-foreground">
-                  <div>最終連絡: {formatLastContacted(selected.last_contacted_at)}</div>
-                  <div>成功チャネル: {labelOf(selected.last_success_channel)}</div>
-                </div>
+            <div className="rounded-lg border border-border/70 bg-muted/30 p-3 text-xs text-muted-foreground">
+              <div>最終連絡: {formatLastContacted(selected.last_contacted_at)}</div>
+              <div>成功チャネル: {labelOf(selected.last_success_channel)}</div>
+            </div>
 
-                <div className="pt-1">
-                  <Button
-                    type="submit"
-                    className="min-h-11 w-full"
-                    disabled={saveMutation.isPending}
-                  >
-                    {saveMutation.isPending ? '保存中…' : '送付先を保存する'}
-                  </Button>
-                </div>
-              </form>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+            <div className="pt-1">
+              <Button type="submit" className="min-h-11 w-full" disabled={saveMutation.isPending}>
+                {saveMutation.isPending ? '保存中…' : '送付先を保存する'}
+              </Button>
+            </div>
+          </form>
+        )}
+      </CardContent>
+    </Card>
   );
 }
