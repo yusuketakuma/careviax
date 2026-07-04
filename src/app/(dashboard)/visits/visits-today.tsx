@@ -15,6 +15,7 @@ import {
 } from '@/components/features/workspace/action-rail';
 import { SafetyTagBadge } from '@/components/features/patients/safety-tag-badge';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
+import { readApiJson } from '@/lib/api/client-json';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
@@ -41,8 +42,10 @@ export async function fetchVisitPreparationBoard(
   const res = await fetch('/api/visits/today-preparation', {
     headers: buildOrgHeaders(orgId),
   });
-  if (!res.ok) throw new Error('本日の訪問準備の取得に失敗しました');
-  const json = await res.json();
+  const json = await readApiJson<{ data: VisitPreparationBoardResponse }>(
+    res,
+    '本日の訪問準備の取得に失敗しました',
+  );
   return json.data;
 }
 

@@ -343,10 +343,9 @@ describe('VisitsToday', () => {
     );
     // the route returns success({ data }) and fetchVisitPreparationBoard unwraps json.data.
     const boardFixture = buildFixture();
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ data: boardFixture }),
-    } as unknown as Response);
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(JSON.stringify({ data: boardFixture }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
 
     try {
@@ -357,7 +356,7 @@ describe('VisitsToday', () => {
       const result = await captured.queryFn();
 
       // the queryFn must unwrap the { data } envelope and return the board itself.
-      expect(result).toBe(boardFixture);
+      expect(result).toEqual(boardFixture);
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
       expect(url).toBe('/api/visits/today-preparation');
