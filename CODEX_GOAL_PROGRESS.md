@@ -46454,3 +46454,47 @@ false` for every migrated column.
     before converting additional client read fetchers.
   - Existing unrelated `refactor-instructions.md` and local skill install files
     remain outside this slice.
+
+## R40/R44 Pharmacy Sites readApiJson Slice - 2026-07-05 04:17 JST
+
+- Scope:
+  - `src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.tsx`
+  - `src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.test.tsx`
+- Status:
+  - Implemented and committed as `ec83c0e1`
+    (`refactor(ui): reuse readApiJson in pharmacy sites`).
+- Changes:
+  - Replaced the pharmacy-site list GET helper for `PHARMACY_SITES_API_PATH` with
+    `readApiJson<{ data: PharmacySite[] }>` while preserving query key,
+    `buildOrgHeaders(orgId)`, and the response envelope.
+  - Replaced the insurance-config list GET helper for
+    `buildPharmacySiteInsuranceConfigsApiPath(configSiteId)` with
+    `readApiJson<{ data: InsuranceConfig[] }>` while preserving the admin-only
+    insurance-config sheet and response envelope.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, destructive operation, admin role gate,
+    insurance-config billing semantics, false-empty error states, mutating site
+    edit and insurance-config create/update/delete behavior, and path helper
+    encoding/fail-closed behavior.
+  - The 2026-07-04 user instruction allowing product
+    API/DB/auth/authorization/PHI/billing/deploy/package dependency changes when
+    necessary is recorded in `ops/refactor/STATE.md`; this slice did not require
+    those changes.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `21` tests.
+  - `pnpm exec eslint --max-warnings=0 'src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.tsx' 'src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.test.tsx'`
+    passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.tsx' 'src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.test.tsx'`
+    passed.
+  - `git diff --check -- 'src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.tsx' 'src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.test.tsx'`
+    passed.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - R40/R44 remains partial and broad; continue per-fetcher body-read/PHI review
+    before converting additional client read fetchers.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
