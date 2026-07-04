@@ -1,5 +1,37 @@
 # CODEX Goal Progress
 
+## R32 Admin Document/Inventory QueryClient Wrapper Convergence - 2026-07-04 22:15 JST
+
+- Status:
+  - Implemented and validated a fourth bounded R32 slice:
+    - `src/app/(dashboard)/admin/inventory-forecast/inventory-forecast-content.test.tsx`
+    - `src/app/(dashboard)/admin/dispense-audit-stats/page.test.tsx`
+    - `src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx`
+    - `src/app/(dashboard)/admin/document-templates/template-content.test.tsx`
+- Scope:
+  - Replaced four more local `QueryClient` / `QueryClientProvider` wrapper
+    implementations with `createQueryClientWrapper`.
+  - Preserved retry-disabled test defaults and left product/admin runtime code
+    untouched.
+- Safety:
+  - Test harness convergence only.
+  - No product API, DB, auth, authorization, PHI projection, billing semantics,
+    deployment, package dependency, query, mutation, org header, audit logging,
+    or runtime behavior changed.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/inventory-forecast/inventory-forecast-content.test.tsx' 'src/app/(dashboard)/admin/dispense-audit-stats/page.test.tsx' 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx' 'src/app/(dashboard)/admin/document-templates/template-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `4` files / `31` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `7d9ef657`
+    (`test(admin): share document query wrapper`).
+- Remaining:
+  - R32 remains partially open for the remaining local QueryClient wrappers.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R32 Admin Alert/Vehicle/Audit QueryClient Wrapper Convergence - 2026-07-04 22:13 JST
 
 - Status:

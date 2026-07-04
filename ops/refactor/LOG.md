@@ -5,6 +5,20 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-04 R32-admin-docs 7d9ef657
+
+- 分類: test refactor / QueryClient wrapper convergence
+- 対象: inventory-forecast / dispense-audit-stats / document-template tests
+- 実施: admin/document 4テストの local `QueryClient`/`QueryClientProvider` wrapper を
+  `createQueryClientWrapper` へ収束。
+- 挙動変更: なし。retry-disabled test defaults を維持し、product runtime は不変。
+- 安全: product API/DB/auth/authorization/PHI/billing/deploy/package dependency は変更不要。
+  query/mutation/org header/audit/server behavior 不変。
+- 検証: focused admin/document vitest 4 files / 31 tests green。
+  scoped eslint/prettier/diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit 7d9ef657。
+- 残課題: R32 は残りの QueryClient wrapper 移行が継続。
+
 ## 2026-07-04 R32-admin-2 0bd86e3f
 
 - 分類: test refactor / QueryClient wrapper convergence
