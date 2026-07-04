@@ -6,6 +6,7 @@ import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { internalError, success, notFound, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { optionalBoundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
+import { buildCursorPage } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 
@@ -273,8 +274,8 @@ const authenticatedGET = withAuthContext(
         select: stockListSelect,
       }),
     ]);
-    const hasMore = fetchedStocks.length > limit;
-    const stocked = hasMore ? fetchedStocks.slice(0, limit) : fetchedStocks;
+    const page = buildCursorPage(fetchedStocks, limit, (stock) => stock.id);
+    const stocked = page.data;
     const visibleCount = stocked.length;
     const hiddenCount = Math.max(totalCount - visibleCount, 0);
 
@@ -286,7 +287,7 @@ const authenticatedGET = withAuthContext(
         total_count: totalCount,
         visible_count: visibleCount,
         hidden_count: hiddenCount,
-        has_more: hasMore || hiddenCount > 0,
+        has_more: page.hasMore || hiddenCount > 0,
         count_basis: 'pharmacy_drug_stocks',
         filters_applied: {
           site_id: site.id,
