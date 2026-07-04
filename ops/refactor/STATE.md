@@ -250,6 +250,11 @@
   org header/queryKey/enabled gate/hostile-id encoding/href helper/current-item exclusion は保持。
   SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
   維持しつつ、本sliceでは不要。
+- codex: R40/R44 patient-field-revisions readApiJson slice(e110d2ec) land。focused Vitest 6、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。patient field revision timeline read GET を
+  readApiJson へ収束し、patient API helper/category query/org header/queryKey/enabled gate/
+  hostile-id encoding/dot rejection/truncated metadata は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 
