@@ -1121,7 +1121,9 @@ export function MedicationsContent({
 
             <div className="space-y-3">
               {issuesQuery.isLoading ? (
-                <p className="text-sm text-muted-foreground">課題を読み込み中...</p>
+                <div role="status" aria-label="薬学的課題を読み込み中" aria-live="polite">
+                  <SkeletonRows rows={3} cols={2} status={false} />
+                </div>
               ) : issuesQuery.isError ? (
                 <ErrorState
                   variant="server"

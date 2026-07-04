@@ -564,6 +564,34 @@ describe('MedicationsContent fetch-error surfaces (no false-empty)', () => {
     expect(screen.queryByText('服薬中の薬剤がありません')).toBeNull();
   });
 
+  it('uses a named skeleton while medication issues are loading', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (String(queryKey[0]) === 'medication-issues') {
+        return { data: undefined, isLoading: true, isError: false, refetch: vi.fn() };
+      }
+      return { data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() };
+    });
+
+    render(
+      <MedicationsContent
+        patientId="patient_1"
+        patientName="山田花子"
+        patientNameKana="ヤマダハナコ"
+        birthDate="1950-04-01"
+        gender="female"
+        allergyInfo={[]}
+      />,
+    );
+
+    expect(screen.getByRole('status', { name: '薬学的課題を読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('課題を読み込み中...', { selector: 'p' })).toBeNull();
+    expect(screen.queryByText(/薬学的課題を読み込めませんでした/)).toBeNull();
+    expect(screen.queryByText(/課題はまだ登録されていません/)).toBeNull();
+  });
+
   // A failed fetch must surface an error + retry, never collapse into a "0 件 / 記録なし" state
   // that masks unresolved medical issues, pending inquiries, or excess-medication warnings.
   it.each([
