@@ -12,6 +12,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { StateBadge } from '@/components/ui/state-badge';
 import { Skeleton } from '@/components/ui/loading';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { readApiJson } from '@/lib/api/client-json';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
@@ -221,8 +222,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
       const res = await fetch(buildCareReportApiPath(reportId), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('報告書の取得に失敗しました');
-      return res.json() as Promise<{ data: ShareCareReport }>;
+      return readApiJson<{ data: ShareCareReport }>(res, '報告書の取得に失敗しました');
     },
     enabled: !!orgId && !!reportId,
   });
@@ -253,8 +253,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
           headers: buildOrgHeaders(orgId),
         },
       );
-      if (!res.ok) throw new Error('ケアチームの取得に失敗しました');
-      return res.json() as Promise<{ data: CareTeamMemberSummary[] }>;
+      return readApiJson<{ data: CareTeamMemberSummary[] }>(res, 'ケアチームの取得に失敗しました');
     },
     enabled: !!orgId && canLoadPatientSupport,
   });
@@ -266,8 +265,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
       const res = await fetch(buildPatientApiPath(patientId, '/contacts'), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('連絡先の取得に失敗しました');
-      return res.json() as Promise<{ data: ContactPartySummary[] }>;
+      return readApiJson<{ data: ContactPartySummary[] }>(res, '連絡先の取得に失敗しました');
     },
     enabled: !!orgId && canLoadPatientSupport,
   });
@@ -285,8 +283,10 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
           headers: buildOrgHeaders(orgId),
         },
       );
-      if (!res.ok) throw new Error('返信状況の取得に失敗しました');
-      return res.json() as Promise<{ data: ShareCommunicationRequest[] }>;
+      return readApiJson<{ data: ShareCommunicationRequest[] }>(
+        res,
+        '返信状況の取得に失敗しました',
+      );
     },
     enabled: !!orgId && !!reportId && canUseShareOutput,
   });
@@ -313,8 +313,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
       const res = await fetch(buildCommunicationRequestApiPath(requestId), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('返信内容の取得に失敗しました');
-      return res.json() as Promise<{ data: ShareReplyDetail }>;
+      return readApiJson<{ data: ShareReplyDetail }>(res, '返信内容の取得に失敗しました');
     },
     enabled: !!orgId && !!replyRequest?.id && canUseShareOutput,
   });
