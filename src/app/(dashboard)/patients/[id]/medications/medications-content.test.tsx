@@ -357,6 +357,24 @@ describe('MedicationsContent url/header convergence', () => {
     }
   });
 
+  it.each([
+    ['medication-profiles', '服薬中薬剤APIからの詳細エラー'],
+    ['patient-medication-summary', '患者サマリAPIからの詳細エラー'],
+    ['medication-issues', '薬学的課題APIからの詳細エラー'],
+    ['inquiry-records', '疑義照会APIからの詳細エラー'],
+    ['residual-medications', '残薬APIからの詳細エラー'],
+  ])('keeps API messages from failed %s reads', async (key, message) => {
+    const { queryConfigs } = renderMeds();
+    const fetchMock = stubJsonFetch({ message }, 500);
+
+    try {
+      await expect(queryConfigs.get(key)!.queryFn()).rejects.toThrow(message);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('routes the residual adjustment link through the shared patient href helper', () => {
     vi.mocked(buildPatientHref).mockReturnValueOnce('/patients/__helper_residual__');
 

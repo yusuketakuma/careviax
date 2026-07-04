@@ -44,6 +44,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { ResidualMedicationChart } from '@/components/features/patients/residual-medication-chart';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
@@ -695,8 +696,7 @@ export function MedicationsContent({
         `/api/medication-profiles?${new URLSearchParams({ patient_id: patientId, is_current: 'true' })}`,
         { headers: buildOrgHeaders(orgId) },
       );
-      if (!response.ok) throw new Error('取得に失敗しました');
-      return response.json() as Promise<{ data: MedicationProfile[] }>;
+      return readApiJson<{ data: MedicationProfile[] }>(response, '取得に失敗しました');
     },
     enabled: !!orgId,
   });
@@ -707,14 +707,13 @@ export function MedicationsContent({
       const response = await fetch(buildPatientApiPath(patientId), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('患者情報の取得に失敗しました');
-      return response.json() as Promise<{
+      return readApiJson<{
         name: string;
         name_kana: string;
         birth_date: string;
         gender: string;
         allergy_info: string[] | null;
-      }>;
+      }>(response, '患者情報の取得に失敗しました');
     },
     enabled: !!orgId && !hasPatientContext,
   });
@@ -726,8 +725,7 @@ export function MedicationsContent({
         `/api/medication-issues?${new URLSearchParams({ patient_id: patientId })}`,
         { headers: buildOrgHeaders(orgId) },
       );
-      if (!response.ok) throw new Error('課題の取得に失敗しました');
-      return response.json() as Promise<{ data: MedicationIssue[] }>;
+      return readApiJson<{ data: MedicationIssue[] }>(response, '課題の取得に失敗しました');
     },
     enabled: !!orgId,
   });
@@ -739,8 +737,7 @@ export function MedicationsContent({
         `/api/inquiry-records?${new URLSearchParams({ patient_id: patientId })}`,
         { headers: buildOrgHeaders(orgId) },
       );
-      if (!response.ok) throw new Error('疑義照会の取得に失敗しました');
-      return response.json() as Promise<{ data: InquiryRecord[] }>;
+      return readApiJson<{ data: InquiryRecord[] }>(response, '疑義照会の取得に失敗しました');
     },
     enabled: !!orgId,
   });
@@ -752,8 +749,10 @@ export function MedicationsContent({
         `/api/residual-medications?${new URLSearchParams({ patient_id: patientId, limit: '100' })}`,
         { headers: buildOrgHeaders(orgId) },
       );
-      if (!response.ok) throw new Error('残薬データの取得に失敗しました');
-      return response.json() as Promise<{ data: ResidualMedication[] }>;
+      return readApiJson<{ data: ResidualMedication[] }>(
+        response,
+        '残薬データの取得に失敗しました',
+      );
     },
     enabled: !!orgId,
   });
