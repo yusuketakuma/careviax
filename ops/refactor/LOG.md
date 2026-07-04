@@ -2630,3 +2630,25 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: R24/R46 は partial。`meta.has_more`、keyset cursor encoding、scan-window、
   hidden-count、summary/count metadata を持つ route は route-specific analysis 後に継続。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
+## 2026-07-05 R24/R46 medication-cycles cursor helper slice
+
+- 分類: pattern-inconsistency / 手組み offset cursor page assembly → `buildCursorPage` 収束。
+- 実施:
+  - `/api/medication-cycles` GET の route-local `hasMore` / `slice` / numeric
+    `nextCursor` assembly を `buildCursorPage` へ移行。
+  - `cursorOf` は行IDではなく既存 contract の `String(offset + limit)` を返す closure にし、
+    numeric offset cursor semantics を維持。
+  - `limit=1` で `take: 2`、visible cycle id 1件、`totalCount` 維持、
+    `nextCursor: "1"` を route test に追加。
+- 挙動変更: API内部の重複 helper 収束のみ。外部 response envelope/key order、offset cursor
+  semantics、GET filter behavior、POST create behavior は維持。
+- 安全性: `canDispense`、assignment-scope filtering、strict status/case/patient filter validation、
+  sensitive no-store、count behavior、DB query shape、schema/migrations/data、billing、deployment、
+  package dependency、live DB operation、external send、secret handling、push、destructive operation は不変。
+- 検証: focused medication-cycles/pagination Vitest `2 files / 33 tests` green、scoped ESLint
+  green、targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `c8f03405` (`refactor(api): reuse cursor page helper in medication cycles`)。
+- 残課題: R24/R46 は partial。`meta.has_more`、keyset cursor encoding、scan-window、
+  hidden-count、route-specific metadata を持つ route は個別分析後に継続。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
