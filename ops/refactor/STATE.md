@@ -3755,3 +3755,31 @@
 - remaining:
   Broader `Plans.md` objective remains open. Reports BFF の summary/detail split、payload budget CI gate、
   browser smoke は未実装。次候補は `DASH-COMM-001` または `REPORT-PERF-001` の続き。
+
+## 2026-07-06 UI design generation SSOT update
+
+- codex: `gpt-image-2` requirement added to PH-OS UI/UX SSOT.
+  ユーザー指示「gpt-image-2 を使うことを追記」に対応。`Plans.md` には既に `imagegen` +
+  `gpt-image-2` 方針が入っていたため、UI/UX 正本である `docs/ui-ux-design-guidelines.md` へ
+  `2.4.2 UI design generation policy` を追加し、UI/UX の新規・再配置・大幅改善では
+  `imagegen` 実行時の標準モデル指定を `gpt-image-2` とすることを明文化した。
+- files inspected:
+  `Plans.md`, `docs/ui-ux-design-guidelines.md`, `ops/refactor/STATE.md`, `AGENTS.md`.
+- files changed:
+  `docs/ui-ux-design-guidelines.md`, `ops/refactor/STATE.md`.
+- bugs found/fixed:
+  `Plans.md` と進捗台帳には `gpt-image-2` 方針があったが、UI/UX SSOT 側には未記載だったため、
+  UI 改修時の参照先が分散していた。SSOT 側に方針を追加して参照経路を揃えた。
+- security/PHI risks reduced:
+  `gpt-image-2` prompt へ実在患者名、住所、電話、処方本文、報告書本文、保険情報、外部共有 URL、
+  secret を入れないことを SSOT に明記した。
+- performance issues improved:
+  実装コード変更なし。視覚的に重要な UI slice の事前デザイン参照を標準化し、手戻りと
+  再設計コストを抑える運用改善。
+- validation:
+  `pnpm exec prettier --write docs/ui-ux-design-guidelines.md ops/refactor/STATE.md` green;
+  `pnpm exec prettier --check docs/ui-ux-design-guidelines.md ops/refactor/STATE.md` green;
+  `git diff --check -- docs/ui-ux-design-guidelines.md ops/refactor/STATE.md` green.
+- remaining:
+  Broader `Plans.md` objective remains open. 実際の UI/UX 実装 slice では、この SSOT に従い
+  必要時に `imagegen` / `gpt-image-2` の非 PHI 参照案を作る。
