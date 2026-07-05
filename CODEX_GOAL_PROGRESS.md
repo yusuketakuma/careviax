@@ -1,5 +1,43 @@
 # CODEX Goal Progress
 
+## R40/R44 Report Share Mutations readApiJson Partial - 2026-07-05 09:32 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.tsx`
+- Scope:
+  - Reused `readApiJson` for report share follow-up task creation and reply
+    request creation mutation responses.
+  - Existing focused coverage continues to prove API JSON `message` from failed
+    follow-up task responses and fallback handling for failed reply requests
+    while endpoint, method, JSON body, and `x-org-id` header contracts remain
+    unchanged.
+  - Preserved report/patient/request hostile identity handling, task dedupe
+    metadata, reply request body, success toasts, and request invalidation
+    behavior.
+- Safety:
+  - Product UI mutation response handling internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx'`
+    passed `1` file / `28` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `084b5736`
+    (`refactor(ui): reuse readApiJson in report share mutations`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher/mutation PHI/body-read review
+    before converting additional manual response handling.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Report Editor Save readApiJson Partial - 2026-07-05 09:27 JST
 
 - Status:
