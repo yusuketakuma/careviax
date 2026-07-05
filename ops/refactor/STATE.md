@@ -524,6 +524,12 @@
   dot-segment fail-closed、org JSON headers、PUT methods、request bodies、success toasts、
   cache invalidation は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 care-team mutations readApiJson slice(0e60e3aa) land。focused Vitest 13、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。external professionals quick-create POST /
+  patient care-team save PUT response を readApiJson へ収束し、static admin endpoint、patient API
+  path helper、hostile-id encoding、dot-segment fail-closed、org JSON headers、request bodies、
+  reliability warnings、success toasts、cache invalidation は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 
