@@ -66,6 +66,12 @@
   readApiJson へ収束し、endpoint、org JSON headers、edit payload、server-message/fallback toast、
   visit-record / visit-handoff invalidation は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 facility-visit-batch save readApiJson slice(57fa1e83) land。focused Vitest 6、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。facility visit batch POST response を
+  readApiJson へ収束し、org JSON headers、payload ordering/route-order guard、unsafe carry
+  fail-closed、server-message fallback、week-board/dashboard-workflow invalidation は保持。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
+  維持しつつ、本sliceでは不要。
 - coordinator mode refresh(0164b797) / agmsg turn hook(025ee516) / W3-E1 shifts RHF(c5ec2727)
   / W3-E2 DataTable selectable-listbox contract(757ca20c) / prescriptions-table DataTable migration(2d0d80b4)
   / W3-E1 facilities RHF(a18abc1c) — coordinator review + focused validation green。DataTable contract は
