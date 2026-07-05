@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withAuthContext } from '@/lib/auth/context';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { boundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
@@ -224,7 +225,7 @@ async function loadStockImpactCounts(args: {
   );
 }
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req: NextRequest, authCtx) => {
     const parsed = parseSearchParams(impactQuerySchema, new URL(req.url).searchParams);
     if (!parsed.ok) {
@@ -602,3 +603,6 @@ export const GET = withAuthContext(
   },
   { permission: 'canAdmin' },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) =>
+  withSensitiveNoStore(await authenticatedGET(req, routeContext));

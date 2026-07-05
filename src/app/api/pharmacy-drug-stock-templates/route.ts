@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withAuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
@@ -18,7 +19,7 @@ const createTemplateSchema = z.object({
   source_site_id: z.string().trim().min(1, 'source_site_id は必須です'),
 });
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req: NextRequest, authCtx) => {
     const parsed = parseSearchParams(templateQuerySchema, new URL(req.url).searchParams);
     if (!parsed.ok) {
@@ -53,6 +54,9 @@ export const GET = withAuthContext(
   },
   { permission: 'canAdmin' },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) =>
+  withSensitiveNoStore(await authenticatedGET(req, routeContext));
 
 export const POST = withAuthContext(
   async (req: NextRequest, authCtx) => {

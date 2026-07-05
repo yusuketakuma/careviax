@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withAuthContext } from '@/lib/auth/context';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { boundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
@@ -25,7 +26,7 @@ function includesDrugMasterId(changes: unknown, drugMasterId: string) {
   );
 }
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req: NextRequest, authCtx) => {
     const parsed = parseSearchParams(historyQuerySchema, new URL(req.url).searchParams);
     if (!parsed.ok) {
@@ -94,3 +95,6 @@ export const GET = withAuthContext(
   },
   { permission: 'canAdmin' },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) =>
+  withSensitiveNoStore(await authenticatedGET(req, routeContext));

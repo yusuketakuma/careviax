@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { expectNoStore } from '@/test/api-response-assertions';
 
-const { authMock, prismaMock } = vi.hoisted(() => ({
+const { authMock, loggerErrorMock, prismaMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
   prismaMock: {
     membership: { findFirst: vi.fn() },
     pharmacySite: { findFirst: vi.fn() },
@@ -15,6 +17,14 @@ const { authMock, prismaMock } = vi.hoisted(() => ({
 
 vi.mock('@/lib/auth/config', () => ({ auth: authMock }));
 vi.mock('@/lib/db/client', () => ({ prisma: prismaMock }));
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    debug: vi.fn(),
+    error: loggerErrorMock,
+    info: vi.fn(),
+    warn: vi.fn(),
+  },
+}));
 
 import { GET, POST } from './route';
 
@@ -88,6 +98,7 @@ describe('/api/pharmacy-drug-stock-templates', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: [{ id: 'template_1', item_count: 12 }],
     });
@@ -112,11 +123,55 @@ describe('/api/pharmacy-drug-stock-templates', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'クエリパラメータが不正です',
     });
     expect(prismaMock.formularyTemplate.findMany).not.toHaveBeenCalled();
+  });
+
+  it('marks unauthenticated GET responses as no-store before handler execution', async () => {
+    authMock.mockResolvedValue(null);
+
+    const response = await GET(
+      createRequest('http://localhost/api/pharmacy-drug-stock-templates'),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(401);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_UNAUTHENTICATED',
+    });
+    expect(prismaMock.formularyTemplate.findMany).not.toHaveBeenCalled();
+  });
+
+  it('marks sanitized unexpected GET errors as no-store', async () => {
+    const rawMessage = 'raw template patient secret';
+    prismaMock.formularyTemplate.findMany.mockRejectedValueOnce(new Error(rawMessage));
+
+    const response = await GET(
+      createRequest('http://localhost/api/pharmacy-drug-stock-templates'),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawMessage);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'route_handler_unhandled_error',
+        route: '/api/pharmacy-drug-stock-templates',
+        method: 'GET',
+      }),
+      expect.any(Error),
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls[0]?.[0])).not.toContain(rawMessage);
   });
 
   it('creates a template from stocked drugs at a same-org site', async () => {

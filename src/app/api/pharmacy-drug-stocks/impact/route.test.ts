@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { expectNoStore } from '@/test/api-response-assertions';
 
-const { authMock, prismaMock } = vi.hoisted(() => ({
+const { authMock, loggerErrorMock, prismaMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
   prismaMock: {
     membership: { findFirst: vi.fn() },
     pharmacySite: { findFirst: vi.fn() },
@@ -19,6 +21,15 @@ vi.mock('@/lib/auth/config', () => ({
 
 vi.mock('@/lib/db/client', () => ({
   prisma: prismaMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    debug: vi.fn(),
+    error: loggerErrorMock,
+    info: vi.fn(),
+    warn: vi.fn(),
+  },
 }));
 
 import { GET } from './route';
@@ -158,6 +169,7 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(prismaMock.pharmacyDrugStock.count).not.toHaveBeenCalled();
     expect(prismaMock.$queryRaw).toHaveBeenCalledTimes(1);
     expect(prismaMock.pharmacyDrugStock.findMany).toHaveBeenCalledTimes(9);
@@ -282,6 +294,7 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       selected_queue: {
         key: 'recently_changed',
@@ -353,6 +366,7 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'クエリパラメータが不正です',
@@ -362,6 +376,72 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
     expect(prismaMock.pharmacyDrugStock.count).not.toHaveBeenCalled();
     expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();
     expect(prismaMock.qrScanDraft.findMany).not.toHaveBeenCalled();
+  });
+
+  it('marks missing-site responses as no-store before loading impact data', async () => {
+    prismaMock.pharmacySite.findFirst.mockResolvedValue(null);
+
+    const response = await GET(
+      createRequest('http://localhost/api/pharmacy-drug-stocks/impact?site_id=site_1'),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: '対象の薬局拠点が見つかりません',
+    });
+    expect(prismaMock.drugMasterChangeEvent.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.count).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.qrScanDraft.findMany).not.toHaveBeenCalled();
+  });
+
+  it('marks unauthenticated responses as no-store before handler execution', async () => {
+    authMock.mockResolvedValue(null);
+
+    const response = await GET(
+      createRequest('http://localhost/api/pharmacy-drug-stocks/impact?site_id=site_1'),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(401);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_UNAUTHENTICATED',
+    });
+    expect(prismaMock.pharmacySite.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.drugMasterChangeEvent.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();
+  });
+
+  it('marks sanitized unexpected errors as no-store', async () => {
+    const rawMessage = 'raw impact patient secret';
+    prismaMock.pharmacySite.findFirst.mockRejectedValueOnce(new Error(rawMessage));
+
+    const response = await GET(
+      createRequest('http://localhost/api/pharmacy-drug-stocks/impact?site_id=site_1'),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawMessage);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'route_handler_unhandled_error',
+        route: '/api/pharmacy-drug-stocks/impact',
+        method: 'GET',
+      }),
+      expect.any(Error),
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls[0]?.[0])).not.toContain(rawMessage);
   });
 
   it('does not cap impact totals to the first 500 adopted drugs', async () => {
@@ -423,6 +503,7 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalledWith(
       expect.objectContaining({ take: 500 }),
     );
