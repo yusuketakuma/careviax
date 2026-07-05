@@ -40,6 +40,55 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Plans.md multi-angle review/refactor protocol + PDF filename PHI minimization slice complete
+  (code/test: 47aa17810, plan: 2abc85be6)。
+  - current task:
+    `Plans.md` の UX/PERF/DEV/RISK 追加タスクを `plan-eng-review` skill の観点
+    (scope challenge、既存コード再利用、DRY、テスト、性能、失敗モード、並列化) で再レビューし、
+    「機能追加だけでなく、近傍コードをリファクタしながら最新 contract へ上書きする」運用を
+    `多角レビュー / リファクタリング同時実装プロトコル` として追記。subagent 2件を read-only で投入し、
+    PDF/report/attachment export surface を追加レビュー。
+  - files inspected:
+    `/Users/yusuke/.agents/skills/gstack/plan-eng-review/SKILL.md`、`Plans.md`、
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`、
+    `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`、
+    `src/lib/api/pdf-response.ts`、`src/server/services/pdf-rendering.ts`、
+    `src/server/services/pdf-documents.tsx`、`src/app/api/__tests__/pdf-routes.test.ts`、
+    `src/server/services/report-delivery.ts`、`src/server/services/file-download-audit.ts`。
+  - files changed:
+    `Plans.md`、`src/lib/api/pdf-response.ts`、`src/lib/api/pdf-response.test.ts`,
+    `src/server/services/pdf-rendering.ts`、`src/server/services/pdf-rendering.test.ts`,
+    `src/server/services/pdf-documents.tsx`、`src/server/services/pdf-documents.test.tsx`,
+    `src/app/api/__tests__/pdf-routes.test.ts`、`ops/refactor/STATE.md`。
+  - bugs/security risks fixed:
+    PDF builder が `record.patient.name` / `billing_target_name` / conference title を filename に含める
+    経路を廃止し、billing / conference note / management plan / medication history / visit record /
+    patient visit-record list / medication calendar / tracing report の filename を document type + stable
+    id/date へ収束。PDF response helper は path/control/header-injection 文字、phone-like marker、
+    token/storage/signed/provider/raw/error/cookie/content-disposition marker を含む filename を
+    `document.pdf` へ fail-closed し、`filename*` も付与。PDF本文の認可済みPHIは維持し、
+    browser-visible header/download filename から患者名・薬剤名・storage key・token・raw provider error
+    を外す。
+  - performance issues improved:
+    なし。共有 helper 収束のみで API/DB/package dependency 変更なし。
+  - validation commands/results:
+    `pnpm exec prettier --write Plans.md src/lib/api/pdf-response.ts src/lib/api/pdf-response.test.ts src/server/services/pdf-rendering.ts src/server/services/pdf-rendering.test.ts src/server/services/pdf-documents.tsx src/server/services/pdf-documents.test.tsx src/app/api/__tests__/pdf-routes.test.ts` green;
+    `pnpm exec vitest run src/lib/api/pdf-response.test.ts src/server/services/pdf-rendering.test.ts src/server/services/pdf-documents.test.tsx src/app/api/__tests__/pdf-routes.test.ts --reporter=dot --testTimeout=30000`
+    green (4 files / 41 tests);
+    `pnpm exec eslint src/lib/api/pdf-response.ts src/lib/api/pdf-response.test.ts src/server/services/pdf-rendering.ts src/server/services/pdf-rendering.test.ts src/server/services/pdf-documents.tsx src/server/services/pdf-documents.test.tsx src/app/api/__tests__/pdf-routes.test.ts` green;
+    `git diff --check -- Plans.md src/lib/api/pdf-response.ts src/lib/api/pdf-response.test.ts src/server/services/pdf-rendering.ts src/server/services/pdf-rendering.test.ts src/server/services/pdf-documents.tsx src/server/services/pdf-documents.test.tsx src/app/api/__tests__/pdf-routes.test.ts` green;
+    `pnpm format:check` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` green。
+  - remaining work:
+    attachment presigned-download JSON / signed `ResponseContentDisposition` の original filename leak、
+    report delivery email body の recipient/internal-id/signed-link wording、PDF/report audit target allowlist の
+    hostile snapshot/traceability は未着手。server-side full export endpoint prop 化と broader export surface
+    matrix も継続。
+  - next action:
+    state commit を作成し origin/main へ push。次 slice は attachment presigned-download filename/URL payload
+    minimization または report delivery external wording gate。
+
 - codex: UX-TBL-001 DataTable Export / Selection Semantics slice land（b60c34297）。
   - current task:
     `Plans.md` の `UX-TBL-001` を、skill `redesign-existing-projects` と PH-OS UI/UX SSOT
