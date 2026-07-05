@@ -40,6 +40,39 @@
 
 ## 直近の land（本日・要点）
 
+- codex: handoff supervision final-confirm batch(8b3c020e3)
+  implementation complete。ユーザー指示により本sliceでも subagent を投入（code_mapper /
+  security_critic / medical_safety_reviewer / test_architect / verifier）。全員が、trainee role
+  expansion や generic task completion ではなく、task-bound supervisor co-sign/final-confirm が必要と
+  判定。対応として `POST /api/visit-records/:id/handoff/supervision-confirm` を新設し、
+  `canVisit`、org-scoped visit record、active same-org membership role `owner|admin|pharmacist`、
+  body `task_id`、open `handoff_supervision_review` task、`assigned_to === ctx.userId`、
+  `related_entity_type/id`、metadata `visit_record_id` / `visit_record_version` /
+  `supervisor_user_id` / `trainee_user_id` をすべて照合してから `confirmHandoff` を呼ぶ fail-closed
+  contract にした。`pharmacist_trainee` は引き続き final confirm 不可で、trainee UI は
+  `supervision-request` のみ送る。service `confirmHandoff` は既確定 handoff を
+  `VisitHandoffAlreadyConfirmedError` で拒否し、supervision path では `withOrgContext` transaction 内で
+  selected `handoff_supervision_review` task を `id/org/type/status/assigned_to/related_entity` 条件で
+  claim してから visit record version claim を実行。成功時は underlying `handoff_confirmation`
+  task（supervisor/unassigned に加え trainee assigned も）と selected supervision task を同 transaction で
+  resolve し、`visit_handoff_supervision_confirmed` audit を PHI-minimized metadata（IDs、basis、
+  trainee/supervisor、requested/confirmed version、edited field names、content counts、resolved task counts）
+  のみに限定。raw handoff text、request note、decision rationale、patient name、secret-like strings は
+  audit/task/response に残さない。Handoff workspace は `task_types=handoff_confirmation,handoff_supervision_review`
+  を取得し、visit record id ではなく selected task id で選択状態を持つ。`HandoffConfirmPanel` は
+  selected task が `handoff_supervision_review` の場合だけ `task_id` 付きで
+  `/handoff/supervision-confirm` に POST し、通常 direct confirm / owner-admin override の PUT と trainee
+  request POST を分離。route catalog / rate-limit template には既存 `supervision-request`、新規
+  `supervision-confirm`、sync 赤だった既存 `/api/care-reports/:id/finalize` を登録。validation:
+  `pnpm exec vitest run src/server/services/operational-tasks.test.ts src/server/services/visit-handoff.test.ts 'src/app/api/visit-records/[id]/handoff/route.test.ts' 'src/app/api/visit-records/[id]/handoff/supervision-request/route.test.ts' 'src/app/api/visit-records/[id]/handoff/supervision-confirm/route.test.ts' src/components/features/visits/handoff-confirm-panel.test.tsx 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx' src/lib/api/rate-limit.test.ts src/lib/api/route-catalog.test.ts`
+  green（9 files / 182 tests）; scoped `eslint` green; scoped `prettier --check` green;
+  `git diff --check` green; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。
+  verifier subagent は read-only diff review と同 focused Vitest / diff-check を実行し APPROVE。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency)
+  に基づき product API / authorization / PHI-adjacent audit / task completion policy / UI contract /
+  route governance を変更、DB schema/migration/billing/deploy/package dependency 変更は不要。残る別slice候補:
+  override reason enum/code 化、pharmacist_trainee の他訪問系 write scope 横断レビュー、handoff 周辺の
+  historical/legacy task closure policy は実データ確認後に別途安全評価。
 - codex: pharmacist_trainee handoff supervision request batch(127c89a93)
   implementation complete。ユーザー指示により本sliceでも subagent を投入（code_mapper /
   security_critic / medical_safety_reviewer / test_architect）。全員、`pharmacist_trainee` を
