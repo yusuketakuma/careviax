@@ -40,6 +40,62 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Case Risk Cockpit shared registry adapter connection slice（committed）。
+  - current task:
+    `Plans.md` の `RISK-CORE-3 / CORE-003` 残タスクに沿って、Case Risk Cockpit 内に残っていた
+    billing blocker detail table と task finding の route-local 実装を削除し、
+    `risk-finding-registry.ts` の shared adapter へ接続した。`Task` query は `task_type` を select し、
+    task finding は raw `Task.title` ではなく `operational-task-presentation` の controlled
+    queue label/action を使う。
+  - subagent:
+    今回は既存 subagent thread 上限のため新規投入なし。Codex 本体で Plans / STATE /
+    Case Risk Cockpit / Risk Finding Registry / task presentation を確認して実装・検証した。
+  - design / imagegen:
+    backend service adapter/refactor slice で視覚レイアウト変更を伴わないため、`imagegen` /
+    `gpt-image-2` の新規生成は省略。患者/ケース詳細 UI へ Risk Cockpit を配置する slice では
+    PH-OS UI/UX SSOT に従い非 PHI mockup を生成する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/case-risk-cockpit.ts`,
+    `src/server/services/case-risk-cockpit.test.ts`,
+    `src/server/services/risk-finding-registry.ts`,
+    `src/server/services/risk-finding-registry.test.ts`,
+    `src/lib/risk/risk-finding.ts`,
+    `src/lib/tasks/operational-task-presentation.ts`,
+    `prisma/schema/core-task.prisma`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/case-risk-cockpit.ts`,
+    `src/server/services/case-risk-cockpit.test.ts`.
+  - bugs / risks reduced:
+    Case Risk Cockpit と CORE-001 registry で billing blocker 文言・task finding 文言が二重管理に
+    なっていた。billing は `adaptBillingEvidenceBlockerToRiskFinding`、task は
+    `adaptOperationalTaskToRiskFinding` に寄せ、shared risk 語彙と action href を使うようにした。
+    regression で raw task title が response に出ないことと、controlled `正本確認タスク` が出ることを固定。
+  - security / PHI reviewed:
+    新規 API / DB field / PHI field は追加していない。raw `Task.title`、billing raw reason、
+    validation notes を risk response に載せる経路を増やさず、既存 adapter の controlled detail/action に統一。
+    patient id / schedule id は既存 href builder / encodeURIComponent 経路を維持。
+  - performance issues improved:
+    DB query は `task_type` select を 1 field 追加したのみ。route-local duplicate mapping を削除し、
+    future adapter expansion / payload budget 実装時の重複計算を減らした。
+  - validation commands:
+    `pnpm exec vitest run src/server/services/case-risk-cockpit.test.ts src/server/services/risk-finding-registry.test.ts src/lib/risk/risk-finding.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm typecheck`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`;
+    `pnpm lint`.
+  - validation results:
+    focused vitest green（3 files / 15 tests）; typecheck green; typecheck:no-unused green;
+    `pnpm lint` green with existing unrelated warnings in `src/lib/platform/break-glass.test.ts`
+    (`_tx`, `_input` unused warnings only).
+  - remaining work:
+    Broader `Plans.md` objective remains open。残: medication / dispensing / visit_preparation detail /
+    notification / privacy_security / integration / data_quality adapters、Case Risk Cockpit の患者/ケース詳細
+    UI 接続、RiskFinding -> OperationalTask bridge の実 domain 接続、waiver/override audit。
+
 - codex: Risk Finding to OperationalTask bridge initial slice（commit `9201b5b62`）。
   - current task:
     `Plans.md` の `RISK-CORE-2 / CORE-002` に沿って、active な `blocking` / `urgent`

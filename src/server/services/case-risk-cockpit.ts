@@ -11,6 +11,10 @@ import {
 } from '@/lib/risk/risk-finding';
 import { japanDateKey } from '@/lib/utils/date-boundary';
 import { describeBillingEvidenceBlockers } from '@/server/services/billing-evidence/core';
+import {
+  adaptBillingEvidenceBlockerToRiskFinding,
+  adaptOperationalTaskToRiskFinding,
+} from '@/server/services/risk-finding-registry';
 import type {
   CaseRiskCockpitResponse,
   CaseRiskCockpitSection,
@@ -96,6 +100,7 @@ type CareReportRow = {
 
 type TaskRow = {
   id: string;
+  task_type: string;
   title: string;
   priority: 'urgent' | 'high' | 'normal' | 'low';
   status: string;
@@ -396,39 +401,14 @@ function pushTaskFindings(args: {
   now: Date;
 }) {
   for (const task of args.tasks) {
-    const overdue = isBeforeDay(task.sla_due_at ?? task.due_date, args.now);
-    addFinding(args.findings, {
-      key: `task:${task.id}`,
-      domain: 'task_sla',
-      severity: task.priority === 'urgent' ? 'urgent' : overdue ? 'urgent' : 'warning',
-      title: '未解決タスクがあります',
-      detail: '患者またはケースに紐づく未解決タスクがあります。',
-      patient_id: args.patientId,
-      case_id: args.caseId,
-      assigned_to: task.assigned_to,
-      due_at: toIso(task.sla_due_at ?? task.due_date),
-      related_entity_type: 'task',
-      related_entity_id: task.id,
-      action_href: `/tasks?task_id=${encodeURIComponent(task.id)}`,
-      action_label: 'タスクを確認',
-      source: 'manual',
-    });
+    args.findings.push(
+      adaptOperationalTaskToRiskFinding(task, {
+        patientId: args.patientId,
+        caseId: args.caseId,
+        now: args.now,
+      }),
+    );
   }
-}
-
-function describeBillingBlockerDetail(key: string) {
-  const details: Record<string, string> = {
-    missing_visit_consent: '訪問同意が未整備のため、算定根拠を確定できません。',
-    missing_management_plan: '管理計画書が未整備のため、算定根拠を確定できません。',
-    management_plan_review_overdue: '管理計画書の見直し期限超過により、算定根拠の確認が必要です。',
-    initial_home_visit_assessment_missing: '初回訪問評価の記録確認が必要です。',
-    report_delivery_incomplete: '報告書送付が未完了のため、算定根拠の確認が必要です。',
-    care_certification_pending: '介護認定情報の確認が必要です。',
-    public_subsidy_application_pending: '公費申請状況の確認が必要です。',
-    qr_insurance_review_pending: 'QR由来保険情報の確認が必要です。',
-    outcome_not_claimable: '訪問結果または算定条件の確認が必要です。',
-  };
-  return details[key] ?? '算定根拠の確認が必要です。';
 }
 
 function pushBillingFindings(args: {
@@ -451,24 +431,14 @@ function pushBillingFindings(args: {
     });
 
     for (const blocker of blockers) {
-      addFinding(args.findings, {
-        key: `billing:${evidence.id}:${blocker.key}`,
-        domain: 'billing',
-        severity:
-          blocker.severity === 'urgent'
-            ? 'urgent'
-            : blocker.severity === 'high'
-              ? 'warning'
-              : 'warning',
-        title: '算定根拠の確認が必要です',
-        detail: describeBillingBlockerDetail(blocker.key),
-        patient_id: args.patientId,
-        case_id: args.caseId,
-        related_entity_type: 'billing_evidence',
-        related_entity_id: evidence.id,
-        action_href: blocker.action_href,
-        action_label: blocker.action_label,
-      });
+      args.findings.push(
+        adaptBillingEvidenceBlockerToRiskFinding(blocker, {
+          patientId: args.patientId,
+          caseId: args.caseId,
+          visitRecordId: evidence.visit_record_id,
+          billingEvidenceId: evidence.id,
+        }),
+      );
     }
   }
 }
@@ -614,6 +584,7 @@ export async function getCaseRiskCockpit(
         take: 8,
         select: {
           id: true,
+          task_type: true,
           title: true,
           priority: true,
           status: true,

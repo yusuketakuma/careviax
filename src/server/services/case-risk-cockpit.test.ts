@@ -108,6 +108,7 @@ describe('getCaseRiskCockpit', () => {
     db.task.findMany.mockResolvedValue([
       {
         id: 'task/1',
+        task_type: 'patient_foundation_review',
         title: '至急タスク',
         priority: 'urgent',
         status: 'pending',
@@ -119,6 +120,7 @@ describe('getCaseRiskCockpit', () => {
       },
       {
         id: 'task_other_patient',
+        task_type: 'patient_foundation_review',
         title: '別患者タスク',
         priority: 'urgent',
         status: 'pending',
@@ -210,6 +212,8 @@ describe('getCaseRiskCockpit', () => {
     expect(findings.map((finding) => finding.key)).not.toContain(
       'billing:bill_other_patient_same_record:missing_visit_consent',
     );
+    expect(JSON.stringify(result)).not.toContain('至急タスク');
+    expect(JSON.stringify(result)).toContain('正本確認タスク');
 
     for (const finding of findings) {
       expect(finding.action_href).toMatch(/^\//);
@@ -266,6 +270,7 @@ describe('getCaseRiskCockpit', () => {
     db.task.findMany.mockResolvedValue([
       {
         id: 'task_due_jst',
+        task_type: 'patient_foundation_review',
         title: '期限タスク',
         priority: 'normal',
         status: 'pending',

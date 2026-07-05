@@ -687,10 +687,17 @@ FE 仕上げ（低優先）:
     `src/app/api/cases/[id]/risk-cockpit/route.test.ts` で、scope 失敗時に downstream を読まないこと、
     forbidden/blank/not-found/500 no-store、PHI-free 500、section ordering、rollup、`action_href`、
     hostile id encoding、task/report/billing 混入防止を固定。
+  - 2026-07-06 追加 partial: cockpit 内に残っていた billing blocker detail table と task finding の
+    route-local 実装を削除し、`risk-finding-registry.ts` の
+    `adaptBillingEvidenceBlockerToRiskFinding` / `adaptOperationalTaskToRiskFinding` へ接続。
+    open task は `task_type` を select し、raw `Task.title` ではなく `operational-task-presentation` の
+    controlled queue label/action を使う。これにより Case Risk Cockpit と CORE-001 registry の
+    billing/task 語彙を統一し、raw task title の PHI/free-text 混入を regression test で固定した。
 - 残:
-- CORE-001 の shared Risk Finding Registry へ型を寄せる作業は初期完了。残は domain adapter 拡張と
-  cockpit 内の既存 finding 生成の段階的 adapter 化。
-  - medication / dispensing / notification / privacy_security / integration / data_quality adapter を追加。
+- CORE-001 の shared Risk Finding Registry へ型を寄せる作業は初期完了。Case Risk Cockpit の
+  billing/task finding は adapter 化済み。残は domain adapter 拡張と未接続 domain の段階的 adapter 化。
+  - medication / dispensing / visit_preparation detail / notification / privacy_security / integration /
+    data_quality adapter を追加。
   - 患者/ケース詳細 UI の Command Center から呼び、`gpt-image-2` 方針に従う非 PHI 参照案と
     mobile/error state を確認してから配置する。
 
