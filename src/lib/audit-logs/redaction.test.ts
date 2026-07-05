@@ -56,16 +56,52 @@ describe('redactAuditLogChangesForResponse', () => {
     expect(redactAuditLogChangesForResponse(log)).toBe(log);
   });
 
-  it('leaves other audit actions unchanged', () => {
+  it('minimizes export audit changes instead of returning arbitrary raw fields', () => {
     const log = {
       id: 'audit_export_1',
       action: 'export',
       changes: {
-        reject_reason: '自由記載',
+        format: 'zip',
+        record_count: 2,
+        filters: {
+          patient: 'patient_1',
+          status: 'active',
+        },
+        metadata: {
+          job_id: 'job_1',
+          patient_ids: ['patient_1', 'patient_2'],
+          patient_count: 2,
+          requested_count: 2,
+          patient_selection_hash: 'hash-1',
+          storageKey: 'bulk-exports/org_1/job_1/raw.zip',
+          provider_raw_error: '患者A token=secret',
+        },
       },
     };
 
-    expect(redactAuditLogChangesForResponse(log)).toBe(log);
+    const result = redactAuditLogChangesForResponse(log);
+    const resultText = JSON.stringify(result);
+
+    expect(result).not.toBe(log);
+    expect(result.changes).toEqual({
+      format: 'zip',
+      record_count: 2,
+      filters: {
+        status: 'active',
+      },
+      metadata: {
+        job_id: 'job_1',
+        patient_count: 2,
+        requested_count: 2,
+        patient_selection_hash: 'hash-1',
+      },
+    });
+    expect(resultText).not.toContain('patient_1');
+    expect(resultText).not.toContain('patient_2');
+    expect(resultText).not.toContain('storageKey');
+    expect(resultText).not.toContain('bulk-exports');
+    expect(resultText).not.toContain('患者A');
+    expect(resultText).not.toContain('secret');
   });
 
   it('minimizes formulary request free text without hiding structured evidence', () => {

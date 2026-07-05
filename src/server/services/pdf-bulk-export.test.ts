@@ -222,11 +222,16 @@ describe('pdf-bulk-export', () => {
           record_count: 2,
           metadata: {
             job_id: 'job_1',
-            patient_ids: ['patient_1', 'patient_2'],
+            status: 'queued',
+            patient_count: 2,
+            requested_count: 2,
+            patient_selection_hash: expect.any(String),
           },
         }),
       }),
     });
+    expect(JSON.stringify(auditLogCreateMock.mock.calls)).not.toContain('patient_1');
+    expect(JSON.stringify(auditLogCreateMock.mock.calls)).not.toContain('patient_2');
   });
 
   it('rejects blank patient ids before queueing a medication history bulk export job', async () => {
@@ -404,6 +409,11 @@ describe('pdf-bulk-export', () => {
             requested_count: 2,
             success_count: 2,
             failed_count: 0,
+            failure_codes: {
+              pdf_not_found: 0,
+              render_failed: 0,
+            },
+            patient_selection_hash: expect.any(String),
           },
         }),
       }),
@@ -436,6 +446,11 @@ describe('pdf-bulk-export', () => {
         data: expect.objectContaining({
           status: 'failed',
           error_log: '一括出力ジョブの入力が不正です',
+          input: {
+            version: 1,
+            requestedBy: 'user_1',
+            invalid_input: true,
+          },
           locked_at: null,
         }),
       }),
@@ -458,23 +473,35 @@ describe('pdf-bulk-export', () => {
       jobId: 'job_1',
       fileId: 'file_1',
       patientCount: 1,
-      errors: ['patient_2: PDF 生成に失敗しました'],
+      errors: ['PDF 生成に失敗しました'],
     });
     expect(integrationJobUpdateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           status: 'completed',
+          input: {
+            version: 1,
+            requestedBy: 'user_1',
+            patient_count: 2,
+            patient_selection_hash: expect.any(String),
+          },
           output: expect.objectContaining({
             jobId: 'job_1',
             fileId: 'file_1',
             requestedCount: 2,
             patientCount: 1,
             failedCount: 1,
-            errors: ['patient_2: PDF 生成に失敗しました'],
+            failureCodes: {
+              pdf_not_found: 0,
+              render_failed: 1,
+            },
           }),
         }),
       }),
     );
+    const persistedUpdateJson = JSON.stringify(integrationJobUpdateManyMock.mock.calls);
+    expect(persistedUpdateJson).not.toContain('patient_1');
+    expect(persistedUpdateJson).not.toContain('patient_2');
     expect(auditLogCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         target_type: 'medication_history',
@@ -488,10 +515,16 @@ describe('pdf-bulk-export', () => {
             requested_count: 2,
             success_count: 1,
             failed_count: 1,
+            failure_codes: {
+              pdf_not_found: 0,
+              render_failed: 1,
+            },
+            patient_selection_hash: expect.any(String),
           },
         }),
       }),
     });
+    expect(JSON.stringify(auditLogCreateMock.mock.calls)).not.toContain('patient_2');
   });
 
   it('fails oversized rendered PDFs before zipping or storing the archive', async () => {

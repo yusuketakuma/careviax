@@ -187,6 +187,67 @@ describe('recordDataExportAudit', () => {
     });
   });
 
+  it('minimizes hostile export filters and metadata before persistence', async () => {
+    auditLogCreateMock.mockResolvedValue({});
+
+    await recordDataExportAudit(db, {
+      orgId: 'org-1',
+      actorId: 'user-1',
+      targetType: 'medication_history',
+      targetId: 'job-1',
+      format: 'zip',
+      recordCount: 2,
+      filters: {
+        patient_ids: ['patient_1', 'patient_2'],
+        status: 'active',
+      },
+      metadata: {
+        job_id: 'job-1',
+        file_id: 'file-1',
+        patient_ids: ['patient_1', 'patient_2'],
+        patient_count: 2,
+        requested_count: 2,
+        success_count: 1,
+        failed_count: 1,
+        failure_codes: { render_failed: 1 },
+        patient_selection_hash: 'hash-1',
+        storageKey: 'bulk-exports/org_1/job-1/raw.zip',
+        objectKey: 'bulk-exports/org_1/job-1/raw.zip',
+        provider_raw_error: 'patient=患者A token=secret',
+        url: 'https://signed.example/raw',
+      },
+    });
+
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        target_type: 'medication_history',
+        changes: {
+          format: 'zip',
+          record_count: 2,
+          filters: {},
+          metadata: {
+            job_id: 'job-1',
+            file_id: 'file-1',
+            patient_count: 2,
+            requested_count: 2,
+            success_count: 1,
+            failed_count: 1,
+            failure_codes: { render_failed: 1 },
+            patient_selection_hash: 'hash-1',
+          },
+        },
+      }),
+    });
+    const persisted = JSON.stringify(auditLogCreateMock.mock.calls);
+    expect(persisted).not.toContain('patient_1');
+    expect(persisted).not.toContain('patient_2');
+    expect(persisted).not.toContain('storageKey');
+    expect(persisted).not.toContain('objectKey');
+    expect(persisted).not.toContain('患者A');
+    expect(persisted).not.toContain('secret');
+    expect(persisted).not.toContain('signed.example');
+  });
+
   it('records file downloads without reusing PDF or ZIP export formats', async () => {
     auditLogCreateMock.mockResolvedValue({});
 
@@ -220,6 +281,41 @@ describe('recordDataExportAudit', () => {
         }),
       }),
     });
+  });
+
+  it('drops unsafe file download metadata while keeping the file profile summary', async () => {
+    auditLogCreateMock.mockResolvedValue({});
+
+    await recordDataExportAudit(db, {
+      orgId: 'org-1',
+      actorId: 'user-1',
+      targetType: 'file_asset',
+      targetId: 'file-1',
+      format: 'file',
+      recordCount: 1,
+      metadata: {
+        file_purpose: 'report',
+        mime_type: 'application/pdf',
+        size_bytes: 1024,
+        storageKey: 'reports/org_1/report_1/file_1-report.pdf',
+        token: 'secret',
+      },
+    });
+
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        changes: expect.objectContaining({
+          metadata: {
+            file_purpose: 'report',
+            mime_type: 'application/pdf',
+            size_bytes: 1024,
+          },
+        }),
+      }),
+    });
+    const persisted = JSON.stringify(auditLogCreateMock.mock.calls);
+    expect(persisted).not.toContain('reports/org_1/report_1');
+    expect(persisted).not.toContain('secret');
   });
 
   it('supports an explicit action for download-specific audit search', async () => {

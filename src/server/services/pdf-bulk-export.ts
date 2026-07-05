@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { zipSync } from 'fflate';
 import { z } from 'zod';
@@ -61,6 +62,13 @@ type MedicationHistoryBulkExportResult = {
   errors?: string[];
 };
 
+type BulkExportRenderErrorCode = 'pdf_not_found' | 'render_failed';
+
+type BulkExportRenderError = {
+  code: BulkExportRenderErrorCode;
+  message: string;
+};
+
 type PdfRenderResult =
   | {
       patientId: string;
@@ -70,6 +78,7 @@ type PdfRenderResult =
   | {
       patientId: string;
       error: string;
+      errorCode: BulkExportRenderErrorCode;
     };
 
 export class MedicationHistoryBulkExportError extends Error {
@@ -102,6 +111,59 @@ function getSafeBulkExportFailureMessage(cause: unknown) {
 
 function uniqueStrings(values: string[]) {
   return Array.from(new Set(values));
+}
+
+function buildPatientSelectionHash(orgId: string, patientIds: string[]) {
+  return createHash('sha256')
+    .update(orgId)
+    .update('\0')
+    .update([...patientIds].sort().join('\0'))
+    .digest('hex');
+}
+
+function buildTerminalBulkExportInput(args: {
+  orgId: string;
+  requestedBy: string;
+  patientIds: string[];
+}) {
+  return {
+    version: 1,
+    requestedBy: args.requestedBy,
+    patient_count: args.patientIds.length,
+    patient_selection_hash: buildPatientSelectionHash(args.orgId, args.patientIds),
+  } satisfies Prisma.InputJsonValue;
+}
+
+function buildInvalidTerminalBulkExportInput(input: Prisma.JsonValue) {
+  const requestedBy =
+    input && typeof input === 'object' && !Array.isArray(input) && 'requestedBy' in input
+      ? (input as Record<string, unknown>).requestedBy
+      : null;
+
+  return {
+    version: 1,
+    requestedBy:
+      typeof requestedBy === 'string' && requestedBy.trim() ? requestedBy.trim() : 'unknown',
+    invalid_input: true,
+  } satisfies Prisma.InputJsonValue;
+}
+
+function buildTimeoutTerminalBulkExportInput() {
+  return {
+    version: 1,
+    terminal_reason: 'timeout',
+    input_redacted: true,
+  } satisfies Prisma.InputJsonValue;
+}
+
+function summarizeBulkExportRenderErrors(errors: BulkExportRenderError[]) {
+  return errors.reduce<Record<BulkExportRenderErrorCode, number>>(
+    (summary, error) => {
+      summary[error.code] += 1;
+      return summary;
+    },
+    { pdf_not_found: 0, render_failed: 0 },
+  );
 }
 
 function formatTimestampForFileName(date = new Date()) {
@@ -326,6 +388,7 @@ async function recoverStaleBulkExportRunningJobs(args: {
     data: {
       status: 'failed',
       error_log: '薬歴 PDF 一括出力ジョブがタイムアウトしました',
+      input: buildTimeoutTerminalBulkExportInput(),
       completed_at: now,
       locked_at: null,
       retry_count: { increment: 1 },
@@ -465,7 +528,7 @@ async function buildMedicationHistoryArchive(
   orgId: string,
   patientIds: string[],
   onProgress?: () => Promise<void>,
-): Promise<{ zipEntries: Record<string, Uint8Array>; errors: string[] }> {
+): Promise<{ zipEntries: Record<string, Uint8Array>; errors: BulkExportRenderError[] }> {
   const pdfs = await mapWithConcurrency(
     patientIds,
     PDF_RENDER_CONCURRENCY,
@@ -485,6 +548,7 @@ async function buildMedicationHistoryArchive(
         return {
           patientId,
           error: message,
+          errorCode: error instanceof PdfNotFoundError ? 'pdf_not_found' : 'render_failed',
         };
       } finally {
         await onProgress?.();
@@ -493,11 +557,11 @@ async function buildMedicationHistoryArchive(
   );
 
   const zipEntries: Record<string, Uint8Array> = {};
-  const errors: string[] = [];
+  const errors: BulkExportRenderError[] = [];
 
   for (const pdf of pdfs) {
     if ('error' in pdf) {
-      errors.push(`${pdf.patientId}: ${pdf.error}`);
+      errors.push({ code: pdf.errorCode, message: pdf.error });
       continue;
     }
     zipEntries[pdf.fileName] = new Uint8Array(pdf.buffer);
@@ -600,7 +664,10 @@ export async function queueMedicationHistoryBulkExport(args: QueueMedicationHist
       recordCount: normalizedPatientIds.length,
       metadata: {
         job_id: job.id,
-        patient_ids: normalizedPatientIds,
+        status: 'queued',
+        patient_count: normalizedPatientIds.length,
+        requested_count: normalizedPatientIds.length,
+        patient_selection_hash: buildPatientSelectionHash(args.orgId, normalizedPatientIds),
       },
       ipAddress: args.auditContext?.ipAddress,
       userAgent: args.auditContext?.userAgent,
@@ -704,6 +771,7 @@ export async function runMedicationHistoryBulkExportJob(
       data: {
         status: 'failed',
         error_log: message,
+        input: buildInvalidTerminalBulkExportInput(job.input),
         completed_at: new Date(),
         locked_at: null,
         retry_count: { increment: 1 },
@@ -759,6 +827,7 @@ export async function runMedicationHistoryBulkExportJob(
       heartbeat,
     );
     const patientCount = Object.keys(zipEntries).length;
+    const failureCodes = summarizeBulkExportRenderErrors(errors);
 
     if (patientCount === 0) {
       throw new MedicationHistoryBulkExportError(
@@ -792,8 +861,13 @@ export async function runMedicationHistoryBulkExportJob(
       patientCount,
       requestedCount: parsedInput.data.patientIds.length,
       failedCount: errors.length,
-      errors: errors.slice(0, MAX_REPORTED_ERRORS),
+      failureCodes,
     };
+    const terminalInput = buildTerminalBulkExportInput({
+      orgId: job.org_id,
+      requestedBy: parsedInput.data.requestedBy,
+      patientIds: parsedInput.data.patientIds,
+    });
 
     const completed = await prisma.$transaction(async (tx) => {
       const updated = await tx.integrationJob.updateMany({
@@ -804,6 +878,7 @@ export async function runMedicationHistoryBulkExportJob(
         },
         data: {
           status: 'completed',
+          input: terminalInput,
           output: result satisfies Prisma.InputJsonValue,
           completed_at: new Date(),
           locked_at: null,
@@ -827,6 +902,8 @@ export async function runMedicationHistoryBulkExportJob(
           requested_count: parsedInput.data.patientIds.length,
           success_count: patientCount,
           failed_count: errors.length,
+          failure_codes: failureCodes,
+          patient_selection_hash: terminalInput.patient_selection_hash,
         },
       });
 
@@ -877,7 +954,7 @@ export async function runMedicationHistoryBulkExportJob(
       jobId: job.id,
       fileId: storedFile.id,
       patientCount,
-      errors,
+      errors: errors.slice(0, MAX_REPORTED_ERRORS).map((error) => error.message),
     };
   } catch (cause) {
     if (cause instanceof BulkExportLockLostError) {
@@ -916,6 +993,11 @@ export async function runMedicationHistoryBulkExportJob(
       data: {
         status: 'failed',
         error_log: message,
+        input: buildTerminalBulkExportInput({
+          orgId: job.org_id,
+          requestedBy: parsedInput.data.requestedBy,
+          patientIds: parsedInput.data.patientIds,
+        }),
         completed_at: new Date(),
         locked_at: null,
       },

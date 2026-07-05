@@ -21,6 +21,148 @@ type AuditClient = {
   };
 };
 
+const blockedAuditKeyPattern =
+  /(patient_?ids?|patientIds?|storage_?key|object_?key|token|secret|url|href|raw|error|stack|address|phone|insurance|note|memo|text|body|content)/i;
+const safePatientAggregateKeys = new Set([
+  'patient_count',
+  'patient_selection_hash',
+  'requested_count',
+  'success_count',
+  'failed_count',
+]);
+
+const allowedFilterKeysByTarget = new Map<string, Set<string>>([
+  [
+    'audit_log',
+    new Set([
+      'actor',
+      'actorPharmacy',
+      'actorSite',
+      'patient',
+      'targetType',
+      'action',
+      'from',
+      'to',
+    ]),
+  ],
+  ['patient_list', new Set(['case_status', 'truncated'])],
+  ['patients', new Set(['status'])],
+  ['prescription_history', new Set(['intake_count', 'truncated'])],
+  [
+    'billing_candidate',
+    new Set(['month', 'status', 'review_state', 'resolution_state', 'truncated']),
+  ],
+  ['communication_request', new Set(['status', 'truncated', 'from', 'to'])],
+]);
+
+const allowedMetadataKeysByTarget = new Map<string, Set<string>>([
+  [
+    'medication_history',
+    new Set([
+      'job_id',
+      'file_id',
+      'status',
+      'patient_count',
+      'requested_count',
+      'success_count',
+      'failed_count',
+      'failure_codes',
+      'patient_selection_hash',
+    ]),
+  ],
+  ['file_asset', new Set(['file_purpose', 'mime_type', 'size_bytes'])],
+  ['billing_candidate', new Set(['export_format'])],
+  ['patients', new Set(['source'])],
+  ['patient_list', new Set(['source'])],
+]);
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isBlockedAuditKey(key: string) {
+  return !safePatientAggregateKeys.has(key) && blockedAuditKeyPattern.test(key);
+}
+
+function sanitizeAuditScalar(value: unknown): unknown {
+  if (
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean' ||
+    value === null
+  ) {
+    return value;
+  }
+
+  return undefined;
+}
+
+function sanitizeAuditValue(value: unknown): unknown {
+  const scalar = sanitizeAuditScalar(value);
+  if (scalar !== undefined) return scalar;
+
+  if (Array.isArray(value)) {
+    const sanitizedValues = value
+      .map((item) => sanitizeAuditScalar(item))
+      .filter((item) => item !== undefined);
+    return sanitizedValues.length === value.length ? sanitizedValues : undefined;
+  }
+
+  if (isPlainObject(value)) {
+    const sanitized: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value)) {
+      if (isBlockedAuditKey(key)) continue;
+      const sanitizedValue = sanitizeAuditValue(item);
+      if (sanitizedValue !== undefined) {
+        sanitized[key] = sanitizedValue;
+      }
+    }
+
+    return sanitized;
+  }
+
+  return undefined;
+}
+
+function sanitizeAuditRecord(
+  targetType: string,
+  values: Record<string, unknown> | undefined,
+  allowedKeysByTarget: Map<string, Set<string>>,
+) {
+  if (!values) return {};
+  const allowedKeys = allowedKeysByTarget.get(targetType);
+  if (!allowedKeys) return {};
+  const sanitized: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(values)) {
+    if (isBlockedAuditKey(key)) continue;
+    if (allowedKeys && !allowedKeys.has(key)) continue;
+    const sanitizedValue = sanitizeAuditValue(value);
+    if (sanitizedValue !== undefined) {
+      sanitized[key] = sanitizedValue;
+    }
+  }
+
+  return sanitized;
+}
+
+export function buildDataExportAuditChanges(args: {
+  targetType: string;
+  format: 'csv' | 'json' | 'zip' | 'pdf' | 'print' | 'claims-xml' | 'file';
+  recordCount?: number;
+  filters?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+}) {
+  return (
+    normalizeJsonInput({
+      format: args.format,
+      record_count: args.recordCount ?? null,
+      filters: sanitizeAuditRecord(args.targetType, args.filters, allowedFilterKeysByTarget),
+      metadata: sanitizeAuditRecord(args.targetType, args.metadata, allowedMetadataKeysByTarget),
+    }) ?? {}
+  );
+}
+
 export async function recordDataExportAudit(
   db: AuditClient,
   args: {
@@ -50,13 +192,7 @@ export async function recordDataExportAudit(
       action: args.action ?? 'export',
       target_type: args.targetType,
       target_id: args.targetId ?? 'bulk',
-      changes:
-        normalizeJsonInput({
-          format: args.format,
-          record_count: args.recordCount ?? null,
-          filters: args.filters ?? {},
-          metadata: args.metadata ?? {},
-        }) ?? {},
+      changes: buildDataExportAuditChanges(args),
       ip_address: args.ipAddress,
       user_agent: args.userAgent,
     },
