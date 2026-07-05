@@ -3333,3 +3333,20 @@
 - remaining:
   Broader `DEV-PHI-001` remains open for PDF/report/attachment/export snapshot breadth and audit risk-tier
   UI/review workflow.
+
+## 2026-07-06 Plans UI image generation model clarification
+
+- codex: Plans.md UI design generation policy clarified.
+  ユーザー指示「gpt-image-2 を使うことを追記」に対応し、既存の `imagegen` + `gpt-image-2`
+  方針へ、`imagegen` 実行時の標準モデル指定は `gpt-image-2` とすることを明示追記した。
+- files inspected:
+  `Plans.md`, `ops/refactor/STATE.md`.
+- files changed:
+  `Plans.md`, `ops/refactor/STATE.md`.
+- bugs/security/performance:
+  実装コード変更なし。PHI/secret を prompt に入れない既存ルールは維持。
+- validation:
+  `git diff --check -- Plans.md ops/refactor/STATE.md` green.
+- remaining:
+  実際の UI/UX 実装 slice では、対象画面に応じて `imagegen` / `gpt-image-2` の参照案、
+  `docs/ui-ux-design-guidelines.md`、画面状態/失敗状態/モバイル状態を合わせて確認する。
