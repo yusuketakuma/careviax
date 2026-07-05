@@ -40,6 +40,52 @@
 
 ## 直近の land（本日・要点）
 
+- codex: DASH-PERF-001 Dashboard browser verification / route-mock contract follow-up complete（commit pending）。
+  - current task:
+    前 commit `c5d96d423` の dashboard segmented query UI を real-browser smoke で検証。
+    併せて `tools/tests/ui-route-mocked-smoke.spec.ts` の schedule day Gantt route mock が旧
+    `/api/dashboard/cockpit` だけを返していたため、現行 `/summary` / `/details` / `/team`
+    contract を追加。検証中に day-board fixture が現行 `staff_counts` /
+    `pending_proposal_counts` / `operational_tasks` contract を満たさず route error に落ちる
+    既存 test fixture drift を検出し、fixture を current response shape へ補完した。
+  - files inspected:
+    `tools/tests/ui-dashboard-nav.spec.ts`,
+    `tools/tests/ui-route-mocked-smoke.spec.ts`,
+    `tools/tests/helpers/route-mocks.ts`,
+    `playwright.local.config.ts`,
+    `tools/tests/helpers/local-auth.ts`,
+    `src/app/(dashboard)/schedules/schedule-team-board.tsx`,
+    `src/types/schedule-day-board.ts`,
+    `ops/refactor/STATE.md`。
+  - files changed:
+    `tools/tests/ui-route-mocked-smoke.spec.ts`,
+    `ops/refactor/STATE.md`。
+  - bugs/security risks fixed:
+    route-mocked smoke が dashboard split endpoints を mock せず、今後の smoke で実 endpoint に漏れる
+    false coverage risk を修正。Schedule day mock fixture の counted-list contract drift
+    (`staff_counts` 不足) も補正し、取得失敗を空状態/別エラーへ誤認する検証穴を閉じた。
+  - performance issues improved:
+    実装コード変更なし。dashboard segmented UI の browser smoke により summary-first split の
+    runtime regression を検出できる状態にした。
+  - validation commands/results:
+    `PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-dashboard-nav.spec.ts --project=chromium --grep "dashboard loads with cockpit sections|dashboard renders actionable content in the main region|sidebar dashboard link navigates to the cockpit"`
+    green（3 tests）;
+    initial
+    `PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-route-mocked-smoke.spec.ts --project=chromium --grep "keeps tablet portrait Gantt overflow inside the scroll region"`
+    failed with route error (`staff_counts.total_visit_count` missing), then fixture fixed and rerun green（1 test）;
+    `pnpm exec eslint tools/tests/ui-route-mocked-smoke.spec.ts` green;
+    `pnpm format:check` green;
+    `git diff --check -- tools/tests/ui-route-mocked-smoke.spec.ts` green;
+    `pnpm vitest run src/app/\(dashboard\)/dashboard/dashboard-cockpit.test.tsx src/app/\(dashboard\)/dashboard/dashboard-content.test.tsx --reporter=dot`
+    green（2 files / 19 tests）;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` green。
+  - remaining work:
+    `focusRole` による tile ordering/next action 優先度の本格実装、payload bytes/p95 永続化、
+    DASH-COMM-001 コメントフィード、PAT-LIST-PERF-001 server-side search/filter は未着手。
+  - next action:
+    `PAT-LIST-PERF-001` または `PERF-X-001/002` へ進む。
+
 - codex: DASH-PERF-001 Dashboard UI summary-first split continuation complete（commit `c5d96d423`）。
   - current task:
     Goal 継続として、前段で追加した `/api/dashboard/cockpit/summary` / `details` / `team`

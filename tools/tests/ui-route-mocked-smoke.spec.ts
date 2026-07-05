@@ -363,6 +363,10 @@ const GANTT_ROUTE_MOCK_SCHEDULES = [
 ];
 
 function buildGanttDayBoardResponse() {
+  const totalVisitCount = GANTT_ROUTE_MOCK_SCHEDULES.length;
+  const totalPreparationAttentionCount = GANTT_ROUTE_MOCK_SCHEDULES.filter(
+    (schedule) => schedule.preparation.prepared_at == null,
+  ).length;
   const toBoardVisit = (schedule: (typeof GANTT_ROUTE_MOCK_SCHEDULES)[number]) => {
     const ready = schedule.preparation.prepared_at != null;
 
@@ -419,6 +423,19 @@ function buildGanttDayBoardResponse() {
         audit_task_count: 0,
       },
     ],
+    staff_counts: {
+      total_count: 2,
+      visible_count: 2,
+      hidden_count: 0,
+      total_visit_count: totalVisitCount,
+      visible_visit_count: totalVisitCount,
+      hidden_visit_count: 0,
+      total_preparation_attention_count: totalPreparationAttentionCount,
+      visible_preparation_attention_count: totalPreparationAttentionCount,
+      hidden_preparation_attention_count: 0,
+      hidden_operational_task_count: 0,
+      limit: 2,
+    },
     audit_pending_count: 1,
     report_pending_count: 0,
     vehicle_resources: [
@@ -437,6 +454,14 @@ function buildGanttDayBoardResponse() {
       },
     ],
     pending_proposals: [],
+    pending_proposal_counts: {
+      total_count: 0,
+      visible_count: 0,
+      hidden_count: 0,
+      limit: 0,
+      hidden_operational_task_count: 0,
+    },
+    operational_tasks: [],
   };
 }
 
@@ -2240,6 +2265,41 @@ async function installScheduleDayGanttRouteMocks(page: Page) {
     await fulfillJson(route, { data: [], hasMore: false });
   });
 
+  await page.route(apiPathPattern('/api/dashboard/cockpit/summary'), async (route) => {
+    await fulfillJson(route, {
+      data: {
+        generated_at: `${GANTT_DATE}T08:00:00.000Z`,
+        cycle_status_counts: {},
+        audit_pending_count: 0,
+        narcotic_audit_count: 0,
+        earliest_audit_due_at: null,
+        today_visit_count: 0,
+        today_visit_times: [],
+      },
+    });
+  });
+
+  await page.route(apiPathPattern('/api/dashboard/cockpit/details'), async (route) => {
+    await fulfillJson(route, {
+      data: {
+        generated_at: `${GANTT_DATE}T08:00:00.000Z`,
+        audit_queue: [],
+        today_visits: [],
+        blocked_reasons: [],
+        carryover_count: 0,
+      },
+    });
+  });
+
+  await page.route(apiPathPattern('/api/dashboard/cockpit/team'), async (route) => {
+    await fulfillJson(route, {
+      data: {
+        generated_at: `${GANTT_DATE}T08:00:00.000Z`,
+        team_capacity: [],
+      },
+    });
+  });
+
   await page.route(apiPathPattern('/api/dashboard/cockpit'), async (route) => {
     await fulfillJson(route, {
       data: {
@@ -2251,6 +2311,7 @@ async function installScheduleDayGanttRouteMocks(page: Page) {
         today_visits: [],
         blocked_reasons: [],
         carryover_count: 0,
+        team_capacity: [],
       },
     });
   });
