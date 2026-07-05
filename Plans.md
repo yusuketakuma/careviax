@@ -721,12 +721,15 @@ FE 仕上げ（低優先）:
   - 2026-07-06 追加 partial: `PatientMcsLink.last_sync_status != success` を `org_id` / `patient_id`
     で scope し、`adaptPatientMcsIntegrationToRiskFinding` で integration domain へ接続。MCS の raw
     error や外部 URL は選択せず、同期状態と時刻だけで controlled finding を返す。
+  - 2026-07-06 追加 partial: active `PatientShareCase` を `org_id` / `base_patient_id` /
+    `base_case_id|null` で scope し、終了日超過、有効同意欠落、添付/印刷/PDF/ダウンロード系 scope 有効を
+    `adaptPatientSharePrivacyToRiskFindings` で privacy_security domain へ接続。partner 名、患者 snapshot、
+    同意者名、file id、scope 内の自由記載は response に出さない。
 - 残:
   - CORE-001 の shared Risk Finding Registry へ型を寄せる作業は初期完了。Case Risk Cockpit の
     billing/task/report/visit_preparation/consent_plan lifecycle/dispensing/medication reconciliation/notification
-    /data_quality/integration finding は adapter 化済み。残は domain adapter 拡張と未接続 domain の段階的
-    adapter 化。
-  - privacy_security adapter を追加。
+    /privacy_security/data_quality/integration finding は adapter 化済み。残は未接続 domain の段階的 adapter 化と
+    domain 別 task bridge。
   - 患者/ケース詳細 UI の Command Center から呼び、`gpt-image-2` 方針に従う非 PHI 参照案と
     mobile/error state を確認してから配置する。
 

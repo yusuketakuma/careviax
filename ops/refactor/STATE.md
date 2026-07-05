@@ -40,6 +40,70 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Case Risk Cockpit patient share privacy adapter slice（ready to commit）。
+  - current task:
+    `Plans.md` の `RISK-CORE-3 / CORE-003` / privacy_security adapter 拡張として、active
+    `PatientShareCase` の共有期限・有効同意・出力系 scope を Case Risk Cockpit に接続した。
+    `adaptPatientSharePrivacyToRiskFindings` が、終了日超過、有効同意欠落、添付/印刷/PDF/
+    ダウンロード scope 有効を privacy_security domain の controlled finding へ変換する。
+  - subagent:
+    `privacy_compliance_reviewer` の新規投入を試行したが、`agent thread limit reached` で起動不可。
+    Codex 本体で `PatientShareCase` / `PatientShareConsent` schema、patient share access/policy/scope
+    helper、Case Risk Cockpit、registry、tests を確認して実装・検証した。
+  - design / imagegen:
+    backend adapter/API response slice で視覚レイアウト変更を伴わないため、`imagegen` / `gpt-image-2`
+    の新規生成は省略。外部共有 risk を患者詳細 Command Center / 共有設定 UI に表示する slice では
+    PH-OS UI/UX SSOT と `gpt-image-2` 方針に従い、非 PHI mockup を先に作る。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `prisma/schema/pharmacy-partnership.prisma`,
+    `prisma/schema/communication.prisma`,
+    `src/server/services/patient-share-access.ts`,
+    `src/server/services/patient-share-scope.ts`,
+    `src/server/services/patient-share-policy.ts`,
+    `src/server/services/pharmacy-partnerships.ts`,
+    `src/lib/risk/risk-finding.ts`,
+    `src/server/services/case-risk-cockpit.ts`,
+    `src/server/services/case-risk-cockpit.test.ts`,
+    `src/server/services/risk-finding-registry.ts`,
+    `src/server/services/risk-finding-registry.test.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/case-risk-cockpit.ts`,
+    `src/server/services/case-risk-cockpit.test.ts`,
+    `src/server/services/risk-finding-registry.ts`,
+    `src/server/services/risk-finding-registry.test.ts`.
+  - bugs / risks reduced:
+    Case Risk Cockpit の privacy_security section が空のままで、active 外部共有の期限切れ・有効同意欠落・
+    出力系 scope 有効が患者/ケース単位の「止まっている理由」に出なかった。共有設定画面への next action として
+    controlled finding を返す。
+  - security / PHI reviewed:
+    query は `org_id` / `base_patient_id` / `base_case_id|null` / `status=active` で scope。
+    select は share case id/status/share_scope/ends_at/updated_at と consent の id/consent_date/
+    valid_until/revoked_at だけに限定。partner 名、患者 snapshot、同意者名、file id、scope 内自由記載は
+    response に出さないことを focused tests で固定した。
+  - performance issues improved:
+    `PatientShareCase(org_id, base_patient_id)` / `PatientShareCase(org_id, base_case_id)` index に沿う
+    bounded `take: 8` query。consents は各 share case 最新3件だけ select し、Case Risk Cockpit の payload
+    には finding の controlled text だけを返す。
+  - validation commands:
+    `pnpm exec prettier --write src/server/services/case-risk-cockpit.ts src/server/services/case-risk-cockpit.test.ts src/server/services/risk-finding-registry.ts src/server/services/risk-finding-registry.test.ts`;
+    `pnpm exec vitest run src/server/services/case-risk-cockpit.test.ts src/server/services/risk-finding-registry.test.ts src/lib/risk/risk-finding.test.ts --reporter=dot --testTimeout=30000`;
+    `git diff --check`;
+    `pnpm typecheck`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`;
+    `pnpm lint`.
+  - validation results:
+    focused vitest green（3 files / 24 tests）; `git diff --check` green; typecheck green;
+    typecheck:no-unused green; `pnpm lint` green with existing unrelated warnings in
+    `src/lib/platform/break-glass.test.ts` (`_tx`, `_input` unused warnings only).
+  - remaining work:
+    Broader `Plans.md` objective remains open。残: domain 別 task bridge 接続、Case Risk Cockpit UI 接続、
+    patient share privacy finding の operational task 化。
+
 - codex: Case Risk Cockpit MCS integration adapter slice（committed）。
   - current task:
     `Plans.md` の `RISK-CORE-3 / CORE-003` / integration adapter 拡張として、対象患者の

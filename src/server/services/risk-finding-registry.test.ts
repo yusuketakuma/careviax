@@ -8,6 +8,7 @@ import {
   adaptOperationalTaskToRiskFinding,
   adaptPatientMcsIntegrationToRiskFinding,
   adaptPatientFoundationItemToRiskFinding,
+  adaptPatientSharePrivacyToRiskFindings,
   adaptPrescriptionLineReconciliationToRiskFinding,
   adaptResidenceGeocodeToRiskFinding,
   adaptUpcomingVisitPreparationToRiskFindings,
@@ -507,6 +508,91 @@ describe('risk-finding-registry adapters', () => {
     expect(success).toBeNull();
     expect(JSON.stringify([failed, transient])).not.toContain('medical-care.net');
     expect(JSON.stringify([failed, transient])).not.toContain('provider error');
+  });
+
+  it('maps active patient share privacy risks without exposing share scope or consent details', () => {
+    const findings = adaptPatientSharePrivacyToRiskFindings(
+      {
+        id: 'share/1?x=1',
+        status: 'active',
+        share_scope: {
+          prescription_history: true,
+          medication_profile: true,
+          care_reports: true,
+          attachments: true,
+          note: '患者 山田花子 東京都千代田区1-1-1',
+        },
+        ends_at: '2026-07-01T00:00:00.000Z',
+        updated_at: '2026-07-06T00:00:00.000Z',
+        consents: [
+          {
+            id: 'consent_1',
+            consent_date: '2026-06-01T00:00:00.000Z',
+            valid_until: '2026-07-01T00:00:00.000Z',
+            revoked_at: null,
+          },
+        ],
+      },
+      { patientId: 'patient/1?x=1', caseId: 'case_1', now: '2026-07-06T00:00:00.000Z' },
+    );
+    const healthy = adaptPatientSharePrivacyToRiskFindings(
+      {
+        id: 'share_healthy',
+        status: 'active',
+        share_scope: {
+          prescription_history: true,
+          medication_profile: true,
+          care_reports: true,
+        },
+        ends_at: '2026-07-31T00:00:00.000Z',
+        updated_at: '2026-07-06T00:00:00.000Z',
+        consents: [
+          {
+            id: 'consent_2',
+            consent_date: '2026-07-01T00:00:00.000Z',
+            valid_until: '2026-07-31T00:00:00.000Z',
+            revoked_at: null,
+          },
+        ],
+      },
+      { patientId: 'patient_1', caseId: 'case_1', now: '2026-07-06T00:00:00.000Z' },
+    );
+    const inactive = adaptPatientSharePrivacyToRiskFindings(
+      {
+        id: 'share_inactive',
+        status: 'ended',
+        share_scope: { download: true },
+        consents: [],
+      },
+      { patientId: 'patient_1', caseId: 'case_1', now: '2026-07-06T00:00:00.000Z' },
+    );
+
+    expect(findings.map((finding) => finding.key)).toEqual([
+      'patient_share_expired:share/1?x=1',
+      'patient_share_missing_active_consent:share/1?x=1',
+      'patient_share_output_scope_review:share/1?x=1',
+    ]);
+    expect(findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          domain: 'privacy_security',
+          severity: 'urgent',
+          related_entity_type: 'patient_share_case',
+          related_entity_id: 'share/1?x=1',
+          action_label: '共有設定を確認',
+        }),
+        expect.objectContaining({
+          key: 'patient_share_output_scope_review:share/1?x=1',
+          severity: 'warning',
+        }),
+      ]),
+    );
+    expect(findings[0]?.action_href).toBe(`/patients/${encodeURIComponent('patient/1?x=1')}/share`);
+    expect(healthy).toEqual([]);
+    expect(inactive).toEqual([]);
+    expect(JSON.stringify(findings)).not.toContain('山田花子');
+    expect(JSON.stringify(findings)).not.toContain('東京都千代田区');
+    expect(JSON.stringify(findings)).not.toContain('attachments');
   });
 
   it('keeps patient foundation task dedupe keys distinct per patient', () => {

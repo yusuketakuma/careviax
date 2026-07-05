@@ -9,6 +9,8 @@ import {
 import type { PatientFoundationItem } from '@/server/services/patient-detail-foundation';
 import { buildDispenseTaskHref } from '@/lib/dispense/navigation';
 import { describeOperationalTask } from '@/lib/tasks/operational-task-presentation';
+import { findActivePatientShareConsent } from '@/server/services/pharmacy-partnerships';
+import { enabledPatientShareScopeKeys } from '@/server/services/patient-share-scope';
 import {
   buildRiskDedupeKey,
   createRiskFinding,
@@ -113,6 +115,20 @@ export type PatientMcsIntegrationRiskInput = {
   last_sync_attempt_at?: Date | string | null;
   last_synced_at?: Date | string | null;
   updated_at?: Date | string | null;
+};
+
+export type PatientSharePrivacyRiskInput = {
+  id: string;
+  status: string;
+  share_scope?: unknown;
+  ends_at?: Date | string | null;
+  updated_at?: Date | string | null;
+  consents?: Array<{
+    id: string;
+    consent_date: Date | string;
+    valid_until?: Date | string | null;
+    revoked_at?: Date | string | null;
+  }>;
 };
 
 const BILLING_BLOCKER_TITLE: Record<BillingEvidenceBlocker['key'], string> = {
@@ -223,6 +239,24 @@ function residenceGeocodeTitle(issue: NonNullable<ReturnType<typeof residenceGeo
 function patientMcsIntegrationSeverity(link: PatientMcsIntegrationRiskInput): RiskSeverity {
   if (link.last_sync_status === 'failed' && !link.last_synced_at) return 'urgent';
   return 'warning';
+}
+
+const PATIENT_SHARE_OUTPUT_SCOPE_KEYS = new Set(['attachments', 'print', 'pdf_output', 'download']);
+
+function patientShareConsentForPolicy(
+  consent: NonNullable<PatientSharePrivacyRiskInput['consents']>[number],
+) {
+  return {
+    consent_date: new Date(consent.consent_date),
+    valid_until: consent.valid_until ? new Date(consent.valid_until) : null,
+    revoked_at: consent.revoked_at ? new Date(consent.revoked_at) : null,
+  };
+}
+
+function patientShareHasOutputScope(scope: unknown) {
+  return enabledPatientShareScopeKeys(scope).some((key) =>
+    PATIENT_SHARE_OUTPUT_SCOPE_KEYS.has(key),
+  );
 }
 
 function foundationSeverity(status: PatientFoundationItem['status']): RiskSeverity {
@@ -667,6 +701,76 @@ export function adaptPatientMcsIntegrationToRiskFinding(
       : '/patients',
     action_label: 'MCS連携を確認',
   });
+}
+
+export function adaptPatientSharePrivacyToRiskFindings(
+  shareCase: PatientSharePrivacyRiskInput,
+  context: RiskFindingAdapterContext & { now?: Date | string } = {},
+): RiskFinding[] {
+  if (shareCase.status !== 'active') return [];
+
+  const now = context.now ?? new Date();
+  const patientHref = context.patientId
+    ? `/patients/${encodeURIComponent(context.patientId)}`
+    : '/patients';
+  const actionHref = `${patientHref}/share`;
+  const findings: RiskFinding[] = [];
+  const base = {
+    domain: 'privacy_security' as const,
+    patient_id: context.patientId ?? null,
+    case_id: context.caseId ?? null,
+    related_entity_type: 'patient_share_case',
+    related_entity_id: shareCase.id,
+    action_href: actionHref,
+    action_label: '共有設定を確認',
+  };
+
+  if (isBeforeJapanDay(shareCase.ends_at, now)) {
+    findings.push(
+      createRiskFinding({
+        ...base,
+        key: `patient_share_expired:${shareCase.id}`,
+        severity: 'urgent',
+        title: '外部共有の終了日を過ぎています',
+        detail:
+          '有効状態の患者共有が終了日を過ぎています。共有停止または期間更新を確認してください。',
+        due_at: iso(shareCase.ends_at),
+      }),
+    );
+  }
+
+  const activeConsent = findActivePatientShareConsent(
+    (shareCase.consents ?? []).map(patientShareConsentForPolicy),
+    new Date(now),
+  );
+  if (!activeConsent) {
+    findings.push(
+      createRiskFinding({
+        ...base,
+        key: `patient_share_missing_active_consent:${shareCase.id}`,
+        severity: 'urgent',
+        title: '外部共有の有効同意を確認してください',
+        detail: '有効状態の患者共有に、現在有効な共有同意が確認できません。',
+        due_at: iso(shareCase.updated_at),
+      }),
+    );
+  }
+
+  if (patientShareHasOutputScope(shareCase.share_scope)) {
+    findings.push(
+      createRiskFinding({
+        ...base,
+        key: `patient_share_output_scope_review:${shareCase.id}`,
+        severity: 'warning',
+        title: '外部共有の出力権限レビューが必要です',
+        detail:
+          '添付、印刷、PDF、ダウンロードなどの出力を許可する共有 scope が有効です。目的と期限を確認してください。',
+        due_at: iso(shareCase.updated_at),
+      }),
+    );
+  }
+
+  return findings;
 }
 
 export function adaptOperationalTaskToRiskFinding(

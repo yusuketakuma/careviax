@@ -17,6 +17,7 @@ import {
   adaptNotificationToRiskFinding,
   adaptOperationalTaskToRiskFinding,
   adaptPatientMcsIntegrationToRiskFinding,
+  adaptPatientSharePrivacyToRiskFindings,
   adaptPrescriptionLineReconciliationToRiskFinding,
   adaptResidenceGeocodeToRiskFinding,
   adaptUpcomingVisitPreparationToRiskFindings,
@@ -48,6 +49,7 @@ type CaseRiskCockpitDbReader = {
   notification: FindManyDelegate<NotificationRiskRow>;
   residence: FindManyDelegate<ResidenceRiskRow>;
   patientMcsLink: FindManyDelegate<PatientMcsLinkRiskRow>;
+  patientShareCase: FindManyDelegate<PatientShareCaseRiskRow>;
   task: FindManyDelegate<TaskRow>;
   billingEvidence: FindManyDelegate<BillingEvidenceRow>;
 };
@@ -146,6 +148,20 @@ type PatientMcsLinkRiskRow = {
   last_sync_attempt_at: Date | null;
   last_synced_at: Date | null;
   updated_at: Date;
+};
+
+type PatientShareCaseRiskRow = {
+  id: string;
+  status: string;
+  share_scope: Prisma.JsonValue | null;
+  ends_at: Date | null;
+  updated_at: Date;
+  consents: Array<{
+    id: string;
+    consent_date: Date;
+    valid_until: Date | null;
+    revoked_at: Date | null;
+  }>;
 };
 
 type TaskRow = {
@@ -371,6 +387,24 @@ function pushIntegrationFindings(args: {
   }
 }
 
+function pushPrivacySecurityFindings(args: {
+  findings: CaseRiskFinding[];
+  patientId: string;
+  caseId: string;
+  patientShareCases: PatientShareCaseRiskRow[];
+  now: Date;
+}) {
+  for (const shareCase of args.patientShareCases) {
+    args.findings.push(
+      ...adaptPatientSharePrivacyToRiskFindings(shareCase, {
+        patientId: args.patientId,
+        caseId: args.caseId,
+        now: args.now,
+      }),
+    );
+  }
+}
+
 function pushTaskFindings(args: {
   findings: CaseRiskFinding[];
   patientId: string;
@@ -468,6 +502,7 @@ export async function getCaseRiskCockpit(
     notifications,
     residences,
     patientMcsLinks,
+    patientShareCases,
     tasks,
   ] = await Promise.all([
     db.consentRecord.findFirst({
@@ -659,6 +694,33 @@ export async function getCaseRiskCockpit(
         updated_at: true,
       },
     }),
+    db.patientShareCase.findMany({
+      where: {
+        org_id: args.orgId,
+        base_patient_id: careCase.patient_id,
+        status: 'active',
+        OR: [{ base_case_id: careCase.id }, { base_case_id: null }],
+      },
+      orderBy: [{ updated_at: 'desc' }],
+      take: 8,
+      select: {
+        id: true,
+        status: true,
+        share_scope: true,
+        ends_at: true,
+        updated_at: true,
+        consents: {
+          orderBy: [{ created_at: 'desc' }],
+          take: 3,
+          select: {
+            id: true,
+            consent_date: true,
+            valid_until: true,
+            revoked_at: true,
+          },
+        },
+      },
+    }),
     db.task.findMany({
       where: {
         org_id: args.orgId,
@@ -695,6 +757,7 @@ export async function getCaseRiskCockpit(
   const selectedNotifications = notifications as NotificationRiskRow[];
   const selectedResidences = residences as ResidenceRiskRow[];
   const selectedPatientMcsLinks = patientMcsLinks as PatientMcsLinkRiskRow[];
+  const selectedPatientShareCases = patientShareCases as PatientShareCaseRiskRow[];
   const selectedTasks = tasks as TaskRow[];
 
   const visitRecordIds = selectedSchedules
@@ -789,6 +852,13 @@ export async function getCaseRiskCockpit(
     patientId: careCase.patient_id,
     caseId: careCase.id,
     patientMcsLinks: selectedPatientMcsLinks,
+  });
+  pushPrivacySecurityFindings({
+    findings,
+    patientId: careCase.patient_id,
+    caseId: careCase.id,
+    patientShareCases: selectedPatientShareCases,
+    now,
   });
   pushTaskFindings({
     findings,

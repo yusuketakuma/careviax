@@ -14,6 +14,7 @@ function buildDb() {
     notification: { findMany: vi.fn() },
     residence: { findMany: vi.fn() },
     patientMcsLink: { findMany: vi.fn() },
+    patientShareCase: { findMany: vi.fn() },
     task: { findMany: vi.fn() },
     billingEvidence: { findMany: vi.fn() },
   };
@@ -75,6 +76,7 @@ describe('getCaseRiskCockpit', () => {
     expect(db.notification.findMany).not.toHaveBeenCalled();
     expect(db.residence.findMany).not.toHaveBeenCalled();
     expect(db.patientMcsLink.findMany).not.toHaveBeenCalled();
+    expect(db.patientShareCase.findMany).not.toHaveBeenCalled();
     expect(db.task.findMany).not.toHaveBeenCalled();
     expect(db.billingEvidence.findMany).not.toHaveBeenCalled();
   });
@@ -164,6 +166,36 @@ describe('getCaseRiskCockpit', () => {
         mcs_project_url: 'https://www.medical-care.net/projects/medical/123',
       },
     ]);
+    db.patientShareCase.findMany.mockResolvedValue([
+      {
+        id: 'share/1',
+        status: 'active',
+        share_scope: {
+          prescription_history: true,
+          medication_profile: true,
+          care_reports: true,
+          download: true,
+          note: '患者 太郎 外部共有 raw scope',
+        },
+        ends_at: null,
+        updated_at: new Date('2026-07-05T04:00:00.000Z'),
+        consents: [
+          {
+            id: 'share_consent_1',
+            consent_date: new Date('2026-07-01T00:00:00.000Z'),
+            valid_until: new Date('2026-07-31T00:00:00.000Z'),
+            revoked_at: null,
+            consent_person: '患者 太郎',
+            file_asset_id: 'file_secret_1',
+          },
+        ],
+        partnership: {
+          partner_pharmacy: {
+            name: '連携薬局 raw name',
+          },
+        },
+      },
+    ]);
     db.task.findMany.mockResolvedValue([
       {
         id: 'task/1',
@@ -248,7 +280,7 @@ describe('getCaseRiskCockpit', () => {
       status: 'blocked',
       blocking_count: 3,
       urgent_count: 6,
-      warning_count: 4,
+      warning_count: 5,
     });
 
     const findings = result?.sections.flatMap((section) => section.findings) ?? [];
@@ -263,6 +295,7 @@ describe('getCaseRiskCockpit', () => {
         'notification:notification/1',
         'residence_geocode:residence/1:zero_coordinates',
         'patient_mcs_sync:mcs_link/1',
+        'patient_share_output_scope_review:share/1',
         'dispense_task:dispense/1',
         'report_delivery_failed:report_1',
         'task:task/1',
@@ -282,6 +315,9 @@ describe('getCaseRiskCockpit', () => {
     expect(JSON.stringify(result)).not.toContain('東京都千代田区1-1-1');
     expect(JSON.stringify(result)).not.toContain('MCS raw provider error');
     expect(JSON.stringify(result)).not.toContain('medical-care.net');
+    expect(JSON.stringify(result)).not.toContain('外部共有 raw scope');
+    expect(JSON.stringify(result)).not.toContain('連携薬局 raw name');
+    expect(JSON.stringify(result)).not.toContain('file_secret_1');
     expect(JSON.stringify(result)).toContain('正本確認タスク');
 
     for (const finding of findings) {
@@ -391,6 +427,33 @@ describe('getCaseRiskCockpit', () => {
         },
       }),
     );
+    expect(db.patientShareCase.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          base_patient_id: patientId,
+          status: 'active',
+          OR: [{ base_case_id: 'case_1' }, { base_case_id: null }],
+        },
+        select: {
+          id: true,
+          status: true,
+          share_scope: true,
+          ends_at: true,
+          updated_at: true,
+          consents: {
+            orderBy: [{ created_at: 'desc' }],
+            take: 3,
+            select: {
+              id: true,
+              consent_date: true,
+              valid_until: true,
+              revoked_at: true,
+            },
+          },
+        },
+      }),
+    );
     expect(db.billingEvidence.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -422,6 +485,7 @@ describe('getCaseRiskCockpit', () => {
     db.notification.findMany.mockResolvedValue([]);
     db.residence.findMany.mockResolvedValue([]);
     db.patientMcsLink.findMany.mockResolvedValue([]);
+    db.patientShareCase.findMany.mockResolvedValue([]);
     db.task.findMany.mockResolvedValue([
       {
         id: 'task_due_jst',
