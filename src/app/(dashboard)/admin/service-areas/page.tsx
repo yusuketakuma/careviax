@@ -225,10 +225,7 @@ export default function ServiceAreasPage() {
           }),
         },
       );
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.message ?? '訪問エリアの保存に失敗しました');
-      }
+      await readApiJson<unknown>(res, '訪問エリアの保存に失敗しました');
       return values;
     },
     onSuccess: async (savedForm) => {
@@ -249,7 +246,7 @@ export default function ServiceAreasPage() {
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('訪問エリアの削除に失敗しました');
+      await readApiJson<unknown>(res, '訪問エリアの削除に失敗しました');
     },
     onSuccess: async (_data, deletedId) => {
       toast.success('訪問エリアを削除しました');

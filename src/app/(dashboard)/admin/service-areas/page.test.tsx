@@ -423,6 +423,45 @@ describe('ServiceAreasPage', () => {
     });
   });
 
+  it('surfaces API error messages when service area save fails', async () => {
+    vi.mocked(toast.error).mockClear();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/pharmacy-sites') {
+        return new Response(JSON.stringify({ data: [{ id: 'site_1', name: '本店' }] }), {
+          status: 200,
+        });
+      }
+      if (url === '/api/service-areas' && !init?.method) {
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      }
+      if (url === '/api/service-areas' && init?.method === 'POST') {
+        return new Response(JSON.stringify({ message: '同じ訪問エリアが既に存在します' }), {
+          status: 409,
+        });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderPage();
+
+    await screen.findByRole('option', { name: '本店' });
+    fireEvent.change(screen.getByLabelText('拠点'), { target: { value: 'site_1' } });
+    fireEvent.change(screen.getByLabelText('エリア名'), { target: { value: '北多摩エリア' } });
+    fireEvent.click(screen.getByRole('button', { name: '登録する' }));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('同じ訪問エリアが既に存在します');
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/service-areas',
+      expect.objectContaining({
+        method: 'POST',
+        headers: buildOrgJsonHeaders('org_1'),
+      }),
+    );
+  });
+
   it('update (PATCH) encodes a hostile area id via encodePathSegment and uses buildOrgJsonHeaders', async () => {
     const fetchMock = stubFetchWithArea('a/b c');
     renderPage();
@@ -469,6 +508,63 @@ describe('ServiceAreasPage', () => {
       );
     });
     expect(buildServiceAreaApiPath).toHaveBeenCalledWith('a/b c');
+  });
+
+  it('surfaces API error messages when service area delete fails', async () => {
+    vi.mocked(toast.error).mockClear();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/pharmacy-sites') {
+        return new Response(JSON.stringify({ data: [{ id: 'site_1', name: '本店' }] }), {
+          status: 200,
+        });
+      }
+      if (url === '/api/service-areas' && !init?.method) {
+        return new Response(
+          JSON.stringify({
+            total_count: 1,
+            visible_count: 1,
+            hidden_count: 0,
+            truncated: false,
+            count_basis: 'service_areas',
+            data: [
+              {
+                id: 'area_1',
+                site_id: 'site_1',
+                name: '北多摩エリア',
+                area_type: 'radius',
+                geo_data: { match_keywords: ['北多摩'] },
+                notes: null,
+                site: { id: 'site_1', name: '本店' },
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url === '/api/service-areas/area_1' && init?.method === 'DELETE') {
+        return new Response(JSON.stringify({ message: '利用中の訪問エリアは削除できません' }), {
+          status: 409,
+        });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: '北多摩エリア（本店）を削除' }));
+    fireEvent.click(screen.getByRole('button', { name: '削除する' }));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('利用中の訪問エリアは削除できません');
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/service-areas/area_1',
+      expect.objectContaining({
+        method: 'DELETE',
+        headers: buildOrgHeaders('org_1'),
+      }),
+    );
   });
 
   it('DELETE with a dot-segment area id fails closed before any DELETE fetch', async () => {
