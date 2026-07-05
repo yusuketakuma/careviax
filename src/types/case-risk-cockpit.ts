@@ -1,40 +1,18 @@
-export type CaseRiskDomain =
-  | 'patient_foundation'
-  | 'consent_plan'
-  | 'medication'
-  | 'dispensing'
-  | 'visit_preparation'
-  | 'visit_record'
-  | 'report_delivery'
-  | 'billing'
-  | 'task_sla'
-  | 'notification'
-  | 'privacy_security'
-  | 'integration'
-  | 'data_quality';
+import type {
+  RiskCockpitStatus,
+  RiskDomain,
+  RiskFinding,
+  RiskFindingSource,
+  RiskResolutionState,
+  RiskSeverity,
+} from '@/lib/risk/risk-finding';
 
-export type CaseRiskSeverity = 'blocking' | 'urgent' | 'warning' | 'info';
-export type CaseRiskResolutionState = 'open' | 'acknowledged' | 'resolved' | 'waived';
-export type CaseRiskCockpitStatus = 'ready' | 'attention' | 'blocked';
-export type CaseRiskFindingSource = 'computed' | 'manual' | 'external';
-
-export type CaseRiskFinding = {
-  key: string;
-  domain: CaseRiskDomain;
-  severity: CaseRiskSeverity;
-  title: string;
-  detail: string;
-  patient_id?: string | null;
-  case_id?: string | null;
-  related_entity_type?: string | null;
-  related_entity_id?: string | null;
-  assigned_to?: string | null;
-  due_at?: string | null;
-  action_href: string;
-  action_label: string;
-  resolution_state: CaseRiskResolutionState;
-  source: CaseRiskFindingSource;
-};
+export type CaseRiskDomain = RiskDomain;
+export type CaseRiskSeverity = RiskSeverity;
+export type CaseRiskResolutionState = RiskResolutionState;
+export type CaseRiskCockpitStatus = RiskCockpitStatus;
+export type CaseRiskFindingSource = RiskFindingSource;
+export type CaseRiskFinding = RiskFinding;
 
 export type CaseRiskCockpitSection = {
   domain: CaseRiskDomain;

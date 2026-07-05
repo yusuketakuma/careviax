@@ -1,15 +1,20 @@
 import type { MemberRole, Prisma, PrismaClient } from '@prisma/client';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { buildPatientHref } from '@/lib/patient/navigation';
+import {
+  RISK_DOMAIN_LABELS,
+  RISK_DOMAIN_ORDER,
+  RISK_SEVERITY_RANK,
+  createRiskFinding,
+  statusFromRiskFindings,
+  summarizeRiskFindings,
+} from '@/lib/risk/risk-finding';
 import { japanDateKey } from '@/lib/utils/date-boundary';
 import { describeBillingEvidenceBlockers } from '@/server/services/billing-evidence/core';
 import type {
   CaseRiskCockpitResponse,
   CaseRiskCockpitSection,
-  CaseRiskCockpitStatus,
-  CaseRiskDomain,
   CaseRiskFinding,
-  CaseRiskSeverity,
   CaseRiskNextAction,
 } from '@/types/case-risk-cockpit';
 
@@ -119,29 +124,6 @@ type GetCaseRiskCockpitArgs = {
   now?: Date;
 };
 
-const SECTION_ORDER: Array<{ domain: CaseRiskDomain; label: string }> = [
-  { domain: 'patient_foundation', label: '患者基盤' },
-  { domain: 'consent_plan', label: '同意・管理計画' },
-  { domain: 'medication', label: '薬剤リスク' },
-  { domain: 'dispensing', label: '調剤・監査' },
-  { domain: 'visit_preparation', label: '訪問準備' },
-  { domain: 'visit_record', label: '訪問記録' },
-  { domain: 'report_delivery', label: '報告・共有' },
-  { domain: 'billing', label: '算定・請求' },
-  { domain: 'task_sla', label: 'タスクSLA' },
-  { domain: 'notification', label: '通知' },
-  { domain: 'privacy_security', label: 'PII・監査' },
-  { domain: 'integration', label: '外部連携' },
-  { domain: 'data_quality', label: 'データ品質' },
-];
-
-const SEVERITY_RANK: Record<CaseRiskSeverity, number> = {
-  blocking: 0,
-  urgent: 1,
-  warning: 2,
-  info: 3,
-};
-
 function toIso(value: Date | null | undefined) {
   return value ? value.toISOString() : null;
 }
@@ -151,29 +133,12 @@ function isBeforeDay(left: Date | null | undefined, right: Date) {
   return japanDateKey(left) < japanDateKey(right);
 }
 
-function statusFromFindings(findings: readonly CaseRiskFinding[]): CaseRiskCockpitStatus {
-  if (findings.some((finding) => finding.severity === 'blocking')) return 'blocked';
-  if (findings.some((finding) => finding.severity === 'urgent' || finding.severity === 'warning')) {
-    return 'attention';
-  }
-  return 'ready';
-}
-
-function priorityFromSeverity(severity: CaseRiskSeverity): CaseRiskNextAction['priority'] {
+function priorityFromSeverity(
+  severity: CaseRiskFinding['severity'],
+): CaseRiskNextAction['priority'] {
   if (severity === 'blocking' || severity === 'urgent') return 'urgent';
   if (severity === 'warning') return 'high';
   return 'normal';
-}
-
-function makeFinding(
-  input: Omit<CaseRiskFinding, 'resolution_state' | 'source'> &
-    Partial<Pick<CaseRiskFinding, 'resolution_state' | 'source'>>,
-): CaseRiskFinding {
-  return {
-    ...input,
-    resolution_state: input.resolution_state ?? 'open',
-    source: input.source ?? 'computed',
-  };
 }
 
 function addFinding(
@@ -181,27 +146,27 @@ function addFinding(
   input: Omit<CaseRiskFinding, 'resolution_state' | 'source'> &
     Partial<Pick<CaseRiskFinding, 'resolution_state' | 'source'>>,
 ) {
-  findings.push(makeFinding(input));
+  findings.push(createRiskFinding(input));
 }
 
 function buildSections(findings: CaseRiskFinding[]): CaseRiskCockpitSection[] {
-  const byDomain = new Map<CaseRiskDomain, CaseRiskFinding[]>();
+  const byDomain = new Map<CaseRiskFinding['domain'], CaseRiskFinding[]>();
   for (const finding of findings) {
     const bucket = byDomain.get(finding.domain) ?? [];
     bucket.push(finding);
     byDomain.set(finding.domain, bucket);
   }
 
-  return SECTION_ORDER.map(({ domain, label }) => {
+  return RISK_DOMAIN_ORDER.map((domain) => {
     const sectionFindings = (byDomain.get(domain) ?? []).sort(
       (left, right) =>
-        SEVERITY_RANK[left.severity] - SEVERITY_RANK[right.severity] ||
+        RISK_SEVERITY_RANK[left.severity] - RISK_SEVERITY_RANK[right.severity] ||
         left.key.localeCompare(right.key),
     );
     return {
       domain,
-      label,
-      status: statusFromFindings(sectionFindings),
+      label: RISK_DOMAIN_LABELS[domain],
+      status: statusFromRiskFindings(sectionFindings),
       findings: sectionFindings,
     };
   });
@@ -211,7 +176,7 @@ function buildNextActions(findings: readonly CaseRiskFinding[]): CaseRiskNextAct
   return findings
     .filter((finding) => finding.resolution_state === 'open' && finding.severity !== 'info')
     .sort((left, right) => {
-      const severityDiff = SEVERITY_RANK[left.severity] - SEVERITY_RANK[right.severity];
+      const severityDiff = RISK_SEVERITY_RANK[left.severity] - RISK_SEVERITY_RANK[right.severity];
       if (severityDiff !== 0) return severityDiff;
       return (
         (left.due_at ?? '').localeCompare(right.due_at ?? '') || left.key.localeCompare(right.key)
@@ -746,9 +711,7 @@ export async function getCaseRiskCockpit(
   });
 
   const sections = buildSections(findings);
-  const blockingCount = findings.filter((finding) => finding.severity === 'blocking').length;
-  const urgentCount = findings.filter((finding) => finding.severity === 'urgent').length;
-  const warningCount = findings.filter((finding) => finding.severity === 'warning').length;
+  const overall = summarizeRiskFindings(findings);
 
   return {
     generated_at: now.toISOString(),
@@ -762,12 +725,7 @@ export async function getCaseRiskCockpit(
       display_id: careCase.display_id,
       status: careCase.status,
     },
-    overall: {
-      status: statusFromFindings(findings),
-      blocking_count: blockingCount,
-      urgent_count: urgentCount,
-      warning_count: warningCount,
-    },
+    overall,
     sections,
     next_actions: buildNextActions(findings),
   };

@@ -571,7 +571,7 @@ FE 仕上げ（低優先）:
 - [ ] `BillingEvidenceBlocker`、`VisitReadyTransitionBlockers`、`PatientFoundationItem`、`OperationalTask`、notification delivery failure を `RiskFinding` adapter 候補として棚卸しする。
 - [ ] 計画だけで DB migration を追加しない。`HR` 表記の migration は migration planner review と human approval を必須にする。
 
-#### RISK-CORE-1. `RiskFinding` contract / registry `cc:TODO`
+#### RISK-CORE-1. `RiskFinding` contract / registry `cc:PARTIAL`
 
 - 追加候補:
   - `src/lib/risk/risk-finding.ts`
@@ -582,15 +582,35 @@ FE 仕上げ（低優先）:
   - `severity`: `blocking` / `urgent` / `warning` / `info`
   - `resolution_state`: `open` / `acknowledged` / `resolved` / `waived`
   - required fields: stable `key`、`title`、`detail`、`action_href`、`action_label`、source、related entity。
-- [ ] `BillingEvidenceBlocker` adapter: `missing_visit_consent`、`missing_management_plan`、`management_plan_review_overdue`、`report_delivery_incomplete`、`care_certification_pending`、`public_subsidy_application_pending`、`qr_insurance_review_pending`、`outcome_not_claimable` を map する。
-- [ ] `VisitReadyTransitionBlockers` adapter: checklist / onboarding / billing を domain 別 risk に分ける。
-- [ ] `PatientFoundationSummary` adapter: 連絡先、連携先、保険、検査値、薬学リスク、正本確認 alert を map する。
-- [ ] `OperationalTask` adapter: pending/overdue/SLA超過/担当未割当を risk として返す。
+- [x] `BillingEvidenceBlocker` adapter: `missing_visit_consent`、`missing_management_plan`、`management_plan_review_overdue`、`report_delivery_incomplete`、`care_certification_pending`、`public_subsidy_application_pending`、`qr_insurance_review_pending`、`outcome_not_claimable` を map する。
+- [x] `VisitReadyTransitionBlockers` adapter: checklist / onboarding / billing を domain 別 risk に分ける。
+- [~] `PatientFoundationSummary` adapter: 連絡先、連携先、保険、検査値、薬学リスク、正本確認 alert を map する。
+  2026-07-06: `PatientFoundationItem` 単位の adapter を追加。raw detail / staff name / phone / address は
+  `RiskFinding` に載せないことをテスト固定。summary 全体、検査値/薬学 risk の domain 分離は後続。
+- [~] `OperationalTask` adapter: pending/overdue/SLA超過/担当未割当を risk として返す。
+  2026-07-06: open task を controlled presentation label と SLA/due date から `task_sla` risk へ map。
+  担当未割当の専用 finding と `task-registry` は RISK-CORE-2 / TASK-001 に残す。
 - 受入条件:
   - 既存 blocker/warning は `RiskFinding` へ lossless に近く map できる。
   - 表示側は `domain` と `severity` だけで並び替え・集計できる。
   - `blocking` は ready/confirm/export/send 等の server-side gate に使える。
   - adapter は PHI/free text をそのまま audit/log に流さない。
+- 2026-07-06 実装済み:
+  - `src/lib/risk/risk-finding.ts` を追加し、domain order/label、severity rank、
+    `RiskFinding` 型、safe `action_href` normalizer、status/count rollup、stable dedupe key helper を
+    Case Risk Cockpit から独立した共通 contract にした。
+  - `src/server/services/risk-finding-registry.ts` を追加し、billing blocker、visit ready blocker、
+    patient foundation item、operational task を PHI-minimized `RiskFinding` へ map する初期 adapter を実装。
+  - `src/types/case-risk-cockpit.ts` は shared `RiskFinding` contract の alias に変更し、
+    `src/server/services/case-risk-cockpit.ts` の section order / severity sort / overall rollup は shared helper へ寄せた。
+  - `src/lib/risk/risk-finding.test.ts` と `src/server/services/risk-finding-registry.test.ts` で、
+    unsafe href fallback、rollup/sort/dedupe、billing raw reason、patient foundation raw detail/staff name、
+    operational task raw title が漏れないことを固定。
+- 残:
+  - `RiskFinding -> OperationalTask` bridge、`task-registry`、domain-specific adapter
+    （medication、dispensing、visit_record、report_delivery、notification、privacy_security、integration、data_quality）。
+  - Case Risk Cockpit の既存 billing/task/foundation findings を段階的に registry adapter 経由へ置換し、
+    PatientBoard / Command Center / renewal board / notification health から同じ contract を再利用する。
 
 #### RISK-CORE-2. `RiskFinding -> OperationalTask` bridge `cc:TODO`
 
@@ -648,7 +668,8 @@ FE 仕上げ（低優先）:
     forbidden/blank/not-found/500 no-store、PHI-free 500、section ordering、rollup、`action_href`、
     hostile id encoding、task/report/billing 混入防止を固定。
 - 残:
-  - CORE-001 の shared Risk Finding Registry へ型を寄せる。
+- CORE-001 の shared Risk Finding Registry へ型を寄せる作業は初期完了。残は domain adapter 拡張と
+  cockpit 内の既存 finding 生成の段階的 adapter 化。
   - medication / dispensing / notification / privacy_security / integration / data_quality adapter を追加。
   - 患者/ケース詳細 UI の Command Center から呼び、`gpt-image-2` 方針に従う非 PHI 参照案と
     mobile/error state を確認してから配置する。
@@ -657,7 +678,7 @@ FE 仕上げ（低優先）:
 
 | ID       | 領域           | タスク                                          | 主な対象                                                                                                    | 受入条件                                                                                                                                                                                                                      |
 | -------- | -------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CORE-001 | 横断基盤       | Risk Finding Registry                           | `src/lib/risk/risk-finding.ts`, `risk-finding-registry.ts`                                                  | 既存 blocker/warning を共通 `RiskFinding` に map できる。                                                                                                                                                                     |
+| CORE-001 | 横断基盤       | Risk Finding Registry                           | `src/lib/risk/risk-finding.ts`, `risk-finding-registry.ts`                                                  | `cc:PARTIAL` shared contract、rollup/sort/dedupe helper、billing/visit-ready/patient-foundation-item/task adapter と PHI-minimized regression tests を追加。残: domain adapter 拡張と CORE-002 bridge 接続。                  |
 | CORE-002 | 横断基盤       | Risk Finding -> Operational Task Bridge         | `risk-task-bridge.ts`, `operational-tasks.ts`, `task-registry.ts`                                           | blocking/urgent risk が dedupe task へ昇格し、解消時に resolve される。                                                                                                                                                       |
 | CORE-003 | 横断基盤       | Case Risk Cockpit contract                      | `src/types/case-risk-cockpit.ts`, `app/api/cases/[id]/risk-cockpit/route.ts`                                | `cc:PARTIAL` 初期 contract / read-only API / service / route tests を追加。残: shared registry 接続、medication/dispensing/notification/privacy/integration/data_quality adapter、患者/ケース詳細 UI 接続。                   |
 | RX-001   | 薬剤変更       | Medication Change Review Gate                   | `medication-change-review.ts`, `visit-preparation-readiness.ts`, `today-preparation`, patient board         | 追加/削除/増量/減量/用法/剤形変更を分類し、high-risk は薬剤師確認完了まで ready/contact/confirm 不可。確認者・日時・判断結果・理由を audit。                                                                                  |

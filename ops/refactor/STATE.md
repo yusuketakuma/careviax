@@ -40,6 +40,78 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Risk Finding Registry initial contract / adapters（commit: pending）。
+  - current task:
+    `Plans.md` の `RISK-CORE-1 / CORE-001` に沿って、Case Risk Cockpit 内に閉じていた
+    risk domain/severity/rollup contract を shared `RiskFinding` contract へ昇格し、billing blocker、
+    visit ready blocker、patient foundation item、operational task の初期 adapter を追加した。
+    互換用の別 contract は置かず、`CaseRiskCockpitResponse` は shared `RiskFinding` alias を参照する。
+  - subagent:
+    `Mapper the 21st` が read-only で CORE-001 の touch-list、adapter 入力、PHI/free-text 漏洩点を整理。
+    `Sentinel the 21st` は strict review で patient foundation dedupe の患者間衝突、resolved/waived の
+    rollup 誤集計、readiness display label key の不安定性を CHANGES_REQUESTED。すべて修正し、
+    owner-scoped encoded dedupe key、active-only rollup、known readiness label -> stable key mapping と
+    regression tests を追加した。follow-up `Strict the 21st` は unknown readiness label が raw key/action label
+    と dedupe key に漏れる privacy/audit risk を指摘。unknown label は generic action label と
+    `unknown_readiness_blocker_N` へ fail-closed し、PHI-like unknown label が finding/dedupe に出ない
+    regression を追加した。
+  - design / imagegen:
+    今回の slice は backend contract / adapter / tests のみで視覚レイアウト変更を伴わないため、
+    `imagegen` / `gpt-image-2` の新規生成は省略。患者詳細 tab / Command Center など UI slice では
+    `docs/ui-ux-design-guidelines.md` と `AGENTS.md` の `gpt-image-2` 方針に従い、非 PHI mockup を作る。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/types/case-risk-cockpit.ts`,
+    `src/server/services/case-risk-cockpit.ts`,
+    `src/server/services/billing-evidence/core.ts`,
+    `src/server/services/visit-preparation-readiness.ts`,
+    `src/server/services/patient-detail-foundation.ts`,
+    `src/server/services/operational-tasks.ts`,
+    `src/lib/tasks/operational-task-presentation.ts`,
+    `prisma/schema/core-task.prisma`。
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/lib/risk/risk-finding.ts`,
+    `src/lib/risk/risk-finding.test.ts`,
+    `src/server/services/risk-finding-registry.ts`,
+    `src/server/services/risk-finding-registry.test.ts`,
+    `src/types/case-risk-cockpit.ts`,
+    `src/server/services/case-risk-cockpit.ts`。
+  - bugs / risks reduced:
+    `RiskFinding` の domain order/label、severity rank、safe action href、active-only rollup、
+    owner-scoped dedupe key を shared helper に集約し、患者/ケース詳細、PatientBoard、task bridge、
+    renewal board で同じ contract を再利用できる足場を作った。dedupe key は patient/case owner scope と
+    related entity を両方含め、`:` や `/` を encoded segment にして患者間 task 衝突を避ける。
+    resolved/waived は status/count から外し、acknowledged は未解決扱いとして attention を維持する。
+    readiness blocker は Japanese display label ではなく `carry_items_confirmed` / `carry_items_status` /
+    `schedule_missing` 等の stable key に正規化する。
+  - security / PHI reviewed:
+    billing blocker raw `reason`、billing validation notes、patient foundation raw detail/meta staff name、
+    phone/address、operational task raw title は `RiskFinding` に載せず、controlled title/detail/action label に
+    最小化する。`action_href` は relative path 以外を `/workflow` に fail-closed する。
+  - performance issues found:
+    DB query や runtime path は増やしていない。pure contract/adapter と unit tests の追加のみ。
+    後続の CORE-002 bridge では task explosion を防ぐため dedupe key と `task-registry` を先に使う。
+  - validation commands:
+    `pnpm exec vitest run src/lib/risk/risk-finding.test.ts src/server/services/risk-finding-registry.test.ts src/server/services/case-risk-cockpit.test.ts 'src/app/api/cases/[id]/risk-cockpit/route.test.ts' --reporter=dot --testTimeout=30000`;
+    `pnpm typecheck`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`;
+    `pnpm lint`;
+    `pnpm exec prettier --write src/lib/risk/risk-finding.ts src/lib/risk/risk-finding.test.ts src/server/services/risk-finding-registry.ts src/server/services/risk-finding-registry.test.ts src/types/case-risk-cockpit.ts src/server/services/case-risk-cockpit.ts Plans.md`;
+    `git diff --check`.
+  - validation results:
+    focused vitest green（4 files / 20 tests）; typecheck green; typecheck:no-unused green;
+    `pnpm lint` green with existing unrelated warnings in `src/lib/platform/break-glass.test.ts`
+    (`_tx`, `_input` unused warnings only); prettier write completed; diff whitespace check green.
+  - remaining work:
+    Broader `Plans.md` objective remains open。残: `RiskFinding -> OperationalTask` bridge、
+    `task-registry`、medication/dispensing/visit_record/report_delivery/notification/privacy/integration/data_quality
+    adapters、Case Risk Cockpit の既存 finding 生成の adapter 化、患者詳細 tab / Command Center UI 接続、
+    UI slice での `gpt-image-2` 非 PHI mockup と browser proof。
+
 - codex: Case Risk Cockpit initial API contract / read-only service（commit `ebb8854a8`）。
   - current task:
     `Plans.md` の `RISK-CORE-3 / CORE-003 / PAT-001` に沿って、患者/ケース単位の横断 risk と
