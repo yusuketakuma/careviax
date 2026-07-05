@@ -40,7 +40,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: DASH-PERF-001 Dashboard UI summary-first split continuation complete（commit pending）。
+- codex: DASH-PERF-001 Dashboard UI summary-first split continuation complete（commit `c5d96d423`）。
   - current task:
     Goal 継続として、前段で追加した `/api/dashboard/cockpit/summary` / `details` / `team`
     を Dashboard UI 側で消費。既存 full route helper は互換維持し、`DashboardCockpit` は
