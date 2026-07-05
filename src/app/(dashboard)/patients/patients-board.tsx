@@ -60,7 +60,7 @@ import { PatientBoardLoadingShell } from './patient-board-loading';
 export async function fetchPatientBoard(
   orgId: string,
   scope: 'mine' | 'all',
-  foundationIssue?: 'needs_confirmation',
+  foundationIssue?: BoardFoundationIssue,
   query?: string,
 ): Promise<PatientBoardResponse> {
   const params = new URLSearchParams({ scope });
@@ -79,6 +79,7 @@ export async function fetchPatientBoard(
 
 type BoardScope = 'mine' | 'all';
 type BoardSort = 'priority' | 'next_visit' | 'name';
+type BoardFoundationIssue = 'needs_confirmation' | 'missing_contact' | 'missing_care_team';
 
 const SCOPE_OPTIONS: Array<{ value: BoardScope; label: string }> = [
   { value: 'mine', label: '私の担当' },
@@ -106,6 +107,8 @@ type BoardChipValue =
   | 'external'
   | 'visit_today'
   | 'foundation_gap'
+  | 'foundation_contact_gap'
+  | 'foundation_care_team_gap'
   | 'paused';
 
 type AttentionPresentation = {
@@ -181,6 +184,17 @@ const STATUS_TONE_CLASSES: Record<PatientStatusTone, string> = {
   external: 'font-semibold text-foreground',
   neutral: 'text-foreground/80',
 };
+
+function getFoundationIssueForChip(chip: BoardChipValue): BoardFoundationIssue | undefined {
+  if (chip === 'foundation_gap') return 'needs_confirmation';
+  if (chip === 'foundation_contact_gap') return 'missing_contact';
+  if (chip === 'foundation_care_team_gap') return 'missing_care_team';
+  return undefined;
+}
+
+function cardHasFoundationItem(card: PatientBoardCard, item: string): boolean {
+  return card.foundation_summary?.items?.includes(item) ?? false;
+}
 
 /**
  * 情報基盤の整備状況コールアウト → ready=done(緑) / needs_confirmation=confirm(橙) / missing=blocked(赤)。
@@ -541,7 +555,7 @@ export function PatientsBoard() {
   const [visibleCardCount, setVisibleCardCount] = useState(DEFAULT_VISIBLE_PATIENT_CARDS);
   const isBootstrappingOrg = !orgId;
 
-  const foundationIssue = chip === 'foundation_gap' ? 'needs_confirmation' : undefined;
+  const foundationIssue = getFoundationIssueForChip(chip);
   const boardQuery = useRealtimeQuery({
     queryKey: ['patients', 'board', orgId, scope, foundationIssue, boardSearchQuery],
     queryFn: () => fetchPatientBoard(orgId, scope, foundationIssue, boardSearchQuery),
@@ -579,6 +593,14 @@ export function PatientsBoard() {
             if (chip === 'visit_today') return card.next_visit_date === todayKey;
             if (chip === 'foundation_gap') {
               return card.foundation_summary?.status !== 'ready';
+            }
+            if (chip === 'foundation_contact_gap') {
+              return cardHasFoundationItem(card, '連絡先未設定');
+            }
+            if (chip === 'foundation_care_team_gap') {
+              return (card.foundation_summary?.items ?? []).some((item) =>
+                item.startsWith('連携先'),
+              );
             }
             return card.attention === 'paused';
           });
@@ -620,6 +642,22 @@ export function PatientsBoard() {
         label: '正本未整備',
         count: data
           ? countCards(data.cards, (card) => card.foundation_summary?.status !== 'ready')
+          : 0,
+      },
+      {
+        value: 'foundation_contact_gap' as const,
+        label: '連絡先未設定',
+        count: data
+          ? countCards(data.cards, (card) => cardHasFoundationItem(card, '連絡先未設定'))
+          : 0,
+      },
+      {
+        value: 'foundation_care_team_gap' as const,
+        label: '連携先未設定',
+        count: data
+          ? countCards(data.cards, (card) =>
+              (card.foundation_summary?.items ?? []).some((item) => item.startsWith('連携先')),
+            )
           : 0,
       },
       { value: 'paused' as const, label: '休止', count: counts?.paused ?? 0 },

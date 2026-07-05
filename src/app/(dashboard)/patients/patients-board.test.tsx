@@ -245,6 +245,8 @@ describe('PatientsBoard', () => {
     expect(within(chipBar).getByRole('button', { name: /今すぐ対応/ })).toBeTruthy();
     expect(within(chipBar).getByRole('button', { name: /本日訪問 3＋施設12名/ })).toBeTruthy();
     expect(within(chipBar).getByRole('button', { name: /正本未整備/ })).toBeTruthy();
+    expect(within(chipBar).getByRole('button', { name: /連絡先未設定/ })).toBeTruthy();
+    expect(within(chipBar).getByRole('button', { name: /連携先未設定/ })).toBeTruthy();
     expect(within(chipBar).getByRole('button', { name: /休止/ })).toBeTruthy();
 
     expect(screen.getByTestId('patients-board-scope-note').textContent).toContain(
@@ -403,6 +405,28 @@ describe('PatientsBoard', () => {
     fireEvent.click(within(chipBar).getByRole('button', { name: /正本未整備/ }));
     expect(screen.getAllByTestId('patient-board-card')).toHaveLength(4);
     expect(screen.queryByRole('link', { name: '田中 一郎' })).toBeNull();
+    expect(useRealtimeQueryMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        queryKey: ['patients', 'board', 'org_1', 'mine', 'needs_confirmation', ''],
+      }),
+    );
+
+    fireEvent.click(within(chipBar).getByRole('button', { name: /連絡先未設定/ }));
+    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(4);
+    expect(useRealtimeQueryMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        queryKey: ['patients', 'board', 'org_1', 'mine', 'missing_contact', ''],
+      }),
+    );
+
+    fireEvent.click(within(chipBar).getByRole('button', { name: /連携先未設定/ }));
+    expect(screen.queryAllByTestId('patient-board-card')).toHaveLength(0);
+    expect(screen.getByText('条件に一致する患者がいません')).toBeTruthy();
+    expect(useRealtimeQueryMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        queryKey: ['patients', 'board', 'org_1', 'mine', 'missing_care_team', ''],
+      }),
+    );
 
     fireEvent.click(within(chipBar).getByRole('button', { name: /今すぐ対応/ }));
     expect(screen.getAllByTestId('patient-board-card')).toHaveLength(5);

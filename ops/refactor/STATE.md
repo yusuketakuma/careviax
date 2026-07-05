@@ -40,6 +40,41 @@
 
 ## 直近の land（本日・要点）
 
+- codex: PatientsBoard foundation filter granularity slice complete（code/test: commit pending）。
+  - current task:
+    Goal 継続として `Plans.md` の `PAT-LIST-UX-001` に対応。ユーザー指示により、UI作業は
+    imagegen でデザイン方向を再構築してから実装する方針を採用。`gpt-image-2` 利用方針は
+    memory ad-hoc note へ追記済み。生成画像:
+    `/Users/yusuke/.codex/generated_images/019f2c7e-d969-7882-bd11-432a10abb930/_image_id_.png`。
+    実装は既存PH-OS UIに合わせ、患者一覧の「正本未整備」単一チップに加え、
+    `連絡先未設定` / `連携先未設定` を原因別filter chipとして露出。
+  - files inspected:
+    `.codex/skills/.system/imagegen/SKILL.md`, `docs/ui-ux-design-guidelines.md`,
+    `src/app/(dashboard)/patients/patients-board.tsx`,
+    `src/app/(dashboard)/patients/patients-board.test.tsx`,
+    `src/app/api/patients/board/route.ts`, `src/app/api/patients/board/route.test.ts`。
+  - files changed:
+    `src/app/(dashboard)/patients/patients-board.tsx`,
+    `src/app/(dashboard)/patients/patients-board.test.tsx`,
+    `ops/refactor/STATE.md`。
+  - bugs/security risks fixed:
+    なし。既存 `/api/patients/board?foundation_issue=missing_contact|missing_care_team` contract をUIから直接使い、
+    PHI payload / auth / authorization / API response shape は変更しない。原因別チップで解消先の把握を改善。
+  - performance issues improved:
+    `正本未整備` の大きな集合だけでなく、連絡先不足・連携先不足をBFF query keyへ写像することで、
+    server-side filter と UI 状態を一致させ、不要な一覧走査/目視確認を減らす。
+  - validation commands/results:
+    `pnpm exec prettier --write 'src/app/(dashboard)/patients/patients-board.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx'` green;
+    `pnpm exec vitest run 'src/app/(dashboard)/patients/patients-board.test.tsx' --reporter=dot --testTimeout=30000` green (1 file / 21 tests);
+    `pnpm exec eslint 'src/app/(dashboard)/patients/patients-board.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx'` green;
+    `git diff --check -- 'src/app/(dashboard)/patients/patients-board.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx'` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。
+  - remaining work:
+    `同意・計画未確認` / `保険未確認` / `駐車・介護度未確認` のUI露出には API foundation_issue 拡張が必要で未着手。
+    card/list表示切替、server facet counts、browser screenshot は未着手。
+  - next action:
+    scoped commit を作成。次の候補は API foundation_issue enum 拡張または `RX-REG-UX-001`。
+
 - codex: PatientsBoard server-side search slice complete（code/test: 35a86bcc3）。
   - current task:
     Goal 継続として `Plans.md` の `PAT-LIST-PERF-001` / `PERF-BFF-001` に対応。
