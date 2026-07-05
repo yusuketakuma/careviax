@@ -39,6 +39,17 @@
 
 ## 直近の land（本日・要点）
 
+- codex: R40/R44 route actions readApiJson batch(75e57849) land。focused Vitest 22、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。visit route reorder helper 3系統 /
+  route-compare route-engine POST / emergency-route route-engine POST responses を readApiJson へ収束し、
+  route_order optimistic concurrency、confirmed visit exclusion、vehicle assignment context、
+  emergency interruption reconfirmation context、server-message fallback は保持。emergency-route には
+  route-engine non-OK server-message と no-reorder fail-closed の focused regression を追加。Clinical Safety
+  subagent は confirmed visit ordering / vehicle assignment / emergency reconfirmation / server-message
+  preservation を review し、response parsing 限定なら APPROVE。検証時に
+  `conflict-resolution-content.test.tsx` の既存 React act warning は出たが、4 test files / 22 tests は green。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
+  維持しつつ、本batchでは不要。
 - codex: R40/R44 schedule-day actions readApiJson batch(4ea57765) land。focused Vitest 55、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。schedule-day planner proposal generation /
   reschedule proposal generation / proposal action PATCH / facility visit-day save responses を readApiJson へ
