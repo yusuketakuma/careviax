@@ -1,5 +1,42 @@
 # CODEX Goal Progress
 
+## R40/R44 Schedule Day Preparation readApiJson Partial - 2026-07-05 08:59 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/schedules/schedule-day-preparation.ts`
+    - `src/app/(dashboard)/schedules/schedule-day-preparation.test.ts`
+- Scope:
+  - Reused `readApiJson` for the schedule day preparation details read GET.
+  - Updated focused coverage to prove API JSON `message` from failed
+    preparation details responses is preserved.
+  - Preserved visit-preparation endpoint, schedule-id hostile-segment encoding
+    and dot-segment fail-closed behavior, `x-org-id` header, preparation pack
+    identity mismatch guard, missing-pack/blocked readiness behavior,
+    save/mark-ready mutation behavior, and query invalidation keys.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/schedules/schedule-day-preparation.test.ts'`
+    passed `1` file / `19` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `596b4942`
+    (`refactor(ui): reuse readApiJson in schedule day preparation`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Patient MCS Overview readApiJson Partial - 2026-07-05 08:55 JST
 
 - Status:

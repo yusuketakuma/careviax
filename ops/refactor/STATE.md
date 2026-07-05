@@ -122,6 +122,12 @@
   org header / no-store / queryKey / 403 forbidden typed error / malformed fail-closed behavior は保持。
   SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
   維持しつつ、本sliceでは不要。
+- codex: R40/R44 schedule-day-preparation readApiJson slice(596b4942) land。focused Vitest 19、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。visit-preparation details read GET を
+  readApiJson へ収束し、endpoint / schedule-id hostile encoding / dot-segment fail-closed /
+  org header / pack identity guard / readiness behavior / save-mark-ready mutation は保持。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
+  維持しつつ、本sliceでは不要。
 - codex: R40/R44 prescription-history readApiJson slice(d65d08d5) land。focused Vitest 29、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。patient prescription history GET /
   drug-master batch enrichment POST を readApiJson へ収束し、patient path helper / hostile-id
