@@ -169,7 +169,7 @@ export function NotificationsContent({ initialCategory = 'all' }: NotificationsC
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ ids }),
       });
-      if (!res.ok) throw new Error('既読化に失敗しました');
+      await readApiJson<unknown>(res, '既読化に失敗しました');
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['notifications', 'inbox', orgId] });

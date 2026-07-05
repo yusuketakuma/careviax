@@ -4,6 +4,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { stubJsonFetch } from '@/test/fetch-test-utils';
+import { toast } from 'sonner';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
@@ -39,6 +40,12 @@ vi.mock('@tanstack/react-query', () => ({
 vi.mock('next/navigation', () => ({
   useRouter: useRouterMock,
   usePathname: usePathnameMock,
+}));
+
+vi.mock('sonner', () => ({
+  toast: {
+    error: vi.fn(),
+  },
 }));
 
 vi.mock('@/lib/stores/offline-store', () => ({
@@ -246,6 +253,38 @@ describe('NotificationsContent', () => {
       body: JSON.stringify({ ids: ['notification/1?x=y#frag'] }),
     });
     expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
+  });
+
+  it('surfaces API error messages when marking notifications read fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ message: '通知の既読化権限がありません' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    );
+
+    render(<NotificationsContent />);
+
+    const mutationOptions = useMutationMock.mock.calls.at(-1)?.[0] as
+      | {
+          mutationFn: (ids: string[]) => Promise<void>;
+          onError: (error: unknown) => void;
+        }
+      | undefined;
+    await expect(mutationOptions?.mutationFn(['notification_1'])).rejects.toThrow(
+      '通知の既読化権限がありません',
+    );
+    mutationOptions?.onError(new Error('通知の既読化権限がありません'));
+
+    expect(fetch).toHaveBeenCalledWith('/api/notifications', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'x-test-json-org-id': 'org_1' },
+      body: JSON.stringify({ ids: ['notification_1'] }),
+    });
+    expect(toast.error).toHaveBeenCalledWith('通知の既読化権限がありません');
   });
 
   it('shows an error state instead of an empty inbox when notifications fail to load', () => {
