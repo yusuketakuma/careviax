@@ -40,6 +40,28 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Plans.md UI design generation policy updated（commit pending）。
+  - current task:
+    ユーザー指示「gpt-image-2 を使うことを追記」に対応。`Plans.md` の
+    UX/PERF/DEV 追加バックログ内 `UI design generation policy` を更新し、UI/UX の新規・再配置・
+    大幅改善では原則 `imagegen` の生成モデルを `gpt-image-2` に固定することを明文化した。
+  - files inspected:
+    `Plans.md`, `ops/refactor/STATE.md`, `docs/ui-ux-design-guidelines.md`。
+  - files changed:
+    `Plans.md`, `ops/refactor/STATE.md`。
+  - bugs/security risks fixed:
+    実装コード変更なし。デザイン生成 prompt に実在患者名、住所、電話、処方本文、報告書本文、
+    保険情報、外部共有URLなどの PHI/secret を入れない運用ルールを追加。
+  - performance issues improved:
+    実装コード変更なし。UI slice の事前デザイン参照を `gpt-image-2` に寄せることで、手戻りと
+    実装前の画面構成揺れを抑える運用改善。
+  - validation commands/results:
+    `git diff --check -- Plans.md ops/refactor/STATE.md` green。
+  - remaining work:
+    scoped commit 後、通常の実装候補へ戻る。
+  - next action:
+    `PAT-LIST-PERF-001` または `DASH-PERF-001` の次スライスを選ぶ。
+
 - codex: PAT-DETAIL-UX-001 Patient detail tabs deep-link landed（commit `f9ea6957e`）。
   - current task:
     Goal 継続として、ユーザー指示「患者詳細画面配置はタブ化」に対応。既存 `CardWorkspace` の
