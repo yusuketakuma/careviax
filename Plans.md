@@ -348,6 +348,10 @@ FE 仕上げ（低優先）:
 - [x] `src/app/api/visit-schedule-proposals/[id]/route.ts` の GET が読む creation audit `diagnostics` に review candidate を表示できるよう shape guard を追加する。
       2026-07-05: cast-only guard を廃止し、保存済み audit diagnostics も同 whitelist で正規化して unknown/free-text を落とす。
 - [ ] `/schedules/proposals` の詳細 Sheet と候補カードに、期限補正・休業日補正・薬剤師確認候補・過密前倒し理由を業務用語で表示する。
+      2026-07-05 partial: 共通 `VisitProposalDiagnosticsCard` に `deadline_policy` を
+      「期限診断」として中立表示し、`availability_reason_code` を休業日・シフト理由の集計と候補行
+      `訪問可否` badge で表示。薬剤師確認推奨は explicit `review_required_candidate` diagnostics が
+      未実装のためローカル推測表示しない。過密前倒し理由は VS-AUTO-6 後続。
 - [ ] HR field 追加前は `pharmacist_review_required` 永続 field を参照しない。UI では `review_required_candidate` として「患者連絡前に薬剤師確認推奨」を出し、ハードブロックは VS-AUTO-7 後に有効化する。
 - テスト:
   - [x] diagnostics が表示され、既存 proposal ranking / contact log / bulk action を壊さない。

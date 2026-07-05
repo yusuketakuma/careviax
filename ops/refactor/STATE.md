@@ -40,6 +40,22 @@
 
 ## 直近の land（本日・要点）
 
+- codex: VS-AUTO-5 diagnostics card deadline/availability display slice(in-progress) implementation
+  complete。
+  - UI: `src/components/features/visits/visit-proposal-diagnostics-card.tsx` は
+    `deadline_policy` を「期限診断」として中立表示し、`deadline_adjusted_to_operating_day` /
+    `deadline_buffer_applied` だけを補正系ラベルにする。`availability_reason_code` は休業日・
+    シフト理由の集計と rejected candidate row の `訪問可否` badge に出す。
+  - safety/privacy: frontend_reviewer の CHANGES_REQUESTED を反映。`薬剤師確認推奨` は backend から
+    explicit `review_required_candidate` diagnostics が来るまでローカル推測表示しない。UI component
+    境界でも `deadline_policy.value` の任意 string は非表示にし、number/boolean/YYYY-MM-DD のみ表示。
+  - remaining: explicit review candidate diagnostics と「患者連絡前に薬剤師確認推奨（診断表示のみ）」、
+    過密前倒し理由は VS-AUTO-5/6 後続。
+  - validation:
+    `pnpm exec vitest run src/components/features/visits/visit-proposal-diagnostics-card.test.tsx 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx' 'src/app/(dashboard)/schedules/proposals/weekly-cell-inspector.test.tsx' --reporter=dot --testTimeout=30000`
+    green（3 files / 42 tests）; scoped eslint green; `pnpm format:check` green; `git diff --check`
+    green; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` green。next: scoped commit → push。
 - codex: VS-AUTO-5 proposal diagnostics PHI-safe API/audit/detail guard slice(in-progress) implementation
   complete。
   - API: `src/app/api/visit-schedule-proposals/route.ts` は planner の

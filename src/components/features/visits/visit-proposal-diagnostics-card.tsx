@@ -74,6 +74,31 @@ const SCORE_BREAKDOWN_LABELS: Record<string, string> = {
   specialtyPenalty: '専門対応',
 };
 
+const DEADLINE_POLICY_LABELS: Record<string, string> = {
+  deadline_raw: '服薬期限',
+  deadline_adjusted_to_operating_day: '営業日へ補正',
+  deadline_buffer_applied: '準備日数を確保',
+  deadline_overdue_asap: '期限超過のため最短提案',
+  deadline_visitability_policy_missing: '訪問可能日規則未設定',
+  deadline_buffer_scan_exhausted: '準備日数内に訪問可能日なし',
+  deadline_no_candidates: '期限内候補なし',
+  locked_date_deadline_violation: '固定日が期限超過',
+};
+
+const AVAILABILITY_REASON_LABELS: Record<string, string> = {
+  pharmacy_holiday: '薬局休業日',
+  pharmacy_regular_closed: '薬局定休日',
+  invalid_pharmacy_operating_window: '営業時間設定不備',
+  outside_pharmacy_operating_window: '営業時間外',
+  pharmacist_shift_missing: '薬剤師シフトなし',
+  pharmacist_shift_site_missing: 'シフト拠点未設定',
+  pharmacist_shift_site_mismatch: 'シフト拠点不一致',
+  pharmacist_unavailable: '薬剤師不在',
+  invalid_pharmacist_shift_window: 'シフト時間設定不備',
+  invalid_visit_window: '訪問時間設定不備',
+  outside_pharmacist_shift_window: 'シフト時間外',
+};
+
 function formatSignedNumber(value: number) {
   return value > 0 ? `+${value}` : `${value}`;
 }
@@ -93,6 +118,27 @@ function formatTimeValue(value: string | Date | null | undefined) {
   }
 }
 
+function formatDeadlinePolicyValue(value: string | number | boolean | undefined) {
+  if (typeof value === 'number') return `${value}日`;
+  if (typeof value === 'boolean') return value ? '有効' : '無効';
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  return null;
+}
+
+function formatDeadlinePolicyDiagnostic(
+  item: NonNullable<ProposalGenerationDiagnosticsCardData['deadline_policy']>[number],
+) {
+  const label = DEADLINE_POLICY_LABELS[item.code] ?? item.code;
+  const dateParts = [
+    item.date_key,
+    item.from_date_key && item.to_date_key ? `${item.from_date_key}→${item.to_date_key}` : null,
+  ]
+    .filter(Boolean)
+    .join(' / ');
+  const value = formatDeadlinePolicyValue(item.value);
+  return [label, dateParts || null, value].filter(Boolean).join(' ');
+}
+
 export function VisitProposalDiagnosticsCard({
   diagnostics,
   title = '提案生成 diagnostics',
@@ -104,6 +150,16 @@ export function VisitProposalDiagnosticsCard({
   const rejectionSummary = Array.from(
     diagnostics.rejected.reduce((map, item) => {
       const label = item.reason_label ?? item.reason_code ?? '採用外';
+      map.set(label, (map.get(label) ?? 0) + 1);
+      return map;
+    }, new Map<string, number>()),
+  ).sort((left, right) => right[1] - left[1]);
+  const deadlinePolicy = diagnostics.deadline_policy ?? [];
+  const availabilitySummary = Array.from(
+    diagnostics.rejected.reduce((map, item) => {
+      const code = item.availability_reason_code ?? item.reason_code;
+      if (!code || !(code in AVAILABILITY_REASON_LABELS)) return map;
+      const label = AVAILABILITY_REASON_LABELS[code] ?? code;
       map.set(label, (map.get(label) ?? 0) + 1);
       return map;
     }, new Map<string, number>()),
@@ -138,6 +194,9 @@ export function VisitProposalDiagnosticsCard({
         <div className="flex flex-wrap gap-2 text-sm">
           <Badge variant="outline">採用 {diagnostics.accepted.length} 件</Badge>
           <Badge variant="outline">採用外 {diagnostics.rejected.length} 件</Badge>
+          {deadlinePolicy.length > 0 ? (
+            <Badge variant="outline">期限診断 {deadlinePolicy.length} 件</Badge>
+          ) : null}
           {rejectionSummary.map(([label, count]) => (
             <Badge
               key={label}
@@ -148,6 +207,43 @@ export function VisitProposalDiagnosticsCard({
             </Badge>
           ))}
         </div>
+
+        {deadlinePolicy.length > 0 || availabilitySummary.length > 0 ? (
+          <div className="space-y-3 rounded-md border border-border/70 bg-background/70 px-3 py-3 text-sm">
+            {deadlinePolicy.length > 0 ? (
+              <div className="space-y-2">
+                <p className="font-medium text-foreground">期限診断</p>
+                <div className="flex flex-wrap gap-2">
+                  {deadlinePolicy.map((item, index) => (
+                    <Badge
+                      key={`${item.code}-${item.date_key ?? item.from_date_key ?? index}`}
+                      variant="outline"
+                      className="border-state-confirm/30 bg-state-confirm/10 text-state-confirm"
+                    >
+                      {formatDeadlinePolicyDiagnostic(item)}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {availabilitySummary.length > 0 ? (
+              <div className="space-y-2">
+                <p className="font-medium text-foreground">休業日・シフト理由</p>
+                <div className="flex flex-wrap gap-2">
+                  {availabilitySummary.map(([label, count]) => (
+                    <Badge
+                      key={label}
+                      variant="outline"
+                      className="border-state-confirm/30 bg-state-confirm/10 text-state-confirm"
+                    >
+                      {label} {count}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="grid gap-4 xl:grid-cols-2">
           <div className="space-y-3">
@@ -253,6 +349,17 @@ export function VisitProposalDiagnosticsCard({
                       {item.reason_label ?? item.reason_code ?? '採用外'}
                     </Badge>
                   </div>
+                  {item.availability_reason_code &&
+                  item.availability_reason_code in AVAILABILITY_REASON_LABELS ? (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Badge
+                        variant="outline"
+                        className="border-state-confirm/30 bg-background text-state-confirm"
+                      >
+                        訪問可否: {AVAILABILITY_REASON_LABELS[item.availability_reason_code]}
+                      </Badge>
+                    </div>
+                  ) : null}
                   {item.detail ? (
                     <p className="mt-2 text-xs leading-5 text-muted-foreground">{item.detail}</p>
                   ) : null}

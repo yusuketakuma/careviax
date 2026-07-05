@@ -42,9 +42,10 @@ describe('VisitProposalDiagnosticsCard', () => {
               pharmacist_id: 'pharmacist_2',
               pharmacist_name: '薬剤師B',
               proposed_date: '2026-04-09',
-              reason_code: 'travel_limit',
-              reason_label: '移動上限超過',
-              detail: '前後の予定を考慮すると移動負荷が高すぎます',
+              reason_code: 'daily_capacity',
+              availability_reason_code: 'outside_pharmacy_operating_window',
+              reason_label: '日次上限超過',
+              detail: '日次上限に到達しています',
             },
             {
               pharmacist_id: 'pharmacist_3',
@@ -53,6 +54,26 @@ describe('VisitProposalDiagnosticsCard', () => {
               reason_code: 'travel_limit',
               reason_label: '移動上限超過',
               detail: '別拠点で距離が長すぎます',
+            },
+          ],
+          deadline_policy: [
+            {
+              code: 'deadline_adjusted_to_operating_day',
+              site_id: 'site_1',
+              from_date_key: '2026-04-12',
+              to_date_key: '2026-04-10',
+            },
+            {
+              code: 'deadline_buffer_scan_exhausted',
+              site_id: 'site_1',
+              date_key: '2026-04-10',
+              value: '患者A / 玄関暗証番号1234',
+            },
+            {
+              code: 'locked_date_deadline_violation',
+              site_id: 'site_1',
+              date_key: '2026-04-12',
+              value: '2026-04-10',
             },
           ],
         }}
@@ -73,7 +94,19 @@ describe('VisitProposalDiagnosticsCard', () => {
     expect(screen.getByText('専門対応 +40')).toBeTruthy();
     expect(screen.getByText('車両 社用車A')).toBeTruthy();
     expect(screen.getByText('社用車 社用車A / 当日同車両 2 件目')).toBeTruthy();
-    expect(screen.getAllByText('移動上限超過 2')[0]).toBeTruthy();
+    expect(screen.getByText('期限診断 3 件')).toBeTruthy();
+    expect(screen.queryByText(/薬剤師確認推奨/)).toBeNull();
+    expect(screen.getByText('期限診断')).toBeTruthy();
+    expect(screen.getByText('営業日へ補正 2026-04-12→2026-04-10')).toBeTruthy();
+    expect(screen.getByText('準備日数内に訪問可能日なし 2026-04-10')).toBeTruthy();
+    expect(screen.getByText('固定日が期限超過 2026-04-12 2026-04-10')).toBeTruthy();
+    expect(screen.queryByText(/玄関暗証番号1234/)).toBeNull();
+    expect(screen.queryByText(/患者A/)).toBeNull();
+    expect(screen.getByText('休業日・シフト理由')).toBeTruthy();
+    expect(screen.getByText('営業時間外 1')).toBeTruthy();
+    expect(screen.getByText('訪問可否: 営業時間外')).toBeTruthy();
+    expect(screen.getByText('日次上限超過 1')).toBeTruthy();
+    expect(screen.getByText('移動上限超過 1')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: '時間帯を広げる' }));
     expect(handleAction).toHaveBeenCalledTimes(1);
