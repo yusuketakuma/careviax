@@ -518,6 +518,12 @@
   encoded query values、patient API helper、org header、queryKey、enabled gates、no-false-empty/error UI、
   mutations、QR/export は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 patient constraints save readApiJson slice(40d5b1d0) land。focused Vitest 19、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。patient packaging / visit constraints の
+  save PUT response を readApiJson へ収束し、patient API path helper、hostile-id encoding、
+  dot-segment fail-closed、org JSON headers、PUT methods、request bodies、success toasts、
+  cache invalidation は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 
