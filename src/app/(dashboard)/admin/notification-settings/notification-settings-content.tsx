@@ -522,10 +522,10 @@ export function NotificationSettingsContent() {
             ),
           },
         );
-        if (!response.ok) {
-          throw new Error('通知設定の保存に失敗しました');
-        }
-        const payload = (await response.json()) as { data?: NotificationRule } | NotificationRule;
+        const payload = await readApiJson<{ data?: NotificationRule } | NotificationRule>(
+          response,
+          '通知設定の保存に失敗しました',
+        );
         const nextRule =
           'data' in payload && payload.data ? payload.data : (payload as NotificationRule);
         setRules((prev) => {
@@ -589,10 +589,10 @@ export function NotificationSettingsContent() {
           headers: buildOrgJsonHeaders(orgId),
           body: JSON.stringify({ is_active: isActive }),
         });
-        if (!response.ok) {
-          throw new Error('エスカレーションルールの保存に失敗しました');
-        }
-        const payload = (await response.json()) as { data?: EscalationRule };
+        const payload = await readApiJson<{ data?: EscalationRule }>(
+          response,
+          'エスカレーションルールの保存に失敗しました',
+        );
         if (payload.data) {
           setEscalationRules((prev) =>
             prev.map((item) => (item.id === rule.id ? payload.data! : item)),
@@ -635,10 +635,10 @@ export function NotificationSettingsContent() {
           },
         }),
       });
-      if (!response.ok) {
-        throw new Error('エスカレーションルールの作成に失敗しました');
-      }
-      const payload = (await response.json()) as { data?: EscalationRule };
+      const payload = await readApiJson<{ data?: EscalationRule }>(
+        response,
+        'エスカレーションルールの作成に失敗しました',
+      );
       if (payload.data) {
         setEscalationRules((prev) => [payload.data!, ...prev]);
         setEscalationReloadKey((key) => key + 1);

@@ -224,11 +224,7 @@ export function PharmacySitesContent() {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(siteForm),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error((payload as { message?: string }).message ?? '更新に失敗しました');
-      }
-      return payload;
+      return readApiJson<unknown>(response, '更新に失敗しました');
     },
     onSuccess: async () => {
       toast.success('薬局情報を更新しました');
@@ -261,11 +257,7 @@ export function PharmacySitesContent() {
           effective_to: configForm.effective_to || null,
         }),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error((payload as { message?: string }).message ?? '保存に失敗しました');
-      }
-      return payload;
+      return readApiJson<unknown>(response, '保存に失敗しました');
     },
     onSuccess: async () => {
       toast.success(editingConfigId ? '保険設定を更新しました' : '保険設定を登録しました');

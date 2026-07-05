@@ -130,10 +130,7 @@ export function PackagingMethodsContent() {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(body),
       });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message ?? '配薬方法マスターの保存に失敗しました');
-      }
+      await readApiJson<unknown>(res, '配薬方法マスターの保存に失敗しました');
       return { wasEditing: Boolean(currentForm.id) };
     },
     onSuccess: async ({ wasEditing }) => {

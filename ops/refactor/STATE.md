@@ -40,6 +40,25 @@
 
 ## 直近の land（本日・要点）
 
+- codex: R40/R44 admin settings/master mutation response JSON convergence batch(in-progress on
+  `refactor/admin-json-convergence-20260705`) implementation complete。ユーザー指示
+  「近似箇所はまとめて実装して効率を向上」に基づき、admin notification settings / packaging methods /
+  pharmacy sites / pharmacist credentials の mutation response parsing を同一sliceで `readApiJson` へ収束。
+  notification rule は現行 raw response と `{ data }` forward-compatible response の両方を維持し、
+  escalation / pharmacy site / insurance config / packaging method / pharmacist credential は既存
+  success JSON body 前提を維持。server `message` / `error` は既存 helper 経由で fallback と統一し、
+  binary/export/print/Auth/MFA/PHI patient flows は対象外。subagent は code_mapper / api_contract_reviewer を
+  bounded read-only で投入し、admin master/settings cluster を最優先候補、API contract blocker なしと確認。
+  validation: focused Vitest `notification-settings-content.test.tsx`,
+  `packaging-methods-content.test.tsx`, `pharmacy-sites-content.test.tsx`,
+  `pharmacist-credentials-content.test.tsx` green（4 files / 59 tests）; API/client focused Vitest
+  `client-json.test.ts`, notification-rules route tests, escalation-rules route tests green
+  （5 files / 55 tests）; scoped `eslint` green; scoped `prettier --check` green;
+  `git diff --check` green; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
+  維持しつつ、本sliceでは product admin UI / API response handling のみ変更。DB schema/migration/
+  auth/authorization/PHI/billing/deploy/package dependency 変更は不要。次: 本変更を commit し、ユーザー指示
+  に従って全 non-main branch を main へ merge 後、main 以外の branch を削除。
 - codex: visit record finalization supervision boundary batch(50cf79506)
   implementation complete。ユーザー指示「近似箇所はまとめて実装して効率を向上。サブエージェントも投入」に基づき、
   `POST /api/visit-records` と `PATCH /api/visit-records/:id` の担当 trainee final outcome surface を同一sliceで処理。
