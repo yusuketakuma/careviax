@@ -2,14 +2,17 @@
 
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { jsonResponse } from '@/test/fetch-test-utils';
 import { ShiftsContent } from './shifts-content';
 import { toTimeValue } from './shifts-content.shared';
 
 setupDomTestEnv();
 
 type CapturedMutation = {
-  mutationFn: () => unknown;
+  mutationFn: (...args: unknown[]) => unknown;
+  onSuccess?: (...args: unknown[]) => unknown;
 };
 
 type CapturedQuery = {
@@ -166,6 +169,29 @@ async function runUpsertTemplateMutationAndReadBody() {
   throw new Error('upsert template mutation was not captured');
 }
 
+function mutationFnAt(index: number) {
+  const mutationFn = mutationConfigs[index]?.mutationFn;
+  if (typeof mutationFn !== 'function') throw new Error(`Missing mutationFn at index ${index}`);
+  return mutationFn;
+}
+
+async function findRejectingMutationForUrl(url: string, expectedMessage: string) {
+  for (let index = mutationConfigs.length - 1; index >= 0; index -= 1) {
+    fetchMock.mockClear();
+    try {
+      await mutationConfigs[index]?.mutationFn();
+    } catch (error) {
+      if (fetchMock.mock.calls.some(([input]) => String(input) === url)) {
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toBe(expectedMessage);
+        return;
+      }
+    }
+  }
+
+  throw new Error(`No rejecting mutation found for ${url}`);
+}
+
 describe('ShiftsContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -174,10 +200,7 @@ describe('ShiftsContent', () => {
     queryErrorKeys.clear();
     queryLoadingKeys.clear();
     refetchSpies.clear();
-    fetchMock.mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: { id: 'template_saved' } }),
-    });
+    fetchMock.mockImplementation(async () => jsonResponse({ data: { id: 'template_saved' } }));
     vi.stubGlobal('fetch', fetchMock);
   });
 
@@ -368,6 +391,85 @@ describe('ShiftsContent', () => {
       weekday: 1,
       available: false,
     });
+  });
+
+  it('preserves server messages and operation fallbacks for shift admin mutations', async () => {
+    render(<ShiftsContent />);
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ message: '休日設定の作成権限がありません' }, 403),
+    );
+    await expect(mutationFnAt(1)()).rejects.toThrow('休日設定の作成権限がありません');
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({ error: '休日設定の削除権限がありません' }, 403));
+    await expect(mutationFnAt(3)({ id: 'holiday_1', name: '棚卸休業' })).rejects.toThrow(
+      '休日設定の削除権限がありません',
+    );
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({ error: '薬剤師登録の権限がありません' }, 403));
+    await expect(mutationFnAt(4)()).rejects.toThrow('薬剤師登録の権限がありません');
+
+    fetchMock.mockResolvedValueOnce(new Response('not-json', { status: 500 }));
+    await expect(
+      mutationFnAt(6)({
+        pharmacist: { id: 'user_1', name: '山田 太郎' },
+        action: 'suspend',
+      }),
+    ).rejects.toThrow('薬剤師状態の更新に失敗しました');
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ message: '前月シフトの閲覧権限がありません' }, 403),
+    );
+    await expect(mutationFnAt(7)()).rejects.toThrow('前月シフトの閲覧権限がありません');
+
+    fetchMock.mockResolvedValueOnce(new Response('not-json', { status: 500 }));
+    await expect(mutationFnAt(8)()).rejects.toThrow('定型シフトの保存に失敗しました');
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ message: '定型シフトの削除権限がありません' }, 403),
+    );
+    await expect(mutationFnAt(9)({ id: 'template_1' })).rejects.toThrow(
+      '定型シフトの削除権限がありません',
+    );
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ message: '定型シフトの反映権限がありません' }, 403),
+    );
+    await expect(mutationFnAt(10)()).rejects.toThrow('定型シフトの反映権限がありません');
+  });
+
+  it('preserves server messages for changed shift saves', async () => {
+    render(<ShiftsContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'シフト編集' }));
+    const editableCells = await screen.findAllByRole('button', {
+      name: /山田 太郎 \/ \d{4}年\d+月\d+日\(.+\) \/ 本店 \/ .* を編集/,
+    });
+    fireEvent.click(editableCells[0]);
+    fireEvent.change(screen.getByLabelText('備考', { selector: 'textarea#shift-note' }), {
+      target: { value: '午前は在宅優先' },
+    });
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      if (String(input) === '/api/pharmacist-shifts') {
+        return jsonResponse({ message: 'シフト情報の作成権限がありません' }, 403);
+      }
+      return jsonResponse({ data: { id: 'ok' } });
+    });
+
+    await findRejectingMutationForUrl('/api/pharmacist-shifts', 'シフト情報の作成権限がありません');
+  });
+
+  it('keeps template apply response count and non-JSON fallback', async () => {
+    render(<ShiftsContent />);
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({ data: { applied_count: 4 } }));
+    const result = await mutationFnAt(10)();
+    await mutationConfigs[10]?.onSuccess?.(result);
+
+    expect(toast.success).toHaveBeenCalledWith('4件のシフトを反映しました');
+
+    fetchMock.mockResolvedValueOnce(new Response('not-json', { status: 500 }));
+    await expect(mutationFnAt(10)()).rejects.toThrow('定型シフトの反映に失敗しました');
   });
 
   it('renders monthly shift cells as keyboard-accessible buttons in edit mode', async () => {

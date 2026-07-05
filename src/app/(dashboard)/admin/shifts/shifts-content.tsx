@@ -482,8 +482,7 @@ export function ShiftsContent() {
             }),
           });
           if (!res.ok) {
-            const error = await res.json().catch(() => ({}));
-            throw new Error(error.message ?? 'シフト保存に失敗しました');
+            await readApiJson<unknown>(res, 'シフト保存に失敗しました');
           }
         }),
       );
@@ -514,11 +513,7 @@ export function ShiftsContent() {
           site_id: holidayForm.site_scope === 'site' ? holidayForm.site_id || undefined : undefined,
         }),
       });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message ?? '休日設定の保存に失敗しました');
-      }
-      return res.json();
+      return readApiJson(res, '休日設定の保存に失敗しました');
     },
     onSuccess: async () => {
       toast.success('休日設定を追加しました');
@@ -551,11 +546,7 @@ export function ShiftsContent() {
               : undefined,
         }),
       });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message ?? '休日設定の更新に失敗しました');
-      }
-      return res.json();
+      return readApiJson(res, '休日設定の更新に失敗しました');
     },
     onSuccess: async () => {
       toast.success('休日設定を更新しました');
@@ -574,8 +565,7 @@ export function ShiftsContent() {
         headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message ?? '休日設定の削除に失敗しました');
+        await readApiJson<unknown>(res, '休日設定の削除に失敗しました');
       }
       return holiday;
     },
@@ -605,11 +595,7 @@ export function ShiftsContent() {
           coverage_area: parseListInput(pharmacistForm.coverage_area),
         }),
       });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message ?? 'メンバー登録に失敗しました');
-      }
-      return res.json();
+      return readApiJson(res, 'メンバー登録に失敗しました');
     },
     onSuccess: async () => {
       toast.success('メンバーを登録しました');
@@ -657,11 +643,7 @@ export function ShiftsContent() {
           coverage_area: parseListInput(pharmacistForm.coverage_area),
         }),
       });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message ?? 'メンバー更新に失敗しました');
-      }
-      return res.json();
+      return readApiJson(res, 'メンバー更新に失敗しました');
     },
     onSuccess: async () => {
       toast.success('メンバー情報を更新しました');
@@ -690,8 +672,7 @@ export function ShiftsContent() {
         ),
       });
       if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message ?? '薬剤師状態の更新に失敗しました');
+        await readApiJson<unknown>(res, '薬剤師状態の更新に失敗しました');
       }
       return target;
     },
@@ -723,11 +704,7 @@ export function ShiftsContent() {
           headers: buildOrgHeaders(orgId),
         },
       );
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message ?? '前月シフトの取得に失敗しました');
-      }
-      return res.json() as Promise<{ data: ShiftRecord[] }>;
+      return readApiJson<{ data: ShiftRecord[] }>(res, '前月シフトの取得に失敗しました');
     },
     onSuccess: (payload) => {
       const sourceShiftByUserAndDay = new Map(
@@ -780,11 +757,7 @@ export function ShiftsContent() {
           note: effectiveTemplateForm.note || undefined,
         }),
       });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message ?? '定型シフトの保存に失敗しました');
-      }
-      return res.json();
+      return readApiJson(res, '定型シフトの保存に失敗しました');
     },
     onSuccess: async () => {
       toast.success(editingTemplateId ? '定型シフトを更新しました' : '定型シフトを登録しました');
@@ -803,8 +776,7 @@ export function ShiftsContent() {
         headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message ?? '定型シフトの削除に失敗しました');
+        await readApiJson<unknown>(res, '定型シフトの削除に失敗しました');
       }
       return template;
     },
@@ -831,11 +803,10 @@ export function ShiftsContent() {
           user_id: templateApplyUserId === 'all' ? undefined : templateApplyUserId,
         }),
       });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message ?? '定型シフトの反映に失敗しました');
-      }
-      return res.json() as Promise<{ data: { applied_count: number } }>;
+      return readApiJson<{ data: { applied_count: number } }>(
+        res,
+        '定型シフトの反映に失敗しました',
+      );
     },
     onSuccess: async (payload) => {
       toast.success(`${payload.data.applied_count}件のシフトを反映しました`);
