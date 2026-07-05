@@ -598,6 +598,13 @@ describe('/api/tasks', () => {
       },
       {
         id: 'task_3',
+        task_type: 'handoff_confirmation',
+        title: '申し送り確認',
+        assigned_to: null,
+        priority: 'high',
+      },
+      {
+        id: 'task_4',
         task_type: 'care_report_followup',
         title: '報告フォロー',
         assigned_to: null,
@@ -621,6 +628,10 @@ describe('/api/tasks', () => {
         },
         {
           id: 'task_3',
+          can_complete_inline: false,
+        },
+        {
+          id: 'task_4',
           can_complete_inline: true,
         },
       ],

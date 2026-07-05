@@ -614,6 +614,164 @@ describe('TasksContent', () => {
     expect(invalidateQueriesMock).not.toHaveBeenCalled();
   });
 
+  it('excludes handoff confirmation tasks from bulk inline completion', async () => {
+    useMutationMock.mockImplementation(
+      (options: {
+        mutationFn: (payload: unknown) => Promise<unknown>;
+        onSuccess?: (result: unknown) => void;
+        onError?: (error: unknown) => void;
+      }) => ({
+        mutate: (payload: unknown) => {
+          void options
+            .mutationFn(payload)
+            .then((result) => options.onSuccess?.(result))
+            .catch((error: unknown) => options.onError?.(error));
+        },
+        isPending: false,
+      }),
+    );
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      if (options.queryKey?.[0] === 'staff-workload') {
+        return { data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() };
+      }
+      return {
+        data: {
+          data: [
+            {
+              id: 'task_handoff',
+              task_type: 'handoff_confirmation',
+              title: '申し送り確認',
+              description: null,
+              status: 'pending',
+              priority: 'high',
+              assigned_to: 'user_1',
+              assigned_to_name: '山田 薬剤師',
+              can_complete_inline: false,
+              due_date: null,
+              sla_due_at: null,
+              related_entity_type: 'visit_record',
+              related_entity_id: 'visit_record_1',
+              completed_at: null,
+              created_at: '2026-04-10T08:00:00.000Z',
+            },
+            {
+              id: 'task_followup',
+              task_type: 'follow_up_call',
+              title: 'フォロー電話',
+              description: null,
+              status: 'pending',
+              priority: 'normal',
+              assigned_to: 'user_1',
+              assigned_to_name: '山田 薬剤師',
+              can_complete_inline: true,
+              due_date: null,
+              sla_due_at: null,
+              related_entity_type: 'patient',
+              related_entity_id: 'patient_1',
+              completed_at: null,
+              created_at: '2026-04-10T08:10:00.000Z',
+            },
+          ],
+        },
+        isLoading: false,
+      };
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            data: {
+              total: 1,
+              completed: 1,
+              failed: 0,
+              failures: [],
+            },
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    render(<TasksContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'テスト用に2件選択' }));
+
+    expect(screen.getByText('選択中 2件')).toBeTruthy();
+    expect(screen.getByText('完了可能 1件')).toBeTruthy();
+    expect(screen.getByText('専用画面 1件')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /選択した1件を完了/ }));
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith('/api/tasks/bulk', {
+        method: 'POST',
+        headers: buildOrgJsonHeaders('org_1'),
+        body: JSON.stringify({ ids: ['task_followup'] }),
+      });
+    });
+    expect(toast.success).toHaveBeenCalledWith('1件のタスクを完了しました');
+  });
+
+  it('does not expose bulk inline completion when only dedicated workflow tasks are selected', () => {
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      if (options.queryKey?.[0] === 'staff-workload') {
+        return { data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() };
+      }
+      return {
+        data: {
+          data: [
+            {
+              id: 'task_handoff',
+              task_type: 'handoff_confirmation',
+              title: '申し送り確認',
+              description: null,
+              status: 'pending',
+              priority: 'high',
+              assigned_to: 'user_1',
+              assigned_to_name: '山田 薬剤師',
+              can_complete_inline: false,
+              due_date: null,
+              sla_due_at: null,
+              related_entity_type: 'visit_record',
+              related_entity_id: 'visit_record_1',
+              completed_at: null,
+              created_at: '2026-04-10T08:00:00.000Z',
+            },
+            {
+              id: 'task_visit_preparation',
+              task_type: 'visit_preparation',
+              title: '訪問準備',
+              description: null,
+              status: 'pending',
+              priority: 'normal',
+              assigned_to: 'user_1',
+              assigned_to_name: '山田 薬剤師',
+              can_complete_inline: false,
+              due_date: null,
+              sla_due_at: null,
+              related_entity_type: 'visit_schedule',
+              related_entity_id: 'visit_schedule_1',
+              completed_at: null,
+              created_at: '2026-04-10T08:10:00.000Z',
+            },
+          ],
+        },
+        isLoading: false,
+      };
+    });
+    vi.stubGlobal('fetch', vi.fn());
+
+    render(<TasksContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'テスト用に2件選択' }));
+
+    expect(screen.getByText('選択中 2件')).toBeTruthy();
+    expect(screen.getByText('完了可能 0件')).toBeTruthy();
+    expect(screen.getByText('専用画面 2件')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /選択した\d+件を完了/ })).toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('clears selected tasks and refreshes task caches after successful bulk completion', async () => {
     const invalidateQueriesMock = vi.fn();
     useQueryClientMock.mockReturnValue({ invalidateQueries: invalidateQueriesMock });
