@@ -40,6 +40,40 @@
 
 ## 直近の land（本日・要点）
 
+- codex: medication issue clinical finalization boundary batch(813ad8e14)
+  implementation complete。ユーザー指示「近似箇所はまとめて実装して効率を向上。サブエージェントも投入」に基づき、
+  medication issue の status finalization / reopen / QR promotion / create-final status を同一sliceで処理。
+  subagent は code_mapper / medical_safety_reviewer / test_architect を bounded read-only で投入し、
+  `PATCH /api/medication-issues/:id` が `canVisit` のみで `pharmacist_trainee` による `resolved` /
+  `dismissed` / reopen / QR allergy・lab・OTC promotion を許し、患者 allergy_info / PatientLabObservation /
+  MedicationProfile へ反映できる点を High と指摘。さらに `POST /api/medication-issues` が final status
+  (`resolved` / `dismissed`) の直接作成を許し、resolver metadata なしの closed issue を作れる点も High と判定。
+  対応として `canFinalizeClinicalState` helper を追加し、owner/admin/pharmacist のみ clinical finalization を許可。
+  medication issue PATCH は `status` 変更全般と `promote_to_medication_profile` を final clinical state mutation として
+  trainee/clerk/driver/external_viewer から no-store 403 で停止し、DB lookup / transaction / medicationIssue.update /
+  patient allergy/lab/medication profile promotion / audit / workflow notify 前に fail-closed。trainee の非status
+  triage edit（priority/title/description/category）は維持。POST は final status 作成を validation error とし、
+  patient/case scope lookup・display id allocation・create 前に停止。PATCH 成功 path は全 response を no-store 化し、
+  transaction 内に PHI-minimized `medication_issue_updated` audit を追加。audit changes は status / priority /
+  category 差分、title/description changed boolean、promotion booleans/counts のみで、raw title/description /
+  QR marker / drug name / lab value は保存しない。成功後は `notifyWorkflowMutation` source
+  `medication_issues_update` を追加し workflow cache/realtime refresh を行う。tests は final status/promotion の
+  trainee 403 no-side-effect、trainee nonstatus edit success、final create rejection、PHI-free audit/notify、
+  workflow realtime source allowlist を固定。validation:
+  `pnpm exec vitest run src/lib/auth/__tests__/clinical-finalization.test.ts 'src/app/api/medication-issues/[id]/route.test.ts' src/app/api/medication-issues/route.test.ts src/server/services/workflow-dashboard-cache.test.ts --reporter=dot --testTimeout=30000`
+  green（4 files / 70 tests）;
+  `pnpm exec vitest run src/lib/auth/__tests__/clinical-finalization.test.ts 'src/app/api/medication-issues/[id]/route.test.ts' src/app/api/medication-issues/route.test.ts src/server/services/qr-allergy-promotion.test.ts src/server/services/qr-lab-promotion.test.ts src/server/services/qr-otc-promotion.test.ts src/server/services/workflow-dashboard-cache.test.ts --reporter=dot --testTimeout=30000`
+  green（7 files / 104 tests）;
+  `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/medications/medications-content.test.tsx' 'src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.test.tsx' --reporter=dot --testTimeout=30000`
+  green（2 files / 58 tests）; scoped `eslint` green; scoped `prettier --check` green; `git diff --check` green;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) に基づき product API /
+  authorization / PHI-adjacent patient allergy/lab/medication profile promotion / audit / workflow realtime を変更。
+  DB schema/migration/deploy/package dependency 変更は不要。残る高優先別slice候補: `PATCH
+/api/inquiry-records/:id` の final inquiry outcome（changed/unchanged）による prescription line update /
+  medication cycle transition / communication close / linked MedicationIssue resolve の trainee finalization boundary、
+  reschedule contact PII の `recipient_contact` / suggested_contacts 参照化・masking 契約設計、Task resolver actor
+  trace を Task 自体へ残す schema設計、visit-record finalization supervision。
 - codex: visit schedule reschedule request authz / PHI minimization batch(ef189a3aa)
   implementation complete。ユーザー指示「近似箇所はまとめて実装して効率を向上。サブエージェントも投入」に基づき、
   `POST /api/visit-schedules/:id/reschedule` の lifecycle write boundary と free-text 複製面を同一sliceで処理。
