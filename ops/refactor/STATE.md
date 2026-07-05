@@ -4125,3 +4125,55 @@
 - remaining:
   Broader `Plans.md` objective remains open. `REPORT-UX-001` の残りは一括生成 job queue、
   行単位 retry、生成失敗行だけの再試行、宛先未設定 warning/task、施設一括報告の宛先 gate。
+
+## 2026-07-06 Patient Timeline Limit Contract slice
+
+- codex: `PAT-DETAIL-PERF-002 / FE-BUD-001` backend contract partial implemented.
+  `/api/patients/[id]/timeline` に `limit=1..40` contract を追加し、service 側の最終
+  timeline projection と inline operation-history read を同じ上限で絞れるようにした。既定は
+  40 件のまま、履歴タブ初期表示や Command Center から `?limit=5` の直近抜粋を取得できる。
+- design / imagegen:
+  視覚設計変更を伴わない API/performance foundation のため、`imagegen` / `gpt-image-2` の新規生成は省略。
+  患者詳細履歴タブの初期表示/もっと見る UI を再設計する slice では PH-OS UI/UX SSOT の
+  `gpt-image-2` 方針を適用する。
+- files inspected:
+  `git status --short --branch --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/api/patients/[id]/timeline/route.ts`,
+  `src/app/api/patients/[id]/timeline/route.test.ts`,
+  `src/app/api/patients/[id]/detail-slices.test.ts`,
+  `src/server/services/patient-detail.ts`,
+  `src/server/services/patient-detail.test.ts`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+  `src/app/(dashboard)/patients/[id]/patient-activity-timeline.tsx`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/api/patients/[id]/timeline/route.ts`,
+  `src/app/api/patients/[id]/timeline/route.test.ts`,
+  `src/app/api/patients/[id]/detail-slices.test.ts`,
+  `src/server/services/patient-detail.ts`,
+  `src/server/services/patient-detail.test.ts`.
+- performance issues improved:
+  timeline API が常に最大 40 件の projected events と最大 20 件の operation history を読む contract だった。
+  `limit` を route/service contract に追加し、初期表示や summary use case が payload と audit-log read を
+  明示的に縮小できるようにした。
+- security/PHI reviewed:
+  新規 response field は追加していない。`limit` は `parseExactIntegerSearchParam` で 1..40 に厳格検証し、
+  無効値は RLS scoped runner 作成前に 400 で拒否する。PHI read audit は既存どおり成功時に記録。
+- validation:
+  `pnpm exec vitest run 'src/app/api/patients/[id]/timeline/route.test.ts' 'src/app/api/patients/[id]/detail-slices.test.ts' src/server/services/patient-detail.test.ts --reporter=dot --testTimeout=30000`
+  green (3 files / 132 tests);
+  `pnpm exec eslint 'src/app/api/patients/[id]/timeline/route.ts' 'src/app/api/patients/[id]/timeline/route.test.ts' 'src/app/api/patients/[id]/detail-slices.test.ts' src/server/services/patient-detail.ts src/server/services/patient-detail.test.ts`
+  green;
+  `pnpm exec prettier --check 'src/app/api/patients/[id]/timeline/route.ts' 'src/app/api/patients/[id]/timeline/route.test.ts' 'src/app/api/patients/[id]/detail-slices.test.ts' src/server/services/patient-detail.ts src/server/services/patient-detail.test.ts`
+  green;
+  `git diff --check -- 'src/app/api/patients/[id]/timeline/route.ts' 'src/app/api/patients/[id]/timeline/route.test.ts' 'src/app/api/patients/[id]/detail-slices.test.ts' src/server/services/patient-detail.ts src/server/services/patient-detail.test.ts`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck --pretty false` green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false` green.
+- remaining:
+  Broader `Plans.md` objective remains open. `PAT-DETAIL-PERF-002` の残りは患者詳細履歴タブの
+  `limit=5` 初期取得、全履歴「もっと見る」、source 別 skeleton/fail-soft UI、payload budget、
+  browser smoke。

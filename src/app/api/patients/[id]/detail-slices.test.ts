@@ -536,7 +536,7 @@ describe('patient detail slice routes', () => {
     });
 
     const response = await timelineGet(
-      createRequest('http://localhost/api/patients/patient_1/timeline'),
+      createRequest('http://localhost/api/patients/patient_1/timeline?limit=5'),
       { params: Promise.resolve({ id: 'patient_1' }) },
     );
 
@@ -551,6 +551,13 @@ describe('patient detail slice routes', () => {
           message: '一部のタイムライン情報を取得できませんでした',
         },
       ],
+    });
+    expect(getPatientTimelineDataMock).toHaveBeenCalledWith(expect.any(Function), {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+      timelineLimit: 5,
     });
   });
 
@@ -647,6 +654,7 @@ describe('patient detail slice routes', () => {
         patientId: 'patient_custom',
         role: 'admin',
         userId: 'user_custom',
+        ...(routeCase.name === 'timeline' ? { timelineLimit: 40 } : {}),
       },
     );
   });

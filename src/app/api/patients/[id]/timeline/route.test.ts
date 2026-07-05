@@ -77,12 +77,49 @@ describe('GET /api/patients/[id]/timeline', () => {
       patientId: 'patient_1',
       role: 'pharmacist',
       userId: 'user_1',
+      timelineLimit: 40,
     });
 
     await expect(response.json()).resolves.toMatchObject({
       timeline_events: [],
       self_reports: [],
     });
+  });
+
+  it('passes a bounded timeline limit to the timeline service', async () => {
+    getPatientTimelineDataMock.mockResolvedValue({
+      timeline_events: [],
+      self_reports: [],
+    });
+
+    const response = await GET(
+      createRequest('http://localhost/api/patients/patient_1/timeline?limit=5'),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(getPatientTimelineDataMock).toHaveBeenCalledWith(fakeRunner, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+      timelineLimit: 5,
+    });
+  });
+
+  it('rejects invalid timeline limits before building the scoped runner', async () => {
+    const response = await GET(
+      createRequest('http://localhost/api/patients/patient_1/timeline?limit=41'),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(createScopedTxRunnerMock).not.toHaveBeenCalled();
+    expect(getPatientTimelineDataMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank patient ids before building the scoped runner or calling the service', async () => {

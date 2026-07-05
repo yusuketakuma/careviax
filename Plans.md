@@ -778,6 +778,14 @@ FE 仕上げ（低優先）:
   視覚レイアウト変更を伴わない interaction cleanup のため `imagegen` / `gpt-image-2` 生成は省略。
   残: 一括生成 job queue、行単位 retry、宛先未設定 warning/task、施設一括報告の宛先 gate。
 
+- `PAT-DETAIL-PERF-002 / FE-BUD-001` partial（2026-07-06）:
+  `/api/patients/[id]/timeline` に `limit=1..40` contract を追加し、service 側の最終
+  timeline projection と inline operation-history read を同じ上限で絞れるようにした。
+  既定は 40 件のまま、履歴タブ初期表示や Command Center から `?limit=5` の直近抜粋を取得できる。
+  視覚設計変更を伴わない API/perf foundation のため `imagegen` / `gpt-image-2` 生成は省略。
+  残: 患者詳細履歴タブの `limit=5` 初期取得、全履歴「もっと見る」、source 別 skeleton/fail-soft UI、
+  payload budget / browser smoke。
+
 **追加実装順序**:
 
 1. `UX-CMD-001` + `PERF-BFF-001`: Command Center は重い詳細BFFになりやすいため、最初から summary/detail batch 分割を前提に設計する。

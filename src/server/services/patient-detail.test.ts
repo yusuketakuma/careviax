@@ -4127,6 +4127,76 @@ describe('getPatientTimelineData', () => {
     ]);
   });
 
+  it('limits projected timeline events and the inline operation-history read', async () => {
+    const occurredAt = new Date('2026-04-03T10:00:00.000Z');
+    const auditLogFindMany = vi.fn().mockResolvedValue([
+      {
+        id: 'audit_a',
+        action: 'patient_profile_updated',
+        target_type: 'Patient',
+        target_id: 'patient_1',
+        actor_id: null,
+        changes: {},
+        created_at: new Date('2026-04-04T10:00:00.000Z'),
+      },
+      {
+        id: 'audit_b',
+        action: 'patient_profile_updated',
+        target_type: 'Patient',
+        target_id: 'patient_1',
+        actor_id: null,
+        changes: {},
+        created_at: new Date('2026-04-04T09:00:00.000Z'),
+      },
+    ]);
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      auditLog: { findMany: auditLogFindMany },
+      communicationEvent: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'comm_a',
+            event_type: 'family_call',
+            channel: 'phone',
+            direction: 'inbound',
+            subject: 'A',
+            counterpart_name: '長女',
+            occurred_at: occurredAt,
+          },
+          {
+            id: 'comm_b',
+            event_type: 'family_call',
+            channel: 'phone',
+            direction: 'inbound',
+            subject: 'B',
+            counterpart_name: '長女',
+            occurred_at: occurredAt,
+          },
+        ]),
+      },
+    });
+
+    const result = await getPatientTimelineData(runnerFor(db), {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+      timelineLimit: 2,
+    });
+
+    expect(auditLogFindMany).toHaveBeenCalledWith(expect.objectContaining({ take: 2 }));
+    expect(result?.timeline_events).toHaveLength(2);
+    expect(result?.timeline_events.map((item) => item.id)).toEqual([
+      'operation_history:audit_a',
+      'operation_history:audit_b',
+    ]);
+  });
+
   it('flows every timeline read through the injected scoped executor, never the global prisma', async () => {
     const db = buildDb({
       patient: {

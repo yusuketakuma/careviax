@@ -65,6 +65,12 @@ export { getPatientReadinessData } from '@/server/services/patient-detail-readin
 export { getPatientWorkflowPreviewData } from '@/server/services/patient-detail-workflow-preview';
 
 type DbClient = typeof prisma | Prisma.TransactionClient;
+const PATIENT_TIMELINE_DEFAULT_LIMIT = 40;
+const PATIENT_TIMELINE_MAX_LIMIT = 40;
+
+export type PatientTimelineArgs = PatientDetailScopeArgs & {
+  timelineLimit?: number;
+};
 
 type JahisSupplementalRecordProjection = {
   id: string;
@@ -671,7 +677,15 @@ export async function getPatientVisitsData(db: DbClient, args: DetailArgs) {
   };
 }
 
-export async function getPatientTimelineData(runScoped: ScopedTxRunner, args: DetailArgs) {
+function resolvePatientTimelineLimit(limit: number | undefined) {
+  if (typeof limit !== 'number' || !Number.isSafeInteger(limit)) {
+    return PATIENT_TIMELINE_DEFAULT_LIMIT;
+  }
+  return Math.min(PATIENT_TIMELINE_MAX_LIMIT, Math.max(1, limit));
+}
+
+export async function getPatientTimelineData(runScoped: ScopedTxRunner, args: PatientTimelineArgs) {
+  const timelineLimit = resolvePatientTimelineLimit(args.timelineLimit);
   const patient = await runScoped((tx) =>
     tx.patient.findFirst({
       where: buildPatientDetailWhere(args),
@@ -791,7 +805,7 @@ export async function getPatientTimelineData(runScoped: ScopedTxRunner, args: De
           OR: operationHistoryFilters,
         },
         orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
-        take: 20,
+        take: Math.min(20, timelineLimit),
         select: {
           id: true,
           action: true,
@@ -846,7 +860,7 @@ export async function getPatientTimelineData(runScoped: ScopedTxRunner, args: De
       (left, right) =>
         right.occurred_at.getTime() - left.occurred_at.getTime() || right.id.localeCompare(left.id),
     )
-    .slice(0, 40);
+    .slice(0, timelineLimit);
 
   return {
     timeline_events: timelineEvents,

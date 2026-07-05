@@ -1,6 +1,7 @@
 import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import { internalError, notFound, success, validationError } from '@/lib/api/response';
+import { parseExactIntegerSearchParam } from '@/lib/api/search-params';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { createScopedTxRunner } from '@/lib/db/rls';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -8,10 +9,13 @@ import { getPatientTimelineData } from '@/server/services/patient-detail';
 import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 
 const authenticatedGET = withAuthContext(
-  async (_req, ctx, { params }) => {
+  async (req, ctx, { params }) => {
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
     if (!id) return validationError('患者IDが不正です');
+    const { searchParams } = new URL(req.url);
+    const limit = parseExactIntegerSearchParam(searchParams, 'limit', 1, 40, 40);
+    if (!limit.ok) return validationError(limit.message);
 
     // Inject the single RLS-scoped executor seam; the global prisma client is no
     // longer reachable here, so each timeline read flows through a scoped short tx.
@@ -21,6 +25,7 @@ const authenticatedGET = withAuthContext(
       patientId: id,
       role: ctx.role,
       userId: ctx.userId,
+      timelineLimit: limit.value,
     });
     if (!timeline) return notFound('患者が見つかりません');
 
