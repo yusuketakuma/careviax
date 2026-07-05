@@ -40,7 +40,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: DASH-PERF-001 Dashboard BFF split foundation complete（commit pending）。
+- codex: DASH-PERF-001 Dashboard BFF split foundation complete（commit `377b07f38`）。
   - current task:
     Goal 継続として `DASH-PERF-001` の backend foundation を実装。既存
     `/api/dashboard/cockpit` の巨大 route-local 集計を
