@@ -31,8 +31,12 @@ import type {
   CockpitTeamMember,
   CockpitVisit,
   DashboardCockpitScope,
+  DashboardCockpitDetailsResponse,
   DashboardCockpitResponse,
+  DashboardCockpitSummaryResponse,
+  DashboardCockpitTeamResponse,
 } from '@/types/dashboard-cockpit';
+import type { DashboardFocusRole } from './dashboard-role-focus';
 import {
   buildBottleneckNote,
   buildTeamHandoffSuggestion,
@@ -74,6 +78,51 @@ export async function fetchDashboardCockpit(
   return json.data;
 }
 
+async function fetchDashboardCockpitSegment<TData>(
+  orgId: string,
+  scope: DashboardCockpitScope,
+  segment: 'summary' | 'details' | 'team',
+  errorMessage: string,
+): Promise<TData> {
+  const params = new URLSearchParams({ scope });
+  const res = await fetch(`/api/dashboard/cockpit/${segment}?${params.toString()}`, {
+    headers: buildOrgHeaders(orgId),
+  });
+  const json = await readApiJson<{ data: TData }>(res, errorMessage);
+  return json.data;
+}
+
+export function fetchDashboardCockpitSummary(
+  orgId: string,
+  scope: DashboardCockpitScope = 'mine',
+): Promise<DashboardCockpitSummaryResponse> {
+  return fetchDashboardCockpitSegment(
+    orgId,
+    scope,
+    'summary',
+    'ダッシュボード概要の取得に失敗しました',
+  );
+}
+
+export function fetchDashboardCockpitDetails(
+  orgId: string,
+  scope: DashboardCockpitScope = 'mine',
+): Promise<DashboardCockpitDetailsResponse> {
+  return fetchDashboardCockpitSegment(
+    orgId,
+    scope,
+    'details',
+    'ダッシュボード詳細の取得に失敗しました',
+  );
+}
+
+export function fetchDashboardCockpitTeam(
+  orgId: string,
+  scope: DashboardCockpitScope = 'mine',
+): Promise<DashboardCockpitTeamResponse> {
+  return fetchDashboardCockpitSegment(orgId, scope, 'team', 'チーム状況の取得に失敗しました');
+}
+
 type DashboardViewScope = 'mine' | 'team';
 
 const VIEW_SCOPE_OPTIONS: Array<{ value: DashboardViewScope; label: string }> = [
@@ -81,25 +130,22 @@ const VIEW_SCOPE_OPTIONS: Array<{ value: DashboardViewScope; label: string }> = 
   { value: 'team', label: 'チーム全体' },
 ];
 
+const FOCUS_ROLE_HINT: Record<DashboardFocusRole, string> = {
+  pharmacist: '薬剤師フォーカス: 監査・訪問準備を優先',
+  clerk: '事務フォーカス: 連絡・報告・請求を優先',
+  common: '共通フォーカス: 要対応を優先',
+};
+
 // ---------------------------------------------------------------------------
 // 条件バナー
 // ---------------------------------------------------------------------------
 
-function ConditionBanner({ data }: { data: DashboardCockpitResponse }) {
-  const visitTimes = data.today_visits
-    .filter((visit) => visit.time_start != null)
-    // time_start は BFF が "HH:MM" 壁時計で返すため、そのまま表示する
-    // (formatTimeOfDay はローカル TZ 解釈で @db.Time が約9hずれるため使わない)。
-    .map((visit) => visit.time_start as string);
+function ConditionBanner({ data }: { data: DashboardCockpitSummaryResponse }) {
   const summary = buildConditionSummary({
     auditPendingCount: data.audit_pending_count,
     narcoticAuditCount: data.narcotic_audit_count,
-    earliestAuditDueAt:
-      data.audit_queue
-        .map((item) => item.due_at)
-        .filter((dueAt): dueAt is string => dueAt != null)
-        .sort()[0] ?? null,
-    visitTimes,
+    earliestAuditDueAt: data.earliest_audit_due_at,
+    visitTimes: data.today_visit_times,
   });
 
   return (
@@ -564,6 +610,111 @@ function TeamCapacityCard({
   );
 }
 
+function DashboardDetailsLoading({
+  auditCount,
+  visitCount,
+}: {
+  auditCount: number;
+  visitCount: number;
+}) {
+  return (
+    <section
+      className="rounded-lg border border-border/70 bg-card p-4"
+      role="status"
+      aria-label="ダッシュボード詳細を読み込み中"
+      data-testid="dashboard-details-loading"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-base font-bold text-foreground">詳細を読み込み中</h2>
+        <p className="text-xs text-muted-foreground">
+          監査{auditCount}件・訪問{visitCount}件の明細を後追い取得しています。
+        </p>
+      </div>
+      <div className="mt-3 grid gap-3 lg:grid-cols-3">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <Skeleton key={index} className="h-36 w-full rounded-lg" />
+        ))}
+      </div>
+      <Skeleton className="mt-3 h-28 w-full rounded-lg" />
+    </section>
+  );
+}
+
+function DashboardDetailsError({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  return (
+    <section
+      className="rounded-lg border border-border/70 bg-card p-4"
+      data-testid="dashboard-details-error"
+    >
+      <ErrorState
+        variant="server"
+        title="対応詳細を表示できません"
+        description="監査キューと今日の訪問明細だけ取得に失敗しました。概要は表示したまま再試行できます。"
+        detail={error instanceof Error ? error.message : undefined}
+        onRetry={onRetry}
+      />
+    </section>
+  );
+}
+
+function TeamCapacityLoading() {
+  return (
+    <section
+      aria-label="チーム状況を読み込み中"
+      className="rounded-lg border border-border/70 bg-card p-4"
+      role="status"
+      data-testid="dashboard-team-loading"
+    >
+      <div className="flex flex-wrap items-baseline gap-2">
+        <h2 className="text-base font-bold text-foreground">チームの余白</h2>
+        <p className="text-xs text-muted-foreground">詳細を読み込み中</p>
+      </div>
+      <div className="mt-3 space-y-3">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <Skeleton key={index} className="h-9 w-full rounded-md" />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function TeamCapacityError({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  return (
+    <section
+      className="rounded-lg border border-border/70 bg-card p-4"
+      data-testid="dashboard-team-error"
+    >
+      <ErrorState
+        variant="server"
+        title="チーム状況を表示できません"
+        description="担当者の余白だけ取得に失敗しました。工程状況は表示したまま再試行できます。"
+        detail={error instanceof Error ? error.message : undefined}
+        onRetry={onRetry}
+      />
+    </section>
+  );
+}
+
+function ActionRailLoading() {
+  return (
+    <aside
+      className="rounded-lg border border-border/70 bg-card p-4"
+      role="status"
+      aria-label="右レールを読み込み中"
+      data-testid="dashboard-action-rail-loading"
+    >
+      <div className="space-y-3">
+        <Skeleton className="h-5 w-28 rounded-md" />
+        <Skeleton className="h-16 w-full rounded-lg" />
+        <Skeleton className="h-5 w-32 rounded-md" />
+        <Skeleton className="h-20 w-full rounded-lg" />
+        <Skeleton className="h-5 w-24 rounded-md" />
+        <Skeleton className="h-16 w-full rounded-lg" />
+      </div>
+    </aside>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // 右レール(次にやること / 止まっている理由 / 根拠・記録)
 // ---------------------------------------------------------------------------
@@ -622,16 +773,32 @@ function CockpitSkeleton() {
   );
 }
 
-export function DashboardCockpit() {
+export function DashboardCockpit({ focusRole = 'common' }: { focusRole?: DashboardFocusRole }) {
   const orgId = useOrgId();
   const [viewScope, setViewScope] = useState<DashboardViewScope>('mine');
   const isBootstrappingOrg = !orgId;
 
-  const cockpitQuery = useRealtimeQuery({
-    queryKey: ['dashboard', 'cockpit', orgId, viewScope],
-    queryFn: () => fetchDashboardCockpit(orgId, viewScope),
+  const summaryQuery = useRealtimeQuery({
+    queryKey: ['dashboard', 'cockpit', 'summary', orgId, viewScope],
+    queryFn: () => fetchDashboardCockpitSummary(orgId, viewScope),
     staleTime: COCKPIT_FRESHNESS_WINDOW_MS,
     enabled: !isBootstrappingOrg,
+    invalidateOn: ['cycle_transition', 'workflow_refresh'],
+  });
+  const summary = summaryQuery.data ?? null;
+  const segmentQueriesEnabled = !isBootstrappingOrg && summary != null;
+  const detailsQuery = useRealtimeQuery({
+    queryKey: ['dashboard', 'cockpit', 'details', orgId, viewScope],
+    queryFn: () => fetchDashboardCockpitDetails(orgId, viewScope),
+    staleTime: COCKPIT_FRESHNESS_WINDOW_MS,
+    enabled: segmentQueriesEnabled,
+    invalidateOn: ['cycle_transition', 'workflow_refresh'],
+  });
+  const teamQuery = useRealtimeQuery({
+    queryKey: ['dashboard', 'cockpit', 'team', orgId, viewScope],
+    queryFn: () => fetchDashboardCockpitTeam(orgId, viewScope),
+    staleTime: COCKPIT_FRESHNESS_WINDOW_MS,
+    enabled: segmentQueriesEnabled,
     invalidateOn: ['cycle_transition', 'workflow_refresh'],
   });
 
@@ -640,29 +807,32 @@ export function DashboardCockpit() {
     const timer = window.setInterval(() => setNow(new Date()), COCKPIT_FRESHNESS_WINDOW_MS);
     return () => window.clearInterval(timer);
   }, []);
-  const data = cockpitQuery.data ?? null;
+  const details = detailsQuery.data ?? null;
+  const team = teamQuery.data ?? null;
   const hasStaleRefetchError =
-    data != null && (cockpitQuery.isRefetchError || cockpitQuery.isError);
-  const appliedScope = data?.scope?.applied ?? viewScope;
-  const canViewTeam = data?.scope?.can_view_team ?? true;
+    (summary != null && (summaryQuery.isRefetchError || summaryQuery.isError)) ||
+    (details != null && (detailsQuery.isRefetchError || detailsQuery.isError)) ||
+    (team != null && (teamQuery.isRefetchError || teamQuery.isError));
+  const appliedScope = summary?.scope?.applied ?? viewScope;
+  const canViewTeam = summary?.scope?.can_view_team ?? true;
   const scopeLabel =
     VIEW_SCOPE_OPTIONS.find((option) => option.value === appliedScope)?.label ?? '私の今日';
   const dateLabel = `${format(now, 'M/d(EEE) HH:mm', { locale: ja })} — ${scopeLabel}`;
 
-  const todayVisits = data?.today_visits ?? [];
-  const topAudit = data?.audit_queue[0] ?? null;
-  const blockedReasons: BlockedReason[] = buildDailyOpsBlockedReasons(data);
+  const todayVisits = details?.today_visits ?? [];
+  const topAudit = details?.audit_queue[0] ?? null;
+  const blockedReasons: BlockedReason[] = buildDailyOpsBlockedReasons(details);
   const evidence: EvidenceItem[] = [
     {
       id: 'sync',
       label: '今朝の同期',
-      meta: data ? formatCockpitGeneratedAtMeta(data.generated_at, now) : '—',
-      onView: () => void cockpitQuery.refetch(),
+      meta: summary ? formatCockpitGeneratedAtMeta(summary.generated_at, now) : '—',
+      onView: () => void summaryQuery.refetch(),
     },
     {
       id: 'carryover',
       label: '昨日からの持ち越し',
-      meta: `${data?.carryover_count ?? 0}件`,
+      meta: `${details?.carryover_count ?? 0}件`,
       href: '/workflow',
     },
     {
@@ -672,6 +842,14 @@ export function DashboardCockpit() {
       href: '#dashboard-process-now',
     },
   ];
+  const detailsReady = details != null;
+  const detailsInitialError = !detailsReady && detailsQuery.isError;
+  const detailsInitialLoading =
+    !detailsReady && (detailsQuery.isLoading || summary != null) && !detailsInitialError;
+  const teamReady = team != null;
+  const teamInitialError = !teamReady && teamQuery.isError;
+  const teamInitialLoading =
+    !teamReady && (teamQuery.isLoading || summary != null) && !teamInitialError;
 
   return (
     <section aria-label="運用コックピット" data-testid="dashboard-cockpit">
@@ -682,6 +860,7 @@ export function DashboardCockpit() {
           <p className="text-sm text-muted-foreground" suppressHydrationWarning>
             {dateLabel}
           </p>
+          <p className="text-xs font-medium text-muted-foreground">{FOCUS_ROLE_HINT[focusRole]}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Link
@@ -709,23 +888,23 @@ export function DashboardCockpit() {
           />
         </div>
       </div>
-      {data?.scope?.applied === 'mine' && !data.scope.can_view_team ? (
+      {summary?.scope?.applied === 'mine' && !summary.scope.can_view_team ? (
         <p className="mt-2 text-xs text-muted-foreground">
           この画面は担当患者・担当ケースの範囲で集計しています。チーム全体の集計は管理者だけが表示できます。
         </p>
       ) : null}
 
       <div className="mt-4">
-        {isBootstrappingOrg || cockpitQuery.isLoading ? (
+        {isBootstrappingOrg || summaryQuery.isLoading ? (
           <CockpitSkeleton />
-        ) : !data ? (
+        ) : !summary ? (
           <div className="rounded-lg border border-border/70 bg-card p-4">
             <ErrorState
               variant="server"
               title="ダッシュボードを表示できません"
               description="運用コックピットの集計取得に失敗しました。再試行してください。"
-              detail={cockpitQuery.error instanceof Error ? cockpitQuery.error.message : undefined}
-              onRetry={() => void cockpitQuery.refetch()}
+              detail={summaryQuery.error instanceof Error ? summaryQuery.error.message : undefined}
+              onRetry={() => void summaryQuery.refetch()}
             />
           </div>
         ) : (
@@ -745,35 +924,62 @@ export function DashboardCockpit() {
                   variant="outline"
                   size="sm"
                   className="min-h-[44px] border-state-confirm/40 bg-card text-state-confirm hover:bg-state-confirm/15 sm:min-h-9"
-                  onClick={() => void cockpitQuery.refetch()}
+                  onClick={() => {
+                    void summaryQuery.refetch();
+                    void detailsQuery.refetch();
+                    void teamQuery.refetch();
+                  }}
                 >
                   再試行
                 </Button>
               </div>
             ) : null}
             <div className="min-w-0 space-y-4">
-              <ConditionBanner data={data} />
-              <UrgentNowSection
-                items={data.audit_queue}
-                totalCount={data.audit_pending_count}
-                now={now}
-              />
-              <TodayFlowSection
-                visits={todayVisits}
-                auditCount={data.audit_pending_count}
-                narcoticAuditCount={data.narcotic_audit_count}
-                reportCount={data.cycle_status_counts['visit_completed'] ?? 0}
-                now={now}
-              />
-              <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]">
-                <ProcessNowSection statusCounts={data.cycle_status_counts} />
-                <TeamCapacityCard
-                  team={data.team_capacity ?? []}
-                  suggestion={buildTeamHandoffSuggestion(
-                    buildProcessNowTiles(data.cycle_status_counts),
-                    data.team_capacity ?? [],
-                  )}
+              <ConditionBanner data={summary} />
+              {detailsReady ? (
+                <>
+                  <UrgentNowSection
+                    items={details.audit_queue}
+                    totalCount={summary.audit_pending_count}
+                    now={now}
+                  />
+                  <TodayFlowSection
+                    visits={todayVisits}
+                    auditCount={summary.audit_pending_count}
+                    narcoticAuditCount={summary.narcotic_audit_count}
+                    reportCount={summary.cycle_status_counts['visit_completed'] ?? 0}
+                    now={now}
+                  />
+                </>
+              ) : detailsInitialError ? (
+                <DashboardDetailsError
+                  error={detailsQuery.error}
+                  onRetry={() => void detailsQuery.refetch()}
                 />
+              ) : detailsInitialLoading ? (
+                <DashboardDetailsLoading
+                  auditCount={summary.audit_pending_count}
+                  visitCount={summary.today_visit_count}
+                />
+              ) : null}
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]">
+                <ProcessNowSection statusCounts={summary.cycle_status_counts} />
+                {teamReady ? (
+                  <TeamCapacityCard
+                    team={team.team_capacity ?? []}
+                    suggestion={buildTeamHandoffSuggestion(
+                      buildProcessNowTiles(summary.cycle_status_counts),
+                      team.team_capacity ?? [],
+                    )}
+                  />
+                ) : teamInitialError ? (
+                  <TeamCapacityError
+                    error={teamQuery.error}
+                    onRetry={() => void teamQuery.refetch()}
+                  />
+                ) : teamInitialLoading ? (
+                  <TeamCapacityLoading />
+                ) : null}
               </div>
             </div>
             {/*
@@ -781,13 +987,17 @@ export function DashboardCockpit() {
              * 「チームの会話」: 直近コメントを横断取得するフィード API が無いため
              * (/api/comments は entity 単位の取得のみ)、第一版ではセクション自体を省略。
              */}
-            <WorkspaceActionRail
-              nextAction={buildNextAction(topAudit, todayVisits.length)}
-              blockedReasons={blockedReasons}
-              blockedReasonsEmptyLabel="止まっている作業はありません"
-              evidence={evidence}
-              evidenceOpenLabel="開く"
-            />
+            {detailsReady ? (
+              <WorkspaceActionRail
+                nextAction={buildNextAction(topAudit, todayVisits.length)}
+                blockedReasons={blockedReasons}
+                blockedReasonsEmptyLabel="止まっている作業はありません"
+                evidence={evidence}
+                evidenceOpenLabel="開く"
+              />
+            ) : detailsInitialError ? null : (
+              <ActionRailLoading />
+            )}
           </div>
         )}
       </div>

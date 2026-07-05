@@ -6,7 +6,12 @@ import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { stubJsonFetch } from '@/test/fetch-test-utils';
 import { useUIStore } from '@/lib/stores/ui-store';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
-import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
+import type {
+  DashboardCockpitDetailsResponse,
+  DashboardCockpitResponse,
+  DashboardCockpitSummaryResponse,
+  DashboardCockpitTeamResponse,
+} from '@/types/dashboard-cockpit';
 
 setupDomTestEnv();
 
@@ -156,19 +161,106 @@ function buildFixture(): DashboardCockpitResponse {
   };
 }
 
+type SegmentQueryState<TData> = {
+  data: TData | undefined;
+  isLoading: boolean;
+  isError: boolean;
+  isRefetchError?: boolean;
+  error: Error | null;
+  refetch: typeof refetchMock;
+};
+
+function buildSummaryFixture(data = buildFixture()): DashboardCockpitSummaryResponse {
+  return {
+    generated_at: data.generated_at,
+    scope: data.scope,
+    cycle_status_counts: data.cycle_status_counts,
+    audit_queue_total_count: data.audit_queue_total_count,
+    audit_pending_count: data.audit_pending_count,
+    narcotic_audit_count: data.narcotic_audit_count,
+    earliest_audit_due_at:
+      data.audit_queue
+        .map((item) => item.due_at)
+        .filter((dueAt): dueAt is string => dueAt != null)
+        .sort()[0] ?? null,
+    today_visit_count: data.today_visits.length,
+    today_visit_times: data.today_visits
+      .filter((visit) => visit.time_start != null)
+      .map((visit) => visit.time_start as string),
+  };
+}
+
+function buildDetailsFixture(data = buildFixture()): DashboardCockpitDetailsResponse {
+  return {
+    generated_at: data.generated_at,
+    scope: data.scope,
+    audit_queue_total_count: data.audit_queue_total_count,
+    audit_queue_visible_count: data.audit_queue_visible_count,
+    audit_queue_hidden_count: data.audit_queue_hidden_count,
+    audit_queue: data.audit_queue,
+    today_visits: data.today_visits,
+    blocked_reasons: data.blocked_reasons,
+    carryover_count: data.carryover_count,
+  };
+}
+
+function buildTeamFixture(data = buildFixture()): DashboardCockpitTeamResponse {
+  return {
+    generated_at: data.generated_at,
+    scope: data.scope,
+    team_capacity: data.team_capacity,
+  };
+}
+
+function successQuery<TData>(data: TData): SegmentQueryState<TData> {
+  return {
+    data,
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: refetchMock,
+  };
+}
+
+function mockDashboardQueries({
+  fixture = buildFixture(),
+  summary,
+  details,
+  team,
+}: {
+  fixture?: DashboardCockpitResponse;
+  summary?: Partial<SegmentQueryState<DashboardCockpitSummaryResponse>>;
+  details?: Partial<SegmentQueryState<DashboardCockpitDetailsResponse>>;
+  team?: Partial<SegmentQueryState<DashboardCockpitTeamResponse>>;
+} = {}) {
+  const states = {
+    summary: { ...successQuery(buildSummaryFixture(fixture)), ...summary },
+    details: { ...successQuery(buildDetailsFixture(fixture)), ...details },
+    team: { ...successQuery(buildTeamFixture(fixture)), ...team },
+  };
+
+  useRealtimeQueryMock.mockImplementation((config: { queryKey: unknown[] }) => {
+    const segment = config.queryKey[2];
+    if (segment === 'summary') return states.summary;
+    if (segment === 'details') return states.details;
+    if (segment === 'team') return states.team;
+    return successQuery(fixture);
+  });
+}
+
+function queryConfigFor(segment: 'summary' | 'details' | 'team', scope: 'mine' | 'team' = 'mine') {
+  return useRealtimeQueryMock.mock.calls
+    .map((call) => call[0] as { queryKey: unknown[]; queryFn: () => Promise<unknown> })
+    .find((config) => config.queryKey[2] === segment && config.queryKey[4] === scope);
+}
+
 describe('DashboardCockpit', () => {
   beforeEach(() => {
     useUIStore.setState({ workspaceRailOpen: true });
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 5, 12, 9, 42));
     refetchMock.mockClear();
-    useRealtimeQueryMock.mockReturnValue({
-      data: buildFixture(),
-      isLoading: false,
-      isError: false,
-      error: null,
-      refetch: refetchMock,
-    });
+    mockDashboardQueries();
   });
 
   afterEach(() => {
@@ -196,44 +288,60 @@ describe('DashboardCockpit', () => {
 
     render(<DashboardCockpit />);
 
-    const mineConfig = useRealtimeQueryMock.mock.calls[0]?.[0] as {
-      queryKey: unknown[];
-      queryFn: () => Promise<unknown>;
-    };
-    expect(mineConfig.queryKey).toEqual(['dashboard', 'cockpit', 'org_1', 'mine']);
+    const mineSummaryConfig = queryConfigFor('summary');
+    const mineDetailsConfig = queryConfigFor('details');
+    const mineTeamConfig = queryConfigFor('team');
+    expect(mineSummaryConfig?.queryKey).toEqual([
+      'dashboard',
+      'cockpit',
+      'summary',
+      'org_1',
+      'mine',
+    ]);
+    expect(mineDetailsConfig?.queryKey).toEqual([
+      'dashboard',
+      'cockpit',
+      'details',
+      'org_1',
+      'mine',
+    ]);
+    expect(mineTeamConfig?.queryKey).toEqual(['dashboard', 'cockpit', 'team', 'org_1', 'mine']);
 
-    await mineConfig.queryFn();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/dashboard/cockpit?scope=mine');
+    await mineSummaryConfig?.queryFn();
+    await mineDetailsConfig?.queryFn();
+    await mineTeamConfig?.queryFn();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/dashboard/cockpit/summary?scope=mine');
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/dashboard/cockpit/details?scope=mine');
+    expect(fetchMock.mock.calls[2]?.[0]).toBe('/api/dashboard/cockpit/team?scope=mine');
     expect((fetchMock.mock.calls[0]?.[1] as RequestInit).headers).toBe(sentinelHeaders);
 
     fireEvent.click(screen.getByRole('button', { name: 'チーム全体' }));
-    const teamConfig = useRealtimeQueryMock.mock.calls.at(-1)?.[0] as {
-      queryKey: unknown[];
-      queryFn: () => Promise<unknown>;
-    };
-    expect(teamConfig.queryKey).toEqual(['dashboard', 'cockpit', 'org_1', 'team']);
+    const teamSummaryConfig = queryConfigFor('summary', 'team');
+    expect(teamSummaryConfig?.queryKey).toEqual([
+      'dashboard',
+      'cockpit',
+      'summary',
+      'org_1',
+      'team',
+    ]);
 
     fetchMock.mockClear();
-    await teamConfig.queryFn();
+    await teamSummaryConfig?.queryFn();
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/dashboard/cockpit?scope=team');
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/dashboard/cockpit/summary?scope=team');
     expect((fetchMock.mock.calls[0]?.[1] as RequestInit).headers).toBe(sentinelHeaders);
-    expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledTimes(4);
     expect(vi.mocked(buildOrgHeaders)).toHaveBeenNthCalledWith(1, 'org_1');
     expect(vi.mocked(buildOrgHeaders)).toHaveBeenNthCalledWith(2, 'org_1');
   });
 
   it('disables the team scope when the API applies mine-only dashboard access', () => {
-    useRealtimeQueryMock.mockReturnValue({
-      data: {
+    mockDashboardQueries({
+      fixture: {
         ...buildFixture(),
         scope: { requested: 'team', applied: 'mine', can_view_team: false },
       },
-      isLoading: false,
-      isError: false,
-      error: null,
-      refetch: refetchMock,
     });
 
     render(<DashboardCockpit />);
@@ -393,15 +501,11 @@ describe('DashboardCockpit', () => {
   });
 
   it('marks cockpit evidence as stale when the generated snapshot is older than the realtime freshness window', () => {
-    useRealtimeQueryMock.mockReturnValue({
-      data: {
+    mockDashboardQueries({
+      fixture: {
         ...buildFixture(),
         generated_at: localIso(9, 40),
       },
-      isLoading: false,
-      isError: false,
-      error: null,
-      refetch: refetchMock,
     });
 
     render(<DashboardCockpit />);
@@ -431,15 +535,11 @@ describe('DashboardCockpit', () => {
       '09:43',
     );
 
-    useRealtimeQueryMock.mockReturnValue({
-      data: {
+    mockDashboardQueries({
+      fixture: {
         ...buildFixture(),
         generated_at: 'not-a-date',
       },
-      isLoading: false,
-      isError: false,
-      error: null,
-      refetch: refetchMock,
     });
 
     render(<DashboardCockpit />);
@@ -450,12 +550,13 @@ describe('DashboardCockpit', () => {
   });
 
   it('shows the error state with retry when the cockpit fetch fails', () => {
-    useRealtimeQueryMock.mockReturnValue({
-      data: undefined,
-      isLoading: false,
-      isError: true,
-      error: new Error('boom'),
-      refetch: refetchMock,
+    mockDashboardQueries({
+      summary: {
+        data: undefined,
+        isLoading: false,
+        isError: true,
+        error: new Error('boom'),
+      },
     });
 
     render(<DashboardCockpit />);
@@ -466,13 +567,12 @@ describe('DashboardCockpit', () => {
   });
 
   it('keeps stale cockpit data visible and shows a retry warning when a background refetch fails', () => {
-    useRealtimeQueryMock.mockReturnValue({
-      data: buildFixture(),
-      isLoading: false,
-      isError: true,
-      isRefetchError: true,
-      error: new Error('background refresh failed'),
-      refetch: refetchMock,
+    mockDashboardQueries({
+      summary: {
+        isError: true,
+        isRefetchError: true,
+        error: new Error('background refresh failed'),
+      },
     });
 
     render(<DashboardCockpit />);
@@ -485,6 +585,46 @@ describe('DashboardCockpit', () => {
     expect(screen.queryByText('ダッシュボードを表示できません')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(refetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('keeps summary sections visible when details fail before the first payload arrives', () => {
+    mockDashboardQueries({
+      details: {
+        data: undefined,
+        isLoading: false,
+        isError: true,
+        error: new Error('details down'),
+      },
+    });
+
+    render(<DashboardCockpit />);
+
+    expect(screen.getByTestId('dashboard-condition-banner')).toBeTruthy();
+    expect(screen.getByTestId('dashboard-process-now')).toBeTruthy();
+    expect(screen.getByText('対応詳細を表示できません')).toBeTruthy();
+    expect(
+      screen.queryByText('いま期限・待ち解除で対応が必要な処方サイクルはありません。'),
+    ).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
     expect(refetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps process status visible when team capacity fails before the first payload arrives', () => {
+    mockDashboardQueries({
+      team: {
+        data: undefined,
+        isLoading: false,
+        isError: true,
+        error: new Error('team down'),
+      },
+    });
+
+    render(<DashboardCockpit />);
+
+    expect(screen.getByTestId('dashboard-process-now')).toBeTruthy();
+    expect(screen.getByText('チーム状況を表示できません')).toBeTruthy();
+    expect(screen.queryByTestId('dashboard-team-capacity')).toBeNull();
   });
 });

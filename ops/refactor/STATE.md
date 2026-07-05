@@ -40,6 +40,67 @@
 
 ## 直近の land（本日・要点）
 
+- codex: DASH-PERF-001 Dashboard UI summary-first split continuation complete（commit pending）。
+  - current task:
+    Goal 継続として、前段で追加した `/api/dashboard/cockpit/summary` / `details` / `team`
+    を Dashboard UI 側で消費。既存 full route helper は互換維持し、`DashboardCockpit` は
+    summary を主 query として先に条件バナー・工程の今を表示し、PHI-bearing details と team は
+    後追い query へ分割した。details/team の初回失敗時は summary を消さず、該当領域だけ
+    `ErrorState` + retry へ fail-soft。`DashboardContent` は捨てていた `focusRole` を
+    `DashboardCockpit` へ渡し、薬剤師/事務/共通の初動 focus を header に出す。
+  - design reference:
+    `imagegen` skill を読み、gpt-image-2 方針の preview mockup を生成:
+    `/Users/yusuke/.codex/generated_images/019f2c7e-d969-7882-bd11-432a10abb930/ig_02d4e44fd34e4257016a4a8b1abdd48191816aa9718035b783.png`
+    （preview only。repo asset としては参照しない。prompt は PHI/secret を含まない架空ラベルのみ）。
+  - files inspected:
+    `/Users/yusuke/.codex/skills/.system/imagegen/SKILL.md`,
+    `docs/ui-ux-design-guidelines.md`,
+    `node_modules/next/dist/docs/01-app/02-guides/lazy-loading.md`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`,
+    `src/app/(dashboard)/dashboard/dashboard-content.tsx`,
+    `src/app/(dashboard)/dashboard/dashboard-content.test.tsx`,
+    `src/app/(dashboard)/dashboard/loading.tsx`,
+    `src/types/dashboard-cockpit.ts`,
+    `src/lib/workspace/daily-ops-rail.ts`。
+  - files changed:
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`,
+    `src/app/(dashboard)/dashboard/dashboard-content.tsx`,
+    `src/app/(dashboard)/dashboard/dashboard-content.test.tsx`,
+    `src/app/(dashboard)/dashboard/loading.tsx`,
+    `ops/refactor/STATE.md`。
+  - bugs/security risks fixed:
+    dashboard UI が単一 full BFF failure に依存して全画面 error / false-empty へ倒れやすい構造を修正。
+    details/team が落ちても summary の非PHI概要は維持し、監査キュー詳細やチーム余白だけを領域別
+    retry に分離。summary-first 化により PHI-bearing audit queue / visit patient names を
+    初期表示の必須 payload から外した。`focusRole` の `void` 破棄も廃止。
+  - performance issues improved:
+    initial UI は summary route だけで条件バナー・工程タイルを描画可能になり、details/team は
+    skeleton/fail-soft で段階ロード。`/dashboard/loading` も現行 cockpit の形へ合わせ、
+    旧大型カード skeleton を削減。既存 `fetchDashboardCockpit` は変更せず、他 consumers の full route
+    互換性を維持。
+  - validation commands/results:
+    `pnpm vitest run src/app/\(dashboard\)/dashboard/dashboard-cockpit.test.tsx src/app/\(dashboard\)/dashboard/dashboard-content.test.tsx --reporter=dot`
+    green（2 files / 19 tests）;
+    `pnpm exec eslint src/app/\(dashboard\)/dashboard/dashboard-cockpit.tsx src/app/\(dashboard\)/dashboard/dashboard-cockpit.test.tsx src/app/\(dashboard\)/dashboard/dashboard-content.tsx src/app/\(dashboard\)/dashboard/dashboard-content.test.tsx src/app/\(dashboard\)/dashboard/loading.tsx`
+    green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` green;
+    `pnpm format:check` green;
+    `git diff --check -- src/app/\(dashboard\)/dashboard/dashboard-cockpit.tsx src/app/\(dashboard\)/dashboard/dashboard-cockpit.test.tsx src/app/\(dashboard\)/dashboard/dashboard-content.tsx src/app/\(dashboard\)/dashboard/dashboard-content.test.tsx src/app/\(dashboard\)/dashboard/loading.tsx`
+    green。
+  - coordination note:
+    現行 AGENTS 指示に従い、外部 subagent は使わず Codex 本体で調査・実装・検証。
+  - remaining work:
+    dashboard segmented query の real-browser screenshot/Playwright smoke、payload bytes/p95 永続化、
+    `focusRole` による tile ordering/next action 優先度の本格実装、DASH-COMM-001 コメントフィード、
+    DB EXPLAIN に基づく index 判断は別 slice。
+  - next action:
+    1) dashboard UI の browser verification、または 2) `PAT-LIST-PERF-001` server-side search/filter、
+    3) `PERF-X-001/002` critical BFF instrumentation/payload budget へ進む。
+
 - codex: DASH-PERF-001 Dashboard BFF split foundation complete（commit `377b07f38`）。
   - current task:
     Goal 継続として `DASH-PERF-001` の backend foundation を実装。既存
