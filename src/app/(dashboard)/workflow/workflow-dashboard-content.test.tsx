@@ -3,7 +3,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
-import { stubJsonFetch } from '@/test/fetch-test-utils';
+import { jsonResponse, stubJsonFetch } from '@/test/fetch-test-utils';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useRealtimeQueryMock = vi.hoisted(() => vi.fn());
@@ -194,6 +194,74 @@ describe('WorkflowDashboardContent', () => {
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
       expect(url).toBe('/api/dashboard/workflow');
       expect(init.headers).toEqual({ 'x-org-id': 'org_1' });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('keeps API messages from failed workflow dashboard mutation responses', async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<WorkflowDashboardContent />);
+
+      const mutationConfigs = useMutationMock.mock.calls.map(
+        ([config]) =>
+          config as {
+            mutationFn: (input: unknown) => Promise<unknown>;
+          },
+      );
+      expect(mutationConfigs).toHaveLength(4);
+
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({ message: '緊急連絡ドラフトの作成権限がありません' }, 403),
+      );
+      await expect(
+        mutationConfigs[0].mutationFn({
+          patient_id: 'patient_1',
+          request_type: 'emergency_physician',
+          template_key: 'emergency_physician',
+          target_name: '青葉医師',
+          target_role: 'physician',
+          subject: '緊急連絡',
+          content: '確認してください',
+        }),
+      ).rejects.toThrow('緊急連絡ドラフトの作成権限がありません');
+
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({ message: '疑義照会の起票権限がありません' }, 403),
+      );
+      await expect(
+        mutationConfigs[1].mutationFn({
+          cycle_id: 'cycle_1',
+          issue_id: 'issue_1',
+          reason: '用量確認',
+          inquiry_to_physician: '主治医',
+          summary: '用量の変更確認',
+        }),
+      ).rejects.toThrow('疑義照会の起票権限がありません');
+
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({ message: '疑義照会の更新権限がありません' }, 403),
+      );
+      await expect(
+        mutationConfigs[2].mutationFn({
+          inquiryId: 'inquiry_1',
+          result: 'unchanged',
+        }),
+      ).rejects.toThrow('疑義照会の更新権限がありません');
+
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({ message: '再訪候補の生成権限がありません' }, 403),
+      );
+      await expect(
+        mutationConfigs[3].mutationFn({
+          case_id: 'case_1',
+          prescribed_date: '2026-06-01',
+          next_dispense_date: '2026-06-24',
+        }),
+      ).rejects.toThrow('再訪候補の生成権限がありません');
     } finally {
       vi.unstubAllGlobals();
     }

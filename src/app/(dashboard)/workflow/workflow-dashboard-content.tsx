@@ -101,11 +101,7 @@ export function WorkflowDashboardContent({
           content: draft.content,
         }),
       });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message ?? '緊急連絡ドラフトの起票に失敗しました');
-      }
-      return res.json();
+      return readApiJson<unknown>(res, '緊急連絡ドラフトの起票に失敗しました');
     },
     onSuccess: async () => {
       toast.success('緊急連絡ドラフトを起票しました');
@@ -137,11 +133,7 @@ export function WorkflowDashboardContent({
           request_due_date: format(dueDate, 'yyyy-MM-dd'),
         }),
       });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message ?? '疑義照会の起票に失敗しました');
-      }
-      return res.json();
+      return readApiJson<unknown>(res, '疑義照会の起票に失敗しました');
     },
     onSuccess: async () => {
       toast.success('疑義照会を起票しました');
@@ -191,11 +183,7 @@ export function WorkflowDashboardContent({
           ...(lineUpdate ? { line_update: lineUpdate } : {}),
         }),
       });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message ?? '疑義照会の更新に失敗しました');
-      }
-      return res.json();
+      return readApiJson<unknown>(res, '疑義照会の更新に失敗しました');
     },
     onSuccess: async (_data, variables) => {
       setInquiryEdits((prev) => {
@@ -251,11 +239,7 @@ export function WorkflowDashboardContent({
           candidate_count: 3,
         }),
       });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message ?? '再訪候補の生成に失敗しました');
-      }
-      return res.json();
+      return readApiJson<unknown>(res, '再訪候補の生成に失敗しました');
     },
     onSuccess: async () => {
       toast.success('リフィル再訪候補を生成しました');
