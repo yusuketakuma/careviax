@@ -39,6 +39,15 @@
 
 ## 直近の land（本日・要点）
 
+- codex: R40/R44 schedule board support readApiJson batch(d094291d) land。focused Vitest 39、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。calendar billing-preview batch read /
+  schedule-team-board visit-status PATCH / operational-task PATCH responses を readApiJson へ収束し、
+  billing preview warning UI、org JSON headers、path encoding、raw status payloads、dot-segment fail-closed、
+  schedule/task server-message fallback は保持。team-board には `{ message }` / `{ error }` API message の
+  mutationFn regression を追加。Locator subagent は schedule 残差を batch 分類し、本sliceを Batch 3+4 と
+  して妥当と判定。Sentinel reviewer はタイムアウトしたため shutdown し、focused tests + scoped checks +
+  typecheck を主証跡に採用。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本batchでは不要。
 - codex: R40/R44 route actions readApiJson batch(75e57849) land。focused Vitest 22、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。visit route reorder helper 3系統 /
   route-compare route-engine POST / emergency-route route-engine POST responses を readApiJson へ収束し、
