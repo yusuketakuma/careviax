@@ -39,6 +39,34 @@
 
 ## 直近の land（本日・要点）
 
+- codex: handoff read receipt / consult resolution recipient-scoped authorization hardening batch(e4cfca22)
+  implementation complete。ユーザー指示により本sliceでは subagent を投入（code_mapper /
+  api_contract_reviewer / security_critic / verifier / privacy_compliance_reviewer）。code_mapper は read
+  receipt の org-wide canReport gapを特定、api_contract_reviewer は read receipt 403 / nav badge policy
+  alignment / route param validation を CHANGES_REQUESTED、security_critic は consult resolve の
+  recipient-blind write を追加 high finding として提示。verifier は handoff_consult_resolved の
+  `resolution_note` raw audit duplication を CHANGES_REQUESTED とし、AuditLog.changes は
+  `resolution_note_present` / `resolution_note_length` / `resolution_note_redacted` のみに最小化済み。
+  privacy_compliance_reviewer は raw `resolution_note` が consult resolve 成功レスポンスに残る点を
+  CHANGES_REQUESTED とし、post-update fetch を `id` / `consult_status` / `resolution_action` /
+  `resolved_by` / `resolved_at` の explicit select に絞って response PHI echo を削減済み。
+  対応として `PATCH /api/handoff-board/items/:id/read` は route id を
+  `normalizeRequiredRouteParam` で検証し、same-org 非宛先 / 作成者の自己確認 / 宛先なし legacy item を
+  403 no-store、missing/cross-org を 404 no-store、invalid id を 400 no-store で fail-closed。raw
+  `read_by` append の SQL claim と post-update fetch に `board.org_id` + `recipient_user_id = ctx.userId`
+  を追加。`POST /api/handoff-board/items/:id/resolve` は org relation filter + minimal select の preflight、
+  recipient-only 403、`updateMany` claim と post-update fetch の `board.org_id` + `recipient_user_id`
+  条件を追加し、非宛先 pharmacist が他人宛 consult を resolve / audit できないようにした。
+  `nav-badges` は read/resolve policy と合わせ、transfer / consult / message の badge を
+  「自分宛かつ未読」に統一し、APIで消せない他人宛 unread badge を出さない。共有
+  `normalizeRequiredRouteParam` は exact `.` / `..` を null 扱いにして touched dynamic route baseline を強化。
+  focused Vitest 33、関連 Vitest 460、scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。
+  500サニタイズ試験の structured error log と handoff workspace test の既存 React act warning は発生するが
+  全テスト green。SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package
+  dependency) に基づき product API / authorization / PHI-adjacent workflow evidence を変更、DB schema/migration/
+  billing/deploy/package dependency 変更は不要。残る別slice候補: visit handoff confirmation は
+  `canVisit` + broad schedule access helper で org-wide pharmacist が confirm 可能な policy risk があり、
+  assigned/explicit task assignee/override semantics を別途評価する。
 - codex: template list metadata/body separation batch(17724ba0) land。
   ユーザー指示により本sliceでは subagent を投入（code_mapper / privacy_compliance_reviewer /
   frontend_reviewer / test_architect / api_contract_reviewer / verifier）。privacy_compliance_reviewer、
