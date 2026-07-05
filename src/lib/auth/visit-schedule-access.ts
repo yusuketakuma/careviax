@@ -85,6 +85,14 @@ export function canConfirmVisitHandoff(
   return isAssignedToVisitSchedule(ctx.userId, schedule);
 }
 
+export function canRequestSupervisedVisitHandoffConfirmation(
+  ctx: VisitScheduleAccessContext,
+  schedule: VisitScheduleAssignmentSubject | null | undefined,
+) {
+  if (ctx.role !== 'pharmacist_trainee') return false;
+  return isAssignedToVisitSchedule(ctx.userId, schedule);
+}
+
 export function canOverrideVisitHandoffConfirmation(ctx: Pick<VisitScheduleAccessContext, 'role'>) {
   return VISIT_HANDOFF_CONFIRM_OVERRIDE_ROLES.has(ctx.role);
 }
@@ -97,6 +105,19 @@ export function selectVisitHandoffConfirmationAssignee(
     schedule?.case_?.primary_pharmacist_id ??
     schedule?.case_?.backup_pharmacist_id ??
     null
+  );
+}
+
+export function selectVisitHandoffSupervisionAssignee(
+  schedule: VisitScheduleAssignmentSubject | null | undefined,
+  traineeUserId: string,
+) {
+  return (
+    [
+      schedule?.pharmacist_id,
+      schedule?.case_?.primary_pharmacist_id,
+      schedule?.case_?.backup_pharmacist_id,
+    ].find((userId) => userId && userId !== traineeUserId) ?? null
   );
 }
 

@@ -7,6 +7,8 @@ import {
   canAccessVisitScheduleAssignment,
   canConfirmVisitHandoff,
   canOverrideVisitHandoffConfirmation,
+  canRequestSupervisedVisitHandoffConfirmation,
+  selectVisitHandoffSupervisionAssignee,
 } from '@/lib/auth/visit-schedule-access';
 import {
   conflict,
@@ -211,6 +213,24 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   }
   const handoff = handoffResult.status === 'valid' ? handoffResult.handoff : null;
   const canConfirmDirectly = canConfirmVisitHandoff(ctx, record.schedule);
+  const supervisionAssigneeId =
+    handoff && canRequestSupervisedVisitHandoffConfirmation(ctx, record.schedule)
+      ? selectVisitHandoffSupervisionAssignee(record.schedule, ctx.userId)
+      : null;
+  const supervisionAssignee = supervisionAssigneeId
+    ? await prisma.membership.findFirst({
+        where: {
+          org_id: ctx.orgId,
+          user_id: supervisionAssigneeId,
+          is_active: true,
+          role: { in: ['owner', 'admin', 'pharmacist'] },
+        },
+        select: { user_id: true },
+      })
+    : null;
+  const canRequestSupervision = Boolean(
+    handoff && !handoff.confirmed_at && supervisionAssignee?.user_id,
+  );
   const extraction = handoffExtraction
     ? {
         status: handoffExtraction.status,
@@ -248,6 +268,13 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
             ? 'admin_emergency_override'
             : null,
         override_reason_max_length: 500,
+        can_request_supervision: canRequestSupervision,
+        supervision_required:
+          Boolean(handoff) &&
+          !canConfirmDirectly &&
+          canRequestSupervisedVisitHandoffConfirmation(ctx, record.schedule),
+        supervision_available: canRequestSupervision,
+        supervision_request_note_max_length: 500,
       },
     }),
   );

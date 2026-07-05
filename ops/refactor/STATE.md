@@ -40,7 +40,39 @@
 
 ## 直近の land（本日・要点）
 
-- codex: handoff confirmation historical task inventory command batch(pending commit)
+- codex: pharmacist_trainee handoff supervision request batch(pending commit)
+  implementation complete。ユーザー指示により本sliceでも subagent を投入（code_mapper /
+  security_critic / medical_safety_reviewer / test_architect）。全員、`pharmacist_trainee` を
+  final confirmation role に単純追加するのは role escalation / 医療安全上不十分と判定し、
+  final `PUT /api/visit-records/:id/handoff` は owner/admin/pharmacist の直接責任者または
+  owner/admin emergency override のまま fail-closed に保つ方針で一致。対応として
+  `canRequestSupervisedVisitHandoffConfirmation` と `selectVisitHandoffSupervisionAssignee` を追加し、
+  assigned `pharmacist_trainee` だけが別 action として上長確認依頼を出せるようにした。
+  新設 `POST /api/visit-records/:id/handoff/supervision-request` は `canVisit`、org-scoped
+  visit record、直接担当 trainee、distinct supervisor candidate、active same-org membership
+  role `owner|admin|pharmacist`、`expected_visit_record_version` を検証し、stale/missing/invalid/
+  already-confirmed を no-store 404/409/403 へ fail-closed。service
+  `requestHandoffConfirmationSupervision` は `withOrgContext` 内で unconfirmed handoff を再検証し、
+  `handoff_supervision_review` task を supervisor に upsert、`visit_handoff_supervision_requested`
+  audit を PHI-minimized metadata（IDs、version、counts、request_note_present/length/redacted）のみに限定。
+  `confirmed_by` / `confirmed_at` / structured SOAP / visit version は更新せず、`handoff_confirmation`
+  task も resolve しない。`handoff_supervision_review` は `DEDICATED_COMPLETION_TASK_TYPES` に追加し、
+  generic PATCH/bulk/task UI bulk completion を拒否。GET `confirmation_policy` は `can_confirm:false`
+  のまま additive `can_request_supervision` / `supervision_required` / `supervision_available` /
+  note max length を返し、supervisor user id は UI に不要なため response へ出さない。Handoff UI は
+  trainee に「上長確認を依頼」だけを表示し、`confirmed:true` payload を送らず専用 endpoint へ
+  `expected_visit_record_version` と trim済み optional note を POST。validation:
+  `pnpm exec vitest run src/lib/auth/__tests__/visit-schedule-access.test.ts 'src/app/api/visit-records/[id]/handoff/route.test.ts' 'src/app/api/visit-records/[id]/handoff/supervision-request/route.test.ts' src/server/services/visit-handoff.test.ts src/components/features/visits/handoff-confirm-panel.test.tsx 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx' src/app/api/tasks/route.test.ts 'src/app/api/tasks/[id]/route.test.ts' src/app/api/tasks/bulk/route.test.ts 'src/app/(dashboard)/tasks/tasks-content.test.tsx' src/lib/tasks/operational-task-presentation.test.ts`
+  green（11 files / 244 tests）; scoped `eslint` green; scoped `prettier --check` green;
+  `git diff --check` green; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。
+  通常 `pnpm typecheck` は Node default heap OOM で exit 134 だったため、実型エラー確認は
+  8192MB heap で実施。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) に基づき product API /
+  authorization / PHI-adjacent audit / task completion policy / UI contract を変更、DB schema/migration/
+  billing/deploy/package dependency 変更は不要。残る別slice候補: supervisor が専用 route で
+  `handoff_supervision_review` を co-sign/final confirm する二段階完了、override reason enum/code 化、
+  pharmacist_trainee の他訪問系 write scope 横断レビュー。
+- codex: handoff confirmation historical task inventory command batch(30130ec73)
   implementation complete。ユーザー指示により本sliceでも subagent を投入（db_steward /
   privacy_compliance_reviewer / verifier）。db_steward は historical unassigned
   `handoff_confirmation` task の PHI-minimized SELECT-only inventory command を今実装してよいと
@@ -74,8 +106,11 @@
   これらは本sliceの owned diff には含めない。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) に基づき DB-adjacent
   SELECT-only operational inventory toolingを追加、DB schema/migration/billing/deploy/package dependency 変更と
-  DB mutation は不要/未実施。残る別slice候補: approved DB/e2e DB に対する実SELECT run、結果に基づく
-  backfill/close proposal（実 mutation は別途明示承認）、pharmacist_trainee supervised workflow、
+  DB mutation は不要/未実施。2026-07-05 e2e DB SELECT-only 実走:
+  `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public pnpm db:handoff-confirmation-tasks:inventory -- --org-id org_1 --max-rows 20`
+  green、`scannedRows: 0`、全分類 count 0。`psql` による補助確認は local `psql` 未インストールで未実施。
+  残る別slice候補: 結果に基づく backfill/close proposal（実 mutation は別途明示承認）、
+  pharmacist_trainee supervised workflow の supervisor co-sign/final-confirm route、
   override reason enum/code 化。
 - codex: handoff confirmation dedicated-completion API/UI affordance coverage batch(fc49447e7)
   land。ユーザー指示により本sliceでも subagent を投入（code_mapper / test_architect / db_steward /

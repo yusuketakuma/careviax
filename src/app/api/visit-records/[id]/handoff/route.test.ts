@@ -6,8 +6,11 @@ const {
   canAccessVisitScheduleAssignmentMock,
   canConfirmVisitHandoffMock,
   canOverrideVisitHandoffConfirmationMock,
+  canRequestSupervisedVisitHandoffConfirmationMock,
+  selectVisitHandoffSupervisionAssigneeMock,
   buildVisitHandoffConfirmationWhereMock,
   visitRecordFindFirstMock,
+  membershipFindFirstMock,
   visitHandoffExtractionFindUniqueMock,
   confirmHandoffMock,
   readConfirmableHandoffDataMock,
@@ -18,8 +21,11 @@ const {
   canAccessVisitScheduleAssignmentMock: vi.fn(),
   canConfirmVisitHandoffMock: vi.fn(),
   canOverrideVisitHandoffConfirmationMock: vi.fn(),
+  canRequestSupervisedVisitHandoffConfirmationMock: vi.fn(),
+  selectVisitHandoffSupervisionAssigneeMock: vi.fn(),
   buildVisitHandoffConfirmationWhereMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
+  membershipFindFirstMock: vi.fn(),
   visitHandoffExtractionFindUniqueMock: vi.fn(),
   confirmHandoffMock: vi.fn(),
   readConfirmableHandoffDataMock: vi.fn(),
@@ -35,12 +41,15 @@ vi.mock('@/lib/auth/visit-schedule-access', () => ({
   canAccessVisitScheduleAssignment: canAccessVisitScheduleAssignmentMock,
   canConfirmVisitHandoff: canConfirmVisitHandoffMock,
   canOverrideVisitHandoffConfirmation: canOverrideVisitHandoffConfirmationMock,
+  canRequestSupervisedVisitHandoffConfirmation: canRequestSupervisedVisitHandoffConfirmationMock,
+  selectVisitHandoffSupervisionAssignee: selectVisitHandoffSupervisionAssigneeMock,
   buildVisitHandoffConfirmationWhere: buildVisitHandoffConfirmationWhereMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
     visitRecord: { findFirst: visitRecordFindFirstMock },
+    membership: { findFirst: membershipFindFirstMock },
     visitHandoffExtraction: { findUnique: visitHandoffExtractionFindUniqueMock },
   },
 }));
@@ -134,9 +143,12 @@ describe('/api/visit-records/[id]/handoff', () => {
     canAccessVisitScheduleAssignmentMock.mockReturnValue(true);
     canConfirmVisitHandoffMock.mockReturnValue(true);
     canOverrideVisitHandoffConfirmationMock.mockReturnValue(false);
+    canRequestSupervisedVisitHandoffConfirmationMock.mockReturnValue(false);
+    selectVisitHandoffSupervisionAssigneeMock.mockReturnValue(null);
     buildVisitHandoffConfirmationWhereMock.mockReturnValue({
       schedule: { pharmacist_id: 'user_1' },
     });
+    membershipFindFirstMock.mockResolvedValue(null);
     visitHandoffExtractionFindUniqueMock.mockResolvedValue(null);
     readConfirmableHandoffDataMock.mockImplementation((value: unknown) => {
       if (value === undefined || value === null) return { status: 'missing' };
@@ -228,6 +240,44 @@ describe('/api/visit-records/[id]/handoff', () => {
           requires_override_reason: true,
           authorized_basis: 'admin_emergency_override',
           override_reason_max_length: 500,
+        },
+      });
+    });
+
+    it('keeps trainee final confirmation closed while exposing supervision request metadata', async () => {
+      const traineeCtx = { ...authCtx.ctx, userId: 'trainee_1', role: 'pharmacist_trainee' };
+      requireAuthContextMock.mockResolvedValue({ ctx: traineeCtx });
+      canConfirmVisitHandoffMock.mockReturnValue(false);
+      canRequestSupervisedVisitHandoffConfirmationMock.mockReturnValue(true);
+      selectVisitHandoffSupervisionAssigneeMock.mockReturnValue('supervisor_1');
+      membershipFindFirstMock.mockResolvedValue({ user_id: 'supervisor_1' });
+      visitRecordFindFirstMock.mockResolvedValue(
+        buildVisitRecord({
+          schedule: {
+            pharmacist_id: 'trainee_1',
+            case_: { primary_pharmacist_id: 'supervisor_1', backup_pharmacist_id: null },
+          },
+        }),
+      );
+
+      const req = createRequest('http://localhost/api/visit-records/vr_1/handoff');
+      const res = await GET(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+      expect(res!.status).toBe(200);
+      expectSensitiveNoStore(res!);
+      expect(canRequestSupervisedVisitHandoffConfirmationMock).toHaveBeenCalledWith(
+        traineeCtx,
+        expect.objectContaining({ pharmacist_id: 'trainee_1' }),
+      );
+      await expect(res!.json()).resolves.toMatchObject({
+        confirmation_policy: {
+          can_confirm: false,
+          requires_override_reason: false,
+          authorized_basis: null,
+          can_request_supervision: true,
+          supervision_required: true,
+          supervision_available: true,
+          supervision_request_note_max_length: 500,
         },
       });
     });

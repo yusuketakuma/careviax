@@ -268,6 +268,12 @@ export function describeOperationalTask(
         actionLabel: '申し送りを確認',
         queueLabel: '申し送り',
       };
+    case 'handoff_supervision_review':
+      return {
+        actionHref: '/handoff',
+        actionLabel: '上長確認を行う',
+        queueLabel: '申し送り上長確認',
+      };
     case 'tracing_report_followup':
       return {
         actionHref: buildCommunicationRequestsHref({

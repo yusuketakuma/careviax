@@ -206,6 +206,7 @@ describe('/api/tasks/[id]', () => {
     ['visit_contact_followup', 'visit_schedule_proposal', 'proposal_1'],
     ['visit_schedule_override_approval', 'visit_schedule', 'schedule_1'],
     ['handoff_confirmation', 'visit_record', 'visit_record_1'],
+    ['handoff_supervision_review', 'visit_record', 'visit_record_1'],
   ])(
     'rejects generic completion for %s tasks that require dedicated flows',
     async (taskType, relatedEntityType, relatedEntityId) => {

@@ -213,6 +213,20 @@ describe('describeOperationalTask', () => {
     ).toBe('/tasks?status=&task_type=visit_preparation');
   });
 
+  it('routes handoff supervision review tasks to the handoff workspace', () => {
+    expect(
+      describeOperationalTask({
+        task_type: 'handoff_supervision_review',
+        related_entity_type: 'visit_record',
+        related_entity_id: '../visit record?x=1#frag',
+      }),
+    ).toMatchObject({
+      actionHref: '/handoff',
+      actionLabel: '上長確認を行う',
+      queueLabel: '申し送り上長確認',
+    });
+  });
+
   it('focuses self-report and community follow-up tasks on the external work queues', () => {
     expect(
       describeOperationalTask({

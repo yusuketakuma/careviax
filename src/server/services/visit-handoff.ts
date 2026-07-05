@@ -32,6 +32,12 @@ export class VisitHandoffInvalidDataError extends Error {
   }
 }
 
+export class VisitHandoffAlreadyConfirmedError extends Error {
+  constructor(visitRecordId: string) {
+    super(`Visit record ${visitRecordId} handoff is already confirmed`);
+  }
+}
+
 function readStructuredSoap(value: unknown): Partial<StructuredSoap> {
   return readJsonObject(value) ?? {};
 }
@@ -504,4 +510,123 @@ export async function confirmHandoff(
   }
 
   return confirmed;
+}
+
+// ─── requestHandoffConfirmationSupervision ─────────────────────────────────
+
+export async function requestHandoffConfirmationSupervision(
+  _db: DbClient,
+  args: {
+    orgId: string;
+    visitRecordId: string;
+    traineeUserId: string;
+    supervisorUserId: string;
+    expectedVersion: number;
+    requestNote?: string | null;
+    requestContext?: RequestAuthContext;
+  },
+): Promise<{
+  status: 'requested';
+  task_type: 'handoff_supervision_review';
+  assigned_to: string;
+  visit_record_id: string;
+  visit_record_version: number;
+}> {
+  const {
+    orgId,
+    visitRecordId,
+    traineeUserId,
+    supervisorUserId,
+    expectedVersion,
+    requestNote,
+    requestContext,
+  } = args;
+
+  let requested = false;
+
+  await withOrgContext(
+    orgId,
+    async (tx) => {
+      const record = await tx.visitRecord.findUniqueOrThrow({
+        where: { id: visitRecordId },
+        select: { structured_soap: true, version: true, schedule_id: true },
+      });
+
+      if (record.version !== expectedVersion) {
+        throw new VisitHandoffStaleRecordError(visitRecordId);
+      }
+
+      const currentSoap = readStructuredSoap(record.structured_soap);
+      const currentHandoffResult = readConfirmableHandoffData(currentSoap.handoff);
+
+      if (currentHandoffResult.status === 'missing') {
+        throw new VisitHandoffMissingDataError(visitRecordId);
+      }
+      if (currentHandoffResult.status === 'invalid') {
+        throw new VisitHandoffInvalidDataError(visitRecordId);
+      }
+
+      const currentHandoff = currentHandoffResult.handoff;
+      if (currentHandoff.confirmed_at || currentHandoff.confirmed_by) {
+        throw new VisitHandoffAlreadyConfirmedError(visitRecordId);
+      }
+
+      await upsertOperationalTask(tx, {
+        orgId,
+        taskType: 'handoff_supervision_review',
+        title: '申し送り上長確認',
+        priority: 'normal',
+        assignedTo: supervisorUserId,
+        dedupeKey: `handoff_supervision_${visitRecordId}_${traineeUserId}`,
+        relatedEntityType: 'visit_record',
+        relatedEntityId: visitRecordId,
+        metadata: {
+          visit_record_id: visitRecordId,
+          visit_record_version: expectedVersion,
+          schedule_id: record.schedule_id,
+          trainee_user_id: traineeUserId,
+          supervisor_user_id: supervisorUserId,
+          request_note_present: Boolean(requestNote?.trim()),
+          request_note_length: requestNote?.trim().length ?? 0,
+          request_note_redacted: Boolean(requestNote?.trim()),
+        },
+      });
+
+      if (requestContext) {
+        await createAuditLogEntry(tx, requestContext, {
+          action: 'visit_handoff_supervision_requested',
+          targetType: 'visit_record',
+          targetId: visitRecordId,
+          changes: {
+            visit_record_id: visitRecordId,
+            schedule_id: record.schedule_id,
+            trainee_user_id: traineeUserId,
+            supervisor_user_id: supervisorUserId,
+            visit_record_version: expectedVersion,
+            request_note_present: Boolean(requestNote?.trim()),
+            request_note_length: requestNote?.trim().length ?? 0,
+            request_note_redacted: Boolean(requestNote?.trim()),
+            handoff: countHandoffContent(currentHandoff),
+          },
+        });
+      }
+
+      requested = true;
+    },
+    { requestContext },
+  );
+
+  if (!requested) {
+    throw new Error(
+      `requestHandoffConfirmationSupervision: request did not complete for visit record ${visitRecordId}`,
+    );
+  }
+
+  return {
+    status: 'requested',
+    task_type: 'handoff_supervision_review',
+    assigned_to: supervisorUserId,
+    visit_record_id: visitRecordId,
+    visit_record_version: expectedVersion,
+  };
 }

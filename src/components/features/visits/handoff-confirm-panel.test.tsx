@@ -37,6 +37,8 @@ type PanelOptions = {
   canConfirm?: boolean;
   requiresOverrideReason?: boolean;
   overrideReasonMaxLength?: number;
+  canRequestSupervision?: boolean;
+  supervisionRequestNoteMaxLength?: number;
 };
 
 function renderPanel({
@@ -44,6 +46,8 @@ function renderPanel({
   canConfirm = true,
   requiresOverrideReason = false,
   overrideReasonMaxLength,
+  canRequestSupervision,
+  supervisionRequestNoteMaxLength,
 }: PanelOptions = {}) {
   return render(
     <HandoffConfirmPanel
@@ -53,6 +57,8 @@ function renderPanel({
       canConfirm={canConfirm}
       requiresOverrideReason={requiresOverrideReason}
       overrideReasonMaxLength={overrideReasonMaxLength}
+      canRequestSupervision={canRequestSupervision}
+      supervisionRequestNoteMaxLength={supervisionRequestNoteMaxLength}
     />,
     {
       wrapper: createQueryClientWrapper(),
@@ -192,6 +198,59 @@ describe('HandoffConfirmPanel', () => {
     expect(screen.getByText(/閲覧のみ:/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: '確認' })).toBeNull();
     expect(screen.queryByRole('button', { name: '編集して確定' })).toBeNull();
+  });
+
+  it('lets trainees request supervision without sending a final confirmation payload', async () => {
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(JSON.stringify({ data: { status: 'requested' } }), {
+          status: 200,
+        }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    renderPanel({ canConfirm: false, canRequestSupervision: true });
+
+    expect(screen.queryByRole('button', { name: '確認' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '編集して確定' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '管理者として確定' })).toBeNull();
+    const button = screen.getByRole('button', { name: '上長確認を依頼' });
+
+    fireEvent.change(screen.getByLabelText('依頼メモ'), {
+      target: { value: ' 上長確認をお願いします ' },
+    });
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalled();
+    });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      '/api/visit-records/visit_record_1/handoff/supervision-request',
+    );
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(body).toEqual({
+      expected_visit_record_version: 7,
+      request_note: '上長確認をお願いします',
+    });
+    expect(body).not.toHaveProperty('confirmed');
+  });
+
+  it('keeps server messages when supervision request fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ message: '上長確認の依頼先が見つかりません' }), {
+            status: 403,
+          }),
+      ),
+    );
+    renderPanel({ canConfirm: false, canRequestSupervision: true });
+
+    fireEvent.click(screen.getByRole('button', { name: '上長確認を依頼' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('上長確認の依頼先が見つかりません');
+    });
   });
 
   it('formats confirmed timestamps in JST', () => {

@@ -124,6 +124,10 @@ export type VisitHandoffResponse = {
     requires_override_reason?: boolean;
     authorized_basis?: string | null;
     override_reason_max_length?: number;
+    can_request_supervision?: boolean;
+    supervision_required?: boolean;
+    supervision_available?: boolean;
+    supervision_request_note_max_length?: number;
   };
 };
 
@@ -1344,6 +1348,12 @@ function VisitHandoffConfirmationWorkspace({
             }
             overrideReasonMaxLength={
               visitHandoffQuery.data.confirmation_policy?.override_reason_max_length
+            }
+            canRequestSupervision={
+              visitHandoffQuery.data.confirmation_policy?.can_request_supervision ?? false
+            }
+            supervisionRequestNoteMaxLength={
+              visitHandoffQuery.data.confirmation_policy?.supervision_request_note_max_length
             }
             onConfirmed={onConfirmed}
           />

@@ -22,10 +22,13 @@ type HandoffConfirmPanelProps = {
   canConfirm?: boolean;
   requiresOverrideReason?: boolean;
   overrideReasonMaxLength?: number;
+  canRequestSupervision?: boolean;
+  supervisionRequestNoteMaxLength?: number;
   onConfirmed?: () => void;
 };
 
 const OVERRIDE_REASON_MIN_LENGTH = 8;
+const SUPERVISION_REQUEST_NOTE_MIN_LENGTH = 8;
 
 type EditableHandoff = {
   next_check_items: string[];
@@ -129,20 +132,31 @@ export function HandoffConfirmPanel({
   canConfirm = false,
   requiresOverrideReason = false,
   overrideReasonMaxLength = 500,
+  canRequestSupervision = false,
+  supervisionRequestNoteMaxLength = 500,
   onConfirmed,
 }: HandoffConfirmPanelProps) {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
   const isUnconfirmed = !handoff.confirmed_at;
   const isOverrideOnly = isUnconfirmed && !canConfirm && requiresOverrideReason;
-  const isReadOnly = isUnconfirmed && !canConfirm && !requiresOverrideReason;
+  const isSupervisionRequestOnly =
+    isUnconfirmed && !canConfirm && !requiresOverrideReason && canRequestSupervision;
+  const isReadOnly =
+    isUnconfirmed && !canConfirm && !requiresOverrideReason && !canRequestSupervision;
   const [editMode, setEditMode] = useState(false);
   const [overrideReason, setOverrideReason] = useState('');
+  const [supervisionRequestNote, setSupervisionRequestNote] = useState('');
   const overrideReasonTrimmed = overrideReason.trim();
+  const supervisionRequestNoteTrimmed = supervisionRequestNote.trim();
   const canSubmitOverride =
     !requiresOverrideReason ||
     (overrideReasonTrimmed.length >= OVERRIDE_REASON_MIN_LENGTH &&
       overrideReasonTrimmed.length <= overrideReasonMaxLength);
+  const canSubmitSupervisionRequest =
+    !supervisionRequestNoteTrimmed ||
+    (supervisionRequestNoteTrimmed.length >= SUPERVISION_REQUEST_NOTE_MIN_LENGTH &&
+      supervisionRequestNoteTrimmed.length <= supervisionRequestNoteMaxLength);
 
   const [edits, setEdits] = useState<EditableHandoff>({
     next_check_items: [...handoff.next_check_items],
@@ -197,6 +211,38 @@ export function HandoffConfirmPanel({
     },
     onError: (err: Error) => {
       toast.error(messageFromError(err, '申し送りの確定に失敗しました'));
+    },
+  });
+
+  const supervisionRequestMutation = useMutation({
+    mutationFn: async () => {
+      const payload: {
+        expected_visit_record_version: number;
+        request_note?: string;
+      } = {
+        expected_visit_record_version: expectedVisitRecordVersion,
+      };
+
+      if (supervisionRequestNoteTrimmed) {
+        payload.request_note = supervisionRequestNoteTrimmed;
+      }
+
+      const res = await fetch(`/api/visit-records/${visitRecordId}/handoff/supervision-request`, {
+        method: 'POST',
+        headers: buildOrgJsonHeaders(orgId),
+        body: JSON.stringify(payload),
+      });
+      return readApiJson<unknown>(res, '上長確認の依頼に失敗しました');
+    },
+    onSuccess: () => {
+      toast.success('上長確認を依頼しました');
+      setSupervisionRequestNote('');
+      void queryClient.invalidateQueries({ queryKey: ['visit-handoff'] });
+      void queryClient.invalidateQueries({ queryKey: ['tasks', 'handoff-confirmation', orgId] });
+      onConfirmed?.();
+    },
+    onError: (err: Error) => {
+      toast.error(messageFromError(err, '上長確認の依頼に失敗しました'));
     },
   });
 
@@ -375,6 +421,49 @@ export function HandoffConfirmPanel({
           </div>
         )}
 
+        {isSupervisionRequestOnly && !editMode && (
+          <div className="space-y-2 rounded-md border border-border/70 bg-card p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <StateBadge role="confirm" className="text-xs">
+                上長確認
+              </StateBadge>
+              <p className="text-sm font-medium text-foreground">上長確認を依頼</p>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              申し送りの最終確認は担当薬剤師または主/副担当が行います。
+            </p>
+            <div className="flex items-center justify-between gap-2">
+              <label
+                htmlFor="handoff-supervision-request-note"
+                className="text-xs font-medium text-foreground"
+              >
+                依頼メモ
+              </label>
+              <span className="text-xs text-muted-foreground">
+                {supervisionRequestNoteTrimmed.length}/{supervisionRequestNoteMaxLength}
+              </span>
+            </div>
+            <Textarea
+              id="handoff-supervision-request-note"
+              value={supervisionRequestNote}
+              onChange={(e) => setSupervisionRequestNote(e.target.value)}
+              placeholder="例: 次回確認事項の確認をお願いします"
+              rows={3}
+              maxLength={supervisionRequestNoteMaxLength}
+              className="resize-none text-sm"
+              aria-describedby="handoff-supervision-request-note-helper"
+            />
+            <p
+              id="handoff-supervision-request-note-helper"
+              className="text-xs text-muted-foreground"
+            >
+              {canSubmitSupervisionRequest
+                ? '依頼メモは監査ログへ本文を残さず記録されます。'
+                : '依頼メモを入力する場合は8文字以上にしてください。'}
+            </p>
+          </div>
+        )}
+
         <div className="flex flex-wrap gap-2 pt-1">
           {editMode ? (
             <>
@@ -426,6 +515,17 @@ export function HandoffConfirmPanel({
               {canConfirm && (
                 <Button type="button" size="sm" variant="outline" onClick={() => setEditMode(true)}>
                   編集して確定
+                </Button>
+              )}
+              {isSupervisionRequestOnly && (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => supervisionRequestMutation.mutate()}
+                  disabled={supervisionRequestMutation.isPending || !canSubmitSupervisionRequest}
+                  aria-describedby="handoff-supervision-request-note-helper"
+                >
+                  {supervisionRequestMutation.isPending ? '依頼中...' : '上長確認を依頼'}
                 </Button>
               )}
             </>

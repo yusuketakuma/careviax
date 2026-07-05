@@ -13,7 +13,9 @@ import {
   canAccessVisitScheduleAssignment,
   canConfirmVisitHandoff,
   canOverrideVisitHandoffConfirmation,
+  canRequestSupervisedVisitHandoffConfirmation,
   selectVisitHandoffConfirmationAssignee,
+  selectVisitHandoffSupervisionAssignee,
 } from '../visit-schedule-access';
 
 // 新アクセスポリシー:
@@ -57,6 +59,33 @@ describe('visit schedule assignment access', () => {
     expect(canConfirmVisitHandoff({ userId: 'pharmacist_1', role: 'clerk' }, schedule)).toBe(false);
   });
 
+  it('allows assigned pharmacist trainees to request supervised handoff confirmation only', () => {
+    expect(
+      canRequestSupervisedVisitHandoffConfirmation(
+        { userId: 'pharmacist_1', role: 'pharmacist_trainee' },
+        schedule,
+      ),
+    ).toBe(true);
+    expect(
+      canRequestSupervisedVisitHandoffConfirmation(
+        { userId: 'primary_1', role: 'pharmacist_trainee' },
+        schedule,
+      ),
+    ).toBe(true);
+    expect(
+      canRequestSupervisedVisitHandoffConfirmation(
+        { userId: 'unassigned_1', role: 'pharmacist_trainee' },
+        schedule,
+      ),
+    ).toBe(false);
+    expect(
+      canRequestSupervisedVisitHandoffConfirmation(
+        { userId: 'pharmacist_1', role: 'pharmacist' },
+        schedule,
+      ),
+    ).toBe(false);
+  });
+
   it('allows only owner and admin to use handoff confirmation override', () => {
     expect(canOverrideVisitHandoffConfirmation({ role: 'owner' })).toBe(true);
     expect(canOverrideVisitHandoffConfirmation({ role: 'admin' })).toBe(true);
@@ -94,6 +123,29 @@ describe('visit schedule assignment access', () => {
         case_: { primary_pharmacist_id: null, backup_pharmacist_id: 'backup_1' },
       }),
     ).toBe('backup_1');
+  });
+
+  it('selects a supervision assignee without assigning the trainee to supervise themselves', () => {
+    expect(selectVisitHandoffSupervisionAssignee(schedule, 'pharmacist_1')).toBe('primary_1');
+    expect(selectVisitHandoffSupervisionAssignee(schedule, 'primary_1')).toBe('pharmacist_1');
+    expect(
+      selectVisitHandoffSupervisionAssignee(
+        {
+          pharmacist_id: 'trainee_1',
+          case_: { primary_pharmacist_id: 'trainee_1', backup_pharmacist_id: 'backup_1' },
+        },
+        'trainee_1',
+      ),
+    ).toBe('backup_1');
+    expect(
+      selectVisitHandoffSupervisionAssignee(
+        {
+          pharmacist_id: 'trainee_1',
+          case_: { primary_pharmacist_id: null, backup_pharmacist_id: 'trainee_1' },
+        },
+        'trainee_1',
+      ),
+    ).toBeNull();
   });
 
   it('still scopes driver/external_viewer to their concrete assignment', () => {

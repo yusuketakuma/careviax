@@ -40,8 +40,10 @@ import {
   confirmHandoff,
   normalizeStructuredSoapForVisitRecordSave,
   VisitHandoffInvalidDataError,
+  VisitHandoffAlreadyConfirmedError,
   VisitHandoffMissingDataError,
   VISIT_HANDOFF_EXTRACTION_FAILED_MESSAGE,
+  requestHandoffConfirmationSupervision,
 } from './visit-handoff';
 import type { StructuredSoap } from '@/types/structured-soap';
 
@@ -1201,5 +1203,217 @@ describe('confirmHandoff', () => {
 
     expect(visitRecordUpdateManyMock).toHaveBeenCalledOnce();
     expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('requestHandoffConfirmationSupervision', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('creates a dedicated supervisor task and PHI-free audit without final confirmation mutation', async () => {
+    const existingHandoff = {
+      next_check_items: ['血圧確認'],
+      ongoing_monitoring: ['残薬管理'],
+      decision_rationale: '患者 田中太郎 token=secret の急変リスクあり',
+      ai_extracted: true,
+      ai_confidence: 0.85,
+      confirmed_by: null,
+      confirmed_at: null,
+      extracted_at: '2026-04-01T00:00:00Z',
+    };
+    const requestNote = ' 患者 田中太郎 token=secret のため上長確認をお願いします ';
+
+    const visitRecordFindUniqueOrThrowMock = vi.fn().mockResolvedValue({
+      version: 2,
+      schedule_id: 'schedule-1',
+      structured_soap: { ...baseSoap, handoff: existingHandoff },
+    });
+    const visitRecordUpdateManyMock = vi.fn();
+    upsertOperationalTaskMock.mockResolvedValue({ id: 'task-1' });
+    createAuditLogEntryMock.mockResolvedValue({ id: 'audit-1' });
+
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = {
+          visitRecord: {
+            findUniqueOrThrow: visitRecordFindUniqueOrThrowMock,
+            updateMany: visitRecordUpdateManyMock,
+          },
+          task: { upsert: vi.fn(), updateMany: vi.fn(), create: vi.fn() },
+          auditLog: { create: vi.fn() },
+        };
+        return fn(tx);
+      },
+    );
+
+    const db = {} as Parameters<typeof requestHandoffConfirmationSupervision>[0];
+    const result = await requestHandoffConfirmationSupervision(db, {
+      orgId: 'org-1',
+      visitRecordId: 'vr-1',
+      traineeUserId: 'trainee-1',
+      supervisorUserId: 'supervisor-1',
+      expectedVersion: 2,
+      requestNote,
+      requestContext: {
+        orgId: 'org-1',
+        userId: 'trainee-1',
+        role: 'pharmacist_trainee',
+        ipAddress: '127.0.0.1',
+        userAgent: 'test',
+      },
+    });
+
+    expect(result).toEqual({
+      status: 'requested',
+      task_type: 'handoff_supervision_review',
+      assigned_to: 'supervisor-1',
+      visit_record_id: 'vr-1',
+      visit_record_version: 2,
+    });
+    expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org-1',
+        taskType: 'handoff_supervision_review',
+        assignedTo: 'supervisor-1',
+        dedupeKey: 'handoff_supervision_vr-1_trainee-1',
+        relatedEntityType: 'visit_record',
+        relatedEntityId: 'vr-1',
+        metadata: expect.objectContaining({
+          visit_record_id: 'vr-1',
+          visit_record_version: 2,
+          schedule_id: 'schedule-1',
+          trainee_user_id: 'trainee-1',
+          supervisor_user_id: 'supervisor-1',
+          request_note_present: true,
+          request_note_length: requestNote.trim().length,
+          request_note_redacted: true,
+        }),
+      }),
+    );
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ orgId: 'org-1', userId: 'trainee-1' }),
+      expect.objectContaining({
+        action: 'visit_handoff_supervision_requested',
+        targetType: 'visit_record',
+        targetId: 'vr-1',
+        changes: expect.objectContaining({
+          visit_record_id: 'vr-1',
+          schedule_id: 'schedule-1',
+          trainee_user_id: 'trainee-1',
+          supervisor_user_id: 'supervisor-1',
+          visit_record_version: 2,
+          request_note_present: true,
+          request_note_length: requestNote.trim().length,
+          request_note_redacted: true,
+          handoff: expect.objectContaining({
+            next_check_items_count: 1,
+            ongoing_monitoring_count: 1,
+            decision_rationale_present: true,
+          }),
+        }),
+      }),
+    );
+    const auditAndTaskText = JSON.stringify([
+      upsertOperationalTaskMock.mock.calls,
+      createAuditLogEntryMock.mock.calls,
+    ]);
+    expect(auditAndTaskText).not.toContain('血圧確認');
+    expect(auditAndTaskText).not.toContain('残薬管理');
+    expect(auditAndTaskText).not.toContain('田中太郎');
+    expect(auditAndTaskText).not.toContain('token=secret');
+    expect(auditAndTaskText).not.toContain(requestNote.trim());
+  });
+
+  it('rejects stale records before writing task or audit side effects', async () => {
+    const existingHandoff = {
+      next_check_items: ['血圧確認'],
+      ongoing_monitoring: ['残薬管理'],
+      decision_rationale: '急変リスクあり',
+      ai_extracted: true,
+      ai_confidence: 0.85,
+      confirmed_by: null,
+      confirmed_at: null,
+      extracted_at: '2026-04-01T00:00:00Z',
+    };
+
+    const visitRecordFindUniqueOrThrowMock = vi.fn().mockResolvedValue({
+      version: 3,
+      schedule_id: 'schedule-1',
+      structured_soap: { ...baseSoap, handoff: existingHandoff },
+    });
+
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = {
+          visitRecord: {
+            findUniqueOrThrow: visitRecordFindUniqueOrThrowMock,
+          },
+        };
+        return fn(tx);
+      },
+    );
+
+    const db = {} as Parameters<typeof requestHandoffConfirmationSupervision>[0];
+    await expect(
+      requestHandoffConfirmationSupervision(db, {
+        orgId: 'org-1',
+        visitRecordId: 'vr-1',
+        traineeUserId: 'trainee-1',
+        supervisorUserId: 'supervisor-1',
+        expectedVersion: 2,
+      }),
+    ).rejects.toThrow('changed before handoff extraction');
+
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects already confirmed handoffs before writing task or audit side effects', async () => {
+    const existingHandoff = {
+      next_check_items: ['血圧確認'],
+      ongoing_monitoring: ['残薬管理'],
+      decision_rationale: '急変リスクあり',
+      ai_extracted: true,
+      ai_confidence: 0.85,
+      confirmed_by: 'supervisor-1',
+      confirmed_at: '2026-04-01T02:00:00Z',
+      extracted_at: '2026-04-01T00:00:00Z',
+    };
+
+    const visitRecordFindUniqueOrThrowMock = vi.fn().mockResolvedValue({
+      version: 2,
+      schedule_id: 'schedule-1',
+      structured_soap: { ...baseSoap, handoff: existingHandoff },
+    });
+
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = {
+          visitRecord: {
+            findUniqueOrThrow: visitRecordFindUniqueOrThrowMock,
+          },
+        };
+        return fn(tx);
+      },
+    );
+
+    const db = {} as Parameters<typeof requestHandoffConfirmationSupervision>[0];
+    await expect(
+      requestHandoffConfirmationSupervision(db, {
+        orgId: 'org-1',
+        visitRecordId: 'vr-1',
+        traineeUserId: 'trainee-1',
+        supervisorUserId: 'supervisor-1',
+        expectedVersion: 2,
+      }),
+    ).rejects.toThrow(VisitHandoffAlreadyConfirmedError);
+
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 });

@@ -239,20 +239,34 @@ describe('/api/tasks/bulk', () => {
         related_entity_type: 'visit_record',
         related_entity_id: 'visit_record_1',
       },
+      {
+        id: 'task_3',
+        task_type: 'handoff_supervision_review',
+        status: 'pending',
+        related_entity_type: 'visit_record',
+        related_entity_id: 'visit_record_1',
+      },
     ]);
     taskUpdateManyMock.mockResolvedValueOnce({ count: 1 });
 
-    const response = await POST(createPostRequest({ ids: ['task_1', 'task_2', 'task_missing'] }));
+    const response = await POST(
+      createPostRequest({ ids: ['task_1', 'task_2', 'task_3', 'task_missing'] }),
+    );
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       data: {
-        total: 3,
+        total: 4,
         completed: 1,
-        failed: 2,
+        failed: 3,
         failures: [
           {
             id: 'task_2',
+            code: 'dedicated_completion_required',
+            message: 'このタスクは専用画面で完了してください',
+          },
+          {
+            id: 'task_3',
             code: 'dedicated_completion_required',
             message: 'このタスクは専用画面で完了してください',
           },
