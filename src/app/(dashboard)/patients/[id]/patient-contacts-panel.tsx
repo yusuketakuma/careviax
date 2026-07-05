@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
@@ -165,11 +166,7 @@ export function PatientContactsPanel({
             })),
         }),
       });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error((payload as { message?: string }).message ?? '連絡先の保存に失敗しました');
-      }
-      return payload as ContactSaveResponse;
+      return readApiJson<ContactSaveResponse>(res, '連絡先の保存に失敗しました');
     },
     onSuccess: async (payload) => {
       if (payload.metadata?.expected_updated_at) {

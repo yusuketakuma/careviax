@@ -351,6 +351,37 @@ describe('PatientContactsPanel', () => {
     }
   });
 
+  it('keeps the server message for failed contact saves', async () => {
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+
+    let savedConfig: CapturedConfig | undefined;
+    useMutationMock.mockImplementation((config: CapturedConfig) => {
+      savedConfig = config;
+      return { mutate: vi.fn(), isPending: false };
+    });
+
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ message: '連絡先APIからの詳細エラー' }, 409));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(
+        <PatientContactsPanel
+          patientId="patient_1"
+          orgId="org_1"
+          initialExpectedUpdatedAt={EXPECTED_UPDATED_AT}
+          initialContacts={sampleContacts}
+        />,
+      );
+
+      await expect(savedConfig?.mutationFn?.()).rejects.toThrow('連絡先APIからの詳細エラー');
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
   it.each(['.', '..'])(
     'fails closed without fetching for exact dot-segment patientId %p on contacts save',
     async (dotId) => {
