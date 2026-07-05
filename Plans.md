@@ -696,11 +696,15 @@ FE 仕上げ（低優先）:
   - 2026-07-06 追加 partial: report delivery finding も `adaptCareReportToRiskFinding` として
     `risk-finding-registry.ts` へ移し、送付失敗 / 返信待ちの controlled title/detail/action と encoded
     report href を shared adapter で固定。Case Risk Cockpit は report status を adapter に渡すだけにした。
+  - 2026-07-06 追加 partial: visit preparation finding も `adaptUpcomingVisitPreparationToRiskFindings`
+    として shared registry へ移し、予定なし / 持参物 blocked / 準備未作成 / 準備未完了の
+    controlled title/detail/action と encoded preparation href を固定。Case Risk Cockpit は次回予定を
+    adapter に渡すだけにした。
 - 残:
   - CORE-001 の shared Risk Finding Registry へ型を寄せる作業は初期完了。Case Risk Cockpit の
-    billing/task/report finding は adapter 化済み。残は domain adapter 拡張と未接続 domain の段階的
-    adapter 化。
-  - medication / dispensing / visit_preparation detail / notification / privacy_security / integration /
+    billing/task/report/visit_preparation finding は adapter 化済み。残は domain adapter 拡張と未接続
+    domain の段階的 adapter 化。
+  - medication / dispensing / notification / privacy_security / integration /
     data_quality adapter を追加。
   - 患者/ケース詳細 UI の Command Center から呼び、`gpt-image-2` 方針に従う非 PHI 参照案と
     mobile/error state を確認してから配置する。

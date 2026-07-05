@@ -40,6 +40,58 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Case Risk Cockpit visit preparation registry adapter slice（committed）。
+  - current task:
+    `Plans.md` の `RISK-CORE-3 / CORE-003` domain adapter 拡張として、Case Risk Cockpit の
+    visit preparation finding 生成を `risk-finding-registry.ts` へ移した。
+    `adaptUpcomingVisitPreparationToRiskFindings` は、予定なし / 持参物 blocked / 準備未作成 /
+    準備未完了を controlled title/detail/action と encoded preparation href に変換する。
+  - subagent:
+    新規投入なし。既存 subagent thread 上限により、Codex 本体で cockpit / registry / tests を確認して
+    実装・検証した。
+  - design / imagegen:
+    backend adapter/refactor slice で視覚レイアウト変更を伴わないため、`imagegen` / `gpt-image-2` の
+    新規生成は省略。visit preparation risk UI を患者詳細や訪問準備画面へ再配置する slice では
+    PH-OS UI/UX SSOT に従う。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/case-risk-cockpit.ts`,
+    `src/server/services/risk-finding-registry.ts`,
+    `src/server/services/risk-finding-registry.test.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/case-risk-cockpit.ts`,
+    `src/server/services/risk-finding-registry.ts`,
+    `src/server/services/risk-finding-registry.test.ts`.
+  - bugs / risks reduced:
+    Case Risk Cockpit 内に visit preparation finding の schedule branch が直書きされていた。
+    shared adapter 化により、Risk Cockpit / TodayPreparation / Task bridge が同じ
+    visit_preparation risk contract を再利用しやすくなった。予定なし、持参物 blocked、
+    preparation missing、checklist incomplete の key/action/due_at を unit test で固定。
+  - security / PHI reviewed:
+    新規 API / DB field / PHI field は追加していない。schedule display label や患者自由記載は adapter 入力に
+    含めず、schedule id / preparation id / status flags / scheduled date だけから controlled finding を作る。
+    schedule id は href 内で `encodeURIComponent` する。
+  - performance issues improved:
+    DB query は変更なし。Case Risk Cockpit service から 80 行規模の route-local branch を削除し、
+    adapter 消費側へ単純化した。
+  - validation commands:
+    `pnpm exec vitest run src/server/services/case-risk-cockpit.test.ts src/server/services/risk-finding-registry.test.ts src/lib/risk/risk-finding.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm typecheck`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`;
+    `pnpm lint`.
+  - validation results:
+    focused vitest green（3 files / 17 tests）; typecheck green; typecheck:no-unused green;
+    `pnpm lint` green with existing unrelated warnings in `src/lib/platform/break-glass.test.ts`
+    (`_tx`, `_input` unused warnings only).
+  - remaining work:
+    Broader `Plans.md` objective remains open。残: medication / dispensing / notification /
+    privacy_security / integration / data_quality adapters、Case Risk Cockpit UI 接続、
+    RiskFinding -> OperationalTask bridge の実 domain 接続、waiver/override audit。
+
 - codex: Case Risk Cockpit report delivery registry adapter slice（committed）。
   - current task:
     `Plans.md` の `RISK-CORE-3 / CORE-003` domain adapter 拡張として、Case Risk Cockpit の

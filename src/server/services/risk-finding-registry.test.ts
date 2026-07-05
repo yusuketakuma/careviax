@@ -4,6 +4,7 @@ import {
   adaptCareReportToRiskFinding,
   adaptOperationalTaskToRiskFinding,
   adaptPatientFoundationItemToRiskFinding,
+  adaptUpcomingVisitPreparationToRiskFindings,
   adaptVisitReadyTransitionBlockersToRiskFindings,
   riskFindingToTaskDedupeKey,
 } from './risk-finding-registry';
@@ -188,6 +189,52 @@ describe('risk-finding-registry adapters', () => {
       action_label: '返信状況を確認',
     });
     expect(sent).toBeNull();
+  });
+
+  it('maps upcoming visit preparation states without leaking schedule labels', () => {
+    const noSchedule = adaptUpcomingVisitPreparationToRiskFindings(null, {
+      patientId: 'patient/1?x=1',
+      caseId: 'case_1',
+      patientHref: `/patients/${encodeURIComponent('patient/1?x=1')}`,
+    });
+    const blockedAndIncomplete = adaptUpcomingVisitPreparationToRiskFindings(
+      {
+        id: 'schedule/1?x=1',
+        scheduled_date: new Date('2026-07-07T00:00:00.000Z'),
+        carry_items_status: 'blocked',
+        preparation: {
+          id: 'prep_1',
+          medication_changes_reviewed: false,
+          carry_items_confirmed: true,
+          previous_issues_reviewed: true,
+          route_confirmed: true,
+          offline_synced: false,
+        },
+      },
+      { patientId: 'patient_1', caseId: 'case_1' },
+    );
+
+    expect(noSchedule).toEqual([
+      expect.objectContaining({
+        key: 'no_upcoming_visit_schedule',
+        domain: 'visit_preparation',
+        severity: 'info',
+        action_href: `/patients/${encodeURIComponent('patient/1?x=1')}?tab=visits`,
+      }),
+    ]);
+    expect(blockedAndIncomplete.map((finding) => finding.key)).toEqual([
+      'visit_carry_items_blocked:schedule/1?x=1',
+      'visit_preparation_incomplete:schedule/1?x=1',
+    ]);
+    expect(blockedAndIncomplete[0]?.action_href).toBe(
+      `/visits/${encodeURIComponent('schedule/1?x=1')}/preparation`,
+    );
+    expect(blockedAndIncomplete[1]).toMatchObject({
+      related_entity_type: 'visit_preparation',
+      related_entity_id: 'prep_1',
+      due_at: '2026-07-07T00:00:00.000Z',
+      action_label: '未完了チェックを確認',
+    });
   });
 
   it('keeps patient foundation task dedupe keys distinct per patient', () => {

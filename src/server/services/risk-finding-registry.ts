@@ -22,6 +22,7 @@ export type RiskFindingAdapterContext = {
   scheduleId?: string | null;
   visitRecordId?: string | null;
   billingEvidenceId?: string | null;
+  patientHref?: string | null;
   dueAt?: string | null;
 };
 
@@ -41,6 +42,20 @@ export type OperationalTaskRiskInput = {
 export type CareReportRiskInput = {
   id: string;
   status: string;
+};
+
+export type VisitPreparationRiskInput = {
+  id: string;
+  scheduled_date: Date | string;
+  carry_items_status: string | null;
+  preparation: {
+    id: string;
+    medication_changes_reviewed: boolean;
+    carry_items_confirmed: boolean;
+    previous_issues_reviewed: boolean;
+    route_confirmed: boolean;
+    offline_synced: boolean;
+  } | null;
 };
 
 const BILLING_BLOCKER_TITLE: Record<BillingEvidenceBlocker['key'], string> = {
@@ -254,6 +269,101 @@ export function adaptCareReportToRiskFinding(
   }
 
   return null;
+}
+
+export function adaptUpcomingVisitPreparationToRiskFindings(
+  schedule: VisitPreparationRiskInput | null,
+  context: RiskFindingAdapterContext = {},
+): RiskFinding[] {
+  if (!schedule) {
+    return [
+      createRiskFinding({
+        key: 'no_upcoming_visit_schedule',
+        domain: 'visit_preparation',
+        severity: 'info',
+        title: '予定中の訪問がありません',
+        detail: 'このケースに予定中または準備中の訪問予定はありません。',
+        patient_id: context.patientId ?? null,
+        case_id: context.caseId ?? null,
+        related_entity_type: 'case',
+        related_entity_id: context.caseId ?? null,
+        action_href: `${context.patientHref ?? '/patients'}?tab=visits`,
+        action_label: '訪問予定を確認',
+      }),
+    ];
+  }
+
+  const dueAt = iso(schedule.scheduled_date);
+  const findings: RiskFinding[] = [];
+  const preparationHref = `/visits/${encodeURIComponent(schedule.id)}/preparation`;
+
+  if (schedule.carry_items_status === 'blocked') {
+    findings.push(
+      createRiskFinding({
+        key: `visit_carry_items_blocked:${schedule.id}`,
+        domain: 'visit_preparation',
+        severity: 'blocking',
+        title: '訪問持参物がブロック中です',
+        detail: '訪問前に持参物の未解決項目を確認してください。',
+        patient_id: context.patientId ?? null,
+        case_id: context.caseId ?? null,
+        related_entity_type: 'visit_schedule',
+        related_entity_id: schedule.id,
+        due_at: dueAt,
+        action_href: preparationHref,
+        action_label: '訪問準備を確認',
+      }),
+    );
+  }
+
+  if (!schedule.preparation) {
+    findings.push(
+      createRiskFinding({
+        key: `visit_preparation_missing:${schedule.id}`,
+        domain: 'visit_preparation',
+        severity: 'warning',
+        title: '訪問準備チェックが未作成です',
+        detail: '訪問準備チェックリストを作成し、出発前確認を完了してください。',
+        patient_id: context.patientId ?? null,
+        case_id: context.caseId ?? null,
+        related_entity_type: 'visit_schedule',
+        related_entity_id: schedule.id,
+        due_at: dueAt,
+        action_href: preparationHref,
+        action_label: '準備を開始',
+      }),
+    );
+    return findings;
+  }
+
+  const hasMissingChecklist = [
+    schedule.preparation.medication_changes_reviewed,
+    schedule.preparation.carry_items_confirmed,
+    schedule.preparation.previous_issues_reviewed,
+    schedule.preparation.route_confirmed,
+    schedule.preparation.offline_synced,
+  ].some((completed) => !completed);
+
+  if (hasMissingChecklist) {
+    findings.push(
+      createRiskFinding({
+        key: `visit_preparation_incomplete:${schedule.id}`,
+        domain: 'visit_preparation',
+        severity: 'warning',
+        title: '訪問準備チェックが未完了です',
+        detail: '薬剤変更、持参物、前回課題、ルート、オフライン同期の確認が残っています。',
+        patient_id: context.patientId ?? null,
+        case_id: context.caseId ?? null,
+        related_entity_type: 'visit_preparation',
+        related_entity_id: schedule.preparation.id,
+        due_at: dueAt,
+        action_href: preparationHref,
+        action_label: '未完了チェックを確認',
+      }),
+    );
+  }
+
+  return findings;
 }
 
 export function adaptOperationalTaskToRiskFinding(
