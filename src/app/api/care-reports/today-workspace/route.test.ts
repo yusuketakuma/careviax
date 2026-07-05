@@ -196,6 +196,19 @@ describe('/api/care-reports/today-workspace', () => {
         count_basis: 'derived_visible_window',
       },
     });
+    expect(json.data.action_rail).toMatchObject({
+      next_action: {
+        actionLabel: '報告書一覧を確認する',
+        actionHref: '/reports',
+        description: '報告・共有の残課題はありません。',
+      },
+      blocked_reasons: [],
+      evidence: [
+        { id: 'send-templates', label: '送付テンプレート', meta: '0種' },
+        { id: 'delivery-history', label: '送付履歴', meta: '今月0件' },
+        { id: 'read-receipt', label: '既読確認', meta: 'ポータル連携' },
+      ],
+    });
     expect(withOrgContextMock).toHaveBeenCalledWith(
       'org_1',
       expect.any(Function),
@@ -1035,6 +1048,27 @@ describe('/api/care-reports/today-workspace', () => {
     expect(responseText).not.toContain('doctor@example.com');
     expect(responseText).not.toContain('090-1234-5678');
     expect(responseText).not.toContain('SMTP 550');
+    expect(json.data.action_rail).toMatchObject({
+      next_action: {
+        actionLabel: '確認する',
+        actionHref: `/reports/${encodeURIComponent(HOSTILE_DRAFT_REPORT_ID)}`,
+        description: '下書きのため、他職種への送付とPDF出力はできません。',
+      },
+      blocked_reasons: expect.arrayContaining([
+        expect.objectContaining({
+          id: `${HOSTILE_DRAFT_REPORT_ID}-draft-confirmation`,
+          label: '加藤 ミサ 様 — 薬剤師確認待ち',
+          severity: 'critical',
+          categoryLabel: '事務',
+          actionLabel: '確認する',
+        }),
+      ]),
+      evidence: expect.arrayContaining([
+        expect.objectContaining({ id: 'send-templates', label: '送付テンプレート' }),
+        expect.objectContaining({ id: 'delivery-history', label: '送付履歴' }),
+        expect.objectContaining({ id: 'read-receipt', label: '既読確認' }),
+      ]),
+    });
     expect(json.data.counts.created).toBe(3);
     expect(json.data.counts.open_issues).toBe(4);
   });

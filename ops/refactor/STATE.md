@@ -3699,3 +3699,59 @@
 - remaining:
   Broader `Plans.md` objective remains open. 次の候補は `PAT-LIST-PERF-001` / `DASH-COMM-001` /
   `REPORT-PERF-001` などの未完了 UI/PERF slice。
+
+## 2026-07-06 Reports Action Rail BFF Consolidation slice
+
+- codex: `REPORT-PERF-001 / PERF-BFF-001` report workspace double-fetch reduction implemented.
+  `/reports` が `/api/care-reports/today-workspace` と `/api/dashboard/cockpit` を二重取得していた構成を
+  上書きし、reports 画面の右レール用 `action_rail`（next action / blocked reasons / evidence）を
+  `today-workspace` BFF に含めた。UI は report BFF の `action_rail` だけで
+  `GuardedWorkspaceActionRail` を描画し、`/api/dashboard/cockpit` fetch を削除した。
+- skill / design reference:
+  `docs/ui-ux-design-guidelines.md` と `redesign-existing-projects` skill を確認。今回は既存 reports
+  右レールのデータ供給元変更で、新規画面再構築ではないため `imagegen` / `gpt-image-2` の新規生成は
+  行っていない。既存 UI contract と false-empty/error 分離を維持した。
+- files inspected:
+  `Plans.md`, `docs/ui-ux-design-guidelines.md`,
+  `/Users/yusuke/workspace/careviax/.agents/skills/redesign-existing-projects/SKILL.md`,
+  `src/components/features/workspace/action-rail.tsx`,
+  `src/lib/workspace/daily-ops-rail.ts`,
+  `src/types/reports-today-workspace.ts`,
+  `src/app/api/care-reports/today-workspace/route.ts`,
+  `src/app/api/care-reports/today-workspace/route.test.ts`,
+  `src/app/(dashboard)/reports/report-share-workspace.tsx`,
+  `src/app/(dashboard)/reports/report-share-workspace.helpers.ts`,
+  `src/app/(dashboard)/reports/report-share-workspace.test.tsx`.
+- files changed:
+  `Plans.md`,
+  `src/types/reports-today-workspace.ts`,
+  `src/app/api/care-reports/today-workspace/route.ts`,
+  `src/app/api/care-reports/today-workspace/route.test.ts`,
+  `src/app/(dashboard)/reports/report-share-workspace.tsx`,
+  `src/app/(dashboard)/reports/report-share-workspace.helpers.ts`,
+  `src/app/(dashboard)/reports/report-share-workspace.test.tsx`,
+  `ops/refactor/STATE.md`.
+- bugs found/fixed:
+  reports workspace の右レールが dashboard cockpit を別途取得しており、報告 BFF が成功しても cockpit
+  側だけ失敗する二重状態と、同一画面の next action / blocker の責務分散が残っていた。
+  `today-workspace` に report-specific `action_rail` を追加し、open issue / waiting reply /
+  evidence から右レールを一貫生成するようにした。
+- security/PHI risks reduced:
+  action rail の `blocked_reasons` は既存の sanitized open issue title/description/action を再利用し、
+  送付失敗理由は既存 sanitizer 後の値だけを表示する。UI test では `dashboard/cockpit` fetch が
+  発生しないことを固定し、余計な BFF payload/PHI surface を減らした。
+- performance issues improved:
+  `/reports` 初期表示の追加 network request `/api/dashboard/cockpit` を削除。reports 右レールは
+  `/api/care-reports/today-workspace` の同一 response で描画される。query/payload のさらなる
+  summary/detail split は残課題として `Plans.md` に明記した。
+- validation:
+  `pnpm exec vitest run src/app/api/care-reports/today-workspace/route.test.ts src/app/'(dashboard)'/reports/report-share-workspace.test.tsx --reporter=dot --testTimeout=30000`
+  green (2 files / 52 tests; expected sanitized stderr from 500 route test only);
+  `pnpm exec eslint --max-warnings=0 src/types/reports-today-workspace.ts src/app/api/care-reports/today-workspace/route.ts src/app/api/care-reports/today-workspace/route.test.ts src/app/'(dashboard)'/reports/report-share-workspace.tsx src/app/'(dashboard)'/reports/report-share-workspace.helpers.ts src/app/'(dashboard)'/reports/report-share-workspace.test.tsx`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck --pretty false` green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false` green;
+  `git diff --check -- ...reports action rail touched files...` green.
+- remaining:
+  Broader `Plans.md` objective remains open. Reports BFF の summary/detail split、payload budget CI gate、
+  browser smoke は未実装。次候補は `DASH-COMM-001` または `REPORT-PERF-001` の続き。

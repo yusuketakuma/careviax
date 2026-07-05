@@ -22,7 +22,6 @@ import { buildReportHref } from '@/lib/reports/navigation';
 import { cn } from '@/lib/utils';
 import { messageFromError } from '@/lib/utils/error-message';
 import { timeIsoToString } from '@/lib/visits/time-of-day';
-import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import type {
   ReportDraftGenerationTarget,
   ReportDraftRow,
@@ -34,8 +33,6 @@ import type {
 import {
   buildHeaderMeta,
   buildReportEvidence,
-  buildWorkspaceBlockedReasons,
-  buildWorkspaceNextAction,
   formatWorkspaceCountLabel,
   formatTimeOfDay,
   waitingBadgeLabel,
@@ -101,17 +98,6 @@ async function fetchReportsTodayWorkspace(orgId: string): Promise<ReportsTodayWo
   const json = await readApiJson<{ data: ReportsTodayWorkspaceResponse }>(
     res,
     '報告ワークスペースの取得に失敗しました',
-  );
-  return json.data;
-}
-
-async function fetchOperationCockpit(orgId: string): Promise<DashboardCockpitResponse> {
-  const res = await fetch('/api/dashboard/cockpit', {
-    headers: buildOrgHeaders(orgId),
-  });
-  const json = await readApiJson<{ data: DashboardCockpitResponse }>(
-    res,
-    '当日オペレーション情報の取得に失敗しました',
   );
   return json.data;
 }
@@ -662,12 +648,6 @@ export function ReportShareWorkspace() {
     enabled: !isBootstrappingOrg,
     refetchInterval: REPORT_WORKSPACE_REFETCH_INTERVAL_MS,
   });
-  const cockpitQuery = useQuery({
-    queryKey: ['dashboard', 'cockpit', orgId],
-    queryFn: () => fetchOperationCockpit(orgId),
-    staleTime: 30_000,
-    enabled: !isBootstrappingOrg && workspaceQuery.isSuccess,
-  });
   const generateDraftMutation = useMutation({
     mutationFn: (input: DraftGenerationInput) =>
       generateCareReportFromVisit<GeneratedCareReport>(
@@ -695,21 +675,20 @@ export function ReportShareWorkspace() {
 
   const now = new Date();
   const data = workspaceQuery.data ?? null;
-  const cockpit = cockpitQuery.data ?? null;
   const actionRail = (
     <GuardedWorkspaceActionRail
-      isLoading={cockpitQuery.isLoading}
-      isError={cockpitQuery.isError}
-      onRetry={() => void cockpitQuery.refetch()}
+      isLoading={isBootstrappingOrg || workspaceQuery.isLoading}
+      isError={workspaceQuery.isError}
+      onRetry={() => void workspaceQuery.refetch()}
       loadingTestId="workspace-action-rail-loading"
-      loadingAriaLabel="オペレーション情報を読み込み中"
-      errorTitle="オペレーション情報を表示できません"
-      errorDescription="止まっている理由の取得に失敗しました。再試行してください。"
-      errorDetail={cockpitQuery.error instanceof Error ? cockpitQuery.error.message : undefined}
-      nextAction={buildWorkspaceNextAction(cockpit)}
-      blockedReasons={buildWorkspaceBlockedReasons(cockpit)}
+      loadingAriaLabel="報告アクションを読み込み中"
+      errorTitle="報告アクションを表示できません"
+      errorDescription="次にやることと止まっている理由の取得に失敗しました。再試行してください。"
+      errorDetail={workspaceQuery.error instanceof Error ? workspaceQuery.error.message : undefined}
+      nextAction={data?.action_rail.next_action}
+      blockedReasons={data?.action_rail.blocked_reasons ?? []}
       blockedReasonsEmptyLabel="止まっている作業はありません"
-      evidence={buildReportEvidence(data)}
+      evidence={data?.action_rail.evidence ?? buildReportEvidence(data)}
       evidenceOpenLabel="開く"
     />
   );

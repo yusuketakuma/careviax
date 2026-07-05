@@ -720,6 +720,15 @@ FE 仕上げ（低優先）:
 | DEV-PAY-001  | P1     | DEV-004  | payload品質    | Route Payload Size Budget                 | heavy BFF / export / list APIs                                                                   | critical BFF は payload budget を持ち、CI smoke で閾値超過を検出する。初期表示 summary と遅延 detail の分離を budget で強制する。                                                                                                                                |
 | DEV-MOB-001  | P1     | DEV-005  | mobile E2E     | Mobile Interaction E2E Pack               | Mobile Visit Mode、offline draft/sync、notification entry                                        | 訪問開始→記録保存→同期/競合表示→報告連携までを mobile viewport で E2E smoke。通信断でも draft が消えず、未同期/同期済み/競合ありの表示が確認できる。                                                                                                             |
 
+**実装済み partials（UX/PERF/DEV）**:
+
+- `REPORT-PERF-001 / PERF-BFF-001` partial（2026-07-06）: `/reports` は
+  `/api/dashboard/cockpit` を再取得せず、`/api/care-reports/today-workspace` の
+  `action_rail`（next action / blocked reasons / evidence）で右レールを描画する。
+  report workspace の二重 BFF fetch を削減し、open issue / waiting reply / evidence を
+  report BFF で一貫させる。残: report BFF のさらなる summary/detail 分割、payload budget の
+  CI gate 化、browser smoke。
+
 **追加実装順序**:
 
 1. `UX-CMD-001` + `PERF-BFF-001`: Command Center は重い詳細BFFになりやすいため、最初から summary/detail batch 分割を前提に設計する。

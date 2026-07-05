@@ -6,7 +6,6 @@ import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import { useUIStore } from '@/lib/stores/ui-store';
-import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import type { ReportsTodayWorkspaceResponse } from '@/types/reports-today-workspace';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildReportHref } from '@/lib/reports/navigation';
@@ -14,7 +13,6 @@ import { ReportShareWorkspace } from './report-share-workspace';
 import {
   buildReportEvidence,
   buildHeaderMeta,
-  buildWorkspaceNextAction,
   waitingBadgeLabel,
 } from './report-share-workspace.helpers';
 
@@ -269,60 +267,51 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
     },
   },
   evidence: { template_count: 3, monthly_delivery_count: 14 },
-};
-
-const COCKPIT: DashboardCockpitResponse = {
-  generated_at: '2026-06-11T00:00:00.000Z',
-  cycle_status_counts: {},
-  audit_pending_count: 1,
-  narcotic_audit_count: 1,
-  audit_queue: [
-    {
-      task_id: 'task_1',
-      cycle_id: 'cycle_1',
-      patient_name: '田中 一郎',
-      priority: 'normal',
-      due_at: localIso(2026, 5, 11, 12),
-      intake_id: 'intake_1',
-      prescribed_date: '2026-06-01',
-      handling_tags: ['narcotic'],
-      has_narcotic: true,
-      waiting_since: null,
+  action_rail: {
+    next_action: {
+      actionLabel: '確認する',
+      actionHref: '/reports/report_draft',
+      description: '下書きのため、他職種への送付とPDF出力はできません。',
     },
-  ],
-  today_visits: [
-    {
-      id: 'visit_1',
-      patient_name: '田中 一郎',
-      visit_type: 'regular',
-      schedule_status: 'planned',
-      time_start: '14:00',
-      time_end: '14:30',
-      facility_batch_id: null,
-    },
-  ],
-  blocked_reasons: [
-    {
-      id: 'block_1',
-      label: 'ご家族の同意待ち(新規契約)',
-      severity: 'critical',
-      category: '患者',
-      age_minutes: 25 * 60,
-      action_label: '再連絡する →',
-      action_href: '/communications/requests',
-    },
-    {
-      id: 'block_2',
-      label: '送付先の確認(やまもと内科)',
-      severity: 'warning',
-      category: '事務',
-      age_minutes: 30,
-      action_label: '状況を見る →',
-      action_href: '/admin/contact-profiles',
-    },
-  ],
-  carryover_count: 0,
-  team_capacity: [],
+    blocked_reasons: [
+      {
+        id: 'report_draft-draft-confirmation',
+        label: '加藤 ミサ 様 — 薬剤師確認待ち',
+        severity: 'critical',
+        categoryLabel: '事務',
+        actionLabel: '確認する',
+        actionHref: '/reports/report_draft',
+      },
+      {
+        id: 'report_draft-billing-context',
+        label: '加藤 ミサ 様 — 保険・請求根拠未確定',
+        severity: 'warning',
+        categoryLabel: '事務',
+        actionLabel: '根拠を確認',
+        actionHref: '/reports/report_draft',
+      },
+    ],
+    evidence: [
+      {
+        id: 'send-templates',
+        label: '送付テンプレート',
+        meta: '3種',
+        href: '/admin/document-templates',
+      },
+      {
+        id: 'delivery-history',
+        label: '送付履歴',
+        meta: '今月14件',
+        href: '/communications/requests?status=sent',
+      },
+      {
+        id: 'read-receipt',
+        label: '既読確認',
+        meta: 'ポータル連携',
+        href: '/external?focus=shares',
+      },
+    ],
+  },
 };
 
 function stubFetch(
@@ -336,7 +325,7 @@ function stubFetch(
       return new Response(JSON.stringify({ data: workspace }), { status: 200 });
     }
     if (url.includes('/api/dashboard/cockpit')) {
-      return new Response(JSON.stringify({ data: COCKPIT }), { status: 200 });
+      throw new Error('reports workspace must not fetch /api/dashboard/cockpit');
     }
     if (url.includes('/api/care-reports/generate-from-visit')) {
       if (generateFailure) {
@@ -414,8 +403,10 @@ describe('ReportShareWorkspace', () => {
 
     // 残課題 / 作成済み報告書: 他職種報告済みかどうかと送信日時を表示する
     expect(screen.getByTestId('report-open-issues')).toBeTruthy();
-    expect(screen.getByText('加藤 ミサ 様 — 薬剤師確認待ち')).toBeTruthy();
-    expect(screen.getByText('加藤 ミサ 様 — 保険・請求根拠未確定')).toBeTruthy();
+    expect(screen.getAllByText('加藤 ミサ 様 — 薬剤師確認待ち').length).toBeGreaterThanOrEqual(1);
+    expect(
+      screen.getAllByText('加藤 ミサ 様 — 保険・請求根拠未確定').length,
+    ).toBeGreaterThanOrEqual(1);
     expect(screen.getByTestId('report-created-list')).toBeTruthy();
     expect(screen.getByRole('heading', { name: '作成済み報告書' })).toBeTruthy();
 
@@ -916,28 +907,36 @@ describe('ReportShareWorkspace', () => {
     expect(screen.queryByText(/SMTP 550/)).toBeNull();
   });
 
-  it('renders the shared action rail (next action, blocked reasons, evidence)', async () => {
-    stubFetch();
+  it('renders the report workspace action rail without refetching dashboard cockpit', async () => {
+    const fetchMock = stubFetch();
     renderWorkspace();
 
     await waitFor(() => {
       expect(screen.getByTestId('workspace-action-rail')).toBeTruthy();
     });
 
-    // 次にやること: 麻薬監査が主操作(青)・期限付き
+    expect(
+      fetchMock.mock.calls.some(([url]) => String(url).includes('/api/dashboard/cockpit')),
+    ).toBe(false);
+
+    // 次にやること: report BFF の最優先 open issue を主操作にする
     await waitFor(() => {
-      expect(screen.getByText('麻薬監査を開始 — 12:00期限')).toBeTruthy();
+      expect(
+        screen
+          .getAllByRole('link', { name: '確認する' })
+          .some((link) => link.getAttribute('href') === '/reports/report_draft'),
+      ).toBe(true);
     });
     expect(
-      screen.getByText('14:00訪問(田中様)の持参薬です。完了で午後の予定がすべて確定します。'),
-    ).toBeTruthy();
+      screen.getAllByText('下書きのため、他職種への送付とPDF出力はできません。').length,
+    ).toBeGreaterThanOrEqual(1);
 
     // 止まっている理由(カテゴリ+経過+個別アクション)
     expect(screen.getByText('止まっている理由')).toBeTruthy();
-    expect(screen.getByText('ご家族の同意待ち(新規契約)')).toBeTruthy();
-    expect(screen.getByText('送付先の確認(やまもと内科)')).toBeTruthy();
-    expect(screen.getByText('1日')).toBeTruthy();
-    expect(screen.getByText('30分')).toBeTruthy();
+    expect(screen.getAllByText('加藤 ミサ 様 — 薬剤師確認待ち').length).toBeGreaterThanOrEqual(1);
+    expect(
+      screen.getAllByText('加藤 ミサ 様 — 保険・請求根拠未確定').length,
+    ).toBeGreaterThanOrEqual(1);
 
     // 根拠・記録
     expect(screen.getByText('送付テンプレート')).toBeTruthy();
@@ -984,23 +983,5 @@ describe('report-share-workspace helpers', () => {
   it('labels waiting badge by elapsed days', () => {
     expect(waitingBadgeLabel(3)).toBe('3日経過');
     expect(waitingBadgeLabel(0)).toBe('本日送付');
-  });
-
-  it('focuses the visit preparation action on the first visit schedule', () => {
-    const result = buildWorkspaceNextAction({
-      ...COCKPIT,
-      audit_queue: [],
-    });
-    expect(result.actionLabel).toBe('訪問準備を確認する');
-    expect(result.actionHref).toBe('/schedules?focus=schedule&schedule_id=visit_1');
-  });
-
-  it('falls back next action when no audit queue', () => {
-    const result = buildWorkspaceNextAction({
-      ...COCKPIT,
-      audit_queue: [],
-      today_visits: [],
-    });
-    expect(result.actionLabel).toBe('今日の予定を確認する');
   });
 });

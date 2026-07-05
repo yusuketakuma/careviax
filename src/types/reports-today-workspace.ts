@@ -128,6 +128,29 @@ export type ReportWorkspaceCount = {
   count_basis: 'full_result' | 'database_total' | 'derived_visible_window';
 };
 
+export type ReportWorkspaceActionRail = {
+  next_action: {
+    description?: string;
+    actionLabel: string;
+    actionHref?: string;
+  };
+  blocked_reasons: Array<{
+    id: string;
+    label: string;
+    severity: 'critical' | 'warning';
+    categoryLabel?: string;
+    ageLabel?: string;
+    actionLabel?: string;
+    actionHref?: string;
+  }>;
+  evidence: Array<{
+    id: string;
+    label: string;
+    meta?: string;
+    href?: string;
+  }>;
+};
+
 export type ReportsTodayWorkspaceResponse = {
   generated_at: string;
   draft_rows: ReportDraftRow[];
@@ -155,4 +178,5 @@ export type ReportsTodayWorkspaceResponse = {
     /** 今月の送付履歴件数 */
     monthly_delivery_count: number;
   };
+  action_rail: ReportWorkspaceActionRail;
 };

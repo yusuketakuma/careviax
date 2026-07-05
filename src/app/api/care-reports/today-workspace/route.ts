@@ -17,6 +17,7 @@ import { dateKeySchema } from '@/lib/validations/date-key';
 import { familyNameOf } from '@/lib/utils/person-name';
 import { sanitizeDeliveryFailureReason } from '@/lib/reports/delivery-failure-reasons';
 import { buildReportHref, buildReportSendHref } from '@/lib/reports/navigation';
+import { buildExternalHref } from '@/lib/dashboard/home-link-builders';
 import { readReportBillingContext, readReportSourceProvenance } from '@/lib/reports/report-content';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import {
@@ -35,6 +36,7 @@ import type {
   ReportDraftGenerationTarget,
   ReportDraftRow,
   ReportOpenIssue,
+  ReportWorkspaceActionRail,
   ReportCreatedRow,
   ReportFailedDelivery,
   ReportResolvedToday,
@@ -530,6 +532,75 @@ function dedupeBillingCandidateIssues(
     seen.add(candidate.id);
     return true;
   });
+}
+
+function buildReportWorkspaceActionRail(args: {
+  openIssues: ReportOpenIssue[];
+  draftRows: ReportDraftRow[];
+  waitingReplies: ReportWaitingReply[];
+  templateCount: number;
+  monthlyDeliveryCount: number;
+}): ReportWorkspaceActionRail {
+  const firstOpenIssue =
+    args.openIssues.find((issue) => issue.severity === 'critical') ?? args.openIssues[0] ?? null;
+  const firstWaitingReply = args.waitingReplies[0] ?? null;
+  const firstDraftAction = args.draftRows.find((row) => row.action)?.action ?? null;
+
+  const nextAction = firstOpenIssue
+    ? {
+        actionLabel: firstOpenIssue.action.label,
+        actionHref: firstOpenIssue.action.href,
+        description: firstOpenIssue.description,
+      }
+    : firstWaitingReply
+      ? {
+          actionLabel: firstWaitingReply.actions[0]?.label ?? '返信待ちを確認する',
+          actionHref: firstWaitingReply.actions[0]?.href ?? '/reports',
+          description: firstWaitingReply.title,
+        }
+      : firstDraftAction
+        ? {
+            actionLabel: firstDraftAction.label.replace(/^→\s*/, ''),
+            actionHref: firstDraftAction.href,
+            description: '本日の訪問後報告の準備状況を確認します。',
+          }
+        : {
+            actionLabel: '報告書一覧を確認する',
+            actionHref: '/reports',
+            description: '報告・共有の残課題はありません。',
+          };
+
+  return {
+    next_action: nextAction,
+    blocked_reasons: args.openIssues.slice(0, 5).map((issue) => ({
+      id: issue.id,
+      label: issue.title,
+      severity: issue.severity === 'critical' ? 'critical' : 'warning',
+      categoryLabel: issue.kind === 'billing_candidate' ? '請求' : '事務',
+      actionLabel: issue.action.label,
+      actionHref: issue.action.href,
+    })),
+    evidence: [
+      {
+        id: 'send-templates',
+        label: '送付テンプレート',
+        meta: `${args.templateCount}種`,
+        href: '/admin/document-templates',
+      },
+      {
+        id: 'delivery-history',
+        label: '送付履歴',
+        meta: `今月${args.monthlyDeliveryCount}件`,
+        href: '/communications/requests?status=sent',
+      },
+      {
+        id: 'read-receipt',
+        label: '既読確認',
+        meta: 'ポータル連携',
+        href: buildExternalHref({ focus: 'shares' }),
+      },
+    ],
+  };
 }
 
 const authenticatedGET = withAuthContext(
@@ -1101,6 +1172,13 @@ const authenticatedGET = withAuthContext(
             template_count: templateCount,
             monthly_delivery_count: monthlyDeliveryCount,
           },
+          action_rail: buildReportWorkspaceActionRail({
+            openIssues,
+            draftRows,
+            waitingReplies,
+            templateCount,
+            monthlyDeliveryCount,
+          }),
         };
 
         return responseData;
