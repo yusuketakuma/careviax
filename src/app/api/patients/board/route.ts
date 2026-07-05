@@ -608,6 +608,40 @@ function matchesFoundationIssue(
   return card.foundation_issue_keys?.includes(issue) ?? false;
 }
 
+function countDerivedCards(
+  cards: DerivedCard[],
+  predicate: (card: DerivedCard) => boolean,
+): number {
+  return cards.reduce((count, card) => count + (predicate(card) ? 1 : 0), 0);
+}
+
+function buildFoundationIssueCounts(cards: DerivedCard[]) {
+  return {
+    needs_confirmation: countDerivedCards(
+      cards,
+      (card) => card.foundation_summary?.status !== 'ready',
+    ),
+    missing_contact: countDerivedCards(cards, (card) =>
+      Boolean(card.foundation_issue_keys?.includes('missing_contact')),
+    ),
+    missing_consent_plan: countDerivedCards(cards, (card) =>
+      Boolean(card.foundation_issue_keys?.includes('missing_consent_plan')),
+    ),
+    missing_parking: countDerivedCards(cards, (card) =>
+      Boolean(card.foundation_issue_keys?.includes('missing_parking')),
+    ),
+    missing_care_level: countDerivedCards(cards, (card) =>
+      Boolean(card.foundation_issue_keys?.includes('missing_care_level')),
+    ),
+    missing_insurance: countDerivedCards(cards, (card) =>
+      Boolean(card.foundation_issue_keys?.includes('missing_insurance')),
+    ),
+    missing_care_team: countDerivedCards(cards, (card) =>
+      Boolean(card.foundation_issue_keys?.includes('missing_care_team')),
+    ),
+  };
+}
+
 const authenticatedGET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
@@ -862,8 +896,11 @@ const authenticatedGET = withAuthContext(
       }),
     ]);
 
-    const cards = patients
-      .map((patient) => derivePatientBoardCard(patient as PatientQueryRow, now))
+    const allCards = patients.map((patient) =>
+      derivePatientBoardCard(patient as PatientQueryRow, now),
+    );
+    const foundationIssueCounts = buildFoundationIssueCounts(allCards);
+    const cards = allCards
       .filter((card) => matchesFoundationIssue(card, foundationIssue))
       .slice(0, PATIENT_FETCH_LIMIT)
       .sort(compareCards);
@@ -929,6 +966,7 @@ const authenticatedGET = withAuthContext(
         return publicCard;
       }),
       chip_counts: chipCounts,
+      foundation_issue_counts: foundationIssueCounts,
       today_facility_patient_count: todayFacilityPatientCount,
       today_visit_count: todayVisitCount,
       safety_tagged_count: cards.filter((card) => card.safety_tags.length > 0).length,

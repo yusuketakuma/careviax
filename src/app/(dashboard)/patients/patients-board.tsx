@@ -778,6 +778,7 @@ export function PatientsBoard() {
 
   const chipOptions = useMemo(() => {
     const counts = data?.chip_counts;
+    const foundationCounts = data?.foundation_issue_counts;
     const visitTodayLabel =
       data && data.today_facility_patient_count > 0
         ? `本日訪問 ${data.today_visit_count}＋施設${data.today_facility_patient_count}名`
@@ -793,51 +794,37 @@ export function PatientsBoard() {
       {
         value: 'foundation_gap' as const,
         label: '正本未整備',
-        count: data
-          ? countCards(data.cards, (card) => card.foundation_summary?.status !== 'ready')
-          : 0,
+        count: foundationCounts?.needs_confirmation ?? 0,
       },
       {
         value: 'foundation_contact_gap' as const,
         label: '連絡先未設定',
-        count: data
-          ? countCards(data.cards, (card) => cardHasFoundationIssue(card, 'missing_contact'))
-          : 0,
+        count: foundationCounts?.missing_contact ?? 0,
       },
       {
         value: 'foundation_consent_plan_gap' as const,
         label: '同意・計画未確認',
-        count: data
-          ? countCards(data.cards, (card) => cardHasFoundationIssue(card, 'missing_consent_plan'))
-          : 0,
+        count: foundationCounts?.missing_consent_plan ?? 0,
       },
       {
         value: 'foundation_care_team_gap' as const,
         label: '連携先未設定',
-        count: data
-          ? countCards(data.cards, (card) => cardHasFoundationIssue(card, 'missing_care_team'))
-          : 0,
+        count: foundationCounts?.missing_care_team ?? 0,
       },
       {
         value: 'foundation_parking_gap' as const,
         label: '駐車未確認',
-        count: data
-          ? countCards(data.cards, (card) => cardHasFoundationIssue(card, 'missing_parking'))
-          : 0,
+        count: foundationCounts?.missing_parking ?? 0,
       },
       {
         value: 'foundation_care_level_gap' as const,
         label: '介護度未確認',
-        count: data
-          ? countCards(data.cards, (card) => cardHasFoundationIssue(card, 'missing_care_level'))
-          : 0,
+        count: foundationCounts?.missing_care_level ?? 0,
       },
       {
         value: 'foundation_insurance_gap' as const,
         label: '保険未確認',
-        count: data
-          ? countCards(data.cards, (card) => cardHasFoundationIssue(card, 'missing_insurance'))
-          : 0,
+        count: foundationCounts?.missing_insurance ?? 0,
       },
       { value: 'paused' as const, label: '休止', count: counts?.paused ?? 0 },
     ];

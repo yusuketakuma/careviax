@@ -148,6 +148,15 @@ function buildFixture(): PatientBoardResponse {
       }),
     ],
     chip_counts: { urgent_now: 1, external_wait: 0, visit_today: 1, paused: 1 },
+    foundation_issue_counts: {
+      needs_confirmation: 4,
+      missing_contact: 4,
+      missing_consent_plan: 4,
+      missing_parking: 4,
+      missing_care_level: 0,
+      missing_insurance: 0,
+      missing_care_team: 0,
+    },
     today_facility_patient_count: 12,
     today_visit_count: 3,
     safety_tagged_count: 9,
@@ -512,6 +521,49 @@ describe('PatientsBoard', () => {
     // Search results are now owned by /api/patients/board?q=... rather than by
     // filtering the already loaded cards on the client.
     expect(screen.getAllByTestId('patient-board-card')).toHaveLength(5);
+  });
+
+  it('uses server-provided foundation counts instead of deriving false-zero counts from filtered cards', () => {
+    const data = buildFixture();
+    data.cards = [
+      card({
+        patient_id: 'pt_contact_only',
+        name: '連絡 不足',
+        foundation_issue_keys: ['missing_contact'],
+        foundation_summary: {
+          status: 'needs_confirmation',
+          label: '未確認1件',
+          items: ['連絡先未設定'],
+        },
+      }),
+    ];
+    data.foundation_issue_counts = {
+      needs_confirmation: 8,
+      missing_contact: 1,
+      missing_consent_plan: 3,
+      missing_parking: 2,
+      missing_care_level: 4,
+      missing_insurance: 5,
+      missing_care_team: 6,
+    };
+    useRealtimeQueryMock.mockReturnValue({
+      data,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: refetchMock,
+    });
+
+    render(<PatientsBoard />);
+
+    const chipBar = screen.getByRole('group', { name: '対応カテゴリの絞り込み' });
+    expect(within(chipBar).getByRole('button', { name: /正本未整備8/ })).toBeTruthy();
+    expect(within(chipBar).getByRole('button', { name: /連絡先未設定1/ })).toBeTruthy();
+    expect(within(chipBar).getByRole('button', { name: /同意・計画未確認3/ })).toBeTruthy();
+    expect(within(chipBar).getByRole('button', { name: /連携先未設定6/ })).toBeTruthy();
+    expect(within(chipBar).getByRole('button', { name: /駐車未確認2/ })).toBeTruthy();
+    expect(within(chipBar).getByRole('button', { name: /介護度未確認4/ })).toBeTruthy();
+    expect(within(chipBar).getByRole('button', { name: /保険未確認5/ })).toBeTruthy();
   });
 
   it('sorts visible cards without changing the stable patient card keys', () => {

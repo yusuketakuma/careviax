@@ -652,6 +652,10 @@ describe('/api/patients/board', () => {
         items: expect.arrayContaining(['連絡先未設定']),
       },
     });
+    expect(json.data.foundation_issue_counts).toMatchObject({
+      needs_confirmation: 2,
+      missing_contact: 1,
+    });
     // foundation_issue filter reduced cards to 1 of 2 FETCHED, but the fetch was NOT
     // capped (assigned_total 2 === fetched 2) — filtering is not truncation.
     expect(json.data.assigned_total).toBe(2);
@@ -701,6 +705,7 @@ describe('/api/patients/board', () => {
           items: expect.arrayContaining([expectedItem]),
         },
       });
+      expect(json.data.foundation_issue_counts[issue]).toBe(1);
     },
   );
 

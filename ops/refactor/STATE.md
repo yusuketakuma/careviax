@@ -3052,6 +3052,30 @@
   scoped to returned cards, `/api/patients/board` is still one heavy BFF without summary/details/chip-count split,
   route performance/payload budget is not wired, and patient-board adapter extraction for Command Center/Risk Cockpit
   remains open.
+- codex: PAT-LIST-UX foundation issue count contract slice complete。
+  `frontend_reviewer` 指摘の「active foundation filter 中に別 foundation chip が false-zero に見える」
+  リスクを縮小するため、`PatientBoardResponse` に `foundation_issue_counts` を追加。BFF は
+  active `foundation_issue` を適用する前の取得済み `allCards` を basis として
+  `needs_confirmation` / `missing_contact` / `missing_consent_plan` / `missing_parking` /
+  `missing_care_level` / `missing_insurance` / `missing_care_team` を集計し、UI の foundation chip は
+  `data.cards` 派生ではなくこの server-provided count を使うよう変更した。これにより、
+  例: `missing_contact` で cards が1件だけ返る状況でも、同意・計画/保険/連携先などの件数が
+  active filter payload 由来で0に潰れない。Security/PHI: 新規 payload は stable issue key と件数のみで、
+  住所/電話/保険番号/連絡先/clinical free text は追加しない。Performance: 完全なDB-side count endpoint
+  ではなく、既存 BFF 取得済み行内での count basis 明確化に留めたため、bounded fetch / heavy BFF の
+  根本課題は残る。Files changed:
+  `src/types/patient-board.ts`, `src/app/api/patients/board/route.ts`,
+  `src/app/api/patients/board/route.test.ts`,
+  `src/app/(dashboard)/patients/patients-board.tsx`,
+  `src/app/(dashboard)/patients/patients-board.test.tsx`,
+  `ops/refactor/STATE.md`。Validation green:
+  `pnpm exec vitest run src/app/api/patients/board/route.test.ts src/app/'(dashboard)'/patients/patients-board.test.tsx --reporter=dot --testTimeout=30000`
+  (46 tests), scoped ESLint for touched patient-board files, `pnpm format:check`,
+  `git diff --check -- src/types/patient-board.ts src/app/api/patients/board/route.ts src/app/api/patients/board/route.test.ts src/app/'(dashboard)'/patients/patients-board.tsx src/app/'(dashboard)'/patients/patients-board.test.tsx`,
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`。Remaining:
+  foundation filters are still memory-side after 500-row bounded fetch for active foundation filters,
+  counts are still limited to fetched basis when `truncated=true`, dedicated chip-count endpoint/cache is not yet built,
+  and `/api/patients/board` still lacks route performance/payload instrumentation.
 
 ## 進行中 / 凍結
 

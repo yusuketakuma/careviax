@@ -83,6 +83,11 @@ export type PatientBoardChipCounts = {
   paused: number;
 };
 
+export type PatientBoardFoundationIssueCounts = Record<
+  'needs_confirmation' | PatientFoundationIssueKey,
+  number
+>;
+
 export type PatientBoardNextAction = {
   patient_name: string;
   due_at: string | null;
@@ -114,6 +119,12 @@ export type PatientBoardResponse = {
   truncated: boolean;
   cards: PatientBoardCard[];
   chip_counts: PatientBoardChipCounts;
+  /**
+   * Active foundation_issue filter を除いた取得済み board basis 上の正本未整備件数。
+   * foundation chip が別 foundation chip の選択で false-zero にならないよう UI はここを使う。
+   * truncated=true の場合は取得上限内の件数であり、全母数の厳密件数ではない。
+   */
+  foundation_issue_counts: PatientBoardFoundationIssueCounts;
   /** 本日訪問のうち施設一括の対象人数(「本日訪問 3+施設12名」の 12) */
   today_facility_patient_count: number;
   /** 個別の本日訪問件数 */
