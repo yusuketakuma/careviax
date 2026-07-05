@@ -40,7 +40,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: PatientsBoard consent/management-plan foundation filter slice complete（code/test: commit pending）。
+- codex: PatientsBoard consent/management-plan foundation filter slice complete（code/test: 2887666d1）。
   - current task:
     Goal 継続として `PAT-LIST-UX-001` と `ONB-001` の接続点を実装。
     前回の原因別 foundation filter に `同意・計画未確認` を追加し、患者board BFFが
