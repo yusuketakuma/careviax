@@ -5,6 +5,22 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-05 R40/R44-report-detail-mutations ecb66652
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 対象: `src/app/(dashboard)/reports/[id]/page.tsx`,
+  `src/app/(dashboard)/reports/[id]/page.test.tsx`
+- 実施: report detail confirm / single-send / bulk-send mutation responses を
+  `readApiJson` へ移行し、failed response の API JSON `message` 表面化テストを追加。
+- 挙動変更: JSON payload を返す mutation response handling の helper 収束のみ。care-report
+  confirm/send endpoints、request bodies、idempotency headers、org JSON headers は維持。
+- 安全: report detail product UI mutation internals のみ。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- 検証: focused report detail Vitest `1 file / 39 tests` green。
+  scoped eslint/prettier/diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit ecb66652。
+- 残課題: R40/R44 は partial。
+
 ## 2026-07-05 R40/R44-patient-share-mutations 5d836984
 
 - 分類: query-helper / client fetch error handling → `readApiJson` 収束。

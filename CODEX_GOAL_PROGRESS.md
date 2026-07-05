@@ -1,5 +1,42 @@
 # CODEX Goal Progress
 
+## R40/R44 Report Detail Mutations readApiJson Partial - 2026-07-05 09:40 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/reports/[id]/page.tsx`
+    - `src/app/(dashboard)/reports/[id]/page.test.tsx`
+- Scope:
+  - Reused `readApiJson` for report detail draft confirmation, single-send,
+    and bulk-send mutation responses.
+  - Added focused mutationFn coverage proving API JSON `message` from failed
+    confirm/send/bulk-send responses is preserved.
+  - Preserved report-id hostile path-segment encoding, `expected_updated_at`
+    bodies, send/bulk-send request bodies, idempotency headers, success toasts,
+    and `care-report` / `care-reports` invalidation keys.
+- Safety:
+  - Product UI mutation response handling internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/reports/[id]/page.test.tsx'`
+    passed `1` file / `39` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `ecb66652`
+    (`refactor(ui): reuse readApiJson in report detail mutations`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher/mutation PHI/body-read review
+    before converting additional manual response handling.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Patient Share Mutations readApiJson Partial - 2026-07-05 09:37 JST
 
 - Status:
