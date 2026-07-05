@@ -5,8 +5,9 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { createQueryClientWrapper } from '@/test/query-client-test-utils';
+import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
-import { VisitRecordForm } from './visit-record-form';
+import { VisitRecordForm, fetchVisitRecordCdsAlerts } from './visit-record-form';
 
 const {
   routerBackMock,
@@ -361,6 +362,24 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it('surfaces API error messages when visit CDS alerts fail to load', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ message: '処方安全アラートの閲覧権限がありません' }), {
+        status: 403,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchVisitRecordCdsAlerts('cycle_1', 'org_1')).rejects.toThrow(
+      '処方安全アラートの閲覧権限がありません',
+    );
+    expect(fetchMock).toHaveBeenCalledWith('/api/cds/check', {
+      method: 'POST',
+      headers: buildOrgJsonHeaders('org_1'),
+      body: JSON.stringify({ cycleId: 'cycle_1' }),
+    });
   });
 
   it('shows a visit-record skeleton instead of generic loading text while schedule loads', () => {

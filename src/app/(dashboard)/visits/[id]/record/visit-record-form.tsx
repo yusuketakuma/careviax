@@ -164,6 +164,18 @@ type ScheduleDetail = {
 
 const VISIT_RECORD_ALERT_TYPES = new Set(['renal_dose', 'pim_elderly', 'high_risk']);
 
+export async function fetchVisitRecordCdsAlerts(
+  cycleId: string,
+  orgId: string,
+): Promise<{ alerts: CdsAlert[] }> {
+  const res = await fetch('/api/cds/check', {
+    method: 'POST',
+    headers: buildOrgJsonHeaders(orgId),
+    body: JSON.stringify({ cycleId }),
+  });
+  return readApiJson<{ alerts: CdsAlert[] }>(res, '訪問時の処方安全アラート取得に失敗しました');
+}
+
 const outcomeOptions = [
   { value: 'completed', label: '完了' },
   { value: 'revisit_needed', label: '再訪必要' },
@@ -616,17 +628,7 @@ export function VisitRecordForm({
     isError: visitAlertsError,
   } = useQuery<{ alerts: CdsAlert[] }>({
     queryKey: ['visit-record-cds-alerts', schedule?.cycle_id, orgId],
-    queryFn: async () => {
-      const res = await fetch('/api/cds/check', {
-        method: 'POST',
-        headers: buildOrgJsonHeaders(orgId),
-        body: JSON.stringify({ cycleId: schedule!.cycle_id }),
-      });
-      if (!res.ok) {
-        throw new Error('訪問時の処方安全アラート取得に失敗しました');
-      }
-      return res.json() as Promise<{ alerts: CdsAlert[] }>;
-    },
+    queryFn: () => fetchVisitRecordCdsAlerts(schedule!.cycle_id!, orgId),
     enabled: !!orgId && !!schedule?.cycle_id,
     staleTime: 30_000,
     retry: false,
