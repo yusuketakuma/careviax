@@ -557,6 +557,12 @@
   readApiJson へ収束し、/api/me/sites read、/api/me/site PUT、org headers、request body、
   success toast、me-sites invalidation、dashboard navigation は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 service areas readApiJson slice(b6a7cf80) land。focused Vitest 17、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。service-area create/update/delete
+  responses を readApiJson へ収束し、SERVICE_AREAS_API_PATH、buildServiceAreaApiPath、
+  hostile-id encoding、dot-segment fail-closed、org headers、request bodies、success toasts、
+  service-areas invalidation は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 
