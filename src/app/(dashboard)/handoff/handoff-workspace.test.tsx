@@ -165,8 +165,9 @@ function stubFetch(
     cockpitStatus?: number;
     recentCommentsStatus?: number;
     recentComments?: Array<Record<string, unknown>>;
-    itemPostFailure?: Response;
+    itemPostFailure?: Response | ((body: Record<string, unknown>) => Response);
     itemReadFailure?: Response;
+    itemResolveFailure?: Response;
   } = {},
 ) {
   const cockpitStatus = options.cockpitStatus ?? 200;
@@ -185,8 +186,17 @@ function stubFetch(
   ];
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    if (url.includes('/api/handoff-board/items/') && url.includes('/resolve')) {
+      if (options.itemResolveFailure) {
+        return options.itemResolveFailure;
+      }
+      return jsonResponse({ data: { id: 'resolved_handoff', consult_status: 'checking' } });
+    }
     if (url.includes('/api/handoff-board/items') && init?.method === 'POST') {
       if (options.itemPostFailure) {
+        if (typeof options.itemPostFailure === 'function') {
+          return options.itemPostFailure(JSON.parse(String(init.body ?? '{}')));
+        }
         return options.itemPostFailure;
       }
       return new Response(
@@ -269,6 +279,25 @@ function stubFetch(
 
 function renderWorkspace() {
   return render(<HandoffWorkspace />, { wrapper: createQueryClientWrapper() });
+}
+
+async function submitCompleteTransferDraft() {
+  fireEvent.click(screen.getByTestId('handoff-open-transfer'));
+  fireEvent.change(await screen.findByLabelText('件名'), {
+    target: { value: 'セット先行準備(施設GH)' },
+  });
+  fireEvent.click(screen.getByLabelText('宛先(誰に渡すか)'));
+  fireEvent.click(screen.getByRole('option', { name: '鈴木 一郎(事務スタッフ)' }));
+  fireEvent.change(screen.getByLabelText('①何を(作業の範囲)'), {
+    target: { value: '数量セットまで' },
+  });
+  fireEvent.change(screen.getByLabelText('②なぜ(根拠)'), {
+    target: { value: '判断WIPが目安超過のため' },
+  });
+  fireEvent.change(screen.getByLabelText('③いつまで(期限)'), {
+    target: { value: '2026-06-11T17:00' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: '渡す(責任を移す)' }));
 }
 
 beforeEach(() => {
@@ -506,6 +535,82 @@ describe('HandoffWorkspace', () => {
     });
   });
 
+  it('keeps error envelopes and non-JSON fallbacks when transfer creation fails', async () => {
+    useAuthStore.getState().setCurrentUser({ id: 'user_1' });
+    stubFetch(BOARD, {
+      itemPostFailure: jsonResponse({ error: '宛先ユーザーが見つかりません' }, 400),
+    });
+    const firstRender = renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('handoff-outgoing-section')).toBeTruthy();
+    });
+    await submitCompleteTransferDraft();
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('宛先ユーザーが見つかりません');
+    });
+
+    firstRender.unmount();
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+    stubFetch(BOARD, {
+      itemPostFailure: new Response('not-json', { status: 500 }),
+    });
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('handoff-outgoing-section')).toBeTruthy();
+    });
+    await submitCompleteTransferDraft();
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('仕事を渡せませんでした');
+    });
+  });
+
+  it('keeps server messages and fallbacks for message and consult creation failures', async () => {
+    useAuthStore.getState().setCurrentUser({ id: 'user_1', role: 'clerk' });
+    stubFetch(BOARD, {
+      itemPostFailure: (body) => {
+        if (body.kind === 'message') {
+          return jsonResponse({ error: 'この宛先へ連絡する権限がありません' }, 403);
+        }
+        if (body.consult_status === 'open') {
+          return new Response('not-json', { status: 500 });
+        }
+        return jsonResponse({ message: '送信できません' }, 400);
+      },
+    });
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('handoff-message-channel')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByLabelText('連絡の宛先'));
+    fireEvent.click(screen.getByRole('option', { name: '鈴木 一郎(事務スタッフ)' }));
+    fireEvent.change(screen.getByLabelText('連絡内容'), {
+      target: { value: '14時の鈴木様、保冷剤の準備をお願いします' },
+    });
+    fireEvent.click(screen.getByTestId('handoff-message-send'));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('この宛先へ連絡する権限がありません');
+    });
+
+    fireEvent.click(screen.getByLabelText('相談先の薬剤師'));
+    fireEvent.click(screen.getByRole('option', { name: '佐藤 薬剤師(薬剤師)' }));
+    fireEvent.change(screen.getByLabelText('相談内容'), {
+      target: { value: '同成分薬の重複疑い。用法は妥当か確認をお願いします' },
+    });
+    fireEvent.click(screen.getByTestId('handoff-consult-submit'));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('相談を起票できませんでした');
+    });
+  });
+
   it('shows the priority label, not the raw enum, in the transfer dialog select', async () => {
     // bare <SelectValue /> は既定値 'normal' の生 enum を初期表示で漏らす。
     // 明示 children で常に日本語ラベル('通常')を表示することを固定する(SSR enum 漏れ封止)。
@@ -584,6 +689,79 @@ describe('HandoffWorkspace', () => {
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith('受領確認に失敗しました');
+    });
+  });
+
+  it.each([
+    [{ message: '申し送り項目が見つかりません' }, '申し送り項目が見つかりません'],
+    [{ error: '申し送りの既読権限がありません' }, '申し送りの既読権限がありません'],
+  ])('keeps server receipt confirmation errors from %j', async (payload, expectedMessage) => {
+    useAuthStore.getState().setCurrentUser({ id: 'user_1' });
+    const board: HandoffBoardResponse = {
+      ...BOARD,
+      items: [
+        buildItem({
+          id: 'item_in',
+          content: '疑義照会の判断をお願いします',
+          created_by: 'user_2',
+          created_by_name: '鈴木 一郎',
+          recipient_user_id: 'user_1',
+          recipient_label: '山田さん(薬剤師)',
+          lifecycle_status: 'proposed',
+          rationale: '判断が必要なため',
+          direction: 'incoming',
+        }),
+      ],
+      summary: { outgoing_count: 0, incoming_count: 1 },
+    };
+    stubFetch(board, {
+      itemReadFailure: jsonResponse(payload, 403),
+    });
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '受領確認' })).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '受領確認' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(expectedMessage);
+    });
+  });
+
+  it('keeps server messages when message read confirmation fails', async () => {
+    useAuthStore.getState().setCurrentUser({ id: 'user_1' });
+    const board: HandoffBoardResponse = {
+      ...BOARD,
+      items: [
+        buildItem({
+          id: 'message_in',
+          content: '14時の鈴木様、保冷剤の準備をお願いします',
+          created_by: 'user_2',
+          created_by_name: '鈴木 一郎',
+          recipient_user_id: 'user_1',
+          recipient_label: '山田さん(薬剤師)',
+          lifecycle_status: null,
+          consult_status: null,
+          direction: 'incoming',
+        }),
+      ],
+      summary: { outgoing_count: 0, incoming_count: 1 },
+    };
+    stubFetch(board, {
+      itemReadFailure: jsonResponse({ error: '連絡の既読権限がありません' }, 403),
+    });
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('handoff-message-confirm')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTestId('handoff-message-confirm'));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('連絡の既読権限がありません');
     });
   });
 
@@ -781,6 +959,45 @@ describe('HandoffWorkspace', () => {
     // 対応パネルは出ず、読み取り専用の説明に置き換わる
     expect(screen.queryByText('薬剤師の対応')).toBeNull();
     expect(screen.getByTestId('handoff-consult-resolution-readonly')).toBeTruthy();
+  });
+
+  it('keeps server messages when pharmacist consultation resolution fails', async () => {
+    useAuthStore.getState().setCurrentUser({ id: 'user_1', role: 'pharmacist' });
+    const board: HandoffBoardResponse = {
+      ...BOARD,
+      items: [
+        buildItem({
+          id: 'consult_1',
+          content: '用法・用量の確認をお願いします。',
+          created_by: 'user_2',
+          created_by_name: '鈴木 事務',
+          recipient_user_id: 'user_1',
+          recipient_label: '山田さん(薬剤師)',
+          consult_status: 'open',
+          direction: 'incoming',
+        }),
+      ],
+      summary: { outgoing_count: 0, incoming_count: 1 },
+    };
+    stubFetch(board, {
+      itemResolveFailure: jsonResponse(
+        { message: 'この相談は他のユーザーによって更新されています。再読み込みしてください' },
+        409,
+      ),
+    });
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('handoff-consult-action-acknowledged')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTestId('handoff-consult-action-acknowledged'));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        'この相談は他のユーザーによって更新されています。再読み込みしてください',
+      );
+    });
   });
 
   it('disables handoff realtime and data loading until org is available', () => {

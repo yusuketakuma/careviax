@@ -363,11 +363,7 @@ function TransferDialog({
           deadline: new Date(draft.deadline).toISOString(),
         }),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => null);
-        throw new Error(err?.message ?? '仕事を渡せませんでした');
-      }
-      return res.json();
+      return readApiJson<unknown>(res, '仕事を渡せませんでした');
     },
     onSuccess: () => {
       toast.success('仕事を渡しました。受領確認と根拠が記録されます。');
@@ -640,11 +636,7 @@ function HandoffMessageChannel({
           recipient_label: recipient ? `${recipient.name}(${recipient.role_label})` : '',
         }),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => null);
-        throw new Error(err?.message ?? '連絡を送れませんでした');
-      }
-      return res.json();
+      return readApiJson<unknown>(res, '連絡を送れませんでした');
     },
     onSuccess: () => {
       toast.success('連絡を送りました。');
@@ -660,11 +652,7 @@ function HandoffMessageChannel({
         method: 'PATCH',
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => null);
-        throw new Error(err?.message ?? '既読にできませんでした');
-      }
-      return res.json();
+      return readApiJson<unknown>(res, '既読にできませんでした');
     },
     onSuccess: () => onChanged(),
     onError: (err: Error) => toast.error(messageFromError(err, '既読にできませんでした')),
@@ -928,11 +916,7 @@ function ConsultResolutionPanel({
           resolution_note: note.trim() ? note.trim() : undefined,
         }),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => null);
-        throw new Error(err?.message ?? '対応を記録できませんでした');
-      }
-      return res.json();
+      return readApiJson<unknown>(res, '対応を記録できませんでした');
     },
     onSuccess: (_data, action) => {
       toast.success(`「${RESOLUTION_ACTION_LABEL[action]}」を記録しました。`);
@@ -1045,11 +1029,7 @@ function ConsultIntake({
           recipient_label: recipient ? `${recipient.name}(${recipient.role_label})` : '',
         }),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => null);
-        throw new Error(err?.message ?? '相談を起票できませんでした');
-      }
-      return res.json();
+      return readApiJson<unknown>(res, '相談を起票できませんでした');
     },
     onSuccess: () => {
       toast.success('薬剤師に相談を送りました。');
@@ -1424,11 +1404,7 @@ export function HandoffWorkspace() {
         method: 'PATCH',
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => null);
-        throw new Error(err?.message ?? '受領確認に失敗しました');
-      }
-      return res.json();
+      return readApiJson<unknown>(res, '受領確認に失敗しました');
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['handoff-board'] });
