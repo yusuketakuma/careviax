@@ -55,7 +55,7 @@ describe('DataTable', () => {
     expect(screen.getByText('selected:0')).not.toBeNull();
     expect(screen.getAllByRole('checkbox', { name: '山田 太郎 を選択' }).length).toBeGreaterThan(0);
     fireEvent.click(screen.getAllByRole('checkbox', { name: '山田 太郎 を選択' })[0]!);
-    expect(screen.getByText('選択中1件（表示中の行から選択）')).toBeTruthy();
+    expect(screen.getByText('選択中1件（現在表示中の読込済み行から選択）')).toBeTruthy();
     expect(
       consoleErrorSpy.mock.calls.some(
         ([message]) =>
@@ -433,6 +433,76 @@ describe('DataTable', () => {
 
     expect(exportButton.getAttribute('aria-describedby')).toBe(warning.id);
     expect(screen.queryByRole('button', { name: 'CSV出力' })).toBeNull();
+  });
+
+  it('separates loaded-row CSV export from server-side full export scope', () => {
+    render(
+      <DataTable
+        columns={columns}
+        data={[{ id: 'loaded-1', name: '読込済み患者' }]}
+        hasMore
+        onLoadMore={vi.fn()}
+        toolbar={{
+          enableExport: true,
+          serverExportEndpoint: '/api/reports/export?scope=all',
+        }}
+      />,
+    );
+
+    const loadedExportButton = screen.getByRole('button', { name: '読込済みCSV出力' });
+    const serverExportLink = screen.getByRole('link', { name: '検索条件全件CSV出力' });
+    const serverExportDescription = screen.getByText(
+      'サーバー側で監査・マスキング済みの検索条件全件を出力します。',
+    );
+
+    expect(serverExportLink.getAttribute('href')).toBe('/api/reports/export?scope=all');
+    expect(serverExportLink.getAttribute('aria-describedby')).toBe(serverExportDescription.id);
+    expect(serverExportLink.className).toContain('min-h-[44px]');
+    expect(serverExportLink.className).toContain('!min-h-[44px]');
+    expect(loadedExportButton.getAttribute('aria-describedby')).toBe(
+      screen.getByText('未読込行は出力対象外です。').id,
+    );
+  });
+
+  it('fails closed when server-side full export points outside the app', () => {
+    render(
+      <DataTable
+        columns={columns}
+        data={[{ id: 'loaded-1', name: '読込済み患者' }]}
+        toolbar={{
+          serverExportEndpoint: 'https://evil.example/export.csv',
+        }}
+      />,
+    );
+
+    const serverExportButton = screen.getByRole('button', { name: '検索条件全件CSV出力' });
+    const disabledReason = screen.getByText('全件出力のURLが安全な同一アプリ内パスではありません');
+
+    expect((serverExportButton as HTMLButtonElement).disabled).toBe(true);
+    expect(serverExportButton.getAttribute('aria-describedby')).toBe(disabledReason.id);
+    expect(screen.queryByRole('link', { name: '検索条件全件CSV出力' })).toBeNull();
+  });
+
+  it('names row-selection scope as current loaded rows', () => {
+    render(
+      <DataTable
+        columns={columns}
+        data={[
+          { id: 'loaded-1', name: '読込済み患者1' },
+          { id: 'loaded-2', name: '読込済み患者2' },
+        ]}
+        hasMore
+        enableRowSelection
+        getRowId={(row) => row.id}
+        getRowA11yLabel={(row) => row.name}
+        toolbar={{ enableColumnVisibility: false }}
+      />,
+    );
+
+    fireEvent.click(screen.getAllByRole('checkbox', { name: '読込済み患者1 を選択' })[0]!);
+
+    expect(screen.getByText('選択中1件（現在表示中の読込済み行から選択）')).toBeTruthy();
+    expect(screen.getAllByRole('checkbox', { name: '現在表示中の読込済み行をすべて選択' }));
   });
 
   it('exports only the currently filtered loaded rows without fetching unloaded server rows', async () => {

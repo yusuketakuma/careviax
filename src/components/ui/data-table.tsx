@@ -68,6 +68,10 @@ type DataTableToolbarOptions = {
   globalFilterPlaceholder?: string;
   enableColumnVisibility?: boolean;
   enableExport?: boolean;
+  serverExportEndpoint?: string;
+  serverExportLabel?: string;
+  serverExportDescription?: string;
+  serverExportDisabledReason?: string;
   enablePrint?: boolean;
   disableActionsWhenInvalid?: boolean;
   exportFileName?: string;
@@ -134,6 +138,16 @@ function stringifyExportValue(value: unknown) {
   return JSON.stringify(value);
 }
 
+function normalizeServerExportEndpoint(endpoint: string | undefined) {
+  const trimmed = endpoint?.trim();
+  if (!trimmed) return null;
+  if (!trimmed.startsWith('/') || trimmed.startsWith('//')) return null;
+  if (/[\r\n\t]/.test(trimmed)) return null;
+  return trimmed;
+}
+
+const TOOLBAR_ACTION_BUTTON_CLASSNAME = 'min-h-[44px] !min-h-[44px]';
+
 export function DataTable<TData>({
   columns,
   data,
@@ -170,6 +184,8 @@ export function DataTable<TData>({
   });
   const toolbarDisabledReasonId = useId();
   const exportScopeWarningId = useId();
+  const serverExportDescriptionId = useId();
+  const serverExportDisabledReasonId = useId();
   const getResolvedRowA11yLabel = useCallback(
     (row: Row<TData>) => getRowA11yLabel?.(row.original, row.index) ?? row.id,
     [getRowA11yLabel],
@@ -223,7 +239,7 @@ export function DataTable<TData>({
             <Checkbox
               checked={table.getIsAllPageRowsSelected()}
               onCheckedChange={(checked) => table.toggleAllPageRowsSelected(Boolean(checked))}
-              aria-label="表示中の行をすべて選択"
+              aria-label="現在表示中の読込済み行をすべて選択"
             />
           </div>
         ),
@@ -365,11 +381,34 @@ export function DataTable<TData>({
         ? '出力できる行がありません'
         : undefined;
   const hasUnloadedRows = Boolean(hasMore);
+  const serverExportEndpoint = normalizeServerExportEndpoint(toolbar?.serverExportEndpoint);
+  const hasServerExport = Boolean(toolbar?.serverExportEndpoint);
+  const serverExportBlockReason = toolbar?.serverExportDisabledReason
+    ? toolbar.serverExportDisabledReason
+    : toolbar?.serverExportEndpoint && !serverExportEndpoint
+      ? '全件出力のURLが安全な同一アプリ内パスではありません'
+      : errorMessage
+        ? '取得エラー中は全件出力できません'
+        : isLoading
+          ? '読み込み中は全件出力できません'
+          : fullRows.length === 0 && !hasUnloadedRows
+            ? '全件出力できる行がありません'
+            : undefined;
+  const serverExportDisabled =
+    toolbar?.disableActionsWhenInvalid !== false && Boolean(serverExportBlockReason);
+  const serverExportDisabledReason = serverExportDisabled ? serverExportBlockReason : undefined;
   const exportAriaDescription = toolbarActionsDisabled
     ? toolbarDisabledReasonId
     : hasUnloadedRows
       ? exportScopeWarningId
       : undefined;
+  const serverExportAriaDescription = serverExportDisabledReason
+    ? serverExportDisabledReasonId
+    : serverExportDescriptionId;
+  const serverExportLabel = toolbar?.serverExportLabel ?? '検索条件全件CSV出力';
+  const serverExportDescription =
+    toolbar?.serverExportDescription ??
+    'サーバー側で監査・マスキング済みの検索条件全件を出力します。';
   const displayedEmptyMessage = errorMessage
     ? '取得エラーのため一覧を表示できません'
     : emptyMessage;
@@ -515,7 +554,7 @@ export function DataTable<TData>({
             ))}
             {enableRowSelection && selectedCount > 0 && (
               <p className="text-sm text-muted-foreground">
-                選択中{selectedCount}件（表示中の行から選択）
+                選択中{selectedCount}件（現在表示中の読込済み行から選択）
               </p>
             )}
           </div>
@@ -561,7 +600,7 @@ export function DataTable<TData>({
                 <Button
                   size="sm"
                   variant="outline"
-                  className="min-h-[44px] sm:min-h-0"
+                  className={TOOLBAR_ACTION_BUTTON_CLASSNAME}
                   disabled={toolbarActionsDisabled}
                   title={toolbarDisabledReason}
                   aria-describedby={exportAriaDescription}
@@ -580,11 +619,53 @@ export function DataTable<TData>({
                 ) : null}
               </div>
             )}
+            {hasServerExport && (
+              <div className="flex max-w-full flex-col items-start gap-1">
+                {serverExportEndpoint && !serverExportDisabled ? (
+                  <Button
+                    asChild
+                    size="sm"
+                    variant="outline"
+                    className={TOOLBAR_ACTION_BUTTON_CLASSNAME}
+                    aria-describedby={serverExportAriaDescription}
+                  >
+                    <a href={serverExportEndpoint}>
+                      <Download className="mr-1.5 size-3.5" aria-hidden="true" />
+                      {serverExportLabel}
+                    </a>
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className={TOOLBAR_ACTION_BUTTON_CLASSNAME}
+                    disabled
+                    title={serverExportDisabledReason}
+                    aria-describedby={serverExportAriaDescription}
+                  >
+                    <Download className="mr-1.5 size-3.5" aria-hidden="true" />
+                    {serverExportLabel}
+                  </Button>
+                )}
+                {serverExportDisabledReason ? (
+                  <p id={serverExportDisabledReasonId} className="sr-only">
+                    {serverExportDisabledReason}
+                  </p>
+                ) : (
+                  <p
+                    id={serverExportDescriptionId}
+                    className="max-w-[20rem] text-xs leading-5 text-muted-foreground"
+                  >
+                    {serverExportDescription}
+                  </p>
+                )}
+              </div>
+            )}
             {toolbar.enablePrint && (
               <Button
                 size="sm"
                 variant="outline"
-                className="min-h-[44px] sm:min-h-0"
+                className={TOOLBAR_ACTION_BUTTON_CLASSNAME}
                 disabled={toolbarActionsDisabled}
                 title={toolbarDisabledReason}
                 aria-describedby={toolbarActionsDisabled ? toolbarDisabledReasonId : undefined}
