@@ -6,6 +6,7 @@ import { expectNoStore } from '@/test/api-response-assertions';
 const {
   authCtx,
   medicationCycleFindManyMock,
+  dispenseTaskFindManyMock,
   setPlanFindManyMock,
   setBatchFindManyMock,
   buildMedicationCycleAssignmentWhereMock,
@@ -13,6 +14,7 @@ const {
 } = vi.hoisted(() => ({
   authCtx: { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' as MemberRole },
   medicationCycleFindManyMock: vi.fn(),
+  dispenseTaskFindManyMock: vi.fn(),
   setPlanFindManyMock: vi.fn(),
   setBatchFindManyMock: vi.fn(),
   buildMedicationCycleAssignmentWhereMock: vi.fn(),
@@ -46,6 +48,9 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     medicationCycle: {
       findMany: medicationCycleFindManyMock,
+    },
+    dispenseTask: {
+      findMany: dispenseTaskFindManyMock,
     },
     setPlan: {
       findMany: setPlanFindManyMock,
@@ -105,6 +110,7 @@ describe('GET /api/dispense-workbench/patients', () => {
     authCtx.role = 'pharmacist';
     buildMedicationCycleAssignmentWhereMock.mockReturnValue(null);
     buildSetPlanAssignmentWhereMock.mockReturnValue(null);
+    dispenseTaskFindManyMock.mockResolvedValue([]);
     setPlanFindManyMock.mockResolvedValue([]);
     setBatchFindManyMock.mockResolvedValue([]);
   });
@@ -139,10 +145,13 @@ describe('GET /api/dispense-workbench/patients', () => {
           registered_date: '2026-03-20',
           latest_set_plan_id: null,
           latest_set_plan_cycle_id: null,
+          representative_task_id: null,
+          representative_task_status: null,
         },
       ],
     });
     expect(setPlanFindManyMock).not.toHaveBeenCalled();
+    expect(dispenseTaskFindManyMock).not.toHaveBeenCalled();
   });
 
   it('without a phase filter excludes only cancelled (backward compatible)', async () => {
@@ -186,6 +195,72 @@ describe('GET /api/dispense-workbench/patients', () => {
         }),
       }),
     );
+  });
+
+  it('hydrates a representative dispense task for phase=dispense in one batch query', async () => {
+    medicationCycleFindManyMock.mockResolvedValue([
+      cycle({
+        id: 'cycle_1',
+        patient_id: 'patient_1',
+        overall_status: 'dispensing',
+        patientCreatedAt: new Date('2026-03-20T09:00:00.000Z'),
+      }),
+    ]);
+    dispenseTaskFindManyMock.mockResolvedValue([
+      { id: 'task_pending', cycle_id: 'cycle_1', status: 'pending' },
+      { id: 'task_in_progress', cycle_id: 'cycle_1', status: 'in_progress' },
+    ]);
+
+    const response = await GET(createRequest('?phase=dispense'), { params: Promise.resolve({}) });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [
+        {
+          patient_id: 'patient_1',
+          cycle_id: 'cycle_1',
+          representative_task_id: 'task_in_progress',
+          representative_task_status: 'in_progress',
+        },
+      ],
+    });
+    expect(dispenseTaskFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        cycle_id: { in: ['cycle_1'] },
+        status: { in: ['pending', 'in_progress', 'completed'] },
+      },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      select: { id: true, cycle_id: true, status: true },
+    });
+  });
+
+  it('uses the completed dispense task as the representative for phase=audit', async () => {
+    medicationCycleFindManyMock.mockResolvedValue([
+      cycle({
+        id: 'cycle_1',
+        patient_id: 'patient_1',
+        overall_status: 'audit_pending',
+        patientCreatedAt: new Date('2026-03-20T09:00:00.000Z'),
+      }),
+    ]);
+    dispenseTaskFindManyMock.mockResolvedValue([
+      { id: 'task_old_pending', cycle_id: 'cycle_1', status: 'pending' },
+      { id: 'task_audit_ready', cycle_id: 'cycle_1', status: 'completed' },
+    ]);
+
+    const response = await GET(createRequest('?phase=audit'), { params: Promise.resolve({}) });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [
+        {
+          patient_id: 'patient_1',
+          representative_task_id: 'task_audit_ready',
+          representative_task_status: 'completed',
+        },
+      ],
+    });
   });
 
   it('uses the shared audited+setting base for set and set-audit (split happens on SetBatch)', async () => {

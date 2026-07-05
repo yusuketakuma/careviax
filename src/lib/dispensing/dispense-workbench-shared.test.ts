@@ -17,6 +17,7 @@ import {
   getDispenseMedicationGroupMethodLabel,
   judgeCountRow,
   PHASE_CYCLE_STATUSES,
+  selectRepresentativeDispenseTask,
   type WorkbenchCountRow,
   type DispenseWorkbenchData,
 } from './dispense-workbench-shared';
@@ -140,6 +141,18 @@ describe('dispense-workbench-shared', () => {
     expect(buildDispenseQueueSubline({ overallStatus: 'ready_to_dispense' })).toBe(
       '定期・変更なし',
     );
+  });
+
+  it('selectRepresentativeDispenseTask は工程ごとの優先 task を選ぶ', () => {
+    const tasks = [
+      { id: 'task_pending', status: 'pending' },
+      { id: 'task_completed', status: 'completed' },
+      { id: 'task_in_progress', status: 'in_progress' },
+    ];
+
+    expect(selectRepresentativeDispenseTask(tasks, 'dispense')?.id).toBe('task_in_progress');
+    expect(selectRepresentativeDispenseTask(tasks, 'audit')?.id).toBe('task_completed');
+    expect(selectRepresentativeDispenseTask([], 'audit')).toBeNull();
   });
 
   it('buildChangeBadge は減量/増量/新規/中止を返す', () => {

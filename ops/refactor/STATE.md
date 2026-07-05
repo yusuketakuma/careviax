@@ -3971,3 +3971,66 @@
 - remaining:
   Broader `Plans.md` objective remains open. 実際の UI/UX 実装 slice では、視覚設計変更の
   有無に応じて `imagegen` / `gpt-image-2` 参照案を作成し、省略時は理由を本台帳へ記録する。
+
+## 2026-07-06 Dispense Workbench Representative Task slice
+
+- codex: `DSP-PERF-002 / DSP-001` partial implemented.
+  `/api/dispense-workbench/patients?phase=dispense|audit` の response に、工程別の代表
+  `dispense_task` id/status を含めるようにした。代表 task は cycle id 群に対する 1 回の
+  bounded batch query で hydration し、`dispense` は `in_progress > pending > completed`、
+  `audit` は `completed > in_progress > pending` の優先順で選ぶ。frontend adapter は
+  `representative_task_id` を直接使い、患者選択ごとの `/api/dispense-tasks?cycle_id=...`
+  追加 fetch を廃止した。
+- subagent/review:
+  read-only mapper `019f33f3-8a70-7c51-85fa-5fc3294ab70f` が DSP patient queue / adapter
+  の影響範囲を確認し、代表 task id を queue response に寄せる案、phase-specific priority、
+  assignment scope の再適用、adapter extra fetch 削除、route/adapter/shared tests を推奨。
+- design / imagegen:
+  視覚設計変更を伴わない API/performance slice のため、`imagegen` / `gpt-image-2` の新規生成は省略。
+  UI 配置や compact mode を変更する DSP slice では PH-OS UI/UX SSOT の `gpt-image-2` 方針を適用する。
+- files inspected:
+  `git status --short --branch --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/lib/dispensing/dispense-workbench-shared.ts`,
+  `src/lib/dispensing/dispense-workbench-shared.test.ts`,
+  `src/server/services/dispense-workbench-patients.ts`,
+  `src/server/services/dispense-workbench-patients.test.ts`,
+  `src/app/api/dispense-workbench/patients/route.ts`,
+  `src/app/api/dispense-workbench/patients/route.test.ts`,
+  `src/components/features/dispense-workbench/dispensing-workbench.adapter.ts`,
+  `src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts`,
+  `src/components/features/dispense-workbench/dispensing-workbench.from-api.test.ts`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/lib/dispensing/dispense-workbench-shared.ts`,
+  `src/lib/dispensing/dispense-workbench-shared.test.ts`,
+  `src/server/services/dispense-workbench-patients.ts`,
+  `src/app/api/dispense-workbench/patients/route.test.ts`,
+  `src/components/features/dispense-workbench/dispensing-workbench.adapter.ts`,
+  `src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts`,
+  `src/components/features/dispense-workbench/dispensing-workbench.from-api.test.ts`.
+- bugs/performance issues fixed:
+  `/dispense` / `/audit` で患者選択時、患者キュー取得後に cycle id から代表 task id を解決する
+  追加 network request が発生していた。代表 task を server-side batch hydration に移し、選択時の
+  fetch path を queue response -> task workbench の 1 段に短縮した。
+- security/PHI/auth reviewed:
+  新規 response field は opaque な internal task id/status のみで、患者名・住所・薬剤名・処方本文・
+  free text は追加していない。task hydration query は `org_id` で絞り、assignment scope がある場合は
+  `cycle: { is: assignmentWhere }` を再適用して、患者キューに出せない task id を混入させない。
+- validation:
+  `pnpm exec vitest run src/app/api/dispense-workbench/patients/route.test.ts src/server/services/dispense-workbench-patients.test.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts src/components/features/dispense-workbench/dispensing-workbench.from-api.test.ts src/lib/dispensing/dispense-workbench-shared.test.ts --reporter=dot --testTimeout=30000`
+  green (5 files / 113 tests);
+  `pnpm exec eslint src/lib/dispensing/dispense-workbench-shared.ts src/lib/dispensing/dispense-workbench-shared.test.ts src/server/services/dispense-workbench-patients.ts src/server/services/dispense-workbench-patients.test.ts src/app/api/dispense-workbench/patients/route.ts src/app/api/dispense-workbench/patients/route.test.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts src/components/features/dispense-workbench/dispensing-workbench.from-api.test.ts`
+  green;
+  `pnpm exec prettier --check src/lib/dispensing/dispense-workbench-shared.ts src/lib/dispensing/dispense-workbench-shared.test.ts src/server/services/dispense-workbench-patients.ts src/server/services/dispense-workbench-patients.test.ts src/app/api/dispense-workbench/patients/route.ts src/app/api/dispense-workbench/patients/route.test.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts src/components/features/dispense-workbench/dispensing-workbench.from-api.test.ts`
+  green;
+  `git diff --check -- src/lib/dispensing/dispense-workbench-shared.ts src/lib/dispensing/dispense-workbench-shared.test.ts src/server/services/dispense-workbench-patients.ts src/server/services/dispense-workbench-patients.test.ts src/app/api/dispense-workbench/patients/route.ts src/app/api/dispense-workbench/patients/route.test.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts src/components/features/dispense-workbench/dispensing-workbench.from-api.test.ts`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck --pretty false` green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false` green.
+- remaining:
+  Broader `Plans.md` objective remains open. `DSP-PERF-001/002` の残りは `MAX_CYCLES=500` の
+  cursor pagination、phase facet counts、代表 task id hydration の query count/payload budget
+  計測、compact mode、set / set-audit の SetPlan query 最適化、browser smoke。

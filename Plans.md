@@ -755,6 +755,16 @@ FE 仕上げ（低優先）:
   report BFF で一貫させる。残: report BFF のさらなる summary/detail 分割、payload budget の
   CI gate 化、browser smoke。
 
+- `DSP-PERF-002 / DSP-001` partial（2026-07-06）: `/api/dispense-workbench/patients?phase=dispense|audit`
+  が、工程別の代表 `dispense_task` id/status を患者キュー response に含めるようにした。
+  代表 task は cycle id 群に対する 1 回の bounded batch query で hydration し、`dispense` は
+  `in_progress > pending > completed`、`audit` は `completed > in_progress > pending` を優先する。
+  frontend adapter は `representative_task_id` を直接使い、患者選択ごとの
+  `/api/dispense-tasks?cycle_id=...` 追加 fetch を廃止した。視覚設計変更を伴わない
+  API/perf slice のため `imagegen` / `gpt-image-2` 生成は省略。残: `MAX_CYCLES=500` の
+  cursor pagination、phase facet counts、compact mode、query count / payload SLO、
+  set / set-audit の SetPlan query 最適化と browser smoke。
+
 **追加実装順序**:
 
 1. `UX-CMD-001` + `PERF-BFF-001`: Command Center は重い詳細BFFになりやすいため、最初から summary/detail batch 分割を前提に設計する。

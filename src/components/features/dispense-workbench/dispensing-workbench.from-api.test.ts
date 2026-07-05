@@ -121,6 +121,8 @@ describe('patientRowToSeed / patientsFromApi', () => {
     registered_date: '2025-12-01',
     latest_set_plan_id: null,
     latest_set_plan_cycle_id: null,
+    representative_task_id: null,
+    representative_task_status: null,
   };
 
   it('id / name / kana / 服用開始日 / 登録日（YYYY/MM/DD）を写す', () => {

@@ -153,11 +153,6 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
     process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
     const fetchMock = vi.fn<typeof fetch>(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === '/api/dispense-tasks?cycle_id=cycle_1') {
-        return jsonResponse({
-          data: [{ id: 'task_1', cycle_id: 'cycle_1', status: 'in_progress' }],
-        });
-      }
       if (url === '/api/dispense-tasks/task_1/workbench') {
         return jsonResponse(workbenchBody());
       }
@@ -179,6 +174,8 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
           registered_date: '2026-06-01',
           latest_set_plan_id: null,
           latest_set_plan_cycle_id: null,
+          representative_task_id: 'task_1',
+          representative_task_status: 'in_progress',
         },
       ],
     });
@@ -191,9 +188,13 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
         cycleVersion: 2,
       },
     });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).not.toHaveBeenCalledWith(
       '/api/dispense-workbench/patients',
+      expect.any(Object),
+    );
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      '/api/dispense-tasks?cycle_id=cycle_1',
       expect.any(Object),
     );
   });
@@ -202,14 +203,6 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
     process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
     const fetchMock = vi.fn<typeof fetch>(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === '/api/dispense-tasks?cycle_id=cycle_1') {
-        return jsonResponse({
-          data: [
-            { id: 'task_old_pending', cycle_id: 'cycle_1', status: 'pending' },
-            { id: 'task_audit_ready', cycle_id: 'cycle_1', status: 'completed' },
-          ],
-        });
-      }
       if (url === '/api/dispense-tasks/task_audit_ready/workbench') {
         return jsonResponse({
           ...workbenchBody(),
@@ -235,6 +228,8 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
           registered_date: '2026-06-01',
           latest_set_plan_id: null,
           latest_set_plan_cycle_id: null,
+          representative_task_id: 'task_audit_ready',
+          representative_task_status: 'completed',
         },
       ],
     });
@@ -246,8 +241,12 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
       },
     });
     expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
+      1,
       '/api/dispense-tasks/task_audit_ready/workbench',
+      expect.any(Object),
+    );
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      '/api/dispense-tasks?cycle_id=cycle_1',
       expect.any(Object),
     );
   });
@@ -570,13 +569,10 @@ describe('dispensing-workbench.adapter real-data default + phase filtering', () 
               registered_date: '2026-06-01',
               latest_set_plan_id: null,
               latest_set_plan_cycle_id: null,
+              representative_task_id: 'task_1',
+              representative_task_status: 'in_progress',
             },
           ],
-        });
-      }
-      if (url === '/api/dispense-tasks?cycle_id=cycle_1') {
-        return jsonResponse({
-          data: [{ id: 'task_1', cycle_id: 'cycle_1', status: 'in_progress' }],
         });
       }
       if (url === '/api/dispense-tasks/task_1/workbench') {
@@ -598,7 +594,7 @@ describe('dispensing-workbench.adapter real-data default + phase filtering', () 
     });
 
     expect(result?.writeContext.taskId).toBe('task_1');
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     for (const call of fetchMock.mock.calls) {
       expectOrgReadHeaders(call[1], 'org_1');
     }

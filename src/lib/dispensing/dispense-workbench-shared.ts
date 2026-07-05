@@ -255,6 +255,10 @@ export type DispenseWorkbenchPatientRow = {
   latest_set_plan_id: string | null;
   /** 最新 SetPlan が属する cycle_id。未作成なら null。 */
   latest_set_plan_cycle_id: string | null;
+  /** phase=dispense/audit の詳細取得に使う代表 DispenseTask。該当なしなら null。 */
+  representative_task_id: string | null;
+  /** 代表 DispenseTask の status。該当なしなら null。 */
+  representative_task_status: string | null;
 };
 
 export type DispenseWorkbenchPatientsResponse = {
@@ -290,6 +294,7 @@ export function deriveListBadge(
 
 /** ワークベンチ 4 工程（API 境界の URL 表記）。内部 Phase の setp/seta はルートで対応付ける。 */
 export type DispenseWorkbenchPhase = 'dispense' | 'audit' | 'set' | 'set-audit';
+export type DispenseWorkbenchTaskPhase = Extract<DispenseWorkbenchPhase, 'dispense' | 'audit'>;
 
 /**
  * 工程キュー = その工程の「待ち＋作業中」の MedicationCycle.overall_status 集合（SSOT）。
@@ -310,6 +315,32 @@ export const PHASE_CYCLE_STATUSES: Record<DispenseWorkbenchPhase, MedicationCycl
   // set と同一 base。SetBatch 集計で set / set-audit を排他分割する（classifySetBatchPhase）。
   'set-audit': ['audited', 'setting'],
 };
+
+const REPRESENTATIVE_TASK_STATUS_PRIORITY = {
+  dispense: ['in_progress', 'pending', 'completed'],
+  audit: ['completed', 'in_progress', 'pending'],
+} as const satisfies Record<DispenseWorkbenchTaskPhase, readonly string[]>;
+
+export const REPRESENTATIVE_DISPENSE_TASK_STATUSES = [
+  'pending',
+  'in_progress',
+  'completed',
+] as const;
+
+export function selectRepresentativeDispenseTask<T extends { id: string; status: string }>(
+  tasks: readonly T[],
+  phase: DispenseWorkbenchTaskPhase,
+): T | null {
+  if (tasks.length === 0) return null;
+  const priority = REPRESENTATIVE_TASK_STATUS_PRIORITY[phase];
+  const rankStatus = (status: string) => {
+    const rank = (priority as readonly string[]).indexOf(status);
+    return rank === -1 ? Number.MAX_SAFE_INTEGER : rank;
+  };
+  return (
+    [...tasks].sort((left, right) => rankStatus(left.status) - rankStatus(right.status))[0] ?? null
+  );
+}
 
 /** 最新 SetPlan の SetBatch 集計（実在セルのみカウント）。 */
 export type SetBatchPhaseCounts = {

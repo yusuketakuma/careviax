@@ -4,6 +4,8 @@ import {
   classifySetBatchPhase,
   deriveListBadge,
   PHASE_CYCLE_STATUSES,
+  REPRESENTATIVE_DISPENSE_TASK_STATUSES,
+  selectRepresentativeDispenseTask,
   type DispenseWorkbenchPatientRow,
   type DispenseWorkbenchPhase,
   type SetBatchPhaseCounts,
@@ -122,7 +124,13 @@ export async function listDispenseWorkbenchPatients(
       registered_date: japanDateKey(patient.created_at),
       latest_set_plan_id: null,
       latest_set_plan_cycle_id: null,
+      representative_task_id: null,
+      representative_task_status: null,
     });
+  }
+
+  if (filters.phase === 'dispense' || filters.phase === 'audit') {
+    await hydrateRepresentativeDispenseTasks(prisma, orgId, assignmentWhere, rows, filters.phase);
   }
 
   // set / set-audit 工程は base status（audited/setting）が同一なので、最新 SetPlan の SetBatch
@@ -138,6 +146,49 @@ export async function listDispenseWorkbenchPatients(
     : rows;
 
   return sortDispenseWorkbenchPatients(scopedRows, filters);
+}
+
+async function hydrateRepresentativeDispenseTasks(
+  prisma: PrismaClient,
+  orgId: string,
+  assignmentWhere: Prisma.MedicationCycleWhereInput | null,
+  rows: DispenseWorkbenchPatientRow[],
+  phase: 'dispense' | 'audit',
+) {
+  if (rows.length === 0) return;
+
+  const cycleIds = rows.map((row) => row.cycle_id).filter((id): id is string => Boolean(id));
+  if (cycleIds.length === 0) return;
+
+  const tasks = await prisma.dispenseTask.findMany({
+    where: {
+      org_id: orgId,
+      cycle_id: { in: cycleIds },
+      status: { in: [...REPRESENTATIVE_DISPENSE_TASK_STATUSES] },
+      ...(assignmentWhere ? { cycle: { is: assignmentWhere } } : {}),
+    },
+    orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+    select: {
+      id: true,
+      cycle_id: true,
+      status: true,
+    },
+  });
+
+  const tasksByCycle = new Map<string, Array<{ id: string; status: string }>>();
+
+  for (const task of tasks) {
+    const cycleTasks = tasksByCycle.get(task.cycle_id) ?? [];
+    cycleTasks.push({ id: task.id, status: task.status });
+    tasksByCycle.set(task.cycle_id, cycleTasks);
+  }
+
+  for (const row of rows) {
+    if (!row.cycle_id) continue;
+    const task = selectRepresentativeDispenseTask(tasksByCycle.get(row.cycle_id) ?? [], phase);
+    row.representative_task_id = task?.id ?? null;
+    row.representative_task_status = task?.status ?? null;
+  }
 }
 
 /**

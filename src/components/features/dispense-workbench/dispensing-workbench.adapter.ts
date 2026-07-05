@@ -185,43 +185,11 @@ export async function loadWorkbenchPatientRowsAsync(
   return { patients: patientsFromApi(body.data), rows: body.data, ok: true };
 }
 
-/** dispense-tasks リスト API の最小レスポンス（id/status/cycle_id のみ参照）。 */
-type DispenseTaskListResponse = {
-  data: { id: string; status: string; cycle_id: string }[];
-};
-
 type DispenseWorkbenchPatientRow = DispenseWorkbenchPatientsResponse['data'][number];
-
-/** 工程別に代表タスクを選ぶ順序。監査工程は調剤完了タスクを優先して詳細を開く。 */
-const ACTIVE_TASK_STATUS_PRIORITY: Record<'dispense' | 'audit', string[]> = {
-  dispense: ['in_progress', 'pending', 'completed'],
-  audit: ['completed', 'in_progress', 'pending'],
-};
-
-/** cycle_id から代表の DispenseTask id を解決（無ければ null）。 */
-async function resolveTaskId(
-  cycleId: string,
-  phase: Extract<Phase, 'dispense' | 'audit'>,
-  scope: WorkbenchFetchScope = {},
-): Promise<string | null> {
-  const body = await fetchJson<DispenseTaskListResponse>(
-    `/api/dispense-tasks?cycle_id=${encodeURIComponent(cycleId)}`,
-    scope,
-  );
-  const tasks = body?.data;
-  if (!tasks || tasks.length === 0) return null;
-  const priority = ACTIVE_TASK_STATUS_PRIORITY[phase];
-  const ranked = [...tasks].sort((a, b) => {
-    const ra = priority.indexOf(a.status);
-    const rb = priority.indexOf(b.status);
-    return (ra === -1 ? Number.MAX_SAFE_INTEGER : ra) - (rb === -1 ? Number.MAX_SAFE_INTEGER : rb);
-  });
-  return ranked[0]?.id ?? null;
-}
 
 /**
  * 工程ワークベンチ（実データ・dispense|audit の読取のみ）。
- * patientId → 患者リスト行の cycle_id → DispenseTask 解決 →
+ * patientId → 患者リスト行の representative_task_id →
  * GET /api/dispense-tasks/[id]/workbench → from-api で写像。
  * 解決不能 / fetch 失敗 / 未認証は null（呼び出し側が空状態へ倒して mock 操作を閉じる）。
  */
@@ -247,7 +215,7 @@ export async function loadWorkbenchAsync(
   const row = listRows.find((r) => r.patient_id === patientId);
   if (!row || !row.cycle_id) return null;
   if (phase !== 'dispense' && phase !== 'audit') return null;
-  const taskId = await resolveTaskId(row.cycle_id, phase, options);
+  const taskId = row.representative_task_id;
   if (!taskId) return null;
   const data = await fetchJson<DispenseWorkbenchData>(
     buildDispenseTaskApiPath(taskId, '/workbench'),
