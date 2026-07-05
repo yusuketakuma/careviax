@@ -14,6 +14,7 @@ import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
+import { messageFromError } from '@/lib/utils/error-message';
 import {
   FACILITY_PACKET_MEMO_FIELDS,
   facilityPacketMemoDisplayItems,
@@ -214,16 +215,15 @@ function FacilityPacketMemoSection({
           packet_memo: memo,
         }),
       });
-      if (!res.ok) throw new Error('施設訪問パケットの保存に失敗しました');
-      return res.json();
+      return readApiJson<unknown>(res, '施設訪問パケットの保存に失敗しました');
     },
     onSuccess: () => {
       toast.success('施設訪問パケットを保存しました');
       setEditing(false);
       onSaved();
     },
-    onError: () => {
-      toast.error('施設訪問パケットの保存に失敗しました');
+    onError: (error) => {
+      toast.error(messageFromError(error, '施設訪問パケットの保存に失敗しました'));
     },
   });
 

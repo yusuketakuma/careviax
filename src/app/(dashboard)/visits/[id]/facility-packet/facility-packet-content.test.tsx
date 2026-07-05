@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { createQueryClientWrapper, createTestQueryClient } from '@/test/query-client-test-utils';
 import { jsonResponse } from '@/test/fetch-test-utils';
@@ -97,6 +98,47 @@ describe('FacilityPacketContent', () => {
         queryClient.getQueryState(['visit-preparation-facility-packet', 'schedule_1', 'org_1'])
           ?.error,
       ).toEqual(new Error('API側の施設訪問パケットエラー'));
+    });
+  });
+
+  it('keeps API messages from facility packet save failures', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      if (input === '/api/visit-preparations/schedule_1') {
+        return jsonResponse(buildFacilityPacketResponse());
+      }
+      return jsonResponse({ message: '施設一括訪問の順序が同時に更新されました' }, 409);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<FacilityPacketContent scheduleId="schedule_1" />, {
+      wrapper: createQueryClientWrapper(),
+    });
+
+    expect(await screen.findByTestId('facility-packet-page')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '施設訪問パケットを編集' }));
+    fireEvent.change(screen.getByLabelText('入館方法'), {
+      target: { value: '正面玄関で受付' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('施設一括訪問の順序が同時に更新されました');
+    });
+    expect(fetchMock).toHaveBeenCalledWith('/api/facility-visit-batches', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-org-id': 'org_1' },
+      body: JSON.stringify({
+        schedule_ids: ['schedule_1'],
+        ordered_schedule_ids: ['schedule_1'],
+        expected_route_orders: [{ schedule_id: 'schedule_1', route_order: 1 }],
+        packet_memo: {
+          entry: '正面玄関で受付',
+          parking: '',
+          nurse_station: '',
+          cart: '',
+          handoff: '',
+        },
+      }),
     });
   });
 });
