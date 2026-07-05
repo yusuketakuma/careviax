@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
+import { canConfirmCareReportClinicalJudgement } from '@/lib/auth/care-report-confirmation';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import {
@@ -344,6 +345,9 @@ async function authenticatedPATCH(
     existing.locked_at == null &&
     existing.voided_at == null;
   const isDraftConfirmTransition = updateData.status === 'confirmed' && isEditableDraft;
+  if (isDraftConfirmTransition && !canConfirmCareReportClinicalJudgement(ctx.role)) {
+    return sensitiveResponse(await forbiddenResponse('この報告書を確認する権限がありません'));
+  }
   if (updateData.status && updateData.status !== 'draft' && !isDraftConfirmTransition) {
     return sensitiveResponse(conflict('報告書の送信状態は送信APIからのみ更新できます'));
   }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { canConfirmCareReportClinicalJudgement } from '../care-report-confirmation';
 import { forbiddenIfMissingPermission, hasPermission } from '../permissions';
 
 describe('permissions', () => {
@@ -107,6 +108,16 @@ describe('permissions', () => {
     expect(hasPermission('clerk', 'canManagePatientSharing')).toBe(false);
     expect(hasPermission('driver', 'canManagePatientSharing')).toBe(false);
     expect(hasPermission('external_viewer', 'canManagePatientSharing')).toBe(false);
+  });
+
+  it('limits care report clinical confirmation to qualified roles', () => {
+    expect(canConfirmCareReportClinicalJudgement('owner')).toBe(true);
+    expect(canConfirmCareReportClinicalJudgement('admin')).toBe(true);
+    expect(canConfirmCareReportClinicalJudgement('pharmacist')).toBe(true);
+    expect(canConfirmCareReportClinicalJudgement('pharmacist_trainee')).toBe(false);
+    expect(canConfirmCareReportClinicalJudgement('clerk')).toBe(false);
+    expect(canConfirmCareReportClinicalJudgement('driver')).toBe(false);
+    expect(canConfirmCareReportClinicalJudgement('external_viewer')).toBe(false);
   });
 
   it('denies admin permission to pharmacists', () => {

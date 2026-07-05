@@ -878,6 +878,47 @@ describe('care-reports/[id] route', () => {
     });
   });
 
+  it('rejects pharmacist trainee pharmacological confirmation without changing the report', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: {
+        userId: 'trainee_1',
+        orgId: 'org_1',
+        role: 'pharmacist_trainee',
+      },
+    });
+    careReportFindFirstMock.mockResolvedValueOnce({
+      id: 'report_1',
+      org_id: 'org_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      visit_record_id: 'visit_record_1',
+      report_type: 'physician_report',
+      status: 'draft',
+      content: {},
+      template_id: null,
+      pdf_url: null,
+      created_by: 'trainee_1',
+      created_at: new Date('2026-03-30T00:00:00.000Z'),
+      updated_at: REPORT_UPDATED_AT,
+      delivery_records: [],
+      case_: null,
+      finalized_at: null,
+      locked_at: null,
+      voided_at: null,
+    });
+
+    const response = await PATCH(createRequest({ status: 'confirmed' }), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
   it('rejects stale draft confirmation without writing the confirmation audit', async () => {
     careReportUpdateManyMock.mockResolvedValueOnce({ count: 0 });
 

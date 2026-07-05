@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
+import { canConfirmCareReportClinicalJudgement } from '@/lib/auth/care-report-confirmation';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import {
   conflict,
@@ -41,6 +42,9 @@ async function authenticatedPOST(
   });
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
+  if (!canConfirmCareReportClinicalJudgement(ctx.role)) {
+    return sensitiveResponse(await forbiddenResponse('報告書の確定権限がありません'));
+  }
 
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);

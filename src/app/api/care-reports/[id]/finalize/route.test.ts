@@ -237,6 +237,30 @@ describe('/api/care-reports/[id]/finalize POST', () => {
     expect(JSON.stringify(auditLogCreateMock.mock.calls)).not.toContain('license-secret-123');
   });
 
+  it('rejects pharmacist trainee finalization before credential lookup or report mutation', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: {
+        userId: 'trainee_1',
+        orgId: 'org_1',
+        role: 'pharmacist_trainee',
+      },
+    });
+
+    const response = await POST(createRequest(), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(pharmacistCredentialFindManyMock).not.toHaveBeenCalled();
+    expect(careReportUpdateManyMock).not.toHaveBeenCalled();
+    expect(careReportRevisionCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
   it('rejects stale finalize attempts without revision or audit side effects', async () => {
     careReportUpdateManyMock.mockResolvedValueOnce({ count: 0 });
 
