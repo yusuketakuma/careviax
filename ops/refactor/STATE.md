@@ -40,7 +40,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: Risk Finding Registry initial contract / adapters（commit: pending）。
+- codex: Risk Finding Registry initial contract / adapters（commit `f21ce9c00`）。
   - current task:
     `Plans.md` の `RISK-CORE-1 / CORE-001` に沿って、Case Risk Cockpit 内に閉じていた
     risk domain/severity/rollup contract を shared `RiskFinding` contract へ昇格し、billing blocker、
