@@ -40,7 +40,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: Patient detail tabbed layout slice complete（code/test: 6729fc48e）。
+- codex: Patient detail tabbed layout slice complete（code/test: 9abcaa154）。
   - current task:
     ユーザー指示「患者詳細画面配置はタブ化してください」に対応。PH-OS UI/UX SSOT
     `docs/ui-ux-design-guidelines.md` と repo-local `redesign-existing-projects` skill を確認し、
