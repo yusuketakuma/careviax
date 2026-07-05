@@ -226,7 +226,11 @@ describe('/api/patients/board', () => {
     const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
     expect(response.status).toBe(200);
 
-    const json = await response.json();
+    const bodyText = await response.clone().text();
+    expect(response.headers.get('content-length')).toBe(
+      String(new TextEncoder().encode(bodyText).length),
+    );
+    const json = JSON.parse(bodyText);
     expect(json.data.chip_counts.visit_today).toBe(1);
     expect(json.data.cards[0]).toMatchObject({
       attention: 'visit_today',

@@ -3096,6 +3096,26 @@
   `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`。Remaining:
   NextResponse JSON routes without `Content-Length` still report payload as `未計測`; exact payload budget enforcement,
   query count collection, persistent metrics sink/deploy_sha, and critical route registry/release gate are still open.
+- codex: PAT-LIST-PERF patients board payload measurement slice complete。
+  前スライスで共通 `withRoutePerformance` は `Content-Length` がある場合のみ payload bytes を記録する
+  設計にしたため、heavy BFF の代表である `/api/patients/board` に限定して
+  `successWithMeasuredJsonPayload` を追加。`success()` と同じ JSON body を返しつつ、
+  `JSON.stringify(data)` の UTF-8 byte length を `Content-Length` に設定する。これにより、
+  `withAuthContext` 経由の既存 performance wrapper が患者一覧BFFの payload bytes を拾える。
+  PHI/privacy constraint: response body の内容を logger/metrics に渡さず、byte数のみをheader経由で
+  記録する。`withRoutePerformance` 側でbody clone/readは行わない方針を維持。Subagents:
+  `observability_engineer` / `privacy_compliance_reviewer` をread-onlyで起動したが、タイムアウト時点では
+  未完了のため、critical pathを止めず本体で実装・検証を完了。Files changed:
+  `src/app/api/patients/board/route.ts`,
+  `src/app/api/patients/board/route.test.ts`,
+  `ops/refactor/STATE.md`。Validation green:
+  `pnpm exec vitest run src/app/api/patients/board/route.test.ts src/lib/utils/performance.test.ts src/app/api/admin/performance-metrics/route.test.ts --reporter=dot --testTimeout=30000`
+  (35 tests), scoped ESLint for touched patient-board/performance files, `pnpm format:check`,
+  `git diff --check -- src/app/api/patients/board/route.ts src/app/api/patients/board/route.test.ts`,
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`。Remaining:
+  exact payload budget thresholds are not enforced yet, patients board query count is not measured,
+  foundation filters remain memory-side after bounded fetch, and broader critical BFF routes still need either
+  measured JSON responses or a safe response-construction helper.
 
 ## 進行中 / 凍結
 

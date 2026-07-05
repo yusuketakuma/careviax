@@ -48,6 +48,16 @@ import type {
 const PATIENT_FETCH_LIMIT = 80;
 const PATIENT_FILTERED_FETCH_LIMIT = 500;
 const BLOCKED_REASONS_LIMIT = 2;
+const jsonPayloadEncoder = new TextEncoder();
+
+function successWithMeasuredJsonPayload<T>(data: T, status = 200) {
+  const response = success(data, status);
+  response.headers.set(
+    'Content-Length',
+    String(jsonPayloadEncoder.encode(JSON.stringify(data)).length),
+  );
+  return response;
+}
 
 const boardQuerySchema = z.object({
   scope: z.enum(['mine', 'all']).optional(),
@@ -974,7 +984,7 @@ const authenticatedGET = withAuthContext(
       blocked_reasons: blockedReasons,
     };
 
-    return success({ data: responseData });
+    return successWithMeasuredJsonPayload({ data: responseData });
   },
   {
     permission: 'canVisit',
