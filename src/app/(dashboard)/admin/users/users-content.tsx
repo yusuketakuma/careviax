@@ -322,11 +322,7 @@ export function UsersContent() {
           site_id: inviteForm.site_id || undefined,
         }),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error((payload as { message?: string }).message ?? '招待に失敗しました');
-      }
-      return payload;
+      return readApiJson<unknown>(response, '招待に失敗しました');
     },
     onSuccess: async () => {
       toast.success('ユーザーを招待しました');
@@ -365,11 +361,7 @@ export function UsersContent() {
           can_audit_set: detailForm.can_audit_set,
         }),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error((payload as { message?: string }).message ?? '更新に失敗しました');
-      }
-      return payload;
+      return readApiJson<unknown>(response, '更新に失敗しました');
     },
     onSuccess: async () => {
       toast.success('ユーザー情報を更新しました');
@@ -393,11 +385,7 @@ export function UsersContent() {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(body),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error((payload as { message?: string }).message ?? '操作に失敗しました');
-      }
-      return payload;
+      return readApiJson<unknown>(response, '操作に失敗しました');
     },
     onSuccess: async () => {
       const labels: Record<string, string> = {

@@ -11,11 +11,16 @@ import {
 } from '@/lib/pharmacists/api-paths';
 import { PHARMACY_SITES_API_PATH } from '@/lib/pharmacy-sites/api-paths';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { toast } from 'sonner';
 import { UsersContent } from './users-content';
 
 setupDomTestEnv();
 
 const mutationMutateMock = vi.hoisted(() => vi.fn());
+const runMutationFnsMock = vi.hoisted(() => ({ current: false }));
+const roleRequiresSiteOverrideMock = vi.hoisted(() => ({
+  current: null as null | ((role: string) => boolean),
+}));
 const queryErrorKeysMock = vi.hoisted(() => new Set<string>());
 const queryFnRunKeysMock = vi.hoisted(() => new Set<string>());
 const queryRefetchMock = vi.hoisted(() => vi.fn());
@@ -88,9 +93,35 @@ vi.mock('@/lib/pharmacists/api-paths', async (importActual) => {
   };
 });
 
+vi.mock('@/lib/auth/member-roles', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/auth/member-roles')>();
+  return {
+    ...actual,
+    roleRequiresSite: (role: string) =>
+      roleRequiresSiteOverrideMock.current
+        ? roleRequiresSiteOverrideMock.current(role)
+        : actual.roleRequiresSite(role),
+  };
+});
+
 vi.mock('@tanstack/react-query', () => ({
-  useMutation: () => ({
-    mutate: mutationMutateMock,
+  useMutation: (options: {
+    mutationFn: (variables?: unknown) => Promise<unknown>;
+    onSuccess?: (data: unknown, variables?: unknown, context?: unknown) => void | Promise<void>;
+    onError?: (error: unknown, variables?: unknown, context?: unknown) => void;
+  }) => ({
+    mutate: (variables?: unknown) => {
+      mutationMutateMock(variables);
+      if (!runMutationFnsMock.current) return;
+      void (async () => {
+        try {
+          const data = await options.mutationFn(variables);
+          await options.onSuccess?.(data, variables, undefined);
+        } catch (error) {
+          options.onError?.(error, variables, undefined);
+        }
+      })();
+    },
     isPending: false,
   }),
   useQuery: ({
@@ -226,10 +257,13 @@ vi.mock('sonner', () => ({
 describe('UsersContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    runMutationFnsMock.current = false;
+    roleRequiresSiteOverrideMock.current = null;
     queryErrorKeysMock.clear();
     queryFnRunKeysMock.clear();
     adminUsersResponseMock.current = null;
     Object.assign(user, defaultUser);
+    vi.unstubAllGlobals();
   });
 
   it('delegates users and site fetches to shared path and org-header helpers', async () => {
@@ -415,6 +449,104 @@ describe('UsersContent', () => {
 
     fireEvent.click(saveButton);
     expect(mutationMutateMock).not.toHaveBeenCalled();
+  });
+
+  it('surfaces API error messages when user invite fails', async () => {
+    runMutationFnsMock.current = true;
+    roleRequiresSiteOverrideMock.current = () => false;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === PHARMACISTS_API_PATH && init?.method === 'POST') {
+        return new Response(JSON.stringify({ message: 'メールアドレスは既に招待済みです' }), {
+          status: 409,
+        });
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<UsersContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'ユーザーを招待' }));
+    fireEvent.change(screen.getByLabelText('氏名'), { target: { value: '佐藤 花子' } });
+    fireEvent.change(screen.getByLabelText('フリガナ'), { target: { value: 'サトウ ハナコ' } });
+    fireEvent.change(screen.getByLabelText('メールアドレス'), {
+      target: { value: 'hanako@example.com' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '招待する' }));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('メールアドレスは既に招待済みです');
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      PHARMACISTS_API_PATH,
+      expect.objectContaining({
+        method: 'POST',
+        headers: buildOrgJsonHeaders('org_1'),
+      }),
+    );
+  });
+
+  it('surfaces API error messages when user detail update fails', async () => {
+    runMutationFnsMock.current = true;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/pharmacists/user_1' && init?.method === 'PATCH') {
+        return new Response(JSON.stringify({ message: 'このロールには所属店舗が必要です' }), {
+          status: 400,
+        });
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<UsersContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: '山田 太郎の詳細を開く' }));
+    fireEvent.change(screen.getByLabelText('氏名'), { target: { value: '山田 次郎' } });
+    fireEvent.click(screen.getByRole('button', { name: '変更を保存' }));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('このロールには所属店舗が必要です');
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/pharmacists/user_1',
+      expect.objectContaining({
+        method: 'PATCH',
+        headers: buildOrgJsonHeaders('org_1'),
+      }),
+    );
+  });
+
+  it('surfaces API error messages when user account action fails', async () => {
+    runMutationFnsMock.current = true;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/pharmacists/user_1' && init?.method === 'PATCH') {
+        return new Response(JSON.stringify({ message: 'オーナー権限の停止はできません' }), {
+          status: 403,
+        });
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<UsersContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: '山田 太郎を停止' }));
+    fireEvent.change(screen.getByLabelText('理由'), { target: { value: '重複アカウント' } });
+    fireEvent.click(screen.getByRole('button', { name: '実行' }));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('オーナー権限の停止はできません');
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/pharmacists/user_1',
+      expect.objectContaining({
+        method: 'PATCH',
+        headers: buildOrgJsonHeaders('org_1'),
+      }),
+    );
   });
 
   it('describes why visit constraint controls are disabled for non-operational roles', () => {
