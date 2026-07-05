@@ -2,8 +2,16 @@ import { NextRequest } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { requireAuthContext } from '@/lib/auth/context';
+import { canFinalizeClinicalState } from '@/lib/auth/clinical-finalization';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound, conflict, internalError } from '@/lib/api/response';
+import {
+  success,
+  validationError,
+  notFound,
+  conflict,
+  internalError,
+  forbiddenResponse,
+} from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -11,6 +19,7 @@ import { updateInquiryRecordSchema } from '@/lib/validations/prescription';
 import { prisma } from '@/lib/db/client';
 import { resolveOperationalTasks } from '@/server/services/operational-tasks';
 import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescription-access';
+import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { logger } from '@/lib/utils/logger';
 import type { InquiryRecord } from '@prisma/client';
 import type { UpdateInquiryRecordInput } from '@/lib/validations/prescription';
@@ -32,11 +41,33 @@ type InquiryLineAuditValue = string | number | null;
 type InquiryLineAuditBefore = Record<InquiryLineAuditField, InquiryLineAuditValue>;
 type InquiryLineSnapshot = InquiryLineAuditBefore & { updated_at: Date };
 type InquiryLineUpdateInput = NonNullable<UpdateInquiryRecordInput['line_update']>;
+type InquiryLineUpdateAudit = Partial<Record<InquiryLineAuditField, { changed: true }>>;
 type InquiryPatchResult =
   | { inquiry: InquiryRecord }
-  | { error: 'line_not_found' | 'inquiry_not_found' | 'conflict'; message?: string };
+  | {
+      error: 'line_not_found' | 'line_update_no_changes' | 'inquiry_not_found' | 'conflict';
+      message?: string;
+    };
 
 class InquiryPatchConflictError extends Error {}
+
+function touchesInquiryClinicalFinalization(patch: UpdateInquiryRecordInput) {
+  return (
+    patch.result !== undefined || patch.resolved_at !== undefined || patch.line_update !== undefined
+  );
+}
+
+function touchesInquiryFinalizedMetadata(patch: UpdateInquiryRecordInput) {
+  return (
+    patch.change_detail !== undefined ||
+    patch.proposal_origin !== undefined ||
+    patch.residual_adjustment !== undefined
+  );
+}
+
+function isFinalInquiryResult(result: string | null) {
+  return result === 'changed' || result === 'unchanged';
+}
 
 function buildInquiryLineUpdateAudit(
   before: InquiryLineAuditBefore | null,
@@ -44,14 +75,12 @@ function buildInquiryLineUpdateAudit(
 ) {
   if (!before || !update) return null;
 
-  const audit: Partial<
-    Record<InquiryLineAuditField, { before: InquiryLineAuditValue; after: InquiryLineAuditValue }>
-  > = {};
+  const audit: InquiryLineUpdateAudit = {};
 
   for (const field of inquiryLineAuditFields) {
     const after = update[field];
     if (after !== undefined && before[field] !== after) {
-      audit[field] = { before: before[field], after };
+      audit[field] = { changed: true };
     }
   }
 
@@ -81,6 +110,14 @@ async function authenticatedPATCH(
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
+  if (touchesInquiryClinicalFinalization(parsed.data) && !canFinalizeClinicalState(ctx.role)) {
+    return forbiddenResponse('疑義照会結果の確定・処方反映権限がありません');
+  }
+
+  if (parsed.data.line_update && Object.keys(parsed.data.line_update).length === 0) {
+    return validationError('処方明細の更新内容が空です');
+  }
+
   const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
 
   const existing = await prisma.inquiryRecord.findFirst({
@@ -104,6 +141,14 @@ async function authenticatedPATCH(
     },
   });
   if (!existing) return notFound('疑義照会記録が見つかりません');
+
+  if (
+    !canFinalizeClinicalState(ctx.role) &&
+    isFinalInquiryResult(existing.result) &&
+    touchesInquiryFinalizedMetadata(parsed.data)
+  ) {
+    return forbiddenResponse('確定済み疑義照会記録の更新権限がありません');
+  }
 
   const { result, change_detail, proposal_origin, residual_adjustment, resolved_at, line_update } =
     parsed.data;
@@ -169,6 +214,9 @@ async function authenticatedPATCH(
         };
 
         lineUpdateAudit = buildInquiryLineUpdateAudit(lineSnapshot, line_update);
+        if (result === 'changed' && line_update && !lineUpdateAudit) {
+          return { error: 'line_update_no_changes' as const };
+        }
       }
 
       if (result === 'changed' && existing.line_id && line_update && lineSnapshot) {
@@ -211,7 +259,11 @@ async function authenticatedPATCH(
           ...(change_detail !== undefined ? { change_detail } : {}),
           ...(proposal_origin !== undefined ? { proposal_origin } : {}),
           ...(residual_adjustment !== undefined ? { residual_adjustment } : {}),
-          ...(resolvedAt ? { resolved_at: resolvedAt } : {}),
+          ...(result === 'pending'
+            ? { resolved_at: null }
+            : resolvedAt
+              ? { resolved_at: resolvedAt }
+              : {}),
         },
       });
       if (inquiryUpdateResult.count !== 1) {
@@ -329,7 +381,7 @@ async function authenticatedPATCH(
           issue_id: existing.issue_id,
           result_before: existing.result,
           result_after: result ?? existing.result,
-          change_detail: change_detail ?? null,
+          change_detail_changed: change_detail !== undefined,
           proposal_origin: proposal_origin ?? null,
           residual_adjustment: residual_adjustment ?? null,
           line_update: lineUpdateAudit,
@@ -356,8 +408,24 @@ async function authenticatedPATCH(
     }
     if (inquiryResult.error === 'inquiry_not_found')
       return notFound('疑義照会記録が見つかりません');
+    if (inquiryResult.error === 'line_update_no_changes') {
+      return validationError('処方明細の更新内容に変更がありません');
+    }
     return validationError('指定された処方明細が見つかりません');
   }
+
+  await notifyWorkflowMutation({
+    orgId: ctx.orgId,
+    payload: {
+      source: 'inquiry_records_update',
+      inquiry_id: id,
+      cycle_id: existing.cycle_id,
+      result: parsed.data.result ?? null,
+      line_update_requested: parsed.data.line_update !== undefined,
+      line_linked: existing.line_id !== null,
+      issue_linked: existing.issue_id !== null,
+    },
+  });
 
   return success(inquiryResult.inquiry);
 }

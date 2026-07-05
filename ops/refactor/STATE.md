@@ -40,6 +40,37 @@
 
 ## 直近の land（本日・要点）
 
+- codex: inquiry record clinical finalization boundary batch(pending commit)
+  implementation complete。ユーザー指示「近似箇所はまとめて実装して効率を向上。サブエージェントも投入」に基づき、
+  medication issue に続く近接 clinical finalization surface として `PATCH /api/inquiry-records/:id` を同一sliceで処理。
+  subagent は code_mapper / medical_safety_reviewer / api_contract_reviewer を bounded read-only で投入し、
+  `canVisit` のみで `pharmacist_trainee` が `result: changed|unchanged|pending`、`line_update`、`resolved_at` により
+  PrescriptionLine 更新、MedicationCycle transition、CommunicationRequest close、OperationalTask resolve、
+  linked MedicationIssue resolve/reopen へ到達できる点を High と指摘。対応として既存 `canFinalizeClinicalState`
+  helper を再利用し、owner/admin/pharmacist 以外は result / resolved_at / line_update を no-store 403 で
+  DB lookup / transaction / prescription line update / cycle transition / communication close / medication issue update /
+  audit / workflow notify 前に fail-closed。未解決 (`pending`/null) inquiry の trainee metadata note 更新は維持するが、
+  既に `changed` / `unchanged` の finalized record では trainee の `change_detail` / `proposal_origin` /
+  `residual_adjustment` 編集を lookup 後 transaction 前に 403。`result: pending` reopen は InquiryRecord 自身の
+  `resolved_at` も null に戻し、linked MedicationIssue の resolver metadata と整合。`line_update: {}` は lookup 前に
+  validation error、既存 PrescriptionLine snapshot と差分がない changed confirmation は line read 後・副作用前に
+  validation error。audit は raw `change_detail` と prescription line before/after value を保存せず、
+  `change_detail_changed` と field-level changed flag に最小化。成功 path は PHI-minimized `notifyWorkflowMutation`
+  source `inquiry_records_update` を追加し、workflow cache/realtime refresh を行う。workflow realtime sanitizer には
+  `inquiry_records_update` を allowlist 追加。full-cycle test fixture は現行 `resolveOperationalTasks` 戻り値契約
+  `{ count }` に合わせた。validation:
+  `pnpm exec vitest run 'src/app/api/inquiry-records/[id]/route.test.ts' --reporter=dot --testTimeout=30000`
+  green（1 file / 24 tests）;
+  `pnpm exec vitest run src/lib/auth/__tests__/clinical-finalization.test.ts 'src/app/api/inquiry-records/[id]/route.test.ts' src/app/api/inquiry-records/route.test.ts src/app/api/__tests__/protected-patch-delete-routes.test.ts src/app/api/__tests__/workflow-full-cycle.test.ts src/server/services/workflow-dashboard-cache.test.ts --reporter=dot --testTimeout=60000`
+  green（6 files / 146 tests。既存 visit_records_handoff_extraction_failed warn は非fatal）;
+  scoped `eslint` green; scoped `prettier --check` green; `git diff --check` green;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) に基づき product API /
+  authorization / PHI-adjacent prescription line / inquiry / medication issue / audit / workflow realtime を変更。
+  DB schema/migration/deploy/package dependency 変更は不要。残る高優先別slice候補: reschedule contact PII の
+  `recipient_contact` / suggested_contacts 参照化・masking 契約設計、Task resolver actor trace を Task 自体へ残す
+  schema設計、visit-record finalization supervision、inquiry route の audit detail retention policy を将来の監査要件と
+  照合する追加review。
 - codex: medication issue clinical finalization boundary batch(813ad8e14)
   implementation complete。ユーザー指示「近似箇所はまとめて実装して効率を向上。サブエージェントも投入」に基づき、
   medication issue の status finalization / reopen / QR promotion / create-final status を同一sliceで処理。

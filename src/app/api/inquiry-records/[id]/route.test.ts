@@ -8,6 +8,7 @@ const {
   inquiryRecordFindFirstMock,
   prescriptionLineFindFirstMock,
   resolveOperationalTasksMock,
+  notifyWorkflowMutationMock,
   loggerErrorMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
@@ -15,6 +16,7 @@ const {
   inquiryRecordFindFirstMock: vi.fn(),
   prescriptionLineFindFirstMock: vi.fn(),
   resolveOperationalTasksMock: vi.fn(),
+  notifyWorkflowMutationMock: vi.fn(),
   loggerErrorMock: vi.fn(),
 }));
 
@@ -41,6 +43,10 @@ vi.mock('@/server/services/operational-tasks', () => ({
   resolveOperationalTasks: resolveOperationalTasksMock,
 }));
 
+vi.mock('@/server/services/workflow-dashboard-cache', () => ({
+  notifyWorkflowMutation: notifyWorkflowMutationMock,
+}));
+
 vi.mock('@/lib/utils/logger', () => ({
   logger: { error: loggerErrorMock },
 }));
@@ -65,6 +71,14 @@ function createMalformedJsonRequest() {
     },
     body: '{"result":',
   });
+}
+
+function expectNoInquiryPatchSideEffects() {
+  expect(inquiryRecordFindFirstMock).not.toHaveBeenCalled();
+  expect(prescriptionLineFindFirstMock).not.toHaveBeenCalled();
+  expect(withOrgContextMock).not.toHaveBeenCalled();
+  expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+  expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
 }
 
 describe('/api/inquiry-records/[id] PATCH', () => {
@@ -161,6 +175,193 @@ describe('/api/inquiry-records/[id] PATCH', () => {
     expect(prescriptionLineFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      'changed with prescription-line update',
+      {
+        result: 'changed',
+        change_detail: '1日2回へ変更',
+        line_update: {
+          frequency: '1日2回',
+          days: 14,
+        },
+      },
+    ],
+    ['unchanged final outcome', { result: 'unchanged', change_detail: '変更なし' }],
+    ['pending reopen outcome', { result: 'pending', change_detail: '再照会' }],
+    ['resolved timestamp write', { resolved_at: '2026-01-02' }],
+  ])('denies pharmacist trainees before inquiry lookup for %s', async (_label, body) => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: {
+        orgId: 'org_1',
+        userId: 'trainee_1',
+        role: 'pharmacist_trainee',
+      },
+    });
+
+    const response = await PATCH(createRequest(body), {
+      params: Promise.resolve({ id: 'inquiry_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_FORBIDDEN',
+      message: '疑義照会結果の確定・処方反映権限がありません',
+    });
+    expectNoInquiryPatchSideEffects();
+  });
+
+  it('denies pharmacist trainees from editing finalized inquiry metadata before writes', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: {
+        orgId: 'org_1',
+        userId: 'trainee_1',
+        role: 'pharmacist_trainee',
+      },
+    });
+    inquiryRecordFindFirstMock.mockResolvedValue({
+      id: 'inquiry_1',
+      cycle_id: 'cycle_1',
+      line_id: null,
+      issue_id: 'issue_1',
+      result: 'changed',
+      updated_at: new Date('2026-01-01T00:00:00.000Z'),
+      cycle: { overall_status: 'inquiry_resolved' },
+    });
+
+    const response = await PATCH(
+      createRequest({
+        change_detail: '最終判断を書き換え',
+      }),
+      { params: Promise.resolve({ id: 'inquiry_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_FORBIDDEN',
+      message: '確定済み疑義照会記録の更新権限がありません',
+    });
+    expect(inquiryRecordFindFirstMock).toHaveBeenCalled();
+    expect(prescriptionLineFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('allows pharmacist trainees to persist non-final inquiry notes without clinical workflow side effects', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: {
+        orgId: 'org_1',
+        userId: 'trainee_1',
+        role: 'pharmacist_trainee',
+      },
+    });
+    inquiryRecordFindFirstMock.mockResolvedValue({
+      id: 'inquiry_1',
+      cycle_id: 'cycle_1',
+      line_id: null,
+      issue_id: null,
+      result: 'pending',
+      updated_at: new Date('2026-01-01T00:00:00.000Z'),
+      cycle: { overall_status: 'inquiry_pending' },
+    });
+
+    const inquiryUpdateMock = vi.fn().mockResolvedValue({ count: 1 });
+    const inquiryFindUniqueMock = vi.fn().mockResolvedValue({
+      id: 'inquiry_1',
+      result: 'pending',
+      change_detail: '医師回答待ち。薬剤師へ確認依頼済み',
+    });
+    const auditLogCreateMock = vi.fn().mockResolvedValue({ id: 'audit_1' });
+    const cycleUpdateMock = vi.fn().mockResolvedValue({});
+    const communicationUpdateMock = vi.fn().mockResolvedValue({ count: 0 });
+    const medicationIssueUpdateMock = vi.fn().mockResolvedValue({});
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        prescriptionLine: {
+          findFirst: vi.fn(),
+          updateMany: vi.fn(),
+        },
+        inquiryRecord: {
+          updateMany: inquiryUpdateMock,
+          findUnique: inquiryFindUniqueMock,
+          count: vi.fn(),
+        },
+        medicationCycle: {
+          update: cycleUpdateMock,
+        },
+        communicationRequest: {
+          updateMany: communicationUpdateMock,
+        },
+        medicationIssue: {
+          update: medicationIssueUpdateMock,
+        },
+        cycleTransitionLog: {
+          create: vi.fn(),
+        },
+        auditLog: {
+          create: auditLogCreateMock,
+        },
+      }),
+    );
+
+    const response = await PATCH(
+      createRequest({
+        change_detail: '医師回答待ち。薬剤師へ確認依頼済み',
+      }),
+      { params: Promise.resolve({ id: 'inquiry_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    expect(inquiryUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          change_detail: '医師回答待ち。薬剤師へ確認依頼済み',
+        },
+      }),
+    );
+    expect(cycleUpdateMock).not.toHaveBeenCalled();
+    expect(communicationUpdateMock).not.toHaveBeenCalled();
+    expect(medicationIssueUpdateMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'inquiry_record_updated',
+        changes: expect.objectContaining({
+          change_detail_changed: true,
+          result_before: 'pending',
+          result_after: 'pending',
+          cycle_status_after: null,
+        }),
+      }),
+    });
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      payload: {
+        source: 'inquiry_records_update',
+        inquiry_id: 'inquiry_1',
+        cycle_id: 'cycle_1',
+        result: null,
+        line_update_requested: false,
+        line_linked: false,
+        issue_linked: false,
+      },
+    });
+    expect(JSON.stringify(auditLogCreateMock.mock.calls)).not.toContain(
+      '医師回答待ち。薬剤師へ確認依頼済み',
+    );
+    expect(JSON.stringify(notifyWorkflowMutationMock.mock.calls)).not.toContain(
+      '医師回答待ち。薬剤師へ確認依頼済み',
+    );
   });
 
   it('denies records outside the cycle assignment scope before writing', async () => {
@@ -386,17 +587,151 @@ describe('/api/inquiry-records/[id] PATCH', () => {
           cycle_status_before: 'inquiry_pending',
           cycle_status_after: 'inquiry_resolved',
           line_update: expect.objectContaining({
-            frequency: { before: '1日1回', after: '1日2回' },
-            days: { before: 7, after: 14 },
+            frequency: { changed: true },
+            days: { changed: true },
           }),
+          change_detail_changed: true,
         }),
       }),
     });
+    expect(JSON.stringify(auditLogCreateMock.mock.calls)).not.toContain('1日2回へ変更');
+    expect(JSON.stringify(auditLogCreateMock.mock.calls)).not.toContain('1日1回');
+    expect(JSON.stringify(auditLogCreateMock.mock.calls)).not.toContain('14');
     expect(auditLogCreateMock.mock.calls[0][0].data.changes.line_update).not.toHaveProperty(
       'drug_name',
     );
     expect(auditLogCreateMock.mock.calls[0][0].data.changes.line_update).not.toHaveProperty('dose');
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      payload: {
+        source: 'inquiry_records_update',
+        inquiry_id: 'inquiry_1',
+        cycle_id: 'cycle_1',
+        result: 'changed',
+        line_update_requested: true,
+        line_linked: true,
+        issue_linked: true,
+      },
+    });
+    expect(JSON.stringify(notifyWorkflowMutationMock.mock.calls)).not.toContain('1日2回');
     expect(resolveOperationalTasksMock).toHaveBeenCalled();
+  });
+
+  it('clears inquiry resolution metadata when reopening a finalized linked inquiry', async () => {
+    inquiryRecordFindFirstMock.mockResolvedValue({
+      id: 'inquiry_1',
+      cycle_id: 'cycle_1',
+      line_id: null,
+      issue_id: 'issue_1',
+      result: 'changed',
+      updated_at: new Date('2026-01-01T00:00:00.000Z'),
+      cycle: { overall_status: 'inquiry_resolved' },
+    });
+
+    const inquiryUpdateMock = vi.fn().mockResolvedValue({ count: 1 });
+    const inquiryFindUniqueMock = vi.fn().mockResolvedValue({
+      id: 'inquiry_1',
+      result: 'pending',
+      resolved_at: null,
+    });
+    const cycleUpdateMock = vi.fn().mockResolvedValue({});
+    const cycleTransitionLogCreateMock = vi.fn().mockResolvedValue({ id: 'transition_1' });
+    const medicationIssueUpdateMock = vi.fn().mockResolvedValue({});
+    const auditLogCreateMock = vi.fn().mockResolvedValue({ id: 'audit_1' });
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        prescriptionLine: {
+          findFirst: vi.fn(),
+          updateMany: vi.fn(),
+        },
+        inquiryRecord: {
+          updateMany: inquiryUpdateMock,
+          findUnique: inquiryFindUniqueMock,
+          count: vi.fn(),
+        },
+        medicationCycle: {
+          update: cycleUpdateMock,
+        },
+        communicationRequest: {
+          updateMany: vi.fn(),
+        },
+        medicationIssue: {
+          update: medicationIssueUpdateMock,
+        },
+        cycleTransitionLog: {
+          create: cycleTransitionLogCreateMock,
+        },
+        auditLog: {
+          create: auditLogCreateMock,
+        },
+      }),
+    );
+
+    const response = await PATCH(
+      createRequest({
+        result: 'pending',
+        change_detail: '再照会が必要',
+      }),
+      { params: Promise.resolve({ id: 'inquiry_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    expect(inquiryUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          result: 'pending',
+          change_detail: '再照会が必要',
+          resolved_at: null,
+        }),
+      }),
+    );
+    expect(cycleUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { overall_status: 'inquiry_pending' },
+      }),
+    );
+    expect(cycleTransitionLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        from_status: 'inquiry_resolved',
+        to_status: 'inquiry_pending',
+        note: 'inquiry_record_reopened:inquiry_1',
+      }),
+    });
+    expect(medicationIssueUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'issue_1' },
+      data: {
+        status: 'in_progress',
+        resolved_by: null,
+        resolved_at: null,
+      },
+    });
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        changes: expect.objectContaining({
+          result_before: 'changed',
+          result_after: 'pending',
+          change_detail_changed: true,
+          cycle_status_after: 'inquiry_pending',
+        }),
+      }),
+    });
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      payload: {
+        source: 'inquiry_records_update',
+        inquiry_id: 'inquiry_1',
+        cycle_id: 'cycle_1',
+        result: 'pending',
+        line_update_requested: false,
+        line_linked: false,
+        issue_linked: true,
+      },
+    });
+    expect(JSON.stringify(auditLogCreateMock.mock.calls)).not.toContain('再照会が必要');
+    expect(JSON.stringify(notifyWorkflowMutationMock.mock.calls)).not.toContain('再照会が必要');
   });
 
   it('denies stale line ownership before updating prescription lines', async () => {
@@ -507,6 +842,25 @@ describe('/api/inquiry-records/[id] PATCH', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
+  it('rejects empty line updates before loading the inquiry record', async () => {
+    const response = await PATCH(
+      createRequest({
+        result: 'changed',
+        line_update: {},
+      }),
+      { params: Promise.resolve({ id: 'inquiry_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '処方明細の更新内容が空です',
+    });
+    expectNoInquiryPatchSideEffects();
+  });
+
   it('rejects line updates for inquiries that are not linked to a prescription line', async () => {
     inquiryRecordFindFirstMock.mockResolvedValue({
       id: 'inquiry_1',
@@ -533,6 +887,89 @@ describe('/api/inquiry-records/[id] PATCH', () => {
       message: '処方明細の更新内容は明細に紐づく疑義照会でのみ指定できます',
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects changed confirmations when the line update has no effective diff', async () => {
+    inquiryRecordFindFirstMock.mockResolvedValue({
+      id: 'inquiry_1',
+      cycle_id: 'cycle_1',
+      line_id: 'line_1',
+      issue_id: 'issue_1',
+      result: 'pending',
+      updated_at: new Date('2026-01-01T00:00:00.000Z'),
+      cycle: { overall_status: 'inquiry_pending' },
+    });
+
+    const txLineFindFirstMock = vi.fn().mockResolvedValue({
+      id: 'line_1',
+      drug_name: 'アムロジピン錠5mg',
+      drug_code: 'YJ123',
+      dose: '1錠',
+      frequency: '1日1回',
+      days: 7,
+      packaging_instructions: null,
+      route: 'internal',
+      updated_at: new Date('2026-01-01T00:00:00.000Z'),
+    });
+    const lineUpdateMock = vi.fn().mockResolvedValue({ count: 1 });
+    const inquiryUpdateMock = vi.fn().mockResolvedValue({ count: 1 });
+    const cycleUpdateMock = vi.fn().mockResolvedValue({});
+    const auditLogCreateMock = vi.fn().mockResolvedValue({});
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        prescriptionLine: {
+          findFirst: txLineFindFirstMock,
+          updateMany: lineUpdateMock,
+        },
+        inquiryRecord: {
+          updateMany: inquiryUpdateMock,
+          findUnique: vi.fn(),
+          count: vi.fn(),
+        },
+        medicationCycle: {
+          update: cycleUpdateMock,
+        },
+        communicationRequest: {
+          updateMany: vi.fn(),
+        },
+        medicationIssue: {
+          update: vi.fn(),
+        },
+        cycleTransitionLog: {
+          create: vi.fn(),
+        },
+        auditLog: {
+          create: auditLogCreateMock,
+        },
+      }),
+    );
+
+    const response = await PATCH(
+      createRequest({
+        result: 'changed',
+        change_detail: '変更あり',
+        line_update: {
+          frequency: '1日1回',
+        },
+      }),
+      { params: Promise.resolve({ id: 'inquiry_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '処方明細の更新内容に変更がありません',
+    });
+    expect(txLineFindFirstMock).toHaveBeenCalled();
+    expect(lineUpdateMock).not.toHaveBeenCalled();
+    expect(inquiryUpdateMock).not.toHaveBeenCalled();
+    expect(cycleUpdateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('returns conflict when the prescription line changes before the guarded update', async () => {

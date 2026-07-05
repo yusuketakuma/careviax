@@ -1334,7 +1334,7 @@ describe('workflow full-cycle integration', () => {
     });
 
     upsertOperationalTaskMock.mockResolvedValue({ id: 'task_followup_1' });
-    resolveOperationalTasksMock.mockResolvedValue(undefined);
+    resolveOperationalTasksMock.mockResolvedValue({ count: 1 });
     listBillingEvidenceBlockersMock.mockResolvedValue([]);
     checkDispenseAlertsMock.mockResolvedValue([]);
     sendCareReportEmailMock.mockResolvedValue({ messageId: 'ses-message-1', stub: false });
