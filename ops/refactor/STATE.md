@@ -40,6 +40,61 @@
 
 ## 直近の land（本日・要点）
 
+- codex: AUD-001 Audit Log Review persistence and admin review action complete（commit `79576dcdd`）。
+  - current task:
+    Plans.md の監査レビューUX方針を実装へ接続。前段の audit risk/redaction 表示を warning 表示で終わらせず、
+    `AuditLogReview` 永続化、org-scoped PATCH API、list/export response の `review_state` 付与、
+    管理画面からの「レビュー済み」操作、未レビュー高リスク件数 summary を追加した。
+  - files inspected:
+    `docs/ui-ux-design-guidelines.md`,
+    `.agents/skills/design-taste-frontend/SKILL.md`（PH-OS 指針どおり監査チェックリストとして参照）,
+    `prisma/schema/admin.prisma`,
+    `src/lib/auth/context.ts`,
+    `src/lib/api/response.ts`,
+    `src/lib/audit-logs/review.ts`,
+    `src/lib/audit-logs/redaction.ts`,
+    `src/app/api/audit-logs/route.ts`,
+    `src/app/api/audit-logs/export/route.ts`,
+    `src/app/(dashboard)/admin/audit-logs/audit-logs-content.tsx`,
+    関連 tests。
+  - files changed:
+    `prisma/schema/admin.prisma`,
+    `prisma/migrations/20260706033000_add_audit_log_review_state/migration.sql`,
+    `src/lib/audit-logs/review.ts`,
+    `src/lib/audit-logs/review.test.ts`,
+    `src/app/api/audit-logs/route.ts`,
+    `src/app/api/audit-logs/route.test.ts`,
+    `src/app/api/audit-logs/export/route.ts`,
+    `src/app/api/audit-logs/export/route.test.ts`,
+    `src/app/api/audit-logs/[id]/review/route.ts`,
+    `src/app/api/audit-logs/[id]/review/route.test.ts`,
+    `src/app/(dashboard)/admin/audit-logs/audit-logs-content.tsx`,
+    `src/app/(dashboard)/admin/audit-logs/audit-logs-content.test.tsx`。
+  - bugs/security risks fixed:
+    高リスク監査ログが単なる表示状態に留まり、誰がレビュー済みにしたかを後から追えない問題を解消。
+    `AuditLogReview` は `org_id + audit_log_id` unique と `audit_log_id + org_id` composite FK で
+    org 不一致をDB側でも抑止。PATCH API は `canAdmin`、org-scoped lookup、no-store、
+    review/reopen 自体の audit log を実施。理由メモは raw text を保存せず
+    `{present,length,redacted}` だけを JSON に残し、監査ログ response/export の PHI 抑制方針を維持。
+  - performance issues improved:
+    list/export は表示対象 log id の review row だけを batch 取得し、row ごとの追加 fetch を避けた。
+    管理画面のレビュー操作は既存 query を refetch する最小導線で、外部通知・バックグラウンド job は追加していない。
+  - validation commands/results:
+    `pnpm db:generate` green;
+    `pnpm exec vitest run src/lib/audit-logs/review.test.ts src/app/api/audit-logs/route.test.ts src/app/api/audit-logs/export/route.test.ts src/app/api/audit-logs/'[id]'/review/route.test.ts src/app/'(dashboard)'/admin/audit-logs/audit-logs-content.test.tsx --reporter=dot --testTimeout=30000`
+    green（5 files / 81 tests）;
+    `pnpm exec prettier --check <AUD-001 TS/TSX files>` green（Prisma/SQL は parser 推定不可のため対象外、TS/TSX は check 済み）;
+    `pnpm exec eslint <AUD-001 TS/TSX files>` green;
+    `git diff --check -- <AUD-001 owned files>` green;
+    initial `pnpm typecheck` は Node heap OOM after successful Next typegen;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。
+  - remaining work:
+    監査ログレビューの reason code registry、reviewer フィルタ、監査ログ閲覧の high-risk 自己増殖抑制、
+    Audit Review Dashboard の集計UI、audit log response の共有型化は未着手。
+  - next action:
+    `UX-006 Audit Review Dashboard` の集計/フィルタ強化、または `PERF-X-001/002`
+    critical BFF instrumentation / payload budget へ進む。
+
 - codex: DASH-PERF-001 Dashboard browser verification / route-mock contract follow-up complete（commit `65517800e`）。
   - current task:
     前 commit `c5d96d423` の dashboard segmented query UI を real-browser smoke で検証。
