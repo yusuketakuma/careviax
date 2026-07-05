@@ -6,6 +6,7 @@ import {
   adaptDispenseTaskToRiskFinding,
   adaptOperationalTaskToRiskFinding,
   adaptPatientFoundationItemToRiskFinding,
+  adaptPrescriptionLineReconciliationToRiskFinding,
   adaptUpcomingVisitPreparationToRiskFindings,
   adaptVisitReadyTransitionBlockersToRiskFindings,
   riskFindingToTaskDedupeKey,
@@ -321,6 +322,42 @@ describe('risk-finding-registry adapters', () => {
       due_at: '2026-07-01T00:00:00.000Z',
     });
     expect(JSON.stringify(urgent)).not.toContain('provider raw error');
+  });
+
+  it('maps prescription line reconciliation gaps without exposing drug names', () => {
+    const missingMaster = adaptPrescriptionLineReconciliationToRiskFinding(
+      {
+        id: 'line/1?x=1',
+        drug_master_id: null,
+        drug_resolution_status: 'code_not_found',
+      },
+      { patientId: 'patient_1', caseId: 'case_1' },
+    );
+    const provisional = adaptPrescriptionLineReconciliationToRiskFinding(
+      {
+        id: 'line_2',
+        drug_master_id: 'drug_1',
+        drug_resolution_status: 'ambiguous_code',
+      },
+      { patientId: 'patient_1', caseId: 'case_1' },
+    );
+
+    expect(missingMaster).toMatchObject({
+      key: 'drug_master_reconciliation:line/1?x=1',
+      domain: 'medication',
+      severity: 'urgent',
+      title: '薬剤マスタ照合が必要です',
+      related_entity_type: 'prescription_line',
+      related_entity_id: 'line/1?x=1',
+      action_label: '薬剤マスタを照合',
+    });
+    expect(missingMaster.action_href).toBe(
+      `/medications/reconciliation?line_id=${encodeURIComponent('line/1?x=1')}`,
+    );
+    expect(provisional).toMatchObject({
+      severity: 'warning',
+    });
+    expect(JSON.stringify([missingMaster, provisional])).not.toContain('アムロジピン');
   });
 
   it('keeps patient foundation task dedupe keys distinct per patient', () => {

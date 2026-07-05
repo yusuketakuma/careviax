@@ -707,11 +707,15 @@ FE 仕上げ（低優先）:
   - 2026-07-06 追加 partial: open `DispenseTask` を `MedicationCycle.case_id` / `patient_id` で
     case scope し、`adaptDispenseTaskToRiskFinding` で dispensing domain へ接続。調剤/監査/セット準備の
     未完了タスクを controlled finding と encoded `/dispense?taskId=` href で返す。
+  - 2026-07-06 追加 partial: `PrescriptionLine.drug_master_id` 欠落または
+    `drug_resolution_status != resolved` を `MedicationCycle.case_id` / `patient_id` で case scope し、
+    `adaptPrescriptionLineReconciliationToRiskFinding` で medication domain へ接続。薬剤名は返さず、
+    prescription line id と controlled 文言だけで薬剤マスタ照合待ちを示す。
 - 残:
   - CORE-001 の shared Risk Finding Registry へ型を寄せる作業は初期完了。Case Risk Cockpit の
-    billing/task/report/visit_preparation/consent_plan lifecycle/dispensing finding は adapter 化済み。残は
-    domain adapter 拡張と未接続 domain の段階的 adapter 化。
-  - medication / notification / privacy_security / integration /
+    billing/task/report/visit_preparation/consent_plan lifecycle/dispensing/medication reconciliation finding は
+    adapter 化済み。残は domain adapter 拡張と未接続 domain の段階的 adapter 化。
+  - notification / privacy_security / integration /
     data_quality adapter を追加。
   - 患者/ケース詳細 UI の Command Center から呼び、`gpt-image-2` 方針に従う非 PHI 参照案と
     mobile/error state を確認してから配置する。

@@ -15,6 +15,7 @@ import {
   adaptConsentPlanLifecycleToRiskFindings,
   adaptDispenseTaskToRiskFinding,
   adaptOperationalTaskToRiskFinding,
+  adaptPrescriptionLineReconciliationToRiskFinding,
   adaptUpcomingVisitPreparationToRiskFindings,
 } from '@/server/services/risk-finding-registry';
 import type {
@@ -40,6 +41,7 @@ type CaseRiskCockpitDbReader = {
   visitSchedule: FindManyDelegate<VisitScheduleRow>;
   careReport: FindManyDelegate<CareReportRow>;
   dispenseTask: FindManyDelegate<DispenseTaskRow>;
+  prescriptionLine: FindManyDelegate<PrescriptionLineRiskRow>;
   task: FindManyDelegate<TaskRow>;
   billingEvidence: FindManyDelegate<BillingEvidenceRow>;
 };
@@ -107,6 +109,12 @@ type DispenseTaskRow = {
   status: string;
   assigned_to: string | null;
   due_date: Date | null;
+};
+
+type PrescriptionLineRiskRow = {
+  id: string;
+  drug_master_id: string | null;
+  drug_resolution_status: string | null;
 };
 
 type TaskRow = {
@@ -268,6 +276,22 @@ function pushDispensingFindings(args: {
   }
 }
 
+function pushMedicationFindings(args: {
+  findings: CaseRiskFinding[];
+  patientId: string;
+  caseId: string;
+  prescriptionLines: PrescriptionLineRiskRow[];
+}) {
+  for (const line of args.prescriptionLines) {
+    args.findings.push(
+      adaptPrescriptionLineReconciliationToRiskFinding(line, {
+        patientId: args.patientId,
+        caseId: args.caseId,
+      }),
+    );
+  }
+}
+
 function pushTaskFindings(args: {
   findings: CaseRiskFinding[];
   patientId: string;
@@ -354,143 +378,179 @@ export async function getCaseRiskCockpit(
 
   const patientHref = buildPatientHref(careCase.patient.id);
 
-  const [consent, managementPlan, firstVisitDocument, schedules, reports, dispenseTasks, tasks] =
-    await Promise.all([
-      db.consentRecord.findFirst({
-        where: {
-          org_id: args.orgId,
-          patient_id: careCase.patient_id,
-          consent_type: 'visit_medication_management',
-          is_active: true,
-          revoked_date: null,
-          OR: [{ expiry_date: null }, { expiry_date: { gte: now } }],
+  const [
+    consent,
+    managementPlan,
+    firstVisitDocument,
+    schedules,
+    reports,
+    dispenseTasks,
+    prescriptionLines,
+    tasks,
+  ] = await Promise.all([
+    db.consentRecord.findFirst({
+      where: {
+        org_id: args.orgId,
+        patient_id: careCase.patient_id,
+        consent_type: 'visit_medication_management',
+        is_active: true,
+        revoked_date: null,
+        OR: [{ expiry_date: null }, { expiry_date: { gte: now } }],
+      },
+      orderBy: [{ obtained_date: 'desc' }],
+      select: {
+        id: true,
+        expiry_date: true,
+      },
+    }),
+    db.managementPlan.findFirst({
+      where: {
+        org_id: args.orgId,
+        case_id: careCase.id,
+        status: 'approved',
+        approved_at: { not: null },
+        OR: [{ effective_from: null }, { effective_from: { lte: now } }],
+      },
+      orderBy: [{ effective_from: 'desc' }, { version: 'desc' }, { approved_at: 'desc' }],
+      select: {
+        id: true,
+        next_review_date: true,
+      },
+    }),
+    db.firstVisitDocument.findFirst({
+      where: {
+        org_id: args.orgId,
+        patient_id: careCase.patient_id,
+        case_id: careCase.id,
+      },
+      orderBy: [{ created_at: 'desc' }],
+      select: {
+        id: true,
+        delivered_at: true,
+      },
+    }),
+    db.visitSchedule.findMany({
+      where: {
+        org_id: args.orgId,
+        case_id: careCase.id,
+        schedule_status: {
+          in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress'],
         },
-        orderBy: [{ obtained_date: 'desc' }],
-        select: {
-          id: true,
-          expiry_date: true,
-        },
-      }),
-      db.managementPlan.findFirst({
-        where: {
-          org_id: args.orgId,
-          case_id: careCase.id,
-          status: 'approved',
-          approved_at: { not: null },
-          OR: [{ effective_from: null }, { effective_from: { lte: now } }],
-        },
-        orderBy: [{ effective_from: 'desc' }, { version: 'desc' }, { approved_at: 'desc' }],
-        select: {
-          id: true,
-          next_review_date: true,
-        },
-      }),
-      db.firstVisitDocument.findFirst({
-        where: {
-          org_id: args.orgId,
-          patient_id: careCase.patient_id,
-          case_id: careCase.id,
-        },
-        orderBy: [{ created_at: 'desc' }],
-        select: {
-          id: true,
-          delivered_at: true,
-        },
-      }),
-      db.visitSchedule.findMany({
-        where: {
-          org_id: args.orgId,
-          case_id: careCase.id,
-          schedule_status: {
-            in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress'],
+      },
+      orderBy: [{ scheduled_date: 'asc' }, { updated_at: 'desc' }],
+      take: 5,
+      select: {
+        id: true,
+        display_id: true,
+        schedule_status: true,
+        scheduled_date: true,
+        carry_items_status: true,
+        preparation: {
+          select: {
+            id: true,
+            medication_changes_reviewed: true,
+            carry_items_confirmed: true,
+            previous_issues_reviewed: true,
+            route_confirmed: true,
+            offline_synced: true,
           },
         },
-        orderBy: [{ scheduled_date: 'asc' }, { updated_at: 'desc' }],
-        take: 5,
-        select: {
-          id: true,
-          display_id: true,
-          schedule_status: true,
-          scheduled_date: true,
-          carry_items_status: true,
-          preparation: {
-            select: {
-              id: true,
-              medication_changes_reviewed: true,
-              carry_items_confirmed: true,
-              previous_issues_reviewed: true,
-              route_confirmed: true,
-              offline_synced: true,
-            },
-          },
-          visit_record: {
-            select: {
-              id: true,
-            },
+        visit_record: {
+          select: {
+            id: true,
           },
         },
-      }),
-      db.careReport.findMany({
-        where: {
+      },
+    }),
+    db.careReport.findMany({
+      where: {
+        org_id: args.orgId,
+        patient_id: careCase.patient_id,
+        case_id: careCase.id,
+        status: { in: ['failed', 'response_waiting'] },
+      },
+      orderBy: [{ updated_at: 'desc' }],
+      take: 5,
+      select: {
+        id: true,
+        display_id: true,
+        status: true,
+        updated_at: true,
+      },
+    }),
+    db.dispenseTask.findMany({
+      where: {
+        org_id: args.orgId,
+        status: { in: ['pending', 'in_progress'] },
+        cycle: {
           org_id: args.orgId,
-          patient_id: careCase.patient_id,
           case_id: careCase.id,
-          status: { in: ['failed', 'response_waiting'] },
+          patient_id: careCase.patient_id,
         },
-        orderBy: [{ updated_at: 'desc' }],
-        take: 5,
-        select: {
-          id: true,
-          display_id: true,
-          status: true,
-          updated_at: true,
-        },
-      }),
-      db.dispenseTask.findMany({
-        where: {
-          org_id: args.orgId,
-          status: { in: ['pending', 'in_progress'] },
+      },
+      orderBy: [{ priority: 'asc' }, { due_date: 'asc' }, { updated_at: 'desc' }],
+      take: 5,
+      select: {
+        id: true,
+        priority: true,
+        status: true,
+        assigned_to: true,
+        due_date: true,
+      },
+    }),
+    db.prescriptionLine.findMany({
+      where: {
+        org_id: args.orgId,
+        intake: {
           cycle: {
             org_id: args.orgId,
             case_id: careCase.id,
             patient_id: careCase.patient_id,
           },
         },
-        orderBy: [{ priority: 'asc' }, { due_date: 'asc' }, { updated_at: 'desc' }],
-        take: 5,
-        select: {
-          id: true,
-          priority: true,
-          status: true,
-          assigned_to: true,
-          due_date: true,
-        },
-      }),
-      db.task.findMany({
-        where: {
-          org_id: args.orgId,
-          status: { in: ['pending', 'in_progress'] },
-          OR: [
-            { related_entity_type: 'case', related_entity_id: careCase.id },
-            { related_entity_type: 'patient', related_entity_id: careCase.patient_id },
-          ],
-        },
-        orderBy: [{ priority: 'asc' }, { sla_due_at: 'asc' }, { due_date: 'asc' }],
-        take: 8,
-        select: {
-          id: true,
-          task_type: true,
-          title: true,
-          priority: true,
-          status: true,
-          assigned_to: true,
-          due_date: true,
-          sla_due_at: true,
-          related_entity_type: true,
-          related_entity_id: true,
-        },
-      }),
-    ]);
+        OR: [
+          { drug_master_id: null },
+          {
+            AND: [
+              { drug_resolution_status: { not: null } },
+              { drug_resolution_status: { not: 'resolved' } },
+            ],
+          },
+        ],
+      },
+      orderBy: [{ updated_at: 'desc' }],
+      take: 8,
+      select: {
+        id: true,
+        drug_master_id: true,
+        drug_resolution_status: true,
+      },
+    }),
+    db.task.findMany({
+      where: {
+        org_id: args.orgId,
+        status: { in: ['pending', 'in_progress'] },
+        OR: [
+          { related_entity_type: 'case', related_entity_id: careCase.id },
+          { related_entity_type: 'patient', related_entity_id: careCase.patient_id },
+        ],
+      },
+      orderBy: [{ priority: 'asc' }, { sla_due_at: 'asc' }, { due_date: 'asc' }],
+      take: 8,
+      select: {
+        id: true,
+        task_type: true,
+        title: true,
+        priority: true,
+        status: true,
+        assigned_to: true,
+        due_date: true,
+        sla_due_at: true,
+        related_entity_type: true,
+        related_entity_id: true,
+      },
+    }),
+  ]);
 
   const scopedConsent = consent as ConsentRow | null;
   const scopedManagementPlan = managementPlan as ManagementPlanRow | null;
@@ -498,6 +558,7 @@ export async function getCaseRiskCockpit(
   const selectedSchedules = schedules as VisitScheduleRow[];
   const selectedReports = reports as CareReportRow[];
   const selectedDispenseTasks = dispenseTasks as DispenseTaskRow[];
+  const selectedPrescriptionLines = prescriptionLines as PrescriptionLineRiskRow[];
   const selectedTasks = tasks as TaskRow[];
 
   const visitRecordIds = selectedSchedules
@@ -568,6 +629,12 @@ export async function getCaseRiskCockpit(
     caseId: careCase.id,
     dispenseTasks: selectedDispenseTasks,
     now,
+  });
+  pushMedicationFindings({
+    findings,
+    patientId: careCase.patient_id,
+    caseId: careCase.id,
+    prescriptionLines: selectedPrescriptionLines,
   });
   pushTaskFindings({
     findings,

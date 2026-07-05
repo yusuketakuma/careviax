@@ -84,6 +84,12 @@ export type DispenseTaskRiskInput = {
   due_date?: Date | string | null;
 };
 
+export type PrescriptionLineReconciliationRiskInput = {
+  id: string;
+  drug_master_id?: string | null;
+  drug_resolution_status?: string | null;
+};
+
 const BILLING_BLOCKER_TITLE: Record<BillingEvidenceBlocker['key'], string> = {
   missing_visit_consent: '訪問同意が未整備です',
   missing_management_plan: '管理計画書が未整備です',
@@ -149,6 +155,12 @@ function dispenseTaskSeverity(task: DispenseTaskRiskInput, now = new Date()): Ri
   const due = task.due_date ? new Date(task.due_date) : null;
   if (due && !Number.isNaN(due.getTime()) && due < now) return 'urgent';
   return 'warning';
+}
+
+function prescriptionLineReconciliationSeverity(
+  line: PrescriptionLineReconciliationRiskInput,
+): RiskSeverity {
+  return !line.drug_master_id ? 'urgent' : 'warning';
 }
 
 function foundationSeverity(status: PatientFoundationItem['status']): RiskSeverity {
@@ -503,6 +515,25 @@ export function adaptDispenseTaskToRiskFinding(
     related_entity_id: task.id,
     action_href: buildDispenseTaskHref(task.id),
     action_label: '調剤タスクを確認',
+  });
+}
+
+export function adaptPrescriptionLineReconciliationToRiskFinding(
+  line: PrescriptionLineReconciliationRiskInput,
+  context: RiskFindingAdapterContext = {},
+): RiskFinding {
+  return createRiskFinding({
+    key: `drug_master_reconciliation:${line.id}`,
+    domain: 'medication',
+    severity: prescriptionLineReconciliationSeverity(line),
+    title: '薬剤マスタ照合が必要です',
+    detail: '処方行に薬剤マスタ未照合または照合状態未確定の項目があります。',
+    patient_id: context.patientId ?? null,
+    case_id: context.caseId ?? null,
+    related_entity_type: 'prescription_line',
+    related_entity_id: line.id,
+    action_href: `/medications/reconciliation?line_id=${encodeURIComponent(line.id)}`,
+    action_label: '薬剤マスタを照合',
   });
 }
 

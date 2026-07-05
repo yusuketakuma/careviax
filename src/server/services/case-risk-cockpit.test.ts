@@ -10,6 +10,7 @@ function buildDb() {
     visitSchedule: { findMany: vi.fn() },
     careReport: { findMany: vi.fn() },
     dispenseTask: { findMany: vi.fn() },
+    prescriptionLine: { findMany: vi.fn() },
     task: { findMany: vi.fn() },
     billingEvidence: { findMany: vi.fn() },
   };
@@ -67,6 +68,7 @@ describe('getCaseRiskCockpit', () => {
     expect(db.visitSchedule.findMany).not.toHaveBeenCalled();
     expect(db.careReport.findMany).not.toHaveBeenCalled();
     expect(db.dispenseTask.findMany).not.toHaveBeenCalled();
+    expect(db.prescriptionLine.findMany).not.toHaveBeenCalled();
     expect(db.task.findMany).not.toHaveBeenCalled();
     expect(db.billingEvidence.findMany).not.toHaveBeenCalled();
   });
@@ -114,6 +116,13 @@ describe('getCaseRiskCockpit', () => {
         status: 'pending',
         assigned_to: 'user_3',
         due_date: null,
+      },
+    ]);
+    db.prescriptionLine.findMany.mockResolvedValue([
+      {
+        id: 'line/1',
+        drug_master_id: null,
+        drug_resolution_status: 'code_not_found',
       },
     ]);
     db.task.findMany.mockResolvedValue([
@@ -199,7 +208,7 @@ describe('getCaseRiskCockpit', () => {
     expect(result?.overall).toMatchObject({
       status: 'blocked',
       blocking_count: 3,
-      urgent_count: 2,
+      urgent_count: 3,
       warning_count: 4,
     });
 
@@ -211,6 +220,7 @@ describe('getCaseRiskCockpit', () => {
         'first_visit_document_not_delivered',
         'visit_carry_items_blocked:schedule/1',
         'visit_preparation_incomplete:schedule/1',
+        'drug_master_reconciliation:line/1',
         'dispense_task:dispense/1',
         'report_delivery_failed:report_1',
         'task:task/1',
@@ -266,6 +276,20 @@ describe('getCaseRiskCockpit', () => {
         }),
       }),
     );
+    expect(db.prescriptionLine.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          intake: {
+            cycle: {
+              org_id: 'org_1',
+              case_id: 'case_1',
+              patient_id: patientId,
+            },
+          },
+        }),
+      }),
+    );
     expect(db.billingEvidence.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -293,6 +317,7 @@ describe('getCaseRiskCockpit', () => {
     db.visitSchedule.findMany.mockResolvedValue([]);
     db.careReport.findMany.mockResolvedValue([]);
     db.dispenseTask.findMany.mockResolvedValue([]);
+    db.prescriptionLine.findMany.mockResolvedValue([]);
     db.task.findMany.mockResolvedValue([
       {
         id: 'task_due_jst',

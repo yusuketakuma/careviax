@@ -40,6 +40,63 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Case Risk Cockpit medication reconciliation registry adapter slice（committed）。
+  - current task:
+    `Plans.md` の `RISK-CORE-3 / CORE-003` / medication adapter 拡張として、
+    `PrescriptionLine.drug_master_id` 欠落または `drug_resolution_status != resolved` を
+    Case Risk Cockpit に接続した。query は `PrescriptionIntake.cycle.case_id` / `patient_id` / `org_id` で
+    case scope し、`adaptPrescriptionLineReconciliationToRiskFinding` が medication domain の
+    controlled finding を返す。
+  - subagent:
+    新規投入なし。既存 subagent thread 上限により、Codex 本体で schema / inventory forecast の
+    unresolved status 既存語彙 / cockpit / registry / tests を確認して実装・検証した。
+  - design / imagegen:
+    backend adapter/API response slice で視覚レイアウト変更を伴わないため、`imagegen` / `gpt-image-2` の
+    新規生成は省略。薬剤照合 risk を患者詳細 Command Center や Drug Master Reconciliation Queue に
+    表示する UI slice では PH-OS UI/UX SSOT に従う。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `prisma/schema/prescription.prisma`,
+    `src/lib/analytics/inventory-forecast.ts`,
+    `src/server/services/case-risk-cockpit.ts`,
+    `src/server/services/case-risk-cockpit.test.ts`,
+    `src/server/services/risk-finding-registry.ts`,
+    `src/server/services/risk-finding-registry.test.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/case-risk-cockpit.ts`,
+    `src/server/services/case-risk-cockpit.test.ts`,
+    `src/server/services/risk-finding-registry.ts`,
+    `src/server/services/risk-finding-registry.test.ts`.
+  - bugs / risks reduced:
+    Case Risk Cockpit の medication section が空のままで、薬剤マスタ未照合/照合状態未確定が
+    患者/ケース単位の risk に出なかった。未照合 prescription line を medication risk として返し、
+    drug_master_id 欠落は urgent、照合状態未確定は warning として扱う。
+  - security / PHI reviewed:
+    新規 DB field / PHI field は追加していない。薬剤名、用法、dose、notes は select せず、
+    prescription line id / drug_master_id 有無 / drug_resolution_status だけから controlled finding を作る。
+    action href は encoded line id だけを持つ。
+  - performance issues improved:
+    Case scope 後の bounded `take: 8` query を追加。既存 `PrescriptionLine(org_id, drug_master_id)` /
+    `PrescriptionLine(org_id, drug_resolution_status)` と `PrescriptionIntake(cycle_id)`、
+    `MedicationCycle(case_id)` の relation 条件に沿う。payload は id/drug_master_id/status の最小 select。
+  - validation commands:
+    `pnpm exec vitest run src/server/services/case-risk-cockpit.test.ts src/server/services/risk-finding-registry.test.ts src/lib/risk/risk-finding.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm typecheck`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`;
+    `pnpm lint`.
+  - validation results:
+    focused vitest green（3 files / 20 tests）; typecheck green; typecheck:no-unused green;
+    `pnpm lint` green with existing unrelated warnings in `src/lib/platform/break-glass.test.ts`
+    (`_tx`, `_input` unused warnings only).
+  - remaining work:
+    Broader `Plans.md` objective remains open。残: notification / privacy_security / integration /
+    data_quality adapters、Drug Master Reconciliation Queue UI、Case Risk Cockpit UI 接続、
+    RiskFinding -> OperationalTask bridge の実 domain 接続。
+
 - codex: Case Risk Cockpit dispensing registry adapter slice（committed）。
   - current task:
     `Plans.md` の `RISK-CORE-3 / CORE-003` / dispensing adapter 拡張として、open `DispenseTask`
