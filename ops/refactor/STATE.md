@@ -40,6 +40,29 @@
 
 ## 直近の land（本日・要点）
 
+- codex: VS-AUTO-1 DeadlinePolicy pure helper slice(in-progress on main) implementation complete。
+  `src/server/services/visit-medication-deadline.ts` に既存 `resolveMedicationDeadlineSummary` を残したまま
+  `resolveVisitDeadlinePolicy` を追加。policy boundary は Asia/Tokyo `YYYY-MM-DD` dateKey で、
+  `rawDeadlineDateKey` / `latestVisitableDateKey` / `recommendedDeadlineDateKey`、provenance付き
+  `deadlineCandidates[]`、machine-readable `diagnostics[]`、PHI/free-text を含まない `reviewReasons[]` を返す。
+  `OperatingCalendar` または dateKey predicate を受け、`nearestOperatingDay(..., 'backward')` と
+  `addOperatingDays(..., -buffer)` 相当で休業日補正と営業日 buffer を適用。PRN は通常期限から除外し、
+  name-only / drug identity 未解決 / external・topical / stockout / manual locked date は review required として返す。
+  `MedicationDeadlineIntake` / `MedicationDeadlineLine` には optional provenance fields を追加したが、
+  planner/daily/API/DB select への接続は VS-AUTO-2 以降に分離。SSOT の必要時変更許可 (product API/DB/auth/
+  authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは pure service helper/test/docs/SSOT のみ変更。
+  DB schema/migration/auth/authorization/tenant_id/PHI payload/billing/deploy/package dependency 変更は不要。
+  subagents: implementation_planner APPROVE、medical_safety_reviewer/test_architect は provenance/dateKey/review
+  reason coverage を CHANGES_REQUESTED として指摘し、name-only / stockout / topical / UTC TZ tests を追加して対応。
+  validation:
+  `pnpm exec vitest run src/server/services/visit-medication-deadline.test.ts src/lib/calendar/operating-day.test.ts src/lib/utils/date-boundary.test.ts src/lib/validations/date-key-shared-schemas.test.ts --reporter=dot --testTimeout=30000`
+  green（4 files / 71 tests）;
+  `TZ=UTC pnpm exec vitest run src/server/services/visit-medication-deadline.test.ts src/lib/calendar/operating-day.test.ts src/lib/utils/date-boundary.test.ts --reporter=dot --testTimeout=30000`
+  green（3 files / 69 tests）;
+  `pnpm exec vitest run src/server/services/visit-schedule-planner.test.ts src/server/jobs/daily.test.ts --reporter=dot --testTimeout=30000`
+  green（2 files / 89 tests、既存 daily info logs は非fatal）; scoped eslint green; `pnpm format:check` green;
+  `git diff --check` green; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` green。next: scoped commit → origin/main push。
 - codex: VS-AUTO-0/0b direct generate cordon slice(in-progress on
   `refactor/visit-schedule-generate-cordon-20260705`) implementation in progress。`Plans.md` の
   訪問スケジュール自動提案トラックに従い、`POST /api/visit-schedules/generate` の実体が

@@ -266,25 +266,26 @@ FE 仕上げ（低優先）:
 
 #### VS-AUTO-1. 営業日バッファ付き DeadlinePolicy（DBなし pure first） `cc:TODO`
 
-- [ ] `src/server/services/visit-medication-deadline.ts` に後方互換 API を残したまま `resolveVisitDeadlinePolicy`（仮）を追加する。
+- [x] `src/server/services/visit-medication-deadline.ts` に既存 summary API を残したまま `resolveVisitDeadlinePolicy` を追加する。2026-07-05:
+      新helperは DB/API/UI に未接続の pure policy。既存 `resolveMedicationDeadlineSummary` の Date contract は維持。
   - 入力: 既存 `MedicationDeadlineIntake[]`、`nextVisitSuggestionDate`、`planningStartDateKey`、`OperatingCalendar` または visitable date predicate、`safetyBufferOperatingDays`、任意の stockout candidate。
   - 出力: `rawDeadlineDateKey`、`latestVisitableDateKey`、`recommendedDeadlineDateKey`、`deadlineCandidates[]`、`diagnostics[]`、`reviewReasons[]`。
-- [ ] `DeadlineCandidate` は provenance を必須にする:
+- [x] `DeadlineCandidate` は provenance を必須にする:
   - `source_kind`: `regular_medication_end` / `next_dispense` / `next_visit_suggestion` / `stockout_estimate` / `manual_locked_date`。
   - `prescription_intake_id` / `prescription_line_id` / `drug_master_id` / `drug_code` / `source_drug_code` は取得できる場合に保持し、名前だけの候補は `confidence='low'` + review required。
   - `raw_date_key` / `adjusted_date_key` / `confidence` / `requires_pharmacist_review` / `reason_code` / `audit_ref` を持つ。
-- [ ] 現行 `MedicationDeadlineLine` は `drug_name` 等だけなので、planner/API 接続時に `PrescriptionLine.id` / `drug_master_id` / `drug_code` / `source_drug_code` を select に追加する。未解決 drug master・同名別規格・差分不明は hard review gate 候補にする。
-- [ ] 既存 `resolveMedicationDeadlineSummary` はそのまま維持し、既存 route/planner/tests の `visitDeadlineDate` 互換を壊さない。
-- [ ] `rawDeadline` が休業日/訪問不可日なら `nearestOperatingDay(..., 'backward')` 相当で直前訪問可能日へ補正し、そこから `addOperatingDays(..., -buffer)` で recommended deadline を作る。
-- [ ] Date object を直接 policy 境界に広げず、`operating-day.ts` の方針通り Asia/Tokyo 業務日の `YYYY-MM-DD` date key を主入出力にする。DB `@db.Date` 変換は caller/adapter 層。
-- [ ] 頓服/外用薬は通常薬期限から引き続き除外し、HR 前は `reviewReasons` のみで患者連絡を進めない設計にする。
+- [ ] 現行 planner/daily の select は `drug_name` 等だけなので、VS-AUTO-2 接続時に `PrescriptionLine.id` / `drug_master_id` / `drug_code` / `source_drug_code` を select に追加する。未解決 drug master・同名別規格・差分不明は hard review gate 候補にする。
+- [x] 既存 `resolveMedicationDeadlineSummary` はそのまま維持し、既存 route/planner/tests の `visitDeadlineDate` 互換を壊さない。
+- [x] `rawDeadline` が休業日/訪問不可日なら `nearestOperatingDay(..., 'backward')` 相当で直前訪問可能日へ補正し、そこから `addOperatingDays(..., -buffer)` で recommended deadline を作る。
+- [x] Date object を直接 policy 境界に広げず、Asia/Tokyo 業務日の `YYYY-MM-DD` date key を主入出力にする。DB `@db.Date` 変換は caller/adapter 層。
+- [x] 頓服は通常薬 deadline から除外。外用/貼付などは通常候補に残すが `requires_pharmacist_review=true` と `reviewReasons` を必ず返し、患者連絡前 gate 接続は VS-AUTO-7 以降に分離。
 - テスト:
-  - 日曜に薬切れ、月-金のみ訪問可能、buffer=1 → 金曜補正後に木曜。
-  - 祝日・連休中に薬切れ → 連休前最終訪問可能日から営業日 buffer を引く。
-  - buffer が recommended deadline を planningStart より前へ押し戻す → overdue/asap diagnostic。
-  - PRN は通常薬 deadline から除外される既存テストを維持。
-  - 同一薬名別規格、drug master 未解決、外用 route、drug change risk が provenance/review reason を持つ。
-  - `TZ=UTC` でも JST 23:30/00:30 相当の locked_date / preferred weekdays / holiday 判定がずれない。
+  - [x] 日曜に薬切れ、月-金のみ訪問可能、buffer=1 → 金曜補正後に木曜。
+  - [x] 祝日・連休中に薬切れ → 連休前最終訪問可能日から営業日 buffer を引く。
+  - [x] buffer が recommended deadline を planningStart より前へ押し戻す → overdue/asap diagnostic。
+  - [x] PRN は通常薬 deadline から除外される既存テストを維持。
+  - [x] name-only / drug identity 未解決、外用 route、stockout candidate が provenance/review reason を持つ。
+  - [x] `TZ=UTC` でも JST dateKey 境界がずれない。
 - rollback: policy 接続 commit を revert。既存 `resolveMedicationDeadlineSummary` に戻せる。
 
 #### VS-AUTO-2. Planner deadline 接続と per-site 訪問可能期限 `cc:TODO`
