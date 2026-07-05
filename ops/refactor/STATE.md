@@ -4034,3 +4034,51 @@
   Broader `Plans.md` objective remains open. `DSP-PERF-001/002` の残りは `MAX_CYCLES=500` の
   cursor pagination、phase facet counts、代表 task id hydration の query count/payload budget
   計測、compact mode、set / set-audit の SetPlan query 最適化、browser smoke。
+
+## 2026-07-06 Global Search Prescription q Contract Cleanup
+
+- codex: `RX-REG-UX-001 / RX-REG-UX-002` partial implemented.
+  処方受付 API は server-side `q` と facet counts を既に持つため、全体検索 `/search` に残っていた
+  「処方受付 q 未対応」前提の patient.name client filter と古いコメントを削除した。これにより、
+  処方医・医療機関・受付番号など API 側 q に一致した処方結果を、患者名が検索語を含まないという
+  理由で落とさない。
+- design / imagegen:
+  視覚設計変更を伴わない contract cleanup のため、`imagegen` / `gpt-image-2` の新規生成は省略。
+  `/search` の視覚構造や処方カテゴリ UI を再配置する slice では PH-OS UI/UX SSOT の
+  `gpt-image-2` 方針を適用する。
+- files inspected:
+  `git status --short --branch --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/(dashboard)/search/search-content.tsx`,
+  `src/app/(dashboard)/search/search-content.test.tsx`,
+  `src/app/(dashboard)/prescriptions/prescriptions-workspace.tsx`,
+  `src/app/(dashboard)/prescriptions/prescriptions-workspace.test.tsx`,
+  `src/app/api/prescription-intakes/route.ts`,
+  `src/app/api/prescription-intakes/route.test.ts`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/(dashboard)/search/search-content.tsx`,
+  `src/app/(dashboard)/search/search-content.test.tsx`.
+- bugs fixed:
+  `/search` が `/api/prescription-intakes?q=...` の結果をさらに患者名で client-side filter していたため、
+  処方医・医療機関・受付番号等で一致した server-side q result が表示されない可能性があった。
+  テストで「患者名は一致しないが処方 context で API が返した結果」を固定した。
+- security/PHI reviewed:
+  新規 API field や PHI 出力は追加していない。既存の bounded `/api/prescription-intakes?q=...&limit=8`
+  response をそのまま共有 builder で表示し、client-side で追加ログや検索語付き metrics key は作っていない。
+- validation:
+  `pnpm exec vitest run 'src/app/(dashboard)/search/search-content.test.tsx' --reporter=dot --testTimeout=30000`
+  green (1 file / 21 tests);
+  `pnpm exec eslint 'src/app/(dashboard)/search/search-content.tsx' 'src/app/(dashboard)/search/search-content.test.tsx'`
+  green;
+  `pnpm exec prettier --check 'src/app/(dashboard)/search/search-content.tsx' 'src/app/(dashboard)/search/search-content.test.tsx'`
+  green;
+  `git diff --check -- 'src/app/(dashboard)/search/search-content.tsx' 'src/app/(dashboard)/search/search-content.test.tsx'`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck --pretty false` green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false` green.
+- remaining:
+  Broader `Plans.md` objective remains open. 残りは `/search` 側の prescription facet 表示、
+  処方受付 workspace との検索語彙統一、global search payload budget、browser smoke。

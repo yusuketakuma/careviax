@@ -98,7 +98,9 @@ function setupFetchMocks(overrides: Partial<Record<string, unknown>> = {}) {
         json: () => Promise.resolve(overrides.medicationDeadlines ?? MEDICATION_DEADLINE_RESULTS),
       });
     }
-    if (url.includes('/api/prescription-intakes')) return makeJsonResponse([]);
+    if (url.includes('/api/prescription-intakes')) {
+      return makeJsonResponse(overrides.prescriptions ?? []);
+    }
     if (url.includes('/api/drug-masters')) {
       return makeJsonResponse(overrides.drugs ?? DRUG_RESULTS);
     }
@@ -265,6 +267,37 @@ describe('SearchContent', () => {
 
     expect(screen.getByText(/薬剤 1件 \/ 全カテゴリ/)).toBeTruthy();
     expect(screen.getByText('アムロジピン錠')).toBeTruthy();
+  });
+
+  it('keeps prescription API q results that match prescriber context instead of patient name', async () => {
+    setupFetchMocks({
+      patients: [],
+      drugs: [],
+      prescriptions: [
+        {
+          id: 'rx0001',
+          prescribed_date: '2026-06-20T00:00:00.000Z',
+          prescriber_institution: { name: '在宅クリニック' },
+          cycle: {
+            overall_status: 'intake',
+            case_: {
+              patient: { name: '鈴木 二郎' },
+            },
+          },
+        },
+      ],
+    });
+    render(<SearchContent />);
+    await triggerSearch('佐藤');
+
+    const categoryGroup = screen.getByRole('group', { name: '検索カテゴリの絞り込み' });
+    await act(async () => {
+      fireEvent.click(within(categoryGroup).getByRole('button', { name: /処方カード/ }));
+    });
+
+    expect(screen.getByText(/処方カード 1件 \/ 全カテゴリ 1件/)).toBeTruthy();
+    expect(screen.getByText('RX-202606-0001')).toBeTruthy();
+    expect(screen.getByText('在宅クリニック / 6/20処方')).toBeTruthy();
   });
 
   it('renders ListOpenCard with badge, title, and 開く button', async () => {

@@ -329,9 +329,6 @@ export function SearchContent({
             `/api/visit-schedule-proposals?${visitScheduleParams.toString()}`,
             requestInit,
           ),
-          // prescription-intakes の q は API 側未実装(source_type/status のみ対応)のため
-          // クライアント側で patient.name による前方一致フィルタを補完する。
-          // 将来 API 側 q 実装時にフィルタ除去可。
           fetchSearchCategory(
             'prescription',
             `/api/prescription-intakes?q=${q}&limit=${SEARCH_RESULT_LIMIT}${cycleStatusParam}${careTagsParam}`,
@@ -404,16 +401,11 @@ export function SearchContent({
         );
         const proposalData = proposalPayload?.data ?? [];
 
-        // prescription-intakes の API 側 q 未対応のためクライアントフィルタで補完
         const prescriptionPayload = await readSearchJson<{ data: PrescriptionSearchItem[] }>(
           'prescription',
           prescriptionRes,
         );
-        const prescriptionRaw = prescriptionPayload?.data ?? [];
-        const prescriptionData = prescriptionRaw.filter((item) => {
-          const patientName = item.cycle?.case_?.patient?.name ?? '';
-          return patientName.includes(normalized) || normalized.length === 0;
-        });
+        const prescriptionData = prescriptionPayload?.data ?? [];
 
         const medicationDeadlinePayload = await readSearchJson<{
           critical?: { items?: MedicationDeadlineSearchItem[] };

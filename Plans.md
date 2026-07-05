@@ -765,6 +765,13 @@ FE 仕上げ（低優先）:
   cursor pagination、phase facet counts、compact mode、query count / payload SLO、
   set / set-audit の SetPlan query 最適化と browser smoke。
 
+- `RX-REG-UX-001 / RX-REG-UX-002` partial（2026-07-06）: 処方受付 API は server-side `q`
+  と facet counts を既に持つため、全体検索 `/search` に残っていた「処方受付 q 未対応」
+  前提の patient.name client filter を削除した。処方医・医療機関・受付番号など API 側 q に
+  一致した処方結果を、患者名が検索語を含まないという理由で落とさない。視覚設計変更を伴わない
+  contract cleanup のため `imagegen` / `gpt-image-2` 生成は省略。残: `/search` 側の
+  prescription facet 表示、処方受付 workspace との検索語彙統一、global search payload budget。
+
 **追加実装順序**:
 
 1. `UX-CMD-001` + `PERF-BFF-001`: Command Center は重い詳細BFFになりやすいため、最初から summary/detail batch 分割を前提に設計する。
