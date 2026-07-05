@@ -160,6 +160,7 @@ describe('routeCatalog', () => {
       '/api/set-plans',
       '/api/visit-schedules/day-board',
       '/api/visit-schedule-proposals',
+      '/api/visit-schedule-proposals/overload-rebalance-preview',
       '/api/visits/today-preparation',
       '/api/visit-records',
       '/api/visit-records/:id',

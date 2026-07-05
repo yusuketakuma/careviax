@@ -375,6 +375,10 @@ FE 仕上げ（低優先）:
       2026-07-05: `previewVisitScheduleOverloadRebalance` を追加。DB write / cron / API は未接続。
       confirmed schedule + open proposal を occupancy として数え、既存 planner で前倒し replacement draft を
       preview するだけに留める。
+      2026-07-05: `POST /api/visit-schedule-proposals/overload-rebalance-preview` を追加。
+      `canVisit` + `withOrgContext` + no-store の read-only preview API とし、旧 route alias や互換 envelope は
+      追加しない。内部 service DTO は直接公開せず、`case_id` と per-skipped proposal id を落とした
+      API-safe DTO（`preview_only=true`、`apply_available=false`、`unsupported_guards` 明示）へ変換する。
 - [~] 対象は migration 前:
   - `proposal_status='proposed'`
   - `patient_contact_status='pending'`
@@ -397,7 +401,9 @@ FE 仕上げ（低優先）:
   - [~] 前倒し先が期限・シフト・薬剤準備・billing cap を満たさない場合は再配置しない。
     2026-07-05 partial: replacement draft は既存 planner から取得し、destination daily capacity full は skip。
     billing cap / vehicle capacity / review candidate 永続判定は後続。
-  - audit/log に患者詳細や自由記述を過剰保存しない。
+  - [x] audit/log に患者詳細や自由記述を過剰保存しない。
+        2026-07-05: preview API は audit write なし。response は id/date/status/count/reason code と
+        最小 diagnostics に限定し、case id、raw patient / address / medication / free-text clinical detail を追加しない。
 
 #### VS-AUTO-7. HR migration: review fields / availability rule / rebalance audit `cc:TODO HR`
 

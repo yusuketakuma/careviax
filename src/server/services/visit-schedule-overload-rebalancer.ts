@@ -1,6 +1,7 @@
 import type { VisitPriority, VisitType } from '@prisma/client';
 import { formatUtcDateKey } from '@/lib/date-key';
 import { prisma } from '@/lib/db/client';
+import { timeDateToString } from '@/lib/visits/time-of-day';
 import { OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES } from '@/lib/visit-schedule-proposals/route-order';
 import { ACTIVE_BILLING_SCHEDULE_STATUSES } from './billing-cadence';
 import { generateVisitScheduleProposalDrafts } from './visit-schedule-planner';
@@ -32,7 +33,7 @@ type OverloadUserRow = {
   max_daily_visits: number | null;
 };
 
-type OverloadRebalancerDb = {
+export type OverloadRebalancerDb = {
   visitScheduleProposal: {
     findMany(args: unknown): Promise<OverloadProposalRow[]>;
   };
@@ -99,6 +100,62 @@ export type PreviewVisitScheduleOverloadRebalanceResult = {
   overloaded_cells: OverloadRebalanceOverloadedCell[];
   previews: OverloadRebalancePreview[];
   skipped: OverloadRebalanceSkippedProposal[];
+};
+
+const OVERLOAD_REBALANCE_UNSUPPORTED_GUARDS = [
+  'pharmacist_review_required',
+  'vehicle_open_proposal_capacity',
+  'billing_cap_recheck',
+] as const;
+
+const OVERLOAD_REBALANCE_SKIP_REASONS: OverloadRebalanceSkipReason[] = [
+  'not_mutable',
+  'no_earlier_candidate',
+  'destination_capacity_full',
+];
+
+export type OverloadRebalanceUnsupportedGuard =
+  (typeof OVERLOAD_REBALANCE_UNSUPPORTED_GUARDS)[number];
+
+export type VisitScheduleOverloadRebalanceApiPreview = {
+  preview_only: true;
+  apply_available: false;
+  unsupported_guards: OverloadRebalanceUnsupportedGuard[];
+  overloaded_cells: Array<{
+    date: string;
+    pharmacist_id: string;
+    occupancy_count: number;
+    capacity_limit: number;
+    over_by: number;
+    eligible_proposal_count: number;
+  }>;
+  recommendations: Array<{
+    source_proposal_id: string;
+    reason_code: 'overload_advance';
+    from: {
+      date: string;
+      pharmacist_id: string;
+      route_order: number | null;
+      occupancy_count: number;
+      capacity_limit: number;
+    };
+    replacement: {
+      date: string;
+      time_window_start: string | null;
+      time_window_end: string | null;
+      pharmacist_id: string;
+      route_order: number;
+      site_id: string | null;
+      vehicle_resource_id: string | null;
+      visit_deadline_date: string | null;
+      visit_type: VisitType;
+      priority: VisitPriority;
+    };
+  }>;
+  skipped_summary: Array<{
+    reason_code: OverloadRebalanceSkipReason;
+    count: number;
+  }>;
 };
 
 type DraftGenerator = typeof generateVisitScheduleProposalDrafts;
@@ -226,6 +283,7 @@ export async function previewVisitScheduleOverloadRebalance(
     }),
     db.user.findMany({
       where: {
+        org_id: args.orgId,
         id: { in: pharmacistIds },
       },
       select: {
@@ -349,5 +407,57 @@ export async function previewVisitScheduleOverloadRebalance(
     overloaded_cells: overloadedCells,
     previews,
     skipped,
+  };
+}
+
+export function toVisitScheduleOverloadRebalanceApiPreview(
+  result: PreviewVisitScheduleOverloadRebalanceResult,
+): VisitScheduleOverloadRebalanceApiPreview {
+  const skippedCounts = new Map<OverloadRebalanceSkipReason, number>();
+  for (const skipped of result.skipped) {
+    skippedCounts.set(skipped.reason_code, (skippedCounts.get(skipped.reason_code) ?? 0) + 1);
+  }
+
+  return {
+    preview_only: true,
+    apply_available: false,
+    unsupported_guards: [...OVERLOAD_REBALANCE_UNSUPPORTED_GUARDS],
+    overloaded_cells: result.overloaded_cells.map((cell) => ({
+      date: cell.proposed_date,
+      pharmacist_id: cell.proposed_pharmacist_id,
+      occupancy_count: cell.occupancy_count,
+      capacity_limit: cell.max_daily_visits,
+      over_by: Math.max(0, cell.occupancy_count - cell.max_daily_visits),
+      eligible_proposal_count: cell.eligible_proposal_count,
+    })),
+    recommendations: result.previews.map((preview) => ({
+      source_proposal_id: preview.source_proposal_id,
+      reason_code: preview.reason_code,
+      from: {
+        date: preview.from.proposed_date,
+        pharmacist_id: preview.from.proposed_pharmacist_id,
+        route_order: preview.from.route_order,
+        occupancy_count: preview.from.occupancy_count,
+        capacity_limit: preview.from.max_daily_visits,
+      },
+      replacement: {
+        date: formatUtcDateKey(preview.replacement.proposed_date),
+        time_window_start: timeDateToString(preview.replacement.time_window_start) ?? null,
+        time_window_end: timeDateToString(preview.replacement.time_window_end) ?? null,
+        pharmacist_id: preview.replacement.proposed_pharmacist_id,
+        route_order: preview.replacement.route_order,
+        site_id: preview.replacement.site_id,
+        vehicle_resource_id: preview.replacement.vehicle_resource_id ?? null,
+        visit_deadline_date: preview.replacement.visit_deadline_date
+          ? formatUtcDateKey(preview.replacement.visit_deadline_date)
+          : null,
+        visit_type: preview.replacement.visit_type,
+        priority: preview.replacement.priority,
+      },
+    })),
+    skipped_summary: OVERLOAD_REBALANCE_SKIP_REASONS.map((reasonCode) => ({
+      reason_code: reasonCode,
+      count: skippedCounts.get(reasonCode) ?? 0,
+    })),
   };
 }

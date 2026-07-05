@@ -40,6 +40,30 @@
 
 ## 直近の land（本日・要点）
 
+- codex: VS-AUTO-6 overload rebalancer read-only API slice(in-progress on main) implementation complete。
+  - API: `src/app/api/visit-schedule-proposals/overload-rebalance-preview/route.ts` を追加し、
+    `POST /api/visit-schedule-proposals/overload-rebalance-preview` で preview-only service を公開。旧 route alias、
+    互換 envelope、DB write、cron、自動 apply は追加しない。
+  - API DTO hardening: subagent API contract review は「service 内部 DTO の直接公開は危険」と指摘。対応として
+    `toVisitScheduleOverloadRebalanceApiPreview` を追加し、`case_id`、per-skipped proposal id、内部 diagnostics を
+    response から除外。`preview_only=true`、`apply_available=false`、`unsupported_guards` で VS-AUTO-7 未実装 guard
+    （review field / vehicle open proposal capacity / billing cap recheck）を明示する。
+  - auth/RLS/no-store: route は `canVisit`、`withOrgContext(..., { requestContext })`、`withSensitiveNoStore` を使用。
+    malformed JSON、invalid date、逆順 range、過大 range は RLS transaction 前に 400。unexpected service failure は
+    fixed `INTERNAL_ERROR` で PHI/free-text を返さない。
+  - catalog/rate-limit: `src/lib/api/route-catalog.ts` と `src/lib/api/rate-limit.ts` に新 route template を登録し、
+    `src/lib/api/route-catalog.test.ts` の high-risk sync 対象にも追加。
+  - privacy/security: response は API-safe mapper の ids/date/status/count/reason code/summary のみ。audit write は行わず、
+    患者名、住所、薬剤名、case id、clinical free text は返さない。
+  - validation:
+    `pnpm exec vitest run src/app/api/visit-schedule-proposals/overload-rebalance-preview/route.test.ts src/server/services/visit-schedule-overload-rebalancer.test.ts src/lib/api/route-catalog.test.ts src/lib/api/rate-limit.test.ts --reporter=dot --testTimeout=30000`
+    green（4 files / 57 tests; API-safe mapper redaction/skipped aggregation/org-scoped user lookup 含む）; scoped eslint
+    green;
+    `pnpm exec vitest run src/app/api/visit-schedule-proposals/overload-rebalance-preview/route.test.ts src/app/api/visit-schedule-proposals/route.test.ts src/app/api/visit-schedule-proposals/billing-preview-batch/route.test.ts src/server/services/visit-schedule-overload-rebalancer.test.ts src/server/services/visit-schedule-planner.test.ts src/server/services/billing-requirement-validator.test.ts --reporter=dot --testTimeout=30000`
+    green（6 files / 197 tests）; `pnpm format:check` green; `git diff --check` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` green。
+    next: scoped commit → origin/main push → continue VS-AUTO-6 vehicle/billing/review hardening or VS-AUTO-7 HR gate planning。
 - codex: VS-AUTO-6 overload rebalancer preview-only service slice(in-progress on main) implementation complete。
   - service: `src/server/services/visit-schedule-overload-rebalancer.ts` に
     `previewVisitScheduleOverloadRebalance` を追加。DB write / API / cron には接続せず、過密セルと

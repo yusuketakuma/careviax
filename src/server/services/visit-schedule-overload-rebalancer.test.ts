@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { previewVisitScheduleOverloadRebalance } from './visit-schedule-overload-rebalancer';
+import {
+  previewVisitScheduleOverloadRebalance,
+  toVisitScheduleOverloadRebalanceApiPreview,
+} from './visit-schedule-overload-rebalancer';
 
 function utcDate(value: string) {
   return new Date(`${value}T00:00:00.000Z`);
@@ -164,6 +167,14 @@ describe('previewVisitScheduleOverloadRebalance', () => {
         }),
       }),
     );
+    expect(db.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          id: { in: ['pharmacist_1'] },
+        },
+      }),
+    );
     expect(generateDrafts).toHaveBeenCalledWith(
       expect.objectContaining({
         orgId: 'org_1',
@@ -236,5 +247,107 @@ describe('previewVisitScheduleOverloadRebalance', () => {
     expect(result.skipped).toEqual([
       { source_proposal_id: 'proposal_peer', reason_code: 'destination_capacity_full' },
     ]);
+  });
+
+  it('maps internal previews to an API-safe non-PHI DTO', () => {
+    const apiPreview = toVisitScheduleOverloadRebalanceApiPreview({
+      overloaded_cells: [
+        {
+          proposed_pharmacist_id: 'pharmacist_1',
+          proposed_date: '2026-04-10',
+          occupancy_count: 4,
+          max_daily_visits: 3,
+          eligible_proposal_count: 2,
+        },
+      ],
+      previews: [
+        {
+          source_proposal_id: 'proposal_source',
+          reason_code: 'overload_advance',
+          from: {
+            proposed_date: '2026-04-10',
+            proposed_pharmacist_id: 'pharmacist_1',
+            route_order: 2,
+            occupancy_count: 4,
+            max_daily_visits: 3,
+          },
+          replacement: {
+            case_id: 'case_secret',
+            site_id: 'site_1',
+            visit_type: 'regular',
+            priority: 'normal',
+            proposed_date: utcDate('2026-04-08'),
+            time_window_start: time(9),
+            time_window_end: time(10),
+            proposed_pharmacist_id: 'pharmacist_1',
+            route_order: 1,
+            vehicle_resource_id: 'vehicle_1',
+            visit_deadline_date: utcDate('2026-04-10'),
+          },
+          diagnostics: {
+            destination_date: '2026-04-08',
+            destination_occupancy_count: 0,
+            destination_max_daily_visits: 3,
+          },
+        },
+      ],
+      skipped: [
+        { source_proposal_id: 'proposal_contacted', reason_code: 'not_mutable' },
+        { source_proposal_id: 'proposal_full', reason_code: 'destination_capacity_full' },
+      ],
+    });
+
+    expect(apiPreview).toEqual({
+      preview_only: true,
+      apply_available: false,
+      unsupported_guards: [
+        'pharmacist_review_required',
+        'vehicle_open_proposal_capacity',
+        'billing_cap_recheck',
+      ],
+      overloaded_cells: [
+        {
+          date: '2026-04-10',
+          pharmacist_id: 'pharmacist_1',
+          occupancy_count: 4,
+          capacity_limit: 3,
+          over_by: 1,
+          eligible_proposal_count: 2,
+        },
+      ],
+      recommendations: [
+        {
+          source_proposal_id: 'proposal_source',
+          reason_code: 'overload_advance',
+          from: {
+            date: '2026-04-10',
+            pharmacist_id: 'pharmacist_1',
+            route_order: 2,
+            occupancy_count: 4,
+            capacity_limit: 3,
+          },
+          replacement: {
+            date: '2026-04-08',
+            time_window_start: '09:00',
+            time_window_end: '10:00',
+            pharmacist_id: 'pharmacist_1',
+            route_order: 1,
+            site_id: 'site_1',
+            vehicle_resource_id: 'vehicle_1',
+            visit_deadline_date: '2026-04-10',
+            visit_type: 'regular',
+            priority: 'normal',
+          },
+        },
+      ],
+      skipped_summary: [
+        { reason_code: 'not_mutable', count: 1 },
+        { reason_code: 'no_earlier_candidate', count: 0 },
+        { reason_code: 'destination_capacity_full', count: 1 },
+      ],
+    });
+    expect(JSON.stringify(apiPreview)).not.toContain('case_secret');
+    expect(JSON.stringify(apiPreview)).not.toContain('proposal_contacted');
+    expect(JSON.stringify(apiPreview)).not.toContain('destination_occupancy_count');
   });
 });

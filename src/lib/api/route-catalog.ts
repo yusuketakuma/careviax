@@ -204,6 +204,13 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'schedules',
   },
   {
+    path: '/api/visit-schedule-proposals/overload-rebalance-preview',
+    methods: ['POST'],
+    permission: 'canVisit',
+    description: '訪問候補の過密前倒しプレビュー',
+    area: 'schedules',
+  },
+  {
     path: '/api/visits/today-preparation',
     methods: ['GET'],
     permission: 'canVisit',
