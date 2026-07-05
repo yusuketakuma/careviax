@@ -1,5 +1,45 @@
 # CODEX Goal Progress
 
+## R40/R44 Workflow Mutations readApiJson Partial - 2026-07-05 11:23 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/workflow/workflow-dashboard-content.tsx`
+    - `src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx`
+- Scope:
+  - Reused `readApiJson` for workflow dashboard emergency draft creation,
+    inquiry creation, inquiry resolution, and refill proposal generation
+    mutation responses.
+  - Added focused mutation coverage proving API JSON `message` from failed
+    workflow mutation responses is preserved through the mutation errors.
+  - Preserved the dashboard GET helper slice, endpoint paths, org JSON
+    headers, request body shapes, due-date generation, inquiry edit reset,
+    success toasts, and query invalidation behavior.
+- Safety:
+  - Workflow dashboard UI mutation response handling internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary remains
+    recorded in `ops/refactor/STATE.md`; this slice did not require those
+    changes.
+  - Preserved DB/schema, API route contracts, auth/authorization semantics,
+    PHI projection, billing behavior, deployment, package dependency, live DB
+    operation, external send, secret handling, push, and destructive operation
+    boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx'`
+    passed `1` file / `9` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `1493006d`
+    (`refactor(ui): reuse readApiJson for workflow mutations`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher/mutation PHI/body-read review
+    before converting additional manual response handling.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Intervention Panel readApiJson Partial - 2026-07-05 11:18 JST
 
 - Status:

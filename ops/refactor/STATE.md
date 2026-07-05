@@ -63,6 +63,12 @@
 - codex: R55 schedule proposals loading/error states(8fee04d8) land。focused Vitest 48、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck`、`pnpm build`、memory-expanded
   `pnpm typecheck:no-unused` green。
+- codex: R40/R44 workflow-mutations readApiJson slice(1493006d) land。focused Vitest 9、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。workflow dashboard emergency draft /
+  inquiry create / inquiry resolve / refill proposal mutation responses を readApiJson へ収束し、
+  GET helper、endpoints、org JSON headers、request bodies、success toasts、invalidation は保持。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
+  維持しつつ、本sliceでは不要。
 - codex: R40/R44 conflict-resolution readApiJson slice(67ba5eef) land。focused Vitest 8、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。pharmacist lookup read GET を
   readApiJson へ収束し、visit schedule window fetcher / false-empty prevention / adoption and
