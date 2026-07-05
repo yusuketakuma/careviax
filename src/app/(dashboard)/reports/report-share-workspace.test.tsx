@@ -779,6 +779,47 @@ describe('ReportShareWorkspace', () => {
     });
   });
 
+  it('only disables the draft generation target that is currently pending', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/care-reports/today-workspace')) {
+        return new Response(JSON.stringify({ data: TODAY_WORKSPACE }), { status: 200 });
+      }
+      if (url.includes('/api/care-reports/generate-from-visit')) {
+        return new Promise<Response>(() => undefined);
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderWorkspace();
+
+    const physicianButtons = await screen.findAllByRole('button', {
+      name: '田中 一郎 様 医師向けの下書きを自動作成',
+    });
+    fireEvent.click(physicianButtons[0]!);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/care-reports/generate-from-visit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-org-id': 'org_1' },
+        body: JSON.stringify({
+          visit_record_id: 'vr_2',
+          expected_visit_record_updated_at: '2026-06-11T04:45:00.000Z',
+          report_type: 'physician_report',
+        }),
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByText('作成中...').length).toBeGreaterThan(0);
+    });
+
+    const updatedCareManagerButtons = screen.getAllByRole('button', {
+      name: '田中 一郎 様 ケアマネ向けの下書きを自動作成',
+    });
+    expect((updatedCareManagerButtons[0] as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it('keeps server messages when draft generation fails', async () => {
     stubFetch(
       TODAY_WORKSPACE,

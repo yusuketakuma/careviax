@@ -772,6 +772,12 @@ FE 仕上げ（低優先）:
   contract cleanup のため `imagegen` / `gpt-image-2` 生成は省略。残: `/search` 側の
   prescription facet 表示、処方受付 workspace との検索語彙統一、global search payload budget。
 
+- `REPORT-UX-001` partial（2026-07-06）: 報告ワークスペースの下書き自動生成ボタンを
+  mutation 全体ではなく `visit_record_id:report_type` 単位で pending 表示/disabled にした。
+  1 件の医師向け下書き生成中でも、同じ訪問のケアマネ向けなど別 target は引き続き操作できる。
+  視覚レイアウト変更を伴わない interaction cleanup のため `imagegen` / `gpt-image-2` 生成は省略。
+  残: 一括生成 job queue、行単位 retry、宛先未設定 warning/task、施設一括報告の宛先 gate。
+
 **追加実装順序**:
 
 1. `UX-CMD-001` + `PERF-BFF-001`: Command Center は重い詳細BFFになりやすいため、最初から summary/detail batch 分割を前提に設計する。

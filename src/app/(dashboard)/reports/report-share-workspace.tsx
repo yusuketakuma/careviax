@@ -134,12 +134,10 @@ function DraftSupplementalActionCell({
   row,
   onGenerateDraft,
   generatingDraftKey,
-  isGeneratingDraft,
 }: {
   row: ReportDraftRow;
   onGenerateDraft: (input: DraftGenerationInput) => void;
   generatingDraftKey: string | null;
-  isGeneratingDraft: boolean;
 }) {
   return (
     <div className="flex flex-col items-start gap-2 md:items-end">
@@ -172,7 +170,7 @@ function DraftSupplementalActionCell({
                     reportType: target.report_type,
                   })
                 }
-                disabled={isGeneratingDraft}
+                disabled={isButtonGenerating}
                 aria-label={`${row.patient_label} ${target.label}の下書きを自動作成`}
                 className="h-auto min-h-[44px] px-3 sm:min-h-[44px]"
               >
@@ -194,12 +192,10 @@ function TodayDraftsCard({
   data,
   onGenerateDraft,
   generatingDraftKey,
-  isGeneratingDraft,
 }: {
   data: ReportsTodayWorkspaceResponse;
   onGenerateDraft: (input: DraftGenerationInput) => void;
   generatingDraftKey: string | null;
-  isGeneratingDraft: boolean;
 }) {
   const draftColumns: ColumnDef<ReportDraftRow>[] = [
     {
@@ -239,7 +235,6 @@ function TodayDraftsCard({
           row={row.original}
           onGenerateDraft={onGenerateDraft}
           generatingDraftKey={generatingDraftKey}
-          isGeneratingDraft={isGeneratingDraft}
         />
       ),
       enableSorting: false,
@@ -751,7 +746,6 @@ export function ReportShareWorkspace() {
                       : null
                     : null
                 }
-                isGeneratingDraft={generateDraftMutation.isPending}
               />
               <MainWorkflowCompactNav
                 currentSteps={['reports']}

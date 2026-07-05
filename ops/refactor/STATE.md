@@ -4082,3 +4082,46 @@
 - remaining:
   Broader `Plans.md` objective remains open. 残りは `/search` 側の prescription facet 表示、
   処方受付 workspace との検索語彙統一、global search payload budget、browser smoke。
+
+## 2026-07-06 Report Draft Target Pending slice
+
+- codex: `REPORT-UX-001` partial implemented.
+  報告ワークスペースの下書き自動生成ボタンを mutation 全体ではなく
+  `visit_record_id:report_type` 単位で pending 表示/disabled にした。1 件の医師向け下書き生成中でも、
+  同じ訪問のケアマネ向けなど別 target は引き続き操作できる。
+- design / imagegen:
+  視覚レイアウト変更を伴わない interaction cleanup のため、`imagegen` / `gpt-image-2` の新規生成は省略。
+  報告ワークスペースのボタン配置や一括生成 UI を再設計する slice では PH-OS UI/UX SSOT の
+  `gpt-image-2` 方針を適用する。
+- files inspected:
+  `git status --short --branch --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/(dashboard)/reports/report-share-workspace.tsx`,
+  `src/app/(dashboard)/reports/report-share-workspace.test.tsx`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/(dashboard)/reports/report-share-workspace.tsx`,
+  `src/app/(dashboard)/reports/report-share-workspace.test.tsx`.
+- bugs/UX fixed:
+  `generatingDraftKey` を計算しているにもかかわらず、`isGeneratingDraft` により全 target の
+  下書き生成ボタンが disabled になっていた。今回、生成中 target のみ disabled にし、
+  別 target は押せることをテストで固定した。
+- security/PHI reviewed:
+  API payload、表示 text、PHI 出力は追加していない。既存の optimistic-lock payload
+  `visit_record_id` / `expected_visit_record_updated_at` / `report_type` は維持。
+- validation:
+  `pnpm exec vitest run 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' --reporter=dot --testTimeout=30000`
+  green (1 file / 24 tests);
+  `pnpm exec eslint 'src/app/(dashboard)/reports/report-share-workspace.tsx' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx'`
+  green;
+  `pnpm exec prettier --check 'src/app/(dashboard)/reports/report-share-workspace.tsx' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx'`
+  green;
+  `git diff --check -- 'src/app/(dashboard)/reports/report-share-workspace.tsx' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx'`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck --pretty false` green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false` green.
+- remaining:
+  Broader `Plans.md` objective remains open. `REPORT-UX-001` の残りは一括生成 job queue、
+  行単位 retry、生成失敗行だけの再試行、宛先未設定 warning/task、施設一括報告の宛先 gate。
