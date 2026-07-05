@@ -535,6 +535,12 @@
   readApiJson へ収束し、NOTIFICATIONS_API_PATH、org JSON headers、PATCH body、inbox invalidation、
   realtime inbox、offline pending-sync row、loading/error states、navigation は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 task request readApiJson slice(84114154) land。focused Vitest 13、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。work request creation POST response を
+  readApiJson へ収束し、/api/tasks、org JSON headers、request body、related entity metadata、
+  success toast、tasks/staff-workload invalidation、bulk-completion schema handling は保持。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
+  維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 

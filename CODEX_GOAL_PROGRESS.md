@@ -1,5 +1,43 @@
 # CODEX Goal Progress
 
+## R40/R44 Task Request readApiJson Partial - 2026-07-05 10:18 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/tasks/tasks-content.tsx`
+    - `src/app/(dashboard)/tasks/tasks-content.test.tsx`
+- Scope:
+  - Reused `readApiJson` for work request creation POST responses.
+  - Added focused coverage proving API JSON `message` from failed task request
+    creation responses is preserved in toast output.
+  - Preserved `/api/tasks`, `buildOrgJsonHeaders`, POST method, request body
+    fields, related entity metadata, success toast, task cache invalidation,
+    staff workload invalidation, and existing bulk-completion schema handling.
+- Safety:
+  - Tasks UI mutation response handling internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary remains
+    recorded in `ops/refactor/STATE.md`; this slice did not require those
+    changes.
+  - Preserved DB/schema, API route contracts, auth/authorization semantics,
+    PHI projection, billing behavior, deployment, package dependency, live DB
+    operation, external send, secret handling, push, and destructive operation
+    boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/tasks/tasks-content.test.tsx'`
+    passed `1` file / `13` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `84114154`
+    (`refactor(ui): reuse readApiJson for task requests`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher/mutation PHI/body-read review
+    before converting additional manual response handling.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Notification Read State readApiJson Partial - 2026-07-05 10:13 JST
 
 - Status:
