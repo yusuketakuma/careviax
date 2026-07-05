@@ -40,6 +40,33 @@
 
 ## 直近の land（本日・要点）
 
+- codex: visit preparation PHI-minimized audit / workflow notify batch(4e9ebaf20)
+  implementation complete。前sliceの残課題である `PUT /api/visit-preparations/:scheduleId` の
+  authorized route_confirmed / vehicle assignment / mark_ready / preparation task side-effect trace を処理。
+  ユーザー指示により subagent を投入（code_mapper / privacy_compliance_reviewer / test_architect）。
+  code_mapper と privacy_compliance_reviewer は、route confirmation が患者名・住所を route engine 入力に持つため、
+  audit/notify/task metadata に request body、raw checklist、route_plan_snapshot、route note、waypoints を
+  コピーしてはいけないと指摘。test_architect は route-level audit/notify assertion と PHI-free payload tests が
+  completion blocker と指摘し、Task schema に resolved_by 列がないため resolver actor trace は DB migration なしでは
+  route audit の `task_trace.actor_user_id` と upsert task metadata に限定する方針を採用。対応として
+  `createAuditLogEntry` を transaction 内に追加し、`visit_preparation_updated` audit は `schedule_id` /
+  `case_id` / preparation booleans / ready transition / previous-new `vehicle_resource_id` / task trace
+  (`action`, `dedupe_key`, `status`, `resolution_count`, `actor_user_id`) のみを保存。未完了 task upsert には
+  `source: visit_preparation_put`, `schedule_id`, `case_id`, `route_confirmed`, `mark_ready_requested`,
+  `preparation_ready`, `updated_by` の PHI-free metadata を付与。成功後は `notifyWorkflowMutation` で
+  `visit_preparations_update` を送信し、`org-realtime` source union に追加。tests は route confirmation +
+  vehicle assignment 成功時の PHI-minimized audit/notify、mark_ready ready transition audit、stale vehicle
+  conflict/site mismatch/invalid auth plumbing の no audit/notify、hostile checklist (`玄関暗証番号1234` /
+  `patient_name`) が audit/notify/task metadata に入らないことを固定。validation:
+  `pnpm exec vitest run 'src/app/api/visit-preparations/[scheduleId]/route.test.ts'` green（1 file / 42 tests）;
+  `pnpm exec vitest run 'src/app/api/visit-preparations/[scheduleId]/route.test.ts' 'src/app/api/visit-schedules/[id]/route.test.ts' src/app/api/visit-schedules/reorder/route.test.ts 'src/app/api/visit-schedule-proposals/[id]/route.test.ts' src/server/services/workflow-dashboard-cache.test.ts src/server/services/org-realtime.test.ts`
+  green（6 files / 306 tests）; scoped `eslint` green; scoped `prettier --check` green; `git diff --check` green;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) に基づき product API /
+  PHI-adjacent auditability / workflow realtime source を変更。DB schema/migration/deploy/package dependency
+  変更は不要。残る高優先別slice候補: Task resolver actor trace を Task 自体へ残すための schema設計
+  （必要なら migration 付き別slice）、visit-preparation route duration の vehicle/day 全日稼働時間共有helper化、
+  reschedule request、visit-record finalization supervision、medication issue resolve/promote boundary。
 - codex: visit preparation shared vehicle capacity / OCC batch(03d23d03d)
   implementation complete。ユーザー指示「近似箇所はまとめて実装して効率を向上。サブエージェントも投入」に基づき、
   `PUT /api/visit-preparations/:scheduleId` の車両割当近接リスクを同一sliceで処理。subagent は
