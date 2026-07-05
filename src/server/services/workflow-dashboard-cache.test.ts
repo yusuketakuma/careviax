@@ -108,6 +108,7 @@ describe('notifyWorkflowMutation', () => {
 describe('sanitizeWorkflowRealtimeSource', () => {
   it.each([
     ['medication_cycles_transition', 'medication_cycles_transition'],
+    ['medication_issues_update', 'medication_issues_update'],
     ['prescription_intakes_create', 'prescription_intakes_create'],
     ['visit_schedules_update', 'visit_schedules_update'],
     ['set_batches_update', 'set_batches_update'],

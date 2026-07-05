@@ -132,6 +132,10 @@ async function canAccessMedicationIssueScope(args: {
   return true;
 }
 
+function isFinalMedicationIssueStatus(status: string | undefined) {
+  return status === 'resolved' || status === 'dismissed';
+}
+
 async function authenticatedGET(req: NextRequest) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
@@ -259,6 +263,12 @@ async function authenticatedPOST(req: NextRequest) {
     const parsed = createMedicationIssueSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+    }
+
+    if (isFinalMedicationIssueStatus(parsed.data.status)) {
+      return validationError('服薬課題の作成時に解決済み状態は指定できません', {
+        status: ['解決済みまたは却下済みの課題は更新APIで確定してください'],
+      });
     }
 
     const { patient_id, case_id } = parsed.data;

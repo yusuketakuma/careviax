@@ -413,6 +413,36 @@ describe('/api/medication-issues', () => {
     expect(allocateDisplayIdMock).not.toHaveBeenCalled();
   });
 
+  it.each(['resolved', 'dismissed'] as const)(
+    'rejects creating an already-final %s medication issue before validating scope',
+    async (status) => {
+      const request = createRequest('http://localhost/api/medication-issues', {
+        patient_id: 'patient_1',
+        title: '飲み忘れ',
+        description: '夕食後を服用していない',
+        status,
+      }) as NextRequest & { role?: string };
+      request.role = 'pharmacist_trainee';
+
+      const response = (await POST(request))!;
+
+      expect(response.status).toBe(400);
+      expectSensitiveNoStore(response);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '服薬課題の作成時に解決済み状態は指定できません',
+        details: {
+          status: ['解決済みまたは却下済みの課題は更新APIで確定してください'],
+        },
+      });
+      expect(patientFindFirstMock).not.toHaveBeenCalled();
+      expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(medicationIssueCreateMock).not.toHaveBeenCalled();
+      expect(allocateDisplayIdMock).not.toHaveBeenCalled();
+    },
+  );
+
   it('rejects a patient and case mismatch before creating a medication issue', async () => {
     careCaseFindFirstMock.mockResolvedValue({ id: 'case_2', patient_id: 'patient_other' });
 

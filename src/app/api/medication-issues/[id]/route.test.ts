@@ -14,6 +14,8 @@ const {
   patientLabObservationCreateMock,
   patientLabObservationFindFirstMock,
   patientUpdateMock,
+  createAuditLogEntryMock,
+  notifyWorkflowMutationMock,
   withOrgContextMock,
   allocateDisplayIdMock,
   allocateDisplayIdRangeMock,
@@ -30,6 +32,8 @@ const {
   patientLabObservationCreateMock: vi.fn(),
   patientLabObservationFindFirstMock: vi.fn(),
   patientUpdateMock: vi.fn(),
+  createAuditLogEntryMock: vi.fn(),
+  notifyWorkflowMutationMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   allocateDisplayIdMock: vi.fn(),
   allocateDisplayIdRangeMock: vi.fn(),
@@ -64,7 +68,16 @@ vi.mock('@/lib/db/display-id', () => ({
   allocateDisplayIdRange: allocateDisplayIdRangeMock,
 }));
 
+vi.mock('@/lib/audit/audit-entry', () => ({
+  createAuditLogEntry: createAuditLogEntryMock,
+}));
+
+vi.mock('@/server/services/workflow-dashboard-cache', () => ({
+  notifyWorkflowMutation: notifyWorkflowMutationMock,
+}));
+
 import { PATCH } from './route';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 function createPatchRequest(body: unknown) {
   return new NextRequest('http://localhost/api/medication-issues/issue_1', {
@@ -80,6 +93,25 @@ function createMalformedJsonPatchRequest() {
     headers: { 'content-type': 'application/json' },
     body: '{"status":',
   });
+}
+
+function expectNoMedicationIssuePatchSideEffects() {
+  expect(patientFindManyMock).not.toHaveBeenCalled();
+  expect(careCaseFindManyMock).not.toHaveBeenCalled();
+  expect(medicationIssueFindFirstMock).not.toHaveBeenCalled();
+  expect(patientFindFirstMock).not.toHaveBeenCalled();
+  expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+  expect(withOrgContextMock).not.toHaveBeenCalled();
+  expect(medicationIssueUpdateMock).not.toHaveBeenCalled();
+  expect(patientUpdateMock).not.toHaveBeenCalled();
+  expect(patientLabObservationFindFirstMock).not.toHaveBeenCalled();
+  expect(patientLabObservationCreateMock).not.toHaveBeenCalled();
+  expect(medicationProfileFindFirstMock).not.toHaveBeenCalled();
+  expect(medicationProfileCreateMock).not.toHaveBeenCalled();
+  expect(allocateDisplayIdMock).not.toHaveBeenCalled();
+  expect(allocateDisplayIdRangeMock).not.toHaveBeenCalled();
+  expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
 }
 
 describe('/api/medication-issues/[id]', () => {
@@ -103,12 +135,15 @@ describe('/api/medication-issues/[id]', () => {
       case_id: 'case_1',
       title: '服薬課題',
       description: '説明',
+      priority: 'medium',
       category: 'other',
     });
     medicationIssueUpdateMock.mockResolvedValue({
       id: 'issue_1',
       status: 'resolved',
     });
+    createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
+    notifyWorkflowMutationMock.mockResolvedValue(undefined);
     allocateDisplayIdMock.mockResolvedValue('m0000000001');
     allocateDisplayIdRangeMock.mockResolvedValue(['plab0000000001', 'plab0000000002']);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
@@ -192,10 +227,50 @@ describe('/api/medication-issues/[id]', () => {
     expect(medicationIssueUpdateMock).not.toHaveBeenCalled();
   });
 
-  it('sets resolver metadata when an issue is resolved', async () => {
+  it.each([
+    ['resolve issue', { status: 'resolved' }],
+    ['dismiss issue', { status: 'dismissed' }],
+    ['reopen issue', { status: 'open' }],
+    ['mark issue in progress', { status: 'in_progress' }],
+    ['promote QR OTC issue', { promote_to_medication_profile: true }],
+    [
+      'resolve and promote QR OTC issue',
+      { status: 'resolved', promote_to_medication_profile: true },
+    ],
+  ])('denies pharmacist trainees before final clinical side effects: %s', async (_label, body) => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: {
+        orgId: 'org_1',
+        userId: 'trainee_1',
+        role: 'pharmacist_trainee',
+      },
+    });
+
+    const response = (await PATCH(createPatchRequest(body), {
+      params: Promise.resolve({ id: 'issue_1' }),
+    }))!;
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_FORBIDDEN',
+      message: '服薬課題の状態変更・反映権限がありません',
+    });
+    expectNoMedicationIssuePatchSideEffects();
+  });
+
+  it('allows pharmacist trainees to make non-status medication issue triage edits', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: {
+        orgId: 'org_1',
+        userId: 'trainee_1',
+        role: 'pharmacist_trainee',
+      },
+    });
+
     const response = (await PATCH(
       createPatchRequest({
-        status: 'resolved',
+        priority: 'high',
       }),
       {
         params: Promise.resolve({ id: 'issue_1' }),
@@ -203,6 +278,7 @@ describe('/api/medication-issues/[id]', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(medicationIssueFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'issue_1',
@@ -215,6 +291,70 @@ describe('/api/medication-issues/[id]', () => {
         case_id: true,
         title: true,
         description: true,
+        priority: true,
+        category: true,
+      },
+    });
+    expect(medicationIssueUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'issue_1' },
+      data: expect.objectContaining({
+        priority: 'high',
+      }),
+    });
+    expect(medicationIssueUpdateMock.mock.calls[0]?.[0]?.data).not.toHaveProperty('resolved_by');
+    expect(medicationIssueUpdateMock.mock.calls[0]?.[0]?.data).not.toHaveProperty('resolved_at');
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ orgId: 'org_1', userId: 'trainee_1' }),
+      expect.objectContaining({
+        action: 'medication_issue_updated',
+        targetType: 'MedicationIssue',
+        targetId: 'issue_1',
+        patientId: 'patient_1',
+        changes: expect.objectContaining({
+          priority: { from: 'medium', to: 'high' },
+          title_changed: false,
+          description_changed: false,
+        }),
+      }),
+    );
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      payload: expect.objectContaining({
+        source: 'medication_issues_update',
+        issue_id: 'issue_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        status: 'open',
+      }),
+    });
+  });
+
+  it('sets resolver metadata when an issue is resolved', async () => {
+    const response = (await PATCH(
+      createPatchRequest({
+        status: 'resolved',
+      }),
+      {
+        params: Promise.resolve({ id: 'issue_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(medicationIssueFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'issue_1',
+        org_id: 'org_1',
+      },
+      select: {
+        id: true,
+        status: true,
+        patient_id: true,
+        case_id: true,
+        title: true,
+        description: true,
+        priority: true,
         category: true,
       },
     });
@@ -224,6 +364,31 @@ describe('/api/medication-issues/[id]', () => {
         status: 'resolved',
         resolved_by: 'user_1',
         resolved_at: expect.any(Date),
+      }),
+    });
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      expect.objectContaining({
+        action: 'medication_issue_updated',
+        targetType: 'MedicationIssue',
+        targetId: 'issue_1',
+        patientId: 'patient_1',
+        changes: expect.objectContaining({
+          status: { from: 'open', to: 'resolved' },
+          title_changed: false,
+          description_changed: false,
+        }),
+      }),
+    );
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      payload: expect.objectContaining({
+        source: 'medication_issues_update',
+        issue_id: 'issue_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        status: 'resolved',
       }),
     });
   });
@@ -236,6 +401,7 @@ describe('/api/medication-issues/[id]', () => {
       case_id: 'case_1',
       title: '服薬課題',
       description: '説明',
+      priority: 'medium',
       category: 'other',
     });
 
@@ -249,6 +415,7 @@ describe('/api/medication-issues/[id]', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(medicationIssueUpdateMock).toHaveBeenCalledWith({
       where: { id: 'issue_1' },
       data: expect.objectContaining({
@@ -272,10 +439,13 @@ describe('/api/medication-issues/[id]', () => {
     ))!;
 
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(medicationIssueUpdateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('rejects a stored patient and case mismatch before updating', async () => {
@@ -576,6 +746,7 @@ describe('/api/medication-issues/[id]', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(allocateDisplayIdMock).toHaveBeenCalledWith(
       expect.objectContaining({
         medicationProfile: expect.objectContaining({ create: medicationProfileCreateMock }),
@@ -599,6 +770,40 @@ describe('/api/medication-issues/[id]', () => {
         source: 'otc_qr',
       },
     });
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      expect.objectContaining({
+        targetType: 'MedicationIssue',
+        targetId: 'issue_1',
+        patientId: 'patient_1',
+        changes: expect.objectContaining({
+          status: { from: 'open', to: 'resolved' },
+          promote_to_medication_profile_requested: true,
+          promoted_to_medication_profile: true,
+          promoted_allergy_info: false,
+          promoted_lab_observation_count: 0,
+        }),
+      }),
+    );
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      payload: expect.objectContaining({
+        source: 'medication_issues_update',
+        issue_id: 'issue_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        status: 'resolved',
+        promoted_to_medication_profile: true,
+      }),
+    });
+    const auditNotifyText = JSON.stringify([
+      createAuditLogEntryMock.mock.calls,
+      notifyWorkflowMutationMock.mock.calls,
+    ]);
+    expect(auditNotifyText).not.toContain('バファリンA');
+    expect(auditNotifyText).not.toContain('[qr_supplemental:');
+    expect(auditNotifyText).not.toContain('服用開始年月日');
   });
 
   it('promotes a QR OTC candidate using the updated description from the resolving patch', async () => {

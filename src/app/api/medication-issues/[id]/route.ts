@@ -1,8 +1,14 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound } from '@/lib/api/response';
-import { updateMedicationIssueSchema } from '@/lib/validations/medication';
+import { success, validationError, notFound, forbiddenResponse } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import {
+  updateMedicationIssueSchema,
+  type UpdateMedicationIssueInput,
+} from '@/lib/validations/medication';
+import { canFinalizeClinicalState } from '@/lib/auth/clinical-finalization';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
@@ -18,7 +24,48 @@ import {
 import { promoteResolvedQrAllergyIssueToPatient } from '@/server/services/qr-allergy-promotion';
 import { promoteResolvedQrLabIssueToPatientLabs } from '@/server/services/qr-lab-promotion';
 import { promoteResolvedQrOtcIssueToMedicationProfile } from '@/server/services/qr-otc-promotion';
+import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import type { Prisma } from '@prisma/client';
+
+function touchesMedicationIssueClinicalState(patch: UpdateMedicationIssueInput) {
+  return patch.status !== undefined || patch.promote_to_medication_profile === true;
+}
+
+function buildMedicationIssueAuditChanges(args: {
+  existing: {
+    status: string;
+    priority?: string | null;
+    category?: string | null;
+  };
+  patch: UpdateMedicationIssueInput;
+  promotedAllergyInfo: boolean;
+  promotedLabObservationCount: number;
+  promotedToMedicationProfile: boolean;
+}) {
+  return {
+    ...(args.patch.status !== undefined
+      ? {
+          status: { from: args.existing.status, to: args.patch.status },
+        }
+      : {}),
+    ...(args.patch.priority !== undefined
+      ? {
+          priority: { from: args.existing.priority ?? null, to: args.patch.priority },
+        }
+      : {}),
+    ...(args.patch.category !== undefined
+      ? {
+          category: { from: args.existing.category ?? null, to: args.patch.category },
+        }
+      : {}),
+    title_changed: args.patch.title !== undefined,
+    description_changed: args.patch.description !== undefined,
+    promote_to_medication_profile_requested: args.patch.promote_to_medication_profile === true,
+    promoted_allergy_info: args.promotedAllergyInfo,
+    promoted_lab_observation_count: args.promotedLabObservationCount,
+    promoted_to_medication_profile: args.promotedToMedicationProfile,
+  };
+}
 
 async function buildMedicationIssueAssignmentWhere(args: {
   orgId: string;
@@ -52,21 +99,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     permission: 'canVisit',
     message: '服薬課題の更新権限がありません',
   });
-  if ('response' in authResult) return authResult.response;
+  if ('response' in authResult) return withSensitiveNoStore(authResult.response);
   const ctx = authResult.ctx;
 
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
-  if (!id) return validationError('服薬課題IDが不正です');
+  if (!id) return withSensitiveNoStore(validationError('服薬課題IDが不正です'));
 
   const accessContext = { userId: ctx.userId, role: ctx.role };
 
   const payload = await readJsonObjectRequestBody(req);
-  if (!payload) return validationError('リクエストボディが不正です');
+  if (!payload) return withSensitiveNoStore(validationError('リクエストボディが不正です'));
 
   const parsed = updateMedicationIssueSchema.safeParse(payload);
   if (!parsed.success) {
-    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+    return withSensitiveNoStore(
+      validationError('入力値が不正です', parsed.error.flatten().fieldErrors),
+    );
+  }
+
+  if (touchesMedicationIssueClinicalState(parsed.data) && !canFinalizeClinicalState(ctx.role)) {
+    return withSensitiveNoStore(
+      await forbiddenResponse('服薬課題の状態変更・反映権限がありません'),
+    );
   }
 
   const assignmentWhere = await buildMedicationIssueAssignmentWhere({
@@ -86,16 +141,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       case_id: true,
       title: true,
       description: true,
+      priority: true,
       category: true,
     },
   });
-  if (!existing) return notFound('課題が見つかりません');
+  if (!existing) return withSensitiveNoStore(notFound('課題が見つかりません'));
 
   const refResult = await validateOrgReferences(ctx.orgId, {
     patient_id: existing.patient_id,
     case_id: existing.case_id,
   });
-  if (!refResult.ok) return refResult.response;
+  if (!refResult.ok) return withSensitiveNoStore(refResult.response);
 
   const { promote_to_medication_profile: promoteToMedicationProfile, ...issuePatch } = parsed.data;
   const updateData: Record<string, unknown> = { ...issuePatch };
@@ -109,6 +165,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const resolvedAt = updateData.resolved_at instanceof Date ? updateData.resolved_at : null;
+  let promotedAllergyInfo = false;
+  let promotedLabObservationCount = 0;
+  let promotedToMedicationProfile = false;
   const issue = await withOrgContext(ctx.orgId, async (tx) => {
     const updated = await tx.medicationIssue.update({
       where: { id },
@@ -122,26 +181,56 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         description: parsed.data.description ?? existing.description,
         category: parsed.data.category ?? existing.category,
       };
-      await promoteResolvedQrAllergyIssueToPatient(tx, {
+      const allergyPromotion = await promoteResolvedQrAllergyIssueToPatient(tx, {
         orgId: ctx.orgId,
         issue: effectiveIssue,
         confirmedAt: resolvedAt,
       });
-      await promoteResolvedQrLabIssueToPatientLabs(tx, {
+      promotedAllergyInfo = allergyPromotion.promoted;
+      const labPromotion = await promoteResolvedQrLabIssueToPatientLabs(tx, {
         orgId: ctx.orgId,
         issue: effectiveIssue,
         confirmedAt: resolvedAt,
       });
+      promotedLabObservationCount = labPromotion.promotedCount;
       if (promoteToMedicationProfile) {
-        await promoteResolvedQrOtcIssueToMedicationProfile(tx, {
+        const otcPromotion = await promoteResolvedQrOtcIssueToMedicationProfile(tx, {
           orgId: ctx.orgId,
           issue: effectiveIssue,
           confirmedAt: resolvedAt,
         });
+        promotedToMedicationProfile = otcPromotion.promoted;
       }
     }
+    await createAuditLogEntry(tx, ctx, {
+      action: 'medication_issue_updated',
+      targetType: 'MedicationIssue',
+      targetId: existing.id,
+      patientId: existing.patient_id,
+      changes: buildMedicationIssueAuditChanges({
+        existing,
+        patch: parsed.data,
+        promotedAllergyInfo,
+        promotedLabObservationCount,
+        promotedToMedicationProfile,
+      }),
+    });
     return updated;
   });
 
-  return success({ data: issue });
+  await notifyWorkflowMutation({
+    orgId: ctx.orgId,
+    payload: {
+      source: 'medication_issues_update',
+      issue_id: existing.id,
+      patient_id: existing.patient_id,
+      case_id: existing.case_id,
+      status: parsed.data.status ?? existing.status,
+      promoted_allergy_info: promotedAllergyInfo,
+      promoted_lab_observation_count: promotedLabObservationCount,
+      promoted_to_medication_profile: promotedToMedicationProfile,
+    },
+  });
+
+  return withSensitiveNoStore(success({ data: issue }));
 }
