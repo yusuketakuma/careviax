@@ -3076,6 +3076,26 @@
   foundation filters are still memory-side after 500-row bounded fetch for active foundation filters,
   counts are still limited to fetched basis when `truncated=true`, dedicated chip-count endpoint/cache is not yet built,
   and `/api/patients/board` still lacks route performance/payload instrumentation.
+- codex: PERF-RTE/DEV-PAY route payload metrics foundation slice complete。
+  `/api/patients/board` は `withAuthContext` 経由で既に `withRoutePerformance` に入っていることを
+  live code で確認したため、二重wrapは避け、既存 `src/lib/utils/performance.ts` を拡張して
+  `payload_bytes` の sample を記録できるようにした。`recordRoutePerformance` は任意
+  `payloadBytes` を受け、snapshot summary は `overall_p95_payload_bytes`、route summary は
+  `payload_sample_count` / `average_payload_bytes` / `p95_payload_bytes` /
+  `max_payload_bytes` / `last_payload_bytes` を返す。`withRoutePerformance` は response body を
+  clone/read せず、明示 `Content-Length` がある場合だけ payload bytes を記録するため、PHI-bearing
+  body を観測のために読み直さない。Admin performance page には route ごとの `payload P95` を表示し、
+  未取得 route は `未計測` と出す。Next.js route handler local docs:
+  `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md` を確認。
+  Files changed: `src/lib/utils/performance.ts`, `src/lib/utils/performance.test.ts`,
+  `src/app/(dashboard)/admin/performance/page.tsx`, `ops/refactor/STATE.md`。
+  Validation green:
+  `pnpm exec vitest run src/lib/utils/performance.test.ts src/app/api/admin/performance-metrics/route.test.ts src/app/'(dashboard)'/admin/performance/page.test.tsx --reporter=dot --testTimeout=30000`
+  (19 tests), scoped ESLint for touched performance/admin files, `pnpm format:check`,
+  `git diff --check -- src/lib/utils/performance.ts src/lib/utils/performance.test.ts src/app/'(dashboard)'/admin/performance/page.tsx`,
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`。Remaining:
+  NextResponse JSON routes without `Content-Length` still report payload as `未計測`; exact payload budget enforcement,
+  query count collection, persistent metrics sink/deploy_sha, and critical route registry/release gate are still open.
 
 ## 進行中 / 凍結
 

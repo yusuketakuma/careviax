@@ -10,6 +10,7 @@ type RoutePerformanceSample = {
   duration_ms: number;
   status: number;
   recorded_at: number;
+  payload_bytes: number | null;
 };
 
 type RoutePerformanceBucket = {
@@ -36,8 +37,13 @@ export type RoutePerformanceSummary = {
   p50_ms: number;
   p95_ms: number;
   max_ms: number;
+  payload_sample_count: number;
+  average_payload_bytes: number | null;
+  p95_payload_bytes: number | null;
+  max_payload_bytes: number | null;
   last_seen_at: string | null;
   last_status: number | null;
+  last_payload_bytes: number | null;
   target_met: boolean;
 };
 
@@ -53,6 +59,7 @@ export type PerformanceSnapshot = {
     slow_request_rate: number;
     overall_p50_ms: number;
     overall_p95_ms: number;
+    overall_p95_payload_bytes: number | null;
     routes_over_target: number;
   };
   routes: RoutePerformanceSummary[];
@@ -93,6 +100,14 @@ function percentile(values: number[], ratio: number): number {
   return sorted[index] ?? 0;
 }
 
+function parsePayloadBytes(value: string | null): number | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const parsed = Number(trimmed);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
 function shouldTrackRoute(route: string): boolean {
   return !EXCLUDED_PATHS.has(route);
 }
@@ -126,6 +141,7 @@ export function recordRoutePerformance(args: {
   method: string;
   status: number;
   durationMs: number;
+  payloadBytes?: number | null;
   recordedAt?: number;
 }): void {
   if (!shouldTrackRoute(args.route)) return;
@@ -143,6 +159,10 @@ export function recordRoutePerformance(args: {
     duration_ms: Math.max(0, Math.round(args.durationMs)),
     status: args.status,
     recorded_at: args.recordedAt ?? Date.now(),
+    payload_bytes:
+      typeof args.payloadBytes === 'number' && Number.isSafeInteger(args.payloadBytes)
+        ? Math.max(0, args.payloadBytes)
+        : null,
   });
 
   if (bucket.samples.length > store.max_samples_per_route) {
@@ -169,16 +189,21 @@ export function getPerformanceSnapshot(options?: {
 
   const routeSummaries: RoutePerformanceSummary[] = [];
   const allDurations: number[] = [];
+  const allPayloadBytes: number[] = [];
   let slowRequests = 0;
   let errorRequests = 0;
 
   for (const bucket of store.routes.values()) {
     const durations = bucket.samples.map((sample) => sample.duration_ms);
+    const payloadBytes = bucket.samples
+      .map((sample) => sample.payload_bytes)
+      .filter((value): value is number => value != null);
     const slowCount = bucket.samples.filter((sample) => sample.duration_ms > targetMs).length;
     const errorCount = bucket.samples.filter((sample) => sample.status >= 500).length;
     const lastSample = bucket.samples[bucket.samples.length - 1];
 
     allDurations.push(...durations);
+    allPayloadBytes.push(...payloadBytes);
     slowRequests += slowCount;
     errorRequests += errorCount;
 
@@ -193,8 +218,13 @@ export function getPerformanceSnapshot(options?: {
       p50_ms: percentile(durations, 0.5),
       p95_ms: percentile(durations, 0.95),
       max_ms: durations.length ? Math.max(...durations) : 0,
+      payload_sample_count: payloadBytes.length,
+      average_payload_bytes: payloadBytes.length ? average(payloadBytes) : null,
+      p95_payload_bytes: payloadBytes.length ? percentile(payloadBytes, 0.95) : null,
+      max_payload_bytes: payloadBytes.length ? Math.max(...payloadBytes) : null,
       last_seen_at: lastSample ? new Date(lastSample.recorded_at).toISOString() : null,
       last_status: lastSample?.status ?? null,
+      last_payload_bytes: lastSample?.payload_bytes ?? null,
       target_met: percentile(durations, 0.95) <= targetMs,
     });
   }
@@ -217,6 +247,7 @@ export function getPerformanceSnapshot(options?: {
       slow_request_rate: toPercentage(slowRequests, allDurations.length),
       overall_p50_ms: percentile(allDurations, 0.5),
       overall_p95_ms: percentile(allDurations, 0.95),
+      overall_p95_payload_bytes: allPayloadBytes.length ? percentile(allPayloadBytes, 0.95) : null,
       routes_over_target: routeSummaries.filter((route) => !route.target_met).length,
     },
     routes: routeSummaries.slice(0, topRoutes),
@@ -248,6 +279,7 @@ export async function withRoutePerformance<T extends NextResponse | Response>(
       method,
       status: response.status,
       durationMs: Date.now() - startedAt,
+      payloadBytes: parsePayloadBytes(response.headers.get('content-length')),
     });
     return response;
   } catch (error) {

@@ -114,6 +114,7 @@ type RuntimePerformanceSnapshot = {
     slow_request_rate: number;
     overall_p50_ms: number;
     overall_p95_ms: number;
+    overall_p95_payload_bytes: number | null;
     routes_over_target: number;
   };
   routes: Array<{
@@ -127,8 +128,13 @@ type RuntimePerformanceSnapshot = {
     p50_ms: number;
     p95_ms: number;
     max_ms: number;
+    payload_sample_count: number;
+    average_payload_bytes: number | null;
+    p95_payload_bytes: number | null;
+    max_payload_bytes: number | null;
     last_seen_at: string | null;
     last_status: number | null;
+    last_payload_bytes: number | null;
     target_met: boolean;
   }>;
 };
@@ -751,11 +757,17 @@ export default function PerformancePage() {
                       <p>max {route.max_ms}ms</p>
                     </div>
                   </div>
-                  <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-4">
+                  <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-5">
                     <div>件数 {route.request_count}</div>
                     <div>平均 {route.average_ms}ms</div>
                     <div>超過率 {route.slow_rate}%</div>
                     <div>5xx {route.error_count}</div>
+                    <div>
+                      payload P95{' '}
+                      {route.p95_payload_bytes == null
+                        ? '未計測'
+                        : `${route.p95_payload_bytes.toLocaleString()}B`}
+                    </div>
                   </div>
                 </div>
               ))
