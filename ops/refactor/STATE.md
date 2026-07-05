@@ -40,7 +40,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: PatientsBoard expanded foundation issue keys slice complete（code/test: commit pending）。
+- codex: PatientsBoard expanded foundation issue keys slice complete（code/test: f4576b210）。
   - current task:
     Goal 継続として `PAT-LIST-UX-001` の残りを実装。前回UIで露出した原因別チップをさらに拡張し、
     `/api/patients/board` の `foundation_issue` に `missing_parking`, `missing_care_level`,
