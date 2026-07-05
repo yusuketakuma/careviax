@@ -1,3 +1,5 @@
+import { isAuditLogRiskTier, type AuditLogRiskTier } from '@/lib/audit-logs/review';
+
 type DateBoundary = 'start' | 'end';
 type ParsedAuditLogFilters =
   | { error: string }
@@ -8,6 +10,7 @@ type ParsedAuditLogFilters =
       patient?: string;
       targetType?: string;
       action?: string;
+      riskTier?: AuditLogRiskTier;
       from?: Date;
       to?: Date;
     };
@@ -44,6 +47,7 @@ export function parseAuditLogFilters(searchParams: URLSearchParams): ParsedAudit
   const patient = searchParams.get('patient_id') ?? searchParams.get('patient') ?? undefined;
   const targetType = searchParams.get('target_type') ?? searchParams.get('target') ?? undefined;
   const action = searchParams.get('action') ?? undefined;
+  const riskTierInput = searchParams.get('risk_tier') ?? undefined;
 
   const fromInput = searchParams.get('date_from') ?? searchParams.get('from');
   const toInput = searchParams.get('date_to') ?? searchParams.get('to');
@@ -58,6 +62,11 @@ export function parseAuditLogFilters(searchParams: URLSearchParams): ParsedAudit
     return { error: 'to パラメータが不正な日付形式です' };
   }
 
+  if (riskTierInput && !isAuditLogRiskTier(riskTierInput)) {
+    return { error: 'risk_tier パラメータが不正です' };
+  }
+  const riskTier = isAuditLogRiskTier(riskTierInput) ? riskTierInput : undefined;
+
   return {
     actor,
     actorPharmacy,
@@ -65,6 +74,7 @@ export function parseAuditLogFilters(searchParams: URLSearchParams): ParsedAudit
     patient,
     targetType,
     action,
+    riskTier,
     from: from.date,
     to: to.date,
   };

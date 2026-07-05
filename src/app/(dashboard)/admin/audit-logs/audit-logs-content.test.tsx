@@ -96,6 +96,9 @@ function makeAuditLog(index: number) {
     action: 'create',
     target_type: 'patient',
     target_id: `target_${index}`,
+    risk_tier: index === 0 ? 'high' : 'standard',
+    risk_label: index === 0 ? '高リスク' : '通常',
+    redaction_state: index === 0 ? 'redacted' : 'not_applicable',
     ip_address: null,
     created_at: '2026-06-20T01:00:00.000Z',
   };
@@ -202,6 +205,8 @@ describe('AuditLogsContent', () => {
       '患者リンク受諾',
       'ファイルダウンロード',
       '報告書印刷要求',
+      '高リスク',
+      '通常',
     ]) {
       expect(screen.getAllByRole('button', { name: label }).length).toBeGreaterThan(0);
     }
@@ -222,16 +227,18 @@ describe('AuditLogsContent', () => {
     expect(screen.getByRole('button', { name: 'JSON出力' }).className).toContain('sm:min-h-[44px]');
     expect(screen.getByRole('button', { name: 'CSV出力' }).className).toContain('sm:min-h-[44px]');
     expect(screen.getByPlaceholderText('ユーザーIDで検索').className).toContain('sm:min-h-[44px]');
+    expect(document.getElementById('risk-tier-filter')?.className).toContain('sm:min-h-[44px]');
     expect(document.getElementById('target-type-filter')?.className).toContain('sm:min-h-[44px]');
     expect(document.getElementById('action-filter')?.className).toContain('sm:min-h-[44px]');
   });
 
-  it('passes selected consent audit filters to list and export requests', async () => {
+  it('passes selected risk and consent audit filters to list and export requests', async () => {
     const fetchMock = stubFetch();
     renderContent();
 
     await screen.findByText('ログがありません');
 
+    fireEvent.click(screen.getByRole('button', { name: '高リスク' }));
     fireEvent.click(screen.getByRole('button', { name: '同意記録' }));
     fireEvent.click(screen.getByRole('button', { name: '同意記録閲覧' }));
 
@@ -242,6 +249,7 @@ describe('AuditLogsContent', () => {
           if (!url.startsWith('/api/audit-logs?')) return false;
           const params = searchParamsFromUrl(url);
           return (
+            params.get('risk_tier') === 'high' &&
             params.get('target_type') === 'consent_record' &&
             params.get('action') === 'consent_record_viewed'
           );
@@ -257,10 +265,23 @@ describe('AuditLogsContent', () => {
       );
       expect(exportCall).toBeDefined();
       const params = searchParamsFromUrl(String(exportCall?.[0]));
+      expect(params.get('risk_tier')).toBe('high');
       expect(params.get('target_type')).toBe('consent_record');
       expect(params.get('action')).toBe('consent_record_viewed');
       expect(params.get('format')).toBe('json');
     });
+  });
+
+  it('shows risk and redaction badges returned by the audit API', async () => {
+    stubFetchWithLogs(2);
+    renderContent();
+
+    expect(await screen.findAllByText('target_0')).not.toHaveLength(0);
+    expect(await screen.findAllByText('高リスク')).not.toHaveLength(0);
+    expect(screen.getAllByText('本文マスク済').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('通常').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('対象外').length).toBeGreaterThan(0);
+    expect(screen.getByTestId('audit-logs-risk-notice').textContent).toContain('risk_tier');
   });
 
   it('uses the server message from a failed audit export response', async () => {

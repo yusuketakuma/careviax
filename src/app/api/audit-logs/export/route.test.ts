@@ -92,7 +92,7 @@ describe('/api/audit-logs/export GET', () => {
         action: 'export',
         target_type: 'visit_record',
         target_id: 'visit_1',
-        changes: { count: 1 },
+        changes: { format: 'json', record_count: 1, filters: {}, metadata: {} },
         ip_address: '127.0.0.1',
         user_agent: 'vitest',
         created_at: new Date('2026-03-28T00:00:00.000Z'),
@@ -136,8 +136,12 @@ describe('/api/audit-logs/export GET', () => {
     expect(body.split('\n')[0]).toContain('actor_pharmacy_id');
     expect(body.split('\n')[0]).toContain('actor_site_id');
     expect(body.split('\n')[0]).toContain('patient_id');
+    expect(body.split('\n')[0]).toContain('risk_tier');
+    expect(body.split('\n')[0]).toContain('redaction_state');
     expect(body).toContain('"audit_1"');
     expect(body).toContain('"visit_record"');
+    expect(body).toContain('"high"');
+    expect(body).toContain('"minimized"');
     expect(recordDataExportAuditMock).toHaveBeenCalledWith(
       expect.any(Object),
       expect.objectContaining({
@@ -169,8 +173,54 @@ describe('/api/audit-logs/export GET', () => {
       expect.objectContaining({
         id: 'audit_1',
         action: 'export',
+        risk_tier: 'high',
+        redaction_state: 'minimized',
       }),
     ]);
+  });
+
+  it('filters and records audit export by risk tier', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }, 'format=json&risk_tier=high'),
+      emptyRouteContext,
+    )) as Response;
+
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    expect(findManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          OR: expect.any(Array),
+        }),
+      }),
+    );
+    expect(recordDataExportAuditMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        filters: expect.objectContaining({
+          riskTier: 'high',
+        }),
+      }),
+    );
+  });
+
+  it('returns no-store validation errors for invalid risk tier filters', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }, 'format=json&risk_tier=critical'),
+      emptyRouteContext,
+    )) as Response;
+
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    expect(findManyMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
   });
 
   it('preserves safe care report PDF profile fields and redacts hostile legacy metadata in json export payloads', async () => {

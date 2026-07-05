@@ -51,6 +51,7 @@ const safeCodeStringKeys = new Set([
   'redaction_profile',
   'request_type',
   'response_mode',
+  'riskTier',
   'share_case_id',
   'source',
   'status',
@@ -120,6 +121,7 @@ const safePurposeValues = new Set([
   'visit-photo',
 ]);
 const safeProfileValues = new Set(['external', 'internal']);
+const safeRiskTierValues = new Set(['high', 'standard']);
 const safeSurfaceValues = new Set([
   'care_report_pdf',
   'conference_note_pdf',
@@ -174,6 +176,7 @@ const allowedFilterKeysByTarget = new Map<string, Set<string>>([
       'patient',
       'targetType',
       'action',
+      'riskTier',
       'from',
       'to',
     ]),
@@ -274,6 +277,7 @@ const globalSafeFilterKeys = new Set([
   'request_type',
   'profile',
   'redaction_profile',
+  'riskTier',
   'care_report_rows_excluded',
   'purpose',
 ]);
@@ -461,6 +465,8 @@ function sanitizeExportAuditFieldValue(key: string, value: unknown): unknown {
     case 'profile':
     case 'redaction_profile':
       return sanitizeEnumValue(value, safeProfileValues);
+    case 'riskTier':
+      return sanitizeEnumValue(value, safeRiskTierValues);
     case 'surface':
       return sanitizeEnumValue(value, safeSurfaceValues);
     case 'response_mode':

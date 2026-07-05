@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { expectNoStore } from '@/test/api-response-assertions';
 
-const { authMock, membershipFindFirstMock, findManyMock, countMock } = vi.hoisted(() => ({
-  authMock: vi.fn(),
-  membershipFindFirstMock: vi.fn(),
-  findManyMock: vi.fn(),
-  countMock: vi.fn(),
-}));
+const { authMock, membershipFindFirstMock, findManyMock, countMock, createAuditLogEntryMock } =
+  vi.hoisted(() => ({
+    authMock: vi.fn(),
+    membershipFindFirstMock: vi.fn(),
+    findManyMock: vi.fn(),
+    countMock: vi.fn(),
+    createAuditLogEntryMock: vi.fn(),
+  }));
 
 vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
@@ -25,6 +27,10 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
+vi.mock('@/lib/audit/audit-entry', () => ({
+  createAuditLogEntry: createAuditLogEntryMock,
+}));
+
 import { GET } from './route';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
@@ -40,6 +46,7 @@ describe('/api/audit-logs GET', () => {
     vi.clearAllMocks();
     findManyMock.mockResolvedValue([]);
     countMock.mockResolvedValue(0);
+    createAuditLogEntryMock.mockResolvedValue({ id: 'audit_view_1' });
   });
 
   it('returns 401 when unauthenticated', async () => {
@@ -80,6 +87,15 @@ describe('/api/audit-logs GET', () => {
     expectNoStore(response);
     expect(findManyMock).toHaveBeenCalledOnce();
     expect(countMock).toHaveBeenCalledOnce();
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      expect.objectContaining({
+        action: 'audit_log_viewed',
+        targetType: 'audit_log',
+        targetId: 'audit_log',
+      }),
+    );
   });
 
   it('returns no-store validation errors for invalid date filters before querying audit logs', async () => {
@@ -95,6 +111,23 @@ describe('/api/audit-logs GET', () => {
     expectNoStore(response);
     expect(findManyMock).not.toHaveBeenCalled();
     expect(countMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('returns no-store validation errors for invalid risk tier filters before querying audit logs', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }, 'risk_tier=critical'),
+      emptyRouteContext,
+    )) as Response;
+
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    expect(findManyMock).not.toHaveBeenCalled();
+    expect(countMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
   it('returns a sanitized no-store 500 when audit log listing fails unexpectedly', async () => {
@@ -114,6 +147,7 @@ describe('/api/audit-logs GET', () => {
       code: 'INTERNAL_ERROR',
     });
     expect(JSON.stringify(body)).not.toContain('patient action secret');
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
   it('defaults malformed pagination params before querying audit logs', async () => {
@@ -196,6 +230,132 @@ describe('/api/audit-logs GET', () => {
         }),
       }),
     );
+  });
+
+  it('audits successful audit log viewing with minimized filter metadata', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    findManyMock.mockResolvedValue([
+      {
+        id: 'audit_1',
+        org_id: 'org_1',
+        actor_id: 'user_2',
+        action: 'consent_record_viewed',
+        target_type: 'consent_record',
+        target_id: 'consent_1',
+        changes: {},
+        ip_address: '127.0.0.1',
+        user_agent: 'vitest',
+        created_at: new Date('2026-04-09T00:00:00.000Z'),
+      },
+    ]);
+    countMock.mockResolvedValue(1);
+
+    const response = (await GET(
+      createRequest(
+        { 'x-org-id': 'org_1' },
+        'actor=user_99&patient_id=patient_secret&target_type=consent_record&action=consent_record_viewed&risk_tier=high&date_from=2026-03-01&date_to=2026-03-31',
+      ),
+      emptyRouteContext,
+    )) as Response;
+
+    expect(response.status).toBe(200);
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      expect.objectContaining({
+        action: 'audit_log_viewed',
+        targetType: 'audit_log',
+        targetId: 'audit_log',
+        changes: {
+          filters: {
+            actor_used: true,
+            actor_pharmacy_used: false,
+            actor_site_used: false,
+            patient_used: true,
+            targetType: 'consent_record',
+            action: 'consent_record_viewed',
+            riskTier: 'high',
+            from: '2026-03-01T00:00:00.000Z',
+            to: '2026-03-31T23:59:59.999Z',
+          },
+          page: 1,
+          limit: 20,
+          result_count: 1,
+          total_count: 1,
+        },
+      }),
+    );
+    expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain('patient_secret');
+    expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain('user_99');
+  });
+
+  it('supports the risk tier filter in list queries', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }, 'risk_tier=high'),
+      emptyRouteContext,
+    )) as Response;
+
+    expect(response.status).toBe(200);
+    expect(findManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          OR: expect.any(Array),
+        }),
+      }),
+    );
+    expect(countMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        org_id: 'org_1',
+        OR: expect.any(Array),
+      }),
+    });
+  });
+
+  it('adds risk tier and redaction state review fields to audit log responses', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    findManyMock.mockResolvedValue([
+      {
+        id: 'audit_export_1',
+        org_id: 'org_1',
+        actor_id: 'user_1',
+        action: 'export',
+        target_type: 'audit_log',
+        target_id: 'audit_log',
+        changes: {
+          format: 'json',
+          record_count: 1,
+          filters: { riskTier: 'high' },
+          metadata: {},
+        },
+        ip_address: '127.0.0.1',
+        user_agent: 'vitest',
+        created_at: new Date('2026-04-09T00:00:00.000Z'),
+      },
+    ]);
+    countMock.mockResolvedValue(1);
+
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }),
+      emptyRouteContext,
+    )) as Response;
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    expect(body.data[0]).toMatchObject({
+      id: 'audit_export_1',
+      risk_tier: 'high',
+      risk_label: '高リスク',
+      risk_reasons: expect.arrayContaining(['data_output', 'audit_export']),
+      redaction_state: 'minimized',
+    });
+    expect(body.data[0].changes.filters).toEqual({ riskTier: 'high' });
   });
 
   it.each([

@@ -3350,3 +3350,66 @@
 - remaining:
   実際の UI/UX 実装 slice では、対象画面に応じて `imagegen` / `gpt-image-2` の参照案、
   `docs/ui-ux-design-guidelines.md`、画面状態/失敗状態/モバイル状態を合わせて確認する。
+
+## 2026-07-06 Audit Review Risk Tier / Redaction State slice
+
+- codex: `UX-AUD-001` / `SEC-002` audit review foundation implemented.
+  `Plans.md` の Audit Review Dashboard 要件に沿い、監査ログの action taxonomy / risk tier /
+  redaction state を registry 化し、admin list API、export API、CSV/JSON 出力、管理 UI の
+  risk filter / row badge / redaction badge へ接続した。監査ログ一覧の閲覧自体も
+  `audit_log_viewed` として audit し、raw actor/patient filter 値ではなく filter 使用有無と
+  safe action/target/risk tier、page/limit/result_count/total_count のみを保存する。
+- design reference:
+  UI 変更のため `docs/ui-ux-design-guidelines.md` と `imagegen` skill を確認し、`gpt-image-2`
+  方針の非PHI audit dashboard mockup を生成:
+  `/Users/yusuke/.codex/generated_images/019f2c7e-d969-7882-bd11-432a10abb930/ig_020112857373d110016a4aa24eef108191bc388cb294348cac.png`。
+  採用点は `risk_tier` filter、risk/redaction columns、CSV/JSON 出力にも
+  `risk_tier` / `redaction_state` を含める notice。大規模 redesign ではなく既存
+  `PageSection` / `FilterSummaryBar` / `DataTable` へ PH-OS 密度で落とし込んだ。
+- subagent review:
+  `api_contract_reviewer` (`019f338b-2c8d-7761-ae60-c0db0d41fc8d`) が read-only で
+  `risk_tier=high` query と response enrichment のズレ、SEC-002 minifier の action coverage 不足、
+  risk/redaction tests 不足、UI 未接続、audit-log view audit 未実装を指摘。対応として
+  target_type 単独 high 条件を廃止し action taxonomy と DB predicate を一致させ、sensitive
+  target の generic `changes` は free text / nested strings / arrays を present/length/count +
+  `_redacted` に縮退、UI と tests と view audit を追加した。
+- files inspected:
+  `Plans.md`, `docs/ui-ux-design-guidelines.md`, `/Users/yusuke/.codex/skills/.system/imagegen/SKILL.md`,
+  `src/app/api/audit-logs/route.ts`, `src/app/api/audit-logs/export/route.ts`,
+  `src/lib/api/audit-log-filters.ts`, `src/lib/audit-logs/redaction.ts`,
+  `src/lib/audit/export-audit-sanitizer.ts`,
+  `src/app/(dashboard)/admin/audit-logs/audit-logs-content.tsx`,
+  related route/UI/redaction tests.
+- files changed:
+  `src/lib/audit-logs/review.ts`, `src/lib/audit-logs/review.test.ts`,
+  `src/lib/api/audit-log-filters.ts`, `src/lib/audit/export-audit-sanitizer.ts`,
+  `src/lib/audit-logs/redaction.ts`, `src/lib/audit-logs/redaction.test.ts`,
+  `src/lib/audit-logs/filter-options.ts`, `src/app/api/audit-logs/route.ts`,
+  `src/app/api/audit-logs/route.test.ts`, `src/app/api/audit-logs/export/route.ts`,
+  `src/app/api/audit-logs/export/route.test.ts`,
+  `src/app/(dashboard)/admin/audit-logs/audit-logs-content.tsx`,
+  `src/app/(dashboard)/admin/audit-logs/audit-logs-content.test.tsx`,
+  `ops/refactor/STATE.md`.
+- bugs found/fixed:
+  high-risk audit operations were not first-class response/export/UI fields, so admins could not filter or scan
+  break-glass/output/share/billing/destructive operations. The first implementation draft also risked a query/response
+  mismatch by treating `target_type` alone as high risk. This is fixed by making action taxonomy the canonical query
+  predicate and enrichment source, with regression tests for patient `create` staying standard.
+- security/PHI risks reduced:
+  AuditLog response/export now exposes `redaction_state`; sensitive target changes default to minified summaries instead of
+  returning unknown raw nested strings. Audit-log viewing is itself audited with minimized filter metadata and no raw
+  actor/patient filter values.
+- performance issues improved:
+  Query shape adds only bounded action predicates for `risk_tier`; no broad post-filtering is used, so pagination/count/export
+  totals stay DB-backed. UI consumes server-side risk filter instead of client filtering loaded rows.
+- validation:
+  `pnpm exec vitest run src/lib/audit-logs/review.test.ts src/lib/audit-logs/redaction.test.ts src/app/api/audit-logs/route.test.ts src/app/api/audit-logs/export/route.test.ts src/app/'(dashboard)'/admin/audit-logs/audit-logs-content.test.tsx --reporter=dot --testTimeout=30000`
+  green (5 files / 90 tests; expected sanitized stderr from 500 route tests only);
+  `pnpm exec eslint --max-warnings=0 ...audit-log touched files...` green;
+  `pnpm exec prettier --check ...audit-log touched files...` green;
+  `git diff --check -- ...audit-log touched files...` green;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck --pretty false` green.
+- remaining:
+  Broader audit review dashboard remains open for review-state persistence, admin dashboard high-risk unreviewed count,
+  and optional browser screenshot proof. Export truncation metadata is still header-only and can be refined later with
+  LIMIT+1 / body metadata if required.

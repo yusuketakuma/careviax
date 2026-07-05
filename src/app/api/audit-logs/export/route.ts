@@ -6,6 +6,7 @@ import { prisma } from '@/lib/db/client';
 import { internalError, validationError } from '@/lib/api/response';
 import { parseAuditLogFilters } from '@/lib/api/audit-log-filters';
 import { redactAuditLogsForResponse } from '@/lib/audit-logs/redaction';
+import { buildAuditLogRiskTierWhere, enrichAuditLogsForReview } from '@/lib/audit-logs/review';
 import { recordDataExportAudit } from '@/server/services/export-audit';
 import { quotedCsvRow as toCsvRow } from '@/lib/csv/safe-csv';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
@@ -42,6 +43,7 @@ const authenticatedGET = withAuthContext(
       ...(filters.patient ? { patient_id: filters.patient } : {}),
       ...(filters.targetType ? { target_type: filters.targetType } : {}),
       ...(filters.action ? { action: filters.action } : {}),
+      ...(filters.riskTier ? buildAuditLogRiskTierWhere(filters.riskTier) : {}),
       ...((filters.from ?? filters.to)
         ? {
             created_at: {
@@ -59,7 +61,7 @@ const authenticatedGET = withAuthContext(
       take: EXPORT_LIMIT,
     });
     const truncated = logs.length === EXPORT_LIMIT;
-    const exportLogs = redactAuditLogsForResponse(logs);
+    const exportLogs = enrichAuditLogsForReview(redactAuditLogsForResponse(logs));
 
     await recordDataExportAudit(prisma, {
       orgId: ctx.orgId,
@@ -74,6 +76,7 @@ const authenticatedGET = withAuthContext(
         patient: filters.patient ?? null,
         targetType: filters.targetType ?? null,
         action: filters.action ?? null,
+        riskTier: filters.riskTier ?? null,
         from: filters.from?.toISOString() ?? null,
         to: filters.to?.toISOString() ?? null,
       },
@@ -110,6 +113,8 @@ const authenticatedGET = withAuthContext(
       'actor_pharmacy_id',
       'actor_site_id',
       'patient_id',
+      'risk_tier',
+      'redaction_state',
       'action',
       'target_type',
       'target_id',
@@ -127,6 +132,8 @@ const authenticatedGET = withAuthContext(
         log.actor_pharmacy_id ?? '',
         log.actor_site_id ?? '',
         log.patient_id ?? '',
+        log.risk_tier,
+        log.redaction_state,
         log.action,
         log.target_type,
         log.target_id,

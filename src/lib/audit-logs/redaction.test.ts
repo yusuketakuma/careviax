@@ -347,6 +347,58 @@ describe('redactAuditLogChangesForResponse', () => {
     expect(resultText).not.toContain('token=secret');
   });
 
+  it('minimizes generic sensitive audit changes instead of returning raw nested strings', () => {
+    const log = {
+      id: 'audit_patient_update_1',
+      action: 'update',
+      target_type: 'patient',
+      changes: {
+        id: 'patient_1',
+        status: 'active',
+        address: '東京都港区2-2-2',
+        phone: '090-1234-5678',
+        note: '患者A アムロジピン 処方詳細',
+        before: {
+          memo: '旧メモ token=secret',
+          nested_id: 'case_1',
+        },
+        attachments: ['https://signed.example/raw.pdf?token=secret'],
+      },
+    };
+
+    const result = redactAuditLogChangesForResponse(log);
+    const resultText = JSON.stringify(result);
+
+    expect(result).not.toBe(log);
+    expect(result.changes).toMatchObject({
+      id: 'patient_1',
+      status: 'active',
+      address_present: true,
+      address_length: log.changes.address.length,
+      address_redacted: true,
+      phone_present: true,
+      phone_length: log.changes.phone.length,
+      phone_redacted: true,
+      note_present: true,
+      note_length: log.changes.note.length,
+      note_redacted: true,
+      before: {
+        memo_present: true,
+        memo_length: log.changes.before.memo.length,
+        memo_redacted: true,
+        nested_id: 'case_1',
+      },
+      attachments_present: true,
+      attachments_count: 1,
+      attachments_redacted: true,
+    });
+    expect(resultText).not.toContain('東京都港区');
+    expect(resultText).not.toContain('090-1234-5678');
+    expect(resultText).not.toContain('アムロジピン');
+    expect(resultText).not.toContain('token=secret');
+    expect(resultText).not.toContain('signed.example');
+  });
+
   it('minimizes formulary request free text without hiding structured evidence', () => {
     const log = {
       id: 'audit_formulary_1',

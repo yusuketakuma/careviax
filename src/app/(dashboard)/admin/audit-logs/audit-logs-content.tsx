@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { format, parseISO, subDays } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { Download, Search, Filter, Info } from 'lucide-react';
+import { Download, Search, Filter, Info, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageSection } from '@/components/layout/page-section';
 import { ActionRail } from '@/components/ui/action-rail';
@@ -27,6 +27,8 @@ import {
 import {
   AUDIT_LOG_ACTION_LABEL_MAP,
   AUDIT_LOG_ACTION_OPTIONS,
+  AUDIT_LOG_REDACTION_STATE_LABEL_MAP,
+  AUDIT_LOG_RISK_TIER_OPTIONS,
   AUDIT_LOG_TARGET_TYPE_OPTIONS,
 } from '@/lib/audit-logs/filter-options';
 import { readApiJson } from '@/lib/api/client-json';
@@ -43,6 +45,9 @@ type AuditLog = {
   action: string;
   target_type: string;
   target_id: string;
+  risk_tier: 'high' | 'standard';
+  risk_label: string;
+  redaction_state: 'redacted' | 'minimized' | 'not_applicable';
   ip_address: string | null;
   created_at: string;
 };
@@ -75,6 +80,22 @@ function actionLabel(action: string): string {
   return (AUDIT_LOG_ACTION_LABEL_MAP as Record<string, string>)[action] ?? action;
 }
 
+function riskBadgeClass(riskTier: AuditLog['risk_tier']): string {
+  return riskTier === 'high'
+    ? 'bg-state-blocked/10 text-state-blocked border-state-blocked/30'
+    : 'bg-state-readonly/10 text-state-readonly border-transparent';
+}
+
+function redactionBadgeClass(redactionState: AuditLog['redaction_state']): string {
+  if (redactionState === 'redacted') {
+    return 'bg-state-confirm/10 text-state-confirm border-state-confirm/30';
+  }
+  if (redactionState === 'minimized') {
+    return 'bg-tag-info/10 text-tag-info border-tag-info/30';
+  }
+  return 'bg-state-readonly/10 text-state-readonly border-transparent';
+}
+
 // 一覧の表示上限(新しい順)。これに到達したら全件誤認を避ける注記を出す。
 const RESULT_LIMIT = 100;
 
@@ -83,6 +104,7 @@ const RESULT_LIMIT = 100;
 export function AuditLogsContent() {
   const orgId = useOrgId();
   const [actorFilter, setActorFilter] = useState('');
+  const [riskTierFilter, setRiskTierFilter] = useState('');
   const [targetTypeFilter, setTargetTypeFilter] = useState('');
   const [actionFilter, setActionFilter] = useState('');
   const [dateFrom, setDateFrom] = useState(format(subDays(new Date(), 30), 'yyyy-MM-dd'));
@@ -91,6 +113,7 @@ export function AuditLogsContent() {
   const queryParams = new URLSearchParams({
     limit: String(RESULT_LIMIT),
     ...(actorFilter ? { actor: actorFilter } : {}),
+    ...(riskTierFilter ? { risk_tier: riskTierFilter } : {}),
     ...(targetTypeFilter ? { target_type: targetTypeFilter } : {}),
     ...(actionFilter ? { action: actionFilter } : {}),
     ...(dateFrom ? { date_from: dateFrom } : {}),
@@ -98,7 +121,16 @@ export function AuditLogsContent() {
   });
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['audit-logs', orgId, actorFilter, targetTypeFilter, actionFilter, dateFrom, dateTo],
+    queryKey: [
+      'audit-logs',
+      orgId,
+      actorFilter,
+      riskTierFilter,
+      targetTypeFilter,
+      actionFilter,
+      dateFrom,
+      dateTo,
+    ],
     queryFn: async () => {
       const res = await fetch(`/api/audit-logs?${queryParams}`, {
         headers: buildOrgHeaders(orgId),
@@ -121,6 +153,15 @@ export function AuditLogsContent() {
           <span className="text-xs tabular-nums text-muted-foreground">
             {format(parseISO(row.original.created_at), 'MM/dd HH:mm:ss', { locale: ja })}
           </span>
+        ),
+      },
+      {
+        accessorKey: 'risk_tier',
+        header: 'リスク',
+        cell: ({ row }) => (
+          <Badge variant="outline" className={`text-xs ${riskBadgeClass(row.original.risk_tier)}`}>
+            {row.original.risk_label}
+          </Badge>
         ),
       },
       {
@@ -158,6 +199,18 @@ export function AuditLogsContent() {
         header: '対象ID',
         cell: ({ row }) => (
           <span className="font-mono text-xs text-muted-foreground">{row.original.target_id}</span>
+        ),
+      },
+      {
+        accessorKey: 'redaction_state',
+        header: 'Redaction',
+        cell: ({ row }) => (
+          <Badge
+            variant="outline"
+            className={`text-xs ${redactionBadgeClass(row.original.redaction_state)}`}
+          >
+            {AUDIT_LOG_REDACTION_STATE_LABEL_MAP[row.original.redaction_state]}
+          </Badge>
         ),
       },
       {
@@ -245,6 +298,12 @@ export function AuditLogsContent() {
               },
               { label: '期間', value: `${dateFrom || '未指定'} - ${dateTo || '未指定'}` },
               {
+                label: 'リスク',
+                value:
+                  AUDIT_LOG_RISK_TIER_OPTIONS.find((opt) => opt.value === riskTierFilter)?.label ??
+                  'すべて',
+              },
+              {
                 label: '対象種別',
                 value:
                   AUDIT_LOG_TARGET_TYPE_OPTIONS.find((opt) => opt.value === targetTypeFilter)
@@ -273,12 +332,24 @@ export function AuditLogsContent() {
               </p>
             </div>
           )}
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex items-start gap-2 rounded-md border border-border/70 bg-muted/35 px-4 py-3 text-sm text-muted-foreground"
+            data-testid="audit-logs-risk-notice"
+          >
+            <ShieldAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-state-confirm" />
+            <p>
+              高リスク操作は優先レビュー対象です。CSV / JSON 出力にも risk_tier と redaction_state
+              を含めます。
+            </p>
+          </div>
           <details className="rounded-md border border-border bg-surface-subtle/60 [&:not([open])>div]:hidden">
             <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-3 px-4 py-2 text-sm font-medium text-foreground marker:hidden [&::-webkit-details-marker]:hidden">
               表示条件を変更
               <Filter className="size-4 text-muted-foreground" aria-hidden="true" />
             </summary>
-            <div className="grid gap-4 border-t border-border px-4 py-4 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="grid gap-4 border-t border-border px-4 py-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
               <div className="space-y-1.5">
                 <Label htmlFor="actor-filter">操作者</Label>
                 <div className="relative">
@@ -294,6 +365,21 @@ export function AuditLogsContent() {
                     className="h-11 pl-8 sm:h-11 sm:min-h-[44px]"
                   />
                 </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="risk-tier-filter">リスク</Label>
+                <Select value={riskTierFilter} onValueChange={(v) => setRiskTierFilter(v ?? '')}>
+                  <SelectTrigger id="risk-tier-filter" className="h-11 sm:h-11 sm:min-h-[44px]">
+                    <SelectValue placeholder="すべて" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {AUDIT_LOG_RISK_TIER_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value || 'all'} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="target-type-filter">対象種別</Label>

@@ -11,6 +11,46 @@ const FORMULARY_CHANGE_REQUEST_AUDIT_ACTIONS = new Set([
   'pharmacy_drug_stock_change_approved',
   'pharmacy_drug_stock_change_rejected',
 ]);
+
+const SENSITIVE_AUDIT_TARGET_TYPES = new Set([
+  'patient',
+  'consent_record',
+  'PatientShareCase',
+  'PatientShareConsent',
+  'patient_share_consent',
+  'PatientLink',
+  'PatientShareCorrectionRequest',
+  'patient_share_correction_request',
+  'prescription',
+  'PrescriptionIntake',
+  'care_report',
+  'CareReport',
+  'billing_candidate',
+  'PharmacyInvoice',
+  'notification',
+  'file_asset',
+  'visit_record',
+  'VisitRecord',
+]);
+
+const SAFE_AUDIT_CHANGE_STRING_KEYS = new Set([
+  'id',
+  'status',
+  'old_status',
+  'new_status',
+  'target_id',
+  'target_type',
+  'workflow_state',
+  'review_state',
+  'resolution_state',
+  'action',
+  'source',
+  'format',
+  'role',
+  'permission',
+]);
+
+const SAFE_AUDIT_CHANGE_ID_KEYS = /(^id$|_id$|Id$|_ids$|Ids$)/;
 type AuditLogLike = {
   action: string;
   target_type?: string | null;
@@ -98,6 +138,85 @@ function minimizeFreeTextField(record: Record<string, unknown>, key: string) {
   return minimized;
 }
 
+function isSafeAuditCodeString(value: string) {
+  return (
+    /^[A-Za-z0-9_.:-]{1,128}$/.test(value) && !/(https?:\/\/|token|secret|signed\.)/i.test(value)
+  );
+}
+
+function summarizeSensitiveString(value: string) {
+  const trimmed = value.trim();
+  return {
+    present: trimmed.length > 0,
+    length: trimmed.length,
+    redacted: true,
+  };
+}
+
+function minimizeSensitiveAuditValue(key: string, value: unknown): unknown {
+  if (typeof value === 'string') {
+    if (
+      (SAFE_AUDIT_CHANGE_STRING_KEYS.has(key) || SAFE_AUDIT_CHANGE_ID_KEYS.test(key)) &&
+      isSafeAuditCodeString(value)
+    ) {
+      return value;
+    }
+    return summarizeSensitiveString(value);
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean' || value === null) {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return {
+      present: value.length > 0,
+      count: value.length,
+      redacted: true,
+    };
+  }
+
+  if (isPlainRecord(value)) {
+    const minimized: Record<string, unknown> = {};
+    for (const [nestedKey, nestedValue] of Object.entries(value)) {
+      const nextValue = minimizeSensitiveAuditValue(nestedKey, nestedValue);
+      if (isPlainRecord(nextValue) && 'redacted' in nextValue && 'length' in nextValue) {
+        minimized[`${nestedKey}_present`] = nextValue.present;
+        minimized[`${nestedKey}_length`] = nextValue.length;
+        minimized[`${nestedKey}_redacted`] = true;
+      } else if (isPlainRecord(nextValue) && 'redacted' in nextValue && 'count' in nextValue) {
+        minimized[`${nestedKey}_present`] = nextValue.present;
+        minimized[`${nestedKey}_count`] = nextValue.count;
+        minimized[`${nestedKey}_redacted`] = true;
+      } else {
+        minimized[nestedKey] = nextValue;
+      }
+    }
+    return minimized;
+  }
+
+  return undefined;
+}
+
+function minimizeSensitiveAuditChanges(changes: Record<string, unknown>) {
+  const minimized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(changes)) {
+    const nextValue = minimizeSensitiveAuditValue(key, value);
+    if (isPlainRecord(nextValue) && 'redacted' in nextValue && 'length' in nextValue) {
+      minimized[`${key}_present`] = nextValue.present;
+      minimized[`${key}_length`] = nextValue.length;
+      minimized[`${key}_redacted`] = true;
+    } else if (isPlainRecord(nextValue) && 'redacted' in nextValue && 'count' in nextValue) {
+      minimized[`${key}_present`] = nextValue.present;
+      minimized[`${key}_count`] = nextValue.count;
+      minimized[`${key}_redacted`] = true;
+    } else if (nextValue !== undefined) {
+      minimized[key] = nextValue;
+    }
+  }
+  return minimized;
+}
+
 export function minimizeFormularyChangeRequestAuditChanges(
   changes: Record<string, unknown>,
 ): Record<string, unknown> | null {
@@ -166,6 +285,12 @@ export function redactAuditLogChangesForResponse<T extends AuditLogLike>(log: T)
   }
 
   if (log.action !== 'visit_schedule_proposal_rejected') {
+    if (log.target_type && SENSITIVE_AUDIT_TARGET_TYPES.has(log.target_type)) {
+      return {
+        ...log,
+        changes: minimizeSensitiveAuditChanges(log.changes),
+      };
+    }
     return log;
   }
 

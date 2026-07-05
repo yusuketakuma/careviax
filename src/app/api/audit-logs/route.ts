@@ -7,6 +7,8 @@ import { parseAuditLogFilters } from '@/lib/api/audit-log-filters';
 import { buildPagination } from '@/lib/api/search';
 import { parseBoundedInteger } from '@/lib/api/pagination';
 import { redactAuditLogsForResponse } from '@/lib/audit-logs/redaction';
+import { buildAuditLogRiskTierWhere, enrichAuditLogsForReview } from '@/lib/audit-logs/review';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 
 const DEFAULT_AUDIT_LOG_PAGE = 1;
 const DEFAULT_AUDIT_LOG_LIMIT = 20;
@@ -43,6 +45,7 @@ const authenticatedGET = withAuthContext(
       ...(filters.patient ? { patient_id: filters.patient } : {}),
       ...(filters.targetType ? { target_type: filters.targetType } : {}),
       ...(filters.action ? { action: filters.action } : {}),
+      ...(filters.riskTier ? buildAuditLogRiskTierWhere(filters.riskTier) : {}),
       ...(filters.from || filters.to
         ? {
             created_at: {
@@ -63,8 +66,31 @@ const authenticatedGET = withAuthContext(
       prisma.auditLog.count({ where }),
     ]);
 
+    await createAuditLogEntry(prisma, ctx, {
+      action: 'audit_log_viewed',
+      targetType: 'audit_log',
+      targetId: 'audit_log',
+      changes: {
+        filters: {
+          actor_used: Boolean(filters.actor),
+          actor_pharmacy_used: Boolean(filters.actorPharmacy),
+          actor_site_used: Boolean(filters.actorSite),
+          patient_used: Boolean(filters.patient),
+          targetType: filters.targetType ?? null,
+          action: filters.action ?? null,
+          riskTier: filters.riskTier ?? null,
+          from: filters.from?.toISOString() ?? null,
+          to: filters.to?.toISOString() ?? null,
+        },
+        page: Math.floor(skip / take) + 1,
+        limit: take,
+        result_count: logs.length,
+        total_count: total,
+      },
+    });
+
     return success({
-      data: redactAuditLogsForResponse(logs),
+      data: enrichAuditLogsForReview(redactAuditLogsForResponse(logs)),
       pagination: {
         total,
         page: Math.floor(skip / take) + 1,

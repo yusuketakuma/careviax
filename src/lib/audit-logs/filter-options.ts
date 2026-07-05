@@ -78,3 +78,15 @@ export const AUDIT_LOG_ACTION_OPTIONS = [
   { value: '', label: 'すべて' },
   ...Object.entries(AUDIT_LOG_ACTION_LABEL_MAP).map(([value, label]) => ({ value, label })),
 ] as const;
+
+export const AUDIT_LOG_RISK_TIER_OPTIONS = [
+  { value: '', label: 'すべて' },
+  { value: 'high', label: '高リスク' },
+  { value: 'standard', label: '通常' },
+] as const;
+
+export const AUDIT_LOG_REDACTION_STATE_LABEL_MAP = {
+  redacted: '本文マスク済',
+  minimized: '最小化済',
+  not_applicable: '対象外',
+} as const satisfies Record<string, string>;
