@@ -21,6 +21,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { StateBadge } from '@/components/ui/state-badge';
 import { Textarea } from '@/components/ui/textarea';
+import { readApiJson } from '@/lib/api/client-json';
 import type { PatientArchiveSummary } from '@/lib/patient/archive-summary';
 import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
 import { messageFromError } from '@/lib/utils/error-message';
@@ -283,12 +284,7 @@ export function SharedViewerContent({ token }: { token: string }) {
         headers: { 'x-otp': activeOtp },
       });
 
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload.message ?? '共有情報の取得に失敗しました');
-      }
-
-      return payload as { data: ExternalPayload };
+      return readApiJson<{ data: ExternalPayload }>(response, '共有情報の取得に失敗しました');
     },
   });
 
@@ -321,16 +317,18 @@ export function SharedViewerContent({ token }: { token: string }) {
         body: JSON.stringify(body),
       });
 
-      const payload = await response.json();
-      if (!response.ok) {
+      try {
+        return await readApiJson<{ data: { accepted: boolean; replayed: boolean } }>(
+          response,
+          '自己申告の送信に失敗しました',
+        );
+      } catch (error) {
         const submitError = new Error(
-          payload.message ?? '自己申告の送信に失敗しました',
+          messageFromError(error, '自己申告の送信に失敗しました'),
         ) as SelfReportSubmitError;
         submitError.status = response.status;
         throw submitError;
       }
-
-      return payload as { data: { accepted: boolean; replayed: boolean } };
     },
     onSuccess: () => {
       selfReportSubmissionRef.current = null;

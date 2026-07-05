@@ -127,6 +127,21 @@ describe('SharedViewerContent self report', () => {
     expect(body).not.toHaveProperty('idempotency_key');
   });
 
+  it('keeps the server message for shared viewer unlock failures', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ message: '共有リンクの閲覧期限が切れています' }), {
+        status: 403,
+      }),
+    );
+
+    renderSharedViewerContent();
+
+    fireEvent.change(screen.getByLabelText('OTP'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: /閲覧する/ }));
+
+    expect(await screen.findByText('共有リンクの閲覧期限が切れています')).toBeTruthy();
+  });
+
   it('shows inline required errors and does not post an empty self report', async () => {
     renderSharedViewerContent();
 
