@@ -1,13 +1,13 @@
 'use client';
 
 import * as React from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildDocumentTemplateApiPath } from '@/lib/document-templates/api-paths';
-import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 import { messageFromError } from '@/lib/utils/error-message';
@@ -64,8 +64,19 @@ export function summarizeMergeFieldUsage(text: string): {
 type TemplateBodyEditorTemplate = {
   id: string;
   name: string;
-  content: Record<string, unknown>;
 };
+
+type TemplateBodyEditorDetailResponse = {
+  data: {
+    id: string;
+    name: string;
+    content: Record<string, unknown>;
+  };
+};
+
+function getTemplateDetailQueryKey(orgId: string, templateId: string) {
+  return ['document-template', orgId, templateId] as const;
+}
 
 export function TemplateBodyEditor({ templates }: { templates: TemplateBodyEditorTemplate[] }) {
   const orgId = useOrgId();
@@ -74,30 +85,68 @@ export function TemplateBodyEditor({ templates }: { templates: TemplateBodyEdito
 
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [bodyText, setBodyText] = React.useState('');
+  const [hydratedDetailKey, setHydratedDetailKey] = React.useState<string | null>(null);
 
   const selected = templates.find((template) => template.id === selectedId) ?? templates[0] ?? null;
 
-  // テンプレ切替時に文面を読み直す(未保存編集は破棄しない: id が変わった時のみ)
-  const [hydratedId, setHydratedId] = React.useState<string | null>(null);
-  if (selected && hydratedId !== selected.id) {
-    setHydratedId(selected.id);
-    setBodyText(readTemplateBodyText(selected.content) || DEFAULT_BODY_TEXT);
+  const detailQuery = useQuery({
+    queryKey: selected
+      ? getTemplateDetailQueryKey(orgId, selected.id)
+      : ['document-template', orgId, 'none'],
+    queryFn: async () => {
+      if (!selected) throw new Error('テンプレートを選択してください');
+      const res = await fetch(buildDocumentTemplateApiPath(selected.id), {
+        headers: buildOrgHeaders(orgId),
+      });
+      return readApiJson<TemplateBodyEditorDetailResponse>(res, '文面の取得に失敗しました');
+    },
+    enabled: Boolean(orgId && selected),
+  });
+
+  const selectedDetail = detailQuery.data?.data ?? null;
+  const selectedContent = selectedDetail?.content ?? null;
+  const selectedDetailKey = selectedDetail
+    ? `${selectedDetail.id}:${detailQuery.dataUpdatedAt}`
+    : null;
+
+  if (
+    selected &&
+    selectedDetail &&
+    selectedDetailKey &&
+    selectedDetail.id === selected.id &&
+    hydratedDetailKey !== selectedDetailKey
+  ) {
+    setHydratedDetailKey(selectedDetailKey);
+    setBodyText(readTemplateBodyText(selectedDetail.content) || DEFAULT_BODY_TEXT);
   }
+
   const mergeUsage = summarizeMergeFieldUsage(bodyText);
+  const detailErrorMessage = detailQuery.isError
+    ? messageFromError(detailQuery.error, '文面の取得に失敗しました')
+    : null;
 
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!selected) throw new Error('テンプレートを選択してください');
+      if (!selectedContent) throw new Error('文面の取得が完了していません');
       const res = await fetch(buildDocumentTemplateApiPath(selected.id), {
         method: 'PATCH',
         headers: buildOrgJsonHeaders(orgId),
-        body: JSON.stringify({ content: { ...selected.content, body_text: bodyText } }),
+        body: JSON.stringify({ content: { ...selectedContent, body_text: bodyText } }),
       });
-      return readApiJson<unknown>(res, '文面の保存に失敗しました');
+      return readApiJson<TemplateBodyEditorDetailResponse>(res, '文面の保存に失敗しました');
     },
-    onSuccess: () => {
+    onSuccess: (payload) => {
       toast.success('文面を保存しました');
+      if (selected) {
+        queryClient.setQueryData(getTemplateDetailQueryKey(orgId, selected.id), payload);
+      }
       void queryClient.invalidateQueries({ queryKey: ['document-templates'] });
+      if (selected) {
+        void queryClient.invalidateQueries({
+          queryKey: getTemplateDetailQueryKey(orgId, selected.id),
+        });
+      }
     },
     onError: (error) => toast.error(messageFromError(error, '文面の保存に失敗しました')),
   });
@@ -178,11 +227,30 @@ export function TemplateBodyEditor({ templates }: { templates: TemplateBodyEdito
 
         <div className="rounded-lg border border-border/70 bg-background p-4">
           <h3 className="text-sm font-bold text-foreground">文面を編集</h3>
+          {detailQuery.isPending ? (
+            <p className="mt-3 text-sm text-muted-foreground" role="status">
+              文面を読み込んでいます...
+            </p>
+          ) : null}
+          {detailErrorMessage ? (
+            <div className="mt-3 space-y-2" role="alert">
+              <p className="text-sm text-destructive">{detailErrorMessage}</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void detailQuery.refetch()}
+              >
+                再読み込み
+              </Button>
+            </div>
+          ) : null}
           <Textarea
             ref={textareaRef}
-            value={bodyText}
+            value={detailQuery.isPending ? '' : bodyText}
             onChange={(event) => setBodyText(event.target.value)}
             aria-label="テンプレート文面"
+            disabled={detailQuery.isPending || Boolean(detailErrorMessage)}
             className="mt-3 min-h-[320px] leading-7"
           />
         </div>
@@ -205,7 +273,13 @@ export function TemplateBodyEditor({ templates }: { templates: TemplateBodyEdito
           <Button
             type="button"
             className="mt-6 min-h-11 w-full"
-            disabled={saveMutation.isPending || !selected}
+            disabled={
+              saveMutation.isPending ||
+              !selected ||
+              !selectedContent ||
+              detailQuery.isPending ||
+              Boolean(detailErrorMessage)
+            }
             onClick={() => saveMutation.mutate()}
           >
             {saveMutation.isPending ? '保存中...' : '本文を保存する'}

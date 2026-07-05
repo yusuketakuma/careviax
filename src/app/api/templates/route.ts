@@ -74,6 +74,12 @@ function parseTemplateTypeFilter(searchParams: URLSearchParams) {
   return { ok: true as const, data: parsedTemplateType.data };
 }
 
+function omitTemplateContent<T extends object>(template: T): Omit<T, 'content'> {
+  const metadata = { ...template } as Omit<T, 'content'> & { content?: unknown };
+  delete metadata.content;
+  return metadata;
+}
+
 const authenticatedGET = withAuthContext(
   async (req, authCtx) => {
     const { searchParams } = new URL(req.url);
@@ -124,7 +130,6 @@ const authenticatedGET = withAuthContext(
               version: true,
               effective_from: true,
               effective_to: true,
-              content: true,
               is_default: true,
               created_at: true,
               updated_at: true,
@@ -136,9 +141,10 @@ const authenticatedGET = withAuthContext(
       },
       { requestContext: authCtx },
     );
+    const listRows = templates.map(omitTemplateContent);
 
     return success({
-      ...buildCountedListEnvelope(templates, totalCount),
+      ...buildCountedListEnvelope(listRows, totalCount),
       count_basis: TEMPLATE_COUNT_BASIS,
       filters_applied: {
         template_type: parsedTemplateType.data ?? null,

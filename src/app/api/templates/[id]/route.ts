@@ -43,6 +43,59 @@ function parseEffectiveDate(value?: string | null) {
   return value ? new Date(`${value}T00:00:00.000Z`) : undefined;
 }
 
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const authResult = await requireAuthContext(req, {
+      permission: 'canAdmin',
+      message: '文書テンプレートの閲覧権限がありません',
+    });
+    if ('response' in authResult) return withSensitiveNoStore(authResult.response);
+    const { ctx } = authResult;
+
+    const { id: rawId } = await params;
+    const templateId = normalizeRequiredRouteParam(rawId);
+    if (!templateId) return withSensitiveNoStore(validationError('文書テンプレートIDが不正です'));
+
+    const template = await withOrgContext(
+      ctx.orgId,
+      (tx) =>
+        tx.template.findFirst({
+          where: { id: templateId, org_id: ctx.orgId },
+          select: {
+            id: true,
+            name: true,
+            template_type: true,
+            target_role: true,
+            format: true,
+            version: true,
+            effective_from: true,
+            effective_to: true,
+            content: true,
+            is_default: true,
+            created_at: true,
+            updated_at: true,
+          },
+        }),
+      { requestContext: ctx },
+    );
+    if (!template) return withSensitiveNoStore(notFound('文書テンプレートが見つかりません'));
+
+    return withSensitiveNoStore(success({ data: template }));
+  } catch (err) {
+    unstable_rethrow(err);
+    logger.error(
+      {
+        event: 'templates_id_get_unhandled_error',
+        route: TEMPLATE_ROUTE,
+        method: req.method,
+        status: 500,
+      },
+      err,
+    );
+    return withSensitiveNoStore(internalError());
+  }
+}
+
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const authResult = await requireAuthContext(req, {

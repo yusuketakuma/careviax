@@ -96,8 +96,24 @@ describe('/api/templates', () => {
     );
   });
 
-  it('lists templates filtered by org and template_type', async () => {
-    templateFindManyMock.mockResolvedValue([{ id: 'template_1' }]);
+  it('lists template metadata filtered by org and template_type without exposing content', async () => {
+    const rawBodyText = '患者向けではない内部文面';
+    templateFindManyMock.mockResolvedValue([
+      {
+        id: 'template_1',
+        name: '主治医報告 基本',
+        template_type: 'care_report',
+        target_role: 'physician',
+        format: 'html',
+        version: 2,
+        effective_from: null,
+        effective_to: null,
+        content: { body_text: rawBodyText, sections: ['summary'] },
+        is_default: true,
+        created_at: '2026-06-19T10:00:00.000Z',
+        updated_at: '2026-06-19T10:30:00.000Z',
+      },
+    ]);
     templateCountMock.mockResolvedValue(3);
 
     const response = await GET(
@@ -115,8 +131,23 @@ describe('/api/templates', () => {
           template_type: 'care_report',
         }),
         take: 100,
+        select: expect.objectContaining({
+          id: true,
+          name: true,
+          template_type: true,
+          target_role: true,
+          format: true,
+          version: true,
+          effective_from: true,
+          effective_to: true,
+          is_default: true,
+          created_at: true,
+          updated_at: true,
+        }),
       }),
     );
+    const select = templateFindManyMock.mock.calls[0]?.[0]?.select as Record<string, unknown>;
+    expect(Object.keys(select)).not.toContain('content');
     expect(templateCountMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -134,8 +165,25 @@ describe('/api/templates', () => {
       'filters_applied',
       'limit',
     ]);
+    expect(body.data[0]).not.toHaveProperty('content');
+    expect(JSON.stringify(body)).not.toContain(rawBodyText);
+    expect(JSON.stringify(body)).not.toContain('body_text');
     expect(body).toMatchObject({
-      data: [{ id: 'template_1' }],
+      data: [
+        {
+          id: 'template_1',
+          name: '主治医報告 基本',
+          template_type: 'care_report',
+          target_role: 'physician',
+          format: 'html',
+          version: 2,
+          effective_from: null,
+          effective_to: null,
+          is_default: true,
+          created_at: '2026-06-19T10:00:00.000Z',
+          updated_at: '2026-06-19T10:30:00.000Z',
+        },
+      ],
       total_count: 3,
       visible_count: 1,
       hidden_count: 2,

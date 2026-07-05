@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
@@ -58,7 +58,7 @@ type TemplateType =
 
 type TemplateFormat = 'html' | 'pdf';
 
-type DocumentTemplateRow = {
+type DocumentTemplateMetadataRow = {
   id: string;
   name: string;
   template_type: TemplateType;
@@ -67,14 +67,17 @@ type DocumentTemplateRow = {
   version: number;
   effective_from: string | null;
   effective_to: string | null;
-  content: Record<string, unknown>;
   is_default: boolean;
   created_at: string;
   updated_at: string;
 };
 
+type DocumentTemplateDetailRow = DocumentTemplateMetadataRow & {
+  content: Record<string, unknown>;
+};
+
 type DocumentTemplatesResponse = {
-  data: DocumentTemplateRow[];
+  data: DocumentTemplateMetadataRow[];
   total_count?: number;
   visible_count?: number;
   hidden_count?: number;
@@ -85,6 +88,10 @@ type DocumentTemplatesResponse = {
     target_role?: string | null;
   };
   limit?: number;
+};
+
+type DocumentTemplateDetailResponse = {
+  data: DocumentTemplateDetailRow;
 };
 
 type TemplateForm = {
@@ -179,7 +186,22 @@ function normalizeTemplateForm(form?: Partial<TemplateForm> | null): TemplateFor
   };
 }
 
-function toTemplateForm(template: DocumentTemplateRow): TemplateForm {
+function getDocumentTemplateDetailQueryKey(orgId: string, templateId: string) {
+  return ['document-template', orgId, templateId] as const;
+}
+
+async function fetchDocumentTemplateDetail(orgId: string, templateId: string) {
+  const res = await fetch(buildDocumentTemplateApiPath(templateId), {
+    headers: buildOrgHeaders(orgId),
+  });
+  const payload = await readApiJson<DocumentTemplateDetailResponse>(
+    res,
+    '文書テンプレート本文の取得に失敗しました',
+  );
+  return payload.data;
+}
+
+function toTemplateForm(template: DocumentTemplateDetailRow): TemplateForm {
   return {
     name: template.name,
     templateType: template.template_type,
@@ -245,9 +267,11 @@ export function DocumentTemplateContent() {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
   const errorSummaryId = 'document-template-form-error-summary';
+  const detailLoadRequestRef = useRef(0);
   const [filterType, setFilterType] = useState<'all' | TemplateType>('all');
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<DocumentTemplateRow | null>(null);
+  const [loadingTemplateId, setLoadingTemplateId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DocumentTemplateMetadataRow | null>(null);
   const {
     control,
     formState: { errors },
@@ -342,11 +366,16 @@ export function DocumentTemplateContent() {
         body: JSON.stringify(payload),
       });
       const responsePayload = await readApiJson<unknown>(res, 'テンプレートの保存に失敗しました');
-      return { responsePayload, wasEditing: Boolean(templateId) };
+      return { responsePayload, templateId, wasEditing: Boolean(templateId) };
     },
-    onSuccess: async ({ wasEditing }) => {
+    onSuccess: async ({ templateId, wasEditing }) => {
       toast.success(wasEditing ? 'テンプレートを更新しました' : 'テンプレートを登録しました');
       resetForm();
+      if (templateId) {
+        await queryClient.invalidateQueries({
+          queryKey: getDocumentTemplateDetailQueryKey(orgId, templateId),
+        });
+      }
       await queryClient.invalidateQueries({ queryKey: ['document-templates', orgId] });
     },
     onError: (error) => {
@@ -360,12 +389,16 @@ export function DocumentTemplateContent() {
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<unknown>(res, 'テンプレートの削除に失敗しました');
+      await readApiJson<unknown>(res, 'テンプレートの削除に失敗しました');
+      return templateId;
     },
-    onSuccess: async () => {
+    onSuccess: async (templateId) => {
       toast.success('テンプレートを削除しました');
       resetForm();
       setDeleteTarget(null);
+      await queryClient.invalidateQueries({
+        queryKey: getDocumentTemplateDetailQueryKey(orgId, templateId),
+      });
       await queryClient.invalidateQueries({ queryKey: ['document-templates', orgId] });
     },
     onError: (error) => {
@@ -378,12 +411,29 @@ export function DocumentTemplateContent() {
     reset(createEmptyTemplateForm());
   }
 
-  function loadTemplate(template: DocumentTemplateRow) {
-    setEditingTemplateId(template.id);
-    reset(toTemplateForm(template));
+  async function loadTemplate(template: DocumentTemplateMetadataRow) {
+    const requestId = detailLoadRequestRef.current + 1;
+    detailLoadRequestRef.current = requestId;
+    setLoadingTemplateId(template.id);
+    try {
+      const detail = await queryClient.fetchQuery({
+        queryKey: getDocumentTemplateDetailQueryKey(orgId, template.id),
+        queryFn: () => fetchDocumentTemplateDetail(orgId, template.id),
+      });
+      if (detailLoadRequestRef.current !== requestId) return;
+      setEditingTemplateId(detail.id);
+      reset(toTemplateForm(detail));
+    } catch (error) {
+      if (detailLoadRequestRef.current !== requestId) return;
+      toast.error(messageFromError(error, '文書テンプレート本文の取得に失敗しました'));
+    } finally {
+      if (detailLoadRequestRef.current === requestId) {
+        setLoadingTemplateId(null);
+      }
+    }
   }
 
-  const columns: ColumnDef<DocumentTemplateRow>[] = [
+  const columns: ColumnDef<DocumentTemplateMetadataRow>[] = [
     {
       accessorKey: 'name',
       header: 'テンプレート名',
@@ -425,10 +475,11 @@ export function DocumentTemplateContent() {
             size="sm"
             variant="outline"
             aria-label={`${row.original.name} を編集`}
-            onClick={() => loadTemplate(row.original)}
+            onClick={() => void loadTemplate(row.original)}
+            disabled={loadingTemplateId === row.original.id || saveMutation.isPending}
           >
             <Pencil className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
-            編集
+            {loadingTemplateId === row.original.id ? '読込中...' : '編集'}
           </Button>
           <Button
             size="sm"
@@ -721,7 +772,6 @@ export function DocumentTemplateContent() {
         templates={(data?.data ?? []).map((template) => ({
           id: template.id,
           name: template.name,
-          content: template.content,
         }))}
       />
 

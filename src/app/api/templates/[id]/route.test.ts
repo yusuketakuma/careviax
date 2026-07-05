@@ -42,7 +42,13 @@ vi.mock('@/lib/utils/logger', () => ({
   },
 }));
 
-import { DELETE, PATCH } from './route';
+import { DELETE, GET, PATCH } from './route';
+
+function createGetRequest() {
+  return new NextRequest('http://localhost/api/templates/template_1', {
+    method: 'GET',
+  });
+}
 
 function createRequest(body?: unknown) {
   return new NextRequest('http://localhost/api/templates/template_1', {
@@ -87,12 +93,109 @@ describe('/api/templates/[id]', () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         template: {
+          findFirst: templateFindFirstMock,
           updateMany: templateUpdateManyMock,
           update: templateUpdateMock,
           delete: templateDeleteMock,
         },
       }),
     );
+  });
+
+  it('returns a no-store template detail with content scoped to the caller org', async () => {
+    templateFindFirstMock.mockResolvedValue({
+      id: 'template_1',
+      name: '主治医報告 基本',
+      template_type: 'care_report',
+      target_role: 'physician',
+      format: 'html',
+      version: 2,
+      effective_from: null,
+      effective_to: null,
+      content: { body_text: '患者向けではない内部文面', sections: ['summary'] },
+      is_default: true,
+      created_at: '2026-06-19T10:00:00.000Z',
+      updated_at: '2026-06-19T10:30:00.000Z',
+    });
+
+    const response = await GET(createGetRequest(), {
+      params: Promise.resolve({ id: '  template_1  ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      expect.objectContaining({
+        permission: 'canAdmin',
+        message: '文書テンプレートの閲覧権限がありません',
+      }),
+    );
+    expect(withOrgContextMock).toHaveBeenCalledWith(
+      'org_1',
+      expect.any(Function),
+      expect.objectContaining({
+        requestContext: expect.objectContaining({ orgId: 'org_1' }),
+      }),
+    );
+    expect(templateFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'template_1', org_id: 'org_1' },
+        select: expect.objectContaining({
+          id: true,
+          name: true,
+          content: true,
+          updated_at: true,
+        }),
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: 'template_1',
+        content: {
+          body_text: '患者向けではない内部文面',
+          sections: ['summary'],
+        },
+      },
+    });
+  });
+
+  it('returns a no-store not-found response for missing or cross-org template details', async () => {
+    templateFindFirstMock.mockResolvedValue(null);
+
+    const response = await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'template_other_org' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '文書テンプレートが見つかりません',
+    });
+    expect(templateFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'template_other_org', org_id: 'org_1' },
+      }),
+    );
+    expect(templateUpdateMock).not.toHaveBeenCalled();
+    expect(templateDeleteMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank get route ids before loading the template', async () => {
+    const response = await GET(createGetRequest(), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '文書テンプレートIDが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(templateFindFirstMock).not.toHaveBeenCalled();
   });
 
   it('updates a template and clears other defaults when setting default', async () => {
@@ -278,6 +381,27 @@ describe('/api/templates/[id]', () => {
         event: 'templates_id_patch_unhandled_error',
         route: '/api/templates/:id',
         method: 'PATCH',
+        status: 500,
+      }),
+      expect.any(Error),
+    );
+  });
+
+  it('returns a sanitized no-store 500 when template detail loading fails unexpectedly', async () => {
+    const rawMessage = 'raw detail content 患者E';
+    templateFindFirstMock.mockRejectedValue(new Error(rawMessage));
+
+    const response = await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'template_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    await expectInternalError(response, rawMessage);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'templates_id_get_unhandled_error',
+        route: '/api/templates/:id',
+        method: 'GET',
         status: 500,
       }),
       expect.any(Error),

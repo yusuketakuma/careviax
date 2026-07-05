@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
@@ -41,28 +41,24 @@ vi.mock('./document-delivery-rule-manager', () => ({
 // (template-body-editor.tsx)、親が templates を渡さない/[] を渡す/誤マッピングした場合に
 // 親の DOM 順序テストが fail closed する。
 vi.mock('./template-body-editor', () => ({
-  TemplateBodyEditor: ({
-    templates,
-  }: {
-    templates: Array<{ id: string; name: string; content: Record<string, unknown> }>;
-  }) => {
+  TemplateBodyEditor: ({ templates }: { templates: Array<{ id: string; name: string }> }) => {
     const first = templates[0];
-    const sections =
-      first && typeof first.content === 'object' && first.content !== null
-        ? (first.content as { sections?: unknown }).sections
-        : undefined;
     const matches =
-      templates.length > 0 &&
-      first.id === 'template_1' &&
-      first.name === '主治医報告 基本' &&
-      Array.isArray(sections) &&
-      sections[0] === 'summary';
+      templates.length > 0 && first.id === 'template_1' && first.name === '主治医報告 基本';
     return matches ? <h2 data-testid="body-editor-sentinel">報告文面を編集</h2> : null;
   },
 }));
 
 function renderContent() {
   return render(<DocumentTemplateContent />, { wrapper: createQueryClientWrapper() });
+}
+
+function createDeferredResponse() {
+  let resolve!: (response: Response) => void;
+  const promise = new Promise<Response>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+  return { promise, resolve };
 }
 
 describe('DocumentTemplateContent', () => {
@@ -85,7 +81,6 @@ describe('DocumentTemplateContent', () => {
                   version: 2,
                   effective_from: null,
                   effective_to: null,
-                  content: { sections: ['summary'] },
                   is_default: true,
                   created_at: '2026-06-19T10:00:00.000Z',
                   updated_at: '2026-06-19T10:30:00.000Z',
@@ -98,6 +93,28 @@ describe('DocumentTemplateContent', () => {
               count_basis: 'templates',
               filters_applied: { template_type: null, target_role: null },
               limit: 1,
+            }),
+            { status: 200 },
+          );
+        }
+
+        if (url === '/api/templates/template_1' && !init?.method) {
+          return new Response(
+            JSON.stringify({
+              data: {
+                id: 'template_1',
+                name: '主治医報告 基本',
+                template_type: 'care_report',
+                target_role: 'physician',
+                format: 'html',
+                version: 2,
+                effective_from: null,
+                effective_to: null,
+                content: { sections: ['summary'], body_text: '詳細から取得した本文' },
+                is_default: true,
+                created_at: '2026-06-19T10:00:00.000Z',
+                updated_at: '2026-06-19T10:30:00.000Z',
+              },
             }),
             { status: 200 },
           );
@@ -177,12 +194,33 @@ describe('DocumentTemplateContent', () => {
                   version: 2,
                   effective_from: null,
                   effective_to: null,
-                  content: { sections: ['summary'] },
                   is_default: true,
                   created_at: '2026-06-19T10:00:00.000Z',
                   updated_at: '2026-06-19T10:30:00.000Z',
                 },
               ],
+            }),
+            { status: 200 },
+          );
+        }
+
+        if (url === `/api/templates/${encodedId}` && !init?.method) {
+          return new Response(
+            JSON.stringify({
+              data: {
+                id: hostileId,
+                name: '主治医報告 基本',
+                template_type: 'care_report',
+                target_role: 'physician',
+                format: 'html',
+                version: 2,
+                effective_from: null,
+                effective_to: null,
+                content: { sections: ['summary'], body_text: '詳細から取得した本文' },
+                is_default: true,
+                created_at: '2026-06-19T10:00:00.000Z',
+                updated_at: '2026-06-19T10:30:00.000Z',
+              },
             }),
             { status: 200 },
           );
@@ -202,21 +240,29 @@ describe('DocumentTemplateContent', () => {
       name: '主治医報告 基本 を編集',
     });
     fireEvent.click(editButton);
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(`/api/templates/${encodedId}`, {
+        headers: { 'x-test-org-id': 'org_1' },
+      });
+    });
+    await screen.findByDisplayValue(/詳細から取得した本文/);
     fireEvent.click(screen.getByRole('button', { name: '更新する' }));
 
     await waitFor(() => {
       expect(
         vi
           .mocked(global.fetch)
-          .mock.calls.filter(([url]) => String(url) === `/api/templates/${encodedId}`),
+          .mock.calls.filter(
+            ([url, init]) => String(url) === `/api/templates/${encodedId}` && init?.method,
+          ),
       ).toHaveLength(1);
     });
 
     const mutationCalls = vi
       .mocked(global.fetch)
-      .mock.calls.filter(([url]) => String(url) === `/api/templates/${encodedId}`) as Array<
-      [string, RequestInit]
-    >;
+      .mock.calls.filter(
+        ([url, init]) => String(url) === `/api/templates/${encodedId}` && init?.method,
+      ) as Array<[string, RequestInit]>;
     expect(mutationCalls.map(([, init]) => init.method)).toEqual(['PATCH']);
     expect(mutationCalls[0][1].headers).toEqual({
       'Content-Type': 'application/json',
@@ -230,6 +276,10 @@ describe('DocumentTemplateContent', () => {
       format: 'html',
       version: 2,
       is_default: true,
+      content: {
+        sections: ['summary'],
+        body_text: '詳細から取得した本文',
+      },
     });
     for (const [url, init] of mutationCalls) {
       expect(url).not.toContain('%25');
@@ -342,7 +392,6 @@ describe('DocumentTemplateContent', () => {
                   version: 2,
                   effective_from: null,
                   effective_to: null,
-                  content: { sections: ['summary'] },
                   is_default: true,
                   created_at: '2026-06-19T10:00:00.000Z',
                   updated_at: '2026-06-19T10:30:00.000Z',
@@ -423,11 +472,214 @@ describe('DocumentTemplateContent', () => {
     });
     fireEvent.click(editButton);
 
-    expect(screen.getByRole('button', { name: '更新する' })).toBeTruthy();
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith('/api/templates/template_1', {
+        headers: { 'x-test-org-id': 'org_1' },
+      });
+    });
+    expect(await screen.findByRole('button', { name: '更新する' })).toBeTruthy();
     expect((screen.getByLabelText('テンプレート名') as HTMLInputElement).value).toBe(
       '主治医報告 基本',
     );
     expect((screen.getByLabelText('版') as HTMLInputElement).value).toBe('2');
+    expect(
+      (screen.getByLabelText('テンプレート本文(JSON)') as HTMLTextAreaElement).value,
+    ).toContain('詳細から取得した本文');
+  });
+
+  it('keeps the latest edit selection when template detail responses resolve out of order', async () => {
+    const slowDetail = createDeferredResponse();
+    const fastDetail = createDeferredResponse();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === '/api/templates' && !init?.method) {
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: 'template_slow',
+                  name: '遅いテンプレート',
+                  template_type: 'care_report',
+                  target_role: 'physician',
+                  format: 'html',
+                  version: 1,
+                  effective_from: null,
+                  effective_to: null,
+                  is_default: false,
+                  created_at: '2026-06-19T10:00:00.000Z',
+                  updated_at: '2026-06-19T10:30:00.000Z',
+                },
+                {
+                  id: 'template_fast',
+                  name: '速いテンプレート',
+                  template_type: 'care_report',
+                  target_role: 'physician',
+                  format: 'html',
+                  version: 2,
+                  effective_from: null,
+                  effective_to: null,
+                  is_default: true,
+                  created_at: '2026-06-19T10:00:00.000Z',
+                  updated_at: '2026-06-19T10:31:00.000Z',
+                },
+              ],
+            }),
+            { status: 200 },
+          );
+        }
+        if (url === '/api/templates/template_slow' && !init?.method) {
+          return slowDetail.promise;
+        }
+        if (url === '/api/templates/template_fast' && !init?.method) {
+          return fastDetail.promise;
+        }
+        return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+      }),
+    );
+
+    renderContent();
+
+    const [slowEditButton] = await screen.findAllByRole('button', {
+      name: '遅いテンプレート を編集',
+    });
+    fireEvent.click(slowEditButton);
+    const [fastEditButton] = await screen.findAllByRole('button', {
+      name: '速いテンプレート を編集',
+    });
+    fireEvent.click(fastEditButton);
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith('/api/templates/template_slow', {
+        headers: { 'x-test-org-id': 'org_1' },
+      });
+      expect(global.fetch).toHaveBeenCalledWith('/api/templates/template_fast', {
+        headers: { 'x-test-org-id': 'org_1' },
+      });
+    });
+
+    await act(async () => {
+      fastDetail.resolve(
+        new Response(
+          JSON.stringify({
+            data: {
+              id: 'template_fast',
+              name: '速いテンプレート',
+              template_type: 'care_report',
+              target_role: 'physician',
+              format: 'html',
+              version: 2,
+              effective_from: null,
+              effective_to: null,
+              content: { body_text: '速い本文', sections: ['fast'] },
+              is_default: true,
+              created_at: '2026-06-19T10:00:00.000Z',
+              updated_at: '2026-06-19T10:31:00.000Z',
+            },
+          }),
+          { status: 200 },
+        ),
+      );
+      await fastDetail.promise;
+    });
+
+    expect(await screen.findByRole('button', { name: '更新する' })).toBeTruthy();
+    expect((screen.getByLabelText('テンプレート名') as HTMLInputElement).value).toBe(
+      '速いテンプレート',
+    );
+    expect(
+      (screen.getByLabelText('テンプレート本文(JSON)') as HTMLTextAreaElement).value,
+    ).toContain('速い本文');
+
+    await act(async () => {
+      slowDetail.resolve(
+        new Response(
+          JSON.stringify({
+            data: {
+              id: 'template_slow',
+              name: '遅いテンプレート',
+              template_type: 'care_report',
+              target_role: 'physician',
+              format: 'html',
+              version: 1,
+              effective_from: null,
+              effective_to: null,
+              content: { body_text: '遅い本文', sections: ['slow'] },
+              is_default: false,
+              created_at: '2026-06-19T10:00:00.000Z',
+              updated_at: '2026-06-19T10:30:00.000Z',
+            },
+          }),
+          { status: 200 },
+        ),
+      );
+      await slowDetail.promise;
+    });
+
+    expect((screen.getByLabelText('テンプレート名') as HTMLInputElement).value).toBe(
+      '速いテンプレート',
+    );
+    expect(
+      (screen.getByLabelText('テンプレート本文(JSON)') as HTMLTextAreaElement).value,
+    ).toContain('速い本文');
+    expect(
+      (screen.getByLabelText('テンプレート本文(JSON)') as HTMLTextAreaElement).value,
+    ).not.toContain('遅い本文');
+  });
+
+  it('does not enter edit mode or mutate when template detail loading fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === '/api/templates' && !init?.method) {
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: 'template_1',
+                  name: '主治医報告 基本',
+                  template_type: 'care_report',
+                  target_role: 'physician',
+                  format: 'html',
+                  version: 2,
+                  effective_from: null,
+                  effective_to: null,
+                  is_default: true,
+                  created_at: '2026-06-19T10:00:00.000Z',
+                  updated_at: '2026-06-19T10:30:00.000Z',
+                },
+              ],
+            }),
+            { status: 200 },
+          );
+        }
+        if (url === '/api/templates/template_1' && !init?.method) {
+          return new Response(JSON.stringify({ message: '文書テンプレートが見つかりません' }), {
+            status: 404,
+          });
+        }
+        return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+      }),
+    );
+
+    renderContent();
+
+    const [editButton] = await screen.findAllByRole('button', {
+      name: '主治医報告 基本 を編集',
+    });
+    fireEvent.click(editButton);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('文書テンプレートが見つかりません');
+    });
+    expect(screen.queryByRole('button', { name: '更新する' })).toBeNull();
+    expect(screen.getByRole('button', { name: '登録する' })).toBeTruthy();
+    const mutationCalls = vi
+      .mocked(global.fetch)
+      .mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method === 'PATCH');
+    expect(mutationCalls).toHaveLength(0);
   });
 
   it('orders the page sections テンプレート版管理 → 報告文面を編集 → 送達ルール (info hierarchy)', async () => {
