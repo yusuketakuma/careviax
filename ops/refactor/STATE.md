@@ -134,6 +134,12 @@
   DataTable false-empty prevention / upload-create-update-revoke mutation contract は保持。
   SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
   維持しつつ、本sliceでは不要。
+- codex: R40/R44 visit-record-cds-alerts readApiJson slice(3a2cf923) land。focused Vitest 23、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。visit record CDS alerts read query
+  (`POST /api/cds/check`) を readApiJson へ収束し、endpoint / method / cycleId body /
+  org JSON header / queryKey / enabled gate / CdsAlertPanel unavailable state / save-upload flows は保持。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
+  維持しつつ、本sliceでは不要。
 - codex: R40/R44 prescription-history readApiJson slice(d65d08d5) land。focused Vitest 29、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。patient prescription history GET /
   drug-master batch enrichment POST を readApiJson へ収束し、patient path helper / hostile-id

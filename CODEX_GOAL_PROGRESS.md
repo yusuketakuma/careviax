@@ -1,5 +1,43 @@
 # CODEX Goal Progress
 
+## R40/R44 Visit Record CDS Alerts readApiJson Partial - 2026-07-05 09:12 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`
+    - `src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx`
+- Scope:
+  - Reused `readApiJson` for the visit record CDS alerts read query
+    (`POST /api/cds/check`).
+  - Added focused fetcher coverage proving API JSON `message` from failed CDS
+    alert responses is preserved while endpoint, method, JSON body, and
+    `x-org-id` header contracts remain unchanged.
+  - Preserved React Query key, enabled gate, retry=false behavior,
+    CdsAlertPanel unavailable state, visit schedule/header/preparation queries,
+    and visit record save/upload flows.
+- Safety:
+  - Medication safety alert read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx'`
+    passed `1` file / `23` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `3a2cf923`
+    (`refactor(ui): reuse readApiJson in visit record CDS alerts`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Consent Records readApiJson Partial - 2026-07-05 09:06 JST
 
 - Status:
