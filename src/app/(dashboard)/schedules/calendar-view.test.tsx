@@ -145,9 +145,9 @@ describe('CalendarView false-empty', () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes('billing-preview-batch')) {
-        return Promise.resolve({ ok: false, status: 500, json: async () => ({}) } as Response);
+        return Promise.resolve(new Response(JSON.stringify({}), { status: 500 }));
       }
-      return Promise.resolve({ ok: true, json: async () => ({ data: {} }) } as Response);
+      return Promise.resolve(Response.json({ data: {} }));
     });
     vi.stubGlobal('fetch', fetchMock);
 

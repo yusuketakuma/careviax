@@ -893,6 +893,49 @@ describe('ScheduleTeamBoard', () => {
     expect(buildOrgJsonHeadersMock).not.toHaveBeenCalled();
   });
 
+  it('surfaces API messages from schedule and task status mutations', async () => {
+    const mutationConfigs: MutationConfig[] = [];
+    useMutationMock.mockImplementation((config: MutationConfig) => {
+      mutationConfigs.push(config);
+      return {
+        mutate: vi.fn(),
+        isPending: false,
+        variables: undefined,
+      };
+    });
+    mockQueries();
+    render(<ScheduleTeamBoard initialDate={TODAY_KEY} activeView="list" />);
+
+    const statusMutation = mutationConfigs[0] as MutationConfig<VisitStatusPayload>;
+    const taskStatusMutation = mutationConfigs[1] as MutationConfig<TaskStatusPayload>;
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: '訪問予定が同時に更新されています' }), {
+          status: 409,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: 'タスクは既に処理済みです' }), {
+          status: 409,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      statusMutation.mutationFn({
+        scheduleId: 'schedule_1',
+        status: 'in_progress',
+        expectedStatus: 'planned',
+      }),
+    ).rejects.toThrow('訪問予定が同時に更新されています');
+    await expect(
+      taskStatusMutation.mutationFn({ taskId: 'task_1', status: 'in_progress' }),
+    ).rejects.toThrow('タスクは既に処理済みです');
+  });
+
   it('surfaces a toast instead of silently swallowing mutation failures', async () => {
     type MutationConfigWithHandlers = MutationConfig & {
       onError?: (error: unknown) => void;

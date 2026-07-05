@@ -104,10 +104,7 @@ async function updateScheduleOperationalTaskStatus({
     headers: buildOrgJsonHeaders(orgId),
     body: JSON.stringify({ status }),
   });
-  if (!res.ok) {
-    const detail = await res.json().catch(() => null);
-    throw new Error(detail?.error ?? detail?.message ?? '運用タスクの更新に失敗しました');
-  }
+  await readApiJson<unknown>(res, '運用タスクの更新に失敗しました');
 }
 
 async function updateVisitScheduleStatus({
@@ -137,10 +134,7 @@ async function patchVisitSchedule({
     headers: buildOrgJsonHeaders(orgId),
     body: JSON.stringify(payload),
   });
-  if (!res.ok) {
-    const detail = await res.json().catch(() => null);
-    throw new Error(detail?.error ?? detail?.message ?? '訪問予定の更新に失敗しました');
-  }
+  await readApiJson<unknown>(res, '訪問予定の更新に失敗しました');
 }
 
 function familyName(name: string): string {

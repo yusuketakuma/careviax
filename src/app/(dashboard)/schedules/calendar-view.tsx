@@ -19,6 +19,7 @@ import { ja } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { ErrorState } from '@/components/ui/error-state';
 import { SkeletonRows } from '@/components/ui/loading';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
@@ -300,8 +301,7 @@ export function CalendarView() {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ items: schedulePreviewRequests }),
       });
-      if (!response.ok) throw new Error('算定プレビューの取得に失敗しました');
-      const payload = (await response.json()) as {
+      const payload = await readApiJson<{
         data: Record<
           string,
           {
@@ -309,7 +309,7 @@ export function CalendarView() {
             cadence: BillingCadencePreview;
           }
         >;
-      };
+      }>(response, '算定プレビューの取得に失敗しました');
       return new Map(Object.entries(payload.data));
     },
     enabled: Boolean(orgId) && schedulePreviewRequests.length > 0,
