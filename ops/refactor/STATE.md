@@ -40,7 +40,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: pharmacist_trainee handoff supervision request batch(pending commit)
+- codex: pharmacist_trainee handoff supervision request batch(127c89a93)
   implementation complete。ユーザー指示により本sliceでも subagent を投入（code_mapper /
   security_critic / medical_safety_reviewer / test_architect）。全員、`pharmacist_trainee` を
   final confirmation role に単純追加するのは role escalation / 医療安全上不十分と判定し、
