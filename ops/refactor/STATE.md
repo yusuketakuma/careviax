@@ -40,6 +40,32 @@
 
 ## 直近の land（本日・要点）
 
+- codex: VS-AUTO-4 emergency reserve preservation slice(in-progress on main) implementation complete。
+  - planner: `src/server/services/visit-schedule-planner.ts` に `EMERGENCY_RESERVE_MINUTES = 60` を追加し、
+    `remainingSlackMinutes` 算出後、緊急以外の候補が予備枠 60 分未満まで自動充填する場合は
+    `emergency_reserve_preserved` rejected diagnostic で fail-closed。緊急提案は予備枠を使用可能なままにし、
+    既存 `slackPenalty` / route / capacity / billing checks の順序は維持した。
+  - diagnostics/privacy: accepted diagnostics に PHI-free `emergency_reserve` snapshot を追加。
+    `src/lib/visit-schedule-proposals/diagnostics.ts` は response/audit/detail whitelist で
+    `code` / `reserve_minutes` / `remaining_slack_minutes` のみ保持し、free-text detail、患者名、住所、
+    薬剤名、任意 string は通さない。review candidate count の 0〜100 制限は維持。
+  - tests: `src/server/services/visit-schedule-planner.test.ts` に非緊急自動充填拒否と緊急予備枠使用の
+    regression を追加。既存 patient buffer tests は 60 分 reserve を残す勤務枠へ調整し、既存 buffer
+    期待を維持。`src/app/api/visit-schedule-proposals/route.test.ts` は emergency reserve diagnostics が
+    response/audit に残ることを固定。
+  - docs: `Plans.md` は VS-AUTO-3 の旧 compatibility/manual mode 前提を削除し、ユーザー指示どおり
+    proposal-first 最新 contract へ完全上書きする計画に変更。VS-AUTO-4 emergency reserve item を完了化。
+  - subagents: 事前 code_mapper は `remainingSlackMinutes` 算出直後の 60 分 reserve check を最小安全点として
+    提示。追加 verifier 起動は thread limit reached で不可だったため、main Codex が focused/broader validation と
+    diff review を実施。
+  - validation:
+    `pnpm exec vitest run src/server/services/visit-schedule-planner.test.ts src/app/api/visit-schedule-proposals/route.test.ts --reporter=dot --testTimeout=30000`
+    green（2 files / 141 tests）;
+    `pnpm exec vitest run src/server/services/visit-schedule-planner.test.ts src/app/api/visit-schedule-proposals/route.test.ts src/lib/calendar/visit-availability.test.ts src/server/services/visit-medication-deadline.test.ts --reporter=dot --testTimeout=30000`
+    green（4 files / 164 tests）; scoped eslint green; `pnpm format:check` green; `git diff --check`
+    green; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` green。
+    next: scoped commit → origin/main push → VS-AUTO-4 medication readiness derived helper or VS-AUTO-6 overload preview。
 - codex: VS-AUTO-5 explicit review candidate diagnostics slice(in-progress) implementation complete。
   - API: `src/app/api/visit-schedule-proposals/route.ts` は valid accepted candidate の
     `specialty_coverage.match_status` が `unmatched` / `unknown` のとき、PHI-free

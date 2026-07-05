@@ -311,18 +311,16 @@ FE 仕上げ（低優先）:
   - [x] daily job `src/server/jobs/daily/visits.ts` が新 policy の recommended deadline を使う。2026-07-05:
         daily は site 未確定のため generic weekday visitability で demand due/SLA を補正し、最終 buffer/cutoff は planner per-site policy で強制。
 
-#### VS-AUTO-3. `visit-schedules/generate` の proposal-first 互換移行 `cc:TODO`
+#### VS-AUTO-3. `visit-schedules/generate` の proposal-first 上書き移行 `cc:TODO`
 
 - [ ] VS-AUTO-0b の cordon 完了後に本移行へ進む。DeadlinePolicy を本番接続した状態で direct confirmed schedule 自動生成経路を残さない。
 - [ ] `src/app/api/visit-schedules/generate/route.ts` の direct `VisitSchedule.create({ confirmed_at })` を自動生成用途から外す設計にする。
-- [ ] 初期は feature flag または request option で互換を残す:
-  - default: proposal-first preview/create。
-  - compatibility/manual: 直接確定作成を許可。ただし UI 文言は「患者確認済みの確定予定を作成」に限定。
+- [ ] 2026-07-05 ユーザー指示により旧互換は不要。feature flag / request option / compatibility/manual mode で旧 direct generate を残さず、最新 proposal-first contract へ完全上書きする。
 - [ ] recurrence から複数日候補を `VisitScheduleProposal` と `VisitScheduleProposalBatch` に作る adapter を実装する。`idempotency_key`、route_order、billing guard、open proposal collision は existing proposal route と同等にする。
 - [ ] `confirmed_at` あり予定、reschedule source、open proposal duplicate、billing cap、vehicle validation の既存 regression を移行テストで固定する。
 - テスト:
   - 自動一括生成は `VisitScheduleProposal` を作り、`VisitSchedule.create` を呼ばない。
-  - compatibility/manual mode だけ直接 `VisitSchedule` を作る。
+  - legacy compatibility/manual mode は存在しないことを route/API tests で固定する。
   - 患者 contact confirmed 後だけ `[id]` confirm が `VisitSchedule` を作る。
   - `workflow-full-cycle.test.ts` / `visit-schedules/generate/route.test.ts` の期待を proposal-first に更新。
 
@@ -331,11 +329,14 @@ FE 仕上げ（低優先）:
 - [ ] `src/lib/calendar/visit-availability.ts` を新設せず拡張する。現 `canVisitOn` の reason code を planner/API diagnostics と共有する。
 - [ ] 訪問可能枠 DB 化前は、既存 PharmacyOperatingHours/BusinessHoliday + PharmacistShift + patient/facility preference の intersection を唯一の訪問可能判定にする。
 - [ ] 薬剤準備は既存 workflow gate / preparation state を調査し、`medication_ready_at` / `min_schedulable_at` を直接 DB 追加する前に derived helper と diagnostics で接続する。
-- [ ] 緊急予備枠は初期値を service config 定数にし、`remainingSlackMinutes` / `slackPenalty` と conflict しない形で `emergency_reserve_preserved` diagnostic を出す。DB field は VS-AUTO-7。
+- [x] 緊急予備枠は初期値を service 定数にし、`remainingSlackMinutes` / `slackPenalty` と conflict しない形で `emergency_reserve_preserved` diagnostic を出す。DB field は VS-AUTO-7。
+      2026-07-05: `EMERGENCY_RESERVE_MINUTES = 60` を planner に追加し、緊急以外の候補は
+      `remainingSlackMinutes < 60` で rejected diagnostics に落とす。緊急提案は予備枠を使用可能。
+      response/audit/detail 用 diagnostics normalizer は `emergency_reserve` を whitelist し、PHI/free-text を通さない。
 - テスト:
   - `canVisitOn` の既存 fail-closed tests を維持。
   - medication ready 前の候補除外。
-  - emergency reserve を超える自動充填拒否。
+  - [x] emergency reserve を超える自動充填拒否。
   - max_daily/max_weekly/vehicle capacity rejected diagnostics 維持。
 
 #### VS-AUTO-5. Proposal diagnostics / review-gate 表示（migration 前の低リスク層） `cc:TODO`

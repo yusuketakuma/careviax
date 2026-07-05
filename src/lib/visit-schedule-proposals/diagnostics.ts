@@ -34,6 +34,11 @@ export type SafeProposalAcceptedDiagnostic = {
   vehicle_resource_id?: string | null;
   vehicle_resource_label?: string | null;
   vehicle_load?: number | null;
+  emergency_reserve?: {
+    code: 'emergency_reserve_preserved';
+    reserve_minutes: number;
+    remaining_slack_minutes: number;
+  };
   assignment_mode?: string;
   care_relationship?: string;
   score?: number;
@@ -95,12 +100,10 @@ function readNumber(record: JsonRecord, key: string) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
-function readNonNegativeInteger(record: JsonRecord, key: string) {
+function readNonNegativeInteger(record: JsonRecord, key: string, options: { max?: number } = {}) {
   const value = record[key];
-  return typeof value === 'number' &&
-    Number.isInteger(value) &&
-    value >= 0 &&
-    value <= REVIEW_CANDIDATE_COUNT_MAX
+  const max = options.max ?? Number.MAX_SAFE_INTEGER;
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= max
     ? value
     : null;
 }
@@ -169,6 +172,25 @@ function normalizeAcceptedDiagnostic(
   if (careRelationship) normalized.care_relationship = careRelationship;
   const vehicleResourceId = readNullableString(value, 'vehicle_resource_id');
   if (vehicleResourceId) normalized.vehicle_resource_id = vehicleResourceId;
+  if (isRecord(value.emergency_reserve)) {
+    const code = readString(value.emergency_reserve, 'code');
+    const reserveMinutes = readNonNegativeInteger(value.emergency_reserve, 'reserve_minutes');
+    const remainingSlackMinutes = readNonNegativeInteger(
+      value.emergency_reserve,
+      'remaining_slack_minutes',
+    );
+    if (
+      code === 'emergency_reserve_preserved' &&
+      reserveMinutes != null &&
+      remainingSlackMinutes != null
+    ) {
+      normalized.emergency_reserve = {
+        code,
+        reserve_minutes: reserveMinutes,
+        remaining_slack_minutes: remainingSlackMinutes,
+      };
+    }
+  }
 
   if (mode === 'response') {
     const pharmacistName = readString(value, 'pharmacist_name');
@@ -281,11 +303,17 @@ function normalizeReviewCandidateDiagnostic(
   };
   const pharmacistId = readString(value, 'pharmacist_id');
   if (pharmacistId) normalized.pharmacist_id = pharmacistId;
-  const missingLabelCount = readNonNegativeInteger(value, 'missing_label_count');
+  const missingLabelCount = readNonNegativeInteger(value, 'missing_label_count', {
+    max: REVIEW_CANDIDATE_COUNT_MAX,
+  });
   if (missingLabelCount != null) normalized.missing_label_count = missingLabelCount;
-  const unknownProcedureCount = readNonNegativeInteger(value, 'unknown_procedure_count');
+  const unknownProcedureCount = readNonNegativeInteger(value, 'unknown_procedure_count', {
+    max: REVIEW_CANDIDATE_COUNT_MAX,
+  });
   if (unknownProcedureCount != null) normalized.unknown_procedure_count = unknownProcedureCount;
-  const requiredLabelCount = readNonNegativeInteger(value, 'required_label_count');
+  const requiredLabelCount = readNonNegativeInteger(value, 'required_label_count', {
+    max: REVIEW_CANDIDATE_COUNT_MAX,
+  });
   if (requiredLabelCount != null) normalized.required_label_count = requiredLabelCount;
 
   return normalized;

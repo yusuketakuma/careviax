@@ -2459,6 +2459,11 @@ describe('/api/visit-schedule-proposals', () => {
               lockPenalty: 0,
               cadencePenalty: 0,
             },
+            emergency_reserve: {
+              code: 'emergency_reserve_preserved',
+              reserve_minutes: 60,
+              remaining_slack_minutes: 180,
+            },
             specialty_coverage: {
               required_labels: ['TPN'],
               missing_labels: ['TPN'],
@@ -2535,6 +2540,15 @@ describe('/api/visit-schedule-proposals', () => {
     const body = await response.json();
     expect(body).toMatchObject({
       diagnostics: {
+        accepted: [
+          expect.objectContaining({
+            emergency_reserve: {
+              code: 'emergency_reserve_preserved',
+              reserve_minutes: 60,
+              remaining_slack_minutes: 180,
+            },
+          }),
+        ],
         rejected: [
           expect.objectContaining({
             reason_code: 'daily_capacity',
@@ -2589,6 +2603,11 @@ describe('/api/visit-schedule-proposals', () => {
                 expect.objectContaining({
                   pharmacist_id: 'user_2',
                   proposed_date: '2026-04-03',
+                  emergency_reserve: {
+                    code: 'emergency_reserve_preserved',
+                    reserve_minutes: 60,
+                    remaining_slack_minutes: 180,
+                  },
                 }),
               ],
               rejected: [

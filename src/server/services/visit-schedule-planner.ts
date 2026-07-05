@@ -29,6 +29,7 @@ import {
 } from './billing-cadence';
 
 const DEFAULT_VISIT_DURATION_MINUTES = 60;
+const EMERGENCY_RESERVE_MINUTES = DEFAULT_VISIT_DURATION_MINUTES;
 const DEFAULT_SHIFT_START = '09:00';
 const DEFAULT_SHIFT_END = '18:00';
 const MAX_SEARCH_DAYS = 21;
@@ -259,6 +260,7 @@ export type ProposalCandidateRejectionCode =
   | 'no_slot'
   | 'travel_limit'
   | 'travel_limit_unverified'
+  | 'emergency_reserve_preserved'
   | 'billing_constraint'
   | 'not_selected'
   | 'evaluation_error';
@@ -300,6 +302,11 @@ export type AcceptedProposalDiagnostic = {
   vehicle_resource_id: string | null;
   vehicle_resource_label: string | null;
   vehicle_load: number | null;
+  emergency_reserve: {
+    code: 'emergency_reserve_preserved';
+    reserve_minutes: number;
+    remaining_slack_minutes: number;
+  } | null;
   assignment_mode: VisitAssignmentMode;
   care_relationship: 'primary' | 'backup' | 'fallback';
   score: number;
@@ -364,6 +371,7 @@ const REJECTION_REASON_LABELS: Record<ProposalCandidateRejectionCode, string> = 
   no_slot: '空き枠なし',
   travel_limit: '移動上限超過',
   travel_limit_unverified: '移動上限未検証',
+  emergency_reserve_preserved: '緊急予備枠を保持',
   billing_constraint: '算定制約',
   not_selected: '候補上限外',
   evaluation_error: '評価エラー',
@@ -2131,6 +2139,19 @@ export async function generateVisitScheduleProposalDrafts(
           visitBufferMinutes,
           candidateSlot: slot,
         });
+        if (
+          effectivePriority !== 'emergency' &&
+          remainingSlackMinutes < EMERGENCY_RESERVE_MINUTES
+        ) {
+          return {
+            kind: 'rejected' as const,
+            diagnostic: buildRejectedDiagnostic({
+              shift,
+              reasonCode: 'emergency_reserve_preserved',
+              detail: `緊急訪問の予備枠 ${EMERGENCY_RESERVE_MINUTES}分を下回るため自動提案から除外しました`,
+            }),
+          };
+        }
         const slackPenalty =
           effectivePriority === 'emergency'
             ? remainingSlackMinutes < DEFAULT_VISIT_DURATION_MINUTES
@@ -2339,6 +2360,14 @@ export async function generateVisitScheduleProposalDrafts(
       vehicle_resource_id: candidate.vehicleResource?.id ?? null,
       vehicle_resource_label: candidate.vehicleResource?.label ?? null,
       vehicle_load: candidate.vehicleResource ? candidate.vehicleLoad + 1 : null,
+      emergency_reserve:
+        candidate.remainingSlackMinutes >= EMERGENCY_RESERVE_MINUTES
+          ? {
+              code: 'emergency_reserve_preserved',
+              reserve_minutes: EMERGENCY_RESERVE_MINUTES,
+              remaining_slack_minutes: candidate.remainingSlackMinutes,
+            }
+          : null,
       assignment_mode: candidate.assignmentMode,
       care_relationship: candidate.careRelationship,
       score: candidate.score,
