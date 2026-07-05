@@ -235,6 +235,9 @@ import { GET as contactProfilesGet } from '../contact-profiles/route';
 import { GET as documentDeliveryRulesGet } from '../document-delivery-rules/route';
 import { GET as dashboardClerkSupportGet } from '../dashboard/clerk-support/route';
 import { GET as dashboardCockpitGet } from '../dashboard/cockpit/route';
+import { GET as dashboardCockpitDetailsGet } from '../dashboard/cockpit/details/route';
+import { GET as dashboardCockpitSummaryGet } from '../dashboard/cockpit/summary/route';
+import { GET as dashboardCockpitTeamGet } from '../dashboard/cockpit/team/route';
 import { GET as dashboardDispensingStatsGet } from '../dashboard/dispensing-stats/route';
 import { GET as dashboardWorkflowGet } from '../dashboard/workflow/route';
 import { GET as dashboardMedicationDeadlinesGet } from '../dashboard/medication-deadlines/route';
@@ -839,6 +842,30 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
     handler: () =>
       dashboardCockpitGet(
         createRequest('http://localhost/api/dashboard/cockpit', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
+  },
+  {
+    name: 'dashboard/cockpit/summary GET',
+    handler: () =>
+      dashboardCockpitSummaryGet(
+        createRequest('http://localhost/api/dashboard/cockpit/summary', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
+  },
+  {
+    name: 'dashboard/cockpit/details GET',
+    handler: () =>
+      dashboardCockpitDetailsGet(
+        createRequest('http://localhost/api/dashboard/cockpit/details', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
+  },
+  {
+    name: 'dashboard/cockpit/team GET',
+    handler: () =>
+      dashboardCockpitTeamGet(
+        createRequest('http://localhost/api/dashboard/cockpit/team', { 'x-org-id': 'org_1' }),
         emptyRouteContext,
       ),
   },
@@ -2175,6 +2202,9 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'tracing-reports GET' ||
         route.name === 'dashboard/clerk-support GET' ||
         route.name === 'dashboard/cockpit GET' ||
+        route.name === 'dashboard/cockpit/summary GET' ||
+        route.name === 'dashboard/cockpit/details GET' ||
+        route.name === 'dashboard/cockpit/team GET' ||
         route.name === 'dashboard/dispensing-stats GET' ||
         route.name === 'dashboard/workflow GET' ||
         route.name === 'dashboard/overdue GET' ||
@@ -2312,6 +2342,9 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'tracing-reports GET' ||
         route.name === 'dashboard/clerk-support GET' ||
         route.name === 'dashboard/cockpit GET' ||
+        route.name === 'dashboard/cockpit/summary GET' ||
+        route.name === 'dashboard/cockpit/details GET' ||
+        route.name === 'dashboard/cockpit/team GET' ||
         route.name === 'dashboard/dispensing-stats GET' ||
         route.name === 'dashboard/workflow GET' ||
         route.name === 'dashboard/overdue GET' ||

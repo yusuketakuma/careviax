@@ -40,6 +40,82 @@
 
 ## 直近の land（本日・要点）
 
+- codex: DASH-PERF-001 Dashboard BFF split foundation complete（commit pending）。
+  - current task:
+    Goal 継続として `DASH-PERF-001` の backend foundation を実装。既存
+    `/api/dashboard/cockpit` の巨大 route-local 集計を
+    `src/server/services/dashboard-cockpit.ts` へ移し、互換 full response を維持したまま
+    `/api/dashboard/cockpit/summary`, `/details`, `/team` を追加した。summary は PHI を含む
+    患者名/訪問患者名/audit queue を返さず、件数・最初の監査期限・訪問時刻だけに抑制。
+    details は PHI-bearing audit queue / today visits / blocked reasons、team は team_capacity
+    だけを返す。cache key は既存 full key と衝突しないよう `:summary` / `:details` / `:team`
+    suffix を付ける。
+  - files inspected:
+    `Plans.md`, `docs/ui-ux-design-guidelines.md`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`,
+    `src/app/api/dashboard/cockpit/route.ts`,
+    `src/app/api/dashboard/cockpit/route.test.ts`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`,
+    `src/types/dashboard-cockpit.ts`,
+    `src/lib/api/rate-limit.ts`,
+    `src/lib/api/route-catalog.ts`,
+    `src/app/api/__tests__/protected-get-routes.test.ts`,
+    `src/lib/utils/performance.ts`,
+    `src/lib/utils/server-cache.ts`,
+    `src/server/services/workflow-dashboard-cache.ts`,
+    `src/server/services/dashboard-assignment-scope.ts`。
+  - files changed:
+    `src/server/services/dashboard-cockpit.ts`,
+    `src/app/api/dashboard/cockpit/route.ts`,
+    `src/app/api/dashboard/cockpit/summary/route.ts`,
+    `src/app/api/dashboard/cockpit/details/route.ts`,
+    `src/app/api/dashboard/cockpit/team/route.ts`,
+    `src/app/api/dashboard/cockpit/route.test.ts`,
+    `src/types/dashboard-cockpit.ts`,
+    `src/lib/api/rate-limit.ts`,
+    `src/lib/api/route-catalog.ts`,
+    `src/app/api/__tests__/protected-get-routes.test.ts`,
+    `ops/refactor/STATE.md`。
+  - bugs/security risks fixed:
+    1箇所の heavy cockpit BFF だけに依存していた集計を summary/details/team route へ分割可能にした。
+    summary endpoint は PHI-bearing `audit_queue.patient_name` / `today_visits.patient_name`
+    を返さない regression test を追加。新 endpoint も `requireAuthContext(canViewDashboard)`、
+    `runWithRequestAuthContext`、`withSensitiveNoStore`、`withRoutePerformance`、scope fallback、
+    assignment fingerprint cache key を共有。rate-limit catalog と protected GET no-store matrix に
+    新 route を登録。既存の未登録 `/api/onboarding/renewal-board` も rate-limit catalog へ補正。
+  - performance issues improved:
+    full route は旧実装と同じ1セットの query 結果から response を組み立て、summary/details/team の
+    単純合成による二重 audit/today visit fetch を避けた。新 segment route は
+    summary=cycle/audit count/today schedule のみ、details=audit queue/today visits/blockers/carryover、
+    team=today schedules/members/shifts のみに分離し、今後の Dashboard UI 段階ロードと route 別
+    p95/payload budget の前提を作った。
+  - validation commands/results:
+    `pnpm exec vitest run src/app/api/dashboard/cockpit/route.test.ts --reporter=dot --testTimeout=30000`
+    green（18 tests）;
+    `pnpm exec vitest run src/lib/api/route-catalog.test.ts src/lib/api/rate-limit.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`
+    green（431 tests）;
+    `pnpm exec vitest run src/app/api/dashboard/cockpit/route.test.ts src/lib/api/route-catalog.test.ts src/lib/api/rate-limit.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`
+    green（449 tests）;
+    scoped `pnpm exec eslint ...` green;
+    `pnpm format:check` green;
+    `git diff --check -- <DASH owned files>` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` green。
+  - subagent review:
+    `code_mapper`, `performance-auditor`, `frontend_reviewer` を投入。全員 read-only。
+    指摘を反映し、summary PHI-minimization、segment cache key suffix、full route の二重fetch回避、
+    route catalog/rate-limit/protected no-store registration を実装。UI段階ロード、focusRole 活用、
+    route loading skeleton 更新、payload byte/perf-smoke 拡張、DB EXPLAIN/index 判断は別 slice。
+  - remaining work:
+    Dashboard UI の summary-first / details/team fail-soft 段階ロード、`focusRole` の最小活用、
+    `/dashboard/loading` skeleton の現行 cockpit 追随、payload byte budget と perf-smoke 拡張、
+    DB EXPLAIN に基づく index 判断は未着手。
+  - next action:
+    DASH-PERF-001 continuation として Dashboard UI を split endpoints へ段階ロード化するか、
+    `PERF-X/DEV-001` の route payload/perf-smoke 計測へ進む。
+
 - codex: Plans.md UI design generation policy updated（commit `13d96565a`）。
   - current task:
     ユーザー指示「gpt-image-2 を使うことを追記」に対応。`Plans.md` の

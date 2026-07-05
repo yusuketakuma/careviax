@@ -694,6 +694,27 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'dashboard',
   },
   {
+    path: '/api/dashboard/cockpit/summary',
+    methods: ['GET'],
+    permission: 'canViewDashboard',
+    description: '運用コックピット summary 集計',
+    area: 'dashboard',
+  },
+  {
+    path: '/api/dashboard/cockpit/details',
+    methods: ['GET'],
+    permission: 'canViewDashboard',
+    description: '運用コックピット details 集計',
+    area: 'dashboard',
+  },
+  {
+    path: '/api/dashboard/cockpit/team',
+    methods: ['GET'],
+    permission: 'canViewDashboard',
+    description: '運用コックピット team 集計',
+    area: 'dashboard',
+  },
+  {
     path: '/api/dashboard/monthly-stats',
     methods: ['GET'],
     permission: 'canViewDashboard',

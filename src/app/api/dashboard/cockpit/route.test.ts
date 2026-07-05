@@ -76,9 +76,12 @@ vi.mock('@/lib/utils/server-cache', () => ({
 }));
 
 import { GET } from './route';
+import { GET as GETDetails } from './details/route';
+import { GET as GETSummary } from './summary/route';
+import { GET as GETTeam } from './team/route';
 
-function createRequest(search = '') {
-  return new NextRequest(`http://localhost/api/dashboard/cockpit${search}`, {
+function createRequest(search = '', path = '/api/dashboard/cockpit') {
+  return new NextRequest(`http://localhost${path}${search}`, {
     headers: { 'x-org-id': 'org_1' },
   });
 }
@@ -348,6 +351,100 @@ describe('/api/dashboard/cockpit', () => {
     expect(dispenseTaskFindManyMock).not.toHaveBeenCalled();
     expect(queryRawMock).not.toHaveBeenCalled();
     expect(serverCacheSetMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a PHI-minimized summary segment without details or team reads', async () => {
+    const response = (await GETSummary(createRequest('', '/api/dashboard/cockpit/summary'), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(withRoutePerformanceMock).toHaveBeenCalledTimes(1);
+    const json = await response.json();
+
+    expect(json.data).toMatchObject({
+      audit_pending_count: 2,
+      audit_queue_total_count: 2,
+      narcotic_audit_count: 1,
+      earliest_audit_due_at: new Date(2026, 5, 12, 11, 0).toISOString(),
+      today_visit_count: 1,
+      today_visit_times: ['10:30'],
+    });
+    expect(json.data.audit_queue).toBeUndefined();
+    expect(json.data.today_visits).toBeUndefined();
+    expect(json.data.blocked_reasons).toBeUndefined();
+    expect(json.data.team_capacity).toBeUndefined();
+
+    const body = JSON.stringify(json);
+    expect(body).not.toContain('田中 一郎');
+    expect(body).not.toContain('佐々木 ハル');
+    expect(body).not.toContain('伊藤');
+    expect(workflowExceptionFindManyMock).not.toHaveBeenCalled();
+    expect(taskCountMock).not.toHaveBeenCalled();
+    expect(membershipFindManyMock).not.toHaveBeenCalled();
+    expect(pharmacistShiftFindManyMock).not.toHaveBeenCalled();
+    expect(serverCacheSetMock).toHaveBeenCalledWith(
+      expect.stringContaining('cockpit:org_1:admin:user_1:2026-06-12:team:summary'),
+      expect.objectContaining({ today_visit_count: 1 }),
+      15_000,
+    );
+  });
+
+  it('returns the details segment without cycle count or team capacity reads', async () => {
+    const response = (await GETDetails(createRequest('', '/api/dashboard/cockpit/details'), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const json = await response.json();
+    expect(json.data.audit_queue.map((item: { task_id: string }) => item.task_id)).toEqual([
+      'task_narcotic',
+      'task_plain',
+    ]);
+    expect(json.data.today_visits).toEqual([
+      expect.objectContaining({ id: 'visit_1', patient_name: '伊藤' }),
+    ]);
+    expect(json.data.blocked_reasons).toHaveLength(2);
+    expect(json.data.carryover_count).toBe(2);
+    expect(json.data.cycle_status_counts).toBeUndefined();
+    expect(json.data.team_capacity).toBeUndefined();
+    expect(medicationCycleGroupByMock).not.toHaveBeenCalled();
+    expect(membershipFindManyMock).not.toHaveBeenCalled();
+    expect(pharmacistShiftFindManyMock).not.toHaveBeenCalled();
+    expect(serverCacheSetMock).toHaveBeenCalledWith(
+      expect.stringContaining('cockpit:org_1:admin:user_1:2026-06-12:team:details'),
+      expect.objectContaining({ carryover_count: 2 }),
+      15_000,
+    );
+  });
+
+  it('returns the team segment without audit or exception reads', async () => {
+    const response = (await GETTeam(createRequest('', '/api/dashboard/cockpit/team'), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const json = await response.json();
+    expect(json.data.team_capacity).toEqual([
+      expect.objectContaining({ user_id: 'user_1', role_label: '薬', status: 'working' }),
+      expect.objectContaining({ user_id: 'user_2', role_label: '事務', status: 'working' }),
+    ]);
+    expect(json.data.audit_queue).toBeUndefined();
+    expect(json.data.blocked_reasons).toBeUndefined();
+    expect(json.data.cycle_status_counts).toBeUndefined();
+    expect(medicationCycleGroupByMock).not.toHaveBeenCalled();
+    expect(dispenseTaskFindManyMock).not.toHaveBeenCalled();
+    expect(queryRawMock).not.toHaveBeenCalled();
+    expect(workflowExceptionFindManyMock).not.toHaveBeenCalled();
+    expect(taskCountMock).not.toHaveBeenCalled();
+    expect(serverCacheSetMock).toHaveBeenCalledWith(
+      expect.stringContaining('cockpit:org_1:admin:user_1:2026-06-12:team:team'),
+      expect.objectContaining({ team_capacity: expect.any(Array) }),
+      15_000,
+    );
   });
 
   it('uses the personal assignment scope when an admin requests mine', async () => {

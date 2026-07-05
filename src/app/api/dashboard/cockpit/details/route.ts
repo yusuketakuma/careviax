@@ -6,18 +6,18 @@ import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
 import { dashboardCockpitSegmentResponse } from '@/server/services/dashboard-cockpit';
 
-const ROUTE = '/api/dashboard/cockpit';
+const ROUTE = '/api/dashboard/cockpit/details';
 
 export async function GET(req: NextRequest, routeContext?: unknown) {
   void routeContext;
   return withRoutePerformance(req, async () => {
     try {
-      return withSensitiveNoStore(await dashboardCockpitSegmentResponse(req, 'full'));
+      return withSensitiveNoStore(await dashboardCockpitSegmentResponse(req, 'details'));
     } catch (err) {
       unstable_rethrow(err);
       logger.error(
         {
-          event: 'dashboard_cockpit_unhandled_error',
+          event: 'dashboard_cockpit_details_unhandled_error',
           route: ROUTE,
           method: req.method,
           status: 500,

@@ -62,7 +62,7 @@ export type CockpitTeamMember = {
 
 export type DashboardCockpitScope = 'mine' | 'team';
 
-export type DashboardCockpitResponse = {
+export type DashboardCockpitScopeMetadata = {
   /** サーバー集計時刻(ISO)。右レール「今朝の同期」に表示 */
   generated_at: string;
   /** 表示範囲。旧呼び出し互換のため optional。 */
@@ -71,6 +71,44 @@ export type DashboardCockpitResponse = {
     applied: DashboardCockpitScope;
     can_view_team: boolean;
   };
+};
+
+export type DashboardCockpitSummaryResponse = DashboardCockpitScopeMetadata & {
+  /** MedicationCycle.overall_status → 件数(cancelled を除く)。工程の今(9工程)の元データ */
+  cycle_status_counts: Record<string, number>;
+  /** 監査待ちキューの総件数。 */
+  audit_queue_total_count?: number;
+  audit_pending_count: number;
+  narcotic_audit_count: number;
+  /** PHI を含まない最初の監査期限。条件バナーの初期表示用。 */
+  earliest_audit_due_at: string | null;
+  /** PHI を含まない本日訪問件数。 */
+  today_visit_count: number;
+  /** PHI を含まない本日訪問の開始時刻一覧。 */
+  today_visit_times: string[];
+};
+
+export type DashboardCockpitDetailsResponse = DashboardCockpitScopeMetadata & {
+  /** 監査待ちキューの総件数。 */
+  audit_queue_total_count?: number;
+  /** audit_queue に実際に含まれる表示件数。 */
+  audit_queue_visible_count?: number;
+  /** 総件数から表示件数を引いた非表示件数。PHI を含まない件数メタデータ。 */
+  audit_queue_hidden_count?: number;
+  /** 監査待ちキュー(麻薬優先・緊急度順)。今すぐ対応カードの元データ */
+  audit_queue: CockpitAuditQueueItem[];
+  today_visits: CockpitVisit[];
+  blocked_reasons: CockpitBlockedReason[];
+  /** 昨日以前に作成され、まだ完了していないタスク件数(根拠・記録「昨日からの持ち越し」) */
+  carryover_count: number;
+};
+
+export type DashboardCockpitTeamResponse = DashboardCockpitScopeMetadata & {
+  /** チームの余白(残り時間の目安)。工程の今の隣に表示 */
+  team_capacity: CockpitTeamMember[];
+};
+
+export type DashboardCockpitResponse = DashboardCockpitScopeMetadata & {
   /** MedicationCycle.overall_status → 件数(cancelled を除く)。工程の今(9工程)の元データ */
   cycle_status_counts: Record<string, number>;
   /** 監査待ちキューの総件数。旧クライアント互換のため audit_pending_count と同値で返す。 */
