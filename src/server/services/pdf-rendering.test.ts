@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  buildPhiSafePdfFileName,
   formatPdfDate,
   getPdfBranding,
   inferPdfPharmacyName,
@@ -39,6 +40,16 @@ describe('pdf rendering utilities', () => {
       'care-report_report_1.pdf',
     );
     expect(sanitizePdfFileName('   ')).toBe('document');
+  });
+
+  it('builds PDF filenames from explicit safe segments only', () => {
+    expect(buildPhiSafePdfFileName('visit-record', 20260405, 'record_1')).toBe(
+      'visit-record-20260405-record_1.pdf',
+    );
+    expect(buildPhiSafePdfFileName('medication-calendar', 2026, '04.pdf')).toBe(
+      'medication-calendar-2026-04.pdf',
+    );
+    expect(buildPhiSafePdfFileName(null, undefined, '')).toBe('document.pdf');
   });
 
   it('prefers site name over organization name for PDF branding', async () => {

@@ -486,7 +486,7 @@ describe('buildBillingDocumentPdf', () => {
   it('renders receipt information from the billing collection snapshot', async () => {
     const result = await buildBillingDocumentPdf('org_1', 'candidate_1', 'receipt');
 
-    expect(result.fileName).toBe('billing-receipt-_-candidate_1.pdf');
+    expect(result.fileName).toBe('billing-receipt-candidate_1.pdf');
     expect(result.buffer).toEqual(Buffer.from('pdf'));
     const text = collectPdfText(renderToBufferMock.mock.calls[0][0]).join('\n');
     expect(text).toContain('領収証');
@@ -494,6 +494,21 @@ describe('buildBillingDocumentPdf', () => {
     expect(text).toContain('山田 太郎');
     expect(text).toContain('居宅療養管理指導');
     expect(text).toContain('3,240円');
+  });
+
+  it('keeps ASCII patient names out of billing PDF filenames', async () => {
+    patientFindFirstMock.mockResolvedValueOnce({
+      id: 'patient_1',
+      name: 'Taro Yamada',
+    });
+
+    const result = await buildBillingDocumentPdf('org_1', 'candidate_1', 'receipt');
+
+    expect(result.fileName).toBe('billing-receipt-candidate_1.pdf');
+    expect(result.fileName).not.toContain('Taro');
+    expect(result.fileName).not.toContain('Yamada');
+    const text = collectPdfText(renderToBufferMock.mock.calls[0][0]).join('\n');
+    expect(text).toContain('Taro Yamada');
   });
 
   it('rejects issued receipt exports when the collected amount is not positive', async () => {
@@ -635,13 +650,33 @@ describe('buildMedicationHistoryPdf', () => {
 
     const result = await buildMedicationHistoryPdf('org_1', 'patient_1');
 
-    expect(result.fileName).toBe('medications-_-patient_1.pdf');
+    expect(result.fileName).toBe('medications.pdf');
     const text = collectPdfText(renderToBufferMock.mock.calls[0][0]).join('\n');
     expect(text).toContain('患者状態');
     expect(text).toContain('アーカイブ中（閲覧専用）');
     expect(text).toContain('2026/06/30');
     expect(text).not.toContain('archived_by');
     expect(text).not.toContain('internal_user');
+  });
+
+  it('keeps ASCII patient names out of medication history PDF filenames', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      name: 'Taro Yamada',
+      birth_date: new Date('1940-01-01T00:00:00.000Z'),
+      gender: 'male',
+      archived_at: null,
+      archived_by: null,
+    });
+    medicationProfileFindManyMock.mockResolvedValue([]);
+
+    const result = await buildMedicationHistoryPdf('org_1', 'patient_1');
+
+    expect(result.fileName).toBe('medications.pdf');
+    expect(result.fileName).not.toContain('Taro');
+    expect(result.fileName).not.toContain('Yamada');
+    const text = collectPdfText(renderToBufferMock.mock.calls[0][0]).join('\n');
+    expect(text).toContain('Taro Yamada');
   });
 });
 
@@ -663,5 +698,25 @@ describe('buildMedicationCalendarPdf', () => {
     expect(patientFindFirstMock).toHaveBeenCalledOnce();
     expect(medicationProfileFindManyMock).not.toHaveBeenCalled();
     expect(renderToBufferMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps patient names out of medication calendar PDF filenames', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      name: 'Taro Yamada',
+      birth_date: new Date('1940-01-01T00:00:00.000Z'),
+      gender: 'male',
+      archived_at: null,
+      archived_by: null,
+    });
+    medicationProfileFindManyMock.mockResolvedValue([]);
+
+    const result = await buildMedicationCalendarPdf('org_1', 'patient_1', '2026-04');
+
+    expect(result.fileName).toBe('medication-calendar-2026-04.pdf');
+    expect(result.fileName).not.toContain('Taro');
+    expect(result.fileName).not.toContain('Yamada');
+    const text = collectPdfText(renderToBufferMock.mock.calls[0][0]).join('\n');
+    expect(text).toContain('Taro Yamada');
   });
 });

@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
-import { expectSensitiveNoStore } from '@/test/api-response-assertions';
+import {
+  expectPhiExportSnapshotRedacted,
+  expectSensitiveNoStore,
+} from '@/test/api-response-assertions';
 
 const {
   requireAuthContextMock,
@@ -110,6 +113,30 @@ describe('PDF routes', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('application/pdf');
     expect(response.headers.get('content-disposition')).toContain('care-report.pdf');
+  });
+
+  it('keeps PHI-like builder filenames out of PDF response headers', async () => {
+    buildCareReportPdfMock.mockResolvedValue({
+      buffer: Buffer.from('%PDF-care-report'),
+      fileName:
+        'Taro Yamada 090-1234-5678 アムロジピン storageKey=s3 token=secret provider raw error.pdf',
+      reportUpdatedAt: new Date('2026-03-28T09:00:00.000Z'),
+    });
+
+    const response = await careReportPdfGet(
+      createRequest('http://localhost/api/care-reports/report_1/pdf'),
+      {
+        params: Promise.resolve({ id: 'report_1' }),
+      },
+    );
+
+    expect(response).toBeDefined();
+    if (!response) {
+      throw new Error('Expected a response from care report pdf GET');
+    }
+    const disposition = response.headers.get('content-disposition') ?? '';
+    expect(disposition).toBe(`inline; filename="document.pdf"; filename*=UTF-8''document.pdf`);
+    expectPhiExportSnapshotRedacted(disposition, ['Taro', 'Yamada']);
   });
 
   it('returns a billing receipt pdf response', async () => {

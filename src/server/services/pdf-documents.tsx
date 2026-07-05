@@ -54,6 +54,7 @@ import {
 } from '@/server/services/pdf-billing-document-record';
 import { UnsupportedCareReportPdfContentError } from '@/server/services/pdf-errors';
 import {
+  buildPhiSafePdfFileName,
   formatPdfDate,
   getPdfBranding,
   renderPdf,
@@ -1510,9 +1511,7 @@ export async function buildBillingDocumentPdf(
     getBillingDocumentRecord(orgId, candidateId, kind),
   ]);
   const documentLabel = BILLING_DOCUMENT_KIND_LABELS[kind];
-  const fileName = sanitizePdfFileName(
-    `billing-${kind}-${record.patient?.name ?? record.billing_target_name ?? 'target'}-${record.id}.pdf`,
-  );
+  const fileName = buildPhiSafePdfFileName('billing', kind, record.id);
 
   return renderPdf(
     <PdfShell
@@ -1538,8 +1537,7 @@ export async function buildConferenceNotePdf(
     getPdfBranding(orgId),
     getConferenceNoteRecord(orgId, noteId, accessContext),
   ]);
-  const subject = note.patient?.name ?? note.title;
-  const fileName = sanitizePdfFileName(`conference-note-${subject}-${note.id}.pdf`);
+  const fileName = buildPhiSafePdfFileName('conference-note', note.id);
 
   return renderPdf(
     <PdfShell
@@ -1563,7 +1561,7 @@ export async function buildManagementPlanPdf(
     getPdfBranding(orgId),
     getManagementPlanRecord(orgId, planId, accessContext),
   ]);
-  const fileName = sanitizePdfFileName(`management-plan-${plan.patient.name}-${plan.id}.pdf`);
+  const fileName = buildPhiSafePdfFileName('management-plan', plan.id);
 
   return renderPdf(
     <PdfShell
@@ -1587,9 +1585,7 @@ export async function buildMedicationHistoryPdf(
     getPdfBranding(orgId),
     getMedicationHistoryRecord(orgId, patientId, accessContext),
   ]);
-  const fileName = sanitizePdfFileName(
-    `medications-${record.patient.name}-${record.patient.id}.pdf`,
-  );
+  const fileName = buildPhiSafePdfFileName('medications');
 
   return renderPdf(
     <PdfShell
@@ -1613,8 +1609,10 @@ export async function buildVisitRecordPdf(
     getPdfBranding(orgId),
     getVisitRecordEntry(orgId, recordId, accessContext),
   ]);
-  const fileName = sanitizePdfFileName(
-    `visit-record-${record.patient.name}-${formatPdfDate(record.visit_date).replaceAll('/', '')}-${record.id}.pdf`,
+  const fileName = buildPhiSafePdfFileName(
+    'visit-record',
+    formatPdfDate(record.visit_date).replaceAll('/', ''),
+    record.id,
   );
 
   return renderPdf(
@@ -1652,10 +1650,10 @@ export async function buildPatientVisitRecordsPdf(
       accessContext,
     ),
   ]);
-  const fileName = sanitizePdfFileName(
-    `visit-records-${record.patient.name}-${record.patient.id}${
-      dateFrom || dateTo ? `-${dateFrom ?? 'start'}-${dateTo ?? 'end'}` : ''
-    }.pdf`,
+  const fileName = buildPhiSafePdfFileName(
+    'visit-records',
+    dateFrom || dateTo ? (dateFrom ?? 'start') : null,
+    dateFrom || dateTo ? (dateTo ?? 'end') : null,
   );
 
   return renderPdf(
@@ -1685,10 +1683,10 @@ export async function buildMedicationCalendarPdf(
     getPdfBranding(orgId),
     getMedicationHistoryRecord(orgId, patientId, accessContext),
   ]);
-  const fileName = sanitizePdfFileName(
-    `medication-calendar-${record.patient.name}-${currentMonth.getFullYear()}-${String(
-      currentMonth.getMonth() + 1,
-    ).padStart(2, '0')}.pdf`,
+  const fileName = buildPhiSafePdfFileName(
+    'medication-calendar',
+    currentMonth.getFullYear(),
+    String(currentMonth.getMonth() + 1).padStart(2, '0'),
   );
 
   return renderPdf(
@@ -1717,7 +1715,7 @@ export async function buildTracingReportPdf(
     getPdfBranding(orgId),
     getTracingReportRecord(orgId, reportId, accessContext),
   ]);
-  const fileName = sanitizePdfFileName(`tracing-report-${report.patient.name}-${report.id}.pdf`);
+  const fileName = buildPhiSafePdfFileName('tracing-report', report.id);
 
   return renderPdf(
     <PdfShell

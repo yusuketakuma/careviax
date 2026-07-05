@@ -36,6 +36,16 @@ export function sanitizePdfFileName(value: string) {
   );
 }
 
+export function buildPhiSafePdfFileName(...segments: Array<string | number | null | undefined>) {
+  const stem = sanitizePdfFileName(
+    segments
+      .map((segment) => (segment == null ? '' : String(segment).trim()))
+      .filter(Boolean)
+      .join('-'),
+  );
+  return stem.toLowerCase().endsWith('.pdf') ? stem : `${stem}.pdf`;
+}
+
 export function inferPdfPharmacyName(orgName?: string | null, siteName?: string | null) {
   return siteName?.trim() || orgName?.trim() || 'PH-OS薬局';
 }
