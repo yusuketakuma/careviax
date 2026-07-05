@@ -40,6 +40,28 @@
 
 ## 直近の land（本日・要点）
 
+- codex: handoff confirmation dedicated-completion API/UI affordance coverage batch(fc49447e7)
+  land。ユーザー指示により本sliceでも subagent を投入（code_mapper / test_architect / db_steward /
+  verifier）。code_mapper は `GET /api/tasks` の `can_complete_inline` contract と TasksContent
+  bulk completion 除外を最小高価値 slice として APPROVE。test_architect は既存 route/PATCH/bulk
+  coverage を確認したうえで、operational readiness には historical `handoff_confirmation` task の
+  read-only inventory report が次の高価値 slice と指摘し、同時に UI all-selected-dedicated edge を
+  追加候補として提示。対応として `GET /api/tasks` の dedicated workflow fixture に
+  `handoff_confirmation` を明示追加し、`can_complete_inline: false` を固定。TasksContent は混在選択時に
+  `handoff_confirmation` を `/api/tasks/bulk` payload から除外して通常 inline task だけ送る regression と、
+  dedicated workflow task だけが選択された場合に bulk complete button を出さず fetch もしない regression を
+  追加。verifier は実装 path（`src/lib/tasks/inline-completion.ts`,
+  `src/app/api/tasks/route.ts`, `src/app/(dashboard)/tasks/tasks-content.tsx`,
+  `src/app/api/tasks/bulk/route.ts`）と差分を read-only review し APPROVE。validation:
+  `pnpm exec vitest run src/app/api/tasks/route.test.ts 'src/app/(dashboard)/tasks/tasks-content.test.tsx'`
+  green（2 files / 61 tests）; scoped `prettier --write` no-op; scoped `eslint` green; scoped
+  `prettier --check` green; scoped `git diff --check` green; `pnpm typecheck` green。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) に基づく追加 runtime 変更は不要で、
+  API/UI security affordance の regression coverage のみ追加。DB schema/migration/billing/deploy/package
+  dependency 変更は不要。残る別slice候補: db_steward APPROVE の PHI-minimized SELECT-only
+  `handoff_confirmation` historical task inventory command（`tools/scripts` 配下、`--dry-run` only、
+  `--apply` reject、`--org-id` detail required、RLS context set_config、Task title/description・patient name・
+  SOAP/handoff free text 非取得、backfill/close は別途明示承認）。
 - codex: visit handoff owner/admin emergency override + dedicated completion hardening batch(3fd49cecb)
   land。ユーザー指示により本sliceでは subagent を投入（security_critic /
   medical_safety_reviewer / api_contract_reviewer / frontend_reviewer / test_architect /
