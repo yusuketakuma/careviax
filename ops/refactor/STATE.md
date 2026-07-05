@@ -40,7 +40,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: inquiry record clinical finalization boundary batch(pending commit)
+- codex: inquiry record clinical finalization boundary batch(2517928e5)
   implementation complete。ユーザー指示「近似箇所はまとめて実装して効率を向上。サブエージェントも投入」に基づき、
   medication issue に続く近接 clinical finalization surface として `PATCH /api/inquiry-records/:id` を同一sliceで処理。
   subagent は code_mapper / medical_safety_reviewer / api_contract_reviewer を bounded read-only で投入し、
