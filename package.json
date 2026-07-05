@@ -61,6 +61,7 @@
     "db:check-care-report-duplicates": "tsx tools/scripts/check-care-report-duplicates.ts",
     "db:check-visit-route-order-conflicts": "tsx tools/scripts/check-visit-route-order-conflicts.ts",
     "db:external-access-case-boundary-audit": "tsx tools/scripts/external-access-case-boundary-audit.ts",
+    "db:handoff-confirmation-tasks:inventory": "tsx tools/scripts/handoff-confirmation-task-inventory.ts",
     "db:verify-migration-preconditions": "tsx tools/scripts/verify-migration-preconditions.ts",
     "db:verify-ph-os-audit-migration": "tsx tools/scripts/verify-ph-os-audit-migration.ts",
     "db:prescription-line-drug-master:backfill": "tsx tools/scripts/backfill-prescription-line-drug-master-ids.ts",

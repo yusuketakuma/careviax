@@ -40,6 +40,43 @@
 
 ## 直近の land（本日・要点）
 
+- codex: handoff confirmation historical task inventory command batch(pending commit)
+  implementation complete。ユーザー指示により本sliceでも subagent を投入（db_steward /
+  privacy_compliance_reviewer / verifier）。db_steward は historical unassigned
+  `handoff_confirmation` task の PHI-minimized SELECT-only inventory command を今実装してよいと
+  APPROVE し、DB mutation / assignment backfill / already-confirmed task close / migration は別途明示承認
+  gate と指定。対応として `tools/scripts/handoff-confirmation-task-inventory.ts` を追加し、
+  `pnpm db:handoff-confirmation-tasks:inventory -- --org-id ORG [--dry-run]` で実行できる
+  DB-gated command を実装。`--apply` は即拒否、`--org-id` は DB query 前に必須、`BEGIN` 後に
+  `app.current_org_id` と `app.rls_context_applied=true` を `set_config(..., true)` で設定してから
+  SELECT を実行。query は `Task` の `handoff_confirmation` / `assigned_to IS NULL` /
+  `pending|in_progress` に限定し、`VisitRecord` / `VisitSchedule` / `CareCase` /
+  `VisitHandoffExtraction` を org-scoped join して assignment candidate /
+  already-confirmed-open-task / missing-record / invalid-link / dedupe mismatch /
+  extraction-not-succeeded / no-candidate を分類。Task title/description、patient name/id、
+  SOAP/handoff free text、`next_check_items`、`decision_rationale`、extraction error message は取得/出力しない。
+  privacy_compliance_reviewer の CHANGES_REQUESTED に対応し、default stdout / JSON / Markdown は aggregate
+  counts と blocking issues のみで row-level operational IDs samples は空にし、明示
+  `--include-sensitive-samples` 時だけ task/visit/schedule/user ID samples を出す opt-in に変更。
+  verifier の CHANGES_REQUESTED に対応し、pnpm package-script separator の standalone `--` を parser で
+  無視し、`pnpm db:handoff-confirmation-tasks:inventory -- --org-id org_1 --max-rows 1` が
+  expected `DATABASE_URL is required` まで到達することを確認。`package.json`、`tools/scripts/README.md`、
+  `tools/scripts/db-precheck-cli-conventions.test.ts` を更新し、import safety / `--help` before DB /
+  pg timeout / structured failure / package+README alignment を convention test に追加。validation:
+  `pnpm exec vitest run tools/scripts/handoff-confirmation-task-inventory.test.ts tools/scripts/db-precheck-cli-conventions.test.ts`
+  green（2 files / 13 tests）; scoped `eslint` green; scoped `prettier --check` green; scoped
+  `git diff --check` green; `pnpm typecheck` green; `pnpm db:handoff-confirmation-tasks:inventory -- --help`
+  green; `pnpm db:handoff-confirmation-tasks:inventory -- --org-id org_1 --max-rows 1` は expected
+  `{ "ok": false, "message": "DATABASE_URL is required" }` で DB precondition stop。final verifier
+  APPROVE。repo-wide `pnpm format:check` は out-of-scope untracked `.agents/skills/*` formatting で失敗、
+  `pnpm typecheck:no-unused` は default heap OOM、8192MB retry は out-of-scope
+  `src/app/(dashboard)/admin/document-templates/template-body-editor.render.test.tsx` unused `input` で失敗。
+  これらは本sliceの owned diff には含めない。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) に基づき DB-adjacent
+  SELECT-only operational inventory toolingを追加、DB schema/migration/billing/deploy/package dependency 変更と
+  DB mutation は不要/未実施。残る別slice候補: approved DB/e2e DB に対する実SELECT run、結果に基づく
+  backfill/close proposal（実 mutation は別途明示承認）、pharmacist_trainee supervised workflow、
+  override reason enum/code 化。
 - codex: handoff confirmation dedicated-completion API/UI affordance coverage batch(fc49447e7)
   land。ユーザー指示により本sliceでも subagent を投入（code_mapper / test_architect / db_steward /
   verifier）。code_mapper は `GET /api/tasks` の `can_complete_inline` contract と TasksContent

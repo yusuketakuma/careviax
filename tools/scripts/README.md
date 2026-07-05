@@ -7,6 +7,7 @@
 - `check-care-report-duplicates.ts` : CareReport unique-index migration precheck
 - `check-visit-route-order-conflicts.ts` : VisitSchedule / VisitScheduleProposal route-order conflict precheck
 - `external-access-case-boundary-audit.ts` : legacy ExternalAccessGrant case-boundary audit/backfill
+- `handoff-confirmation-task-inventory.ts` : PHI-minimized read-only inventory for historical unassigned `handoff_confirmation` tasks
 - `link-prisma-client.mjs` : Prisma client の postinstall 補助
 - `perf-smoke.ts` : API performance smoke test
 - `build-phos-lambda-artifact.ts` : PH-OS Lambda artifact builder for deploy proof

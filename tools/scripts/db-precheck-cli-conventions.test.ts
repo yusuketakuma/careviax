@@ -9,6 +9,7 @@ const dbGatedScripts = [
   'check-care-report-duplicates.ts',
   'check-visit-route-order-conflicts.ts',
   'external-access-case-boundary-audit.ts',
+  'handoff-confirmation-task-inventory.ts',
   'verify-migration-preconditions.ts',
   'verify-ph-os-audit-migration.ts',
 ];
@@ -17,6 +18,7 @@ const dbGatedPackageScripts = {
   'db:check-care-report-duplicates': 'tools/scripts/check-care-report-duplicates.ts',
   'db:check-visit-route-order-conflicts': 'tools/scripts/check-visit-route-order-conflicts.ts',
   'db:external-access-case-boundary-audit': 'tools/scripts/external-access-case-boundary-audit.ts',
+  'db:handoff-confirmation-tasks:inventory': 'tools/scripts/handoff-confirmation-task-inventory.ts',
   'db:verify-migration-preconditions': 'tools/scripts/verify-migration-preconditions.ts',
   'db:verify-ph-os-audit-migration': 'tools/scripts/verify-ph-os-audit-migration.ts',
   'db:prescription-line-drug-master:backfill':
