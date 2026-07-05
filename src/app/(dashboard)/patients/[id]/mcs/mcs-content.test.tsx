@@ -71,9 +71,33 @@ vi.mock('sonner', () => ({
 
 import { toast } from 'sonner';
 
+const patientMcsEmptyResponsePayload = (patientId: string) => ({
+  data: {
+    patient: { id: patientId, name: '田中 一郎' },
+    importedCount: 0,
+    latestMessageAt: null,
+    link: null,
+    profile: null,
+    summary: null,
+    messages: [],
+    checkLogs: [],
+  },
+});
+
+function createJsonResponse(payload: unknown, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
 describe('PatientMcsContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useOrgIdMock.mockReset();
+    useQueryMock.mockReset();
+    useMutationMock.mockReset();
+    useQueryClientMock.mockReset();
   });
 
   it('shows an MCS overview skeleton instead of a generic spinner while org context loads', () => {
@@ -161,21 +185,11 @@ describe('PatientMcsContent', () => {
     vi.mocked(buildOrgHeaders).mockReturnValue(sentinelGetHeaders);
     vi.mocked(buildOrgJsonHeaders).mockReturnValue(sentinelJsonHeaders);
     const mutationOptions: MutationOptions[] = [];
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: vi.fn().mockResolvedValue({
-        data: {
-          patient: { id: patientId, name: '田中 一郎' },
-          importedCount: 0,
-          latestMessageAt: null,
-          link: null,
-          profile: null,
-          summary: null,
-          messages: [],
-          checkLogs: [],
-        },
-      }),
-    });
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() =>
+        Promise.resolve(createJsonResponse(patientMcsEmptyResponsePayload(patientId))),
+      );
     let queryKey: unknown;
     let queryFn: (() => unknown) | undefined;
 
@@ -272,22 +286,11 @@ describe('PatientMcsContent', () => {
       .mockImplementationOnce((id, suffix = '') => `/api/patients/__helper_${id}__${suffix}`)
       .mockImplementationOnce((id, suffix = '') => `/api/patients/__helper_${id}__${suffix}`);
     const mutationOptions: MutationOptions[] = [];
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: vi.fn().mockResolvedValue({
-        data: {
-          patient: { id: patientId, name: '田中 一郎' },
-          importedCount: 0,
-          latestMessageAt: null,
-          link: null,
-          profile: null,
-          summary: null,
-          messages: [],
-          checkLogs: [],
-        },
-      }),
-    });
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() =>
+        Promise.resolve(createJsonResponse(patientMcsEmptyResponsePayload(patientId))),
+      );
     let queryFn: (() => unknown) | undefined;
 
     useOrgIdMock.mockReturnValue('org_1');
@@ -478,6 +481,59 @@ describe('PatientMcsContent', () => {
     expect(toast.error).toHaveBeenLastCalledWith('参加情報APIからの詳細エラー');
     profile.onError?.(new Error(''));
     expect(toast.error).toHaveBeenLastCalledWith('MCS 参加情報の保存に失敗しました');
+  });
+
+  it('keeps server messages from failed direct MCS mutation responses', async () => {
+    const patientId = 'patient_1';
+    const mutationOptions: MutationOptions[] = [];
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(createJsonResponse({ message: 'MCS同期APIからの詳細エラー' }, 409))
+      .mockResolvedValueOnce(createJsonResponse({ message: '確認ログAPIからの詳細エラー' }, 400))
+      .mockResolvedValueOnce(createJsonResponse({ message: '参加情報APIからの詳細エラー' }, 422));
+
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockImplementation((options: MutationOptions) => {
+      mutationOptions.push(options);
+      return { isPending: false, mutate: vi.fn() };
+    });
+    useQueryMock.mockReturnValue({
+      data: { link: null, profile: null, summary: null, messages: [], checkLogs: [] },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PatientMcsContent patientId={patientId} />);
+
+      expect(mutationOptions).toHaveLength(3);
+      await expect(
+        mutationOptions[0].mutationFn?.('https://www.medical-care.net/patients/2463520'),
+      ).rejects.toThrow('MCS同期APIからの詳細エラー');
+      await expect(
+        mutationOptions[1].mutationFn?.({
+          contentType: 'report',
+          summary: 'MCS投稿を確認',
+          nextAction: '',
+        }),
+      ).rejects.toThrow('確認ログAPIからの詳細エラー');
+      await expect(
+        mutationOptions[2].mutationFn?.({
+          linkedStatus: 'linked',
+          participationStatus: 'joined',
+          pharmacyParticipants: ['薬剤師 佐藤'],
+          counterpartRoles: ['visiting_nurse'],
+          lastCheckedAt: null,
+          note: null,
+        }),
+      ).rejects.toThrow('参加情報APIからの詳細エラー');
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('shows an inline validation error and keeps actions disabled for invalid draft urls', async () => {

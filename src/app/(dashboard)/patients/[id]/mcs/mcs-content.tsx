@@ -24,6 +24,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Skeleton, SkeletonRows } from '@/components/ui/loading';
 import { Textarea } from '@/components/ui/textarea';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
@@ -63,12 +64,7 @@ async function syncPatientMcs(patientId: string, orgId: string, sourceUrl?: stri
     body: JSON.stringify(sourceUrl ? { source_url: sourceUrl } : {}),
   });
 
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(payload?.message ?? 'MCS 同期に失敗しました');
-  }
-
-  return parsePatientMcsSyncResult(await response.json());
+  return parsePatientMcsSyncResult(await readApiJson<unknown>(response, 'MCS 同期に失敗しました'));
 }
 
 async function createPatientMcsCheckLog(
@@ -90,12 +86,7 @@ async function createPatientMcsCheckLog(
     }),
   });
 
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(payload?.message ?? 'MCS 確認ログの登録に失敗しました');
-  }
-
-  return response.json();
+  return readApiJson<unknown>(response, 'MCS 確認ログの登録に失敗しました');
 }
 
 async function updatePatientMcsProfile(
@@ -123,12 +114,7 @@ async function updatePatientMcsProfile(
     }),
   });
 
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(payload?.message ?? 'MCS 連携プロフィールの保存に失敗しました');
-  }
-
-  return response.json();
+  return readApiJson<unknown>(response, 'MCS 連携プロフィールの保存に失敗しました');
 }
 
 async function copyTextToClipboard(value: string) {
