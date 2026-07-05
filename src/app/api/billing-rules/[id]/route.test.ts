@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { expectNoStore } from '@/test/api-response-assertions';
 
 const {
   requireAuthContextMock,
@@ -7,12 +8,16 @@ const {
   billingRuleFindFirstMock,
   billingRuleUpdateMock,
   billingRuleDeleteMock,
+  auditLogCreateMock,
+  loggerErrorMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   billingRuleFindFirstMock: vi.fn(),
   billingRuleUpdateMock: vi.fn(),
   billingRuleDeleteMock: vi.fn(),
+  auditLogCreateMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -21,6 +26,12 @@ vi.mock('@/lib/auth/context', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    error: loggerErrorMock,
+  },
 }));
 
 import { DELETE, GET, PATCH } from './route';
@@ -52,6 +63,17 @@ function createMalformedJsonPatchRequest() {
   } satisfies NextRequestInit);
 }
 
+async function expectInternalError(response: Response, rawMessage: string) {
+  expect(response.status).toBe(500);
+  expectNoStore(response);
+  const body = await response.json();
+  expect(body).toMatchObject({
+    code: 'INTERNAL_ERROR',
+    message: 'サーバー内部でエラーが発生しました',
+  });
+  expect(JSON.stringify(body)).not.toContain(rawMessage);
+}
+
 describe('/api/billing-rules/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -70,6 +92,9 @@ describe('/api/billing-rules/[id]', () => {
     });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        auditLog: {
+          create: auditLogCreateMock,
+        },
         billingRule: {
           findFirst: billingRuleFindFirstMock,
           update: billingRuleUpdateMock,
@@ -95,6 +120,7 @@ describe('/api/billing-rules/[id]', () => {
     if (!response) throw new Error('response is required');
     const resolvedResponse = response as Response;
     expect(resolvedResponse.status).toBe(200);
+    expectNoStore(resolvedResponse);
     await expect(resolvedResponse.json()).resolves.toMatchObject({
       id: 'rule_1',
       conditions: {},
@@ -110,11 +136,32 @@ describe('/api/billing-rules/[id]', () => {
     if (!response) throw new Error('response is required');
     const resolvedResponse = response as Response;
     expect(resolvedResponse.status).toBe(400);
+    expectNoStore(resolvedResponse);
     await expect(resolvedResponse.json()).resolves.toMatchObject({
       message: '算定ルールIDが不正です',
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(billingRuleFindFirstMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when GET throws unexpectedly', async () => {
+    const rawMessage = 'raw get billing rule failure';
+    billingRuleFindFirstMock.mockRejectedValueOnce(new Error(rawMessage));
+
+    const response = await GET(createRequest('GET'), {
+      params: Promise.resolve({ id: 'rule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    await expectInternalError(response as Response, rawMessage);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'billing_rules_id_get_unhandled_error',
+        route: '/api/billing-rules/:id',
+        status: 500,
+      }),
+      expect.any(Error),
+    );
   });
 
   it('blocks non-active field changes for system rules', async () => {
@@ -131,6 +178,7 @@ describe('/api/billing-rules/[id]', () => {
     if (!response) throw new Error('response is required');
     const resolvedResponse = response as Response;
     expect(resolvedResponse.status).toBe(400);
+    expectNoStore(resolvedResponse);
     await expect(resolvedResponse.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
     });
@@ -145,6 +193,7 @@ describe('/api/billing-rules/[id]', () => {
     if (!response) throw new Error('response is required');
     const resolvedResponse = response as Response;
     expect(resolvedResponse.status).toBe(400);
+    expectNoStore(resolvedResponse);
     await expect(resolvedResponse.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
@@ -162,6 +211,7 @@ describe('/api/billing-rules/[id]', () => {
     if (!response) throw new Error('response is required');
     const resolvedResponse = response as Response;
     expect(resolvedResponse.status).toBe(400);
+    expectNoStore(resolvedResponse);
     await expect(resolvedResponse.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
@@ -179,6 +229,7 @@ describe('/api/billing-rules/[id]', () => {
     if (!response) throw new Error('response is required');
     const resolvedResponse = response as Response;
     expect(resolvedResponse.status).toBe(400);
+    expectNoStore(resolvedResponse);
     await expect(resolvedResponse.json()).resolves.toMatchObject({
       message: '算定ルールIDが不正です',
     });
@@ -201,10 +252,20 @@ describe('/api/billing-rules/[id]', () => {
     if (!response) throw new Error('response is required');
     const resolvedResponse = response as Response;
     expect(resolvedResponse.status).toBe(200);
+    expectNoStore(resolvedResponse);
     expect(billingRuleUpdateMock).toHaveBeenCalledWith({
       where: { id: 'rule_1' },
       data: { is_active: false },
     });
+    expect(auditLogCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'billing_rule_updated',
+          target_type: 'BillingRule',
+          target_id: 'rule_1',
+        }),
+      }),
+    );
   });
 
   it('updates custom rule JSON fields', async () => {
@@ -225,6 +286,7 @@ describe('/api/billing-rules/[id]', () => {
     if (!response) throw new Error('response is required');
     const resolvedResponse = response as Response;
     expect(resolvedResponse.status).toBe(200);
+    expectNoStore(resolvedResponse);
     expect(billingRuleUpdateMock).toHaveBeenCalledWith({
       where: { id: 'rule_1' },
       data: {
@@ -232,6 +294,31 @@ describe('/api/billing-rules/[id]', () => {
         evidence_requirements: { required_documents: ['visit_record'] },
       },
     });
+  });
+
+  it('returns a sanitized no-store 500 when PATCH update throws unexpectedly', async () => {
+    const rawMessage = 'raw patch billing rule failure';
+    billingRuleFindFirstMock.mockResolvedValue({
+      id: 'rule_1',
+      org_id: 'org_1',
+      is_system: false,
+    });
+    billingRuleUpdateMock.mockRejectedValueOnce(new Error(rawMessage));
+
+    const response = await PATCH(createRequest('PATCH', { is_active: false }), {
+      params: Promise.resolve({ id: 'rule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    await expectInternalError(response as Response, rawMessage);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'billing_rules_id_patch_unhandled_error',
+        route: '/api/billing-rules/:id',
+        status: 500,
+      }),
+      expect.any(Error),
+    );
   });
 
   it('forbids deleting system rules', async () => {
@@ -248,6 +335,7 @@ describe('/api/billing-rules/[id]', () => {
     if (!response) throw new Error('response is required');
     const resolvedResponse = response as Response;
     expect(resolvedResponse.status).toBe(403);
+    expectNoStore(resolvedResponse);
     await expect(resolvedResponse.json()).resolves.toMatchObject({
       code: 'AUTH_FORBIDDEN',
     });
@@ -262,11 +350,71 @@ describe('/api/billing-rules/[id]', () => {
     if (!response) throw new Error('response is required');
     const resolvedResponse = response as Response;
     expect(resolvedResponse.status).toBe(400);
+    expectNoStore(resolvedResponse);
     await expect(resolvedResponse.json()).resolves.toMatchObject({
       message: '算定ルールIDが不正です',
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(billingRuleFindFirstMock).not.toHaveBeenCalled();
     expect(billingRuleDeleteMock).not.toHaveBeenCalled();
+  });
+
+  it('deletes custom rules with an audit entry', async () => {
+    billingRuleFindFirstMock.mockResolvedValue({
+      id: 'rule_1',
+      org_id: 'org_1',
+      is_system: false,
+      billing_scope: 'custom',
+      rule_type: 'addition',
+      service_type: 'medical_home_visit',
+      name: '任意加算',
+      amount: 10,
+      is_active: true,
+    });
+    billingRuleDeleteMock.mockResolvedValue({ id: 'rule_1' });
+
+    const response = await DELETE(createRequest('DELETE'), {
+      params: Promise.resolve({ id: 'rule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    const resolvedResponse = response as Response;
+    expect(resolvedResponse.status).toBe(200);
+    expectNoStore(resolvedResponse);
+    expect(billingRuleDeleteMock).toHaveBeenCalledWith({ where: { id: 'rule_1' } });
+    expect(auditLogCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'billing_rule_deleted',
+          target_type: 'BillingRule',
+          target_id: 'rule_1',
+        }),
+      }),
+    );
+  });
+
+  it('returns a sanitized no-store 500 when DELETE throws unexpectedly', async () => {
+    const rawMessage = 'raw delete billing rule failure';
+    billingRuleFindFirstMock.mockResolvedValue({
+      id: 'rule_1',
+      org_id: 'org_1',
+      is_system: false,
+    });
+    billingRuleDeleteMock.mockRejectedValueOnce(new Error(rawMessage));
+
+    const response = await DELETE(createRequest('DELETE'), {
+      params: Promise.resolve({ id: 'rule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    await expectInternalError(response as Response, rawMessage);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'billing_rules_id_delete_unhandled_error',
+        route: '/api/billing-rules/:id',
+        status: 500,
+      }),
+      expect.any(Error),
+    );
   });
 });

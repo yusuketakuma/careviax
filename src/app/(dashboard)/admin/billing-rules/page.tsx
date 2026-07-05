@@ -112,11 +112,7 @@ async function syncBillingSsot(): Promise<{ message: string }> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'seed_home_care_ssot' }),
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message ?? 'Failed to sync billing SSOT');
-  }
-  return res.json();
+  return readApiJson<{ message: string }>(res, 'Failed to sync billing SSOT');
 }
 
 async function createBillingRule(body: object): Promise<BillingRule> {
@@ -125,11 +121,7 @@ async function createBillingRule(body: object): Promise<BillingRule> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message ?? 'Failed to create billing rule');
-  }
-  return res.json();
+  return readApiJson<BillingRule>(res, 'Failed to create billing rule');
 }
 
 async function updateBillingRule(id: string, body: object): Promise<BillingRule> {
@@ -138,19 +130,12 @@ async function updateBillingRule(id: string, body: object): Promise<BillingRule>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message ?? 'Failed to update billing rule');
-  }
-  return res.json();
+  return readApiJson<BillingRule>(res, 'Failed to update billing rule');
 }
 
 async function deleteBillingRule(id: string): Promise<void> {
   const res = await fetch(buildBillingRuleApiPath(id), { method: 'DELETE' });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message ?? 'Failed to delete billing rule');
-  }
+  await readApiJson<unknown>(res, 'Failed to delete billing rule');
 }
 
 // --- Form helpers ---

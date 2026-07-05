@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { expectNoStore } from '@/test/api-response-assertions';
 
 const {
   requireAuthContextMock,
@@ -8,6 +9,8 @@ const {
   getHomeCareBillingSsotSummaryMock,
   billingRuleFindManyMock,
   billingRuleCreateMock,
+  auditLogCreateMock,
+  loggerErrorMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -15,6 +18,8 @@ const {
   getHomeCareBillingSsotSummaryMock: vi.fn(),
   billingRuleFindManyMock: vi.fn(),
   billingRuleCreateMock: vi.fn(),
+  auditLogCreateMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -28,6 +33,12 @@ vi.mock('@/lib/db/rls', () => ({
 vi.mock('@/server/services/billing-rules', () => ({
   ensureHomeCareBillingSsot: ensureHomeCareBillingSsotMock,
   getHomeCareBillingSsotSummary: getHomeCareBillingSsotSummaryMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    error: loggerErrorMock,
+  },
 }));
 
 import { GET, POST } from './route';
@@ -57,6 +68,17 @@ function createMalformedJsonPostRequest() {
     },
     body: '{bad json',
   } satisfies NextRequestInit);
+}
+
+async function expectInternalError(response: Response, rawMessage: string) {
+  expect(response.status).toBe(500);
+  expectNoStore(response);
+  const body = await response.json();
+  expect(body).toMatchObject({
+    code: 'INTERNAL_ERROR',
+    message: 'サーバー内部でエラーが発生しました',
+  });
+  expect(JSON.stringify(body)).not.toContain(rawMessage);
 }
 
 describe('/api/billing-rules', () => {
@@ -126,6 +148,9 @@ describe('/api/billing-rules', () => {
     });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        auditLog: {
+          create: auditLogCreateMock,
+        },
         billingRule: {
           findMany: billingRuleFindManyMock,
           create: billingRuleCreateMock,
@@ -142,6 +167,7 @@ describe('/api/billing-rules', () => {
     if (!response) throw new Error('response is required');
     const resolvedResponse = response as Response;
     expect(resolvedResponse.status).toBe(200);
+    expectNoStore(resolvedResponse);
     expect(ensureHomeCareBillingSsotMock).toHaveBeenCalledWith(expect.anything(), 'org_1');
     await expect(resolvedResponse.json()).resolves.toMatchObject({
       data: [
@@ -187,6 +213,7 @@ describe('/api/billing-rules', () => {
     if (!response) throw new Error('response is required');
     const resolvedResponse = response as Response;
     expect(resolvedResponse.status).toBe(200);
+    expectNoStore(resolvedResponse);
     await expect(resolvedResponse.json()).resolves.toMatchObject({
       data: [
         {
@@ -198,12 +225,55 @@ describe('/api/billing-rules', () => {
     });
   });
 
+  it('rejects invalid GET query enums before SSOT sync or billing rule lookup', async () => {
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/billing-rules?rule_type=bad&billing_scope=%20&service_type=bad',
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    const resolvedResponse = response as Response;
+    expect(resolvedResponse.status).toBe(400);
+    expectNoStore(resolvedResponse);
+    await expect(resolvedResponse.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        rule_type: ['rule_type が不正です'],
+        billing_scope: ['billing_scope が不正です'],
+        service_type: ['service_type が不正です'],
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(ensureHomeCareBillingSsotMock).not.toHaveBeenCalled();
+    expect(billingRuleFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when GET throws unexpectedly', async () => {
+    const rawMessage = 'raw billing SQL stack';
+    ensureHomeCareBillingSsotMock.mockRejectedValueOnce(new Error(rawMessage));
+
+    const response = await GET(createRequest());
+
+    if (!response) throw new Error('response is required');
+    await expectInternalError(response as Response, rawMessage);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'billing_rules_get_unhandled_error',
+        route: '/api/billing-rules',
+        status: 500,
+      }),
+      expect.any(Error),
+    );
+  });
+
   it('rejects non-object POST payloads before SSOT sync or billing rule create', async () => {
     const response = await POST(createRequest('http://localhost/api/billing-rules', []));
 
     if (!response) throw new Error('response is required');
     const resolvedResponse = response as Response;
     expect(resolvedResponse.status).toBe(400);
+    expectNoStore(resolvedResponse);
     await expect(resolvedResponse.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
@@ -219,6 +289,7 @@ describe('/api/billing-rules', () => {
     if (!response) throw new Error('response is required');
     const resolvedResponse = response as Response;
     expect(resolvedResponse.status).toBe(400);
+    expectNoStore(resolvedResponse);
     await expect(resolvedResponse.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
@@ -236,6 +307,16 @@ describe('/api/billing-rules', () => {
     if (!response) throw new Error('response is required');
     const resolvedResponse = response as Response;
     expect(resolvedResponse.status).toBe(201);
+    expectNoStore(resolvedResponse);
+    expect(auditLogCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'billing_rules_ssot_seeded',
+          target_type: 'BillingRule',
+          target_id: 'home_care_ssot',
+        }),
+      }),
+    );
     await expect(resolvedResponse.json()).resolves.toMatchObject({
       message: '在宅請求 SSOT の公式算定ルールを同期しました',
       seeded: 16,
@@ -260,6 +341,7 @@ describe('/api/billing-rules', () => {
     if (!response) throw new Error('response is required');
     const resolvedResponse = response as Response;
     expect(resolvedResponse.status).toBe(201);
+    expectNoStore(resolvedResponse);
     expect(billingRuleCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         billing_scope: 'custom',
@@ -269,5 +351,37 @@ describe('/api/billing-rules', () => {
         evidence_requirements: { required_documents: ['visit_record'] },
       }),
     });
+    expect(auditLogCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'billing_rule_created',
+          target_type: 'BillingRule',
+          target_id: 'custom_1',
+        }),
+      }),
+    );
+  });
+
+  it('returns a sanitized no-store 500 when POST create throws unexpectedly', async () => {
+    const rawMessage = 'raw create billing failure';
+    billingRuleCreateMock.mockRejectedValueOnce(new Error(rawMessage));
+
+    const response = await POST(
+      createRequest('http://localhost/api/billing-rules', {
+        rule_type: 'addition',
+        name: '任意加算',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    await expectInternalError(response as Response, rawMessage);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'billing_rules_post_unhandled_error',
+        route: '/api/billing-rules',
+        status: 500,
+      }),
+      expect.any(Error),
+    );
   });
 });

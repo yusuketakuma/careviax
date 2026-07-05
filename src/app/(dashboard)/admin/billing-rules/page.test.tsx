@@ -362,6 +362,20 @@ describe('BillingRulesPage', () => {
     });
   });
 
+  it('keeps server messages and fallbacks for SSOT sync failures', async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ message: '公式算定ルールの同期権限がありません' }), {
+        status: 403,
+      }),
+    );
+    render(<BillingRulesPage />);
+
+    await expect(mutationFnAt(0)()).rejects.toThrow('公式算定ルールの同期権限がありません');
+
+    vi.mocked(global.fetch).mockResolvedValueOnce(new Response('not-json', { status: 500 }));
+    await expect(mutationFnAt(0)()).rejects.toThrow('Failed to sync billing SSOT');
+  });
+
   it('create POST uses the collection API path and preserves the payload', async () => {
     const payload = {
       rule_type: 'addition',
@@ -382,6 +396,24 @@ describe('BillingRulesPage', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       }),
+    );
+  });
+
+  it('keeps server error envelopes and fallbacks for billing rule creation failures', async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: '算定ルールの作成権限がありません' }), {
+        status: 403,
+      }),
+    );
+    render(<BillingRulesPage />);
+
+    await expect(mutationFnAt(1)({ name: '休日加算' })).rejects.toThrow(
+      '算定ルールの作成権限がありません',
+    );
+
+    vi.mocked(global.fetch).mockResolvedValueOnce(new Response('not-json', { status: 500 }));
+    await expect(mutationFnAt(1)({ name: '休日加算' })).rejects.toThrow(
+      'Failed to create billing rule',
     );
   });
 
@@ -409,6 +441,24 @@ describe('BillingRulesPage', () => {
     );
   });
 
+  it('keeps server messages and fallbacks for billing rule update failures', async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ message: 'SSOTの公式ルールは有効/無効以外を変更できません' }), {
+        status: 400,
+      }),
+    );
+    render(<BillingRulesPage />);
+
+    await expect(mutationFnAt(2)({ id: 'rule_1', body: { name: '変更' } })).rejects.toThrow(
+      'SSOTの公式ルールは有効/無効以外を変更できません',
+    );
+
+    vi.mocked(global.fetch).mockResolvedValueOnce(new Response('not-json', { status: 500 }));
+    await expect(mutationFnAt(2)({ id: 'rule_1', body: { name: '変更' } })).rejects.toThrow(
+      'Failed to update billing rule',
+    );
+  });
+
   it('delete DELETE encodes a hostile detail id', async () => {
     const ruleId = 'rule/1 space?mode=x#frag';
     render(<BillingRulesPage />);
@@ -419,6 +469,20 @@ describe('BillingRulesPage', () => {
     expect(global.fetch).toHaveBeenCalledWith(`/api/billing-rules/${encodeURIComponent(ruleId)}`, {
       method: 'DELETE',
     });
+  });
+
+  it('keeps server messages and fallbacks for billing rule deletion failures', async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ message: 'SSOTの公式ルールは削除できません' }), {
+        status: 403,
+      }),
+    );
+    render(<BillingRulesPage />);
+
+    await expect(mutationFnAt(3)('rule_1')).rejects.toThrow('SSOTの公式ルールは削除できません');
+
+    vi.mocked(global.fetch).mockResolvedValueOnce(new Response('not-json', { status: 500 }));
+    await expect(mutationFnAt(3)('rule_1')).rejects.toThrow('Failed to delete billing rule');
   });
 
   it('update with an exact dot-segment id fails before PATCH and does not leak sensitive rule data', async () => {
