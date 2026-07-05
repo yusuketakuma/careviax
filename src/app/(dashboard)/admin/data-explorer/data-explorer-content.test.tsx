@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { DataExplorerContent } from './data-explorer-content';
 
@@ -9,6 +10,7 @@ setupDomTestEnv();
 
 const useOrgIdMock = vi.hoisted(() => vi.fn(() => 'org_1'));
 const mutationMutateMock = vi.hoisted(() => vi.fn());
+const runMutationFnsMock = vi.hoisted(() => ({ current: false }));
 const queryOptionsMock = vi.hoisted(() => vi.fn());
 const queryErrorKeysMock = vi.hoisted(() => new Set<string>());
 const queryLoadingKeysMock = vi.hoisted(() => new Set<string>());
@@ -96,8 +98,23 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
 }));
 
 vi.mock('@tanstack/react-query', () => ({
-  useMutation: () => ({
-    mutate: mutationMutateMock,
+  useMutation: (options: {
+    mutationFn: () => Promise<unknown>;
+    onSuccess?: (data: unknown) => void | Promise<void>;
+    onError?: (error: unknown) => void;
+  }) => ({
+    mutate: () => {
+      mutationMutateMock();
+      if (!runMutationFnsMock.current) return;
+      void (async () => {
+        try {
+          const data = await options.mutationFn();
+          await options.onSuccess?.(data);
+        } catch (error) {
+          options.onError?.(error);
+        }
+      })();
+    },
     isPending: false,
   }),
   useQuery: (options: QueryMockOptions) => {
@@ -180,6 +197,8 @@ vi.mock('sonner', () => ({
 describe('DataExplorerContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
+    runMutationFnsMock.current = false;
     queryErrorKeysMock.clear();
     queryLoadingKeysMock.clear();
     queryRefetchMocks.clear();
@@ -344,6 +363,39 @@ describe('DataExplorerContent', () => {
     expect(saveButton.getAttribute('aria-describedby')).toBe(reason.id);
     expect(resetButton.disabled).toBe(true);
     expect(resetButton.getAttribute('aria-describedby')).toBe(reason.id);
+  });
+
+  it('surfaces API error messages when row save fails', async () => {
+    runMutationFnsMock.current = true;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/admin/data-explorer/patients/patient_1' && init?.method === 'PATCH') {
+        return new Response(JSON.stringify({ message: '許可されていない列が含まれています' }), {
+          status: 400,
+        });
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<DataExplorerContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'patients テーブルの 1 行目を選択' }));
+    fireEvent.click(screen.getByRole('button', { name: /保存/ }));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('許可されていない列が含まれています');
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/admin/data-explorer/patients/patient_1',
+      expect.objectContaining({
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': 'org_1',
+        },
+      }),
+    );
   });
 
   it('shows a retryable error instead of an empty model list when models fail to load', () => {

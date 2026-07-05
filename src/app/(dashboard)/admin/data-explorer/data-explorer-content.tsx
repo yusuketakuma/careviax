@@ -213,11 +213,7 @@ export function DataExplorerContent() {
           body: JSON.stringify({ patch }),
         },
       );
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error((payload as { message?: string }).message ?? '更新に失敗しました');
-      }
-      return payload;
+      return readApiJson<unknown>(response, '更新に失敗しました');
     },
     onSuccess: async () => {
       toast.success('レコードを更新しました');
