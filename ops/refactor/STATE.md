@@ -2174,6 +2174,30 @@
   explicit `PhiRow` callback typing, `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused`
   green。Remaining: pharmacy-drug-stocks/export を `recordDataExportAudit` / minifier へ寄せる slice と、
   PDF/report/attachment export snapshot の DEV-PHI coverage は未着手。
+- codex: UX-TBL/DEV-PHI pharmacy-drug-stocks export audit/minifier slice complete。
+  `src/app/api/pharmacy-drug-stocks/export/route.ts` の direct `createAuditLogEntry` を
+  `recordDataExportAudit` へ収束し、audit action は共通 `export`、target は
+  `pharmacy_drug_stock`、target_id は site id、changes は `format` / `record_count` /
+  `filters.purpose` / `metadata.source` のみへ最小化。`src/server/services/export-audit.ts` は
+  `pharmacy_drug_stock` allowlist を `purpose` と `source` のみに限定し、site_id、drug name、
+  YJ/receipt/manufacturer、adoption_note、follow_up_reason、raw CSV rows、storage/object key、
+  signed URL、token、provider raw error を audit changes に保存しない方針を固定。
+  Audit persistence failure は CSV を返さず `PHARMACY_DRUG_STOCK_EXPORT_AUDIT_FAILED` の no-store
+  500 へ fail-closed。stock/site read failure も raw error/PHI を返さず
+  `PHARMACY_DRUG_STOCK_EXPORT_FAILED` の no-store 500 へ倒す。Posting CSV は外部/掲示用途の
+  residual risk を下げるため自由記載 `adoption_note` を出力対象から除外し、download filename から
+  raw site id を削除（traceability は audit target_id に集約）。Subagents: api_contract_reviewer が
+  direct audit / audit failure no-store / purpose allowlist / posting free-text を指摘、test_architect が
+  route/service test 設計を提示、privacy_compliance_reviewer が filename site-id leak と non-audit
+  500 no-store gap を指摘し、すべて反映。Validation green:
+  `pnpm exec vitest run src/app/api/pharmacy-drug-stocks/export/route.test.ts src/server/services/export-audit.test.ts --reporter=dot --testTimeout=30000`
+  (22 tests), `pnpm exec vitest run src/app/api/__tests__/api-conventions-static.test.ts src/__tests__/audit-log-conventions-static.test.ts src/app/api/patients/export/route.test.ts 'src/app/api/patients/[id]/prescriptions/export/route.test.ts' src/app/api/billing-candidates/export/route.test.ts src/app/api/audit-logs/export/route.test.ts src/app/api/pharmacy-drug-stocks/export/route.test.ts --reporter=dot --testTimeout=30000`
+  (83 tests; audit export 500 test の expected sanitized logger stderr あり), scoped ESLint green,
+  `git diff --check` green, `pnpm format:check` green,
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green,
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` green。Remaining:
+  PDF/report/attachment export snapshot の DEV-PHI coverage、server-side full export endpoint prop化、
+  broader export surface matrix は未着手。
 
 ## 進行中 / 凍結
 
