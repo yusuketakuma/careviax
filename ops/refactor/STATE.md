@@ -40,6 +40,41 @@
 
 ## 直近の land（本日・要点）
 
+- codex: UX-TBL-001 DataTable Export / Selection Semantics slice land（b60c34297）。
+  - current task:
+    `Plans.md` の `UX-TBL-001` を、skill `redesign-existing-projects` と PH-OS UI/UX SSOT
+    `docs/ui-ux-design-guidelines.md` に沿って共通 `DataTable` から実装。
+    client CSV が「検索条件全件」ではなく読み込み済み行の export であることを UI 上で明確化する。
+  - files inspected:
+    `docs/ui-ux-design-guidelines.md`、`.agents/skills/redesign-existing-projects/SKILL.md`、
+    `Plans.md`、`src/components/ui/data-table.tsx`、`src/components/ui/data-table.test.tsx`、
+    CSV文言依存の画面テスト
+    (`report-share-workspace`、`billing-check-content`、`prescriptions-table`、`intake-triage-content`、
+    `pharmacy-cooperation-workflow-content`、`admin/audit-logs-content`)。
+  - files changed:
+    `src/components/ui/data-table.tsx`、`src/components/ui/data-table.test.tsx`、`ops/refactor/STATE.md`。
+  - bugs/security risks fixed:
+    `DataTable` の client CSV export ボタンを `読込済みCSV出力` に変更し、`hasMore=true` かつ export 可能な時は
+    `未読込行は出力対象外です。` を表示して `aria-describedby` でボタンに接続。
+    一括選択の件数表示を `選択中N件（表示中の行から選択）` に変更し、対象範囲の誤認を減らす。
+    CSV formula neutralization は既存 `quotedCsvRow` path のまま保持。
+  - performance issues improved:
+    なし。描画追加は toolbar 内の短い説明文のみで、BFF/API/DB/package dependency 変更は不要。
+  - validation commands/results:
+    `pnpm exec prettier --write src/components/ui/data-table.tsx src/components/ui/data-table.test.tsx src/lib/audit/audit-entry.ts src/lib/audit/audit-entry.test.ts` green;
+    `pnpm exec vitest run src/components/ui/data-table.test.tsx --reporter=dot --testTimeout=30000` green (1 file / 16 tests);
+    `pnpm exec eslint src/components/ui/data-table.tsx src/components/ui/data-table.test.tsx` green;
+    `pnpm exec vitest run src/app/(dashboard)/reports/report-share-workspace.test.tsx src/app/(dashboard)/billing/billing-check-content.test.tsx src/app/(dashboard)/prescriptions/prescriptions-table.test.tsx src/app/(dashboard)/prescriptions/intake/intake-triage-content.test.tsx src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx src/app/(dashboard)/admin/audit-logs/audit-logs-content.test.tsx --reporter=dot --testTimeout=30000` green (6 files / 86 tests);
+    `git diff --check -- src/components/ui/data-table.tsx src/components/ui/data-table.test.tsx ops/refactor/STATE.md` green;
+    `pnpm format:check` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` green。
+  - remaining work:
+    `UX-TBL-001` の full scope のうち、server-side full export endpoint の prop化、PHI export snapshot、
+    per-screen masking/audit profile 表示は未実装。今回のsliceは shared client DataTable の誤認防止に限定。
+  - next action:
+    ledger commit を作成し、origin/main へ push。
+
 - codex: R-PR0 EXP-001/SEC-002 export audit minimization + UX/PERF plan expansion slice implementation complete。
   - current task:
     EXP-001: bulk medication history export の audit/job/output に raw patient ID arrays や per-patient
