@@ -34,6 +34,7 @@ import type {
   PatientBoardBlockedReason,
   PatientBoardCard,
   PatientBoardResponse,
+  PatientFoundationIssueKey,
   PatientStatusTone,
 } from '@/types/patient-board';
 
@@ -52,7 +53,14 @@ const boardQuerySchema = z.object({
   scope: z.enum(['mine', 'all']).optional(),
   q: z.string().trim().max(80, 'q は80文字以内で指定してください').optional(),
   foundation_issue: z
-    .enum(['needs_confirmation', 'missing_contact', 'missing_care_team'])
+    .enum([
+      'needs_confirmation',
+      'missing_contact',
+      'missing_parking',
+      'missing_care_level',
+      'missing_insurance',
+      'missing_care_team',
+    ])
     .optional(),
 });
 
@@ -263,6 +271,8 @@ type PatientQueryRow = {
   name: string;
   name_kana: string | null;
   birth_date: Date;
+  medical_insurance_number: string | null;
+  care_insurance_number: string | null;
   allergy_info: unknown;
   scheduling_preference: {
     swallowing_route: string | null;
@@ -505,6 +515,14 @@ function derivePatientBoardCard(patient: PatientQueryRow, now: Date): DerivedCar
     contacts: patient.contacts,
     careTeamLinks: careCase?.care_team_links ?? [],
   });
+  const insuranceMissing = !patient.medical_insurance_number && !patient.care_insurance_number;
+  const foundationIssueKeys: PatientFoundationIssueKey[] = [
+    contactReadiness.ready ? null : 'missing_contact',
+    preference?.parking_available == null ? 'missing_parking' : null,
+    preference?.care_level ? null : 'missing_care_level',
+    insuranceMissing ? 'missing_insurance' : null,
+    careTeamReliability.alert_count > 0 ? 'missing_care_team' : null,
+  ].filter((key): key is PatientFoundationIssueKey => Boolean(key));
 
   const operationSummary = buildOperationSummary(patient, {
     visitToday,
@@ -519,6 +537,7 @@ function derivePatientBoardCard(patient: PatientQueryRow, now: Date): DerivedCar
     visitToday,
     visitPrepared: visitPreparationReady,
     safetyTagCount: safetyTags.length,
+    insuranceAlertCount: insuranceMissing ? 1 : 0,
     careTeamReliabilityAlertCount: careTeamReliability.alert_count,
   });
 
@@ -540,6 +559,7 @@ function derivePatientBoardCard(patient: PatientQueryRow, now: Date): DerivedCar
     status_tone: tone,
     operation_summary: operationSummary,
     foundation_summary: foundationSummary,
+    foundation_issue_keys: foundationIssueKeys,
     foundation_href: `${patientHref}#patient-foundation`,
     link_label: resolvedLink.label,
     link_href: linkHref,
@@ -567,13 +587,7 @@ function matchesFoundationIssue(
 ) {
   if (!issue) return true;
   if (issue === 'needs_confirmation') return card.foundation_summary?.status !== 'ready';
-  if (issue === 'missing_contact') {
-    return card.foundation_summary?.items.some((item) => item.includes('連絡先')) ?? false;
-  }
-  if (issue === 'missing_care_team') {
-    return card.foundation_summary?.items.some((item) => item.includes('連携先')) ?? false;
-  }
-  return true;
+  return card.foundation_issue_keys?.includes(issue) ?? false;
 }
 
 const authenticatedGET = withAuthContext(
@@ -626,6 +640,8 @@ const authenticatedGET = withAuthContext(
           name: true,
           name_kana: true,
           birth_date: true,
+          medical_insurance_number: true,
+          care_insurance_number: true,
           allergy_info: true,
           scheduling_preference: {
             select: {

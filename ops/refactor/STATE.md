@@ -40,6 +40,43 @@
 
 ## 直近の land（本日・要点）
 
+- codex: PatientsBoard expanded foundation issue keys slice complete（code/test: commit pending）。
+  - current task:
+    Goal 継続として `PAT-LIST-UX-001` の残りを実装。前回UIで露出した原因別チップをさらに拡張し、
+    `/api/patients/board` の `foundation_issue` に `missing_parking`, `missing_care_level`,
+    `missing_insurance` を追加。カードresponseには非PHIの `foundation_issue_keys` を追加し、UIの
+    count/filterを表示文言ではなく安定キーで駆動するように変更。
+  - files inspected:
+    `src/types/patient-board.ts`, `src/server/services/patient-detail-foundation.ts`,
+    `src/server/services/patient-service.ts`, `src/app/api/patients/board/route.ts`,
+    `src/app/api/patients/board/route.test.ts`,
+    `src/app/(dashboard)/patients/patients-board.tsx`,
+    `src/app/(dashboard)/patients/patients-board.test.tsx`。
+  - files changed:
+    `src/types/patient-board.ts`,
+    `src/app/api/patients/board/route.ts`,
+    `src/app/api/patients/board/route.test.ts`,
+    `src/app/(dashboard)/patients/patients-board.tsx`,
+    `src/app/(dashboard)/patients/patients-board.test.tsx`,
+    `ops/refactor/STATE.md`。
+  - bugs/security risks fixed:
+    UI filter が `foundation_summary.items` の表示文言や slice(0,3) に依存していた問題を解消。
+    保険番号はBFF内部の判定にだけ使い、レスポンスには `missing_insurance` のキーのみ返すため、
+    患者カードへ保険番号・住所などの生値は追加しない。
+  - performance issues improved:
+    `missing_*` の原因別filterを server-side query と一致させ、原因別 count/filter が表示文言走査に依存しない。
+  - validation commands/results:
+    `pnpm exec prettier --write 'src/types/patient-board.ts' 'src/app/api/patients/board/route.ts' 'src/app/api/patients/board/route.test.ts' 'src/app/(dashboard)/patients/patients-board.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx'` green;
+    `pnpm exec vitest run 'src/app/api/patients/board/route.test.ts' 'src/app/(dashboard)/patients/patients-board.test.tsx' --reporter=dot --testTimeout=30000` green (2 files / 42 tests);
+    `pnpm exec eslint 'src/types/patient-board.ts' 'src/app/api/patients/board/route.ts' 'src/app/api/patients/board/route.test.ts' 'src/app/(dashboard)/patients/patients-board.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx'` green;
+    `git diff --check -- 'src/types/patient-board.ts' 'src/app/api/patients/board/route.ts' 'src/app/api/patients/board/route.test.ts' 'src/app/(dashboard)/patients/patients-board.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx'` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。
+  - remaining work:
+    `同意・計画未確認` は `management-plans` 連携が必要で未実装。server facet counts、browser screenshot、
+    compact list mode は未着手。
+  - next action:
+    scoped commit を作成。次は `ONB-001` と接続して同意/計画filterを実装するか、別画面の `RX-REG-UX-001` へ進む。
+
 - codex: PatientsBoard foundation filter granularity slice complete（code/test: 0841a2184）。
   - current task:
     Goal 継続として `Plans.md` の `PAT-LIST-UX-001` に対応。ユーザー指示により、UI作業は

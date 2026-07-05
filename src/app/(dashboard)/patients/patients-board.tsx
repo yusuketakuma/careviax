@@ -44,6 +44,7 @@ import type {
   PatientAttentionKey,
   PatientBoardCard,
   PatientBoardResponse,
+  PatientFoundationIssueKey,
   PatientStatusTone,
 } from '@/types/patient-board';
 import { PatientBoardLoadingShell } from './patient-board-loading';
@@ -79,7 +80,7 @@ export async function fetchPatientBoard(
 
 type BoardScope = 'mine' | 'all';
 type BoardSort = 'priority' | 'next_visit' | 'name';
-type BoardFoundationIssue = 'needs_confirmation' | 'missing_contact' | 'missing_care_team';
+type BoardFoundationIssue = 'needs_confirmation' | PatientFoundationIssueKey;
 
 const SCOPE_OPTIONS: Array<{ value: BoardScope; label: string }> = [
   { value: 'mine', label: '私の担当' },
@@ -109,6 +110,9 @@ type BoardChipValue =
   | 'foundation_gap'
   | 'foundation_contact_gap'
   | 'foundation_care_team_gap'
+  | 'foundation_parking_gap'
+  | 'foundation_care_level_gap'
+  | 'foundation_insurance_gap'
   | 'paused';
 
 type AttentionPresentation = {
@@ -189,11 +193,14 @@ function getFoundationIssueForChip(chip: BoardChipValue): BoardFoundationIssue |
   if (chip === 'foundation_gap') return 'needs_confirmation';
   if (chip === 'foundation_contact_gap') return 'missing_contact';
   if (chip === 'foundation_care_team_gap') return 'missing_care_team';
+  if (chip === 'foundation_parking_gap') return 'missing_parking';
+  if (chip === 'foundation_care_level_gap') return 'missing_care_level';
+  if (chip === 'foundation_insurance_gap') return 'missing_insurance';
   return undefined;
 }
 
-function cardHasFoundationItem(card: PatientBoardCard, item: string): boolean {
-  return card.foundation_summary?.items?.includes(item) ?? false;
+function cardHasFoundationIssue(card: PatientBoardCard, issue: PatientFoundationIssueKey): boolean {
+  return card.foundation_issue_keys?.includes(issue) ?? false;
 }
 
 /**
@@ -595,12 +602,19 @@ export function PatientsBoard() {
               return card.foundation_summary?.status !== 'ready';
             }
             if (chip === 'foundation_contact_gap') {
-              return cardHasFoundationItem(card, '連絡先未設定');
+              return cardHasFoundationIssue(card, 'missing_contact');
             }
             if (chip === 'foundation_care_team_gap') {
-              return (card.foundation_summary?.items ?? []).some((item) =>
-                item.startsWith('連携先'),
-              );
+              return cardHasFoundationIssue(card, 'missing_care_team');
+            }
+            if (chip === 'foundation_parking_gap') {
+              return cardHasFoundationIssue(card, 'missing_parking');
+            }
+            if (chip === 'foundation_care_level_gap') {
+              return cardHasFoundationIssue(card, 'missing_care_level');
+            }
+            if (chip === 'foundation_insurance_gap') {
+              return cardHasFoundationIssue(card, 'missing_insurance');
             }
             return card.attention === 'paused';
           });
@@ -648,16 +662,35 @@ export function PatientsBoard() {
         value: 'foundation_contact_gap' as const,
         label: '連絡先未設定',
         count: data
-          ? countCards(data.cards, (card) => cardHasFoundationItem(card, '連絡先未設定'))
+          ? countCards(data.cards, (card) => cardHasFoundationIssue(card, 'missing_contact'))
           : 0,
       },
       {
         value: 'foundation_care_team_gap' as const,
         label: '連携先未設定',
         count: data
-          ? countCards(data.cards, (card) =>
-              (card.foundation_summary?.items ?? []).some((item) => item.startsWith('連携先')),
-            )
+          ? countCards(data.cards, (card) => cardHasFoundationIssue(card, 'missing_care_team'))
+          : 0,
+      },
+      {
+        value: 'foundation_parking_gap' as const,
+        label: '駐車未確認',
+        count: data
+          ? countCards(data.cards, (card) => cardHasFoundationIssue(card, 'missing_parking'))
+          : 0,
+      },
+      {
+        value: 'foundation_care_level_gap' as const,
+        label: '介護度未確認',
+        count: data
+          ? countCards(data.cards, (card) => cardHasFoundationIssue(card, 'missing_care_level'))
+          : 0,
+      },
+      {
+        value: 'foundation_insurance_gap' as const,
+        label: '保険未確認',
+        count: data
+          ? countCards(data.cards, (card) => cardHasFoundationIssue(card, 'missing_insurance'))
           : 0,
       },
       { value: 'paused' as const, label: '休止', count: counts?.paused ?? 0 },

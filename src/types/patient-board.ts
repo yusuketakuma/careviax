@@ -30,6 +30,13 @@ export type PatientStatusTone =
 
 export type PatientResidenceKind = 'home' | 'facility' | 'hospital';
 
+export type PatientFoundationIssueKey =
+  | 'missing_contact'
+  | 'missing_parking'
+  | 'missing_care_level'
+  | 'missing_insurance'
+  | 'missing_care_team';
+
 export type PatientBoardCard = {
   patient_id: string;
   name: string;
@@ -59,6 +66,8 @@ export type PatientBoardCard = {
     label: string;
     items: string[];
   };
+  /** 正本未整備の原因キー。PHI の生値は含めず、UI filter / task routing 用の安定キーだけを返す。 */
+  foundation_issue_keys?: PatientFoundationIssueKey[];
   /** 未確認の正本項目へ直接移動する導線。通常は患者詳細の正本確認アンカー */
   foundation_href?: string;
   /** 工程ショートカット(「→ 監査へ」等) */

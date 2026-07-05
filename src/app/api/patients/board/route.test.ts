@@ -68,6 +68,8 @@ function buildPatientRow(scheduledDate: Date) {
     name: '佐藤 花子',
     name_kana: 'サトウ ハナコ',
     birth_date: new Date('1940-01-15T00:00:00.000Z'),
+    medical_insurance_number: 'medical_1',
+    care_insurance_number: null,
     allergy_info: null,
     scheduling_preference: {
       swallowing_route: null,
@@ -646,6 +648,50 @@ describe('/api/patients/board', () => {
     expect(json.data.assigned_total).toBe(2);
     expect(json.data.truncated).toBe(false);
   });
+
+  it.each([
+    ['missing_parking', 'patient_missing_parking', '駐車未確認'],
+    ['missing_care_level', 'patient_missing_care_level', '介護度未確認'],
+    ['missing_insurance', 'patient_missing_insurance', '保険確認1件'],
+  ] as const)(
+    'filters board cards by expanded foundation issue %s',
+    async (issue, patientId, expectedItem) => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-06-12T08:00:00+09:00'));
+      const matchingPatient = {
+        ...buildPatientRow(new Date('2026-06-12T00:00:00.000Z')),
+        id: patientId,
+        name: `対象 ${issue}`,
+        scheduling_preference: {
+          ...buildPatientRow(new Date('2026-06-12T00:00:00.000Z')).scheduling_preference,
+          parking_available: issue === 'missing_parking' ? null : true,
+          care_level: issue === 'missing_care_level' ? null : 'care_3',
+        },
+        medical_insurance_number: issue === 'missing_insurance' ? null : 'medical_1',
+        care_insurance_number: null,
+      };
+      patientFindManyMock.mockResolvedValue([
+        buildPatientRow(new Date('2026-06-12T00:00:00.000Z')),
+        matchingPatient,
+      ]);
+      patientCountMock.mockResolvedValue(2);
+
+      const response = (await GET(createRequest(`?scope=all&foundation_issue=${issue}`), {
+        params: Promise.resolve({}),
+      }))!;
+
+      expect(response.status).toBe(200);
+      const json = await response.json();
+      expect(json.data.cards).toHaveLength(1);
+      expect(json.data.cards[0]).toMatchObject({
+        patient_id: patientId,
+        foundation_issue_keys: [issue],
+        foundation_summary: {
+          items: expect.arrayContaining([expectedItem]),
+        },
+      });
+    },
+  );
 
   it('applies q as a database-side patient name/kana filter before taking board rows', async () => {
     const response = (await GET(createRequest('?scope=all&q=%E4%BD%90%E8%97%A4'), {

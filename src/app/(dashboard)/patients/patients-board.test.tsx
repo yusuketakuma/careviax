@@ -55,6 +55,7 @@ function card(overrides: Partial<PatientBoardCard>): PatientBoardCard {
       label: '未確認2件',
       items: ['連絡先未設定', '駐車未確認'],
     },
+    foundation_issue_keys: ['missing_contact', 'missing_parking'],
     foundation_href: '/patients/pt_default#patient-foundation',
     link_label: 'セットへ',
     link_href: '/set',
@@ -86,6 +87,7 @@ function buildFixture(): PatientBoardResponse {
           label: '安全確認あり',
           items: ['安全タグ4件'],
         },
+        foundation_issue_keys: [],
         foundation_href: '/patients/pt_tanaka#patient-foundation',
         link_label: '監査へ',
         link_href: '/audit',
@@ -247,6 +249,9 @@ describe('PatientsBoard', () => {
     expect(within(chipBar).getByRole('button', { name: /正本未整備/ })).toBeTruthy();
     expect(within(chipBar).getByRole('button', { name: /連絡先未設定/ })).toBeTruthy();
     expect(within(chipBar).getByRole('button', { name: /連携先未設定/ })).toBeTruthy();
+    expect(within(chipBar).getByRole('button', { name: /駐車未確認/ })).toBeTruthy();
+    expect(within(chipBar).getByRole('button', { name: /介護度未確認/ })).toBeTruthy();
+    expect(within(chipBar).getByRole('button', { name: /保険未確認/ })).toBeTruthy();
     expect(within(chipBar).getByRole('button', { name: /休止/ })).toBeTruthy();
 
     expect(screen.getByTestId('patients-board-scope-note').textContent).toContain(
@@ -425,6 +430,30 @@ describe('PatientsBoard', () => {
     expect(useRealtimeQueryMock).toHaveBeenLastCalledWith(
       expect.objectContaining({
         queryKey: ['patients', 'board', 'org_1', 'mine', 'missing_care_team', ''],
+      }),
+    );
+
+    fireEvent.click(within(chipBar).getByRole('button', { name: /駐車未確認/ }));
+    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(4);
+    expect(useRealtimeQueryMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        queryKey: ['patients', 'board', 'org_1', 'mine', 'missing_parking', ''],
+      }),
+    );
+
+    fireEvent.click(within(chipBar).getByRole('button', { name: /介護度未確認/ }));
+    expect(screen.queryAllByTestId('patient-board-card')).toHaveLength(0);
+    expect(useRealtimeQueryMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        queryKey: ['patients', 'board', 'org_1', 'mine', 'missing_care_level', ''],
+      }),
+    );
+
+    fireEvent.click(within(chipBar).getByRole('button', { name: /保険未確認/ }));
+    expect(screen.queryAllByTestId('patient-board-card')).toHaveLength(0);
+    expect(useRealtimeQueryMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        queryKey: ['patients', 'board', 'org_1', 'mine', 'missing_insurance', ''],
       }),
     );
 
