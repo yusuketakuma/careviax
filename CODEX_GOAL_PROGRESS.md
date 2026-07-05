@@ -1,5 +1,43 @@
 # CODEX Goal Progress
 
+## R40/R44 Notification Read State readApiJson Partial - 2026-07-05 10:13 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/notifications/notifications-content.tsx`
+    - `src/app/(dashboard)/notifications/notifications-content.test.tsx`
+- Scope:
+  - Reused `readApiJson` for notification read-state PATCH responses.
+  - Added focused coverage proving API JSON `message` from failed read-state
+    responses is preserved in toast output.
+  - Preserved `NOTIFICATIONS_API_PATH`, `buildOrgJsonHeaders`, PATCH method,
+    request body shape, inbox invalidation, realtime inbox behavior, offline
+    pending-sync row, loading/error states, and notification navigation.
+- Safety:
+  - Notifications UI mutation response handling internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary remains
+    recorded in `ops/refactor/STATE.md`; this slice did not require those
+    changes.
+  - Preserved DB/schema, API route contracts, auth/authorization semantics,
+    PHI projection, billing behavior, deployment, package dependency, live DB
+    operation, external send, secret handling, push, and destructive operation
+    boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/notifications/notifications-content.test.tsx'`
+    passed `1` file / `12` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `c45b384d`
+    (`refactor(ui): reuse readApiJson for notification read state`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher/mutation PHI/body-read review
+    before converting additional manual response handling.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Care Team Mutations readApiJson Partial - 2026-07-05 10:10 JST
 
 - Status:

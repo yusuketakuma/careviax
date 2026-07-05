@@ -530,6 +530,11 @@
   path helper、hostile-id encoding、dot-segment fail-closed、org JSON headers、request bodies、
   reliability warnings、success toasts、cache invalidation は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 notification read-state readApiJson slice(c45b384d) land。focused Vitest 12、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。notification read-state PATCH response を
+  readApiJson へ収束し、NOTIFICATIONS_API_PATH、org JSON headers、PATCH body、inbox invalidation、
+  realtime inbox、offline pending-sync row、loading/error states、navigation は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 
