@@ -401,8 +401,7 @@ export function BillingCandidatesContent({
       const res = await fetch(`/api/billing-candidates/export?${params.toString()}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('請求CSVの出力前確認に失敗しました');
-      return res.json() as Promise<BillingExportPreviewResponse>;
+      return readApiJson<BillingExportPreviewResponse>(res, '請求CSVの出力前確認に失敗しました');
     },
     enabled: !!orgId,
   });
@@ -428,11 +427,10 @@ export function BillingCandidatesContent({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ billing_month: billingMonthStr, billing_domain: billingDomain }),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.message ?? '請求候補の生成に失敗しました');
-      }
-      return res.json() as Promise<{ message: string; generated?: number }>;
+      return readApiJson<{ message: string; generated?: number }>(
+        res,
+        '請求候補の生成に失敗しました',
+      );
     },
     onSuccess: async (result) => {
       toast.success(result.message);
@@ -458,11 +456,7 @@ export function BillingCandidatesContent({
           expected_updated_at: input.expectedUpdatedAt,
         }),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.message ?? '請求候補の更新に失敗しました');
-      }
-      return res.json() as Promise<{ data: BillingCandidate }>;
+      return readApiJson<{ data: BillingCandidate }>(res, '請求候補の更新に失敗しました');
     },
     onSuccess: async () => {
       toast.success('請求候補を更新しました');
@@ -481,15 +475,11 @@ export function BillingCandidatesContent({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ billing_month: billingMonthStr, billing_domain: billingDomain }),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.message ?? '月次締めに失敗しました');
-      }
-      return res.json() as Promise<{
+      return readApiJson<{
         message: string;
         exported_count?: number;
         billing_domain?: BillingDomain;
-      }>;
+      }>(res, '月次締めに失敗しました');
     },
     onSuccess: async (result) => {
       toast.success(result.message);

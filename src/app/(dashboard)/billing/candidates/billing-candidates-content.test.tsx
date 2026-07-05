@@ -23,11 +23,13 @@ vi.mock('sonner', async () => {
 
 setupDomTestEnv();
 
-function renderBillingCandidatesContent() {
+function renderBillingCandidatesContent(options: { initialPatientId?: string | null } = {}) {
   return render(
     <BillingCandidatesContent
       initialBillingMonth="2026-03-01"
-      initialPatientId="patient_1"
+      initialPatientId={
+        options.initialPatientId === undefined ? 'patient_1' : options.initialPatientId
+      }
       initialCandidateId="candidate_target"
       initialWorkflowFrom="visit_record"
       initialVisitRecordId="record_1"
@@ -448,6 +450,38 @@ describe('BillingCandidatesContent', () => {
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith('請求候補の生成に失敗しました');
+    });
+  });
+
+  it('keeps API messages from billing candidate mutations', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/billing-candidates' && init?.method === 'POST') {
+        return jsonResponse({ message: '請求候補の作成権限がありません' }, 403);
+      }
+      if (url === '/api/billing-candidates/candidate_other' && init?.method === 'PATCH') {
+        return jsonResponse({ message: '請求候補が他のユーザーによって更新されています' }, 409);
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderBillingCandidatesContent({ initialPatientId: null });
+
+    fireEvent.click(await screen.findByRole('button', { name: '医療・介護候補生成' }));
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('請求候補の作成権限がありません');
+    });
+
+    const table = await screen.findByRole('table', { name: '月次請求候補一覧' });
+    const candidateRow = within(table)
+      .getAllByRole('row')
+      .find((row) => row.textContent?.includes('居宅療養管理指導料'));
+    if (!candidateRow) throw new Error('candidate row is required');
+    fireEvent.click(within(candidateRow).getByRole('button', { name: '確定' }));
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('請求候補が他のユーザーによって更新されています');
     });
   });
 });
