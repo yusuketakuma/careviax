@@ -10,8 +10,9 @@
 
 - 現行は Codex 単独運用。codex が Plans 棚卸し、実装、validation、単一台帳更新、scoped commit、
   例外処理を一貫して担当する。
-- agmsg / codex2 / codex3 / codex4 / Claude / subagent / PATCH_REPORT 待ちは使わない。
-  ユーザーが明示的に再有効化しない限り、過去の multi-agent 記述は歴史的記録として扱う。
+- agmsg / codex2 / codex3 / codex4 / Claude / PATCH_REPORT 待ちは使わない。
+  2026-07-05 ユーザー指示により、subagent は bounded な調査・レビュー・検証に再投入可。
+  ただし編集、統合、validation、台帳更新、scoped commit は引き続き codex 本体が責任を持つ。
 - 規律: `git status --short --untracked-files=all` → 対象 diff 確認 → 小スライス実装 →
   focused validation → `ops/refactor/STATE.md` 更新 → explicit path staging → scoped commit。
 - gate: lint / typecheck / typecheck:no-unused / format:check / test / build / colors:check
@@ -39,6 +40,34 @@
 
 ## 直近の land（本日・要点）
 
+- codex: visit handoff confirmation responsibility-boundary hardening batch(b33239051)
+  implementation complete。ユーザー指示により本sliceでは subagent を投入（code_mapper /
+  security_critic / medical_safety_reviewer / api_contract_reviewer）。全員 CHANGES_REQUESTED として、
+  `PUT /api/visit-records/:id/handoff` が `canVisit` + org-wide `canAccessVisitScheduleAssignment`
+  に依存し、非担当 pharmacist / pharmacist_trainee が同一 org の handoff を final confirm できる点、
+  `handoff_confirmation` task が未割当で担当薬剤師の task scope に乗らない点、UI が必須
+  `expected_visit_record_version` を送らず 400 になる点、PUT preflight 例外の sanitized no-store 500
+  coverage が不足する点、clinical confirmation audit が弱い点を指摘。対応として broad read helper は
+  GET 用に維持し、confirm 専用の `canConfirmVisitHandoff` / `buildVisitHandoffConfirmationWhere` /
+  `selectVisitHandoffConfirmationAssignee` を追加。final confirm は owner/admin/pharmacist かつ
+  visit schedule pharmacist / care-case primary / backup の直接責任者に限定し、pharmacist_trainee は
+  supervision/override policy が入るまで final confirm から fail-closed。route preflight だけでなく
+  `confirmHandoff` の `updateMany` claim に同じ schedule assignment where を渡し、担当変更 race は
+  stale conflict に倒す。extraction 成功時の `handoff_confirmation` task は schedule pharmacist 優先、
+  fallback primary/backup で `assigned_to` を設定し、resolve は confirmer assigned task または legacy
+  unassigned task のみに限定。UI は `GET /handoff` root の `visit_record_version` を保持し、
+  `HandoffConfirmPanel` の PUT body に `expected_visit_record_version` を必ず送る。PUT export は
+  `authenticatedPUT` + `unstable_rethrow` + `internalError()` wrapper で preflight DB failure も fixed
+  no-store 500 に統一。confirmation success は `visit_handoff_confirmed` AuditLog を同一 transaction
+  で作成し、`visit_record_id` / `schedule_id` / `confirmed_by` / `authorized_basis` / edited field names /
+  before-after counts/presence/length だけを保存、raw handoff text は保存しない。focused Vitest 105、
+  panel-only Vitest 4、scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。handoff workspace
+  tests の既存 React act warning は発生するが全テスト green。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) に基づき product API /
+  authorization / PHI-adjacent audit / task assignment / UI contract を変更、DB schema/migration/billing/
+  deploy/package dependency 変更は不要。残る別slice候補: owner/admin emergency override with explicit
+  reason/audit、pharmacist_trainee supervision policy、historical unassigned `handoff_confirmation`
+  task inventory/backfill は未実施。
 - codex: handoff read receipt / consult resolution recipient-scoped authorization hardening batch(e4cfca22)
   implementation complete。ユーザー指示により本sliceでは subagent を投入（code_mapper /
   api_contract_reviewer / security_critic / verifier / privacy_compliance_reviewer）。code_mapper は read
