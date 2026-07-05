@@ -40,7 +40,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: RX-REG-UX-002 Prescription list facet counts slice complete（commit pending）。
+- codex: RX-REG-UX-002 Prescription list facet counts landed（commit `fadd249f4`）。
   - current task:
     Goal 継続として `RX-REG-UX-002` を実装。処方受付 API に `facets=1` を追加し、
     status/source の全体 facet count を返すようにした。処方受付ワークスペース UI は
@@ -72,9 +72,9 @@
   - remaining work:
     source facet counts の UI 表示、global search 側の stale comment/client補完整理、browser screenshot は未実行。
   - next action:
-    scoped commit を作成。次は global search の prescription q 利用整理、または `DASH-PERF-001`。
+    次は global search の prescription q 利用整理、または `DASH-PERF-001`。
 
-- codex: RX-REG-UX-001 Prescription list server-side search UI slice complete（未コミット）。
+- codex: RX-REG-UX-001 Prescription list server-side search UI landed（commit `6cb6e489a`）。
   - current task:
     Goal 継続として `RX-REG-UX-001` を実装。処方受付 API の既存 `q` server-side search を
     処方受付ワークスペース UI に接続し、検索語を queryKey / API `q` / count 表示へ反映。
