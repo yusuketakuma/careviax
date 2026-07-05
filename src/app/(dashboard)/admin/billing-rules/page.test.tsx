@@ -287,7 +287,12 @@ describe('BillingRulesPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '削除する' }));
 
-    expect(mutationMutateMock).toHaveBeenCalledWith('rule_1');
+    expect(mutationMutateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'rule_1',
+        updated_at: '2026-06-19T00:00:00.000Z',
+      }),
+    );
     await waitFor(() => expect(vi.mocked(toast.success)).toHaveBeenCalled());
   });
 
@@ -428,7 +433,10 @@ describe('BillingRulesPage', () => {
     };
     render(<BillingRulesPage />);
 
-    await mutationFnAt(2)({ id: ruleId, body });
+    await mutationFnAt(2)({
+      rule: { id: ruleId, updated_at: '2026-06-19T00:00:00.000Z' },
+      body,
+    });
 
     expect(buildBillingRuleApiPath).toHaveBeenCalledWith(ruleId);
     expect(global.fetch).toHaveBeenCalledWith(
@@ -436,7 +444,10 @@ describe('BillingRulesPage', () => {
       expect.objectContaining({
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          ...body,
+          expected_updated_at: '2026-06-19T00:00:00.000Z',
+        }),
       }),
     );
   });
@@ -449,26 +460,37 @@ describe('BillingRulesPage', () => {
     );
     render(<BillingRulesPage />);
 
-    await expect(mutationFnAt(2)({ id: 'rule_1', body: { name: '変更' } })).rejects.toThrow(
-      'SSOTの公式ルールは有効/無効以外を変更できません',
-    );
+    await expect(
+      mutationFnAt(2)({
+        rule: { id: 'rule_1', updated_at: '2026-06-19T00:00:00.000Z' },
+        body: { name: '変更' },
+      }),
+    ).rejects.toThrow('SSOTの公式ルールは有効/無効以外を変更できません');
 
     vi.mocked(global.fetch).mockResolvedValueOnce(new Response('not-json', { status: 500 }));
-    await expect(mutationFnAt(2)({ id: 'rule_1', body: { name: '変更' } })).rejects.toThrow(
-      'Failed to update billing rule',
-    );
+    await expect(
+      mutationFnAt(2)({
+        rule: { id: 'rule_1', updated_at: '2026-06-19T00:00:00.000Z' },
+        body: { name: '変更' },
+      }),
+    ).rejects.toThrow('Failed to update billing rule');
   });
 
-  it('delete DELETE encodes a hostile detail id', async () => {
+  it('delete DELETE encodes a hostile detail id with the observed version', async () => {
     const ruleId = 'rule/1 space?mode=x#frag';
     render(<BillingRulesPage />);
 
-    await mutationFnAt(3)(ruleId);
+    await mutationFnAt(3)({ id: ruleId, updated_at: '2026-06-19T00:00:00.000Z' });
 
     expect(buildBillingRuleApiPath).toHaveBeenCalledWith(ruleId);
-    expect(global.fetch).toHaveBeenCalledWith(`/api/billing-rules/${encodeURIComponent(ruleId)}`, {
-      method: 'DELETE',
-    });
+    expect(global.fetch).toHaveBeenCalledWith(
+      `/api/billing-rules/${encodeURIComponent(ruleId)}?expected_updated_at=${encodeURIComponent(
+        '2026-06-19T00:00:00.000Z',
+      )}`,
+      {
+        method: 'DELETE',
+      },
+    );
   });
 
   it('keeps server messages and fallbacks for billing rule deletion failures', async () => {
@@ -479,10 +501,14 @@ describe('BillingRulesPage', () => {
     );
     render(<BillingRulesPage />);
 
-    await expect(mutationFnAt(3)('rule_1')).rejects.toThrow('SSOTの公式ルールは削除できません');
+    await expect(
+      mutationFnAt(3)({ id: 'rule_1', updated_at: '2026-06-19T00:00:00.000Z' }),
+    ).rejects.toThrow('SSOTの公式ルールは削除できません');
 
     vi.mocked(global.fetch).mockResolvedValueOnce(new Response('not-json', { status: 500 }));
-    await expect(mutationFnAt(3)('rule_1')).rejects.toThrow('Failed to delete billing rule');
+    await expect(
+      mutationFnAt(3)({ id: 'rule_1', updated_at: '2026-06-19T00:00:00.000Z' }),
+    ).rejects.toThrow('Failed to delete billing rule');
   });
 
   it('update with an exact dot-segment id fails before PATCH and does not leak sensitive rule data', async () => {

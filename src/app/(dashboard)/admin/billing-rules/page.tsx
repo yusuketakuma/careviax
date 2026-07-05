@@ -124,17 +124,24 @@ async function createBillingRule(body: object): Promise<BillingRule> {
   return readApiJson<BillingRule>(res, 'Failed to create billing rule');
 }
 
-async function updateBillingRule(id: string, body: object): Promise<BillingRule> {
+async function updateBillingRule(
+  id: string,
+  body: object,
+  expectedUpdatedAt: string,
+): Promise<BillingRule> {
   const res = await fetch(buildBillingRuleApiPath(id), {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...body, expected_updated_at: expectedUpdatedAt }),
   });
   return readApiJson<BillingRule>(res, 'Failed to update billing rule');
 }
 
-async function deleteBillingRule(id: string): Promise<void> {
-  const res = await fetch(buildBillingRuleApiPath(id), { method: 'DELETE' });
+async function deleteBillingRule(rule: BillingRule): Promise<void> {
+  const path = `${buildBillingRuleApiPath(rule.id)}?expected_updated_at=${encodeURIComponent(
+    rule.updated_at,
+  )}`;
+  const res = await fetch(path, { method: 'DELETE' });
   await readApiJson<unknown>(res, 'Failed to delete billing rule');
 }
 
@@ -425,7 +432,8 @@ export default function BillingRulesPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, body }: { id: string; body: object }) => updateBillingRule(id, body),
+    mutationFn: ({ rule, body }: { rule: BillingRule; body: object }) =>
+      updateBillingRule(rule.id, body, rule.updated_at),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['billing-rules'] });
       setEditTarget(null);
@@ -597,7 +605,7 @@ export default function BillingRulesPage() {
           onOpenChange={(v) => !v && setEditTarget(null)}
           initial={ruleToFormData(editTarget)}
           onSubmit={(form) =>
-            updateMutation.mutate({ id: editTarget.id, body: formDataToPayload(form) })
+            updateMutation.mutate({ rule: editTarget, body: formDataToPayload(form) })
           }
           isPending={updateMutation.isPending}
           title="算定ルールを編集"
@@ -616,7 +624,7 @@ export default function BillingRulesPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>キャンセル</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+              onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget)}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               削除する

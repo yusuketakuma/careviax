@@ -7,7 +7,9 @@ const {
   withOrgContextMock,
   billingRuleFindFirstMock,
   billingRuleUpdateMock,
+  billingRuleUpdateManyMock,
   billingRuleDeleteMock,
+  billingRuleDeleteManyMock,
   auditLogCreateMock,
   loggerErrorMock,
 } = vi.hoisted(() => ({
@@ -15,7 +17,9 @@ const {
   withOrgContextMock: vi.fn(),
   billingRuleFindFirstMock: vi.fn(),
   billingRuleUpdateMock: vi.fn(),
+  billingRuleUpdateManyMock: vi.fn(),
   billingRuleDeleteMock: vi.fn(),
+  billingRuleDeleteManyMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
   loggerErrorMock: vi.fn(),
 }));
@@ -37,8 +41,15 @@ vi.mock('@/lib/utils/logger', () => ({
 import { DELETE, GET, PATCH } from './route';
 
 type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
+const CURRENT_UPDATED_AT = '2026-06-19T00:00:00.000Z';
 
 function createRequest(method: 'DELETE' | 'GET' | 'PATCH', body?: unknown) {
+  const url =
+    method === 'DELETE'
+      ? `http://localhost/api/billing-rules/rule_1?expected_updated_at=${encodeURIComponent(
+          CURRENT_UPDATED_AT,
+        )}`
+      : 'http://localhost/api/billing-rules/rule_1';
   const init: NextRequestInit = {
     method,
     headers: {
@@ -47,9 +58,20 @@ function createRequest(method: 'DELETE' | 'GET' | 'PATCH', body?: unknown) {
     },
   };
   if (body !== undefined) {
-    init.body = JSON.stringify(body);
+    init.body = JSON.stringify(
+      method === 'PATCH' && body && typeof body === 'object' && !Array.isArray(body)
+        ? { expected_updated_at: CURRENT_UPDATED_AT, ...body }
+        : body,
+    );
   }
-  return new NextRequest('http://localhost/api/billing-rules/rule_1', init);
+  return new NextRequest(url, init);
+}
+
+function createDeleteRequestWithoutExpectedUpdatedAt() {
+  return new NextRequest('http://localhost/api/billing-rules/rule_1', {
+    method: 'DELETE',
+    headers: { 'x-org-id': 'org_1' },
+  });
 }
 
 function createMalformedJsonPatchRequest() {
@@ -90,6 +112,8 @@ describe('/api/billing-rules/[id]', () => {
       conditions: {},
       evidence_requirements: {},
     });
+    billingRuleUpdateManyMock.mockResolvedValue({ count: 1 });
+    billingRuleDeleteManyMock.mockResolvedValue({ count: 1 });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         auditLog: {
@@ -98,7 +122,9 @@ describe('/api/billing-rules/[id]', () => {
         billingRule: {
           findFirst: billingRuleFindFirstMock,
           update: billingRuleUpdateMock,
+          updateMany: billingRuleUpdateManyMock,
           delete: billingRuleDeleteMock,
+          deleteMany: billingRuleDeleteManyMock,
         },
       }),
     );
@@ -169,11 +195,15 @@ describe('/api/billing-rules/[id]', () => {
       id: 'rule_1',
       org_id: 'org_1',
       is_system: true,
+      updated_at: new Date(CURRENT_UPDATED_AT),
     });
 
-    const response = await PATCH(createRequest('PATCH', { name: '変更したい' }), {
-      params: Promise.resolve({ id: 'rule_1' }),
-    });
+    const response = await PATCH(
+      createRequest('PATCH', { name: '変更したい', expected_updated_at: CURRENT_UPDATED_AT }),
+      {
+        params: Promise.resolve({ id: 'rule_1' }),
+      },
+    );
 
     if (!response) throw new Error('response is required');
     const resolvedResponse = response as Response;
@@ -182,7 +212,7 @@ describe('/api/billing-rules/[id]', () => {
     await expect(resolvedResponse.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
     });
-    expect(billingRuleUpdateMock).not.toHaveBeenCalled();
+    expect(billingRuleUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object PATCH payloads before rule lookup or update', async () => {
@@ -200,7 +230,7 @@ describe('/api/billing-rules/[id]', () => {
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(billingRuleFindFirstMock).not.toHaveBeenCalled();
-    expect(billingRuleUpdateMock).not.toHaveBeenCalled();
+    expect(billingRuleUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects malformed JSON PATCH payloads before rule lookup or update', async () => {
@@ -218,7 +248,7 @@ describe('/api/billing-rules/[id]', () => {
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(billingRuleFindFirstMock).not.toHaveBeenCalled();
-    expect(billingRuleUpdateMock).not.toHaveBeenCalled();
+    expect(billingRuleUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank PATCH route ids before rule lookup or update', async () => {
@@ -235,7 +265,49 @@ describe('/api/billing-rules/[id]', () => {
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(billingRuleFindFirstMock).not.toHaveBeenCalled();
-    expect(billingRuleUpdateMock).not.toHaveBeenCalled();
+    expect(billingRuleUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns no-store auth rejection for PATCH before rule lookup or update', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: Response.json(
+        { code: 'AUTH_FORBIDDEN', message: '権限がありません' },
+        { status: 403 },
+      ),
+    });
+
+    const response = await PATCH(createRequest('PATCH', { is_active: false }), {
+      params: Promise.resolve({ id: 'rule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    const resolvedResponse = response as Response;
+    expect(resolvedResponse.status).toBe(403);
+    expectNoStore(resolvedResponse);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(billingRuleFindFirstMock).not.toHaveBeenCalled();
+    expect(billingRuleUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('requires expected_updated_at before PATCH lookup or update', async () => {
+    const response = await PATCH(
+      createRequest('PATCH', { is_active: false, expected_updated_at: undefined }),
+      {
+        params: Promise.resolve({ id: 'rule_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    const resolvedResponse = response as Response;
+    expect(resolvedResponse.status).toBe(400);
+    expectNoStore(resolvedResponse);
+    await expect(resolvedResponse.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: { expected_updated_at: expect.any(Array) },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(billingRuleFindFirstMock).not.toHaveBeenCalled();
+    expect(billingRuleUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('allows active toggle for system rules', async () => {
@@ -243,6 +315,22 @@ describe('/api/billing-rules/[id]', () => {
       id: 'rule_1',
       org_id: 'org_1',
       is_system: true,
+      updated_at: new Date(CURRENT_UPDATED_AT),
+    });
+    billingRuleFindFirstMock.mockResolvedValueOnce({
+      id: 'rule_1',
+      org_id: 'org_1',
+      is_system: true,
+      updated_at: new Date(CURRENT_UPDATED_AT),
+    });
+    billingRuleFindFirstMock.mockResolvedValueOnce({
+      id: 'rule_1',
+      org_id: 'org_1',
+      is_system: true,
+      is_active: false,
+      conditions: {},
+      evidence_requirements: {},
+      updated_at: new Date('2026-06-19T00:01:00.000Z'),
     });
 
     const response = await PATCH(createRequest('PATCH', { is_active: false }), {
@@ -253,8 +341,8 @@ describe('/api/billing-rules/[id]', () => {
     const resolvedResponse = response as Response;
     expect(resolvedResponse.status).toBe(200);
     expectNoStore(resolvedResponse);
-    expect(billingRuleUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'rule_1' },
+    expect(billingRuleUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'rule_1', org_id: 'org_1', updated_at: new Date(CURRENT_UPDATED_AT) },
       data: { is_active: false },
     });
     expect(auditLogCreateMock).toHaveBeenCalledWith(
@@ -273,6 +361,21 @@ describe('/api/billing-rules/[id]', () => {
       id: 'rule_1',
       org_id: 'org_1',
       is_system: false,
+      updated_at: new Date(CURRENT_UPDATED_AT),
+    });
+    billingRuleFindFirstMock.mockResolvedValueOnce({
+      id: 'rule_1',
+      org_id: 'org_1',
+      is_system: false,
+      updated_at: new Date(CURRENT_UPDATED_AT),
+    });
+    billingRuleFindFirstMock.mockResolvedValueOnce({
+      id: 'rule_1',
+      org_id: 'org_1',
+      is_system: false,
+      conditions: { patient_status: 'active' },
+      evidence_requirements: { required_documents: ['visit_record'] },
+      updated_at: new Date('2026-06-19T00:01:00.000Z'),
     });
 
     const response = await PATCH(
@@ -287,13 +390,72 @@ describe('/api/billing-rules/[id]', () => {
     const resolvedResponse = response as Response;
     expect(resolvedResponse.status).toBe(200);
     expectNoStore(resolvedResponse);
-    expect(billingRuleUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'rule_1' },
+    expect(billingRuleUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'rule_1', org_id: 'org_1', updated_at: new Date(CURRENT_UPDATED_AT) },
       data: {
         conditions: { patient_status: 'active' },
         evidence_requirements: { required_documents: ['visit_record'] },
       },
     });
+  });
+
+  it('returns no-store 409 before PATCH side effects when expected_updated_at is stale', async () => {
+    billingRuleFindFirstMock.mockResolvedValue({
+      id: 'rule_1',
+      org_id: 'org_1',
+      is_system: false,
+      updated_at: new Date('2026-06-19T00:01:00.000Z'),
+    });
+
+    const response = await PATCH(createRequest('PATCH', { is_active: false }), {
+      params: Promise.resolve({ id: 'rule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    const resolvedResponse = response as Response;
+    expect(resolvedResponse.status).toBe(409);
+    expectNoStore(resolvedResponse);
+    await expect(resolvedResponse.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: {
+        conflict_type: 'stale_billing_rule',
+        expected_updated_at: CURRENT_UPDATED_AT,
+        current_updated_at: '2026-06-19T00:01:00.000Z',
+      },
+    });
+    expect(billingRuleUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns no-store 409 when a concurrent PATCH wins the guarded claim', async () => {
+    billingRuleFindFirstMock.mockResolvedValueOnce({
+      id: 'rule_1',
+      org_id: 'org_1',
+      is_system: false,
+      updated_at: new Date(CURRENT_UPDATED_AT),
+    });
+    billingRuleFindFirstMock.mockResolvedValueOnce({
+      updated_at: new Date('2026-06-19T00:01:00.000Z'),
+    });
+    billingRuleUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = await PATCH(createRequest('PATCH', { is_active: false }), {
+      params: Promise.resolve({ id: 'rule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    const resolvedResponse = response as Response;
+    expect(resolvedResponse.status).toBe(409);
+    expectNoStore(resolvedResponse);
+    await expect(resolvedResponse.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: {
+        conflict_type: 'stale_billing_rule',
+        expected_updated_at: CURRENT_UPDATED_AT,
+        current_updated_at: '2026-06-19T00:01:00.000Z',
+      },
+    });
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
   it('returns a sanitized no-store 500 when PATCH update throws unexpectedly', async () => {
@@ -302,8 +464,9 @@ describe('/api/billing-rules/[id]', () => {
       id: 'rule_1',
       org_id: 'org_1',
       is_system: false,
+      updated_at: new Date(CURRENT_UPDATED_AT),
     });
-    billingRuleUpdateMock.mockRejectedValueOnce(new Error(rawMessage));
+    billingRuleUpdateManyMock.mockRejectedValueOnce(new Error(rawMessage));
 
     const response = await PATCH(createRequest('PATCH', { is_active: false }), {
       params: Promise.resolve({ id: 'rule_1' }),
@@ -326,6 +489,7 @@ describe('/api/billing-rules/[id]', () => {
       id: 'rule_1',
       org_id: 'org_1',
       is_system: true,
+      updated_at: new Date(CURRENT_UPDATED_AT),
     });
 
     const response = await DELETE(createRequest('DELETE'), {
@@ -356,7 +520,46 @@ describe('/api/billing-rules/[id]', () => {
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(billingRuleFindFirstMock).not.toHaveBeenCalled();
-    expect(billingRuleDeleteMock).not.toHaveBeenCalled();
+    expect(billingRuleDeleteManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns no-store auth rejection for DELETE before rule lookup or delete', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: Response.json(
+        { code: 'AUTH_FORBIDDEN', message: '権限がありません' },
+        { status: 403 },
+      ),
+    });
+
+    const response = await DELETE(createRequest('DELETE'), {
+      params: Promise.resolve({ id: 'rule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    const resolvedResponse = response as Response;
+    expect(resolvedResponse.status).toBe(403);
+    expectNoStore(resolvedResponse);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(billingRuleFindFirstMock).not.toHaveBeenCalled();
+    expect(billingRuleDeleteManyMock).not.toHaveBeenCalled();
+  });
+
+  it('requires expected_updated_at before DELETE lookup or delete', async () => {
+    const response = await DELETE(createDeleteRequestWithoutExpectedUpdatedAt(), {
+      params: Promise.resolve({ id: 'rule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    const resolvedResponse = response as Response;
+    expect(resolvedResponse.status).toBe(400);
+    expectNoStore(resolvedResponse);
+    await expect(resolvedResponse.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: { expected_updated_at: expect.any(Array) },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(billingRuleFindFirstMock).not.toHaveBeenCalled();
+    expect(billingRuleDeleteManyMock).not.toHaveBeenCalled();
   });
 
   it('deletes custom rules with an audit entry', async () => {
@@ -370,8 +573,8 @@ describe('/api/billing-rules/[id]', () => {
       name: '任意加算',
       amount: 10,
       is_active: true,
+      updated_at: new Date(CURRENT_UPDATED_AT),
     });
-    billingRuleDeleteMock.mockResolvedValue({ id: 'rule_1' });
 
     const response = await DELETE(createRequest('DELETE'), {
       params: Promise.resolve({ id: 'rule_1' }),
@@ -381,7 +584,9 @@ describe('/api/billing-rules/[id]', () => {
     const resolvedResponse = response as Response;
     expect(resolvedResponse.status).toBe(200);
     expectNoStore(resolvedResponse);
-    expect(billingRuleDeleteMock).toHaveBeenCalledWith({ where: { id: 'rule_1' } });
+    expect(billingRuleDeleteManyMock).toHaveBeenCalledWith({
+      where: { id: 'rule_1', org_id: 'org_1', updated_at: new Date(CURRENT_UPDATED_AT) },
+    });
     expect(auditLogCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -393,14 +598,74 @@ describe('/api/billing-rules/[id]', () => {
     );
   });
 
+  it('returns no-store 409 before DELETE side effects when expected_updated_at is stale', async () => {
+    billingRuleFindFirstMock.mockResolvedValue({
+      id: 'rule_1',
+      org_id: 'org_1',
+      is_system: false,
+      updated_at: new Date('2026-06-19T00:01:00.000Z'),
+    });
+
+    const response = await DELETE(createRequest('DELETE'), {
+      params: Promise.resolve({ id: 'rule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    const resolvedResponse = response as Response;
+    expect(resolvedResponse.status).toBe(409);
+    expectNoStore(resolvedResponse);
+    await expect(resolvedResponse.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: {
+        conflict_type: 'stale_billing_rule',
+        expected_updated_at: CURRENT_UPDATED_AT,
+        current_updated_at: '2026-06-19T00:01:00.000Z',
+      },
+    });
+    expect(billingRuleDeleteManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns no-store 409 when a concurrent DELETE wins the guarded claim', async () => {
+    billingRuleFindFirstMock.mockResolvedValueOnce({
+      id: 'rule_1',
+      org_id: 'org_1',
+      is_system: false,
+      updated_at: new Date(CURRENT_UPDATED_AT),
+    });
+    billingRuleFindFirstMock.mockResolvedValueOnce({
+      updated_at: new Date('2026-06-19T00:01:00.000Z'),
+    });
+    billingRuleDeleteManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = await DELETE(createRequest('DELETE'), {
+      params: Promise.resolve({ id: 'rule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    const resolvedResponse = response as Response;
+    expect(resolvedResponse.status).toBe(409);
+    expectNoStore(resolvedResponse);
+    await expect(resolvedResponse.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: {
+        conflict_type: 'stale_billing_rule',
+        expected_updated_at: CURRENT_UPDATED_AT,
+        current_updated_at: '2026-06-19T00:01:00.000Z',
+      },
+    });
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
   it('returns a sanitized no-store 500 when DELETE throws unexpectedly', async () => {
     const rawMessage = 'raw delete billing rule failure';
     billingRuleFindFirstMock.mockResolvedValue({
       id: 'rule_1',
       org_id: 'org_1',
       is_system: false,
+      updated_at: new Date(CURRENT_UPDATED_AT),
     });
-    billingRuleDeleteMock.mockRejectedValueOnce(new Error(rawMessage));
+    billingRuleDeleteManyMock.mockRejectedValueOnce(new Error(rawMessage));
 
     const response = await DELETE(createRequest('DELETE'), {
       params: Promise.resolve({ id: 'rule_1' }),
