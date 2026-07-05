@@ -341,14 +341,20 @@ FE 仕上げ（低優先）:
 #### VS-AUTO-5. Proposal diagnostics / review-gate 表示（migration 前の低リスク層） `cc:TODO`
 
 - [ ] VS-AUTO-7 の field-backed hard gate 前は、diagnostics-only と明記する。UI の disabled だけで患者連絡/確定を止めた扱いにしない。
-- [ ] `src/app/api/visit-schedule-proposals/route.ts` の response/audit diagnostics に deadline policy、availability、review gate candidate を machine-readable reason で追加する。既存 field は削除しない。
-- [ ] `src/app/api/visit-schedule-proposals/[id]/route.ts` の GET が読む creation audit `diagnostics` に review candidate を表示できるよう shape guard を追加する。
+- [x] `src/app/api/visit-schedule-proposals/route.ts` の response/audit diagnostics に deadline policy、availability、review gate candidate を machine-readable reason で追加する。既存 field は削除しない。
+      2026-07-05: POST response は `deadline_policy` / `availability_reason_code` を返し、audit は
+      `src/lib/visit-schedule-proposals/diagnostics.ts` の whitelist で machine code/date/site/id/count のみに最小化。
+      任意 `value` 文字列、患者名、薬剤名、住所、電話、メモ、token、planner 余剰 field は response/audit へ通さない。
+- [x] `src/app/api/visit-schedule-proposals/[id]/route.ts` の GET が読む creation audit `diagnostics` に review candidate を表示できるよう shape guard を追加する。
+      2026-07-05: cast-only guard を廃止し、保存済み audit diagnostics も同 whitelist で正規化して unknown/free-text を落とす。
 - [ ] `/schedules/proposals` の詳細 Sheet と候補カードに、期限補正・休業日補正・薬剤師確認候補・過密前倒し理由を業務用語で表示する。
 - [ ] HR field 追加前は `pharmacist_review_required` 永続 field を参照しない。UI では `review_required_candidate` として「患者連絡前に薬剤師確認推奨」を出し、ハードブロックは VS-AUTO-7 後に有効化する。
 - テスト:
-  - diagnostics が表示され、既存 proposal ranking / contact log / bulk action を壊さない。
+  - [x] diagnostics が表示され、既存 proposal ranking / contact log / bulk action を壊さない。
+        2026-07-05: focused API/detail/UI regression green。
   - server `message` / validation error が既存 UI fallback で表示される。
-  - PHI を audit changes / logger / route diagnostics に過剰保存しない。
+  - [x] PHI を audit changes / logger / route diagnostics に過剰保存しない。
+        2026-07-05: route/detail tests で hostile patient/drug/note/token/invalid value を固定。
 
 #### VS-AUTO-6. OverloadRebalancer preview: 未承認候補だけ前倒し `cc:TODO`
 

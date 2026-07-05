@@ -63,6 +63,7 @@ import {
   redactProposalContactLogs,
   redactProposalPatientFields,
 } from '@/lib/visit-schedule-proposals/response';
+import { normalizeProposalGenerationDiagnostics } from '@/lib/visit-schedule-proposals/diagnostics';
 import { OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES as OPEN_PROPOSAL_STATUSES } from '@/lib/visit-schedule-proposals/route-order';
 
 type RoutePreviewPoint = {
@@ -110,37 +111,6 @@ type ProposalRoutePreviewRecord = {
     lat: number | null;
     lng: number | null;
   } | null;
-};
-
-type CreationDiagnostics = {
-  accepted: Array<{
-    pharmacist_id: string;
-    pharmacist_name: string;
-    site_id: string | null;
-    site_name: string | null;
-    proposed_date: string;
-    travel_mode: VisitRouteTravelMode;
-    route_order: number;
-    route_distance_score: number;
-    travel_summary: string;
-    assignment_mode: string;
-    care_relationship: string;
-    score: number;
-    score_breakdown: Record<string, number>;
-    time_window_start: string;
-    time_window_end: string;
-  }>;
-  rejected: Array<{
-    pharmacist_id: string;
-    pharmacist_name: string;
-    site_id: string | null;
-    site_name: string | null;
-    proposed_date: string;
-    travel_mode: VisitRouteTravelMode;
-    reason_code: string;
-    reason_label: string;
-    detail: string;
-  }>;
 };
 
 const ROUTE_ORDER_LOCKED_STATUSES = ['ready', 'departed', 'in_progress', 'completed'] as const;
@@ -944,7 +914,9 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
     creationAuditLog.changes.diagnostics &&
     typeof creationAuditLog.changes.diagnostics === 'object' &&
     !Array.isArray(creationAuditLog.changes.diagnostics)
-      ? (creationAuditLog.changes.diagnostics as CreationDiagnostics)
+      ? normalizeProposalGenerationDiagnostics(creationAuditLog.changes.diagnostics, {
+          mode: 'response',
+        })
       : null;
 
   return success({

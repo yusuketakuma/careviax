@@ -1184,7 +1184,39 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
               time_window_end: '1970-01-01T10:00:00.000Z',
             },
           ],
-          rejected: [],
+          rejected: [
+            {
+              pharmacist_id: 'pharmacist_2',
+              pharmacist_name: '薬剤師B',
+              site_id: 'site_1',
+              site_name: '拠点A',
+              proposed_date: '2026-03-28',
+              travel_mode: 'DRIVE',
+              reason_code: 'outside_pharmacy_operating_window',
+              availability_reason_code: 'outside_pharmacy_operating_window',
+              reason_label: '営業時間外',
+              detail: '営業時間外です',
+              patient_name: '患者A',
+              drug_name: 'アムロジピン',
+            },
+          ],
+          deadline_policy: [
+            {
+              code: 'deadline_buffer_applied',
+              site_id: 'site_1',
+              from_date_key: '2026-03-30',
+              to_date_key: '2026-03-28',
+              value: 2,
+              notes: '玄関暗証番号1234',
+              drug_name: '継続薬',
+            },
+            {
+              code: 'deadline_buffer_scan_exhausted',
+              site_id: 'site_1',
+              date_key: '2026-03-30',
+              value: '患者A',
+            },
+          ],
         },
       },
     });
@@ -1194,13 +1226,37 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     });
 
     if (!response) throw new Error('response is required');
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(body).toMatchObject({
       data: expect.objectContaining({
         creation_diagnostics: expect.objectContaining({
           accepted: [expect.objectContaining({ pharmacist_name: '薬剤師A' })],
+          rejected: [
+            expect.objectContaining({
+              reason_code: 'outside_pharmacy_operating_window',
+              availability_reason_code: 'outside_pharmacy_operating_window',
+            }),
+          ],
+          deadline_policy: [
+            expect.objectContaining({
+              code: 'deadline_buffer_applied',
+              from_date_key: '2026-03-30',
+              to_date_key: '2026-03-28',
+              value: 2,
+            }),
+            expect.objectContaining({
+              code: 'deadline_buffer_scan_exhausted',
+              date_key: '2026-03-30',
+            }),
+          ],
         }),
       }),
     });
+    expect(body.data.creation_diagnostics.deadline_policy[1]).not.toHaveProperty('value');
+    expect(JSON.stringify(body.data.creation_diagnostics)).not.toContain('患者A');
+    expect(JSON.stringify(body.data.creation_diagnostics)).not.toContain('アムロジピン');
+    expect(JSON.stringify(body.data.creation_diagnostics)).not.toContain('玄関暗証番号1234');
+    expect(JSON.stringify(body.data.creation_diagnostics)).not.toContain('継続薬');
   });
 
   it('rejects confirmation before approval and patient contact', async () => {

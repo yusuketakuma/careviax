@@ -2468,8 +2468,42 @@ describe('/api/visit-schedule-proposals', () => {
             proposed_date: '2026-04-03',
             travel_mode: 'DRIVE',
             reason_code: 'daily_capacity',
+            availability_reason_code: 'outside_pharmacy_operating_window',
             reason_label: '日次上限超過',
             detail: '日次上限に到達しています',
+            patient_name: '患者A',
+            drug_name: 'アムロジピン',
+            token: 'secret-token',
+          },
+        ],
+        deadline_policy: [
+          {
+            code: 'deadline_raw',
+            site_id: 'site_1',
+            date_key: '2026-04-10',
+            drug_name: '継続薬',
+            prescription_line_id: 'line_secret',
+            notes: '玄関暗証番号1234',
+          },
+          {
+            code: 'deadline_buffer_applied',
+            site_id: 'site_1',
+            from_date_key: '2026-04-10',
+            to_date_key: '2026-04-08',
+            value: 2,
+          },
+          {
+            code: 'locked_date_deadline_violation',
+            site_id: 'site_1',
+            date_key: '2026-04-12',
+            value: '2026-04-10',
+            detail: '患者A / 継続薬',
+          },
+          {
+            code: 'deadline_buffer_scan_exhausted',
+            site_id: 'site_1',
+            date_key: '2026-04-10',
+            value: '患者A',
           },
         ],
       },
@@ -2487,15 +2521,44 @@ describe('/api/visit-schedule-proposals', () => {
     ))!;
 
     expect(response.status).toBe(201);
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(body).toMatchObject({
       diagnostics: {
         rejected: [
           expect.objectContaining({
             reason_code: 'daily_capacity',
+            availability_reason_code: 'outside_pharmacy_operating_window',
+          }),
+        ],
+        deadline_policy: [
+          expect.objectContaining({
+            code: 'deadline_raw',
+            site_id: 'site_1',
+            date_key: '2026-04-10',
+          }),
+          expect.objectContaining({
+            code: 'deadline_buffer_applied',
+            from_date_key: '2026-04-10',
+            to_date_key: '2026-04-08',
+            value: 2,
+          }),
+          expect.objectContaining({
+            code: 'locked_date_deadline_violation',
+            value: '2026-04-10',
+          }),
+          expect.objectContaining({
+            code: 'deadline_buffer_scan_exhausted',
+            date_key: '2026-04-10',
           }),
         ],
       },
     });
+    expect(JSON.stringify(body.diagnostics)).not.toContain('患者A');
+    expect(JSON.stringify(body.diagnostics)).not.toContain('アムロジピン');
+    expect(JSON.stringify(body.diagnostics)).not.toContain('secret-token');
+    expect(JSON.stringify(body.diagnostics)).not.toContain('継続薬');
+    expect(JSON.stringify(body.diagnostics)).not.toContain('玄関暗証番号1234');
+    expect(body.diagnostics.deadline_policy[3]).not.toHaveProperty('value');
     expect(auditLogCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -2510,13 +2573,105 @@ describe('/api/visit-schedule-proposals', () => {
               rejected: [
                 expect.objectContaining({
                   reason_code: 'daily_capacity',
+                  availability_reason_code: 'outside_pharmacy_operating_window',
                 }),
               ],
+              deadline_policy: expect.arrayContaining([
+                expect.objectContaining({
+                  code: 'deadline_raw',
+                  site_id: 'site_1',
+                  date_key: '2026-04-10',
+                }),
+                expect.objectContaining({
+                  code: 'deadline_buffer_applied',
+                  value: 2,
+                }),
+              ]),
             },
           }),
         }),
       }),
     );
+    const auditChanges = auditLogCreateMock.mock.calls[0]?.[0]?.data?.changes;
+    expect(JSON.stringify(auditChanges)).not.toContain('薬剤師A');
+    expect(JSON.stringify(auditChanges)).not.toContain('薬剤師B');
+    expect(JSON.stringify(auditChanges)).not.toContain('日次上限に到達しています');
+    expect(JSON.stringify(auditChanges)).not.toContain('患者A');
+    expect(JSON.stringify(auditChanges)).not.toContain('アムロジピン');
+    expect(JSON.stringify(auditChanges)).not.toContain('secret-token');
+    expect(JSON.stringify(auditChanges)).not.toContain('継続薬');
+  });
+
+  it('returns sanitized deadline diagnostics when planner generates no drafts', async () => {
+    generateVisitScheduleProposalDraftsMock.mockResolvedValueOnce({
+      drafts: [],
+      diagnostics: {
+        accepted: [],
+        rejected: [
+          {
+            pharmacist_id: 'user_3',
+            pharmacist_name: '薬剤師B',
+            site_id: 'site_1',
+            site_name: '本店',
+            proposed_date: '2026-04-12',
+            travel_mode: 'DRIVE',
+            reason_code: 'locked_date_deadline_violation',
+            availability_reason_code: 'pharmacy_holiday',
+            reason_label: '期限超過',
+            detail: '固定日が訪問期限を超過しています',
+            patient_name: '患者A',
+            drug_name: 'アムロジピン',
+          },
+        ],
+        deadline_policy: [
+          {
+            code: 'locked_date_deadline_violation',
+            site_id: 'site_1',
+            date_key: '2026-04-12',
+            value: '2026-04-10',
+            drug_name: 'アムロジピン',
+            notes: '玄関暗証番号1234',
+          },
+        ],
+      },
+    });
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        locked_date: '2026-04-12',
+        candidate_count: 1,
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        diagnostics: {
+          rejected: [
+            expect.objectContaining({
+              reason_code: 'locked_date_deadline_violation',
+              availability_reason_code: 'pharmacy_holiday',
+            }),
+          ],
+          deadline_policy: [
+            expect.objectContaining({
+              code: 'locked_date_deadline_violation',
+              date_key: '2026-04-12',
+              value: '2026-04-10',
+            }),
+          ],
+        },
+      },
+    });
+    expect(JSON.stringify(body.details)).not.toContain('患者A');
+    expect(JSON.stringify(body.details)).not.toContain('アムロジピン');
+    expect(JSON.stringify(body.details)).not.toContain('玄関暗証番号1234');
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
   it('attaches accepted diagnostics to UTC-midnight proposal dates in negative-offset runtimes', async () => {

@@ -15,11 +15,11 @@ export type ProposalDiagnosticsAction = {
 
 type AcceptedDiagnostic = {
   pharmacist_id: string;
-  pharmacist_name: string;
+  pharmacist_name?: string;
   proposed_date: string;
-  route_order: number;
-  score: number;
-  travel_summary: string;
+  route_order?: number;
+  score?: number;
+  travel_summary?: string;
   vehicle_resource_id?: string | null;
   vehicle_resource_label?: string | null;
   vehicle_load?: number | null;
@@ -31,17 +31,27 @@ type AcceptedDiagnostic = {
 };
 
 type RejectedDiagnostic = {
-  pharmacist_id: string;
-  pharmacist_name: string;
+  pharmacist_id?: string;
+  pharmacist_name?: string;
   proposed_date: string;
   reason_code?: string;
-  reason_label: string;
-  detail: string;
+  reason_label?: string;
+  detail?: string;
+  availability_reason_code?: string;
 };
 
 export type ProposalGenerationDiagnosticsCardData = {
   accepted: AcceptedDiagnostic[];
   rejected: RejectedDiagnostic[];
+  deadline_policy?: Array<{
+    code: string;
+    site_id: string | null;
+    date_key?: string;
+    from_date_key?: string;
+    to_date_key?: string;
+    value?: string | number | boolean;
+  }>;
+  billing_constraint_count?: number;
 };
 
 type ProposalDiagnosticsCardProps = {
@@ -93,7 +103,8 @@ export function VisitProposalDiagnosticsCard({
 }: ProposalDiagnosticsCardProps) {
   const rejectionSummary = Array.from(
     diagnostics.rejected.reduce((map, item) => {
-      map.set(item.reason_label, (map.get(item.reason_label) ?? 0) + 1);
+      const label = item.reason_label ?? item.reason_code ?? '採用外';
+      map.set(label, (map.get(label) ?? 0) + 1);
       return map;
     }, new Map<string, number>()),
   ).sort((left, right) => right[1] - left[1]);
@@ -158,11 +169,12 @@ export function VisitProposalDiagnosticsCard({
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <p className="font-medium text-foreground">
-                          {item.pharmacist_name} / {item.proposed_date}
+                          {item.pharmacist_name ?? item.pharmacist_id} / {item.proposed_date}
                         </p>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          順路 {item.route_order} / スコア {item.score.toFixed(1)} /{' '}
-                          {item.travel_summary}
+                          順路 {item.route_order ?? '未割当'} / スコア{' '}
+                          {item.score != null ? item.score.toFixed(1) : '未計算'} /{' '}
+                          {item.travel_summary ?? '移動時間未計算'}
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-1">
@@ -231,16 +243,19 @@ export function VisitProposalDiagnosticsCard({
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="font-medium text-foreground">
-                      {item.pharmacist_name} / {item.proposed_date}
+                      {item.pharmacist_name ?? item.pharmacist_id ?? '担当未指定'} /{' '}
+                      {item.proposed_date}
                     </p>
                     <Badge
                       variant="outline"
                       className="border-transparent bg-state-confirm/10 text-state-confirm"
                     >
-                      {item.reason_label}
+                      {item.reason_label ?? item.reason_code ?? '採用外'}
                     </Badge>
                   </div>
-                  <p className="mt-2 text-xs leading-5 text-muted-foreground">{item.detail}</p>
+                  {item.detail ? (
+                    <p className="mt-2 text-xs leading-5 text-muted-foreground">{item.detail}</p>
+                  ) : null}
                 </div>
               ))
             )}

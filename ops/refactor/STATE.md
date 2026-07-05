@@ -40,6 +40,35 @@
 
 ## 直近の land（本日・要点）
 
+- codex: VS-AUTO-5 proposal diagnostics PHI-safe API/audit/detail guard slice(in-progress) implementation
+  complete。
+  - API: `src/app/api/visit-schedule-proposals/route.ts` は planner の
+    `diagnostics.deadline_policy` を POST success / zero-draft validation / billing-all-rejected
+    validation に返す。`availability_reason_code` も response diagnostics と audit diagnostics に
+    machine-readable code として保持する。idempotency replay は最新 contract の
+    `deadline_policy: []` を返す。
+  - audit/privacy: `src/lib/visit-schedule-proposals/diagnostics.ts` を追加し、response/audit/detail
+    diagnostics を whitelist 正規化。audit は accepted/rejected/deadline_policy を
+    machine code、dateKey、site_id、pharmacist_id、route_order、score、count などに最小化し、
+    患者名、薬剤名、住所、電話、free-text detail、notes、token、任意 string `value`、planner 余剰
+    field を保存しない。`value` は number/boolean/YYYY-MM-DD のみ許可。
+  - detail: `src/app/api/visit-schedule-proposals/[id]/route.ts` は creation audit `diagnostics`
+    の cast-only guard を廃止し、同 whitelist helper で正規化して返す。
+  - UI type: `src/components/features/visits/visit-proposal-diagnostics-card.tsx` は audit 由来の
+    最小 diagnostics でも壊れないよう optional field と fallback 表示へ更新。HR field-backed
+    hard gate、`review_required_candidate` UI、過密前倒し表示は未実装で VS-AUTO-5 後続。
+  - subagents: privacy_compliance_reviewer は raw planner/billing diagnostics passthrough を High /
+    Medium として CHANGES_REQUESTED。api_contract_reviewer は `deadline_policy` drop と detail GET
+    cast-only guard を CHANGES_REQUESTED。両方を反映し、旧互換は不要として最新 contract へ上書き。
+  - validation:
+    `pnpm exec vitest run src/app/api/visit-schedule-proposals/route.test.ts 'src/app/api/visit-schedule-proposals/[id]/route.test.ts' --reporter=dot --testTimeout=30000`
+    green（2 files / 165 tests）;
+    `pnpm exec vitest run src/app/api/visit-schedule-proposals/route.test.ts 'src/app/api/visit-schedule-proposals/[id]/route.test.ts' src/server/services/visit-schedule-planner.test.ts src/server/services/visit-medication-deadline.test.ts src/lib/calendar/visit-availability.test.ts --reporter=dot --testTimeout=30000`
+    green（5 files / 237 tests）;
+    `pnpm exec vitest run src/components/features/visits/visit-proposal-diagnostics-card.test.tsx 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx' --reporter=dot --testTimeout=30000`
+    green（2 files / 41 tests）; scoped eslint green; `pnpm format:check` green; `git diff --check`
+    green; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` green。next: scoped commit → push。
 - codex: VS-AUTO-2 availability reason alignment / holiday-chain regression slice(in-progress on
   `codex/vs-auto-2-availability-reason`) implementation complete。
   - planner: `src/server/services/visit-schedule-planner.ts` の基礎 availability precheck を

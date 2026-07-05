@@ -31,6 +31,7 @@ import {
   redactProposalContactLogs,
   redactProposalPatientFields,
 } from '@/lib/visit-schedule-proposals/response';
+import { normalizeProposalGenerationDiagnostics } from '@/lib/visit-schedule-proposals/diagnostics';
 import {
   OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES,
   allocateProposalRouteOrders,
@@ -56,7 +57,7 @@ import {
   type BillingCadenceScheduleRow,
   type BillingRequirementAlert,
 } from '@/server/services/billing-requirement-validator';
-import type { ProposalCandidateDiagnostic } from '@/server/services/visit-schedule-planner';
+import type { GenerateVisitScheduleProposalResult } from '@/server/services/visit-schedule-planner';
 
 const proposalDateQuerySchema = visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）');
 const proposalLimitQuerySchema = z.coerce.number().int().min(1).max(50);
@@ -67,6 +68,18 @@ class VisitProposalCreateRetryLimitError extends Error {
     super('visit proposal creation transaction retry limit exceeded');
     this.name = 'VisitProposalCreateRetryLimitError';
   }
+}
+
+function buildProposalDiagnosticsInput(args: {
+  accepted?: unknown[];
+  rejected?: unknown[];
+  deadlinePolicy?: unknown[];
+}) {
+  return {
+    accepted: args.accepted ?? [],
+    rejected: args.rejected ?? [],
+    deadline_policy: args.deadlinePolicy ?? [],
+  };
 }
 
 function isSerializableTransactionConflict(cause: unknown) {
@@ -941,6 +954,7 @@ const authenticatedPOST = withAuthContext(
             diagnostics: {
               accepted: [],
               rejected: [],
+              deadline_policy: [],
             },
             replayed: true,
           },
@@ -962,38 +976,7 @@ const authenticatedPOST = withAuthContext(
     }
 
     let drafts;
-    let plannerDiagnostics:
-      | {
-          accepted: Array<{
-            pharmacist_id: string;
-            pharmacist_name: string;
-            site_id: string | null;
-            site_name: string | null;
-            proposed_date: string;
-            travel_mode: string;
-            route_order: number;
-            route_distance_score: number;
-            travel_summary: string;
-            vehicle_resource_id: string | null;
-            vehicle_resource_label: string | null;
-            vehicle_load: number | null;
-            assignment_mode: string;
-            care_relationship: string;
-            score: number;
-            score_breakdown: Record<string, number>;
-            specialty_coverage?: {
-              required_labels: string[];
-              missing_labels: string[];
-              unknown_procedure_count: number;
-              match_status: 'not_required' | 'matched' | 'unmatched' | 'unknown';
-              source: 'user_visit_specialties_free_text';
-            };
-            time_window_start: Date;
-            time_window_end: Date;
-          }>;
-          rejected: ProposalCandidateDiagnostic[];
-        }
-      | undefined;
+    let plannerDiagnostics: GenerateVisitScheduleProposalResult['diagnostics'] | undefined;
     try {
       const plannerResult = await generateVisitScheduleProposalDrafts({
         orgId: ctx.orgId,
@@ -1026,7 +1009,13 @@ const authenticatedPOST = withAuthContext(
 
     if (drafts.length === 0) {
       return validationError('シフト・休日・期限条件に合う候補を生成できませんでした', {
-        rejections: plannerDiagnostics?.rejected ?? [],
+        diagnostics: normalizeProposalGenerationDiagnostics(
+          buildProposalDiagnosticsInput({
+            rejected: plannerDiagnostics?.rejected,
+            deadlinePolicy: plannerDiagnostics?.deadline_policy,
+          }),
+          { mode: 'response' },
+        ),
       });
     }
 
@@ -1119,7 +1108,13 @@ const authenticatedPOST = withAuthContext(
       return validationError(
         allBlockingMessages.join(' / ') || '算定要件を満たす訪問候補を生成できませんでした',
         {
-          rejections: [...(plannerDiagnostics?.rejected ?? []), ...rejectedByBilling],
+          diagnostics: normalizeProposalGenerationDiagnostics(
+            buildProposalDiagnosticsInput({
+              rejected: [...(plannerDiagnostics?.rejected ?? []), ...rejectedByBilling],
+              deadlinePolicy: plannerDiagnostics?.deadline_policy,
+            }),
+            { mode: 'response' },
+          ),
         },
       );
     }
@@ -1135,6 +1130,14 @@ const authenticatedPOST = withAuthContext(
             formatUtcDateKey(draft.proposed_date) === item.proposed_date,
         ),
       ) ?? [];
+    const responseDiagnostics = normalizeProposalGenerationDiagnostics(
+      buildProposalDiagnosticsInput({
+        accepted: acceptedDiagnostics,
+        rejected: [...(plannerDiagnostics?.rejected ?? []), ...rejectedByBilling],
+        deadlinePolicy: plannerDiagnostics?.deadline_policy,
+      }),
+      { mode: 'response' },
+    );
     const requestFingerprint = requestFingerprints?.current ?? null;
 
     let proposalResult;
@@ -1344,6 +1347,14 @@ const authenticatedPOST = withAuthContext(
                   item.pharmacist_id === proposal.proposed_pharmacist_id &&
                   item.proposed_date === formatUtcDateKey(proposal.proposed_date),
               ) ?? null;
+            const auditDiagnostics = normalizeProposalGenerationDiagnostics(
+              buildProposalDiagnosticsInput({
+                accepted: acceptedDiagnostic ? [acceptedDiagnostic] : [],
+                rejected: [...(plannerDiagnostics?.rejected ?? []), ...rejectedByBilling],
+                deadlinePolicy: plannerDiagnostics?.deadline_policy,
+              }),
+              { mode: 'audit' },
+            );
 
             return createAuditLogEntry(tx, ctx, {
               action: 'visit_schedule_proposals_created',
@@ -1353,10 +1364,7 @@ const authenticatedPOST = withAuthContext(
                 proposal_batch_id: proposalBatchId,
                 reproposal_source_proposal_id: parsed.data.reproposal_source_proposal_id ?? null,
                 reschedule_source_schedule_id: resolvedRescheduleSourceScheduleId ?? null,
-                diagnostics: {
-                  accepted: acceptedDiagnostic ? [acceptedDiagnostic] : [],
-                  rejected: [...(plannerDiagnostics?.rejected ?? []), ...rejectedByBilling],
-                },
+                diagnostics: auditDiagnostics,
                 operating_day_override_reason: parsed.data.operating_day_override_reason ?? null,
               },
             });
@@ -1441,10 +1449,7 @@ const authenticatedPOST = withAuthContext(
       {
         data: omitProposalRejectReasons(proposalResult.proposals),
         alerts: allAlerts,
-        diagnostics: {
-          accepted: acceptedDiagnostics,
-          rejected: [...(plannerDiagnostics?.rejected ?? []), ...rejectedByBilling],
-        },
+        diagnostics: responseDiagnostics,
         replayed: proposalResult.replayed,
       },
       proposalResult.replayed ? 200 : 201,
