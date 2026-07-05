@@ -39,6 +39,21 @@
 
 ## 直近の land（本日・要点）
 
+- codex: R40/R44 admin drug-master supporting read queries readApiJson batch(94c95c3f)
+  land。subagents: code_mapper APPROVE、api_contract_reviewer CHANGES_REQUESTED（success envelope /
+  `{ message }` / `{ error }` / non-JSON fallback coverage、route no-store follow-up）、test_architect
+  CHANGES_REQUESTED、verifier APPROVE。focused Vitest 105、scoped ESLint/Prettier/diff-check、
+  `pnpm typecheck` green。drug-master detail / stock config / stock history / formulary review due /
+  missing reorder / impact / usage mismatch / change requests / templates / preferred generic
+  candidates / generic recommendations / ingredient group read query responses を readApiJson へ収束。
+  endpoint builders、`buildOrgHeaders(orgId)`、query keys、enabled 条件、query params、success body
+  root shape（raw detail、top-level analytics、reason、summary、`{ data: null }` empty state）は保持。
+  tests で server `{ message }`、server `{ error }`、non-JSON fallback、非標準 success envelope を固定。
+  blob export/template CSV は成功時 `blob()` contract のため対象外。残る別slice候補: formulary read routes
+  `/api/pharmacy-drug-stocks/history`、`/impact`、`/api/pharmacy-drug-stock-requests`、
+  `/api/pharmacy-drug-stock-templates` の explicit no-store route hardening（body/status不変）。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) に
+  基づく追加 API/DB/deploy/package dependency 変更は本sliceでは不要。
 - codex: R40/R44 admin billing-rules readApiJson + API/audit hardening batch(0a9d52e3)
   land。ユーザー明示により本sliceでは subagent を投入（api_contract_reviewer /
   data_integrity_auditor / verifier）。focused Vitest 56、verifier focused Vitest 41、
