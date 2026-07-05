@@ -1053,10 +1053,12 @@ describe('/api/visit-schedule-proposals', () => {
     ))!;
 
     expect(replay.status).toBe(200);
-    await expect(replay.json()).resolves.toMatchObject({
+    const body = await replay.json();
+    expect(body).toMatchObject({
       replayed: true,
       data: [expect.objectContaining({ id: 'proposal_existing' })],
     });
+    expect(body).not.toHaveProperty('diagnostics');
     expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
     expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
@@ -1090,10 +1092,12 @@ describe('/api/visit-schedule-proposals', () => {
     ))!;
 
     expect(replay.status).toBe(200);
-    await expect(replay.json()).resolves.toMatchObject({
+    const body = await replay.json();
+    expect(body).toMatchObject({
       replayed: true,
       data: [expect.objectContaining({ id: 'proposal_existing_legacy' })],
     });
+    expect(body).not.toHaveProperty('diagnostics');
     expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
   });
@@ -2455,6 +2459,13 @@ describe('/api/visit-schedule-proposals', () => {
               lockPenalty: 0,
               cadencePenalty: 0,
             },
+            specialty_coverage: {
+              required_labels: ['TPN'],
+              missing_labels: ['TPN'],
+              unknown_procedure_count: 0,
+              match_status: 'unmatched',
+              source: 'user_visit_specialties_free_text',
+            },
             time_window_start: new Date('1970-01-01T09:00:00.000Z'),
             time_window_end: new Date('1970-01-01T10:00:00.000Z'),
           },
@@ -2551,6 +2562,15 @@ describe('/api/visit-schedule-proposals', () => {
             date_key: '2026-04-10',
           }),
         ],
+        review_candidates: [
+          expect.objectContaining({
+            code: 'review_required_candidate',
+            reason_code: 'specialty_coverage_unmatched',
+            pharmacist_id: 'user_2',
+            proposed_date: '2026-04-03',
+            missing_label_count: 1,
+          }),
+        ],
       },
     });
     expect(JSON.stringify(body.diagnostics)).not.toContain('患者A');
@@ -2558,6 +2578,7 @@ describe('/api/visit-schedule-proposals', () => {
     expect(JSON.stringify(body.diagnostics)).not.toContain('secret-token');
     expect(JSON.stringify(body.diagnostics)).not.toContain('継続薬');
     expect(JSON.stringify(body.diagnostics)).not.toContain('玄関暗証番号1234');
+    expect(JSON.stringify(body.diagnostics)).not.toContain('TPN');
     expect(body.diagnostics.deadline_policy[3]).not.toHaveProperty('value');
     expect(auditLogCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -2587,6 +2608,15 @@ describe('/api/visit-schedule-proposals', () => {
                   value: 2,
                 }),
               ]),
+              review_candidates: [
+                expect.objectContaining({
+                  code: 'review_required_candidate',
+                  reason_code: 'specialty_coverage_unmatched',
+                  pharmacist_id: 'user_2',
+                  proposed_date: '2026-04-03',
+                  missing_label_count: 1,
+                }),
+              ],
             },
           }),
         }),
@@ -2600,6 +2630,7 @@ describe('/api/visit-schedule-proposals', () => {
     expect(JSON.stringify(auditChanges)).not.toContain('アムロジピン');
     expect(JSON.stringify(auditChanges)).not.toContain('secret-token');
     expect(JSON.stringify(auditChanges)).not.toContain('継続薬');
+    expect(JSON.stringify(auditChanges)).not.toContain('TPN');
   });
 
   it('returns sanitized deadline diagnostics when planner generates no drafts', async () => {

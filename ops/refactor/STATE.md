@@ -40,6 +40,25 @@
 
 ## 直近の land（本日・要点）
 
+- codex: VS-AUTO-5 explicit review candidate diagnostics slice(in-progress) implementation complete。
+  - API: `src/app/api/visit-schedule-proposals/route.ts` は valid accepted candidate の
+    `specialty_coverage.match_status` が `unmatched` / `unknown` のとき、PHI-free
+    `review_candidates[]` を生成。保存/返却するのは `review_required_candidate`、固定
+    `reason_code`、`proposed_date`、`site_id`、`pharmacist_id`、`match_status`、件数のみ。
+  - privacy/safety: `src/lib/visit-schedule-proposals/diagnostics.ts` は review candidate の
+    reason/status enum を fail-closed、reason/status 不整合を drop、count は 0〜100 の整数だけ許可。
+    `required_labels` / `missing_labels` / 患者名 / 薬剤名 / raw手技 / free text は response/detail/audit
+    へ通さない。UI は raw reason fallback を出さず固定ラベルだけ表示。
+  - replay: existing idempotent batch replay は false-empty `diagnostics` を返さない。HR migration 前に
+    review signal を「空」と誤認させないため、detail refetch/audit diagnostics を正とする。
+  - subagent: medical_safety_reviewer は derivation 自体を「 medically reasonable 」としつつ、
+    replay false-empty、enum未制約、count未制約、JST/date-key boundary test を CHANGES_REQUESTED。
+    前3件は実装・tests に反映。JST/date-key は既存 UTC date-key 前提の追加境界 test として後続候補。
+  - validation:
+    `pnpm exec vitest run src/app/api/visit-schedule-proposals/route.test.ts 'src/app/api/visit-schedule-proposals/[id]/route.test.ts' src/components/features/visits/visit-proposal-diagnostics-card.test.tsx 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx' 'src/app/(dashboard)/schedules/proposals/weekly-cell-inspector.test.tsx' --reporter=dot --testTimeout=30000`
+    green（5 files / 207 tests）; scoped eslint green; `pnpm format:check` green; `git diff --check`
+    green; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` green。next: scoped commit → push。
 - codex: VS-AUTO-5 diagnostics card deadline/availability display slice(in-progress) implementation
   complete。
   - UI: `src/components/features/visits/visit-proposal-diagnostics-card.tsx` は

@@ -76,6 +76,19 @@ describe('VisitProposalDiagnosticsCard', () => {
               value: '2026-04-10',
             },
           ],
+          review_candidates: [
+            {
+              code: 'review_required_candidate',
+              reason_code: 'specialty_coverage_unmatched',
+              pharmacist_id: 'pharmacist_1',
+              site_id: 'site_1',
+              proposed_date: '2026-04-09',
+              match_status: 'unmatched',
+              missing_label_count: 1,
+              unknown_procedure_count: 0,
+              required_label_count: 1,
+            },
+          ],
         }}
         actions={[
           {
@@ -95,7 +108,7 @@ describe('VisitProposalDiagnosticsCard', () => {
     expect(screen.getByText('車両 社用車A')).toBeTruthy();
     expect(screen.getByText('社用車 社用車A / 当日同車両 2 件目')).toBeTruthy();
     expect(screen.getByText('期限診断 3 件')).toBeTruthy();
-    expect(screen.queryByText(/薬剤師確認推奨/)).toBeNull();
+    expect(screen.getByText('薬剤師確認推奨 1 件')).toBeTruthy();
     expect(screen.getByText('期限診断')).toBeTruthy();
     expect(screen.getByText('営業日へ補正 2026-04-12→2026-04-10')).toBeTruthy();
     expect(screen.getByText('準備日数内に訪問可能日なし 2026-04-10')).toBeTruthy();
@@ -105,6 +118,8 @@ describe('VisitProposalDiagnosticsCard', () => {
     expect(screen.getByText('休業日・シフト理由')).toBeTruthy();
     expect(screen.getByText('営業時間外 1')).toBeTruthy();
     expect(screen.getByText('訪問可否: 営業時間外')).toBeTruthy();
+    expect(screen.getByText('患者連絡前に薬剤師確認推奨（診断表示のみ） 1 件')).toBeTruthy();
+    expect(screen.getByText('専門対応未一致 2026-04-09')).toBeTruthy();
     expect(screen.getByText('日次上限超過 1')).toBeTruthy();
     expect(screen.getByText('移動上限超過 1')).toBeTruthy();
 

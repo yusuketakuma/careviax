@@ -51,6 +51,17 @@ export type ProposalGenerationDiagnosticsCardData = {
     to_date_key?: string;
     value?: string | number | boolean;
   }>;
+  review_candidates?: Array<{
+    code: 'review_required_candidate';
+    reason_code: string;
+    pharmacist_id?: string;
+    site_id: string | null;
+    proposed_date: string;
+    match_status?: string;
+    missing_label_count?: number;
+    unknown_procedure_count?: number;
+    required_label_count?: number;
+  }>;
   billing_constraint_count?: number;
 };
 
@@ -97,6 +108,11 @@ const AVAILABILITY_REASON_LABELS: Record<string, string> = {
   invalid_pharmacist_shift_window: 'シフト時間設定不備',
   invalid_visit_window: '訪問時間設定不備',
   outside_pharmacist_shift_window: 'シフト時間外',
+};
+
+const REVIEW_CANDIDATE_REASON_LABELS: Record<string, string> = {
+  specialty_coverage_unmatched: '専門対応未一致',
+  specialty_coverage_unknown: '未定義手技あり',
 };
 
 function formatSignedNumber(value: number) {
@@ -155,6 +171,7 @@ export function VisitProposalDiagnosticsCard({
     }, new Map<string, number>()),
   ).sort((left, right) => right[1] - left[1]);
   const deadlinePolicy = diagnostics.deadline_policy ?? [];
+  const reviewCandidates = diagnostics.review_candidates ?? [];
   const availabilitySummary = Array.from(
     diagnostics.rejected.reduce((map, item) => {
       const code = item.availability_reason_code ?? item.reason_code;
@@ -196,6 +213,9 @@ export function VisitProposalDiagnosticsCard({
           <Badge variant="outline">採用外 {diagnostics.rejected.length} 件</Badge>
           {deadlinePolicy.length > 0 ? (
             <Badge variant="outline">期限診断 {deadlinePolicy.length} 件</Badge>
+          ) : null}
+          {reviewCandidates.length > 0 ? (
+            <Badge variant="outline">薬剤師確認推奨 {reviewCandidates.length} 件</Badge>
           ) : null}
           {rejectionSummary.map(([label, count]) => (
             <Badge
@@ -242,6 +262,26 @@ export function VisitProposalDiagnosticsCard({
                 </div>
               </div>
             ) : null}
+          </div>
+        ) : null}
+
+        {reviewCandidates.length > 0 ? (
+          <div className="space-y-2 rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-3 text-sm">
+            <p className="font-medium text-state-confirm">
+              患者連絡前に薬剤師確認推奨（診断表示のみ） {reviewCandidates.length} 件
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {reviewCandidates.map((item, index) => (
+                <Badge
+                  key={`${item.reason_code}-${item.pharmacist_id ?? index}-${item.proposed_date}`}
+                  variant="outline"
+                  className="border-state-confirm/40 bg-background text-state-confirm"
+                >
+                  {REVIEW_CANDIDATE_REASON_LABELS[item.reason_code] ?? '確認推奨'}{' '}
+                  {item.proposed_date}
+                </Badge>
+              ))}
+            </div>
           </div>
         ) : null}
 

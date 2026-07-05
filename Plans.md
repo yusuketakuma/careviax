@@ -351,8 +351,11 @@ FE 仕上げ（低優先）:
       2026-07-05 partial: 共通 `VisitProposalDiagnosticsCard` に `deadline_policy` を
       「期限診断」として中立表示し、`availability_reason_code` を休業日・シフト理由の集計と候補行
       `訪問可否` badge で表示。薬剤師確認推奨は explicit `review_required_candidate` diagnostics が
-      未実装のためローカル推測表示しない。過密前倒し理由は VS-AUTO-6 後続。
+      来た場合のみ「診断表示のみ」として表示。過密前倒し理由は VS-AUTO-6 後続。
 - [ ] HR field 追加前は `pharmacist_review_required` 永続 field を参照しない。UI では `review_required_candidate` として「患者連絡前に薬剤師確認推奨」を出し、ハードブロックは VS-AUTO-7 後に有効化する。
+      2026-07-05 partial: accepted `specialty_coverage.match_status` が `unmatched` / `unknown` の場合に
+      route が PHI-free `review_candidates[]` を生成し、UI はこの explicit diagnostics のみを表示。
+      idempotency replay は false-empty diagnostics を返さない。
 - テスト:
   - [x] diagnostics が表示され、既存 proposal ranking / contact log / bulk action を壊さない。
         2026-07-05: focused API/detail/UI regression green。

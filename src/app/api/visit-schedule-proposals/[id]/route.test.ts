@@ -1217,6 +1217,54 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
               value: '患者A',
             },
           ],
+          review_candidates: [
+            {
+              code: 'review_required_candidate',
+              reason_code: 'specialty_coverage_unknown',
+              pharmacist_id: 'pharmacist_1',
+              site_id: 'site_1',
+              proposed_date: '2026-03-27',
+              match_status: 'unknown',
+              missing_label_count: 1,
+              unknown_procedure_count: 1,
+              required_label_count: 1,
+              missing_labels: ['TPN'],
+              patient_name: '患者A',
+            },
+            {
+              code: 'review_required_candidate',
+              reason_code: '患者A / TPN / secret',
+              pharmacist_id: 'pharmacist_2',
+              site_id: 'site_1',
+              proposed_date: '2026-03-28',
+              match_status: 'unknown',
+              missing_label_count: 1,
+              unknown_procedure_count: 1,
+              required_label_count: 1,
+            },
+            {
+              code: 'review_required_candidate',
+              reason_code: 'specialty_coverage_unmatched',
+              pharmacist_id: 'pharmacist_3',
+              site_id: 'site_1',
+              proposed_date: '2026-03-29',
+              match_status: 'unknown',
+              missing_label_count: 1,
+              unknown_procedure_count: 0,
+              required_label_count: 1,
+            },
+            {
+              code: 'review_required_candidate',
+              reason_code: 'specialty_coverage_unknown',
+              pharmacist_id: 'pharmacist_4',
+              site_id: 'site_1',
+              proposed_date: '2026-03-30',
+              match_status: 'unknown',
+              missing_label_count: -1,
+              unknown_procedure_count: 0.25,
+              required_label_count: 101,
+            },
+          ],
         },
       },
     });
@@ -1249,6 +1297,21 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
               date_key: '2026-03-30',
             }),
           ],
+          review_candidates: [
+            expect.objectContaining({
+              code: 'review_required_candidate',
+              reason_code: 'specialty_coverage_unknown',
+              pharmacist_id: 'pharmacist_1',
+              proposed_date: '2026-03-27',
+              unknown_procedure_count: 1,
+            }),
+            expect.objectContaining({
+              code: 'review_required_candidate',
+              reason_code: 'specialty_coverage_unknown',
+              pharmacist_id: 'pharmacist_4',
+              proposed_date: '2026-03-30',
+            }),
+          ],
         }),
       }),
     });
@@ -1257,6 +1320,19 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     expect(JSON.stringify(body.data.creation_diagnostics)).not.toContain('アムロジピン');
     expect(JSON.stringify(body.data.creation_diagnostics)).not.toContain('玄関暗証番号1234');
     expect(JSON.stringify(body.data.creation_diagnostics)).not.toContain('継続薬');
+    expect(JSON.stringify(body.data.creation_diagnostics)).not.toContain('TPN');
+    expect(JSON.stringify(body.data.creation_diagnostics.review_candidates)).not.toContain(
+      'pharmacist_2',
+    );
+    expect(JSON.stringify(body.data.creation_diagnostics.review_candidates)).not.toContain(
+      'pharmacist_3',
+    );
+    const normalizedCountCandidate = body.data.creation_diagnostics.review_candidates.find(
+      (item: { pharmacist_id?: string }) => item.pharmacist_id === 'pharmacist_4',
+    );
+    expect(normalizedCountCandidate).not.toHaveProperty('missing_label_count');
+    expect(normalizedCountCandidate).not.toHaveProperty('unknown_procedure_count');
+    expect(normalizedCountCandidate).not.toHaveProperty('required_label_count');
   });
 
   it('rejects confirmation before approval and patient contact', async () => {

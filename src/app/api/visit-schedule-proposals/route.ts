@@ -74,12 +74,42 @@ function buildProposalDiagnosticsInput(args: {
   accepted?: unknown[];
   rejected?: unknown[];
   deadlinePolicy?: unknown[];
+  reviewCandidates?: unknown[];
 }) {
   return {
     accepted: args.accepted ?? [],
     rejected: args.rejected ?? [],
     deadline_policy: args.deadlinePolicy ?? [],
+    review_candidates: args.reviewCandidates ?? [],
   };
+}
+
+function buildReviewCandidateDiagnosticsFromAccepted(
+  acceptedDiagnostics: GenerateVisitScheduleProposalResult['diagnostics']['accepted'],
+) {
+  return acceptedDiagnostics
+    .map((item) => {
+      const coverage = item.specialty_coverage;
+      if (!coverage) return null;
+      if (coverage.match_status !== 'unmatched' && coverage.match_status !== 'unknown') {
+        return null;
+      }
+      return {
+        code: 'review_required_candidate',
+        reason_code:
+          coverage.match_status === 'unknown'
+            ? 'specialty_coverage_unknown'
+            : 'specialty_coverage_unmatched',
+        pharmacist_id: item.pharmacist_id,
+        site_id: item.site_id,
+        proposed_date: item.proposed_date,
+        match_status: coverage.match_status,
+        missing_label_count: coverage.missing_labels.length,
+        unknown_procedure_count: coverage.unknown_procedure_count,
+        required_label_count: coverage.required_labels.length,
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => item != null);
 }
 
 function isSerializableTransactionConflict(cause: unknown) {
@@ -951,11 +981,6 @@ const authenticatedPOST = withAuthContext(
           {
             data: omitProposalRejectReasons(existingBatch.proposals),
             alerts: [],
-            diagnostics: {
-              accepted: [],
-              rejected: [],
-              deadline_policy: [],
-            },
             replayed: true,
           },
           200,
@@ -1130,11 +1155,14 @@ const authenticatedPOST = withAuthContext(
             formatUtcDateKey(draft.proposed_date) === item.proposed_date,
         ),
       ) ?? [];
+    const reviewCandidateDiagnostics =
+      buildReviewCandidateDiagnosticsFromAccepted(acceptedDiagnostics);
     const responseDiagnostics = normalizeProposalGenerationDiagnostics(
       buildProposalDiagnosticsInput({
         accepted: acceptedDiagnostics,
         rejected: [...(plannerDiagnostics?.rejected ?? []), ...rejectedByBilling],
         deadlinePolicy: plannerDiagnostics?.deadline_policy,
+        reviewCandidates: reviewCandidateDiagnostics,
       }),
       { mode: 'response' },
     );
@@ -1352,6 +1380,9 @@ const authenticatedPOST = withAuthContext(
                 accepted: acceptedDiagnostic ? [acceptedDiagnostic] : [],
                 rejected: [...(plannerDiagnostics?.rejected ?? []), ...rejectedByBilling],
                 deadlinePolicy: plannerDiagnostics?.deadline_policy,
+                reviewCandidates: acceptedDiagnostic
+                  ? buildReviewCandidateDiagnosticsFromAccepted([acceptedDiagnostic])
+                  : [],
               }),
               { mode: 'audit' },
             );

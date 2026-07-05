@@ -3,6 +3,12 @@ type JsonRecord = Record<string, unknown>;
 const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const VISIT_ROUTE_TRAVEL_MODES = new Set(['DRIVE', 'BICYCLE', 'WALK', 'TWO_WHEELER']);
+const REVIEW_CANDIDATE_REASON_CODES = new Set([
+  'specialty_coverage_unmatched',
+  'specialty_coverage_unknown',
+]);
+const REVIEW_CANDIDATE_MATCH_STATUS = new Set(['unmatched', 'unknown']);
+const REVIEW_CANDIDATE_COUNT_MAX = 100;
 
 type DiagnosticMode = 'response' | 'audit';
 
@@ -49,10 +55,23 @@ export type SafeProposalRejectedDiagnostic = {
   availability_reason_code?: string;
 };
 
+export type SafeProposalReviewCandidateDiagnostic = {
+  code: 'review_required_candidate';
+  reason_code: string;
+  pharmacist_id?: string;
+  site_id: string | null;
+  proposed_date: string;
+  match_status?: string;
+  missing_label_count?: number;
+  unknown_procedure_count?: number;
+  required_label_count?: number;
+};
+
 export type SafeProposalGenerationDiagnostics = {
   accepted: SafeProposalAcceptedDiagnostic[];
   rejected: SafeProposalRejectedDiagnostic[];
   deadline_policy: SafeDeadlinePolicyDiagnostic[];
+  review_candidates: SafeProposalReviewCandidateDiagnostic[];
   billing_constraint_count?: number;
 };
 
@@ -74,6 +93,16 @@ function readNullableString(record: JsonRecord, key: string) {
 function readNumber(record: JsonRecord, key: string) {
   const value = record[key];
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function readNonNegativeInteger(record: JsonRecord, key: string) {
+  const value = record[key];
+  return typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= 0 &&
+    value <= REVIEW_CANDIDATE_COUNT_MAX
+    ? value
+    : null;
 }
 
 function readDateKey(record: JsonRecord, key: string) {
@@ -220,6 +249,48 @@ function normalizeDeadlinePolicyDiagnostic(value: unknown): SafeDeadlinePolicyDi
   return normalized;
 }
 
+function normalizeReviewCandidateDiagnostic(
+  value: unknown,
+): SafeProposalReviewCandidateDiagnostic | null {
+  if (!isRecord(value)) return null;
+  const code = readString(value, 'code');
+  const reasonCode = readString(value, 'reason_code');
+  const proposedDate = readDateKey(value, 'proposed_date');
+  if (code !== 'review_required_candidate' || !reasonCode || !proposedDate) return null;
+  const matchStatus = readString(value, 'match_status');
+  if (
+    !REVIEW_CANDIDATE_REASON_CODES.has(reasonCode) ||
+    !matchStatus ||
+    !REVIEW_CANDIDATE_MATCH_STATUS.has(matchStatus)
+  ) {
+    return null;
+  }
+  if (
+    (reasonCode === 'specialty_coverage_unmatched' && matchStatus !== 'unmatched') ||
+    (reasonCode === 'specialty_coverage_unknown' && matchStatus !== 'unknown')
+  ) {
+    return null;
+  }
+
+  const normalized: SafeProposalReviewCandidateDiagnostic = {
+    code,
+    reason_code: reasonCode,
+    site_id: readNullableString(value, 'site_id'),
+    proposed_date: proposedDate,
+    match_status: matchStatus,
+  };
+  const pharmacistId = readString(value, 'pharmacist_id');
+  if (pharmacistId) normalized.pharmacist_id = pharmacistId;
+  const missingLabelCount = readNonNegativeInteger(value, 'missing_label_count');
+  if (missingLabelCount != null) normalized.missing_label_count = missingLabelCount;
+  const unknownProcedureCount = readNonNegativeInteger(value, 'unknown_procedure_count');
+  if (unknownProcedureCount != null) normalized.unknown_procedure_count = unknownProcedureCount;
+  const requiredLabelCount = readNonNegativeInteger(value, 'required_label_count');
+  if (requiredLabelCount != null) normalized.required_label_count = requiredLabelCount;
+
+  return normalized;
+}
+
 export function normalizeProposalGenerationDiagnostics(
   value: unknown,
   options: { mode: DiagnosticMode },
@@ -228,6 +299,9 @@ export function normalizeProposalGenerationDiagnostics(
   const acceptedSource = Array.isArray(source.accepted) ? source.accepted : [];
   const rejectedSource = Array.isArray(source.rejected) ? source.rejected : [];
   const deadlinePolicySource = Array.isArray(source.deadline_policy) ? source.deadline_policy : [];
+  const reviewCandidateSource = Array.isArray(source.review_candidates)
+    ? source.review_candidates
+    : [];
   const accepted = acceptedSource
     .map((item) => normalizeAcceptedDiagnostic(item, options.mode))
     .filter((item): item is SafeProposalAcceptedDiagnostic => item != null);
@@ -237,6 +311,9 @@ export function normalizeProposalGenerationDiagnostics(
   const deadlinePolicy = deadlinePolicySource
     .map(normalizeDeadlinePolicyDiagnostic)
     .filter((item): item is SafeDeadlinePolicyDiagnostic => item != null);
+  const reviewCandidates = reviewCandidateSource
+    .map(normalizeReviewCandidateDiagnostic)
+    .filter((item): item is SafeProposalReviewCandidateDiagnostic => item != null);
   const billingConstraintCount = rejected.filter(
     (item) => item.reason_code === 'billing_constraint',
   ).length;
@@ -245,6 +322,7 @@ export function normalizeProposalGenerationDiagnostics(
     accepted,
     rejected,
     deadline_policy: deadlinePolicy,
+    review_candidates: reviewCandidates,
     ...(billingConstraintCount > 0 ? { billing_constraint_count: billingConstraintCount } : {}),
   };
 }
