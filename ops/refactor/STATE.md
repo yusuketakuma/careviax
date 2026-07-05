@@ -40,7 +40,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: visit preparation shared vehicle capacity / OCC batch(f29465a09)
+- codex: visit preparation shared vehicle capacity / OCC batch(03d23d03d)
   implementation complete。ユーザー指示「近似箇所はまとめて実装して効率を向上。サブエージェントも投入」に基づき、
   `PUT /api/visit-preparations/:scheduleId` の車両割当近接リスクを同一sliceで処理。subagent は
   code_mapper / concurrency_reviewer / medical_safety_reviewer / test_architect を bounded read-only で投入し、
