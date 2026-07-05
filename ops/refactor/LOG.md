@@ -5158,6 +5158,30 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
   個別確認してから段階移行する。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
 
+## 2026-07-05 R40/R44 vehicle mutations readApiJson slice
+
+- 分類: query-helper / client mutation error handling → `readApiJson` 収束。
+- 実施:
+  - visit vehicle resource create/update の POST/PATCH responses を `readApiJson<unknown>` へ移行。
+  - availability toggle の PATCH response を `readApiJson<unknown>` へ移行。
+  - failed save / availability update の API JSON `message` が toast へ表面化する UI 契約テストを追加。
+- 挙動変更: mutation response handling internals の helper 収束のみ。`/api/visit-vehicle-resources`
+  read、`/api/pharmacy-sites` read、`VISIT_VEHICLE_RESOURCES_API_PATH`、
+  `buildVisitVehicleResourceApiPath`、hostile-id encoding、dot-segment fail-closed、
+  org headers、request bodies、success toasts、`admin-visit-vehicle-resources` invalidation は維持。
+- 安全性: admin vehicles UI mutation internals のみ変更。DB/schema、API route、
+  auth/authorization、PHI projection、billing、deployment、package dependency、live DB operation、
+  external send、secret handling、push、destructive operation は不変。SSOT では必要時の product
+  API/DB/auth/authorization/PHI/billing/deploy/package dependency 変更許可を確認済みだが、
+  この slice では不要。
+- 検証: focused vehicles Vitest `1 file / 11 tests` green、
+  scoped ESLint green、targeted Prettier check green、targeted `git diff --check` green、
+  `pnpm typecheck` green。
+- commit: `e2cc0fbf` (`refactor(ui): reuse readApiJson for vehicle mutations`)。
+- 残課題: R40/R44 は broad。追加の client fetcher/mutation は response body read が PHI-safe かを
+  個別確認してから段階移行する。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
 ## 2026-07-05 R40/R44 institution mutations readApiJson slice
 
 - 分類: query-helper / client mutation error handling → `readApiJson` 収束。
