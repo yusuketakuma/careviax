@@ -40,6 +40,66 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Case Risk Cockpit notification registry adapter slice（committed）。
+  - current task:
+    `Plans.md` の `RISK-CORE-3 / CORE-003` / notification adapter 拡張として、現在ユーザー宛の
+    未読 urgent `Notification` を Case Risk Cockpit に接続した。query は `org_id` / `user_id` /
+    `is_read=false` / `type=urgent` / 対象患者詳細 `link` 配下で scope し、
+    `adaptNotificationToRiskFinding` が notification domain の controlled finding を返す。
+  - subagent:
+    ユーザー goal は subagent 最大活用だが、新規 `multi_agent_v1.spawn_agent(code_mapper)` は
+    `agent thread limit reached` で起動不可。Codex 本体で `Plans.md` / notification schema /
+    notification service / Case Risk Cockpit / registry / tests を確認して実装・検証した。
+  - design / imagegen:
+    backend adapter/API response slice で視覚レイアウト変更を伴わないため、`imagegen` / `gpt-image-2` の
+    新規生成は省略。通知センター、Command Center、Notification Actionability UI の見た目を変える slice では
+    PH-OS UI/UX SSOT と `gpt-image-2` 方針に従い、非 PHI mockup を先に作る。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `prisma/schema/admin.prisma`,
+    `src/server/services/notifications.ts`,
+    `src/app/api/notifications/route.ts`,
+    `src/lib/patient/navigation.ts`,
+    `src/lib/risk/risk-finding.ts`,
+    `src/server/services/case-risk-cockpit.ts`,
+    `src/server/services/case-risk-cockpit.test.ts`,
+    `src/server/services/risk-finding-registry.ts`,
+    `src/server/services/risk-finding-registry.test.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/case-risk-cockpit.ts`,
+    `src/server/services/case-risk-cockpit.test.ts`,
+    `src/server/services/risk-finding-registry.ts`,
+    `src/server/services/risk-finding-registry.test.ts`.
+  - bugs / risks reduced:
+    Case Risk Cockpit の notification section が空のままで、患者/ケース詳細に関係する未読 urgent 通知が
+    Risk Cockpit と next action に出なかった。現在ユーザーの未読 urgent 通知だけを対象患者 link へ
+    scope し、通知センターへの action として返す。
+  - security / PHI reviewed:
+    `Notification.title` / `message` は患者名や本文を含み得るため Case Risk Cockpit query では select しない。
+    finding は controlled title/detail のみを返し、action href は encoded notification id だけを持つ。
+    他ユーザー通知や他患者 link は query scope で除外する。
+  - performance issues improved:
+    `Notification(org_id)` / `Notification(user_id)` / `Notification(is_read)` / `Notification(event_type)`
+    既存 index に沿う bounded `take: 5` query。payload は id/type/event_type/link/created_at の最小 select。
+  - validation commands:
+    `pnpm exec prettier --write Plans.md ops/refactor/STATE.md src/server/services/case-risk-cockpit.ts src/server/services/case-risk-cockpit.test.ts src/server/services/risk-finding-registry.ts src/server/services/risk-finding-registry.test.ts`;
+    `git diff --check`;
+    `pnpm exec vitest run src/server/services/case-risk-cockpit.test.ts src/server/services/risk-finding-registry.test.ts src/lib/risk/risk-finding.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm typecheck`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`;
+    `pnpm lint`.
+  - validation results:
+    prettier completed; diff check green; focused vitest green（3 files / 21 tests）;
+    typecheck green; typecheck:no-unused green; `pnpm lint` green with existing unrelated warnings in
+    `src/lib/platform/break-glass.test.ts` (`_tx`, `_input` unused warnings only).
+  - remaining work:
+    Broader `Plans.md` objective remains open。残: privacy_security / integration / data_quality adapters、
+    Notification Delivery Ledger migration、external delivery failure task 化、Case Risk Cockpit UI 接続。
+
 - codex: Case Risk Cockpit medication reconciliation registry adapter slice（committed）。
   - current task:
     `Plans.md` の `RISK-CORE-3 / CORE-003` / medication adapter 拡張として、

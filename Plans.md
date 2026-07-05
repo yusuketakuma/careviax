@@ -711,12 +711,15 @@ FE 仕上げ（低優先）:
     `drug_resolution_status != resolved` を `MedicationCycle.case_id` / `patient_id` で case scope し、
     `adaptPrescriptionLineReconciliationToRiskFinding` で medication domain へ接続。薬剤名は返さず、
     prescription line id と controlled 文言だけで薬剤マスタ照合待ちを示す。
+  - 2026-07-06 追加 partial: 現在ユーザー宛の未読 urgent `Notification` のうち、対象患者詳細 link
+    配下に限定して `adaptNotificationToRiskFinding` で notification domain へ接続。通知 title/message は
+    PHI を含み得るため選択せず、notification id / type / event_type / created_at / link だけで controlled
+    finding を返す。
 - 残:
   - CORE-001 の shared Risk Finding Registry へ型を寄せる作業は初期完了。Case Risk Cockpit の
-    billing/task/report/visit_preparation/consent_plan lifecycle/dispensing/medication reconciliation finding は
-    adapter 化済み。残は domain adapter 拡張と未接続 domain の段階的 adapter 化。
-  - notification / privacy_security / integration /
-    data_quality adapter を追加。
+    billing/task/report/visit_preparation/consent_plan lifecycle/dispensing/medication reconciliation/notification
+    finding は adapter 化済み。残は domain adapter 拡張と未接続 domain の段階的 adapter 化。
+  - privacy_security / integration / data_quality adapter を追加。
   - 患者/ケース詳細 UI の Command Center から呼び、`gpt-image-2` 方針に従う非 PHI 参照案と
     mobile/error state を確認してから配置する。
 

@@ -4,6 +4,7 @@ import {
   adaptCareReportToRiskFinding,
   adaptConsentPlanLifecycleToRiskFindings,
   adaptDispenseTaskToRiskFinding,
+  adaptNotificationToRiskFinding,
   adaptOperationalTaskToRiskFinding,
   adaptPatientFoundationItemToRiskFinding,
   adaptPrescriptionLineReconciliationToRiskFinding,
@@ -358,6 +359,49 @@ describe('risk-finding-registry adapters', () => {
       severity: 'warning',
     });
     expect(JSON.stringify([missingMaster, provisional])).not.toContain('アムロジピン');
+  });
+
+  it('maps unread notifications without exposing persisted notification body', () => {
+    const urgent = adaptNotificationToRiskFinding(
+      {
+        id: 'notification/1?x=1',
+        type: 'urgent',
+        event_type: 'medication_run_out',
+        link: '/patients/patient_1',
+        created_at: '2026-07-06T00:00:00.000Z',
+      },
+      { patientId: 'patient_1', caseId: 'case_1' },
+    );
+    const business = adaptNotificationToRiskFinding(
+      {
+        id: 'notification_2',
+        type: 'business',
+        event_type: 'schedule_patient_confirmation',
+        link: '/patients/patient_1/visits',
+        created_at: null,
+      },
+      { patientId: 'patient_1', caseId: 'case_1' },
+    );
+
+    expect(urgent).toMatchObject({
+      key: 'notification:notification/1?x=1',
+      domain: 'notification',
+      severity: 'urgent',
+      title: '未読の重要通知があります',
+      related_entity_type: 'notification',
+      related_entity_id: 'notification/1?x=1',
+      due_at: '2026-07-06T00:00:00.000Z',
+      action_label: '通知を確認',
+    });
+    expect(urgent.action_href).toBe(
+      `/notifications?notification_id=${encodeURIComponent('notification/1?x=1')}`,
+    );
+    expect(business).toMatchObject({
+      severity: 'warning',
+      due_at: null,
+    });
+    expect(JSON.stringify([urgent, business])).not.toContain('患者 太郎');
+    expect(JSON.stringify([urgent, business])).not.toContain('薬が切れそう');
   });
 
   it('keeps patient foundation task dedupe keys distinct per patient', () => {

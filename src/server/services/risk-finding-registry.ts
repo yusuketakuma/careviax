@@ -90,6 +90,14 @@ export type PrescriptionLineReconciliationRiskInput = {
   drug_resolution_status?: string | null;
 };
 
+export type NotificationRiskInput = {
+  id: string;
+  type: string;
+  event_type?: string | null;
+  link?: string | null;
+  created_at?: Date | string | null;
+};
+
 const BILLING_BLOCKER_TITLE: Record<BillingEvidenceBlocker['key'], string> = {
   missing_visit_consent: '訪問同意が未整備です',
   missing_management_plan: '管理計画書が未整備です',
@@ -161,6 +169,10 @@ function prescriptionLineReconciliationSeverity(
   line: PrescriptionLineReconciliationRiskInput,
 ): RiskSeverity {
   return !line.drug_master_id ? 'urgent' : 'warning';
+}
+
+function notificationSeverity(notification: NotificationRiskInput): RiskSeverity {
+  return notification.type === 'urgent' ? 'urgent' : 'warning';
 }
 
 function foundationSeverity(status: PatientFoundationItem['status']): RiskSeverity {
@@ -534,6 +546,27 @@ export function adaptPrescriptionLineReconciliationToRiskFinding(
     related_entity_id: line.id,
     action_href: `/medications/reconciliation?line_id=${encodeURIComponent(line.id)}`,
     action_label: '薬剤マスタを照合',
+  });
+}
+
+export function adaptNotificationToRiskFinding(
+  notification: NotificationRiskInput,
+  context: RiskFindingAdapterContext = {},
+): RiskFinding {
+  return createRiskFinding({
+    key: `notification:${notification.id}`,
+    domain: 'notification',
+    severity: notificationSeverity(notification),
+    title: '未読の重要通知があります',
+    detail:
+      'この患者またはケースに関連する未読通知が残っています。通知センターで内容と対応状況を確認してください。',
+    patient_id: context.patientId ?? null,
+    case_id: context.caseId ?? null,
+    related_entity_type: 'notification',
+    related_entity_id: notification.id,
+    due_at: iso(notification.created_at),
+    action_href: `/notifications?notification_id=${encodeURIComponent(notification.id)}`,
+    action_label: '通知を確認',
   });
 }
 

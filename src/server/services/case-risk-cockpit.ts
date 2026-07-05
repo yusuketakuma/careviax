@@ -14,6 +14,7 @@ import {
   adaptCareReportToRiskFinding,
   adaptConsentPlanLifecycleToRiskFindings,
   adaptDispenseTaskToRiskFinding,
+  adaptNotificationToRiskFinding,
   adaptOperationalTaskToRiskFinding,
   adaptPrescriptionLineReconciliationToRiskFinding,
   adaptUpcomingVisitPreparationToRiskFindings,
@@ -42,6 +43,7 @@ type CaseRiskCockpitDbReader = {
   careReport: FindManyDelegate<CareReportRow>;
   dispenseTask: FindManyDelegate<DispenseTaskRow>;
   prescriptionLine: FindManyDelegate<PrescriptionLineRiskRow>;
+  notification: FindManyDelegate<NotificationRiskRow>;
   task: FindManyDelegate<TaskRow>;
   billingEvidence: FindManyDelegate<BillingEvidenceRow>;
 };
@@ -115,6 +117,14 @@ type PrescriptionLineRiskRow = {
   id: string;
   drug_master_id: string | null;
   drug_resolution_status: string | null;
+};
+
+type NotificationRiskRow = {
+  id: string;
+  type: string;
+  event_type: string | null;
+  link: string | null;
+  created_at: Date;
 };
 
 type TaskRow = {
@@ -292,6 +302,22 @@ function pushMedicationFindings(args: {
   }
 }
 
+function pushNotificationFindings(args: {
+  findings: CaseRiskFinding[];
+  patientId: string;
+  caseId: string;
+  notifications: NotificationRiskRow[];
+}) {
+  for (const notification of args.notifications) {
+    args.findings.push(
+      adaptNotificationToRiskFinding(notification, {
+        patientId: args.patientId,
+        caseId: args.caseId,
+      }),
+    );
+  }
+}
+
 function pushTaskFindings(args: {
   findings: CaseRiskFinding[];
   patientId: string;
@@ -386,6 +412,7 @@ export async function getCaseRiskCockpit(
     reports,
     dispenseTasks,
     prescriptionLines,
+    notifications,
     tasks,
   ] = await Promise.all([
     db.consentRecord.findFirst({
@@ -526,6 +553,24 @@ export async function getCaseRiskCockpit(
         drug_resolution_status: true,
       },
     }),
+    db.notification.findMany({
+      where: {
+        org_id: args.orgId,
+        user_id: args.userId,
+        is_read: false,
+        type: 'urgent',
+        OR: [{ link: patientHref }, { link: { startsWith: `${patientHref}/` } }],
+      },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      take: 5,
+      select: {
+        id: true,
+        type: true,
+        event_type: true,
+        link: true,
+        created_at: true,
+      },
+    }),
     db.task.findMany({
       where: {
         org_id: args.orgId,
@@ -559,6 +604,7 @@ export async function getCaseRiskCockpit(
   const selectedReports = reports as CareReportRow[];
   const selectedDispenseTasks = dispenseTasks as DispenseTaskRow[];
   const selectedPrescriptionLines = prescriptionLines as PrescriptionLineRiskRow[];
+  const selectedNotifications = notifications as NotificationRiskRow[];
   const selectedTasks = tasks as TaskRow[];
 
   const visitRecordIds = selectedSchedules
@@ -635,6 +681,12 @@ export async function getCaseRiskCockpit(
     patientId: careCase.patient_id,
     caseId: careCase.id,
     prescriptionLines: selectedPrescriptionLines,
+  });
+  pushNotificationFindings({
+    findings,
+    patientId: careCase.patient_id,
+    caseId: careCase.id,
+    notifications: selectedNotifications,
   });
   pushTaskFindings({
     findings,

@@ -11,6 +11,7 @@ function buildDb() {
     careReport: { findMany: vi.fn() },
     dispenseTask: { findMany: vi.fn() },
     prescriptionLine: { findMany: vi.fn() },
+    notification: { findMany: vi.fn() },
     task: { findMany: vi.fn() },
     billingEvidence: { findMany: vi.fn() },
   };
@@ -69,6 +70,7 @@ describe('getCaseRiskCockpit', () => {
     expect(db.careReport.findMany).not.toHaveBeenCalled();
     expect(db.dispenseTask.findMany).not.toHaveBeenCalled();
     expect(db.prescriptionLine.findMany).not.toHaveBeenCalled();
+    expect(db.notification.findMany).not.toHaveBeenCalled();
     expect(db.task.findMany).not.toHaveBeenCalled();
     expect(db.billingEvidence.findMany).not.toHaveBeenCalled();
   });
@@ -123,6 +125,17 @@ describe('getCaseRiskCockpit', () => {
         id: 'line/1',
         drug_master_id: null,
         drug_resolution_status: 'code_not_found',
+      },
+    ]);
+    db.notification.findMany.mockResolvedValue([
+      {
+        id: 'notification/1',
+        type: 'urgent',
+        event_type: 'medication_run_out',
+        link: `/patients/${encodeURIComponent(patientId)}`,
+        created_at: new Date('2026-07-05T01:00:00.000Z'),
+        title: '患者 太郎様の通知',
+        message: '患者 太郎様の詳細本文',
       },
     ]);
     db.task.findMany.mockResolvedValue([
@@ -208,7 +221,7 @@ describe('getCaseRiskCockpit', () => {
     expect(result?.overall).toMatchObject({
       status: 'blocked',
       blocking_count: 3,
-      urgent_count: 3,
+      urgent_count: 4,
       warning_count: 4,
     });
 
@@ -221,6 +234,7 @@ describe('getCaseRiskCockpit', () => {
         'visit_carry_items_blocked:schedule/1',
         'visit_preparation_incomplete:schedule/1',
         'drug_master_reconciliation:line/1',
+        'notification:notification/1',
         'dispense_task:dispense/1',
         'report_delivery_failed:report_1',
         'task:task/1',
@@ -235,6 +249,8 @@ describe('getCaseRiskCockpit', () => {
       'billing:bill_other_patient_same_record:missing_visit_consent',
     );
     expect(JSON.stringify(result)).not.toContain('至急タスク');
+    expect(JSON.stringify(result)).not.toContain('患者 太郎様の通知');
+    expect(JSON.stringify(result)).not.toContain('患者 太郎様の詳細本文');
     expect(JSON.stringify(result)).toContain('正本確認タスク');
 
     for (const finding of findings) {
@@ -290,6 +306,27 @@ describe('getCaseRiskCockpit', () => {
         }),
       }),
     );
+    expect(db.notification.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          user_id: 'user_1',
+          is_read: false,
+          type: 'urgent',
+          OR: [
+            { link: `/patients/${encodeURIComponent(patientId)}` },
+            { link: { startsWith: `/patients/${encodeURIComponent(patientId)}/` } },
+          ],
+        }),
+        select: {
+          id: true,
+          type: true,
+          event_type: true,
+          link: true,
+          created_at: true,
+        },
+      }),
+    );
     expect(db.billingEvidence.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -318,6 +355,7 @@ describe('getCaseRiskCockpit', () => {
     db.careReport.findMany.mockResolvedValue([]);
     db.dispenseTask.findMany.mockResolvedValue([]);
     db.prescriptionLine.findMany.mockResolvedValue([]);
+    db.notification.findMany.mockResolvedValue([]);
     db.task.findMany.mockResolvedValue([
       {
         id: 'task_due_jst',
