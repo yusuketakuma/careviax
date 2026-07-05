@@ -333,6 +333,12 @@
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。関連 test の既存 formatting は
   Prettier write で解消。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 admin-user-mutations readApiJson slice(b89beba3) land。focused Vitest 15、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。admin user invite / detail update /
+  account action mutation responses を readApiJson へ収束し、pharmacists path helpers、
+  hostile-id encoding、org JSON headers、request bodies、success toasts、admin-users invalidation、
+  `canAdmin` / Cognito / audit logging contract は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 - codex: R40/R44 admin-realtime readApiJson slice(628df9dc) land。focused Vitest 13、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。queryFn contract test で
   org-scoped workflow/notification endpoints を固定。SSOT の必要時変更許可

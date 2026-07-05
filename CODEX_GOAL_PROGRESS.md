@@ -1,5 +1,46 @@
 # CODEX Goal Progress
 
+## R40/R44 Admin User Mutations readApiJson Partial - 2026-07-05 11:01 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/admin/users/users-content.tsx`
+    - `src/app/(dashboard)/admin/users/users-content.test.tsx`
+- Scope:
+  - Reused `readApiJson` for admin user invite, detail update, and account
+    action mutation responses.
+  - Added focused UI coverage proving API JSON `message` from failed invite,
+    detail update, and account action responses is preserved in toast output.
+  - Preserved users and pharmacy-sites read behavior, `PHARMACISTS_API_PATH`,
+    `buildPharmacistApiPath`, hostile-id encoding, org JSON headers, invite
+    body shape, update body shape, account action body shape, success toasts,
+    and `admin-users` invalidation.
+  - Existing admin-users read helper slice `56b8d130` remains unchanged.
+- Safety:
+  - Admin users UI mutation response handling internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary remains
+    recorded in `ops/refactor/STATE.md`; this slice did not require those
+    changes.
+  - Preserved DB/schema, API route contracts, `canAdmin` authorization,
+    Cognito service behavior, audit logging, PHI projection, billing behavior,
+    deployment, package dependency, live DB operation, external send, secret
+    handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/admin/users/users-content.test.tsx'`
+    passed `1` file / `15` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `b89beba3`
+    (`refactor(ui): reuse readApiJson for admin user mutations`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher/mutation PHI/body-read review
+    before converting additional manual response handling.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Facility Unit Mutations readApiJson Partial - 2026-07-05 10:56 JST
 
 - Status:

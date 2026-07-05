@@ -5,6 +5,21 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-05 R40/R44-admin-user-mutations b89beba3
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 対象: `src/app/(dashboard)/admin/users/users-content.tsx` とtest。
+- 実施: admin user invite/detail update/account action mutation responses を
+  `readApiJson` へ移行し、failed invite/update/action の API JSON `message` 表面化テストを追加。
+- 挙動変更: admin users UI response handling の helper 収束のみ。pharmacists path helpers、
+  org JSON headers、request bodies、success toasts、admin-users invalidation は維持。
+- 安全: admin users UI internals のみ。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- 検証: focused admin-users Vitest `1 file / 15 tests` green。
+  scoped eslint/prettier/diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit b89beba3。
+- 残課題: R40/R44 は partial。
+
 ## 2026-07-05 R40/R44-facility-unit-mutations 523f6946
 
 - 分類: query-helper / client fetch error handling → `readApiJson` 収束。
