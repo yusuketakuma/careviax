@@ -240,7 +240,7 @@ describe('BillingCheckContent', () => {
     expect(within(table).getAllByRole('row')).toHaveLength(4);
     expect(within(section).queryByRole('button', { name: /列/ })).toBeNull();
     expect(within(section).queryByRole('textbox')).toBeNull();
-    expect(within(section).queryByRole('button', { name: 'CSV出力' })).toBeNull();
+    expect(within(section).queryByRole('button', { name: /CSV出力/ })).toBeNull();
     expect(within(section).queryByRole('button', { name: '印刷' })).toBeNull();
 
     expect(within(table).getByText('新規 鈴木 様')).toBeTruthy();

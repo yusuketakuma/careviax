@@ -774,7 +774,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
 
     expect((await screen.findAllByText('share_consent_1')).length).toBeGreaterThan(0);
     expect(document.body.textContent).not.toContain('山田花子');
-    expect(screen.queryByRole('button', { name: 'CSV出力' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /CSV出力/ })).toBeNull();
     expect(screen.queryByRole('button', { name: '印刷' })).toBeNull();
 
     fireEvent.change(screen.getByLabelText('患者共有同意日'), {
@@ -915,7 +915,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
     expect((await screen.findAllByText('visit_request_1')).length).toBeGreaterThan(0);
     expect((await screen.findAllByText('partner_record_submitted')).length).toBeGreaterThan(0);
     expect((await screen.findAllByText('correction_1')).length).toBeGreaterThanOrEqual(1);
-    expect(screen.queryByRole('button', { name: 'CSV出力' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /CSV出力/ })).toBeNull();
     expect(screen.queryByRole('button', { name: '印刷' })).toBeNull();
     const shareCasesTable = screen.getByRole('table', { name: '患者共有ケース一覧' });
     expect(within(shareCasesTable).getByRole('columnheader', { name: '共有ケース' })).toBeTruthy();

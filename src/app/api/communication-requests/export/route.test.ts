@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
-import { expectSensitiveNoStore } from '@/test/api-response-assertions';
+import {
+  expectPhiExportSnapshotRedacted,
+  expectSensitiveNoStore,
+} from '@/test/api-response-assertions';
 
 const {
   authMock,
@@ -74,7 +77,8 @@ describe('/api/communication-requests/export GET', () => {
         related_entity_id: 'cycle_1',
         status: 'responded',
         subject: '疑義照会',
-        content: '服用方法の確認。電話 03-1234-5678 へ折り返し希望',
+        content:
+          '服用方法の確認。電話 03-1234-5678 へ折り返し希望。アムロジピン調整、保険者番号12345678、provider raw error token=secret',
         due_date: new Date('2026-03-30T00:00:00.000Z'),
         requested_at: new Date('2026-03-28T09:30:00.000Z'),
         context_snapshot: {
@@ -82,6 +86,8 @@ describe('/api/communication-requests/export GET', () => {
           phone: '03-1234-5678',
           address: '東京都千代田区1-1-1',
           note: '家族へ事前共有',
+          storageKey: 'exports/org_1/request_1/raw.csv',
+          signed_url: 'https://signed.example/raw?token=secret',
           recommended_channels: ['fax', 'phone'],
         },
         responses: [
@@ -405,10 +411,12 @@ describe('/api/communication-requests/export GET', () => {
     expect(body).not.toContain('patient_name');
     expect(body).not.toContain('patient_1');
     expect(body).not.toContain('山田 太郎');
-    expect(body).not.toContain('服用方法の確認');
-    expect(body).not.toContain('03-1234-5678');
-    expect(body).not.toContain('東京都千代田区1-1-1');
-    expect(body).not.toContain('家族へ事前共有');
+    expectPhiExportSnapshotRedacted(body, [
+      '服用方法の確認',
+      'exports/org_1',
+      'signed_url',
+      'raw.csv',
+    ]);
     expect(patientFindManyMock).not.toHaveBeenCalled();
     const select = communicationRequestFindManyMock.mock.calls[0]?.[0]?.select;
     expect(select).toMatchObject({

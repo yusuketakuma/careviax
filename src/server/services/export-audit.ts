@@ -23,12 +23,17 @@ type AuditClient = {
 
 const blockedAuditKeyPattern =
   /(patient_?ids?|patientIds?|storage_?key|object_?key|token|secret|url|href|raw|error|stack|address|phone|insurance|note|memo|text|body|content)/i;
+const blockedAuditValuePattern =
+  /(token=|secret|https?:\/\/|signed\.|storageKey|objectKey|provider raw error|\d{2,4}-\d{2,4}-\d{3,4}|保険者番号)/i;
 const safePatientAggregateKeys = new Set([
   'patient_count',
   'patient_selection_hash',
   'requested_count',
   'success_count',
   'failed_count',
+  'exported_patient_count',
+  'exported_patient_id_hashes',
+  'exported_patient_id_hashes_truncated',
 ]);
 
 const allowedFilterKeysByTarget = new Map<string, Set<string>>([
@@ -52,7 +57,19 @@ const allowedFilterKeysByTarget = new Map<string, Set<string>>([
     'billing_candidate',
     new Set(['month', 'status', 'review_state', 'resolution_state', 'truncated']),
   ],
-  ['communication_request', new Set(['status', 'truncated', 'from', 'to'])],
+  [
+    'communication_request',
+    new Set([
+      'status',
+      'request_type',
+      'profile',
+      'redaction_profile',
+      'care_report_rows_excluded',
+      'truncated',
+      'from',
+      'to',
+    ]),
+  ],
 ]);
 
 const allowedMetadataKeysByTarget = new Map<string, Set<string>>([
@@ -74,6 +91,18 @@ const allowedMetadataKeysByTarget = new Map<string, Set<string>>([
   ['billing_candidate', new Set(['export_format'])],
   ['patients', new Set(['source'])],
   ['patient_list', new Set(['source'])],
+  [
+    'communication_request',
+    new Set([
+      'export_snapshot_id',
+      'exported_request_id_hashes',
+      'exported_request_count',
+      'exported_request_id_hashes_truncated',
+      'exported_patient_id_hashes',
+      'exported_patient_count',
+      'exported_patient_id_hashes_truncated',
+    ]),
+  ],
 ]);
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -85,12 +114,12 @@ function isBlockedAuditKey(key: string) {
 }
 
 function sanitizeAuditScalar(value: unknown): unknown {
-  if (
-    typeof value === 'string' ||
-    typeof value === 'number' ||
-    typeof value === 'boolean' ||
-    value === null
-  ) {
+  if (typeof value === 'string') {
+    if (blockedAuditValuePattern.test(value)) return undefined;
+    return value;
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean' || value === null) {
     return value;
   }
 

@@ -248,6 +248,75 @@ describe('recordDataExportAudit', () => {
     expect(persisted).not.toContain('signed.example');
   });
 
+  it('keeps communication request export profile metadata while dropping raw PHI markers', async () => {
+    auditLogCreateMock.mockResolvedValue({});
+
+    await recordDataExportAudit(db, {
+      orgId: 'org-1',
+      actorId: 'user-1',
+      targetType: 'communication_request',
+      format: 'csv',
+      recordCount: 1,
+      filters: {
+        status: 'responded token=secret',
+        request_type: 'inquiry',
+        profile: 'external',
+        redaction_profile: 'external',
+        care_report_rows_excluded: false,
+        patient_id: 'patient_1',
+        phone: '03-1234-5678',
+      },
+      metadata: {
+        export_snapshot_id: 'snapshot-hash',
+        exported_request_id_hashes: ['request-hash'],
+        exported_request_count: 1,
+        exported_request_id_hashes_truncated: false,
+        exported_patient_id_hashes: ['patient-hash'],
+        exported_patient_count: 1,
+        exported_patient_id_hashes_truncated: false,
+        patient_id: 'patient_1',
+        address: '東京都千代田区1-1-1',
+        drug_name: 'アムロジピン',
+        signed_url: 'https://signed.example/raw?token=secret',
+        provider_raw_error: 'provider raw error patient=山田 太郎 token=secret',
+      },
+    });
+
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        target_type: 'communication_request',
+        changes: {
+          format: 'csv',
+          record_count: 1,
+          filters: {
+            request_type: 'inquiry',
+            profile: 'external',
+            redaction_profile: 'external',
+            care_report_rows_excluded: false,
+          },
+          metadata: {
+            export_snapshot_id: 'snapshot-hash',
+            exported_request_id_hashes: ['request-hash'],
+            exported_request_count: 1,
+            exported_request_id_hashes_truncated: false,
+            exported_patient_id_hashes: ['patient-hash'],
+            exported_patient_count: 1,
+            exported_patient_id_hashes_truncated: false,
+          },
+        },
+      }),
+    });
+    const persisted = JSON.stringify(auditLogCreateMock.mock.calls);
+    expect(persisted).not.toContain('patient_1');
+    expect(persisted).not.toContain('03-1234-5678');
+    expect(persisted).not.toContain('東京都千代田区1-1-1');
+    expect(persisted).not.toContain('アムロジピン');
+    expect(persisted).not.toContain('signed.example');
+    expect(persisted).not.toContain('provider raw error');
+    expect(persisted).not.toContain('山田 太郎');
+    expect(persisted).not.toContain('token=secret');
+  });
+
   it('records file downloads without reusing PDF or ZIP export formats', async () => {
     auditLogCreateMock.mockResolvedValue({});
 

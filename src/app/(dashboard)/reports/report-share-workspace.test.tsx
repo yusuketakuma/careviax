@@ -449,7 +449,7 @@ describe('ReportShareWorkspace', () => {
       '/reports/report_failed?action=resend&delivery_id=delivery_failed',
       '/reports/report_failed?action=resend&delivery_id=delivery_failed',
     ]);
-    expect(screen.queryByRole('button', { name: 'CSV出力' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /CSV出力/ })).toBeNull();
     expect(screen.queryByRole('button', { name: '印刷' })).toBeNull();
 
     // 返信待ち / 今日解決した待ち

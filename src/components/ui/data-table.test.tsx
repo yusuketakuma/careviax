@@ -435,6 +435,124 @@ describe('DataTable', () => {
     expect(screen.queryByRole('button', { name: 'CSV出力' })).toBeNull();
   });
 
+  it('exports only the currently filtered loaded rows without fetching unloaded server rows', async () => {
+    const createObjectURL = vi.fn<(object: Blob | MediaSource) => string>(() => 'blob:mock');
+    const revokeObjectURL = vi.fn();
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = createObjectURL as unknown as typeof URL.createObjectURL;
+    URL.revokeObjectURL = revokeObjectURL as unknown as typeof URL.revokeObjectURL;
+    const onLoadMore = vi.fn();
+
+    try {
+      render(
+        <DataTable
+          columns={columns}
+          data={[
+            { id: 'loaded-1', name: 'Alpha Loaded' },
+            { id: 'loaded-2', name: 'Bravo Loaded' },
+          ]}
+          hasMore
+          onLoadMore={onLoadMore}
+          toolbar={{ enableExport: true, enableGlobalFilter: true }}
+        />,
+      );
+
+      fireEvent.change(screen.getByPlaceholderText('テーブル内を絞り込み'), {
+        target: { value: 'Alpha' },
+      });
+
+      const exportButton = screen.getByRole('button', { name: '読込済みCSV出力' });
+      const warning = screen.getByText('未読込行は出力対象外です。');
+      expect(exportButton.getAttribute('aria-describedby')).toBe(warning.id);
+      fireEvent.click(exportButton);
+
+      expect(onLoadMore).not.toHaveBeenCalled();
+      expect(anchorClick).toHaveBeenCalledTimes(1);
+      const [blob] = createObjectURL.mock.calls[0] ?? [];
+      if (!(blob instanceof Blob)) {
+        throw new Error('CSV export did not pass a Blob to URL.createObjectURL');
+      }
+      const csv = await blob.text();
+      expect(csv).toContain('Alpha Loaded');
+      expect(csv).not.toContain('Bravo Loaded');
+      expect(screen.queryByRole('button', { name: 'CSV出力' })).toBeNull();
+    } finally {
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+      anchorClick.mockRestore();
+    }
+  });
+
+  it('uses column exportValue for PHI-minimized client CSV snapshots', async () => {
+    type PhiRow = {
+      id: string;
+      patientName: string;
+      phone: string;
+      exportLabel: string;
+    };
+    const phiColumns: ColumnDef<PhiRow>[] = [
+      {
+        accessorKey: 'patientName',
+        header: '患者',
+        meta: { exportValue: (row: PhiRow) => row.exportLabel },
+      },
+      {
+        accessorKey: 'phone',
+        header: '電話',
+        meta: { exportValue: () => '電話番号は出力対象外' },
+      },
+    ];
+    const createObjectURL = vi.fn<(object: Blob | MediaSource) => string>(() => 'blob:mock');
+    const revokeObjectURL = vi.fn();
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = createObjectURL as unknown as typeof URL.createObjectURL;
+    URL.revokeObjectURL = revokeObjectURL as unknown as typeof URL.revokeObjectURL;
+
+    try {
+      render(
+        <DataTable
+          columns={phiColumns}
+          data={[
+            {
+              id: 'patient_1',
+              patientName: '山田 太郎',
+              phone: '090-1234-5678',
+              exportLabel: '患者リンクのみ',
+            },
+          ]}
+          toolbar={{ enableExport: true }}
+        />,
+      );
+
+      expect(screen.getAllByText('山田 太郎').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('090-1234-5678').length).toBeGreaterThan(0);
+
+      fireEvent.click(screen.getByRole('button', { name: '読込済みCSV出力' }));
+
+      expect(anchorClick).toHaveBeenCalledTimes(1);
+      const [blob] = createObjectURL.mock.calls[0] ?? [];
+      if (!(blob instanceof Blob)) {
+        throw new Error('CSV export did not pass a Blob to URL.createObjectURL');
+      }
+      const csv = await blob.text();
+      expect(csv).toContain('患者リンクのみ');
+      expect(csv).toContain('電話番号は出力対象外');
+      expect(csv).not.toContain('山田');
+      expect(csv).not.toContain('090-1234-5678');
+      expect(csv).not.toContain('patient_');
+      expect(csv).not.toContain('signed-url');
+      expect(csv).not.toContain('raw provider error');
+    } finally {
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+      anchorClick.mockRestore();
+    }
+  });
+
   it('does not paginate by default (existing screens keep rendering every row)', () => {
     const manyRows: RowData[] = Array.from({ length: 120 }, (_, index) => ({
       id: `row-${index}`,

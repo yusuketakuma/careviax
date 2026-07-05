@@ -253,7 +253,7 @@ describe('IntakeTriageContent', () => {
 
     // 受信時刻の相対表記(昨日)
     expect(screen.getAllByText('昨日 17:20')).toHaveLength(2);
-    expect(screen.queryByRole('button', { name: 'CSV出力' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /CSV出力/ })).toBeNull();
     expect(screen.queryByRole('button', { name: '印刷' })).toBeNull();
 
     // 重複検知バナー(破棄理由の記録に言及)

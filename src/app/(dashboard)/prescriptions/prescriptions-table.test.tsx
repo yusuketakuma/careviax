@@ -140,7 +140,7 @@ describe('PrescriptionsTable', () => {
     expect(screen.getAllByText('佐藤医師').length).toBeGreaterThanOrEqual(2);
     expect(screen.getAllByText('04/20').length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByRole('heading', { name: '処方受付一覧を表示できません' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'CSV出力' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /CSV出力/ })).toBeNull();
     expect(screen.queryByRole('button', { name: '印刷' })).toBeNull();
   });
 
