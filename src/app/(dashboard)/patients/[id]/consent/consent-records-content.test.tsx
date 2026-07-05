@@ -6,7 +6,11 @@ import { toast } from 'sonner';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { createQueryClientWrapper } from '@/test/query-client-test-utils';
-import { ConsentRecordsContent } from './consent-records-content';
+import {
+  ConsentRecordsContent,
+  fetchConsentRecords,
+  fetchConsentTemplates,
+} from './consent-records-content';
 
 vi.mock('next/navigation', () => ({
   useParams: () => ({ id: 'patient_1' }),
@@ -175,6 +179,36 @@ describe('ConsentRecordsContent', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it('surfaces API error messages when consent template lookup fails', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ message: '同意書テンプレート権限なし' }), { status: 403 }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchConsentTemplates('org_1')).rejects.toThrow('同意書テンプレート権限なし');
+    expect(fetchMock).toHaveBeenCalledWith('/api/templates?template_type=consent_form', {
+      headers: { 'x-org-id': 'org_1' },
+    });
+  });
+
+  it('surfaces API error messages when consent record lookup fails', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ message: '同意記録の閲覧権限がありません' }), {
+        status: 403,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchConsentRecords('patient_1', 'org_1')).rejects.toThrow(
+      '同意記録の閲覧権限がありません',
+    );
+    expect(fetchMock).toHaveBeenCalledWith('/api/consent-records?patient_id=patient_1', {
+      headers: { 'x-org-id': 'org_1' },
+    });
   });
 
   it('uploads consent documents and creates consent records with document_file_id only', async () => {

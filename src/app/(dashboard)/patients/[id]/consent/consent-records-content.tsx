@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { downscaleImage } from '@/lib/files/downscale-image';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
@@ -67,6 +68,10 @@ type ConsentListResponse = {
   totalCount: number;
 };
 
+type ConsentTemplateListResponse = {
+  data: Array<{ id: string; name: string; version: number; is_default: boolean }>;
+};
+
 // --- Constants ---
 
 const CONSENT_TYPE_LABELS: Record<string, string> = {
@@ -82,6 +87,23 @@ const METHOD_LABELS: Record<string, string> = {
 };
 
 const CONSENT_DOCUMENT_ACCEPT = 'application/pdf,image/jpeg,image/png,image/webp';
+
+export async function fetchConsentTemplates(orgId: string): Promise<ConsentTemplateListResponse> {
+  const res = await fetch('/api/templates?template_type=consent_form', {
+    headers: buildOrgHeaders(orgId),
+  });
+  return readApiJson<ConsentTemplateListResponse>(res, '同意書テンプレートの取得に失敗しました');
+}
+
+export async function fetchConsentRecords(
+  patientId: string,
+  orgId: string,
+): Promise<ConsentListResponse> {
+  const res = await fetch(`/api/consent-records?patient_id=${patientId}`, {
+    headers: buildOrgHeaders(orgId),
+  });
+  return readApiJson<ConsentListResponse>(res, '同意記録の取得に失敗しました');
+}
 
 function inferConsentDocumentMimeType(file: File) {
   if (file.type) return file.type;
@@ -329,15 +351,7 @@ function CreateConsentDialog({
   const [formErrors, setFormErrors] = useState<CreateFormErrors>({});
   const templatesQuery = useQuery({
     queryKey: ['consent-templates', orgId],
-    queryFn: async () => {
-      const res = await fetch('/api/templates?template_type=consent_form', {
-        headers: buildOrgHeaders(orgId),
-      });
-      if (!res.ok) throw new Error('同意書テンプレートの取得に失敗しました');
-      return res.json() as Promise<{
-        data: Array<{ id: string; name: string; version: number; is_default: boolean }>;
-      }>;
-    },
+    queryFn: () => fetchConsentTemplates(orgId),
     enabled: !!orgId,
   });
 
@@ -781,13 +795,7 @@ export function ConsentRecordsContent() {
 
   const { data, isLoading, isError, refetch } = useQuery<ConsentListResponse>({
     queryKey: ['consent-records', patientId],
-    queryFn: async () => {
-      const res = await fetch(`/api/consent-records?patient_id=${patientId}`, {
-        headers: buildOrgHeaders(orgId),
-      });
-      if (!res.ok) throw new Error('同意記録の取得に失敗しました');
-      return res.json();
-    },
+    queryFn: () => fetchConsentRecords(patientId, orgId),
     enabled: !!orgId && !!patientId,
   });
 
