@@ -40,7 +40,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: PatientsBoard foundation filter granularity slice complete（code/test: commit pending）。
+- codex: PatientsBoard foundation filter granularity slice complete（code/test: 0841a2184）。
   - current task:
     Goal 継続として `Plans.md` の `PAT-LIST-UX-001` に対応。ユーザー指示により、UI作業は
     imagegen でデザイン方向を再構築してから実装する方針を採用。`gpt-image-2` 利用方針は
