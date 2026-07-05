@@ -86,11 +86,10 @@ async function patchOperationalPolicy(
     headers: buildOrgJsonHeaders(orgId),
     body: JSON.stringify(values),
   });
-  if (!res.ok) {
-    const payload = (await res.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(payload?.message ?? '運用ポリシーの更新に失敗しました');
-  }
-  const json = await res.json();
+  const json = await readApiJson<{ data: OperationalPolicyResponse }>(
+    res,
+    '運用ポリシーの更新に失敗しました',
+  );
   return json.data;
 }
 

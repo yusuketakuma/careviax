@@ -6,6 +6,7 @@ import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { jsonResponse, stubJsonFetch } from '@/test/fetch-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useUIStore } from '@/lib/stores/ui-store';
+import { toast } from 'sonner';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import type { OperationalPolicy, OperationalPolicyResponse } from './operational-policy-content';
 
@@ -170,6 +171,7 @@ function renderWithCapturedQueries({
   const mutationConfigs: Array<{
     mutationFn: (values: Partial<OperationalPolicy>) => unknown;
     onSuccess?: (data: OperationalPolicyResponse) => unknown;
+    onError?: (error: unknown) => unknown;
   }> = [];
   useQueryMock.mockImplementation((options: { queryKey: unknown[]; queryFn: () => unknown }) => {
     queryConfigs.set(String(options.queryKey[0]), options);
@@ -419,6 +421,30 @@ describe('OperationalPolicyContent', () => {
       expect(init.headers).toBe(sentinel);
       expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
       expect(JSON.parse(init.body as string)).toEqual(values);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('surfaces API error messages when operational policy updates fail', async () => {
+    const { mutationConfigs } = renderWithCapturedQueries();
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ message: '運用ポリシーの更新権限がありません' }, 403));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      await expect(mutationConfigs[0].mutationFn({ quiet_hours: false })).rejects.toThrow(
+        '運用ポリシーの更新権限がありません',
+      );
+      mutationConfigs[0].onError?.(new Error('運用ポリシーの更新権限がありません'));
+
+      expect(fetchMock).toHaveBeenCalledWith('/api/settings/operational-policy', {
+        method: 'PATCH',
+        headers: buildOrgJsonHeaders('org_1'),
+        body: JSON.stringify({ quiet_hours: false }),
+      });
+      expect(toast.error).toHaveBeenCalledWith('運用ポリシーの更新権限がありません');
     } finally {
       vi.unstubAllGlobals();
     }
