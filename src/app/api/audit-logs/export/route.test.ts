@@ -51,6 +51,36 @@ function createRequest(headers?: Record<string, string>, search = 'format=csv') 
   });
 }
 
+function legacyCareReportPdfExportAuditRow() {
+  return {
+    id: 'audit_care_report_pdf_1',
+    org_id: 'org_1',
+    actor_id: 'user_1',
+    action: 'export',
+    target_type: 'care_report',
+    target_id: 'report_1',
+    changes: {
+      format: 'pdf',
+      record_count: 1,
+      metadata: {
+        surface: 'care_report_pdf',
+        output_profile: 'external_submission_pdf',
+        report_updated_at: '2026-03-28T09:00:00.000Z',
+        patient_name: '山田太郎',
+        phone: '090-1234-5678',
+        medication_name: 'アムロジピン',
+        storageKey: 'reports/org_1/raw.pdf',
+        signed_url: '=https://signed.example/raw.pdf?token=secret',
+        provider_raw_error: 'provider raw error patient 山田',
+        content: '処方全文',
+      },
+    },
+    ip_address: '127.0.0.1',
+    user_agent: 'vitest',
+    created_at: new Date('2026-03-28T00:00:00.000Z'),
+  };
+}
+
 describe('/api/audit-logs/export GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -141,6 +171,135 @@ describe('/api/audit-logs/export GET', () => {
         action: 'export',
       }),
     ]);
+  });
+
+  it('preserves safe care report PDF profile fields and redacts hostile legacy metadata in json export payloads', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    findManyMock.mockResolvedValue([legacyCareReportPdfExportAuditRow()]);
+
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }, 'format=json&target_type=care_report&action=export'),
+      emptyRouteContext,
+    )) as Response;
+    const body = await response.json();
+    const bodyText = JSON.stringify(body);
+
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    expect(body[0].changes).toEqual({
+      format: 'pdf',
+      record_count: 1,
+      filters: {},
+      metadata: {
+        surface: 'care_report_pdf',
+        output_profile: 'external_submission_pdf',
+        report_updated_at: '2026-03-28T09:00:00.000Z',
+      },
+    });
+    expect(bodyText).not.toContain('山田');
+    expect(bodyText).not.toContain('090-1234-5678');
+    expect(bodyText).not.toContain('アムロジピン');
+    expect(bodyText).not.toContain('raw.pdf');
+    expect(bodyText).not.toContain('signed.example');
+    expect(bodyText).not.toContain('token=secret');
+    expect(bodyText).not.toContain('provider raw error');
+    expect(bodyText).not.toContain('処方全文');
+    expect(recordDataExportAuditMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        targetType: 'audit_log',
+        format: 'json',
+        filters: expect.objectContaining({
+          targetType: 'care_report',
+          action: 'export',
+        }),
+      }),
+    );
+  });
+
+  it('preserves safe care report PDF profile fields and redacts hostile legacy metadata in csv export payloads', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    findManyMock.mockResolvedValue([legacyCareReportPdfExportAuditRow()]);
+
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }, 'format=csv&target_type=care_report&action=export'),
+      emptyRouteContext,
+    )) as Response;
+    const body = await response.text();
+
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    expect(body).toContain('care_report_pdf');
+    expect(body).toContain('external_submission_pdf');
+    expect(body).toContain('2026-03-28T09:00:00.000Z');
+    expect(body).not.toContain('山田');
+    expect(body).not.toContain('090-1234-5678');
+    expect(body).not.toContain('アムロジピン');
+    expect(body).not.toContain('raw.pdf');
+    expect(body).not.toContain('signed.example');
+    expect(body).not.toContain('token=secret');
+    expect(body).not.toContain('provider raw error');
+    expect(body).not.toContain('処方全文');
+  });
+
+  it('redacts hostile file download metadata values in json export payloads', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    findManyMock.mockResolvedValue([
+      {
+        id: 'audit_file_download_1',
+        org_id: 'org_1',
+        actor_id: 'user_1',
+        action: 'file_download',
+        target_type: 'file_asset',
+        target_id: 'file_1',
+        changes: {
+          format: 'file',
+          record_count: 1,
+          metadata: {
+            file_id: 'file_1',
+            file_purpose: '患者 山田太郎 03-1234-5678',
+            mime_type: 'application/pdf',
+            size_bytes: 1000,
+            source: 'https://signed.example/raw.pdf?token=secret',
+            provider_raw_error: 'provider raw error',
+          },
+        },
+        ip_address: '127.0.0.1',
+        user_agent: 'vitest',
+        created_at: new Date('2026-03-28T00:00:00.000Z'),
+      },
+    ]);
+
+    const response = (await GET(
+      createRequest(
+        { 'x-org-id': 'org_1' },
+        'format=json&target_type=file_asset&action=file_download',
+      ),
+      emptyRouteContext,
+    )) as Response;
+    const body = await response.json();
+    const bodyText = JSON.stringify(body);
+
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    expect(body[0].changes).toEqual({
+      format: 'file',
+      record_count: 1,
+      filters: {},
+      metadata: {
+        file_id: 'file_1',
+        mime_type: 'application/pdf',
+        size_bytes: 1000,
+      },
+    });
+    expect(bodyText).not.toContain('山田太郎');
+    expect(bodyText).not.toContain('03-1234-5678');
+    expect(bodyText).not.toContain('signed.example');
+    expect(bodyText).not.toContain('token=secret');
+    expect(bodyText).not.toContain('provider raw error');
   });
 
   it('returns no-store 401 when unauthenticated', async () => {

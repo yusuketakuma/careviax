@@ -1,3 +1,9 @@
+import {
+  isPlainAuditRecord,
+  isSafeExportAuditFormat,
+  sanitizeExportAuditSection,
+} from '@/lib/audit/export-audit-sanitizer';
+
 const REDACTED_REJECT_REASON = '却下理由の自由記載は出力対象外です';
 
 const FORMULARY_CHANGE_REQUEST_AUDIT_ACTIONS = new Set([
@@ -5,35 +11,6 @@ const FORMULARY_CHANGE_REQUEST_AUDIT_ACTIONS = new Set([
   'pharmacy_drug_stock_change_approved',
   'pharmacy_drug_stock_change_rejected',
 ]);
-const EXPORT_SAFE_FILTER_KEYS = new Set([
-  'status',
-  'case_status',
-  'targetType',
-  'action',
-  'from',
-  'to',
-  'truncated',
-  'intake_count',
-]);
-const EXPORT_SAFE_METADATA_KEYS = new Set([
-  'job_id',
-  'file_id',
-  'status',
-  'source',
-  'file_purpose',
-  'mime_type',
-  'size_bytes',
-  'export_format',
-  'patient_count',
-  'requested_count',
-  'success_count',
-  'failed_count',
-  'failure_codes',
-  'patient_selection_hash',
-]);
-const EXPORT_BLOCKED_KEY_PATTERN =
-  /(patient_?ids?|patientIds?|storage_?key|object_?key|token|secret|url|href|raw|error|stack|address|phone|insurance|note|memo|text|body|content)/i;
-
 type AuditLogLike = {
   action: string;
   target_type?: string | null;
@@ -41,78 +18,20 @@ type AuditLogLike = {
 };
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+  return isPlainAuditRecord(value);
 }
 
 function hasOwn(record: Record<string, unknown>, key: string) {
   return Object.prototype.hasOwnProperty.call(record, key);
 }
 
-function isExportBlockedKey(key: string) {
-  return (
-    !EXPORT_SAFE_METADATA_KEYS.has(key) &&
-    !EXPORT_SAFE_FILTER_KEYS.has(key) &&
-    EXPORT_BLOCKED_KEY_PATTERN.test(key)
-  );
-}
-
-function sanitizeExportScalar(value: unknown) {
-  if (
-    typeof value === 'string' ||
-    typeof value === 'number' ||
-    typeof value === 'boolean' ||
-    value === null
-  ) {
-    return value;
-  }
-
-  return undefined;
-}
-
-function sanitizeExportValue(value: unknown): unknown {
-  const scalar = sanitizeExportScalar(value);
-  if (scalar !== undefined) return scalar;
-
-  if (Array.isArray(value)) {
-    const sanitizedValues = value
-      .map((item) => sanitizeExportScalar(item))
-      .filter((item) => item !== undefined);
-    return sanitizedValues.length === value.length ? sanitizedValues : undefined;
-  }
-
-  if (isPlainRecord(value)) {
-    const sanitized: Record<string, unknown> = {};
-    for (const [key, item] of Object.entries(value)) {
-      if (isExportBlockedKey(key)) continue;
-      const sanitizedValue = sanitizeExportValue(item);
-      if (sanitizedValue !== undefined) {
-        sanitized[key] = sanitizedValue;
-      }
-    }
-    return sanitized;
-  }
-
-  return undefined;
-}
-
-function sanitizeExportSection(value: unknown, allowedKeys: Set<string>) {
-  if (!isPlainRecord(value)) return {};
-
-  const sanitized: Record<string, unknown> = {};
-  for (const [key, item] of Object.entries(value)) {
-    if (!allowedKeys.has(key) || isExportBlockedKey(key)) continue;
-    const sanitizedValue = sanitizeExportValue(item);
-    if (sanitizedValue !== undefined) {
-      sanitized[key] = sanitizedValue;
-    }
-  }
-  return sanitized;
-}
-
-function minimizeExportAuditChanges(changes: Record<string, unknown>) {
+function minimizeExportAuditChanges(
+  changes: Record<string, unknown>,
+  targetType: string | null | undefined,
+) {
   const minimized: Record<string, unknown> = {};
 
-  if (typeof changes.format === 'string') {
+  if (isSafeExportAuditFormat(changes.format)) {
     minimized.format = changes.format;
   }
 
@@ -120,8 +39,18 @@ function minimizeExportAuditChanges(changes: Record<string, unknown>) {
     minimized.record_count = changes.record_count;
   }
 
-  const filters = sanitizeExportSection(changes.filters, EXPORT_SAFE_FILTER_KEYS);
-  const metadata = sanitizeExportSection(changes.metadata, EXPORT_SAFE_METADATA_KEYS);
+  const filters = sanitizeExportAuditSection({
+    targetType,
+    values: changes.filters,
+    section: 'filters',
+    fallbackToGlobalKeys: true,
+  });
+  const metadata = sanitizeExportAuditSection({
+    targetType,
+    values: changes.metadata,
+    section: 'metadata',
+    fallbackToGlobalKeys: true,
+  });
   minimized.filters = filters;
   minimized.metadata = metadata;
 
@@ -232,7 +161,7 @@ export function redactAuditLogChangesForResponse<T extends AuditLogLike>(log: T)
   if (log.action === 'export' || log.action === 'file_download') {
     return {
       ...log,
-      changes: minimizeExportAuditChanges(log.changes),
+      changes: minimizeExportAuditChanges(log.changes, log.target_type),
     };
   }
 

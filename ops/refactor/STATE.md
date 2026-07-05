@@ -3267,3 +3267,69 @@
 - remaining:
   broader `Plans.md` objective remains open. Browser screenshot/mobile keyboard proof for the patient detail
   tabs is still a useful follow-up, along with the larger Command Center/BFF split tasks.
+
+## 2026-07-06 Export Audit Sanitizer / DEV-PHI continuation
+
+- codex: SEC-002 / DEV-PHI export audit sanitizer consolidation slice complete.
+  既存 dirty 差分を `Plans.md` の `SEC-002` / `DEV-PHI-001` / `UX-TBL-001` 近接タスクとして確認し、
+  audit-log response/export と export audit persistence の minifier を
+  `src/lib/audit/export-audit-sanitizer.ts` へ集約した。`src/server/services/export-audit.ts` と
+  `src/lib/audit-logs/redaction.ts` に分散していた export allowlist / recursive sanitizer を削除し、
+  targetType + key ごとの strict schema で `job_id` / `file_id` / `status` / `source` /
+  `file_purpose` / `export_format` / `failure_codes` などの allowlist key 値も検査する。
+  これにより、storage key / signed URL / raw provider error / phone-like string だけでなく、
+  allowlist key 内へ混入した患者名、住所、薬剤名、free text も response/export/persistence から drop
+  する。report PDF metadata は canonical `surface` / `output_profile` / `report_updated_at`
+  profile を継続し、file download audit は safe context flags と opaque identifiers
+  (`file_id`, `context_type`, `consent_record_id`, `surface`, `response_mode`, `expires_in_seconds`)
+  を保持する。
+- subagent review:
+  `privacy_compliance_reviewer` (`019f3379-c35d-74f2-ab97-1c6e30ec393d`) が read-only で、
+  pattern-only sanitizer では allowlist key 値に単独の患者名・薬剤名・住所・free text が入ると漏れ得る
+  high/blocking finding を指摘。指摘を受け、key-specific schema と non-pattern PHI regression tests を追加した。
+  `verifier` (`019f337f-3bf6-7b30-bf6d-24b142bd439b`) は初回 read-only verification で
+  `Amlodipine` / `Taro` / `Tokyo` のような ASCII single-token PHI-like values がまだ通ると
+  CHANGES_REQUESTED。再修正で汎用 ASCII safe code をやめ、status/source/purpose/surface 等は enum、
+  ID/hash は prefix/UUID/SHA-like validator へ変更し、direct probe は `{"patient_count":1}` のみに縮退した。
+- files inspected:
+  `Plans.md`, `src/lib/audit/export-audit-sanitizer.ts`, `src/lib/audit-logs/redaction.ts`,
+  `src/lib/audit-logs/redaction.test.ts`, `src/server/services/export-audit.ts`,
+  `src/server/services/export-audit.test.ts`, `src/app/api/audit-logs/export/route.ts`,
+  `src/app/api/audit-logs/export/route.test.ts`, `src/server/services/file-download-audit.ts`,
+  `src/server/services/file-download-audit.test.ts`.
+- files changed:
+  `src/lib/audit/export-audit-sanitizer.ts`, `src/lib/audit-logs/redaction.ts`,
+  `src/lib/audit-logs/redaction.test.ts`, `src/server/services/export-audit.ts`,
+  `src/server/services/export-audit.test.ts`, `src/app/api/audit-logs/export/route.test.ts`,
+  `ops/refactor/STATE.md`.
+- bugs found/fixed:
+  export audit persistence と audit-log response/export が別々の allowlist / sanitizer を持ち、legacy metadata
+  の profile 判定や file download metadata の扱いが割れやすかった。さらに、allowlist key の値は
+  pattern 非一致なら自由文字列が残る余地があった。今回、共通 helper + key-specific schema に寄せ、
+  `failure_codes` は safe code array または safe code -> finite number map のみ許可し、未知 nested string は drop
+  する。
+- security/PHI risks reduced:
+  AuditLog `changes` の export/file_download action で、患者名、住所、薬剤名、free text、storage key、
+  signed URL、raw provider error、provider/token-like diagnostics が audit-log JSON/CSV export や
+  export audit persistence に残るリスクを低減。直接 audit fields (`patient_id`, `actor_id`, `target_id`, IP/UA)
+  は既存 audit traceability scope のままなので、`UX-AUD-001` / audit risk-tier policy で継続管理する。
+- performance issues improved:
+  duplicate sanitizer logic を削除し、export audit minification の分岐を shared helper に集約。runtime query shape
+  は変更なし。
+- validation:
+  `pnpm exec prettier --write src/lib/audit/export-audit-sanitizer.ts src/lib/audit-logs/redaction.ts src/lib/audit-logs/redaction.test.ts src/server/services/export-audit.ts src/server/services/export-audit.test.ts src/app/api/audit-logs/export/route.test.ts`
+  green;
+  `pnpm exec eslint --max-warnings=0 src/lib/audit/export-audit-sanitizer.ts src/lib/audit-logs/redaction.ts src/lib/audit-logs/redaction.test.ts src/server/services/export-audit.ts src/server/services/export-audit.test.ts src/app/api/audit-logs/export/route.test.ts`
+  green;
+  `pnpm exec prettier --check src/lib/audit/export-audit-sanitizer.ts src/lib/audit-logs/redaction.ts src/lib/audit-logs/redaction.test.ts src/server/services/export-audit.ts src/server/services/export-audit.test.ts src/app/api/audit-logs/export/route.test.ts`
+  green;
+  `git diff --check -- src/lib/audit/export-audit-sanitizer.ts src/lib/audit-logs/redaction.ts src/lib/audit-logs/redaction.test.ts src/server/services/export-audit.ts src/server/services/export-audit.test.ts src/app/api/audit-logs/export/route.test.ts`
+  green;
+  `pnpm exec vitest run src/lib/audit-logs/redaction.test.ts src/server/services/export-audit.test.ts src/app/api/audit-logs/export/route.test.ts --reporter=dot --testTimeout=30000`
+  green (3 files / 59 tests; expected sanitized stderr from 500 route test only);
+  `pnpm exec tsx -e "import { sanitizeExportAuditSection } from './src/lib/audit/export-audit-sanitizer.ts'; console.log(JSON.stringify(sanitizeExportAuditSection({ targetType: 'medication_history', section: 'metadata', values: { status: 'Amlodipine', job_id: 'Taro', file_id: 'Tokyo', patient_count: 1 } })))"`
+  returned `{"patient_count":1}`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck --pretty false` green.
+- remaining:
+  Broader `DEV-PHI-001` remains open for PDF/report/attachment/export snapshot breadth and audit risk-tier
+  UI/review workflow.

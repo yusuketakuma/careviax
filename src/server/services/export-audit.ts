@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { sanitizeExportAuditSection } from '@/lib/audit/export-audit-sanitizer';
 import { normalizeJsonInput } from '@/lib/db/json';
 
 type AuditClient = {
@@ -21,234 +22,6 @@ type AuditClient = {
   };
 };
 
-const blockedAuditKeyPattern =
-  /(patient_?ids?|patientIds?|storage_?key|object_?key|token|secret|url|href|raw|error|stack|address|phone|insurance|note|memo|text|body|content)/i;
-const blockedAuditValuePattern =
-  /(token=|secret|https?:\/\/|signed\.|storageKey|objectKey|provider raw error|\d{2,4}-\d{2,4}-\d{3,4}|保険者番号)/i;
-const safePatientAggregateKeys = new Set([
-  'patient_count',
-  'patient_selection_hash',
-  'requested_count',
-  'success_count',
-  'failed_count',
-  'exported_patient_count',
-  'exported_patient_id_hashes',
-  'exported_patient_id_hashes_truncated',
-]);
-
-const allowedFilterKeysByTarget = new Map<string, Set<string>>([
-  [
-    'audit_log',
-    new Set([
-      'actor',
-      'actorPharmacy',
-      'actorSite',
-      'patient',
-      'targetType',
-      'action',
-      'from',
-      'to',
-    ]),
-  ],
-  ['patient_list', new Set(['case_status', 'truncated'])],
-  ['patients', new Set(['status'])],
-  ['prescription_history', new Set(['intake_count', 'truncated'])],
-  [
-    'billing_candidate',
-    new Set(['month', 'status', 'review_state', 'resolution_state', 'truncated']),
-  ],
-  [
-    'communication_request',
-    new Set([
-      'status',
-      'request_type',
-      'profile',
-      'redaction_profile',
-      'care_report_rows_excluded',
-      'truncated',
-      'from',
-      'to',
-    ]),
-  ],
-  ['pharmacy_drug_stock', new Set(['purpose'])],
-]);
-
-const allowedMetadataKeysByTarget = new Map<string, Set<string>>([
-  [
-    'medication_history',
-    new Set([
-      'job_id',
-      'file_id',
-      'status',
-      'patient_count',
-      'requested_count',
-      'success_count',
-      'failed_count',
-      'failure_codes',
-      'patient_selection_hash',
-    ]),
-  ],
-  ['file_asset', new Set(['file_purpose', 'mime_type', 'size_bytes'])],
-  ['billing_candidate', new Set(['export_format'])],
-  ['patients', new Set(['source'])],
-  ['patient_list', new Set(['source'])],
-  [
-    'communication_request',
-    new Set([
-      'export_snapshot_id',
-      'exported_request_id_hashes',
-      'exported_request_count',
-      'exported_request_id_hashes_truncated',
-      'exported_patient_id_hashes',
-      'exported_patient_count',
-      'exported_patient_id_hashes_truncated',
-    ]),
-  ],
-  ['pharmacy_drug_stock', new Set(['source'])],
-  ['care_report', new Set(['surface', 'output_profile', 'report_updated_at'])],
-  ['tracing_report', new Set(['surface', 'output_profile'])],
-  ['visit_record', new Set(['surface', 'output_profile'])],
-  ['conference_note', new Set(['surface', 'output_profile'])],
-]);
-
-const reportPdfMetadataProfileByTarget = {
-  care_report: {
-    surface: 'care_report_pdf',
-    output_profile: 'external_submission_pdf',
-    allowReportUpdatedAt: true,
-  },
-  tracing_report: {
-    surface: 'tracing_report_pdf',
-    output_profile: 'internal_pdf',
-    allowReportUpdatedAt: false,
-  },
-  visit_record: {
-    surface: 'visit_record_pdf',
-    output_profile: 'internal_pdf',
-    allowReportUpdatedAt: false,
-  },
-  conference_note: {
-    surface: 'conference_note_pdf',
-    output_profile: 'internal_pdf',
-    allowReportUpdatedAt: false,
-  },
-} as const satisfies Record<
-  string,
-  { surface: string; output_profile: string; allowReportUpdatedAt: boolean }
->;
-
-type ReportPdfAuditTarget = keyof typeof reportPdfMetadataProfileByTarget;
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
-
-function isBlockedAuditKey(key: string) {
-  return !safePatientAggregateKeys.has(key) && blockedAuditKeyPattern.test(key);
-}
-
-function sanitizeAuditScalar(value: unknown): unknown {
-  if (typeof value === 'string') {
-    if (blockedAuditValuePattern.test(value)) return undefined;
-    return value;
-  }
-
-  if (typeof value === 'number' || typeof value === 'boolean' || value === null) {
-    return value;
-  }
-
-  return undefined;
-}
-
-function sanitizeAuditValue(value: unknown): unknown {
-  const scalar = sanitizeAuditScalar(value);
-  if (scalar !== undefined) return scalar;
-
-  if (Array.isArray(value)) {
-    const sanitizedValues = value
-      .map((item) => sanitizeAuditScalar(item))
-      .filter((item) => item !== undefined);
-    return sanitizedValues.length === value.length ? sanitizedValues : undefined;
-  }
-
-  if (isPlainObject(value)) {
-    const sanitized: Record<string, unknown> = {};
-    for (const [key, item] of Object.entries(value)) {
-      if (isBlockedAuditKey(key)) continue;
-      const sanitizedValue = sanitizeAuditValue(item);
-      if (sanitizedValue !== undefined) {
-        sanitized[key] = sanitizedValue;
-      }
-    }
-
-    return sanitized;
-  }
-
-  return undefined;
-}
-
-function isReportPdfAuditTarget(targetType: string): targetType is ReportPdfAuditTarget {
-  return targetType in reportPdfMetadataProfileByTarget;
-}
-
-function isCanonicalIsoDateTime(value: string) {
-  const parsed = new Date(value);
-  return !Number.isNaN(parsed.getTime()) && parsed.toISOString() === value;
-}
-
-function sanitizeReportPdfAuditMetadata(
-  targetType: ReportPdfAuditTarget,
-  values: Record<string, unknown> | undefined,
-) {
-  if (!values) return {};
-  const profile = reportPdfMetadataProfileByTarget[targetType];
-  const sanitized: Record<string, unknown> = {};
-
-  if (values.surface === profile.surface) {
-    sanitized.surface = profile.surface;
-  }
-
-  if (values.output_profile === profile.output_profile) {
-    sanitized.output_profile = profile.output_profile;
-  }
-
-  if (
-    profile.allowReportUpdatedAt &&
-    typeof values.report_updated_at === 'string' &&
-    isCanonicalIsoDateTime(values.report_updated_at)
-  ) {
-    sanitized.report_updated_at = values.report_updated_at;
-  }
-
-  return sanitized;
-}
-
-function sanitizeAuditRecord(
-  targetType: string,
-  values: Record<string, unknown> | undefined,
-  allowedKeysByTarget: Map<string, Set<string>>,
-) {
-  if (!values) return {};
-  if (allowedKeysByTarget === allowedMetadataKeysByTarget && isReportPdfAuditTarget(targetType)) {
-    return sanitizeReportPdfAuditMetadata(targetType, values);
-  }
-
-  const allowedKeys = allowedKeysByTarget.get(targetType);
-  if (!allowedKeys) return {};
-  const sanitized: Record<string, unknown> = {};
-
-  for (const [key, value] of Object.entries(values)) {
-    if (isBlockedAuditKey(key)) continue;
-    if (allowedKeys && !allowedKeys.has(key)) continue;
-    const sanitizedValue = sanitizeAuditValue(value);
-    if (sanitizedValue !== undefined) {
-      sanitized[key] = sanitizedValue;
-    }
-  }
-
-  return sanitized;
-}
-
 export function buildDataExportAuditChanges(args: {
   targetType: string;
   format: 'csv' | 'json' | 'zip' | 'pdf' | 'print' | 'claims-xml' | 'file';
@@ -260,8 +33,16 @@ export function buildDataExportAuditChanges(args: {
     normalizeJsonInput({
       format: args.format,
       record_count: args.recordCount ?? null,
-      filters: sanitizeAuditRecord(args.targetType, args.filters, allowedFilterKeysByTarget),
-      metadata: sanitizeAuditRecord(args.targetType, args.metadata, allowedMetadataKeysByTarget),
+      filters: sanitizeExportAuditSection({
+        targetType: args.targetType,
+        values: args.filters,
+        section: 'filters',
+      }),
+      metadata: sanitizeExportAuditSection({
+        targetType: args.targetType,
+        values: args.metadata,
+        section: 'metadata',
+      }),
     }) ?? {}
   );
 }

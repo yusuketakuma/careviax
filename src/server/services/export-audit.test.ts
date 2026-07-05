@@ -318,6 +318,81 @@ describe('recordDataExportAudit', () => {
     expect(persisted).not.toContain('token=secret');
   });
 
+  it('drops non-pattern PHI inside allowlisted export metadata keys before persistence', async () => {
+    auditLogCreateMock.mockResolvedValue({});
+
+    await recordDataExportAudit(db, {
+      orgId: 'org-1',
+      actorId: 'user-1',
+      targetType: 'medication_history',
+      format: 'zip',
+      recordCount: 3,
+      metadata: {
+        job_id: '山田太郎',
+        file_id: '東京都千代田区1-1-1',
+        status: 'アムロジピン',
+        patient_count: 3,
+        requested_count: 3,
+        patient_selection_hash: 'hash-1',
+        failure_codes: ['network_timeout', '山田太郎'],
+      },
+    });
+
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        changes: {
+          format: 'zip',
+          record_count: 3,
+          filters: {},
+          metadata: {
+            patient_count: 3,
+            requested_count: 3,
+            patient_selection_hash: 'hash-1',
+          },
+        },
+      }),
+    });
+    const persisted = JSON.stringify(auditLogCreateMock.mock.calls);
+    expect(persisted).not.toContain('山田太郎');
+    expect(persisted).not.toContain('東京都千代田区');
+    expect(persisted).not.toContain('アムロジピン');
+  });
+
+  it('drops ASCII PHI-like single tokens inside allowlisted export metadata keys before persistence', async () => {
+    auditLogCreateMock.mockResolvedValue({});
+
+    await recordDataExportAudit(db, {
+      orgId: 'org-1',
+      actorId: 'user-1',
+      targetType: 'medication_history',
+      format: 'zip',
+      recordCount: 1,
+      metadata: {
+        status: 'Amlodipine',
+        job_id: 'Taro',
+        file_id: 'Tokyo',
+        patient_count: 1,
+      },
+    });
+
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        changes: {
+          format: 'zip',
+          record_count: 1,
+          filters: {},
+          metadata: {
+            patient_count: 1,
+          },
+        },
+      }),
+    });
+    const persisted = JSON.stringify(auditLogCreateMock.mock.calls);
+    expect(persisted).not.toContain('Amlodipine');
+    expect(persisted).not.toContain('Taro');
+    expect(persisted).not.toContain('Tokyo');
+  });
+
   it('keeps pharmacy drug stock export purpose while dropping raw PHI markers', async () => {
     auditLogCreateMock.mockResolvedValue({});
 
@@ -570,11 +645,21 @@ describe('recordDataExportAudit', () => {
       format: 'file',
       recordCount: 1,
       metadata: {
+        file_id: 'file-1',
         file_purpose: 'report',
         mime_type: 'application/pdf',
         size_bytes: 1024,
+        expires_in_seconds: 900,
+        surface: 'files_presigned_download',
+        response_mode: 'json',
+        context_type: 'consent_record_document',
+        consent_record_id: 'consent-1',
+        has_expiry_date: true,
+        consent_revoked: false,
         storageKey: 'reports/org_1/report_1/file_1-report.pdf',
         token: 'secret',
+        signed_url: 'https://signed.example/raw.pdf?token=secret',
+        patient_name: '山田 太郎',
       },
     });
 
@@ -582,9 +667,17 @@ describe('recordDataExportAudit', () => {
       data: expect.objectContaining({
         changes: expect.objectContaining({
           metadata: {
+            file_id: 'file-1',
             file_purpose: 'report',
             mime_type: 'application/pdf',
             size_bytes: 1024,
+            expires_in_seconds: 900,
+            surface: 'files_presigned_download',
+            response_mode: 'json',
+            context_type: 'consent_record_document',
+            consent_record_id: 'consent-1',
+            has_expiry_date: true,
+            consent_revoked: false,
           },
         }),
       }),
@@ -592,6 +685,8 @@ describe('recordDataExportAudit', () => {
     const persisted = JSON.stringify(auditLogCreateMock.mock.calls);
     expect(persisted).not.toContain('reports/org_1/report_1');
     expect(persisted).not.toContain('secret');
+    expect(persisted).not.toContain('signed.example');
+    expect(persisted).not.toContain('山田 太郎');
   });
 
   it('supports an explicit action for download-specific audit search', async () => {

@@ -104,6 +104,249 @@ describe('redactAuditLogChangesForResponse', () => {
     expect(resultText).not.toContain('secret');
   });
 
+  it('keeps only canonical care report PDF profile metadata from legacy export rows', () => {
+    const log = {
+      id: 'audit_care_report_pdf_1',
+      action: 'export',
+      target_type: 'care_report',
+      changes: {
+        format: 'pdf',
+        record_count: 1,
+        metadata: {
+          surface: 'care_report_pdf',
+          output_profile: 'external_submission_pdf',
+          report_updated_at: '2026-03-28T09:00:00.000Z',
+          patient_name: '山田太郎',
+          phone: '090-1234-5678',
+          medication_name: 'アムロジピン',
+          storageKey: 'reports/org_1/raw.pdf',
+          signed_url: 'https://signed.example/raw.pdf?token=secret',
+          provider_raw_error: 'provider raw error patient 山田',
+          content: '処方全文',
+        },
+      },
+    };
+
+    const result = redactAuditLogChangesForResponse(log);
+    const resultText = JSON.stringify(result);
+
+    expect(result).not.toBe(log);
+    expect(result.changes).toEqual({
+      format: 'pdf',
+      record_count: 1,
+      filters: {},
+      metadata: {
+        surface: 'care_report_pdf',
+        output_profile: 'external_submission_pdf',
+        report_updated_at: '2026-03-28T09:00:00.000Z',
+      },
+    });
+    expect(resultText).not.toContain('山田');
+    expect(resultText).not.toContain('090-1234-5678');
+    expect(resultText).not.toContain('アムロジピン');
+    expect(resultText).not.toContain('raw.pdf');
+    expect(resultText).not.toContain('signed.example');
+    expect(resultText).not.toContain('token=secret');
+    expect(resultText).not.toContain('provider raw error');
+    expect(resultText).not.toContain('処方全文');
+    expect(log.changes.metadata.patient_name).toBe('山田太郎');
+  });
+
+  it.each([
+    ['tracing_report', 'tracing_report_pdf'],
+    ['visit_record', 'visit_record_pdf'],
+    ['conference_note', 'conference_note_pdf'],
+  ])(
+    'keeps only canonical %s PDF profile metadata from legacy export rows',
+    (targetType, surface) => {
+      const log = {
+        id: `audit_${targetType}_pdf_1`,
+        action: 'export',
+        target_type: targetType,
+        changes: {
+          format: 'pdf',
+          record_count: 1,
+          metadata: {
+            surface,
+            output_profile: 'internal_pdf',
+            report_updated_at: '2026-03-28T09:00:00.000Z',
+            file_id: 'file patient 山田',
+            signed_url: 'https://signed.example/raw.pdf?token=secret',
+            provider_raw_error: 'provider raw error',
+          },
+        },
+      };
+
+      const result = redactAuditLogChangesForResponse(log);
+      const resultText = JSON.stringify(result);
+
+      expect(result.changes).toEqual({
+        format: 'pdf',
+        record_count: 1,
+        filters: {},
+        metadata: {
+          surface,
+          output_profile: 'internal_pdf',
+        },
+      });
+      expect(resultText).not.toContain('report_updated_at');
+      expect(resultText).not.toContain('山田');
+      expect(resultText).not.toContain('signed.example');
+      expect(resultText).not.toContain('token=secret');
+      expect(resultText).not.toContain('provider raw error');
+    },
+  );
+
+  it('drops hostile values even when legacy export rows use globally allowlisted metadata keys', () => {
+    const log = {
+      id: 'audit_export_hostile_values_1',
+      action: 'export',
+      target_type: 'medication_history',
+      changes: {
+        format: 'zip',
+        record_count: 3,
+        metadata: {
+          job_id: 'job_1 token=secret',
+          file_id: 'bulk-exports/org_1/raw.zip',
+          source: 'https://signed.example/raw.zip?token=secret',
+          file_purpose: '患者 山田太郎 090-1234-5678',
+          export_format: 'provider raw error',
+          patient_count: 3,
+          requested_count: 3,
+          patient_selection_hash: 'hash-1',
+          failure_codes: ['network_timeout', 'provider raw error patient 山田'],
+        },
+      },
+    };
+
+    const result = redactAuditLogChangesForResponse(log);
+    const resultText = JSON.stringify(result);
+
+    expect(result.changes).toEqual({
+      format: 'zip',
+      record_count: 3,
+      filters: {},
+      metadata: {
+        patient_count: 3,
+        requested_count: 3,
+        patient_selection_hash: 'hash-1',
+      },
+    });
+    expect(resultText).not.toContain('token=secret');
+    expect(resultText).not.toContain('bulk-exports');
+    expect(resultText).not.toContain('signed.example');
+    expect(resultText).not.toContain('山田太郎');
+    expect(resultText).not.toContain('090-1234-5678');
+    expect(resultText).not.toContain('provider raw error');
+  });
+
+  it('drops non-pattern PHI inside allowlisted export metadata keys', () => {
+    const log = {
+      id: 'audit_export_allowlisted_phi_1',
+      action: 'export',
+      target_type: 'medication_history',
+      changes: {
+        format: 'zip',
+        record_count: 3,
+        metadata: {
+          job_id: '山田太郎',
+          file_id: '東京都千代田区1-1-1',
+          status: 'アムロジピン',
+          patient_count: 3,
+          requested_count: 3,
+          patient_selection_hash: 'hash-1',
+          failure_codes: ['network_timeout', '山田太郎'],
+        },
+      },
+    };
+
+    const result = redactAuditLogChangesForResponse(log);
+    const resultText = JSON.stringify(result);
+
+    expect(result.changes).toEqual({
+      format: 'zip',
+      record_count: 3,
+      filters: {},
+      metadata: {
+        patient_count: 3,
+        requested_count: 3,
+        patient_selection_hash: 'hash-1',
+      },
+    });
+    expect(resultText).not.toContain('山田太郎');
+    expect(resultText).not.toContain('東京都千代田区');
+    expect(resultText).not.toContain('アムロジピン');
+  });
+
+  it('drops ASCII PHI-like single tokens inside allowlisted export metadata keys', () => {
+    const log = {
+      id: 'audit_export_ascii_phi_1',
+      action: 'export',
+      target_type: 'medication_history',
+      changes: {
+        format: 'zip',
+        record_count: 1,
+        metadata: {
+          status: 'Amlodipine',
+          job_id: 'Taro',
+          file_id: 'Tokyo',
+          patient_count: 1,
+        },
+      },
+    };
+
+    const result = redactAuditLogChangesForResponse(log);
+
+    expect(result.changes).toEqual({
+      format: 'zip',
+      record_count: 1,
+      filters: {},
+      metadata: {
+        patient_count: 1,
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain('Amlodipine');
+    expect(JSON.stringify(result)).not.toContain('Taro');
+    expect(JSON.stringify(result)).not.toContain('Tokyo');
+  });
+
+  it('drops hostile file_download values inside allowlisted metadata keys', () => {
+    const log = {
+      id: 'audit_file_download_hostile_values_1',
+      action: 'file_download',
+      target_type: 'file_asset',
+      changes: {
+        format: 'file',
+        record_count: 1,
+        metadata: {
+          file_id: 'file_1',
+          file_purpose: '患者 山田太郎 03-1234-5678',
+          mime_type: 'application/pdf',
+          size_bytes: 1000,
+          source: 'https://signed.example/raw.pdf?token=secret',
+        },
+      },
+    };
+
+    const result = redactAuditLogChangesForResponse(log);
+    const resultText = JSON.stringify(result);
+
+    expect(result.changes).toEqual({
+      format: 'file',
+      record_count: 1,
+      filters: {},
+      metadata: {
+        file_id: 'file_1',
+        mime_type: 'application/pdf',
+        size_bytes: 1000,
+      },
+    });
+    expect(resultText).not.toContain('山田太郎');
+    expect(resultText).not.toContain('03-1234-5678');
+    expect(resultText).not.toContain('signed.example');
+    expect(resultText).not.toContain('token=secret');
+  });
+
   it('minimizes formulary request free text without hiding structured evidence', () => {
     const log = {
       id: 'audit_formulary_1',
