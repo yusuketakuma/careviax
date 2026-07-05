@@ -1,5 +1,43 @@
 # CODEX Goal Progress
 
+## R40/R44 Consent Records readApiJson Partial - 2026-07-05 09:06 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/patients/[id]/consent/consent-records-content.tsx`
+    - `src/app/(dashboard)/patients/[id]/consent/consent-records-content.test.tsx`
+- Scope:
+  - Reused `readApiJson` for consent templates and consent records list read
+    GETs.
+  - Added focused fetcher coverage proving API JSON `message` from failed
+    template/list responses is preserved while URL and `x-org-id` header
+    contracts remain unchanged.
+  - Preserved endpoints, React Query keys, enabled gates, DataTable false-empty
+    prevention, consent upload flow, create/update/revoke mutations, and
+    patient-care invalidation behavior.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/patients/[id]/consent/consent-records-content.test.tsx'`
+    passed `1` file / `10` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `3e04a3fd`
+    (`refactor(ui): reuse readApiJson in consent records`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Schedule Day Preparation readApiJson Partial - 2026-07-05 08:59 JST
 
 - Status:

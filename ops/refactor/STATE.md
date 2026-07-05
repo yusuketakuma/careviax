@@ -128,6 +128,12 @@
   org header / pack identity guard / readiness behavior / save-mark-ready mutation は保持。
   SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
   維持しつつ、本sliceでは不要。
+- codex: R40/R44 consent-records readApiJson slice(3e04a3fd) land。focused Vitest 10、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。consent templates / consent records
+  list read GET を readApiJson へ収束し、endpoints / org header / queryKeys / enabled gates /
+  DataTable false-empty prevention / upload-create-update-revoke mutation contract は保持。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
+  維持しつつ、本sliceでは不要。
 - codex: R40/R44 prescription-history readApiJson slice(d65d08d5) land。focused Vitest 29、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。patient prescription history GET /
   drug-master batch enrichment POST を readApiJson へ収束し、patient path helper / hostile-id
