@@ -501,11 +501,8 @@ describe('schedule day planner helpers', () => {
       data: [{ id: 'proposal_1' } as Proposal],
       alerts: [alert('算定確認', 'warning')],
     };
-    const fetchMock = vi.fn(async () => ({
-      ok: true,
-      json: async () => payload,
-    }));
-    const fetchImpl = fetchMock as unknown as typeof fetch;
+    const fetchMock = vi.fn<typeof fetch>(async () => Response.json(payload));
+    const fetchImpl = fetchMock;
 
     await expect(
       generateScheduleDayProposals({
@@ -540,10 +537,13 @@ describe('schedule day planner helpers', () => {
   });
 
   it('throws the server error message for failed planner requests', async () => {
-    const fetchImpl = vi.fn(async () => ({
-      ok: false,
-      json: async () => ({ message: 'ケースが見つかりません' }),
-    })) as unknown as typeof fetch;
+    const fetchImpl = vi.fn<typeof fetch>(
+      async () =>
+        new Response(JSON.stringify({ message: 'ケースが見つかりません' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    );
 
     await expect(
       generateScheduleDayProposals({

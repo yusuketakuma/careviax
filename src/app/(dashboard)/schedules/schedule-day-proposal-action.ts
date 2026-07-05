@@ -1,7 +1,8 @@
 import { format, parseISO } from 'date-fns';
-import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
+import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
 import type { PatientContactStatus, Proposal } from './day-view.shared';
 
 type FetchLike = typeof fetch;
@@ -153,12 +154,7 @@ export async function updateScheduleDayProposalAction({
     body: JSON.stringify(request.payload),
   });
 
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({}));
-    throw new Error(typeof error.message === 'string' ? error.message : '候補更新に失敗しました');
-  }
-
-  return res.json();
+  return readApiJson<unknown>(res, '候補更新に失敗しました');
 }
 
 export function getScheduleDayProposalActionSuccessMessage(

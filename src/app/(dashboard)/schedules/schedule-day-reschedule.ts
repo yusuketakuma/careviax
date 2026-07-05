@@ -1,3 +1,4 @@
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import type { VisitPriority } from './day-view.shared';
@@ -46,14 +47,7 @@ export async function generateScheduleDayRescheduleProposals({
     body: JSON.stringify(form),
   });
 
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({}));
-    throw new Error(
-      typeof error.message === 'string' ? error.message : 'リスケ候補の生成に失敗しました',
-    );
-  }
-
-  return res.json();
+  return readApiJson<unknown>(res, 'リスケ候補の生成に失敗しました');
 }
 
 export async function handleScheduleDayRescheduleSuccess({

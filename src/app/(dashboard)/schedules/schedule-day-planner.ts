@@ -9,6 +9,7 @@ import type {
   VisitType,
 } from './day-view.shared';
 import { normalizeVehicleResourceSelectValue, toDateKey } from './day-view.shared';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
 
@@ -440,12 +441,7 @@ export async function generateScheduleDayProposals({
     ),
   });
 
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({}));
-    throw new Error(typeof error.message === 'string' ? error.message : '候補生成に失敗しました');
-  }
-
-  return res.json() as Promise<ScheduleDayProposalGenerationResult>;
+  return readApiJson<ScheduleDayProposalGenerationResult>(res, '候補生成に失敗しました');
 }
 
 export function getScheduleDayProposalWarningDescription(
