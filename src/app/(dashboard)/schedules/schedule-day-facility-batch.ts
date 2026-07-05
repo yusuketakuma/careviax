@@ -1,3 +1,4 @@
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildOrderedFacilityScheduleIds } from './calendar-view.helpers';
 import {
@@ -85,14 +86,7 @@ export async function saveScheduleDayFacilityBatch({
     ),
   });
 
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({}));
-    throw new Error(
-      typeof error.message === 'string' ? error.message : '同時訪問グループの保存に失敗しました',
-    );
-  }
-
-  return res.json();
+  return readApiJson<unknown>(res, '同時訪問グループの保存に失敗しました');
 }
 
 export async function handleScheduleDayFacilityBatchSuccess({
