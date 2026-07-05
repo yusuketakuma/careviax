@@ -3950,3 +3950,24 @@
   Broader `Plans.md` objective remains open. `UX-MOB-001` の残りは訪問開始固定 CTA、1患者1画面、
   下部固定バー、未同期/同期済み/競合ありの常時表示、autosave debounce、位置情報説明、
   添付 background queue、mobile E2E。
+
+## 2026-07-06 Plans gpt-image-2 implementation procedure clarification
+
+- codex: `Plans.md` UI design generation policy clarified.
+  ユーザー指示「gpt-image-2 を使うことを追記」に対応。既存の `imagegen` + `gpt-image-2`
+  方針に加え、UI 関連タスクの標準実装手順を「既存コード/SSOT確認 → `imagegen` で
+  `gpt-image-2` 参照案生成 → PH-OS ルールへ翻訳して実装 → 検証/記録」と明文化した。
+- files inspected:
+  `git status --short --branch --untracked-files=all`,
+  `Plans.md`,
+  `docs/ui-ux-design-guidelines.md`,
+  `ops/refactor/STATE.md`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- validation:
+  `pnpm exec prettier --check Plans.md ops/refactor/STATE.md` green;
+  `git diff --check -- Plans.md ops/refactor/STATE.md` green.
+- remaining:
+  Broader `Plans.md` objective remains open. 実際の UI/UX 実装 slice では、視覚設計変更の
+  有無に応じて `imagegen` / `gpt-image-2` 参照案を作成し、省略時は理由を本台帳へ記録する。
