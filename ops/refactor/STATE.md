@@ -4298,3 +4298,68 @@
   Broader `Plans.md` objective remains open. 残りは PatientBoard 派生 logic との adapter 統合、
   Case Risk Cockpit への接続、timeline 抜粋の Command Center block 化、payload budget、
   browser smoke。
+
+## 2026-07-06 Patient Home Operations Fallback Model Extraction slice
+
+- codex: `PAT-DETAIL-PERF-001 / UX-CMD-001` home operations fallback model partial implemented.
+  患者詳細 `CardWorkspace` に直書きされていた home-operations BFF 取得失敗時の近似表示
+  (`buildHomeOperationsItems`) と metric priority selector (`selectHomeOperationMetrics`) を
+  `patient-home-operations-model.ts` へ抽出した。`CardWorkspace` は server snapshot または fallback
+  items を描画するだけにし、fallback の書類/MCS/処方/請求/会議の status/tone/alert/href と
+  compact metrics を unit tests で固定した。
+- subagent:
+  `reviewer`（Reviewer the 20th）を読み取り専用で投入し、href fail-closed、false-empty、
+  metric priority、quick action query contract のリスクを確認した。指摘に従い、dot-segment patient id の
+  fail-closed と hostile id encoding / billing-conference query を model unit test へ追加した。
+- design / imagegen:
+  視覚レイアウト変更を伴わない adapter/refactor slice のため、`imagegen` / `gpt-image-2` の新規生成は省略。
+  PH-OS UI/UX SSOT の「false-empty 禁止」「shared helper」「action beside evidence」を維持し、
+  既存 UI 表示は変更していない。home-operations panel の配置や visual hierarchy を変える slice では
+  `gpt-image-2` 方針を適用する。
+- files inspected:
+  `git status --short --branch --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+  `src/app/(dashboard)/patients/[id]/patient-detail.types.ts`,
+  `src/types/patient-home-operations.ts`,
+  `src/lib/patient/home-visit-intake.ts`,
+  `src/lib/patient/navigation.ts`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+  `src/app/(dashboard)/patients/[id]/patient-home-operations-model.ts`,
+  `src/app/(dashboard)/patients/[id]/patient-home-operations-model.test.ts`.
+- bugs / risks reduced:
+  home-operations BFF が失敗した時だけ UI 側で fallback items と metric ordering を再計算しており、
+  future summary/detail BFF split 時に語彙 drift や false-empty regression が起きやすかった。
+  fallback は常に 5 domain item を返し、未受付/未登録は attention + alerts を維持すること、
+  exact dot-segment patient id は fail-closed すること、hostile id は patient path/query で安全に
+  encode されることを固定した。
+- security / PHI reviewed:
+  新規 API / DB / PHI field は追加していない。患者内リンクは `buildPatientHref`、billing/conference は
+  `URLSearchParams` を維持。fallback items は status/alert/action label のみで、自由記載本文、
+  保険番号、電話、住所、signed URL、raw provider error は追加していない。quick action rendering と
+  mutations は UI 側に残し、pure model へ副作用を持ち込んでいない。
+- performance issues improved:
+  `CardWorkspace` から home-operations fallback derivation と metric priority logic を除去し、
+  render component を server snapshot/fallback model の消費へ単純化した。今後の heavy panel lazy split や
+  summary/detail BFF 分割時に、fallback selector を再利用できる境界を作った。
+- validation:
+  `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-home-operations-model.test.ts' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' --reporter=dot --testTimeout=30000`
+  green (2 files / 84 tests);
+  `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/patient-home-operations-model.ts' 'src/app/(dashboard)/patients/[id]/patient-home-operations-model.test.ts' 'src/app/(dashboard)/patients/[id]/card-workspace.tsx'`
+  green;
+  `pnpm exec prettier --check 'src/app/(dashboard)/patients/[id]/patient-home-operations-model.ts' 'src/app/(dashboard)/patients/[id]/patient-home-operations-model.test.ts' 'src/app/(dashboard)/patients/[id]/card-workspace.tsx'`
+  green;
+  `git diff --check -- 'src/app/(dashboard)/patients/[id]/patient-home-operations-model.ts' 'src/app/(dashboard)/patients/[id]/patient-home-operations-model.test.ts' 'src/app/(dashboard)/patients/[id]/card-workspace.tsx'`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck --pretty false`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  green.
+- remaining:
+  Broader `Plans.md` objective remains open. 残りは server `patient-home-operations` service との
+  語彙 registry 化、summary/detail batch 接続、quick action registry、payload budget、browser smoke。

@@ -799,6 +799,15 @@ FE 仕上げ（低優先）:
   残: PatientBoard 派生ロジックとの adapter 統合、Case Risk Cockpit への接続、timeline 抜粋を
   Command Center block に含めること、payload budget / browser smoke。
 
+- `PAT-DETAIL-PERF-001 / UX-CMD-001` partial（2026-07-06）: 患者詳細の在宅運用管理 fallback
+  （home-operations BFF 取得失敗時の近似表示）を `patient-home-operations-model.ts` へ抽出した。
+  `CardWorkspace` は server snapshot または fallback items を描画するだけにし、fallback の
+  書類/MCS/処方/請求/会議の status/tone/alert/href と metric priority を unit test で固定した。
+  これにより、重い detail BFF を段階ロードした後も false-empty を避ける fallback 語彙を共有しやすくする。
+  視覚レイアウト変更を伴わない adapter/refactor slice のため `imagegen` / `gpt-image-2` 生成は省略した。
+  残: server `patient-home-operations` service との語彙 registry 化、summary/detail batch 接続、
+  quick action registry、payload budget / browser smoke。
+
 **追加実装順序**:
 
 1. `UX-CMD-001` + `PERF-BFF-001`: Command Center は重い詳細BFFになりやすいため、最初から summary/detail batch 分割を前提に設計する。
