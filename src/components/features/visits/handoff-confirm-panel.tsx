@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { StateBadge } from '@/components/ui/state-badge';
 import { Textarea } from '@/components/ui/textarea';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { messageFromError } from '@/lib/utils/error-message';
@@ -141,11 +142,7 @@ export function HandoffConfirmPanel({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(payload),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => null);
-        throw new Error(err?.message ?? '申し送りの確定に失敗しました');
-      }
-      return res.json();
+      return readApiJson<unknown>(res, '申し送りの確定に失敗しました');
     },
     onSuccess: () => {
       toast.success('申し送りを確定しました');
