@@ -1,5 +1,47 @@
 # CODEX Goal Progress
 
+## R40/R44 Saved Views readApiJson Partial - 2026-07-05 10:26 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/views/saved-views-content.tsx`
+    - `src/app/(dashboard)/views/saved-views-content.test.tsx`
+- Scope:
+  - Reused `readApiJson` for saved-view preferences PATCH, named saved-view
+    create, rename, share-toggle, and delete responses.
+  - Removed the local saved-view response error reader.
+  - Added focused UI coverage proving API JSON `message` from failed
+    preferences save and named saved-view creation responses is preserved in
+    toast output.
+  - Preserved preferences / saved-views endpoints, path helpers, hostile-id
+    encoding, dot-segment fail-closed behavior, org headers, request bodies,
+    query keys, invalidation behavior, success toasts, and saved-view recall
+    navigation.
+- Safety:
+  - Saved views UI response handling internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary remains
+    recorded in `ops/refactor/STATE.md`; this slice did not require those
+    changes.
+  - Preserved DB/schema, API route contracts, auth/authorization semantics,
+    PHI projection, billing behavior, deployment, package dependency, live DB
+    operation, external send, secret handling, push, and destructive operation
+    boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/views/saved-views-content.test.tsx'`
+    passed `1` file / `15` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `dc81e08b`
+    (`refactor(ui): reuse readApiJson for saved views`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher/mutation PHI/body-read review
+    before converting additional manual response handling.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Operational Policy Save readApiJson Partial - 2026-07-05 10:24 JST
 
 - Status:

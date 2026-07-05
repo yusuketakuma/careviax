@@ -546,6 +546,12 @@
   readApiJson へ収束し、/api/settings/operational-policy、org JSON headers、PATCH body、
   success toast、cockpit / policy query loading states は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 saved views readApiJson slice(dc81e08b) land。focused Vitest 15、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。preferences PATCH と named
+  saved-view create/rename/share/delete responses を readApiJson へ収束し、preferences /
+  saved-views endpoints、path helpers、hostile-id encoding、dot-segment fail-closed、org headers、
+  request bodies、query keys、invalidation、success toasts、recall navigation は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 
