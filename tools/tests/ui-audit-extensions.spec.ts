@@ -476,7 +476,7 @@ test.describe('ARIA and keyboard contracts', () => {
     expect(href).toBeTruthy();
     await clickLinkAndRequireRoute(page, patientLink, /\/patients\/[^/]+$/, { timeout: 60_000 });
     await expect(page.getByTestId('card-workspace')).toBeVisible({ timeout: 60_000 });
-    await expect(page.getByRole('heading', { name: /カード — / })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '処方カード作業台', level: 1 })).toBeVisible();
 
     expect(errors).toEqual([]);
   });
@@ -492,12 +492,16 @@ test.describe('ARIA and keyboard contracts', () => {
     await openFirstPatientDetail(page);
 
     await expect(page.getByTestId('card-workspace')).toBeVisible();
-    await expect(page.getByTestId('patient-profile-summary')).toBeVisible();
-    await expect(page.getByTestId('patient-detail-tablist')).toHaveCount(0);
+    await expect(page.getByTestId('patient-detail-tablist')).toBeVisible();
     const profileJump = page.getByTestId('card-open-profile');
-    await expect(profileJump).toHaveAttribute('href', '#patient-profile-summary');
     await profileJump.focus();
     await expect(profileJump).toBeFocused();
+    await profileJump.click();
+    await expect(page.getByRole('tab', { name: /正本・在宅運用/ })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await expect(page.getByTestId('patient-profile-summary')).toBeVisible();
 
     expect(errors).toEqual([]);
   });

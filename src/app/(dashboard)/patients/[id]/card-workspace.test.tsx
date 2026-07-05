@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
@@ -74,6 +74,7 @@ import {
 setupDomTestEnv();
 
 beforeEach(() => {
+  window.history.replaceState({}, '', '/patients/patient_1');
   useUIStore.setState({ workspaceRailOpen: false, workspaceRailAvailable: false });
 });
 
@@ -1310,6 +1311,57 @@ describe('CardWorkspace', () => {
     expect(screen.queryByTestId('next-action-panel')).toBeNull();
     expect(screen.queryByTestId('blocked-reasons-panel')).toBeNull();
     expect(screen.queryByTestId('evidence-panel')).toBeNull();
+  });
+
+  it('opens the matching patient detail tab for an initial section hash', async () => {
+    window.history.replaceState({}, '', '/patients/patient_1#patient-documents');
+    mockPatientQuery(buildWorkspace());
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    expect(screen.getByRole('tab', { name: /共有・文書/ }).getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(screen.queryByTestId('patient-profile-summary')).toBeNull();
+    expect(await screen.findByTestId('patient-card-documents-panel')).toBeTruthy();
+  });
+
+  it('switches patient detail tabs when section hashes change', async () => {
+    mockPatientQuery(buildWorkspace());
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    expect(screen.getByRole('tab', { name: /処方・訪問/ }).getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(screen.queryByTestId('patient-profile-summary')).toBeNull();
+
+    act(() => {
+      window.history.pushState({}, '', '/patients/patient_1#patient-profile-summary');
+      window.dispatchEvent(new Event('hashchange'));
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('tab', { name: /正本・在宅運用/ }).getAttribute('aria-selected'),
+      ).toBe('true');
+    });
+    expect(screen.getByTestId('patient-profile-summary')).toBeTruthy();
+    expect(screen.getByTestId('patient-contacts-panel')).toBeTruthy();
+
+    act(() => {
+      window.history.pushState({}, '', '/patients/patient_1#patient-field-revisions');
+      window.dispatchEvent(new Event('hashchange'));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: /履歴・構造化/ }).getAttribute('aria-selected')).toBe(
+        'true',
+      );
+    });
+    expect(screen.getByTestId('card-field-revisions').getAttribute('id')).toBe(
+      'patient-field-revisions',
+    );
   });
 
   it('surfaces archived patient state in the pinned patient header', () => {

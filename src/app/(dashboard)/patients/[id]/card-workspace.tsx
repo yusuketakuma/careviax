@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
-import { memo, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import {
   differenceInYears,
   format,
@@ -264,6 +264,27 @@ const PATIENT_DETAIL_TABS: Array<{ value: PatientDetailTab; label: string; descr
       description: '変更履歴、在宅医療処置・麻薬',
     },
   ];
+
+const PATIENT_DETAIL_HASH_TABS: Record<string, PatientDetailTab> = {
+  'patient-foundation': 'foundation',
+  'patient-profile-summary': 'foundation',
+  'patient-contacts': 'foundation',
+  'patient-home-operations': 'foundation',
+  'patient-share-case': 'sharing',
+  'patient-documents': 'sharing',
+  'patient-field-revisions': 'history',
+  'patient-structured-care': 'history',
+};
+
+function resolvePatientDetailTabFromHash(hash: string): PatientDetailTab | null {
+  const normalized = hash.replace(/^#/, '');
+  return PATIENT_DETAIL_HASH_TABS[normalized] ?? null;
+}
+
+function resolveInitialPatientDetailTab(): PatientDetailTab {
+  if (typeof window === 'undefined') return 'work';
+  return resolvePatientDetailTabFromHash(window.location.hash) ?? 'work';
+}
 
 type PharmacyPartnershipOption = {
   id: string;
@@ -935,7 +956,11 @@ function PatientHomeOperationsPanel({
   };
 
   return (
-    <SectionCard aria-label="在宅運用管理" data-testid="patient-home-operations-panel">
+    <SectionCard
+      id="patient-home-operations"
+      aria-label="在宅運用管理"
+      data-testid="patient-home-operations-panel"
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-base font-semibold text-foreground">在宅運用管理</h3>
@@ -1345,7 +1370,11 @@ function PatientShareCaseCreatePanel({
   }
 
   return (
-    <SectionCard aria-label="薬局間共有ケース" data-testid="patient-share-case-create-panel">
+    <SectionCard
+      id="patient-share-case"
+      aria-label="薬局間共有ケース"
+      data-testid="patient-share-case-create-panel"
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-base font-semibold text-foreground">薬局間共有ケース</h3>
@@ -4094,9 +4123,11 @@ export function CardWorkspace({
   const router = useRouter();
   const queryClient = useQueryClient();
   const [initialPatientUpdatedAt] = useState(() => (initialPatient ? Date.now() : undefined));
-  const [activeDetailTab, setActiveDetailTab] = useState<PatientDetailTab>('work');
+  const [activeDetailTab, setActiveDetailTab] = useState<PatientDetailTab>(() =>
+    resolveInitialPatientDetailTab(),
+  );
   const [mountedDetailTabs, setMountedDetailTabs] = useState<ReadonlySet<PatientDetailTab>>(
-    () => new Set<PatientDetailTab>(['work']),
+    () => new Set<PatientDetailTab>([resolveInitialPatientDetailTab()]),
   );
 
   const activateDetailTab = (tab: PatientDetailTab) => {
@@ -4106,6 +4137,21 @@ export function CardWorkspace({
     setActiveDetailTab(tab);
   };
   const isDetailTabMounted = (tab: PatientDetailTab) => mountedDetailTabs.has(tab);
+
+  useEffect(() => {
+    const activateHashTab = () => {
+      const hashTab = resolvePatientDetailTabFromHash(window.location.hash);
+      if (!hashTab) return;
+      setMountedDetailTabs((previous) =>
+        previous.has(hashTab) ? previous : new Set<PatientDetailTab>([...previous, hashTab]),
+      );
+      setActiveDetailTab(hashTab);
+    };
+
+    activateHashTab();
+    window.addEventListener('hashchange', activateHashTab);
+    return () => window.removeEventListener('hashchange', activateHashTab);
+  }, []);
 
   // P1-13 今だれが見ているか: このカードを開いていることを共有(ベストエフォート)
   usePresenceHeartbeat({
@@ -4577,6 +4623,7 @@ export function CardWorkspace({
           <TabsList
             variant="line"
             aria-label="患者詳細セクション"
+            data-testid="patient-detail-tablist"
             className="flex w-full flex-wrap justify-start gap-2 border-b border-border/70 pb-1"
           >
             {PATIENT_DETAIL_TABS.map((tab) => (
@@ -4600,12 +4647,14 @@ export function CardWorkspace({
             <TabsContent value="foundation" keepMounted className="space-y-4">
               <PatientFoundationPanelMemo patient={patient} />
               <PatientProfilePanelMemo patient={patient} />
-              <PatientContactsPanelMemo
-                patientId={patient.id}
-                orgId={orgId}
-                initialContacts={patient.contacts}
-                initialExpectedUpdatedAt={patient.updated_at}
-              />
+              <div id="patient-contacts">
+                <PatientContactsPanelMemo
+                  patientId={patient.id}
+                  orgId={orgId}
+                  initialContacts={patient.contacts}
+                  initialExpectedUpdatedAt={patient.updated_at}
+                />
+              </div>
               <PatientHomeOperationsPanelMemo
                 patient={patient}
                 operations={homeOperations}
@@ -4669,7 +4718,9 @@ export function CardWorkspace({
           ) : null}
           {isDetailTabMounted('history') ? (
             <TabsContent value="history" keepMounted className="space-y-4">
-              <PatientStructuredCarePanel patientId={patientId} />
+              <div id="patient-structured-care">
+                <PatientStructuredCarePanel patientId={patientId} />
+              </div>
             </TabsContent>
           ) : null}
         </Tabs>
@@ -4875,6 +4926,7 @@ export function CardWorkspace({
               <TabsList
                 variant="line"
                 aria-label="患者詳細セクション"
+                data-testid="patient-detail-tablist"
                 className="flex w-full flex-wrap justify-start gap-2"
               >
                 {PATIENT_DETAIL_TABS.map((tab) => (
@@ -4976,12 +5028,14 @@ export function CardWorkspace({
                 <h2 className="text-lg font-bold text-foreground">正本・在宅運用</h2>
                 <PatientFoundationPanelMemo patient={patient} />
                 <PatientProfilePanelMemo patient={patient} />
-                <PatientContactsPanelMemo
-                  patientId={patient.id}
-                  orgId={orgId}
-                  initialContacts={patient.contacts}
-                  initialExpectedUpdatedAt={patient.updated_at}
-                />
+                <div id="patient-contacts">
+                  <PatientContactsPanelMemo
+                    patientId={patient.id}
+                    orgId={orgId}
+                    initialContacts={patient.contacts}
+                    initialExpectedUpdatedAt={patient.updated_at}
+                  />
+                </div>
                 <PatientHomeOperationsPanelMemo
                   patient={patient}
                   operations={homeOperations}
@@ -5050,7 +5104,11 @@ export function CardWorkspace({
               <TabsContent value="history" keepMounted className="space-y-4">
                 <h2 className="text-lg font-bold text-foreground">履歴・構造化</h2>
                 {/* 変更履歴: 患者項目の業務差分(誰がいつ何を何から何へ・確認元) */}
-                <SectionCard aria-label="変更履歴" data-testid="card-field-revisions">
+                <SectionCard
+                  id="patient-field-revisions"
+                  aria-label="変更履歴"
+                  data-testid="card-field-revisions"
+                >
                   <h3 className="text-base font-semibold text-foreground">変更履歴</h3>
                   <div className="mt-3">
                     <PatientFieldRevisionTimeline patientId={patientId} />
@@ -5058,7 +5116,9 @@ export function CardWorkspace({
                 </SectionCard>
 
                 {/* 在宅医療処置・麻薬: 構造化レイヤ(開始日・確認元の時系列。実施中行が無ければ非表示) */}
-                <PatientStructuredCarePanel patientId={patientId} />
+                <div id="patient-structured-care">
+                  <PatientStructuredCarePanel patientId={patientId} />
+                </div>
               </TabsContent>
             ) : null}
           </Tabs>

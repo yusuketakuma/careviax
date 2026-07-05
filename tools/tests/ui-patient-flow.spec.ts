@@ -82,11 +82,16 @@ test.describe('patient list and navigation flow', () => {
     // Should navigate to patient detail (card workspace is the default view).
     await expect(page).toHaveURL(new RegExp(`${href}$`));
     await expect(page.getByTestId('card-workspace')).toBeVisible();
-    await expect(page.getByRole('heading', { name: /カード — / })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '処方カード作業台', level: 1 })).toBeVisible();
+    await expect(page.getByTestId('patient-detail-tablist')).toBeVisible();
 
     const profileJump = page.getByTestId('card-open-profile');
     await expect(profileJump).toBeVisible();
-    await expect(profileJump).toHaveAttribute('href', '#patient-profile-summary');
+    await profileJump.click();
+    await expect(page.getByRole('tab', { name: /正本・在宅運用/ })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
     await expect(page.getByTestId('patient-profile-summary')).toBeVisible();
 
     expect(errors).toEqual([]);
@@ -100,7 +105,8 @@ test.describe('patient list and navigation flow', () => {
 
     const href = await openFirstPatientDetail(page);
     await expect(page).toHaveURL(new RegExp(`${href}$`));
-    await expect(page.getByTestId('patient-detail-tablist')).toHaveCount(0);
+    await expect(page.getByTestId('patient-detail-tablist')).toBeVisible();
+    await page.getByRole('tab', { name: /正本・在宅運用/ }).click();
     await expect(page.getByTestId('patient-profile-summary')).toBeVisible();
     await expect(page.getByRole('heading', { name: '患者プロフィール' })).toBeVisible();
     await expect(page.getByRole('link', { name: '基本情報を編集' })).toBeVisible();
@@ -122,6 +128,8 @@ test.describe('patient list and navigation flow', () => {
       detailLink.click({ noWaitAfter: true }),
     );
     await expect(page.getByTestId('card-workspace')).toBeVisible();
+    await expect(page.getByTestId('patient-detail-tablist')).toBeVisible();
+    await page.getByRole('tab', { name: /正本・在宅運用/ }).click();
     await expect(page.getByTestId('patient-profile-summary')).toBeVisible();
 
     expect(errors).toEqual([]);

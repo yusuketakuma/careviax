@@ -527,8 +527,9 @@ test.describe('detail page layout', () => {
 
     await expect(page.getByTestId('page-scaffold')).toBeVisible();
     await expect(page.getByTestId('card-workspace')).toBeVisible();
+    await expect(page.getByTestId('patient-detail-tablist')).toBeVisible();
+    await page.getByRole('tab', { name: /正本・在宅運用/ }).click();
     await expect(page.getByTestId('patient-profile-summary')).toBeVisible();
-    await expect(page.getByTestId('patient-detail-tablist')).toHaveCount(0);
 
     const metrics = await page.evaluate(() => ({
       clientWidth: document.documentElement.clientWidth,

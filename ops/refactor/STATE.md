@@ -40,6 +40,56 @@
 
 ## 直近の land（本日・要点）
 
+- codex: PAT-DETAIL-UX-001 Patient detail tabs deep-link slice complete（commit pending）。
+  - current task:
+    Goal 継続として、ユーザー指示「患者詳細画面配置はタブ化」に対応。既存 `CardWorkspace` の
+    患者詳細タブを正規導線として扱い、`#patient-profile-summary` / `#patient-documents` /
+    `#patient-field-revisions` 等の section hash から該当タブを自動マウント・選択するようにした。
+    タブ化後も右レール/在宅運用/文書チェックから既存 section link が迷子にならない。
+  - design reference:
+    `imagegen` skill を読み、`gpt-image-2` 方針の preview mockup を生成:
+    `/Users/yusuke/.codex/generated_images/019f2c7e-d969-7882-bd11-432a10abb930/ig_0abb6a5325bfcf04016a4a8418c72c8191a61a16a51221d621.png`
+    （preview only。repo asset としては参照しない）
+  - files inspected:
+    `docs/ui-ux-design-guidelines.md`,
+    `node_modules/next/dist/docs/01-app/02-guides/lazy-loading.md`,
+    `/Users/yusuke/.codex/skills/.system/imagegen/SKILL.md`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+    `tools/tests/ui-patient-flow.spec.ts`,
+    `tools/tests/ui-detail-layout.spec.ts`,
+    `tools/tests/ui-audit-extensions.spec.ts`,
+    `src/components/ui/tabs.tsx`。
+  - files changed:
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+    `tools/tests/ui-patient-flow.spec.ts`,
+    `tools/tests/ui-detail-layout.spec.ts`,
+    `tools/tests/ui-audit-extensions.spec.ts`,
+    `ops/refactor/STATE.md`。
+  - bugs/security risks fixed:
+    タブ化済み患者詳細で、正本/文書/履歴 section hash が hidden/unmounted tab を指して到達不能になる
+    UX regression を解消。PHI の新規露出はなく、既存患者詳細 auth/API contract を維持。
+    E2E の旧「tablist なし」「カード —」見出し期待も現行 UI に合わせて更新。
+  - performance issues improved:
+    初期 hash に必要なタブだけを追加マウントし、既存 lazy/dynamic panel と `mountedDetailTabs` 方針を維持。
+    `useCallback` 等の手動メモ化は追加せず、React Compiler 前提に沿って state setter のみで hash sync。
+  - validation commands/results:
+    `pnpm vitest run 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' --reporter=dot` green（1 file / 71 tests）;
+    `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' tools/tests/ui-patient-flow.spec.ts tools/tests/ui-detail-layout.spec.ts tools/tests/ui-audit-extensions.spec.ts` green;
+    `git diff --check -- 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' tools/tests/ui-patient-flow.spec.ts tools/tests/ui-detail-layout.spec.ts tools/tests/ui-audit-extensions.spec.ts` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green;
+    `PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-patient-flow.spec.ts --grep "clicking patient name|patient detail keeps profile|patient board card action"` green（6 passed）;
+    `PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-detail-layout.spec.ts --grep "patient card workspace keeps grouped layout"` green（2 passed）;
+    `PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-audit-extensions.spec.ts --grep "patient detail mobile card"` green（1 passed / 1 skipped）;
+    `PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-audit-extensions.spec.ts --grep "patients board card click opens patient detail"` green（1 passed / 1 skipped）。
+  - coordination note:
+    subagent は `agent thread limit reached` で起動不可。調査・実装・レビュー・検証は Codex 本体で実施。
+  - remaining work:
+    患者詳細の full tab lazy split / bundle budget（PAT-DETAIL-PERF-001）と Command Center は別 slice。
+  - next action:
+    scoped commit を作成。次は `DASH-PERF-001`、または `PAT-LIST-PERF-001`。
+
 - codex: RX-REG-UX-002 Prescription list facet counts landed（commit `fadd249f4`）。
   - current task:
     Goal 継続として `RX-REG-UX-002` を実装。処方受付 API に `facets=1` を追加し、
