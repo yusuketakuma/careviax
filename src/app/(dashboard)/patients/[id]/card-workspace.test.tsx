@@ -901,7 +901,7 @@ describe('CardWorkspace', () => {
     expect(screen.getByRole('heading', { name: '処方カード作業台', level: 1 })).toBeTruthy();
   });
 
-  it('renders the 06_card tabbed workspace: header, safety board, tab sections, prescription, activities, rail', () => {
+  it('renders the 06_card tabbed workspace: header, safety board, tab sections, prescription, activities, rail', async () => {
     mockPatientQuery(buildWorkspace(), {
       generated_at: '2026-06-16T00:00:00.000Z',
       attention_count: 3,
@@ -1102,7 +1102,7 @@ describe('CardWorkspace', () => {
     expect(within(foundationPanel).getAllByRole('button', { name: 'タスク化' })).toHaveLength(3);
     expect(container.textContent).not.toMatch(/21540000|54001234|A-1|raw insurance note/);
     expect(screen.getByRole('heading', { name: '患者プロフィール' })).toBeTruthy();
-    const contactsPanel = screen.getByTestId('patient-contacts-panel');
+    const contactsPanel = await screen.findByTestId('patient-contacts-panel');
     expect(
       Boolean(
         screen.getByTestId('patient-profile-summary').compareDocumentPosition(contactsPanel) &
@@ -1199,7 +1199,7 @@ describe('CardWorkspace', () => {
       ),
     ).toBe(true);
     expect(
-      within(documentsPanel).getByRole('heading', { name: '初回訪問文書・交付記録' }),
+      await within(documentsPanel).findByRole('heading', { name: '初回訪問文書・交付記録' }),
     ).toBeTruthy();
     expect(within(documentsPanel).getByText('印刷前チェック')).toBeTruthy();
     expect(within(documentsPanel).getByText('確認あり / 確認 1件')).toBeTruthy();

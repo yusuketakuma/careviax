@@ -40,6 +40,45 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Patient detail dynamic panel split slice complete（code/test: commit pending）。
+  - current task:
+    Goal 継続として `Plans.md` の `PAT-DETAIL-PERF-001` / `FE-X-001` に対応。
+    患者詳細のタブ化・lazy-on-first-open を土台に、初期表示に不要な別ファイル Client Component
+    （連絡先、初回訪問文書、変更履歴、構造化ケア）を `next/dynamic` で別チャンク化。
+    Next.js App Router の lazy-loading guidance は Context7 の `/vercel/next.js` で確認し、`ssr:false`
+    は使わず loading fallback 付きの dynamic import に限定。
+  - files inspected:
+    `ops/refactor/STATE.md`, `docs/ui-ux-design-guidelines.md`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+    `src/app/(dashboard)/patients/[id]/patient-documents-panel.tsx`,
+    `src/app/(dashboard)/patients/[id]/patient-contacts-panel.tsx`,
+    `src/components/features/patients/patient-field-revision-timeline.tsx`,
+    `src/components/features/patients/patient-structured-care-panel.tsx`。
+  - files changed:
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+    `ops/refactor/STATE.md`。
+  - bugs/security risks fixed:
+    なし。患者詳細の既存 API / auth / authorization / PHI redaction / sharing / document contracts は変更なし。
+    dynamic 化に伴う loading fallback は `role="status"` と具体ラベルを持たせ、空状態と読込状態を混同しない。
+  - performance issues improved:
+    患者詳細初期 bundle から、foundation/sharing/history タブでのみ必要な別ファイル panel を分離。
+    `PatientContactsPanel`, `FirstVisitDocumentsPanel`, `PatientFieldRevisionTimeline`,
+    `PatientStructuredCarePanel` はタブ初回選択時にロードされ、前回 slice の `keepMounted` により入力状態は維持。
+  - validation commands/results:
+    `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx'` green;
+    `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' --reporter=dot --testTimeout=30000` green (1 file / 69 tests);
+    `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx'` green;
+    `git diff --check -- 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx'` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。
+  - remaining work:
+    build artifact bundle size の実測、Playwright/browser screenshot、mobile 下部ジャンプ導線、
+    PatientHomeOperationsPanel / share panel など同一ファイル内 heavy panel の抽出は未着手。
+  - next action:
+    scoped commit を作成。次の安全な実装候補は `PAT-LIST-PERF-001` server-side search/filter か
+    `PAT-DETAIL-PERF-002` timeline API full fetch 分離。
+
 - codex: Patient detail lazy tab mount slice complete（code/test: 4aa09da8c）。
   - current task:
     Goal 継続として `Plans.md` の `PAT-DETAIL-PERF-001` / `FE-BUD-001` / `FE-X-001`

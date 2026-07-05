@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -42,8 +43,6 @@ import {
 } from '@/components/features/workspace/safety-board';
 import { ProcessChips } from '@/components/features/workspace/process-chips';
 import { ListOpenCard } from '@/components/features/workspace/list-open-card';
-import { PatientFieldRevisionTimeline } from '@/components/features/patients/patient-field-revision-timeline';
-import { PatientStructuredCarePanel } from '@/components/features/patients/patient-structured-care-panel';
 import { PatientHeader } from '@/components/features/patients/patient-header';
 import type { PatientHeaderSummary } from '@/server/services/patient-detail';
 import {
@@ -92,14 +91,81 @@ import type {
   PatientWorkspacePrescriptionLine,
   PatientWorkspaceTodayTask,
 } from './patient-detail.types';
-import { FirstVisitDocumentsPanel } from './patient-documents-panel';
 import type {
   PatientHomeOperationItem,
   PatientHomeOperationKey,
   PatientHomeOperationsSnapshot,
 } from '@/types/patient-home-operations';
 import type { VisitBriefUnresolvedItem } from '@/types/visit-brief';
-import { PatientContactsPanel } from './patient-contacts-panel';
+
+type FirstVisitDocumentsPanelProps = {
+  cases: PatientOverview['cases'];
+  documents: PatientDocumentsSnapshot['first_visit_documents'];
+  documentStatuses?: PatientDocumentsSnapshot['document_statuses'];
+  printReadiness?: PatientDocumentsSnapshot['print_readiness'];
+  orgId?: string;
+  patientId?: string;
+};
+
+type PatientContactsPanelProps = {
+  patientId: string;
+  orgId: string;
+  initialContacts: PatientOverview['contacts'];
+  initialExpectedUpdatedAt?: string | null;
+};
+
+type PatientIdPanelProps = {
+  patientId: string;
+};
+
+function PatientDetailPanelLoading({ label }: { label: string }) {
+  return (
+    <div
+      role="status"
+      aria-label={label}
+      className="rounded-lg border border-border/70 bg-card p-4"
+    >
+      <Skeleton className="h-5 w-40" />
+      <Skeleton className="mt-3 h-4 w-3/4" />
+      <Skeleton className="mt-2 h-4 w-1/2" />
+      <span className="sr-only">{label}</span>
+    </div>
+  );
+}
+
+const FirstVisitDocumentsPanel = dynamic<FirstVisitDocumentsPanelProps>(
+  () => import('./patient-documents-panel').then((mod) => mod.FirstVisitDocumentsPanel),
+  {
+    loading: () => <PatientDetailPanelLoading label="初回訪問文書を読み込み中" />,
+  },
+);
+
+const PatientContactsPanel = dynamic<PatientContactsPanelProps>(
+  () => import('./patient-contacts-panel').then((mod) => mod.PatientContactsPanel),
+  {
+    loading: () => <PatientDetailPanelLoading label="連絡先を読み込み中" />,
+  },
+);
+
+const PatientFieldRevisionTimeline = dynamic<PatientIdPanelProps>(
+  () =>
+    import('@/components/features/patients/patient-field-revision-timeline').then(
+      (mod) => mod.PatientFieldRevisionTimeline,
+    ),
+  {
+    loading: () => <PatientDetailPanelLoading label="変更履歴を読み込み中" />,
+  },
+);
+
+const PatientStructuredCarePanel = dynamic<PatientIdPanelProps>(
+  () =>
+    import('@/components/features/patients/patient-structured-care-panel').then(
+      (mod) => mod.PatientStructuredCarePanel,
+    ),
+  {
+    loading: () => <PatientDetailPanelLoading label="構造化ケア情報を読み込み中" />,
+  },
+);
 
 /**
  * design/images/new 06_card: カード = 1 処方サイクル(1 RX 番号)の作業台。
