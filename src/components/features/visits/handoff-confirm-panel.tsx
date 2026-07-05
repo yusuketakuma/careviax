@@ -17,6 +17,7 @@ import type { VisitHandoff } from '@/types/visit-brief';
 
 type HandoffConfirmPanelProps = {
   visitRecordId: string;
+  expectedVisitRecordVersion: number;
   handoff: VisitHandoff;
   onConfirmed?: () => void;
 };
@@ -104,6 +105,7 @@ function EditableTagList({
 
 export function HandoffConfirmPanel({
   visitRecordId,
+  expectedVisitRecordVersion,
   handoff,
   onConfirmed,
 }: HandoffConfirmPanelProps) {
@@ -122,12 +124,16 @@ export function HandoffConfirmPanel({
     mutationFn: async () => {
       const payload: {
         confirmed: true;
+        expected_visit_record_version: number;
         edits?: {
           next_check_items?: string[];
           ongoing_monitoring?: string[];
           decision_rationale?: string;
         };
-      } = { confirmed: true };
+      } = {
+        confirmed: true,
+        expected_visit_record_version: expectedVisitRecordVersion,
+      };
 
       if (editMode) {
         payload.edits = {

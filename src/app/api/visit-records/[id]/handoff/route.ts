@@ -2,7 +2,11 @@ import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
-import { canAccessVisitScheduleAssignment } from '@/lib/auth/visit-schedule-access';
+import {
+  buildVisitHandoffConfirmationWhere,
+  canAccessVisitScheduleAssignment,
+  canConfirmVisitHandoff,
+} from '@/lib/auth/visit-schedule-access';
 import {
   conflict,
   success,
@@ -59,7 +63,7 @@ const visitRecordHandoffSelect = {
   },
 } as const;
 
-export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedPUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '訪問記録の更新権限がありません',
@@ -86,7 +90,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     select: visitRecordHandoffSelect,
   });
   if (!record) return withSensitiveNoStore(notFound('訪問記録が見つかりません'));
-  if (!canAccessVisitScheduleAssignment(ctx, record.schedule)) {
+  if (!canConfirmVisitHandoff(ctx, record.schedule)) {
+    return withSensitiveNoStore(await forbiddenResponse('この訪問記録を更新する権限がありません'));
+  }
+  const confirmationWhere = buildVisitHandoffConfirmationWhere(ctx);
+  if (!confirmationWhere) {
     return withSensitiveNoStore(await forbiddenResponse('この訪問記録を更新する権限がありません'));
   }
 
@@ -103,6 +111,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       expectedVersion: parsed.data.expected_visit_record_version,
       edits,
       requestContext: ctx,
+      confirmationWhere,
+      confirmationBasis:
+        record.schedule?.pharmacist_id === ctx.userId
+          ? 'assigned_schedule'
+          : 'case_primary_or_backup',
     });
     return withSensitiveNoStore(success(handoff));
   } catch (cause) {
@@ -122,6 +135,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       );
     }
     return withSensitiveNoStore(error('internal_error', '引継ぎの確定処理に失敗しました', 500));
+  }
+}
+
+export async function PUT(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  try {
+    return withSensitiveNoStore(await authenticatedPUT(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
   }
 }
 

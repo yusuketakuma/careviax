@@ -46,6 +46,8 @@ type ResolveOperationalTaskInput = {
   relatedEntityType?: string | null;
   relatedEntityId?: string | null;
   taskType?: string | null;
+  assignedToUserId?: string | null;
+  includeUnassigned?: boolean;
   status?: Extract<TaskStatus, 'completed' | 'cancelled'>;
 };
 
@@ -189,6 +191,14 @@ export async function resolveOperationalTasks(tx: Tx, input: ResolveOperationalT
       ...(input.taskType ? { task_type: input.taskType } : {}),
       ...(input.relatedEntityType ? { related_entity_type: input.relatedEntityType } : {}),
       ...(input.relatedEntityId ? { related_entity_id: input.relatedEntityId } : {}),
+      ...(input.assignedToUserId
+        ? {
+            OR: [
+              { assigned_to: input.assignedToUserId },
+              ...(input.includeUnassigned ? [{ assigned_to: null }] : []),
+            ],
+          }
+        : {}),
     },
     data: {
       status: nextStatus,

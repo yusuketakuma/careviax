@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server';
 const {
   requireAuthContextMock,
   canAccessVisitScheduleAssignmentMock,
+  selectVisitHandoffConfirmationAssigneeMock,
   visitRecordFindFirstMock,
   patientFindFirstMock,
   processHandoffExtractionMock,
@@ -11,6 +12,7 @@ const {
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   canAccessVisitScheduleAssignmentMock: vi.fn(),
+  selectVisitHandoffConfirmationAssigneeMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
   processHandoffExtractionMock: vi.fn(),
@@ -23,6 +25,7 @@ vi.mock('@/lib/auth/context', () => ({
 
 vi.mock('@/lib/auth/visit-schedule-access', () => ({
   canAccessVisitScheduleAssignment: canAccessVisitScheduleAssignmentMock,
+  selectVisitHandoffConfirmationAssignee: selectVisitHandoffConfirmationAssigneeMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -69,6 +72,7 @@ describe('/api/visit-records/[id]/handoff/extract', () => {
     vi.clearAllMocks();
     requireAuthContextMock.mockResolvedValue(authCtx);
     canAccessVisitScheduleAssignmentMock.mockReturnValue(true);
+    selectVisitHandoffConfirmationAssigneeMock.mockReturnValue('user_1');
   });
 
   it('returns 201 on successful extraction', async () => {
@@ -98,6 +102,7 @@ describe('/api/visit-records/[id]/handoff/extract', () => {
       expect.objectContaining({
         visitRecordId: 'vr_1',
         expectedVersion: 2,
+        handoffConfirmationAssigneeId: 'user_1',
       }),
     );
   });

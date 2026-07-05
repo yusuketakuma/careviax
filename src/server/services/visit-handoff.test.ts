@@ -5,11 +5,13 @@ const {
   withOrgContextMock,
   upsertOperationalTaskMock,
   resolveOperationalTasksMock,
+  createAuditLogEntryMock,
 } = vi.hoisted(() => ({
   extractHandoffFromSoapMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   upsertOperationalTaskMock: vi.fn(),
   resolveOperationalTasksMock: vi.fn(),
+  createAuditLogEntryMock: vi.fn(),
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -27,6 +29,10 @@ vi.mock('./visit-brief-ai', () => ({
 vi.mock('./operational-tasks', () => ({
   upsertOperationalTask: upsertOperationalTaskMock,
   resolveOperationalTasks: resolveOperationalTasksMock,
+}));
+
+vi.mock('@/lib/audit/audit-entry', () => ({
+  createAuditLogEntry: createAuditLogEntryMock,
 }));
 
 import {
@@ -163,6 +169,7 @@ describe('processHandoffExtraction', () => {
       structuredSoap: baseSoap,
       soapAssessment: '状態安定',
       soapPlan: '継続処方',
+      handoffConfirmationAssigneeId: 'user-1',
     });
 
     expect(extractHandoffFromSoapMock).toHaveBeenCalledOnce();
@@ -213,6 +220,7 @@ describe('processHandoffExtraction', () => {
     expect(upsertOperationalTaskMock).toHaveBeenCalledOnce();
     const taskCall = upsertOperationalTaskMock.mock.calls[0][1];
     expect(taskCall.taskType).toBe('handoff_confirmation');
+    expect(taskCall.assignedTo).toBe('user-1');
     expect(taskCall.dedupeKey).toBe('handoff_confirm_vr-1');
   });
 
@@ -596,6 +604,113 @@ describe('confirmHandoff', () => {
     expect(resolveOperationalTasksMock).toHaveBeenCalledOnce();
     const resolveCall = resolveOperationalTasksMock.mock.calls[0][1];
     expect(resolveCall.dedupeKey).toBe('handoff_confirm_vr-1');
+    expect(resolveCall.assignedToUserId).toBe('user-1');
+    expect(resolveCall.includeUnassigned).toBe(true);
+  });
+
+  it('guards confirmation updates with assignment claim and writes PHI-free audit metadata', async () => {
+    const existingHandoff = {
+      next_check_items: ['血圧確認'],
+      ongoing_monitoring: ['残薬管理'],
+      decision_rationale: '急変リスクあり',
+      ai_extracted: true,
+      ai_confidence: 0.85,
+      confirmed_by: null,
+      confirmed_at: null,
+      extracted_at: '2026-04-01T00:00:00Z',
+    };
+
+    const visitRecordFindUniqueOrThrowMock = vi.fn().mockResolvedValue({
+      version: 2,
+      schedule_id: 'schedule-1',
+      structured_soap: { ...baseSoap, handoff: existingHandoff },
+    });
+    const visitRecordUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+    resolveOperationalTasksMock.mockResolvedValue({ count: 1 });
+    createAuditLogEntryMock.mockResolvedValue({ id: 'audit-1' });
+
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = {
+          visitRecord: {
+            findUniqueOrThrow: visitRecordFindUniqueOrThrowMock,
+            updateMany: visitRecordUpdateManyMock,
+          },
+          auditLog: { create: vi.fn() },
+        };
+        return fn(tx);
+      },
+    );
+
+    const db = {} as Parameters<typeof confirmHandoff>[0];
+    await confirmHandoff(db, {
+      orgId: 'org-1',
+      visitRecordId: 'vr-1',
+      confirmedBy: 'user-1',
+      expectedVersion: 2,
+      edits: {
+        decision_rationale: '申し送り内容を確認済み',
+      },
+      requestContext: {
+        orgId: 'org-1',
+        userId: 'user-1',
+        role: 'pharmacist',
+        ipAddress: '127.0.0.1',
+        userAgent: 'test',
+      },
+      confirmationWhere: {
+        schedule: {
+          OR: [{ pharmacist_id: 'user-1' }, { case_: { primary_pharmacist_id: 'user-1' } }],
+        },
+      },
+      confirmationBasis: 'assigned_schedule',
+    });
+
+    expect(visitRecordUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          AND: [
+            { id: 'vr-1', version: 2 },
+            {
+              schedule: {
+                OR: [{ pharmacist_id: 'user-1' }, { case_: { primary_pharmacist_id: 'user-1' } }],
+              },
+            },
+          ],
+        },
+      }),
+    );
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ orgId: 'org-1', userId: 'user-1' }),
+      expect.objectContaining({
+        action: 'visit_handoff_confirmed',
+        targetType: 'visit_record',
+        targetId: 'vr-1',
+        changes: expect.objectContaining({
+          visit_record_id: 'vr-1',
+          schedule_id: 'schedule-1',
+          confirmed_by: 'user-1',
+          authorized_basis: 'assigned_schedule',
+          edited_fields: ['decision_rationale'],
+          before: expect.objectContaining({
+            next_check_items_count: 1,
+            ongoing_monitoring_count: 1,
+            decision_rationale_present: true,
+          }),
+          after: expect.objectContaining({
+            next_check_items_count: 1,
+            ongoing_monitoring_count: 1,
+            decision_rationale_present: true,
+          }),
+        }),
+      }),
+    );
+    const auditText = JSON.stringify(createAuditLogEntryMock.mock.calls);
+    expect(auditText).not.toContain('血圧確認');
+    expect(auditText).not.toContain('残薬管理');
+    expect(auditText).not.toContain('急変リスクあり');
+    expect(auditText).not.toContain('申し送り内容を確認済み');
   });
 
   it('applies edits during confirmation', async () => {

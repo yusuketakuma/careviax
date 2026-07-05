@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import type { RequestAuthContext } from '@/lib/auth/request-context';
 import { readJsonObject, toPrismaJsonInput } from '@/lib/db/json';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import type { HandoffData, StructuredSoap } from '@/types/structured-soap';
 import type { VisitHandoff } from '@/types/visit-brief';
 import { extractHandoffFromSoap } from './visit-brief-ai';
@@ -63,6 +64,29 @@ function hasConfirmableHandoffContent(
     hasNonBlankString(handoff.next_check_items) ||
     hasNonBlankString(handoff.ongoing_monitoring) ||
     (handoff.decision_rationale?.trim().length ?? 0) > 0
+  );
+}
+
+function countHandoffContent(
+  handoff: Pick<HandoffData, 'next_check_items' | 'ongoing_monitoring' | 'decision_rationale'>,
+) {
+  return {
+    next_check_items_count: handoff.next_check_items.filter((value) => value.trim()).length,
+    ongoing_monitoring_count: handoff.ongoing_monitoring.filter((value) => value.trim()).length,
+    decision_rationale_present: (handoff.decision_rationale?.trim().length ?? 0) > 0,
+    decision_rationale_length: handoff.decision_rationale?.length ?? 0,
+  };
+}
+
+function editedHandoffFieldNames(
+  edits:
+    | Partial<Pick<VisitHandoff, 'next_check_items' | 'ongoing_monitoring' | 'decision_rationale'>>
+    | null
+    | undefined,
+) {
+  if (!edits) return [];
+  return (['next_check_items', 'ongoing_monitoring', 'decision_rationale'] as const).filter(
+    (field) => edits[field] !== undefined,
   );
 }
 
@@ -215,6 +239,7 @@ export async function processHandoffExtraction(
     soapPlan: string | null;
     expectedVersion?: number | null;
     requestContext?: RequestAuthContext;
+    handoffConfirmationAssigneeId?: string | null;
   },
 ): Promise<VisitHandoff> {
   const {
@@ -311,6 +336,7 @@ export async function processHandoffExtraction(
           taskType: 'handoff_confirmation',
           title: `申し送り確認: ${args.patientName}`,
           priority: 'normal',
+          assignedTo: args.handoffConfirmationAssigneeId ?? null,
           dedupeKey: `handoff_confirm_${visitRecordId}`,
           relatedEntityType: 'visit_record',
           relatedEntityId: visitRecordId,
@@ -352,9 +378,20 @@ export async function confirmHandoff(
     >;
     expectedVersion: number;
     requestContext?: RequestAuthContext;
+    confirmationWhere?: Prisma.VisitRecordWhereInput;
+    confirmationBasis?: 'assigned_schedule' | 'case_primary_or_backup' | 'task_assignee';
   },
 ): Promise<VisitHandoff> {
-  const { orgId, visitRecordId, confirmedBy, edits, expectedVersion, requestContext } = args;
+  const {
+    orgId,
+    visitRecordId,
+    confirmedBy,
+    edits,
+    expectedVersion,
+    requestContext,
+    confirmationWhere,
+    confirmationBasis,
+  } = args;
 
   let confirmed: HandoffData | null = null;
 
@@ -363,7 +400,7 @@ export async function confirmHandoff(
     async (tx) => {
       const record = await tx.visitRecord.findUniqueOrThrow({
         where: { id: visitRecordId },
-        select: { structured_soap: true, version: true },
+        select: { structured_soap: true, version: true, schedule_id: true },
       });
 
       if (record.version !== expectedVersion) {
@@ -381,6 +418,7 @@ export async function confirmHandoff(
       }
 
       const currentHandoff = currentHandoffResult.handoff;
+      const editedFields = editedHandoffFieldNames(edits);
 
       confirmed = {
         ...currentHandoff,
@@ -405,9 +443,12 @@ export async function confirmHandoff(
         ...currentSoap,
         handoff: confirmed,
       };
+      const claimWhere = confirmationWhere
+        ? { AND: [{ id: visitRecordId, version: expectedVersion }, confirmationWhere] }
+        : { id: visitRecordId, version: expectedVersion };
 
       const claim = await tx.visitRecord.updateMany({
-        where: { id: visitRecordId, version: expectedVersion },
+        where: claimWhere,
         data: {
           structured_soap: toPrismaJsonInput(updated),
           version: { increment: 1 },
@@ -421,7 +462,26 @@ export async function confirmHandoff(
         orgId,
         dedupeKey: `handoff_confirm_${visitRecordId}`,
         taskType: 'handoff_confirmation',
+        assignedToUserId: confirmedBy,
+        includeUnassigned: true,
       });
+
+      if (requestContext) {
+        await createAuditLogEntry(tx, requestContext, {
+          action: 'visit_handoff_confirmed',
+          targetType: 'visit_record',
+          targetId: visitRecordId,
+          changes: {
+            visit_record_id: visitRecordId,
+            schedule_id: record.schedule_id,
+            confirmed_by: confirmedBy,
+            authorized_basis: confirmationBasis ?? 'service_call',
+            edited_fields: editedFields,
+            before: countHandoffContent(currentHandoff),
+            after: countHandoffContent(confirmed),
+          },
+        });
+      }
     },
     { requestContext },
   );

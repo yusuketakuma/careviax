@@ -9,7 +9,10 @@ import {
   buildVisitScheduleProposalAssignmentWhere,
   buildVisitScheduleProposalCaseAccessWhere,
   buildVisitScheduleAssignmentWhere,
+  buildVisitHandoffConfirmationWhere,
   canAccessVisitScheduleAssignment,
+  canConfirmVisitHandoff,
+  selectVisitHandoffConfirmationAssignee,
 } from '../visit-schedule-access';
 
 // 新アクセスポリシー:
@@ -34,6 +37,54 @@ describe('visit schedule assignment access', () => {
         true,
       );
     }
+  });
+
+  it('requires direct clinical responsibility for handoff confirmation', () => {
+    expect(canConfirmVisitHandoff({ userId: 'pharmacist_1', role: 'pharmacist' }, schedule)).toBe(
+      true,
+    );
+    expect(canConfirmVisitHandoff({ userId: 'primary_1', role: 'pharmacist' }, schedule)).toBe(
+      true,
+    );
+    expect(canConfirmVisitHandoff({ userId: 'backup_1', role: 'pharmacist' }, schedule)).toBe(true);
+    expect(canConfirmVisitHandoff({ userId: 'unassigned_1', role: 'pharmacist' }, schedule)).toBe(
+      false,
+    );
+    expect(
+      canConfirmVisitHandoff({ userId: 'pharmacist_1', role: 'pharmacist_trainee' }, schedule),
+    ).toBe(false);
+    expect(canConfirmVisitHandoff({ userId: 'pharmacist_1', role: 'clerk' }, schedule)).toBe(false);
+  });
+
+  it('builds a strict handoff confirmation write claim for allowed roles only', () => {
+    expect(buildVisitHandoffConfirmationWhere({ userId: 'user_1', role: 'pharmacist' })).toEqual({
+      schedule: {
+        OR: [
+          { pharmacist_id: 'user_1' },
+          { case_: { primary_pharmacist_id: 'user_1' } },
+          { case_: { backup_pharmacist_id: 'user_1' } },
+        ],
+      },
+    });
+    expect(
+      buildVisitHandoffConfirmationWhere({ userId: 'user_1', role: 'pharmacist_trainee' }),
+    ).toBeNull();
+  });
+
+  it('selects the visit handoff confirmation assignee from visit then case responsibility', () => {
+    expect(selectVisitHandoffConfirmationAssignee(schedule)).toBe('pharmacist_1');
+    expect(
+      selectVisitHandoffConfirmationAssignee({
+        pharmacist_id: null,
+        case_: { primary_pharmacist_id: 'primary_1', backup_pharmacist_id: 'backup_1' },
+      }),
+    ).toBe('primary_1');
+    expect(
+      selectVisitHandoffConfirmationAssignee({
+        pharmacist_id: null,
+        case_: { primary_pharmacist_id: null, backup_pharmacist_id: 'backup_1' },
+      }),
+    ).toBe('backup_1');
   });
 
   it('still scopes driver/external_viewer to their concrete assignment', () => {

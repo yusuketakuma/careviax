@@ -267,6 +267,8 @@ function stubFetch(
             confirmed_at: null,
             extracted_at: '2026-06-11T00:00:00.000Z',
           },
+          visit_record_version: 7,
+          visit_record_updated_at: '2026-06-11T00:00:00.000Z',
         }),
         { status: 200 },
       );
@@ -343,6 +345,31 @@ describe('HandoffWorkspace', () => {
     }
   });
 
+  it('preserves visit record version from the handoff detail response', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({
+        data: {
+          next_check_items: ['残薬を確認'],
+          ongoing_monitoring: ['眠気'],
+          decision_rationale: '訪問時に眠気の訴えあり',
+          ai_extracted: true,
+          ai_confidence: 0.88,
+          confirmed_by: null,
+          confirmed_at: null,
+          extracted_at: '2026-06-11T00:00:00.000Z',
+        },
+        visit_record_version: 7,
+        visit_record_updated_at: '2026-06-11T00:00:00.000Z',
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchVisitHandoff('org_1', 'visit_record_1')).resolves.toMatchObject({
+      data: { next_check_items: ['残薬を確認'] },
+      visit_record_version: 7,
+    });
+  });
+
   it('renders 私が渡した cards with status badges, 3-point summaries and rule bar', async () => {
     useAuthStore.getState().setCurrentUser({ id: 'user_1' });
     stubFetch();
@@ -410,6 +437,35 @@ describe('HandoffWorkspace', () => {
     expect(screen.getByText('ハンドオフ履歴')).toBeTruthy();
     expect(screen.getByText('今月31件')).toBeTruthy();
     expect(screen.getByText('許可済み事務作業の範囲')).toBeTruthy();
+  });
+
+  it('passes visit record version through the handoff workspace confirmation flow', async () => {
+    useAuthStore.getState().setCurrentUser({ id: 'user_1' });
+    const fetchMock = stubFetch();
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getByText('残薬を確認')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '確認' }));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            String(input) === '/api/visit-records/visit_record_1/handoff' && init?.method === 'PUT',
+        ),
+      ).toBe(true);
+    });
+    const putCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        String(input) === '/api/visit-records/visit_record_1/handoff' && init?.method === 'PUT',
+    );
+    expect(JSON.parse(String(putCall?.[1]?.body))).toMatchObject({
+      confirmed: true,
+      expected_visit_record_version: 7,
+    });
   });
 
   it('disables transfer submission until the 3-point set is complete', async () => {

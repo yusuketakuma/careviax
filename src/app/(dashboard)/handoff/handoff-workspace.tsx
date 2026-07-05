@@ -114,6 +114,13 @@ export type HandoffConfirmationTask = {
   created_at: string;
 };
 
+export type VisitHandoffResponse = {
+  data: VisitHandoff;
+  extraction?: unknown;
+  visit_record_version: number;
+  visit_record_updated_at?: string;
+};
+
 export async function fetchHandoffConfirmationTasks(
   orgId: string,
 ): Promise<HandoffConfirmationTask[]> {
@@ -164,12 +171,11 @@ export async function fetchRecentComments(orgId: string): Promise<RecentComment[
 export async function fetchVisitHandoff(
   orgId: string,
   visitRecordId: string,
-): Promise<VisitHandoff> {
+): Promise<VisitHandoffResponse> {
   const res = await fetch(`/api/visit-records/${visitRecordId}/handoff`, {
     headers: buildOrgHeaders(orgId),
   });
-  const json = await readApiJson<{ data: VisitHandoff }>(res, '訪問申し送りの取得に失敗しました');
-  return json.data;
+  return readApiJson<VisitHandoffResponse>(res, '訪問申し送りの取得に失敗しました');
 }
 
 // ---------------------------------------------------------------------------
@@ -1324,7 +1330,8 @@ function VisitHandoffConfirmationWorkspace({
         ) : visitRecordId && visitHandoffQuery.data ? (
           <HandoffConfirmPanel
             visitRecordId={visitRecordId}
-            handoff={visitHandoffQuery.data}
+            expectedVisitRecordVersion={visitHandoffQuery.data.visit_record_version}
+            handoff={visitHandoffQuery.data.data}
             onConfirmed={onConfirmed}
           />
         ) : null}

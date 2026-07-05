@@ -4,6 +4,8 @@ import { NextRequest } from 'next/server';
 const {
   requireAuthContextMock,
   canAccessVisitScheduleAssignmentMock,
+  canConfirmVisitHandoffMock,
+  buildVisitHandoffConfirmationWhereMock,
   visitRecordFindFirstMock,
   visitHandoffExtractionFindUniqueMock,
   confirmHandoffMock,
@@ -13,6 +15,8 @@ const {
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   canAccessVisitScheduleAssignmentMock: vi.fn(),
+  canConfirmVisitHandoffMock: vi.fn(),
+  buildVisitHandoffConfirmationWhereMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
   visitHandoffExtractionFindUniqueMock: vi.fn(),
   confirmHandoffMock: vi.fn(),
@@ -27,6 +31,8 @@ vi.mock('@/lib/auth/context', () => ({
 
 vi.mock('@/lib/auth/visit-schedule-access', () => ({
   canAccessVisitScheduleAssignment: canAccessVisitScheduleAssignmentMock,
+  canConfirmVisitHandoff: canConfirmVisitHandoffMock,
+  buildVisitHandoffConfirmationWhere: buildVisitHandoffConfirmationWhereMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -123,6 +129,10 @@ describe('/api/visit-records/[id]/handoff', () => {
     vi.clearAllMocks();
     requireAuthContextMock.mockResolvedValue(authCtx);
     canAccessVisitScheduleAssignmentMock.mockReturnValue(true);
+    canConfirmVisitHandoffMock.mockReturnValue(true);
+    buildVisitHandoffConfirmationWhereMock.mockReturnValue({
+      schedule: { pharmacist_id: 'user_1' },
+    });
     visitHandoffExtractionFindUniqueMock.mockResolvedValue(null);
     readConfirmableHandoffDataMock.mockImplementation((value: unknown) => {
       if (value === undefined || value === null) return { status: 'missing' };
@@ -371,10 +381,7 @@ describe('/api/visit-records/[id]/handoff', () => {
       const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
       expect(res!.status).toBe(200);
       expectSensitiveNoStore(res!);
-      expect(canAccessVisitScheduleAssignmentMock).toHaveBeenCalledWith(
-        authCtx.ctx,
-        accessibleSchedule,
-      );
+      expect(canConfirmVisitHandoffMock).toHaveBeenCalledWith(authCtx.ctx, accessibleSchedule);
       expect(confirmHandoffMock).toHaveBeenCalledWith(expect.anything(), {
         orgId: 'org_1',
         visitRecordId: 'vr_1',
@@ -382,6 +389,8 @@ describe('/api/visit-records/[id]/handoff', () => {
         expectedVersion: VISIT_RECORD_VERSION,
         edits: undefined,
         requestContext: authCtx.ctx,
+        confirmationWhere: { schedule: { pharmacist_id: 'user_1' } },
+        confirmationBasis: 'assigned_schedule',
       });
     });
 
@@ -450,8 +459,8 @@ describe('/api/visit-records/[id]/handoff', () => {
       expect(confirmHandoffMock).not.toHaveBeenCalled();
     });
 
-    it('returns 403 before confirming handoff data when assignment access is denied', async () => {
-      canAccessVisitScheduleAssignmentMock.mockReturnValue(false);
+    it('returns 403 before confirming handoff data when confirmation access is denied', async () => {
+      canConfirmVisitHandoffMock.mockReturnValue(false);
       visitRecordFindFirstMock.mockResolvedValue(
         buildVisitRecord({ structured_soap: { handoff: confirmableHandoff } }),
       );
@@ -464,10 +473,42 @@ describe('/api/visit-records/[id]/handoff', () => {
 
       expect(res!.status).toBe(403);
       expectSensitiveNoStore(res!);
-      expect(canAccessVisitScheduleAssignmentMock).toHaveBeenCalledWith(
-        authCtx.ctx,
-        accessibleSchedule,
+      expect(canConfirmVisitHandoffMock).toHaveBeenCalledWith(authCtx.ctx, accessibleSchedule);
+      expect(buildVisitHandoffConfirmationWhereMock).not.toHaveBeenCalled();
+      expect(confirmHandoffMock).not.toHaveBeenCalled();
+    });
+
+    it('returns 403 before confirming handoff data when confirmation write claim is unavailable', async () => {
+      buildVisitHandoffConfirmationWhereMock.mockReturnValue(null);
+      visitRecordFindFirstMock.mockResolvedValue(
+        buildVisitRecord({ structured_soap: { handoff: confirmableHandoff } }),
       );
+
+      const req = createRequest('http://localhost/api/visit-records/vr_1/handoff', {
+        confirmed: true,
+        expected_visit_record_version: VISIT_RECORD_VERSION,
+      });
+      const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+      expect(res!.status).toBe(403);
+      expectSensitiveNoStore(res!);
+      expect(confirmHandoffMock).not.toHaveBeenCalled();
+    });
+
+    it('returns a sanitized no-store 500 when confirmation preflight lookup fails unexpectedly', async () => {
+      visitRecordFindFirstMock.mockRejectedValueOnce(new Error('raw visit handoff secret'));
+
+      const req = createRequest('http://localhost/api/visit-records/vr_1/handoff', {
+        confirmed: true,
+        expected_visit_record_version: VISIT_RECORD_VERSION,
+      });
+      const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+      expect(res!.status).toBe(500);
+      expectSensitiveNoStore(res!);
+      const bodyText = await res!.text();
+      expect(bodyText).toContain('INTERNAL_ERROR');
+      expect(bodyText).not.toContain('raw visit handoff secret');
       expect(confirmHandoffMock).not.toHaveBeenCalled();
     });
 

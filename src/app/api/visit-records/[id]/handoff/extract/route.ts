@@ -1,6 +1,9 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
-import { canAccessVisitScheduleAssignment } from '@/lib/auth/visit-schedule-access';
+import {
+  canAccessVisitScheduleAssignment,
+  selectVisitHandoffConfirmationAssignee,
+} from '@/lib/auth/visit-schedule-access';
 import {
   success,
   notFound,
@@ -86,6 +89,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       soapPlan: record.soap_plan ?? null,
       expectedVersion: record.version,
       requestContext: ctx,
+      handoffConfirmationAssigneeId: selectVisitHandoffConfirmationAssignee(record.schedule),
     });
     return withSensitiveNoStore(success(handoff, 201));
   } catch (cause) {

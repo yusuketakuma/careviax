@@ -28,6 +28,12 @@ const ORG_WIDE_ACCESS_ROLES: ReadonlySet<MemberRole> = new Set([
   'clerk',
 ]);
 
+const VISIT_HANDOFF_CONFIRM_ROLES: ReadonlySet<MemberRole> = new Set([
+  'owner',
+  'admin',
+  'pharmacist',
+]);
+
 export function canBypassVisitScheduleAssignmentAccess(
   ctx: Pick<VisitScheduleAccessContext, 'role'>,
 ) {
@@ -53,6 +59,38 @@ export function canAccessVisitScheduleAssignment(
     schedule.pharmacist_id === ctx.userId ||
     schedule.case_?.primary_pharmacist_id === ctx.userId ||
     schedule.case_?.backup_pharmacist_id === ctx.userId
+  );
+}
+
+function isAssignedToVisitSchedule(
+  userId: string,
+  schedule: VisitScheduleAssignmentSubject | null | undefined,
+) {
+  if (!schedule) return false;
+
+  return (
+    schedule.pharmacist_id === userId ||
+    schedule.case_?.primary_pharmacist_id === userId ||
+    schedule.case_?.backup_pharmacist_id === userId
+  );
+}
+
+export function canConfirmVisitHandoff(
+  ctx: VisitScheduleAccessContext,
+  schedule: VisitScheduleAssignmentSubject | null | undefined,
+) {
+  if (!VISIT_HANDOFF_CONFIRM_ROLES.has(ctx.role)) return false;
+  return isAssignedToVisitSchedule(ctx.userId, schedule);
+}
+
+export function selectVisitHandoffConfirmationAssignee(
+  schedule: VisitScheduleAssignmentSubject | null | undefined,
+) {
+  return (
+    schedule?.pharmacist_id ??
+    schedule?.case_?.primary_pharmacist_id ??
+    schedule?.case_?.backup_pharmacist_id ??
+    null
   );
 }
 
@@ -160,4 +198,20 @@ export function buildVisitRecordScheduleAssignmentWhere(
 ): Prisma.VisitRecordWhereInput | null {
   const scheduleWhere = buildVisitScheduleAssignmentWhere(ctx);
   return scheduleWhere ? { schedule: scheduleWhere } : null;
+}
+
+export function buildVisitHandoffConfirmationWhere(
+  ctx: VisitScheduleAccessContext,
+): Prisma.VisitRecordWhereInput | null {
+  if (!VISIT_HANDOFF_CONFIRM_ROLES.has(ctx.role)) return null;
+
+  return {
+    schedule: {
+      OR: [
+        { pharmacist_id: ctx.userId },
+        { case_: { primary_pharmacist_id: ctx.userId } },
+        { case_: { backup_pharmacist_id: ctx.userId } },
+      ],
+    },
+  };
 }
