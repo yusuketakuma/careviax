@@ -146,6 +146,12 @@
   org JSON header / queued-count payload / toast-invalidation contract は保持。
   SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
   維持しつつ、本sliceでは不要。
+- codex: R40/R44 communication-follow-up readApiJson slice(c6bc1af8) land。focused Vitest 15、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。communication resolve-followup
+  mutation response を readApiJson へ収束し、encoded endpoint / expected_updated_at-response-followup
+  body / org JSON header / dot-segment fail-closed / toast-invalidation contract は保持。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
+  維持しつつ、本sliceでは不要。
 - codex: R40/R44 prescription-history readApiJson slice(d65d08d5) land。focused Vitest 29、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。patient prescription history GET /
   drug-master batch enrichment POST を readApiJson へ収束し、patient path helper / hostile-id
