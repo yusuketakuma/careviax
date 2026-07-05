@@ -40,7 +40,77 @@
 
 ## 直近の land（本日・要点）
 
-- codex: Case Risk Cockpit patient share privacy adapter slice（ready to commit）。
+- codex: Case Risk Cockpit risk task sync API slice（ready to commit）。
+  - current task:
+    `Plans.md` の `RISK-CORE-2 / CORE-002` 実 domain 接続として、Case Risk Cockpit の active
+    `blocking` / `urgent` findings を operational task に upsert する明示 sync service/API を追加した。
+    `GET /api/cases/[id]/risk-cockpit` は副作用なしのまま維持し、新設
+    `POST /api/cases/[id]/risk-cockpit/tasks` が `syncCaseRiskCockpitOperationalTasks` を呼ぶ。
+  - subagent:
+    `api_contract_reviewer` の新規投入を試行したが、`agent thread limit reached` で起動不可。
+    Codex 本体で Next Route Handlers docs、既存 risk-cockpit route/auth/RLS/no-store pattern、
+    `risk-task-bridge`、`operational-tasks`、Task schema、permission matrix を確認して実装・検証した。
+  - design / imagegen:
+    backend service/API slice で視覚レイアウト変更を伴わないため、`imagegen` / `gpt-image-2` の新規生成は
+    省略。Case Risk Cockpit UI に「タスク化」ボタンや sync result を配置する slice では PH-OS UI/UX SSOT と
+    `gpt-image-2` 方針に従い、非 PHI mockup を先に作る。
+  - Next.js docs inspected:
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/07-mutating-data.md`.
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `prisma/schema/core-task.prisma`,
+    `src/app/api/cases/[id]/risk-cockpit/route.ts`,
+    `src/app/api/cases/[id]/risk-cockpit/route.test.ts`,
+    `src/lib/api/response.ts`,
+    `src/lib/auth/permission-matrix.ts`,
+    `src/lib/tasks/task-registry.ts`,
+    `src/server/services/case-risk-cockpit.ts`,
+    `src/server/services/risk-task-bridge.ts`,
+    `src/server/services/risk-task-bridge.test.ts`,
+    `src/server/services/operational-tasks.ts`,
+    `src/server/services/operational-tasks.test.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/case-risk-task-sync.ts`,
+    `src/server/services/case-risk-task-sync.test.ts`,
+    `src/app/api/cases/[id]/risk-cockpit/tasks/route.ts`,
+    `src/app/api/cases/[id]/risk-cockpit/tasks/route.test.ts`.
+  - bugs / risks reduced:
+    `risk-task-bridge` は存在していたが実 domain から呼ばれておらず、Case Risk Cockpit の
+    blocking/urgent findings が operational task に昇格しなかった。明示 POST sync を追加し、
+    task title/description は domain controlled 文言に固定した。
+  - security / PHI reviewed:
+    route は `requireAuthContext(permission: 'canVisit')` と `withOrgContext(..., { requestContext })` を通す。
+    response は `withSensitiveNoStore`。sync response は generated_at、case_id、patient_id、overall_status、
+    counts、task id/display_id のみで、risk title/detail、dedupe_key、raw finding body は返さない。
+    service test で PHI-like finding title/detail が task payload に保存されないことを固定した。
+  - performance issues improved:
+    task sync は明示 POST のみで GET cockpit に副作用を入れない。upsert は既存 `org_id_dedupe_key`
+    unique key を使うため同一 risk の重複 task を増やさない。
+  - validation commands:
+    `pnpm exec prettier --write src/server/services/case-risk-task-sync.ts src/server/services/case-risk-task-sync.test.ts src/app/api/cases/[id]/risk-cockpit/tasks/route.ts src/app/api/cases/[id]/risk-cockpit/tasks/route.test.ts`;
+    `pnpm exec vitest run src/server/services/case-risk-task-sync.test.ts src/app/api/cases/[id]/risk-cockpit/tasks/route.test.ts src/server/services/risk-task-bridge.test.ts --reporter=dot --testTimeout=30000`;
+    `git diff --check`;
+    `pnpm typecheck`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`;
+    `pnpm lint`.
+  - validation results:
+    initial focused route test failed because array `toMatchObject` expected only one task while fixture returned two;
+    fixed with `arrayContaining`. focused vitest green（3 files / 13 tests）; `git diff --check` green;
+    normal `pnpm typecheck` generated route types then failed with Node heap OOM; rerun with
+    `NODE_OPTIONS=--max-old-space-size=16384` green; typecheck:no-unused green; `pnpm lint` green with existing
+    unrelated warnings in `src/lib/platform/break-glass.test.ts` (`_tx`, `_input` unused warnings only).
+  - remaining work:
+    Broader `Plans.md` objective remains open。残: sync route の UI 導線、batch/job sync、domain 別 resolve
+    predicate、waiver/override audit、Task Health Board 連携。
+
+- codex: Case Risk Cockpit patient share privacy adapter slice（committed）。
   - current task:
     `Plans.md` の `RISK-CORE-3 / CORE-003` / privacy_security adapter 拡張として、active
     `PatientShareCase` の共有期限・有効同意・出力系 scope を Case Risk Cockpit に接続した。

@@ -643,8 +643,12 @@ FE 仕上げ（低優先）:
     open task を close できるようにした。
   - `src/server/services/risk-task-bridge.test.ts` で taskify 条件、PHI-like title/detail 非保存、
     stable dedupe、invalid date、resolve/cancel を固定。
+  - 2026-07-06 追加 partial: `src/server/services/case-risk-task-sync.ts` と
+    `POST /api/cases/[id]/risk-cockpit/tasks` を追加し、Case Risk Cockpit の active blocking/urgent
+    findings を明示操作で `upsertOperationalTaskForRisk` に接続。GET cockpit は副作用なしのまま維持し、
+    response は件数と task id/display_id のみで、dedupe key や finding title/detail は返さない。
 - 残:
-  - billing/report/notification 等の実 adapter から bridge を呼ぶ接続。
+  - domain/job/UI から `POST /api/cases/[id]/risk-cockpit/tasks` を呼ぶ導線と batch sync。
   - waiver/override 時の理由必須 audit と resolution note。
   - domain 別 resolve predicate、孤児 task audit、Task Health Board 連携。
 
