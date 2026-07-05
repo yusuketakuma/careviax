@@ -61,6 +61,11 @@
   raw patient query-key invalidation、dot-segment fail-closed、server-message fallback は保持。
   SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
   維持しつつ、本sliceでは不要。
+- codex: R40/R44 handoff-confirm readApiJson slice(2dec39c5) land。focused Vitest 2、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。visit handoff confirm PUT response を
+  readApiJson へ収束し、endpoint、org JSON headers、edit payload、server-message/fallback toast、
+  visit-record / visit-handoff invalidation は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 - coordinator mode refresh(0164b797) / agmsg turn hook(025ee516) / W3-E1 shifts RHF(c5ec2727)
   / W3-E2 DataTable selectable-listbox contract(757ca20c) / prescriptions-table DataTable migration(2d0d80b4)
   / W3-E1 facilities RHF(a18abc1c) — coordinator review + focused validation green。DataTable contract は
