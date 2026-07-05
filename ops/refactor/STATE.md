@@ -39,6 +39,23 @@
 
 ## 直近の land（本日・要点）
 
+- codex: R40/R44 formulary read routes no-store hardening batch(7dc08176) land。
+  ユーザー指示により本sliceでは subagent を投入（api_contract_reviewer /
+  privacy_compliance_reviewer）。focused Vitest 33、scoped ESLint/Prettier/diff-check、
+  `pnpm typecheck` green。`/api/pharmacy-drug-stocks/history`、`/api/pharmacy-drug-stocks/impact`、
+  `/api/pharmacy-drug-stock-requests`、`/api/pharmacy-drug-stock-templates` の GET export を
+  `authenticatedGET` + `withSensitiveNoStore(await authenticatedGET(...))` へ揃え、成功・validation・
+  not-found・auth rejection・`withAuthContext` の fixed `INTERNAL_ERROR` 500 まで
+  `Cache-Control: private, no-store, max-age=0` / `Pragma: no-cache` を付与。body/status/root shape、
+  canAdmin、org/site scoping、POST mutation/audit routes は保持。route-local tests で 200/400/404、
+  auth 401、sanitized 500、raw unsafe error 非露出、safe structured logger context を固定。
+  api_contract_reviewer の CHANGES_REQUESTED（export boundary wrapper、auth/500 no-store coverage、
+  success envelope 保持）と privacy_compliance_reviewer の CHANGES_REQUESTED（PHI-adjacent /
+  QR prescription-derived aggregate cache leakage、500/no-store regression）に対応済み。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) に
+  基づき product API / PHI-adjacent response hardening を変更、DB schema/migration/billing/deploy/package
+  dependency 変更は不要。残る別slice候補: requests/templates の POST mutation responses も同等の
+  no-store route-local proof を入れるか、route-wide sensitive wrapper 方針へ標準化する。
 - codex: R40/R44 admin drug-master supporting read queries readApiJson batch(94c95c3f)
   land。subagents: code_mapper APPROVE、api_contract_reviewer CHANGES_REQUESTED（success envelope /
   `{ message }` / `{ error }` / non-JSON fallback coverage、route no-store follow-up）、test_architect
