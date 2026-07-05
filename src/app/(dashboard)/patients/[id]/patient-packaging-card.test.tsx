@@ -6,6 +6,7 @@ import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { jsonResponse } from '@/test/fetch-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
+import { toast } from 'sonner';
 
 const useQueryMock = vi.hoisted(() => vi.fn());
 const useMutationMock = vi.hoisted(() => vi.fn());
@@ -89,6 +90,7 @@ describe('PatientPackagingCard', () => {
     queryKey?: unknown[];
     queryFn?: () => Promise<unknown>;
     mutationFn?: () => Promise<unknown>;
+    onError?: (error: unknown) => void;
   };
 
   function captureConfigs() {
@@ -107,7 +109,7 @@ describe('PatientPackagingCard', () => {
   }
 
   function okFetch() {
-    return vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({}));
+    return vi.fn<typeof fetch>().mockImplementation(() => Promise.resolve(jsonResponse({})));
   }
 
   it('fetches packaging settings from an encoded patient path with org headers', async () => {
@@ -206,6 +208,33 @@ describe('PatientPackagingCard', () => {
         special_instructions: '手渡し順に注意',
         cognitive_note: '飲み忘れ傾向あり',
       });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('surfaces API error messages when packaging settings fail to save', async () => {
+    const { mutationConfigs } = captureConfigs();
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ message: '配薬設定の更新権限がありません' }, 403));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PatientPackagingCard patientId="patient_1" orgId="org_1" />);
+
+      await expect(mutationConfigs[0]?.mutationFn?.()).rejects.toThrow(
+        '配薬設定の更新権限がありません',
+      );
+      mutationConfigs[0]?.onError?.(new Error('配薬設定の更新権限がありません'));
+
+      expect(fetchMock).toHaveBeenCalledWith('/api/patients/patient_1/packaging', {
+        method: 'PUT',
+        headers: buildOrgJsonHeaders('org_1'),
+        body: expect.any(String),
+      });
+      expect(toast.error).toHaveBeenCalledWith('配薬設定の更新権限がありません');
     } finally {
       vi.unstubAllGlobals();
       vi.clearAllMocks();

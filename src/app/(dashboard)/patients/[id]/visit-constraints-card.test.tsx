@@ -6,6 +6,7 @@ import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { jsonResponse } from '@/test/fetch-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
+import { toast } from 'sonner';
 
 const useQueryMock = vi.hoisted(() => vi.fn());
 const useMutationMock = vi.hoisted(() => vi.fn());
@@ -38,6 +39,7 @@ type CapturedConfig = {
   queryFn?: () => Promise<unknown>;
   mutationFn?: () => Promise<unknown>;
   onSuccess?: () => Promise<void> | void;
+  onError?: (error: unknown) => void;
 };
 
 const VISIT_CONSTRAINTS_RESPONSE = {
@@ -84,7 +86,7 @@ function captureConfigs() {
 }
 
 function okFetch() {
-  return vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({}));
+  return vi.fn<typeof fetch>().mockImplementation(() => Promise.resolve(jsonResponse({})));
 }
 
 afterEach(() => {
@@ -213,6 +215,28 @@ describe('VisitConstraintsCard', () => {
       geocode_source: 'manual',
       geocode_accuracy: 'rooftop',
     });
+  });
+
+  it('surfaces API error messages when visit constraints fail to save', async () => {
+    const { mutationConfigs } = captureConfigs();
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ message: '訪問条件の更新権限がありません' }, 403));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<VisitConstraintsCard patientId="patient_1" orgId="org_1" />);
+
+    await expect(mutationConfigs[0]?.mutationFn?.()).rejects.toThrow(
+      '訪問条件の更新権限がありません',
+    );
+    mutationConfigs[0]?.onError?.(new Error('訪問条件の更新権限がありません'));
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/patients/patient_1/visit-constraints', {
+      method: 'PUT',
+      headers: buildOrgJsonHeaders('org_1'),
+      body: expect.any(String),
+    });
+    expect(toast.error).toHaveBeenCalledWith('訪問条件の更新権限がありません');
   });
 
   it('routes visit constraint reads and writes through the shared patient API path helper', async () => {

@@ -185,11 +185,7 @@ export function VisitConstraintsCard({ patientId, orgId }: { patientId: string; 
           geocode_accuracy: form.geocode_accuracy || undefined,
         }),
       });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error((json as { message?: string }).message ?? '訪問条件の保存に失敗しました');
-      }
-      return json;
+      return readApiJson<unknown>(res, '訪問条件の保存に失敗しました');
     },
     onSuccess: async () => {
       toast.success('訪問条件を保存しました');

@@ -107,13 +107,7 @@ export function PatientPackagingCard({ patientId, orgId }: { patientId: string; 
           cognitive_note: form.cognitive_note || undefined,
         }),
       });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(
-          (json as { message?: string }).message ?? '患者配薬設定の保存に失敗しました',
-        );
-      }
-      return json;
+      return readApiJson<unknown>(res, '患者配薬設定の保存に失敗しました');
     },
     onSuccess: async () => {
       toast.success('患者固有の配薬設定を保存しました');
