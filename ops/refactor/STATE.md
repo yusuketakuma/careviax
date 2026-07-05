@@ -49,6 +49,12 @@
   self-report body、draft autosave/clear、409/429 fixed toast contract、archive display は保持。
   SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
   維持しつつ、本sliceでは不要。
+- codex: R40/R44 patient-MCS mutations readApiJson slice(dbe25eac) land。focused Vitest 13、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。MCS sync / check-log create /
+  profile update mutation responses を readApiJson へ収束し、patient path helper、org JSON headers、
+  raw patient query-key invalidation、dot-segment fail-closed、server-message toast fallback は保持。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
+  維持しつつ、本sliceでは不要。
 - coordinator mode refresh(0164b797) / agmsg turn hook(025ee516) / W3-E1 shifts RHF(c5ec2727)
   / W3-E2 DataTable selectable-listbox contract(757ca20c) / prescriptions-table DataTable migration(2d0d80b4)
   / W3-E1 facilities RHF(a18abc1c) — coordinator review + focused validation green。DataTable contract は
