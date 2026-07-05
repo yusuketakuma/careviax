@@ -3913,3 +3913,40 @@
   `missing_contact` / `missing_care_team` の安全な DB 化または専用 materialized/facet strategy、
   chip/foundation facet count endpoint、summary/detail batch split、DB index/EXPLAIN、query count、
   payload budget enforcement、browser smoke。
+
+## 2026-07-06 Visits Today Offline Wording slice
+
+- codex: `VISIT-UX-001 / UX-MOB-001` partial implemented.
+  訪問トップのオフライン注記から「訪問モードはオフラインでも全機能が動きます」という過剰な安全保証を削除し、
+  「訪問記録の下書き保存はオフラインでも利用できます。添付送信・処方安全確認・報告書連携は通信復帰後に同期します。」
+  へ更新した。CDS 取得、添付送信、報告連携などの online 依存を UI が誤って保証しないようにした。
+- design / imagegen:
+  `docs/ui-ux-design-guidelines.md` 2.4.2 を確認。軽微な文言修正で新規視覚設計を伴わないため、
+  `imagegen` / `gpt-image-2` の新規生成は省略した。
+- files inspected:
+  `git status --short --branch --untracked-files=all`,
+  `docs/ui-ux-design-guidelines.md`,
+  `Plans.md`,
+  `src/app/(dashboard)/visits/visits-today.tsx`,
+  `src/app/(dashboard)/visits/visits-today.test.tsx`.
+- files changed:
+  `Plans.md`,
+  `src/app/(dashboard)/visits/visits-today.tsx`,
+  `src/app/(dashboard)/visits/visits-today.test.tsx`,
+  `ops/refactor/STATE.md`.
+- bugs/safety risks reduced:
+  実際には online 復帰後処理が必要な添付送信、処方安全確認、報告書連携まで「全機能」と読める
+  false reassurance を修正。訪問中の通信断時に、現場が下書き保存と同期待ちの境界を誤解しにくくした。
+- validation:
+  `pnpm exec vitest run 'src/app/(dashboard)/visits/visits-today.test.tsx' --reporter=dot --testTimeout=30000`
+  green (1 file / 6 tests);
+  `pnpm exec eslint 'src/app/(dashboard)/visits/visits-today.tsx' 'src/app/(dashboard)/visits/visits-today.test.tsx'`
+  green;
+  `pnpm exec prettier --check 'src/app/(dashboard)/visits/visits-today.tsx' 'src/app/(dashboard)/visits/visits-today.test.tsx'`
+  green;
+  `git diff --check -- 'src/app/(dashboard)/visits/visits-today.tsx' 'src/app/(dashboard)/visits/visits-today.test.tsx'`
+  green.
+- remaining:
+  Broader `Plans.md` objective remains open. `UX-MOB-001` の残りは訪問開始固定 CTA、1患者1画面、
+  下部固定バー、未同期/同期済み/競合ありの常時表示、autosave debounce、位置情報説明、
+  添付 background queue、mobile E2E。

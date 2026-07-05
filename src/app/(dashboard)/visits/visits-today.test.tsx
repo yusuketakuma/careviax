@@ -239,7 +239,10 @@ describe('VisitsToday', () => {
 
     // フッターのオフライン注記
     expect(screen.getByTestId('visits-today-offline-note').textContent).toContain(
-      '訪問モードはオフラインでも全機能が動きます',
+      '訪問記録の下書き保存はオフラインでも利用できます',
+    );
+    expect(screen.getByTestId('visits-today-offline-note').textContent).toContain(
+      '添付送信・処方安全確認・報告書連携は通信復帰後に同期します',
     );
   });
 

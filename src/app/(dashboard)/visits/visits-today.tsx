@@ -354,7 +354,7 @@ export function VisitsToday() {
                 className="rounded-md border-l-4 border-border/70 border-l-state-done bg-card px-3 py-2 text-sm leading-5 text-state-done"
                 data-testid="visits-today-offline-note"
               >
-                訪問モードはオフラインでも全機能が動きます。記録は端末に保存され、電波が戻ると自動同期されます。
+                訪問記録の下書き保存はオフラインでも利用できます。添付送信・処方安全確認・報告書連携は通信復帰後に同期します。
               </p>
             </div>
             <WorkspaceActionRail

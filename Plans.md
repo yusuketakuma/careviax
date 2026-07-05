@@ -741,6 +741,12 @@ FE 仕上げ（低優先）:
   DB 化、chip/foundation facet count endpoint、summary/detail batch 分割、DB index/EXPLAIN、query count
   と payload budget gate。
 
+- `VISIT-UX-001 / UX-MOB-001` partial（2026-07-06）: 訪問トップのオフライン注記を、実装実態に合わせて
+  「訪問記録の下書き保存はオフラインでも利用可能」「添付送信・処方安全確認・報告書連携は通信復帰後に同期」
+  へ変更した。従来の「オフラインでも全機能が動く」という過剰な安全保証を撤廃し、false reassurance を防ぐ。
+  軽微な文言修正で新規視覚設計を伴わないため `imagegen` / `gpt-image-2` 生成は省略。残: 訪問中モードの
+  1患者1画面化、下部固定CTA、同期状態の常時表示、autosave改善、位置情報説明、mobile E2E。
+
 - `REPORT-PERF-001 / PERF-BFF-001` partial（2026-07-06）: `/reports` は
   `/api/dashboard/cockpit` を再取得せず、`/api/care-reports/today-workspace` の
   `action_rail`（next action / blocked reasons / evidence）で右レールを描画する。
