@@ -604,11 +604,7 @@ export function FacilitiesContent() {
           editingUnitId ? buildUpdateUnitPayload(unitForm) : buildCreateUnitPayload(unitForm),
         ),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error((payload as { message?: string }).message ?? 'ユニット保存に失敗しました');
-      }
-      return payload;
+      return readApiJson<unknown>(response, 'ユニット保存に失敗しました');
     },
     onSuccess: async () => {
       toast.success(editingUnitId ? 'ユニットを更新しました' : 'ユニットを登録しました');
@@ -630,11 +626,7 @@ export function FacilitiesContent() {
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error((payload as { message?: string }).message ?? 'ユニット削除に失敗しました');
-      }
-      return payload;
+      return readApiJson<unknown>(response, 'ユニット削除に失敗しました');
     },
     onSuccess: async () => {
       toast.success('ユニットを削除しました');

@@ -528,6 +528,101 @@ describe('FacilitiesContent', () => {
     });
   });
 
+  it('surfaces API error messages when facility unit save fails', async () => {
+    const facility = facilityFixture();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/admin/facilities?' && !init?.method) {
+        return new Response(
+          JSON.stringify({
+            data: [facility],
+            total_count: 1,
+            visible_count: 1,
+            hidden_count: 0,
+            truncated: false,
+          }),
+          { status: 200 },
+        );
+      }
+      if (url === '/api/admin/facilities/facility_1/units' && !init?.method) {
+        return new Response(JSON.stringify({ data: [unitFixture()] }), { status: 200 });
+      }
+      if (url === '/api/admin/facilities/facility_1/units' && init?.method === 'POST') {
+        return new Response(JSON.stringify({ message: 'ユニット名が重複しています' }), {
+          status: 409,
+        });
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'グリーンヒル を編集' }));
+    await screen.findByText('2F 東');
+    fireEvent.click(screen.getByRole('button', { name: 'ユニットを追加' }));
+    fireEvent.change(screen.getByLabelText('ユニット名'), {
+      target: { value: '3F 西' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'ユニットを保存' }));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('ユニット名が重複しています');
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/admin/facilities/facility_1/units',
+      expect.objectContaining({
+        method: 'POST',
+        headers: buildOrgJsonHeaders('org_1'),
+      }),
+    );
+  });
+
+  it('surfaces API error messages when facility unit delete fails', async () => {
+    const facility = facilityFixture();
+    const removableUnit = { ...unitFixture(), patient_count: 0 };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/admin/facilities?' && !init?.method) {
+        return new Response(
+          JSON.stringify({
+            data: [facility],
+            total_count: 1,
+            visible_count: 1,
+            hidden_count: 0,
+            truncated: false,
+          }),
+          { status: 200 },
+        );
+      }
+      if (url === '/api/admin/facilities/facility_1/units' && !init?.method) {
+        return new Response(JSON.stringify({ data: [removableUnit] }), { status: 200 });
+      }
+      if (url === '/api/admin/facilities/facility_1/units/unit_1' && init?.method === 'DELETE') {
+        return new Response(JSON.stringify({ message: '入居患者がいるユニットは削除できません' }), {
+          status: 409,
+        });
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'グリーンヒル を編集' }));
+    fireEvent.click(await screen.findByRole('button', { name: '2F 東を削除' }));
+    fireEvent.click(screen.getByRole('button', { name: '削除する' }));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('入居患者がいるユニットは削除できません');
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/admin/facilities/facility_1/units/unit_1',
+      expect.objectContaining({
+        method: 'DELETE',
+        headers: buildOrgHeaders('org_1'),
+      }),
+    );
+  });
+
   it('fails closed before PATCH fetch when a facility id is an exact dot segment', async () => {
     const fetchMock = stubFetchWithFacility(facilityFixture('.'));
     renderContent();
