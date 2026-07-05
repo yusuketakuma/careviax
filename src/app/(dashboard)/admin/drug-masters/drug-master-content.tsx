@@ -344,10 +344,7 @@ function DrugMasterOperationalContent({
       const res = await fetch(buildDrugMasterApiPath(selectedDrugId), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) {
-        throw new Error('医薬品詳細の取得に失敗しました');
-      }
-      return res.json() as Promise<DrugMasterDetail>;
+      return readApiJson<DrugMasterDetail>(res, '医薬品詳細の取得に失敗しました');
     },
     enabled: !!orgId && !!selectedDrugId,
     staleTime: 300_000,
@@ -363,8 +360,10 @@ function DrugMasterOperationalContent({
       const res = await fetch(buildPharmacyDrugStocksApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('採用品設定の取得に失敗しました');
-      return res.json() as Promise<{ data: PharmacyDrugStockConfig | null }>;
+      return readApiJson<{ data: PharmacyDrugStockConfig | null }>(
+        res,
+        '採用品設定の取得に失敗しました',
+      );
     },
     enabled: !!orgId && !!effectiveSelectedSiteId && !!selectedDrugId,
     staleTime: 300_000,
@@ -381,8 +380,10 @@ function DrugMasterOperationalContent({
       const res = await fetch(buildPharmacyDrugStockHistoryApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('採用品履歴の取得に失敗しました');
-      return res.json() as Promise<{ data: PharmacyDrugStockHistoryItem[] }>;
+      return readApiJson<{ data: PharmacyDrugStockHistoryItem[] }>(
+        res,
+        '採用品履歴の取得に失敗しました',
+      );
     },
     enabled: !!orgId && !!effectiveSelectedSiteId && !!selectedDrugId,
     staleTime: 60_000,
@@ -399,8 +400,10 @@ function DrugMasterOperationalContent({
       const res = await fetch(buildPharmacyDrugStocksApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('採用薬レビュー対象の取得に失敗しました');
-      return res.json() as Promise<{ data: FormularyStockSummaryRow[] }>;
+      return readApiJson<{ data: FormularyStockSummaryRow[] }>(
+        res,
+        '採用薬レビュー対象の取得に失敗しました',
+      );
     },
     enabled: variant === 'formulary' && !!orgId && !!effectiveSelectedSiteId,
     staleTime: 60_000,
@@ -417,8 +420,10 @@ function DrugMasterOperationalContent({
       const res = await fetch(buildPharmacyDrugStocksApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('在庫下限未設定の取得に失敗しました');
-      return res.json() as Promise<{ data: FormularyStockSummaryRow[] }>;
+      return readApiJson<{ data: FormularyStockSummaryRow[] }>(
+        res,
+        '在庫下限未設定の取得に失敗しました',
+      );
     },
     enabled: variant === 'formulary' && !!orgId && !!effectiveSelectedSiteId,
     staleTime: 60_000,
@@ -437,8 +442,7 @@ function DrugMasterOperationalContent({
       const res = await fetch(buildPharmacyDrugStockImpactApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('採用薬影響レビューの取得に失敗しました');
-      return res.json() as Promise<FormularyImpactResponse>;
+      return readApiJson<FormularyImpactResponse>(res, '採用薬影響レビューの取得に失敗しました');
     },
     enabled: variant === 'formulary' && !!orgId && !!effectiveSelectedSiteId,
     staleTime: 60_000,
@@ -456,8 +460,10 @@ function DrugMasterOperationalContent({
       const res = await fetch(buildPharmacyDrugStockUsageMismatchApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('処方・採用品不一致の取得に失敗しました');
-      return res.json() as Promise<FormularyUsageMismatchResponse>;
+      return readApiJson<FormularyUsageMismatchResponse>(
+        res,
+        '処方・採用品不一致の取得に失敗しました',
+      );
     },
     enabled: variant === 'formulary' && !!orgId && !!effectiveSelectedSiteId,
     staleTime: 60_000,
@@ -475,8 +481,10 @@ function DrugMasterOperationalContent({
       const res = await fetch(buildPharmacyDrugStockRequestsApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('採用品変更申請の取得に失敗しました');
-      return res.json() as Promise<FormularyChangeRequestListResponse>;
+      return readApiJson<FormularyChangeRequestListResponse>(
+        res,
+        '採用品変更申請の取得に失敗しました',
+      );
     },
     enabled: variant === 'formulary' && !!orgId && !!effectiveSelectedSiteId,
     staleTime: 60_000,
@@ -491,8 +499,10 @@ function DrugMasterOperationalContent({
       const res = await fetch(buildPharmacyDrugStockTemplatesApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('採用品テンプレートの取得に失敗しました');
-      return res.json() as Promise<{ data: FormularyTemplateItem[] }>;
+      return readApiJson<{ data: FormularyTemplateItem[] }>(
+        res,
+        '採用品テンプレートの取得に失敗しました',
+      );
     },
     enabled: variant === 'formulary' && !!orgId,
     staleTime: 60_000,
@@ -517,8 +527,10 @@ function DrugMasterOperationalContent({
       const res = await fetch(buildDrugMastersApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('採用後発薬候補の取得に失敗しました');
-      return res.json() as Promise<{ data: GenericCandidateOption[] }>;
+      return readApiJson<{ data: GenericCandidateOption[] }>(
+        res,
+        '採用後発薬候補の取得に失敗しました',
+      );
     },
     enabled: !!orgId && !!selectedDrugId && !!detailQuery.data?.generic_name,
     staleTime: 300_000,
@@ -536,8 +548,10 @@ function DrugMasterOperationalContent({
           headers: buildOrgHeaders(orgId),
         },
       );
-      if (!res.ok) throw new Error('推奨後発品の取得に失敗しました');
-      return res.json() as Promise<{ recommendations: GenericRecommendation[] }>;
+      return readApiJson<{ recommendations: GenericRecommendation[] }>(
+        res,
+        '推奨後発品の取得に失敗しました',
+      );
     },
     enabled: !!orgId && !!selectedDrugId && !!detailQuery.data?.generic_name,
     staleTime: 300_000,
@@ -554,8 +568,7 @@ function DrugMasterOperationalContent({
       const res = await fetch(buildDrugMasterIngredientGroupApiPath(selectedDrugId, params), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('同一成分グループの取得に失敗しました');
-      return res.json() as Promise<IngredientGroupResponse>;
+      return readApiJson<IngredientGroupResponse>(res, '同一成分グループの取得に失敗しました');
     },
     enabled: !!orgId && !!selectedDrugId && !!detailQuery.data?.generic_name,
     staleTime: 300_000,

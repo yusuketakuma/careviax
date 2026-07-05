@@ -3062,6 +3062,213 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
     vi.unstubAllGlobals();
   });
 
+  it('keeps API messages and fallbacks from failed drug-detail and formulary read queries', async () => {
+    queuePendingFormularyRequest();
+    detailDataMock.current = buildGenericDetail();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/generic-recommendations')) {
+        return jsonResponse({ error: '推奨後発品は管理者のみ参照できます' }, 403);
+      }
+      if (url.includes('/ingredient-group')) {
+        return new Response('not-json', { status: 500 });
+      }
+      if (url.includes('/pharmacy-drug-stocks/history')) {
+        return new Response('not-json', { status: 500 });
+      }
+      if (url.includes('/pharmacy-drug-stocks/impact')) {
+        return new Response('not-json', { status: 500 });
+      }
+      if (url.includes('/pharmacy-drug-stocks/usage-mismatch')) {
+        return jsonResponse({ message: '処方・採用品不一致を表示できません' }, 403);
+      }
+      if (url.includes('/pharmacy-drug-stock-requests')) {
+        return jsonResponse({ error: '採用品変更申請を表示できません' }, 403);
+      }
+      if (url.includes('/pharmacy-drug-stock-templates')) {
+        return new Response('not-json', { status: 500 });
+      }
+      if (url.includes('/pharmacy-drug-stocks?') && url.includes('review_due=true')) {
+        return jsonResponse({ message: '採用薬レビュー対象を表示できません' }, 403);
+      }
+      if (url.includes('/pharmacy-drug-stocks?') && url.includes('missing_reorder_point=true')) {
+        return jsonResponse({ error: '在庫下限未設定を表示できません' }, 403);
+      }
+      if (url.includes('/pharmacy-drug-stocks?')) {
+        return jsonResponse({ error: '採用品設定を表示できません' }, 403);
+      }
+      if (url.includes('/drug-masters?')) {
+        return jsonResponse({ message: '採用後発薬候補を表示できません' }, 403);
+      }
+      if (url.includes('/drug-masters/')) {
+        return jsonResponse({ message: '医薬品詳細を表示できません' }, 403);
+      }
+      return jsonResponse({ message: `unexpected fetch: ${url}` }, 500);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<DrugMasterContent variant="formulary" />);
+      fireEvent.click(screen.getByText('採用追加'));
+
+      const latestQueryFn = (queryName: string, idIndex?: number) => {
+        const options = capturedQueryOptions.filter(
+          (candidate) =>
+            candidate.queryKey[0] === queryName &&
+            (idIndex === undefined || candidate.queryKey[idIndex] === 'drug_generic'),
+        );
+        const option = options.at(-1);
+        expect(option?.queryFn).toBeTruthy();
+        return option!.queryFn!;
+      };
+
+      await expect(latestQueryFn('drug-master-detail', 2)()).rejects.toThrow(
+        '医薬品詳細を表示できません',
+      );
+      await expect(latestQueryFn('pharmacy-drug-stock')()).rejects.toThrow(
+        '採用品設定を表示できません',
+      );
+      await expect(latestQueryFn('pharmacy-drug-stock-history')()).rejects.toThrow(
+        '採用品履歴の取得に失敗しました',
+      );
+      await expect(
+        capturedQueryOptions
+          .filter(
+            (candidate) =>
+              candidate.queryKey[0] === 'pharmacy-drug-stocks' &&
+              candidate.queryKey[3] === 'review-due',
+          )
+          .at(-1)
+          ?.queryFn?.(),
+      ).rejects.toThrow('採用薬レビュー対象を表示できません');
+      await expect(
+        capturedQueryOptions
+          .filter(
+            (candidate) =>
+              candidate.queryKey[0] === 'pharmacy-drug-stocks' &&
+              candidate.queryKey[3] === 'missing-reorder',
+          )
+          .at(-1)
+          ?.queryFn?.(),
+      ).rejects.toThrow('在庫下限未設定を表示できません');
+      await expect(latestQueryFn('pharmacy-drug-stocks-impact')()).rejects.toThrow(
+        '採用薬影響レビューの取得に失敗しました',
+      );
+      await expect(latestQueryFn('pharmacy-drug-stock-usage-mismatch')()).rejects.toThrow(
+        '処方・採用品不一致を表示できません',
+      );
+      await expect(latestQueryFn('pharmacy-drug-stock-requests')()).rejects.toThrow(
+        '採用品変更申請を表示できません',
+      );
+      await expect(latestQueryFn('pharmacy-drug-stock-templates')()).rejects.toThrow(
+        '採用品テンプレートの取得に失敗しました',
+      );
+      await expect(latestQueryFn('preferred-generic-candidates', 2)()).rejects.toThrow(
+        '採用後発薬候補を表示できません',
+      );
+      await expect(latestQueryFn('generic-recommendations', 3)()).rejects.toThrow(
+        '推奨後発品は管理者のみ参照できます',
+      );
+      await expect(latestQueryFn('ingredient-group', 3)()).rejects.toThrow(
+        '同一成分グループの取得に失敗しました',
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('preserves nonstandard success envelopes from drug-detail and formulary read queries', async () => {
+    queuePendingFormularyRequest();
+    detailDataMock.current = buildGenericDetail();
+    const detailBody = { ...buildGenericDetail(), drug_name: '成功詳細薬' };
+    const stockConfigBody = { site: { id: 'site_1', name: '本店' }, data: null };
+    const stockHistoryBody = { site: { id: 'site_1', name: '本店' }, stock: null, data: [] };
+    const impactBody = {
+      totals: { stocked_count: 0, action_required_count: 0 },
+      selected_queue: { key: 'action_required', rows: [], total_count: 0 },
+      master_change_report: { rows: [], total_count: 0 },
+      follow_up_summary: { unresolved_count: 0 },
+      samples: {},
+      recent_changes: [],
+    };
+    const usageMismatchBody = {
+      totals: { unmatched_drug_count: 0 },
+      frequent_unstocked: [],
+      unused_stocked: [],
+      unmatched_prescribed: [],
+    };
+    const requestsBody = { data: [], summary: { notification_level: 'clear' } };
+    const templatesBody = { data: [] };
+    const genericCandidatesBody = { data: [] };
+    const recommendationsBody = {
+      recommendations: [],
+      reason: 'generic_name_missing',
+    };
+    const ingredientGroupBody = {
+      generic_name: null,
+      summary: null,
+      members: [],
+      reason: 'generic_name_missing',
+    };
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/generic-recommendations')) return jsonResponse(recommendationsBody, 200);
+      if (url.includes('/ingredient-group')) return jsonResponse(ingredientGroupBody, 200);
+      if (url.includes('/pharmacy-drug-stocks/history')) return jsonResponse(stockHistoryBody, 200);
+      if (url.includes('/pharmacy-drug-stocks/impact')) return jsonResponse(impactBody, 200);
+      if (url.includes('/pharmacy-drug-stocks/usage-mismatch')) {
+        return jsonResponse(usageMismatchBody, 200);
+      }
+      if (url.includes('/pharmacy-drug-stock-requests')) return jsonResponse(requestsBody, 200);
+      if (url.includes('/pharmacy-drug-stock-templates')) return jsonResponse(templatesBody, 200);
+      if (url.includes('/pharmacy-drug-stocks?')) return jsonResponse(stockConfigBody, 200);
+      if (url.includes('/drug-masters?')) return jsonResponse(genericCandidatesBody, 200);
+      if (url.includes('/drug-masters/')) return jsonResponse(detailBody, 200);
+      return jsonResponse({ message: `unexpected fetch: ${url}` }, 500);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<DrugMasterContent variant="formulary" />);
+      fireEvent.click(screen.getByText('採用追加'));
+
+      const latestQueryFn = (queryName: string, idIndex?: number) => {
+        const options = capturedQueryOptions.filter(
+          (candidate) =>
+            candidate.queryKey[0] === queryName &&
+            (idIndex === undefined || candidate.queryKey[idIndex] === 'drug_generic'),
+        );
+        const option = options.at(-1);
+        expect(option?.queryFn).toBeTruthy();
+        return option!.queryFn!;
+      };
+
+      await expect(latestQueryFn('drug-master-detail', 2)()).resolves.toEqual(detailBody);
+      await expect(latestQueryFn('pharmacy-drug-stock')()).resolves.toEqual(stockConfigBody);
+      await expect(latestQueryFn('pharmacy-drug-stock-history')()).resolves.toEqual(
+        stockHistoryBody,
+      );
+      await expect(latestQueryFn('pharmacy-drug-stocks-impact')()).resolves.toEqual(impactBody);
+      await expect(latestQueryFn('pharmacy-drug-stock-usage-mismatch')()).resolves.toEqual(
+        usageMismatchBody,
+      );
+      await expect(latestQueryFn('pharmacy-drug-stock-requests')()).resolves.toEqual(requestsBody);
+      await expect(latestQueryFn('pharmacy-drug-stock-templates')()).resolves.toEqual(
+        templatesBody,
+      );
+      await expect(latestQueryFn('preferred-generic-candidates', 2)()).resolves.toEqual(
+        genericCandidatesBody,
+      );
+      await expect(latestQueryFn('generic-recommendations', 3)()).resolves.toEqual(
+        recommendationsBody,
+      );
+      await expect(latestQueryFn('ingredient-group', 3)()).resolves.toEqual(ingredientGroupBody);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('uses an announced skeleton while the drug detail sheet loads the selected drug', () => {
     queuePendingFormularyRequest();
     queryLoadingKeys.add('drug-master-detail');
