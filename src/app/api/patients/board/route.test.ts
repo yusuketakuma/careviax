@@ -193,6 +193,7 @@ describe('/api/patients/board', () => {
       fax: true,
       is_primary: true,
     });
+    expect(select.cases.take).toBeUndefined();
     expect(select.residences.select).toEqual({
       facility_id: true,
       building_id: true,
@@ -715,6 +716,114 @@ describe('/api/patients/board', () => {
     },
   );
 
+  it('keeps foundation issue counts on the unselected board basis when a DB prefilter is active', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-12T08:00:00+09:00'));
+    const insurancePatient = {
+      ...buildPatientRow(new Date('2026-06-12T00:00:00.000Z')),
+      id: 'patient_missing_insurance',
+      medical_insurance_number: null,
+      care_insurance_number: null,
+    };
+    const missingContactPatient = {
+      ...buildPatientRow(new Date('2026-06-13T00:00:00.000Z')),
+      id: 'patient_missing_contact',
+      scheduling_preference: {
+        ...buildPatientRow(new Date('2026-06-13T00:00:00.000Z')).scheduling_preference,
+        preferred_contact_phone: null,
+      },
+      contacts: [],
+    };
+    patientFindManyMock
+      .mockResolvedValueOnce([insurancePatient])
+      .mockResolvedValueOnce([insurancePatient, missingContactPatient]);
+    patientCountMock.mockResolvedValue(2);
+
+    const response = (await GET(createRequest('?scope=all&foundation_issue=missing_insurance'), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.data.cards).toHaveLength(1);
+    expect(json.data.cards[0].patient_id).toBe('patient_missing_insurance');
+    expect(json.data.foundation_issue_counts).toMatchObject({
+      missing_insurance: 1,
+      missing_contact: 1,
+      needs_confirmation: 2,
+    });
+    expect(patientFindManyMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: expect.not.objectContaining({ AND: expect.any(Array) }),
+        take: 500,
+      }),
+    );
+  });
+
+  it('sorts matching cards before applying the display limit and marks capped filtered results truncated', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-12T08:00:00+09:00'));
+    const patients = Array.from({ length: 81 }, (_, index) => ({
+      ...buildPatientRow(new Date('2026-06-12T00:00:00.000Z')),
+      id: `patient_${String(index).padStart(2, '0')}`,
+      name: `患者 ${String(index).padStart(2, '0')}`,
+      name_kana: `カンジャ ${String(index).padStart(2, '0')}`,
+    }));
+    patients[80] = {
+      ...patients[80]!,
+      id: 'patient_urgent_last_in_db_order',
+      name: '最後 緊急',
+      name_kana: 'ンンンン',
+      cases: [
+        {
+          ...patients[80]!.cases[0]!,
+          medication_cycles: [
+            {
+              id: 'cycle_urgent',
+              overall_status: 'dispensed',
+              exception_status: null,
+              updated_at: new Date('2026-06-12T08:00:00+09:00'),
+              prescription_intakes: [
+                {
+                  lines: [
+                    {
+                      packaging_instruction_tags: ['narcotic'],
+                      dispensing_method: null,
+                    },
+                  ],
+                },
+              ],
+              dispense_tasks: [
+                {
+                  due_date: new Date('2026-06-12T00:05:00.000Z'),
+                  audits: [],
+                },
+              ],
+              inquiries: [],
+              workflow_exceptions: [],
+            },
+          ],
+        },
+      ],
+    };
+    patientFindManyMock.mockResolvedValue(patients);
+    patientCountMock.mockResolvedValue(81);
+
+    const response = (await GET(createRequest('?scope=all&foundation_issue=needs_confirmation'), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.data.cards).toHaveLength(80);
+    expect(json.data.cards[0]).toMatchObject({
+      patient_id: 'patient_urgent_last_in_db_order',
+      attention: 'urgent_now',
+    });
+    expect(json.data.truncated).toBe(true);
+  });
+
   it('applies q as a database-side patient name/kana filter before taking board rows', async () => {
     const response = (await GET(createRequest('?scope=all&q=%E4%BD%90%E8%97%A4'), {
       params: Promise.resolve({}),
@@ -788,7 +897,6 @@ describe('/api/patients/board', () => {
           { name: { contains: '佐藤', mode: 'insensitive' } },
           { name_kana: { contains: '佐藤', mode: 'insensitive' } },
         ]),
-        AND: [expectedInsurancePrefilter],
       }),
     });
   });
@@ -834,7 +942,7 @@ describe('/api/patients/board', () => {
         },
       ]),
     });
-    expect(patientCountMock.mock.calls[0][0].where.AND[0]).toEqual(prefilter);
+    expect(patientCountMock.mock.calls[0][0].where.AND).toBeUndefined();
   });
 
   it('rejects invalid board foundation issue values before querying patients', async () => {

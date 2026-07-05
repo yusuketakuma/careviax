@@ -40,6 +40,86 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Patients Board Card Model Extraction slice complete（commit pending）。
+  - current task:
+    `Plans.md` の `UX-CMD-001 / PERF-BFF-001` 継続として、`/api/patients/board` に直書き
+    されていた患者カード派生、attention/foundation sort、foundation issue filter/count を
+    `patient-board-card-model.ts` へ抽出した。route は auth / validation / Prisma query /
+    response envelope に集中し、PatientBoard の状態語彙・危険タグ・工程リンク・foundation summary は
+    pure selector として Command Center / Risk Cockpit / list summary へ再利用しやすい境界にした。
+  - subagent:
+    前回 `test_architect`（Teeth the 20th）の read-only 指摘を回収し、model unit test に
+    JST 本日訪問、hostile patient/schedule id encoding、PHI 非露出、sort priority、
+    `needs_confirmation` filter/count を追加。今回の追加 read-only strict reviewer（Strict the 20th）は
+    `foundation_issue_counts` の active filter 汚染、sort 前 slice、active case page-out、
+    raw workflow exception description 露出、JST age/time を CHANGES_REQUESTED。すべて同一 slice で
+    実装・tests へ反映した。
+  - design / imagegen:
+    `imagegen` skill と PH-OS UI/UX SSOT の `gpt-image-2` 方針は確認済み。今回の slice は
+    API adapter/refactor で視覚レイアウト変更を伴わないため、新規 `gpt-image-2` 生成は省略。
+    PatientBoard / Command Center の見た目を変える UI slice では非 PHI mockup を先に生成する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `docs/ui-ux-design-guidelines.md`,
+    `/Users/yusuke/.codex/skills/.system/imagegen/SKILL.md`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `src/app/api/patients/board/route.ts`,
+    `src/app/api/patients/board/route.test.ts`,
+    `src/lib/patient/care-team-contact.ts`,
+    `src/lib/datetime/time-of-day.ts`,
+    `src/lib/utils/date-boundary.ts`,
+    `src/types/patient-board.ts`。
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/api/patients/board/route.ts`,
+    `src/app/api/patients/board/route.test.ts`,
+    `src/app/api/patients/board/patient-board-card-model.ts`,
+    `src/app/api/patients/board/patient-board-card-model.test.ts`。
+  - bugs / risks reduced:
+    route-local の 500 行規模の派生ロジックを pure model へ移し、同じ PatientBoard 状態語彙を
+    Command Center / Risk Cockpit / list summary へ共有する足場を作った。sort は
+    attention → foundation status → next visit date → 日本語名の順を unit test で固定し、
+    `needs_confirmation` は concrete issue key ではなく `foundation_summary.status !== 'ready'`
+    として扱う契約を固定した。さらに cards は priority sort 後に表示上限を適用し、
+    `filteredCards.length > PATIENT_FETCH_LIMIT` も truncation として返す。active foundation filter 中でも
+    `foundation_issue_counts` は filter なし board basis で作るため、別 chip が false-zero にならない。
+    active case が relation `take` で page-out して別 case を primary 扱いする risk も抑えた。
+  - security / PHI reviewed:
+    新規 DB / auth / authorization / PHI field は追加していない。card model unit test に
+    raw phone、住所、施設名、raw schedule id が public card JSON へ出ないことを固定した。
+    href は既存 `buildPatientHref` / `buildScheduleFocusHref` / `buildReportHref` を維持し、
+    hostile id は encoded link のみで使う。`WorkflowException.description` は card `status_text` へ
+    直接出さず、`exception_type` 由来の controlled label に置換した。
+  - performance issues improved:
+    BFF route から派生ロジックを切り離し、今後の summary/detail batch 分割、payload budget、
+    adapter reuse に向けた CPU-bound selector 境界を作った。active foundation filter 時は count basis を
+    追加取得するが、既存の `PATIENT_FILTERED_FETCH_LIMIT` 内で bounded にし、count correctness を優先した。
+    mutation、cache、external send は変更していない。
+  - validation commands/results:
+    `pnpm exec vitest run src/app/api/patients/board/patient-board-card-model.test.ts src/app/api/patients/board/route.test.ts --reporter=dot --testTimeout=30000`
+    green（2 files / 31 tests）;
+    `pnpm exec eslint src/app/api/patients/board/patient-board-card-model.ts src/app/api/patients/board/patient-board-card-model.test.ts src/app/api/patients/board/route.ts src/app/api/patients/board/route.test.ts`
+    green;
+    `pnpm exec prettier --check src/app/api/patients/board/patient-board-card-model.ts src/app/api/patients/board/patient-board-card-model.test.ts src/app/api/patients/board/route.ts`
+    green;
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/app/api/patients/board/route.ts src/app/api/patients/board/route.test.ts src/app/api/patients/board/patient-board-card-model.ts src/app/api/patients/board/patient-board-card-model.test.ts`
+    green;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck --pretty false` green;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false` green;
+    `pnpm lint` green with existing unrelated warnings in `src/lib/platform/break-glass.test.ts`
+    (`_tx`, `_input` unused warnings only);
+    `pnpm format:check` green;
+    read-only verifier（Evidence the 20th）APPROVE。
+  - remaining work:
+    Case Risk Cockpit への接続、patient_ids batch detail endpoint、chip/foundation facet count endpoint、
+    route payload budget / browser smoke は未着手。Broader `Plans.md` objective remains open.
+  - next action:
+    strict reviewer の結果を取り込み、問題なければ scoped commit。次候補は Case Risk Cockpit adapter 接続、
+    または `PERF-X-001/002` payload budget instrumentation。
+
 - codex: AUD-001 Audit Log Review persistence and admin review action complete（commit `79576dcdd`）。
   - current task:
     Plans.md の監査レビューUX方針を実装へ接続。前段の audit risk/redaction 表示を warning 表示で終わらせず、

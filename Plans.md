@@ -808,6 +808,21 @@ FE 仕上げ（低優先）:
   残: server `patient-home-operations` service との語彙 registry 化、summary/detail batch 接続、
   quick action registry、payload budget / browser smoke。
 
+- `UX-CMD-001 / PERF-BFF-001` partial（2026-07-06）: `/api/patients/board` に直書きされていた
+  患者カード派生、attention/foundation sort、foundation issue filter/count を
+  `patient-board-card-model.ts` へ抽出した。route は auth / validation / Prisma query / response envelope に
+  集中し、PatientBoard の状態語彙・危険タグ・工程リンク・foundation summary は純粋 selector として
+  Command Center / Risk Cockpit / list summary へ再利用しやすい境界にした。unit test で JST 本日訪問、
+  hostile patient/schedule id encoding、電話/住所/施設名/生 raw schedule id 非露出、sort priority、
+  `needs_confirmation` filter/count を固定した。strict review の CHANGES_REQUESTED を反映し、
+  `foundation_issue_counts` は active foundation filter を除いた board basis から作り、cards は
+  sort 後に表示上限を適用する。active case が relation `take` で page-out しないよう case 取得上限を外し、
+  workflow exception の raw `description` は一覧カードへ出さず controlled label へ変換する。年齢と監査/照会時刻は
+  Asia/Tokyo 基準で固定した。視覚レイアウト変更を伴わない API adapter/refactor slice のため
+  `imagegen` / `gpt-image-2` 生成は省略した。
+  残: Case Risk Cockpit への接続、patient_ids batch detail endpoint、chip/foundation facet count endpoint、
+  route payload budget / browser smoke。
+
 **追加実装順序**:
 
 1. `UX-CMD-001` + `PERF-BFF-001`: Command Center は重い詳細BFFになりやすいため、最初から summary/detail batch 分割を前提に設計する。
