@@ -39,6 +39,22 @@
 
 ## 直近の land（本日・要点）
 
+- codex: billing-rules optimistic concurrency hardening batch(0f2d0856) land。
+  ユーザー指示により本sliceでは subagent を投入（code_mapper / data_integrity_auditor /
+  api_contract_reviewer CHANGES_REQUESTED→対応、verifier + final api_contract_reviewer APPROVE）。
+  focused Vitest 40、scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。
+  `PATCH /api/billing-rules/:id` は body の `expected_updated_at` を必須化し、
+  `DELETE /api/billing-rules/:id` は query の `expected_updated_at` を必須化。どちらも
+  `BillingRule.updated_at` の preflight stale check と `updateMany` / `deleteMany` の
+  `{ id, org_id, updated_at }` guarded claim で stale admin state を 409 `WORKFLOW_CONFLICT`
+  (`conflict_type: stale_billing_rule`, `expected_updated_at`, `current_updated_at`) へ fail-closed。
+  stale/missing token/auth rejection は no-store で DB lookup / update / delete / auditLog.create 前に停止。
+  success body root shape（PATCH=serialized rule、DELETE=`{ message }`）、canAdmin/org scoping、
+  no-store、sanitized 500、system rule delete 403、system rule active-only update、hostile id path encoding、
+  billing audit semantics は保持。Admin UI は list row の `updated_at` を PATCH body / DELETE query に添付。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) に基づき
+  billing API / authorization-adjacent concurrency hardening を変更、DB schema/migration/deploy/package
+  dependency 変更は不要。
 - codex: FormularyChangeRequest audit free-text minimization batch(d02a64fb) land。
   ユーザー指示により本sliceでは subagent を投入（privacy_compliance_reviewer /
   api_contract_reviewer CHANGES_REQUESTED→対応、verifier APPROVE）。focused Vitest 78、
