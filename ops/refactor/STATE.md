@@ -3475,6 +3475,9 @@
   サブエージェント review（spec/API/UX）で指摘された、監査ログ閲覧による high-risk 未レビュー backlog
   の自己増殖、`review_state` server-side filter 不足、filtered/global count basis の曖昧さ、
   PATCH review route の real auth/no-store matrix 不足を小スライスで修正した。
+- status:
+  Implemented and committed as `f585b956b`
+  (`Implement audit review queue filters`).
 - design reference:
   UI 変更のため `docs/ui-ux-design-guidelines.md` と `imagegen` skill を再確認し、
   `gpt-image-2` 方針の非PHI audit review dashboard mockup を生成:
