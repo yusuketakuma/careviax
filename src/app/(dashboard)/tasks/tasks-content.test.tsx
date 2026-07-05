@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { stubJsonFetch } from '@/test/fetch-test-utils';
 import { toast } from 'sonner';
-import { buildOrgHeaders } from '@/lib/api/org-headers';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import type { BulkCompleteTasksResponse } from '@/lib/tasks/bulk-completion-contract';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
@@ -112,6 +112,17 @@ type BulkCompleteMutationOptions = {
   mutationFn: (ids: string[]) => Promise<BulkCompleteTasksResponse['data']>;
   onSuccess: (result: BulkCompleteTasksResponse['data']) => void;
 };
+
+type CreateRequestMutationOptions = {
+  mutationFn: () => Promise<unknown>;
+  onError: (error: unknown) => void;
+};
+
+function getCreateRequestMutationOptions() {
+  const options = useMutationMock.mock.calls[0]?.[0] as CreateRequestMutationOptions | undefined;
+  expect(options).toBeTruthy();
+  return options as CreateRequestMutationOptions;
+}
 
 function getBulkCompleteMutationOptions() {
   const options = useMutationMock.mock.calls[1]?.[0] as BulkCompleteMutationOptions | undefined;
@@ -446,6 +457,33 @@ describe('TasksContent', () => {
         ],
       }),
     );
+  });
+
+  it('surfaces API error messages when work request creation fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ message: '業務依頼の作成権限がありません' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    );
+
+    render(<TasksContent />);
+
+    const createRequestOptions = getCreateRequestMutationOptions();
+    await expect(createRequestOptions.mutationFn()).rejects.toThrow(
+      '業務依頼の作成権限がありません',
+    );
+    createRequestOptions.onError(new Error('業務依頼の作成権限がありません'));
+
+    expect(fetch).toHaveBeenCalledWith('/api/tasks', {
+      method: 'POST',
+      headers: buildOrgJsonHeaders('org_1'),
+      body: expect.any(String),
+    });
+    expect(toast.error).toHaveBeenCalledWith('業務依頼の作成権限がありません');
   });
 
   it('surfaces server-provided bulk completion failure details', async () => {

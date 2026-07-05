@@ -33,6 +33,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { readApiJson } from '@/lib/api/client-json';
 import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
 import { useAuthStore } from '@/lib/stores/auth-store';
+import { messageFromError } from '@/lib/utils/error-message';
 import { describeOperationalTask } from '@/lib/tasks/operational-task-presentation';
 import {
   bulkCompleteTasksResponseSchema,
@@ -330,8 +331,7 @@ export function TasksContent({
           },
         }),
       });
-      if (!res.ok) throw new Error('業務依頼の作成に失敗しました');
-      return res.json();
+      return readApiJson<unknown>(res, '業務依頼の作成に失敗しました');
     },
     onSuccess: () => {
       toast.success('業務を依頼しました');
@@ -341,8 +341,8 @@ export function TasksContent({
       void queryClient.invalidateQueries({ queryKey: ['tasks', orgId] });
       void queryClient.invalidateQueries({ queryKey: ['staff-workload', orgId] });
     },
-    onError: () => {
-      toast.error('業務依頼の作成に失敗しました');
+    onError: (error) => {
+      toast.error(messageFromError(error, '業務依頼の作成に失敗しました'));
     },
   });
 
