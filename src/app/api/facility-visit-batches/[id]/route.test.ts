@@ -3,7 +3,7 @@ import { NextRequest } from 'next/server';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 type RouteContext = { params: Promise<{ id: string }> };
-type TestRole = 'pharmacist' | 'driver';
+type TestRole = 'pharmacist' | 'pharmacist_trainee' | 'driver';
 type TestAuthContext = { orgId: string; userId: string; role: TestRole };
 type WithAuthOptions = { permission?: string; message?: string };
 type WrappedRouteHandler = ((req: NextRequest, routeContext: RouteContext) => Promise<Response>) & {
@@ -232,6 +232,24 @@ describe('/api/facility-visit-batches/[id]', () => {
       expectNoMutationSideEffects();
     });
 
+    it('denies a trainee before schedule unlink, batch delete, audit, or notify', async () => {
+      authState.role = 'pharmacist_trainee';
+
+      const response = await DELETE(createRequest(), routeContext('batch_1'));
+
+      expect(response.status).toBe(403);
+      expectSensitiveNoStore(response);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'AUTH_FORBIDDEN',
+        message: '施設一括訪問を更新する権限がありません',
+      });
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(facilityVisitBatchFindFirstMock).not.toHaveBeenCalled();
+      expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
+      expect(visitScheduleCountMock).not.toHaveBeenCalled();
+      expectNoMutationSideEffects();
+    });
+
     it('rejects an empty batch id before schedule unlink, batch delete, or notify', async () => {
       const response = await DELETE(createRequest(), routeContext(''));
 
@@ -456,35 +474,19 @@ describe('/api/facility-visit-batches/[id]', () => {
       expect(JSON.stringify(auditPayload)).not.toContain('山田家');
     });
 
-    it('checks non-bypass child schedule access before reading audit details', async () => {
+    it('denies non-lifecycle roles before child schedule access checks or audit details', async () => {
       authState.role = 'driver';
-      visitScheduleCountMock.mockResolvedValueOnce(2).mockResolvedValueOnce(1);
 
       const response = await DELETE(createRequest(), routeContext('batch_1'));
 
       expect(response.status).toBe(403);
       await expect(response.json()).resolves.toMatchObject({
         code: 'AUTH_FORBIDDEN',
-        message: '施設一括訪問バッチへのアクセス権限がありません',
+        message: '施設一括訪問を更新する権限がありません',
       });
-      expect(visitScheduleCountMock).toHaveBeenNthCalledWith(1, {
-        where: { org_id: 'org_1', facility_batch_id: 'batch_1' },
-      });
-      expect(visitScheduleCountMock).toHaveBeenNthCalledWith(2, {
-        where: {
-          org_id: 'org_1',
-          facility_batch_id: 'batch_1',
-          AND: [
-            {
-              OR: [
-                { pharmacist_id: 'user_1' },
-                { case_: { primary_pharmacist_id: 'user_1' } },
-                { case_: { backup_pharmacist_id: 'user_1' } },
-              ],
-            },
-          ],
-        },
-      });
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(facilityVisitBatchFindFirstMock).not.toHaveBeenCalled();
+      expect(visitScheduleCountMock).not.toHaveBeenCalled();
       expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
       expectNoMutationSideEffects();
     });
@@ -570,6 +572,24 @@ describe('/api/facility-visit-batches/[id]', () => {
         message: '施設一括訪問の更新権限がありません',
       });
       expect(withOrgContextMock).not.toHaveBeenCalled();
+      expectNoMutationSideEffects();
+    });
+
+    it('denies a trainee before parsing, schedule reorder, audit, or notify', async () => {
+      authState.role = 'pharmacist_trainee';
+
+      const response = await PATCH(createMalformedPatchRequest(), routeContext('batch_1'));
+
+      expect(response.status).toBe(403);
+      expectSensitiveNoStore(response);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'AUTH_FORBIDDEN',
+        message: '施設一括訪問を更新する権限がありません',
+      });
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(facilityVisitBatchFindFirstMock).not.toHaveBeenCalled();
+      expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
+      expect(visitScheduleCountMock).not.toHaveBeenCalled();
       expectNoMutationSideEffects();
     });
 

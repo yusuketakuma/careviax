@@ -3,18 +3,21 @@ import { NextRequest } from 'next/server';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 type TestRouteContext = { params: Promise<Record<string, string>> };
+type TestRole = 'pharmacist' | 'pharmacist_trainee';
+type TestAuthContext = { orgId: string; userId: string; role: TestRole };
 
-const { withAuthContextMock, withOrgContextMock } = vi.hoisted(() => ({
+const { authState, withAuthContextMock, withOrgContextMock } = vi.hoisted(() => ({
+  authState: { role: 'pharmacist' as TestRole },
   withAuthContextMock: vi.fn(
     (
       handler: (
         req: NextRequest,
-        ctx: { orgId: string; userId: string; role: 'pharmacist' },
+        ctx: TestAuthContext,
         routeContext: TestRouteContext,
       ) => Promise<Response>,
     ) => {
       return (req: NextRequest, routeContext: TestRouteContext = { params: Promise.resolve({}) }) =>
-        handler(req, { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }, routeContext);
+        handler(req, { orgId: 'org_1', userId: 'user_1', role: authState.role }, routeContext);
     },
   ),
   withOrgContextMock: vi.fn(),
@@ -102,6 +105,7 @@ function buildBatchableSchedule(overrides: Record<string, unknown> = {}) {
 describe('/api/facility-visit-batches POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authState.role = 'pharmacist';
     createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
     visitScheduleCountMock.mockResolvedValue(2);
     notifyWorkflowMutationMock.mockResolvedValue(undefined);
@@ -132,6 +136,24 @@ describe('/api/facility-visit-batches POST', () => {
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(visitScheduleCountMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('denies a trainee before parsing, batch writes, schedule writes, audit, or notification', async () => {
+    authState.role = 'pharmacist_trainee';
+
+    const response = await POST(createMalformedRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_FORBIDDEN',
+      message: '施設一括訪問を更新する権限がありません',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleCountMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 

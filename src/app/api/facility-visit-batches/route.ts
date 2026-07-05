@@ -8,7 +8,10 @@ import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { conflict, forbidden, success, validationError, internalError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { serializeFacilityPacketMemo } from '@/lib/visits/facility-packet';
-import { buildVisitScheduleAssignmentWhere } from '@/lib/auth/visit-schedule-access';
+import {
+  buildVisitScheduleAssignmentWhere,
+  canManageVisitScheduleLifecycle,
+} from '@/lib/auth/visit-schedule-access';
 import { formatDateKey } from '@/lib/date-key';
 import { findVisitRouteOrderConflict } from '@/lib/visits/route-order-conflicts';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
@@ -150,6 +153,10 @@ function hasDuplicateValue(values: string[]) {
 
 const authenticatedPOST = withAuthContext(
   async (req, ctx) => {
+    if (!canManageVisitScheduleLifecycle(ctx)) {
+      return forbidden('施設一括訪問を更新する権限がありません');
+    }
+
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 

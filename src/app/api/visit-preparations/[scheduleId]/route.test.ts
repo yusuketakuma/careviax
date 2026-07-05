@@ -1874,6 +1874,69 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
     expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
   });
 
+  it('denies a trainee before parsing, loading, route planning, or readiness side effects', async () => {
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist_trainee' });
+
+    const response = await PUT(createMalformedJsonPutRequest(), {
+      params: Promise.resolve({ scheduleId: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_FORBIDDEN',
+      message: '訪問準備を更新する権限がありません',
+    });
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(visitVehicleResourceFindFirstMock).not.toHaveBeenCalled();
+    expect(peerVisitScheduleFindManyMock).not.toHaveBeenCalled();
+    expect(computeOptimizedVisitRouteMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitPreparationUpsertMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+  });
+
+  it('denies a trainee mark-ready vehicle assignment before readiness side effects', async () => {
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist_trainee' });
+
+    const response = await PUT(
+      createPutRequest({
+        ...completePreparationBody,
+        mark_ready: true,
+        route_plan_snapshot: {
+          vehicle_resource: {
+            vehicle_id: 'vehicle_1',
+          },
+        },
+      }),
+      {
+        params: Promise.resolve({ scheduleId: 'schedule_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_FORBIDDEN',
+      message: '訪問準備を更新する権限がありません',
+    });
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(visitVehicleResourceFindFirstMock).not.toHaveBeenCalled();
+    expect(peerVisitScheduleFindManyMock).not.toHaveBeenCalled();
+    expect(computeOptimizedVisitRouteMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitPreparationUpsertMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+  });
+
   it('allows an org-wide pharmacist to upsert preparation even when not assigned to the schedule', async () => {
     // 新ポリシー: 薬剤師は組織内フルアクセス。担当外の予定でも準備の upsert が許可される。
     visitScheduleFindFirstMock.mockResolvedValueOnce({

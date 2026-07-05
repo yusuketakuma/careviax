@@ -20,6 +20,7 @@ import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cac
 import {
   buildVisitScheduleAssignmentWhere,
   canBypassVisitScheduleAssignmentAccess,
+  canManageVisitScheduleLifecycle,
 } from '@/lib/auth/visit-schedule-access';
 
 const patchFacilityVisitBatchSchema = z.object({
@@ -77,6 +78,9 @@ const authenticatedDELETE = withAuthContext(
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
     if (!id) return validationError('バッチIDが指定されていません');
+    if (!canManageVisitScheduleLifecycle(ctx)) {
+      return forbidden('施設一括訪問を更新する権限がありません');
+    }
 
     const result = await withOrgContext(ctx.orgId, async (tx) => {
       const batch = await tx.facilityVisitBatch.findFirst({
@@ -215,6 +219,9 @@ const authenticatedPATCH = withAuthContext(
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
     if (!id) return validationError('バッチIDが指定されていません');
+    if (!canManageVisitScheduleLifecycle(ctx)) {
+      return forbidden('施設一括訪問を更新する権限がありません');
+    }
 
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');

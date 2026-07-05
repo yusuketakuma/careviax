@@ -4,7 +4,10 @@ import { deriveFacilityLabel, deriveVisitPlaceGroup } from '@/lib/utils/facility
 import { facilityPacketMemoToDisplayText } from '@/lib/visits/facility-packet';
 import { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
-import { canAccessVisitScheduleAssignment } from '@/lib/auth/visit-schedule-access';
+import {
+  canAccessVisitScheduleAssignment,
+  canManageVisitScheduleLifecycle,
+} from '@/lib/auth/visit-schedule-access';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
@@ -1637,6 +1640,9 @@ async function authenticatedPUT(
   const { scheduleId } = await params;
   const normalizedScheduleId = normalizeRequiredRouteParam(scheduleId);
   if (!normalizedScheduleId) return validationError('訪問予定IDが不正です');
+  if (!canManageVisitScheduleLifecycle(ctx)) {
+    return forbiddenResponse('訪問準備を更新する権限がありません');
+  }
 
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
