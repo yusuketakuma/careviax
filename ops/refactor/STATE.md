@@ -40,6 +40,37 @@
 
 ## 直近の land（本日・要点）
 
+- codex: care report clinical confirmation role hardening batch(eeb65d508)
+  implementation complete。ユーザー指示により本sliceでも subagent を投入（code_mapper /
+  security_critic / medical_safety_reviewer / verifier）。code_mapper は `pharmacist_trainee`
+  の org-wide read/access が現行ポリシーとして明示されている一方、final clinical/audit-meaning write
+  は別境界が必要と整理し、care report finalize / confirmed transition を policy-sensitive surface と
+  指摘。medical_safety_reviewer は Critical finding として、`pharmacist_trainee` が
+  `canAuthorReport` 経由で `POST /api/care-reports/:id/finalize` を実行でき、`finalized_by` /
+  `locked_by` / content hash / credential snapshot / `CareReportRevision` /
+  `care_report_finalized` audit を作れる点を提示。security_critic も report send は
+  `canSendCareReport:false` で非問題としつつ、final clinical state mutation は supervised/final
+  role boundary が必要と判定。対応として `src/lib/auth/care-report-confirmation.ts` を追加し、
+  care report clinical confirmation/finalization を `owner|admin|pharmacist` に限定する
+  `canConfirmCareReportClinicalJudgement` を導入。`canAuthorReport` は trainee の draft author/edit
+  権限として維持し、`PATCH /api/care-reports/:id` は draft→`confirmed` の薬剤師確認 transition のみ
+  helper で gate する。`pharmacist_trainee` の `status:'confirmed'` は source access 後、
+  `withOrgContext` transaction / `careReport.updateMany` / `care_report_confirmed` audit 前に
+  no-store 403。`POST /api/care-reports/:id/finalize` は auth 直後に同 helper で gate し、
+  trainee は route param/body parse、report lookup、credential lookup、report mutation、
+  revision creation、audit write すべての前に no-store 403。draft report の閲覧/編集、既存 pharmacist
+  finalization success、send route の `canSendCareReport` gate、audit redaction は維持。validation:
+  `pnpm exec vitest run src/lib/auth/__tests__/permissions.test.ts 'src/app/api/care-reports/[id]/route.test.ts' 'src/app/api/care-reports/[id]/finalize/route.test.ts'`
+  green（3 files / 42 tests）; scoped `eslint` green; scoped `prettier --check` green;
+  `git diff --check` green; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。
+  verifier subagent は read-only diff review と同 focused Vitest / static checks を実行し APPROVE。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency)
+  に基づき authorization / care-report API / audit-meaning clinical workflow を変更。DB schema/migration/
+  billing/deploy/package dependency 変更は不要。残る高優先別slice候補:
+  `POST/PATCH /api/visit-records` の trainee clinical completion/write boundary、
+  visit-schedule lifecycle/reopen/reorder/preparation-ready の trainee write boundary、
+  medication issue resolve/promote の trainee clinical-state boundary。いずれも org-wide read/access
+  自体ではなく final clinical/audit-meaning write の分離として扱う。
 - codex: handoff override reason code standardization batch(f7e0526e2)
   implementation complete。ユーザー指示により本sliceでも subagent を投入（api_contract_reviewer /
   privacy_compliance_reviewer / test_architect / verifier）。api_contract_reviewer は
