@@ -39,6 +39,16 @@
 
 ## 直近の land（本日・要点）
 
+- codex: R40/R44 handoff workspace actions readApiJson batch(65614b77) land。focused Vitest 29、
+  handoff-board route Vitest 33、scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。
+  transfer create / message send-read / consult create-resolve / receipt confirm responses を
+  readApiJson へ収束し、server `{ message }` / `{ error }` と non-JSON fallback regression を追加。
+  endpoint、org JSON/org headers、request bodies、success toasts、query invalidation、canReport/canAuthorReport
+  route contract、withSensitiveNoStore envelopes は保持。api_contract_reviewer subagent APPROVE。
+  test_architect subagent の CHANGES_REQUESTED（transfer `{ error }`/non-JSON、message/consult/read/resolve、
+  receipt `{ message }`/`{ error }` coverage）に対応済み。PHI/authz の追加 product-policy 論点として
+  read receipt を org-wide canReport で許す現行モデルは別slice候補。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 - codex: R40/R44 admin shifts mutations readApiJson batch(43cc7d29) land。focused Vitest 26、
   shift/pharmacist/business-holiday route Vitest 82、scoped ESLint/Prettier/diff-check、
   `pnpm typecheck` green。changed shift save / business holiday create-update-delete /
