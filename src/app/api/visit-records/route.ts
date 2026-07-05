@@ -27,7 +27,7 @@ import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { getRequestAuthContext, runWithRequestAuthContext } from '@/lib/auth/request-context';
 import {
   buildVisitRecordScheduleAssignmentWhere,
-  canAccessVisitScheduleAssignment,
+  canWriteVisitRecordForSchedule,
 } from '@/lib/auth/visit-schedule-access';
 import { buildAllSoapTexts } from '@/lib/utils/soap-text-builder';
 import { transitionCycleStatus } from '@/lib/db/cycle-transition';
@@ -1068,7 +1068,7 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
     if (!schedule) {
       return { error: 'schedule_not_found' as const };
     }
-    if (!canAccessVisitScheduleAssignment(ctx, schedule)) {
+    if (!canWriteVisitRecordForSchedule(ctx, schedule)) {
       return { error: 'schedule_forbidden' as const };
     }
     const existingRecord = await loadExistingVisitRecordConflict(tx, ctx.orgId, schedule_id);

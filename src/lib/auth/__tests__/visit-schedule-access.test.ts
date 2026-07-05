@@ -14,6 +14,7 @@ import {
   canConfirmVisitHandoff,
   canOverrideVisitHandoffConfirmation,
   canRequestSupervisedVisitHandoffConfirmation,
+  canWriteVisitRecordForSchedule,
   selectVisitHandoffConfirmationAssignee,
   selectVisitHandoffSupervisionAssignee,
 } from '../visit-schedule-access';
@@ -57,6 +58,45 @@ describe('visit schedule assignment access', () => {
       canConfirmVisitHandoff({ userId: 'pharmacist_1', role: 'pharmacist_trainee' }, schedule),
     ).toBe(false);
     expect(canConfirmVisitHandoff({ userId: 'pharmacist_1', role: 'clerk' }, schedule)).toBe(false);
+  });
+
+  it('keeps org-wide access separate from trainee visit-record write responsibility', () => {
+    expect(
+      canWriteVisitRecordForSchedule({ userId: 'unassigned_1', role: 'owner' }, schedule),
+    ).toBe(true);
+    expect(
+      canWriteVisitRecordForSchedule({ userId: 'unassigned_1', role: 'admin' }, schedule),
+    ).toBe(true);
+    expect(
+      canWriteVisitRecordForSchedule({ userId: 'unassigned_1', role: 'pharmacist' }, schedule),
+    ).toBe(true);
+    expect(
+      canWriteVisitRecordForSchedule(
+        { userId: 'unassigned_1', role: 'pharmacist_trainee' },
+        schedule,
+      ),
+    ).toBe(false);
+    expect(
+      canWriteVisitRecordForSchedule(
+        { userId: 'pharmacist_1', role: 'pharmacist_trainee' },
+        schedule,
+      ),
+    ).toBe(true);
+    expect(
+      canWriteVisitRecordForSchedule({ userId: 'primary_1', role: 'pharmacist_trainee' }, schedule),
+    ).toBe(true);
+    expect(
+      canWriteVisitRecordForSchedule({ userId: 'backup_1', role: 'pharmacist_trainee' }, schedule),
+    ).toBe(true);
+    expect(
+      canWriteVisitRecordForSchedule({ userId: 'pharmacist_1', role: 'clerk' }, schedule),
+    ).toBe(false);
+    expect(
+      canWriteVisitRecordForSchedule({ userId: 'pharmacist_1', role: 'driver' }, schedule),
+    ).toBe(false);
+    expect(
+      canWriteVisitRecordForSchedule({ userId: 'pharmacist_1', role: 'external_viewer' }, schedule),
+    ).toBe(false);
   });
 
   it('allows assigned pharmacist trainees to request supervised handoff confirmation only', () => {

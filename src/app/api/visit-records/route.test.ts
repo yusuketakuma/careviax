@@ -1913,7 +1913,7 @@ describe('/api/visit-records POST', () => {
     expect(processHandoffExtractionMock).not.toHaveBeenCalled();
   });
 
-  it.each(['pharmacist', 'pharmacist_trainee'] as const)(
+  it.each(['owner', 'admin', 'pharmacist'] as const)(
     'allows a %s with org-wide access to create a record on a schedule assigned to another user',
     async (role) => {
       membershipFindFirstMock.mockResolvedValue({ role });
@@ -1953,10 +1953,97 @@ describe('/api/visit-records POST', () => {
 
       if (!response) throw new Error('response is required');
       expect(response.status).toBe(201);
+      expectSensitiveNoStore(response);
       expect(careCaseFindFirstMock).toHaveBeenCalled();
       expect(visitRecordCreateMock).toHaveBeenCalled();
+      expect(visitScheduleUpdateManyMock).toHaveBeenCalled();
     },
   );
+
+  it('denies an unassigned pharmacist trainee before creating visit-record side effects', async () => {
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist_trainee' });
+    visitScheduleFindFirstMock.mockResolvedValue({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      version: 4,
+      schedule_status: 'ready',
+      carry_items_status: 'ready',
+      recurrence_rule: null,
+      cycle_id: 'cycle_1',
+      visit_type: 'regular',
+      pharmacist_id: 'user_other',
+      site_id: 'site_1',
+      time_window_start: null,
+      time_window_end: null,
+      medication_end_date: null,
+      visit_deadline_date: null,
+      case_: {
+        primary_pharmacist_id: 'user_primary',
+        backup_pharmacist_id: null,
+      },
+    });
+
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          outcome_status: 'completed',
+          structured_soap: completedVisitStructuredSoap,
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_FORBIDDEN',
+      message: 'この訪問予定の記録を作成する権限がありません',
+    });
+    expect(visitScheduleFindFirstMock).toHaveBeenCalledOnce();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(drugMasterFindManyMock).not.toHaveBeenCalled();
+    expect(buildPatientStateSnapshotMock).not.toHaveBeenCalled();
+    expect(visitRecordCreateMock).not.toHaveBeenCalled();
+    expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(residualMedicationDeleteManyMock).not.toHaveBeenCalled();
+    expect(residualMedicationCreateMock).not.toHaveBeenCalled();
+    expect(patientLabObservationDeleteManyMock).not.toHaveBeenCalled();
+    expect(patientLabObservationCreateManyMock).not.toHaveBeenCalled();
+    expect(firstVisitDocumentCreateMock).not.toHaveBeenCalled();
+    expect(firstVisitDocumentUpdateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(taskUpsertMock).not.toHaveBeenCalled();
+    expect(billingEvidenceUpsertMock).not.toHaveBeenCalled();
+    expect(processHandoffExtractionMock).not.toHaveBeenCalled();
+  });
+
+  it('allows a pharmacist trainee to create a record for their assigned schedule', async () => {
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist_trainee' });
+
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          outcome_status: 'completed',
+          structured_soap: completedVisitStructuredSoap,
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(careCaseFindFirstMock).toHaveBeenCalled();
+    expect(visitRecordCreateMock).toHaveBeenCalled();
+  });
 
   it('marks postponed visits as postponed without advancing the visit workflow', async () => {
     const response = await POST(

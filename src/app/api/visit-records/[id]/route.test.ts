@@ -475,69 +475,79 @@ describe('/api/visit-records/[id]', () => {
     expect(auditLogFindFirstMock).toHaveBeenCalled();
   });
 
-  it('allows an org-wide pharmacist to patch a visit record on another schedule assignment', async () => {
-    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
-      callback({
-        visitRecord: {
-          findFirst: vi
-            .fn()
-            .mockResolvedValueOnce({
-              id: 'visit_1',
-              version: 1,
-              patient_id: 'patient_1',
-              visit_date: new Date('2026-03-28T00:00:00.000Z'),
-              outcome_status: 'delivery_only',
-              structured_soap: null,
-              schedule: {
-                case_id: 'case_1',
-                pharmacist_id: 'user_other',
-                visit_type: 'regular',
-                case_: {
-                  primary_pharmacist_id: 'user_primary',
-                  backup_pharmacist_id: null,
-                  required_visit_support: null,
+  it.each(['owner', 'admin', 'pharmacist'] as const)(
+    'allows a %s to patch a visit record on another schedule assignment',
+    async (role) => {
+      requireAuthContextMock.mockResolvedValue({
+        ctx: {
+          orgId: 'org_1',
+          userId: 'user_1',
+          role,
+        },
+      });
+      withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+        callback({
+          visitRecord: {
+            findFirst: vi
+              .fn()
+              .mockResolvedValueOnce({
+                id: 'visit_1',
+                version: 1,
+                patient_id: 'patient_1',
+                visit_date: new Date('2026-03-28T00:00:00.000Z'),
+                outcome_status: 'delivery_only',
+                structured_soap: null,
+                schedule: {
+                  case_id: 'case_1',
+                  pharmacist_id: 'user_other',
+                  visit_type: 'regular',
+                  case_: {
+                    primary_pharmacist_id: 'user_primary',
+                    backup_pharmacist_id: null,
+                    required_visit_support: null,
+                  },
                 },
-              },
-            })
-            .mockResolvedValue({ id: 'visit_1', version: 2 }),
-          updateMany: visitRecordUpdateManyMock,
+              })
+              .mockResolvedValue({ id: 'visit_1', version: 2 }),
+            updateMany: visitRecordUpdateManyMock,
+          },
+          residualMedication: {
+            count: vi.fn().mockResolvedValue(0),
+          },
+        }),
+      );
+      getStoredFileRecordMock.mockResolvedValue({
+        id: '11111111-1111-4111-8111-111111111111',
+        orgId: 'org_1',
+        purpose: 'visit-photo',
+        storageKey: 'visit-photos/org_1/visit_1/file-1-photo.png',
+        originalName: 'visit-photo.png',
+        mimeType: 'image/png',
+        sizeBytes: 1024,
+        status: 'uploaded',
+        visitRecordId: 'visit_1',
+        createdAt: '2026-03-28T00:00:00.000Z',
+        updatedAt: '2026-03-28T00:00:00.000Z',
+        completedAt: '2026-03-28T00:00:00.000Z',
+        downloadDisposition: 'inline',
+      });
+      const response = await PATCH(
+        createRequest({
+          version: 1,
+          attachments: [{ file_id: '11111111-1111-4111-8111-111111111111' }],
+        }),
+        {
+          params: Promise.resolve({ id: 'visit_1' }),
         },
-        residualMedication: {
-          count: vi.fn().mockResolvedValue(0),
-        },
-      }),
-    );
-    getStoredFileRecordMock.mockResolvedValue({
-      id: '11111111-1111-4111-8111-111111111111',
-      orgId: 'org_1',
-      purpose: 'visit-photo',
-      storageKey: 'visit-photos/org_1/visit_1/file-1-photo.png',
-      originalName: 'visit-photo.png',
-      mimeType: 'image/png',
-      sizeBytes: 1024,
-      status: 'uploaded',
-      visitRecordId: 'visit_1',
-      createdAt: '2026-03-28T00:00:00.000Z',
-      updatedAt: '2026-03-28T00:00:00.000Z',
-      completedAt: '2026-03-28T00:00:00.000Z',
-      downloadDisposition: 'inline',
-    });
-    const response = await PATCH(
-      createRequest({
-        version: 1,
-        attachments: [{ file_id: '11111111-1111-4111-8111-111111111111' }],
-      }),
-      {
-        params: Promise.resolve({ id: 'visit_1' }),
-      },
-    );
+      );
 
-    if (!response) throw new Error('response is required');
-    expect(response.status).toBe(200);
-    expectSensitiveNoStore(response);
-    expect(getStoredFileRecordMock).toHaveBeenCalled();
-    expect(visitRecordUpdateManyMock).toHaveBeenCalled();
-  });
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(200);
+      expectSensitiveNoStore(response);
+      expect(getStoredFileRecordMock).toHaveBeenCalled();
+      expect(visitRecordUpdateManyMock).toHaveBeenCalled();
+    },
+  );
 
   it('stores validated attachment metadata on PATCH', async () => {
     getStoredFileRecordMock.mockResolvedValue({
@@ -587,6 +597,125 @@ describe('/api/visit-records/[id]', () => {
       Record<string, unknown>
     >;
     expect(savedAttachments[0].legacy_debug).toBeUndefined();
+  });
+
+  it('denies an unassigned pharmacist trainee before updating visit-record side effects', async () => {
+    requireAuthContextMock.mockResolvedValue({
+      ctx: {
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist_trainee',
+      },
+    });
+    txVisitRecordFindFirstMock.mockReset();
+    txVisitRecordFindFirstMock.mockResolvedValue({
+      id: 'visit_1',
+      version: 1,
+      patient_id: 'patient_1',
+      visit_date: new Date('2026-03-28T00:00:00.000Z'),
+      visit_started_at: null,
+      visit_ended_at: null,
+      outcome_status: 'delivery_only',
+      structured_soap: null,
+      schedule: {
+        case_id: 'case_1',
+        pharmacist_id: 'user_other',
+        visit_type: 'regular',
+        case_: {
+          primary_pharmacist_id: 'user_primary',
+          backup_pharmacist_id: null,
+          required_visit_support: null,
+        },
+      },
+    });
+
+    const response = await PATCH(
+      createRequest({
+        version: 1,
+        soap_subjective: '未担当予定への更新',
+        structured_soap: {
+          objective: {
+            medication_status: 'full_compliance',
+            adherence_score: 4,
+            side_effect_checks: ['none'],
+            lab_values: {
+              egfr: 42,
+              scr: 1.2,
+            },
+          },
+        },
+        residual_medications: [
+          {
+            drug_name: 'アムロジピン錠5mg',
+            drug_master_id: 'drug_master_amlodipine',
+            remaining_quantity: 10,
+            is_prohibited_reduction: false,
+          },
+        ],
+        attachments: [{ file_id: '11111111-1111-4111-8111-111111111111' }],
+      }),
+      {
+        params: Promise.resolve({ id: 'visit_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_FORBIDDEN',
+      message: 'この訪問記録を更新する権限がありません',
+    });
+    expect(txVisitRecordFindFirstMock).toHaveBeenCalledOnce();
+    expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitRecordFindManyMock).not.toHaveBeenCalled();
+    expect(medicationCycleFindManyMock).not.toHaveBeenCalled();
+    expect(listBillingEvidenceBlockersMock).not.toHaveBeenCalled();
+    expect(drugMasterFindManyMock).not.toHaveBeenCalled();
+    expect(residualMedicationDeleteManyMock).not.toHaveBeenCalled();
+    expect(residualMedicationCreateMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdRangeMock).not.toHaveBeenCalled();
+    expect(patientLabObservationDeleteManyMock).not.toHaveBeenCalled();
+    expect(patientLabObservationCreateManyMock).not.toHaveBeenCalled();
+    expect(getStoredFileRecordMock).not.toHaveBeenCalled();
+    expect(toVisitRecordAttachmentMock).not.toHaveBeenCalled();
+    expect(auditLogFindFirstMock).not.toHaveBeenCalled();
+    expect(userFindManyMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(patientSchedulePreferenceFindFirstMock).not.toHaveBeenCalled();
+  });
+
+  it('allows a pharmacist trainee to update a visit record for their assigned schedule', async () => {
+    requireAuthContextMock.mockResolvedValue({
+      ctx: {
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist_trainee',
+      },
+    });
+
+    const response = await PATCH(
+      createRequest({
+        version: 1,
+        soap_subjective: '担当予定の訪問記録を更新',
+      }),
+      {
+        params: Promise.resolve({ id: 'visit_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(visitRecordUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'visit_1', org_id: 'org_1', version: 1 },
+        data: expect.objectContaining({
+          soap_subjective: '担当予定の訪問記録を更新',
+          version: { increment: 1 },
+        }),
+      }),
+    );
   });
 
   it('clears next visit suggestion and receipt timestamp when empty strings are patched', async () => {

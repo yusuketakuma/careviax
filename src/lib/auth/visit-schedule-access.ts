@@ -36,6 +36,12 @@ const VISIT_HANDOFF_CONFIRM_ROLES: ReadonlySet<MemberRole> = new Set([
 
 const VISIT_HANDOFF_CONFIRM_OVERRIDE_ROLES: ReadonlySet<MemberRole> = new Set(['owner', 'admin']);
 
+const VISIT_RECORD_ORG_WIDE_WRITE_ROLES: ReadonlySet<MemberRole> = new Set([
+  'owner',
+  'admin',
+  'pharmacist',
+]);
+
 export function canBypassVisitScheduleAssignmentAccess(
   ctx: Pick<VisitScheduleAccessContext, 'role'>,
 ) {
@@ -64,7 +70,7 @@ export function canAccessVisitScheduleAssignment(
   );
 }
 
-function isAssignedToVisitSchedule(
+export function isAssignedToVisitSchedule(
   userId: string,
   schedule: VisitScheduleAssignmentSubject | null | undefined,
 ) {
@@ -75,6 +81,21 @@ function isAssignedToVisitSchedule(
     schedule.case_?.primary_pharmacist_id === userId ||
     schedule.case_?.backup_pharmacist_id === userId
   );
+}
+
+export function canWriteVisitRecordForSchedule(
+  ctx: VisitScheduleAccessContext,
+  schedule: VisitScheduleAssignmentSubject | null | undefined,
+) {
+  if (ctx.role === 'pharmacist_trainee') {
+    return isAssignedToVisitSchedule(ctx.userId, schedule);
+  }
+
+  if (!VISIT_RECORD_ORG_WIDE_WRITE_ROLES.has(ctx.role)) {
+    return false;
+  }
+
+  return canAccessVisitScheduleAssignment(ctx, schedule);
 }
 
 export function canConfirmVisitHandoff(

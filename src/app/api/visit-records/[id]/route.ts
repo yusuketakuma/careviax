@@ -3,7 +3,10 @@ import { NextRequest } from 'next/server';
 import { batchResolveNames } from '@/lib/utils/name-resolver';
 import { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
-import { canAccessVisitScheduleAssignment } from '@/lib/auth/visit-schedule-access';
+import {
+  canAccessVisitScheduleAssignment,
+  canWriteVisitRecordForSchedule,
+} from '@/lib/auth/visit-schedule-access';
 import { withOrgContext } from '@/lib/db/rls';
 import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
 import {
@@ -313,7 +316,7 @@ async function authenticatedPATCH(
         },
       });
       if (!existing) return null;
-      if (!existing.schedule || !canAccessVisitScheduleAssignment(ctx, existing.schedule)) {
+      if (!existing.schedule || !canWriteVisitRecordForSchedule(ctx, existing.schedule)) {
         return 'forbidden' as const;
       }
       const schedule = existing.schedule;
