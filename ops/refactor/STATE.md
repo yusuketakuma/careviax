@@ -40,7 +40,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: PAT-DETAIL-UX-001 Patient detail tabs deep-link slice complete（commit pending）。
+- codex: PAT-DETAIL-UX-001 Patient detail tabs deep-link landed（commit `f9ea6957e`）。
   - current task:
     Goal 継続として、ユーザー指示「患者詳細画面配置はタブ化」に対応。既存 `CardWorkspace` の
     患者詳細タブを正規導線として扱い、`#patient-profile-summary` / `#patient-documents` /
@@ -88,7 +88,7 @@
   - remaining work:
     患者詳細の full tab lazy split / bundle budget（PAT-DETAIL-PERF-001）と Command Center は別 slice。
   - next action:
-    scoped commit を作成。次は `DASH-PERF-001`、または `PAT-LIST-PERF-001`。
+    次は `DASH-PERF-001`、または `PAT-LIST-PERF-001`。
 
 - codex: RX-REG-UX-002 Prescription list facet counts landed（commit `fadd249f4`）。
   - current task:
