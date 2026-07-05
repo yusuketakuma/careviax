@@ -514,10 +514,9 @@ describe('ConferencesContent', () => {
 
   it('uses shared JSON headers and encoded dynamic paths for conference note mutations', async () => {
     const hostileNoteId = 'note/id?task=1#frag';
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: { report_draft_count: 1, queued_recipient_count: 0 } }),
-    });
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({ data: { report_draft_count: 1, queued_recipient_count: 0 } }),
+    );
     vi.stubGlobal('fetch', fetchMock);
 
     render(<ConferencesContent initialFocus="notes" />);
@@ -565,6 +564,31 @@ describe('ConferencesContent', () => {
 
     expect(toast.error).toHaveBeenCalledWith('既にタスク化されています');
     expect(toast.error).toHaveBeenCalledWith('報告書種別が無効です');
+  });
+
+  it('keeps conference mutation server error messages from API responses', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({ message: '既にタスク化されています' }, 409),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ConferencesContent initialFocus="notes" />);
+
+    await expect(
+      mutationConfigs[2]?.mutationFn?.({ noteId: 'note_1', actionItemIndex: 0 }),
+    ).rejects.toThrow('既にタスク化されています');
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({ message: '報告書種別が無効です' }, 400));
+    await expect(
+      mutationConfigs[3]?.mutationFn?.({
+        note: makeConferenceNote({ id: 'note_1' }),
+        reportType: 'unsupported',
+        autoSend: false,
+        includeStructuredContent: true,
+      }),
+    ).rejects.toThrow('報告書種別が無効です');
+
+    vi.unstubAllGlobals();
   });
 
   it('falls back to operation-specific conference mutation messages', () => {

@@ -176,6 +176,26 @@ type CommunityActivity = {
   created_at: string;
 };
 
+type ConferenceNoteCreateResponse = {
+  data: ConferenceNote;
+  sync?: {
+    report_draft_ids?: string[];
+    billing_candidate_id?: string;
+    visit_proposal_id?: string;
+    tasks_created?: number;
+    medication_issues_created?: number;
+  };
+};
+
+type CommunityActivityCreateResponse = { data: CommunityActivity };
+type ConvertActionItemResponse = { data: { task_id: string } };
+type GenerateConferenceReportResponse = {
+  data: {
+    report_draft_count: number;
+    queued_recipient_count: number;
+  };
+};
+
 const PROFESSION_LABELS: Record<string, string> = {
   physician: '医師',
   nurse: '看護師',
@@ -740,17 +760,7 @@ export function ConferencesContent({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(payload),
       });
-      if (!response.ok) throw new Error('作成に失敗しました');
-      return response.json() as Promise<{
-        data: ConferenceNote;
-        sync?: {
-          report_draft_ids?: string[];
-          billing_candidate_id?: string;
-          visit_proposal_id?: string;
-          tasks_created?: number;
-          medication_issues_created?: number;
-        };
-      }>;
+      return readApiJson<ConferenceNoteCreateResponse>(response, '作成に失敗しました');
     },
     onSuccess: (payload) => {
       queryClient.invalidateQueries({ queryKey: ['conference-notes', orgId] });
@@ -784,8 +794,7 @@ export function ConferencesContent({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(payload),
       });
-      if (!response.ok) throw new Error('作成に失敗しました');
-      return response.json();
+      return readApiJson<CommunityActivityCreateResponse>(response, '作成に失敗しました');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['community-activities', orgId] });
@@ -809,11 +818,7 @@ export function ConferencesContent({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ action_item_index: actionItemIndex }),
       });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload.message ?? 'タスク化に失敗しました');
-      }
-      return response.json();
+      return readApiJson<ConvertActionItemResponse>(response, 'タスク化に失敗しました');
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['conference-notes', orgId] });
@@ -850,16 +855,7 @@ export function ConferencesContent({
           include_structured_content: includeStructuredContent,
         }),
       });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload.message ?? '報告書生成に失敗しました');
-      }
-      return response.json() as Promise<{
-        data: {
-          report_draft_count: number;
-          queued_recipient_count: number;
-        };
-      }>;
+      return readApiJson<GenerateConferenceReportResponse>(response, '報告書生成に失敗しました');
     },
     onSuccess: (payload) => {
       toast.success(
