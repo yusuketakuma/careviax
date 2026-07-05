@@ -187,6 +187,12 @@
   method / org JSON headers / patient-context-generation-summary-rating-provider body /
   success toast-local state は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 facility-packet-save readApiJson slice(93bbf74f) land。focused Vitest 3、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。facility visit packet save POST
+  response を readApiJson へ収束し、/api/facility-visit-batches endpoint / method /
+  org header shape / schedule order-route guard-packet memo body / success toast / edit close /
+  query invalidation は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 - codex: R40/R44 prescription-history readApiJson slice(d65d08d5) land。focused Vitest 29、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。patient prescription history GET /
   drug-master batch enrichment POST を readApiJson へ収束し、patient path helper / hostile-id

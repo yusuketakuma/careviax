@@ -1,5 +1,42 @@
 # CODEX Goal Progress
 
+## R40/R44 Facility Packet Save readApiJson Partial - 2026-07-05 09:58 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/visits/[id]/facility-packet/facility-packet-content.tsx`
+    - `src/app/(dashboard)/visits/[id]/facility-packet/facility-packet-content.test.tsx`
+- Scope:
+  - Reused `readApiJson` for facility visit packet save POST responses.
+  - Added focused coverage proving API JSON `message` from failed facility
+    packet saves is preserved in the toast.
+  - Preserved `/api/facility-visit-batches` endpoint, POST method,
+    `buildOrgHeaders` header shape, schedule ordering body, route-order guard
+    body, packet memo body, success toast, edit close behavior, and query
+    invalidation.
+- Safety:
+  - Facility packet UI save response handling internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/visits/[id]/facility-packet/facility-packet-content.test.tsx'`
+    passed `1` file / `3` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `93bbf74f`
+    (`refactor(ui): reuse readApiJson for facility packet save`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher/mutation PHI/body-read review
+    before converting additional manual response handling.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Visit Brief Feedback readApiJson Partial - 2026-07-05 09:53 JST
 
 - Status:
