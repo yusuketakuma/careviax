@@ -2,6 +2,7 @@
 
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import { DocumentDeliveryRuleManager } from './document-delivery-rule-manager';
@@ -244,6 +245,75 @@ describe('DocumentDeliveryRuleManager', () => {
       channel: 'fax',
       fallback_channels: ['email'],
       is_active: true,
+    });
+  });
+
+  it('keeps server save error envelopes when delivery rule creation fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === '/api/document-delivery-rules' && !init?.method) {
+          return new Response(JSON.stringify({ data: [] }), { status: 200 });
+        }
+        if (url === '/api/document-delivery-rules' && init?.method === 'POST') {
+          return new Response(JSON.stringify({ error: '文書送達ルールの作成権限がありません' }), {
+            status: 403,
+          });
+        }
+        return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+      }),
+    );
+    renderManager();
+
+    fireEvent.click(await screen.findByRole('button', { name: '登録する' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('文書送達ルールの作成権限がありません');
+    });
+  });
+
+  it('keeps server delete messages when delivery rule deletion fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === '/api/document-delivery-rules' && !init?.method) {
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: 'rule_1',
+                  document_type: 'care_report',
+                  target_role: 'physician',
+                  channel: 'fax',
+                  fallback_channels: ['mcs'],
+                  is_active: true,
+                },
+              ],
+            }),
+            { status: 200 },
+          );
+        }
+        if (url === '/api/document-delivery-rules/rule_1' && init?.method === 'DELETE') {
+          return new Response(JSON.stringify({ message: '文書送達ルールの削除権限がありません' }), {
+            status: 403,
+          });
+        }
+        return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+      }),
+    );
+    renderManager();
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: '報告書 / 医師 / FAX の送達ルールを削除',
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '削除する' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('文書送達ルールの削除権限がありません');
     });
   });
 

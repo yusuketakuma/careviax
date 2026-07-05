@@ -341,11 +341,7 @@ export function DocumentTemplateContent() {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(payload),
       });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message ?? 'テンプレートの保存に失敗しました');
-      }
-      const responsePayload = await res.json();
+      const responsePayload = await readApiJson<unknown>(res, 'テンプレートの保存に失敗しました');
       return { responsePayload, wasEditing: Boolean(templateId) };
     },
     onSuccess: async ({ wasEditing }) => {
@@ -364,11 +360,7 @@ export function DocumentTemplateContent() {
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message ?? 'テンプレートの削除に失敗しました');
-      }
-      return res.json();
+      return readApiJson<unknown>(res, 'テンプレートの削除に失敗しました');
     },
     onSuccess: async () => {
       toast.success('テンプレートを削除しました');

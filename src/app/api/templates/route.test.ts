@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { expectNoStore } from '@/test/api-response-assertions';
 
 const {
   withOrgContextMock,
@@ -7,12 +8,14 @@ const {
   templateCountMock,
   templateCreateMock,
   templateUpdateManyMock,
+  loggerErrorMock,
 } = vi.hoisted(() => ({
   withOrgContextMock: vi.fn(),
   templateFindManyMock: vi.fn(),
   templateCountMock: vi.fn(),
   templateCreateMock: vi.fn(),
   templateUpdateManyMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -39,6 +42,12 @@ vi.mock('@/lib/db/client', () => ({
     },
   },
 }));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    error: loggerErrorMock,
+  },
+}));
 import { GET, POST } from './route';
 
 function createRequest(url: string, body?: unknown) {
@@ -55,6 +64,17 @@ function createMalformedJsonPostRequest() {
     headers: { 'content-type': 'application/json' },
     body: '{bad json',
   });
+}
+
+async function expectInternalError(response: Response, rawMessage: string) {
+  expect(response.status).toBe(500);
+  expectNoStore(response);
+  const body = await response.json();
+  expect(body).toMatchObject({
+    code: 'INTERNAL_ERROR',
+    message: 'サーバー内部でエラーが発生しました',
+  });
+  expect(JSON.stringify(body)).not.toContain(rawMessage);
 }
 
 describe('/api/templates', () => {
@@ -87,6 +107,7 @@ describe('/api/templates', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(templateFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -202,6 +223,7 @@ describe('/api/templates', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expectNoStore(response);
     expect(templateUpdateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -314,6 +336,7 @@ describe('/api/templates', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -359,7 +382,55 @@ describe('/api/templates', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     expect(templateFindManyMock).not.toHaveBeenCalled();
     expect(templateCountMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when template listing fails unexpectedly', async () => {
+    const rawMessage = 'raw template content 患者A';
+    templateFindManyMock.mockRejectedValue(new Error(rawMessage));
+
+    const response = await GET(createRequest('http://localhost/api/templates'), {
+      params: Promise.resolve({}),
+    });
+
+    if (!response) throw new Error('response is required');
+    await expectInternalError(response, rawMessage);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'templates_get_unhandled_error',
+        route: '/api/templates',
+        method: 'GET',
+        status: 500,
+      }),
+      expect.any(Error),
+    );
+  });
+
+  it('returns a sanitized no-store 500 when template creation fails unexpectedly', async () => {
+    const rawMessage = 'raw create body 患者B';
+    templateCreateMock.mockRejectedValue(new Error(rawMessage));
+
+    const response = await POST(
+      createRequest('http://localhost/api/templates', {
+        name: '主治医報告 基本',
+        template_type: 'care_report',
+        content: { body_text: rawMessage },
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    await expectInternalError(response, rawMessage);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'templates_post_unhandled_error',
+        route: '/api/templates',
+        method: 'POST',
+        status: 500,
+      }),
+      expect.any(Error),
+    );
   });
 });

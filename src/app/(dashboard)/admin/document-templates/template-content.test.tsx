@@ -2,6 +2,7 @@
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import { DocumentTemplateContent } from './template-content';
@@ -293,6 +294,86 @@ describe('DocumentTemplateContent', () => {
       );
     });
     expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
+  });
+
+  it('keeps server save error envelopes when template creation fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === '/api/templates' && !init?.method) {
+          return new Response(JSON.stringify({ data: [] }), { status: 200 });
+        }
+        if (url === '/api/templates' && init?.method === 'POST') {
+          return new Response(JSON.stringify({ error: '文書テンプレートの作成権限がありません' }), {
+            status: 403,
+          });
+        }
+        return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+      }),
+    );
+    renderContent();
+
+    fireEvent.change(await screen.findByLabelText('テンプレート名'), {
+      target: { value: '新規テンプレート' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '登録する' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('文書テンプレートの作成権限がありません');
+    });
+  });
+
+  it('keeps server delete error messages when template deletion fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === '/api/templates' && !init?.method) {
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: 'template_1',
+                  name: '主治医報告 基本',
+                  template_type: 'care_report',
+                  target_role: 'physician',
+                  format: 'html',
+                  version: 2,
+                  effective_from: null,
+                  effective_to: null,
+                  content: { sections: ['summary'] },
+                  is_default: true,
+                  created_at: '2026-06-19T10:00:00.000Z',
+                  updated_at: '2026-06-19T10:30:00.000Z',
+                },
+              ],
+            }),
+            { status: 200 },
+          );
+        }
+        if (url === '/api/templates/template_1' && init?.method === 'DELETE') {
+          return new Response(
+            JSON.stringify({ message: '文書テンプレートの削除権限がありません' }),
+            {
+              status: 403,
+            },
+          );
+        }
+        return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+      }),
+    );
+    renderContent();
+
+    const [deleteButton] = await screen.findAllByRole('button', {
+      name: '主治医報告 基本 を削除',
+    });
+    fireEvent.click(deleteButton);
+    fireEvent.click(screen.getByRole('button', { name: '削除する' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('文書テンプレートの削除権限がありません');
+    });
   });
 
   it('blocks invalid JSON template content without mutating', async () => {

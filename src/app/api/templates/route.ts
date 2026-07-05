@@ -1,16 +1,20 @@
 import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
 import { buildCountedListEnvelope } from '@/lib/api/list-envelope';
 import { withAuthContext } from '@/lib/auth/context';
 import { parseBoundedInteger } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { success, validationError } from '@/lib/api/response';
+import { success, validationError, internalError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
+import { logger } from '@/lib/utils/logger';
 
 const DEFAULT_TEMPLATE_LIST_LIMIT = 100;
 const MAX_TEMPLATE_LIST_LIMIT = 200;
 const TEMPLATE_COUNT_BASIS = 'templates' as const;
+const TEMPLATES_ROUTE = '/api/templates';
 
 const templateTypeSchema = z.enum([
   'care_report',
@@ -70,7 +74,7 @@ function parseTemplateTypeFilter(searchParams: URLSearchParams) {
   return { ok: true as const, data: parsedTemplateType.data };
 }
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req, authCtx) => {
     const { searchParams } = new URL(req.url);
     const targetRoleRaw = searchParams.get('target_role');
@@ -146,7 +150,25 @@ export const GET = withAuthContext(
   { permission: 'canAdmin', message: '文書テンプレートの閲覧権限がありません' },
 );
 
-export const POST = withAuthContext(
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    logger.error(
+      {
+        event: 'templates_get_unhandled_error',
+        route: TEMPLATES_ROUTE,
+        method: req.method,
+        status: 500,
+      },
+      err,
+    );
+    return withSensitiveNoStore(internalError());
+  }
+};
+
+const authenticatedPOST = withAuthContext(
   async (req: NextRequest, authCtx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
@@ -194,3 +216,21 @@ export const POST = withAuthContext(
   },
   { permission: 'canAdmin', message: '文書テンプレートの作成権限がありません' },
 );
+
+export const POST: typeof authenticatedPOST = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    logger.error(
+      {
+        event: 'templates_post_unhandled_error',
+        route: TEMPLATES_ROUTE,
+        method: req.method,
+        status: 500,
+      },
+      err,
+    );
+    return withSensitiveNoStore(internalError());
+  }
+};

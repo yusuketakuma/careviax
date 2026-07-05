@@ -91,6 +91,25 @@ describe('TemplateBodyEditor render hierarchy', () => {
     });
   });
 
+  it('keeps server save error envelopes', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error: '文書テンプレートの更新権限がありません' }), {
+            status: 403,
+          }),
+      ),
+    );
+    renderEditor();
+
+    fireEvent.click(screen.getByRole('button', { name: '本文を保存する' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('文書テンプレートの更新権限がありません');
+    });
+  });
+
   it('falls back to the save message when PATCH fails without a message', async () => {
     vi.stubGlobal(
       'fetch',

@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildDocumentTemplateApiPath } from '@/lib/document-templates/api-paths';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -92,13 +93,7 @@ export function TemplateBodyEditor({ templates }: { templates: TemplateBodyEdito
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ content: { ...selected.content, body_text: bodyText } }),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => null);
-        throw new Error(
-          (err as { message?: string } | null)?.message ?? '文面の保存に失敗しました',
-        );
-      }
-      return res.json();
+      return readApiJson<unknown>(res, '文面の保存に失敗しました');
     },
     onSuccess: () => {
       toast.success('文面を保存しました');

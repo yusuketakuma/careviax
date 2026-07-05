@@ -202,10 +202,7 @@ export function DocumentDeliveryRuleManager() {
           }),
         },
       );
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message ?? '文書送達ルールの保存に失敗しました');
-      }
+      await readApiJson<unknown>(res, '文書送達ルールの保存に失敗しました');
       return { wasEditing: Boolean(currentForm.id) };
     },
     onSuccess: async ({ wasEditing }) => {
@@ -224,9 +221,7 @@ export function DocumentDeliveryRuleManager() {
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) {
-        throw new Error('文書送達ルールの削除に失敗しました');
-      }
+      await readApiJson<unknown>(res, '文書送達ルールの削除に失敗しました');
     },
     onSuccess: async (_data, ruleId) => {
       toast.success('文書送達ルールを削除しました');

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { expectNoStore } from '@/test/api-response-assertions';
 
 const {
   requireAuthContextMock,
@@ -8,6 +9,7 @@ const {
   templateUpdateManyMock,
   templateUpdateMock,
   templateDeleteMock,
+  loggerErrorMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -15,6 +17,7 @@ const {
   templateUpdateManyMock: vi.fn(),
   templateUpdateMock: vi.fn(),
   templateDeleteMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -30,6 +33,12 @@ vi.mock('@/lib/db/client', () => ({
     template: {
       findFirst: templateFindFirstMock,
     },
+  },
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    error: loggerErrorMock,
   },
 }));
 
@@ -49,6 +58,17 @@ function createMalformedJsonPatchRequest() {
     headers: { 'content-type': 'application/json' },
     body: '{bad json',
   });
+}
+
+async function expectInternalError(response: Response, rawMessage: string) {
+  expect(response.status).toBe(500);
+  expectNoStore(response);
+  const body = await response.json();
+  expect(body).toMatchObject({
+    code: 'INTERNAL_ERROR',
+    message: 'サーバー内部でエラーが発生しました',
+  });
+  expect(JSON.stringify(body)).not.toContain(rawMessage);
 }
 
 describe('/api/templates/[id]', () => {
@@ -86,6 +106,7 @@ describe('/api/templates/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(templateUpdateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -172,6 +193,7 @@ describe('/api/templates/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     expect(templateFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(templateUpdateManyMock).not.toHaveBeenCalled();
@@ -185,6 +207,7 @@ describe('/api/templates/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -217,9 +240,69 @@ describe('/api/templates/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(templateDeleteMock).toHaveBeenCalledWith({
       where: { id: 'template_1' },
     });
+  });
+
+  it('returns a no-store not-found response for missing template updates', async () => {
+    templateFindFirstMock.mockResolvedValue(null);
+
+    const response = await PATCH(createRequest({ name: '更新版' }), {
+      params: Promise.resolve({ id: 'template_missing' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '文書テンプレートが見つかりません',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(templateUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when template update fails unexpectedly', async () => {
+    const rawMessage = 'raw patch content 患者C';
+    templateUpdateMock.mockRejectedValue(new Error(rawMessage));
+
+    const response = await PATCH(createRequest({ content: { body_text: rawMessage } }), {
+      params: Promise.resolve({ id: 'template_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    await expectInternalError(response, rawMessage);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'templates_id_patch_unhandled_error',
+        route: '/api/templates/:id',
+        method: 'PATCH',
+        status: 500,
+      }),
+      expect.any(Error),
+    );
+  });
+
+  it('returns a sanitized no-store 500 when template deletion fails unexpectedly', async () => {
+    const rawMessage = 'raw delete content 患者D';
+    templateDeleteMock.mockRejectedValue(new Error(rawMessage));
+
+    const response = await DELETE(createRequest(), {
+      params: Promise.resolve({ id: 'template_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    await expectInternalError(response, rawMessage);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'templates_id_delete_unhandled_error',
+        route: '/api/templates/:id',
+        method: 'DELETE',
+        status: 500,
+      }),
+      expect.any(Error),
+    );
   });
 
   it('rejects blank delete route ids before loading the template', async () => {
@@ -229,6 +312,7 @@ describe('/api/templates/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '文書テンプレートIDが不正です',
     });
