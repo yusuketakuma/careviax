@@ -3645,3 +3645,57 @@
 - remaining:
   Broader `Plans.md` objective remains open. `break_glass_access` Japanese display label is a low-risk polish
   candidate, but the browser proof intentionally records the current accessible name.
+
+## 2026-07-06 Audit Review Action Label Polish slice
+
+- codex: `UX-AUD-001` audit review action label polish implemented.
+  前回 browser proof で意図的に記録していた raw `break_glass_access` 表示を解消し、監査ログ UI の
+  action label registry にブレークグラス系 action と患者詳細閲覧を追加した。監査ログ filter の
+  target type にも `break_glass_session` / `break_glass_audit` を追加し、UI の filter / row /
+  accessible name が raw id ではなく業務語彙で揃うようにした。
+- skill / design reference:
+  UI polish のため `docs/ui-ux-design-guidelines.md` と `redesign-existing-projects` skill を確認。
+  今回は新規レイアウト・再配置・大幅改善ではなく shared label registry の軽微な文言修正のため、
+  `imagegen` / `gpt-image-2` の新規生成は行っていない。既存の audit review browser proof を
+  日本語 action label で再検証した。
+- files inspected:
+  `Plans.md`, `docs/ui-ux-design-guidelines.md`,
+  `/Users/yusuke/workspace/careviax/.agents/skills/redesign-existing-projects/SKILL.md`,
+  `src/lib/audit-logs/filter-options.ts`, `src/lib/audit-logs/filter-options.test.ts`,
+  `src/lib/audit-logs/review.ts`, `src/lib/audit-logs/review.test.ts`,
+  `src/app/(dashboard)/admin/audit-logs/audit-logs-content.tsx`,
+  `tools/tests/ui-audit-logs-review.spec.ts`.
+- files changed:
+  `src/lib/audit-logs/filter-options.ts`,
+  `src/lib/audit-logs/filter-options.test.ts`,
+  `tools/tests/ui-audit-logs-review.spec.ts`,
+  `ops/refactor/STATE.md`.
+- bugs found/fixed:
+  `break_glass_access` が high-risk audit row で raw action id のまま表示され、画面表示と
+  review button の accessible name にも raw id が露出していた。`break_glass_*` と
+  `patient_details_viewed` を shared action label registry に追加し、Playwright proof も
+  `ブレークグラスアクセス` を期待する契約へ更新した。
+- security/PHI risks reduced:
+  監査レビューで高リスク操作を判断する際の可読性を上げ、管理者が raw event id から意味を推測する
+  必要を減らした。route mock / screenshot は safe display id のみで、患者名・住所・電話・処方本文・
+  報告本文・保険情報・外部共有 URL は含まない。
+- performance issues improved:
+  実行時処理は既存 registry lookup の key 追加のみ。DB/API/query 変更なし。
+- validation:
+  `pnpm exec vitest run src/lib/audit-logs/filter-options.test.ts "src/app/(dashboard)/admin/audit-logs/audit-logs-content.test.tsx" --reporter=dot --testTimeout=30000`
+  green (2 files / 17 tests);
+  `pnpm exec eslint --max-warnings=0 src/lib/audit-logs/filter-options.ts src/lib/audit-logs/filter-options.test.ts tools/tests/ui-audit-logs-review.spec.ts`
+  green;
+  `pnpm exec prettier --check src/lib/audit-logs/filter-options.ts src/lib/audit-logs/filter-options.test.ts tools/tests/ui-audit-logs-review.spec.ts`
+  green;
+  `git diff --check -- src/lib/audit-logs/filter-options.ts src/lib/audit-logs/filter-options.test.ts tools/tests/ui-audit-logs-review.spec.ts`
+  green;
+  `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-audit-logs-review.spec.ts --project=chromium --timeout=90000`
+  green (1 passed);
+  screenshot artifact:
+  `/var/folders/yg/_v84mvr55kb5dqdpzhvm79bc0000gn/T/careviax-playwright-artifacts/45489/screenshots/audit-logs-review-dashboard-confirmation.png`;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck --pretty false` green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false` green.
+- remaining:
+  Broader `Plans.md` objective remains open. 次の候補は `PAT-LIST-PERF-001` / `DASH-COMM-001` /
+  `REPORT-PERF-001` などの未完了 UI/PERF slice。

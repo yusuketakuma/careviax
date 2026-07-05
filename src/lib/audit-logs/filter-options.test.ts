@@ -6,6 +6,8 @@ describe('audit log filter options', () => {
     expect(AUDIT_LOG_TARGET_TYPE_OPTIONS.map((option) => option.value)).toEqual(
       expect.arrayContaining([
         'patient',
+        'break_glass_session',
+        'break_glass_audit',
         'consent_record',
         'PatientShareCase',
         'PatientShareConsent',
@@ -43,6 +45,15 @@ describe('audit log filter options', () => {
         'care_report_print_requested',
       ]),
     );
+  });
+
+  it('localizes high-risk audit actions instead of exposing raw action ids', () => {
+    expect(AUDIT_LOG_ACTION_LABEL_MAP.break_glass_access).toBe('ブレークグラスアクセス');
+    expect(AUDIT_LOG_ACTION_LABEL_MAP.break_glass_activate).toBe('ブレークグラス開始');
+    expect(AUDIT_LOG_ACTION_LABEL_MAP.break_glass_revoke).toBe('ブレークグラス終了');
+    expect(AUDIT_LOG_ACTION_LABEL_MAP.break_glass_read).toBe('ブレークグラス閲覧');
+    expect(AUDIT_LOG_ACTION_LABEL_MAP.break_glass_write).toBe('ブレークグラス変更');
+    expect(AUDIT_LOG_ACTION_LABEL_MAP.patient_details_viewed).toBe('患者詳細閲覧');
   });
 
   it('uses the canonical singular patient-share consent mutation action names', () => {

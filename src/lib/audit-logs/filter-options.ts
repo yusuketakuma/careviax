@@ -1,6 +1,10 @@
+import { AUDIT_LOG_REVIEW_REASON_LABEL_MAP } from '@/lib/audit-logs/review';
+
 export const AUDIT_LOG_TARGET_TYPE_OPTIONS = [
   { value: '', label: 'すべて' },
   { value: 'patient', label: '患者' },
+  { value: 'break_glass_session', label: 'ブレークグラスセッション' },
+  { value: 'break_glass_audit', label: 'ブレークグラス監査' },
   { value: 'consent_record', label: '同意記録' },
   { value: 'PatientShareCase', label: '患者共有ケース' },
   { value: 'PatientShareConsent', label: '患者共有同意' },
@@ -31,6 +35,13 @@ export const AUDIT_LOG_ACTION_LABEL_MAP = {
   export: 'エクスポート',
   approve: '承認',
   reject: '差戻し',
+  break_glass: 'ブレークグラス',
+  break_glass_access: 'ブレークグラスアクセス',
+  break_glass_activate: 'ブレークグラス開始',
+  break_glass_revoke: 'ブレークグラス終了',
+  break_glass_read: 'ブレークグラス閲覧',
+  break_glass_write: 'ブレークグラス変更',
+  patient_details_viewed: '患者詳細閲覧',
   consent_records_viewed: '同意記録一覧閲覧',
   consent_record_viewed: '同意記録閲覧',
   consent_record_created: '同意記録作成',
@@ -108,4 +119,3 @@ export const AUDIT_LOG_REDACTION_STATE_LABEL_MAP = {
   minimized: '最小化済',
   not_applicable: '対象外',
 } as const satisfies Record<string, string>;
-import { AUDIT_LOG_REVIEW_REASON_LABEL_MAP } from '@/lib/audit-logs/review';

@@ -186,7 +186,7 @@ test.describe('admin audit log review dashboard', () => {
 
     const highRiskReviewButton = page
       .getByRole('button', {
-        name: /高リスク.*監査 管理者.*break_glass_access.*patient safe-patient-001をレビュー済みにする/,
+        name: /高リスク.*監査 管理者.*ブレークグラスアクセス.*patient safe-patient-001をレビュー済みにする/,
       })
       .first();
     await highRiskReviewButton.focus();
