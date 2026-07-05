@@ -95,6 +95,9 @@ type ExternalProfessionalsResponse = {
   truncated?: boolean;
 };
 
+type ExternalProfessionalMutationResponse = { data: ExternalProfessional };
+type ExternalProfessionalDeleteResponse = { ok: boolean };
+
 type FacilityOption = {
   id: string;
   name: string;
@@ -504,10 +507,10 @@ export function ExternalProfessionalsContent() {
           professional ? buildUpdatePayload(currentForm) : buildCreatePayload(currentForm),
         ),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error((payload as { message?: string }).message ?? '保存に失敗しました');
-      }
+      const payload = await readApiJson<ExternalProfessionalMutationResponse>(
+        response,
+        '保存に失敗しました',
+      );
       return { payload, wasEditing: Boolean(professional) };
     },
     onSuccess: async ({ wasEditing }) => {
@@ -530,11 +533,7 @@ export function ExternalProfessionalsContent() {
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error((payload as { message?: string }).message ?? '削除に失敗しました');
-      }
-      return payload;
+      return readApiJson<ExternalProfessionalDeleteResponse>(response, '削除に失敗しました');
     },
     onSuccess: async () => {
       toast.success('他職種マスターを削除しました');

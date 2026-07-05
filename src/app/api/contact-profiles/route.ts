@@ -105,7 +105,7 @@ const updateContactProfileSchema = z.object({
   preferred_contact_time: nullableTrimmed,
 });
 
-export const PATCH = withAuthContext(
+const authenticatedPATCH = withAuthContext(
   async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
@@ -148,3 +148,12 @@ export const PATCH = withAuthContext(
     message: '連携先プロファイルの編集権限がありません',
   },
 );
+
+export const PATCH: typeof authenticatedPATCH = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};

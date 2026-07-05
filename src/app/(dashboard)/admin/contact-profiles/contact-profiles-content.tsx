@@ -357,11 +357,7 @@ function ContactProfileEditor({
               : currentForm.preferred_contact_method,
         }),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error((payload as { message?: string }).message ?? '保存に失敗しました');
-      }
-      return payload;
+      return readApiJson<unknown>(response, '保存に失敗しました');
     },
     onSuccess: async () => {
       toast.success('連絡先を保存しました');

@@ -2,6 +2,7 @@
 
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import { ContactProfilesContent } from './contact-profiles-content';
@@ -90,6 +91,13 @@ function renderContent() {
   return render(<ContactProfilesContent />, { wrapper: createQueryClientWrapper() });
 }
 
+function mockContactProfilesFetch(patchResponse: Response) {
+  return vi.spyOn(global, 'fetch').mockImplementation(async (_input, init?: RequestInit) => {
+    if (init?.method === 'PATCH') return patchResponse.clone();
+    return new Response(JSON.stringify({ data: profiles }), { status: 200 });
+  });
+}
+
 describe('ContactProfilesContent', () => {
   beforeEach(() => {
     buildContactProfilesApiPathMock.mockClear();
@@ -175,6 +183,38 @@ describe('ContactProfilesContent', () => {
         name: '山本ケアプランセンター 更新',
       }),
     );
+  });
+
+  it('preserves server messages from contact profile save errors', async () => {
+    mockContactProfilesFetch(
+      new Response(JSON.stringify({ message: '連携先が見つかりません' }), { status: 404 }),
+    );
+
+    renderContent();
+    await screen.findByTestId('contact-delivery-target-edit');
+
+    fireEvent.change(await screen.findByLabelText('宛先'), {
+      target: { value: '山本ケアプランセンター 更新' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '送付先を保存する' }));
+
+    await waitFor(() =>
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('連携先が見つかりません'),
+    );
+  });
+
+  it('uses the contact profile save fallback for non-JSON errors', async () => {
+    mockContactProfilesFetch(new Response('gateway timeout', { status: 502 }));
+
+    renderContent();
+    await screen.findByTestId('contact-delivery-target-edit');
+
+    fireEvent.change(await screen.findByLabelText('宛先'), {
+      target: { value: '山本ケアプランセンター 更新' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '送付先を保存する' }));
+
+    await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalledWith('保存に失敗しました'));
   });
 
   it('shows delivery target review details in the current workspace', async () => {

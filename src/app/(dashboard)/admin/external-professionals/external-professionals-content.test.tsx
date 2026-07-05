@@ -161,9 +161,12 @@ function linkedPatientsResponseFixture() {
   };
 }
 
+type ExternalProfessionalMutationMethod = 'POST' | 'PATCH' | 'DELETE';
+
 function stubFetchWithProfessional(
   professional = professionalFixture(),
   linkedPatientsResponse: unknown = linkedPatientsResponseFixture(),
+  mutationResponses: Partial<Record<ExternalProfessionalMutationMethod, Response>> = {},
 ) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -197,16 +200,19 @@ function stubFetchWithProfessional(
     }
 
     if (url === '/api/admin/external-professionals' && method === 'POST') {
+      if (mutationResponses.POST) return mutationResponses.POST.clone();
       return new Response(JSON.stringify({ data: { ...professional, id: 'external_new' } }), {
         status: 201,
       });
     }
 
     if (url.startsWith('/api/admin/external-professionals/') && method === 'PATCH') {
+      if (mutationResponses.PATCH) return mutationResponses.PATCH.clone();
       return new Response(JSON.stringify({ data: professional }), { status: 200 });
     }
 
     if (url.startsWith('/api/admin/external-professionals/') && method === 'DELETE') {
+      if (mutationResponses.DELETE) return mutationResponses.DELETE.clone();
       return new Response(JSON.stringify({ ok: true }), { status: 200 });
     }
 
@@ -439,6 +445,49 @@ describe('ExternalProfessionalsContent', () => {
       organization_name: '緑川居宅介護支援',
     });
     expect(JSON.parse(init.body as string)).not.toHaveProperty('facility_id');
+  });
+
+  it('preserves server messages from external professional save errors', async () => {
+    stubFetchWithProfessional(professionalFixture(), linkedPatientsResponseFixture(), {
+      PATCH: new Response(JSON.stringify({ message: '他職種が見つかりません' }), { status: 404 }),
+    });
+    renderContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: '青葉 訪問看護 を編集' }));
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('他職種が見つかりません'));
+  });
+
+  it('uses the external professional save fallback for non-JSON errors', async () => {
+    stubFetchWithProfessional(professionalFixture(), linkedPatientsResponseFixture(), {
+      PATCH: new Response('gateway timeout', { status: 502 }),
+    });
+    renderContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: '青葉 訪問看護 を編集' }));
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('保存に失敗しました'));
+  });
+
+  it('uses the external professional delete fallback for non-JSON errors', async () => {
+    stubFetchWithProfessional(
+      {
+        ...professionalFixture(),
+        patient_count: 0,
+      },
+      linkedPatientsResponseFixture(),
+      {
+        DELETE: new Response('gateway timeout', { status: 502 }),
+      },
+    );
+    renderContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: '青葉 訪問看護 を削除' }));
+    fireEvent.click(screen.getByRole('button', { name: '削除する' }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('削除に失敗しました'));
   });
 
   it('keeps the existing name blocker reactive and prevents invalid create requests', async () => {

@@ -2,9 +2,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { expectNoStore } from '@/test/api-response-assertions';
 
-const { listContactProfilesMock, listContactProfileSearchSummariesMock } = vi.hoisted(() => ({
+const {
+  createAuditLogEntryMock,
+  listContactProfilesMock,
+  listContactProfileSearchSummariesMock,
+  updateContactProfileMock,
+} = vi.hoisted(() => ({
+  createAuditLogEntryMock: vi.fn(),
   listContactProfilesMock: vi.fn(),
   listContactProfileSearchSummariesMock: vi.fn(),
+  updateContactProfileMock: vi.fn(),
 }));
 
 const emptyRouteContext = { params: Promise.resolve({}) };
@@ -26,19 +33,36 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {},
 }));
 
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: (_orgId: string, callback: (tx: unknown) => Promise<unknown> | unknown) =>
+    callback({}),
+}));
+
+vi.mock('@/lib/audit/audit-entry', () => ({
+  createAuditLogEntry: createAuditLogEntryMock,
+}));
+
 vi.mock('@/lib/contact-profiles', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/contact-profiles')>();
   return {
     ...actual,
     listContactProfileSearchSummaries: listContactProfileSearchSummariesMock,
     listContactProfiles: listContactProfilesMock,
+    updateContactProfile: updateContactProfileMock,
   };
 });
 
-import { GET } from './route';
+import { GET, PATCH } from './route';
 
 function createAuthRequest(url: string) {
   return new NextRequest(url);
+}
+
+function createPatchRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/contact-profiles', {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
 }
 
 describe('/api/contact-profiles', () => {
@@ -84,6 +108,11 @@ describe('/api/contact-profiles', () => {
       ],
       hasMore: false,
     });
+    updateContactProfileMock.mockResolvedValue({
+      before: { id: 'contact_1', name: 'Before' },
+      after: { id: 'contact_1', name: 'After' },
+    });
+    createAuditLogEntryMock.mockResolvedValue(undefined);
   });
 
   it('lists aggregated contact profiles by kind and query', async () => {
@@ -171,5 +200,83 @@ describe('/api/contact-profiles', () => {
       code: 'INTERNAL_ERROR',
     });
     expect(JSON.stringify(body)).not.toContain('patient communication secret');
+  });
+
+  it('returns a no-store validation error for malformed PATCH bodies', async () => {
+    const response = (await PATCH(
+      new NextRequest('http://localhost/api/contact-profiles', {
+        method: 'PATCH',
+        body: 'not-json',
+      }),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(updateContactProfileMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a no-store validation error with field details for invalid PATCH payloads', async () => {
+    const response = (await PATCH(createPatchRequest({ kind: 'external_professional', id: '' }), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        id: expect.any(Array),
+      },
+    });
+    expect(updateContactProfileMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a no-store not-found envelope when PATCH target is missing', async () => {
+    updateContactProfileMock.mockResolvedValueOnce(null);
+
+    const response = (await PATCH(
+      createPatchRequest({
+        kind: 'external_professional',
+        id: 'missing_contact',
+        name: '山田 ケアマネ',
+      }),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(404);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: '連携先が見つかりません',
+    });
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('returns sanitized no-store 500 when PATCH fails unexpectedly', async () => {
+    updateContactProfileMock.mockRejectedValueOnce(
+      new Error('raw contact profile phone secret 03-1111-2222'),
+    );
+
+    const response = (await PATCH(
+      createPatchRequest({
+        kind: 'external_professional',
+        id: 'contact_1',
+        name: '山田 ケアマネ',
+      }),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain('03-1111-2222');
+    expect(JSON.stringify(body)).not.toContain('phone secret');
   });
 });
