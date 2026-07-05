@@ -313,14 +313,13 @@ FE 仕上げ（低優先）:
 
 #### VS-AUTO-3. `visit-schedules/generate` の proposal-first 上書き移行 `cc:TODO`
 
-- [ ] VS-AUTO-0b の cordon 完了後に本移行へ進む。DeadlinePolicy を本番接続した状態で direct confirmed schedule 自動生成経路を残さない。
-- [ ] `src/app/api/visit-schedules/generate/route.ts` の direct `VisitSchedule.create({ confirmed_at })` を自動生成用途から外す設計にする。
-- [ ] 2026-07-05 ユーザー指示により旧互換は不要。feature flag / request option / compatibility/manual mode で旧 direct generate を残さず、最新 proposal-first contract へ完全上書きする。
-- [ ] recurrence から複数日候補を `VisitScheduleProposal` と `VisitScheduleProposalBatch` に作る adapter を実装する。`idempotency_key`、route_order、billing guard、open proposal collision は existing proposal route と同等にする。
+- [x] VS-AUTO-0b に吸収済み。`POST /api/visit-schedules/generate` は 410 `ENDPOINT_REMOVED` contract を維持し、旧 direct confirmed schedule 自動生成 route は復活させない。
+- [ ] recurrence から複数日候補を作る必要が出た場合は、旧 generate route ではなく `POST /api/visit-schedule-proposals` 側または新規 proposal batch adapter に実装する。`VisitSchedule.create` は呼ばない。
+- [ ] proposal batch adapter は `VisitScheduleProposal` と `VisitScheduleProposalBatch` に作成し、`idempotency_key`、route_order、billing guard、open proposal collision は existing proposal route と同等にする。
 - [ ] `confirmed_at` あり予定、reschedule source、open proposal duplicate、billing cap、vehicle validation の既存 regression を移行テストで固定する。
 - テスト:
   - 自動一括生成は `VisitScheduleProposal` を作り、`VisitSchedule.create` を呼ばない。
-  - legacy compatibility/manual mode は存在しないことを route/API tests で固定する。
+  - legacy compatibility/manual mode は存在しないこと、旧 generate route は 410 のままであることを route/API tests で固定する。
   - 患者 contact confirmed 後だけ `[id]` confirm が `VisitSchedule` を作る。
   - `workflow-full-cycle.test.ts` / `visit-schedules/generate/route.test.ts` の期待を proposal-first に更新。
 
@@ -368,7 +367,7 @@ FE 仕上げ（低優先）:
   - [x] PHI を audit changes / logger / route diagnostics に過剰保存しない。
         2026-07-05: route/detail tests で hostile patient/drug/note/token/invalid value を固定。
 
-#### VS-AUTO-6. OverloadRebalancer preview: 未承認候補だけ前倒し `cc:TODO`
+#### VS-AUTO-6a. OverloadRebalancer preview/read-only: 未承認候補だけ前倒し `cc:TODO`
 
 - [x] 新サービス案: `src/server/services/visit-schedule-overload-rebalancer.ts`。
 - [x] まず preview-only API または service test で実装し、自動 cron 化しない。
@@ -389,7 +388,6 @@ FE 仕上げ（低優先）:
     `patient_contact_pending` / `reschedule_pending` は occupancy には数えるが replacement 対象外。
     review candidate 永続 field は VS-AUTO-7 まで存在しないため未接続。
 - [ ] VS-AUTO-7 後は `pharmacist_review_required=false` を条件へ追加する。
-- [ ] 前倒し時は旧候補を `superseded` にし、replacement proposal を作る。DB field 追加前は存在しない `reproposal_reason` field を前提にせず、audit whitelist の `reason_code='overload_advance'` と最小化 diagnostics に留める。HR 後は専用 field/audit table へ移行する。
 - [x] 容量判定では確定 `VisitSchedule` だけでなく、同日同薬剤師/車両の open `VisitScheduleProposal` もカウントする。現 planner は主に confirmed schedule を見ているためここが差分。
       2026-07-05: first slice は pharmacist daily capacity を対象に、active `VisitSchedule` と open
       `VisitScheduleProposal` を同一 occupancy としてカウント。preview 採用分も仮想 occupancy に反映し、
@@ -408,8 +406,22 @@ FE 仕上げ（低優先）:
         2026-07-05: preview API は audit write なし。response は id/date/status/count/reason code と
         最小 diagnostics に限定し、case id、raw patient / address / medication / free-text clinical detail を追加しない。
 
+#### VS-AUTO-6b. OverloadRebalancer apply/supersede/audit `cc:TODO HR`
+
+- [ ] VS-AUTO-7 の review fields / audit schema / hard gate と、VS-AUTO-8 の薬剤師確認 hard gate が入るまで write/apply は実装しない。
+- [ ] 前倒し apply 時は旧候補を `superseded` にし、replacement proposal を transaction で作る。confirmed schedule、patient contact confirmed/pending proposal、reschedule pending は不変。
+- [ ] `reproposal_reason` など存在しない field を前提にせず、HR migration 後の専用 field または `OverloadRebalanceAudit` に `reason_code='overload_advance'` と最小化 diagnostics を保存する。
+- [ ] billing cap recheck、vehicle capacity、pharmacist capacity、review field gate、patient contact state、same-run duplicate を server-side で再検証する。
+- [ ] apply 失敗や blocked attempt は、患者名・住所・薬剤名・provider raw payload を含まない audit/security-safe event に残す。
+- テスト:
+  - old proposal superseded + replacement proposal が同一 transaction で作られる。
+  - confirmed/contacted/reschedule pending は変更されない。
+  - billing cap / review required / vehicle full / pharmacist full で apply しない。
+  - audit は reason code、entity ids、dateKey、actor、minimized diagnostics のみ。
+
 #### VS-AUTO-7. HR migration: review fields / availability rule / rebalance audit `cc:TODO HR`
 
+- [ ] W3-S1/S2 相当の migration 検証、RLS/requestContext、rollback plan、display_id registry、seed/factory、human review を前提にする。migration 適用は current-task 明示承認まで実行しない。
 - [ ] additive migration 候補:
   - `VisitScheduleProposal.pharmacist_review_required Boolean @default(false)`
   - `review_reason_code String?`
@@ -428,9 +440,10 @@ FE 仕上げ（低優先）:
 
 #### VS-AUTO-8. 薬剤師確認 hard gate / 頓服・外用薬残量 / 薬剤変更 risk `cc:TODO HR`
 
+- [ ] VS-AUTO-7 の最小 server hard gate 後に実装する。Google Matrix や Overload apply より優先し、患者連絡前の医療安全 gate として扱う。
 - [ ] `VisitStockProfile` または既存訪問準備/処方データから導出する stockout candidate を設計する。
   - 対象: 頓服、外用薬、使用量が患者状態に左右される薬剤。
-  - 入力: 残量、平均使用量、最終確認日、推定切れ日、確認者、根拠。
+  - 入力: `last_confirmed_at`、`remaining_amount`、`avg_daily_use`、`stockout_date_key`、`confidence`、`confirmed_by`、根拠。
   - 出力: stockout date candidate、confidence、review reason。
 - [ ] `MedicationChangeRisk` helper/service を設計する。
   - 増量/減量/追加/削除、麻薬/冷所/粉砕/一包化、疑義照会未解決、処方差分を risk reason にする。
@@ -440,6 +453,7 @@ FE 仕上げ（低優先）:
   - review 済みの actor/time を audit。
 - テスト:
   - 頓服/外用薬 stockout が通常薬より早い場合に deadline candidate 採用。
+  - confidence low / stale stock confirmation は review required。
   - 薬剤変更ありで review gate が立つ。
   - review 未了では approve/contact/confirm に進めない。
   - review 済みでのみ既存 proposal workflow が進む。
@@ -481,8 +495,9 @@ FE 仕上げ（低優先）:
   - 「過密日 → 未承認候補だけ前倒し → 確定予定不変」。
   - Google key なし / provider failure 時の fallback diagnostics。
 - Release:
-  - feature flag で direct generate proposal-first を段階適用。
-  - 初回は preview/recommendation、次に proposal 作成、最後に direct generate の自動確定抑止。
+  - direct generate は 410 `ENDPOINT_REMOVED` contract を維持し、proposal-first 移行 flag として復活させない。
+  - rollout flag は HR review fields、Overload apply、Google Matrix provider のみに使う。
+  - 初回は preview/recommendation と diagnostics-only、次に field-backed hard gate、最後に apply/write path。
   - operator runbook: Google quota、fallback、薬剤師 review queue、過密再配置 audit の確認手順。
 
 **優先実装順**:
@@ -494,11 +509,12 @@ FE 仕上げ（低優先）:
 5. VS-AUTO-3 direct generate proposal-first 互換移行。
 6. VS-AUTO-5 Proposal diagnostics/UI（migration 前の diagnostics-only 可視化）。
 7. VS-AUTO-4 AvailabilityPolicy / readiness / emergency reserve の shared helper 整理。
-8. VS-AUTO-9 Google Matrix provider。
+8. VS-AUTO-6a OverloadRebalancer preview の billing cap recheck 残。
 9. VS-AUTO-7 HR migration + minimal server hard gate。
 10. VS-AUTO-8 review hard gate + PRN/topical/medication-change risk。
-11. VS-AUTO-6 OverloadRebalancer preview/apply（field-backed gate と audit policy 後）。
-12. VS-AUTO-10 E2E / rollout / runbook。
+11. VS-AUTO-6b OverloadRebalancer apply（field-backed gate と audit policy 後）。
+12. VS-AUTO-9 Google Matrix provider。
+13. VS-AUTO-10 E2E / rollout / runbook。
 
 **停止条件 / human review 必須**:
 
@@ -511,6 +527,243 @@ FE 仕上げ（低優先）:
 - 休業日上書き、連休前倒し、緊急枠予約の運用責任者が未定の場合。
 - Google API quota/cost/障害時運用が preview 環境で検証できない場合。
 - DB migration が既存 proposal/schedule の意味を変える場合。
+
+### 新トラック: 横断リスク改善 / Risk Finding Cockpit（2026-07-05） `cc:TODO`
+
+<!-- source: 2026-07-05 ユーザー提示「CareVIAx リスク改善 多角的修正計画・実装タスク化レポート（拡張版）」。単純追記ではなく、現行コードの readiness / blocker / task / audit / permission / report / billing / notification 実装を再確認して、既存 VS-AUTO・Wave 3・Phase 5 と矛盾しない実装計画へ再構成した。計画のみ・実装未着手。 -->
+
+**このトラックの位置づけ**:
+
+- VS-AUTO は「訪問スケジュール自動提案」の scheduling track として継続する。VS-AUTO-8 の薬剤師確認 / 頓服・外用薬残量 / 薬剤変更 risk は、この横断リスク基盤の `CORE-*` / `RX-*` を利用する下流タスクとして扱う。
+- Wave 3-B の報告・請求構造化、Phase 5-PRE の患者モデル変更、ID 統一プログラムとは別 track。DB migration が必要な task は additive-first とし、migration 適用は current-task 明示承認まで実行しない。
+- 互換性維持は不要。古い warning-only 表示や曖昧な旧挙動は、最新 contract に完全上書きする。ただし患者安全、PHI、請求、権限、監査、migration/deploy の安全 gate は緩和しない。
+
+**コードレビューで確認した既存土台（2026-07-05）**:
+
+| 領域                    | 既存の接続点                                                                                                                                                                                                          | 実装計画上の扱い                                                                                                  |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| 訪問準備 / ready gate   | `src/server/services/visit-preparation-readiness.ts` は `medication_changes_reviewed`、`previous_issue_reviewed`、`carry_items_status`、`offline_synced`、onboarding/billing blocker を ready transition に集約する。 | `RiskFinding` adapter を作り、boolean checklist を構造化 risk に置換していく。                                    |
+| 患者 board / foundation | `src/app/api/patients/board/route.ts` と `src/server/services/patient-detail-foundation.ts` は safety tag、foundation summary、監査待ち、例外、同意/計画不足を集約する。                                              | 一覧は圧縮表示のまま維持し、詳細判断は `CaseRiskCockpit` API へ分離する。                                         |
+| 同意 / 管理計画         | `src/server/services/management-plans.ts` は `missing_visit_consent`、`missing_management_plan`、`management_plan_review_overdue` を workflow gate と task に接続できる。                                             | renewal board と gate failure task auto-upsert の source とする。                                                 |
+| 調剤 task               | `src/app/api/dispense-tasks/route.ts` は priority/due_date/assigned_to と emergency notification を持つ。                                                                                                             | 調剤 SLA board は既存 task/cycle status を横断集計し、監査待ち・冷所・麻薬・期限超過を risk sort する。           |
+| 請求 blocker            | `src/server/services/billing-evidence/core.ts` は `BillingEvidenceBlocker` と `describeBillingEvidenceBlockers` で同意、計画、報告未送付、認定/公費/QR保険レビュー等を表現する。                                      | blocker を `RiskFinding` と `OperationalTask` に lossless に近く map する。                                       |
+| 報告 / 送付             | `src/app/api/care-reports/route.ts` は report_type、delivery_records、pdf_url、送付 status を扱い、`care-report-output-policy.ts` は author/send 権限を分ける。                                                       | 宛先別 masking profile、送付完了 gate、送付失敗 task、billing blocker 解消へ接続する。                            |
+| 訪問記録                | `src/lib/validations/visit-record.ts` は completed 時に S/P/structured SOAP のいずれかで通る。`visit-records/route.ts` は residual medications、attachments、handoff、billing/report 連動を持つ。                     | outcome 別 quality gate を追加し、残薬/副作用/服薬/次回方針/薬剤変更説明を構造化する。                            |
+| task 基盤               | `src/server/services/operational-tasks.ts` は `dedupe_key`、`priority`、`due_date`、`sla_due_at`、related entity の upsert/resolve を持つ。                                                                           | `RiskFinding -> OperationalTask` bridge と `task-registry` の中心にする。                                         |
+| 通知                    | `src/server/services/notifications.ts` は in_app / sms / line / fax / mcs と dedupe を扱い、OS/web-push は `/notifications` landing に寄せる。                                                                        | delivery ledger / failed external task / critical recipient audit を追加し、PHI redaction regression を固定する。 |
+| PII redaction           | `src/lib/notifications/os-bridge-redaction.ts`、`src/lib/visit-schedule-proposals/response.ts`、route diagnostics normalizer 群が最小化パターンを持つ。                                                               | 共通 PII policy matrix と endpoint/output audit script に統合する。                                               |
+| 権限                    | `src/lib/auth/permission-matrix.ts` は visit/report/billing/patient sharing 等の capability を role に割り当てる。                                                                                                    | endpoint/action/export/attachment coverage test を追加し、「定義済みだが未使用」を検出する。                      |
+
+**統合原則**:
+
+- P0 は単なる UI warning で完了にしない。`blocking` / `urgent` は必ず readiness/blocker、operational task、audit の少なくとも 1 つへ接続する。
+- 患者安全・請求・報告・通知・外部出力に影響する waiver/override は薬剤師または admin 権限、理由必須、audit 必須にする。
+- PHI/PII を含む可能性がある自由記載、住所、電話、薬剤名、保険番号、報告本文、添付 metadata は list API / audit response / OS・外部通知で本文を返さない。detail は permission と no-store を前提に最小化する。
+- 後段処理が前段データを暗黙変更しない。訪問記録 → 報告 → 請求 → 外部出力は一方向の依存関係にする。
+- task explosion を防ぐため、P0/P1 の新規 task は `task-registry` に owner domain、dedupe builder、resolve condition、stale threshold、patient-safety/billing flags を登録してから生成する。
+
+#### RISK-CORE-0. 既存 plan / VS-AUTO との整合固定 `cc:TODO`
+
+- [ ] `Plans.md` 上の scheduling task と risk task の責務を固定する:
+  - VS-AUTO: proposal-first、deadline、availability、overload rebalance、review field hard gate。
+  - Risk track: `RiskFinding` 表現、task bridge、case cockpit、薬剤/残薬/記録/請求/報告/通知/PII の横断 gate。
+- [ ] VS-AUTO-8 は `RX-001` / `RX-002` の service・review state を参照する計画に変更し、薬剤リスク判定を scheduling service 内へ重複実装しない。
+- [ ] `BillingEvidenceBlocker`、`VisitReadyTransitionBlockers`、`PatientFoundationItem`、`OperationalTask`、notification delivery failure を `RiskFinding` adapter 候補として棚卸しする。
+- [ ] 計画だけで DB migration を追加しない。`HR` 表記の migration は migration planner review と human approval を必須にする。
+
+#### RISK-CORE-1. `RiskFinding` contract / registry `cc:TODO`
+
+- 追加候補:
+  - `src/lib/risk/risk-finding.ts`
+  - `src/server/services/risk-finding-registry.ts`
+  - `src/server/services/risk-finding-adapters/*.ts`
+- contract:
+  - `domain`: `patient_foundation` / `consent_plan` / `medication` / `dispensing` / `visit_preparation` / `visit_record` / `report_delivery` / `billing` / `task_sla` / `notification` / `privacy_security` / `integration` / `data_quality`
+  - `severity`: `blocking` / `urgent` / `warning` / `info`
+  - `resolution_state`: `open` / `acknowledged` / `resolved` / `waived`
+  - required fields: stable `key`、`title`、`detail`、`action_href`、`action_label`、source、related entity。
+- [ ] `BillingEvidenceBlocker` adapter: `missing_visit_consent`、`missing_management_plan`、`management_plan_review_overdue`、`report_delivery_incomplete`、`care_certification_pending`、`public_subsidy_application_pending`、`qr_insurance_review_pending`、`outcome_not_claimable` を map する。
+- [ ] `VisitReadyTransitionBlockers` adapter: checklist / onboarding / billing を domain 別 risk に分ける。
+- [ ] `PatientFoundationSummary` adapter: 連絡先、連携先、保険、検査値、薬学リスク、正本確認 alert を map する。
+- [ ] `OperationalTask` adapter: pending/overdue/SLA超過/担当未割当を risk として返す。
+- 受入条件:
+  - 既存 blocker/warning は `RiskFinding` へ lossless に近く map できる。
+  - 表示側は `domain` と `severity` だけで並び替え・集計できる。
+  - `blocking` は ready/confirm/export/send 等の server-side gate に使える。
+  - adapter は PHI/free text をそのまま audit/log に流さない。
+
+#### RISK-CORE-2. `RiskFinding -> OperationalTask` bridge `cc:TODO`
+
+- 追加候補:
+  - `src/server/services/risk-task-bridge.ts`
+  - `src/lib/tasks/task-registry.ts`
+  - 既存 `src/server/services/operational-tasks.ts` の薄い拡張
+- [ ] `RiskFinding.severity in ('blocking','urgent')` を task 化できる。
+- [ ] `dedupe_key` は `risk:${domain}:${key}:${entityType}:${entityId}` を基本とし、患者/ケース/訪問/報告/請求根拠ごとに安定させる。
+- [ ] risk 解消時は `resolveOperationalTasks` で `completed` または `cancelled` に寄せる。waive は理由付き audit と task resolution note を必須にする。
+- [ ] task から元 risk、患者、ケース、訪問、報告、請求根拠へ遷移できる `action_href` を保持する。
+- [ ] task registry には owner domain、default priority、dedupe builder、resolve condition、stale threshold、related entity type、patient_safety flag、billing_close flag を登録する。
+- 受入条件:
+  - 同一 risk の重複 task が増えない。
+  - blocker が解消されたら既存 task が閉じる。
+  - billing / report / notification の task は月末・外部送付で孤児化しない。
+
+#### RISK-CORE-3. Case Risk Cockpit API contract `cc:TODO`
+
+- 追加候補:
+  - `src/types/case-risk-cockpit.ts`
+  - `src/app/api/cases/[id]/risk-cockpit/route.ts`
+  - `src/server/services/case-risk-cockpit.ts`
+- response:
+  - `generated_at`
+  - `patient`: id/display_id/name（list ではなく detail 権限下のみ）
+  - `case`: id/display_id/status
+  - `overall`: `ready` / `attention` / `blocked` + counts
+  - `sections[]`: domain label/status/findings
+  - `next_actions[]`: task_id/label/priority/due_at/action_href
+- adapters:
+  - foundation: `patient-detail-foundation`
+  - consent/plan: `management-plans`
+  - medication: `RX-001` / `RX-002`
+  - dispensing: `dispense-tasks` / `MedicationCycle.overall_status`
+  - visit: `visit-preparation-readiness` / `visit-records`
+  - report: `care-reports`
+  - billing: `billing-evidence`
+  - task: `operational-tasks`
+- 受入条件:
+  - 1 API で「止まっている理由」と「次にやること」が同じ順序で返る。
+  - 全 finding に `action_href` がある。
+  - 患者一覧からは呼ばず、患者/ケース詳細でのみ呼ぶ。
+  - no-store、withOrgContext、case ownership / org boundary、forbidden tests を持つ。
+
+#### RISK-P0. 最優先実装バックログ `cc:TODO`
+
+| ID       | 領域           | タスク                                          | 主な対象                                                                                                    | 受入条件                                                                                                                                                                                                                      |
+| -------- | -------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CORE-001 | 横断基盤       | Risk Finding Registry                           | `src/lib/risk/risk-finding.ts`, `risk-finding-registry.ts`                                                  | 既存 blocker/warning を共通 `RiskFinding` に map できる。                                                                                                                                                                     |
+| CORE-002 | 横断基盤       | Risk Finding -> Operational Task Bridge         | `risk-task-bridge.ts`, `operational-tasks.ts`, `task-registry.ts`                                           | blocking/urgent risk が dedupe task へ昇格し、解消時に resolve される。                                                                                                                                                       |
+| CORE-003 | 横断基盤       | Case Risk Cockpit contract                      | `src/types/case-risk-cockpit.ts`, `app/api/cases/[id]/risk-cockpit/route.ts`                                | 患者/ケース単位の横断 risk と next action を 1 API で返す。                                                                                                                                                                   |
+| RX-001   | 薬剤変更       | Medication Change Review Gate                   | `medication-change-review.ts`, `visit-preparation-readiness.ts`, `today-preparation`, patient board         | 追加/削除/増量/減量/用法/剤形変更を分類し、high-risk は薬剤師確認完了まで ready/contact/confirm 不可。確認者・日時・判断結果・理由を audit。                                                                                  |
+| RX-002   | 残薬/頓服/外用 | PRN / topical Stock Risk service                | `medication-stock-risk.ts`, `visit-records`, `visit-record.ts`, patient board                               | 残量、使用ペース、鮮度、推定切れ日を算出し、urgent/unknown/stale は risk/task 化。通常薬 deadline は直接上書きしない。                                                                                                        |
+| PAT-001  | 患者基盤       | Case Risk Cockpit 初期実装                      | `patient-detail-foundation.ts`, `management-plans.ts`, `billing-evidence`, `visit-preparation-readiness.ts` | 同意、計画、連絡先、保険、検査値、薬剤、残薬、訪問準備、報告、請求、task を患者/ケース単位で統合。                                                                                                                            |
+| DSP-001  | 調剤/監査      | Dispensing SLA Board                            | `dispense-tasks/route.ts`, `patient-board`, `app/api/dispense-tasks/sla-board/route.ts`                     | 調剤中、監査待ち、セット中、保留、緊急、期限超過を一覧化し、麻薬/冷所/一包化/訪問当日を上位表示。                                                                                                                             |
+| BIL-001  | 請求           | Billing Close Work Queue                        | `billing-evidence/core.ts`, `app/api/billing/close-board/route.ts`, billing UI                              | `unreviewed` / `blocked` / `confirmed` / `excluded` / `exported` を患者/訪問/根拠単位で処理。除外/確認は理由と reviewer 必須。                                                                                                |
+| BIL-002  | 請求           | Billing blocker task bridge                     | `billing-evidence/core.ts`, `risk-task-bridge.ts`                                                           | 同意なし、計画なし、報告未送付、認定/公費/QR保険レビュー等を dedupe task 化し、再評価で解消。                                                                                                                                 |
+| REC-001  | 訪問記録       | Visit Record Quality Gate                       | `visit-record-quality.ts`, `visit-record.ts`, `visit-records/route.ts`                                      | outcome 別に服薬状況、残薬、副作用、薬剤変更説明、次回方針、連携事項を検査。warning は acknowledgement、block は保存不可。                                                                                                    |
+| REP-001  | 報告/共有      | Report Delivery Policy                          | `care-reports/route.ts`, `care-report-output-policy.ts`, `report-masking-profile.ts`, `billing-evidence`    | physician/care_manager/facility/nurse/family/internal 別に出力項目・権限・送付完了判定を分け、失敗は task 化。                                                                                                                |
+| TASK-001 | task/SLA       | Operational Task Health Board                   | `operational-tasks.ts`, `task-registry.ts`, `app/api/tasks/health-board/route.ts`                           | 期限超過、SLA超過、担当未割当、患者安全、請求締め、報告遅延、孤児 task を集計・絞り込み。                                                                                                                                     |
+| SEC-001  | PII/監査       | PII Policy Matrix / endpoint audit              | `src/lib/privacy/pii-policy.ts`, `tools/scripts/pii-endpoint-audit.ts`, `permission-matrix.ts`              | field class と role/output profile を定義し、list API/audit/外部通知/PDF/CSV/添付の PHI 漏洩候補を検出。                                                                                                                      |
+| SEC-002  | PII/監査       | AuditLog changes allowlist/minifier registry    | `audit-entry.ts`, `audit-logs/redaction.ts`, audit export/admin APIs                                        | patient/prescription/report/billing/notification/file actions ごとに許可 `changes` field を宣言し、未知の nested string / raw diagnostics / provider error / token / storage key は export/admin response で要約または drop。 |
+| FILE-000 | 添付           | Presigned upload/complete response minimization | `app/api/files/presigned-upload/route.ts`, `files/complete`, `file-storage.ts`                              | `/api/files/*` success/error は no-store。upload response は storage key/objectKey/patient/report/visit id を返さず、必要最小の upload URL/header/expires/opaque file id にする。                                             |
+| EXP-001  | 出力           | Bulk export audit/job minimization              | `pdf-bulk-export.ts`, admin jobs API, export audit                                                          | 薬歴/患者 bulk export の AuditLog は patient_count、hash snapshot、job/file id、status のみ。job output/error/admin response に raw patient id array や per-patient raw error を出さない。                                    |
+| EXP-002  | 出力           | Export Surface Matrix                           | patients/prescriptions/billing/communication/audit/file/PDF exports                                         | permission、org/RLS/case assignment、no-store、CSV formula neutralization、非PHI filename、fail-closed audit、row limit/truncation を surface ごとに固定。                                                                    |
+| NTF-001  | 通知           | Notification Delivery Health Board              | `notifications.ts`, `app/api/notifications/health-board/route.ts`, notification rules UI                    | rule 未設定、送信先0、外部通知失敗、urgent 未達を一覧化し task 化できる。                                                                                                                                                     |
+| ONB-001  | 同意/計画      | Renewal Board                                   | `management-plans.ts`, `operational-tasks.ts`, `app/api/onboarding/renewal-board/route.ts`                  | 同意期限・管理計画見直し期限が近い/超過した患者を抽出し、更新 task を生成/解決。                                                                                                                                              |
+| PERM-001 | 権限           | Permission Coverage Test                        | `permission-matrix.ts`, route tests                                                                         | patient/report/billing/visit-record/audit/export/attachment の主要 API で role forbidden tests を追加。                                                                                                                       |
+| QA-001   | 品質保証       | 横断リスク regression pack                      | vitest suites, API tests, targeted Playwright                                                               | 薬剤変更、残薬、患者基盤、請求 blocker、記録品質、報告送付、通知 redaction、task SLA、PII redaction を固定。                                                                                                                  |
+
+#### RISK-P1/P2. 次フェーズ不足領域 `cc:TODO`
+
+| ID       | 優先度 | 領域       | タスク                                      | 受入条件                                                                                                                                                                               |
+| -------- | ------ | ---------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MED-001  | P1     | 薬学リスク | Medication Risk Tag Registry                | narcotic/cold_storage/unit_dose/renal/swallowing/allergy/LASA 等を辞書化し、表示名・severity・必要 checklist・記録/報告影響を一元化。                                                  |
+| MED-002  | P1     | 薬剤マスタ | Drug Master Match Queue                     | prescription/residual medication の未照合、薬剤コード欠落、同名別規格疑いを一覧化し、修正後に risk を再評価。                                                                          |
+| LAB-001  | P1     | 検査値     | Lab Risk Evaluator                          | eGFR の値・鮮度・異常 flag を薬剤 risk と照合し、腎機能注意薬の確認 gate に出す。                                                                                                      |
+| PAT-002  | P1     | 患者条件   | Negative Constraint / recurring event model | デイサービス、通院、家族不在、一時不在を recurrence/one-off として保存し、提案・訪問準備・架電に使う。                                                                                 |
+| PAT-003  | P1     | 住所/地図  | Geocode Quality Queue                       | 住所/座標未設定、0/0、低精度、緯度経度同値を検出し、再ジオコード/人手確認 task を生成。                                                                                                |
+| DSP-002  | P1     | 持参物     | Structured Carry Item Checklist             | 薬剤、麻薬、保冷、書類、衛生物品、機器、回収物を項目化し、未解決理由を ready gate へ反映。                                                                                             |
+| FILE-001 | P1     | 添付       | Attachment Security Policy                  | file type、size、scan status、owner entity、retention、download permission を定義。                                                                                                    |
+| FILE-002 | P1     | 出力       | Export Masking Profile                      | PDF/CSV/外部共有ごとに role と宛先種別で masking profile を切り替える。                                                                                                                |
+| AUD-001  | P1     | 監査       | Audit Log Search Board / action taxonomy    | 患者/ケース/請求/報告/出力/添付/権限変更を検索し、重要操作理由・before/after masking を統一。                                                                                          |
+| DATA-001 | P1     | データ保持 | Retention / Archive Policy Matrix           | 患者アーカイブ後の read-only、保持、削除、匿名化、legal hold を実装可能な表にする。                                                                                                    |
+| INT-001  | P1     | 外部連携   | Integration Health Registry                 | 連携ごとの last_success / last_failure / retry_count / affected entity を可視化する。                                                                                                  |
+| IMP-001  | P1     | データ取込 | Prescription Intake Quality Board           | QR/JAHIS/manual の source、未照合薬剤、重複疑い、手修正差分を一覧化。                                                                                                                  |
+| INS-001  | P0/P1  | 保険/公費  | Insurance / Certification Work Queue        | 介護認定、公費、QR保険レビュー、資格期限を月次締めと連動。BIL-001 と直列。                                                                                                             |
+| FAC-001  | P1     | 施設       | Facility Identity Quality Board             | facility/building/unit/address の重複・未設定・算定影響を抽出。                                                                                                                        |
+| MOB-001  | P1     | モバイル   | Offline Sync Manifest                       | `offline_synced` boolean を同期対象、生成時刻、端末、失敗理由、再送状態、競合状態へ拡張。                                                                                              |
+| MOB-002  | P1     | 位置情報   | Visit Geo Log privacy/retention             | 保存可否、精度、保持期間、表示権限、監査ログ、患者説明文を定義し不要な位置情報を保存しない。                                                                                           |
+| NTF-002  | P1     | 通知       | Notification SSE payload hardening          | user-channel payload を server-side normalize し、余剰 field / malformed / patient_name / address / token / raw_message を drop。PHI-bearing stream は private no-store/no-transform。 |
+| REP-002  | P1     | 報告/共有  | External document-delivery wording gate     | 外部 email/FAX/MCS 本文に患者名、臨床本文、薬剤/free text、内部IDを出さず、短期 shared link の expiry/revoke/resend idempotency を固定。                                               |
+| UX-001   | P1     | UI/A11y    | Risk UI Accessibility Pass                  | severity が色だけに依存せず、キーボード/読み上げ/モバイルで処理できる。                                                                                                                |
+| OPS-001  | P1     | 復旧       | Business Recovery Drill                     | backup 復旧後に visit/report/billing/task/attachment link の整合 audit を実行。                                                                                                        |
+
+#### RISK 実装順序 / PR 分割 `cc:TODO`
+
+| PR     | 含めるタスク                                                    | 目的                                                                          | migration |
+| ------ | --------------------------------------------------------------- | ----------------------------------------------------------------------------- | --------- |
+| R-PR0  | FILE-000, EXP-001, SEC-001, SEC-002, EXP-002, PERM-001 skeleton | PHI/添付/出力/監査/権限 coverage を先に可視化し、後続実装の漏洩面を固定する。 | なし      |
+| R-PR1  | CORE-001, CORE-002                                              | risk 表現と task bridge を共通化し、warning 乱立を防ぐ。                      | なし      |
+| R-PR2  | CORE-003, PAT-001 foundation/consent/task adapters              | Case Risk Cockpit skeleton を出し、患者/ケース詳細の判断 API を固定する。     | なし〜小  |
+| R-PR3  | MED-001, RX-001                                                 | 薬剤変更分類と薬剤師 review gate を導入。VS-AUTO-8 はここへ依存。             | なし〜中  |
+| R-PR4  | RX-002, MED-002, LAB-001                                        | 残薬/頓服/外用・薬剤マスタ未照合・検査値 risk を接続。                        | 中        |
+| R-PR5  | REC-001                                                         | 訪問記録 quality gate。報告/請求の前段品質を固定。                            | なし〜小  |
+| R-PR6  | BIL-001, BIL-002, INS-001                                       | 月次締め queue と billing blocker task 化。                                   | 中        |
+| R-PR7  | REP-001, FILE-001, FILE-002                                     | 報告書送付、添付、PDF/CSV/外部共有 policy。                                   | 中        |
+| R-PR8  | DSP-001, DSP-002, TASK-001                                      | 調剤/持参物/SLA と task health board。                                        | 小〜中    |
+| R-PR9  | NTF-001, NTF-002, NOT delivery ledger, REP-002                  | 通知未達・外部通知失敗・recipient 0・外部文面 minimization を監視。           | 中        |
+| R-PR10 | UX-001, QA-001                                                  | risk UI accessibility と横断 regression pack。                                | なし      |
+
+**直列依存**:
+
+- `CORE-001` → `CORE-002` → `CORE-003` → 各 domain adapter。
+- `FILE-000` / `EXP-001` / `SEC-001` / `SEC-002` / `PERM-001` skeleton は、report/export/attachment/notification の新規実装前に先行する。
+- `RX-001` は VS-AUTO-8 の hard gate と直列。scheduling 側で薬剤変更 diff engine を重複実装しない。
+- `BIL-001` は `REP-001` の delivery gate と相互依存するが、先に billing close board skeleton を作り、delivery completion adapter を後続で差し替える。
+- 添付 signed URL / external share revoke / notification delivery ledger は DB migration を伴うため、human review を通す。
+
+#### RISK テスト / validation 計画 `cc:TODO`
+
+- Unit:
+  - `risk-finding-registry.test.ts`: blocker/warning mapping、severity sort、PHI-free normalization。
+  - `risk-task-bridge.test.ts`: dedupe、resolve、waive reason、stale threshold。
+  - `medication-change-review.test.ts`: 追加/削除/増量/減量/用法/剤形/unknown/high-risk。
+  - `medication-stock-risk.test.ts`: 残量十分/不足/不明/古い、PRN/外用/通常薬混在。
+  - `visit-record-quality.test.ts`: outcome 別 required fields と waiver。
+  - `audit-log-minifier.test.ts`: hostile patient name、住所、電話、薬剤名、処方 text、token、provider raw error、storage key を export/admin response から除去。
+  - `export-surface-matrix.test.ts`: no-store、permission、CSV formula neutralization、row cap、fail-closed audit。
+- API:
+  - `cases/[id]/risk-cockpit/route.test.ts`: org boundary、forbidden role、no-store、section ordering。
+  - `billing/close-board/route.test.ts`: review_state/resolution_state/export lock。
+  - `notifications/health-board/route.test.ts`: recipient 0、adapter failure、rule disabled。
+  - `tasks/health-board/route.test.ts`: SLA超過、担当未割当、孤児 task。
+  - `files/presigned-upload/route.test.ts` / `files/complete`: success/auth/validation/error が no-store、response に `objectKey` / `storage_key` / patient/report/visit id が出ない。
+  - `pdf-bulk-export.test.ts`: audit metadata に raw `patient_ids` を保存せず、job output/error/admin API が raw patient ids を露出しない。
+- Privacy/security:
+  - OS/SMS/LINE/FAX/MCS に患者名・住所・薬剤名・ディープリンク・free text が出ない。
+  - audit changes は PII class に従い `present` / `length` / reason code へ縮約される。
+  - PDF/CSV/外部共有/添付 metadata は role/output profile で mask される。
+  - notification SSE は server-side で payload を normalize し、余剰/hostile field を browser へ送らない。
+- UI/E2E:
+  - Case Risk Cockpit で blocking section と next action が見える。
+  - 訪問 ready / proposal contact / report send / billing export が未解決 P0 risk で止まる。
+  - risk severity は色だけに依存せず、keyboard と screen reader で処理できる。
+- Gate semantics:
+  - pre-visit ready gate は missing consent / management plan / first visit docs / medication readiness / billing blocker を hard-block。
+  - emergency or retrospective post-visit record は保存を完全禁止せず、critical exception + task + audit として扱う。
+  - dispensing SLA は KPI 表示だけでなく、proposal generation / day-board / planned -> ready のどこで hard gate か warning かを `DispensingSlaPolicy` で定義する。
+  - report generation は visit record freshness、structured SOAP、billing context/source provenance、external output allowlist を acceptance criteria に含める。
+- 標準 gate:
+  - focused vitest → scoped eslint → `pnpm format:check` → `git diff --check`。
+  - code path 変更を含む PR は `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` と `typecheck:no-unused`。
+  - Next.js build は typecheck と並列に走らせない。
+
+**Definition of Done**:
+
+- 患者/ケース単位で「止まっている理由」が、薬剤、調剤、訪問、報告、請求、基盤情報、通知、PII/監査、連携のいずれかに分類されて表示される。
+- P0 risk は readiness/blocker、operational task、audit のいずれかに接続され、表示だけで終わらない。
+- 臨床判断を要するものは自動確定せず、薬剤師確認者・確認日時・判断理由を保持する。
+- 請求・報告・訪問記録・患者共有・通知・添付・外部出力の重要操作は audit log に構造化記録される。
+- 外部通知、OS通知、PDF/CSV、添付、外部共有には PII policy regression test がある。
+- 新規 task type は registry に登録され、生成条件・解決条件・期限ルール・担当 domain を持つ。
+
+**停止条件 / human review 必須**:
+
+- DB migration が既存 visit/report/billing/task/attachment の意味を変える場合。
+- P0 risk を warning 表示のみで完了扱いにしようとする場合。
+- PHI を audit/log/export/OS通知/外部通知へ本文保存する必要が出た場合。
+- waiver/override を clerk/trainee/driver が実行できる設計になった場合。
+- billing exported 後の通常編集、report external share の無期限 URL、添付 download の監査省略が必要になる場合。
+- task bridge が大量重複 task を生成する懸念を解消できない場合。
 
 ### 新トラック: 業務ID（display_id）統一プログラム（2026-07-03） `cc:WIP`
 

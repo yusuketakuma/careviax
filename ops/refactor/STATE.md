@@ -40,6 +40,44 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Plans.md risk-improvement expansion slice(in-progress on main) implementation complete。
+  - user source: 2026-07-05 ユーザー提示「CareVIAx リスク改善 多角的修正計画・実装タスク化レポート（拡張版）」を、単純貼り付けではなく現行コードと既存 Plans の task 構造に合わせて再構成。
+  - inspected plan/code surfaces:
+    `Plans.md`、`src/server/services/visit-preparation-readiness.ts`、
+    `src/app/api/visits/today-preparation/route.ts`、`src/app/api/patients/board/route.ts`、
+    `src/server/services/patient-detail-foundation.ts`、`src/server/services/management-plans.ts`、
+    `src/app/api/dispense-tasks/route.ts`、`src/server/services/billing-evidence/core.ts`,
+    `src/app/api/care-reports/route.ts`、`src/server/services/care-report-output-policy.ts`、
+    `src/lib/validations/visit-record.ts`、`src/app/api/visit-records/route.ts`、
+    `src/server/services/operational-tasks.ts`、`src/server/services/notifications.ts`、
+    `src/lib/notifications/os-bridge-redaction.ts`、`src/lib/visit-schedule-proposals/response.ts`、
+    `src/lib/auth/permission-matrix.ts`。
+  - subagents:
+    code_mapper は readiness / patient board / management-plans / dispense / billing / reports /
+    visit-record / operational-tasks / notifications / PII / permission / audit / files の現コード接続点を
+    path evidence 付きで確認。spec_guardian は VS-AUTO の direct-generate 410 方針、OverloadRebalancer
+    preview/apply 混在、HR migration gate の矛盾を指摘。medical_safety_reviewer は薬剤師 review gate を
+    Google Matrix より優先、PRN/topical stock risk は warning ではなく deadline + review gate、
+    ready gate と post-visit exception の分離を要求。privacy_compliance_reviewer は presigned upload
+    no-store/objectKey minimization、bulk export audit/job minimization、AuditLog changes allowlist、
+    notification SSE hardening、external document-delivery minimization を P0/P1 に昇格すべきと指摘。
+  - Plans.md changes:
+    VS-AUTO-3 を旧 generate route 復活ではなく 410 `ENDPOINT_REMOVED` 維持 + proposal route/batch adapter
+    方針へ修正。VS-AUTO-6 を `6a preview/read-only` と `6b apply/supersede/audit` に分離。
+    VS-AUTO-7/8 は W3-S1/S2 相当の migration/RLS/rollback/human review と、患者連絡前の
+    pharmacist review hard gate 優先を明記。release/priority order から direct-generate feature flag
+    復活文言を削除。
+    新トラック「横断リスク改善 / Risk Finding Cockpit」を追加し、`CORE-*` / `RX-*` / `BIL-*` /
+    `REC-*` / `REP-*` / `TASK-*` / `SEC-*` / `FILE-*` / `EXP-*` / `NTF-*` / `ONB-*` /
+    `PERM-*` / `QA-*` を実装順、受入条件、validation matrix 付きで計画化。
+  - safety/planning decisions:
+    P0 risk は warning-only 完了禁止。blocking/urgent は readiness/blocker、operational task、audit の
+    いずれかへ接続する。PHI/free text/storage key/provider raw payload は audit/log/export/OS外部通知へ
+    保存しない。pre-visit ready gate と emergency/retrospective post-visit exception は別 semantics として扱う。
+  - validation:
+    `pnpm exec prettier --write Plans.md ops/refactor/STATE.md` green;
+    `pnpm format:check` green; `git diff --check -- Plans.md ops/refactor/STATE.md`
+    green; scoped diff review complete。next: scoped docs commit → origin/main push。
 - codex: VS-AUTO-6 vehicle open-proposal capacity guard slice(in-progress on main) implementation complete。
   - service: `src/server/services/visit-schedule-overload-rebalancer.ts` は前倒し replacement draft 採用前に
     `VisitVehicleResource.max_stops` を使った vehicle/date capacity を検証。active `VisitSchedule`、open
