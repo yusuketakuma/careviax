@@ -44,7 +44,7 @@ useful, safe work that moves the repository-level objective forward:
 残る体制記述（旧 Claude main / Codex-only / rev8 等）は歴史的記録であり、矛盾時は STATE.md に従う。
 
 2026-07-04 ユーザー指示により、現行運用は **Codex 単独運用**。
-`codex` が計画、実装、検証、台帳更新、必要な scoped commit まで一貫して担当する。
+`codex` が計画、実装、検証、単一台帳更新、必要な scoped commit まで一貫して担当する。
 agmsg、codex2/codex3/codex4、Claude、subagent、PATCH_REPORT 待ちは使わない。
 ユーザーが明示的に再有効化しない限り、旧 multi-agent/maker-checker 記述は歴史的記録として扱う。
 
@@ -57,20 +57,20 @@ stage し、`git add -A` は使わない。
 For each iteration:
 
 0. Inspect `git status --short --untracked-files=all` first and preserve pre-existing dirty work.
-1. Read repository state and `.codex/ralph-state.md` if present.
+1. Read repository state and `ops/refactor/STATE.md`.
 2. Choose the highest-value next action.
 3. Before editing, inspect affected diffs and confirm the target paths are not pre-existing user work unless explicitly included in the current Codex task.
 4. Inspect affected code and impact radius.
 5. Make the smallest complete fix.
 6. Run available validation.
-7. Update `.codex/ralph-state.md` / `CODEX_GOAL_PROGRESS.md` when present and relevant.
+7. Update only `ops/refactor/STATE.md` when recording progress, validation, remaining work, or next action.
 8. Before any commit, inspect `git status --short --untracked-files=all`, stage only explicit owned paths, and continue. Do not push unless the user explicitly asks.
 
 ## Single-agent coordination
 
 The active loop is single Codex execution.
 
-- `codex` owns planning, implementation, verification, ledger updates, and scoped commits.
+- `codex` owns planning, implementation, verification, the single ledger update, and scoped commits.
 - Do not use agmsg, subagents, codex2/codex3/codex4, or Claude unless the user explicitly re-enables them.
 - Keep long Next.js gates serialized: do not run `pnpm build` concurrently with `pnpm typecheck` or `pnpm typecheck:no-unused`; `.next/types` can race.
 - For commits, stage only explicit owned files. Never use `git add -A` in this shared dirty worktree.
@@ -90,10 +90,15 @@ The active loop is single Codex execution.
 
 ## Agent loop SSOT
 
-The current operational SSOT is `ops/refactor/STATE.md`, with `.agent-loop/README.md` as the operator guide.
-Historical Claude x Codex x agmsg rules remain background only. The active loop is single-Codex execution
-plus validation/gbrain. Before editing, inspect the dirty tree; before committing, stage only owned files;
-and follow the objective gates in `.agent-loop/GATE_CONFIG.md`.
+The current operational SSOT and only active progress ledger is `ops/refactor/STATE.md`, with
+`.agent-loop/README.md` as the operator guide. Historical Claude x Codex x agmsg rules remain background only.
+The active loop is single-Codex execution plus validation/gbrain. Before editing, inspect the dirty tree;
+before committing, stage only owned files; and follow the objective gates in `.agent-loop/GATE_CONFIG.md`.
+
+Do not append new progress entries to `.codex/ralph-state.md`, `CODEX_GOAL_PROGRESS.md`,
+`ops/refactor/LOG.md`, or `ops/refactor/BACKLOG.md`. They are historical/reference files unless a later
+explicit user instruction reopens them. New slice evidence, commits, validation results, and remaining work
+go only into `ops/refactor/STATE.md`.
 
 ## gbrain memory writeback
 
@@ -110,13 +115,13 @@ For long-running Ralph loops, do not let validated work accumulate indefinitely.
 
 - Treat periodic commits as the default operating behavior for repository work. Do not wait for a separate user instruction to commit once an owned, validated, coherent slice is ready.
 - Commit after each validated logical group, or at minimum after roughly 30-45 minutes of successful implementation work if a safe group boundary exists.
-- Mandatory commit trigger points include: finished implementation slice, finished test-only slice, finished validation/CI wiring slice, finished progress-ledger slice, or before switching to a substantially different task area.
-- A group is committable only when its affected code paths were inspected, relevant focused validation passed, and `.codex/ralph-state.md` / `CODEX_GOAL_PROGRESS.md` are updated when required.
+- Mandatory commit trigger points include: finished implementation slice, finished test-only slice, finished validation/CI wiring slice, finished single-ledger slice, or before switching to a substantially different task area.
+- A group is committable only when its affected code paths were inspected, relevant focused validation passed, and `ops/refactor/STATE.md` is updated when required.
 - Before every commit, inspect `git status --short --untracked-files=all`, preserve unrelated dirty work, and stage only explicit owned paths.
 - Never use `git add -A` or broad staging in a shared dirty worktree. Do not include peer-owned files, peer locks, generated artifacts, or unrelated user changes.
-- Prefer small commit groups such as implementation, tests, validation/CI wiring, and progress-ledger updates. If one file contains unrelated hunks, split or delay the commit rather than mixing ownership.
-- If automatic commit is skipped because validation is failing, the slice is not coherent, files are peer-locked, or unrelated hunks cannot be separated safely, record the skip reason in the progress ledger or user-facing update and continue toward the next safe commit boundary.
-- After committing, record the commit hash, scope, validation summary, and remaining work in the progress ledgers.
+- Prefer small commit groups such as implementation, tests, validation/CI wiring, and single-ledger updates. If one file contains unrelated hunks, split or delay the commit rather than mixing ownership.
+- If automatic commit is skipped because validation is failing, the slice is not coherent, files are peer-locked, or unrelated hunks cannot be separated safely, record the skip reason in `ops/refactor/STATE.md` or user-facing update and continue toward the next safe commit boundary.
+- After committing, record the commit hash, scope, validation summary, and remaining work in `ops/refactor/STATE.md`.
 - Automatic commits do not imply automatic push, deploy, migration application, secret rotation, or destructive operations; those still require explicit current-task instruction.
 
 ## Whole-repository scope

@@ -1,5 +1,8 @@
 # CODEX Goal Progress
 
+> Historical reference only as of 2026-07-05. Do not append new progress entries here.
+> The single active progress ledger/SSOT is `ops/refactor/STATE.md`.
+
 ## R40/R44 Workflow Mutations readApiJson Partial - 2026-07-05 11:23 JST
 
 - Status:

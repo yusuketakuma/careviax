@@ -1,11 +1,14 @@
 > **【2026-07-04 以降の注意】現行の運用体制は `ops/refactor/STATE.md` が SSOT。**
 > 本ディレクトリの古い記述（rev8 / Claude main / Codex-only 等の体制説明）は歴史的記録であり、
 > 矛盾時は STATE.md に従う。
+> **【2026-07-05 以降の注意】進捗台帳も `ops/refactor/STATE.md` へ集約。**
+> `CODEX_GOAL_PROGRESS.md`、`.codex/ralph-state.md`、`ops/refactor/LOG.md`、
+> `ops/refactor/BACKLOG.md` は履歴参照専用で、新規進捗追記は禁止。
 
 # Agent Loop — Operator Guide
 
 > Current mode (2026-07-04 JST): **single Codex operation** for **careviax (PH-OS Pharmacy)**.
-> `codex` owns planning, implementation, verification, ledgers, and scoped commits. Do not use agmsg,
+> `codex` owns planning, implementation, verification, the single ledger, and scoped commits. Do not use agmsg,
 > codex2/codex3/codex4, Claude, subagents, or external worker lanes unless the user explicitly re-enables
 > that workflow.
 > gbrain remains long-term memory subordinate to live repository state.
@@ -19,7 +22,7 @@ This directory holds the human/operator entry points and the live operational ar
 Current active loop:
 
 - **codex** — single active operator. Plans from live repo state, implements the smallest complete slice,
-  runs focused validation, updates ledgers, and creates scoped commits when a coherent validated slice is ready.
+  runs focused validation, updates the single active ledger, and creates scoped commits when a coherent validated slice is ready.
 - **gbrain** — long-term memory subordinate. Provides recall (past decisions, prior art) but **never overrides live repo state**. When repo and gbrain disagree, the repo wins; gbrain gets a writeback correction.
 
 Disabled unless the user explicitly re-enables them: agmsg, codex2, codex3, codex4, Claude,
@@ -40,8 +43,9 @@ re-enables agmsg, update `ops/refactor/STATE.md` first, then revive the historic
 
 Operational compression rules:
 
-- Record compact state in `ops/refactor/STATE.md`, `ops/refactor/LOG.md`, `.codex/ralph-state.md`,
-  and `CODEX_GOAL_PROGRESS.md` instead of chat-style routing messages.
+- Record compact state only in `ops/refactor/STATE.md` instead of chat-style routing messages.
+- Do not append new progress entries to `CODEX_GOAL_PROGRESS.md`, `.codex/ralph-state.md`,
+  `ops/refactor/LOG.md`, or `ops/refactor/BACKLOG.md`; they are historical/reference files.
 - Keep long Next.js gates serialized. Do not run `pnpm build` concurrently with `pnpm typecheck`
   or `pnpm typecheck:no-unused`; `.next/types` can race.
 - Keep validation summaries short: changed paths, delta, validation, risk, and remaining work.
@@ -76,7 +80,7 @@ process inspection and wait for the conflicting local gate to finish rather than
 | `templates/gbrain/`         | Fill-in `gbrain put`-ready page templates for the MVP memory types (loop-run, gate-result, decision, …).                                                                             |
 | `MESSAGE_PROTOCOL.md`       | Historical AGLOOP v5 agmsg envelope + message types + transport (§8).                                                                                                                |
 | `SUBAGENT_JOBS.md`          | Historical registry of subagent job types (explorer/dup-scanner/verifier/…).                                                                                                         |
-| `REVIEW_LOG.md`             | Append-only review results log. In current single-Codex mode, use this only when it adds durable evidence beyond the main ledgers.                                                   |
+| `REVIEW_LOG.md`             | Append-only review results log. In current single-Codex mode, use this only when it adds durable evidence beyond the active ledger.                                                  |
 | `VERIFY_LOG.md`             | Append-only objective-gate results log.                                                                                                                                              |
 | `PATCH_INBOX.md`            | Changes-requested items awaiting the owner.                                                                                                                                          |
 | `BLOCKED.md`                | Items needing human/external input (auth/billing/security/destructive/prod).                                                                                                         |
@@ -167,7 +171,7 @@ Use `prompts/feature-intake.md` verbatim to drive this.
 ## 5. Single-agent review discipline (§2.3)
 
 - Current operation has no separate maker/checker identity. Codex must compensate with small scoped slices,
-  explicit validation, and honest ledger updates.
+  explicit validation, and honest `ops/refactor/STATE.md` updates.
 - Before editing, inspect `git status --short --untracked-files=all` and affected diffs. Preserve unrelated
   user/peer changes.
 - Before committing, stage only explicit owned files. Never use `git add -A`.
@@ -194,7 +198,7 @@ Good idle work:
   tenant/org scoping, async races, and regression fixtures.
 - gbrain internal cleanup: dedupe memories, classify ApplyNow/Consider/Ignore, flag stale memory,
   add reusable ReviewFinding/RejectedApproach/GateResult records, and link related memories.
-- Validation and ledger hygiene: rerun targeted gates, update run ledgers with evidence, and commit
+- Validation and ledger hygiene: rerun targeted gates, update `ops/refactor/STATE.md` with evidence, and commit
   coherent already-reviewed owned slices with explicit path staging.
 
 Guardrails:
@@ -212,14 +216,14 @@ Idle auto-discovery contract:
 1. At every cycle boundary, handle user-priority work, hard stops, and existing dirty work first.
 2. If nothing is actionable, do not wait passively. Build an idle candidate list from the live
    `FEATURE_QUEUE.md`, `STATE.md`, dirty worktree, gbrain recall, and recent
-   gate/review ledgers.
+   gate/review evidence.
 3. Rank candidates by risk-adjusted value: preserve dirty work first, then read-only prep for the
    next queued task, targeted test/validation hygiene, gbrain/loop cleanup,
    and coherent commits of already-reviewed owned slices.
 4. Execute the first candidate that is bounded, non-conflicting, and reviewable. Before any write,
    confirm no dirty-work conflict and stay inside the declared paths.
 5. If no candidate is safe to edit, still produce useful output: a read-only recon note,
-   stale-ledger finding, conflict matrix, focused validation result, candidate scoring note, or explicit blocked context.
+   stale-state finding, conflict matrix, focused validation result, candidate scoring note, or explicit blocked context.
    `zero_actionable_count` should increase only after this exploration is recorded.
 6. Yield immediately when a higher-priority inbound message arrives, then resume selection after
    that message is handled.
@@ -272,7 +276,7 @@ A resume point is a short block the next session (or human) can pick up from wit
 
 Current single-Codex startup:
 
-1. Read `ops/refactor/STATE.md`, `ops/refactor/LOG.md` tail, `ops/refactor/BACKLOG.md`, `.codex/ralph-state.md`, and `CODEX_GOAL_PROGRESS.md`.
+1. Read `ops/refactor/STATE.md` as the single active state/progress ledger. Use older ledgers only for historical lookup when necessary.
 2. Run `git status --short --untracked-files=all` and inspect any relevant dirty diffs before editing.
-3. Select the highest-value bounded slice from `Plans.md` / `BACKLOG.md`, implement it, run focused validation, update ledgers, and commit explicit owned paths when the slice is coherent.
+3. Select the highest-value bounded slice from `Plans.md` and historical references, implement it, run focused validation, update `ops/refactor/STATE.md`, and commit explicit owned paths when the slice is coherent.
 4. Watch for hard-stops (§6) and the resume point if the loop pauses.

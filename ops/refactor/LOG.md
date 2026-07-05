@@ -1,9 +1,12 @@
-# LOG — 実施記録+検証（1スライス1エントリ）
+# LOG — 履歴参照専用（旧 実施記録+検証）
 
-> 2026-07-03 台帳再編で REFACTOR_LOG.md と VERIFICATION.md を統合。過去分は
-> `archive/REFACTOR_LOG_until-20260703.md` / `archive/VERIFICATION_until-20260703.md` を参照。
-> エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
-> 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
+> Historical reference only as of 2026-07-05. Do not append new progress entries here.
+> The single active progress ledger/SSOT is `ops/refactor/STATE.md`.
+
+> 2026-07-03 台帳再編で REFACTOR_LOG.md と VERIFICATION.md を統合した旧ログ。
+> 2026-07-05 以降、過去分は `archive/REFACTOR_LOG_until-20260703.md` /
+> `archive/VERIFICATION_until-20260703.md` とこのファイルを参照し、新規の実施記録・検証結果は
+> `ops/refactor/STATE.md` だけへ記録する。
 
 ## 2026-07-05 R40/R44-workflow-mutations 1493006d
 

@@ -1,17 +1,19 @@
-# STATE — 現在地（スリム版・~100行上限）
+# STATE — 現在地 / 単一進捗台帳
 
-> 2026-07-03 台帳再編。アクティブ台帳は **STATE.md / BACKLOG.md / LOG.md**（+参照用 CODE_MAP.md）の
-> 3+1 のみ。旧台帳・巨大ログは `archive/` に凍結（新規追記禁止）。
-> 再開手順: このファイル → LOG.md 末尾 → BACKLOG.md → `git status` / `git log --oneline -15`。
+> 2026-07-05 台帳再編。アクティブな運用SSOT/進捗台帳は **この `ops/refactor/STATE.md` のみ**。
+> `CODEX_GOAL_PROGRESS.md`、`.codex/ralph-state.md`、`ops/refactor/LOG.md`、
+> `ops/refactor/BACKLOG.md` は履歴参照専用（新規追記禁止）。新しい slice evidence、commit、
+> validation、remaining/next action はこのファイルへ集約する。
+> 再開手順: このファイル → `git status --short --untracked-files=all` → `git log --oneline -15`。
 
 ## 体制（2026-07-04 ユーザー指示）
 
-- 現行は Codex 単独運用。codex が Plans 棚卸し、実装、validation、台帳更新、scoped commit、
+- 現行は Codex 単独運用。codex が Plans 棚卸し、実装、validation、単一台帳更新、scoped commit、
   例外処理を一貫して担当する。
 - agmsg / codex2 / codex3 / codex4 / Claude / subagent / PATCH_REPORT 待ちは使わない。
   ユーザーが明示的に再有効化しない限り、過去の multi-agent 記述は歴史的記録として扱う。
 - 規律: `git status --short --untracked-files=all` → 対象 diff 確認 → 小スライス実装 →
-  focused validation → 台帳更新 → explicit path staging → scoped commit。
+  focused validation → `ops/refactor/STATE.md` 更新 → explicit path staging → scoped commit。
 - gate: lint / typecheck / typecheck:no-unused / format:check / test / build / colors:check
   （build と typecheck は並列禁止。長い Next.js gate は同時実行しない）
 - 2026-07-04 ユーザー明示: active objective 達成に必要なら product API / DB / auth /
@@ -37,6 +39,10 @@
 
 ## 直近の land（本日・要点）
 
+- codex: ledger-consolidation rule change land pending。2026-07-05 ユーザー指示により、
+  active progress/SSOT ledger は `ops/refactor/STATE.md` のみ。
+  `.codex/ralph-state.md`、`CODEX_GOAL_PROGRESS.md`、`ops/refactor/LOG.md`、
+  `ops/refactor/BACKLOG.md` は historical/reference とし、新規 slice entry は追記しない。
 - coordinator mode refresh(0164b797) / agmsg turn hook(025ee516) / W3-E1 shifts RHF(c5ec2727)
   / W3-E2 DataTable selectable-listbox contract(757ca20c) / prescriptions-table DataTable migration(2d0d80b4)
   / W3-E1 facilities RHF(a18abc1c) — coordinator review + focused validation green。DataTable contract は
