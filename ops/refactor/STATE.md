@@ -518,6 +518,11 @@
   GET を readApiJson へ収束し、reflected-fields path/org header/queryKey/enabled gate/
   retryable error card/empty-card suppression/sensitive field presentation は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 intervention-panel readApiJson slice(29c99563) land。focused Vitest 5、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。intervention list/create/outcome-save
+  responses を readApiJson へ収束し、endpoints、methods、request bodies、initial fetch suppression、
+  loading/error/empty states、local outcome update、dialog reset contract は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 - codex: R40/R44 facility-packet readApiJson slice(4e57f877) land。focused Vitest 2、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。facility packet の visit-preparation
   read GET を readApiJson へ収束し、visit-preparations path/org header/queryKey/enabled gate/
