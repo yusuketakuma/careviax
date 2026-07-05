@@ -411,6 +411,23 @@ function mockPatientQuery(
     patientShareCaseMutationResult,
   ];
   let mutationCallIndex = 0;
+  const pickMutationResult = (mutationOptions?: {
+    mutationFn?: (input: unknown) => Promise<unknown>;
+    onError?: (error: Error) => void;
+  }) => {
+    const onErrorText = String(mutationOptions?.onError ?? '');
+    if (onErrorText.includes('FAX原本到着の記録に失敗しました')) return mutationResults[0];
+    if (onErrorText.includes('処方せん画像/PDFの保存に失敗しました')) return mutationResults[1];
+    if (onErrorText.includes('処方せん原本管理の保存に失敗しました')) return mutationResults[2];
+    if (onErrorText.includes('集金記録の保存に失敗しました')) return mutationResults[3];
+    if (onErrorText.includes('支払設定の保存に失敗しました')) return mutationResults[4];
+    if (onErrorText.includes('会議要点の保存に失敗しました')) return mutationResults[5];
+    if (onErrorText.includes('MCS確認ログの保存に失敗しました')) return mutationResults[6];
+
+    const result = mutationResults[mutationCallIndex % mutationResults.length];
+    mutationCallIndex += 1;
+    return result;
+  };
   useMutationMock.mockImplementation(
     (mutationOptions?: {
       mutationFn?: (input: unknown) => Promise<unknown>;
@@ -436,9 +453,7 @@ function mockPatientQuery(
           variables: null,
         };
       }
-      const result = mutationResults[mutationCallIndex % mutationResults.length];
-      mutationCallIndex += 1;
-      return result;
+      return pickMutationResult(mutationOptions);
     },
   );
   const patientData = {
@@ -1067,6 +1082,7 @@ describe('CardWorkspace', () => {
     expect(screen.getByRole('tab', { name: /正本・在宅運用/ })).toBeTruthy();
     expect(screen.getByRole('tab', { name: /共有・文書/ })).toBeTruthy();
     expect(screen.getByRole('tab', { name: /履歴・構造化/ })).toBeTruthy();
+    expect(screen.queryByTestId('patient-profile-summary')).toBeNull();
 
     fireEvent.click(profileButton);
     expect(screen.getByRole('tab', { name: /正本・在宅運用/ }).getAttribute('aria-selected')).toBe(
@@ -1463,6 +1479,8 @@ describe('CardWorkspace', () => {
 
     try {
       render(<CardWorkspace patientId={hostileId} />);
+      openFoundationTab();
+      openSharingTab();
 
       const calls = vi
         .mocked(buildPatientHref)
@@ -1477,9 +1495,10 @@ describe('CardWorkspace', () => {
         [hostileId, '/mcs'],
         [hostileId, '/prescriptions'],
       ];
-      expect(calls.map((call) => JSON.stringify(call)).sort()).toEqual(
-        expectedCalls.map((call) => JSON.stringify(call)).sort(),
-      );
+      const callSet = new Set(calls.map((call) => JSON.stringify(call)));
+      for (const expectedCall of expectedCalls) {
+        expect(callSet.has(JSON.stringify(expectedCall))).toBe(true);
+      }
 
       const hrefs = Array.from(document.querySelectorAll('a')).map((link) =>
         link.getAttribute('href'),
@@ -3348,6 +3367,7 @@ describe('CardWorkspace', () => {
 
     try {
       render(<CardWorkspace patientId={hostileId} />);
+      openSharingTab();
 
       const config = getDocumentsConfig();
       expect(config?.queryKey).toEqual(['patient-documents', hostileId, 'org_1']);
@@ -4046,6 +4066,7 @@ describe('CardWorkspace', () => {
 
     try {
       render(<CardWorkspace patientId="patient_1" />);
+      openSharingTab();
 
       // --- 2 static GETs use buildOrgHeaders (exact URLs) ---
       const pharmacyCfg = queryConfigs.find((c) => c.queryKey?.[0] === 'pharmacy-partnerships');

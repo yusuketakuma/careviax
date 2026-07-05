@@ -4029,6 +4029,17 @@ export function CardWorkspace({
   const queryClient = useQueryClient();
   const [initialPatientUpdatedAt] = useState(() => (initialPatient ? Date.now() : undefined));
   const [activeDetailTab, setActiveDetailTab] = useState<PatientDetailTab>('work');
+  const [mountedDetailTabs, setMountedDetailTabs] = useState<ReadonlySet<PatientDetailTab>>(
+    () => new Set<PatientDetailTab>(['work']),
+  );
+
+  const activateDetailTab = (tab: PatientDetailTab) => {
+    setMountedDetailTabs((previous) =>
+      previous.has(tab) ? previous : new Set<PatientDetailTab>([...previous, tab]),
+    );
+    setActiveDetailTab(tab);
+  };
+  const isDetailTabMounted = (tab: PatientDetailTab) => mountedDetailTabs.has(tab);
 
   // P1-13 今だれが見ているか: このカードを開いていることを共有(ベストエフォート)
   usePresenceHeartbeat({
@@ -4468,7 +4479,7 @@ export function CardWorkspace({
           variant="outline"
           className="!h-auto !min-h-11 px-4 py-2"
           data-testid="card-open-profile"
-          onClick={() => setActiveDetailTab('foundation')}
+          onClick={() => activateDetailTab('foundation')}
         >
           プロフィールを確認
         </Button>
@@ -4494,7 +4505,7 @@ export function CardWorkspace({
         {headerRow}
         <Tabs
           value={activeDetailTab}
-          onValueChange={(value) => setActiveDetailTab(value as PatientDetailTab)}
+          onValueChange={(value) => activateDetailTab(value as PatientDetailTab)}
           className="gap-4"
         >
           <TabsList
@@ -4509,84 +4520,92 @@ export function CardWorkspace({
             ))}
           </TabsList>
 
-          <TabsContent value="work" keepMounted className="space-y-4">
-            <EmptyState
-              icon={FileQuestion}
-              title="進行中のカードがありません"
-              description="処方を受け付けると、この患者の処方サイクル(取込〜算定)の作業台がここに表示されます。"
-            />
-            <PatientVisitPreparationPanelMemo patient={patient} />
-          </TabsContent>
-          <TabsContent value="foundation" keepMounted className="space-y-4">
-            <PatientFoundationPanelMemo patient={patient} />
-            <PatientProfilePanelMemo patient={patient} />
-            <PatientContactsPanelMemo
-              patientId={patient.id}
-              orgId={orgId}
-              initialContacts={patient.contacts}
-              initialExpectedUpdatedAt={patient.updated_at}
-            />
-            <PatientHomeOperationsPanelMemo
-              patient={patient}
-              operations={homeOperations}
-              operationsError={homeOperationsError}
-              onRetryOperations={() => void refetchHomeOperations()}
-              markingFaxOriginalIntakeId={
-                markFaxOriginalCollectedMutation.isPending
-                  ? markFaxOriginalCollectedMutation.variables
-                  : null
-              }
-              savingPrescriptionDocumentIntakeId={
-                savePrescriptionDocumentMutation.isPending
-                  ? savePrescriptionDocumentMutation.variables?.intakeId
-                  : null
-              }
-              recordingPrescriptionOriginalManagementIntakeId={
-                recordPrescriptionOriginalManagementMutation.isPending
-                  ? recordPrescriptionOriginalManagementMutation.variables?.intakeId
-                  : null
-              }
-              recordingBillingPaymentProfilePatientId={
-                recordBillingPaymentProfileMutation.isPending
-                  ? recordBillingPaymentProfileMutation.variables?.patientId
-                  : null
-              }
-              recordingBillingCandidateId={
-                recordBillingCollectionMutation.isPending
-                  ? recordBillingCollectionMutation.variables?.candidateId
-                  : null
-              }
-              recordingConferenceScopeId={
-                recordConferenceNoteMutation.isPending
-                  ? recordConferenceNoteMutation.variables?.caseId
-                    ? `case:${recordConferenceNoteMutation.variables.caseId}`
-                    : `patient:${recordConferenceNoteMutation.variables?.patientId}`
-                  : null
-              }
-              recordingMcsCheckPatientId={
-                recordMcsCheckLogMutation.isPending
-                  ? recordMcsCheckLogMutation.variables?.patientId
-                  : null
-              }
-              onMarkFaxOriginalCollected={markFaxOriginalCollectedMutation.mutate}
-              onSavePrescriptionDocument={savePrescriptionDocumentMutation.mutate}
-              onUploadPrescriptionDocument={uploadPrescriptionDocument}
-              onRecordPrescriptionOriginalManagement={
-                recordPrescriptionOriginalManagementMutation.mutate
-              }
-              onRecordBillingPaymentProfile={recordBillingPaymentProfileMutation.mutate}
-              onRecordBillingCollection={recordBillingCollectionMutation.mutate}
-              onRecordConferenceNote={recordConferenceNoteMutation.mutate}
-              onRecordMcsCheckLog={recordMcsCheckLogMutation.mutate}
-            />
-          </TabsContent>
-          <TabsContent value="sharing" keepMounted className="space-y-4">
-            <PatientShareCaseCreatePanelMemo patient={patient} orgId={orgId} />
-            <PatientCardDocumentsPanelMemo patient={patient} orgId={orgId} />
-          </TabsContent>
-          <TabsContent value="history" keepMounted className="space-y-4">
-            <PatientStructuredCarePanel patientId={patientId} />
-          </TabsContent>
+          {isDetailTabMounted('work') ? (
+            <TabsContent value="work" keepMounted className="space-y-4">
+              <EmptyState
+                icon={FileQuestion}
+                title="進行中のカードがありません"
+                description="処方を受け付けると、この患者の処方サイクル(取込〜算定)の作業台がここに表示されます。"
+              />
+              <PatientVisitPreparationPanelMemo patient={patient} />
+            </TabsContent>
+          ) : null}
+          {isDetailTabMounted('foundation') ? (
+            <TabsContent value="foundation" keepMounted className="space-y-4">
+              <PatientFoundationPanelMemo patient={patient} />
+              <PatientProfilePanelMemo patient={patient} />
+              <PatientContactsPanelMemo
+                patientId={patient.id}
+                orgId={orgId}
+                initialContacts={patient.contacts}
+                initialExpectedUpdatedAt={patient.updated_at}
+              />
+              <PatientHomeOperationsPanelMemo
+                patient={patient}
+                operations={homeOperations}
+                operationsError={homeOperationsError}
+                onRetryOperations={() => void refetchHomeOperations()}
+                markingFaxOriginalIntakeId={
+                  markFaxOriginalCollectedMutation.isPending
+                    ? markFaxOriginalCollectedMutation.variables
+                    : null
+                }
+                savingPrescriptionDocumentIntakeId={
+                  savePrescriptionDocumentMutation.isPending
+                    ? savePrescriptionDocumentMutation.variables?.intakeId
+                    : null
+                }
+                recordingPrescriptionOriginalManagementIntakeId={
+                  recordPrescriptionOriginalManagementMutation.isPending
+                    ? recordPrescriptionOriginalManagementMutation.variables?.intakeId
+                    : null
+                }
+                recordingBillingPaymentProfilePatientId={
+                  recordBillingPaymentProfileMutation.isPending
+                    ? recordBillingPaymentProfileMutation.variables?.patientId
+                    : null
+                }
+                recordingBillingCandidateId={
+                  recordBillingCollectionMutation.isPending
+                    ? recordBillingCollectionMutation.variables?.candidateId
+                    : null
+                }
+                recordingConferenceScopeId={
+                  recordConferenceNoteMutation.isPending
+                    ? recordConferenceNoteMutation.variables?.caseId
+                      ? `case:${recordConferenceNoteMutation.variables.caseId}`
+                      : `patient:${recordConferenceNoteMutation.variables?.patientId}`
+                    : null
+                }
+                recordingMcsCheckPatientId={
+                  recordMcsCheckLogMutation.isPending
+                    ? recordMcsCheckLogMutation.variables?.patientId
+                    : null
+                }
+                onMarkFaxOriginalCollected={markFaxOriginalCollectedMutation.mutate}
+                onSavePrescriptionDocument={savePrescriptionDocumentMutation.mutate}
+                onUploadPrescriptionDocument={uploadPrescriptionDocument}
+                onRecordPrescriptionOriginalManagement={
+                  recordPrescriptionOriginalManagementMutation.mutate
+                }
+                onRecordBillingPaymentProfile={recordBillingPaymentProfileMutation.mutate}
+                onRecordBillingCollection={recordBillingCollectionMutation.mutate}
+                onRecordConferenceNote={recordConferenceNoteMutation.mutate}
+                onRecordMcsCheckLog={recordMcsCheckLogMutation.mutate}
+              />
+            </TabsContent>
+          ) : null}
+          {isDetailTabMounted('sharing') ? (
+            <TabsContent value="sharing" keepMounted className="space-y-4">
+              <PatientShareCaseCreatePanelMemo patient={patient} orgId={orgId} />
+              <PatientCardDocumentsPanelMemo patient={patient} orgId={orgId} />
+            </TabsContent>
+          ) : null}
+          {isDetailTabMounted('history') ? (
+            <TabsContent value="history" keepMounted className="space-y-4">
+              <PatientStructuredCarePanel patientId={patientId} />
+            </TabsContent>
+          ) : null}
         </Tabs>
       </div>
     );
@@ -4783,7 +4802,7 @@ export function CardWorkspace({
 
           <Tabs
             value={activeDetailTab}
-            onValueChange={(value) => setActiveDetailTab(value as PatientDetailTab)}
+            onValueChange={(value) => activateDetailTab(value as PatientDetailTab)}
             className="gap-4"
           >
             <div className="sticky top-14 z-20 border-b border-border/70 bg-background/95 pb-1 backdrop-blur supports-[backdrop-filter]:bg-background/80">
@@ -4805,165 +4824,177 @@ export function CardWorkspace({
               </TabsList>
             </div>
 
-            <TabsContent value="work" keepMounted className="space-y-4">
-              <h2 className="text-lg font-bold text-foreground">処方・訪問</h2>
+            {isDetailTabMounted('work') ? (
+              <TabsContent value="work" keepMounted className="space-y-4">
+                <h2 className="text-lg font-bold text-foreground">処方・訪問</h2>
 
-              {/* このカードに紐づく今日: 時限タスク(締切/予定)を Primary 最上部へ置く */}
-              <CardTodayPanelMemo tasks={workspace.today_tasks} />
+                {/* このカードに紐づく今日: 時限タスク(締切/予定)を Primary 最上部へ置く */}
+                <CardTodayPanelMemo tasks={workspace.today_tasks} />
 
-              {/* 今回の処方: 安全確認の直後に置き、正本/補助パネルより先に実作業へ入れる */}
-              <SectionCard aria-label="今回の処方" data-testid="card-prescription-section">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                    <h3 className="text-base font-semibold text-foreground">
-                      今回の処方{rxNumber ? ` — ${rxNumber}` : ''}
-                    </h3>
-                    {processLabel ? (
-                      <span className="text-xs text-muted-foreground">{processLabel}</span>
+                {/* 今回の処方: 安全確認の直後に置き、正本/補助パネルより先に実作業へ入れる */}
+                <SectionCard aria-label="今回の処方" data-testid="card-prescription-section">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                      <h3 className="text-base font-semibold text-foreground">
+                        今回の処方{rxNumber ? ` — ${rxNumber}` : ''}
+                      </h3>
+                      {processLabel ? (
+                        <span className="text-xs text-muted-foreground">{processLabel}</span>
+                      ) : null}
+                    </div>
+                    {cycleAction && currentStepLabel ? (
+                      <Link
+                        href={cycleAction.actionHref}
+                        className={buttonVariants({
+                          variant: 'outline',
+                          className: '!h-auto !min-h-11 px-4 py-2',
+                        })}
+                      >
+                        → {currentStepLabel}へ
+                      </Link>
                     ) : null}
                   </div>
-                  {cycleAction && currentStepLabel ? (
-                    <Link
-                      href={cycleAction.actionHref}
-                      className={buttonVariants({
-                        variant: 'outline',
-                        className: '!h-auto !min-h-11 px-4 py-2',
-                      })}
-                    >
-                      → {currentStepLabel}へ
-                    </Link>
-                  ) : null}
-                </div>
-                {currentStep ? <ProcessChips currentStep={currentStep} className="mt-3" /> : null}
-                {workspace.prescription_lines.length > 0 ? (
-                  // 麻薬/冷所 等の取扱い注意は「安全」列のトークンベース バッジで表すため、
-                  // 行全体の生アラート色塗り(非トークン)は引き算する。
-                  <div className="mt-3">
-                    <DataTable
-                      columns={prescriptionWorkspaceLineColumns}
-                      data={workspace.prescription_lines}
-                      getRowId={(line) => line.id}
-                      caption="今回の処方明細"
-                    />
-                  </div>
-                ) : (
-                  <p className="mt-3 text-sm text-muted-foreground">
-                    処方明細はまだ取り込まれていません。
-                  </p>
-                )}
-              </SectionCard>
-
-              <PatientVisitPreparationPanelMemo patient={patient} />
-
-              {/* 直近の動き: 工程遷移・疑義照会・処方取込の時系列 */}
-              <SectionCard aria-label="直近の動き" data-testid="card-recent-activities">
-                <h3 className="text-base font-semibold text-foreground">直近の動き</h3>
-                {workspace.recent_activities.length > 0 ? (
-                  <div className="mt-3 space-y-2">
-                    {workspace.recent_activities.map((activity) => (
-                      <ListOpenCard
-                        key={activity.id}
-                        badgeLabel={ACTIVITY_TYPE_LABELS[activity.type]}
-                        badgeClassName={ACTIVITY_BADGE_CLASSES[activity.type]}
-                        title={
-                          activity.actor ? `${activity.label} — ${activity.actor}` : activity.label
-                        }
-                        subtitle={formatActivityTime(activity.at)}
-                        openLabel="開く"
-                        onOpen={() => router.push(activity.href)}
+                  {currentStep ? <ProcessChips currentStep={currentStep} className="mt-3" /> : null}
+                  {workspace.prescription_lines.length > 0 ? (
+                    // 麻薬/冷所 等の取扱い注意は「安全」列のトークンベース バッジで表すため、
+                    // 行全体の生アラート色塗り(非トークン)は引き算する。
+                    <div className="mt-3">
+                      <DataTable
+                        columns={prescriptionWorkspaceLineColumns}
+                        data={workspace.prescription_lines}
+                        getRowId={(line) => line.id}
+                        caption="今回の処方明細"
                       />
-                    ))}
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-sm text-muted-foreground">
+                      処方明細はまだ取り込まれていません。
+                    </p>
+                  )}
+                </SectionCard>
+
+                <PatientVisitPreparationPanelMemo patient={patient} />
+
+                {/* 直近の動き: 工程遷移・疑義照会・処方取込の時系列 */}
+                <SectionCard aria-label="直近の動き" data-testid="card-recent-activities">
+                  <h3 className="text-base font-semibold text-foreground">直近の動き</h3>
+                  {workspace.recent_activities.length > 0 ? (
+                    <div className="mt-3 space-y-2">
+                      {workspace.recent_activities.map((activity) => (
+                        <ListOpenCard
+                          key={activity.id}
+                          badgeLabel={ACTIVITY_TYPE_LABELS[activity.type]}
+                          badgeClassName={ACTIVITY_BADGE_CLASSES[activity.type]}
+                          title={
+                            activity.actor
+                              ? `${activity.label} — ${activity.actor}`
+                              : activity.label
+                          }
+                          subtitle={formatActivityTime(activity.at)}
+                          openLabel="開く"
+                          onOpen={() => router.push(activity.href)}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-sm text-muted-foreground">
+                      直近の動きはまだありません。
+                    </p>
+                  )}
+                </SectionCard>
+              </TabsContent>
+            ) : null}
+
+            {isDetailTabMounted('foundation') ? (
+              <TabsContent value="foundation" keepMounted className="space-y-4">
+                <h2 className="text-lg font-bold text-foreground">正本・在宅運用</h2>
+                <PatientFoundationPanelMemo patient={patient} />
+                <PatientProfilePanelMemo patient={patient} />
+                <PatientContactsPanelMemo
+                  patientId={patient.id}
+                  orgId={orgId}
+                  initialContacts={patient.contacts}
+                  initialExpectedUpdatedAt={patient.updated_at}
+                />
+                <PatientHomeOperationsPanelMemo
+                  patient={patient}
+                  operations={homeOperations}
+                  operationsError={homeOperationsError}
+                  onRetryOperations={() => void refetchHomeOperations()}
+                  markingFaxOriginalIntakeId={
+                    markFaxOriginalCollectedMutation.isPending
+                      ? markFaxOriginalCollectedMutation.variables
+                      : null
+                  }
+                  savingPrescriptionDocumentIntakeId={
+                    savePrescriptionDocumentMutation.isPending
+                      ? savePrescriptionDocumentMutation.variables?.intakeId
+                      : null
+                  }
+                  recordingPrescriptionOriginalManagementIntakeId={
+                    recordPrescriptionOriginalManagementMutation.isPending
+                      ? recordPrescriptionOriginalManagementMutation.variables?.intakeId
+                      : null
+                  }
+                  recordingBillingPaymentProfilePatientId={
+                    recordBillingPaymentProfileMutation.isPending
+                      ? recordBillingPaymentProfileMutation.variables?.patientId
+                      : null
+                  }
+                  recordingBillingCandidateId={
+                    recordBillingCollectionMutation.isPending
+                      ? recordBillingCollectionMutation.variables?.candidateId
+                      : null
+                  }
+                  recordingConferenceScopeId={
+                    recordConferenceNoteMutation.isPending
+                      ? recordConferenceNoteMutation.variables?.caseId
+                        ? `case:${recordConferenceNoteMutation.variables.caseId}`
+                        : `patient:${recordConferenceNoteMutation.variables?.patientId}`
+                      : null
+                  }
+                  recordingMcsCheckPatientId={
+                    recordMcsCheckLogMutation.isPending
+                      ? recordMcsCheckLogMutation.variables?.patientId
+                      : null
+                  }
+                  onMarkFaxOriginalCollected={markFaxOriginalCollectedMutation.mutate}
+                  onSavePrescriptionDocument={savePrescriptionDocumentMutation.mutate}
+                  onUploadPrescriptionDocument={uploadPrescriptionDocument}
+                  onRecordPrescriptionOriginalManagement={
+                    recordPrescriptionOriginalManagementMutation.mutate
+                  }
+                  onRecordBillingPaymentProfile={recordBillingPaymentProfileMutation.mutate}
+                  onRecordBillingCollection={recordBillingCollectionMutation.mutate}
+                  onRecordConferenceNote={recordConferenceNoteMutation.mutate}
+                  onRecordMcsCheckLog={recordMcsCheckLogMutation.mutate}
+                />
+              </TabsContent>
+            ) : null}
+
+            {isDetailTabMounted('sharing') ? (
+              <TabsContent value="sharing" keepMounted className="space-y-4">
+                <h2 className="text-lg font-bold text-foreground">共有・文書</h2>
+                <PatientShareCaseCreatePanelMemo patient={patient} orgId={orgId} />
+                <PatientCardDocumentsPanelMemo patient={patient} orgId={orgId} />
+              </TabsContent>
+            ) : null}
+
+            {isDetailTabMounted('history') ? (
+              <TabsContent value="history" keepMounted className="space-y-4">
+                <h2 className="text-lg font-bold text-foreground">履歴・構造化</h2>
+                {/* 変更履歴: 患者項目の業務差分(誰がいつ何を何から何へ・確認元) */}
+                <SectionCard aria-label="変更履歴" data-testid="card-field-revisions">
+                  <h3 className="text-base font-semibold text-foreground">変更履歴</h3>
+                  <div className="mt-3">
+                    <PatientFieldRevisionTimeline patientId={patientId} />
                   </div>
-                ) : (
-                  <p className="mt-3 text-sm text-muted-foreground">直近の動きはまだありません。</p>
-                )}
-              </SectionCard>
-            </TabsContent>
+                </SectionCard>
 
-            <TabsContent value="foundation" keepMounted className="space-y-4">
-              <h2 className="text-lg font-bold text-foreground">正本・在宅運用</h2>
-              <PatientFoundationPanelMemo patient={patient} />
-              <PatientProfilePanelMemo patient={patient} />
-              <PatientContactsPanelMemo
-                patientId={patient.id}
-                orgId={orgId}
-                initialContacts={patient.contacts}
-                initialExpectedUpdatedAt={patient.updated_at}
-              />
-              <PatientHomeOperationsPanelMemo
-                patient={patient}
-                operations={homeOperations}
-                operationsError={homeOperationsError}
-                onRetryOperations={() => void refetchHomeOperations()}
-                markingFaxOriginalIntakeId={
-                  markFaxOriginalCollectedMutation.isPending
-                    ? markFaxOriginalCollectedMutation.variables
-                    : null
-                }
-                savingPrescriptionDocumentIntakeId={
-                  savePrescriptionDocumentMutation.isPending
-                    ? savePrescriptionDocumentMutation.variables?.intakeId
-                    : null
-                }
-                recordingPrescriptionOriginalManagementIntakeId={
-                  recordPrescriptionOriginalManagementMutation.isPending
-                    ? recordPrescriptionOriginalManagementMutation.variables?.intakeId
-                    : null
-                }
-                recordingBillingPaymentProfilePatientId={
-                  recordBillingPaymentProfileMutation.isPending
-                    ? recordBillingPaymentProfileMutation.variables?.patientId
-                    : null
-                }
-                recordingBillingCandidateId={
-                  recordBillingCollectionMutation.isPending
-                    ? recordBillingCollectionMutation.variables?.candidateId
-                    : null
-                }
-                recordingConferenceScopeId={
-                  recordConferenceNoteMutation.isPending
-                    ? recordConferenceNoteMutation.variables?.caseId
-                      ? `case:${recordConferenceNoteMutation.variables.caseId}`
-                      : `patient:${recordConferenceNoteMutation.variables?.patientId}`
-                    : null
-                }
-                recordingMcsCheckPatientId={
-                  recordMcsCheckLogMutation.isPending
-                    ? recordMcsCheckLogMutation.variables?.patientId
-                    : null
-                }
-                onMarkFaxOriginalCollected={markFaxOriginalCollectedMutation.mutate}
-                onSavePrescriptionDocument={savePrescriptionDocumentMutation.mutate}
-                onUploadPrescriptionDocument={uploadPrescriptionDocument}
-                onRecordPrescriptionOriginalManagement={
-                  recordPrescriptionOriginalManagementMutation.mutate
-                }
-                onRecordBillingPaymentProfile={recordBillingPaymentProfileMutation.mutate}
-                onRecordBillingCollection={recordBillingCollectionMutation.mutate}
-                onRecordConferenceNote={recordConferenceNoteMutation.mutate}
-                onRecordMcsCheckLog={recordMcsCheckLogMutation.mutate}
-              />
-            </TabsContent>
-
-            <TabsContent value="sharing" keepMounted className="space-y-4">
-              <h2 className="text-lg font-bold text-foreground">共有・文書</h2>
-              <PatientShareCaseCreatePanelMemo patient={patient} orgId={orgId} />
-              <PatientCardDocumentsPanelMemo patient={patient} orgId={orgId} />
-            </TabsContent>
-
-            <TabsContent value="history" keepMounted className="space-y-4">
-              <h2 className="text-lg font-bold text-foreground">履歴・構造化</h2>
-              {/* 変更履歴: 患者項目の業務差分(誰がいつ何を何から何へ・確認元) */}
-              <SectionCard aria-label="変更履歴" data-testid="card-field-revisions">
-                <h3 className="text-base font-semibold text-foreground">変更履歴</h3>
-                <div className="mt-3">
-                  <PatientFieldRevisionTimeline patientId={patientId} />
-                </div>
-              </SectionCard>
-
-              {/* 在宅医療処置・麻薬: 構造化レイヤ(開始日・確認元の時系列。実施中行が無ければ非表示) */}
-              <PatientStructuredCarePanel patientId={patientId} />
-            </TabsContent>
+                {/* 在宅医療処置・麻薬: 構造化レイヤ(開始日・確認元の時系列。実施中行が無ければ非表示) */}
+                <PatientStructuredCarePanel patientId={patientId} />
+              </TabsContent>
+            ) : null}
           </Tabs>
         </div>
 
