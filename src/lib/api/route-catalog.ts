@@ -186,7 +186,7 @@ export const routeCatalog: RouteCatalogEntry[] = [
     path: '/api/visit-schedules/generate',
     methods: ['POST'],
     permission: 'canVisit',
-    description: '定期訪問の一括生成',
+    description: '廃止済み: 訪問予定の直接一括生成は使わず訪問候補生成を使用',
     area: 'schedules',
   },
   {

@@ -226,7 +226,7 @@ FE 仕上げ（低優先）:
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
 | DeadlinePolicy         | 既存 `resolveMedicationDeadlineSummary` の後方互換を保ち、営業日/訪問可能日 buffer を別出力として追加する。                                          | P1                  |
 | Planner connection     | 現 planner の `planningEnd` / `candidateDeadlineDate` を policy 出力へ接続。候補取得期間は縮めすぎず、site/shift 判定後に per-site deadline を適用。 | P1                  |
-| Direct generate        | `visit-schedules/generate` の直接 confirmed 作成を feature flag / compatibility mode で proposal 作成へ移行する。                                    | P1                  |
+| Direct generate        | `visit-schedules/generate` の直接 confirmed 作成を廃止し、proposal-first 入口へ誘導する。                                                            | P1                  |
 | Availability policy    | 既存 `canVisitOn` と planner 内 intersection を統合し、訪問可能枠 DB 化は HR へ分離。                                                                | P1→HR               |
 | Review gate            | まず diagnostics/audit/UI で表示し、DB field 追加後に approve/contact/confirm hard gate 化。                                                         | P1→HR               |
 | OverloadRebalancer     | 確定予定ではなく未承認 proposal のみを preview-first で前倒し。既存 open proposal も容量計算に入れる。                                               | P1 / audit注意      |
@@ -239,25 +239,30 @@ FE 仕上げ（低優先）:
 - [ ] 入口を分類する:
   - 自動提案: `POST /api/visit-schedule-proposals`、`src/server/jobs/daily/visits.ts`。
   - 患者承認後確定: `PATCH /api/visit-schedule-proposals/[id]` action `confirm`。
-  - 互換/手動確定: `POST /api/visit-schedules`、`POST /api/visit-schedules/generate`。
+  - 手動確定: `POST /api/visit-schedules`。
+  - 廃止済み: `POST /api/visit-schedules/generate`（直接 confirmed 作成は停止）。
   - 既存変更: `POST /api/visit-schedules/[id]/reschedule` と approve/reproposal。
 - [ ] `VisitScheduleProposal` と `VisitSchedule` の責務境界を API test 名・UI文言・operator docs で統一する。
-- [ ] `visit-schedules/generate` の利用元（UI、workflow full-cycle test、seed/demo、外部 docs）を棚卸しし、proposal-first 移行の互換影響を記録する。
+- [x] `visit-schedules/generate` の利用元（UI、workflow full-cycle test、seed/demo、外部 docs）を棚卸しし、proposal-first 移行の互換影響を記録する。2026-07-05:
+      通常画面の候補生成入口は `POST /api/visit-schedule-proposals`。`POST /api/visit-schedules/generate` の
+      `workflow-full-cycle.test.ts` 直接利用は削除し、protected route test は廃止 endpoint の 410 contract を確認する。
 - [ ] `localDateKey` / `formatUtcDateKey` / `japanDateKey` 使用箇所を棚卸しし、期限・休業日・患者希望曜日・locked_date の user-facing date は Asia/Tokyo dateKey を SSOT にする。
 - DoD: 「自動提案は proposal、確定予定は患者確認後」の方針が実コード参照付きで追跡可能。
 
 #### VS-AUTO-0b. Direct generate 自動確定経路の cordon `cc:TODO`
 
-- [ ] `src/app/api/visit-schedules/generate/route.ts` が `VisitSchedule.create({ confirmed_at })` を実行する現状を、実装初期の blocker として扱う。
-- [ ] DeadlinePolicy を本番経路へ接続する前に、direct generate を次のいずれかへ制限する:
-  - feature flag で automated UI 入口からは proposal-first を既定にする。
-  - route response に warning diagnostics を出し、互換/管理者手動モードだけ直接確定を許す。
-  - 管理者手動モードでは「患者確認済みの確定予定を作成」の文言、理由、audit を必須にする。
-- [ ] 既存 route は初期 slice で削除しない。互換・seed・workflow test 影響を確認してから段階移行する。
+- [x] `src/app/api/visit-schedules/generate/route.ts` が `VisitSchedule.create({ confirmed_at })` を実行する現状を、実装初期の blocker として扱う。2026-07-05:
+      互換性不要の最新指示に従い、route 本体を 410 `ENDPOINT_REMOVED` に置換。`VisitSchedule.create` /
+      `confirmed_at` / `confirmed_by` / direct generate audit / workflow notification は実行されない。
+- [x] DeadlinePolicy を本番経路へ接続する前に、direct generate を廃止する:
+  - [x] automated UI 入口は既存通り proposal-first。
+  - [x] route response は replacement endpoint と `creates_confirmed_schedules=false` を返す。
+  - [x] 管理者/手動の確定予定作成は `POST /api/visit-schedules` に限定し、旧一括直接生成は使わない。
+- [x] route ファイルは削除せず、既存 caller があれば 410 と replacement endpoint で明示的に失敗させる。
 - テスト:
   - automated UI/標準 request は `VisitScheduleProposal` を作り、`VisitSchedule.confirmed_at` を作らない。
-  - explicit compatibility/manual mode だけ direct schedule を許可し、理由/audit なしでは拒否。
-  - `workflow-full-cycle.test.ts` と `visit-schedules/generate/route.test.ts` は proposal-first と互換モードを分けて検証。
+  - [x] `visit-schedules/generate/route.test.ts` は direct endpoint が 410 で、malformed body でも confirmed 作成へ入らないことを検証。
+  - [x] `workflow-full-cycle.test.ts` は旧 direct generate 呼び出しを削除し、下流 flow fixture の確定予定から開始する。
 
 #### VS-AUTO-1. 営業日バッファ付き DeadlinePolicy（DBなし pure first） `cc:TODO`
 

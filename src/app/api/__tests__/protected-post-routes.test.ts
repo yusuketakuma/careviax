@@ -83,7 +83,13 @@ import { POST as visitPreparationBriefBatchPost } from '../visit-preparations/br
 import { POST as visitSchedulesReschedulePost } from '../visit-schedules/[id]/reschedule/route';
 
 type Handler = (req: NextRequest) => Promise<Response | undefined>;
-type RouteEntry = { name: string; handler: Handler; successBody?: unknown; invalidBody?: unknown };
+type RouteEntry = {
+  name: string;
+  handler: Handler;
+  successBody?: unknown;
+  invalidBody?: unknown;
+  invalidBodyStatus?: number;
+};
 const emptyRouteContext = { params: Promise.resolve({}) };
 
 function createRequest(headers?: Record<string, string>, body: unknown = {}) {
@@ -159,6 +165,7 @@ const routes: RouteEntry[] = [
   {
     name: 'visit-schedules/generate POST',
     handler: (req) => visitSchedulesGeneratePost(req, emptyRouteContext),
+    invalidBodyStatus: 410,
   },
   { name: 'visit-records POST', handler: (req) => visitRecordsPost(req) },
   {
@@ -365,7 +372,7 @@ describe('protected POST routes auth/body matrix', () => {
       );
 
       if (!response) throw new Error('response is required');
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(route.invalidBodyStatus ?? 400);
       if (
         route.name === 'cases POST' ||
         route.name === 'visit-preparations/brief-batch POST' ||

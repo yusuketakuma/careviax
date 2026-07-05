@@ -40,6 +40,28 @@
 
 ## 直近の land（本日・要点）
 
+- codex: VS-AUTO-0/0b direct generate cordon slice(in-progress on
+  `refactor/visit-schedule-generate-cordon-20260705`) implementation in progress。`Plans.md` の
+  訪問スケジュール自動提案トラックに従い、`POST /api/visit-schedules/generate` の実体が
+  `VisitSchedule.create({ confirmed_at, confirmed_by })` で患者確認済み確定予定を直接作る旧経路だった問題を解消。
+  ユーザー最新指示「互換性は一切不要」を反映し、route 本体を 410 `ENDPOINT_REMOVED` に置換して
+  `/api/visit-schedule-proposals` への replacement endpoint を返す。`VisitSchedule.create`、`confirmed_at`、
+  `confirmed_by`、direct generate audit、workflow notification、DB transaction は実行されない。認証/権限/no-store は
+  維持。`route-catalog` は廃止済み direct generation と明示。`workflow-full-cycle.test.ts` の旧 direct generate
+  呼び出しは削除し、protected route matrix はこの endpoint の invalid body も 410 として扱う。画面の通常候補生成入口は
+  `schedule-day-planner` / weekly optimizer とも既に proposal route。SSOT の必要時変更許可 (product API/DB/
+  auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは product API の破壊的廃止、
+  テスト、docs/SSOT を変更。DB schema/migration/auth/authorization/tenant_id/PHI payload/billing/deploy/
+  package dependency 変更は不要。`pnpm typecheck:no-unused` は既存の
+  `template-body-editor.render.test.tsx` 未使用 fetch 引数で失敗したため、実引数を使う mock と使わない mock を
+  分けるテスト補正を同slice内の gate repair として追加（product behavior 変更なし）。validation:
+  `pnpm exec vitest run src/app/api/visit-schedules/generate/route.test.ts src/lib/api/route-catalog.test.ts src/app/api/meta/route-catalog/route.test.ts src/app/api/__tests__/workflow-full-cycle.test.ts src/app/api/__tests__/protected-post-routes.test.ts --reporter=dot --testTimeout=30000`
+  green（5 files / 155 tests、既存 handoff extraction warn と webhook dispatch error log は非fatal）;
+  `pnpm exec vitest run 'src/app/(dashboard)/admin/document-templates/template-body-editor.render.test.tsx' --reporter=dot --testTimeout=30000`
+  green（1 file / 6 tests）; scoped `eslint` green; `pnpm format:check` green; `git diff --check` green;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` green（heapなしでは OOM）。next:
+  commit → main ff merge → origin/main push → short-lived branch cleanup。
 - codex: VS-AUTO visit schedule auto proposal overwrite update planning slice(in-progress on
   main) complete。`docs/careviax_visit_schedule_update_spec.docx` を `textutil` で抽出し、実コード
   `visit-schedule-proposals` / `visit-schedules/generate` / `visit-medication-deadline` /

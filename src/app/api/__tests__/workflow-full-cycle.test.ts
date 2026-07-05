@@ -374,7 +374,6 @@ vi.mock('@/server/services/report-delivery', () => ({
 import { POST as createPrescriptionIntake } from '../prescription-intakes/route';
 import { POST as createPatient } from '../patients/route';
 import { POST as createCareCase } from '../cases/route';
-import { POST as generateVisitSchedules } from '../visit-schedules/generate/route';
 import { PUT as upsertVisitPreparation } from '../visit-preparations/[scheduleId]/route';
 import { PATCH as updateInquiryRecord } from '../inquiry-records/[id]/route';
 import { POST as createDispenseResults } from '../dispense-results/route';
@@ -1552,7 +1551,7 @@ describe('workflow full-cycle integration', () => {
     });
   });
 
-  it('passes the patient registration -> schedule generation -> preparation -> visit -> report flow', async () => {
+  it('passes the patient registration -> preparation -> visit -> report flow', async () => {
     state.visitRecord = null;
     state.careReports = [];
     state.deliveryRecords = [];
@@ -1608,27 +1607,11 @@ describe('workflow full-cycle integration', () => {
       patient_id: 'patient_1',
     });
 
-    const scheduleResponse = await generateVisitSchedules(
-      createRequest({
-        case_id: 'case_1',
-        visit_type: 'regular',
-        pharmacist_id: 'user_1',
-        recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=MO',
-        insurance_type: 'medical',
-        start_date: '2026-03-30',
-        end_date: '2026-03-30',
-        time_window_start: '10:00',
-        time_window_end: '11:00',
-      }),
-      emptyRouteContext,
-    );
-
-    expect(scheduleResponse?.status).toBe(201);
     expect(state.visitSchedule).toMatchObject({
       id: 'schedule_1',
       case_id: 'case_1',
       visit_type: 'regular',
-      recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=MO',
+      recurrence_rule: null,
       schedule_status: 'planned',
     });
 

@@ -33,6 +33,19 @@ describe('routeCatalog', () => {
     );
   });
 
+  it('labels direct visit schedule generation as removed in favor of proposals', () => {
+    const entry = routeCatalog.find((item) => item.path === '/api/visit-schedules/generate');
+
+    expect(entry).toMatchObject({
+      methods: ['POST'],
+      permission: 'canVisit',
+      area: 'schedules',
+    });
+    expect(entry?.description).toContain('廃止済み');
+    expect(entry?.description).toContain('直接一括生成');
+    expect(entry?.description).toContain('訪問候補生成');
+  });
+
   it('documents high-risk communication, medication, and visit routes with exact runtime methods', () => {
     expect(routeCatalog).toEqual(
       expect.arrayContaining([

@@ -80,7 +80,7 @@ describe('TemplateBodyEditor render hierarchy', () => {
     const encodedId = encodeURIComponent(hostileId);
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
         if (!init?.method) {
           return new Response(
             JSON.stringify({
