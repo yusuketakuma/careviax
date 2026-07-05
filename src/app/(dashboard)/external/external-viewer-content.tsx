@@ -143,11 +143,7 @@ export function ExternalViewerContent({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ status, updated_at }),
       });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload.message ?? '自己申告の更新に失敗しました');
-      }
-      return response.json();
+      return readApiJson<unknown>(response, '自己申告の更新に失敗しました');
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['patient-self-reports', orgId] });
@@ -175,10 +171,7 @@ export function ExternalViewerContent({
           },
         }),
       });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload.message ?? 'タスク作成に失敗しました');
-      }
+      await readApiJson<unknown>(response, 'タスク作成に失敗しました');
       await updateSelfReportMutation.mutateAsync({
         id: report.id,
         status: 'converted_to_task',

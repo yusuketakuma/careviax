@@ -46,6 +46,7 @@ function getQueryConfigs() {
 describe('ExternalViewerContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
     useOrgIdMock.mockReturnValue('org_1');
     useQueryClientMock.mockReturnValue({
       invalidateQueries: vi.fn(),
@@ -137,6 +138,96 @@ describe('ExternalViewerContent', () => {
         updated_at: '2026-03-28T00:00:00.000Z',
       }),
     });
+  });
+
+  it('surfaces API error messages when self-report status update fails', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/patient-self-reports/report_1' && init?.method === 'PATCH') {
+        return new Response(JSON.stringify({ message: '自己申告は既に処理済みです' }), {
+          status: 409,
+        });
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ExternalViewerContent />);
+
+    const updateMutation = useMutationMock.mock.calls[0]?.[0] as {
+      mutationFn: (variables: {
+        id: string;
+        status: 'triaged' | 'resolved' | 'dismissed' | 'converted_to_task';
+        updated_at: string;
+      }) => Promise<unknown>;
+      onError?: (error: Error) => void;
+    };
+
+    let caughtError: unknown;
+    try {
+      await updateMutation.mutationFn({
+        id: 'report_1',
+        status: 'resolved',
+        updated_at: '2026-03-28T00:00:00.000Z',
+      });
+    } catch (error) {
+      caughtError = error;
+    }
+
+    expect(caughtError).toBeInstanceOf(Error);
+    expect((caughtError as Error).message).toBe('自己申告は既に処理済みです');
+    updateMutation.onError?.(caughtError as Error);
+    expect(toastErrorMock).toHaveBeenCalledWith('自己申告は既に処理済みです');
+  });
+
+  it('surfaces API error messages when self-report task creation fails', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/tasks' && init?.method === 'POST') {
+        return new Response(JSON.stringify({ message: '同じ自己申告のタスクが既に存在します' }), {
+          status: 409,
+        });
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ExternalViewerContent />);
+
+    const createTaskMutation = useMutationMock.mock.calls[1]?.[0] as {
+      mutationFn: (report: {
+        id: string;
+        patient_id: string;
+        patient_name: string | null;
+        category: string;
+        subject: string;
+        reported_by_name: string | null;
+        requested_callback: boolean;
+        updated_at: string;
+      }) => Promise<unknown>;
+      onError?: (error: Error) => void;
+    };
+
+    let caughtError: unknown;
+    try {
+      await createTaskMutation.mutationFn({
+        id: 'report_1',
+        patient_id: 'patient_1',
+        patient_name: '患者A',
+        category: '服薬相談',
+        subject: '残薬が増えた',
+        reported_by_name: '家族A',
+        requested_callback: true,
+        updated_at: '2026-03-28T01:02:03.000Z',
+      });
+    } catch (error) {
+      caughtError = error;
+    }
+
+    expect(caughtError).toBeInstanceOf(Error);
+    expect((caughtError as Error).message).toBe('同じ自己申告のタスクが既に存在します');
+    createTaskMutation.onError?.(caughtError as Error);
+    expect(toastErrorMock).toHaveBeenCalledWith('同じ自己申告のタスクが既に存在します');
   });
 
   it('keeps server messages and falls back for self-report mutation error toasts', () => {
