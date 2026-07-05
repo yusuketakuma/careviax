@@ -438,13 +438,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(input),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => null);
-        throw new Error(
-          (err as { message?: string } | null)?.message ?? '次回タスクの作成に失敗しました',
-        );
-      }
-      return res.json();
+      return readApiJson<unknown>(res, '次回タスクの作成に失敗しました');
     },
     onSuccess: () => {
       if (latestReply) {
@@ -479,13 +473,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(input),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => null);
-        throw new Error(
-          (err as { message?: string } | null)?.message ?? '返信依頼の起票に失敗しました',
-        );
-      }
-      return res.json() as Promise<CreateCommunicationRequestResponse>;
+      return readApiJson<CreateCommunicationRequestResponse>(res, '返信依頼の起票に失敗しました');
     },
     onSuccess: async (result?: CreateCommunicationRequestResponse) => {
       setCreatedRequestAudiences((prev) => [...prev, audience]);
