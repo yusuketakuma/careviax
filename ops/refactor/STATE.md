@@ -40,6 +40,35 @@
 
 ## 直近の land（本日・要点）
 
+- codex: visit schedule reschedule request authz / PHI minimization batch(ef189a3aa)
+  implementation complete。ユーザー指示「近似箇所はまとめて実装して効率を向上。サブエージェントも投入」に基づき、
+  `POST /api/visit-schedules/:id/reschedule` の lifecycle write boundary と free-text 複製面を同一sliceで処理。
+  subagent は code_mapper / privacy_compliance_reviewer / test_architect を bounded read-only で投入し、全員が
+  `canVisit` + org-wide `pharmacist_trainee` access により unassigned trainee が reschedule proposal /
+  override / communication request/event / task / audit / workflow notify へ到達できる点を High と指摘。
+  さらに raw `reason` が proposal_reason、communication context/content、task description、audit changes に
+  複製される PHI/PII リスクも High と判定。対応として reschedule route は route param 正規化直後、body parse /
+  source schedule lookup / planner / transaction / audit / notify / communication / task の前に
+  `canManageVisitScheduleLifecycle(ctx)` で owner/admin/pharmacist 以外を no-store 403。
+  raw `reason` は source `VisitScheduleOverride.reason` の原本保存と request-intent hash material に限定し、
+  proposal reason、communication request/event content/context、operational task description/metadata、
+  audit changes は `reason_code` / `reason_label` / `reason_text_present` と件数・ID中心の PHI-minimized payload へ
+  収束。tests は trainee の well-formed/malformed JSON 403 と DB/planner/transaction/proposal/override/
+  communication/task/audit/notify 無副作用、hostile reason（患者名、電話、玄関暗証番号、薬剤名）が
+  proposal/communication/task/audit/notify/response に複製されないことを固定。validation:
+  `pnpm exec vitest run 'src/app/api/visit-schedules/[id]/reschedule/route.test.ts' --reporter=dot --testTimeout=30000`
+  green（1 file / 30 tests）;
+  `pnpm exec vitest run src/lib/auth/__tests__/visit-schedule-access.test.ts 'src/app/api/visit-schedules/[id]/reschedule/route.test.ts' 'src/app/api/visit-schedules/[id]/route.test.ts' 'src/app/api/visit-schedules/[id]/reopen/route.test.ts' src/app/api/visit-schedules/reorder/route.test.ts --reporter=dot --testTimeout=30000`
+  green（5 files / 186 tests）;
+  `pnpm exec vitest run src/lib/auth/__tests__/visit-schedule-access.test.ts 'src/app/api/visit-schedules/[id]/reschedule/route.test.ts' 'src/app/api/visit-schedules/[id]/route.test.ts' 'src/app/api/visit-schedules/[id]/reopen/route.test.ts' src/app/api/visit-schedules/reorder/route.test.ts 'src/app/api/visit-preparations/[scheduleId]/route.test.ts' --reporter=dot --testTimeout=30000`
+  green（6 files / 228 tests）; scoped `eslint` green; scoped `prettier --check` green; `git diff --check` green;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) に基づき product API /
+  authorization / PHI-adjacent communication/task/audit payload を変更。DB schema/migration/deploy/package
+  dependency 変更は不要。残る高優先別slice候補: reschedule contact PII の `recipient_contact` / suggested_contacts
+  参照化・masking 契約設計、Task resolver actor trace を Task 自体へ残す schema設計、visit-preparation route
+  duration の vehicle/day 全日稼働時間共有helper化、visit-record finalization supervision、medication issue
+  resolve/promote boundary。
 - codex: visit preparation PHI-minimized audit / workflow notify batch(4e9ebaf20)
   implementation complete。前sliceの残課題である `PUT /api/visit-preparations/:scheduleId` の
   authorized route_confirmed / vehicle assignment / mark_ready / preparation task side-effect trace を処理。
