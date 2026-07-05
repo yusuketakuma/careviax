@@ -40,6 +40,24 @@
 
 ## 直近の land（本日・要点）
 
+- codex: VS-AUTO visit schedule auto proposal overwrite update planning slice(in-progress on
+  main) complete。`docs/careviax_visit_schedule_update_spec.docx` を `textutil` で抽出し、実コード
+  `visit-schedule-proposals` / `visit-schedules/generate` / `visit-medication-deadline` /
+  `visit-schedule-planner` / `visit-availability` / `road-routing` / Prisma visit schema を再確認。
+  implementation_planner と medical_safety_reviewer subagent は read-only で投入し、初稿 plan の
+  CHANGES_REQUESTED（未存在 review fields 前提、direct generate 移行の遅さ、Google matrix 既存
+  contract 過小評価、DeadlineCandidate provenance 不足、audit/PHI payload 最小化不足、Asia/Tokyo
+  dateKey 境界不足）を受領。対応として `Plans.md` の VS-AUTO track をコードレビュー済み実装計画へ
+  練り直し、direct generate cordon、DeadlineCandidate provenance、AuditPayloadPolicy、JST dateKey
+  SSOT、diagnostics-only と field-backed hard gate の分離、Google provider matrix の実差分、HR
+  migration/human gate、validation matrix を追記。SSOT の必要時変更許可 (product API/DB/auth/
+  authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは planning/docs のみ
+  変更。product code/API/DB/auth/authorization/PHI payload/billing/deploy/package dependency 変更は
+  未実施。validation: `pnpm exec prettier --write Plans.md` completed;
+  `pnpm exec prettier --check Plans.md ops/refactor/STATE.md` green;
+  `git diff --check -- Plans.md ops/refactor/STATE.md` green。next: scoped docs commit → main push。
+  実装開始時は VS-AUTO-0/0b から入り、direct generate が患者未確認 `confirmed_at` schedule を作る経路を
+  cordon してから deadline policy 接続へ進む。
 - codex: R40/R44 dispense-workbench mutation helper JSON convergence batch(in-progress on
   `refactor/dispense-workbench-mutation-json-convergence-20260705`) implementation complete。
   前sliceで除外した `dispensing-workbench.adapter` の write-only `mutateJson` を専用sliceで処理し、

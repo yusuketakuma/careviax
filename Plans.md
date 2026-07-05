@@ -188,6 +188,279 @@ FE 仕上げ（低優先）:
 
 **実行規律**: 各スライス = maker(Claude) → reviewer-audit 独立レビュー → objective gate（typecheck / typecheck:no-unused / lint / test / build / colors:check）。auth/security/migration/prod-deploy は human 承認（§15）。破壊的 mig（W3-B6d/B10/C1）は W3-S1/S2 完了が前提。perf 系は perf:smoke 実測を前段に。
 
+### 新トラック: 訪問スケジュール自動提案 上書きアップデート（2026-07-05） `cc:TODO`
+
+<!-- source: docs/careviax_visit_schedule_update_spec.docx（CareVIAx / PH-OS 訪問薬剤管理スケジュール自動提案 既存実装調査・上書きアップデート仕様書）。2026-07-05 に仕様書と実コードを再レビューし、既存実装済みの planner / proposal workflow / visit availability / route matrix contract を前提に実装順を練り直した。計画のみ・実装未着手。 -->
+
+**最重要方針（SSOT）**:
+
+- 自動提案の仮予定 SSOT は `VisitScheduleProposal`。`VisitSchedule` は患者連絡 confirmed 後に作る確定予定。
+- `confirmed_at` あり `VisitSchedule`、ready/departed/in_progress/completed 予定、患者連絡済み候補は自動再配置しない。変更は既存リスケジュール/再提案フローに限定する。
+- 手動 `POST /api/visit-schedules` と管理者/互換用途の直接 `VisitSchedule` 作成は残すが、「自動生成」は proposal-first に寄せる。
+- 休業日/訪問不可日の上書きは理由必須、監査ログ必須。薬剤師確認必須はスコア減点ではなく患者連絡前のハードゲートにする。
+- Google Routes / OSRM / fallback はルート・移動時間評価だけに使い、薬学判断・服薬期限判断の根拠にはしない。
+
+**コードレビューで確定した現状（2026-07-05）**:
+
+- `src/app/api/visit-schedule-proposals/route.ts` は候補生成、idempotency、算定ガード、`VisitScheduleProposalBatch`、route_order allocation、diagnostics/audit を既に持つ。ここを自動提案の正式入口として維持する。
+- `src/app/api/visit-schedule-proposals/[id]/route.ts` は approve → contact_attempt confirmed → confirm → `VisitSchedule.create` の患者承認後確定フローを既に持つ。仕様書の proposal-first 方針と一致している。
+- `src/app/api/visit-schedules/generate/route.ts` は recurrence から `VisitSchedule` を直接作成し、`confirmed_at` / `confirmed_by` を入れる。仕様書との差分として最重要の互換移行対象。
+- `src/server/jobs/daily/visits.ts` は服薬期限から `generateVisitScheduleProposalDrafts` を呼び `VisitScheduleProposal` を作る。daily demand は既に proposal-first で、強化対象は deadline policy と diagnostics。
+- `src/server/services/visit-schedule-planner.ts` は患者希望/施設受入/薬局営業時間/薬剤師シフトの時間窓 intersection、日次/週次容量、車両、route insertion、算定 cadence、確定済み予定固定を実装済み。新設ではなく接続・精密化する。
+- `src/lib/calendar/visit-availability.ts` は `canVisitOn` で PharmacyOperatingHours/BusinessHoliday と PharmacistShift の AND 判定を pure helper 化済み。VisitAvailabilityPolicy はこの helper の拡張・DB adapter 接続として扱う。
+- `src/server/services/visit-medication-deadline.ts` は通常薬 end_date / start_date+days、次回調剤日、前回訪問時 next_visit_suggestion_date を最小日で折り、頓服を通常期限から除外済み。営業日バッファは未実装。
+- `src/server/services/road-routing.ts` は `RoadTravelEstimator.estimateMatrix` と OSRM table matrix / pairwise fallback を既に持つ。Google provider は現状 pairwise `computeRoutes` のみなので、追加対象は `GoogleRoutesProvider.estimateMatrix`。
+- `prisma/schema/visit.prisma` の `VisitScheduleProposal` には `pharmacist_review_required` / `review_reason_code` / `reviewed_at` は未存在。review gate は diagnostics 先行、DB field 追加は HR migration に分離する。
+
+**監査・PHI payload 方針**:
+
+- proposal / overload / review / route diagnostics を audit に残す場合は whitelist 方式にする。
+- audit に保存してよいもの: reason code、entity id、dateKey、actor、status before/after、算定/期限/availability の短い machine code、hash 化した診断 snapshot。
+- audit/log/export に保存しないもの: 患者名、住所、緯度経度、電話番号、連絡 note、薬剤 free text、処方全文、Google/OSRM request body、API key、provider raw error。
+- 詳細表示が必要な場合は、audit ではなく権限制御済み detail API で再計算または最小化済み snapshot を返す。
+- `audit-logs` API/export は reject_reason redaction と同じ方針で diagnostics/free text/drug/address/phone を redaction test で固定する。
+
+**追加・変更する設計要素（通常変更 / HR 分離）**:
+
+| 領域                   | 現コードとの差分                                                                                                                                     | リスク分類          |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| DeadlinePolicy         | 既存 `resolveMedicationDeadlineSummary` の後方互換を保ち、営業日/訪問可能日 buffer を別出力として追加する。                                          | P1                  |
+| Planner connection     | 現 planner の `planningEnd` / `candidateDeadlineDate` を policy 出力へ接続。候補取得期間は縮めすぎず、site/shift 判定後に per-site deadline を適用。 | P1                  |
+| Direct generate        | `visit-schedules/generate` の直接 confirmed 作成を feature flag / compatibility mode で proposal 作成へ移行する。                                    | P1                  |
+| Availability policy    | 既存 `canVisitOn` と planner 内 intersection を統合し、訪問可能枠 DB 化は HR へ分離。                                                                | P1→HR               |
+| Review gate            | まず diagnostics/audit/UI で表示し、DB field 追加後に approve/contact/confirm hard gate 化。                                                         | P1→HR               |
+| OverloadRebalancer     | 確定予定ではなく未承認 proposal のみを preview-first で前倒し。既存 open proposal も容量計算に入れる。                                               | P1 / audit注意      |
+| PRN/topical stock/risk | 頓服・外用薬残量、薬剤変更 risk は医療安全上 HR。既存通常薬 deadline とは分離し、薬剤師確認必須を伴う。                                              | HR                  |
+| Google Matrix          | 既存 estimator contract に `GoogleRoutesProvider.estimateMatrix` を足す。key 未設定/失敗時は OSRM/fallback を維持。                                  | P1 / deploy設定注意 |
+
+#### VS-AUTO-0. 方針固定・実コード inventory・入口分類 `cc:TODO`
+
+- [ ] 仕様書 `docs/careviax_visit_schedule_update_spec.docx` と上記コードレビュー結果を、`Plans.md` / `ops/refactor/STATE.md` の再開アンカーへ残す。
+- [ ] 入口を分類する:
+  - 自動提案: `POST /api/visit-schedule-proposals`、`src/server/jobs/daily/visits.ts`。
+  - 患者承認後確定: `PATCH /api/visit-schedule-proposals/[id]` action `confirm`。
+  - 互換/手動確定: `POST /api/visit-schedules`、`POST /api/visit-schedules/generate`。
+  - 既存変更: `POST /api/visit-schedules/[id]/reschedule` と approve/reproposal。
+- [ ] `VisitScheduleProposal` と `VisitSchedule` の責務境界を API test 名・UI文言・operator docs で統一する。
+- [ ] `visit-schedules/generate` の利用元（UI、workflow full-cycle test、seed/demo、外部 docs）を棚卸しし、proposal-first 移行の互換影響を記録する。
+- [ ] `localDateKey` / `formatUtcDateKey` / `japanDateKey` 使用箇所を棚卸しし、期限・休業日・患者希望曜日・locked_date の user-facing date は Asia/Tokyo dateKey を SSOT にする。
+- DoD: 「自動提案は proposal、確定予定は患者確認後」の方針が実コード参照付きで追跡可能。
+
+#### VS-AUTO-0b. Direct generate 自動確定経路の cordon `cc:TODO`
+
+- [ ] `src/app/api/visit-schedules/generate/route.ts` が `VisitSchedule.create({ confirmed_at })` を実行する現状を、実装初期の blocker として扱う。
+- [ ] DeadlinePolicy を本番経路へ接続する前に、direct generate を次のいずれかへ制限する:
+  - feature flag で automated UI 入口からは proposal-first を既定にする。
+  - route response に warning diagnostics を出し、互換/管理者手動モードだけ直接確定を許す。
+  - 管理者手動モードでは「患者確認済みの確定予定を作成」の文言、理由、audit を必須にする。
+- [ ] 既存 route は初期 slice で削除しない。互換・seed・workflow test 影響を確認してから段階移行する。
+- テスト:
+  - automated UI/標準 request は `VisitScheduleProposal` を作り、`VisitSchedule.confirmed_at` を作らない。
+  - explicit compatibility/manual mode だけ direct schedule を許可し、理由/audit なしでは拒否。
+  - `workflow-full-cycle.test.ts` と `visit-schedules/generate/route.test.ts` は proposal-first と互換モードを分けて検証。
+
+#### VS-AUTO-1. 営業日バッファ付き DeadlinePolicy（DBなし pure first） `cc:TODO`
+
+- [ ] `src/server/services/visit-medication-deadline.ts` に後方互換 API を残したまま `resolveVisitDeadlinePolicy`（仮）を追加する。
+  - 入力: 既存 `MedicationDeadlineIntake[]`、`nextVisitSuggestionDate`、`planningStartDateKey`、`OperatingCalendar` または visitable date predicate、`safetyBufferOperatingDays`、任意の stockout candidate。
+  - 出力: `rawDeadlineDateKey`、`latestVisitableDateKey`、`recommendedDeadlineDateKey`、`deadlineCandidates[]`、`diagnostics[]`、`reviewReasons[]`。
+- [ ] `DeadlineCandidate` は provenance を必須にする:
+  - `source_kind`: `regular_medication_end` / `next_dispense` / `next_visit_suggestion` / `stockout_estimate` / `manual_locked_date`。
+  - `prescription_intake_id` / `prescription_line_id` / `drug_master_id` / `drug_code` / `source_drug_code` は取得できる場合に保持し、名前だけの候補は `confidence='low'` + review required。
+  - `raw_date_key` / `adjusted_date_key` / `confidence` / `requires_pharmacist_review` / `reason_code` / `audit_ref` を持つ。
+- [ ] 現行 `MedicationDeadlineLine` は `drug_name` 等だけなので、planner/API 接続時に `PrescriptionLine.id` / `drug_master_id` / `drug_code` / `source_drug_code` を select に追加する。未解決 drug master・同名別規格・差分不明は hard review gate 候補にする。
+- [ ] 既存 `resolveMedicationDeadlineSummary` はそのまま維持し、既存 route/planner/tests の `visitDeadlineDate` 互換を壊さない。
+- [ ] `rawDeadline` が休業日/訪問不可日なら `nearestOperatingDay(..., 'backward')` 相当で直前訪問可能日へ補正し、そこから `addOperatingDays(..., -buffer)` で recommended deadline を作る。
+- [ ] Date object を直接 policy 境界に広げず、`operating-day.ts` の方針通り Asia/Tokyo 業務日の `YYYY-MM-DD` date key を主入出力にする。DB `@db.Date` 変換は caller/adapter 層。
+- [ ] 頓服/外用薬は通常薬期限から引き続き除外し、HR 前は `reviewReasons` のみで患者連絡を進めない設計にする。
+- テスト:
+  - 日曜に薬切れ、月-金のみ訪問可能、buffer=1 → 金曜補正後に木曜。
+  - 祝日・連休中に薬切れ → 連休前最終訪問可能日から営業日 buffer を引く。
+  - buffer が recommended deadline を planningStart より前へ押し戻す → overdue/asap diagnostic。
+  - PRN は通常薬 deadline から除外される既存テストを維持。
+  - 同一薬名別規格、drug master 未解決、外用 route、drug change risk が provenance/review reason を持つ。
+  - `TZ=UTC` でも JST 23:30/00:30 相当の locked_date / preferred weekdays / holiday 判定がずれない。
+- rollback: policy 接続 commit を revert。既存 `resolveMedicationDeadlineSummary` に戻せる。
+
+#### VS-AUTO-2. Planner deadline 接続と per-site 訪問可能期限 `cc:TODO`
+
+- [ ] `src/server/services/visit-schedule-planner.ts` の `planningEnd` を単純に recommended deadline へ縮めすぎない。現行は shift/site 取得後に operating calendar が分かるため、初期検索窓は `rawDeadline + buffer scan` を確保し、shift/site 評価時に per-site `candidateDeadlineDate` を適用する。
+- [ ] `buildOperatingCalendarFromDbRows` / `resolveOperatingState` / `canVisitOn` を使い、planner 内の独自 operating/shift 判定と `visit-availability.ts` の理由コードを揃える。
+- [ ] planner diagnostics に `deadline_policy` 系 reason を追加する:
+  - `deadline_raw`
+  - `deadline_adjusted_to_operating_day`
+  - `deadline_buffer_applied`
+  - `deadline_overdue_asap`
+  - `locked_date_deadline_violation`
+- [ ] 既存の患者希望時間、施設受入時間、薬局営業時間、薬剤師シフト intersection、車両/route/capacity/算定 checks は維持し、削除・再実装しない。
+- [ ] `locked_date` は最優先候補。ただし休業日・シフト不可・期限超過は proposal を作らず diagnostics を返す。休業日上書き理由がある場合だけ override audit へ接続する。
+- テスト:
+  - `visit-schedule-planner.test.ts` に日曜薬切れ→木曜、連休、locked date hard-block を追加。
+  - 既存 `beyond_deadline` / `business_holiday` / capacity / vehicle tests を維持。
+  - daily job `src/server/jobs/daily/visits.ts` が新 policy の recommended deadline を使う。
+
+#### VS-AUTO-3. `visit-schedules/generate` の proposal-first 互換移行 `cc:TODO`
+
+- [ ] VS-AUTO-0b の cordon 完了後に本移行へ進む。DeadlinePolicy を本番接続した状態で direct confirmed schedule 自動生成経路を残さない。
+- [ ] `src/app/api/visit-schedules/generate/route.ts` の direct `VisitSchedule.create({ confirmed_at })` を自動生成用途から外す設計にする。
+- [ ] 初期は feature flag または request option で互換を残す:
+  - default: proposal-first preview/create。
+  - compatibility/manual: 直接確定作成を許可。ただし UI 文言は「患者確認済みの確定予定を作成」に限定。
+- [ ] recurrence から複数日候補を `VisitScheduleProposal` と `VisitScheduleProposalBatch` に作る adapter を実装する。`idempotency_key`、route_order、billing guard、open proposal collision は existing proposal route と同等にする。
+- [ ] `confirmed_at` あり予定、reschedule source、open proposal duplicate、billing cap、vehicle validation の既存 regression を移行テストで固定する。
+- テスト:
+  - 自動一括生成は `VisitScheduleProposal` を作り、`VisitSchedule.create` を呼ばない。
+  - compatibility/manual mode だけ直接 `VisitSchedule` を作る。
+  - 患者 contact confirmed 後だけ `[id]` confirm が `VisitSchedule` を作る。
+  - `workflow-full-cycle.test.ts` / `visit-schedules/generate/route.test.ts` の期待を proposal-first に更新。
+
+#### VS-AUTO-4. AvailabilityPolicy / 薬剤準備 / 緊急予備枠 `cc:TODO`
+
+- [ ] `src/lib/calendar/visit-availability.ts` を新設せず拡張する。現 `canVisitOn` の reason code を planner/API diagnostics と共有する。
+- [ ] 訪問可能枠 DB 化前は、既存 PharmacyOperatingHours/BusinessHoliday + PharmacistShift + patient/facility preference の intersection を唯一の訪問可能判定にする。
+- [ ] 薬剤準備は既存 workflow gate / preparation state を調査し、`medication_ready_at` / `min_schedulable_at` を直接 DB 追加する前に derived helper と diagnostics で接続する。
+- [ ] 緊急予備枠は初期値を service config 定数にし、`remainingSlackMinutes` / `slackPenalty` と conflict しない形で `emergency_reserve_preserved` diagnostic を出す。DB field は VS-AUTO-7。
+- テスト:
+  - `canVisitOn` の既存 fail-closed tests を維持。
+  - medication ready 前の候補除外。
+  - emergency reserve を超える自動充填拒否。
+  - max_daily/max_weekly/vehicle capacity rejected diagnostics 維持。
+
+#### VS-AUTO-5. Proposal diagnostics / review-gate 表示（migration 前の低リスク層） `cc:TODO`
+
+- [ ] VS-AUTO-7 の field-backed hard gate 前は、diagnostics-only と明記する。UI の disabled だけで患者連絡/確定を止めた扱いにしない。
+- [ ] `src/app/api/visit-schedule-proposals/route.ts` の response/audit diagnostics に deadline policy、availability、review gate candidate を machine-readable reason で追加する。既存 field は削除しない。
+- [ ] `src/app/api/visit-schedule-proposals/[id]/route.ts` の GET が読む creation audit `diagnostics` に review candidate を表示できるよう shape guard を追加する。
+- [ ] `/schedules/proposals` の詳細 Sheet と候補カードに、期限補正・休業日補正・薬剤師確認候補・過密前倒し理由を業務用語で表示する。
+- [ ] HR field 追加前は `pharmacist_review_required` 永続 field を参照しない。UI では `review_required_candidate` として「患者連絡前に薬剤師確認推奨」を出し、ハードブロックは VS-AUTO-7 後に有効化する。
+- テスト:
+  - diagnostics が表示され、既存 proposal ranking / contact log / bulk action を壊さない。
+  - server `message` / validation error が既存 UI fallback で表示される。
+  - PHI を audit changes / logger / route diagnostics に過剰保存しない。
+
+#### VS-AUTO-6. OverloadRebalancer preview: 未承認候補だけ前倒し `cc:TODO`
+
+- [ ] 新サービス案: `src/server/services/visit-schedule-overload-rebalancer.ts`。
+- [ ] まず preview-only API または service test で実装し、自動 cron 化しない。
+- [ ] 対象は migration 前:
+  - `proposal_status='proposed'`
+  - `patient_contact_status='pending'`
+  - `finalized_schedule_id is null`
+  - review candidate なし
+  - 期限・準備・シフト・車両・算定 guard を満たす候補。
+- [ ] VS-AUTO-7 後は `pharmacist_review_required=false` を条件へ追加する。
+- [ ] 前倒し時は旧候補を `superseded` にし、replacement proposal を作る。DB field 追加前は存在しない `reproposal_reason` field を前提にせず、audit whitelist の `reason_code='overload_advance'` と最小化 diagnostics に留める。HR 後は専用 field/audit table へ移行する。
+- [ ] 容量判定では確定 `VisitSchedule` だけでなく、同日同薬剤師/車両の open `VisitScheduleProposal` もカウントする。現 planner は主に confirmed schedule を見ているためここが差分。
+- テスト:
+  - 過密日に未承認候補が集中 → 未承認候補だけ前倒し replacement preview。
+  - confirmed schedule / contact confirmed proposal / reschedule pending は不変。
+  - 前倒し先が期限・シフト・薬剤準備・billing cap を満たさない場合は再配置しない。
+  - audit/log に患者詳細や自由記述を過剰保存しない。
+
+#### VS-AUTO-7. HR migration: review fields / availability rule / rebalance audit `cc:TODO HR`
+
+- [ ] additive migration 候補:
+  - `VisitScheduleProposal.pharmacist_review_required Boolean @default(false)`
+  - `review_reason_code String?`
+  - `pharmacist_reviewed_at DateTime?`
+  - `pharmacist_reviewed_by String?`
+  - `VisitAvailabilityRule`: org_id、site_id、曜日/日付、from/to、is_available、reserve_minutes、max_auto_fill_ratio。
+  - `OverloadRebalanceAudit`: old proposal、新 proposal、理由、計算時点、actor/system、diagnostics snapshot。
+- [ ] `display_id` registry、data explorer catalog、RLS/tenant policy、app-layer `org_id` where、migration rollback、seed/factory を同時に計画する。
+- [ ] 既存 proposal は `pharmacist_review_required=false` default で互換。contract migration や field required 化は別フェーズ。
+- [ ] human review 必須: 休業日上書き・薬剤師確認・過密前倒しの監査粒度、患者連絡前 gate の運用責任。
+- [ ] migration 適用は current-task 明示承認まで実行しない。
+- [ ] migration 後の最小 hard gate を先に実装する:
+  - approve/contact_attempt/confirm は `pharmacist_review_required=false OR pharmacist_reviewed_at IS NOT NULL` を server side で検証。
+  - bulk action / updateMany claim でも同条件を要求し、古いクライアントや race で bypass できないようにする。
+  - review 済み actor/time は audit whitelist で記録する。
+
+#### VS-AUTO-8. 薬剤師確認 hard gate / 頓服・外用薬残量 / 薬剤変更 risk `cc:TODO HR`
+
+- [ ] `VisitStockProfile` または既存訪問準備/処方データから導出する stockout candidate を設計する。
+  - 対象: 頓服、外用薬、使用量が患者状態に左右される薬剤。
+  - 入力: 残量、平均使用量、最終確認日、推定切れ日、確認者、根拠。
+  - 出力: stockout date candidate、confidence、review reason。
+- [ ] `MedicationChangeRisk` helper/service を設計する。
+  - 増量/減量/追加/削除、麻薬/冷所/粉砕/一包化、疑義照会未解決、処方差分を risk reason にする。
+  - 高 risk は早期訪問候補 + `pharmacist_review_required=true`。
+- [ ] `[id]` PATCH approve/contact_attempt/confirm に hard gate を入れる:
+  - `pharmacist_review_required=true` かつ `pharmacist_reviewed_at is null` なら患者連絡・確定不可。
+  - review 済みの actor/time を audit。
+- テスト:
+  - 頓服/外用薬 stockout が通常薬より早い場合に deadline candidate 採用。
+  - 薬剤変更ありで review gate が立つ。
+  - review 未了では approve/contact/confirm に進めない。
+  - review 済みでのみ既存 proposal workflow が進む。
+
+#### VS-AUTO-9. Google Routes Matrix provider `cc:TODO`
+
+- [ ] `src/server/services/road-routing.ts` の既存 `RoadTravelEstimator.estimateMatrix` contract を維持し、`GoogleRoutesProvider.estimateMatrix` を追加する。
+  - Google provider: Compute Route Matrix 相当。
+  - OSRM provider: 既存 table API を維持。
+  - Google matrix 未設定/失敗時: 既存 pairwise `computeRoutes` fallback、さらに OSRM/fallback behavior を壊さない。
+- [ ] API key / quota / timeout / retry / max matrix size は deploy 設定として明示し、secret 値は出さない。
+- [ ] route diagnostics に provider/source/confidence を出すが、患者住所・氏名・座標をログに出さない。
+- テスト:
+  - Google key 未設定で fallback して proposal 生成継続。
+  - Google provider で matrix が使える時は pairwise fallback 呼び出しを抑制。
+  - provider failure が PHI をログに出さない。
+  - `visit-route-engine` / planner の route score 既存期待を維持。
+
+#### VS-AUTO-10. 検証・リリース計画 `cc:TODO`
+
+- Unit:
+  - `src/server/services/visit-medication-deadline.test.ts`
+  - `src/lib/calendar/visit-availability.test.ts`
+  - `src/server/services/visit-schedule-planner.test.ts`
+  - `src/server/services/visit-schedule-overload-rebalancer.test.ts`
+  - `src/server/services/road-routing.test.ts`
+- API:
+  - `src/app/api/visit-schedule-proposals/route.test.ts`
+  - `src/app/api/visit-schedule-proposals/[id]/route.test.ts`
+  - `src/app/api/visit-schedules/generate/route.test.ts`
+  - `src/server/jobs/daily.test.ts`
+  - RLS/tenant rejection for new HR tables.
+- UI:
+  - `/schedules/proposals` diagnostics、review gate、bulk action regressions。
+  - `/schedules` day planner の「訪問候補を生成」から proposal-first を確認。
+- E2E/smoke:
+  - 「薬切れ日曜 → 木曜候補 → 患者連絡 confirmed → VisitSchedule 確定」。
+  - 「direct generate 自動入口 → VisitScheduleProposal 作成 → confirm まで VisitSchedule 未作成」。
+  - 「過密日 → 未承認候補だけ前倒し → 確定予定不変」。
+  - Google key なし / provider failure 時の fallback diagnostics。
+- Release:
+  - feature flag で direct generate proposal-first を段階適用。
+  - 初回は preview/recommendation、次に proposal 作成、最後に direct generate の自動確定抑止。
+  - operator runbook: Google quota、fallback、薬剤師 review queue、過密再配置 audit の確認手順。
+
+**優先実装順**:
+
+1. VS-AUTO-0 方針固定 + 実コード inventory。
+2. VS-AUTO-0b direct generate 自動確定経路の cordon（feature flag / warning / 管理者手動限定）。
+3. VS-AUTO-1 DeadlinePolicy pure helper（DBなし、provenance + JST dateKey + 既存関数後方互換）。
+4. VS-AUTO-2 Planner deadline 接続（既存 planner/visit-availability 拡張）。
+5. VS-AUTO-3 direct generate proposal-first 互換移行。
+6. VS-AUTO-5 Proposal diagnostics/UI（migration 前の diagnostics-only 可視化）。
+7. VS-AUTO-4 AvailabilityPolicy / readiness / emergency reserve の shared helper 整理。
+8. VS-AUTO-9 Google Matrix provider。
+9. VS-AUTO-7 HR migration + minimal server hard gate。
+10. VS-AUTO-8 review hard gate + PRN/topical/medication-change risk。
+11. VS-AUTO-6 OverloadRebalancer preview/apply（field-backed gate と audit policy 後）。
+12. VS-AUTO-10 E2E / rollout / runbook。
+
+**停止条件 / human review 必須**:
+
+- 患者承認済み日時や `confirmed_at` あり予定を自動で変更する必要が出た場合。
+- `visit-schedules/generate` の default behavior を直接確定から proposal-first へ切り替える rollout flag/運用日が未定の場合。
+- direct generate が患者未確認の `confirmed_at` schedule を作る経路を残したまま、DeadlinePolicy を本番経路へ接続しようとする場合。
+- review gate field 未導入のまま、患者連絡/確定導線を hard gate 済みとして扱う場合。
+- DeadlineCandidate の provenance が薬剤名 text だけで、処方行/薬剤コード/根拠/信頼度を追跡できない場合。
+- 薬剤師確認必須の判断理由がコードだけで確定できない場合。
+- 休業日上書き、連休前倒し、緊急枠予約の運用責任者が未定の場合。
+- Google API quota/cost/障害時運用が preview 環境で検証できない場合。
+- DB migration が既存 proposal/schedule の意味を変える場合。
+
 ### 新トラック: 業務ID（display_id）統一プログラム（2026-07-03） `cc:WIP`
 
 <!-- 2026-07-03 ユーザー指示「システム内のidルールを統一。アルファベット+数字のフォーマット」。AskUserQuestion でパラメータ確定済み: 方式=業務ID追加(主キー cuid は不変・非破壊) / 採番=薬局組織ごと1起点 / 範囲=全テーブル(~140モデル) / prefix=英字1-6文字(モデル一意) / 数字=標準10桁・フォーマット上限15桁。本番DB未プロビジョニングのためバックフィルは dev/e2e のみ=低リスク。指揮=fable、実装=codex(BE基盤)/opus/sonnet(FE)、レビュー=opus。 -->
