@@ -40,7 +40,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: DASH-PERF-001 Dashboard browser verification / route-mock contract follow-up complete（commit pending）。
+- codex: DASH-PERF-001 Dashboard browser verification / route-mock contract follow-up complete（commit `65517800e`）。
   - current task:
     前 commit `c5d96d423` の dashboard segmented query UI を real-browser smoke で検証。
     併せて `tools/tests/ui-route-mocked-smoke.spec.ts` の schedule day Gantt route mock が旧
