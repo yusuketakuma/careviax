@@ -39,6 +39,24 @@
 
 ## 直近の land（本日・要点）
 
+- codex: R40/R44 admin billing-rules readApiJson + API/audit hardening batch(0a9d52e3)
+  land。ユーザー明示により本sliceでは subagent を投入（api_contract_reviewer /
+  data_integrity_auditor / verifier）。focused Vitest 56、verifier focused Vitest 41、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。`pnpm format:check` は今回対象外の
+  untracked `.agents/skills/*` 14件の Prettier 警告で失敗し、billing-rules 対象ファイルは
+  `prettier --check` と `git diff --check` green。billing SSOT sync / custom create /
+  update / delete responses を readApiJson へ収束し、server `{ message }` / `{ error }` と
+  non-JSON fallback regression を追加。api_contract_reviewer の CHANGES_REQUESTED
+  （GET query enum validation、no-store、sanitized 500）に対応し、`/api/billing-rules` と
+  `/api/billing-rules/:id` を `withSensitiveNoStore` + fixed `internalError()` + safe structured
+  logger へ硬化。data_integrity_auditor の high finding に対応し、SSOT seed / custom create /
+  update / delete を claim-affecting master-data mutation として同一 org-scoped transaction 内で
+  `createAuditLogEntry` へ記録。endpoint、org scoping、canAdmin、encoded id helpers、
+  exact dot-segment fail-closed、SSOT seed body `{ action: 'seed_home_care_ssot' }`、DELETE success
+  JSON contract は保持。残る別slice候補: billing-rule PATCH/DELETE に `expected_updated_at` /
+  ETag 型の optimistic concurrency を入れ、stale admin state を 409 conflict で fail-closed にする。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) に
+  基づき billing API/audit を変更、DB schema/migration/deploy/package dependency 変更は不要。
 - codex: R40/R44 document templates/delivery rules readApiJson + templates API hardening batch(1d9264cf)
   land。document-template UI/helper Vitest 35、templates/document-delivery-rules route Vitest 45、
   combined focused Vitest 85、scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。
