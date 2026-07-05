@@ -2318,6 +2318,31 @@
   green。Remaining: DataTable consumer wiring for selected full-export screens、per-screen masking/audit
   profile display、DEV-PHI PDF/report export audit profile、attachment/report-delivery surfaces、
   broader export matrix。
+- codex: DEV-PHI PDF/report export audit profile slice complete。
+  Report-like PDF export cluster (`care_report`, `tracing_report`, `visit_record`, `conference_note`)
+  の audit profile を `recordDataExportAudit` に追加し、`surface` / `output_profile` /
+  `report_updated_at` は key allowlist だけでなく value schema でも固定。`care_report` は
+  `surface=care_report_pdf`、`output_profile=external_submission_pdf`、canonical ISO
+  `report_updated_at` のみ保持し、他3 route は `surface=<route>_pdf` と
+  `output_profile=internal_pdf` のみ保持する。不正 literal、nested object、PHI-bearing scalar、
+  filename、storage key、signed URL、token、provider raw error、薬剤名、電話、住所、free text は
+  audit `changes.metadata` へ残さない。`tracing-reports/[id]/pdf`、`visit-records/[id]/pdf`、
+  `conference-notes/[id]/pdf` は care-report と同様に render と audit を分離し、audit write
+  失敗時は PDF を返さず route-specific `*_PDF_EXPORT_AUDIT_FAILED` の sensitive no-store 500 へ
+  fail-closed。Route tests は hostile filename
+  (`Taro Yamada 090-1234-5678 アムロジピン storageKey=s3 token=secret provider raw error.pdf`)
+  を builder output へ注入し、audit payload が exact safe profile だけであることを固定。
+  Subagents: `privacy_compliance_reviewer` が allowed-key value schema と hostile filename 注入不足を
+  指摘し反映、`test_architect` が broader PDF matrix / audit-log backstop を次スコープとして整理。
+  Validation green:
+  `pnpm exec vitest run src/server/services/export-audit.test.ts 'src/app/api/care-reports/[id]/pdf/route.test.ts' 'src/app/api/tracing-reports/[id]/pdf/route.test.ts' 'src/app/api/visit-records/[id]/pdf/route.test.ts' 'src/app/api/conference-notes/[id]/pdf/route.test.ts' --reporter=dot --testTimeout=30000`
+  (48 tests), scoped ESLint for touched export-audit/PDF route files, `pnpm exec vitest run src/lib/audit-logs/redaction.test.ts src/app/api/audit-logs/route.test.ts src/app/api/audit-logs/export/route.test.ts --reporter=dot --testTimeout=30000`
+  (54 tests; expected sanitized logger stderr), `git diff --check` green, `pnpm format:check` green,
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green,
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` green。Remaining:
+  management-plan / medication-history / medication-calendar / visit-record-list / billing-document /
+  pharmacy-invoice PDF audit profile expansion、audit-log response/export legacy row backstop、
+  DataTable consumer wiring、attachment/report-delivery surfaces、broader export matrix。
 
 ## 進行中 / 凍結
 
