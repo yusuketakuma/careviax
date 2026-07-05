@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { PackagingInstructionTag, Prisma } from '@prisma/client';
 import { withAuthContext } from '@/lib/auth/context';
 import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
@@ -9,6 +10,7 @@ import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
 import { japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { timeDateToString } from '@/lib/visits/time-of-day';
 import { getProcessStepKeyForStatus } from '@/lib/prescription/cycle-workspace';
+import { PACKAGING_INSTRUCTION_TAG_OPTIONS } from '@/lib/dispensing/packaging';
 import { careLevelLabels } from '@/lib/patient/home-visit-intake';
 import { sortPatientSafetyTags } from '@/lib/patient/safety-tags';
 import {
@@ -48,6 +50,7 @@ const BLOCKED_REASONS_LIMIT = 2;
 
 const boardQuerySchema = z.object({
   scope: z.enum(['mine', 'all']).optional(),
+  q: z.string().trim().max(80, 'q は80文字以内で指定してください').optional(),
   foundation_issue: z
     .enum(['needs_confirmation', 'missing_contact', 'missing_care_team'])
     .optional(),
@@ -55,6 +58,7 @@ const boardQuerySchema = z.object({
 
 const boardSingleValueQueryNames = [
   'scope',
+  'q',
   'foundation_issue',
 ] as const satisfies readonly (keyof z.infer<typeof boardQuerySchema>)[];
 
@@ -68,6 +72,77 @@ function findDuplicateBoardQueryParams(searchParams: URLSearchParams) {
   }
 
   return Object.keys(fieldErrors).length > 0 ? fieldErrors : null;
+}
+
+function buildPatientBoardSearchWhere(query: string | undefined): Prisma.PatientWhereInput {
+  const term = query?.trim();
+  if (!term) return {};
+
+  const contains = { contains: term, mode: 'insensitive' as const };
+  const normalizedTerm = term.toLocaleLowerCase('ja-JP');
+  const matchingPackagingTags = PACKAGING_INSTRUCTION_TAG_OPTIONS.filter(
+    (option) =>
+      option.value.toLocaleLowerCase('ja-JP').includes(normalizedTerm) ||
+      option.label.toLocaleLowerCase('ja-JP').includes(normalizedTerm),
+  ).map((option) => option.value as PackagingInstructionTag);
+  const prescriptionLineSearch: Prisma.PrescriptionLineWhereInput[] = [
+    { dispensing_method: contains },
+  ];
+  if (matchingPackagingTags.length > 0) {
+    prescriptionLineSearch.push({ packaging_instruction_tags: { hasSome: matchingPackagingTags } });
+  }
+
+  return {
+    OR: [
+      { name: contains },
+      { name_kana: contains },
+      {
+        residences: {
+          some: {
+            OR: [
+              { address: contains },
+              { building_id: contains },
+              { unit_name: contains },
+              { facility: { is: { name: contains } } },
+              { facility_unit: { is: { name: contains } } },
+            ],
+          },
+        },
+      },
+      {
+        contacts: {
+          some: {
+            OR: [{ name: contains }, { organization_name: contains }, { department: contains }],
+          },
+        },
+      },
+      {
+        cases: {
+          some: {
+            OR: [
+              { care_team_links: { some: { name: contains } } },
+              { care_team_links: { some: { organization_name: contains } } },
+              {
+                medication_cycles: {
+                  some: {
+                    prescription_intakes: {
+                      some: {
+                        lines: {
+                          some: {
+                            OR: prescriptionLineSearch,
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            ],
+          },
+        },
+      },
+    ],
+  };
 }
 
 const ACTIVE_SCHEDULE_STATUSES = [
@@ -186,6 +261,7 @@ function buildOperationSummary(
 type PatientQueryRow = {
   id: string;
   name: string;
+  name_kana: string | null;
   birth_date: Date;
   allergy_info: unknown;
   scheduling_preference: {
@@ -513,6 +589,7 @@ const authenticatedGET = withAuthContext(
       return validationError('クエリパラメータが不正です', parsed.error.flatten().fieldErrors);
     }
     const scope = parsed.data.scope ?? 'mine';
+    const query = parsed.data.q;
     const foundationIssue = parsed.data.foundation_issue;
 
     const now = new Date();
@@ -536,6 +613,7 @@ const authenticatedGET = withAuthContext(
       org_id: ctx.orgId,
       archived_at: null,
       cases: { some: caseScopeWhere },
+      ...buildPatientBoardSearchWhere(query),
     };
 
     const [patients, assignedTotal, auditTasks, openExceptions] = await Promise.all([
@@ -546,6 +624,7 @@ const authenticatedGET = withAuthContext(
         select: {
           id: true,
           name: true,
+          name_kana: true,
           birth_date: true,
           allergy_info: true,
           scheduling_preference: {

@@ -66,6 +66,7 @@ function buildPatientRow(scheduledDate: Date) {
   return {
     id: 'patient_1',
     name: '佐藤 花子',
+    name_kana: 'サトウ ハナコ',
     birth_date: new Date('1940-01-15T00:00:00.000Z'),
     allergy_info: null,
     scheduling_preference: {
@@ -646,6 +647,44 @@ describe('/api/patients/board', () => {
     expect(json.data.truncated).toBe(false);
   });
 
+  it('applies q as a database-side patient name/kana filter before taking board rows', async () => {
+    const response = (await GET(createRequest('?scope=all&q=%E4%BD%90%E8%97%A4'), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expect(patientFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          archived_at: null,
+          OR: expect.arrayContaining([
+            { name: { contains: '佐藤', mode: 'insensitive' } },
+            { name_kana: { contains: '佐藤', mode: 'insensitive' } },
+            expect.objectContaining({
+              residences: expect.objectContaining({ some: expect.any(Object) }),
+            }),
+            expect.objectContaining({
+              contacts: expect.objectContaining({ some: expect.any(Object) }),
+            }),
+            expect.objectContaining({
+              cases: expect.objectContaining({ some: expect.any(Object) }),
+            }),
+          ]),
+        }),
+        take: 80,
+      }),
+    );
+    expect(patientCountMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        OR: expect.arrayContaining([
+          { name: { contains: '佐藤', mode: 'insensitive' } },
+          { name_kana: { contains: '佐藤', mode: 'insensitive' } },
+        ]),
+      }),
+    });
+  });
+
   it('rejects invalid board foundation issue values before querying patients', async () => {
     const response = (await GET(createRequest('?scope=all&foundation_issue=unknown'), {
       params: Promise.resolve({}),
@@ -677,6 +716,7 @@ describe('/api/patients/board', () => {
 
   it.each([
     ['scope', '?scope=mine&scope=all', { scope: ['scope は1つだけ指定してください'] }],
+    ['q', '?scope=all&q=a&q=b', { q: ['q は1つだけ指定してください'] }],
     [
       'foundation_issue',
       '?scope=all&foundation_issue=missing_contact&foundation_issue=missing_care_team',

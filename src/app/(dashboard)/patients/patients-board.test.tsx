@@ -250,7 +250,7 @@ describe('PatientsBoard', () => {
     expect(screen.getByTestId('patients-board-scope-note').textContent).toContain(
       '私の担当 28名のうち 5名を表示',
     );
-    const search = screen.getByRole('searchbox', { name: '氏名・状態で検索' });
+    const search = screen.getByRole('searchbox', { name: '氏名・カナ・住所・施設で検索' });
     expect(search).toBeTruthy();
     expect(search.className).toContain('min-h-[44px]');
   });
@@ -385,7 +385,7 @@ describe('PatientsBoard', () => {
     expect(buildPatientHref).toHaveBeenCalledWith(hostilePatientId);
   });
 
-  it('filters cards by chip selection and search query', () => {
+  it('filters cards by chip selection and sends the search query to the server-side board API', async () => {
     render(<PatientsBoard />);
 
     const chipBar = screen.getByRole('group', { name: '対応カテゴリの絞り込み' });
@@ -407,22 +407,17 @@ describe('PatientsBoard', () => {
     fireEvent.click(within(chipBar).getByRole('button', { name: /今すぐ対応/ }));
     expect(screen.getAllByTestId('patient-board-card')).toHaveLength(5);
 
-    fireEvent.change(screen.getByRole('searchbox', { name: '氏名・状態で検索' }), {
+    fireEvent.change(screen.getByRole('searchbox', { name: '氏名・カナ・住所・施設で検索' }), {
       target: { value: '伊藤' },
     });
-    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(1);
-    expect(screen.getByRole('link', { name: '伊藤 キヨ' })).toBeTruthy();
-  });
-
-  it('filters cards by operational status text without address search data', () => {
-    render(<PatientsBoard />);
-
-    fireEvent.change(screen.getByRole('searchbox', { name: '氏名・状態で検索' }), {
-      target: { value: '退院連絡待ち' },
-    });
-
-    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(1);
-    expect(screen.getByRole('link', { name: '吉田 進' })).toBeTruthy();
+    expect(useRealtimeQueryMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        queryKey: ['patients', 'board', 'org_1', 'mine', undefined, '伊藤'],
+      }),
+    );
+    // Search results are now owned by /api/patients/board?q=... rather than by
+    // filtering the already loaded cards on the client.
+    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(5);
   });
 
   it('sorts visible cards without changing the stable patient card keys', () => {
@@ -504,12 +499,15 @@ describe('PatientsBoard', () => {
     expect(screen.queryAllByTestId('patient-board-card')).toHaveLength(0);
   });
 
-  it('announces empty filtered results without exposing hidden search-only address data', () => {
-    render(<PatientsBoard />);
-
-    fireEvent.change(screen.getByRole('searchbox', { name: '氏名・状態で検索' }), {
-      target: { value: '存在しない患者' },
+  it('announces empty server-side results without exposing hidden search-only address data', () => {
+    useRealtimeQueryMock.mockReturnValue({
+      data: { ...buildFixture(), assigned_total: 0, cards: [] },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: refetchMock,
     });
+    render(<PatientsBoard />);
 
     expect(screen.queryAllByTestId('patient-board-card')).toHaveLength(0);
     expect(screen.getByText('条件に一致する患者がいません')).toBeTruthy();
@@ -518,7 +516,7 @@ describe('PatientsBoard', () => {
     expect(screen.queryByText('東京都千代田区')).toBeNull();
   });
 
-  it('does not use legacy address-only payload fields as hidden search text', () => {
+  it('does not use legacy address-only payload fields as client-side hidden search text', async () => {
     const data = buildFixture();
     const legacyAddressCard = {
       ...data.cards[0],
@@ -535,11 +533,16 @@ describe('PatientsBoard', () => {
 
     render(<PatientsBoard />);
 
-    fireEvent.change(screen.getByRole('searchbox', { name: '氏名・状態で検索' }), {
+    fireEvent.change(screen.getByRole('searchbox', { name: '氏名・カナ・住所・施設で検索' }), {
       target: { value: '丸の内' },
     });
 
-    expect(screen.queryAllByTestId('patient-board-card')).toHaveLength(0);
+    expect(useRealtimeQueryMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        queryKey: ['patients', 'board', 'org_1', 'mine', undefined, '丸の内'],
+      }),
+    );
+    expect(screen.queryAllByTestId('patient-board-card')).toHaveLength(5);
     expect(screen.queryByText('東京都千代田区丸の内1-1-1')).toBeNull();
   });
 
@@ -670,11 +673,11 @@ describe('PatientsBoard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'さらに表示' }));
     expect(screen.getAllByTestId('patient-board-card')).toHaveLength(120);
 
-    fireEvent.change(screen.getByPlaceholderText('氏名・状態で検索'), {
+    fireEvent.change(screen.getByPlaceholderText('氏名・カナ・住所・施設で検索'), {
       target: { value: '患者 00' },
     });
 
-    // 検索で絞り込むと展開状態はリセットされ、既定件数から再スタートする。
+    // 検索条件が変わると展開状態はリセットされ、サーバー検索結果の先頭から再スタートする。
     expect(screen.getAllByTestId('patient-board-card').length).toBeLessThanOrEqual(60);
   });
 });

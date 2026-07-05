@@ -61,9 +61,12 @@ export async function fetchPatientBoard(
   orgId: string,
   scope: 'mine' | 'all',
   foundationIssue?: 'needs_confirmation',
+  query?: string,
 ): Promise<PatientBoardResponse> {
   const params = new URLSearchParams({ scope });
   if (foundationIssue) params.set('foundation_issue', foundationIssue);
+  const trimmedQuery = query?.trim();
+  if (trimmedQuery) params.set('q', trimmedQuery);
   const res = await fetch(`/api/patients/board?${params}`, {
     headers: buildOrgHeaders(orgId),
   });
@@ -223,10 +226,6 @@ function countCards(
   predicate: (card: PatientBoardCard) => boolean,
 ): number {
   return cards.reduce((count, card) => count + (predicate(card) ? 1 : 0), 0);
-}
-
-function normalizeSearchText(value: string | null | undefined): string {
-  return (value ?? '').trim().toLocaleLowerCase('ja-JP');
 }
 
 function getVisitSortKey(card: PatientBoardCard): string {
@@ -538,13 +537,14 @@ export function PatientsBoard() {
   const [sort, setSort] = useState<BoardSort>('priority');
   const [searchQuery, setSearchQuery] = useState('');
   const deferredSearchQuery = useDeferredValue(searchQuery);
+  const boardSearchQuery = deferredSearchQuery.trim();
   const [visibleCardCount, setVisibleCardCount] = useState(DEFAULT_VISIBLE_PATIENT_CARDS);
   const isBootstrappingOrg = !orgId;
 
   const foundationIssue = chip === 'foundation_gap' ? 'needs_confirmation' : undefined;
   const boardQuery = useRealtimeQuery({
-    queryKey: ['patients', 'board', orgId, scope, foundationIssue],
-    queryFn: () => fetchPatientBoard(orgId, scope, foundationIssue),
+    queryKey: ['patients', 'board', orgId, scope, foundationIssue, boardSearchQuery],
+    queryFn: () => fetchPatientBoard(orgId, scope, foundationIssue, boardSearchQuery),
     staleTime: 30_000,
     enabled: !isBootstrappingOrg,
     invalidateOn: ['cycle_transition', 'workflow_refresh'],
@@ -582,24 +582,8 @@ export function PatientsBoard() {
             }
             return card.attention === 'paused';
           });
-    const query = normalizeSearchText(deferredSearchQuery);
-    const searched = query
-      ? byChip.filter((card) =>
-          [
-            card.name,
-            card.residence_label,
-            card.next_visit_label,
-            card.status_text,
-            ...(card.operation_summary ?? []),
-            card.foundation_summary?.label,
-            ...(card.foundation_summary?.items ?? []),
-          ]
-            .map(normalizeSearchText)
-            .some((value) => value.includes(query)),
-        )
-      : byChip;
-    return sortPatientCards(searched, sort);
-  }, [chip, data, deferredSearchQuery, sort, todayKey]);
+    return sortPatientCards(byChip, sort);
+  }, [chip, data, sort, todayKey]);
 
   // 絞り込み条件が変わったら表示件数を既定へ戻す(「もっと見る」の展開状態を引き継がない)。
   // レンダー中に前回条件との差分を見て調整する(Effect ではなく React 推奨の
@@ -806,8 +790,8 @@ export function PatientsBoard() {
                   type="search"
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="氏名・状態で検索"
-                  aria-label="氏名・状態で検索"
+                  placeholder="氏名・カナ・住所・施設で検索"
+                  aria-label="氏名・カナ・住所・施設で検索"
                   className="!h-auto !min-h-[44px] w-56 pl-8"
                 />
               </div>
@@ -891,7 +875,7 @@ export function PatientsBoard() {
               >
                 全{data.assigned_total}名のうち取得上限により{data.cards.length}
                 名のみ取得しています。優先度の高い患者が表示範囲外の場合があります。
-                検索も取得済みの患者が対象のため、見つからないときは条件を絞り込んでください。
+                検索語はサーバー側で再取得します。見つからないときは検索語や条件を絞り込んでください。
               </div>
             ) : null}
             <WorkspaceActionRail

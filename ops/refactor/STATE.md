@@ -40,6 +40,46 @@
 
 ## 直近の land（本日・要点）
 
+- codex: PatientsBoard server-side search slice complete（code/test: commit pending）。
+  - current task:
+    Goal 継続として `Plans.md` の `PAT-LIST-PERF-001` / `PERF-BFF-001` に対応。
+    患者一覧の検索を「取得済みカード内の client-side search」から `/api/patients/board?q=...`
+    の server-side search/filter へ移行。UI は検索語を board query key に含め、表示済みカードの
+    hidden text で絞り込む挙動を廃止。
+  - files inspected:
+    `Plans.md`, `ops/refactor/STATE.md`, `prisma/schema/patient.prisma`,
+    `prisma/schema/organization.prisma`, `prisma/schema/prescription.prisma`,
+    `src/app/api/patients/route.ts`, `src/server/services/patient-service.ts`,
+    `src/app/api/patients/board/route.ts`, `src/app/api/patients/board/route.test.ts`,
+    `src/app/(dashboard)/patients/patients-board.tsx`,
+    `src/app/(dashboard)/patients/patients-board.test.tsx`。
+  - files changed:
+    `src/app/api/patients/board/route.ts`,
+    `src/app/api/patients/board/route.test.ts`,
+    `src/app/(dashboard)/patients/patients-board.tsx`,
+    `src/app/(dashboard)/patients/patients-board.test.tsx`,
+    `ops/refactor/STATE.md`。
+  - bugs/security risks fixed:
+    取得上限により「存在する患者が取得済み範囲外だと検索に出ない」UXを改善。
+    検索対象は DB where に移し、患者名/カナ、住所/施設/ユニット、連絡先/連携先組織、処方タグ辞書一致を
+    server-side で扱う。住所などの検索対象PHIは患者カード本文へ新規露出せず、旧 `address` payload を
+    client-side hidden search text として使わない regression を維持。
+  - performance issues improved:
+    検索入力ごとの client-side full-card scan を削除し、BFF の `q` filter で先に候補を絞る形へ変更。
+    `truncated` note も「検索語はサーバー側で再取得」と明示し、読込済み行だけ検索する誤解を減らした。
+  - validation commands/results:
+    `pnpm exec prettier --write 'src/app/api/patients/board/route.ts' 'src/app/api/patients/board/route.test.ts' 'src/app/(dashboard)/patients/patients-board.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx'` green;
+    `pnpm exec vitest run 'src/app/api/patients/board/route.test.ts' 'src/app/(dashboard)/patients/patients-board.test.tsx' --reporter=dot --testTimeout=30000` green (2 files / 39 tests);
+    `pnpm exec eslint 'src/app/api/patients/board/route.ts' 'src/app/api/patients/board/route.test.ts' 'src/app/(dashboard)/patients/patients-board.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx'` green;
+    `git diff --check -- 'src/app/api/patients/board/route.ts' 'src/app/api/patients/board/route.test.ts' 'src/app/(dashboard)/patients/patients-board.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx'` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。
+  - remaining work:
+    サーバーfacet counts、compact list mode、DB index/EXPLAIN に基づく search SLO、primary担当者名解決検索、
+    browser screenshot は未着手。検索 debounce/windowing は後続 `FE-001` で扱う。
+  - next action:
+    scoped commit を作成。次の安全な実装候補は `PAT-LIST-UX-001` foundation filters 粒度拡張、
+    `RX-REG-UX-001` prescription list server-side search UI、または `DASH-PERF-001` summary/details 分割。
+
 - codex: Patient detail dynamic panel split slice complete（code/test: fd2184b62）。
   - current task:
     Goal 継続として `Plans.md` の `PAT-DETAIL-PERF-001` / `FE-X-001` に対応。
