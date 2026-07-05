@@ -40,6 +40,41 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Patient detail lazy tab mount slice complete（code/test: 4aa09da8c）。
+  - current task:
+    Goal 継続として `Plans.md` の `PAT-DETAIL-PERF-001` / `FE-BUD-001` / `FE-X-001`
+    に対応。前回の患者詳細タブ化を土台に、初期表示では `処方・訪問` だけを mount し、
+    `正本・在宅運用` / `共有・文書` / `履歴・構造化` は初回選択時に mount、その後は
+    `keepMounted` で状態保持する lazy-on-first-open へ変更。
+  - files inspected:
+    `Plans.md`, `ops/refactor/STATE.md`, `src/components/ui/tabs.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`, `package.json`。
+  - files changed:
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+    `ops/refactor/STATE.md`。
+  - bugs/security risks fixed:
+    なし。既存 PHI / auth / authorization / audit / billing contract は変更なし。
+    lazy mount に伴い、テストの `useMutation` mock を呼び出し順依存から mutation 意味ベースへ修正し、
+    再レンダーやタブ遷移で別 mutation が割り当たる brittle な前提を除去。
+  - performance issues improved:
+    患者詳細初期レンダーで、正本・在宅運用、薬局間共有、文書、履歴・構造化の heavy panels を未訪問時に
+    DOM/query registration へ載せないようにした。初回表示は処方・訪問の判断材料へ集中し、タブを開いた後は
+    `keepMounted` で quick-form 入力状態を保持する。
+  - validation commands/results:
+    `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx'` green;
+    `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' --reporter=dot --testTimeout=30000` green (1 file / 69 tests);
+    `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx'` green;
+    `git diff --check -- 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx'` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。
+  - remaining work:
+    dynamic import による bundle split、timeline full fetch の API 分離、Playwright/browser screenshot、
+    mobile 下部ジャンプ導線は未着手。
+  - next action:
+    state commit を作成。次の高価値 slice は `PAT-DETAIL-PERF-002` timeline lazy loading か、
+    `PAT-LIST-PERF-001` server-side search/filter。
+
 - codex: Patient detail tabbed layout slice complete（code/test: 9abcaa154）。
   - current task:
     ユーザー指示「患者詳細画面配置はタブ化してください」に対応。PH-OS UI/UX SSOT
