@@ -40,6 +40,27 @@
 
 ## 直近の land（本日・要点）
 
+- codex: R40/R44 admin remaining low-risk mutation response JSON convergence batch(in-progress on
+  `refactor/admin-jobs-json-convergence-20260705`) implementation complete。ユーザー指示
+  「近似箇所はまとめて実装して効率を向上。サブエージェントも投入」に基づき、code_mapper subagent を
+  bounded read-only で投入し、admin jobs rerun / operating-hours save / settings PATCH を同一低リスク
+  admin batch として処理。jobs rerun POST は row endpoint・org JSON headers・empty body・success `jobType`
+  return を維持しつつ `readApiJson<unknown>` へ収束。operating-hours PUT は `readApiJson<OperatingHoursResponse>`
+  に寄せ、既存 409 conflict UI に必要な `OperatingHoursSaveError.status` と server message / fallback copy を保持。
+  settings PATCH は range validation / scope / scope_id / values body / onSuccess cache update を維持して
+  `readApiJson<SettingResponse>` へ収束。`settings /api/health` は 503-as-payload の特殊契約のため除外し、
+  `admin/audit-logs` export は blob success path のため別sliceへ分離。subagent 棚卸しの残候補:
+  `use-nav-badges` + `notification-bell` silent-failure維持 batch、`drug-master-suggestions` fail-soft
+  schema batch、`patient-form` / `dispensing-workbench` は PHI/medication safety-aware 別slice。validation:
+  `pnpm exec vitest run 'src/app/(dashboard)/admin/operating-hours/operating-hours-content.test.tsx' 'src/app/(dashboard)/admin/settings/settings-content.test.tsx' 'src/app/(dashboard)/admin/jobs/jobs-dashboard-content.test.tsx' --reporter=dot --testTimeout=30000`
+  green（3 files / 33 tests）;
+  `pnpm exec vitest run 'src/app/api/jobs/[jobType]/route.test.ts' src/app/api/jobs/flush-metrics/route.test.ts src/app/api/settings/route.test.ts src/app/api/pharmacy-operating-hours/route.test.ts --reporter=dot --testTimeout=30000`
+  green（4 files / 52 tests）; scoped `eslint` green; scoped `prettier --check` green;
+  `git diff --check` green; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
+  維持しつつ、本sliceでは product admin UI / API response handling のみ変更。DB schema/migration/
+  auth/authorization/PHI/billing/deploy/package dependency 変更は不要。next: commit → main ff merge →
+  origin/main push → short-lived branch cleanup。
 - codex: R40/R44 admin safety/reporting mutation response JSON convergence batch(in-progress on
   `refactor/admin-safety-json-convergence-20260705`) implementation complete。admin alert-rules と
   incident reports の mutation response parsing を同一sliceで `readApiJson` へ収束し、audit-logs export は

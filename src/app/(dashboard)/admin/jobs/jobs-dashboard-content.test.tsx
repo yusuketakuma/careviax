@@ -335,6 +335,77 @@ describe('JobsDashboardContent', () => {
     });
   });
 
+  it('reruns jobs through the row endpoint with org JSON headers and an empty body', async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ jobType: 'monthly', processedCount: 2 }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    useQueryMock.mockReturnValue({
+      isLoading: false,
+      data: { data: [] },
+      refetch: vi.fn(),
+    });
+
+    render(<JobsDashboardContent />);
+
+    const mutationOptions = useMutationMock.mock.calls.at(-1)?.[0] as
+      | {
+          mutationFn: (args: { endpoint: string; jobType: string }) => Promise<string>;
+        }
+      | undefined;
+
+    await expect(
+      mutationOptions?.mutationFn({
+        endpoint: '/api/jobs/monthly',
+        jobType: 'monthly',
+      }),
+    ).resolves.toBe('monthly');
+    expect(fetchMock).toHaveBeenCalledWith('/api/jobs/monthly', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-org-id': 'org_1' },
+      body: JSON.stringify({}),
+    });
+  });
+
+  it('keeps server messages and fallback copy when rerunning jobs fails', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    useQueryMock.mockReturnValue({
+      isLoading: false,
+      data: { data: [] },
+      refetch: vi.fn(),
+    });
+
+    render(<JobsDashboardContent />);
+
+    const mutationOptions = useMutationMock.mock.calls.at(-1)?.[0] as
+      | {
+          mutationFn: (args: { endpoint: string; jobType: string }) => Promise<string>;
+        }
+      | undefined;
+
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ message: 'ジョブ再実行の権限がありません' }), {
+        status: 403,
+      }),
+    );
+    await expect(
+      mutationOptions?.mutationFn({
+        endpoint: '/api/jobs/monthly',
+        jobType: 'monthly',
+      }),
+    ).rejects.toThrow('ジョブ再実行の権限がありません');
+
+    fetchMock.mockResolvedValueOnce(new Response('not-json', { status: 500 }));
+    await expect(
+      mutationOptions?.mutationFn({
+        endpoint: '/api/jobs/monthly',
+        jobType: 'monthly',
+      }),
+    ).rejects.toThrow('ジョブ "monthly" の再実行に失敗しました');
+  });
+
   it('passes job query failures to DataTable without showing false-zero counts', () => {
     const refetch = vi.fn();
     useQueryMock.mockReturnValue({

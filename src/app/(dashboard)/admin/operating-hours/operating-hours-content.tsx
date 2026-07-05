@@ -269,17 +269,17 @@ export function OperatingHoursContent() {
           })),
         }),
       });
-      if (!response.ok) {
-        const message = await response
-          .json()
-          .then((body) => body?.message as string | undefined)
-          .catch(() => undefined);
+      try {
+        return await readApiJson<OperatingHoursResponse>(
+          response,
+          '営業時間設定の保存に失敗しました',
+        );
+      } catch (error) {
         throw new OperatingHoursSaveError(
-          message ?? '営業時間設定の保存に失敗しました',
+          messageFromError(error, '営業時間設定の保存に失敗しました'),
           response.status,
         );
       }
-      return response.json() as Promise<OperatingHoursResponse>;
     },
     onMutate: () => {
       setSaveConflictMessage(null);

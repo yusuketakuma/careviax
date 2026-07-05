@@ -176,12 +176,7 @@ export function JobsDashboardContent() {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({}),
       });
-      if (!res.ok) {
-        const payload = await res.json().catch(() => ({}));
-        throw new Error(
-          (payload as { message?: string }).message ?? `ジョブ "${jobType}" の再実行に失敗しました`,
-        );
-      }
+      await readApiJson<unknown>(res, `ジョブ "${jobType}" の再実行に失敗しました`);
       return jobType;
     },
     onSuccess: (jobType) => {

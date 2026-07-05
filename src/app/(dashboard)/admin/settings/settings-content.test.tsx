@@ -6,6 +6,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { toast } from 'sonner';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import type { SettingValueItem } from '@/lib/admin/settings-catalog';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
@@ -33,6 +34,10 @@ setupDomTestEnv();
 type QueryOption = {
   queryKey: readonly unknown[];
   queryFn?: () => Promise<unknown>;
+};
+
+type SaveMutationOption = {
+  mutationFn: () => Promise<unknown>;
 };
 
 const SOURCE = readFileSync(
@@ -126,6 +131,29 @@ describe('SettingsContent polling policy', () => {
       }
       if (queryKey[0] === 'admin-settings') {
         return { data: { data: { scope: queryKey[2], scope_id: queryKey[3] ?? null, items: [] } } };
+      }
+      return { data: { status: 'ok', timestamp: '2026-06-17T00:00:00.000Z', checks: {} } };
+    });
+  }
+
+  function mockSettingsItems(items: SettingValueItem[]) {
+    useQueryMock.mockImplementation(({ queryKey }: QueryOption) => {
+      if (queryKey[0] === 'me-profile') {
+        return { data: { data: { id: 'user_1', name: '管理者', defaultSiteId: 'site_1' } } };
+      }
+      if (queryKey[0] === 'pharmacy-sites') {
+        return { data: { data: [{ id: 'site_1', name: '本店' }] } };
+      }
+      if (queryKey[0] === 'admin-settings') {
+        return {
+          data: {
+            data: {
+              scope: queryKey[2],
+              scope_id: queryKey[3] ?? null,
+              items,
+            },
+          },
+        };
       }
       return { data: { status: 'ok', timestamp: '2026-06-17T00:00:00.000Z', checks: {} } };
     });
@@ -228,6 +256,76 @@ describe('SettingsContent polling policy', () => {
     expect(screen.getByText('店舗一覧の取得に失敗しました')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '再試行' }));
     expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('saves settings through the shared JSON reader with org JSON headers', async () => {
+    const sessionTimeoutItem = {
+      key: 'session_timeout_minutes',
+      label: 'セッションタイムアウト',
+      value: '20',
+      type: 'number' as const,
+      min: 5,
+      max: 30,
+    };
+    mockSettingsItems([sessionTimeoutItem]);
+    const fetchMock = vi.fn(async () =>
+      Response.json({
+        data: {
+          scope: 'system',
+          scope_id: null,
+          items: [sessionTimeoutItem],
+        },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<SettingsContent />);
+
+    const saveMutationOptions = useMutationMock.mock.calls[0]?.[0] as SaveMutationOption;
+    await expect(saveMutationOptions.mutationFn()).resolves.toEqual({
+      data: {
+        scope: 'system',
+        scope_id: null,
+        items: [sessionTimeoutItem],
+      },
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'x-org-id': 'org_1' },
+      body: JSON.stringify({
+        scope: 'system',
+        scope_id: null,
+        values: { session_timeout_minutes: '20' },
+      }),
+    });
+  });
+
+  it('keeps server messages and fallback copy when settings save fails', async () => {
+    mockSettingsItems([
+      {
+        key: 'session_timeout_minutes',
+        label: 'セッションタイムアウト',
+        value: '20',
+        type: 'number',
+        min: 5,
+        max: 30,
+      },
+    ]);
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<SettingsContent />);
+
+    const saveMutationOptions = useMutationMock.mock.calls[0]?.[0] as SaveMutationOption;
+
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ message: '設定の更新権限がありません' }), { status: 403 }),
+    );
+    await expect(saveMutationOptions.mutationFn()).rejects.toThrow('設定の更新権限がありません');
+
+    fetchMock.mockResolvedValueOnce(new Response('not-json', { status: 500 }));
+    await expect(saveMutationOptions.mutationFn()).rejects.toThrow('設定の保存に失敗しました');
   });
 
   it('uses the shared JSON reader for read-only settings queries', async () => {

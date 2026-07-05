@@ -255,11 +255,7 @@ function ScopePanel({
           values: Object.fromEntries(itemsForSave.map((item) => [item.key, item.value])),
         }),
       });
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as { message?: string } | null;
-        throw new Error(payload?.message ?? '設定の保存に失敗しました');
-      }
-      return response.json() as Promise<SettingResponse>;
+      return readApiJson<SettingResponse>(response, '設定の保存に失敗しました');
     },
     onSuccess: async (payload) => {
       queryClient.setQueryData(settingsQueryKey, payload);
