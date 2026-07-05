@@ -620,13 +620,7 @@ export default function ReportDetailPage() {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ expected_updated_at: report.updated_at, status: 'confirmed' }),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => null);
-        throw new Error(
-          (err as { message?: string } | null)?.message ?? '薬剤師確認の保存に失敗しました',
-        );
-      }
-      return res.json();
+      return readApiJson<unknown>(res, '薬剤師確認の保存に失敗しました');
     },
     onSuccess: () => {
       toast.success('薬剤師確認済みにしました');
@@ -645,11 +639,7 @@ export default function ReportDetailPage() {
         }),
         body: JSON.stringify(formData),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => null);
-        throw new Error((err as { message?: string } | null)?.message ?? '送付に失敗しました');
-      }
-      return res.json();
+      return readApiJson<unknown>(res, '送付に失敗しました');
     },
     onSuccess: () => {
       toast.success('報告書を送付しました');
@@ -681,11 +671,7 @@ export default function ReportDetailPage() {
         }),
         body: JSON.stringify(requestData),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => null);
-        throw new Error((err as { message?: string } | null)?.message ?? '一括送付に失敗しました');
-      }
-      return res.json();
+      return readApiJson<unknown>(res, '一括送付に失敗しました');
     },
     onSuccess: () => {
       toast.success('報告書を共有先へ送付しました');

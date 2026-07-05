@@ -1125,6 +1125,75 @@ describe('ReportDetailPage send safety dialog', () => {
     }
   });
 
+  it('surfaces API messages from report detail mutations', async () => {
+    const mutationConfigs: Array<MutationConfig> = [];
+    useMutationMock.mockImplementation((config: MutationConfig) => {
+      mutationConfigs.push(config);
+      return {
+        mutate: sendMutateMock,
+        isPending: false,
+      };
+    });
+    useQueryMock.mockImplementation((options: QueryConfig) => {
+      const scope = options.queryKey?.[0];
+      if (scope === 'care-report-external-professionals') {
+        return {
+          data: { data: [] },
+          isLoading: false,
+        };
+      }
+
+      return {
+        data: { data: { ...mockReport(), status: 'draft' } },
+        isLoading: false,
+      };
+    });
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === 'PATCH') {
+          return new Response(JSON.stringify({ message: '確認保存は競合しています' }), {
+            status: 409,
+          });
+        }
+        const body = JSON.parse(String(init?.body)) as { recipients?: unknown };
+        return new Response(
+          JSON.stringify({
+            message: body.recipients ? '一括送付は締切済みです' : '送付先が無効です',
+          }),
+          { status: 400 },
+        );
+      },
+    );
+
+    render(<ReportDetailPage />);
+
+    await expect(mutationConfigs[0]?.mutationFn?.()).rejects.toThrow('確認保存は競合しています');
+    await expect(
+      mutationConfigs[1]?.mutationFn?.({
+        channel: 'email',
+        recipient_name: '山田 太郎',
+        recipient_contact: 'doctor@example.com',
+        recipient_role: 'physician',
+        expected_updated_at: '2026-05-12T00:00:00.000Z',
+        safety_ack: true,
+      }),
+    ).rejects.toThrow('送付先が無効です');
+    await expect(
+      mutationConfigs[2]?.mutationFn?.({
+        recipients: [
+          {
+            channel: 'fax',
+            recipient_name: '青葉内科',
+            recipient_contact: '03-1111-1111',
+            recipient_role: 'physician',
+          },
+        ],
+        expected_updated_at: '2026-05-12T00:00:00.000Z',
+        safety_ack: true,
+      }),
+    ).rejects.toThrow('一括送付は締切済みです');
+  });
+
   it('keeps report mutation server messages and uses operation fallbacks for non-Error failures', () => {
     const mutationConfigs: Array<MutationConfig> = [];
     useMutationMock.mockImplementation((config: MutationConfig) => {
