@@ -31,7 +31,15 @@ vi.mock('@/lib/api/org-headers', async (importActual) => {
   };
 });
 
+vi.mock('sonner', () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
 import { SelectSiteContent } from './select-site-content';
+import { toast } from 'sonner';
 
 const SITES = [
   {
@@ -130,5 +138,37 @@ describe('SelectSiteContent', () => {
     await waitFor(() => {
       expect(pushMock).toHaveBeenCalledWith('/dashboard');
     });
+  });
+
+  it('surfaces API error messages when site switching fails', async () => {
+    const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgJsonHeaders' };
+    vi.mocked(buildOrgJsonHeaders).mockReturnValue(sentinelHeaders);
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/me/sites') {
+        return jsonResponse({ data: SITES });
+      }
+      if (url === '/api/me/site' && init?.method === 'PUT') {
+        return jsonResponse({ message: 'この薬局を選択する権限がありません' }, 403);
+      }
+      return jsonResponse({});
+    });
+
+    renderPage();
+    const cards = await screen.findAllByTestId('select-site-card');
+    fireEvent.click(within(cards[1]).getByRole('button', { name: 'この薬局を使う' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('この薬局を選択する権限がありません');
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/me/site',
+      expect.objectContaining({
+        method: 'PUT',
+        headers: sentinelHeaders,
+        body: JSON.stringify({ site_id: 'site_east' }),
+      }),
+    );
+    expect(pushMock).not.toHaveBeenCalled();
   });
 });

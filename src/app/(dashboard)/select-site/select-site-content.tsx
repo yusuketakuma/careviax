@@ -51,10 +51,7 @@ export function SelectSiteContent() {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ site_id: siteId }),
       });
-      if (!res.ok) {
-        const payload = (await res.json().catch(() => ({}))) as { message?: string };
-        throw new Error(payload.message ?? '薬局の切り替えに失敗しました');
-      }
+      await readApiJson<unknown>(res, '薬局の切り替えに失敗しました');
     },
     onSuccess: async () => {
       toast.success('使う薬局を切り替えました');
