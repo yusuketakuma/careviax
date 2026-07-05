@@ -391,6 +391,18 @@ function stubFetchOk(payload: unknown = { data: [] }) {
   return stubJsonFetch(payload);
 }
 
+function stubFetchError(message: string) {
+  return stubJsonFetch({ message }, 409);
+}
+
+function stubFetchTextError() {
+  const fetchMock = vi.fn<typeof fetch>(
+    async () => new Response('gateway timeout', { status: 502 }),
+  );
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
 describe('PcaPumpsContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -536,6 +548,22 @@ describe('PcaPumpsContent', () => {
     );
   });
 
+  it('preserves server messages from create rental mutation errors', async () => {
+    stubFetchError('このPCAポンプには未完了の貸出があるため登録できません');
+    render(<PcaPumpsContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: '貸出登録' }));
+    fireEvent.change(screen.getByLabelText('PCAポンプ'), { target: { value: 'pump_available' } });
+    fireEvent.change(screen.getByLabelText('貸出先医療機関'), {
+      target: { value: 'institution_1' },
+    });
+    fireEvent.change(screen.getByLabelText('返却予定日'), { target: { value: '2026-12-31' } });
+
+    await expect(latestMutationFn(1)()).rejects.toThrow(
+      'このPCAポンプには未完了の貸出があるため登録できません',
+    );
+  });
+
   it('update mutations encode hostile pump and rental ids via shared helpers', async () => {
     const fetchMock = stubFetchOk();
     render(<PcaPumpsContent />);
@@ -611,6 +639,73 @@ describe('PcaPumpsContent', () => {
 
     expect(buildPcaPumpRentalApiPath).toHaveBeenCalledWith('.');
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('preserves server messages from rental status mutation errors', async () => {
+    stubFetchError(
+      'PCAポンプレンタルが他の操作で更新されています。最新の状態を再読み込みしてください',
+    );
+    render(<PcaPumpsContent />);
+
+    await expect(latestMutationFn(2)({ id: 'rental/a b', status: 'returned' })).rejects.toThrow(
+      'PCAポンプレンタルが他の操作で更新されています。最新の状態を再読み込みしてください',
+    );
+  });
+
+  it('uses the rental status fallback for non-JSON mutation errors', async () => {
+    stubFetchTextError();
+    render(<PcaPumpsContent />);
+
+    await expect(latestMutationFn(2)({ id: 'rental/a b', status: 'returned' })).rejects.toThrow(
+      '更新に失敗しました',
+    );
+  });
+
+  it('preserves server messages from pump status mutation errors', async () => {
+    stubFetchError('返却検品が未完了のPCAポンプは利用可能にできません');
+    render(<PcaPumpsContent />);
+
+    await expect(
+      latestMutationFn(3)({
+        id: 'pump/a b',
+        currentStatus: 'maintenance',
+        status: 'available',
+      }),
+    ).rejects.toThrow('返却検品が未完了のPCAポンプは利用可能にできません');
+  });
+
+  it('uses the return inspection fallback for non-JSON mutation errors', async () => {
+    stubFetchTextError();
+    render(<PcaPumpsContent />);
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /検品 PCA-RETURNED サンプル在宅クリニック 返却日 2026\/6\/8/,
+      }),
+    );
+    for (const item of PCA_RETURN_INSPECTION_ITEMS) {
+      fireEvent.change(screen.getByLabelText(item.label), { target: { value: 'ok' } });
+    }
+
+    await expect(latestMutationFn(4)()).rejects.toThrow('返却検品の保存に失敗しました');
+  });
+
+  it('preserves server messages from return inspection mutation errors', async () => {
+    stubFetchError('検品合格には全ての付属品チェックがOKまたは該当なしである必要があります');
+    render(<PcaPumpsContent />);
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /検品 PCA-RETURNED サンプル在宅クリニック 返却日 2026\/6\/8/,
+      }),
+    );
+    for (const item of PCA_RETURN_INSPECTION_ITEMS) {
+      fireEvent.change(screen.getByLabelText(item.label), { target: { value: 'ok' } });
+    }
+
+    await expect(latestMutationFn(4)()).rejects.toThrow(
+      '検品合格には全ての付属品チェックがOKまたは該当なしである必要があります',
+    );
   });
 
   it('shows the return-inspection backlog count as a confirm badge when work is pending', () => {

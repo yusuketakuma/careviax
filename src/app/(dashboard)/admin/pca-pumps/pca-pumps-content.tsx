@@ -131,6 +131,9 @@ type PcaPumpRental = {
   };
 };
 
+type PcaPumpMutationResponse = { data: PcaPump };
+type PcaPumpRentalMutationResponse = { data: PcaPumpRental };
+
 type PumpFormState = {
   asset_code: string;
   serial_number: string;
@@ -591,11 +594,7 @@ export function PcaPumpsContent() {
           notes: toNullableString(pumpForm.notes),
         }),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error((payload as { message?: string }).message ?? '保存に失敗しました');
-      }
-      return payload;
+      return readApiJson<PcaPumpMutationResponse>(response, '保存に失敗しました');
     },
     onSuccess: async () => {
       toast.success('PCAポンプを登録しました');
@@ -628,11 +627,7 @@ export function PcaPumpsContent() {
           notes: toNullableString(rentalForm.notes),
         }),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error((payload as { message?: string }).message ?? '貸出登録に失敗しました');
-      }
-      return payload;
+      return readApiJson<PcaPumpRentalMutationResponse>(response, '貸出登録に失敗しました');
     },
     onSuccess: async () => {
       toast.success('PCAポンプの貸出を登録しました');
@@ -655,11 +650,7 @@ export function PcaPumpsContent() {
           returned_at: status === 'returned' ? todayDateKey() : null,
         }),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error((payload as { message?: string }).message ?? '更新に失敗しました');
-      }
-      return payload;
+      return readApiJson<PcaPumpRentalMutationResponse>(response, '更新に失敗しました');
     },
     onSuccess: async (_payload, variables) => {
       toast.success(variables.status === 'returned' ? '返却済みにしました' : '貸出を取消しました');
@@ -692,11 +683,7 @@ export function PcaPumpsContent() {
           }),
         ),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error((payload as { message?: string }).message ?? '状態更新に失敗しました');
-      }
-      return payload;
+      return readApiJson<PcaPumpMutationResponse>(response, '状態更新に失敗しました');
     },
     onSuccess: async () => {
       toast.success('PCAポンプの状態を更新しました');
@@ -720,13 +707,7 @@ export function PcaPumpsContent() {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(buildPcaReturnInspectionPayload(inspectionForm)),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(
-          (payload as { message?: string }).message ?? '返却検品の保存に失敗しました',
-        );
-      }
-      return payload;
+      return readApiJson<PcaPumpRentalMutationResponse>(response, '返却検品の保存に失敗しました');
     },
     onSuccess: async () => {
       const payload = buildPcaReturnInspectionPayload(inspectionForm);
