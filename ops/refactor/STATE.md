@@ -2297,6 +2297,27 @@
   `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` green。Remaining:
   PDF/report/attachment export snapshot の DEV-PHI coverage、server-side full export endpoint prop化、
   broader export surface matrix は未着手。
+- codex: UX-TBL-001 DataTable server export contract slice complete。
+  User 指示「UI関連タスクは skill を使って実装」に従い、`redesign-existing-projects` skill と
+  PH-OS UI/UX SSOT `docs/ui-ux-design-guidelines.md` を再確認したうえで、共通
+  `DataTable` に server-side full export 用の toolbar contract を追加。既存
+  `enableExport` の client CSV は「読込済みCSV出力」のまま維持し、`serverExportEndpoint` が
+  指定された場合だけ別 action「検索条件全件CSV出力」を表示する。server export は同一アプリ内の
+  絶対パスだけを href 化し、外部 URL / protocol-relative / 制御文字入り endpoint は disabled に
+  fail-closed。`hasMore` の「未読込行は出力対象外」警告は client loaded-row export button のみへ
+  接続し、server export action には audit/masking 済み全件出力の説明を別 ID で接続。
+  近接リファクタリングとして、row selection の scope 表現を
+  「現在表示中の読込済み行」へ明確化し、出力/印刷 toolbar button は `!min-h-[44px]` で
+  PH-OS 44px target 規範を維持。Subagents: `frontend_reviewer` が server export prop /
+  warning ID 分離 / selection scope / 44px target を指摘し、すべて反映。`spec_guardian` は
+  残スコープを DEV-PHI PDF/report export audit profile として整理。Validation green:
+  `pnpm exec vitest run src/components/ui/data-table.test.tsx --reporter=dot --testTimeout=30000`
+  (21 tests), `pnpm exec eslint src/components/ui/data-table.tsx src/components/ui/data-table.test.tsx`,
+  `pnpm exec vitest run src/components/ui/data-table.test.tsx 'src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx' --reporter=dot --testTimeout=30000`
+  (30 tests), `pnpm format:check`, `git diff --check -- src/components/ui/data-table.tsx src/components/ui/data-table.test.tsx`
+  green。Remaining: DataTable consumer wiring for selected full-export screens、per-screen masking/audit
+  profile display、DEV-PHI PDF/report export audit profile、attachment/report-delivery surfaces、
+  broader export matrix。
 
 ## 進行中 / 凍結
 
