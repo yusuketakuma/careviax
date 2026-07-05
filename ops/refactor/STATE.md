@@ -176,6 +176,11 @@
   confirm-send endpoints / expected_updated_at bodies / idempotency headers / org JSON headers /
   hostile-id handling / toast-invalidation contract は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 billing-candidate-mutations readApiJson slice(a20ecb91) land。focused Vitest 9、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。billing candidate export preview /
+  generate / review / close responses を readApiJson へ収束し、query params / request bodies /
+  org headers / disabled reasons / billing calculation-close behavior は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 - codex: R40/R44 prescription-history readApiJson slice(d65d08d5) land。focused Vitest 29、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。patient prescription history GET /
   drug-master batch enrichment POST を readApiJson へ収束し、patient path helper / hostile-id

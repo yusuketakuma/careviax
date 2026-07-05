@@ -1,5 +1,45 @@
 # CODEX Goal Progress
 
+## R40/R44 Billing Candidate Mutations readApiJson Partial - 2026-07-05 09:45 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`
+    - `src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx`
+- Scope:
+  - Reused `readApiJson` for billing candidate export preview, generation,
+    review, and monthly close responses.
+  - Added focused mutation coverage proving API JSON `message` from failed
+    billing generation/review responses is preserved.
+  - Preserved list/export query params, generation/review/close endpoints,
+    billing_month / billing_domain bodies, expected_updated_at review body,
+    org headers, candidate row actions, disabled reason copy, success toasts,
+    and billing query invalidation keys.
+- Safety:
+  - Billing UI response handling internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes beyond UI
+    response handling.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    calculation/close behavior, deployment, package dependency, live DB
+    operation, external send, secret handling, push, and destructive operation
+    boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx'`
+    passed `1` file / `9` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `a20ecb91`
+    (`refactor(ui): reuse readApiJson in billing candidate mutations`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher/mutation PHI/body-read review
+    before converting additional manual response handling.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Report Detail Mutations readApiJson Partial - 2026-07-05 09:40 JST
 
 - Status:
