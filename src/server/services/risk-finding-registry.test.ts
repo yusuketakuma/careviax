@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   adaptBillingEvidenceBlockerToRiskFinding,
+  adaptCareReportToRiskFinding,
   adaptOperationalTaskToRiskFinding,
   adaptPatientFoundationItemToRiskFinding,
   adaptVisitReadyTransitionBlockersToRiskFindings,
@@ -155,6 +156,38 @@ describe('risk-finding-registry adapters', () => {
     expect(JSON.stringify(finding)).not.toContain('090-1234-5678');
     expect(JSON.stringify(finding)).not.toContain('東京都千代田区1-1-1');
     expect(JSON.stringify(finding)).not.toContain('職員 太郎');
+  });
+
+  it('maps care report delivery states with controlled text and encoded hrefs', () => {
+    const failed = adaptCareReportToRiskFinding(
+      { id: 'report/1?x=1', status: 'failed' },
+      { patientId: 'patient_1', caseId: 'case_1' },
+    );
+    const waiting = adaptCareReportToRiskFinding(
+      { id: 'report_2', status: 'response_waiting' },
+      { patientId: 'patient_1', caseId: 'case_1' },
+    );
+    const sent = adaptCareReportToRiskFinding(
+      { id: 'report_3', status: 'sent' },
+      { patientId: 'patient_1', caseId: 'case_1' },
+    );
+
+    expect(failed).toMatchObject({
+      key: 'report_delivery_failed:report/1?x=1',
+      domain: 'report_delivery',
+      severity: 'urgent',
+      related_entity_type: 'care_report',
+      related_entity_id: 'report/1?x=1',
+      action_label: '報告書を確認',
+    });
+    expect(failed?.action_href).toBe(`/reports/${encodeURIComponent('report/1?x=1')}`);
+    expect(waiting).toMatchObject({
+      key: 'report_response_waiting:report_2',
+      domain: 'report_delivery',
+      severity: 'warning',
+      action_label: '返信状況を確認',
+    });
+    expect(sent).toBeNull();
   });
 
   it('keeps patient foundation task dedupe keys distinct per patient', () => {

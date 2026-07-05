@@ -38,6 +38,11 @@ export type OperationalTaskRiskInput = {
   related_entity_id: string | null;
 };
 
+export type CareReportRiskInput = {
+  id: string;
+  status: string;
+};
+
 const BILLING_BLOCKER_TITLE: Record<BillingEvidenceBlocker['key'], string> = {
   missing_visit_consent: '訪問同意が未整備です',
   missing_management_plan: '管理計画書が未整備です',
@@ -210,6 +215,45 @@ export function adaptPatientFoundationItemToRiskFinding(
     action_label: item.action_label || '患者基盤を確認',
     resolution_state: item.status === 'ready' ? 'resolved' : 'open',
   });
+}
+
+export function adaptCareReportToRiskFinding(
+  report: CareReportRiskInput,
+  context: RiskFindingAdapterContext = {},
+): RiskFinding | null {
+  if (report.status === 'failed') {
+    return createRiskFinding({
+      key: `report_delivery_failed:${report.id}`,
+      domain: 'report_delivery',
+      severity: 'urgent',
+      title: '報告書送付に失敗しています',
+      detail: '送付失敗の報告書があります。宛先と送付経路を確認してください。',
+      patient_id: context.patientId ?? null,
+      case_id: context.caseId ?? null,
+      related_entity_type: 'care_report',
+      related_entity_id: report.id,
+      action_href: `/reports/${encodeURIComponent(report.id)}`,
+      action_label: '報告書を確認',
+    });
+  }
+
+  if (report.status === 'response_waiting') {
+    return createRiskFinding({
+      key: `report_response_waiting:${report.id}`,
+      domain: 'report_delivery',
+      severity: 'warning',
+      title: '報告書の返信待ちです',
+      detail: '送付済み報告書の返信確認が残っています。',
+      patient_id: context.patientId ?? null,
+      case_id: context.caseId ?? null,
+      related_entity_type: 'care_report',
+      related_entity_id: report.id,
+      action_href: `/reports/${encodeURIComponent(report.id)}`,
+      action_label: '返信状況を確認',
+    });
+  }
+
+  return null;
 }
 
 export function adaptOperationalTaskToRiskFinding(

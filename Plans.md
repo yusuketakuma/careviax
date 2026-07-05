@@ -693,9 +693,13 @@ FE 仕上げ（低優先）:
     open task は `task_type` を select し、raw `Task.title` ではなく `operational-task-presentation` の
     controlled queue label/action を使う。これにより Case Risk Cockpit と CORE-001 registry の
     billing/task 語彙を統一し、raw task title の PHI/free-text 混入を regression test で固定した。
+  - 2026-07-06 追加 partial: report delivery finding も `adaptCareReportToRiskFinding` として
+    `risk-finding-registry.ts` へ移し、送付失敗 / 返信待ちの controlled title/detail/action と encoded
+    report href を shared adapter で固定。Case Risk Cockpit は report status を adapter に渡すだけにした。
 - 残:
-- CORE-001 の shared Risk Finding Registry へ型を寄せる作業は初期完了。Case Risk Cockpit の
-  billing/task finding は adapter 化済み。残は domain adapter 拡張と未接続 domain の段階的 adapter 化。
+  - CORE-001 の shared Risk Finding Registry へ型を寄せる作業は初期完了。Case Risk Cockpit の
+    billing/task/report finding は adapter 化済み。残は domain adapter 拡張と未接続 domain の段階的
+    adapter 化。
   - medication / dispensing / visit_preparation detail / notification / privacy_security / integration /
     data_quality adapter を追加。
   - 患者/ケース詳細 UI の Command Center から呼び、`gpt-image-2` 方針に従う非 PHI 参照案と

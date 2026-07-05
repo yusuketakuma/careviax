@@ -40,6 +40,53 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Case Risk Cockpit report delivery registry adapter slice（committed）。
+  - current task:
+    `Plans.md` の `RISK-CORE-3 / CORE-003` domain adapter 拡張として、Case Risk Cockpit の
+    report delivery finding 生成を `risk-finding-registry.ts` へ移した。
+    `adaptCareReportToRiskFinding` は `failed` / `response_waiting` のみを controlled
+    title/detail/action に変換し、非対象 status は finding を作らない。
+  - subagent:
+    新規投入なし。直前の adapter connection slice と同じ影響範囲で、Codex 本体が registry /
+    cockpit / tests を確認して実装した。
+  - design / imagegen:
+    backend adapter/refactor slice で視覚レイアウト変更を伴わないため、`imagegen` / `gpt-image-2` の
+    新規生成は省略。report delivery risk UI を再配置する slice では PH-OS UI/UX SSOT に従う。
+  - files inspected:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/case-risk-cockpit.ts`,
+    `src/server/services/risk-finding-registry.ts`,
+    `src/server/services/risk-finding-registry.test.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/case-risk-cockpit.ts`,
+    `src/server/services/risk-finding-registry.ts`,
+    `src/server/services/risk-finding-registry.test.ts`.
+  - bugs / risks reduced:
+    report failed / response_waiting の finding 文言と encoded report href が Case Risk Cockpit 内に
+    直書きされていた。shared adapter 化により、今後 Report Delivery Policy / billing blocker /
+    notification task から同じ report_delivery risk contract を再利用できる。
+  - security / PHI reviewed:
+    新規 API / DB field / PHI field は追加していない。report body、recipient、delivery raw error、
+    external share URL は adapter 入力に含めず、report id/status のみから controlled finding を作る。
+  - performance issues improved:
+    DB query は変更なし。route-local branch を削減し、Case Risk Cockpit service を adapter 消費側へ単純化。
+  - validation commands:
+    `pnpm exec vitest run src/server/services/case-risk-cockpit.test.ts src/server/services/risk-finding-registry.test.ts src/lib/risk/risk-finding.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm typecheck`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`;
+    `pnpm lint`.
+  - validation results:
+    focused vitest green（3 files / 16 tests）; typecheck green; typecheck:no-unused green;
+    `pnpm lint` green with existing unrelated warnings in `src/lib/platform/break-glass.test.ts`
+    (`_tx`, `_input` unused warnings only).
+  - remaining work:
+    Broader `Plans.md` objective remains open。残: medication / dispensing / visit_preparation detail /
+    notification / privacy_security / integration / data_quality adapters、Case Risk Cockpit UI 接続、
+    RiskFinding -> OperationalTask bridge の実 domain 接続。
+
 - codex: Case Risk Cockpit shared registry adapter connection slice（committed）。
   - current task:
     `Plans.md` の `RISK-CORE-3 / CORE-003` 残タスクに沿って、Case Risk Cockpit 内に残っていた

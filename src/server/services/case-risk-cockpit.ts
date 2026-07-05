@@ -13,6 +13,7 @@ import { japanDateKey } from '@/lib/utils/date-boundary';
 import { describeBillingEvidenceBlockers } from '@/server/services/billing-evidence/core';
 import {
   adaptBillingEvidenceBlockerToRiskFinding,
+  adaptCareReportToRiskFinding,
   adaptOperationalTaskToRiskFinding,
 } from '@/server/services/risk-finding-registry';
 import type {
@@ -361,35 +362,11 @@ function pushReportFindings(args: {
   reports: CareReportRow[];
 }) {
   for (const report of args.reports) {
-    if (report.status === 'failed') {
-      addFinding(args.findings, {
-        key: `report_delivery_failed:${report.id}`,
-        domain: 'report_delivery',
-        severity: 'urgent',
-        title: '報告書送付に失敗しています',
-        detail: '送付失敗の報告書があります。宛先と送付経路を確認してください。',
-        patient_id: args.patientId,
-        case_id: args.caseId,
-        related_entity_type: 'care_report',
-        related_entity_id: report.id,
-        action_href: `/reports/${encodeURIComponent(report.id)}`,
-        action_label: '報告書を確認',
-      });
-    } else if (report.status === 'response_waiting') {
-      addFinding(args.findings, {
-        key: `report_response_waiting:${report.id}`,
-        domain: 'report_delivery',
-        severity: 'warning',
-        title: '報告書の返信待ちです',
-        detail: '送付済み報告書の返信確認が残っています。',
-        patient_id: args.patientId,
-        case_id: args.caseId,
-        related_entity_type: 'care_report',
-        related_entity_id: report.id,
-        action_href: `/reports/${encodeURIComponent(report.id)}`,
-        action_label: '返信状況を確認',
-      });
-    }
+    const finding = adaptCareReportToRiskFinding(report, {
+      patientId: args.patientId,
+      caseId: args.caseId,
+    });
+    if (finding) args.findings.push(finding);
   }
 }
 
