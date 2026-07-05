@@ -40,6 +40,69 @@
 
 ## 直近の land（本日・要点）
 
+- codex: R-PR0 EXP-001/SEC-002 export audit minimization + UX/PERF plan expansion slice implementation complete。
+  - current task:
+    EXP-001: bulk medication history export の audit/job/output に raw patient ID arrays や per-patient
+    error strings を残さない。
+    SEC-002: export audit filters/metadata と audit-log response/export の export action を allowlist/minifier に通す。
+    user-requested plan expansion: UI/UX、実行速度、DevEx 追加タスクを `Plans.md` に既存計画と整合して追加。
+  - files inspected:
+    `Plans.md`、`src/server/services/pdf-bulk-export.ts`、`src/server/services/pdf-bulk-export.test.ts`、
+    `src/server/services/export-audit.ts`、`src/server/services/export-audit.test.ts`、
+    `src/lib/audit-logs/redaction.ts`、`src/lib/audit-logs/redaction.test.ts`、
+    `src/app/api/audit-logs/route.ts`、`src/app/api/audit-logs/route.test.ts`、
+    `src/app/api/audit-logs/export/route.ts`、`src/app/api/audit-logs/export/route.test.ts`、
+    `src/app/api/jobs/route.ts`、`src/app/api/jobs/[jobType]/route.ts`。
+  - files changed:
+    `src/server/services/pdf-bulk-export.ts`、`src/server/services/pdf-bulk-export.test.ts`,
+    `src/server/services/export-audit.ts`、`src/server/services/export-audit.test.ts`,
+    `src/lib/audit-logs/redaction.ts`、`src/lib/audit-logs/redaction.test.ts`,
+    `Plans.md`。
+  - bugs/security risks fixed:
+    medication-history bulk export queue audit から `metadata.patient_ids` を削除し、`patient_count` /
+    `requested_count` / `patient_selection_hash` / job status へ縮約。
+    completed/failed/invalid/timeout の terminal `IntegrationJob.input` は raw `patientIds` を count/hash または
+    redacted terminal reason へ上書き。
+    completed `IntegrationJob.output` は per-patient `errors` を保存せず、`failureCodes` 集計のみ保存。
+    `recordDataExportAudit` は targetType 別 allowlist で filters/metadata を最小化し、patient id arrays、
+    storage/object key、URL、token/secret、raw/provider error、free text を persistence 前に落とす。
+    audit-log response/export の `export` / `file_download` action は backstop redaction を通し、legacy raw
+    export changes を管理API/CSV/JSONへそのまま出さない。
+  - performance issues improved:
+    なし。ハッシュ計算と small object projection のみ。
+    `Plans.md` には performance 次スライスとして Performance Metrics 永続化/SLO、Heavy BFF 分割、
+    Cache Policy Registry、Client Render Budget、payload budget/perf smoke を追加。
+  - subagents:
+    code_mapper は EXP-001 の data flow を確認し、`IntegrationJob.input.patientIds`、queue audit
+    `metadata.patient_ids`、completed output `errors`、admin jobs API sanitizer、drain response の境界を
+    path evidence 付きで提示。
+    privacy_compliance_reviewer は `recordDataExportAudit` arbitrary filters/metadata、AuditLog response/export
+    redaction の狭さ、audit-log export が patient filter を再監査行へ保存する recursive leak を high として指摘。
+  - Plans.md changes:
+    `UX/PERF/DEV 追加バックログ（2026-07-05 UI/UX・実行速度レビュー反映）` を追加。
+    既存 `UX-001` との衝突を避け、内部ID `UX-CMD-001` / `UX-TBL-001` / `UX-ERR-001` /
+    `UX-MOB-001` / `UX-NTF-001` / `UX-AUD-001` / `PERF-RTE-001` / `PERF-BFF-001` /
+    `PERF-CCH-001` / `FE-BUD-001` / `DEV-*` で、提示仕様の Patient/Case Command Center、
+    DataTable export semantics、Error Recovery UX、Mobile Visit Mode、Notification Actionability、
+    Audit Review Dashboard、Performance Metrics 永続化、Heavy BFF 分割、Cache Policy Registry、
+    Client Render Budget、Critical Route Performance Test Pack 等を task 化。
+  - validation commands/results:
+    `pnpm exec prettier --write Plans.md src/lib/audit-logs/redaction.ts src/lib/audit-logs/redaction.test.ts src/server/services/export-audit.ts src/server/services/export-audit.test.ts src/server/services/pdf-bulk-export.ts src/server/services/pdf-bulk-export.test.ts` green;
+    `pnpm exec vitest run src/lib/audit-logs/redaction.test.ts src/server/services/export-audit.test.ts src/server/services/pdf-bulk-export.test.ts src/app/api/jobs/route.test.ts 'src/app/api/jobs/[jobType]/route.test.ts' src/app/api/patients/medications/bulk-export/route.test.ts src/app/api/audit-logs/route.test.ts src/app/api/audit-logs/export/route.test.ts --reporter=dot --testTimeout=30000` green (8 files / 125 tests; expected logger stderr from sanitized 500 tests only);
+    scoped ESLint for touched code/tests green;
+    `git diff --check -- Plans.md src/lib/audit-logs/redaction.ts src/lib/audit-logs/redaction.test.ts src/server/services/export-audit.ts src/server/services/export-audit.test.ts src/server/services/pdf-bulk-export.ts src/server/services/pdf-bulk-export.test.ts` green;
+    `pnpm format:check` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` green。
+  - remaining work:
+    `createAuditLogEntry` の全 action persistence registry はまだ全域適用していない。今回の write-time
+    minimization は `recordDataExportAudit` と bulk export に限定し、response/export backstop は
+    export/file_download action に限定。次スライスで high-risk report/billing/notification/file actions の
+    persistence registry を段階導入する。
+  - next action:
+    scoped implementation commit `fix(audit): minimize export audit metadata` と docs commit
+    `docs(plans): add ux performance backlog` を分けて origin/main push。
+
 - codex: R-PR0 FILE-000 file upload API minimization slice implementation complete。
   - current task: `/api/files/presigned-upload` と `/api/files/complete` の公開レスポンスを最小化し、
     PHI/内部 storage key/object key/entity id を success/error/auth/validation response から漏らさない。
