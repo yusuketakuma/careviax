@@ -39,6 +39,16 @@
 
 ## 直近の land（本日・要点）
 
+- codex: R40/R44 admin shifts mutations readApiJson batch(43cc7d29) land。focused Vitest 26、
+  shift/pharmacist/business-holiday route Vitest 82、scoped ESLint/Prettier/diff-check、
+  `pnpm typecheck` green。changed shift save / business holiday create-update-delete /
+  pharmacist create-update-action / previous-month copy / weekly template save-delete-apply
+  responses を readApiJson へ収束し、server `{ message }` / `{ error }` と non-JSON fallback、
+  template apply `applied_count` regression tests を追加。api_contract_reviewer subagent は
+  route success/error envelope、org header split、canVisit/canAdmin route contract を APPROVE。
+  code_mapper subagent は残り高効率候補として handoff workspace、admin document templates/delivery
+  rules、admin billing rules を提示。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 - codex: R40/R44 contact master mutations readApiJson batch(e407f4c5) land。focused Vitest 84、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。admin external-professionals save/delete
   と contact-profiles save responses を readApiJson へ収束し、external-professional dynamic path helper、
