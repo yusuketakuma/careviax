@@ -113,6 +113,7 @@ describe('/api/pharmacy-drug-stock-requests', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: { id: 'request_1', status: 'pending' },
     });
@@ -163,6 +164,7 @@ describe('/api/pharmacy-drug-stock-requests', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'WORKFLOW_CONFLICT',
       details: {
@@ -182,6 +184,7 @@ describe('/api/pharmacy-drug-stock-requests', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     expect(prismaMock.pharmacySite.findFirst).not.toHaveBeenCalled();
     expect(prismaMock.drugMaster.findFirst).not.toHaveBeenCalled();
     expect(prismaMock.pharmacyDrugStock.findFirst).not.toHaveBeenCalled();
@@ -198,6 +201,7 @@ describe('/api/pharmacy-drug-stock-requests', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
@@ -228,6 +232,7 @@ describe('/api/pharmacy-drug-stock-requests', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '入力値が不正です',
@@ -266,6 +271,7 @@ describe('/api/pharmacy-drug-stock-requests', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '採用後発薬が見つかりません',
@@ -273,6 +279,124 @@ describe('/api/pharmacy-drug-stock-requests', () => {
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
     expect(prismaMock.formularyChangeRequest.create).not.toHaveBeenCalled();
     expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('marks missing-site POST responses as no-store before request creation', async () => {
+    prismaMock.pharmacySite.findFirst.mockResolvedValue(null);
+
+    const response = await POST(
+      createRequest('http://localhost/api/pharmacy-drug-stock-requests', {
+        site_id: 'site_missing',
+        drug_master_id: 'drug_1',
+        requested_payload: {
+          is_stocked: true,
+          reorder_point: 10,
+          preferred_generic_id: null,
+          adoption_note: '委員会承認待ち',
+        },
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: '対象の薬局拠点が見つかりません',
+    });
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.formularyChangeRequest.create).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('marks unauthenticated POST responses as no-store before handler execution', async () => {
+    authMock.mockResolvedValue(null);
+
+    const response = await POST(
+      createRequest('http://localhost/api/pharmacy-drug-stock-requests', {
+        site_id: 'site_1',
+        drug_master_id: 'drug_1',
+        requested_payload: {
+          is_stocked: true,
+          reorder_point: 10,
+          preferred_generic_id: null,
+          adoption_note: '委員会承認待ち',
+        },
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(401);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_UNAUTHENTICATED',
+    });
+    expect(prismaMock.pharmacySite.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('marks forbidden POST responses as no-store before handler execution', async () => {
+    prismaMock.membership.findFirst.mockResolvedValue({ role: 'clerk' });
+
+    const response = await POST(
+      createRequest('http://localhost/api/pharmacy-drug-stock-requests', {
+        site_id: 'site_1',
+        drug_master_id: 'drug_1',
+        requested_payload: {
+          is_stocked: true,
+          reorder_point: 10,
+          preferred_generic_id: null,
+          adoption_note: '委員会承認待ち',
+        },
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_FORBIDDEN',
+    });
+    expect(prismaMock.pharmacySite.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('marks sanitized unexpected POST errors as no-store', async () => {
+    const rawMessage = 'raw request mutation patient secret';
+    prismaMock.pharmacySite.findFirst.mockRejectedValueOnce(new Error(rawMessage));
+
+    const response = await POST(
+      createRequest('http://localhost/api/pharmacy-drug-stock-requests', {
+        site_id: 'site_1',
+        drug_master_id: 'drug_1',
+        requested_payload: {
+          is_stocked: true,
+          reorder_point: 10,
+          preferred_generic_id: null,
+          adoption_note: '委員会承認待ち',
+        },
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawMessage);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'route_handler_unhandled_error',
+        route: '/api/pharmacy-drug-stock-requests',
+        method: 'POST',
+      }),
+      expect.any(Error),
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls[0]?.[0])).not.toContain(rawMessage);
   });
 
   it('lists pending requests scoped by site after validating same org site', async () => {

@@ -92,7 +92,7 @@ const authenticatedGET = withAuthContext(
 export const GET: typeof authenticatedGET = async (req, routeContext) =>
   withSensitiveNoStore(await authenticatedGET(req, routeContext));
 
-export const POST = withAuthContext(
+const authenticatedPOST = withAuthContext(
   async (req: NextRequest, authCtx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
@@ -202,3 +202,6 @@ export const POST = withAuthContext(
   },
   { permission: 'canAdmin' },
 );
+
+export const POST: typeof authenticatedPOST = async (req, routeContext) =>
+  withSensitiveNoStore(await authenticatedPOST(req, routeContext));
