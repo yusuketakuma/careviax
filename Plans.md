@@ -612,21 +612,41 @@ FE 仕上げ（低優先）:
   - Case Risk Cockpit の既存 billing/task/foundation findings を段階的に registry adapter 経由へ置換し、
     PatientBoard / Command Center / renewal board / notification health から同じ contract を再利用する。
 
-#### RISK-CORE-2. `RiskFinding -> OperationalTask` bridge `cc:TODO`
+#### RISK-CORE-2. `RiskFinding -> OperationalTask` bridge `cc:PARTIAL`
 
 - 追加候補:
   - `src/server/services/risk-task-bridge.ts`
   - `src/lib/tasks/task-registry.ts`
   - 既存 `src/server/services/operational-tasks.ts` の薄い拡張
-- [ ] `RiskFinding.severity in ('blocking','urgent')` を task 化できる。
-- [ ] `dedupe_key` は `risk:${domain}:${key}:${entityType}:${entityId}` を基本とし、患者/ケース/訪問/報告/請求根拠ごとに安定させる。
-- [ ] risk 解消時は `resolveOperationalTasks` で `completed` または `cancelled` に寄せる。waive は理由付き audit と task resolution note を必須にする。
-- [ ] task から元 risk、患者、ケース、訪問、報告、請求根拠へ遷移できる `action_href` を保持する。
-- [ ] task registry には owner domain、default priority、dedupe builder、resolve condition、stale threshold、related entity type、patient_safety flag、billing_close flag を登録する。
+- [x] `RiskFinding.severity in ('blocking','urgent')` を task 化できる。
+- [x] `dedupe_key` は `risk:${domain}:${key}:${entityType}:${entityId}` を基本とし、患者/ケース/訪問/報告/請求根拠ごとに安定させる。
+- [~] risk 解消時は `resolveOperationalTasks` で `completed` または `cancelled` に寄せる。waive は理由付き audit と task resolution note を必須にする。
+  2026-07-06: `resolved -> completed` / `waived -> cancelled` の resolve input と wrapper を追加。理由付き
+  audit / task resolution note は waiver/override UI/API 接続時に実装する。
+- [x] task から元 risk、患者、ケース、訪問、報告、請求根拠へ遷移できる `action_href` を保持する。
+- [~] task registry には owner domain、default priority、dedupe builder、resolve condition、stale threshold、related entity type、patient_safety flag、billing_close flag を登録する。
+  2026-07-06: domain ごとの owner、task_type、default_priority、stale threshold、related entity type、
+  patient_safety / billing_close flag を `src/lib/tasks/task-registry.ts` に追加。resolve condition の
+  domain 別 predicate は各 adapter 接続時に追加する。
 - 受入条件:
   - 同一 risk の重複 task が増えない。
   - blocker が解消されたら既存 task が閉じる。
   - billing / report / notification の task は月末・外部送付で孤児化しない。
+- 2026-07-06 実装済み:
+  - `src/lib/tasks/task-registry.ts` を追加し、全 `RiskDomain` の task_type / stale threshold /
+    patient_safety / billing_close / related entity type を定義。
+  - `src/server/services/risk-task-bridge.ts` を追加し、active な `blocking` / `urgent` finding だけを
+    `upsertOperationalTask` 入力へ変換。warning/info/resolved/waived は task 化しない。
+  - task title/description は domain controlled 文言に固定し、`RiskFinding.title/detail/action_label` の
+    free text を task 本文や metadata に保存しない。invalid `due_at` は invalid Date ではなく `null` に落とす。
+  - `riskFindingToResolveOperationalTaskInput` / `resolveOperationalTaskForRisk` を追加し、同じ dedupe identity で
+    open task を close できるようにした。
+  - `src/server/services/risk-task-bridge.test.ts` で taskify 条件、PHI-like title/detail 非保存、
+    stable dedupe、invalid date、resolve/cancel を固定。
+- 残:
+  - billing/report/notification 等の実 adapter から bridge を呼ぶ接続。
+  - waiver/override 時の理由必須 audit と resolution note。
+  - domain 別 resolve predicate、孤児 task audit、Task Health Board 連携。
 
 #### RISK-CORE-3. Case Risk Cockpit API contract `cc:PARTIAL`
 
@@ -679,7 +699,7 @@ FE 仕上げ（低優先）:
 | ID       | 領域           | タスク                                          | 主な対象                                                                                                    | 受入条件                                                                                                                                                                                                                      |
 | -------- | -------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | CORE-001 | 横断基盤       | Risk Finding Registry                           | `src/lib/risk/risk-finding.ts`, `risk-finding-registry.ts`                                                  | `cc:PARTIAL` shared contract、rollup/sort/dedupe helper、billing/visit-ready/patient-foundation-item/task adapter と PHI-minimized regression tests を追加。残: domain adapter 拡張と CORE-002 bridge 接続。                  |
-| CORE-002 | 横断基盤       | Risk Finding -> Operational Task Bridge         | `risk-task-bridge.ts`, `operational-tasks.ts`, `task-registry.ts`                                           | blocking/urgent risk が dedupe task へ昇格し、解消時に resolve される。                                                                                                                                                       |
+| CORE-002 | 横断基盤       | Risk Finding -> Operational Task Bridge         | `risk-task-bridge.ts`, `operational-tasks.ts`, `task-registry.ts`                                           | `cc:PARTIAL` active blocking/urgent finding を PHI-minimized dedupe task input へ変換し、resolved/waived resolve input を追加。残: 実 domain 接続、waiver audit、resolve predicate。                                          |
 | CORE-003 | 横断基盤       | Case Risk Cockpit contract                      | `src/types/case-risk-cockpit.ts`, `app/api/cases/[id]/risk-cockpit/route.ts`                                | `cc:PARTIAL` 初期 contract / read-only API / service / route tests を追加。残: shared registry 接続、medication/dispensing/notification/privacy/integration/data_quality adapter、患者/ケース詳細 UI 接続。                   |
 | RX-001   | 薬剤変更       | Medication Change Review Gate                   | `medication-change-review.ts`, `visit-preparation-readiness.ts`, `today-preparation`, patient board         | 追加/削除/増量/減量/用法/剤形変更を分類し、high-risk は薬剤師確認完了まで ready/contact/confirm 不可。確認者・日時・判断結果・理由を audit。                                                                                  |
 | RX-002   | 残薬/頓服/外用 | PRN / topical Stock Risk service                | `medication-stock-risk.ts`, `visit-records`, `visit-record.ts`, patient board                               | 残量、使用ペース、鮮度、推定切れ日を算出し、urgent/unknown/stale は risk/task 化。通常薬 deadline は直接上書きしない。                                                                                                        |

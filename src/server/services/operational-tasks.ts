@@ -24,7 +24,7 @@ type TaskDisplayIdReader = {
 export type TaskPriority = 'urgent' | 'high' | 'normal' | 'low';
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
 
-type UpsertOperationalTaskInput = {
+export type UpsertOperationalTaskInput = {
   orgId: string;
   taskType: string;
   title: string;
@@ -40,7 +40,7 @@ type UpsertOperationalTaskInput = {
   status?: TaskStatus;
 };
 
-type ResolveOperationalTaskInput = {
+export type ResolveOperationalTaskInput = {
   orgId: string;
   taskId?: string | null;
   dedupeKey?: string | null;

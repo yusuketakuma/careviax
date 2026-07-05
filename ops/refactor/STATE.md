@@ -40,6 +40,60 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Risk Finding to OperationalTask bridge initial slice（commit: pending）。
+  - current task:
+    `Plans.md` の `RISK-CORE-2 / CORE-002` に沿って、active な `blocking` / `urgent`
+    `RiskFinding` を PHI-minimized `upsertOperationalTask` 入力へ変換する bridge と、同じ dedupe identity で
+    resolved/waived risk を close する resolve input を追加した。DB write の新規呼び出し元はまだ接続せず、
+    pure DTO 変換と thin wrapper に留めた。
+  - subagent:
+    `Strict the 22nd` は read-only strict review で、`task_sla` risk の recursive task explosion と、
+    waived finding が理由/audit context なしで `cancelled` になる点を CHANGES_REQUESTED。`task_sla` を
+    bridge 対象外にし、operational task 由来の urgent finding を再 task 化しない regression を追加。
+    waived cancellation は `actorUserId` / `waiverReason` / `auditLogId` 必須の明示 API に分けた。
+  - design / imagegen:
+    backend service / task bridge slice のため `imagegen` / `gpt-image-2` は省略。UI task health /
+    Command Center 接続時は非 PHI mockup を生成する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/operational-tasks.ts`,
+    `src/server/services/operational-tasks.test.ts`,
+    `src/lib/risk/risk-finding.ts`,
+    `src/server/services/risk-finding-registry.ts`,
+    `prisma/schema/core-task.prisma`。
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/lib/tasks/task-registry.ts`,
+    `src/server/services/risk-task-bridge.ts`,
+    `src/server/services/risk-task-bridge.test.ts`,
+    `src/server/services/operational-tasks.ts`。
+  - bugs / risks reduced:
+    warning 乱立を避けるため、active `blocking` / `urgent` だけを task 化する predicate を固定。
+    warning/info/resolved/waived と `task_sla` は task explosion を起こさない。dedupe key は CORE-001 の
+    owner-scoped encoded helper を使い、resolve input も同じ identity で作る。invalid `due_at` は
+    invalid Date を渡さず `null` に落とす。
+  - security / PHI reviewed:
+    task title/description は domain controlled 文言に固定し、`RiskFinding.title/detail/action_label` の
+    free text を task 本文や metadata に保存しない。metadata は domain/key/severity/source/action_href/
+    related entity flags のみに絞る。
+  - performance issues found:
+    DB query は追加していない。upsert/resolve wrapper は existing `operational-tasks` を再利用する。
+  - validation commands:
+    `pnpm exec vitest run src/server/services/risk-task-bridge.test.ts src/lib/risk/risk-finding.test.ts src/server/services/risk-finding-registry.test.ts src/server/services/operational-tasks.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm typecheck`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`;
+    `pnpm lint`.
+  - validation results:
+    focused vitest green（4 files / 38 tests）; typecheck green; typecheck:no-unused green;
+    `pnpm lint` green with existing unrelated warnings in `src/lib/platform/break-glass.test.ts`
+    (`_tx`, `_input` unused warnings only).
+  - remaining work:
+    Strict review の反映、実 domain adapter からの bridge 呼び出し、waiver/override audit、
+    domain 別 resolve predicate、Task Health Board / notification / billing close 連携。
+
 - codex: Risk Finding Registry initial contract / adapters（commit `f21ce9c00`）。
   - current task:
     `Plans.md` の `RISK-CORE-1 / CORE-001` に沿って、Case Risk Cockpit 内に閉じていた

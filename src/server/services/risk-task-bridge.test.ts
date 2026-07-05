@@ -1,0 +1,173 @@
+import { describe, expect, it } from 'vitest';
+import { createRiskFinding, type RiskFinding } from '@/lib/risk/risk-finding';
+import {
+  riskFindingToOperationalTaskInput,
+  riskFindingToResolveOperationalTaskInput,
+  riskFindingToWaiveOperationalTaskInput,
+  shouldCreateOperationalTaskForRisk,
+} from './risk-task-bridge';
+import { adaptOperationalTaskToRiskFinding } from './risk-finding-registry';
+
+function finding(overrides: Partial<RiskFinding> = {}): RiskFinding {
+  return createRiskFinding({
+    key: overrides.key ?? 'billing:bill_1:missing_visit_consent',
+    domain: overrides.domain ?? 'billing',
+    severity: overrides.severity ?? 'blocking',
+    title: overrides.title ?? '患者 山田花子 アムロジピン raw title',
+    detail: overrides.detail ?? '東京都千代田区1-1-1 090-1234-5678 raw detail',
+    patient_id: overrides.patient_id ?? 'patient_1',
+    case_id: overrides.case_id ?? 'case_1',
+    related_entity_type: overrides.related_entity_type ?? 'billing_evidence',
+    related_entity_id: overrides.related_entity_id ?? 'bill_1',
+    assigned_to: overrides.assigned_to ?? 'user_1',
+    due_at: overrides.due_at ?? '2026-07-07T00:00:00.000Z',
+    action_href: overrides.action_href ?? '/billing/close-board?evidence_id=bill_1',
+    action_label: overrides.action_label ?? '算定を確認',
+    resolution_state: overrides.resolution_state,
+    source: overrides.source,
+  });
+}
+
+describe('risk-task-bridge', () => {
+  it('taskifies only active blocking or urgent findings', () => {
+    expect(shouldCreateOperationalTaskForRisk(finding({ severity: 'blocking' }))).toBe(true);
+    expect(shouldCreateOperationalTaskForRisk(finding({ severity: 'urgent' }))).toBe(true);
+    expect(shouldCreateOperationalTaskForRisk(finding({ severity: 'warning' }))).toBe(false);
+    expect(shouldCreateOperationalTaskForRisk(finding({ severity: 'info' }))).toBe(false);
+    expect(
+      shouldCreateOperationalTaskForRisk(
+        finding({ severity: 'blocking', resolution_state: 'resolved' }),
+      ),
+    ).toBe(false);
+    expect(
+      shouldCreateOperationalTaskForRisk(
+        finding({ severity: 'urgent', resolution_state: 'waived' }),
+      ),
+    ).toBe(false);
+    expect(shouldCreateOperationalTaskForRisk(finding({ domain: 'task_sla' }))).toBe(false);
+  });
+
+  it('does not recursively taskify operational task SLA findings', () => {
+    const taskFinding = adaptOperationalTaskToRiskFinding(
+      {
+        id: 'task_1',
+        task_type: 'risk_billing',
+        title: 'raw title',
+        priority: 'urgent',
+        status: 'pending',
+        assigned_to: null,
+        due_date: null,
+        sla_due_at: new Date('2026-07-05T00:00:00.000Z'),
+        related_entity_type: 'billing_evidence',
+        related_entity_id: 'bill_1',
+      },
+      { now: new Date('2026-07-06T00:00:00.000Z') },
+    );
+
+    expect(taskFinding).toMatchObject({ domain: 'task_sla', severity: 'urgent' });
+    expect(riskFindingToOperationalTaskInput({ orgId: 'org_1', finding: taskFinding })).toBeNull();
+  });
+
+  it('builds PHI-minimized upsert input with stable dedupe and related entity', () => {
+    const input = riskFindingToOperationalTaskInput({
+      orgId: 'org_1',
+      finding: finding({ key: 'billing:bill/1:missing_visit_consent' }),
+    });
+
+    expect(input).toMatchObject({
+      orgId: 'org_1',
+      taskType: 'risk_billing',
+      title: '算定・請求の対応',
+      description: '算定・請求の未解決リスクを確認し、対応状況を更新してください。',
+      priority: 'urgent',
+      assignedTo: 'user_1',
+      dedupeKey:
+        'risk:billing:billing%3Abill%2F1%3Amissing_visit_consent:case:case_1:billing_evidence:bill_1',
+      relatedEntityType: 'billing_evidence',
+      relatedEntityId: 'bill_1',
+      status: 'pending',
+    });
+    expect(input?.dueDate?.toISOString()).toBe('2026-07-07T00:00:00.000Z');
+    expect(input?.slaDueAt?.toISOString()).toBe('2026-07-07T00:00:00.000Z');
+    expect(JSON.stringify(input)).not.toContain('山田花子');
+    expect(JSON.stringify(input)).not.toContain('東京都千代田区1-1-1');
+    expect(JSON.stringify(input)).not.toContain('090-1234-5678');
+    expect(JSON.stringify(input)).not.toContain('アムロジピン');
+  });
+
+  it('drops invalid due dates instead of passing invalid Date objects', () => {
+    const input = riskFindingToOperationalTaskInput({
+      orgId: 'org_1',
+      finding: finding({ due_at: 'not-a-date' }),
+    });
+
+    expect(input?.dueDate).toBeNull();
+    expect(input?.slaDueAt).toBeNull();
+  });
+
+  it('returns null for non-taskable findings', () => {
+    expect(
+      riskFindingToOperationalTaskInput({
+        orgId: 'org_1',
+        finding: finding({ severity: 'warning' }),
+      }),
+    ).toBeNull();
+  });
+
+  it('builds resolve input from the same dedupe identity for resolved findings', () => {
+    expect(
+      riskFindingToResolveOperationalTaskInput({
+        orgId: 'org_1',
+        finding: finding({ resolution_state: 'resolved' }),
+      }),
+    ).toMatchObject({
+      orgId: 'org_1',
+      taskType: 'risk_billing',
+      dedupeKey:
+        'risk:billing:billing%3Abill_1%3Amissing_visit_consent:case:case_1:billing_evidence:bill_1',
+      relatedEntityType: 'billing_evidence',
+      relatedEntityId: 'bill_1',
+      status: 'completed',
+    });
+  });
+
+  it('requires audit context before cancelling waived findings', () => {
+    const waived = finding({ resolution_state: 'waived' });
+    expect(
+      riskFindingToWaiveOperationalTaskInput({
+        orgId: 'org_1',
+        finding: waived,
+        actorUserId: 'user_1',
+        waiverReason: '薬剤師確認のうえ免除',
+        auditLogId: 'audit_1',
+      }),
+    ).toMatchObject({ status: 'cancelled' });
+    expect(() =>
+      riskFindingToWaiveOperationalTaskInput({
+        orgId: 'org_1',
+        finding: waived,
+        actorUserId: 'user_1',
+        waiverReason: '',
+        auditLogId: 'audit_1',
+      }),
+    ).toThrow('Risk task waiver requires waiverReason');
+    expect(() =>
+      riskFindingToWaiveOperationalTaskInput({
+        orgId: 'org_1',
+        finding: waived,
+        actorUserId: '',
+        waiverReason: '薬剤師確認のうえ免除',
+        auditLogId: 'audit_1',
+      }),
+    ).toThrow('Risk task waiver requires actorUserId');
+    expect(() =>
+      riskFindingToWaiveOperationalTaskInput({
+        orgId: 'org_1',
+        finding: waived,
+        actorUserId: 'user_1',
+        waiverReason: '薬剤師確認のうえ免除',
+        auditLogId: '',
+      }),
+    ).toThrow('Risk task waiver requires auditLogId');
+  });
+});
