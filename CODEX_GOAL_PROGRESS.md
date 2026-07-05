@@ -1,5 +1,46 @@
 # CODEX Goal Progress
 
+## R40/R44 Data Explorer Save readApiJson Partial - 2026-07-05 11:05 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/admin/data-explorer/data-explorer-content.tsx`
+    - `src/app/(dashboard)/admin/data-explorer/data-explorer-content.test.tsx`
+- Scope:
+  - Reused `readApiJson` for the admin data explorer row save mutation
+    response.
+  - Added focused UI coverage proving API JSON `message` from a failed row
+    save response is preserved in toast output.
+  - Preserved model and row read behavior, org-scoped headers, row-selection
+    accessible names without PHI, PATCH endpoint shape, patch request body,
+    success toast, editor draft reset, and `admin-data-explorer-rows`
+    invalidation.
+  - Existing data-explorer read helper slice `e3d7cd4b` remains unchanged.
+- Safety:
+  - Admin data explorer UI save response handling internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary remains
+    recorded in `ops/refactor/STATE.md`; this slice did not require those
+    changes.
+  - Preserved DB/schema, API route contracts, admin authorization,
+    editable-field server validation, PHI projection, billing behavior,
+    deployment, package dependency, live DB operation, external send, secret
+    handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/admin/data-explorer/data-explorer-content.test.tsx'`
+    passed `1` file / `11` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `f5494af5`
+    (`refactor(ui): reuse readApiJson for data explorer save`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher/mutation PHI/body-read review
+    before converting additional manual response handling.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Admin User Mutations readApiJson Partial - 2026-07-05 11:01 JST
 
 - Status:

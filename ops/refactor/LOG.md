@@ -5,6 +5,21 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-05 R40/R44-data-explorer-save f5494af5
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 対象: `src/app/(dashboard)/admin/data-explorer/data-explorer-content.tsx` とtest。
+- 実施: admin data explorer row save mutation response を `readApiJson` へ移行し、
+  failed row save の API JSON `message` 表面化テストを追加。
+- 挙動変更: data explorer UI save response handling の helper 収束のみ。org headers、
+  PATCH endpoint、patch body、success toast、editor draft reset、row invalidation は維持。
+- 安全: data explorer UI internals のみ。PHI-free row action label contract は既存testで維持。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- 検証: focused data-explorer Vitest `1 file / 11 tests` green。
+  scoped eslint/prettier/diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit f5494af5。
+- 残課題: R40/R44 は partial。
+
 ## 2026-07-05 R40/R44-admin-user-mutations b89beba3
 
 - 分類: query-helper / client fetch error handling → `readApiJson` 収束。

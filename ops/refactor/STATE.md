@@ -347,6 +347,11 @@
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。queryFn contract test で
   org-scoped model/row endpoints と PHI-free row action contract を維持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 data-explorer-save readApiJson slice(f5494af5) land。focused Vitest 11、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。admin data explorer row save
+  mutation response を readApiJson へ収束し、org-scoped PATCH endpoint / patch body / success toast /
+  editor draft reset / row invalidation / PHI-free row action label contract は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 - codex: R40/R44 alert-rules readApiJson slice(0d9788d6) land。focused Vitest 24、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。false-empty / patient-safety
   false-default prevention と org-header/path helper contract を維持。SSOT の必要時変更許可
