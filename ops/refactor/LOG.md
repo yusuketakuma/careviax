@@ -5278,3 +5278,26 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: R40/R44 は broad。追加の client fetcher/mutation は response body read が PHI-safe かを
   個別確認してから段階移行する。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
+## 2026-07-05 R40/R44 site switching readApiJson slice
+
+- 分類: query-helper / client mutation error handling → `readApiJson` 収束。
+- 実施:
+  - site switching の `/api/me/site` PUT response を `readApiJson<unknown>` へ移行。
+  - failed site switch の API JSON `message` が toast へ表面化し、`/dashboard` へ遷移しない
+    UI 契約テストを追加。
+- 挙動変更: mutation response handling internals の helper 収束のみ。`/api/me/sites` read、
+  `/api/me/site` PUT endpoint、`buildOrgHeaders`、`buildOrgJsonHeaders`、request body、
+  success toast、`me-sites` invalidation、successful dashboard navigation は維持。
+- 安全性: site selection UI mutation internals のみ変更。DB/schema、API route、auth/authorization、
+  PHI projection、billing、deployment、package dependency、live DB operation、external send、
+  secret handling、push、destructive operation は不変。SSOT では必要時の product
+  API/DB/auth/authorization/PHI/billing/deploy/package dependency 変更許可を確認済みだが、
+  この slice では不要。
+- 検証: focused select-site content Vitest `1 file / 3 tests` green、
+  scoped ESLint green、targeted Prettier check green、targeted `git diff --check` green、
+  `pnpm typecheck` green。
+- commit: `d88a6fa0` (`refactor(ui): reuse readApiJson for site switching`)。
+- 残課題: R40/R44 は broad。追加の client fetcher/mutation は response body read が PHI-safe かを
+  個別確認してから段階移行する。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。

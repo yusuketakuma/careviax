@@ -1,5 +1,45 @@
 # CODEX Goal Progress
 
+## R40/R44 Site Switching readApiJson Partial - 2026-07-05 10:30 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/select-site/select-site-content.tsx`
+    - `src/app/(dashboard)/select-site/select-site-content.test.tsx`
+- Scope:
+  - Reused `readApiJson` for `PUT /api/me/site` site-switch responses.
+  - Added focused UI coverage proving API JSON `message` from failed site
+    switching responses is preserved in toast output and does not navigate to
+    `/dashboard`.
+  - Preserved `/api/me/sites` read behavior, `/api/me/site` PUT endpoint,
+    `buildOrgHeaders`, `buildOrgJsonHeaders`, request body shape, success
+    toast, `me-sites` invalidation, and dashboard navigation on successful
+    switch.
+- Safety:
+  - Site selection UI mutation response handling internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary remains
+    recorded in `ops/refactor/STATE.md`; this slice did not require those
+    changes.
+  - Preserved DB/schema, API route contracts, auth/authorization semantics,
+    PHI projection, billing behavior, deployment, package dependency, live DB
+    operation, external send, secret handling, push, and destructive operation
+    boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/select-site/select-site-content.test.tsx'`
+    passed `1` file / `3` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `d88a6fa0`
+    (`refactor(ui): reuse readApiJson for site switching`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher/mutation PHI/body-read review
+    before converting additional manual response handling.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Saved Views readApiJson Partial - 2026-07-05 10:26 JST
 
 - Status:

@@ -552,6 +552,11 @@
   saved-views endpoints、path helpers、hostile-id encoding、dot-segment fail-closed、org headers、
   request bodies、query keys、invalidation、success toasts、recall navigation は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 site switching readApiJson slice(d88a6fa0) land。focused Vitest 3、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。site switching PUT response を
+  readApiJson へ収束し、/api/me/sites read、/api/me/site PUT、org headers、request body、
+  success toast、me-sites invalidation、dashboard navigation は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 
