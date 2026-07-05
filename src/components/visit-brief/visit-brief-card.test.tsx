@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import { describe, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import type { VisitBrief } from '@/types/visit-brief';
 import { VisitBriefCard } from './visit-brief-card';
@@ -13,6 +14,10 @@ const useOrgIdMock = vi.hoisted(() => vi.fn(() => 'org_1'));
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
+}));
+
+vi.mock('sonner', () => ({
+  toast: { error: vi.fn(), success: vi.fn() },
 }));
 
 function buildBrief(): VisitBrief {
@@ -324,5 +329,42 @@ describe('VisitBriefCard', () => {
 
     const link = screen.getByRole('link', { name: /確認する/ });
     expect(link.getAttribute('href')).toBe(href);
+  });
+
+  it('keeps API messages from visit brief feedback failures', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ message: '訪問要約フィードバックの送信権限がありません' }), {
+        status: 403,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      renderBriefCard(buildBrief());
+
+      fireEvent.click(screen.getByRole('button', { name: '実用的' }));
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith('訪問要約フィードバックの送信権限がありません');
+      });
+      expect(fetchMock).toHaveBeenCalledWith('/api/visit-brief-feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-org-id': 'org_1' },
+        body: JSON.stringify({
+          patient_id: 'patient_1',
+          context: 'patient',
+          generation_id: 'rule_1',
+          summary_kind: 'rule',
+          rating: 'helpful',
+          provider: 'rule',
+          requested_provider: 'rule',
+          model: null,
+          is_fallback: false,
+        }),
+      });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
   });
 });

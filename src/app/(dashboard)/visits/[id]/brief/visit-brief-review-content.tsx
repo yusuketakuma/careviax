@@ -113,7 +113,7 @@ export function VisitBriefReviewContent({ visitId }: { visitId: string }) {
           is_fallback: summary.kind === 'ai' ? brief.ai_summary.is_fallback : false,
         }),
       });
-      if (!res.ok) throw new Error('確認結果の送信に失敗しました');
+      return readApiJson<unknown>(res, '確認結果の送信に失敗しました');
     },
     onSuccess: (_data, { choice, feedback }) => {
       setConfirmChoice(choice);
