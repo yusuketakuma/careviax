@@ -241,11 +241,7 @@ export default function AlertRulesPage() {
           }),
         },
       );
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.message ?? '処方安全アラートルールの保存に失敗しました');
-      }
-      await res.json();
+      await readApiJson<unknown>(res, '処方安全アラートルールの保存に失敗しました');
       return { wasEditing: Boolean(values.id) };
     },
     onSuccess: async ({ wasEditing }) => {
@@ -292,13 +288,10 @@ export default function AlertRulesPage() {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ cycleId: testCycleId }),
       });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(
-          (payload as { message?: string }).message ?? '処方安全チェックの実行に失敗しました',
-        );
-      }
-      return payload as { alerts: Array<{ message: string; severity: string }> };
+      return readApiJson<{ alerts: Array<{ message: string; severity: string }> }>(
+        res,
+        '処方安全チェックの実行に失敗しました',
+      );
     },
     onSuccess: (payload) => {
       toast.success(`テスト実行完了: ${payload.alerts.length}件のアラート`);

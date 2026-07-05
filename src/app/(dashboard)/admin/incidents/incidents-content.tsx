@@ -131,11 +131,7 @@ export function IncidentsContent() {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(buildIncidentMemoPatchPayload(form)),
       });
-      if (!res.ok) {
-        const err = (await res.json().catch(() => null)) as { message?: string } | null;
-        throw new Error(err?.message ?? '再発防止メモの保存に失敗しました');
-      }
-      return res.json();
+      return readApiJson<{ data: IncidentReportListItem }>(res, '再発防止メモの保存に失敗しました');
     },
     onSuccess: () => {
       toast.success('再発防止メモを保存しました');
@@ -159,11 +155,7 @@ export function IncidentsContent() {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ status: nextStatus }),
       });
-      if (!res.ok) {
-        const err = (await res.json().catch(() => null)) as { message?: string } | null;
-        throw new Error(err?.message ?? 'ステータスの変更に失敗しました');
-      }
-      return res.json();
+      return readApiJson<{ data: IncidentReportListItem }>(res, 'ステータスの変更に失敗しました');
     },
     onSuccess: () => {
       toast.success('ステータスを更新しました');
@@ -184,11 +176,7 @@ export function IncidentsContent() {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(buildIncidentCreatePayload(createForm)),
       });
-      if (!res.ok) {
-        const err = (await res.json().catch(() => null)) as { message?: string } | null;
-        throw new Error(err?.message ?? '記録の作成に失敗しました');
-      }
-      return res.json() as Promise<{ data: IncidentReportListItem }>;
+      return readApiJson<{ data: IncidentReportListItem }>(res, '記録の作成に失敗しました');
     },
     onSuccess: (result) => {
       toast.success('記録を作成しました');
