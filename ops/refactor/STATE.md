@@ -40,6 +40,43 @@
 
 ## 直近の land（本日・要点）
 
+- codex: handoff override reason code standardization batch(f7e0526e2)
+  implementation complete。ユーザー指示により本sliceでも subagent を投入（api_contract_reviewer /
+  privacy_compliance_reviewer / test_architect / verifier）。api_contract_reviewer は
+  `override_reason_code` を additive metadata として APPROVE し、legacy `override_reason` only
+  互換、invalid enum の body validation 400、code-only override 不許可、submitted code と legacy omitted
+  code の区別、移行フラグを要求。privacy_compliance_reviewer は閉じた enum と PHI-free audit を条件に
+  APPROVE し、free-form code を二重のPHI流入経路にしないこと、legacy omission は audit 上
+  `legacy_unclassified` として識別することを要求。test_architect は API/service/UI/workspace の
+  focused matrix を提示し、invalid code before DB、legacy互換、direct/supervision payload 非混入、
+  owner/admin only、PHI/secret raw reason 非保存を completion blocker と指定。対応として
+  `src/lib/visits/handoff-override-reasons.ts` に閉じた共有 catalog を追加し、APIで受ける selectable
+  codes（`assignee_unavailable` / `urgent_operational_deadline` / `care_continuity` /
+  `supervisor_directed` / `data_correction`）と、audit-only legacy bucket
+  `legacy_unclassified` を分離。`PUT /api/visit-records/:id/handoff` は
+  `override_reason_code` を optional additive enum として受け、invalid/malicious code は visit record
+  DB read 前に no-store 400。owner/admin non-assignee override は従来どおり 8〜500文字の
+  trim 済み `override_reason` が必須で、code-only は 403。legacy reason-only payload は 200 のまま
+  `confirmHandoff` へ code key を渡さず、service audit で `legacy_unclassified` /
+  `override_reason_code_present:false` に正規化。valid code 付き override は
+  `overrideReasonCode` を渡し、audit changes には `override_reason_code`、
+  `override_reason_code_present`、既存の `override_reason_present/length/redacted` のみ記録。
+  raw override reason、patient-like name、secret-like string、handoff free text は audit に保存しない。
+  direct confirmation は client が余分な `override_reason_code` / `override_reason` を送っても
+  service に渡さず、supervision confirm/request path も override payload と分離。GET
+  `confirmation_policy` は既存 fields を維持し、override-capable handoff のみ
+  `override_reason_code_required:false` と `override_reason_codes` を返す。Handoff UI は server-provided
+  code list を受けたときだけ管理者代行確定を有効化し、標準区分 + free-text reason を送信。
+  code list missing/empty は first-party UI では fail-closed。validation:
+  `pnpm exec vitest run 'src/app/api/visit-records/[id]/handoff/route.test.ts' src/server/services/visit-handoff.test.ts src/components/features/visits/handoff-confirm-panel.test.tsx 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx'`
+  green（4 files / 109 tests）; scoped `eslint` green; scoped `prettier --check` green;
+  `git diff --check` green; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。
+  verifier subagent は read-only diff review と同 focused Vitest / diff-check を実行し APPROVE。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency)
+  に基づき product API / authorization-adjacent override contract / PHI-adjacent audit / UI contract を変更。
+  DB schema/migration/billing/deploy/package dependency 変更は不要。残る別slice候補:
+  pharmacist_trainee の他訪問系 write scope 横断レビュー、handoff historical/legacy task closure policy
+  （実データ確認後、mutation は別途明示承認）。
 - codex: handoff supervision final-confirm batch(8b3c020e3)
   implementation complete。ユーザー指示により本sliceでも subagent を投入（code_mapper /
   security_critic / medical_safety_reviewer / test_architect / verifier）。全員が、trainee role
@@ -172,7 +209,7 @@
   medical_safety_reviewer / api_contract_reviewer / frontend_reviewer / test_architect /
   verifier）。security_critic と medical_safety_reviewer は `handoff_confirmation` が
   `PATCH /api/tasks/:id` / `/api/tasks/bulk` の generic completion で完了でき、`PUT
-  /api/visit-records/:id/handoff` の direct-responsibility authz、version claim、structured SOAP
+/api/visit-records/:id/handoff` の direct-responsibility authz、version claim、structured SOAP
   update、`visit_handoff_confirmed` audit を迂回できる high finding を提示。対応として
   `handoff_confirmation` を `DEDICATED_COMPLETION_TASK_TYPES` に追加し、既存 dedicated-flow
   rejection contract で generic PATCH/bulk completion を拒否。api_contract_reviewer は owner/admin
