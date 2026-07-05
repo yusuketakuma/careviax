@@ -40,7 +40,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: `gpt-image-2` UI design generation requirement mirrored into `AGENTS.md`（commit `23ef2e6ad`）。
+- codex: `gpt-image-2` UI design generation requirement mirrored into `AGENTS.md`（commit `eaf8450c0`）。
   - current task:
     ユーザー指示「gpt-image-2 を使うことを追記」に対応。`Plans.md` と
     `docs/ui-ux-design-guidelines.md` には既に `imagegen` + `gpt-image-2` 方針が入っていたため、
