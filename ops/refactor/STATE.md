@@ -39,6 +39,19 @@
 
 ## 直近の land（本日・要点）
 
+- codex: R40/R44 PCA pump mutations readApiJson batch(cc724d38) land。focused Vitest 111、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。PCA pump create / rental create /
+  rental status PATCH / pump status PATCH / return-inspection PATCH responses を readApiJson へ収束し、
+  `PATCH /api/pca-pump-rentals/:id` を status/return-inspection の単一routeとして維持。org JSON headers、
+  request bodies、rentalSaveBlocker、returnInspectionSaveBlocker、dot-segment fail-closed、
+  Japan date semantics、invalidateAll、server-message fallback は保持。UI tests には create rental /
+  rental stale update / pump pending-inspection / return inspection checklist の `{ message }` preservation と、
+  rental status / return inspection の non-JSON fallback regression を追加。Patient Safety subagent は
+  PCA医療機器workflowの server-message regression gap を CHANGES_REQUESTED として指摘し、追加テストで対応。
+  Compatibility subagent は current route surface と response envelope を APPROVE、ただし
+  `pca-pump-rentals/[id]` PATCH の unexpected-error no-store wrapper は将来hardening候補として残ると整理。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
+  維持しつつ、本batchでは不要。
 - codex: R40/R44 schedule board support readApiJson batch(d094291d) land。focused Vitest 39、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。calendar billing-preview batch read /
   schedule-team-board visit-status PATCH / operational-task PATCH responses を readApiJson へ収束し、
