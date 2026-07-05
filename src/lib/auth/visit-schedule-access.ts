@@ -42,6 +42,12 @@ const VISIT_RECORD_ORG_WIDE_WRITE_ROLES: ReadonlySet<MemberRole> = new Set([
   'pharmacist',
 ]);
 
+const VISIT_SCHEDULE_LIFECYCLE_WRITE_ROLES: ReadonlySet<MemberRole> = new Set([
+  'owner',
+  'admin',
+  'pharmacist',
+]);
+
 export function canBypassVisitScheduleAssignmentAccess(
   ctx: Pick<VisitScheduleAccessContext, 'role'>,
 ) {
@@ -96,6 +102,10 @@ export function canWriteVisitRecordForSchedule(
   }
 
   return canAccessVisitScheduleAssignment(ctx, schedule);
+}
+
+export function canManageVisitScheduleLifecycle(ctx: Pick<VisitScheduleAccessContext, 'role'>) {
+  return VISIT_SCHEDULE_LIFECYCLE_WRITE_ROLES.has(ctx.role);
 }
 
 export function canConfirmVisitHandoff(

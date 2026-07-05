@@ -2,7 +2,10 @@ import { NextRequest } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
-import { canAccessVisitScheduleAssignment } from '@/lib/auth/visit-schedule-access';
+import {
+  canAccessVisitScheduleAssignment,
+  canManageVisitScheduleLifecycle,
+} from '@/lib/auth/visit-schedule-access';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
@@ -48,6 +51,9 @@ async function authenticatedPOST(
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('訪問予定IDが不正です');
+  if (!canManageVisitScheduleLifecycle(ctx)) {
+    return forbiddenResponse('訪問予定を再開する権限がありません');
+  }
 
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');

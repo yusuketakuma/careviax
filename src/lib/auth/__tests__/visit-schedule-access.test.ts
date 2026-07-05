@@ -12,6 +12,7 @@ import {
   buildVisitHandoffConfirmationWhere,
   canAccessVisitScheduleAssignment,
   canConfirmVisitHandoff,
+  canManageVisitScheduleLifecycle,
   canOverrideVisitHandoffConfirmation,
   canRequestSupervisedVisitHandoffConfirmation,
   canWriteVisitRecordForSchedule,
@@ -97,6 +98,16 @@ describe('visit schedule assignment access', () => {
     expect(
       canWriteVisitRecordForSchedule({ userId: 'pharmacist_1', role: 'external_viewer' }, schedule),
     ).toBe(false);
+  });
+
+  it('limits visit-schedule lifecycle writes to final clinical operators', () => {
+    expect(canManageVisitScheduleLifecycle({ role: 'owner' })).toBe(true);
+    expect(canManageVisitScheduleLifecycle({ role: 'admin' })).toBe(true);
+    expect(canManageVisitScheduleLifecycle({ role: 'pharmacist' })).toBe(true);
+    expect(canManageVisitScheduleLifecycle({ role: 'pharmacist_trainee' })).toBe(false);
+    expect(canManageVisitScheduleLifecycle({ role: 'clerk' })).toBe(false);
+    expect(canManageVisitScheduleLifecycle({ role: 'driver' })).toBe(false);
+    expect(canManageVisitScheduleLifecycle({ role: 'external_viewer' })).toBe(false);
   });
 
   it('allows assigned pharmacist trainees to request supervised handoff confirmation only', () => {

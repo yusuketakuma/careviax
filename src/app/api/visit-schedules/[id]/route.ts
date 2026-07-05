@@ -5,6 +5,7 @@ import { requireAuthContext, type AuthContext } from '@/lib/auth/context';
 import {
   canAccessVisitScheduleAssignment,
   canBypassVisitScheduleAssignmentAccess,
+  canManageVisitScheduleLifecycle,
 } from '@/lib/auth/visit-schedule-access';
 import { z } from 'zod';
 import {
@@ -224,6 +225,9 @@ async function authenticatedPATCH(
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('訪問予定IDが不正です');
+  if (!canManageVisitScheduleLifecycle(ctx)) {
+    return forbiddenResponse('訪問予定を更新する権限がありません');
+  }
 
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
@@ -849,6 +853,9 @@ async function authenticatedDELETE(
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('訪問予定IDが不正です');
+  if (!canManageVisitScheduleLifecycle(ctx)) {
+    return forbiddenResponse('訪問予定を取消する権限がありません');
+  }
 
   const payload = (await readOptionalJsonObjectRequestBody(req)) ?? {};
   const parsedReason = cancelScheduleSchema.safeParse(payload);

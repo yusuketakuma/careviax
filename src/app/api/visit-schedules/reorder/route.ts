@@ -19,6 +19,7 @@ import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import {
   buildVisitScheduleAssignmentWhere,
   canBypassVisitScheduleAssignmentAccess,
+  canManageVisitScheduleLifecycle,
 } from '@/lib/auth/visit-schedule-access';
 import { scheduleStatusValues, visitScheduleDateKeySchema } from '@/lib/validations/visit-schedule';
 import { findVisitRouteOrderConflict } from '@/lib/visits/route-order-conflicts';
@@ -208,6 +209,10 @@ async function withSerializableVisitScheduleReorderTransaction<T>(
 
 const authenticatedPATCH = withAuthContext(
   async (req: NextRequest, ctx: AuthContext) => {
+    if (!canManageVisitScheduleLifecycle(ctx)) {
+      return forbiddenResponse('訪問予定の順路を変更する権限がありません');
+    }
+
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 

@@ -273,6 +273,34 @@ describe('/api/visit-schedules/reorder PATCH', () => {
     );
   });
 
+  it.each([
+    {
+      label: 'route-order update',
+      body: { updates: [{ schedule_id: 'schedule_1', route_order: 2 }] },
+    },
+    {
+      label: 'pharmacist reassignment',
+      body: {
+        updates: [{ schedule_id: 'schedule_1', route_order: 1, pharmacist_id: 'pharmacist_2' }],
+      },
+    },
+  ])('denies trainee $label before lookup, writes, audit, or notify', async ({ body }) => {
+    authRoleRef.current = 'pharmacist_trainee';
+
+    const response = (await PATCH(createRequest(body)))!;
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_FORBIDDEN',
+      message: '訪問予定の順路を変更する権限がありません',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(scheduleFindManyMock).not.toHaveBeenCalled();
+    expect(membershipFindManyMock).not.toHaveBeenCalled();
+    expectNoWriteAuditOrNotify();
+  });
+
   it('checks duplicate route orders by resolved date and pharmacist cells', async () => {
     const response = (await PATCH(
       createRequest({

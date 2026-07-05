@@ -2351,67 +2351,51 @@ describe('/api/visit-schedules/[id] GET', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
-  it('allows an org-wide trainee to delete a schedule regardless of assignment', async () => {
+  it('denies a trainee patch before parsing, loading, or mutating the schedule', async () => {
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist_trainee' });
-    visitScheduleFindFirstMock.mockResolvedValue({
-      id: 'schedule_1',
-      pharmacist_id: 'user_other',
-      version: 1,
-      schedule_status: 'planned',
-      case_: {
-        primary_pharmacist_id: 'user_primary',
-        backup_pharmacist_id: null,
-      },
+
+    const response = await PATCH(createPatchRequest({ route_order: 2 }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
     });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_FORBIDDEN',
+      message: '訪問予定を更新する権限がありません',
+    });
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('denies a trainee before cancelling a schedule or related workflow side effects', async () => {
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist_trainee' });
 
     const response = await DELETE(createRequest({ 'x-org-id': 'org_1' }), {
       params: Promise.resolve({ id: 'schedule_1' }),
     });
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(403);
     expectSensitiveNoStore(response);
-    expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith({
-      where: { id: 'schedule_1', org_id: 'org_1', version: 1, schedule_status: 'planned' },
-      data: { schedule_status: 'cancelled', version: { increment: 1 } },
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_FORBIDDEN',
+      message: '訪問予定を取消する権限がありません',
     });
-    expect(visitScheduleOverrideFindManyMock).toHaveBeenCalledWith({
-      where: {
-        org_id: 'org_1',
-        source_schedule_id: 'schedule_1',
-        status: 'pending',
-      },
-      select: { id: true },
-    });
-    expect(visitScheduleOverrideUpdateManyMock).toHaveBeenCalledWith({
-      where: {
-        org_id: 'org_1',
-        source_schedule_id: 'schedule_1',
-        status: 'pending',
-        id: { in: ['override_1'] },
-      },
-      data: {
-        status: 'cancelled',
-      },
-    });
-    expect(resolveOperationalTasksMock).toHaveBeenCalledWith(expect.anything(), {
-      orgId: 'org_1',
-      dedupeKey: 'visit-reschedule-approval:schedule_1',
-      status: 'cancelled',
-    });
-    expect(visitScheduleProposalUpdateManyMock).toHaveBeenCalledWith({
-      where: {
-        org_id: 'org_1',
-        reschedule_source_schedule_id: 'schedule_1',
-        proposal_status: {
-          in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
-        },
-        finalized_schedule_id: null,
-      },
-      data: {
-        proposal_status: 'superseded',
-      },
-    });
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleOverrideFindManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleOverrideUpdateManyMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('cancels a stale reschedule approval task even when no pending override remains', async () => {

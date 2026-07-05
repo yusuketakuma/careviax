@@ -227,31 +227,25 @@ describe('/api/visit-schedules/[id]/reopen POST', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
-  it('allows a trainee to reopen any in-org schedule (org-wide access)', async () => {
-    // 新アクセスポリシー: pharmacist_trainee は組織内フルアクセスを持ち、
-    // 担当割当に関わらず組織内の訪問予定を再開できる。
+  it('denies a trainee before loading or reopening a schedule', async () => {
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist_trainee' });
-    visitScheduleFindFirstMock.mockResolvedValue({
-      id: 'schedule_1',
-      pharmacist_id: 'user_other',
-      version: 1,
-      schedule_status: 'cancelled',
-      case_: {
-        primary_pharmacist_id: 'user_primary',
-        backup_pharmacist_id: null,
-      },
-    });
 
     const response = await POST(createReopenRequest({ reason_code: 'other' }), {
       params: Promise.resolve({ id: 'schedule_1' }),
     });
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(200);
-    expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith({
-      where: expectedReopenClaimWhere(),
-      data: { schedule_status: 'planned', version: { increment: 1 } },
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_FORBIDDEN',
+      message: '訪問予定を再開する権限がありません',
     });
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('returns conflict when reopen loses a version race', async () => {
