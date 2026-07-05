@@ -2152,6 +2152,28 @@
   typed confirmation、org JSON/header split、hostile-id path helpers、dry-run request-context stamping、
   stale preview sync clearing、採用薬CSVのYJ identity fail-closed behavior は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: UX-TBL/DEV-PHI export semantics continuation in progress。`redesign-existing-projects`
+  skill を既存UI改善チェックリストとして適用し、DataTable の「読込済みCSV出力」挙動を regression
+  test 化。hasMore 時に未読込行を取得せず、現在フィルタ済みのロード済み行だけを出力すること、
+  `aria-describedby` で「未読込行は出力対象外です。」へ接続すること、`column.meta.exportValue`
+  でクライアントCSVのPHI最小化が効くことを `src/components/ui/data-table.test.tsx` に固定。
+  `api-response-assertions` に `expectPhiExportSnapshotRedacted` を追加し、通信依頼 external CSV の
+  content/context snapshot hostile markers（患者名、電話、住所、保険者番号、薬剤名、signed URL、
+  storage key、token、provider raw error、家族共有メモ）を export snapshot に出さない coverage を追加。
+  `recordDataExportAudit` は `communication_request` の profile/redaction profile/hash aggregate を保持しつつ、
+  allowed key でも URL/token/電話/保険者番号/provider raw error 等の hostile value を落とす値レベル sanitizer
+  を追加。consumer negative assertion は DataTable 旧ラベル依存の false-positive を避けるため `/CSV出力/`
+  に更新（admin audit-log server export は意図的に除外）。Subagents: code_mapper が export surface と
+  pharmacy-drug-stocks/export 次候補を棚卸し、test_architect が DataTable/consumer assertion gap を指摘、
+  privacy_compliance_reviewer が allowed-key hostile value coverage を要求。Validation green:
+  `pnpm exec vitest run src/test/api-response-assertions.test.ts src/server/services/export-audit.test.ts src/app/api/communication-requests/export/route.test.ts --reporter=dot --testTimeout=30000`
+  (35 tests), `pnpm exec vitest run src/components/ui/data-table.test.tsx src/test/api-response-assertions.test.ts src/server/services/export-audit.test.ts src/app/api/communication-requests/export/route.test.ts --reporter=dot --testTimeout=30000`
+  (53 tests), consumer DataTable screens focused Vitest (75 tests),
+  audit export/redaction/file-download Vitest (36 tests), scoped ESLint green, `git diff --check` green,
+  `pnpm format:check` green, `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green after
+  explicit `PhiRow` callback typing, `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused`
+  green。Remaining: pharmacy-drug-stocks/export を `recordDataExportAudit` / minifier へ寄せる slice と、
+  PDF/report/attachment export snapshot の DEV-PHI coverage は未着手。
 
 ## 進行中 / 凍結
 
