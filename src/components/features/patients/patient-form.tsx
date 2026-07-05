@@ -448,7 +448,10 @@ export function PatientForm({
           signal,
         });
         if (res.ok) {
-          const data = await res.json();
+          const data = await readApiJson<{ duplicates?: DuplicatePatient[] }>(
+            res,
+            '重複候補の確認に失敗しました',
+          );
           // 解決済みレスポンスの json parse 中に abort された場合、古い結果での上書きを防ぐ
           if (signal?.aborted) return;
           setDuplicates(data.duplicates ?? []);
@@ -704,7 +707,13 @@ export function PatientForm({
         method: 'POST',
         headers: buildOrgHeaders(orgId),
       });
-      const payload = (await res.json().catch(() => ({}))) as QualificationCheckPayload;
+      const payload = await readApiJson<QualificationCheckPayload>(
+        res,
+        '資格確認に失敗しました',
+      ).catch((err): QualificationCheckPayload => {
+        if (!res.ok) throw err;
+        return {};
+      });
 
       if (!res.ok) {
         const message = payload.message ?? '資格確認に失敗しました';

@@ -40,6 +40,28 @@
 
 ## 直近の land（本日・要点）
 
+- codex: R40/R44 patient-form duplicate/qualification response JSON convergence batch(in-progress on
+  `refactor/patient-form-json-convergence-20260705`) implementation complete。SSOT 残候補の
+  `patient-form` / `dispensing-workbench` を再棚卸しし、code_mapper subagent を bounded read-only で投入。
+  mapper は `patient-form` submit 409 duplicate details と `dispensing-workbench.adapter` 409 conflict /
+  mutation error classes を direct `readApiJson` 化すると patient duplicate guard / medication workbench
+  conflict rehydrate を壊すとして CHANGES_REQUESTED。対応として本sliceは mapper 推奨 Slice A に限定し、
+  `checkDuplicate` OK response と qualification-check response parsing のみ `readApiJson` へ収束。
+  duplicate check は non-ok body no-read / fetch reject / malformed success JSON を従来通り silent ignore、
+  post-parse abort guard による stale duplicate overwrite 防止を維持。qualification check は non-ok
+  server sanitized `message` / fallback を既存 outer catch で保険欄近くと toast に表示し、OK malformed /
+  missing data は従来通り「資格情報が見つかりませんでした」警告へ倒すよう local catch で保持。submit
+  POST/PATCH 409 duplicate payload、submit success payload、patient API routes、DB/auth/authorization/
+  tenant_id/PHI payload/billing/deploy/package dependency は対象外。regression は duplicate lookup
+  success candidate display、malformed duplicate lookup silent no-toast、stale abort guard、qualification
+  server-message/fallback、既存 submit 409 resubmit flow を固定。validation:
+  `pnpm exec vitest run src/components/features/patients/patient-form.test.tsx --reporter=dot --testTimeout=30000`
+  green（1 file / 26 tests）;
+  `pnpm exec vitest run src/components/features/patients/patient-form.test.tsx src/app/api/patients/check-duplicate/route.test.ts 'src/app/api/patients/[id]/qualification-check/route.test.ts' --reporter=dot --testTimeout=30000`
+  green（3 files / 51 tests）; scoped `eslint` green; scoped `prettier --check` green; `git diff --check`
+  green; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。next: commit → main ff merge →
+  origin/main push → short-lived branch cleanup。残候補: `dispensing-workbench.adapter` は read helper と
+  mutation helper を別sliceに分け、409 conflict details / WorkbenchWriteError status を保持して処理。
 - codex: R40/R44 admin audit-log export failed-response JSON convergence batch(in-progress on
   `refactor/audit-logs-export-json-convergence-20260705`) implementation complete。残候補だった
   `admin/audit-logs` export error-only batch を単独sliceで処理。`AuditLogsContent` の一覧取得は既に

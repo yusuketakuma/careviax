@@ -531,9 +531,8 @@ describe('PatientForm', () => {
       '/api/patients/__helper_pt__/qualification-check',
     );
     const fetchMock = vi.mocked(fetch);
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
         data: {
           valid: true,
           identityMatch: 'matched',
@@ -542,7 +541,7 @@ describe('PatientForm', () => {
           warnings: [],
         },
       }),
-    } as Response);
+    );
 
     render(
       <PatientForm
@@ -578,11 +577,9 @@ describe('PatientForm', () => {
     useOrgIdMock.mockReturnValue('org_1');
     useQueryMock.mockReturnValue({ data: [], isLoading: false });
     const fetchMock = vi.mocked(fetch);
-    fetchMock.mockResolvedValueOnce({
-      ok: false,
-      status: 501,
-      json: async () => ({ message: 'オンライン資格確認はまだ有効化されていません' }),
-    } as Response);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ message: 'オンライン資格確認はまだ有効化されていません' }, 501),
+    );
 
     render(
       <PatientForm
@@ -870,6 +867,55 @@ describe('PatientForm', () => {
         vi.mocked(buildPatientHref).mockImplementation(realImpl);
       }
     }
+  });
+
+  it('shows duplicate-check candidates from a successful duplicate lookup response', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({ data: [], isLoading: false });
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        duplicates: [
+          {
+            id: 'patient_existing',
+            name: '山田 太郎',
+            name_kana: 'ヤマダ タロウ',
+            birth_date: '1950-01-01T00:00:00.000Z',
+            gender: 'male',
+          },
+        ],
+      }),
+    );
+
+    render(<PatientForm />);
+    fillRequiredPatientFields();
+
+    expect(await screen.findByText('同名の患者が存在します:')).toBeTruthy();
+    expect(screen.getByText(/山田 太郎/)).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/patients/check-duplicate?name=%E5%B1%B1%E7%94%B0+%E5%A4%AA%E9%83%8E&date_of_birth=1950-01-01&gender=male',
+      expect.objectContaining({ headers: { 'x-org-id': 'org_1' } }),
+    );
+  });
+
+  it('silently ignores malformed duplicate-check responses without showing stale candidates', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({ data: [], isLoading: false });
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(new Response('not json', { status: 200 }));
+    const errorToastCount = vi.mocked(toast.error).mock.calls.length;
+
+    render(<PatientForm />);
+    fillRequiredPatientFields();
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/patients/check-duplicate?name=%E5%B1%B1%E7%94%B0+%E5%A4%AA%E9%83%8E&date_of_birth=1950-01-01&gender=male',
+        expect.any(Object),
+      );
+    });
+    expect(screen.queryByText('同名の患者が存在します:')).toBeNull();
+    expect(vi.mocked(toast.error).mock.calls).toHaveLength(errorToastCount);
   });
 
   it('ignores a superseded duplicate-check response after the inputs change (stale race)', async () => {
