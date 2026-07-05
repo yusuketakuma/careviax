@@ -321,6 +321,44 @@ describe('BusinessHolidaysContent', () => {
     });
   });
 
+  it('surfaces API error messages when business holiday save fails', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/pharmacy-sites') {
+        return new Response(JSON.stringify({ data: [{ id: 'site_1', name: '本店' }] }), {
+          status: 200,
+        });
+      }
+      if (url.startsWith(`${BUSINESS_HOLIDAYS_API_PATH}?`)) {
+        return new Response(JSON.stringify({ data: [holidayFixture()] }), { status: 200 });
+      }
+      if (url === BUSINESS_HOLIDAYS_API_PATH && init?.method === 'POST') {
+        return new Response(JSON.stringify({ message: '同じ休日設定が既に存在します' }), {
+          status: 409,
+        });
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderContent();
+
+    await screen.findByLabelText('店舗フィルタ');
+    fireEvent.click(await screen.findByLabelText('1日'));
+    fireEvent.change(screen.getByLabelText('休日名'), { target: { value: '臨時休業' } });
+    fireEvent.click(screen.getByRole('button', { name: '登録する' }));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('同じ休日設定が既に存在します');
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      BUSINESS_HOLIDAYS_API_PATH,
+      expect.objectContaining({
+        method: 'POST',
+        headers: buildOrgJsonHeaders('org_1'),
+      }),
+    );
+  });
+
   it('mirrors individual holiday required blockers into the RHF error summary', async () => {
     const fetchMock = stubFetchWithHoliday();
     renderContent();
@@ -450,6 +488,46 @@ describe('BusinessHolidaysContent', () => {
       );
     });
     expect(buildBusinessHolidayApiPath).toHaveBeenCalledWith('a/b c');
+  });
+
+  it('surfaces API error messages when business holiday delete fails', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/pharmacy-sites') {
+        return new Response(JSON.stringify({ data: [{ id: 'site_1', name: '本店' }] }), {
+          status: 200,
+        });
+      }
+      if (url.startsWith(`${BUSINESS_HOLIDAYS_API_PATH}?`)) {
+        return new Response(JSON.stringify({ data: [holidayFixture()] }), { status: 200 });
+      }
+      if (url === '/api/business-holidays/holiday_1' && init?.method === 'DELETE') {
+        return new Response(JSON.stringify({ message: '利用中の休日設定は削除できません' }), {
+          status: 409,
+        });
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderContent();
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: '2026-01-01 年始休業（本店 / 薬局休業日 / 休業）を削除',
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '削除する' }));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('利用中の休日設定は削除できません');
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/business-holidays/holiday_1',
+      expect.objectContaining({
+        method: 'DELETE',
+        headers: buildOrgHeaders('org_1'),
+      }),
+    );
   });
 
   it('DELETE with a dot-segment holiday id fails closed before any DELETE fetch', async () => {

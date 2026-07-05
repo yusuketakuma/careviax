@@ -254,10 +254,7 @@ export function BusinessHolidaysContent() {
           site_id: currentForm.site_id || undefined,
         }),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error((payload as { message?: string }).message ?? '保存に失敗しました');
-      }
+      await readApiJson<unknown>(response, '保存に失敗しました');
       return { wasEditing: Boolean(currentEditingId) };
     },
     onSuccess: async ({ wasEditing }) => {
@@ -279,7 +276,7 @@ export function BusinessHolidaysContent() {
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('削除に失敗しました');
+      await readApiJson<unknown>(response, '削除に失敗しました');
     },
     onSuccess: async () => {
       toast.success('休日を削除しました');
