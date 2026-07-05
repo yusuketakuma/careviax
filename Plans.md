@@ -370,21 +370,33 @@ FE 仕上げ（低優先）:
 
 #### VS-AUTO-6. OverloadRebalancer preview: 未承認候補だけ前倒し `cc:TODO`
 
-- [ ] 新サービス案: `src/server/services/visit-schedule-overload-rebalancer.ts`。
-- [ ] まず preview-only API または service test で実装し、自動 cron 化しない。
-- [ ] 対象は migration 前:
+- [x] 新サービス案: `src/server/services/visit-schedule-overload-rebalancer.ts`。
+- [x] まず preview-only API または service test で実装し、自動 cron 化しない。
+      2026-07-05: `previewVisitScheduleOverloadRebalance` を追加。DB write / cron / API は未接続。
+      confirmed schedule + open proposal を occupancy として数え、既存 planner で前倒し replacement draft を
+      preview するだけに留める。
+- [~] 対象は migration 前:
   - `proposal_status='proposed'`
   - `patient_contact_status='pending'`
   - `finalized_schedule_id is null`
   - review candidate なし
   - 期限・準備・シフト・車両・算定 guard を満たす候補。
+  - 2026-07-05 partial: `proposed/pending/finalizedなし/reschedule_sourceなし` のみ preview 対象。
+    `patient_contact_pending` / `reschedule_pending` は occupancy には数えるが replacement 対象外。
+    review candidate 永続 field は VS-AUTO-7 まで存在しないため未接続。
 - [ ] VS-AUTO-7 後は `pharmacist_review_required=false` を条件へ追加する。
 - [ ] 前倒し時は旧候補を `superseded` にし、replacement proposal を作る。DB field 追加前は存在しない `reproposal_reason` field を前提にせず、audit whitelist の `reason_code='overload_advance'` と最小化 diagnostics に留める。HR 後は専用 field/audit table へ移行する。
-- [ ] 容量判定では確定 `VisitSchedule` だけでなく、同日同薬剤師/車両の open `VisitScheduleProposal` もカウントする。現 planner は主に confirmed schedule を見ているためここが差分。
+- [x] 容量判定では確定 `VisitSchedule` だけでなく、同日同薬剤師/車両の open `VisitScheduleProposal` もカウントする。現 planner は主に confirmed schedule を見ているためここが差分。
+      2026-07-05: first slice は pharmacist daily capacity を対象に、active `VisitSchedule` と open
+      `VisitScheduleProposal` を同一 occupancy としてカウント。preview 採用分も仮想 occupancy に反映し、
+      同一実行内の前倒し先過密を防ぐ。車両 capacity は後続。
 - テスト:
-  - 過密日に未承認候補が集中 → 未承認候補だけ前倒し replacement preview。
-  - confirmed schedule / contact confirmed proposal / reschedule pending は不変。
-  - 前倒し先が期限・シフト・薬剤準備・billing cap を満たさない場合は再配置しない。
+  - [x] 過密日に未承認候補が集中 → 未承認候補だけ前倒し replacement preview。
+  - [x] confirmed schedule / contact confirmed proposal / reschedule pending は不変。
+        2026-07-05: confirmed schedule は occupancy のみ、contacted/open proposal は `not_mutable` skip。
+  - [~] 前倒し先が期限・シフト・薬剤準備・billing cap を満たさない場合は再配置しない。
+    2026-07-05 partial: replacement draft は既存 planner から取得し、destination daily capacity full は skip。
+    billing cap / vehicle capacity / review candidate 永続判定は後続。
   - audit/log に患者詳細や自由記述を過剰保存しない。
 
 #### VS-AUTO-7. HR migration: review fields / availability rule / rebalance audit `cc:TODO HR`

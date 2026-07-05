@@ -40,6 +40,30 @@
 
 ## 直近の land（本日・要点）
 
+- codex: VS-AUTO-6 overload rebalancer preview-only service slice(in-progress on main) implementation complete。
+  - service: `src/server/services/visit-schedule-overload-rebalancer.ts` に
+    `previewVisitScheduleOverloadRebalance` を追加。DB write / API / cron には接続せず、過密セルと
+    前倒し replacement draft を返す preview-only contract に限定した。
+  - target/mutability: open `VisitScheduleProposal` は occupancy に含めるが、replacement preview 対象は
+    `proposal_status='proposed'`、`patient_contact_status='pending'`、`finalized_schedule_id is null`、
+    `reschedule_source_schedule_id is null` の未連絡候補のみ。`patient_contact_pending` /
+    `reschedule_pending` / 確定 schedule は不変として扱う。VS-AUTO-7 の review field は未存在のため未接続。
+  - capacity/performance: active `VisitSchedule` と open `VisitScheduleProposal` を同日同薬剤師 occupancy として
+    カウントし、first slice は `User.max_daily_visits` の日次上限に限定。preview 採用分も同一実行内の仮想
+    occupancy に反映し、前倒し先を preview だけで過密化しない。車両 capacity と明示 billing cap 再検証は後続。
+  - replacement guards: replacement draft は既存 `generateVisitScheduleProposalDrafts` から取得し、期限、薬剤準備、
+    シフト、基本車両候補生成など既存 planner guard を再利用。billing cap / 車両 open proposal capacity /
+    review-candidate 永続 hard gate は未実装の残。
+  - privacy/security: preview result は proposal id、date、pharmacist id、route order、count、reason code、
+    最小 diagnostics のみ。患者名、住所、薬剤名、free-text clinical detail は追加しない。
+  - validation:
+    `pnpm exec vitest run src/server/services/visit-schedule-overload-rebalancer.test.ts --reporter=dot --testTimeout=30000`
+    green（1 file / 3 tests）;
+    `pnpm exec vitest run src/server/services/visit-schedule-overload-rebalancer.test.ts src/server/services/visit-schedule-planner.test.ts src/app/api/visit-schedule-proposals/route.test.ts src/server/services/billing-requirement-validator.test.ts --reporter=dot --testTimeout=30000`
+    green（4 files / 180 tests）; scoped eslint green; `pnpm format:check` green; `git diff --check` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` green。
+    next: scoped commit → origin/main push → continue VS-AUTO-6 billing/vehicle/review/API slice or VS-AUTO-7 HR gate planning。
 - codex: VS-AUTO-4 medication readiness derived gate slice(in-progress on main) implementation complete。
   - planner: `src/server/services/visit-schedule-planner.ts` は schedule 作成前に `VisitPreparation` が無いことを前提に、
     既存 daily demand と同じ `MedicationCycle.overall_status in ('set_audited', 'visit_ready')` を
