@@ -40,7 +40,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: Case Risk Cockpit initial API contract / read-only service（commit pending）。
+- codex: Case Risk Cockpit initial API contract / read-only service（commit `ebb8854a8`）。
   - current task:
     `Plans.md` の `RISK-CORE-3 / CORE-003 / PAT-001` に沿って、患者/ケース単位の横断 risk と
     next action を返す初期 API contract を実装した。互換性維持のための旧 contract は置かず、
