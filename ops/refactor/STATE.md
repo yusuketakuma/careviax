@@ -39,6 +39,15 @@
 
 ## 直近の land（本日・要点）
 
+- codex: R40/R44 schedule-day actions readApiJson batch(4ea57765) land。focused Vitest 55、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。schedule-day planner proposal generation /
+  reschedule proposal generation / proposal action PATCH / facility visit-day save responses を readApiJson へ
+  まとめて収束し、org JSON headers、path encoding、idempotency key、payload shapes、server-message fallback、
+  dialog close / week-board / proposal / schedule-day-board / task invalidations は保持。subagents: Mapper が
+  schedule 近傍候補を分類し、planner を本 batch に含め route compute/reorder は別 route-focused slice 推奨と
+  判定。Strict は reschedule/proposal-action の route success JSON envelope / error envelope / header/body /
+  idempotency / invalidation contract を read-only APPROVE。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本batchでは不要。
 - codex: R40/R44 patient-labs mutations readApiJson slice(d5be8acb) land。focused Vitest 14、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。patient lab create / update mutation
   responses を readApiJson へ収束し、patient path helper、org JSON headers、raw patient query-key
