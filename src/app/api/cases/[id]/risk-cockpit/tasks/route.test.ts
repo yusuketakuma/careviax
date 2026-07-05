@@ -49,10 +49,12 @@ function syncResult() {
     taskable_finding_count: 2,
     skipped_finding_count: 3,
     upserted_task_count: 2,
+    resolved_stale_task_count: 1,
     upserted_tasks: [
       { id: 'task_1', display_id: 'tsk0000000001' },
       { id: 'task_2', display_id: null },
     ],
+    resolved_stale_tasks: [{ id: 'task_stale_1', display_id: 'tsk0000000009' }],
   };
 }
 
@@ -103,6 +105,7 @@ describe('/api/cases/[id]/risk-cockpit/tasks', () => {
       patient_id: 'patient_1',
       taskable_finding_count: 2,
       upserted_task_count: 2,
+      resolved_stale_task_count: 1,
     });
     expect(body.upserted_tasks).toEqual(
       expect.arrayContaining([{ id: 'task_1', display_id: 'tsk0000000001' }]),

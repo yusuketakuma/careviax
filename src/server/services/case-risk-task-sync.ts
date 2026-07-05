@@ -1,12 +1,48 @@
 import {
+  riskFindingToOperationalTaskInput,
   shouldCreateOperationalTaskForRisk,
   upsertOperationalTaskForRisk,
 } from './risk-task-bridge';
+import { RISK_TASK_REGISTRY } from '@/lib/tasks/task-registry';
 import { getCaseRiskCockpit, type CaseRiskCockpitDb } from '@/server/services/case-risk-cockpit';
 import type { MemberRole } from '@prisma/client';
 import type { RiskFinding } from '@/lib/risk/risk-finding';
 
 type RiskTaskSyncTx = Parameters<typeof upsertOperationalTaskForRisk>[0];
+type RiskTaskCloseTx = RiskTaskSyncTx & {
+  task: RiskTaskSyncTx['task'] & {
+    findMany(args: unknown): Promise<OpenRiskTaskRow[]>;
+  };
+};
+
+type OpenRiskTaskRow = {
+  id: string;
+  display_id: string | null;
+  dedupe_key: string | null;
+};
+
+const MANAGED_RISK_TASK_TYPES = Object.values(RISK_TASK_REGISTRY).map((entry) => entry.task_type);
+const RISK_TASK_METADATA_SCOPE = { path: ['source'], equals: 'risk_finding' } as const;
+
+function caseRiskTaskOwnershipWhere(args: { orgId: string; caseId: string }) {
+  return {
+    org_id: args.orgId,
+    status: { in: ['pending', 'in_progress'] },
+    task_type: { in: MANAGED_RISK_TASK_TYPES },
+    dedupe_key: { startsWith: 'risk:' },
+    AND: [
+      {
+        metadata: {
+          path: ['case_id'],
+          equals: args.caseId,
+        },
+      },
+      {
+        metadata: RISK_TASK_METADATA_SCOPE,
+      },
+    ],
+  };
+}
 
 export type RiskTaskSyncTaskRef = {
   id: string;
@@ -18,6 +54,8 @@ export type RiskFindingTaskSyncResult = {
   skipped_finding_count: number;
   upserted_task_count: number;
   upserted_tasks: RiskTaskSyncTaskRef[];
+  resolved_stale_task_count: number;
+  resolved_stale_tasks: RiskTaskSyncTaskRef[];
 };
 
 export type CaseRiskTaskSyncResult = RiskFindingTaskSyncResult & {
@@ -52,16 +90,31 @@ export function flattenCaseRiskFindings(
 }
 
 export async function syncOperationalTasksForRiskFindings(
-  tx: RiskTaskSyncTx,
+  tx: RiskTaskCloseTx,
   args: {
     orgId: string;
+    caseId?: string | null;
     findings: RiskFinding[];
+    resolveStale?: boolean;
   },
 ): Promise<RiskFindingTaskSyncResult> {
-  const taskableFindings = args.findings.filter(shouldCreateOperationalTaskForRisk);
+  const taskableInputs = args.findings
+    .filter(shouldCreateOperationalTaskForRisk)
+    .map((finding) => ({
+      finding,
+      taskInput: riskFindingToOperationalTaskInput({ orgId: args.orgId, finding }),
+    }))
+    .filter(
+      (
+        entry,
+      ): entry is {
+        finding: RiskFinding;
+        taskInput: NonNullable<ReturnType<typeof riskFindingToOperationalTaskInput>>;
+      } => Boolean(entry.taskInput),
+    );
   const upsertedTasks: RiskTaskSyncTaskRef[] = [];
 
-  for (const finding of taskableFindings) {
+  for (const { finding } of taskableInputs) {
     const task = await upsertOperationalTaskForRisk(tx, {
       orgId: args.orgId,
       finding,
@@ -70,16 +123,29 @@ export async function syncOperationalTasksForRiskFindings(
     if (ref) upsertedTasks.push(ref);
   }
 
+  const stale = args.resolveStale
+    ? await resolveStaleOperationalTasksForCaseRisk(tx, {
+        orgId: args.orgId,
+        caseId: args.caseId,
+        activeDedupeKeys: new Set(
+          taskableInputs
+            .map(({ taskInput }) => taskInput.dedupeKey)
+            .filter((key): key is string => Boolean(key)),
+        ),
+      })
+    : { resolved_stale_task_count: 0, resolved_stale_tasks: [] };
+
   return {
-    taskable_finding_count: taskableFindings.length,
-    skipped_finding_count: args.findings.length - taskableFindings.length,
+    taskable_finding_count: taskableInputs.length,
+    skipped_finding_count: args.findings.length - taskableInputs.length,
     upserted_task_count: upsertedTasks.length,
     upserted_tasks: upsertedTasks,
+    ...stale,
   };
 }
 
 export async function syncCaseRiskCockpitOperationalTasks(
-  tx: CaseRiskCockpitDb & RiskTaskSyncTx,
+  tx: CaseRiskCockpitDb & RiskTaskCloseTx,
   args: SyncCaseRiskTaskArgs,
 ): Promise<CaseRiskTaskSyncResult | null> {
   const cockpit = await getCaseRiskCockpit(tx, args);
@@ -87,7 +153,9 @@ export async function syncCaseRiskCockpitOperationalTasks(
 
   const sync = await syncOperationalTasksForRiskFindings(tx, {
     orgId: args.orgId,
+    caseId: cockpit.case.id,
     findings: flattenCaseRiskFindings(cockpit.sections),
+    resolveStale: true,
   });
 
   return {
@@ -96,5 +164,69 @@ export async function syncCaseRiskCockpitOperationalTasks(
     patient_id: cockpit.patient.id,
     overall_status: cockpit.overall.status,
     ...sync,
+  };
+}
+
+export async function resolveStaleOperationalTasksForCaseRisk(
+  tx: RiskTaskCloseTx,
+  args: {
+    orgId: string;
+    caseId?: string | null;
+    activeDedupeKeys: ReadonlySet<string>;
+  },
+) {
+  if (!args.caseId) {
+    return { resolved_stale_task_count: 0, resolved_stale_tasks: [] as RiskTaskSyncTaskRef[] };
+  }
+
+  const openRiskTasks = await tx.task.findMany({
+    where: caseRiskTaskOwnershipWhere({ orgId: args.orgId, caseId: args.caseId }),
+    orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+    take: 200,
+    select: {
+      id: true,
+      display_id: true,
+      dedupe_key: true,
+    },
+  });
+
+  const staleTasks = openRiskTasks.filter(
+    (task) => task.dedupe_key && !args.activeDedupeKeys.has(task.dedupe_key),
+  );
+  if (staleTasks.length === 0) {
+    return { resolved_stale_task_count: 0, resolved_stale_tasks: [] as RiskTaskSyncTaskRef[] };
+  }
+
+  const resolvedTasks: RiskTaskSyncTaskRef[] = [];
+  for (const task of staleTasks) {
+    if (!task.dedupe_key) continue;
+    const result = await tx.task.updateMany({
+      where: {
+        ...caseRiskTaskOwnershipWhere({ orgId: args.orgId, caseId: args.caseId }),
+        id: task.id,
+        dedupe_key: task.dedupe_key,
+      },
+      data: {
+        status: 'completed',
+        completed_at: new Date(),
+      },
+    });
+    if (
+      typeof result === 'object' &&
+      result !== null &&
+      'count' in result &&
+      typeof result.count === 'number' &&
+      result.count > 0
+    ) {
+      resolvedTasks.push({
+        id: task.id,
+        display_id: task.display_id,
+      });
+    }
+  }
+
+  return {
+    resolved_stale_task_count: resolvedTasks.length,
+    resolved_stale_tasks: resolvedTasks,
   };
 }

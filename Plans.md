@@ -647,6 +647,11 @@ FE 仕上げ（低優先）:
     `POST /api/cases/[id]/risk-cockpit/tasks` を追加し、Case Risk Cockpit の active blocking/urgent
     findings を明示操作で `upsertOperationalTaskForRisk` に接続。GET cockpit は副作用なしのまま維持し、
     response は件数と task id/display_id のみで、dedupe key や finding title/detail は返さない。
+  - 2026-07-06 追加 partial: 同 sync service が `metadata.source = risk_finding`、`metadata.case_id`、
+    registry 管理対象 task_type、`dedupe_key startsWith risk:` で同一 case の owned risk task だけを読み、
+    現在の taskable finding dedupe に含まれない stale task を guarded update で `completed` に閉じる。
+    同期は active dedupe を保持し、null dedupe / 別 case / non-risk task / 未知 risk task / race で更新
+    できなかった task は閉じたものとして返さない。
 - 残:
   - domain/job/UI から `POST /api/cases/[id]/risk-cockpit/tasks` を呼ぶ導線と batch sync。
   - waiver/override 時の理由必須 audit と resolution note。

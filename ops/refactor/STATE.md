@@ -40,6 +40,66 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Case Risk Cockpit stale risk task closure slice（ready to commit）。
+  - current task:
+    `Plans.md` の `RISK-CORE-2 / CORE-002` 受入条件「blocker が解消されたら既存 task が閉じる」に向け、
+    `syncCaseRiskCockpitOperationalTasks` に stale risk task close を追加した。sync 時に同一 case の
+    open owned risk task を `metadata.source = risk_finding`、`metadata.case_id`、registry 管理対象 task_type、
+    `dedupe_key startsWith risk:` で読み、現在の active blocking/urgent finding dedupe に含まれない task だけを
+    guarded update で `completed` にする。
+  - subagent:
+    古い完了済み subagent を1件 close して枠を確保し、`reviewer-strict` を起動（`Sentinel the 22nd` /
+    `019f34b1-fe6c-7d53-94ed-b7381f2d6737`）。reviewer-strict は CHANGES_REQUESTED として
+    non-owned `risk_*` task closure と update race での false resolved refs を指摘。これを反映し、
+    `metadata.source = risk_finding` / managed task_type / `risk:` dedupe prefix を find/update の両方へ
+    入れ、`updateMany.count > 0` の行だけ `resolved_stale_tasks` に返すよう修正した。
+  - design / imagegen:
+    backend service/test slice で視覚レイアウト変更を伴わないため、`imagegen` / `gpt-image-2` の新規生成は
+    省略。Case Risk Cockpit UI の task sync/resolve 表示 slice では PH-OS UI/UX SSOT と `gpt-image-2`
+    方針に従い、非 PHI mockup を先に作る。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/case-risk-task-sync.ts`,
+    `src/server/services/case-risk-task-sync.test.ts`,
+    `src/app/api/cases/[id]/risk-cockpit/tasks/route.test.ts`,
+    `src/server/services/risk-task-bridge.ts`,
+    `prisma/schema/core-task.prisma`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/case-risk-task-sync.ts`,
+    `src/server/services/case-risk-task-sync.test.ts`,
+    `src/app/api/cases/[id]/risk-cockpit/tasks/route.test.ts`.
+  - bugs / risks reduced:
+    前 slice では current blocking/urgent finding の task upsert はできたが、既に解消した risk task を閉じられなかった。
+    `resolveStaleOperationalTasksForCaseRisk` を追加し、同一 case の owned source risk task のうち
+    active dedupe にない task を completed にする。null dedupe、current dedupe、別 case、non-risk task、
+    未知 `risk_*` task、race で更新できなかった task は resolved として返さない。
+  - security / PHI reviewed:
+    stale close query / update は `org_id`、open status、registry 管理対象 task_type、
+    `metadata.source = risk_finding`、`metadata.path ['case_id']`、`dedupe_key startsWith risk:` に限定。
+    select は task id/display_id/dedupe_key のみで、task title/description/metadata body は返さない。
+  - performance issues improved:
+    stale close は明示 sync POST 内だけで実行し、`take: 200` の bounded query。update は stale task ごとに
+    ownership / case / dedupe / open status を繰り返す guarded `updateMany` にし、false positive closure と
+    false resolved response を避ける。
+  - validation commands:
+    `pnpm exec prettier --write src/server/services/case-risk-task-sync.ts src/server/services/case-risk-task-sync.test.ts src/app/api/cases/[id]/risk-cockpit/tasks/route.test.ts`;
+    `pnpm exec vitest run src/server/services/case-risk-task-sync.test.ts src/app/api/cases/[id]/risk-cockpit/tasks/route.test.ts src/server/services/risk-task-bridge.test.ts --reporter=dot --testTimeout=30000`;
+    `git diff --check`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`;
+    `pnpm lint`.
+  - validation results:
+    focused vitest green（3 files / 15 tests）; `git diff --check` green; high-memory typecheck green;
+    typecheck:no-unused green; `pnpm lint` green with existing unrelated warnings in
+    `src/lib/platform/break-glass.test.ts` (`_tx`, `_input` unused warnings only).
+  - remaining work:
+    Broader `Plans.md` objective remains open。残: sync route の UI 導線、batch/job sync、
+    waiver/override audit、Task Health Board 連携。
+
 - codex: Case Risk Cockpit risk task sync API slice（ready to commit）。
   - current task:
     `Plans.md` の `RISK-CORE-2 / CORE-002` 実 domain 接続として、Case Risk Cockpit の active
