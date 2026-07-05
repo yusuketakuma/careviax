@@ -72,6 +72,9 @@ export const AUDIT_LOG_ACTION_LABEL_MAP = {
   care_report_delivery_attempted: '報告書送信試行',
   'care_report.send': '報告書送信',
   file_download: 'ファイルダウンロード',
+  audit_log_viewed: '監査ログ閲覧',
+  visit_schedule_updated: '訪問予定更新',
+  visit_schedule_reschedule_requested: '訪問予定再調整依頼',
 } as const satisfies Record<string, string>;
 
 export const AUDIT_LOG_ACTION_OPTIONS = [
@@ -84,6 +87,17 @@ export const AUDIT_LOG_RISK_TIER_OPTIONS = [
   { value: 'high', label: '高リスク' },
   { value: 'standard', label: '通常' },
 ] as const;
+
+export const AUDIT_LOG_REVIEW_STATE_OPTIONS = [
+  { value: '', label: 'すべて' },
+  { value: 'pending', label: 'レビュー待ち' },
+  { value: 'reviewed', label: 'レビュー済み' },
+] as const;
+
+export const AUDIT_LOG_REVIEW_STATE_LABEL_MAP = {
+  pending: 'レビュー待ち',
+  reviewed: 'レビュー済み',
+} as const satisfies Record<string, string>;
 
 export const AUDIT_LOG_REDACTION_STATE_LABEL_MAP = {
   redacted: '本文マスク済',

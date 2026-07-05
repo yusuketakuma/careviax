@@ -49,6 +49,37 @@ describe('audit log review registry', () => {
     });
   });
 
+  it('keeps audit log viewing out of the actionable high-risk review queue', () => {
+    expect(
+      classifyAuditLogRisk({
+        action: 'audit_log_viewed',
+        target_type: 'audit_log',
+      }),
+    ).toEqual({
+      risk_tier: 'standard',
+      risk_label: '通常',
+      risk_reasons: [],
+    });
+
+    expect(buildAuditLogRiskTierWhere('high')).not.toMatchObject({
+      OR: expect.arrayContaining([
+        { action: { in: expect.arrayContaining(['audit_log_viewed']) } },
+      ]),
+    });
+  });
+
+  it('classifies direct visit schedule updates as high-risk schedule changes', () => {
+    expect(
+      classifyAuditLogRisk({
+        action: 'visit_schedule_updated',
+        target_type: 'visit_schedule',
+      }),
+    ).toMatchObject({
+      risk_tier: 'high',
+      risk_reasons: expect.arrayContaining(['high_risk_action']),
+    });
+  });
+
   it('leaves low-impact settings updates in the standard tier', () => {
     expect(
       classifyAuditLogRisk({

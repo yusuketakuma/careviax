@@ -30,7 +30,6 @@ const HIGH_RISK_ACTIONS = [
   'break_glass',
   'export',
   'file_download',
-  'audit_log_viewed',
   'consent_records_viewed',
   'consent_record_viewed',
   'patient_details_viewed',
@@ -45,6 +44,8 @@ const HIGH_RISK_ACTIONS = [
   'pharmacy_invoice_issued',
   'pharmacy_invoice_sent',
   'pharmacy_invoice_cancelled',
+  'visit_schedule_updated',
+  'visit_schedule_reschedule_requested',
 ] as const;
 
 const HIGH_RISK_ACTION_FRAGMENTS = [
@@ -228,6 +229,12 @@ export function isAuditLogRiskTier(value: string | null | undefined): value is A
   return value === 'high' || value === 'standard';
 }
 
+export function isAuditLogReviewState(
+  value: string | null | undefined,
+): value is AuditLogReviewState {
+  return value === 'pending' || value === 'reviewed';
+}
+
 export function buildAuditLogRiskTierWhere(riskTier: AuditLogRiskTier) {
   const highRiskWhere = {
     OR: [
@@ -244,5 +251,29 @@ export function buildAuditLogRiskTierWhere(riskTier: AuditLogRiskTier) {
 
   return {
     NOT: highRiskWhere,
+  };
+}
+
+export function buildAuditLogReviewStateWhere(reviewState: AuditLogReviewState, orgId: string) {
+  const reviewedWhere = {
+    reviews: {
+      some: {
+        org_id: orgId,
+        review_state: 'reviewed',
+      },
+    },
+  };
+
+  if (reviewState === 'reviewed') {
+    return reviewedWhere;
+  }
+
+  return {
+    reviews: {
+      none: {
+        org_id: orgId,
+        review_state: 'reviewed',
+      },
+    },
   };
 }

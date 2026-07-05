@@ -28,6 +28,8 @@ import {
   AUDIT_LOG_ACTION_LABEL_MAP,
   AUDIT_LOG_ACTION_OPTIONS,
   AUDIT_LOG_REDACTION_STATE_LABEL_MAP,
+  AUDIT_LOG_REVIEW_STATE_LABEL_MAP,
+  AUDIT_LOG_REVIEW_STATE_OPTIONS,
   AUDIT_LOG_RISK_TIER_OPTIONS,
   AUDIT_LOG_TARGET_TYPE_OPTIONS,
 } from '@/lib/audit-logs/filter-options';
@@ -35,32 +37,7 @@ import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { messageFromError } from '@/lib/utils/error-message';
-
-// --- Types ---
-
-type AuditLog = {
-  id: string;
-  actor_id: string;
-  actor_name?: string;
-  action: string;
-  target_type: string;
-  target_id: string;
-  risk_tier: 'high' | 'standard';
-  risk_label: string;
-  redaction_state: 'redacted' | 'minimized' | 'not_applicable';
-  review_state: 'pending' | 'reviewed';
-  reviewed_at: string | null;
-  reviewed_by: string | null;
-  ip_address: string | null;
-  created_at: string;
-};
-
-type AuditLogsResponse = {
-  data: AuditLog[];
-  summary?: {
-    high_risk_unreviewed_count: number;
-  };
-};
+import type { AuditLogListRow, AuditLogsResponse } from '@/types/api/audit-logs';
 
 // --- Helpers ---
 
@@ -90,13 +67,13 @@ function actionLabel(action: string): string {
   return (AUDIT_LOG_ACTION_LABEL_MAP as Record<string, string>)[action] ?? action;
 }
 
-function riskBadgeClass(riskTier: AuditLog['risk_tier']): string {
+function riskBadgeClass(riskTier: AuditLogListRow['risk_tier']): string {
   return riskTier === 'high'
     ? 'bg-state-blocked/10 text-state-blocked border-state-blocked/30'
     : 'bg-state-readonly/10 text-state-readonly border-transparent';
 }
 
-function redactionBadgeClass(redactionState: AuditLog['redaction_state']): string {
+function redactionBadgeClass(redactionState: AuditLogListRow['redaction_state']): string {
   if (redactionState === 'redacted') {
     return 'bg-state-confirm/10 text-state-confirm border-state-confirm/30';
   }
@@ -106,7 +83,7 @@ function redactionBadgeClass(redactionState: AuditLog['redaction_state']): strin
   return 'bg-state-readonly/10 text-state-readonly border-transparent';
 }
 
-function reviewBadgeClass(reviewState: AuditLog['review_state']): string {
+function reviewBadgeClass(reviewState: AuditLogListRow['review_state']): string {
   return reviewState === 'reviewed'
     ? 'bg-state-done/10 text-state-done border-state-done/30'
     : 'bg-state-confirm/10 text-state-confirm border-state-confirm/30';
@@ -121,6 +98,7 @@ export function AuditLogsContent() {
   const orgId = useOrgId();
   const [actorFilter, setActorFilter] = useState('');
   const [riskTierFilter, setRiskTierFilter] = useState('');
+  const [reviewStateFilter, setReviewStateFilter] = useState('');
   const [targetTypeFilter, setTargetTypeFilter] = useState('');
   const [actionFilter, setActionFilter] = useState('');
   const [dateFrom, setDateFrom] = useState(format(subDays(new Date(), 30), 'yyyy-MM-dd'));
@@ -131,6 +109,7 @@ export function AuditLogsContent() {
     limit: String(RESULT_LIMIT),
     ...(actorFilter ? { actor: actorFilter } : {}),
     ...(riskTierFilter ? { risk_tier: riskTierFilter } : {}),
+    ...(reviewStateFilter ? { review_state: reviewStateFilter } : {}),
     ...(targetTypeFilter ? { target_type: targetTypeFilter } : {}),
     ...(actionFilter ? { action: actionFilter } : {}),
     ...(dateFrom ? { date_from: dateFrom } : {}),
@@ -143,6 +122,7 @@ export function AuditLogsContent() {
       orgId,
       actorFilter,
       riskTierFilter,
+      reviewStateFilter,
       targetTypeFilter,
       actionFilter,
       dateFrom,
@@ -158,7 +138,12 @@ export function AuditLogsContent() {
   });
 
   const logs = data?.data ?? [];
-  const highRiskUnreviewedCount = data?.summary?.high_risk_unreviewed_count ?? 0;
+  const reviewDashboard = data?.summary?.review_dashboard;
+  const highRiskUnreviewedCount = data?.summary?.high_risk_unreviewed_count;
+  const filteredHighRiskPendingCount = reviewDashboard?.high_risk.pending_review;
+  const filteredTotalCount = reviewDashboard?.total_count ?? data?.pagination?.total;
+  const summaryValue = (value: number | undefined) =>
+    isLoading || value == null ? '集計中' : `${value}件`;
   // 表示上限に到達 = さらに古いログが存在しうる(API は total/has_more を返さない)。
   const isCapped = logs.length >= RESULT_LIMIT;
 
@@ -192,14 +177,14 @@ export function AuditLogsContent() {
     },
   });
 
-  const columns = useMemo<ColumnDef<AuditLog>[]>(
+  const columns = useMemo<ColumnDef<AuditLogListRow>[]>(
     () => [
       {
         accessorKey: 'created_at',
         header: '日時',
         cell: ({ row }) => (
           <span className="text-xs tabular-nums text-muted-foreground">
-            {format(parseISO(row.original.created_at), 'MM/dd HH:mm:ss', { locale: ja })}
+            {format(parseISO(row.original.created_at), 'yyyy/MM/dd HH:mm:ss', { locale: ja })}
           </span>
         ),
       },
@@ -271,7 +256,7 @@ export function AuditLogsContent() {
               className={`text-xs ${reviewBadgeClass(row.original.review_state)}`}
             >
               <CheckCircle2 className="mr-1 size-3.5" aria-hidden="true" />
-              レビュー済み
+              {AUDIT_LOG_REVIEW_STATE_LABEL_MAP.reviewed}
             </Badge>
           ) : (
             <Button
@@ -279,12 +264,12 @@ export function AuditLogsContent() {
               size="sm"
               variant="outline"
               className="h-11 min-h-[44px] whitespace-nowrap"
-              disabled={reviewMutation.isPending}
+              disabled={reviewingLogId === row.original.id}
               onClick={() => {
                 setReviewingLogId(row.original.id);
                 reviewMutation.mutate(row.original.id);
               }}
-              aria-label={`${row.original.target_id}をレビュー済みにする`}
+              aria-label={`${row.original.risk_label} ${row.original.actor_name ?? row.original.actor_id} ${actionLabel(row.original.action)} ${row.original.target_type} ${row.original.target_id}をレビュー済みにする`}
             >
               {reviewingLogId === row.original.id ? '更新中' : 'レビュー済み'}
             </Button>
@@ -371,15 +356,40 @@ export function AuditLogsContent() {
             items={[
               {
                 label: '表示件数',
-                value: isCapped ? `直近${RESULT_LIMIT}件（表示上限）` : `${logs.length}件`,
+                value: isLoading
+                  ? '読込中'
+                  : isCapped
+                    ? `直近${RESULT_LIMIT}件（表示上限）`
+                    : `${logs.length}件`,
               },
-              { label: '高リスク未レビュー', value: `${highRiskUnreviewedCount}件` },
+              {
+                label: '現在条件内',
+                value: summaryValue(filteredTotalCount),
+              },
+              {
+                label: '高リスク未レビュー（現在条件内）',
+                value: summaryValue(filteredHighRiskPendingCount),
+                tone:
+                  filteredHighRiskPendingCount && filteredHighRiskPendingCount > 0
+                    ? 'warning'
+                    : 'default',
+              },
+              {
+                label: '高リスク未レビュー（全体）',
+                value: summaryValue(highRiskUnreviewedCount),
+              },
               { label: '期間', value: `${dateFrom || '未指定'} - ${dateTo || '未指定'}` },
               {
                 label: 'リスク',
                 value:
                   AUDIT_LOG_RISK_TIER_OPTIONS.find((opt) => opt.value === riskTierFilter)?.label ??
                   'すべて',
+              },
+              {
+                label: 'レビュー状態',
+                value:
+                  AUDIT_LOG_REVIEW_STATE_OPTIONS.find((opt) => opt.value === reviewStateFilter)
+                    ?.label ?? 'すべて',
               },
               {
                 label: '対象種別',
@@ -395,6 +405,25 @@ export function AuditLogsContent() {
               },
               ...(actorFilter ? [{ label: '操作者', value: actorFilter }] : []),
             ]}
+            actions={
+              <Button
+                type="button"
+                variant={
+                  riskTierFilter === 'high' && reviewStateFilter === 'pending'
+                    ? 'default'
+                    : 'outline'
+                }
+                size="sm"
+                className="h-11 min-h-[44px] whitespace-nowrap"
+                aria-pressed={riskTierFilter === 'high' && reviewStateFilter === 'pending'}
+                onClick={() => {
+                  setRiskTierFilter('high');
+                  setReviewStateFilter('pending');
+                }}
+              >
+                高リスク未レビューを表示
+              </Button>
+            }
           />
           {isCapped && (
             <div
@@ -427,7 +456,7 @@ export function AuditLogsContent() {
               表示条件を変更
               <Filter className="size-4 text-muted-foreground" aria-hidden="true" />
             </summary>
-            <div className="grid gap-4 border-t border-border px-4 py-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            <div className="grid gap-4 border-t border-border px-4 py-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
               <div className="space-y-1.5">
                 <Label htmlFor="actor-filter">操作者</Label>
                 <div className="relative">
@@ -452,6 +481,24 @@ export function AuditLogsContent() {
                   </SelectTrigger>
                   <SelectContent>
                     {AUDIT_LOG_RISK_TIER_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value || 'all'} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="review-state-filter">レビュー状態</Label>
+                <Select
+                  value={reviewStateFilter}
+                  onValueChange={(value) => setReviewStateFilter(value ?? '')}
+                >
+                  <SelectTrigger id="review-state-filter" className="h-11 sm:h-11 sm:min-h-[44px]">
+                    <SelectValue placeholder="すべて" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {AUDIT_LOG_REVIEW_STATE_OPTIONS.map((opt) => (
                       <SelectItem key={opt.value || 'all'} value={opt.value}>
                         {opt.label}
                       </SelectItem>
@@ -533,7 +580,15 @@ export function AuditLogsContent() {
               description="フィルタ条件を変更するか、期間を広げてください。"
             />
           ) : (
-            <DataTable columns={columns} data={logs} isLoading={isLoading} caption="監査ログ一覧" />
+            <DataTable
+              columns={columns}
+              data={logs}
+              isLoading={isLoading}
+              caption="監査ログ一覧"
+              getRowA11yLabel={(log) =>
+                `${format(parseISO(log.created_at), 'yyyy/MM/dd HH:mm:ss', { locale: ja })} ${log.risk_label} ${log.actor_name ?? log.actor_id} ${actionLabel(log.action)} ${log.target_type} ${log.target_id} ${AUDIT_LOG_REVIEW_STATE_LABEL_MAP[log.review_state]}`
+              }
+            />
           )}
         </div>
       </PageSection>

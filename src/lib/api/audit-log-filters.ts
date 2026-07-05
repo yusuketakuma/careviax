@@ -1,4 +1,9 @@
-import { isAuditLogRiskTier, type AuditLogRiskTier } from '@/lib/audit-logs/review';
+import {
+  isAuditLogReviewState,
+  isAuditLogRiskTier,
+  type AuditLogReviewState,
+  type AuditLogRiskTier,
+} from '@/lib/audit-logs/review';
 
 type DateBoundary = 'start' | 'end';
 type ParsedAuditLogFilters =
@@ -11,6 +16,7 @@ type ParsedAuditLogFilters =
       targetType?: string;
       action?: string;
       riskTier?: AuditLogRiskTier;
+      reviewState?: AuditLogReviewState;
       from?: Date;
       to?: Date;
     };
@@ -48,6 +54,7 @@ export function parseAuditLogFilters(searchParams: URLSearchParams): ParsedAudit
   const targetType = searchParams.get('target_type') ?? searchParams.get('target') ?? undefined;
   const action = searchParams.get('action') ?? undefined;
   const riskTierInput = searchParams.get('risk_tier') ?? undefined;
+  const reviewStateInput = searchParams.get('review_state') ?? undefined;
 
   const fromInput = searchParams.get('date_from') ?? searchParams.get('from');
   const toInput = searchParams.get('date_to') ?? searchParams.get('to');
@@ -67,6 +74,11 @@ export function parseAuditLogFilters(searchParams: URLSearchParams): ParsedAudit
   }
   const riskTier = isAuditLogRiskTier(riskTierInput) ? riskTierInput : undefined;
 
+  if (reviewStateInput && !isAuditLogReviewState(reviewStateInput)) {
+    return { error: 'review_state パラメータが不正です' };
+  }
+  const reviewState = isAuditLogReviewState(reviewStateInput) ? reviewStateInput : undefined;
+
   return {
     actor,
     actorPharmacy,
@@ -75,6 +87,7 @@ export function parseAuditLogFilters(searchParams: URLSearchParams): ParsedAudit
     targetType,
     action,
     riskTier,
+    reviewState,
     from: from.date,
     to: to.date,
   };

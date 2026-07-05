@@ -62,6 +62,42 @@ vi.mock('@/components/ui/select', async () => {
 
 setupDomTestEnv();
 
+function makeAuditLogSummary(totalCount: number, highRiskPending = totalCount > 0 ? 1 : 0) {
+  return {
+    high_risk_unreviewed_count: highRiskPending,
+    review_dashboard: {
+      scope: 'filtered',
+      generated_at: '2026-06-20T02:00:00.000Z',
+      total_count: totalCount,
+      risk_tier: {
+        high: highRiskPending,
+        standard: Math.max(totalCount - highRiskPending, 0),
+      },
+      review_state: {
+        pending: highRiskPending,
+        reviewed: Math.max(totalCount - highRiskPending, 0),
+      },
+      high_risk: {
+        total: highRiskPending,
+        pending_review: highRiskPending,
+        reviewed: 0,
+      },
+      filters: {
+        risk_tier: null,
+        review_state: null,
+        target_type: null,
+        action: null,
+        date_from: '2026-05-21T00:00:00.000Z',
+        date_to: '2026-06-20T23:59:59.999Z',
+        actor_used: false,
+        actor_pharmacy_used: false,
+        actor_site_used: false,
+        patient_used: false,
+      },
+    },
+  };
+}
+
 function renderContent() {
   return render(<AuditLogsContent />, { wrapper: createQueryClientWrapper() });
 }
@@ -80,10 +116,9 @@ function stubFetch() {
       });
     }
     if (url.startsWith('/api/audit-logs?')) {
-      return new Response(
-        JSON.stringify({ data: [], summary: { high_risk_unreviewed_count: 0 } }),
-        { status: 200 },
-      );
+      return new Response(JSON.stringify({ data: [], summary: makeAuditLogSummary(0, 0) }), {
+        status: 200,
+      });
     }
     return new Response('not found', { status: 404 });
   });
@@ -126,7 +161,7 @@ function stubFetchWithLogs(count: number) {
       return new Response(
         JSON.stringify({
           data: Array.from({ length: count }, (_, i) => makeAuditLog(i)),
-          summary: { high_risk_unreviewed_count: count > 0 ? 1 : 0 },
+          summary: makeAuditLogSummary(count, count > 0 ? 1 : 0),
         }),
         { status: 200 },
       );
@@ -216,6 +251,8 @@ describe('AuditLogsContent', () => {
       '報告書印刷要求',
       '高リスク',
       '通常',
+      'レビュー待ち',
+      'レビュー済み',
     ]) {
       expect(screen.getAllByRole('button', { name: label }).length).toBeGreaterThan(0);
     }
@@ -237,6 +274,7 @@ describe('AuditLogsContent', () => {
     expect(screen.getByRole('button', { name: 'CSV出力' }).className).toContain('sm:min-h-[44px]');
     expect(screen.getByPlaceholderText('ユーザーIDで検索').className).toContain('sm:min-h-[44px]');
     expect(document.getElementById('risk-tier-filter')?.className).toContain('sm:min-h-[44px]');
+    expect(document.getElementById('review-state-filter')?.className).toContain('sm:min-h-[44px]');
     expect(document.getElementById('target-type-filter')?.className).toContain('sm:min-h-[44px]');
     expect(document.getElementById('action-filter')?.className).toContain('sm:min-h-[44px]');
   });
@@ -248,6 +286,7 @@ describe('AuditLogsContent', () => {
     await screen.findByText('ログがありません');
 
     fireEvent.click(screen.getByRole('button', { name: '高リスク' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'レビュー待ち' })[0]);
     fireEvent.click(screen.getByRole('button', { name: '同意記録' }));
     fireEvent.click(screen.getByRole('button', { name: '同意記録閲覧' }));
 
@@ -259,6 +298,7 @@ describe('AuditLogsContent', () => {
           const params = searchParamsFromUrl(url);
           return (
             params.get('risk_tier') === 'high' &&
+            params.get('review_state') === 'pending' &&
             params.get('target_type') === 'consent_record' &&
             params.get('action') === 'consent_record_viewed'
           );
@@ -275,6 +315,7 @@ describe('AuditLogsContent', () => {
       expect(exportCall).toBeDefined();
       const params = searchParamsFromUrl(String(exportCall?.[0]));
       expect(params.get('risk_tier')).toBe('high');
+      expect(params.get('review_state')).toBe('pending');
       expect(params.get('target_type')).toBe('consent_record');
       expect(params.get('action')).toBe('consent_record_viewed');
       expect(params.get('format')).toBe('json');
@@ -288,7 +329,7 @@ describe('AuditLogsContent', () => {
     expect(await screen.findAllByText('target_0')).not.toHaveLength(0);
     expect(await screen.findAllByText('高リスク')).not.toHaveLength(0);
     expect(screen.getAllByText('本文マスク済').length).toBeGreaterThan(0);
-    expect(screen.getByText(/高リスク未レビュー\s*1件/)).toBeTruthy();
+    expect(screen.getByText(/高リスク未レビュー（現在条件内）\s*1件/)).toBeTruthy();
     expect(screen.getAllByText('レビュー済み').length).toBeGreaterThan(0);
     expect(screen.getAllByText('通常').length).toBeGreaterThan(0);
     expect(screen.getAllByText('対象外').length).toBeGreaterThan(0);
@@ -325,7 +366,7 @@ describe('AuditLogsContent', () => {
         return new Response(
           JSON.stringify({
             data: [makeAuditLog(0)],
-            summary: { high_risk_unreviewed_count: 1 },
+            summary: makeAuditLogSummary(1, 1),
           }),
           { status: 200 },
         );
@@ -338,7 +379,7 @@ describe('AuditLogsContent', () => {
 
     expect(await screen.findAllByText('target_0')).not.toHaveLength(0);
     const reviewButton = screen.getAllByRole('button', {
-      name: 'target_0をレビュー済みにする',
+      name: /高リスク.*操作者0.*target_0をレビュー済みにする/,
     })[0];
     expect(reviewButton.className).toContain('min-h-[44px]');
     fireEvent.click(reviewButton);
@@ -361,10 +402,9 @@ describe('AuditLogsContent', () => {
         });
       }
       if (url.startsWith('/api/audit-logs?')) {
-        return new Response(
-          JSON.stringify({ data: [], summary: { high_risk_unreviewed_count: 0 } }),
-          { status: 200 },
-        );
+        return new Response(JSON.stringify({ data: [], summary: makeAuditLogSummary(0, 0) }), {
+          status: 200,
+        });
       }
       return new Response('not found', { status: 404 });
     });
@@ -387,10 +427,9 @@ describe('AuditLogsContent', () => {
         return new Response('not json', { status: 500 });
       }
       if (url.startsWith('/api/audit-logs?')) {
-        return new Response(
-          JSON.stringify({ data: [], summary: { high_risk_unreviewed_count: 0 } }),
-          { status: 200 },
-        );
+        return new Response(JSON.stringify({ data: [], summary: makeAuditLogSummary(0, 0) }), {
+          status: 200,
+        });
       }
       return new Response('not found', { status: 404 });
     });
@@ -413,10 +452,9 @@ describe('AuditLogsContent', () => {
         throw new Error('');
       }
       if (url.startsWith('/api/audit-logs?')) {
-        return new Response(
-          JSON.stringify({ data: [], summary: { high_risk_unreviewed_count: 0 } }),
-          { status: 200 },
-        );
+        return new Response(JSON.stringify({ data: [], summary: makeAuditLogSummary(0, 0) }), {
+          status: 200,
+        });
       }
       return new Response('not found', { status: 404 });
     });
@@ -449,10 +487,9 @@ describe('AuditLogsContent', () => {
         return exportResponse;
       }
       if (url.startsWith('/api/audit-logs?')) {
-        return new Response(
-          JSON.stringify({ data: [], summary: { high_risk_unreviewed_count: 0 } }),
-          { status: 200 },
-        );
+        return new Response(JSON.stringify({ data: [], summary: makeAuditLogSummary(0, 0) }), {
+          status: 200,
+        });
       }
       return new Response('not found', { status: 404 });
     });

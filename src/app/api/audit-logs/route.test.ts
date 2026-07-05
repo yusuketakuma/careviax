@@ -97,10 +97,17 @@ describe('/api/audit-logs GET', () => {
     expect(response.status).toBe(200);
     expectNoStore(response);
     expect(findManyMock).toHaveBeenCalledOnce();
-    expect(countMock).toHaveBeenCalledTimes(2);
+    expect(countMock).toHaveBeenCalledTimes(8);
     await expect(response.json()).resolves.toMatchObject({
       summary: {
         high_risk_unreviewed_count: 0,
+        review_dashboard: {
+          scope: 'filtered',
+          total_count: 0,
+          high_risk: {
+            pending_review: 0,
+          },
+        },
       },
     });
     expect(createAuditLogEntryMock).toHaveBeenCalledWith(
@@ -136,6 +143,22 @@ describe('/api/audit-logs GET', () => {
 
     const response = (await GET(
       createRequest({ 'x-org-id': 'org_1' }, 'risk_tier=critical'),
+      emptyRouteContext,
+    )) as Response;
+
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    expect(findManyMock).not.toHaveBeenCalled();
+    expect(countMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('returns no-store validation errors for invalid review state filters before querying audit logs', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }, 'review_state=done'),
       emptyRouteContext,
     )) as Response;
 
@@ -292,6 +315,7 @@ describe('/api/audit-logs GET', () => {
             targetType: 'consent_record',
             action: 'consent_record_viewed',
             riskTier: 'high',
+            reviewState: null,
             from: '2026-03-01T00:00:00.000Z',
             to: '2026-03-31T23:59:59.999Z',
           },
@@ -330,6 +354,42 @@ describe('/api/audit-logs GET', () => {
         OR: expect.any(Array),
       }),
     });
+  });
+
+  it('supports review state filters in list queries', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }, 'review_state=pending'),
+      emptyRouteContext,
+    )) as Response;
+
+    expect(response.status).toBe(200);
+    expect(findManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          reviews: {
+            none: {
+              org_id: 'org_1',
+              review_state: 'reviewed',
+            },
+          },
+        }),
+      }),
+    );
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.any(Object),
+      expect.objectContaining({
+        changes: expect.objectContaining({
+          filters: expect.objectContaining({
+            reviewState: 'pending',
+          }),
+        }),
+      }),
+    );
   });
 
   it('adds risk tier and redaction state review fields to audit log responses', async () => {

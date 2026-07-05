@@ -7,7 +7,11 @@ import { parseAuditLogFilters } from '@/lib/api/audit-log-filters';
 import { buildPagination } from '@/lib/api/search';
 import { parseBoundedInteger } from '@/lib/api/pagination';
 import { redactAuditLogsForResponse } from '@/lib/audit-logs/redaction';
-import { buildAuditLogRiskTierWhere, enrichAuditLogsForReview } from '@/lib/audit-logs/review';
+import {
+  buildAuditLogReviewStateWhere,
+  buildAuditLogRiskTierWhere,
+  enrichAuditLogsForReview,
+} from '@/lib/audit-logs/review';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 
 const DEFAULT_AUDIT_LOG_PAGE = 1;
@@ -37,7 +41,17 @@ const authenticatedGET = withAuthContext(
 
     const { skip, take } = buildPagination(page, limit, MAX_AUDIT_LOG_PAGE);
 
-    const where = {
+    const dateWhere =
+      filters.from || filters.to
+        ? {
+            created_at: {
+              ...(filters.from ? { gte: filters.from } : {}),
+              ...(filters.to ? { lte: filters.to } : {}),
+            },
+          }
+        : {};
+
+    const baseWhere = {
       org_id: ctx.orgId,
       ...(filters.actor ? { actor_id: filters.actor } : {}),
       ...(filters.actorPharmacy ? { actor_pharmacy_id: filters.actorPharmacy } : {}),
@@ -45,20 +59,31 @@ const authenticatedGET = withAuthContext(
       ...(filters.patient ? { patient_id: filters.patient } : {}),
       ...(filters.targetType ? { target_type: filters.targetType } : {}),
       ...(filters.action ? { action: filters.action } : {}),
+      ...dateWhere,
+    };
+
+    const where = {
+      ...baseWhere,
       ...(filters.riskTier ? buildAuditLogRiskTierWhere(filters.riskTier) : {}),
-      ...(filters.from || filters.to
-        ? {
-            created_at: {
-              ...(filters.from ? { gte: filters.from } : {}),
-              ...(filters.to ? { lte: filters.to } : {}),
-            },
-          }
-        : {}),
+      ...(filters.reviewState ? buildAuditLogReviewStateWhere(filters.reviewState, ctx.orgId) : {}),
     };
 
     const highRiskWhere = buildAuditLogRiskTierWhere('high');
+    const standardRiskWhere = buildAuditLogRiskTierWhere('standard');
+    const pendingReviewWhere = buildAuditLogReviewStateWhere('pending', ctx.orgId);
+    const reviewedWhere = buildAuditLogReviewStateWhere('reviewed', ctx.orgId);
 
-    const [logs, total, highRiskUnreviewedCount] = await Promise.all([
+    const [
+      logs,
+      total,
+      highRiskUnreviewedCount,
+      filteredHighRiskCount,
+      filteredStandardRiskCount,
+      filteredPendingReviewCount,
+      filteredReviewedCount,
+      filteredHighRiskPendingCount,
+      filteredHighRiskReviewedCount,
+    ] = await Promise.all([
       prisma.auditLog.findMany({
         where,
         orderBy: { created_at: 'desc' },
@@ -76,6 +101,52 @@ const authenticatedGET = withAuthContext(
               review_state: 'reviewed',
             },
           },
+        },
+      }),
+      prisma.auditLog.count({
+        where: {
+          ...baseWhere,
+          ...(filters.reviewState
+            ? buildAuditLogReviewStateWhere(filters.reviewState, ctx.orgId)
+            : {}),
+          ...highRiskWhere,
+        },
+      }),
+      prisma.auditLog.count({
+        where: {
+          ...baseWhere,
+          ...(filters.reviewState
+            ? buildAuditLogReviewStateWhere(filters.reviewState, ctx.orgId)
+            : {}),
+          ...standardRiskWhere,
+        },
+      }),
+      prisma.auditLog.count({
+        where: {
+          ...baseWhere,
+          ...(filters.riskTier ? buildAuditLogRiskTierWhere(filters.riskTier) : {}),
+          ...pendingReviewWhere,
+        },
+      }),
+      prisma.auditLog.count({
+        where: {
+          ...baseWhere,
+          ...(filters.riskTier ? buildAuditLogRiskTierWhere(filters.riskTier) : {}),
+          ...reviewedWhere,
+        },
+      }),
+      prisma.auditLog.count({
+        where: {
+          ...baseWhere,
+          ...highRiskWhere,
+          ...pendingReviewWhere,
+        },
+      }),
+      prisma.auditLog.count({
+        where: {
+          ...baseWhere,
+          ...highRiskWhere,
+          ...reviewedWhere,
         },
       }),
     ]);
@@ -108,6 +179,7 @@ const authenticatedGET = withAuthContext(
           targetType: filters.targetType ?? null,
           action: filters.action ?? null,
           riskTier: filters.riskTier ?? null,
+          reviewState: filters.reviewState ?? null,
           from: filters.from?.toISOString() ?? null,
           to: filters.to?.toISOString() ?? null,
         },
@@ -122,6 +194,36 @@ const authenticatedGET = withAuthContext(
       data: enrichAuditLogsForReview(redactAuditLogsForResponse(logs), reviewRows),
       summary: {
         high_risk_unreviewed_count: highRiskUnreviewedCount,
+        review_dashboard: {
+          scope: 'filtered',
+          generated_at: new Date().toISOString(),
+          total_count: total,
+          risk_tier: {
+            high: filteredHighRiskCount,
+            standard: filteredStandardRiskCount,
+          },
+          review_state: {
+            pending: filteredPendingReviewCount,
+            reviewed: filteredReviewedCount,
+          },
+          high_risk: {
+            total: filteredHighRiskPendingCount + filteredHighRiskReviewedCount,
+            pending_review: filteredHighRiskPendingCount,
+            reviewed: filteredHighRiskReviewedCount,
+          },
+          filters: {
+            risk_tier: filters.riskTier ?? null,
+            review_state: filters.reviewState ?? null,
+            target_type: filters.targetType ?? null,
+            action: filters.action ?? null,
+            date_from: filters.from?.toISOString() ?? null,
+            date_to: filters.to?.toISOString() ?? null,
+            actor_used: Boolean(filters.actor),
+            actor_pharmacy_used: Boolean(filters.actorPharmacy),
+            actor_site_used: Boolean(filters.actorSite),
+            patient_used: Boolean(filters.patient),
+          },
+        },
       },
       pagination: {
         total,

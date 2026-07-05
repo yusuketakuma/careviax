@@ -6,7 +6,11 @@ import { prisma } from '@/lib/db/client';
 import { internalError, validationError } from '@/lib/api/response';
 import { parseAuditLogFilters } from '@/lib/api/audit-log-filters';
 import { redactAuditLogsForResponse } from '@/lib/audit-logs/redaction';
-import { buildAuditLogRiskTierWhere, enrichAuditLogsForReview } from '@/lib/audit-logs/review';
+import {
+  buildAuditLogReviewStateWhere,
+  buildAuditLogRiskTierWhere,
+  enrichAuditLogsForReview,
+} from '@/lib/audit-logs/review';
 import { recordDataExportAudit } from '@/server/services/export-audit';
 import { quotedCsvRow as toCsvRow } from '@/lib/csv/safe-csv';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
@@ -44,6 +48,7 @@ const authenticatedGET = withAuthContext(
       ...(filters.targetType ? { target_type: filters.targetType } : {}),
       ...(filters.action ? { action: filters.action } : {}),
       ...(filters.riskTier ? buildAuditLogRiskTierWhere(filters.riskTier) : {}),
+      ...(filters.reviewState ? buildAuditLogReviewStateWhere(filters.reviewState, ctx.orgId) : {}),
       ...((filters.from ?? filters.to)
         ? {
             created_at: {
@@ -92,6 +97,7 @@ const authenticatedGET = withAuthContext(
         targetType: filters.targetType ?? null,
         action: filters.action ?? null,
         riskTier: filters.riskTier ?? null,
+        reviewState: filters.reviewState ?? null,
         from: filters.from?.toISOString() ?? null,
         to: filters.to?.toISOString() ?? null,
       },

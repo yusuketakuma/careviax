@@ -89,6 +89,7 @@ const { authMock, prismaMock, withOrgContextMock, txMock } = vi.hoisted(() => {
     groupBy: vi.fn().mockResolvedValue([]),
     update: vi.fn().mockResolvedValue(createRecord()),
     updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+    upsert: vi.fn().mockResolvedValue(createRecord()),
     delete: vi.fn().mockResolvedValue(createRecord()),
     deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
     create: vi.fn().mockResolvedValue(createRecord()),
@@ -103,6 +104,7 @@ const { authMock, prismaMock, withOrgContextMock, txMock } = vi.hoisted(() => {
       {
         get: (_target, prop: PropertyKey) => {
           if (prop === '$queryRaw') return queryRaw;
+          if (prop === '$transaction') return vi.fn(async (callback) => callback(createDbProxy()));
           if (!cache.has(prop)) {
             cache.set(prop, createModel());
           }
@@ -160,6 +162,7 @@ import {
   PATCH as visitSchedulePatch,
   DELETE as visitScheduleDelete,
 } from '../visit-schedules/[id]/route';
+import { PATCH as auditLogReviewPatch } from '../audit-logs/[id]/review/route';
 
 type Handler = () => Promise<Response | undefined>;
 type RouteEntry = { name: string; handler: Handler; successBody?: unknown };
@@ -192,6 +195,7 @@ function routeShouldBeNoStore(routeName: string) {
     routeName === 'set-plans/[id] PATCH' ||
     routeName === 'document-delivery-rules/[id] PATCH' ||
     routeName === 'document-delivery-rules/[id] DELETE' ||
+    routeName === 'audit-logs/[id]/review PATCH' ||
     routeName === 'pca-pumps/[id] PATCH' ||
     routeName === 'pca-pumps/[id] DELETE'
   );
@@ -264,6 +268,18 @@ const permissionRoutes: RouteEntry[] = [
           { expected_updated_at: '2026-06-18T00:00:00.000Z' },
         ),
         { params: Promise.resolve({ id: 'request_1' }) },
+      ),
+  },
+  {
+    name: 'audit-logs/[id]/review PATCH',
+    handler: () =>
+      auditLogReviewPatch(
+        createRequest(
+          'http://localhost/api/audit-logs/audit_1/review',
+          { 'x-org-id': 'org_1' },
+          { review_state: 'reviewed', reason_code: 'admin_reviewed' },
+        ),
+        { params: Promise.resolve({ id: 'audit_1' }) },
       ),
   },
   {

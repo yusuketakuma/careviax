@@ -3468,3 +3468,76 @@
   Broader audit review dashboard remains open for review-state persistence, admin dashboard high-risk unreviewed count,
   and optional browser screenshot proof. Export truncation metadata is still header-only and can be refined later with
   LIMIT+1 / body metadata if required.
+
+## 2026-07-06 Audit Review Queue Filter / Dashboard Summary slice
+
+- codex: `UX-AUD-001` audit review queue follow-up implemented.
+  サブエージェント review（spec/API/UX）で指摘された、監査ログ閲覧による high-risk 未レビュー backlog
+  の自己増殖、`review_state` server-side filter 不足、filtered/global count basis の曖昧さ、
+  PATCH review route の real auth/no-store matrix 不足を小スライスで修正した。
+- design reference:
+  UI 変更のため `docs/ui-ux-design-guidelines.md` と `imagegen` skill を再確認し、
+  `gpt-image-2` 方針の非PHI audit review dashboard mockup を生成:
+  `/Users/yusuke/.codex/generated_images/019f2c7e-d969-7882-bd11-432a10abb930/ig_01439a5e9dbbf762016a4aa9c2b3108191ab8d030d2ca1bc36.png`。
+  採用点は compact summary strip、`高リスク未レビューを表示` quick filter、`レビュー状態`
+  filter、table-first の review queue、loading false-zero 防止。生成案は PH-OS 既存
+  `PageSection` / `FilterSummaryBar` / `DataTable` へ翻訳し、PHI/secret は prompt に入れていない。
+- subagent review:
+  `spec_guardian` (`019f33a3-15d3-7d40-b5a1-79a5f5771658`) は
+  `audit_log_viewed` の self-proliferation、`review_state` / reviewer filter 不足、
+  `visit_schedule_updated` の high-risk taxonomy 漏れ、shared response type 不足を指摘。
+  `api_contract_reviewer` (`019f33a3-30c7-7e60-9f8e-1fef068ef9fd`) は additive
+  `summary.review_dashboard`、既存 `summary.high_risk_unreviewed_count` 維持、
+  `review_state=pending|reviewed` DB predicate、redaction-state filter 非追加、
+  no-store/auth matrix を要求。`accessibility_ux_reviewer`
+  (`019f33a3-4b6e-7bc3-b764-73b78985f512`) は count basis 明示、loading false-zero
+  防止、quick filter 常時表示、行/ボタンの accessible context を要求。これらを本 slice で反映。
+- files inspected:
+  `Plans.md`, `docs/ui-ux-design-guidelines.md`,
+  `/Users/yusuke/.codex/skills/.system/imagegen/SKILL.md`,
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+  `src/lib/audit-logs/review.ts`, `src/lib/api/audit-log-filters.ts`,
+  `src/lib/audit-logs/filter-options.ts`, `src/app/api/audit-logs/route.ts`,
+  `src/app/api/audit-logs/export/route.ts`,
+  `src/app/api/audit-logs/[id]/review/route.ts`,
+  `src/app/(dashboard)/admin/audit-logs/audit-logs-content.tsx`,
+  `src/components/ui/data-table.tsx`, related route/UI/protected tests.
+- files changed:
+  `src/types/api/audit-logs.ts`,
+  `src/lib/audit-logs/review.ts`, `src/lib/audit-logs/review.test.ts`,
+  `src/lib/api/audit-log-filters.ts`, `src/lib/audit-logs/filter-options.ts`,
+  `src/app/api/audit-logs/route.ts`, `src/app/api/audit-logs/route.test.ts`,
+  `src/app/api/audit-logs/export/route.ts`,
+  `src/app/api/audit-logs/export/route.test.ts`,
+  `src/app/api/__tests__/protected-patch-delete-routes.test.ts`,
+  `src/app/(dashboard)/admin/audit-logs/audit-logs-content.tsx`,
+  `src/app/(dashboard)/admin/audit-logs/audit-logs-content.test.tsx`,
+  `ops/refactor/STATE.md`.
+- bugs found/fixed:
+  `audit_log_viewed` が high-risk action に含まれており、監査画面を開くたびに次回以降の
+  actionable high-risk 未レビュー件数が増える構造だった。`audit_log_viewed` は監査記録として
+  保存し続けるが high-risk review queue から外した。直接訪問予定更新
+  `visit_schedule_updated` / `visit_schedule_reschedule_requested` は explicit high-risk
+  action として追加し、予定上書き系の取りこぼしを減らした。
+- security/PHI risks reduced:
+  `review_state` filter は DB relation predicate で list/export に適用し、page post-filtering による
+  pagination/export 不整合を避けた。`summary.review_dashboard` は additive contract として追加し、
+  existing `summary.high_risk_unreviewed_count` は後方互換で残した。redaction-state の全件 filter は
+  derived state のため追加していない。PATCH review route は protected mutation matrix に追加し、
+  real wrapper の 401/403/no-store coverage を補強した。
+- performance issues improved:
+  未レビュー queue は server-side `reviews.some/none` predicate で絞り込み、UI 側の loaded-page
+  filter にしていない。summary bucket も DB-backed count で返すため、100件表示上限下でも
+  queue 発見性を保つ。
+- validation:
+  `pnpm exec vitest run src/lib/audit-logs/review.test.ts src/app/api/audit-logs/route.test.ts src/app/api/audit-logs/export/route.test.ts "src/app/(dashboard)/admin/audit-logs/audit-logs-content.test.tsx" src/app/api/__tests__/protected-patch-delete-routes.test.ts --reporter=dot --testTimeout=30000`
+  green (5 files / 162 tests; expected sanitized stderr from 500 route tests only);
+  `pnpm exec prettier --check ...audit review touched files...` green after formatting;
+  `pnpm exec eslint --max-warnings=0 ...audit review touched files...` green;
+  `git diff --check -- ...audit review touched files...` green;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck --pretty false` green.
+- remaining:
+  `reviewed_by` / reviewer filter and closed reason-code registry remain open. High-risk review action is still
+  one-click with toast-only failure; a follow-up should add row-level persistent failure state and optional
+  confirmation drawer for high-risk rows. Browser screenshot/keyboard/a11y proof for the audit review page is still
+  pending.

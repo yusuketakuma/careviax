@@ -237,12 +237,61 @@ describe('/api/audit-logs/export GET', () => {
     );
   });
 
+  it('filters and records audit export by review state', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }, 'format=json&review_state=reviewed'),
+      emptyRouteContext,
+    )) as Response;
+
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    expect(findManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          reviews: {
+            some: {
+              org_id: 'org_1',
+              review_state: 'reviewed',
+            },
+          },
+        }),
+      }),
+    );
+    expect(recordDataExportAuditMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        filters: expect.objectContaining({
+          reviewState: 'reviewed',
+        }),
+      }),
+    );
+  });
+
   it('returns no-store validation errors for invalid risk tier filters', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
 
     const response = (await GET(
       createRequest({ 'x-org-id': 'org_1' }, 'format=json&risk_tier=critical'),
+      emptyRouteContext,
+    )) as Response;
+
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    expect(findManyMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
+  });
+
+  it('returns no-store validation errors for invalid review state filters', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }, 'format=json&review_state=done'),
       emptyRouteContext,
     )) as Response;
 
