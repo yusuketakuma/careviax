@@ -41,10 +41,17 @@ corepack pnpm perf:smoke \
 
 ## 出力
 
-- JSON で `average_ms`, `p50_ms`, `p95_ms`, `max_ms`, `error_count`, `body_bytes`, `target_met` を出力
-- `target_met=false` または `error_count>0` の場合は終了コード 1
+- JSON で `average_ms`, `p50_ms`, `p95_ms`, `max_ms`, `error_count`, `body_bytes`,
+  `response_payload_sample_count`, `p95_response_payload_bytes`,
+  `response_payload_budget_status`, `response_payload_budget_bytes`, `target_met` を出力
+- `body_bytes` は request body size。応答 payload は `Content-Length` があればそれを使い、
+  なければ response body の byte length を測る。本文は出力しない
+- `response_payload_budget_status=over_budget`、`target_met=false`、または `error_count>0` の場合は終了コード 1。
+  budget 未設定 route は `unconfigured` と出し、payload budget だけでは失敗扱いにしない
 
 ## 記録ルール
 
 - pilot 前は主要 API を 3 回以上計測し、最悪値を `Plans.md` または運用記録へ転記する
 - `p95_ms > 500` のルートはボトルネック調査対象とする
+- critical BFF は `Plans.md` の route payload budget registry と同じ normalized route/family で記録する。
+  query string、hash、患者ID、org ID、検索語は budget key に含めない

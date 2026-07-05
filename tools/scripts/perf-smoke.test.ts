@@ -145,12 +145,83 @@ describe('perf-smoke parseArgs', () => {
       requests: 1,
       error_count: 0,
       timeout_count: 0,
+      response_payload_sample_count: 1,
+      p95_response_payload_bytes: 2,
+      response_payload_budget_status: 'unconfigured',
       target_met: true,
     });
 
     expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 1234);
     expect(unref).toHaveBeenCalledTimes(1);
     expect(clearTimeoutSpy).toHaveBeenCalledWith(timeoutHandle);
+  });
+
+  it('records response payload bytes from content-length and fails configured budget overruns', async () => {
+    const args = parseArgs(
+      ['--requests', '2', '--concurrency', '1', '--path', '/api/patients/board'],
+      {},
+    );
+    const payloads = [310_000, 330_000];
+    const fetchImpl = vi.fn<typeof fetch>(async () => {
+      const payload = payloads.shift() ?? 0;
+      return new Response(null, {
+        status: 200,
+        headers: { 'content-length': String(payload) },
+      });
+    });
+
+    await expect(runPerfSmoke(args, fetchImpl)).resolves.toMatchObject({
+      requests: 2,
+      response_payload_sample_count: 2,
+      average_response_payload_bytes: 320_000,
+      p50_response_payload_bytes: 310_000,
+      p95_response_payload_bytes: 330_000,
+      max_response_payload_bytes: 330_000,
+      response_payload_route_family: 'patients-board',
+      response_payload_budget_bytes: 307_200,
+      response_payload_budget_status: 'over_budget',
+      response_payload_budget_met: false,
+      response_payload_budget_over_count: 2,
+      target_met: false,
+    });
+  });
+
+  it('falls back to response body byte length when content-length is absent', async () => {
+    const args = parseArgs(['--requests', '1', '--concurrency', '1'], {});
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response('abcd', { status: 200 }));
+
+    await expect(runPerfSmoke(args, fetchImpl)).resolves.toMatchObject({
+      requests: 1,
+      response_payload_sample_count: 1,
+      average_response_payload_bytes: 4,
+      p50_response_payload_bytes: 4,
+      p95_response_payload_bytes: 4,
+      max_response_payload_bytes: 4,
+      response_payload_route_family: null,
+      response_payload_budget_bytes: null,
+      response_payload_budget_status: 'unconfigured',
+      response_payload_budget_met: null,
+      response_payload_budget_over_count: 0,
+      target_met: true,
+    });
+  });
+
+  it('does not fail response payload budgets for unconfigured critical route families', async () => {
+    const args = parseArgs(
+      ['--requests', '1', '--concurrency', '1', '--path', '/api/billing/close-board?month=2026-07'],
+      {},
+    );
+    const fetchImpl = vi.fn<typeof fetch>(
+      async () => new Response(null, { status: 200, headers: { 'content-length': '500000' } }),
+    );
+
+    await expect(runPerfSmoke(args, fetchImpl)).resolves.toMatchObject({
+      response_payload_route_family: 'billing',
+      response_payload_budget_bytes: null,
+      response_payload_budget_status: 'unconfigured',
+      response_payload_budget_met: null,
+      target_met: true,
+    });
   });
 
   it('sends POST bodies with a default JSON content type', async () => {

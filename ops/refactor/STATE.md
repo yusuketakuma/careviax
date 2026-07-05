@@ -3147,6 +3147,38 @@
   query count collection, persistent metrics sink/deploy_sha, and broader BFF measured JSON response coverage
   are still open. `Plans.md` 初期 budget は 50KB/300KB/250KB/250KB/200KB の第一版で、
   production baseline 取得後に調整する。
+- codex: DEV-PAY perf-smoke response payload budget slice complete。
+  `perf:smoke` が latency と request `body_bytes` だけを出し、response payload size を CI smoke
+  threshold にできない gap を修正した。前スライスの route payload budget registry / route normalization
+  を `src/lib/utils/route-payload-budgets.ts` へ抽出し、runtime `performance.ts` と
+  `tools/scripts/perf-smoke.ts` の双方で同じ normalized route/family/budget を使う。`perf-smoke` は
+  `Content-Length` があればそれを使い、なければ response body の `arrayBuffer().byteLength` を測る。
+  本文はログ出力せず、`response_payload_sample_count`, `average_response_payload_bytes`,
+  `p50_response_payload_bytes`, `p95_response_payload_bytes`, `max_response_payload_bytes`,
+  `response_payload_route_family`, `response_payload_budget_bytes`,
+  `response_payload_budget_status`, `response_payload_budget_met`,
+  `response_payload_budget_over_count` だけを JSON 出力する。configured budget があり
+  `over_budget` の場合だけ `target_met=false` にし、budget 未設定 critical family は
+  `unconfigured` として表示するが payload budget だけでは失敗扱いにしない。Docs updated:
+  `docs/operations/performance-smoke-test.md`。Files changed:
+  `src/lib/utils/route-payload-budgets.ts`,
+  `src/lib/utils/performance.ts`,
+  `tools/scripts/perf-smoke.ts`,
+  `tools/scripts/perf-smoke.test.ts`,
+  `docs/operations/performance-smoke-test.md`,
+  `ops/refactor/STATE.md`。Validation green:
+  `pnpm exec prettier --write src/lib/utils/route-payload-budgets.ts src/lib/utils/performance.ts src/lib/utils/performance.test.ts tools/scripts/perf-smoke.ts tools/scripts/perf-smoke.test.ts docs/operations/performance-smoke-test.md`;
+  `pnpm exec vitest run src/lib/utils/performance.test.ts src/app/api/admin/performance-metrics/route.test.ts src/app/'(dashboard)'/admin/performance/page.test.tsx tools/scripts/perf-smoke.test.ts --reporter=dot --testTimeout=30000`
+  (4 files / 33 tests);
+  `pnpm exec eslint src/lib/utils/route-payload-budgets.ts src/lib/utils/performance.ts src/lib/utils/performance.test.ts tools/scripts/perf-smoke.ts tools/scripts/perf-smoke.test.ts src/app/'(dashboard)'/admin/performance/page.tsx src/app/'(dashboard)'/admin/performance/page.test.tsx`
+  green（docs markdown を含めた初回 scoped ESLint は対象外 warning のみ）;
+  `pnpm format:check`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `git diff --check -- src/lib/utils/route-payload-budgets.ts src/lib/utils/performance.ts src/lib/utils/performance.test.ts tools/scripts/perf-smoke.ts tools/scripts/perf-smoke.test.ts docs/operations/performance-smoke-test.md ops/refactor/STATE.md`。
+  Remaining:
+  query count collection, persistent metrics sink/deploy_sha, and broader BFF measured JSON response coverage
+  are still open. `perf:smoke` aggregate budget output is intended for single-route critical checks;
+  mixed-route smoke remains latency/error oriented until per-route report output is added.
 
 ## 進行中 / 凍結
 

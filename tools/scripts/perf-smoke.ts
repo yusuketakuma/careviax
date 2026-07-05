@@ -1,6 +1,11 @@
 import process from 'node:process';
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
+import {
+  payloadBudgetStatus,
+  resolveRoutePayloadBudget,
+  type PayloadBudgetStatus,
+} from '../../src/lib/utils/route-payload-budgets';
 import { maybeUnrefTimeout } from '../shared/abort-timeout';
 
 type Args = {
@@ -24,6 +29,16 @@ export type PerfSmokeResult = {
   method: string;
   paths: string[];
   body_bytes: number;
+  response_payload_sample_count: number;
+  average_response_payload_bytes: number | null;
+  p50_response_payload_bytes: number | null;
+  p95_response_payload_bytes: number | null;
+  max_response_payload_bytes: number | null;
+  response_payload_route_family: string | null;
+  response_payload_budget_bytes: number | null;
+  response_payload_budget_status: PayloadBudgetStatus;
+  response_payload_budget_met: boolean | null;
+  response_payload_budget_over_count: number;
   average_ms: number;
   p50_ms: number;
   p95_ms: number;
@@ -141,6 +156,45 @@ function buildRequestInit(args: Args, signal: AbortSignal): RequestInit {
   };
 }
 
+function parseContentLength(value: string | null): number | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const parsed = Number(trimmed);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+async function measureResponsePayloadBytes(response: Response): Promise<number> {
+  const contentLength = parseContentLength(response.headers.get('content-length'));
+  if (contentLength != null) return contentLength;
+
+  return (await response.arrayBuffer()).byteLength;
+}
+
+function resolveResponsePayloadBudget(args: Args): {
+  family: string | null;
+  budgetBytes: number | null;
+} {
+  const definitions = args.paths.map((path) => resolveRoutePayloadBudget(args.method, path));
+  const criticalDefinitions = definitions.filter((definition) => definition != null);
+  if (criticalDefinitions.length === 0) return { family: null, budgetBytes: null };
+
+  const families = new Set(criticalDefinitions.map((definition) => definition.family));
+  const configuredBudgets = criticalDefinitions
+    .map((definition) => definition.budget_bytes)
+    .filter((budgetBytes): budgetBytes is number => budgetBytes != null);
+
+  if (configuredBudgets.length !== args.paths.length) {
+    return { family: families.size === 1 ? ([...families][0] ?? null) : null, budgetBytes: null };
+  }
+
+  const uniqueBudgets = new Set(configuredBudgets);
+  return {
+    family: families.size === 1 ? ([...families][0] ?? null) : null,
+    budgetBytes: uniqueBudgets.size === 1 ? ([...uniqueBudgets][0] ?? null) : null,
+  };
+}
+
 function percentile(values: number[], ratio: number) {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((left, right) => left - right);
@@ -172,6 +226,7 @@ export async function runPerfSmoke(
   fetchImpl: typeof fetch = fetch,
 ): Promise<PerfSmokeResult> {
   const durations: number[] = [];
+  const responsePayloadBytes: number[] = [];
   let errorCount = 0;
   let timeoutCount = 0;
   let cursor = 0;
@@ -191,6 +246,7 @@ export async function runPerfSmoke(
         const response = await fetchImpl(target, {
           ...buildRequestInit(args, requestAbort.signal),
         });
+        responsePayloadBytes.push(await measureResponsePayloadBytes(response));
         durations.push(Math.round(performance.now() - startedAt));
         if (!response.ok) {
           errorCount += 1;
@@ -210,6 +266,34 @@ export async function runPerfSmoke(
   const p50 = percentile(durations, 0.5);
   const p95 = percentile(durations, 0.95);
   const max = durations.length > 0 ? Math.max(...durations) : 0;
+  const p50ResponsePayload =
+    responsePayloadBytes.length > 0 ? percentile(responsePayloadBytes, 0.5) : null;
+  const p95ResponsePayload =
+    responsePayloadBytes.length > 0 ? percentile(responsePayloadBytes, 0.95) : null;
+  const maxResponsePayload =
+    responsePayloadBytes.length > 0 ? Math.max(...responsePayloadBytes) : null;
+  const averageResponsePayload =
+    responsePayloadBytes.length > 0
+      ? Math.round(
+          responsePayloadBytes.reduce((sum, value) => sum + value, 0) / responsePayloadBytes.length,
+        )
+      : null;
+  const responsePayloadBudget = resolveResponsePayloadBudget(args);
+  const responsePayloadBudgetBytes = responsePayloadBudget.budgetBytes;
+  const responsePayloadBudgetStatus = payloadBudgetStatus(
+    responsePayloadBudgetBytes,
+    p95ResponsePayload,
+  );
+  const responsePayloadBudgetMet =
+    responsePayloadBudgetStatus === 'within_budget'
+      ? true
+      : responsePayloadBudgetStatus === 'over_budget'
+        ? false
+        : null;
+  const responsePayloadBudgetOverCount =
+    responsePayloadBudgetBytes == null
+      ? 0
+      : responsePayloadBytes.filter((value) => value > responsePayloadBudgetBytes).length;
   const average =
     durations.length > 0
       ? Math.round(durations.reduce((sum, value) => sum + value, 0) / durations.length)
@@ -224,13 +308,23 @@ export async function runPerfSmoke(
     method: args.method,
     paths: args.paths,
     body_bytes: args.body ? Buffer.byteLength(args.body) : 0,
+    response_payload_sample_count: responsePayloadBytes.length,
+    average_response_payload_bytes: averageResponsePayload,
+    p50_response_payload_bytes: p50ResponsePayload,
+    p95_response_payload_bytes: p95ResponsePayload,
+    max_response_payload_bytes: maxResponsePayload,
+    response_payload_route_family: responsePayloadBudget.family,
+    response_payload_budget_bytes: responsePayloadBudgetBytes,
+    response_payload_budget_status: responsePayloadBudgetStatus,
+    response_payload_budget_met: responsePayloadBudgetMet,
+    response_payload_budget_over_count: responsePayloadBudgetOverCount,
     average_ms: average,
     p50_ms: p50,
     p95_ms: p95,
     max_ms: max,
     error_count: errorCount,
     timeout_count: timeoutCount,
-    target_met: p95 <= args.targetMs && errorCount === 0,
+    target_met: p95 <= args.targetMs && errorCount === 0 && responsePayloadBudgetMet !== false,
   };
 }
 
