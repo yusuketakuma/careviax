@@ -608,7 +608,7 @@ FE 仕上げ（低優先）:
   - blocker が解消されたら既存 task が閉じる。
   - billing / report / notification の task は月末・外部送付で孤児化しない。
 
-#### RISK-CORE-3. Case Risk Cockpit API contract `cc:TODO`
+#### RISK-CORE-3. Case Risk Cockpit API contract `cc:PARTIAL`
 
 - 追加候補:
   - `src/types/case-risk-cockpit.ts`
@@ -635,6 +635,23 @@ FE 仕上げ（低優先）:
   - 全 finding に `action_href` がある。
   - 患者一覧からは呼ばず、患者/ケース詳細でのみ呼ぶ。
   - no-store、withOrgContext、case ownership / org boundary、forbidden tests を持つ。
+- 2026-07-06 実装済み:
+  - `src/types/case-risk-cockpit.ts` を追加し、`generated_at` / `patient` / `case` /
+    `overall` / `sections[]` / `next_actions[]` の初期 contract を固定。
+  - `src/server/services/case-risk-cockpit.ts` を追加し、case scope 成功後にのみ最小 select で
+    consent/plan、初回訪問説明書、訪問準備、報告失敗/返信待ち、open task、case visit record に紐づく
+    billing blocker を集約する read-only service を実装。CORE-002 の task 生成は未実装のまま分離。
+  - `src/app/api/cases/[id]/risk-cockpit/route.ts` を追加し、`canVisit`、case id validation、
+    sanitized 500、sensitive no-store を固定。
+  - `src/server/services/case-risk-cockpit.test.ts` と
+    `src/app/api/cases/[id]/risk-cockpit/route.test.ts` で、scope 失敗時に downstream を読まないこと、
+    forbidden/blank/not-found/500 no-store、PHI-free 500、section ordering、rollup、`action_href`、
+    hostile id encoding、task/report/billing 混入防止を固定。
+- 残:
+  - CORE-001 の shared Risk Finding Registry へ型を寄せる。
+  - medication / dispensing / notification / privacy_security / integration / data_quality adapter を追加。
+  - 患者/ケース詳細 UI の Command Center から呼び、`gpt-image-2` 方針に従う非 PHI 参照案と
+    mobile/error state を確認してから配置する。
 
 #### RISK-P0. 最優先実装バックログ `cc:TODO`
 
@@ -642,7 +659,7 @@ FE 仕上げ（低優先）:
 | -------- | -------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | CORE-001 | 横断基盤       | Risk Finding Registry                           | `src/lib/risk/risk-finding.ts`, `risk-finding-registry.ts`                                                  | 既存 blocker/warning を共通 `RiskFinding` に map できる。                                                                                                                                                                     |
 | CORE-002 | 横断基盤       | Risk Finding -> Operational Task Bridge         | `risk-task-bridge.ts`, `operational-tasks.ts`, `task-registry.ts`                                           | blocking/urgent risk が dedupe task へ昇格し、解消時に resolve される。                                                                                                                                                       |
-| CORE-003 | 横断基盤       | Case Risk Cockpit contract                      | `src/types/case-risk-cockpit.ts`, `app/api/cases/[id]/risk-cockpit/route.ts`                                | 患者/ケース単位の横断 risk と next action を 1 API で返す。                                                                                                                                                                   |
+| CORE-003 | 横断基盤       | Case Risk Cockpit contract                      | `src/types/case-risk-cockpit.ts`, `app/api/cases/[id]/risk-cockpit/route.ts`                                | `cc:PARTIAL` 初期 contract / read-only API / service / route tests を追加。残: shared registry 接続、medication/dispensing/notification/privacy/integration/data_quality adapter、患者/ケース詳細 UI 接続。                   |
 | RX-001   | 薬剤変更       | Medication Change Review Gate                   | `medication-change-review.ts`, `visit-preparation-readiness.ts`, `today-preparation`, patient board         | 追加/削除/増量/減量/用法/剤形変更を分類し、high-risk は薬剤師確認完了まで ready/contact/confirm 不可。確認者・日時・判断結果・理由を audit。                                                                                  |
 | RX-002   | 残薬/頓服/外用 | PRN / topical Stock Risk service                | `medication-stock-risk.ts`, `visit-records`, `visit-record.ts`, patient board                               | 残量、使用ペース、鮮度、推定切れ日を算出し、urgent/unknown/stale は risk/task 化。通常薬 deadline は直接上書きしない。                                                                                                        |
 | PAT-001  | 患者基盤       | Case Risk Cockpit 初期実装                      | `patient-detail-foundation.ts`, `management-plans.ts`, `billing-evidence`, `visit-preparation-readiness.ts` | 同意、計画、連絡先、保険、検査値、薬剤、残薬、訪問準備、報告、請求、task を患者/ケース単位で統合。                                                                                                                            |
@@ -990,6 +1007,8 @@ Validation:
   - `export-surface-matrix.test.ts`: no-store、permission、CSV formula neutralization、row cap、fail-closed audit。
 - API:
   - `cases/[id]/risk-cockpit/route.test.ts`: org boundary、forbidden role、no-store、section ordering。
+    `cc:DONE initial` 2026-07-06: forbidden/blank/not-found/500 no-store、PHI-free 500、service scope
+    failure downstream suppression、section ordering / rollup / action_href / hostile id encoding を追加。
   - `billing/close-board/route.test.ts`: review_state/resolution_state/export lock。
   - `notifications/health-board/route.test.ts`: recipient 0、adapter failure、rule disabled。
   - `tasks/health-board/route.test.ts`: SLA超過、担当未割当、孤児 task。

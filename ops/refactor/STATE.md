@@ -40,6 +40,90 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Case Risk Cockpit initial API contract / read-only service（commit pending）。
+  - current task:
+    `Plans.md` の `RISK-CORE-3 / CORE-003 / PAT-001` に沿って、患者/ケース単位の横断 risk と
+    next action を返す初期 API contract を実装した。互換性維持のための旧 contract は置かず、
+    `CaseRiskCockpitResponse` を新規 SSOT 型として追加。route は `canVisit`、case id validation、
+    sanitized 500、sensitive no-store に限定し、DB/read model は service へ集約した。
+  - subagent:
+    `Locator the 21st` が CORE-003/PAT-001 の既存 route/auth/schema/service impact を read-only mapping。
+    `Test Architect the 21st` が org boundary、forbidden、no-store、PHI-free 500、section ordering、
+    downstream suppression、`action_href` coverage の blocking test matrix を提示。指摘を
+    `case-risk-cockpit.test.ts` と route test に反映した。`Checker the 21st` の strict review は
+    withOrgContext 未使用、billing patient mismatch、UTC day key、PHI-safe error logging を指摘。
+    withOrgContext と logger は route へ追加し、billing は patient_id と visit_record_id の二重scope +
+    post-filter、日付比較は `japanDateKey` に変更して再検証した。
+    `Evidence the 21st` は修正後差分を read-only で確認し、strict finding 4件が code/test で解消済み、
+    focused vitest と scoped eslint green として APPROVE。
+  - design / imagegen:
+    今回の slice は API contract / service / route test で視覚レイアウト変更を伴わないため、
+    `imagegen` / `gpt-image-2` の新規生成は省略。患者/ケース詳細 Command Center へ UI 接続する slice では
+    `docs/ui-ux-design-guidelines.md` と `AGENTS.md` の `gpt-image-2` 方針に従い、非 PHI mockup を作る。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `src/app/api/cases/[id]/route.ts`,
+    `src/app/api/cases/[id]/route.test.ts`,
+    `src/lib/auth/context.ts`,
+    `src/lib/auth/visit-schedule-access.ts`,
+    `src/lib/api/response.ts`,
+    `src/lib/api/sensitive-response.ts`,
+    `src/lib/api/route-params.ts`,
+    `src/server/services/patient-detail-readiness.ts`,
+    `src/server/services/management-plans.ts`,
+    `src/server/services/billing-evidence/core.ts`,
+    `src/server/services/operational-tasks.ts`,
+    `prisma/schema/patient.prisma`,
+    `prisma/schema/visit.prisma`,
+    `prisma/schema/communication.prisma`,
+    `prisma/schema/core-task.prisma`,
+    `prisma/schema/medication.prisma`。
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/types/case-risk-cockpit.ts`,
+    `src/server/services/case-risk-cockpit.ts`,
+    `src/server/services/case-risk-cockpit.test.ts`,
+    `src/app/api/cases/[id]/risk-cockpit/route.ts`,
+    `src/app/api/cases/[id]/risk-cockpit/route.test.ts`。
+  - bugs / risks reduced:
+    Risk Cockpit の初期 contract が存在せず、患者/ケース詳細の「止まっている理由」と「次にやること」を
+    同じ順序で取得できなかった。新 service は case scope 成功後にのみ downstream を読むため IDOR/timing
+    leakage を抑制し、route 500 は raw patient/address/drug/storage/provider error を返さない。finding は全て
+    `action_href` を持ち、hostile patient/schedule/task id は href で encode される。task/report/billing は
+    case/patient/visit-record scope で再フィルタし、同一 org 別患者/別記録の混入を防ぐ。billing blocker detail
+    と task action label は raw reason/title を返さず、制御文言へ縮約する。
+  - security risks found:
+    Case Cockpit は患者名を detail permission 下で返すが、住所、電話、保険番号、SOAP、薬剤 free text、
+    raw provider error は返さない。scope failure / forbidden / validation failure では service/downstream を呼ばない。
+    route unexpected error logging は `logger.error` の safe context に route/method/code のみを渡し、raw error
+    message は渡さない。
+  - performance issues found:
+    患者一覧から呼ばない detail-only API とし、初期 adapter は bounded `take` と最小 `select` に限定。
+    billing は case の visit_record_id がある場合だけ読む。CORE-001/002 registry/task bridge は後続で接続。
+  - validation commands:
+    `pnpm exec vitest run src/server/services/case-risk-cockpit.test.ts 'src/app/api/cases/[id]/risk-cockpit/route.test.ts' --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint src/types/case-risk-cockpit.ts src/server/services/case-risk-cockpit.ts src/server/services/case-risk-cockpit.test.ts 'src/app/api/cases/[id]/risk-cockpit/route.ts' 'src/app/api/cases/[id]/risk-cockpit/route.test.ts'`;
+    `pnpm exec prettier --check src/types/case-risk-cockpit.ts src/server/services/case-risk-cockpit.ts src/server/services/case-risk-cockpit.test.ts 'src/app/api/cases/[id]/risk-cockpit/route.ts' 'src/app/api/cases/[id]/risk-cockpit/route.test.ts'`;
+    `git diff --check -- src/types/case-risk-cockpit.ts src/server/services/case-risk-cockpit.ts src/server/services/case-risk-cockpit.test.ts 'src/app/api/cases/[id]/risk-cockpit/route.ts' 'src/app/api/cases/[id]/risk-cockpit/route.test.ts'`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck --pretty false`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`;
+    `pnpm lint`;
+    `pnpm format:check`;
+    `git diff --check`。
+  - validation results:
+    focused vitest green（2 files / 8 tests）; scoped eslint green; scoped prettier check green;
+    scoped diff whitespace check green; typecheck green; typecheck:no-unused green; `pnpm lint` green with existing
+    unrelated warnings in `src/lib/platform/break-glass.test.ts` (`_tx`, `_input` unused warnings only);
+    `pnpm format:check` green; full diff whitespace check green.
+  - remaining work:
+    Broader `Plans.md` objective remains open。残: shared Risk Finding Registry / Risk Task Bridge 接続、
+    medication/dispensing/notification/privacy/integration/data_quality adapter、患者/ケース詳細 UI の Command
+    Center 連携、UI slice での `gpt-image-2` 非 PHI mockup、必要な E2E/browser proof。
+
 - codex: `gpt-image-2` UI design generation requirement mirrored into `AGENTS.md`（commit `eaf8450c0`）。
   - current task:
     ユーザー指示「gpt-image-2 を使うことを追記」に対応。`Plans.md` と
