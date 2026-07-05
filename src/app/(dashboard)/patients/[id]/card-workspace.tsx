@@ -46,9 +46,13 @@ import { ListOpenCard } from '@/components/features/workspace/list-open-card';
 import { PatientHeader } from '@/components/features/patients/patient-header';
 import type { PatientHeaderSummary } from '@/server/services/patient-detail';
 import {
+  BlockedReasonsPanel,
+  EvidencePanel,
+  NextActionPanel,
   WorkspaceActionRail,
   type BlockedReason,
   type EvidenceItem,
+  type NextActionPanelProps,
 } from '@/components/features/workspace/action-rail';
 import {
   PROCESS_STEPS_9,
@@ -239,24 +243,34 @@ const UNRESOLVED_CATEGORY_LABELS: Record<VisitBriefUnresolvedItem['source_type']
 
 const SSR_PATIENT_OVERVIEW_STALE_TIME_MS = 30_000;
 
-type PatientDetailTab = 'work' | 'foundation' | 'sharing' | 'history';
+type PatientDetailTab = 'command' | 'foundation' | 'medication' | 'sharing' | 'billing' | 'history';
 
 const PATIENT_DETAIL_TABS: Array<{ value: PatientDetailTab; label: string; description: string }> =
   [
     {
-      value: 'work',
-      label: '処方・訪問',
-      description: '今回の処方、今日のタスク、訪問前確認',
+      value: 'command',
+      label: 'Command',
+      description: '次のアクション、ブロッカー、今日のタスク',
     },
     {
       value: 'foundation',
       label: '正本・在宅運用',
-      description: '正本確認、プロフィール、連絡先、在宅運用',
+      description: '正本確認、プロフィール、連絡先',
+    },
+    {
+      value: 'medication',
+      label: '薬剤・訪問',
+      description: '今回の処方、訪問前確認、直近の動き',
     },
     {
       value: 'sharing',
       label: '共有・文書',
-      description: '薬局間共有、初回訪問文書',
+      description: '薬局間共有、初回訪問文書、外部連携',
+    },
+    {
+      value: 'billing',
+      label: '請求・会議',
+      description: '請求、集金、会議要点、報告連携',
     },
     {
       value: 'history',
@@ -269,7 +283,11 @@ const PATIENT_DETAIL_HASH_TABS: Record<string, PatientDetailTab> = {
   'patient-foundation': 'foundation',
   'patient-profile-summary': 'foundation',
   'patient-contacts': 'foundation',
-  'patient-home-operations': 'foundation',
+  'patient-home-operations': 'billing',
+  'patient-billing': 'billing',
+  'patient-conference': 'billing',
+  'card-prescription-section': 'medication',
+  'patient-visit-preparation': 'medication',
   'patient-share-case': 'sharing',
   'patient-documents': 'sharing',
   'patient-field-revisions': 'history',
@@ -282,8 +300,8 @@ function resolvePatientDetailTabFromHash(hash: string): PatientDetailTab | null 
 }
 
 function resolveInitialPatientDetailTab(): PatientDetailTab {
-  if (typeof window === 'undefined') return 'work';
-  return resolvePatientDetailTabFromHash(window.location.hash) ?? 'work';
+  if (typeof window === 'undefined') return 'command';
+  return resolvePatientDetailTabFromHash(window.location.hash) ?? 'command';
 }
 
 type PharmacyPartnershipOption = {
@@ -903,6 +921,8 @@ function PatientHomeOperationsPanel({
   onRecordBillingCollection,
   onRecordConferenceNote,
   onRecordMcsCheckLog,
+  visibleKeys,
+  panelId = 'patient-home-operations',
 }: {
   patient: PatientOverview;
   operations?: PatientHomeOperationsSnapshot | null;
@@ -924,8 +944,13 @@ function PatientHomeOperationsPanel({
   onRecordBillingCollection?: (input: BillingCollectionFormInput) => void;
   onRecordConferenceNote?: (input: ConferenceNoteFormInput) => void;
   onRecordMcsCheckLog?: (input: McsCheckLogFormInput) => void;
+  visibleKeys?: PatientHomeOperationKey[];
+  panelId?: string;
 }) {
-  const items = (operations?.items ?? buildHomeOperationsItems(patient)).map(withHomeOperationIcon);
+  const visibleKeySet = visibleKeys ? new Set<PatientHomeOperationKey>(visibleKeys) : null;
+  const items = (operations?.items ?? buildHomeOperationsItems(patient))
+    .filter((item) => !visibleKeySet || visibleKeySet.has(item.key))
+    .map(withHomeOperationIcon);
   const attentionCount = items.filter((item) => item.tone === 'attention').length;
   const topAlerts =
     operations?.top_alerts ??
@@ -939,6 +964,9 @@ function PatientHomeOperationsPanel({
         action_label: item.action_label,
       })),
     );
+  const filteredTopAlerts = visibleKeySet
+    ? topAlerts.filter((alert) => visibleKeySet.has(alert.key))
+    : topAlerts;
   const [expandedMetricKeys, setExpandedMetricKeys] = useState<Set<PatientHomeOperationKey>>(
     () => new Set(),
   );
@@ -956,11 +984,7 @@ function PatientHomeOperationsPanel({
   };
 
   return (
-    <SectionCard
-      id="patient-home-operations"
-      aria-label="在宅運用管理"
-      data-testid="patient-home-operations-panel"
-    >
+    <SectionCard id={panelId} aria-label="在宅運用管理" data-testid="patient-home-operations-panel">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-base font-semibold text-foreground">在宅運用管理</h3>
@@ -1003,7 +1027,7 @@ function PatientHomeOperationsPanel({
           ) : null}
         </div>
       ) : null}
-      {topAlerts.length > 0 ? (
+      {filteredTopAlerts.length > 0 ? (
         <div
           className="mt-4 rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card p-3"
           data-testid="patient-home-operation-alerts"
@@ -1011,11 +1035,11 @@ function PatientHomeOperationsPanel({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h4 className="text-sm font-semibold text-state-confirm">未処理アラート</h4>
             <span className="text-xs font-medium text-state-confirm">
-              {topAlerts.length}件を上から確認
+              {filteredTopAlerts.length}件を上から確認
             </span>
           </div>
           <ul className="mt-2 divide-y divide-state-confirm/20" role="list">
-            {topAlerts.slice(0, HOME_OPS_ALERT_LIMIT).map((alert) => (
+            {filteredTopAlerts.slice(0, HOME_OPS_ALERT_LIMIT).map((alert) => (
               <li key={alert.id} className="flex flex-wrap items-center gap-2 py-2">
                 <span className="rounded-full border border-state-confirm/30 bg-background/70 px-2 py-0.5 text-xs font-medium text-state-confirm">
                   {alert.label}
@@ -4090,6 +4114,37 @@ function CardTodayPanel({ tasks }: { tasks: PatientWorkspaceTodayTask[] }) {
   );
 }
 
+function PatientCommandCenterPanel({
+  nextAction,
+  blockedReasons,
+  evidence,
+  evidenceOpenLabel,
+}: {
+  nextAction?: NextActionPanelProps;
+  blockedReasons: BlockedReason[];
+  evidence: EvidenceItem[];
+  evidenceOpenLabel?: string;
+}) {
+  return (
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(20rem,0.8fr)]">
+      <div className="space-y-4">
+        {nextAction ? (
+          <NextActionPanel {...nextAction} />
+        ) : (
+          <SectionCard aria-label="次にやること" data-testid="next-action-panel">
+            <h3 className="text-sm font-semibold text-foreground">次にやること</h3>
+            <p className="mt-3 text-sm text-muted-foreground">
+              進行中の処方カードがないため、正本・共有・履歴タブで患者情報を確認してください。
+            </p>
+          </SectionCard>
+        )}
+        <BlockedReasonsPanel reasons={blockedReasons} emptyLabel="止まっている作業はありません" />
+      </div>
+      <EvidencePanel items={evidence} openLabel={evidenceOpenLabel} />
+    </div>
+  );
+}
+
 // 患者カードは最頻アクセス画面で、presence heartbeat や 17 本のクエリ/ミューテーション更新の
 // たびに本体が再レンダリングされる。これらのパネルは props がすべてクエリ data / 安定参照
 // (react-query の data・mutate、idle時 null の primitive) のため、React.memo で無関係な
@@ -4564,6 +4619,92 @@ export function CardWorkspace({
         'rx_year',
       )
     : null;
+  // 共通患者ヘッダー(PatientHeader)へ渡す派生値。workspace が無い患者でも識別・正本確認時の
+  // 誤患者防止を維持するため、処方カード有無に依存しない位置で組み立てる。
+  const headerIntake = getPrimaryHomeVisitIntake(patient);
+  const headerCareLevelRaw =
+    patient.scheduling_preference?.care_level ?? headerIntake?.care_level ?? null;
+  const headerCareLevelLabel = headerCareLevelRaw ? formatCareLevel(headerCareLevelRaw) : null;
+  const headerHomeStatusRaw = labelOf(headerIntake?.home_care_status, homeCareStatusLabels);
+  const headerHomeStatusLabel = headerHomeStatusRaw !== '—' ? headerHomeStatusRaw : null;
+  const headerResidenceRaw = formatResidenceLabel(patient);
+  const headerResidenceLabel = headerResidenceRaw !== '住所未設定' ? headerResidenceRaw : null;
+  const headerPrimaryCondition =
+    patient.conditions.find((c) => c.is_primary && c.is_active) ??
+    patient.conditions.find((c) => c.is_active) ??
+    null;
+  const headerPrimaryDiagnosis = headerPrimaryCondition?.name ?? null;
+  // backend getPatientHeaderSummary と同じ tie-break(updated_at → created_at → id, いずれも desc)で
+  // latest ケースを選ぶ。これにより担当4名(header-summary 由来)と介入開始日が同一ケースを指す。
+  const headerLatestCase =
+    [...patient.cases].sort(
+      (a, b) =>
+        b.updated_at.localeCompare(a.updated_at) ||
+        b.created_at.localeCompare(a.created_at) ||
+        b.id.localeCompare(a.id),
+    )[0] ?? null;
+  const headerInterventionStartDate = headerLatestCase?.start_date ?? null;
+  const headerVisit = buildVisitScheduleLabel(patient);
+  const headerLastVisitLabel = headerVisit.latest !== '未設定' ? headerVisit.latest : null;
+  const headerNextVisitLabel = headerVisit.next !== '未設定' ? headerVisit.next : null;
+  const headerFirstVisitLabel = headerSummary?.first_visit_date
+    ? formatOptionalDate(headerSummary.first_visit_date.slice(0, 10))
+    : null;
+  const headerLastPrescriptionLabel = headerSummary?.last_prescribed_date
+    ? formatOptionalDate(headerSummary.last_prescribed_date.slice(0, 10))
+    : null;
+  const headerNextPrescriptionLabel = headerSummary?.next_prescription_expected_date
+    ? formatOptionalDate(headerSummary.next_prescription_expected_date.slice(0, 10))
+    : null;
+  const patientHeader = (
+    <div className="space-y-1.5">
+      <PatientHeader
+        name={patient.name}
+        kana={patient.name_kana}
+        birthDate={patient.birth_date}
+        genderLabel={formatGenderLabel(patient.gender)}
+        careLevelLabel={headerCareLevelLabel}
+        homeStatusLabel={headerHomeStatusLabel}
+        residenceLabel={headerResidenceLabel}
+        careTeam={{
+          primaryPharmacist: headerSummary?.primary_pharmacist_name ?? null,
+          backupPharmacist: headerSummary?.backup_pharmacist_name ?? null,
+          primaryStaff: headerSummary?.primary_staff_name ?? null,
+          backupStaff: headerSummary?.backup_staff_name ?? null,
+        }}
+        primaryDiagnosis={headerPrimaryDiagnosis}
+        interventionStartDate={headerInterventionStartDate}
+        firstVisitLabel={headerFirstVisitLabel}
+        lastVisitLabel={headerLastVisitLabel}
+        nextVisitLabel={headerNextVisitLabel}
+        lastPrescriptionLabel={headerLastPrescriptionLabel}
+        nextPrescriptionLabel={headerNextPrescriptionLabel}
+        safety={{
+          allergy: workspace?.safety.allergy ?? null,
+          renal: workspace?.safety.renal ?? null,
+          handlingTags: workspace?.safety.handling_tags ?? [],
+          swallowing: workspace?.safety.swallowing ?? null,
+          cautions: workspace?.safety.cautions ?? [],
+        }}
+        archive={{
+          archived: patient.foundation.archive.archived,
+          archivedAt: patient.foundation.archive.archived_at,
+          archivedByName: patient.foundation.archive.archived_by_name,
+        }}
+        safetyCheckHref={buildPatientHref(patientId, '/safety-check')}
+      />
+      {headerSummaryError ? (
+        <p
+          role="status"
+          data-testid="patient-header-summary-error"
+          className="flex items-center gap-1 px-1 text-xs font-medium text-tag-hazard"
+        >
+          <TriangleAlert aria-hidden className="size-3.5" />
+          担当者・処方／訪問サマリーを取得できませんでした（最新の担当情報が表示されていない可能性があります）。
+        </p>
+      ) : null}
+    </div>
+  );
 
   const headerRow = (
     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -4611,10 +4752,68 @@ export function CardWorkspace({
     </div>
   );
 
+  const renderHomeOperationsPanel = (
+    visibleKeys: PatientHomeOperationKey[],
+    panelId = 'patient-home-operations',
+  ) => (
+    <PatientHomeOperationsPanelMemo
+      patient={patient}
+      operations={homeOperations}
+      operationsError={homeOperationsError}
+      onRetryOperations={() => void refetchHomeOperations()}
+      markingFaxOriginalIntakeId={
+        markFaxOriginalCollectedMutation.isPending
+          ? markFaxOriginalCollectedMutation.variables
+          : null
+      }
+      savingPrescriptionDocumentIntakeId={
+        savePrescriptionDocumentMutation.isPending
+          ? savePrescriptionDocumentMutation.variables?.intakeId
+          : null
+      }
+      recordingPrescriptionOriginalManagementIntakeId={
+        recordPrescriptionOriginalManagementMutation.isPending
+          ? recordPrescriptionOriginalManagementMutation.variables?.intakeId
+          : null
+      }
+      recordingBillingPaymentProfilePatientId={
+        recordBillingPaymentProfileMutation.isPending
+          ? recordBillingPaymentProfileMutation.variables?.patientId
+          : null
+      }
+      recordingBillingCandidateId={
+        recordBillingCollectionMutation.isPending
+          ? recordBillingCollectionMutation.variables?.candidateId
+          : null
+      }
+      recordingConferenceScopeId={
+        recordConferenceNoteMutation.isPending
+          ? recordConferenceNoteMutation.variables?.caseId
+            ? `case:${recordConferenceNoteMutation.variables.caseId}`
+            : `patient:${recordConferenceNoteMutation.variables?.patientId}`
+          : null
+      }
+      recordingMcsCheckPatientId={
+        recordMcsCheckLogMutation.isPending ? recordMcsCheckLogMutation.variables?.patientId : null
+      }
+      onMarkFaxOriginalCollected={markFaxOriginalCollectedMutation.mutate}
+      onSavePrescriptionDocument={savePrescriptionDocumentMutation.mutate}
+      onUploadPrescriptionDocument={uploadPrescriptionDocument}
+      onRecordPrescriptionOriginalManagement={recordPrescriptionOriginalManagementMutation.mutate}
+      onRecordBillingPaymentProfile={recordBillingPaymentProfileMutation.mutate}
+      onRecordBillingCollection={recordBillingCollectionMutation.mutate}
+      onRecordConferenceNote={recordConferenceNoteMutation.mutate}
+      onRecordMcsCheckLog={recordMcsCheckLogMutation.mutate}
+      visibleKeys={visibleKeys}
+      panelId={panelId}
+    />
+  );
+
   if (!workspace) {
     return (
       <div className="space-y-6" data-testid="card-workspace">
         {headerRow}
+        {patientHeader}
         <Tabs
           value={activeDetailTab}
           onValueChange={(value) => activateDetailTab(value as PatientDetailTab)}
@@ -4627,24 +4826,30 @@ export function CardWorkspace({
             className="flex w-full flex-wrap justify-start gap-2 border-b border-border/70 pb-1"
           >
             {PATIENT_DETAIL_TABS.map((tab) => (
-              <TabsTrigger key={tab.value} value={tab.value} className="min-h-11 px-3">
+              <TabsTrigger
+                key={tab.value}
+                value={tab.value}
+                className="min-h-11 px-3"
+                aria-label={`${tab.label}: ${tab.description}`}
+              >
                 {tab.label}
               </TabsTrigger>
             ))}
           </TabsList>
 
-          {isDetailTabMounted('work') ? (
-            <TabsContent value="work" keepMounted className="space-y-4">
+          {isDetailTabMounted('command') ? (
+            <TabsContent value="command" keepMounted className="space-y-4">
+              <h2 className="text-lg font-bold text-foreground">Command</h2>
               <EmptyState
                 icon={FileQuestion}
                 title="進行中のカードがありません"
                 description="処方を受け付けると、この患者の処方サイクル(取込〜算定)の作業台がここに表示されます。"
               />
-              <PatientVisitPreparationPanelMemo patient={patient} />
             </TabsContent>
           ) : null}
           {isDetailTabMounted('foundation') ? (
             <TabsContent value="foundation" keepMounted className="space-y-4">
+              <h2 className="text-lg font-bold text-foreground">正本・在宅運用</h2>
               <PatientFoundationPanelMemo patient={patient} />
               <PatientProfilePanelMemo patient={patient} />
               <div id="patient-contacts">
@@ -4655,70 +4860,33 @@ export function CardWorkspace({
                   initialExpectedUpdatedAt={patient.updated_at}
                 />
               </div>
-              <PatientHomeOperationsPanelMemo
-                patient={patient}
-                operations={homeOperations}
-                operationsError={homeOperationsError}
-                onRetryOperations={() => void refetchHomeOperations()}
-                markingFaxOriginalIntakeId={
-                  markFaxOriginalCollectedMutation.isPending
-                    ? markFaxOriginalCollectedMutation.variables
-                    : null
-                }
-                savingPrescriptionDocumentIntakeId={
-                  savePrescriptionDocumentMutation.isPending
-                    ? savePrescriptionDocumentMutation.variables?.intakeId
-                    : null
-                }
-                recordingPrescriptionOriginalManagementIntakeId={
-                  recordPrescriptionOriginalManagementMutation.isPending
-                    ? recordPrescriptionOriginalManagementMutation.variables?.intakeId
-                    : null
-                }
-                recordingBillingPaymentProfilePatientId={
-                  recordBillingPaymentProfileMutation.isPending
-                    ? recordBillingPaymentProfileMutation.variables?.patientId
-                    : null
-                }
-                recordingBillingCandidateId={
-                  recordBillingCollectionMutation.isPending
-                    ? recordBillingCollectionMutation.variables?.candidateId
-                    : null
-                }
-                recordingConferenceScopeId={
-                  recordConferenceNoteMutation.isPending
-                    ? recordConferenceNoteMutation.variables?.caseId
-                      ? `case:${recordConferenceNoteMutation.variables.caseId}`
-                      : `patient:${recordConferenceNoteMutation.variables?.patientId}`
-                    : null
-                }
-                recordingMcsCheckPatientId={
-                  recordMcsCheckLogMutation.isPending
-                    ? recordMcsCheckLogMutation.variables?.patientId
-                    : null
-                }
-                onMarkFaxOriginalCollected={markFaxOriginalCollectedMutation.mutate}
-                onSavePrescriptionDocument={savePrescriptionDocumentMutation.mutate}
-                onUploadPrescriptionDocument={uploadPrescriptionDocument}
-                onRecordPrescriptionOriginalManagement={
-                  recordPrescriptionOriginalManagementMutation.mutate
-                }
-                onRecordBillingPaymentProfile={recordBillingPaymentProfileMutation.mutate}
-                onRecordBillingCollection={recordBillingCollectionMutation.mutate}
-                onRecordConferenceNote={recordConferenceNoteMutation.mutate}
-                onRecordMcsCheckLog={recordMcsCheckLogMutation.mutate}
-              />
+            </TabsContent>
+          ) : null}
+          {isDetailTabMounted('medication') ? (
+            <TabsContent value="medication" keepMounted className="space-y-4">
+              <h2 className="text-lg font-bold text-foreground">薬剤・訪問</h2>
+              <PatientVisitPreparationPanelMemo patient={patient} />
+              {renderHomeOperationsPanel(['prescription'], 'patient-home-operations-medication')}
             </TabsContent>
           ) : null}
           {isDetailTabMounted('sharing') ? (
             <TabsContent value="sharing" keepMounted className="space-y-4">
+              <h2 className="text-lg font-bold text-foreground">共有・文書</h2>
               <PatientShareCaseCreatePanelMemo patient={patient} orgId={orgId} />
               <PatientCardDocumentsPanelMemo patient={patient} orgId={orgId} />
+              {renderHomeOperationsPanel(['documents', 'mcs'], 'patient-home-operations-sharing')}
+            </TabsContent>
+          ) : null}
+          {isDetailTabMounted('billing') ? (
+            <TabsContent value="billing" keepMounted className="space-y-4">
+              <h2 className="text-lg font-bold text-foreground">請求・会議</h2>
+              {renderHomeOperationsPanel(['billing', 'conference'])}
             </TabsContent>
           ) : null}
           {isDetailTabMounted('history') ? (
             <TabsContent value="history" keepMounted className="space-y-4">
-              <div id="patient-structured-care">
+              <h2 className="text-lg font-bold text-foreground">履歴・構造化</h2>
+              <div id="patient-structured-care" data-testid="patient-structured-care">
                 <PatientStructuredCarePanel patientId={patientId} />
               </div>
             </TabsContent>
@@ -4822,44 +4990,6 @@ export function CardWorkspace({
       href: buildPatientHref(patientId, '#patient-profile-summary'),
     },
   ];
-
-  // 共通患者ヘッダー(PatientHeader)へ渡す派生値。既存ヘルパを再利用し、空相当は null 化して false-empty を避ける。
-  const headerIntake = getPrimaryHomeVisitIntake(patient);
-  const headerCareLevelRaw =
-    patient.scheduling_preference?.care_level ?? headerIntake?.care_level ?? null;
-  const headerCareLevelLabel = headerCareLevelRaw ? formatCareLevel(headerCareLevelRaw) : null;
-  const headerHomeStatusRaw = labelOf(headerIntake?.home_care_status, homeCareStatusLabels);
-  const headerHomeStatusLabel = headerHomeStatusRaw !== '—' ? headerHomeStatusRaw : null;
-  const headerResidenceRaw = formatResidenceLabel(patient);
-  const headerResidenceLabel = headerResidenceRaw !== '住所未設定' ? headerResidenceRaw : null;
-  const headerPrimaryCondition =
-    patient.conditions.find((c) => c.is_primary && c.is_active) ??
-    patient.conditions.find((c) => c.is_active) ??
-    null;
-  const headerPrimaryDiagnosis = headerPrimaryCondition?.name ?? null;
-  // backend getPatientHeaderSummary と同じ tie-break(updated_at → created_at → id, いずれも desc)で
-  // latest ケースを選ぶ。これにより担当4名(header-summary 由来)と介入開始日が同一ケースを指す。
-  const headerLatestCase =
-    [...patient.cases].sort(
-      (a, b) =>
-        b.updated_at.localeCompare(a.updated_at) ||
-        b.created_at.localeCompare(a.created_at) ||
-        b.id.localeCompare(a.id),
-    )[0] ?? null;
-  const headerInterventionStartDate = headerLatestCase?.start_date ?? null;
-  const headerVisit = buildVisitScheduleLabel(patient);
-  const headerLastVisitLabel = headerVisit.latest !== '未設定' ? headerVisit.latest : null;
-  const headerNextVisitLabel = headerVisit.next !== '未設定' ? headerVisit.next : null;
-  const headerFirstVisitLabel = headerSummary?.first_visit_date
-    ? formatOptionalDate(headerSummary.first_visit_date.slice(0, 10))
-    : null;
-  const headerLastPrescriptionLabel = headerSummary?.last_prescribed_date
-    ? formatOptionalDate(headerSummary.last_prescribed_date.slice(0, 10))
-    : null;
-  const headerNextPrescriptionLabel = headerSummary?.next_prescription_expected_date
-    ? formatOptionalDate(headerSummary.next_prescription_expected_date.slice(0, 10))
-    : null;
-
   return (
     <div className="space-y-4" data-testid="card-workspace">
       {headerRow}
@@ -4867,55 +4997,7 @@ export function CardWorkspace({
       {/* 本文を圧迫しないため、補助3点セットは上部バーから開く右ドロワーへ移す。 */}
       <div className="space-y-4">
         <div className="min-w-0 space-y-6">
-          {/* 共通患者ヘッダー: 識別 + 臨床コンテキスト(担当4名/主病名/介入/処方・訪問) + 安全情報を
-              3 層に圧縮し sticky で fold 内最上部に固定。全患者ページ共通部品で、危険タグは常時表示する。 */}
-          <div className="space-y-1.5">
-            <PatientHeader
-              name={patient.name}
-              kana={patient.name_kana}
-              birthDate={patient.birth_date}
-              genderLabel={formatGenderLabel(patient.gender)}
-              careLevelLabel={headerCareLevelLabel}
-              homeStatusLabel={headerHomeStatusLabel}
-              residenceLabel={headerResidenceLabel}
-              careTeam={{
-                primaryPharmacist: headerSummary?.primary_pharmacist_name ?? null,
-                backupPharmacist: headerSummary?.backup_pharmacist_name ?? null,
-                primaryStaff: headerSummary?.primary_staff_name ?? null,
-                backupStaff: headerSummary?.backup_staff_name ?? null,
-              }}
-              primaryDiagnosis={headerPrimaryDiagnosis}
-              interventionStartDate={headerInterventionStartDate}
-              firstVisitLabel={headerFirstVisitLabel}
-              lastVisitLabel={headerLastVisitLabel}
-              nextVisitLabel={headerNextVisitLabel}
-              lastPrescriptionLabel={headerLastPrescriptionLabel}
-              nextPrescriptionLabel={headerNextPrescriptionLabel}
-              safety={{
-                allergy: workspace.safety.allergy ?? null,
-                renal: workspace.safety.renal ?? null,
-                handlingTags: workspace.safety.handling_tags,
-                swallowing: workspace.safety.swallowing ?? null,
-                cautions: workspace.safety.cautions,
-              }}
-              archive={{
-                archived: patient.foundation.archive.archived,
-                archivedAt: patient.foundation.archive.archived_at,
-                archivedByName: patient.foundation.archive.archived_by_name,
-              }}
-              safetyCheckHref={buildPatientHref(patientId, '/safety-check')}
-            />
-            {headerSummaryError ? (
-              <p
-                role="status"
-                data-testid="patient-header-summary-error"
-                className="flex items-center gap-1 px-1 text-xs font-medium text-tag-hazard"
-              >
-                <TriangleAlert aria-hidden className="size-3.5" />
-                担当者・処方／訪問サマリーを取得できませんでした（最新の担当情報が表示されていない可能性があります）。
-              </p>
-            ) : null}
-          </div>
+          {patientHeader}
 
           <Tabs
             value={activeDetailTab}
@@ -4942,12 +5024,22 @@ export function CardWorkspace({
               </TabsList>
             </div>
 
-            {isDetailTabMounted('work') ? (
-              <TabsContent value="work" keepMounted className="space-y-4">
-                <h2 className="text-lg font-bold text-foreground">処方・訪問</h2>
-
-                {/* このカードに紐づく今日: 時限タスク(締切/予定)を Primary 最上部へ置く */}
+            {isDetailTabMounted('command') ? (
+              <TabsContent value="command" keepMounted className="space-y-4">
+                <h2 className="text-lg font-bold text-foreground">Command</h2>
+                <PatientCommandCenterPanel
+                  nextAction={nextAction}
+                  blockedReasons={blockedReasons}
+                  evidence={evidence}
+                  evidenceOpenLabel="開く"
+                />
                 <CardTodayPanelMemo tasks={workspace.today_tasks} />
+              </TabsContent>
+            ) : null}
+
+            {isDetailTabMounted('medication') ? (
+              <TabsContent value="medication" keepMounted className="space-y-4">
+                <h2 className="text-lg font-bold text-foreground">薬剤・訪問</h2>
 
                 {/* 今回の処方: 安全確認の直後に置き、正本/補助パネルより先に実作業へ入れる */}
                 <SectionCard aria-label="今回の処方" data-testid="card-prescription-section">
@@ -4992,6 +5084,7 @@ export function CardWorkspace({
                 </SectionCard>
 
                 <PatientVisitPreparationPanelMemo patient={patient} />
+                {renderHomeOperationsPanel(['prescription'], 'patient-home-operations-medication')}
 
                 {/* 直近の動き: 工程遷移・疑義照会・処方取込の時系列 */}
                 <SectionCard aria-label="直近の動き" data-testid="card-recent-activities">
@@ -5036,59 +5129,6 @@ export function CardWorkspace({
                     initialExpectedUpdatedAt={patient.updated_at}
                   />
                 </div>
-                <PatientHomeOperationsPanelMemo
-                  patient={patient}
-                  operations={homeOperations}
-                  operationsError={homeOperationsError}
-                  onRetryOperations={() => void refetchHomeOperations()}
-                  markingFaxOriginalIntakeId={
-                    markFaxOriginalCollectedMutation.isPending
-                      ? markFaxOriginalCollectedMutation.variables
-                      : null
-                  }
-                  savingPrescriptionDocumentIntakeId={
-                    savePrescriptionDocumentMutation.isPending
-                      ? savePrescriptionDocumentMutation.variables?.intakeId
-                      : null
-                  }
-                  recordingPrescriptionOriginalManagementIntakeId={
-                    recordPrescriptionOriginalManagementMutation.isPending
-                      ? recordPrescriptionOriginalManagementMutation.variables?.intakeId
-                      : null
-                  }
-                  recordingBillingPaymentProfilePatientId={
-                    recordBillingPaymentProfileMutation.isPending
-                      ? recordBillingPaymentProfileMutation.variables?.patientId
-                      : null
-                  }
-                  recordingBillingCandidateId={
-                    recordBillingCollectionMutation.isPending
-                      ? recordBillingCollectionMutation.variables?.candidateId
-                      : null
-                  }
-                  recordingConferenceScopeId={
-                    recordConferenceNoteMutation.isPending
-                      ? recordConferenceNoteMutation.variables?.caseId
-                        ? `case:${recordConferenceNoteMutation.variables.caseId}`
-                        : `patient:${recordConferenceNoteMutation.variables?.patientId}`
-                      : null
-                  }
-                  recordingMcsCheckPatientId={
-                    recordMcsCheckLogMutation.isPending
-                      ? recordMcsCheckLogMutation.variables?.patientId
-                      : null
-                  }
-                  onMarkFaxOriginalCollected={markFaxOriginalCollectedMutation.mutate}
-                  onSavePrescriptionDocument={savePrescriptionDocumentMutation.mutate}
-                  onUploadPrescriptionDocument={uploadPrescriptionDocument}
-                  onRecordPrescriptionOriginalManagement={
-                    recordPrescriptionOriginalManagementMutation.mutate
-                  }
-                  onRecordBillingPaymentProfile={recordBillingPaymentProfileMutation.mutate}
-                  onRecordBillingCollection={recordBillingCollectionMutation.mutate}
-                  onRecordConferenceNote={recordConferenceNoteMutation.mutate}
-                  onRecordMcsCheckLog={recordMcsCheckLogMutation.mutate}
-                />
               </TabsContent>
             ) : null}
 
@@ -5097,6 +5137,14 @@ export function CardWorkspace({
                 <h2 className="text-lg font-bold text-foreground">共有・文書</h2>
                 <PatientShareCaseCreatePanelMemo patient={patient} orgId={orgId} />
                 <PatientCardDocumentsPanelMemo patient={patient} orgId={orgId} />
+                {renderHomeOperationsPanel(['documents', 'mcs'], 'patient-home-operations-sharing')}
+              </TabsContent>
+            ) : null}
+
+            {isDetailTabMounted('billing') ? (
+              <TabsContent value="billing" keepMounted className="space-y-4">
+                <h2 className="text-lg font-bold text-foreground">請求・会議</h2>
+                {renderHomeOperationsPanel(['billing', 'conference'])}
               </TabsContent>
             ) : null}
 
@@ -5116,7 +5164,7 @@ export function CardWorkspace({
                 </SectionCard>
 
                 {/* 在宅医療処置・麻薬: 構造化レイヤ(開始日・確認元の時系列。実施中行が無ければ非表示) */}
-                <div id="patient-structured-care">
+                <div id="patient-structured-care" data-testid="patient-structured-care">
                   <PatientStructuredCarePanel patientId={patientId} />
                 </div>
               </TabsContent>

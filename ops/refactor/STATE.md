@@ -144,8 +144,8 @@
     `focusRole` による tile ordering/next action 優先度の本格実装、DASH-COMM-001 コメントフィード、
     DB EXPLAIN に基づく index 判断は別 slice。
   - next action:
-    1) dashboard UI の browser verification、または 2) `PAT-LIST-PERF-001` server-side search/filter、
-    3) `PERF-X-001/002` critical BFF instrumentation/payload budget へ進む。
+    1. dashboard UI の browser verification、または 2) `PAT-LIST-PERF-001` server-side search/filter、
+    2. `PERF-X-001/002` critical BFF instrumentation/payload budget へ進む。
 
 - codex: DASH-PERF-001 Dashboard BFF split foundation complete（commit `377b07f38`）。
   - current task:
@@ -3209,3 +3209,61 @@
    PCA ポンプ台帳 / admin master mutation / Drug Master/Formulary reads / PHI print GETs。
    外部 PUT/blob/export/Auth/MFA は別sliceで扱う。
 5. held: `R40-PRINT-HUB-READAPIJSON` / high-risk W3-B6/ID migration/PMDA/AWS/UAT/legal は明示GOまたは human gate まで保留。
+
+## 2026-07-06 Patient Detail Tabization continuation
+
+- codex: PAT-DETAIL-UX patient detail Command/section tabs slice complete。
+  ユーザー指示「患者詳細画面配置はタブ化」「UI は imagegen でデザイン再構築して実装」
+  および `Plans.md` の `gpt-image-2` 方針に沿い、患者詳細 `CardWorkspace` を
+  `Command` / `正本・在宅運用` / `薬剤・訪問` / `共有・文書` / `請求・会議` /
+  `履歴・構造化` の6タブ契約へ更新した。事前参照として `imagegen` skill と
+  `docs/ui-ux-design-guidelines.md` を確認し、preview mockup は
+  `/Users/yusuke/.codex/generated_images/019f2c7e-d969-7882-bd11-432a10abb930/ig_0df3fc71c27928ce016a4a9839814081918ed5b6f64afed8f2.png`
+  を採用基準の補助にした（preview-only、repo asset にはしない）。
+  実装では Command タブを初期表示にして next action / blocker / evidence / 今日の作業を
+  先頭に集約し、患者識別ヘッダーは workspace なし分岐でも表示する。Home Operations は
+  薬剤・訪問=処方せん、共有・文書=契約/MCS、請求・会議=請求/会議に分割し、
+  canonical `#patient-home-operations` は請求・会議タブだけに残した。
+  `#card-prescription-section` / `#patient-visit-preparation` は薬剤・訪問、
+  `#patient-billing` / `#patient-conference` は請求・会議、
+  `#patient-structured-care` は履歴・構造化へ deep-link する。
+- subagent review:
+  `frontend_reviewer` (`019f336c-8ae8-7a71-bf05-124bb04e4e58`) が read-only で
+  duplicate `patient-home-operations` anchor、workspace なし分岐の handler 欠落、
+  stale six-tab tests、hash coverage 不足を指摘。全て実装/テストで反映した。
+- files inspected:
+  `Plans.md`, `docs/ui-ux-design-guidelines.md`,
+  `/Users/yusuke/.codex/skills/.system/imagegen/SKILL.md`,
+  `/Users/yusuke/workspace/careviax/.agents/skills/redesign-existing-projects/SKILL.md`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+  `src/components/features/workspace/action-rail.tsx`。
+- files changed:
+  `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+  `ops/refactor/STATE.md`。
+- bugs found/fixed:
+  old 4-tab default expectations were stale; split Home Operations could duplicate canonical section ids under
+  `keepMounted`; workspace-less billing/conference quick actions could render without mutation handlers.
+  The slice now uses unique non-canonical ids for medication/sharing Home Operations, keeps canonical
+  `patient-home-operations` on billing only, and routes no-workspace Home Operations through the same
+  handler-backed renderer.
+- security/PHI risks reduced:
+  no API/DB/auth/authorization contract changed. The share panel PHI minimization assertions remain covered,
+  and `gpt-image-2` prompt/use stayed preview-only without real PHI/secret.
+- performance issues improved:
+  patient detail remains lazy-mounted by tab; heavy panels stay out of initial Command render until their tab is
+  selected. This slice does not change BFF/query shape.
+- validation:
+  `pnpm exec vitest run src/app/'(dashboard)'/patients/'[id]'/card-workspace.test.tsx --reporter=dot --testTimeout=30000`
+  green (77 tests);
+  `pnpm exec eslint --max-warnings=0 src/app/'(dashboard)'/patients/'[id]'/card-workspace.tsx src/app/'(dashboard)'/patients/'[id]'/card-workspace.test.tsx`
+  green;
+  `pnpm exec prettier --check src/app/'(dashboard)'/patients/'[id]'/card-workspace.tsx src/app/'(dashboard)'/patients/'[id]'/card-workspace.test.tsx`
+  green;
+  `git diff --check -- src/app/'(dashboard)'/patients/'[id]'/card-workspace.tsx src/app/'(dashboard)'/patients/'[id]'/card-workspace.test.tsx`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck --pretty false` green.
+- remaining:
+  broader `Plans.md` objective remains open. Browser screenshot/mobile keyboard proof for the patient detail
+  tabs is still a useful follow-up, along with the larger Command Center/BFF split tasks.

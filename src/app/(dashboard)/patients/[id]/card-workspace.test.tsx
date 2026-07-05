@@ -838,8 +838,24 @@ function openFoundationTab() {
   openPatientDetailTab(/正本・在宅運用/);
 }
 
+function openMedicationTab() {
+  openPatientDetailTab(/薬剤・訪問/);
+}
+
 function openSharingTab() {
   openPatientDetailTab(/共有・文書/);
+}
+
+function openBillingTab() {
+  openPatientDetailTab(/請求・会議/);
+}
+
+function getVisibleTestId(testId: string) {
+  const visibleElement = screen
+    .getAllByTestId(testId)
+    .find((element) => element.closest('[hidden], [data-base-ui-inert]') == null);
+  if (!visibleElement) throw new Error(`No visible element found for test id: ${testId}`);
+  return visibleElement;
 }
 
 describe('CardWorkspace', () => {
@@ -1077,13 +1093,17 @@ describe('CardWorkspace', () => {
     expect(compareLink.getAttribute('href')).toBe('/patients/compare?patients=patient_1');
     expect(compareLink.className).toContain('!min-h-11');
     expect(screen.getByRole('tablist', { name: '患者詳細セクション' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: /処方・訪問/ }).getAttribute('aria-selected')).toBe(
-      'true',
-    );
+    expect(screen.getByRole('tab', { name: /Command/ }).getAttribute('aria-selected')).toBe('true');
     expect(screen.getByRole('tab', { name: /正本・在宅運用/ })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /薬剤・訪問/ })).toBeTruthy();
     expect(screen.getByRole('tab', { name: /共有・文書/ })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /請求・会議/ })).toBeTruthy();
     expect(screen.getByRole('tab', { name: /履歴・構造化/ })).toBeTruthy();
     expect(screen.queryByTestId('patient-profile-summary')).toBeNull();
+    expect(screen.queryByTestId('card-prescription-section')).toBeNull();
+    expect(screen.getByTestId('next-action-panel')).toBeTruthy();
+    expect(screen.getByTestId('blocked-reasons-panel')).toBeTruthy();
+    expect(screen.getByTestId('evidence-panel')).toBeTruthy();
 
     fireEvent.click(profileButton);
     expect(screen.getByRole('tab', { name: /正本・在宅運用/ }).getAttribute('aria-selected')).toBe(
@@ -1117,32 +1137,30 @@ describe('CardWorkspace', () => {
     expect(
       within(contactsPanel).queryByText('患者情報を再読み込みしてから連絡先を保存してください。'),
     ).toBeNull();
-    const homeOps = screen.getByTestId('patient-home-operations-panel');
+    expect(screen.queryByTestId('patient-home-operations-panel')).toBeNull();
+
+    openBillingTab();
+    expect(screen.getByRole('tab', { name: /請求・会議/ }).getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    const homeOps = getVisibleTestId('patient-home-operations-panel');
     expect(within(homeOps).getByRole('heading', { name: '在宅運用管理' })).toBeTruthy();
-    expect(within(homeOps).getAllByText('契約・同意・書類').length).toBeGreaterThan(0);
-    expect(within(homeOps).getByText('MCS・外部連携')).toBeTruthy();
-    expect(within(homeOps).getAllByText('処方せん').length).toBeGreaterThan(0);
+    expect(within(homeOps).queryByText('契約・同意・書類')).toBeNull();
+    expect(within(homeOps).queryByText('MCS・外部連携')).toBeNull();
+    expect(within(homeOps).queryByText('処方せん')).toBeNull();
     expect(within(homeOps).getAllByText('請求・集金').length).toBeGreaterThan(0);
     expect(within(homeOps).getByText('カンファレンス')).toBeTruthy();
-    expect(within(homeOps).getByText('要確認 3件')).toBeTruthy();
+    expect(within(homeOps).getByText('要確認 1件')).toBeTruthy();
     const homeOpsAlerts = screen.getByTestId('patient-home-operation-alerts');
     expect(within(homeOpsAlerts).getByRole('heading', { name: '未処理アラート' })).toBeTruthy();
-    expect(within(homeOpsAlerts).getByText('3件を上から確認')).toBeTruthy();
-    expect(within(homeOpsAlerts).getByText('契約・同意・書類')).toBeTruthy();
-    expect(within(homeOpsAlerts).getByText('処方せん')).toBeTruthy();
+    expect(within(homeOpsAlerts).getByText('1件を上から確認')).toBeTruthy();
+    expect(within(homeOpsAlerts).queryByText('契約・同意・書類')).toBeNull();
+    expect(within(homeOpsAlerts).queryByText('処方せん')).toBeNull();
     expect(within(homeOpsAlerts).getByText('請求・集金')).toBeTruthy();
-    expect(within(homeOpsAlerts).getByRole('link', { name: '文書状態へ' })).toBeTruthy();
-    expect(within(homeOpsAlerts).getByRole('link', { name: '処方履歴へ' })).toBeTruthy();
-    expect(
-      within(homeOps).getAllByText('作成済み書類の交付・回収が未記録です').length,
-    ).toBeGreaterThan(0);
-    expect(
-      within(homeOps).getAllByText('FAX受信から7日経過しても原本到着が未記録です').length,
-    ).toBeGreaterThan(0);
-    expect(within(homeOps).getByText('期限')).toBeTruthy();
-    expect(within(homeOps).getByText('2026/06/12 / 4日超過')).toBeTruthy();
-    expect(within(homeOps).getAllByText('照合').length).toBeGreaterThan(0);
-    expect(within(homeOps).getByText('一致 / 2026/06/10')).toBeTruthy();
+    expect(within(homeOpsAlerts).queryByRole('link', { name: '文書状態へ' })).toBeNull();
+    expect(within(homeOpsAlerts).queryByRole('link', { name: '処方履歴へ' })).toBeNull();
+    expect(within(homeOps).queryByText('作成済み書類の交付・回収が未記録です')).toBeNull();
+    expect(within(homeOps).queryByText('FAX受信から7日経過しても原本到着が未記録です')).toBeNull();
     expect(within(homeOps).getByText('未処理の算定候補が1件あります')).toBeTruthy();
     expect(within(homeOps).getAllByText('未収額 1,080円 があります').length).toBeGreaterThan(0);
     expect(within(homeOps).getByText('未収額')).toBeTruthy();
@@ -1173,25 +1191,27 @@ describe('CardWorkspace', () => {
       '/schedules/proposals?workspace=dashboard&patient_id=patient_1&case_id=case_1&focus=patient&detail=proposal_1',
     );
     expect(within(homeOps).getByRole('button', { name: /会議要点を追記/ })).toBeTruthy();
-    expect(within(homeOps).getByRole('button', { name: /原本到着を記録/ })).toBeTruthy();
-    expect(within(homeOps).getByRole('button', { name: /画像\/PDFを保存/ })).toBeTruthy();
-    expect(within(homeOps).getByRole('button', { name: /原本管理を記録/ })).toBeTruthy();
-    expect(within(homeOps).getByText('PDF/画像')).toBeTruthy();
-    expect(within(homeOps).getByText('保存済み')).toBeTruthy();
     expect(
       within(homeOps)
-        .getAllByRole('link', { name: /文書状態へ/ })
-        .some((link) => link.getAttribute('href') === '/patients/patient_1#patient-documents'),
+        .getAllByRole('link', { name: /請求候補を確認/ })
+        .some(
+          (link) =>
+            link.getAttribute('href') ===
+            '/billing/candidates?patient_id=patient_1&billing_month=2026-06-01',
+        ),
     ).toBe(true);
-    fireEvent.click(screen.getByRole('tab', { name: /共有・文書/ }));
+    expect(
+      within(homeOps)
+        .getByRole('link', { name: /会議要点へ/ })
+        .getAttribute('href'),
+    ).toBe('/conferences?patient_id=patient_1&case_id=case_1&focus=notes&context=patient_detail');
+
+    openSharingTab();
     expect(screen.getByRole('tab', { name: /共有・文書/ }).getAttribute('aria-selected')).toBe(
       'true',
     );
     const sharePanel = screen.getByTestId('patient-share-case-create-panel');
     expect(within(sharePanel).getByRole('heading', { name: '薬局間共有ケース' })).toBeTruthy();
-    expect(
-      Boolean(homeOps.compareDocumentPosition(sharePanel) & Node.DOCUMENT_POSITION_FOLLOWING),
-    ).toBe(true);
     expect(sharePanel.textContent).not.toMatch(/田中 一郎|090-0000-0000/);
     const documentsPanel = screen.getByTestId('patient-card-documents-panel');
     expect(
@@ -1209,45 +1229,44 @@ describe('CardWorkspace', () => {
     expect(
       within(documentsPanel).getByRole('link', { name: '印刷プレビュー' }).getAttribute('href'),
     ).toBe('/reports/print?type=first_visit_documents&patient_id=patient_1');
-    fireEvent.click(screen.getByRole('tab', { name: /正本・在宅運用/ }));
-    expect(screen.getByRole('tab', { name: /正本・在宅運用/ }).getAttribute('aria-selected')).toBe(
-      'true',
-    );
-    const mcsExternalLink = within(homeOps).getByRole('link', { name: /MCSを開く/ });
+    const sharingHomeOps = getVisibleTestId('patient-home-operations-panel');
+    expect(within(sharingHomeOps).getAllByText('契約・同意・書類').length).toBeGreaterThan(0);
+    expect(within(sharingHomeOps).getByText('MCS・外部連携')).toBeTruthy();
+    expect(within(sharingHomeOps).queryByText('処方せん')).toBeNull();
+    expect(within(sharingHomeOps).queryByText('請求・集金')).toBeNull();
+    expect(
+      within(sharingHomeOps)
+        .getAllByRole('link', { name: /文書状態へ/ })
+        .some((link) => link.getAttribute('href') === '/patients/patient_1#patient-documents'),
+    ).toBe(true);
+    const mcsExternalLink = within(sharingHomeOps).getByRole('link', { name: /MCSを開く/ });
     expect(mcsExternalLink.getAttribute('href')).toBe(
       'https://www.medical-care.net/projects/medical/57886227',
     );
     expect(mcsExternalLink.getAttribute('target')).toBe('_blank');
     expect(
-      within(homeOps)
+      within(sharingHomeOps)
         .getByRole('link', { name: /MCS連携を管理/ })
         .getAttribute('href'),
     ).toBe('/patients/patient_1/mcs');
+
+    openMedicationTab();
+    expect(screen.getByRole('tab', { name: /薬剤・訪問/ }).getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    const medicationHomeOps = getVisibleTestId('patient-home-operations-panel');
+    expect(within(medicationHomeOps).getAllByText('処方せん').length).toBeGreaterThan(0);
+    expect(within(medicationHomeOps).queryByText('請求・集金')).toBeNull();
+    expect(within(medicationHomeOps).getAllByText('照合').length).toBeGreaterThan(0);
+    expect(within(medicationHomeOps).getByText('一致 / 2026/06/10')).toBeTruthy();
+    expect(within(medicationHomeOps).getByRole('button', { name: /原本到着を記録/ })).toBeTruthy();
+    expect(within(medicationHomeOps).getByRole('button', { name: /画像\/PDFを保存/ })).toBeTruthy();
+    expect(within(medicationHomeOps).getByRole('button', { name: /原本管理を記録/ })).toBeTruthy();
     expect(
-      within(homeOps)
+      within(medicationHomeOps)
         .getAllByRole('link', { name: /処方履歴へ/ })
         .some((link) => link.getAttribute('href') === '/patients/patient_1/prescriptions'),
     ).toBe(true);
-    expect(
-      within(homeOps)
-        .getAllByRole('link', { name: /請求候補を確認/ })
-        .some(
-          (link) =>
-            link.getAttribute('href') ===
-            '/billing/candidates?patient_id=patient_1&billing_month=2026-06-01',
-        ),
-    ).toBe(true);
-    expect(
-      within(homeOps)
-        .getByRole('link', { name: /会議要点へ/ })
-        .getAttribute('href'),
-    ).toBe('/conferences?patient_id=patient_1&case_id=case_1&focus=notes&context=patient_detail');
-
-    fireEvent.click(screen.getByRole('tab', { name: /処方・訪問/ }));
-    expect(screen.getByRole('tab', { name: /処方・訪問/ }).getAttribute('aria-selected')).toBe(
-      'true',
-    );
-
     // 共通患者ヘッダーの安全層: アレルギー / 腎機能 / 取扱タグ / 嚥下 / 注意
     const safetyBoard = screen.getByTestId('patient-header-safety');
     expect(within(safetyBoard).getByText('セフェム系(2019)')).toBeTruthy();
@@ -1303,14 +1322,14 @@ describe('CardWorkspace', () => {
     expect(within(todayPanel).getByText('期限 12:00')).toBeTruthy();
     expect(within(todayPanel).getByText('麻薬監査')).toBeTruthy();
     expect(within(todayPanel).getByText('監査後')).toBeTruthy();
-    expect(within(todayPanel).getByRole('link', { name: '→ 監査へ' })).toBeTruthy();
-    expect(within(todayPanel).getByRole('link', { name: '→ セットへ' })).toBeTruthy();
-    expect(within(todayPanel).getByRole('link', { name: '→ 訪問へ' })).toBeTruthy();
+    expect(within(todayPanel).getByRole('link', { name: /監査へ/, hidden: true })).toBeTruthy();
+    expect(within(todayPanel).getByRole('link', { name: /セットへ/, hidden: true })).toBeTruthy();
+    expect(within(todayPanel).getByRole('link', { name: /訪問へ/, hidden: true })).toBeTruthy();
 
-    // 補助3点セットは本文を圧迫しないため初期表示しない。上部バーの補助パネルで開く。
-    expect(screen.queryByTestId('next-action-panel')).toBeNull();
-    expect(screen.queryByTestId('blocked-reasons-panel')).toBeNull();
-    expect(screen.queryByTestId('evidence-panel')).toBeNull();
+    // Command タブは、患者を開いた直後に次の作業と今日のタスクを同じ順序で見せる。
+    expect(screen.getByTestId('next-action-panel')).toBeTruthy();
+    expect(screen.getByTestId('blocked-reasons-panel')).toBeTruthy();
+    expect(screen.getByTestId('evidence-panel')).toBeTruthy();
   });
 
   it('opens the matching patient detail tab for an initial section hash', async () => {
@@ -1331,9 +1350,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
-    expect(screen.getByRole('tab', { name: /処方・訪問/ }).getAttribute('aria-selected')).toBe(
-      'true',
-    );
+    expect(screen.getByRole('tab', { name: /Command/ }).getAttribute('aria-selected')).toBe('true');
     expect(screen.queryByTestId('patient-profile-summary')).toBeNull();
 
     act(() => {
@@ -1362,6 +1379,26 @@ describe('CardWorkspace', () => {
     expect(screen.getByTestId('card-field-revisions').getAttribute('id')).toBe(
       'patient-field-revisions',
     );
+  });
+
+  it.each([
+    ['#card-prescription-section', /薬剤・訪問/, 'card-prescription-section'],
+    ['#patient-visit-preparation', /薬剤・訪問/, 'card-prescription-section'],
+    ['#patient-home-operations', /請求・会議/, 'patient-home-operations-panel'],
+    ['#patient-billing', /請求・会議/, 'patient-home-operations-panel'],
+    ['#patient-conference', /請求・会議/, 'patient-home-operations-panel'],
+    ['#patient-structured-care', /履歴・構造化/, 'patient-structured-care'],
+  ])('opens %s in the matching patient detail tab', async (hash, tabName, testId) => {
+    window.history.replaceState({}, '', `/patients/patient_1${hash}`);
+    mockPatientQuery(buildWorkspace());
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    expect(screen.getByRole('tab', { name: tabName }).getAttribute('aria-selected')).toBe('true');
+    const target = getVisibleTestId(testId);
+    if (hash === '#patient-home-operations') {
+      expect(target.getAttribute('id')).toBe('patient-home-operations');
+    }
   });
 
   it('surfaces archived patient state in the pinned patient header', () => {
@@ -1433,7 +1470,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
-    const blockedReasons = screen.getByTestId('blocked-reasons-panel');
+    const blockedReasons = getVisibleTestId('blocked-reasons-panel');
     expect(
       within(blockedReasons).getByRole('link', { name: '再連絡する →' }).getAttribute('href'),
     ).toBe('/communications/requests?status=sent&patient_id=patient_1');
@@ -1457,7 +1494,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
-    const blockedReasons = screen.getByTestId('blocked-reasons-panel');
+    const blockedReasons = getVisibleTestId('blocked-reasons-panel');
     expect(
       within(blockedReasons).getByRole('link', { name: '再連絡する →' }).getAttribute('href'),
     ).toBe('/communications/requests?status=sent&patient_id=patient_1');
@@ -1533,6 +1570,7 @@ describe('CardWorkspace', () => {
       render(<CardWorkspace patientId={hostileId} />);
       openFoundationTab();
       openSharingTab();
+      openMedicationTab();
 
       const calls = vi
         .mocked(buildPatientHref)
@@ -1670,6 +1708,8 @@ describe('CardWorkspace', () => {
     expect(screen.getByText('進行中のカードがありません')).toBeTruthy();
     openFoundationTab();
     expect(screen.getByTestId('patient-profile-summary')).toBeTruthy();
+    expect(screen.queryByTestId('patient-home-operations-panel')).toBeNull();
+    openBillingTab();
     expect(screen.getByTestId('patient-home-operations-panel')).toBeTruthy();
     expect(screen.queryByTestId('card-prescription-section')).toBeNull();
   });
@@ -1680,8 +1720,8 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
-    openFoundationTab();
-    const homeOps = screen.getByTestId('patient-home-operations-panel');
+    openBillingTab();
+    const homeOps = getVisibleTestId('patient-home-operations-panel');
     // 取得失敗を「主要項目 確認済み」(偽の全クリア)に潰さない。
     expect(within(homeOps).queryByText('主要項目 確認済み')).toBeNull();
     expect(within(homeOps).getByText('サーバー集計 取得失敗')).toBeTruthy();
@@ -1699,11 +1739,11 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
-    openFoundationTab();
+    openBillingTab();
     // 成功時は劣化バナーを出さない(誤検知防止)。
     expect(screen.queryByTestId('patient-home-operations-error')).toBeNull();
     expect(
-      within(screen.getByTestId('patient-home-operations-panel')).queryByText(
+      within(getVisibleTestId('patient-home-operations-panel')).queryByText(
         'サーバー集計 取得失敗',
       ),
     ).toBeNull();
@@ -2154,7 +2194,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
-    openFoundationTab();
+    openMedicationTab();
     fireEvent.click(screen.getByRole('button', { name: /原本到着を記録/ }));
 
     expect(faxMutate).toHaveBeenCalledWith('intake_0500');
@@ -2238,7 +2278,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
-    openFoundationTab();
+    openSharingTab();
     fireEvent.click(screen.getByRole('button', { name: /MCS確認ログを記録/ }));
     expect(screen.getByText('MCS確認内容を入力してください。')).toBeTruthy();
     expect(mcsCheckLogMutate).not.toHaveBeenCalled();
@@ -2296,7 +2336,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
-    openFoundationTab();
+    openSharingTab();
     const savingButton = screen.getByRole('button', { name: '保存中' });
     expect(savingButton.getAttribute('aria-busy')).toBe('true');
     expect((savingButton as HTMLButtonElement).disabled).toBe(true);
@@ -2335,7 +2375,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
-    openFoundationTab();
+    openMedicationTab();
     fireEvent.change(screen.getByLabelText('画像/PDF URL'), {
       target: { value: 'https://example.com/prescriptions/intake_0500.pdf' },
     });
@@ -2402,7 +2442,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
-    openFoundationTab();
+    openMedicationTab();
     const file = new File(['pdf'], 'prescription.pdf', { type: 'application/pdf' });
     fireEvent.change(screen.getByLabelText('ファイル'), {
       target: { files: [file] },
@@ -2476,7 +2516,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
-    openFoundationTab();
+    openMedicationTab();
     expect(screen.getByText('保存される原本管理')).toBeTruthy();
     expect(screen.getByLabelText('原本到着日時')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('照合結果'), { target: { value: 'discrepancy' } });
@@ -2539,7 +2579,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
-    openFoundationTab();
+    openMedicationTab();
     fireEvent.change(screen.getByLabelText('照合結果'), { target: { value: 'discrepancy' } });
     fireEvent.click(screen.getByRole('button', { name: /原本管理を記録/ }));
     expect(screen.getByRole('alert').textContent).toContain(
@@ -2619,7 +2659,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
-    openFoundationTab();
+    openBillingTab();
     fireEvent.change(screen.getByLabelText('入金額'), { target: { value: '3240' } });
     fireEvent.change(screen.getByLabelText('領収証番号'), {
       target: { value: 'R20260616-001' },
@@ -2695,7 +2735,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
-    openFoundationTab();
+    openBillingTab();
     fireEvent.change(screen.getByLabelText('状態'), { target: { value: 'partial' } });
     fireEvent.change(screen.getByLabelText('入金額'), { target: { value: '3240' } });
     fireEvent.click(screen.getByRole('button', { name: /集金記録を登録/ }));
@@ -2742,7 +2782,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
-    openFoundationTab();
+    openBillingTab();
     expect(screen.getByText('保存される集金履歴')).toBeTruthy();
     expect(screen.getByText('番号未入力')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('入金額'), { target: { value: '3240' } });
@@ -2790,7 +2830,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
-    openFoundationTab();
+    openBillingTab();
     fireEvent.change(screen.getByLabelText('入金額'), { target: { value: '3240' } });
     fireEvent.click(screen.getByRole('button', { name: /集金記録を更新/ }));
 
@@ -2837,7 +2877,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
-    openFoundationTab();
+    openBillingTab();
     fireEvent.change(screen.getByLabelText('状態'), { target: { value: 'billed' } });
     fireEvent.change(screen.getByLabelText('入金額'), { target: { value: '0' } });
     fireEvent.click(screen.getByRole('button', { name: /集金記録を更新/ }));
@@ -2882,7 +2922,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
-    openFoundationTab();
+    openBillingTab();
     fireEvent.change(screen.getByLabelText('支払者'), {
       target: { value: 'family' },
     });
@@ -2996,7 +3036,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
-    openFoundationTab();
+    openBillingTab();
     fireEvent.change(screen.getByLabelText('支払者'), {
       target: { value: 'family' },
     });
@@ -3042,7 +3082,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
-    openFoundationTab();
+    openBillingTab();
     fireEvent.change(screen.getByLabelText('支払者'), {
       target: { value: 'family' },
     });
@@ -3102,7 +3142,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
-    openFoundationTab();
+    openBillingTab();
     expect(screen.getByText('保存される会議連動')).toBeTruthy();
     expect(screen.getByText('対面 / CM')).toBeTruthy();
     expect(screen.getByText('ケアマネ向け報告書')).toBeTruthy();
@@ -3241,7 +3281,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
-    openFoundationTab();
+    openBillingTab();
     fireEvent.click(screen.getByRole('button', { name: /会議要点を登録/ }));
     expect(screen.getByRole('alert').textContent).toContain(
       '会議名・開催日時・会議要点を入力してください。',
@@ -3964,7 +4004,7 @@ describe('CardWorkspace', () => {
   }
 
   function triggerPrescriptionUpload() {
-    openFoundationTab();
+    openMedicationTab();
     const file = new File(['pdf'], 'prescription.pdf', { type: 'application/pdf' });
     fireEvent.change(screen.getByLabelText('ファイル'), { target: { files: [file] } });
     fireEvent.click(screen.getByRole('button', { name: /画像\/PDFを保存/ }));
