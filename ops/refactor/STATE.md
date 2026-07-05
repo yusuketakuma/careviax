@@ -39,6 +39,19 @@
 
 ## 直近の land（本日・要点）
 
+- codex: R40/R44 contact master mutations readApiJson batch(e407f4c5) land。focused Vitest 84、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。admin external-professionals save/delete
+  と contact-profiles save responses を readApiJson へ収束し、external-professional dynamic path helper、
+  contact-profile fixed collection PATCH、org JSON/org headers、request bodies、linked-patient delete blocker、
+  dot-segment fail-closed、query invalidation、server-message fallback は保持。UI tests には external save
+  `{ message }`、external save/delete non-JSON fallback、contact profile save `{ message}` / non-JSON fallback を
+  追加。API contract subagent は contact profile PATCH の成功envelope型過大表現と no-store gap を
+  CHANGES_REQUESTED として指摘し、UI側は `readApiJson<unknown>` に修正、`PATCH /api/contact-profiles` は
+  `withSensitiveNoStore` wrapper化。route tests で malformed/validation/not-found/unexpected PATCH の
+  no-store envelope と raw contact secret 非露出を追加。Mapper subagent は次の高効率候補として
+  Admin Drug Masters / Formulary mutations を推奨。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) に基づき API route wrapper を変更、
+  DB/billing/deploy/package dependency 変更は不要。
 - codex: R40/R44 PCA pump mutations readApiJson batch(cc724d38) land。focused Vitest 111、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。PCA pump create / rental create /
   rental status PATCH / pump status PATCH / return-inspection PATCH responses を readApiJson へ収束し、
