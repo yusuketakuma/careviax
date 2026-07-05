@@ -169,6 +169,7 @@ export function DataTable<TData>({
     pageSize,
   });
   const toolbarDisabledReasonId = useId();
+  const exportScopeWarningId = useId();
   const getResolvedRowA11yLabel = useCallback(
     (row: Row<TData>) => getRowA11yLabel?.(row.original, row.index) ?? row.id,
     [getRowA11yLabel],
@@ -363,6 +364,12 @@ export function DataTable<TData>({
       : fullRows.length === 0
         ? '出力できる行がありません'
         : undefined;
+  const hasUnloadedRows = Boolean(hasMore);
+  const exportAriaDescription = toolbarActionsDisabled
+    ? toolbarDisabledReasonId
+    : hasUnloadedRows
+      ? exportScopeWarningId
+      : undefined;
   const displayedEmptyMessage = errorMessage
     ? '取得エラーのため一覧を表示できません'
     : emptyMessage;
@@ -507,7 +514,9 @@ export function DataTable<TData>({
               </div>
             ))}
             {enableRowSelection && selectedCount > 0 && (
-              <p className="text-sm text-muted-foreground">{selectedCount} 件を選択中</p>
+              <p className="text-sm text-muted-foreground">
+                選択中{selectedCount}件（表示中の行から選択）
+              </p>
             )}
           </div>
 
@@ -548,18 +557,28 @@ export function DataTable<TData>({
               </DropdownMenu>
             )}
             {toolbar.enableExport && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="min-h-[44px] sm:min-h-0"
-                disabled={toolbarActionsDisabled}
-                title={toolbarDisabledReason}
-                aria-describedby={toolbarActionsDisabled ? toolbarDisabledReasonId : undefined}
-                onClick={handleExport}
-              >
-                <Download className="mr-1.5 size-3.5" aria-hidden="true" />
-                CSV出力
-              </Button>
+              <div className="flex max-w-full flex-col items-start gap-1">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="min-h-[44px] sm:min-h-0"
+                  disabled={toolbarActionsDisabled}
+                  title={toolbarDisabledReason}
+                  aria-describedby={exportAriaDescription}
+                  onClick={handleExport}
+                >
+                  <Download className="mr-1.5 size-3.5" aria-hidden="true" />
+                  読込済みCSV出力
+                </Button>
+                {hasUnloadedRows && !toolbarActionsDisabled ? (
+                  <p
+                    id={exportScopeWarningId}
+                    className="max-w-[18rem] text-xs leading-5 text-muted-foreground"
+                  >
+                    未読込行は出力対象外です。
+                  </p>
+                ) : null}
+              </div>
             )}
             {toolbar.enablePrint && (
               <Button

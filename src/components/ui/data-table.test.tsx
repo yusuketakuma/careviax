@@ -44,6 +44,7 @@ describe('DataTable', () => {
             onSelectionChange={(rows) => {
               setSelectedRows(rows);
             }}
+            toolbar={{ enableColumnVisibility: false }}
           />
         </div>
       );
@@ -53,6 +54,8 @@ describe('DataTable', () => {
 
     expect(screen.getByText('selected:0')).not.toBeNull();
     expect(screen.getAllByRole('checkbox', { name: '山田 太郎 を選択' }).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getAllByRole('checkbox', { name: '山田 太郎 を選択' })[0]!);
+    expect(screen.getByText('選択中1件（表示中の行から選択）')).toBeTruthy();
     expect(
       consoleErrorSpy.mock.calls.some(
         ([message]) =>
@@ -88,11 +91,11 @@ describe('DataTable', () => {
     const toolbar = { enableExport: true, enablePrint: true };
     const { rerender } = render(<DataTable columns={columns} data={[]} toolbar={toolbar} />);
 
-    expectButtonDisabled('CSV出力', true);
+    expectButtonDisabled('読込済みCSV出力', true);
     expectButtonDisabled('印刷', true);
-    expect(screen.getByRole('button', { name: 'CSV出力' }).getAttribute('aria-describedby')).toBe(
-      screen.getByText('出力できる行がありません').id,
-    );
+    expect(
+      screen.getByRole('button', { name: '読込済みCSV出力' }).getAttribute('aria-describedby'),
+    ).toBe(screen.getByText('出力できる行がありません').id);
 
     rerender(
       <DataTable
@@ -103,7 +106,7 @@ describe('DataTable', () => {
       />,
     );
 
-    expectButtonDisabled('CSV出力', true);
+    expectButtonDisabled('読込済みCSV出力', true);
 
     rerender(
       <DataTable
@@ -114,7 +117,7 @@ describe('DataTable', () => {
       />,
     );
 
-    expectButtonDisabled('CSV出力', true);
+    expectButtonDisabled('読込済みCSV出力', true);
 
     rerender(
       <DataTable
@@ -124,7 +127,7 @@ describe('DataTable', () => {
       />,
     );
 
-    expectButtonDisabled('CSV出力', false);
+    expectButtonDisabled('読込済みCSV出力', false);
     expectButtonDisabled('印刷', false);
   });
 
@@ -392,7 +395,7 @@ describe('DataTable', () => {
         />,
       );
 
-      fireEvent.click(screen.getByRole('button', { name: 'CSV出力' }));
+      fireEvent.click(screen.getByRole('button', { name: '読込済みCSV出力' }));
 
       expect(createObjectURL).toHaveBeenCalledTimes(1);
       const [blob] = createObjectURL.mock.calls[0] ?? [];
@@ -412,6 +415,24 @@ describe('DataTable', () => {
       URL.revokeObjectURL = originalRevoke;
       anchorClick.mockRestore();
     }
+  });
+
+  it('labels client CSV export as loaded-row export and warns when more rows exist server-side', () => {
+    render(
+      <DataTable
+        columns={columns}
+        data={[{ id: 'loaded-1', name: '読込済み患者' }]}
+        hasMore
+        onLoadMore={vi.fn()}
+        toolbar={{ enableExport: true }}
+      />,
+    );
+
+    const exportButton = screen.getByRole('button', { name: '読込済みCSV出力' });
+    const warning = screen.getByText('未読込行は出力対象外です。');
+
+    expect(exportButton.getAttribute('aria-describedby')).toBe(warning.id);
+    expect(screen.queryByRole('button', { name: 'CSV出力' })).toBeNull();
   });
 
   it('does not paginate by default (existing screens keep rendering every row)', () => {
