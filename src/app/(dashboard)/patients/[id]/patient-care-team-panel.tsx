@@ -221,13 +221,10 @@ export function PatientCareTeamPanel({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(quickCreateDraft),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(
-          (payload as { message?: string }).message ?? '他職種マスターの登録に失敗しました',
-        );
-      }
-      return payload as { data: ExternalProfessionalOption };
+      return readApiJson<{ data: ExternalProfessionalOption }>(
+        response,
+        '他職種マスターの登録に失敗しました',
+      );
     },
     onSuccess: async (payload) => {
       toast.success('他職種マスターを登録しました');
@@ -266,13 +263,10 @@ export function PatientCareTeamPanel({
             })),
         }),
       });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(
-          (payload as { message?: string }).message ?? '多職種連携先の保存に失敗しました',
-        );
-      }
-      return payload as { warnings?: ReliabilityWarning[] };
+      return readApiJson<{ warnings?: ReliabilityWarning[] }>(
+        res,
+        '多職種連携先の保存に失敗しました',
+      );
     },
     onSuccess: async (payload) => {
       toast.success('多職種連携先を更新しました');

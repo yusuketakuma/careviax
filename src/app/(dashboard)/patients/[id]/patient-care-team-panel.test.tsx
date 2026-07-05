@@ -221,6 +221,7 @@ describe('PatientCareTeamPanel', () => {
     queryKey?: unknown[];
     queryFn?: () => Promise<unknown>;
     mutationFn?: () => Promise<unknown>;
+    onError?: (error: unknown) => void;
   };
 
   function buildCases() {
@@ -250,7 +251,7 @@ describe('PatientCareTeamPanel', () => {
   }
 
   function okFetch() {
-    return vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({}));
+    return vi.fn<typeof fetch>().mockImplementation(() => Promise.resolve(jsonResponse({})));
   }
 
   it('fetches external professional options with org headers (static path)', async () => {
@@ -327,6 +328,33 @@ describe('PatientCareTeamPanel', () => {
     }
   });
 
+  it('surfaces API error messages when quick-create master registration fails', async () => {
+    const { mutationConfigs } = captureConfigs();
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ message: '他職種マスターの登録権限がありません' }, 403));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PatientCareTeamPanel patientId="patient_1" orgId="org_1" cases={buildCases()} />);
+
+      await expect(mutationConfigs[0]?.mutationFn?.()).rejects.toThrow(
+        '他職種マスターの登録権限がありません',
+      );
+      mutationConfigs[0]?.onError?.(new Error('他職種マスターの登録権限がありません'));
+
+      expect(fetchMock).toHaveBeenCalledWith('/api/admin/external-professionals', {
+        method: 'POST',
+        headers: buildOrgJsonHeaders('org_1'),
+        body: expect.any(String),
+      });
+      expect(toast.error).toHaveBeenCalledWith('他職種マスターの登録権限がありません');
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
   it('saves the care team to an encoded patient path with JSON headers and a raw case_id body', async () => {
     const hostileId = 'pt/1?x=y#z';
     const { mutationConfigs } = captureConfigs();
@@ -351,6 +379,33 @@ describe('PatientCareTeamPanel', () => {
       expect(body).not.toContain(hostileId);
       expect(body).not.toContain('cc0000000777');
       expect(JSON.parse(body)).toEqual({ case_id: 'case_active_123456', links: [] });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('surfaces API error messages when care-team save fails', async () => {
+    const { mutationConfigs } = captureConfigs();
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ message: '多職種連携先の更新権限がありません' }, 403));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PatientCareTeamPanel patientId="patient_1" orgId="org_1" cases={buildCases()} />);
+
+      await expect(mutationConfigs[1]?.mutationFn?.()).rejects.toThrow(
+        '多職種連携先の更新権限がありません',
+      );
+      mutationConfigs[1]?.onError?.(new Error('多職種連携先の更新権限がありません'));
+
+      expect(fetchMock).toHaveBeenCalledWith('/api/patients/patient_1/care-team', {
+        method: 'PUT',
+        headers: buildOrgJsonHeaders('org_1'),
+        body: expect.any(String),
+      });
+      expect(toast.error).toHaveBeenCalledWith('多職種連携先の更新権限がありません');
     } finally {
       vi.unstubAllGlobals();
       vi.clearAllMocks();
