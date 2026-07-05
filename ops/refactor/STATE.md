@@ -40,6 +40,25 @@
 
 ## 直近の land（本日・要点）
 
+- codex: VS-AUTO-6 vehicle open-proposal capacity guard slice(in-progress on main) implementation complete。
+  - service: `src/server/services/visit-schedule-overload-rebalancer.ts` は前倒し replacement draft 採用前に
+    `VisitVehicleResource.max_stops` を使った vehicle/date capacity を検証。active `VisitSchedule`、open
+    `VisitScheduleProposal`、同一 preview run の仮想採用分をすべて occupancy として数え、満杯なら
+    `vehicle_capacity_full` で skip する。未知 vehicle id は fail-closed。
+  - range: `searchStartDate < dateFrom` の前倒し先を見落とさないよう、occupancy query range は
+    `min(searchStartDate, dateFrom)`〜`dateTo` に拡張。source proposal 対象は従来通り `dateFrom`〜`dateTo`。
+  - API contract: `toVisitScheduleOverloadRebalanceApiPreview` の `unsupported_guards` から
+    `vehicle_open_proposal_capacity` を削除。`apply_available=false` は維持し、残 guard は
+    `pharmacist_review_required` と `billing_cap_recheck`。
+  - safety: preview-only のまま DB write / audit write / cron / apply / UI action は追加なし。PHI-free mapper を維持。
+  - validation:
+    `pnpm exec vitest run src/server/services/visit-schedule-overload-rebalancer.test.ts src/app/api/visit-schedule-proposals/overload-rebalance-preview/route.test.ts --reporter=dot --testTimeout=30000`
+    green（2 files / 12 tests; vehicle open proposal capacity / same-run vehicle occupancy 含む）; scoped eslint green。
+    `pnpm exec vitest run src/server/services/visit-schedule-overload-rebalancer.test.ts src/app/api/visit-schedule-proposals/overload-rebalance-preview/route.test.ts src/app/api/visit-schedule-proposals/route.test.ts src/app/api/visit-schedule-proposals/billing-preview-batch/route.test.ts src/server/services/visit-schedule-planner.test.ts src/server/services/billing-requirement-validator.test.ts --reporter=dot --testTimeout=30000`
+    green（6 files / 199 tests）; `pnpm format:check` green; `git diff --check` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` green。
+    next: scoped commit → origin/main push → continue VS-AUTO-6 billing cap recheck or VS-AUTO-7 HR gate planning。
 - codex: VS-AUTO-6 overload rebalancer read-only API slice(in-progress on main) implementation complete。
   - API: `src/app/api/visit-schedule-proposals/overload-rebalance-preview/route.ts` を追加し、
     `POST /api/visit-schedule-proposals/overload-rebalance-preview` で preview-only service を公開。旧 route alias、

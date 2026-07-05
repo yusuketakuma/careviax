@@ -167,11 +167,7 @@ describe('/api/visit-schedule-proposals/overload-rebalance-preview POST', () => 
       data: {
         preview_only: true,
         apply_available: false,
-        unsupported_guards: [
-          'pharmacist_review_required',
-          'vehicle_open_proposal_capacity',
-          'billing_cap_recheck',
-        ],
+        unsupported_guards: ['pharmacist_review_required', 'billing_cap_recheck'],
         overloaded_cells: [
           {
             pharmacist_id: 'pharmacist_1',
@@ -195,6 +191,7 @@ describe('/api/visit-schedule-proposals/overload-rebalance-preview POST', () => 
           { reason_code: 'not_mutable', count: 1 },
           { reason_code: 'no_earlier_candidate', count: 0 },
           { reason_code: 'destination_capacity_full', count: 0 },
+          { reason_code: 'vehicle_capacity_full', count: 0 },
         ],
       },
     });

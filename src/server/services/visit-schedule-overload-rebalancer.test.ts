@@ -39,8 +39,14 @@ function baseProposal() {
 
 function makeDb(args: {
   proposals: ReturnType<typeof proposal>[];
-  schedules?: Array<{ id: string; scheduled_date: Date; pharmacist_id: string }>;
+  schedules?: Array<{
+    id: string;
+    scheduled_date: Date;
+    pharmacist_id: string;
+    vehicle_resource_id?: string | null;
+  }>;
   users?: Array<{ id: string; max_daily_visits: number | null }>;
+  vehicleResources?: Array<{ id: string; max_stops: number | null }>;
 }) {
   return {
     visitScheduleProposal: {
@@ -53,6 +59,11 @@ function makeDb(args: {
       findMany: vi
         .fn()
         .mockResolvedValue(args.users ?? [{ id: 'pharmacist_1', max_daily_visits: 3 }]),
+    },
+    visitVehicleResource: {
+      findMany: vi
+        .fn()
+        .mockResolvedValue(args.vehicleResources ?? [{ id: 'vehicle_1', max_stops: 8 }]),
     },
   };
 }
@@ -163,7 +174,7 @@ describe('previewVisitScheduleOverloadRebalance', () => {
           schedule_status: {
             in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress', 'completed'],
           },
-          pharmacist_id: { in: ['pharmacist_1'] },
+          OR: [{ pharmacist_id: { in: ['pharmacist_1'] } }, { vehicle_resource_id: { not: null } }],
         }),
       }),
     );
@@ -175,6 +186,10 @@ describe('previewVisitScheduleOverloadRebalance', () => {
         },
       }),
     );
+    expect(db.visitVehicleResource.findMany).toHaveBeenCalledWith({
+      where: { org_id: 'org_1' },
+      select: { id: true, max_stops: true },
+    });
     expect(generateDrafts).toHaveBeenCalledWith(
       expect.objectContaining({
         orgId: 'org_1',
@@ -249,6 +264,80 @@ describe('previewVisitScheduleOverloadRebalance', () => {
     ]);
   });
 
+  it('skips earlier replacements when destination vehicle open proposal capacity is full', async () => {
+    const db = makeDb({
+      proposals: [
+        proposal({ id: 'proposal_source', route_order: 1 }),
+        proposal({ id: 'proposal_peer', case_id: 'case_peer', route_order: 2 }),
+        proposal({
+          id: 'proposal_vehicle_dest',
+          case_id: 'case_vehicle_dest',
+          proposed_date: utcDate('2026-04-08'),
+          proposed_pharmacist_id: 'pharmacist_2',
+          route_order: 1,
+          vehicle_resource_id: 'vehicle_1',
+        }),
+      ],
+      users: [{ id: 'pharmacist_1', max_daily_visits: 1 }],
+      vehicleResources: [{ id: 'vehicle_1', max_stops: 1 }],
+    });
+    const generateDrafts = vi.fn().mockResolvedValue({
+      drafts: [draft({ proposed_date: utcDate('2026-04-08'), vehicle_resource_id: 'vehicle_1' })],
+      diagnostics: { accepted: [], rejected: [] },
+    });
+
+    const result = await previewVisitScheduleOverloadRebalance({
+      orgId: 'org_1',
+      dateFrom: utcDate('2026-04-10'),
+      dateTo: utcDate('2026-04-30'),
+      searchStartDate: utcDate('2026-04-01'),
+      db,
+      generateDrafts,
+    });
+
+    expect(result.previews).toEqual([]);
+    expect(result.skipped).toEqual([
+      { source_proposal_id: 'proposal_source', reason_code: 'vehicle_capacity_full' },
+      { source_proposal_id: 'proposal_peer', reason_code: 'vehicle_capacity_full' },
+    ]);
+  });
+
+  it('does not overfill a destination vehicle with previews selected in the same run', async () => {
+    const db = makeDb({
+      proposals: [
+        proposal({ id: 'proposal_source', route_order: 1 }),
+        proposal({ id: 'proposal_peer', case_id: 'case_peer', route_order: 2 }),
+      ],
+      schedules: [
+        {
+          id: 'schedule_source',
+          scheduled_date: utcDate('2026-04-10'),
+          pharmacist_id: 'pharmacist_1',
+          vehicle_resource_id: null,
+        },
+      ],
+      users: [{ id: 'pharmacist_1', max_daily_visits: 2 }],
+      vehicleResources: [{ id: 'vehicle_1', max_stops: 1 }],
+    });
+    const generateDrafts = vi.fn().mockResolvedValue({
+      drafts: [draft({ proposed_date: utcDate('2026-04-08'), vehicle_resource_id: 'vehicle_1' })],
+      diagnostics: { accepted: [], rejected: [] },
+    });
+
+    const result = await previewVisitScheduleOverloadRebalance({
+      orgId: 'org_1',
+      dateFrom: utcDate('2026-04-01'),
+      dateTo: utcDate('2026-04-30'),
+      db,
+      generateDrafts,
+    });
+
+    expect(result.previews).toHaveLength(1);
+    expect(result.skipped).toEqual([
+      { source_proposal_id: 'proposal_peer', reason_code: 'vehicle_capacity_full' },
+    ]);
+  });
+
   it('maps internal previews to an API-safe non-PHI DTO', () => {
     const apiPreview = toVisitScheduleOverloadRebalanceApiPreview({
       overloaded_cells: [
@@ -300,11 +389,7 @@ describe('previewVisitScheduleOverloadRebalance', () => {
     expect(apiPreview).toEqual({
       preview_only: true,
       apply_available: false,
-      unsupported_guards: [
-        'pharmacist_review_required',
-        'vehicle_open_proposal_capacity',
-        'billing_cap_recheck',
-      ],
+      unsupported_guards: ['pharmacist_review_required', 'billing_cap_recheck'],
       overloaded_cells: [
         {
           date: '2026-04-10',
@@ -344,6 +429,7 @@ describe('previewVisitScheduleOverloadRebalance', () => {
         { reason_code: 'not_mutable', count: 1 },
         { reason_code: 'no_earlier_candidate', count: 0 },
         { reason_code: 'destination_capacity_full', count: 1 },
+        { reason_code: 'vehicle_capacity_full', count: 0 },
       ],
     });
     expect(JSON.stringify(apiPreview)).not.toContain('case_secret');

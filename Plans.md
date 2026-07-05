@@ -393,14 +393,17 @@ FE 仕上げ（低優先）:
 - [x] 容量判定では確定 `VisitSchedule` だけでなく、同日同薬剤師/車両の open `VisitScheduleProposal` もカウントする。現 planner は主に confirmed schedule を見ているためここが差分。
       2026-07-05: first slice は pharmacist daily capacity を対象に、active `VisitSchedule` と open
       `VisitScheduleProposal` を同一 occupancy としてカウント。preview 採用分も仮想 occupancy に反映し、
-      同一実行内の前倒し先過密を防ぐ。車両 capacity は後続。
+      同一実行内の前倒し先過密を防ぐ。
+      2026-07-05: vehicle capacity も `VisitVehicleResource.max_stops` を基準に、active `VisitSchedule` と
+      open `VisitScheduleProposal`、同一 preview run の仮想採用分を vehicle/date occupancy としてカウント。
+      `unsupported_guards` から `vehicle_open_proposal_capacity` を削除。billing cap と review field は後続。
 - テスト:
   - [x] 過密日に未承認候補が集中 → 未承認候補だけ前倒し replacement preview。
   - [x] confirmed schedule / contact confirmed proposal / reschedule pending は不変。
         2026-07-05: confirmed schedule は occupancy のみ、contacted/open proposal は `not_mutable` skip。
   - [~] 前倒し先が期限・シフト・薬剤準備・billing cap を満たさない場合は再配置しない。
-    2026-07-05 partial: replacement draft は既存 planner から取得し、destination daily capacity full は skip。
-    billing cap / vehicle capacity / review candidate 永続判定は後続。
+    2026-07-05 partial: replacement draft は既存 planner から取得し、destination daily capacity full と
+    vehicle/date capacity full は skip。billing cap / review candidate 永続判定は後続。
   - [x] audit/log に患者詳細や自由記述を過剰保存しない。
         2026-07-05: preview API は audit write なし。response は id/date/status/count/reason code と
         最小 diagnostics に限定し、case id、raw patient / address / medication / free-text clinical detail を追加しない。
