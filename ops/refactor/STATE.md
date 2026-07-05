@@ -40,6 +40,39 @@
 
 ## 直近の land（本日・要点）
 
+- codex: visit record trainee cross-assignment write boundary batch(bef4d7b8a)
+  implementation complete。ユーザー指示により本sliceでも subagent を投入（api_contract_reviewer /
+  medical_safety_reviewer / test_architect / verifier）。test_architect は `POST /api/visit-records` と
+  `PATCH /api/visit-records/:id` の近似 clinical write surface をまとめて扱い、unassigned
+  `pharmacist_trainee` の denial、owner/admin/pharmacist の org-wide write 維持、assigned trainee
+  write 維持、no-store `AUTH_FORBIDDEN`、副作用前停止を completion gate と指定。medical_safety_reviewer
+  は、unassigned trainee write denial をこのsliceの最小 patient-safety fix として APPROVE しつつ、
+  assigned trainee の `completed` / `completed_with_issue` / `revisit_needed` final clinical outcome と
+  schedule/cycle/billing finalization は別の supervision/finalization slice が必要と指摘。api_contract_reviewer
+  は exported write helper が clerk にも true を返し得る forward-compat risk を CHANGES_REQUESTED とし、
+  `owner|admin|pharmacist`、assigned `pharmacist_trainee` 以外を helper 単体でも fail-closed にすることを要求。
+  対応として `src/lib/auth/visit-schedule-access.ts` に `canWriteVisitRecordForSchedule` を追加し、read/access
+  用の `canAccessVisitScheduleAssignment` は現行 org-wide policy のまま維持。visit-record write helper は
+  `owner|admin|pharmacist` の org-wide write、直接担当（visit pharmacist / case primary / case backup）の
+  `pharmacist_trainee` write のみ許可し、unassigned trainee、clerk、driver、external_viewer は false。
+  `POST /api/visit-records` は schedule lookup 直後、existing-record conflict、care case lookup、drug master、
+  patient snapshot、VisitRecord create/update、schedule status claim、residual/lab、first-visit document、
+  audit、operational task、billing evidence、async handoff extraction の前に 403。`PATCH /api/visit-records/:id`
+  は existing record/schedule load 直後、optimistic lock、timestamp validation、billing blockers、
+  drug master、attachment resolution、VisitRecord update、residual/lab、audit/user/care-case/preference lookup の
+  前に 403。route tests は owner/admin/pharmacist org-wide success、unassigned trainee 403/no-store/no-side-effect、
+  assigned trainee success を POST/PATCH 双方で固定。helper pure test は owner/admin/pharmacist allow、
+  assigned/unassigned trainee allow/deny、clerk/driver/external_viewer deny を固定。validation:
+  `pnpm exec vitest run src/lib/auth/__tests__/visit-schedule-access.test.ts src/app/api/visit-records/route.test.ts 'src/app/api/visit-records/[id]/route.test.ts'`
+  green（3 files / 139 tests）; scoped `eslint` green; scoped `prettier --check` green;
+  `git diff --check` green; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。verifier subagent は
+  read-only final diff review と focused Vitest / scoped ESLint / scoped Prettier / diff-check / typecheck を
+  独立実行して APPROVE。SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package
+  dependency) に基づき product API / authorization / PHI-adjacent clinical side-effect boundary /
+  billing-evidence side-effect boundary を変更。DB schema/migration/deploy/package dependency 変更は不要。
+  残る高優先別slice候補: assigned trainee の visit-record completion/finalization supervision 方針、
+  PATCH outcome escalation と POST schedule/cycle/billing finalization の整合性、visit-schedule lifecycle /
+  preparation-ready / medication issue resolve-promote の trainee write boundary。
 - codex: care report clinical confirmation role hardening batch(eeb65d508)
   implementation complete。ユーザー指示により本sliceでも subagent を投入（code_mapper /
   security_critic / medical_safety_reviewer / verifier）。code_mapper は `pharmacist_trainee`
