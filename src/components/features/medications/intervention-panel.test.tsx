@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { jsonResponse } from '@/test/fetch-test-utils';
 import { InterventionPanel, type Intervention } from './intervention-panel';
 
 setupDomTestEnv();
@@ -90,5 +91,50 @@ describe('InterventionPanel new intervention form', () => {
     } finally {
       process.env.TZ = originalTz;
     }
+  });
+
+  it('keeps API messages from failed intervention creation responses', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ message: '介入記録の作成権限がありません' }, 403),
+    );
+
+    openCreateDialog();
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: '介入記録の追加' })).toBeTruthy();
+    });
+
+    fireEvent.change(screen.getByLabelText('介入内容'), {
+      target: { value: '服薬支援を実施' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '追加' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('介入記録の作成権限がありません')).toBeTruthy();
+    });
+  });
+
+  it('keeps API messages from failed intervention outcome save responses', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ message: '介入結果の更新権限がありません' }, 403),
+    );
+
+    render(
+      <InterventionPanel patientId="patient_1" initialInterventions={[buildIntervention()]} />,
+    );
+
+    const expandButton = document.querySelector(
+      'button[aria-expanded="false"]',
+    ) as HTMLButtonElement;
+    fireEvent.click(expandButton);
+    fireEvent.click(screen.getByRole('button', { name: '記録' }));
+    fireEvent.change(screen.getByPlaceholderText('介入の結果・効果を記録...'), {
+      target: { value: '症状軽快' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('介入結果の更新権限がありません')).toBeTruthy();
+    });
   });
 });

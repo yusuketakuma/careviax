@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/select';
 import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { LoadingButton } from '@/components/ui/loading-button';
+import { readApiJson } from '@/lib/api/client-json';
 import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import { cn } from '@/lib/utils';
 
@@ -99,14 +100,11 @@ function InterventionRow({ intervention, onOutcomeUpdate }: InterventionRowProps
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ outcome: outcomeText }),
       });
-      if (res.ok) {
-        onOutcomeUpdate?.(intervention.id, outcomeText);
-        setEditing(false);
-      } else {
-        setSaveError('保存に失敗しました');
-      }
-    } catch {
-      setSaveError('ネットワークエラーが発生しました');
+      await readApiJson<unknown>(res, '保存に失敗しました');
+      onOutcomeUpdate?.(intervention.id, outcomeText);
+      setEditing(false);
+    } catch (error) {
+      setSaveError(error instanceof Error && error.message ? error.message : '保存に失敗しました');
     } finally {
       setSaving(false);
     }
@@ -258,16 +256,13 @@ function NewInterventionForm({ patientId, issueId, onCreated }: NewInterventionF
           performed_at: new Date(data.performedAt).toISOString(),
         }),
       });
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}));
-        setApiError(json.message ?? '作成に失敗しました');
-        return;
-      }
-      const json = await res.json();
+      const json = await readApiJson<{ data: Intervention }>(res, '作成に失敗しました');
       onCreated(json.data);
       setOpen(false);
       // performedAt は元実装同様リセットしない(直近入力値を保持)。
       reset({ type: 'other', description: '', performedAt: getValues('performedAt') });
+    } catch (error) {
+      setApiError(error instanceof Error && error.message ? error.message : '作成に失敗しました');
     } finally {
       setSaving(false);
     }
@@ -382,12 +377,12 @@ export function InterventionPanel({
         if (issueId) params.set('issue_id', issueId);
         const res = await fetch(`/api/interventions?${params.toString()}`);
         if (cancelled) return;
-        if (res.ok) {
-          const json = await res.json();
-          setInterventions(json.data ?? []);
-        } else {
-          setFetchError(true);
-        }
+        const json = await readApiJson<{ data?: Intervention[] }>(
+          res,
+          '介入記録の読み込みに失敗しました',
+        );
+        if (cancelled) return;
+        setInterventions(json.data ?? []);
       } catch {
         if (!cancelled) setFetchError(true);
       } finally {
