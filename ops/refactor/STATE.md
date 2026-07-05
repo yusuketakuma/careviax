@@ -694,6 +694,15 @@
   hostile-id encoding、dot-segment fail-closed、org headers、request bodies、success toasts、
   service-areas invalidation は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 schedule proposal workspace readApiJson slice(d30d17f2) land。
+  focused Vitest 53、scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。
+  schedule-proposals-content の single/bulk proposal PATCH と reproposal POST、schedule-weekly-optimizer の
+  proposal generation POST / route preview POST を readApiJson へ収束。medical_safety_reviewer と
+  api_contract_reviewer を投入し、PHI-safe single/bulk action error sanitization、expected_updated_at
+  stale guard、contact idempotency、top-level diagnostics、top-level VisitRoutePlan contract を保持。
+  route preview top-level VisitRoutePlan と failed preview message preservation の regression tests を追加。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
+  維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 
