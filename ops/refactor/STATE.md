@@ -40,6 +40,56 @@
 
 ## 直近の land（本日・要点）
 
+- codex: FILE/DEV-PHI attachment download filename and presigned payload minimization slice complete
+  (code/test: 3f2a8f124)。
+  - current task:
+    `Plans.md` の `DEV-PHI-001` / `FILE-*` / `REP-001` 系の browser-visible attachment surface を、
+    前回 privacy review の CHANGES_REQUESTED に沿って継続実装。subagents: `privacy_compliance_reviewer`
+    と `test_architect` を read-only で投入し、`createPresignedDownload`、`/api/files/[id]/download`、
+    `/api/files/[id]/presigned-download` の signed `ResponseContentDisposition`、JSON payload、redirect
+    Location、audit payload、no-store をレビュー。
+  - files inspected:
+    `Plans.md`、`ops/refactor/STATE.md`、`node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`、
+    `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`、
+    `src/server/services/file-storage.ts`、`src/server/services/file-storage.test.ts`,
+    `src/app/api/files/[id]/download/route.ts`、`src/app/api/files/[id]/download/route.test.ts`,
+    `src/app/api/files/[id]/presigned-download/route.ts`,
+    `src/app/api/files/[id]/presigned-download/route.test.ts`,
+    `src/server/services/file-download-audit.test.ts`、`src/test/api-response-assertions.ts`。
+  - files changed:
+    `src/server/services/file-storage.ts`、`src/server/services/file-storage.test.ts`,
+    `src/app/api/files/[id]/download/route.ts`、`src/app/api/files/[id]/download/route.test.ts`,
+    `src/app/api/files/[id]/presigned-download/route.ts`,
+    `src/app/api/files/[id]/presigned-download/route.test.ts`、`ops/refactor/STATE.md`。
+  - bugs/security risks fixed:
+    `createPresignedDownload` が `record.originalName` を signed S3 `ResponseContentDisposition` と public
+    `fileName` に使う経路を廃止し、purpose + opaque file id + MIME extension 由来の safe delivery filename
+    (`report-file-file_1.pdf`, `bulk-export-file_1.zip`, `contract-document-contract_file_1.pdf` など) に収束。
+    `/api/files/[id]/presigned-download` の JSON は `downloadUrl` / `expiresIn` のみに縮小し、service DTO の
+    `fileName`、mimeType、sizeBytes、purpose を public payload へ出さない。`/download` と
+    `presigned-download?download=1` の redirect、validation error、FileStorageError、unexpected error は
+    `withSensitiveNoStore` へ統一し `Pragma: no-cache` も付与。route audit payload は signed URL、
+    response-content-disposition、X-Amz-Signature、original filename、storageKey、token、患者名、薬剤名を
+    受け取らないことを regression test 化。
+  - performance issues improved:
+    なし。DB/API query shape と package dependency は変更なし。
+  - validation commands/results:
+    `pnpm exec prettier --write src/server/services/file-storage.ts src/server/services/file-storage.test.ts 'src/app/api/files/[id]/presigned-download/route.ts' 'src/app/api/files/[id]/presigned-download/route.test.ts' 'src/app/api/files/[id]/download/route.ts' 'src/app/api/files/[id]/download/route.test.ts'` green;
+    `pnpm exec vitest run src/server/services/file-storage.test.ts 'src/app/api/files/[id]/presigned-download/route.test.ts' 'src/app/api/files/[id]/download/route.test.ts' src/server/services/file-download-audit.test.ts --reporter=dot --testTimeout=30000`
+    green (4 files / 94 tests);
+    `pnpm exec eslint src/server/services/file-storage.ts src/server/services/file-storage.test.ts 'src/app/api/files/[id]/presigned-download/route.ts' 'src/app/api/files/[id]/presigned-download/route.test.ts' 'src/app/api/files/[id]/download/route.ts' 'src/app/api/files/[id]/download/route.test.ts'` green;
+    `git diff --check -- src/server/services/file-storage.ts src/server/services/file-storage.test.ts 'src/app/api/files/[id]/presigned-download/route.ts' 'src/app/api/files/[id]/presigned-download/route.test.ts' 'src/app/api/files/[id]/download/route.ts' 'src/app/api/files/[id]/download/route.test.ts'` green;
+    `pnpm format:check` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` green。
+  - remaining work:
+    report delivery email body の recipient/internal-id/signed-link wording、PDF/report audit target allowlist の
+    hostile snapshot/traceability、server-side full export endpoint prop 化、broader export surface matrix は
+    未着手。attachment retention/revocation/virus scan policy は FILE-001 の後続。
+  - next action:
+    state commit を作成し origin/main へ push。次 slice は report delivery external wording gate または
+    PDF/report audit target allowlist hostile snapshot。
+
 - codex: Plans.md multi-angle review/refactor protocol + PDF filename PHI minimization slice complete
   (code/test: 47aa17810, plan: 2abc85be6)。
   - current task:
