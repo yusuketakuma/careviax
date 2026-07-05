@@ -303,6 +303,41 @@ describe('InstitutionsContent', () => {
     });
   });
 
+  it('surfaces API error messages when institution save fails', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith('/api/prescriber-institutions?') && !init?.method) {
+        return new Response(JSON.stringify({ data: [institutionFixture()] }), { status: 200 });
+      }
+      if (url === '/api/prescriber-institutions' && init?.method === 'POST') {
+        return new Response(JSON.stringify({ message: '医療機関コードが重複しています' }), {
+          status: 409,
+        });
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderContent();
+
+    await screen.findByRole('button', { name: '在宅内科クリニック を編集' });
+    fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
+    fireEvent.change(screen.getByLabelText('医療機関名'), {
+      target: { value: '連携クリニック' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('医療機関コードが重複しています');
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/prescriber-institutions',
+      expect.objectContaining({
+        method: 'POST',
+        headers: buildOrgJsonHeaders('org_1'),
+      }),
+    );
+  });
+
   it('update (PATCH) encodes a hostile institution id via encodePathSegment and uses buildOrgJsonHeaders', async () => {
     const fetchMock = stubFetchWithInstitution(institutionFixture('a/b c'));
     renderContent();
@@ -363,6 +398,37 @@ describe('InstitutionsContent', () => {
       );
     });
     expect(buildPrescriberInstitutionApiPath).toHaveBeenCalledWith('a/b c');
+  });
+
+  it('surfaces API error messages when institution delete fails', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith('/api/prescriber-institutions?') && !init?.method) {
+        return new Response(JSON.stringify({ data: [institutionFixture()] }), { status: 200 });
+      }
+      if (url === '/api/prescriber-institutions/institution_1' && init?.method === 'DELETE') {
+        return new Response(JSON.stringify({ message: '処方実績がある医療機関は削除できません' }), {
+          status: 409,
+        });
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: '在宅内科クリニック を削除' }));
+    fireEvent.click(screen.getByRole('button', { name: '削除する' }));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('処方実績がある医療機関は削除できません');
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/prescriber-institutions/institution_1',
+      expect.objectContaining({
+        method: 'DELETE',
+        headers: buildOrgHeaders('org_1'),
+      }),
+    );
   });
 
   it('DELETE with a dot-segment institution id fails closed before any DELETE fetch', async () => {
