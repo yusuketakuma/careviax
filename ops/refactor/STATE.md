@@ -40,6 +40,34 @@
 
 ## 直近の land（本日・要点）
 
+- codex: visit preparation shared vehicle capacity / OCC batch(f29465a09)
+  implementation complete。ユーザー指示「近似箇所はまとめて実装して効率を向上。サブエージェントも投入」に基づき、
+  `PUT /api/visit-preparations/:scheduleId` の車両割当近接リスクを同一sliceで処理。subagent は
+  code_mapper / concurrency_reviewer / medical_safety_reviewer / test_architect を bounded read-only で投入し、
+  全員が同一車両 capacity の pharmacist 横断漏れ、vehicle-only assignment の OCC 欠落、transaction-time
+  stale capacity recheck を主要リスクとして提示。対応として route confirmation の車両 capacity は
+  pharmacist/day の route cell だけでなく `vehicle_resource_id + scheduled_date` の既存割当を union して
+  `max_stops` を判定し、同一 schedule の重複カウントを Set で排除。さらに transaction 内でも同じ
+  vehicle/day capacity を再読込し、preparation upsert / schedule update / task resolve の前に fail-closed。
+  write transaction は `Prisma.TransactionIsolationLevel.Serializable` + P2034 retry に変更し、retry上限到達は
+  409 `WORKFLOW_CONFLICT` として返す。`mark_ready=false` の vehicle-only assignment は従来の
+  `tx.visitSchedule.update({ where: { id }})` を廃止し、ready 遷移と同じ `updateMany` OCC guard
+  (`id`, `org_id`, `version`, `confirmed_at`, `pharmacist_id`, `scheduled_date`, `schedule_status`,
+  current `vehicle_resource_id`) に統一。`count !== 1` は既存 `VisitPreparationScheduleConflictError` で
+  409。ready 遷移側にも current `vehicle_resource_id` guard を追加し、別経路の車両割当を古い準備画面が
+  上書きできないようにした。tests は selected vehicle assignment success が `updateMany` を期待するよう更新し、
+  vehicle-only stale write 409、別薬剤師が同日同車両 capacity を消費済みの 400、preflight後 transaction-time
+  capacity 変化で upsert/task前に 400 を固定。validation:
+  `pnpm exec vitest run 'src/app/api/visit-preparations/[scheduleId]/route.test.ts'` green（1 file / 42 tests）;
+  `pnpm exec vitest run 'src/app/api/visit-preparations/[scheduleId]/route.test.ts' 'src/app/api/visit-schedules/reorder/route.test.ts' 'src/app/api/visit-schedule-proposals/[id]/route.test.ts'`
+  green（3 files / 156 tests）; scoped `eslint` green; scoped `prettier --check` green; `git diff --check` green;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) に基づき product API /
+  data integrity / authorization-adjacent operational route safety を変更。DB schema/migration/deploy/package
+  dependency 変更は不要。残る高優先別slice候補: visit-preparation route duration の vehicle/day 全日稼働時間
+  共有helper化、車両割当/route_confirmed/ready/task resolve の PHI-minimized audit / workflow notify /
+  task resolver actor trace、reschedule request、visit-record finalization supervision、medication issue
+  resolve/promote boundary。
 - codex: visit preparation readiness write boundary batch(b7b86bcbe)
   implementation complete。ユーザー指示により本sliceでも subagent を投入（code_mapper /
   medical_safety_reviewer / security_critic / test_architect）。code_mapper は

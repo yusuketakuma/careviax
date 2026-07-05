@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 
 const {
   authMock,
@@ -1787,6 +1788,7 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
         visitSchedule: {
           update: visitScheduleUpdateMock,
           updateMany: visitScheduleUpdateManyMock,
+          findMany: peerVisitScheduleFindManyMock,
         },
       }),
     );
@@ -1959,6 +1961,7 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
       requestContext: expect.objectContaining({
         orgId: 'org_1',
         userId: 'user_1',
@@ -2080,6 +2083,7 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
           update: visitScheduleUpdateMock,
           updateMany: visitScheduleUpdateManyMock,
           findFirst: txVisitScheduleFindFirstMock,
+          findMany: peerVisitScheduleFindManyMock,
         },
         consentRecord: {
           findFirst: txConsentFindFirstMock,
@@ -2115,6 +2119,7 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
       requestContext: expect.objectContaining({
         orgId: 'org_1',
         userId: 'user_1',
@@ -2152,6 +2157,7 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
         pharmacist_id: 'user_1',
         scheduled_date: new Date('2026-03-27T00:00:00Z'),
         schedule_status: 'planned',
+        vehicle_resource_id: null,
       },
       data: {
         schedule_status: 'ready',
@@ -2212,6 +2218,7 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
           update: visitScheduleUpdateMock,
           updateMany: visitScheduleUpdateManyMock,
           findFirst: txVisitScheduleFindFirstMock,
+          findMany: peerVisitScheduleFindManyMock,
         },
         consentRecord: {
           findFirst: vi.fn().mockResolvedValue({ id: 'consent_1' }),
@@ -2298,6 +2305,7 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
           update: visitScheduleUpdateMock,
           updateMany: visitScheduleUpdateManyMock,
           findFirst: txVisitScheduleFindFirstMock,
+          findMany: peerVisitScheduleFindManyMock,
         },
         consentRecord: {
           findFirst: vi.fn().mockResolvedValue({ id: 'consent_1' }),
@@ -2447,13 +2455,72 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
         }),
       }),
     );
-    expect(visitScheduleUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'schedule_1' },
+    expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'schedule_1',
+        org_id: 'org_1',
+        version: 1,
+        confirmed_at: null,
+        pharmacist_id: 'user_1',
+        scheduled_date: new Date('2026-03-27T00:00:00Z'),
+        schedule_status: 'planned',
+        vehicle_resource_id: null,
+      },
       data: {
         vehicle_resource_id: 'vehicle_1',
         version: { increment: 1 },
       },
     });
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects vehicle-only assignment when the schedule changed before the guarded update', async () => {
+    visitScheduleUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = await PUT(
+      createPutRequest({
+        ...completePreparationBody,
+        route_plan_snapshot: {
+          status: 'ok',
+          travelMode: 'DRIVE',
+          orderedScheduleIds: ['schedule_1'],
+          totalDistanceMeters: 1200,
+          totalDurationSeconds: 900,
+          vehicle_resource: {
+            vehicle_id: 'vehicle_1',
+            label: '社用車A',
+            constraint_status: 'ok',
+          },
+        },
+      }),
+      {
+        params: Promise.resolve({ scheduleId: 'schedule_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '訪問予定が同時に更新されました。再読み込みしてください',
+    });
+    expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'schedule_1',
+          org_id: 'org_1',
+          version: 1,
+          schedule_status: 'planned',
+          vehicle_resource_id: null,
+        }),
+        data: expect.objectContaining({
+          vehicle_resource_id: 'vehicle_1',
+          version: { increment: 1 },
+        }),
+      }),
+    );
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
   });
 
   it('does not assign a vehicle from a stale route snapshot when route is not confirmed', async () => {
@@ -2743,6 +2810,161 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
     expect(computeOptimizedVisitRouteMock).not.toHaveBeenCalled();
     expect(visitPreparationUpsertMock).not.toHaveBeenCalled();
     expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects route confirmation when the selected vehicle is already full for another pharmacist on the same day', async () => {
+    visitVehicleResourceFindFirstMock.mockResolvedValueOnce({
+      id: 'vehicle_1',
+      site_id: 'site_1',
+      label: '社用車A',
+      travel_mode: 'DRIVE',
+      max_stops: 1,
+      max_route_duration_minutes: 120,
+    });
+    peerVisitScheduleFindManyMock
+      .mockResolvedValueOnce([
+        {
+          id: 'schedule_1',
+          route_order: 1,
+          priority: 'normal',
+          site: {
+            id: 'site_1',
+            name: '本店',
+            lat: 35.681236,
+            lng: 139.767125,
+          },
+          case_: {
+            patient: {
+              name: '山田太郎',
+              residences: [
+                {
+                  address: '東京都千代田区1-1',
+                  lat: 35.684,
+                  lng: 139.77,
+                },
+              ],
+            },
+          },
+        },
+      ])
+      .mockResolvedValueOnce([{ id: 'schedule_other_pharmacist' }]);
+
+    const response = await PUT(
+      createPutRequest({
+        ...completePreparationBody,
+        route_plan_snapshot: {
+          vehicle_resource: {
+            vehicle_id: 'vehicle_1',
+          },
+        },
+      }),
+      {
+        params: Promise.resolve({ scheduleId: 'schedule_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '社用車A で訪問できる件数は最大 1 件です',
+    });
+    expect(peerVisitScheduleFindManyMock.mock.calls[1]?.[0]).toMatchObject({
+      where: {
+        org_id: 'org_1',
+        vehicle_resource_id: 'vehicle_1',
+        scheduled_date: {
+          gte: new Date('2026-03-27T00:00:00Z'),
+          lt: new Date('2026-03-28T00:00:00Z'),
+        },
+        schedule_status: {
+          notIn: ['cancelled', 'rescheduled'],
+        },
+        id: {
+          not: 'schedule_1',
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+    expect(computeOptimizedVisitRouteMock).not.toHaveBeenCalled();
+    expect(visitPreparationUpsertMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rechecks selected vehicle capacity inside the transaction before preparation side effects', async () => {
+    visitVehicleResourceFindFirstMock.mockResolvedValueOnce({
+      id: 'vehicle_1',
+      site_id: 'site_1',
+      label: '社用車A',
+      travel_mode: 'DRIVE',
+      max_stops: 1,
+      max_route_duration_minutes: 120,
+    });
+    peerVisitScheduleFindManyMock
+      .mockResolvedValueOnce([
+        {
+          id: 'schedule_1',
+          route_order: 1,
+          priority: 'normal',
+          site: {
+            id: 'site_1',
+            name: '本店',
+            lat: 35.681236,
+            lng: 139.767125,
+          },
+          case_: {
+            patient: {
+              name: '山田太郎',
+              residences: [
+                {
+                  address: '東京都千代田区1-1',
+                  lat: 35.684,
+                  lng: 139.77,
+                },
+              ],
+            },
+          },
+        },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'schedule_other_pharmacist' }]);
+
+    const response = await PUT(
+      createPutRequest({
+        ...completePreparationBody,
+        route_plan_snapshot: {
+          vehicle_resource: {
+            vehicle_id: 'vehicle_1',
+          },
+        },
+      }),
+      {
+        params: Promise.resolve({ scheduleId: 'schedule_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '社用車A で訪問できる件数は最大 1 件です',
+    });
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
+    });
+    expect(visitPreparationUpsertMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
   });
 
   it('rejects route snapshots that reference a vehicle from another schedule site', async () => {

@@ -3,7 +3,7 @@ import { unstable_rethrow } from 'next/navigation';
 import { deriveFacilityLabel, deriveVisitPlaceGroup } from '@/lib/utils/facility';
 import { facilityPacketMemoToDisplayText } from '@/lib/visits/facility-packet';
 import { Prisma } from '@prisma/client';
-import { requireAuthContext } from '@/lib/auth/context';
+import { requireAuthContext, type AuthContext } from '@/lib/auth/context';
 import {
   canAccessVisitScheduleAssignment,
   canManageVisitScheduleLifecycle,
@@ -139,6 +139,16 @@ function buildVisitDayRange(date: Date) {
   const end = new Date(start);
   end.setUTCDate(end.getUTCDate() + 1);
   return { start, end };
+}
+
+function countUniqueScheduleIdsForVehicleCapacity(...scheduleGroups: Array<Array<{ id: string }>>) {
+  const scheduleIds = new Set<string>();
+  for (const schedules of scheduleGroups) {
+    for (const schedule of schedules) {
+      scheduleIds.add(schedule.id);
+    }
+  }
+  return scheduleIds.size;
 }
 
 function normalizeRoutePlanSnapshotForWrite(
@@ -564,6 +574,11 @@ function buildPreparationTaskKey(scheduleId: string) {
 
 const MARK_READY_SOURCE_STATUSES = new Set(['planned', 'in_preparation']);
 const MARK_READY_SATISFIED_STATUSES = new Set(['ready', 'departed', 'in_progress', 'completed']);
+const VISIT_PREPARATION_PUT_SERIALIZABLE_RETRY_LIMIT = 2;
+
+function isSerializableTransactionConflict(cause: unknown) {
+  return cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2034';
+}
 
 class VisitPreparationReadyTransitionError extends Error {
   constructor(readonly details: VisitReadyTransitionBlockers) {
@@ -577,6 +592,37 @@ class VisitPreparationScheduleConflictError extends Error {
     super('訪問予定が同時に更新されました。再読み込みしてください');
     this.name = 'VisitPreparationScheduleConflictError';
   }
+}
+
+class VisitPreparationVehicleCapacityError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'VisitPreparationVehicleCapacityError';
+  }
+}
+
+async function withSerializableVisitPreparationPutTransaction<T>(
+  orgId: string,
+  ctx: AuthContext,
+  work: (tx: Prisma.TransactionClient) => Promise<T>,
+) {
+  for (let attempt = 0; attempt < VISIT_PREPARATION_PUT_SERIALIZABLE_RETRY_LIMIT; attempt += 1) {
+    try {
+      return await withOrgContext(orgId, work, {
+        requestContext: ctx,
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    } catch (cause) {
+      if (!isSerializableTransactionConflict(cause)) {
+        throw cause;
+      }
+      if (attempt === VISIT_PREPARATION_PUT_SERIALIZABLE_RETRY_LIMIT - 1) {
+        throw new VisitPreparationScheduleConflictError();
+      }
+    }
+  }
+
+  throw new VisitPreparationScheduleConflictError();
 }
 
 function parseConferenceSections(value: Prisma.JsonValue | null): ConferenceSectionSummary[] {
@@ -1728,10 +1774,15 @@ async function authenticatedPUT(
       schedule.vehicle_resource_id)
     : null;
   let routePlanSnapshotWriteValue: Prisma.InputJsonValue | typeof Prisma.JsonNull = Prisma.JsonNull;
+  let orderedRouteCellSchedulesForCapacity: Array<{ id: string }> = [{ id: schedule.id }];
+  let routeVehicleResourceForCapacity: {
+    label: string;
+    max_stops: number | null;
+  } | null = null;
 
   if (parsed.data.route_confirmed) {
     const { start, end } = buildVisitDayRange(schedule.scheduled_date);
-    const [vehicleResource, routeCellSchedules] = await Promise.all([
+    const [vehicleResource, routeCellSchedules, vehicleDaySchedules] = await Promise.all([
       routeVehicleResourceId
         ? prisma.visitVehicleResource.findFirst({
             where: {
@@ -1802,6 +1853,27 @@ async function authenticatedPUT(
           },
         },
       }),
+      routeVehicleResourceId
+        ? prisma.visitSchedule.findMany({
+            where: {
+              org_id: ctx.orgId,
+              vehicle_resource_id: routeVehicleResourceId,
+              scheduled_date: {
+                gte: start,
+                lt: end,
+              },
+              schedule_status: {
+                notIn: ['cancelled', 'rescheduled'],
+              },
+              id: {
+                not: schedule.id,
+              },
+            },
+            select: {
+              id: true,
+            },
+          })
+        : Promise.resolve([]),
     ]);
 
     if (routeVehicleResourceId && !vehicleResource) {
@@ -1810,6 +1882,12 @@ async function authenticatedPUT(
     if (vehicleResource && schedule.site_id && vehicleResource.site_id !== schedule.site_id) {
       return validationError('選択した車両リソースは訪問予定の拠点では利用できません');
     }
+    routeVehicleResourceForCapacity = vehicleResource
+      ? {
+          label: vehicleResource.label,
+          max_stops: vehicleResource.max_stops,
+        }
+      : null;
     const currentScheduleInRoute = routeCellSchedules.some((item) => item.id === schedule.id);
     const orderedRouteCellSchedules = currentScheduleInRoute
       ? routeCellSchedules
@@ -1855,9 +1933,17 @@ async function authenticatedPUT(
             },
           })),
         ];
+    orderedRouteCellSchedulesForCapacity = orderedRouteCellSchedules.map((item) => ({
+      id: item.id,
+    }));
+    const vehicleCapacityStopCount = countUniqueScheduleIdsForVehicleCapacity(
+      vehicleDaySchedules,
+      orderedRouteCellSchedules,
+      [{ id: schedule.id }],
+    );
     if (
       vehicleResource?.max_stops != null &&
-      orderedRouteCellSchedules.length > vehicleResource.max_stops
+      vehicleCapacityStopCount > vehicleResource.max_stops
     ) {
       return validationError(
         `${vehicleResource.label} で訪問できる件数は最大 ${vehicleResource.max_stops} 件です`,
@@ -1931,109 +2017,154 @@ async function authenticatedPUT(
 
   let result;
   try {
-    result = await withOrgContext(
-      ctx.orgId,
-      async (tx) => {
-        const preparation = await tx.visitPreparation.upsert({
+    result = await withSerializableVisitPreparationPutTransaction(ctx.orgId, ctx, async (tx) => {
+      if (routeVehicleResourceId && routeVehicleResourceForCapacity?.max_stops != null) {
+        const { start, end } = buildVisitDayRange(schedule.scheduled_date);
+        const currentVehicleDaySchedules = await tx.visitSchedule.findMany({
           where: {
-            schedule_id: schedule.id,
-          },
-          create: {
             org_id: ctx.orgId,
-            schedule_id: schedule.id,
-            checklist: normalizedChecklist,
-            medication_changes_reviewed: parsed.data.medication_changes_reviewed,
-            carry_items_confirmed: parsed.data.carry_items_confirmed,
-            previous_issues_reviewed: parsed.data.previous_issues_reviewed,
-            route_confirmed: parsed.data.route_confirmed,
-            route_plan_snapshot: routePlanSnapshotWriteValue,
-            offline_synced: parsed.data.offline_synced,
-            prepared_by: ctx.userId,
-            prepared_at: preparationReady ? new Date() : null,
+            vehicle_resource_id: routeVehicleResourceId,
+            scheduled_date: {
+              gte: start,
+              lt: end,
+            },
+            schedule_status: {
+              notIn: ['cancelled', 'rescheduled'],
+            },
+            id: {
+              not: schedule.id,
+            },
           },
-          update: {
-            checklist: normalizedChecklist,
-            medication_changes_reviewed: parsed.data.medication_changes_reviewed,
-            carry_items_confirmed: parsed.data.carry_items_confirmed,
-            previous_issues_reviewed: parsed.data.previous_issues_reviewed,
-            route_confirmed: parsed.data.route_confirmed,
-            route_plan_snapshot: routePlanSnapshotWriteValue,
-            offline_synced: parsed.data.offline_synced,
-            prepared_by: ctx.userId,
-            prepared_at: preparationReady ? new Date() : null,
+          select: {
+            id: true,
           },
         });
-
-        if (shouldAdvanceScheduleToReady) {
-          const readyTransition = await evaluateVisitScheduleReadyTransition(tx, {
-            orgId: ctx.orgId,
-            scheduleId: schedule.id,
-          });
-          if (!readyTransition.ok) {
-            throw new VisitPreparationReadyTransitionError(readyTransition.details);
-          }
+        const currentVehicleCapacityStopCount = countUniqueScheduleIdsForVehicleCapacity(
+          currentVehicleDaySchedules,
+          orderedRouteCellSchedulesForCapacity,
+          [{ id: schedule.id }],
+        );
+        if (currentVehicleCapacityStopCount > routeVehicleResourceForCapacity.max_stops) {
+          throw new VisitPreparationVehicleCapacityError(
+            `${routeVehicleResourceForCapacity.label} で訪問できる件数は最大 ${routeVehicleResourceForCapacity.max_stops} 件です`,
+          );
         }
+      }
 
-        if (shouldAdvanceScheduleToReady) {
-          const updated = await tx.visitSchedule.updateMany({
-            where: {
-              id: schedule.id,
-              org_id: ctx.orgId,
-              version: schedule.version,
-              confirmed_at: schedule.confirmed_at,
-              pharmacist_id: schedule.pharmacist_id,
-              scheduled_date: schedule.scheduled_date,
-              schedule_status: schedule.schedule_status,
-            },
-            data: {
-              ...(routeVehicleResourceId ? { vehicle_resource_id: routeVehicleResourceId } : {}),
-              schedule_status: 'ready',
-              pre_visit_checklist_completed: true,
-              version: { increment: 1 },
-            },
-          });
-          if (updated.count !== 1) {
-            throw new VisitPreparationScheduleConflictError();
-          }
-        } else if (routeVehicleResourceId) {
-          await tx.visitSchedule.update({
-            where: { id: schedule.id },
-            data: {
-              vehicle_resource_id: routeVehicleResourceId,
-              version: { increment: 1 },
-            },
-          });
+      const preparation = await tx.visitPreparation.upsert({
+        where: {
+          schedule_id: schedule.id,
+        },
+        create: {
+          org_id: ctx.orgId,
+          schedule_id: schedule.id,
+          checklist: normalizedChecklist,
+          medication_changes_reviewed: parsed.data.medication_changes_reviewed,
+          carry_items_confirmed: parsed.data.carry_items_confirmed,
+          previous_issues_reviewed: parsed.data.previous_issues_reviewed,
+          route_confirmed: parsed.data.route_confirmed,
+          route_plan_snapshot: routePlanSnapshotWriteValue,
+          offline_synced: parsed.data.offline_synced,
+          prepared_by: ctx.userId,
+          prepared_at: preparationReady ? new Date() : null,
+        },
+        update: {
+          checklist: normalizedChecklist,
+          medication_changes_reviewed: parsed.data.medication_changes_reviewed,
+          carry_items_confirmed: parsed.data.carry_items_confirmed,
+          previous_issues_reviewed: parsed.data.previous_issues_reviewed,
+          route_confirmed: parsed.data.route_confirmed,
+          route_plan_snapshot: routePlanSnapshotWriteValue,
+          offline_synced: parsed.data.offline_synced,
+          prepared_by: ctx.userId,
+          prepared_at: preparationReady ? new Date() : null,
+        },
+      });
+
+      if (shouldAdvanceScheduleToReady) {
+        const readyTransition = await evaluateVisitScheduleReadyTransition(tx, {
+          orgId: ctx.orgId,
+          scheduleId: schedule.id,
+        });
+        if (!readyTransition.ok) {
+          throw new VisitPreparationReadyTransitionError(readyTransition.details);
         }
+      }
 
-        if (preparationReady) {
-          await resolveOperationalTasks(tx, {
-            orgId: ctx.orgId,
-            dedupeKey: buildPreparationTaskKey(schedule.id),
-            status: 'completed',
-          });
-        } else {
-          await upsertOperationalTask(tx, {
-            orgId: ctx.orgId,
-            taskType: 'visit_preparation',
-            title: '訪問準備が未完了です',
-            description: `未完了: ${readinessBlockers.join('、')}`,
-            priority: 'high',
-            assignedTo: schedule.pharmacist_id,
-            dueDate: schedule.scheduled_date,
-            slaDueAt: schedule.scheduled_date,
-            relatedEntityType: 'visit_schedule',
-            relatedEntityId: schedule.id,
-            dedupeKey: buildPreparationTaskKey(schedule.id),
-          });
+      if (shouldAdvanceScheduleToReady) {
+        const updated = await tx.visitSchedule.updateMany({
+          where: {
+            id: schedule.id,
+            org_id: ctx.orgId,
+            version: schedule.version,
+            confirmed_at: schedule.confirmed_at,
+            pharmacist_id: schedule.pharmacist_id,
+            scheduled_date: schedule.scheduled_date,
+            schedule_status: schedule.schedule_status,
+            vehicle_resource_id: schedule.vehicle_resource_id,
+          },
+          data: {
+            ...(routeVehicleResourceId ? { vehicle_resource_id: routeVehicleResourceId } : {}),
+            schedule_status: 'ready',
+            pre_visit_checklist_completed: true,
+            version: { increment: 1 },
+          },
+        });
+        if (updated.count !== 1) {
+          throw new VisitPreparationScheduleConflictError();
         }
+      } else if (routeVehicleResourceId) {
+        const updated = await tx.visitSchedule.updateMany({
+          where: {
+            id: schedule.id,
+            org_id: ctx.orgId,
+            version: schedule.version,
+            confirmed_at: schedule.confirmed_at,
+            pharmacist_id: schedule.pharmacist_id,
+            scheduled_date: schedule.scheduled_date,
+            schedule_status: schedule.schedule_status,
+            vehicle_resource_id: schedule.vehicle_resource_id,
+          },
+          data: {
+            vehicle_resource_id: routeVehicleResourceId,
+            version: { increment: 1 },
+          },
+        });
+        if (updated.count !== 1) {
+          throw new VisitPreparationScheduleConflictError();
+        }
+      }
 
-        return preparation;
-      },
-      { requestContext: ctx },
-    );
+      if (preparationReady) {
+        await resolveOperationalTasks(tx, {
+          orgId: ctx.orgId,
+          dedupeKey: buildPreparationTaskKey(schedule.id),
+          status: 'completed',
+        });
+      } else {
+        await upsertOperationalTask(tx, {
+          orgId: ctx.orgId,
+          taskType: 'visit_preparation',
+          title: '訪問準備が未完了です',
+          description: `未完了: ${readinessBlockers.join('、')}`,
+          priority: 'high',
+          assignedTo: schedule.pharmacist_id,
+          dueDate: schedule.scheduled_date,
+          slaDueAt: schedule.scheduled_date,
+          relatedEntityType: 'visit_schedule',
+          relatedEntityId: schedule.id,
+          dedupeKey: buildPreparationTaskKey(schedule.id),
+        });
+      }
+
+      return preparation;
+    });
   } catch (cause) {
     if (cause instanceof VisitPreparationReadyTransitionError) {
       return validationError(cause.message, sanitizeVisitReadyTransitionDetails(cause.details));
+    }
+    if (cause instanceof VisitPreparationVehicleCapacityError) {
+      return validationError(cause.message);
     }
     if (cause instanceof VisitPreparationScheduleConflictError) {
       return conflict(cause.message);
