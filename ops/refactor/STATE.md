@@ -40,6 +40,46 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Plans.md multi-angle implementation/refactor review update complete（docs-only slice、commit pending）。
+  - current task:
+    ユーザー指示「Plans.md の内容を多角的にレビュー。コードリファクタリングしながら実装することを盛り込む」に対応。
+    `plan-eng-review` / `plan-design-review` skill を読み、PH-OS UI/UX SSOT と現行コードを突き合わせて、
+    `Plans.md` の UX/PERF/DEV 追加バックログに対する実装前レビュー・既存コード再利用・refactor-while-implementing
+    の明文化を追加。
+  - files inspected:
+    `Plans.md`、`docs/ui-ux-design-guidelines.md`、`ops/refactor/STATE.md`、
+    `/Users/yusuke/.agents/skills/gstack/plan-eng-review/SKILL.md`,
+    `/Users/yusuke/.agents/skills/gstack/plan-design-review/SKILL.md`,
+    `src/components/ui/data-table.tsx`, `src/app/api/patients/board/route.ts`,
+    `src/components/ui/error-state.tsx` callsites via `rg`,
+    `src/lib/utils/performance.ts`, `src/lib/utils/server-cache.ts`,
+    notification/audit/performance/cache callsites via `rg`。
+  - files changed:
+    `Plans.md`, `ops/refactor/STATE.md`。
+  - bugs/security risks fixed:
+    コード変更なし。計画上のリスクとして、UX/PERF/DEV タスクが新機能追加だけに寄り、既存 BFF・共通 UI・
+    audit/export/minifier・performance wrapper・cache helper の近傍重複や旧 contract を残す危険を明文化して低減。
+    `UX-CMD-001` / `PERF-BFF-001` は `patients/board` 派生 logic の adapter 化、`UX-TBL-001` / `DEV-PHI-001`
+    は DataTable/export/audit/filename surface の shared contract 収束、`UX-ERR-001` は shared `ErrorState`
+    contract 拡張、`PERF-RTE-001` は既存 `withRoutePerformance` の sink 拡張、`PERF-CCH-001` は cache policy
+    registry と org-scoped key test を必須化した。
+  - performance issues improved:
+    コード変更なし。計画上は heavy BFF 段階ロード、payload budget、SLO 永続化、cache registry、interaction budget を
+    既存コード再利用と同時 refactor の acceptance に接続。
+  - validation commands/results:
+    `pnpm exec prettier --write Plans.md` green;
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md` green;
+    `git diff --check -- Plans.md ops/refactor/STATE.md` green。
+  - subagents:
+    `spec_guardian` spawn を試行したが、agent thread limit reached で起動不可。代替として main Codex が
+    skill/SSOT/code scan を直接実施。
+  - remaining work:
+    docs-only 反映。次の実装 slice は subagent 通知で CHANGES_REQUESTED となっている audit-log export
+    legacy row backstop（safe PDF/report traceability fields の保持 + hostile allowlisted metadata value drop）を
+    code/test で閉じるのが高価値。
+  - next action:
+    scoped commit、origin/main push。
+
 - codex: FILE/DEV-PHI attachment download filename and presigned payload minimization slice complete
   (code/test: 3f2a8f124)。
   - current task:
