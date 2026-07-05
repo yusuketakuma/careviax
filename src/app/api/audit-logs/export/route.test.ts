@@ -321,6 +321,138 @@ describe('/api/audit-logs/export GET', () => {
     expect(body).not.toContain('処方詳細');
   });
 
+  it('redacts formulary rejected decision free text from json export payloads', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    findManyMock.mockResolvedValue([
+      {
+        id: 'audit_formulary_1',
+        org_id: 'org_1',
+        actor_id: 'user_1',
+        action: 'pharmacy_drug_stock_change_rejected',
+        target_type: 'FormularyChangeRequest',
+        target_id: 'request_1',
+        changes: {
+          request_id: 'request_1',
+          site_id: 'site_1',
+          drug_master_id: 'drug_1',
+          reason: '患者A 090-1234-5678 の処方に合わせて採用',
+          requested_payload: {
+            is_stocked: true,
+            reorder_point: 10,
+            adoption_note: '山田花子 090-1234-5678 アムロジピン',
+          },
+          current_snapshot: {
+            id: 'stock_1',
+            adoption_note: '旧メモ 山田太郎',
+          },
+          decision_note: '却下理由 患者A 090-1234-5678',
+          applied_stock_id: null,
+        },
+        ip_address: '127.0.0.1',
+        user_agent: 'vitest',
+        created_at: new Date('2026-04-09T00:00:00.000Z'),
+      },
+    ]);
+
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }, 'format=json'),
+      emptyRouteContext,
+    )) as Response;
+    const body = await response.json();
+    const bodyText = JSON.stringify(body);
+
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    expect(body[0].changes).toMatchObject({
+      request_id: 'request_1',
+      site_id: 'site_1',
+      drug_master_id: 'drug_1',
+      reason_present: true,
+      reason_length: expect.any(Number),
+      reason_redacted: true,
+      requested_payload: {
+        is_stocked: true,
+        reorder_point: 10,
+        adoption_note_present: true,
+        adoption_note_length: expect.any(Number),
+        adoption_note_redacted: true,
+      },
+      current_snapshot: {
+        id: 'stock_1',
+        adoption_note_present: true,
+        adoption_note_length: expect.any(Number),
+        adoption_note_redacted: true,
+      },
+      decision_note_present: true,
+      decision_note_length: expect.any(Number),
+      decision_note_redacted: true,
+      applied_stock_id: null,
+    });
+    expect(body[0].changes).not.toHaveProperty('reason');
+    expect(body[0].changes).not.toHaveProperty('decision_note');
+    expect(body[0].changes.requested_payload).not.toHaveProperty('adoption_note');
+    expect(body[0].changes.current_snapshot).not.toHaveProperty('adoption_note');
+    expect(bodyText).not.toContain('患者A');
+    expect(bodyText).not.toContain('090-1234-5678');
+    expect(bodyText).not.toContain('山田花子');
+    expect(bodyText).not.toContain('山田太郎');
+    expect(bodyText).not.toContain('アムロジピン');
+  });
+
+  it('redacts formulary approved decision free text from csv export payloads', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    findManyMock.mockResolvedValue([
+      {
+        id: 'audit_formulary_1',
+        org_id: 'org_1',
+        actor_id: 'user_1',
+        action: 'pharmacy_drug_stock_change_approved',
+        target_type: 'FormularyChangeRequest',
+        target_id: 'request_1',
+        changes: {
+          request_id: 'request_1',
+          site_id: 'site_1',
+          drug_master_id: 'drug_1',
+          reason: '患者A 090-1234-5678 の処方に合わせて採用',
+          requested_payload: {
+            is_stocked: true,
+            reorder_point: 10,
+            adoption_note: '山田花子 090-1234-5678 アムロジピン',
+          },
+          current_snapshot: {
+            id: 'stock_1',
+            adoption_note: '旧メモ 山田太郎',
+          },
+          decision_note: '承認理由 患者A 090-1234-5678',
+          applied_stock_id: 'stock_2',
+        },
+        ip_address: '127.0.0.1',
+        user_agent: 'vitest',
+        created_at: new Date('2026-04-09T00:00:00.000Z'),
+      },
+    ]);
+
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }, 'format=csv'),
+      emptyRouteContext,
+    )) as Response;
+    const body = await response.text();
+
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    expect(body).toContain('adoption_note_redacted');
+    expect(body).toContain('reason_redacted');
+    expect(body).toContain('decision_note_redacted');
+    expect(body).toContain('applied_stock_id');
+    expect(body).not.toContain('患者A');
+    expect(body).not.toContain('090-1234-5678');
+    expect(body).not.toContain('山田花子');
+    expect(body).not.toContain('山田太郎');
+    expect(body).not.toContain('アムロジピン');
+  });
+
   it('neutralizes spreadsheet formula prefixes in csv cells', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });

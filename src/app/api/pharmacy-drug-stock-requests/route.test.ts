@@ -95,6 +95,14 @@ describe('/api/pharmacy-drug-stock-requests', () => {
   });
 
   it('creates a pending formulary change request without mutating stock', async () => {
+    prismaMock.pharmacyDrugStock.findFirst.mockResolvedValueOnce({
+      id: 'stock_1',
+      is_stocked: false,
+      reorder_point: null,
+      preferred_generic_id: null,
+      adoption_note: '旧メモ 山田太郎 090-0000-1111',
+    });
+
     const response = await POST(
       createRequest('http://localhost/api/pharmacy-drug-stock-requests', {
         site_id: 'site_1',
@@ -104,9 +112,9 @@ describe('/api/pharmacy-drug-stock-requests', () => {
           is_stocked: true,
           reorder_point: 10,
           preferred_generic_id: null,
-          adoption_note: '委員会承認待ち',
+          adoption_note: '山田花子 090-1234-5678 委員会承認待ち',
         },
-        reason: '新規採用候補',
+        reason: '患者A 090-1234-5678 の新規採用候補',
       }),
       { params: Promise.resolve({}) },
     );
@@ -127,6 +135,7 @@ describe('/api/pharmacy-drug-stock-requests', () => {
           action_type: 'adopt',
           requested_payload: expect.objectContaining({ is_stocked: true, reorder_point: 10 }),
           current_snapshot: expect.objectContaining({ id: 'stock_1' }),
+          reason: '患者A 090-1234-5678 の新規採用候補',
         }),
       }),
     );
@@ -138,6 +147,41 @@ describe('/api/pharmacy-drug-stock-requests', () => {
         }),
       }),
     );
+    const auditChanges = prismaMock.auditLog.create.mock.calls[0]?.[0]?.data?.changes;
+    const auditChangesText = JSON.stringify(auditChanges);
+    expect(auditChanges).toMatchObject({
+      site_id: 'site_1',
+      drug_master_id: 'drug_1',
+      action_type: 'adopt',
+      reason_present: true,
+      reason_length: expect.any(Number),
+      reason_redacted: true,
+      requested_payload: {
+        is_stocked: true,
+        reorder_point: 10,
+        preferred_generic_id: null,
+        adoption_note_present: true,
+        adoption_note_length: expect.any(Number),
+        adoption_note_redacted: true,
+      },
+      current_snapshot: {
+        id: 'stock_1',
+        is_stocked: false,
+        reorder_point: null,
+        preferred_generic_id: null,
+        adoption_note_present: true,
+        adoption_note_length: expect.any(Number),
+        adoption_note_redacted: true,
+      },
+    });
+    expect(auditChanges).not.toHaveProperty('reason');
+    expect(auditChanges.requested_payload).not.toHaveProperty('adoption_note');
+    expect(auditChanges.current_snapshot).not.toHaveProperty('adoption_note');
+    expect(auditChangesText).not.toContain('患者A');
+    expect(auditChangesText).not.toContain('山田花子');
+    expect(auditChangesText).not.toContain('山田太郎');
+    expect(auditChangesText).not.toContain('090-1234-5678');
+    expect(auditChangesText).not.toContain('090-0000-1111');
   });
 
   it('rejects duplicate pending requests for the same site and drug', async () => {

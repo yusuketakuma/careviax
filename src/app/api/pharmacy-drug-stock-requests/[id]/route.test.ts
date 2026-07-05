@@ -55,7 +55,7 @@ describe('/api/pharmacy-drug-stock-requests/[id]', () => {
         is_stocked: true,
         reorder_point: 10,
         preferred_generic_id: null,
-        adoption_note: '承認反映',
+        adoption_note: '山田花子 090-1234-5678 承認反映',
       },
     });
     prismaMock.$transaction.mockImplementation((callback) =>
@@ -75,9 +75,10 @@ describe('/api/pharmacy-drug-stock-requests/[id]', () => {
   });
 
   it('approves a pending request and applies it to stock', async () => {
-    const response = await PATCH(createRequest({ decision: 'approve' }), {
-      params: Promise.resolve({ id: 'request_1' }),
-    });
+    const response = await PATCH(
+      createRequest({ decision: 'approve', decision_note: '患者A 090-1234-5678 承認' }),
+      { params: Promise.resolve({ id: 'request_1' }) },
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -93,11 +94,13 @@ describe('/api/pharmacy-drug-stock-requests/[id]', () => {
           drug_master_id: 'drug_1',
           is_stocked: true,
           adoption_source: 'approval',
+          adoption_note: '山田花子 090-1234-5678 承認反映',
         }),
         update: expect.objectContaining({
           is_stocked: true,
           reorder_point: 10,
           adoption_source: 'approval',
+          adoption_note: '山田花子 090-1234-5678 承認反映',
         }),
       }),
     );
@@ -110,6 +113,30 @@ describe('/api/pharmacy-drug-stock-requests/[id]', () => {
         }),
       }),
     );
+    const auditChanges = prismaMock.auditLog.create.mock.calls[0]?.[0]?.data?.changes;
+    const auditChangesText = JSON.stringify(auditChanges);
+    expect(auditChanges).toMatchObject({
+      request_id: 'request_1',
+      site_id: 'site_1',
+      drug_master_id: 'drug_1',
+      requested_payload: {
+        is_stocked: true,
+        reorder_point: 10,
+        preferred_generic_id: null,
+        adoption_note_present: true,
+        adoption_note_length: expect.any(Number),
+        adoption_note_redacted: true,
+      },
+      decision_note_present: true,
+      decision_note_length: expect.any(Number),
+      decision_note_redacted: true,
+      applied_stock_id: 'stock_1',
+    });
+    expect(auditChanges).not.toHaveProperty('decision_note');
+    expect(auditChanges.requested_payload).not.toHaveProperty('adoption_note');
+    expect(auditChangesText).not.toContain('患者A');
+    expect(auditChangesText).not.toContain('山田花子');
+    expect(auditChangesText).not.toContain('090-1234-5678');
     // 楽観的 claim は status='pending' を条件に含めて確定する
     expect(prismaMock.formularyChangeRequest.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -145,6 +172,30 @@ describe('/api/pharmacy-drug-stock-requests/[id]', () => {
         }),
       }),
     );
+    const auditChanges = prismaMock.auditLog.create.mock.calls[0]?.[0]?.data?.changes;
+    const auditChangesText = JSON.stringify(auditChanges);
+    expect(auditChanges).toMatchObject({
+      request_id: 'request_1',
+      site_id: 'site_1',
+      drug_master_id: 'drug_1',
+      requested_payload: {
+        is_stocked: true,
+        reorder_point: 10,
+        preferred_generic_id: null,
+        adoption_note_present: true,
+        adoption_note_length: expect.any(Number),
+        adoption_note_redacted: true,
+      },
+      decision_note_present: true,
+      decision_note_length: expect.any(Number),
+      decision_note_redacted: true,
+      applied_stock_id: null,
+    });
+    expect(auditChanges).not.toHaveProperty('decision_note');
+    expect(auditChanges.requested_payload).not.toHaveProperty('adoption_note');
+    expect(auditChangesText).not.toContain('今回は見送り');
+    expect(auditChangesText).not.toContain('山田花子');
+    expect(auditChangesText).not.toContain('090-1234-5678');
   });
 
   it('rejects non-object request bodies before looking up the request', async () => {

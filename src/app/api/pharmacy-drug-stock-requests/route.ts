@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
@@ -5,6 +6,7 @@ import { withAuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { boundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
+import { minimizeFormularyChangeRequestAuditChanges } from '@/lib/audit-logs/redaction';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { pharmacyDrugStockRequestedPayloadSchema } from '@/lib/validations/pharmacy-drug-stock';
@@ -182,17 +184,21 @@ const authenticatedPOST = withAuthContext(
         },
       });
 
+      const auditChanges = {
+        site_id,
+        drug_master_id,
+        action_type: parsed.data.action_type,
+        ...(parsed.data.reason !== undefined ? { reason: parsed.data.reason } : {}),
+        requested_payload,
+        current_snapshot: currentStock,
+      };
+
       await createAuditLogEntry(tx, authCtx, {
         action: 'pharmacy_drug_stock_change_requested',
         targetType: 'FormularyChangeRequest',
         targetId: created.id,
-        changes: {
-          site_id,
-          drug_master_id,
-          action_type: parsed.data.action_type,
-          requested_payload,
-          current_snapshot: currentStock,
-        },
+        changes: (minimizeFormularyChangeRequestAuditChanges(auditChanges) ??
+          auditChanges) as Prisma.InputJsonValue,
       });
 
       return created;

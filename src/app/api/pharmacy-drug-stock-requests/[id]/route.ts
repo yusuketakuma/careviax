@@ -1,8 +1,10 @@
+import type { Prisma } from '@prisma/client';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { withAuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
+import { minimizeFormularyChangeRequestAuditChanges } from '@/lib/audit-logs/redaction';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject } from '@/lib/db/json';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -136,6 +138,15 @@ export const PATCH = withAuthContext(
         decided_at: decidedAt,
       };
 
+      const auditChanges = {
+        request_id: request.id,
+        site_id: request.site_id,
+        drug_master_id: request.drug_master_id,
+        requested_payload: request.requested_payload,
+        decision_note: parsed.data.decision_note ?? null,
+        applied_stock_id: stock?.id ?? null,
+      };
+
       await createAuditLogEntry(tx, authCtx, {
         action:
           parsed.data.decision === 'approve'
@@ -143,14 +154,8 @@ export const PATCH = withAuthContext(
             : 'pharmacy_drug_stock_change_rejected',
         targetType: 'FormularyChangeRequest',
         targetId: request.id,
-        changes: {
-          request_id: request.id,
-          site_id: request.site_id,
-          drug_master_id: request.drug_master_id,
-          requested_payload: request.requested_payload,
-          decision_note: parsed.data.decision_note ?? null,
-          applied_stock_id: stock?.id ?? null,
-        },
+        changes: (minimizeFormularyChangeRequestAuditChanges(auditChanges) ??
+          auditChanges) as Prisma.InputJsonValue,
       });
 
       return { kind: 'ok' as const, request: updated, stock };
