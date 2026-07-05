@@ -187,7 +187,7 @@ model Notification {
 }
 
 model AuditLog {
-  id                String   @id @default(cuid())
+  id                String           @id @default(cuid())
   org_id            String
   display_id        String?
   actor_id          String // User ID
@@ -200,10 +200,12 @@ model AuditLog {
   changes           Json?
   ip_address        String?
   user_agent        String?
-  created_at        DateTime @default(now())
-  updated_at        DateTime @updatedAt
+  created_at        DateTime         @default(now())
+  updated_at        DateTime         @updatedAt
+  reviews           AuditLogReview[]
 
   @@unique([org_id, display_id])
+  @@unique([id, org_id], map: "AuditLog_id_org_id_key")
   @@index([org_id])
   @@index([actor_id])
   @@index([org_id, actor_site_id, created_at])
@@ -211,6 +213,24 @@ model AuditLog {
   @@index([org_id, target_type, target_id, created_at(sort: Desc)], map: "AuditLog_org_target_created_idx")
   @@index([target_type])
   @@index([created_at])
+}
+
+model AuditLogReview {
+  id           String    @id @default(cuid())
+  org_id       String
+  audit_log_id String
+  review_state String    @default("pending")
+  reviewed_by  String?
+  reviewed_at  DateTime?
+  reason_code  String?
+  reason_note  Json?
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+  audit_log    AuditLog  @relation(fields: [audit_log_id, org_id], references: [id, org_id], onDelete: Cascade)
+
+  @@unique([org_id, audit_log_id])
+  @@index([org_id, review_state, updated_at])
+  @@index([audit_log_id])
 }
 
 model IntegrationJob {

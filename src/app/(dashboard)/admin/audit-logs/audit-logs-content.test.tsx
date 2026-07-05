@@ -80,7 +80,10 @@ function stubFetch() {
       });
     }
     if (url.startsWith('/api/audit-logs?')) {
-      return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      return new Response(
+        JSON.stringify({ data: [], summary: { high_risk_unreviewed_count: 0 } }),
+        { status: 200 },
+      );
     }
     return new Response('not found', { status: 404 });
   });
@@ -99,6 +102,9 @@ function makeAuditLog(index: number) {
     risk_tier: index === 0 ? 'high' : 'standard',
     risk_label: index === 0 ? '高リスク' : '通常',
     redaction_state: index === 0 ? 'redacted' : 'not_applicable',
+    review_state: index === 0 ? 'pending' : 'reviewed',
+    reviewed_at: index === 0 ? null : '2026-06-20T02:00:00.000Z',
+    reviewed_by: index === 0 ? null : 'admin_1',
     ip_address: null,
     created_at: '2026-06-20T01:00:00.000Z',
   };
@@ -118,7 +124,10 @@ function stubFetchWithLogs(count: number) {
     }
     if (url.startsWith('/api/audit-logs?')) {
       return new Response(
-        JSON.stringify({ data: Array.from({ length: count }, (_, i) => makeAuditLog(i)) }),
+        JSON.stringify({
+          data: Array.from({ length: count }, (_, i) => makeAuditLog(i)),
+          summary: { high_risk_unreviewed_count: count > 0 ? 1 : 0 },
+        }),
         { status: 200 },
       );
     }
@@ -279,9 +288,67 @@ describe('AuditLogsContent', () => {
     expect(await screen.findAllByText('target_0')).not.toHaveLength(0);
     expect(await screen.findAllByText('高リスク')).not.toHaveLength(0);
     expect(screen.getAllByText('本文マスク済').length).toBeGreaterThan(0);
+    expect(screen.getByText(/高リスク未レビュー\s*1件/)).toBeTruthy();
+    expect(screen.getAllByText('レビュー済み').length).toBeGreaterThan(0);
     expect(screen.getAllByText('通常').length).toBeGreaterThan(0);
     expect(screen.getAllByText('対象外').length).toBeGreaterThan(0);
     expect(screen.getByTestId('audit-logs-risk-notice').textContent).toContain('risk_tier');
+    expect(screen.getByTestId('audit-logs-risk-notice').textContent).toContain('review_state');
+  });
+
+  it('marks a pending audit log as reviewed from the table action', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/audit-logs/log_0/review') {
+        expect(init).toMatchObject({
+          method: 'PATCH',
+          headers: expect.objectContaining({
+            'x-org-id': 'org_1',
+            'content-type': 'application/json',
+          }),
+          body: JSON.stringify({
+            review_state: 'reviewed',
+            reason_code: 'admin_reviewed',
+          }),
+        });
+        return new Response(
+          JSON.stringify({
+            data: {
+              audit_log_id: 'log_0',
+              review_state: 'reviewed',
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.startsWith('/api/audit-logs?')) {
+        return new Response(
+          JSON.stringify({
+            data: [makeAuditLog(0)],
+            summary: { high_risk_unreviewed_count: 1 },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderContent();
+
+    expect(await screen.findAllByText('target_0')).not.toHaveLength(0);
+    const reviewButton = screen.getAllByRole('button', {
+      name: 'target_0をレビュー済みにする',
+    })[0];
+    expect(reviewButton.className).toContain('min-h-[44px]');
+    fireEvent.click(reviewButton);
+
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith('監査ログをレビュー済みにしました');
+    });
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input) === '/api/audit-logs/log_0/review'),
+    ).toBe(true);
   });
 
   it('uses the server message from a failed audit export response', async () => {
@@ -294,7 +361,10 @@ describe('AuditLogsContent', () => {
         });
       }
       if (url.startsWith('/api/audit-logs?')) {
-        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+        return new Response(
+          JSON.stringify({ data: [], summary: { high_risk_unreviewed_count: 0 } }),
+          { status: 200 },
+        );
       }
       return new Response('not found', { status: 404 });
     });
@@ -317,7 +387,10 @@ describe('AuditLogsContent', () => {
         return new Response('not json', { status: 500 });
       }
       if (url.startsWith('/api/audit-logs?')) {
-        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+        return new Response(
+          JSON.stringify({ data: [], summary: { high_risk_unreviewed_count: 0 } }),
+          { status: 200 },
+        );
       }
       return new Response('not found', { status: 404 });
     });
@@ -340,7 +413,10 @@ describe('AuditLogsContent', () => {
         throw new Error('');
       }
       if (url.startsWith('/api/audit-logs?')) {
-        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+        return new Response(
+          JSON.stringify({ data: [], summary: { high_risk_unreviewed_count: 0 } }),
+          { status: 200 },
+        );
       }
       return new Response('not found', { status: 404 });
     });
@@ -373,7 +449,10 @@ describe('AuditLogsContent', () => {
         return exportResponse;
       }
       if (url.startsWith('/api/audit-logs?')) {
-        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+        return new Response(
+          JSON.stringify({ data: [], summary: { high_risk_unreviewed_count: 0 } }),
+          { status: 200 },
+        );
       }
       return new Response('not found', { status: 404 });
     });

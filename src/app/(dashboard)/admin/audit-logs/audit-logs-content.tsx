@@ -1,11 +1,11 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { format, parseISO, subDays } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { Download, Search, Filter, Info, ShieldAlert } from 'lucide-react';
+import { CheckCircle2, Download, Search, Filter, Info, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageSection } from '@/components/layout/page-section';
 import { ActionRail } from '@/components/ui/action-rail';
@@ -48,8 +48,18 @@ type AuditLog = {
   risk_tier: 'high' | 'standard';
   risk_label: string;
   redaction_state: 'redacted' | 'minimized' | 'not_applicable';
+  review_state: 'pending' | 'reviewed';
+  reviewed_at: string | null;
+  reviewed_by: string | null;
   ip_address: string | null;
   created_at: string;
+};
+
+type AuditLogsResponse = {
+  data: AuditLog[];
+  summary?: {
+    high_risk_unreviewed_count: number;
+  };
 };
 
 // --- Helpers ---
@@ -96,6 +106,12 @@ function redactionBadgeClass(redactionState: AuditLog['redaction_state']): strin
   return 'bg-state-readonly/10 text-state-readonly border-transparent';
 }
 
+function reviewBadgeClass(reviewState: AuditLog['review_state']): string {
+  return reviewState === 'reviewed'
+    ? 'bg-state-done/10 text-state-done border-state-done/30'
+    : 'bg-state-confirm/10 text-state-confirm border-state-confirm/30';
+}
+
 // 一覧の表示上限(新しい順)。これに到達したら全件誤認を避ける注記を出す。
 const RESULT_LIMIT = 100;
 
@@ -109,6 +125,7 @@ export function AuditLogsContent() {
   const [actionFilter, setActionFilter] = useState('');
   const [dateFrom, setDateFrom] = useState(format(subDays(new Date(), 30), 'yyyy-MM-dd'));
   const [dateTo, setDateTo] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [reviewingLogId, setReviewingLogId] = useState<string | null>(null);
 
   const queryParams = new URLSearchParams({
     limit: String(RESULT_LIMIT),
@@ -135,14 +152,45 @@ export function AuditLogsContent() {
       const res = await fetch(`/api/audit-logs?${queryParams}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: AuditLog[] }>(res, '監査ログの取得に失敗しました');
+      return readApiJson<AuditLogsResponse>(res, '監査ログの取得に失敗しました');
     },
     enabled: !!orgId,
   });
 
   const logs = data?.data ?? [];
+  const highRiskUnreviewedCount = data?.summary?.high_risk_unreviewed_count ?? 0;
   // 表示上限に到達 = さらに古いログが存在しうる(API は total/has_more を返さない)。
   const isCapped = logs.length >= RESULT_LIMIT;
+
+  const reviewMutation = useMutation({
+    mutationFn: async (auditLogId: string) => {
+      const res = await fetch(`/api/audit-logs/${encodeURIComponent(auditLogId)}/review`, {
+        method: 'PATCH',
+        headers: {
+          ...buildOrgHeaders(orgId),
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          review_state: 'reviewed',
+          reason_code: 'admin_reviewed',
+        }),
+      });
+      return readApiJson<{ data: { audit_log_id: string; review_state: 'reviewed' | 'pending' } }>(
+        res,
+        '監査ログレビューの更新に失敗しました',
+      );
+    },
+    onSuccess: () => {
+      toast.success('監査ログをレビュー済みにしました');
+      void refetch();
+    },
+    onError: (error) => {
+      toast.error(messageFromError(error, '監査ログレビューの更新に失敗しました'));
+    },
+    onSettled: () => {
+      setReviewingLogId(null);
+    },
+  });
 
   const columns = useMemo<ColumnDef<AuditLog>[]>(
     () => [
@@ -214,16 +262,45 @@ export function AuditLogsContent() {
         ),
       },
       {
+        accessorKey: 'review_state',
+        header: 'レビュー',
+        cell: ({ row }) =>
+          row.original.review_state === 'reviewed' ? (
+            <Badge
+              variant="outline"
+              className={`text-xs ${reviewBadgeClass(row.original.review_state)}`}
+            >
+              <CheckCircle2 className="mr-1 size-3.5" aria-hidden="true" />
+              レビュー済み
+            </Badge>
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-11 min-h-[44px] whitespace-nowrap"
+              disabled={reviewMutation.isPending}
+              onClick={() => {
+                setReviewingLogId(row.original.id);
+                reviewMutation.mutate(row.original.id);
+              }}
+              aria-label={`${row.original.target_id}をレビュー済みにする`}
+            >
+              {reviewingLogId === row.original.id ? '更新中' : 'レビュー済み'}
+            </Button>
+          ),
+      },
+      {
         accessorKey: 'ip_address',
         header: 'IPアドレス',
         cell: ({ row }) => (
           <span className="font-mono text-xs text-muted-foreground">
-            {row.original.ip_address ?? '—'}
+            {row.original.ip_address ?? '未記録'}
           </span>
         ),
       },
     ],
-    [],
+    [reviewMutation, reviewingLogId],
   );
 
   async function handleExport(format: 'csv' | 'json') {
@@ -296,6 +373,7 @@ export function AuditLogsContent() {
                 label: '表示件数',
                 value: isCapped ? `直近${RESULT_LIMIT}件（表示上限）` : `${logs.length}件`,
               },
+              { label: '高リスク未レビュー', value: `${highRiskUnreviewedCount}件` },
               { label: '期間', value: `${dateFrom || '未指定'} - ${dateTo || '未指定'}` },
               {
                 label: 'リスク',
@@ -340,8 +418,8 @@ export function AuditLogsContent() {
           >
             <ShieldAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-state-confirm" />
             <p>
-              高リスク操作は優先レビュー対象です。CSV / JSON 出力にも risk_tier と redaction_state
-              を含めます。
+              高リスク操作は優先レビュー対象です。CSV / JSON 出力にも risk_tier、redaction_state、
+              review_state を含めます。
             </p>
           </div>
           <details className="rounded-md border border-border bg-surface-subtle/60 [&:not([open])>div]:hidden">

@@ -60,8 +60,23 @@ const authenticatedGET = withAuthContext(
       orderBy: { created_at: 'desc' },
       take: EXPORT_LIMIT,
     });
+    const reviewRows =
+      logs.length > 0
+        ? await prisma.auditLogReview.findMany({
+            where: {
+              org_id: ctx.orgId,
+              audit_log_id: { in: logs.map((log) => log.id) },
+            },
+            select: {
+              audit_log_id: true,
+              review_state: true,
+              reviewed_at: true,
+              reviewed_by: true,
+            },
+          })
+        : [];
     const truncated = logs.length === EXPORT_LIMIT;
-    const exportLogs = enrichAuditLogsForReview(redactAuditLogsForResponse(logs));
+    const exportLogs = enrichAuditLogsForReview(redactAuditLogsForResponse(logs), reviewRows);
 
     await recordDataExportAudit(prisma, {
       orgId: ctx.orgId,
@@ -115,6 +130,7 @@ const authenticatedGET = withAuthContext(
       'patient_id',
       'risk_tier',
       'redaction_state',
+      'review_state',
       'action',
       'target_type',
       'target_id',
@@ -134,6 +150,7 @@ const authenticatedGET = withAuthContext(
         log.patient_id ?? '',
         log.risk_tier,
         log.redaction_state,
+        log.review_state,
         log.action,
         log.target_type,
         log.target_id,

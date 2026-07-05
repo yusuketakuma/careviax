@@ -1,17 +1,29 @@
 export type AuditLogRiskTier = 'high' | 'standard';
 export type AuditLogRedactionState = 'redacted' | 'minimized' | 'not_applicable';
+export type AuditLogReviewState = 'pending' | 'reviewed';
 
 export type AuditLogReviewFields = {
   risk_tier: AuditLogRiskTier;
   risk_label: string;
   risk_reasons: string[];
   redaction_state: AuditLogRedactionState;
+  review_state: AuditLogReviewState;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
 };
 
 type AuditLogForReview = {
+  id?: string;
   action: string;
   target_type?: string | null;
   changes?: unknown;
+};
+
+export type AuditLogReviewRecordLike = {
+  audit_log_id: string;
+  review_state: string;
+  reviewed_at?: Date | string | null;
+  reviewed_by?: string | null;
 };
 
 const HIGH_RISK_ACTIONS = [
@@ -188,18 +200,28 @@ export function classifyAuditLogRedactionState(log: AuditLogForReview): AuditLog
 
 export function enrichAuditLogForReview<T extends AuditLogForReview>(
   log: T,
+  review?: AuditLogReviewRecordLike | null,
 ): T & AuditLogReviewFields {
+  const isReviewed = review?.review_state === 'reviewed';
   return {
     ...log,
     ...classifyAuditLogRisk(log),
     redaction_state: classifyAuditLogRedactionState(log),
+    review_state: isReviewed ? 'reviewed' : 'pending',
+    reviewed_at:
+      isReviewed && review?.reviewed_at ? new Date(review.reviewed_at).toISOString() : null,
+    reviewed_by: isReviewed ? (review.reviewed_by ?? null) : null,
   };
 }
 
 export function enrichAuditLogsForReview<T extends AuditLogForReview>(
   logs: T[],
+  reviews: AuditLogReviewRecordLike[] = [],
 ): Array<T & AuditLogReviewFields> {
-  return logs.map(enrichAuditLogForReview);
+  const reviewByAuditLogId = new Map(reviews.map((review) => [review.audit_log_id, review]));
+  return logs.map((log) =>
+    enrichAuditLogForReview(log, log.id ? reviewByAuditLogId.get(log.id) : null),
+  );
 }
 
 export function isAuditLogRiskTier(value: string | null | undefined): value is AuditLogRiskTier {

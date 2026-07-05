@@ -117,6 +117,31 @@ describe('audit log review registry', () => {
       risk_tier: 'high',
       risk_label: '高リスク',
       redaction_state: 'minimized',
+      review_state: 'pending',
+      reviewed_at: null,
+      reviewed_by: null,
+    });
+  });
+
+  it('adds persisted review state when a review row is present', () => {
+    const enriched = enrichAuditLogForReview(
+      {
+        id: 'audit_1',
+        action: 'export',
+        target_type: 'audit_log',
+      },
+      {
+        audit_log_id: 'audit_1',
+        review_state: 'reviewed',
+        reviewed_at: new Date('2026-04-10T00:00:00.000Z'),
+        reviewed_by: 'admin_1',
+      },
+    );
+
+    expect(enriched).toMatchObject({
+      review_state: 'reviewed',
+      reviewed_at: '2026-04-10T00:00:00.000Z',
+      reviewed_by: 'admin_1',
     });
   });
 

@@ -56,7 +56,9 @@ const authenticatedGET = withAuthContext(
         : {}),
     };
 
-    const [logs, total] = await Promise.all([
+    const highRiskWhere = buildAuditLogRiskTierWhere('high');
+
+    const [logs, total, highRiskUnreviewedCount] = await Promise.all([
       prisma.auditLog.findMany({
         where,
         orderBy: { created_at: 'desc' },
@@ -64,7 +66,34 @@ const authenticatedGET = withAuthContext(
         take,
       }),
       prisma.auditLog.count({ where }),
+      prisma.auditLog.count({
+        where: {
+          org_id: ctx.orgId,
+          ...highRiskWhere,
+          reviews: {
+            none: {
+              org_id: ctx.orgId,
+              review_state: 'reviewed',
+            },
+          },
+        },
+      }),
     ]);
+    const reviewRows =
+      logs.length > 0
+        ? await prisma.auditLogReview.findMany({
+            where: {
+              org_id: ctx.orgId,
+              audit_log_id: { in: logs.map((log) => log.id) },
+            },
+            select: {
+              audit_log_id: true,
+              review_state: true,
+              reviewed_at: true,
+              reviewed_by: true,
+            },
+          })
+        : [];
 
     await createAuditLogEntry(prisma, ctx, {
       action: 'audit_log_viewed',
@@ -90,7 +119,10 @@ const authenticatedGET = withAuthContext(
     });
 
     return success({
-      data: enrichAuditLogsForReview(redactAuditLogsForResponse(logs)),
+      data: enrichAuditLogsForReview(redactAuditLogsForResponse(logs), reviewRows),
+      summary: {
+        high_risk_unreviewed_count: highRiskUnreviewedCount,
+      },
       pagination: {
         total,
         page: Math.floor(skip / take) + 1,

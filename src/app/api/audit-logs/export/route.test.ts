@@ -2,14 +2,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { expectNoStore } from '@/test/api-response-assertions';
 
-const { authMock, membershipFindFirstMock, findManyMock, recordDataExportAuditMock } = vi.hoisted(
-  () => ({
-    authMock: vi.fn(),
-    membershipFindFirstMock: vi.fn(),
-    findManyMock: vi.fn(),
-    recordDataExportAuditMock: vi.fn(),
-  }),
-);
+const {
+  authMock,
+  membershipFindFirstMock,
+  findManyMock,
+  auditLogReviewFindManyMock,
+  recordDataExportAuditMock,
+} = vi.hoisted(() => ({
+  authMock: vi.fn(),
+  membershipFindFirstMock: vi.fn(),
+  findManyMock: vi.fn(),
+  auditLogReviewFindManyMock: vi.fn(),
+  recordDataExportAuditMock: vi.fn(),
+}));
 
 vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
@@ -23,16 +28,8 @@ vi.mock('@/lib/db/client', () => ({
     auditLog: {
       findMany: findManyMock,
     },
-  },
-}));
-
-vi.mock('@/lib/db/client', () => ({
-  prisma: {
-    membership: {
-      findFirst: membershipFindFirstMock,
-    },
-    auditLog: {
-      findMany: findManyMock,
+    auditLogReview: {
+      findMany: auditLogReviewFindManyMock,
     },
   },
 }));
@@ -98,6 +95,7 @@ describe('/api/audit-logs/export GET', () => {
         created_at: new Date('2026-03-28T00:00:00.000Z'),
       },
     ]);
+    auditLogReviewFindManyMock.mockResolvedValue([]);
   });
 
   it('returns csv payload with UI-compatible filters', async () => {
@@ -138,10 +136,12 @@ describe('/api/audit-logs/export GET', () => {
     expect(body.split('\n')[0]).toContain('patient_id');
     expect(body.split('\n')[0]).toContain('risk_tier');
     expect(body.split('\n')[0]).toContain('redaction_state');
+    expect(body.split('\n')[0]).toContain('review_state');
     expect(body).toContain('"audit_1"');
     expect(body).toContain('"visit_record"');
     expect(body).toContain('"high"');
     expect(body).toContain('"minimized"');
+    expect(body).toContain('"pending"');
     expect(recordDataExportAuditMock).toHaveBeenCalledWith(
       expect.any(Object),
       expect.objectContaining({
@@ -175,6 +175,35 @@ describe('/api/audit-logs/export GET', () => {
         action: 'export',
         risk_tier: 'high',
         redaction_state: 'minimized',
+        review_state: 'pending',
+      }),
+    ]);
+  });
+
+  it('exports persisted audit review state when present', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    auditLogReviewFindManyMock.mockResolvedValue([
+      {
+        audit_log_id: 'audit_1',
+        review_state: 'reviewed',
+        reviewed_at: new Date('2026-03-29T00:00:00.000Z'),
+        reviewed_by: 'admin_1',
+      },
+    ]);
+
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }, 'format=json'),
+      emptyRouteContext,
+    )) as Response;
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual([
+      expect.objectContaining({
+        id: 'audit_1',
+        review_state: 'reviewed',
+        reviewed_at: '2026-03-29T00:00:00.000Z',
+        reviewed_by: 'admin_1',
       }),
     ]);
   });

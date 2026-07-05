@@ -2,14 +2,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { expectNoStore } from '@/test/api-response-assertions';
 
-const { authMock, membershipFindFirstMock, findManyMock, countMock, createAuditLogEntryMock } =
-  vi.hoisted(() => ({
-    authMock: vi.fn(),
-    membershipFindFirstMock: vi.fn(),
-    findManyMock: vi.fn(),
-    countMock: vi.fn(),
-    createAuditLogEntryMock: vi.fn(),
-  }));
+const {
+  authMock,
+  membershipFindFirstMock,
+  findManyMock,
+  countMock,
+  auditLogReviewFindManyMock,
+  createAuditLogEntryMock,
+} = vi.hoisted(() => ({
+  authMock: vi.fn(),
+  membershipFindFirstMock: vi.fn(),
+  findManyMock: vi.fn(),
+  countMock: vi.fn(),
+  auditLogReviewFindManyMock: vi.fn(),
+  createAuditLogEntryMock: vi.fn(),
+}));
 
 vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
@@ -23,6 +30,9 @@ vi.mock('@/lib/db/client', () => ({
     auditLog: {
       findMany: findManyMock,
       count: countMock,
+    },
+    auditLogReview: {
+      findMany: auditLogReviewFindManyMock,
     },
   },
 }));
@@ -46,6 +56,7 @@ describe('/api/audit-logs GET', () => {
     vi.clearAllMocks();
     findManyMock.mockResolvedValue([]);
     countMock.mockResolvedValue(0);
+    auditLogReviewFindManyMock.mockResolvedValue([]);
     createAuditLogEntryMock.mockResolvedValue({ id: 'audit_view_1' });
   });
 
@@ -86,7 +97,12 @@ describe('/api/audit-logs GET', () => {
     expect(response.status).toBe(200);
     expectNoStore(response);
     expect(findManyMock).toHaveBeenCalledOnce();
-    expect(countMock).toHaveBeenCalledOnce();
+    expect(countMock).toHaveBeenCalledTimes(2);
+    await expect(response.json()).resolves.toMatchObject({
+      summary: {
+        high_risk_unreviewed_count: 0,
+      },
+    });
     expect(createAuditLogEntryMock).toHaveBeenCalledWith(
       expect.any(Object),
       expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
@@ -339,6 +355,14 @@ describe('/api/audit-logs GET', () => {
       },
     ]);
     countMock.mockResolvedValue(1);
+    auditLogReviewFindManyMock.mockResolvedValue([
+      {
+        audit_log_id: 'audit_export_1',
+        review_state: 'reviewed',
+        reviewed_at: new Date('2026-04-10T00:00:00.000Z'),
+        reviewed_by: 'admin_1',
+      },
+    ]);
 
     const response = (await GET(
       createRequest({ 'x-org-id': 'org_1' }),
@@ -354,6 +378,9 @@ describe('/api/audit-logs GET', () => {
       risk_label: '高リスク',
       risk_reasons: expect.arrayContaining(['data_output', 'audit_export']),
       redaction_state: 'minimized',
+      review_state: 'reviewed',
+      reviewed_at: '2026-04-10T00:00:00.000Z',
+      reviewed_by: 'admin_1',
     });
     expect(body.data[0].changes.filters).toEqual({ riskTier: 'high' });
   });
