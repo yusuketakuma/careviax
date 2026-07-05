@@ -40,7 +40,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: Plans.md UI design generation policy updated（commit pending）。
+- codex: Plans.md UI design generation policy updated（commit `13d96565a`）。
   - current task:
     ユーザー指示「gpt-image-2 を使うことを追記」に対応。`Plans.md` の
     UX/PERF/DEV 追加バックログ内 `UI design generation policy` を更新し、UI/UX の新規・再配置・
