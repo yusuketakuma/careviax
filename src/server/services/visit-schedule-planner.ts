@@ -2,6 +2,7 @@ import { addDays, differenceInCalendarDays, getDay } from 'date-fns';
 import type { Prisma, VisitPriority, VisitType, VisitAssignmentMode } from '@prisma/client';
 import { buildOperatingCalendarFromDbRows } from '@/lib/calendar/operating-day-adapter';
 import { resolveOperatingState } from '@/lib/calendar/operating-day';
+import { canVisitOn, type VisitAvailabilityBlockedReason } from '@/lib/calendar/visit-availability';
 import { formatUtcDateKey } from '@/lib/date-key';
 import { prisma } from '@/lib/db/client';
 import { mapWithConcurrency, normalizeConcurrencyLimit } from '@/lib/utils/concurrency';
@@ -242,6 +243,7 @@ const SPECIALTY_REQUIREMENTS_BY_PROCEDURE: Record<string, SpecialtyRequirement> 
 };
 
 export type ProposalCandidateRejectionCode =
+  | VisitAvailabilityBlockedReason
   | 'locked_date_mismatch'
   | 'locked_date_deadline_violation'
   | 'beyond_deadline'
@@ -271,6 +273,7 @@ export type ProposalCandidateDiagnostic = {
   reason_code: ProposalCandidateRejectionCode;
   reason_label: string;
   detail: string;
+  availability_reason_code?: VisitAvailabilityBlockedReason;
 };
 
 export type ProposalDeadlinePolicyDiagnostic =
@@ -335,6 +338,17 @@ type PlannerVehicleCandidate = {
 };
 
 const REJECTION_REASON_LABELS: Record<ProposalCandidateRejectionCode, string> = {
+  pharmacy_holiday: '薬局休業日',
+  pharmacy_regular_closed: '薬局定休日',
+  invalid_pharmacy_operating_window: '薬局営業時間不正',
+  outside_pharmacy_operating_window: '薬局営業時間外',
+  pharmacist_shift_missing: '薬剤師シフトなし',
+  pharmacist_shift_site_missing: 'シフト拠点未設定',
+  pharmacist_shift_site_mismatch: 'シフト拠点不一致',
+  pharmacist_unavailable: '薬剤師シフト不可',
+  invalid_pharmacist_shift_window: '薬剤師シフト時間不正',
+  invalid_visit_window: '訪問可能時間不正',
+  outside_pharmacist_shift_window: '薬剤師シフト時間外',
   locked_date_mismatch: '固定日と不一致',
   locked_date_deadline_violation: '固定日が訪問期限超過',
   beyond_deadline: '提案期限超過',
@@ -357,6 +371,33 @@ const REJECTION_REASON_LABELS: Record<ProposalCandidateRejectionCode, string> = 
 
 function operatingDayRejectionDetail(reason: 'holiday' | 'regular_closed') {
   return reason === 'regular_closed' ? '拠点定休日のため候補外です' : '拠点休業日のため候補外です';
+}
+
+function availabilityReasonDetail(reason: VisitAvailabilityBlockedReason) {
+  switch (reason) {
+    case 'pharmacy_holiday':
+      return operatingDayRejectionDetail('holiday');
+    case 'pharmacy_regular_closed':
+      return operatingDayRejectionDetail('regular_closed');
+    case 'invalid_pharmacy_operating_window':
+      return '薬局営業時間設定が不正なため候補外です';
+    case 'pharmacist_shift_missing':
+      return '薬剤師シフトが見つからないため候補外です';
+    case 'pharmacist_shift_site_missing':
+      return '薬剤師シフトの拠点が未設定のため候補外です';
+    case 'pharmacist_shift_site_mismatch':
+      return '薬剤師シフトの拠点が薬局営業時間の拠点と一致しないため候補外です';
+    case 'pharmacist_unavailable':
+      return '薬剤師シフトが利用不可のため候補外です';
+    case 'invalid_pharmacist_shift_window':
+      return '薬剤師シフト時間設定が不正なため候補外です';
+    case 'invalid_visit_window':
+      return '訪問可能時間帯の設定が不正なため候補外です';
+    case 'outside_pharmacy_operating_window':
+      return '薬局営業時間と訪問可能時間帯が重ならないため候補外です';
+    case 'outside_pharmacist_shift_window':
+      return '薬剤師シフト時間と訪問可能時間帯が重ならないため候補外です';
+  }
 }
 
 function toDateKey(value: Date) {
@@ -1744,6 +1785,7 @@ export async function generateVisitScheduleProposalDrafts(
     shift: (typeof shifts)[number];
     reasonCode: ProposalCandidateRejectionCode;
     detail: string;
+    availabilityReasonCode?: VisitAvailabilityBlockedReason;
   }): ProposalCandidateDiagnostic {
     return {
       pharmacist_id: args.shift.user_id,
@@ -1755,6 +1797,9 @@ export async function generateVisitScheduleProposalDrafts(
       reason_code: args.reasonCode,
       reason_label: REJECTION_REASON_LABELS[args.reasonCode],
       detail: args.detail,
+      ...(args.availabilityReasonCode
+        ? { availability_reason_code: args.availabilityReasonCode }
+        : {}),
     };
   }
 
@@ -1775,6 +1820,7 @@ export async function generateVisitScheduleProposalDrafts(
     normalizePlannerCandidateEvaluationConcurrency(process.env.VISIT_SCHEDULE_PLANNER_CONCURRENCY),
     async (shift) => {
       const deadlineForSite = resolveDeadlineForSite(shift.site_id ?? null);
+      const shiftDateKey = toDateKey(shift.date);
       if (lockedDate && toDateKey(shift.date) !== toDateKey(lockedDate)) {
         return {
           kind: 'rejected' as const,
@@ -1784,6 +1830,36 @@ export async function generateVisitScheduleProposalDrafts(
             detail: `固定日 ${toDateKey(lockedDate)} と勤務日 ${toDateKey(shift.date)} が一致しません`,
           }),
         };
+      }
+      const baseAvailability = canVisitOn({
+        calendar: operatingCalendarForSite(shift.site_id),
+        dateKey: shiftDateKey,
+        shift: {
+          site_id: shift.site_id ?? null,
+          available: shift.available,
+          available_from: timeDateToString(shift.available_from) ?? null,
+          available_to: timeDateToString(shift.available_to) ?? null,
+        },
+      });
+      const operatingState = baseAvailability.canVisit
+        ? baseAvailability.operatingState
+        : resolveOperatingState(operatingCalendarForSite(shift.site_id), shiftDateKey);
+      if (!baseAvailability.canVisit) {
+        const canOverrideClosedDay =
+          params.operatingDayOverrideReason &&
+          (baseAvailability.reason === 'pharmacy_holiday' ||
+            baseAvailability.reason === 'pharmacy_regular_closed');
+        if (!canOverrideClosedDay) {
+          return {
+            kind: 'rejected' as const,
+            diagnostic: buildRejectedDiagnostic({
+              shift,
+              reasonCode: baseAvailability.reason,
+              detail: availabilityReasonDetail(baseAvailability.reason),
+              availabilityReasonCode: baseAvailability.reason,
+            }),
+          };
+        }
       }
       if (lockedDate && shift.date > deadlineForSite.cutoffDate) {
         const entry: ProposalDeadlinePolicyDiagnostic = {
@@ -1832,20 +1908,6 @@ export async function generateVisitScheduleProposalDrafts(
           }),
         };
       }
-      const operatingState = resolveOperatingState(
-        operatingCalendarForSite(shift.site_id),
-        formatUtcDateKey(shift.date),
-      );
-      if (!operatingState.open && !params.operatingDayOverrideReason) {
-        return {
-          kind: 'rejected' as const,
-          diagnostic: buildRejectedDiagnostic({
-            shift,
-            reasonCode: 'business_holiday',
-            detail: operatingDayRejectionDetail(operatingState.reason),
-          }),
-        };
-      }
       if (mergedVisitWindow == null) {
         return {
           kind: 'rejected' as const,
@@ -1867,8 +1929,9 @@ export async function generateVisitScheduleProposalDrafts(
           kind: 'rejected' as const,
           diagnostic: buildRejectedDiagnostic({
             shift,
-            reasonCode: 'no_slot',
-            detail: '薬局営業時間と訪問可能時間帯が重ならないため候補外です',
+            reasonCode: 'outside_pharmacy_operating_window',
+            detail: availabilityReasonDetail('outside_pharmacy_operating_window'),
+            availabilityReasonCode: 'outside_pharmacy_operating_window',
           }),
         };
       }
@@ -1876,7 +1939,6 @@ export async function generateVisitScheduleProposalDrafts(
         operatingState.open && Boolean(operatingState.from || operatingState.to);
 
       try {
-        const shiftDateKey = toDateKey(shift.date);
         const schedulesForDay = confirmedSchedulesByDay.get(shiftDateKey) ?? [];
         const schedulesForShift =
           confirmedSchedulesByDayAndPharmacist.get(`${shift.user_id}:${shiftDateKey}`) ?? [];

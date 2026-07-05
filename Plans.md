@@ -289,12 +289,12 @@ FE 仕上げ（低優先）:
   - [x] `TZ=UTC` でも JST dateKey 境界がずれない。
 - rollback: policy 接続 commit を revert。既存 `resolveMedicationDeadlineSummary` に戻せる。
 
-#### VS-AUTO-2. Planner deadline 接続と per-site 訪問可能期限 `cc:TODO`
+#### VS-AUTO-2. Planner deadline 接続と per-site 訪問可能期限 `cc:DONE`
 
 - [x] `src/server/services/visit-schedule-planner.ts` の `planningEnd` を単純に recommended deadline へ縮めすぎない。現行は shift/site 取得後に operating calendar が分かるため、初期検索窓は `rawDeadline + buffer scan` を確保し、shift/site 評価時に per-site `candidateDeadlineDate` を適用する。2026-07-05:
       preliminary policy の `rawDeadlineDateKey` で検索窓を確保し、site calendar 構築後に shift/site ごとの `recommendedDeadlineDateKey` を cutoff として適用。
-- [ ] `buildOperatingCalendarFromDbRows` / `resolveOperatingState` / `canVisitOn` を使い、planner 内の独自 operating/shift 判定と `visit-availability.ts` の理由コードを揃える。2026-07-05:
-      `buildOperatingCalendarFromDbRows` / `resolveOperatingState` は per-site policy と既存休業日判定で使用済み。`canVisitOn` との理由コード完全統合は後続に残す。
+- [x] `buildOperatingCalendarFromDbRows` / `resolveOperatingState` / `canVisitOn` を使い、planner 内の独自 operating/shift 判定と `visit-availability.ts` の理由コードを揃える。2026-07-05:
+      `canVisitOn` を planner の基礎 availability precheck に接続し、`business_holiday` へ畳まず `pharmacy_holiday` / `pharmacy_regular_closed` / `outside_pharmacy_operating_window` などの shared machine code を planner diagnostics の `reason_code` として返す。
 - [x] planner diagnostics に `deadline_policy` 系 reason を追加する:
   - `deadline_raw`
   - `deadline_adjusted_to_operating_day`
@@ -306,8 +306,8 @@ FE 仕上げ（低優先）:
       deadline 超過は `locked_date_deadline_violation` で hard-block。休業日 override の audit 接続拡張は VS-AUTO-5 側に残す。
 - テスト:
   - [x] `visit-schedule-planner.test.ts` に日曜薬切れ→木曜、locked date hard-block を追加。
-  - [ ] `visit-schedule-planner.test.ts` に連休専用 regression を追加。
-  - [x] 既存 `beyond_deadline` / `business_holiday` / capacity / vehicle tests を維持。
+  - [x] `visit-schedule-planner.test.ts` に連休専用 regression を追加。
+  - [x] 既存 `beyond_deadline` / capacity / vehicle tests を維持し、旧 `business_holiday` 期待は `pharmacy_holiday` / `pharmacy_regular_closed` へ上書き。
   - [x] daily job `src/server/jobs/daily/visits.ts` が新 policy の recommended deadline を使う。2026-07-05:
         daily は site 未確定のため generic weekday visitability で demand due/SLA を補正し、最終 buffer/cutoff は planner per-site policy で強制。
 

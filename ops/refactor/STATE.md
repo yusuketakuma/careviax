@@ -40,6 +40,29 @@
 
 ## 直近の land（本日・要点）
 
+- codex: VS-AUTO-2 availability reason alignment / holiday-chain regression slice(in-progress on
+  `codex/vs-auto-2-availability-reason`) implementation complete。
+  - planner: `src/server/services/visit-schedule-planner.ts` の基礎 availability precheck を
+    `canVisitOn` に接続。旧 `business_holiday` へ畳む互換は不要とし、`pharmacy_holiday` /
+    `pharmacy_regular_closed` / `outside_pharmacy_operating_window` など
+    `visit-availability.ts` の shared machine code を planner `reason_code` として返す。
+    `availability_reason_code` も同じ machine code を保持し、UI action helper は新 code を拾う。
+  - safety: deadline / locked-date / preferred weekday / emergency capability / patient-facility
+    window / route / capacity / billing checks の順序は維持。`operatingDayOverrideReason` は閉局系
+    reason（holiday/regular closed）のみ bypass し、invalid window は fail-closed。
+  - tests: `visit-schedule-planner.test.ts` に holiday-chain regression を追加し、2026-05-04〜06
+    連休 raw deadline が 2026-05-01 へ営業日補正され、1 営業日 buffer で 2026-04-30 に前倒しされる
+    ことを固定。query は連休範囲を含むことだけを検証し、内部 horizon exact value には依存しない。
+    薬局営業時間外は `outside_pharmacy_operating_window` で返す regression も追加。
+  - subagents: code_mapper APPROVE、test_architect は旧互換 `business_holiday` 維持を提案したが、
+    ユーザー明示「互換性不要。古いバージョンの実装は最新バージョンに完全に上書き」を優先し、
+    shared availability reason code へ上書きした。PHI/free-text は diagnostics に追加していない。
+  - validation:
+    `pnpm exec vitest run src/server/services/visit-schedule-planner.test.ts src/server/jobs/daily.test.ts src/server/services/visit-medication-deadline.test.ts src/lib/calendar/operating-day.test.ts src/lib/calendar/visit-availability.test.ts src/lib/calendar/operating-day-adapter.test.ts src/lib/utils/date-boundary.test.ts --reporter=dot --testTimeout=30000`
+    green（7 files / 179 tests）; scoped eslint green; `pnpm format:check` green; `git diff --check`
+    green; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` green。next: scoped commit →
+    origin/main push。
 - codex: VS-AUTO-2 planner/daily DeadlinePolicy connection slice(in-progress on
   `codex/vs-auto-2-deadline-policy`) implementation complete。
   - planner: `src/server/services/visit-schedule-planner.ts` は legacy

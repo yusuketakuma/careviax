@@ -6,9 +6,12 @@ import type {
 
 function hasReason(
   diagnostics: ProposalGenerationDiagnosticsCardData | null | undefined,
-  codes: string[]
+  codes: string[],
 ) {
-  return diagnostics?.rejected.some((item) => item.reason_code && codes.includes(item.reason_code)) ?? false;
+  return (
+    diagnostics?.rejected.some((item) => item.reason_code && codes.includes(item.reason_code)) ??
+    false
+  );
 }
 
 function nextDateLabel(value: string | null | undefined) {
@@ -63,6 +66,12 @@ export function buildDashboardDiagnosticActions(args: {
     hasReason(diagnostics, [
       'weekday_mismatch',
       'business_holiday',
+      'pharmacy_holiday',
+      'pharmacy_regular_closed',
+      'invalid_pharmacy_operating_window',
+      'outside_pharmacy_operating_window',
+      'invalid_visit_window',
+      'outside_pharmacist_shift_window',
       'no_slot',
       'daily_capacity',
       'weekly_capacity',
@@ -111,6 +120,12 @@ export function buildOptimizerDiagnosticActions(args: {
     hasReason(diagnostics, [
       'weekday_mismatch',
       'business_holiday',
+      'pharmacy_holiday',
+      'pharmacy_regular_closed',
+      'invalid_pharmacy_operating_window',
+      'outside_pharmacy_operating_window',
+      'invalid_visit_window',
+      'outside_pharmacist_shift_window',
       'no_slot',
       'daily_capacity',
       'weekly_capacity',
