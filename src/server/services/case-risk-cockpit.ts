@@ -16,6 +16,7 @@ import {
   adaptDispenseTaskToRiskFinding,
   adaptNotificationToRiskFinding,
   adaptOperationalTaskToRiskFinding,
+  adaptPatientMcsIntegrationToRiskFinding,
   adaptPrescriptionLineReconciliationToRiskFinding,
   adaptResidenceGeocodeToRiskFinding,
   adaptUpcomingVisitPreparationToRiskFindings,
@@ -46,6 +47,7 @@ type CaseRiskCockpitDbReader = {
   prescriptionLine: FindManyDelegate<PrescriptionLineRiskRow>;
   notification: FindManyDelegate<NotificationRiskRow>;
   residence: FindManyDelegate<ResidenceRiskRow>;
+  patientMcsLink: FindManyDelegate<PatientMcsLinkRiskRow>;
   task: FindManyDelegate<TaskRow>;
   billingEvidence: FindManyDelegate<BillingEvidenceRow>;
 };
@@ -138,6 +140,14 @@ type ResidenceRiskRow = {
   updated_at: Date;
 };
 
+type PatientMcsLinkRiskRow = {
+  id: string;
+  last_sync_status: string | null;
+  last_sync_attempt_at: Date | null;
+  last_synced_at: Date | null;
+  updated_at: Date;
+};
+
 type TaskRow = {
   id: string;
   task_type: string;
@@ -168,6 +178,8 @@ type GetCaseRiskCockpitArgs = {
   role: MemberRole;
   now?: Date;
 };
+
+const CASE_RISK_NEXT_ACTION_LIMIT = 12;
 
 function priorityFromSeverity(
   severity: CaseRiskFinding['severity'],
@@ -210,7 +222,7 @@ function buildNextActions(findings: readonly CaseRiskFinding[]): CaseRiskNextAct
         (left.due_at ?? '').localeCompare(right.due_at ?? '') || left.key.localeCompare(right.key)
       );
     })
-    .slice(0, 8)
+    .slice(0, CASE_RISK_NEXT_ACTION_LIMIT)
     .map((finding) => ({
       task_id: finding.related_entity_type === 'task' ? finding.related_entity_id : null,
       label: finding.action_label,
@@ -344,6 +356,21 @@ function pushDataQualityFindings(args: {
   }
 }
 
+function pushIntegrationFindings(args: {
+  findings: CaseRiskFinding[];
+  patientId: string;
+  caseId: string;
+  patientMcsLinks: PatientMcsLinkRiskRow[];
+}) {
+  for (const link of args.patientMcsLinks) {
+    const finding = adaptPatientMcsIntegrationToRiskFinding(link, {
+      patientId: args.patientId,
+      caseId: args.caseId,
+    });
+    if (finding) args.findings.push(finding);
+  }
+}
+
 function pushTaskFindings(args: {
   findings: CaseRiskFinding[];
   patientId: string;
@@ -440,6 +467,7 @@ export async function getCaseRiskCockpit(
     prescriptionLines,
     notifications,
     residences,
+    patientMcsLinks,
     tasks,
   ] = await Promise.all([
     db.consentRecord.findFirst({
@@ -615,6 +643,22 @@ export async function getCaseRiskCockpit(
         updated_at: true,
       },
     }),
+    db.patientMcsLink.findMany({
+      where: {
+        org_id: args.orgId,
+        patient_id: careCase.patient_id,
+        AND: [{ last_sync_status: { not: null } }, { last_sync_status: { not: 'success' } }],
+      },
+      orderBy: [{ last_sync_attempt_at: 'desc' }, { updated_at: 'desc' }],
+      take: 1,
+      select: {
+        id: true,
+        last_sync_status: true,
+        last_sync_attempt_at: true,
+        last_synced_at: true,
+        updated_at: true,
+      },
+    }),
     db.task.findMany({
       where: {
         org_id: args.orgId,
@@ -650,6 +694,7 @@ export async function getCaseRiskCockpit(
   const selectedPrescriptionLines = prescriptionLines as PrescriptionLineRiskRow[];
   const selectedNotifications = notifications as NotificationRiskRow[];
   const selectedResidences = residences as ResidenceRiskRow[];
+  const selectedPatientMcsLinks = patientMcsLinks as PatientMcsLinkRiskRow[];
   const selectedTasks = tasks as TaskRow[];
 
   const visitRecordIds = selectedSchedules
@@ -738,6 +783,12 @@ export async function getCaseRiskCockpit(
     patientId: careCase.patient_id,
     caseId: careCase.id,
     residences: selectedResidences,
+  });
+  pushIntegrationFindings({
+    findings,
+    patientId: careCase.patient_id,
+    caseId: careCase.id,
+    patientMcsLinks: selectedPatientMcsLinks,
   });
   pushTaskFindings({
     findings,

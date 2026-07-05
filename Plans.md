@@ -718,11 +718,15 @@ FE 仕上げ（低優先）:
   - 2026-07-06 追加 partial: primary `Residence` の `lat` / `lng` / `geocode_status` /
     `geocode_accuracy` だけを取得し、座標欠落・0/0 仮座標・緯度経度同値・低精度/再確認状態を
     `adaptResidenceGeocodeToRiskFinding` で data_quality domain へ接続。住所本文は選択しない。
+  - 2026-07-06 追加 partial: `PatientMcsLink.last_sync_status != success` を `org_id` / `patient_id`
+    で scope し、`adaptPatientMcsIntegrationToRiskFinding` で integration domain へ接続。MCS の raw
+    error や外部 URL は選択せず、同期状態と時刻だけで controlled finding を返す。
 - 残:
   - CORE-001 の shared Risk Finding Registry へ型を寄せる作業は初期完了。Case Risk Cockpit の
     billing/task/report/visit_preparation/consent_plan lifecycle/dispensing/medication reconciliation/notification
-    /data_quality finding は adapter 化済み。残は domain adapter 拡張と未接続 domain の段階的 adapter 化。
-  - privacy_security / integration adapter を追加。
+    /data_quality/integration finding は adapter 化済み。残は domain adapter 拡張と未接続 domain の段階的
+    adapter 化。
+  - privacy_security adapter を追加。
   - 患者/ケース詳細 UI の Command Center から呼び、`gpt-image-2` 方針に従う非 PHI 参照案と
     mobile/error state を確認してから配置する。
 

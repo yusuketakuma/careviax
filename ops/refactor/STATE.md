@@ -40,6 +40,67 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Case Risk Cockpit MCS integration adapter slice（committed）。
+  - current task:
+    `Plans.md` の `RISK-CORE-3 / CORE-003` / integration adapter 拡張として、対象患者の
+    `PatientMcsLink.last_sync_status != success` を Case Risk Cockpit に接続した。query は
+    `org_id` / `patient_id` / `last_sync_status` で scope し、`adaptPatientMcsIntegrationToRiskFinding`
+    が MCS 同期失敗を integration domain の controlled finding へ変換する。
+  - subagent:
+    新規投入なし。直前に `multi_agent_v1.spawn_agent(code_mapper)` が `agent thread limit reached` で
+    起動不可だったため、Codex 本体で `PatientMcsLink` schema / MCS service / route labels /
+    Case Risk Cockpit / registry / tests を確認して実装・検証した。
+  - design / imagegen:
+    backend adapter/API response slice で視覚レイアウト変更を伴わないため、`imagegen` / `gpt-image-2` の
+    新規生成は省略。MCS 連携 risk を患者詳細 Command Center や MCS 連携画面に表示する UI slice では
+    PH-OS UI/UX SSOT と `gpt-image-2` 方針に従い、非 PHI mockup を先に作る。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `prisma/schema/patient.prisma`,
+    `src/server/services/patient-mcs.ts`,
+    `src/app/api/patients/[id]/mcs/route.ts`,
+    `src/lib/navigation/route-labels.ts`,
+    `src/server/services/case-risk-cockpit.ts`,
+    `src/server/services/case-risk-cockpit.test.ts`,
+    `src/server/services/risk-finding-registry.ts`,
+    `src/server/services/risk-finding-registry.test.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/case-risk-cockpit.ts`,
+    `src/server/services/case-risk-cockpit.test.ts`,
+    `src/server/services/risk-finding-registry.ts`,
+    `src/server/services/risk-finding-registry.test.ts`.
+  - bugs / risks reduced:
+    Case Risk Cockpit の integration section が空のままで、MCS 同期失敗が患者/ケース単位の
+    「止まっている理由」に出なかった。同期失敗を MCS 連携画面への next action として返す。
+    併せて domain adapter 増加により既存 task action が `next_actions` 先頭8件から押し出される
+    regression を focused test で検出し、上限を `CASE_RISK_NEXT_ACTION_LIMIT = 12` として明示した。
+  - security / PHI reviewed:
+    `PatientMcsLink.last_sync_error` と MCS 外部 URL は raw provider error / 外部IDを含み得るため select しない。
+    finding は controlled title/detail のみを返し、action href は encoded patient id の `/mcs` 導線を使う。
+  - performance issues improved:
+    `PatientMcsLink(org_id)` / `PatientMcsLink(patient_id)` index に沿う bounded `take: 1` query。
+    payload は id/last_sync_status/last_sync_attempt_at/last_synced_at/updated_at の最小 select。
+  - validation commands:
+    `pnpm exec prettier --write Plans.md ops/refactor/STATE.md src/server/services/case-risk-cockpit.ts src/server/services/case-risk-cockpit.test.ts src/server/services/risk-finding-registry.ts src/server/services/risk-finding-registry.test.ts`;
+    `git diff --check`;
+    `pnpm exec vitest run src/server/services/case-risk-cockpit.test.ts src/server/services/risk-finding-registry.test.ts src/lib/risk/risk-finding.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm typecheck`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`;
+    `pnpm lint`.
+  - validation results:
+    initial focused vitest failed because `next_actions` limit 8 hid the existing operational task action after
+    integration/data_quality/notification findings were added; fixed by setting `CASE_RISK_NEXT_ACTION_LIMIT = 12`.
+    rerun focused vitest green（3 files / 23 tests）; typecheck green; typecheck:no-unused green;
+    `pnpm lint` green with existing unrelated warnings in `src/lib/platform/break-glass.test.ts`
+    (`_tx`, `_input` unused warnings only).
+  - remaining work:
+    Broader `Plans.md` objective remains open。残: privacy_security adapter、MCS sync failure task bridge、
+    Case Risk Cockpit UI 接続。
+
 - codex: Case Risk Cockpit data quality residence geocode adapter slice（committed）。
   - current task:
     `Plans.md` の `RISK-CORE-3 / CORE-003` / data_quality adapter 拡張として、対象患者の primary

@@ -6,6 +6,7 @@ import {
   adaptDispenseTaskToRiskFinding,
   adaptNotificationToRiskFinding,
   adaptOperationalTaskToRiskFinding,
+  adaptPatientMcsIntegrationToRiskFinding,
   adaptPatientFoundationItemToRiskFinding,
   adaptPrescriptionLineReconciliationToRiskFinding,
   adaptResidenceGeocodeToRiskFinding,
@@ -457,6 +458,55 @@ describe('risk-finding-registry adapters', () => {
       severity: 'warning',
     });
     expect(JSON.stringify([zero, missing])).not.toContain('東京都千代田区');
+  });
+
+  it('maps patient MCS sync failures without exposing provider errors or external URLs', () => {
+    const failed = adaptPatientMcsIntegrationToRiskFinding(
+      {
+        id: 'mcs/1?x=1',
+        last_sync_status: 'failed',
+        last_sync_attempt_at: '2026-07-06T00:00:00.000Z',
+        last_synced_at: null,
+        updated_at: '2026-07-05T00:00:00.000Z',
+      },
+      { patientId: 'patient/1?x=1', caseId: 'case_1' },
+    );
+    const transient = adaptPatientMcsIntegrationToRiskFinding(
+      {
+        id: 'mcs_2',
+        last_sync_status: 'failed',
+        last_sync_attempt_at: '2026-07-06T00:00:00.000Z',
+        last_synced_at: '2026-07-01T00:00:00.000Z',
+      },
+      { patientId: 'patient_1', caseId: 'case_1' },
+    );
+    const success = adaptPatientMcsIntegrationToRiskFinding(
+      {
+        id: 'mcs_3',
+        last_sync_status: 'success',
+        last_sync_attempt_at: '2026-07-06T00:00:00.000Z',
+        last_synced_at: '2026-07-06T00:00:00.000Z',
+      },
+      { patientId: 'patient_1', caseId: 'case_1' },
+    );
+
+    expect(failed).toMatchObject({
+      key: 'patient_mcs_sync:mcs/1?x=1',
+      domain: 'integration',
+      severity: 'urgent',
+      title: 'MCS連携の同期確認が必要です',
+      related_entity_type: 'patient_mcs_link',
+      related_entity_id: 'mcs/1?x=1',
+      due_at: '2026-07-06T00:00:00.000Z',
+      action_label: 'MCS連携を確認',
+    });
+    expect(failed?.action_href).toBe(`/patients/${encodeURIComponent('patient/1?x=1')}/mcs`);
+    expect(transient).toMatchObject({
+      severity: 'warning',
+    });
+    expect(success).toBeNull();
+    expect(JSON.stringify([failed, transient])).not.toContain('medical-care.net');
+    expect(JSON.stringify([failed, transient])).not.toContain('provider error');
   });
 
   it('keeps patient foundation task dedupe keys distinct per patient', () => {

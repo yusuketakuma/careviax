@@ -13,6 +13,7 @@ function buildDb() {
     prescriptionLine: { findMany: vi.fn() },
     notification: { findMany: vi.fn() },
     residence: { findMany: vi.fn() },
+    patientMcsLink: { findMany: vi.fn() },
     task: { findMany: vi.fn() },
     billingEvidence: { findMany: vi.fn() },
   };
@@ -73,6 +74,7 @@ describe('getCaseRiskCockpit', () => {
     expect(db.prescriptionLine.findMany).not.toHaveBeenCalled();
     expect(db.notification.findMany).not.toHaveBeenCalled();
     expect(db.residence.findMany).not.toHaveBeenCalled();
+    expect(db.patientMcsLink.findMany).not.toHaveBeenCalled();
     expect(db.task.findMany).not.toHaveBeenCalled();
     expect(db.billingEvidence.findMany).not.toHaveBeenCalled();
   });
@@ -149,6 +151,17 @@ describe('getCaseRiskCockpit', () => {
         geocode_accuracy: 'low',
         updated_at: new Date('2026-07-05T02:00:00.000Z'),
         address: '東京都千代田区1-1-1',
+      },
+    ]);
+    db.patientMcsLink.findMany.mockResolvedValue([
+      {
+        id: 'mcs_link/1',
+        last_sync_status: 'failed',
+        last_sync_attempt_at: new Date('2026-07-05T03:00:00.000Z'),
+        last_synced_at: null,
+        updated_at: new Date('2026-07-05T03:00:00.000Z'),
+        last_sync_error: 'MCS raw provider error 患者 太郎',
+        mcs_project_url: 'https://www.medical-care.net/projects/medical/123',
       },
     ]);
     db.task.findMany.mockResolvedValue([
@@ -234,7 +247,7 @@ describe('getCaseRiskCockpit', () => {
     expect(result?.overall).toMatchObject({
       status: 'blocked',
       blocking_count: 3,
-      urgent_count: 5,
+      urgent_count: 6,
       warning_count: 4,
     });
 
@@ -249,6 +262,7 @@ describe('getCaseRiskCockpit', () => {
         'drug_master_reconciliation:line/1',
         'notification:notification/1',
         'residence_geocode:residence/1:zero_coordinates',
+        'patient_mcs_sync:mcs_link/1',
         'dispense_task:dispense/1',
         'report_delivery_failed:report_1',
         'task:task/1',
@@ -266,6 +280,8 @@ describe('getCaseRiskCockpit', () => {
     expect(JSON.stringify(result)).not.toContain('患者 太郎様の通知');
     expect(JSON.stringify(result)).not.toContain('患者 太郎様の詳細本文');
     expect(JSON.stringify(result)).not.toContain('東京都千代田区1-1-1');
+    expect(JSON.stringify(result)).not.toContain('MCS raw provider error');
+    expect(JSON.stringify(result)).not.toContain('medical-care.net');
     expect(JSON.stringify(result)).toContain('正本確認タスク');
 
     for (const finding of findings) {
@@ -359,6 +375,22 @@ describe('getCaseRiskCockpit', () => {
         },
       }),
     );
+    expect(db.patientMcsLink.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          patient_id: patientId,
+          AND: [{ last_sync_status: { not: null } }, { last_sync_status: { not: 'success' } }],
+        },
+        select: {
+          id: true,
+          last_sync_status: true,
+          last_sync_attempt_at: true,
+          last_synced_at: true,
+          updated_at: true,
+        },
+      }),
+    );
     expect(db.billingEvidence.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -389,6 +421,7 @@ describe('getCaseRiskCockpit', () => {
     db.prescriptionLine.findMany.mockResolvedValue([]);
     db.notification.findMany.mockResolvedValue([]);
     db.residence.findMany.mockResolvedValue([]);
+    db.patientMcsLink.findMany.mockResolvedValue([]);
     db.task.findMany.mockResolvedValue([
       {
         id: 'task_due_jst',

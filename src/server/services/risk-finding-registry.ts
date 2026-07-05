@@ -107,6 +107,14 @@ export type ResidenceGeocodeRiskInput = {
   updated_at?: Date | string | null;
 };
 
+export type PatientMcsIntegrationRiskInput = {
+  id: string;
+  last_sync_status?: string | null;
+  last_sync_attempt_at?: Date | string | null;
+  last_synced_at?: Date | string | null;
+  updated_at?: Date | string | null;
+};
+
 const BILLING_BLOCKER_TITLE: Record<BillingEvidenceBlocker['key'], string> = {
   missing_visit_consent: '訪問同意が未整備です',
   missing_management_plan: '管理計画書が未整備です',
@@ -210,6 +218,11 @@ function residenceGeocodeTitle(issue: NonNullable<ReturnType<typeof residenceGeo
   if (issue === 'same_coordinates') return '患者住所の座標値が不自然です';
   if (issue === 'low_accuracy') return '患者住所の座標精度確認が必要です';
   return '住所ジオコードの再確認が必要です';
+}
+
+function patientMcsIntegrationSeverity(link: PatientMcsIntegrationRiskInput): RiskSeverity {
+  if (link.last_sync_status === 'failed' && !link.last_synced_at) return 'urgent';
+  return 'warning';
 }
 
 function foundationSeverity(status: PatientFoundationItem['status']): RiskSeverity {
@@ -629,6 +642,30 @@ export function adaptResidenceGeocodeToRiskFinding(
       ? `/patients/${encodeURIComponent(context.patientId)}/edit?section=visit#intake.address`
       : '/patients?foundation_gap=1',
     action_label: '住所座標を確認',
+  });
+}
+
+export function adaptPatientMcsIntegrationToRiskFinding(
+  link: PatientMcsIntegrationRiskInput,
+  context: RiskFindingAdapterContext = {},
+): RiskFinding | null {
+  if (!link.last_sync_status || link.last_sync_status === 'success') return null;
+
+  return createRiskFinding({
+    key: `patient_mcs_sync:${link.id}`,
+    domain: 'integration',
+    severity: patientMcsIntegrationSeverity(link),
+    title: 'MCS連携の同期確認が必要です',
+    detail: 'MCS連携の同期状態が正常ではありません。連携先と再同期結果を確認してください。',
+    patient_id: context.patientId ?? null,
+    case_id: context.caseId ?? null,
+    related_entity_type: 'patient_mcs_link',
+    related_entity_id: link.id,
+    due_at: iso(link.last_sync_attempt_at ?? link.updated_at),
+    action_href: context.patientId
+      ? `/patients/${encodeURIComponent(context.patientId)}/mcs`
+      : '/patients',
+    action_label: 'MCS連携を確認',
   });
 }
 
