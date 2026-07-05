@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { buildDrugMastersApiPath } from '@/lib/drug-masters/api-paths';
 
@@ -43,7 +44,16 @@ export async function fetchDrugMasterSuggestions(args: {
   });
   if (!response.ok) return [];
 
-  const payload = await response.json().catch(() => null);
-  const parsed = drugMasterSuggestionsResponseSchema.safeParse(payload);
-  return parsed.success ? parsed.data.data : [];
+  try {
+    const payload = await readApiJson<z.infer<typeof drugMasterSuggestionsResponseSchema>>(
+      response,
+      {
+        fallbackMessage: '医薬品候補の取得に失敗しました',
+        schema: drugMasterSuggestionsResponseSchema,
+      },
+    );
+    return payload.data;
+  } catch {
+    return [];
+  }
 }

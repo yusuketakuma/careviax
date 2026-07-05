@@ -40,6 +40,32 @@
 
 ## 直近の land（本日・要点）
 
+- codex: R40/R44 drug-master suggestions fail-soft JSON/schema convergence batch(in-progress on
+  `refactor/drug-suggestions-json-convergence-20260705`) implementation complete。global notification
+  slice の残候補から、`src/lib/pharmacy/drug-master-suggestions.ts` を単独低リスク batch として処理。
+  `fetchDrugMasterSuggestions` は query trim / short-query no-fetch / `/api/drug-masters?q=...&limit=10&includeTotal=false`
+  / org header / fetch reject query-error 契約を維持し、OK response parsing を `readApiJson` +
+  既存 `drugMasterSuggestionsResponseSchema` へ収束。non-ok response は body を読まず `[]`、successful
+  non-JSON / schema mismatch は local catch で `[]` の fail-soft を維持。medical_safety_reviewer subagent を
+  bounded read-only で投入し、direct `readApiJson(...).data` による fail-soft破壊、schema loosen/partial row
+  acceptance、候補検索を resolver と誤用する medication identity hazard を High/Medium としてレビュー。
+  対応として既存 strict zod schema を変更せず、all-or-nothing data array を保持し、invalid yj_code /
+  invalid narcotic flag / mixed valid+invalid row は全体 `[]` になる regression と fetch rejection 維持を追加。
+  自動採用、first result adoption、DrugSuggest UI selection behavior、API route contract、DB/auth/PHI/billing/deploy
+  は対象外。validation:
+  `pnpm exec vitest run src/lib/pharmacy/drug-master-suggestions.test.ts src/lib/api/client-json.test.ts src/components/features/pharmacy/drug-suggest.test.tsx --reporter=dot --testTimeout=30000`
+  green（3 files / 19 tests）;
+  `pnpm exec vitest run src/lib/drug-masters/api-paths.test.ts src/app/api/drug-masters/route.test.ts --reporter=dot --testTimeout=30000`
+  green（2 files / 17 tests）;
+  `pnpm exec vitest run 'src/app/(dashboard)/prescriptions/new/prescription-intake-form.test.tsx' 'src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.test.tsx' 'src/app/api/prescription-lines/[id]/route.test.ts' src/app/api/prescription-intakes/route.test.ts --reporter=dot --testTimeout=30000`
+  green（4 files / 134 tests、既存 React act warning は非fatal）; scoped `eslint` green; scoped
+  `prettier --check` green; `git diff --check` green;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは
+  product medication suggestion client parsing/test のみ変更。DB schema/migration/auth/authorization/
+  PHI/billing/deploy/package dependency 変更は不要。next: commit → main ff merge → origin/main push →
+  short-lived branch cleanup。残候補: `admin/audit-logs` export error-only batch、`patient-form` /
+  `dispensing-workbench` は PHI/medication safety-aware 別slice。
 - codex: R40/R44 global notification/nav badge response JSON convergence batch(in-progress on
   `refactor/global-notification-json-convergence-20260705`) implementation complete。前sliceの
   subagent棚卸し残候補に基づき、`use-nav-badges` と `notification-bell` の shared UI refresh JSON
