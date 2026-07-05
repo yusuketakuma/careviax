@@ -40,6 +40,52 @@
 
 ## 直近の land（本日・要点）
 
+- codex: visit handoff owner/admin emergency override + dedicated completion hardening batch(3fd49cecb)
+  land。ユーザー指示により本sliceでは subagent を投入（security_critic /
+  medical_safety_reviewer / api_contract_reviewer / frontend_reviewer / test_architect /
+  verifier）。security_critic と medical_safety_reviewer は `handoff_confirmation` が
+  `PATCH /api/tasks/:id` / `/api/tasks/bulk` の generic completion で完了でき、`PUT
+  /api/visit-records/:id/handoff` の direct-responsibility authz、version claim、structured SOAP
+  update、`visit_handoff_confirmed` audit を迂回できる high finding を提示。対応として
+  `handoff_confirmation` を `DEDICATED_COMPLETION_TASK_TYPES` に追加し、既存 dedicated-flow
+  rejection contract で generic PATCH/bulk completion を拒否。api_contract_reviewer は owner/admin
+  emergency override を additive contract として承認し、normal direct confirmation の payload/status
+  互換、`override_reason` optional + override path only required、trainee deny、no-store/status保持を要求。
+  対応として `GET /api/visit-records/:id/handoff` に root legacy fields
+  (`data` / `extraction` / `visit_record_version` / `visit_record_updated_at`) を保持したまま
+  additive `confirmation_policy` を追加。`PUT` は direct schedule/case responsibility がある
+  owner/admin/pharmacist では従来どおり strict `confirmationWhere` と
+  `assigned_schedule` / `case_primary_or_backup` basis を使い、`overrideReason` は service に渡さない。
+  非担当 owner/admin は 8〜500文字の trim 済み `override_reason` がある場合のみ
+  `admin_emergency_override` basis で confirm 可能。非担当 pharmacist / pharmacist_trainee /
+  clerk は reason 付きでも 403 fail-closed。override reason は `confirmHandoff` audit changes に
+  raw text を保存せず、`override_reason_present` / `override_reason_length` /
+  `override_reason_redacted` のみ記録。frontend_reviewer の CHANGES_REQUESTED に対応し、
+  `/handoff` workspace は `confirmation_policy` を `HandoffConfirmPanel` へ渡し、metadata missing は
+  read-only fail-closed、direct confirm だけ通常「確認」「編集して確定」を表示、override-only は
+  「管理者代行確認」領域と `代行理由` textarea を表示し、8文字未満は disabled +
+  `aria-describedby` helper、送信 payload は `expected_visit_record_version` と trim 済み
+  `override_reason` を含める。confirmed timestamp は raw ISO slice から `Asia/Tokyo` の
+  `YYYY/MM/DD HH:mm JST` 表示へ変更。test_architect の要求に対応し、route/service/UI/workspace/auth/task
+  tests で direct互換、owner/admin override、reason欠落/blank拒否、pharmacist/trainee拒否、
+  PHI/secret-like raw reason 非audit、GET additive metadata、extraction-only override非表示、UI
+  fail-closed/JST、generic task completion rejection を固定。verifier は最終 APPROVE。
+  validation: focused Vitest 7 files / 128 tests green
+  (`src/lib/auth/__tests__/visit-schedule-access.test.ts`,
+  `src/app/api/visit-records/[id]/handoff/route.test.ts`,
+  `src/server/services/visit-handoff.test.ts`,
+  `src/components/features/visits/handoff-confirm-panel.test.tsx`,
+  `src/app/(dashboard)/handoff/handoff-workspace.test.tsx`,
+  `src/app/api/tasks/[id]/route.test.ts`,
+  `src/app/api/tasks/bulk/route.test.ts`); `pnpm typecheck` green; scoped `eslint` /
+  `prettier --check` / `git diff --check` for touched 13 files green。verifier が同じ focused
+  validation/typecheck/scoped lint/format/diff-check を再実行し APPROVE（handoff workspace test の既存
+  React `act(...)` warning は non-fatal）。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) に基づき product API /
+  authorization / PHI-adjacent audit / UI contract / task completion policy を変更、DB schema/migration/
+  billing/deploy/package dependency 変更は不要。残る別slice候補: historical unassigned
+  `handoff_confirmation` task の SELECT-only inventory/backfill plan（DB mutation は別途明示承認が必要）、
+  pharmacist_trainee supervised workflow、必要なら override reason enum/code 化。
 - codex: visit handoff confirmation responsibility-boundary hardening batch(b33239051)
   implementation complete。ユーザー指示により本sliceでは subagent を投入（code_mapper /
   security_critic / medical_safety_reviewer / api_contract_reviewer）。全員 CHANGES_REQUESTED として、
