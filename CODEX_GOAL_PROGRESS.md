@@ -1,5 +1,47 @@
 # CODEX Goal Progress
 
+## R40/R44 Institution Mutations readApiJson Partial - 2026-07-05 10:43 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/admin/institutions/institutions-content.tsx`
+    - `src/app/(dashboard)/admin/institutions/institutions-content.test.tsx`
+- Scope:
+  - Reused `readApiJson` for prescriber institution create/update and delete
+    responses.
+  - Added focused UI coverage proving API JSON `message` from failed
+    institution save and delete responses is preserved in toast output.
+  - Preserved `/api/prescriber-institutions` read behavior,
+    `PRESCRIBER_INSTITUTIONS_API_PATH`,
+    `buildPrescriberInstitutionApiPath`, hostile-id encoding,
+    dot-segment fail-closed behavior, `buildOrgHeaders`,
+    `buildOrgJsonHeaders`, request body shape, success toasts, and
+    `prescriber-institutions` invalidation.
+- Safety:
+  - Institutions UI mutation response handling internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary remains
+    recorded in `ops/refactor/STATE.md`; this slice did not require those
+    changes.
+  - Preserved DB/schema, API route contracts, auth/authorization semantics,
+    PHI projection, billing behavior, deployment, package dependency, live DB
+    operation, external send, secret handling, push, and destructive operation
+    boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/admin/institutions/institutions-content.test.tsx'`
+    passed `1` file / `23` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `d5253605`
+    (`refactor(ui): reuse readApiJson for institution mutations`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher/mutation PHI/body-read review
+    before converting additional manual response handling.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Business Holidays readApiJson Partial - 2026-07-05 10:39 JST
 
 - Status:
