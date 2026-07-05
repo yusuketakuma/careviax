@@ -5,15 +5,14 @@ import {
   RISK_DOMAIN_LABELS,
   RISK_DOMAIN_ORDER,
   RISK_SEVERITY_RANK,
-  createRiskFinding,
   statusFromRiskFindings,
   summarizeRiskFindings,
 } from '@/lib/risk/risk-finding';
-import { japanDateKey } from '@/lib/utils/date-boundary';
 import { describeBillingEvidenceBlockers } from '@/server/services/billing-evidence/core';
 import {
   adaptBillingEvidenceBlockerToRiskFinding,
   adaptCareReportToRiskFinding,
+  adaptConsentPlanLifecycleToRiskFindings,
   adaptOperationalTaskToRiskFinding,
   adaptUpcomingVisitPreparationToRiskFindings,
 } from '@/server/services/risk-finding-registry';
@@ -131,29 +130,12 @@ type GetCaseRiskCockpitArgs = {
   now?: Date;
 };
 
-function toIso(value: Date | null | undefined) {
-  return value ? value.toISOString() : null;
-}
-
-function isBeforeDay(left: Date | null | undefined, right: Date) {
-  if (!left) return false;
-  return japanDateKey(left) < japanDateKey(right);
-}
-
 function priorityFromSeverity(
   severity: CaseRiskFinding['severity'],
 ): CaseRiskNextAction['priority'] {
   if (severity === 'blocking' || severity === 'urgent') return 'urgent';
   if (severity === 'warning') return 'high';
   return 'normal';
-}
-
-function addFinding(
-  findings: CaseRiskFinding[],
-  input: Omit<CaseRiskFinding, 'resolution_state' | 'source'> &
-    Partial<Pick<CaseRiskFinding, 'resolution_state' | 'source'>>,
-) {
-  findings.push(createRiskFinding(input));
 }
 
 function buildSections(findings: CaseRiskFinding[]): CaseRiskCockpitSection[] {
@@ -209,65 +191,21 @@ function pushConsentPlanFindings(args: {
   firstVisitDocument: FirstVisitDocumentRow | null;
   now: Date;
 }) {
-  const base = { patient_id: args.patientId, case_id: args.caseId };
-  if (!args.consent) {
-    addFinding(args.findings, {
-      key: 'missing_visit_consent',
-      domain: 'consent_plan',
-      severity: 'blocking',
-      title: '訪問同意の取得が必要です',
-      detail: '訪問薬剤管理の有効同意がないため、訪問・算定の前提を満たしていません。',
-      ...base,
-      related_entity_type: 'consent_record',
-      related_entity_id: null,
-      action_href: `${args.patientHref}/consent`,
-      action_label: '同意を整備',
-    });
-  }
-
-  if (!args.managementPlan) {
-    addFinding(args.findings, {
-      key: 'missing_management_plan',
-      domain: 'consent_plan',
-      severity: 'blocking',
-      title: '承認済み管理計画書がありません',
-      detail: '管理計画書が未承認のため、訪問準備と請求根拠を確定できません。',
-      ...base,
-      related_entity_type: 'management_plan',
-      related_entity_id: null,
-      action_href: `${args.patientHref}/management-plan`,
-      action_label: '計画書を確認',
-    });
-  } else if (isBeforeDay(args.managementPlan.next_review_date, args.now)) {
-    addFinding(args.findings, {
-      key: 'management_plan_review_overdue',
-      domain: 'consent_plan',
-      severity: 'blocking',
-      title: '管理計画書の見直し期限超過',
-      detail: '承認済み管理計画書の見直し期限を超過しています。',
-      ...base,
-      related_entity_type: 'management_plan',
-      related_entity_id: args.managementPlan.id,
-      due_at: toIso(args.managementPlan.next_review_date),
-      action_href: `${args.patientHref}/management-plan`,
-      action_label: '計画書を見直す',
-    });
-  }
-
-  if (!args.firstVisitDocument?.delivered_at) {
-    addFinding(args.findings, {
-      key: 'first_visit_document_not_delivered',
-      domain: 'patient_foundation',
-      severity: 'warning',
-      title: '初回訪問説明書の交付が未完了です',
-      detail: '初回訪問の説明書交付履歴が確認できません。',
-      ...base,
-      related_entity_type: 'first_visit_document',
-      related_entity_id: args.firstVisitDocument?.id ?? null,
-      action_href: args.patientHref,
-      action_label: '患者正本を確認',
-    });
-  }
+  args.findings.push(
+    ...adaptConsentPlanLifecycleToRiskFindings(
+      {
+        consent: args.consent,
+        managementPlan: args.managementPlan,
+        firstVisitDocument: args.firstVisitDocument,
+        now: args.now,
+      },
+      {
+        patientId: args.patientId,
+        caseId: args.caseId,
+        patientHref: args.patientHref,
+      },
+    ),
+  );
 }
 
 function pushVisitFindings(args: {

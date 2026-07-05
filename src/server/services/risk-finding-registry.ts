@@ -15,6 +15,7 @@ import {
   type RiskFinding,
   type RiskSeverity,
 } from '@/lib/risk/risk-finding';
+import { japanDateKey } from '@/lib/utils/date-boundary';
 
 export type RiskFindingAdapterContext = {
   patientId?: string | null;
@@ -56,6 +57,22 @@ export type VisitPreparationRiskInput = {
     route_confirmed: boolean;
     offline_synced: boolean;
   } | null;
+};
+
+export type ConsentPlanRiskInput = {
+  consent: {
+    id: string;
+    expiry_date?: Date | string | null;
+  } | null;
+  managementPlan: {
+    id: string;
+    next_review_date?: Date | string | null;
+  } | null;
+  firstVisitDocument: {
+    id: string;
+    delivered_at?: Date | string | null;
+  } | null;
+  now: Date | string;
 };
 
 const BILLING_BLOCKER_TITLE: Record<BillingEvidenceBlocker['key'], string> = {
@@ -122,6 +139,11 @@ function foundationSeverity(status: PatientFoundationItem['status']): RiskSeveri
   if (status === 'missing') return 'blocking';
   if (status === 'needs_confirmation') return 'warning';
   return 'info';
+}
+
+function isBeforeJapanDay(left: Date | string | null | undefined, right: Date | string) {
+  if (!left) return false;
+  return japanDateKey(new Date(left)) < japanDateKey(new Date(right));
 }
 
 function stableReadinessKey(label: string, index: number) {
@@ -230,6 +252,87 @@ export function adaptPatientFoundationItemToRiskFinding(
     action_label: item.action_label || '患者基盤を確認',
     resolution_state: item.status === 'ready' ? 'resolved' : 'open',
   });
+}
+
+export function adaptConsentPlanLifecycleToRiskFindings(
+  input: ConsentPlanRiskInput,
+  context: RiskFindingAdapterContext = {},
+): RiskFinding[] {
+  const findings: RiskFinding[] = [];
+  const patientHref = context.patientHref ?? '/patients';
+  const base = {
+    patient_id: context.patientId ?? null,
+    case_id: context.caseId ?? null,
+  };
+
+  if (!input.consent) {
+    findings.push(
+      createRiskFinding({
+        key: 'missing_visit_consent',
+        domain: 'consent_plan',
+        severity: 'blocking',
+        title: '訪問同意の取得が必要です',
+        detail: '訪問薬剤管理の有効同意がないため、訪問・算定の前提を満たしていません。',
+        ...base,
+        related_entity_type: 'consent_record',
+        related_entity_id: null,
+        action_href: `${patientHref}/consent`,
+        action_label: '同意を整備',
+      }),
+    );
+  }
+
+  if (!input.managementPlan) {
+    findings.push(
+      createRiskFinding({
+        key: 'missing_management_plan',
+        domain: 'consent_plan',
+        severity: 'blocking',
+        title: '承認済み管理計画書がありません',
+        detail: '管理計画書が未承認のため、訪問準備と請求根拠を確定できません。',
+        ...base,
+        related_entity_type: 'management_plan',
+        related_entity_id: null,
+        action_href: `${patientHref}/management-plan`,
+        action_label: '計画書を確認',
+      }),
+    );
+  } else if (isBeforeJapanDay(input.managementPlan.next_review_date, input.now)) {
+    findings.push(
+      createRiskFinding({
+        key: 'management_plan_review_overdue',
+        domain: 'consent_plan',
+        severity: 'blocking',
+        title: '管理計画書の見直し期限超過',
+        detail: '承認済み管理計画書の見直し期限を超過しています。',
+        ...base,
+        related_entity_type: 'management_plan',
+        related_entity_id: input.managementPlan.id,
+        due_at: iso(input.managementPlan.next_review_date),
+        action_href: `${patientHref}/management-plan`,
+        action_label: '計画書を見直す',
+      }),
+    );
+  }
+
+  if (!input.firstVisitDocument?.delivered_at) {
+    findings.push(
+      createRiskFinding({
+        key: 'first_visit_document_not_delivered',
+        domain: 'patient_foundation',
+        severity: 'warning',
+        title: '初回訪問説明書の交付が未完了です',
+        detail: '初回訪問の説明書交付履歴が確認できません。',
+        ...base,
+        related_entity_type: 'first_visit_document',
+        related_entity_id: input.firstVisitDocument?.id ?? null,
+        action_href: patientHref,
+        action_label: '患者正本を確認',
+      }),
+    );
+  }
+
+  return findings;
 }
 
 export function adaptCareReportToRiskFinding(

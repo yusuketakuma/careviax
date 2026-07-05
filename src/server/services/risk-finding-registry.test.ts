@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   adaptBillingEvidenceBlockerToRiskFinding,
   adaptCareReportToRiskFinding,
+  adaptConsentPlanLifecycleToRiskFindings,
   adaptOperationalTaskToRiskFinding,
   adaptPatientFoundationItemToRiskFinding,
   adaptUpcomingVisitPreparationToRiskFindings,
@@ -157,6 +158,52 @@ describe('risk-finding-registry adapters', () => {
     expect(JSON.stringify(finding)).not.toContain('090-1234-5678');
     expect(JSON.stringify(finding)).not.toContain('東京都千代田区1-1-1');
     expect(JSON.stringify(finding)).not.toContain('職員 太郎');
+  });
+
+  it('maps consent plan lifecycle findings using Japan business dates', () => {
+    const findings = adaptConsentPlanLifecycleToRiskFindings(
+      {
+        consent: null,
+        managementPlan: {
+          id: 'plan_1',
+          next_review_date: new Date('2026-07-05T00:00:00.000Z'),
+        },
+        firstVisitDocument: { id: 'doc_1', delivered_at: null },
+        now: new Date('2026-07-05T15:30:00.000Z'),
+      },
+      {
+        patientId: 'patient/1?x=1',
+        caseId: 'case_1',
+        patientHref: `/patients/${encodeURIComponent('patient/1?x=1')}`,
+      },
+    );
+
+    expect(findings.map((finding) => finding.key)).toEqual([
+      'missing_visit_consent',
+      'management_plan_review_overdue',
+      'first_visit_document_not_delivered',
+    ]);
+    expect(findings[0]).toMatchObject({
+      domain: 'consent_plan',
+      severity: 'blocking',
+      related_entity_type: 'consent_record',
+      related_entity_id: null,
+      action_label: '同意を整備',
+    });
+    expect(findings[1]).toMatchObject({
+      related_entity_type: 'management_plan',
+      related_entity_id: 'plan_1',
+      due_at: '2026-07-05T00:00:00.000Z',
+      action_label: '計画書を見直す',
+    });
+    expect(findings[2]).toMatchObject({
+      domain: 'patient_foundation',
+      severity: 'warning',
+      related_entity_type: 'first_visit_document',
+      related_entity_id: 'doc_1',
+      action_label: '患者正本を確認',
+    });
+    expect(JSON.stringify(findings)).toContain(encodeURIComponent('patient/1?x=1'));
   });
 
   it('maps care report delivery states with controlled text and encoded hrefs', () => {
