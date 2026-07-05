@@ -40,6 +40,34 @@
 
 ## 直近の land（本日・要点）
 
+- codex: R40/R44 dispense-workbench mutation helper JSON convergence batch(in-progress on
+  `refactor/dispense-workbench-mutation-json-convergence-20260705`) implementation complete。
+  前sliceで除外した `dispensing-workbench.adapter` の write-only `mutateJson` を専用sliceで処理し、
+  fetch endpoint/method/body/JSON headers/`credentials: 'same-origin'`/`cache: 'no-store'` を維持したまま、
+  non-409 error message extraction と success JSON parsing を `readApiJson` へ収束。409 は medication
+  safety/OCC conflict recovery の境界として shared reader に通さず、従来通り raw JSON details を
+  `WorkbenchConflictError(details, 409)` に保持し、malformed body は `details: null` の fail-closed を維持。
+  non-409 は `readApiJson<never>` で server `message`/compatible `error`/fallback を取り出したうえで
+  `WorkbenchWriteError(message, res.status)` に再包装し、status/class loss を防止。network failure は
+  `WorkbenchWriteError('ネットワークエラーが発生しました', 0)` を維持。successful malformed JSON は
+  `readApiJson` の fallback error として reject し、書込成功 body の不正を silent success にしない。
+  medical_safety_reviewer subagent は初回構文崩れと mutation-safety regression coverage 不足を
+  CHANGES_REQUESTED として指摘。対応として orphaned stale catch tail を除去し、409 details/null、
+  non-409 message/error/status、non-JSON fallback、network fallback、success malformed rejection、
+  request shape を public mutation wrapper `generateSetBatches` で固定。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは
+  product dispense workbench mutation adapter/test のみ変更。DB schema/migration/auth/authorization/
+  tenant_id/PHI payload/billing/deploy/package dependency 変更は不要。validation:
+  `pnpm exec vitest run src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts --reporter=dot --testTimeout=30000`
+  green（1 file / 29 tests）;
+  `pnpm exec vitest run src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts src/components/features/dispense-workbench/use-workbench-mutations.test.tsx --reporter=dot --testTimeout=30000`
+  green（2 files / 34 tests）;
+  `pnpm exec vitest run 'src/app/api/dispense-tasks/[id]/groups/route.test.ts' 'src/app/api/dispense-tasks/[id]/lines/route.test.ts' 'src/app/api/set-plans/[id]/generate-batches/route.test.ts' 'src/app/api/set-audits/route.test.ts' 'src/app/api/dispense-results/route.test.ts' --reporter=dot --testTimeout=30000`
+  green（5 files / 144 tests）; scoped `eslint` green; scoped `prettier --check` green;
+  `git diff --check` green; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。
+  next: commit → main ff merge → origin/main push → short-lived branch cleanup。残候補:
+  R40/R44 の JSON convergence は残存 direct parsing を再棚卸しし、PHI/medication safety-aware に
+  低リスク batch で継続。
 - codex: R40/R44 dispense-workbench read helper JSON convergence batch(in-progress on
   `refactor/dispense-workbench-read-json-convergence-20260705`) implementation complete。前sliceの
   code_mapper 結果に基づき、`dispensing-workbench.adapter` は read helper と mutation helper を分離し、

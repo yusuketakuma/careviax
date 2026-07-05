@@ -680,6 +680,9 @@ describe('dispensing-workbench.adapter generateSetBatches', () => {
       '/api/set-plans/plan_1/generate-batches',
       expect.objectContaining({
         method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        credentials: 'same-origin',
+        cache: 'no-store',
         body: JSON.stringify({ force: true, expected_updated_at: '2026-06-20T00:00:00.000Z' }),
       }),
     );
@@ -699,9 +702,10 @@ describe('dispensing-workbench.adapter generateSetBatches', () => {
 
   it('promotes a 409 conflict response to a WorkbenchConflictError', async () => {
     process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
+    const conflictDetails = { message: '他の操作と競合しました。' };
     const fetchMock = vi.fn(
       async () =>
-        new Response(JSON.stringify({ message: '他の操作と競合しました。' }), {
+        new Response(JSON.stringify(conflictDetails), {
           status: 409,
           headers: { 'content-type': 'application/json' },
         }),
@@ -716,6 +720,108 @@ describe('dispensing-workbench.adapter generateSetBatches', () => {
     await expect(
       generateSetBatches('plan_1', { force: true, expected_updated_at: 'x' }),
     ).rejects.toBeInstanceOf(WorkbenchConflictError);
+    await expect(
+      generateSetBatches('plan_1', { force: true, expected_updated_at: 'x' }),
+    ).rejects.toMatchObject({ details: conflictDetails, status: 409 });
+  });
+
+  it('preserves null conflict details when a 409 response body is malformed', async () => {
+    process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
+    const fetchMock = vi.fn(
+      async () =>
+        new Response('{invalid-json', {
+          status: 409,
+          headers: { 'content-type': 'application/json' },
+        }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { generateSetBatches } = await import('./dispensing-workbench.adapter');
+    const { WorkbenchConflictError } = await import('./dispensing-workbench.write-types');
+
+    await expect(generateSetBatches('plan_1', { force: true })).rejects.toBeInstanceOf(
+      WorkbenchConflictError,
+    );
+    await expect(generateSetBatches('plan_1', { force: true })).rejects.toMatchObject({
+      details: null,
+      status: 409,
+    });
+  });
+
+  it('promotes non-409 server error messages to a WorkbenchWriteError with status', async () => {
+    process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({ message: '保存できません' }, { status: 422 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { generateSetBatches } = await import('./dispensing-workbench.adapter');
+    const { WorkbenchWriteError } = await import('./dispensing-workbench.write-types');
+
+    await expect(generateSetBatches('plan_1', { force: true })).rejects.toBeInstanceOf(
+      WorkbenchWriteError,
+    );
+    await expect(generateSetBatches('plan_1', { force: true })).rejects.toMatchObject({
+      message: '保存できません',
+      status: 422,
+    });
+  });
+
+  it('accepts legacy non-409 error fields via the shared JSON reader', async () => {
+    process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
+    const fetchMock = vi.fn(async () => jsonResponse({ error: '更新できません' }, { status: 400 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { generateSetBatches } = await import('./dispensing-workbench.adapter');
+
+    await expect(generateSetBatches('plan_1', { force: false })).rejects.toMatchObject({
+      message: '更新できません',
+      status: 400,
+    });
+  });
+
+  it('falls back to the default write error when a non-409 error body is not JSON', async () => {
+    process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
+    const fetchMock = vi.fn(async () => new Response('not json', { status: 500 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { generateSetBatches } = await import('./dispensing-workbench.adapter');
+
+    await expect(generateSetBatches('plan_1', { force: true })).rejects.toMatchObject({
+      message: '保存に失敗しました',
+      status: 500,
+    });
+  });
+
+  it('rejects successful write responses whose body is not valid JSON', async () => {
+    process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
+    const fetchMock = vi.fn(async () => new Response('not json', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { generateSetBatches } = await import('./dispensing-workbench.adapter');
+
+    await expect(generateSetBatches('plan_1', { force: true })).rejects.toThrow(
+      '保存に失敗しました',
+    );
+  });
+
+  it('promotes network failures to a WorkbenchWriteError with status 0', async () => {
+    process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
+    const fetchMock = vi.fn(async () => {
+      throw new TypeError('fetch failed');
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { generateSetBatches } = await import('./dispensing-workbench.adapter');
+    const { WorkbenchWriteError } = await import('./dispensing-workbench.write-types');
+
+    await expect(generateSetBatches('plan_1', { force: true })).rejects.toBeInstanceOf(
+      WorkbenchWriteError,
+    );
+    await expect(generateSetBatches('plan_1', { force: true })).rejects.toMatchObject({
+      message: 'ネットワークエラーが発生しました',
+      status: 0,
+    });
   });
 });
 

@@ -439,14 +439,13 @@ async function mutateJson<T>(url: string, method: 'POST' | 'PATCH', body: unknow
   if (!res.ok) {
     let message = '保存に失敗しました';
     try {
-      const errBody = (await res.json()) as { message?: unknown };
-      if (typeof errBody.message === 'string' && errBody.message) message = errBody.message;
-    } catch {
-      // 本文が JSON でない場合は既定メッセージ
+      await readApiJson<never>(res, message);
+    } catch (err) {
+      if (err instanceof Error && err.message) message = err.message;
     }
     throw new WorkbenchWriteError(message, res.status);
   }
-  return (await res.json()) as T;
+  return await readApiJson<T>(res, '保存に失敗しました');
 }
 
 /** 一包化グループ作成（POST /api/dispense-tasks/[taskId]/groups）。 */
