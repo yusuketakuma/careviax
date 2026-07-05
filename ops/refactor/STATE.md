@@ -196,6 +196,12 @@
   invalidation contract は保持。facility unit mutations は別スライス候補として未変更。
   SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
   維持しつつ、本sliceでは不要。
+- codex: R40/R44 facility-unit-mutations readApiJson slice(523f6946) land。focused Vitest 15、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。admin facility unit save/delete
+  mutation responses を readApiJson へ収束し、facilities / units reads、facility/unit path helpers、
+  hostile-id encoding、dot-segment fail-closed、org headers、request bodies、success toasts、
+  unit invalidation contract は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 - codex: R40/R44 report-detail-mutations readApiJson slice(ecb66652) land。focused Vitest 39、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。report detail confirm /
   single-send / bulk-send mutation responses を readApiJson へ収束し、care-report
