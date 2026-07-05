@@ -379,6 +379,41 @@ describe('EmergencyRouteContent', () => {
     );
     expect(reorderBodies).toHaveLength(0);
   });
+
+  it('keeps route-engine server messages when emergency route recalculation fails', async () => {
+    const routeBodies: unknown[] = [];
+    const reorderBodies: unknown[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.startsWith('/api/visit-schedules?')) {
+        return Response.json({
+          data: [confirmedFirst, emergencySchedule, confirmedTail, facilityBatchSchedule],
+          hasMore: false,
+        });
+      }
+      if (url === '/api/visit-routes') {
+        routeBodies.push(JSON.parse(String(init?.body)));
+        return new Response(JSON.stringify({ message: '座標未設定: 緊急患者' }), {
+          status: 422,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url === '/api/visit-schedules/reorder') {
+        reorderBodies.push(JSON.parse(String(init?.body)));
+        return Response.json({ data: { ok: true } });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderEmergencyRouteContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'ルートを再計算' }));
+
+    await waitFor(() => expect(routeBodies.length).toBeGreaterThan(0));
+    await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith('座標未設定: 緊急患者'));
+    expect(reorderBodies).toHaveLength(0);
+  });
 });
 
 describe('buildEmergencyRouteApplyPlan', () => {

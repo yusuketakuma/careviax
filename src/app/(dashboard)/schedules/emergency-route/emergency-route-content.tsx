@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
@@ -184,11 +185,10 @@ async function computeRoutePlan(args: {
         : {}),
     }),
   });
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({}));
-    throw new Error(error.message ?? 'ルート再計算の取得に失敗しました');
-  }
-  const payload = (await res.json()) as { data: VisitRoutePlan };
+  const payload = await readApiJson<{ data: VisitRoutePlan }>(
+    res,
+    'ルート再計算の取得に失敗しました',
+  );
   return payload.data;
 }
 

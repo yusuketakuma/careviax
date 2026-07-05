@@ -128,11 +128,10 @@ async function computeRoutePlan(args: {
       ...(args.vehicleResourceId ? { vehicle_resource_id: args.vehicleResourceId } : {}),
     }),
   });
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({}));
-    throw new Error(error.message ?? 'ルート計算の取得に失敗しました');
-  }
-  const payload = (await res.json()) as { data: VisitRoutePlan };
+  const payload = await readApiJson<{ data: VisitRoutePlan }>(
+    res,
+    'ルート計算の取得に失敗しました',
+  );
   return payload.data;
 }
 

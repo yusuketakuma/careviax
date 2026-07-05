@@ -1,3 +1,4 @@
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 
 export type VisitScheduleRouteUpdate = {
@@ -71,11 +72,7 @@ export async function applyVisitScheduleRouteUpdates(args: {
       ...(args.confirmationContext ? { confirmation_context: args.confirmationContext } : {}),
     }),
   });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.message ?? '訪問予定の順路更新に失敗しました');
-  }
-  return response.json();
+  return readApiJson<unknown>(response, '訪問予定の順路更新に失敗しました');
 }
 
 export async function applyMixedVisitRouteUpdates(args: {
@@ -91,11 +88,7 @@ export async function applyMixedVisitRouteUpdates(args: {
       ...(args.confirmationContext ? { confirmation_context: args.confirmationContext } : {}),
     }),
   });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.message ?? '混在ルート順の更新に失敗しました');
-  }
-  return response.json();
+  return readApiJson<unknown>(response, '混在ルート順の更新に失敗しました');
 }
 
 export async function applyVisitScheduleProposalRouteUpdates(args: {
@@ -118,9 +111,5 @@ export async function applyVisitScheduleProposalRouteUpdates(args: {
     headers: buildOrgJsonHeaders(args.orgId),
     body: JSON.stringify(body),
   });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.message ?? '訪問候補の順路更新に失敗しました');
-  }
-  return response.json();
+  return readApiJson<unknown>(response, '訪問候補の順路更新に失敗しました');
 }
