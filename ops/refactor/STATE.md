@@ -3544,3 +3544,64 @@
   one-click with toast-only failure; a follow-up should add row-level persistent failure state and optional
   confirmation drawer for high-risk rows. Browser screenshot/keyboard/a11y proof for the audit review page is still
   pending.
+
+## 2026-07-06 Audit Review Reason / High-risk Confirmation slice
+
+- codex: `UX-AUD-001` audit review queue follow-up implemented.
+  前回 slice の残件だった reviewer filter、closed reason-code registry、high-risk review confirmation、
+  row-level persistent failure/retry をまとめて実装した。監査ログの `review_state=reviewed` 更新は
+  `reason_code` を registry 化し、未指定時は `admin_reviewed` へ正規化、`pending` 戻しでは
+  reason fields を clear する。
+- subagent review:
+  `api_contract_reviewer` (`019f33b0-0baf-7233-be80-67c8740f7cbc`) は PATCH reason の
+  default/clear、`reason_code` の list/export/PATCH response 露出、`reviewed_by` primary filter と
+  `reviewer` alias、CSV の `reviewed_at` / `reviewed_by` / `reason_code` 列追加を要求。
+  `accessibility_ux_reviewer` (`019f33b0-1415-7810-b7ac-9438be6c4df2`) は high-risk review の
+  confirmation dialog、reason select、明示確認 checkbox、toast-only ではない row-level error/retry、
+  actor filter と reviewer filter の分離を要求。本 slice で反映した。
+- files inspected:
+  `Plans.md`, `docs/ui-ux-design-guidelines.md`,
+  `/Users/yusuke/.codex/skills/.system/imagegen/SKILL.md`,
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+  `src/lib/audit-logs/review.ts`, `src/lib/audit-logs/filter-options.ts`,
+  `src/lib/api/audit-log-filters.ts`, `src/types/api/audit-logs.ts`,
+  `src/app/api/audit-logs/route.ts`, `src/app/api/audit-logs/export/route.ts`,
+  `src/app/api/audit-logs/[id]/review/route.ts`,
+  `src/app/(dashboard)/admin/audit-logs/audit-logs-content.tsx`,
+  related route/export/UI tests.
+- files changed:
+  `src/lib/audit-logs/review.ts`, `src/lib/audit-logs/review.test.ts`,
+  `src/lib/audit-logs/filter-options.ts`, `src/lib/api/audit-log-filters.ts`,
+  `src/types/api/audit-logs.ts`, `src/app/api/audit-logs/route.ts`,
+  `src/app/api/audit-logs/route.test.ts`, `src/app/api/audit-logs/export/route.ts`,
+  `src/app/api/audit-logs/export/route.test.ts`,
+  `src/app/api/audit-logs/[id]/review/route.ts`,
+  `src/app/api/audit-logs/[id]/review/route.test.ts`,
+  `src/app/(dashboard)/admin/audit-logs/audit-logs-content.tsx`,
+  `src/app/(dashboard)/admin/audit-logs/audit-logs-content.test.tsx`,
+  `ops/refactor/STATE.md`.
+- bugs found/fixed:
+  `reviewer`/`reviewed_by` と `review_state` の relation predicate が上書きされ得る構成を避けるため、
+  list/export と summary counts を `AND` で合成した。PATCH review は任意文字列 reason を受ける形から
+  registry enum に閉じ、reviewed では default reason、pending では reason clear を保証した。
+- security/PHI risks reduced:
+  high-risk audit log を one-click で review 済みにできる導線をやめ、対象日時・操作者・操作・対象ID・
+  redaction 状態の確認、理由選択、明示 checkbox を必須化した。失敗時は toast だけで消えず、行内に
+  error/retry を残す。CSV/JSON export は review metadata を machine-readable に含め、監査レビューの
+  後追い確認性を上げた。
+- performance issues improved:
+  reviewer filter は client-side loaded-row filter ではなく DB relation predicate として list/export/count に
+  適用するため、表示上限や pagination に依存しない。UI retry は同一 row mutation のみで、再取得は成功後に
+  限定した。
+- validation:
+  `pnpm exec vitest run src/lib/audit-logs/review.test.ts src/app/api/audit-logs/route.test.ts src/app/api/audit-logs/export/route.test.ts 'src/app/api/audit-logs/[id]/review/route.test.ts' "src/app/(dashboard)/admin/audit-logs/audit-logs-content.test.tsx" src/app/api/__tests__/protected-patch-delete-routes.test.ts --reporter=dot --testTimeout=30000`
+  green (6 files / 176 tests; expected sanitized stderr from 500 route tests only);
+  `pnpm exec eslint --max-warnings=0 ...audit review touched files...` green;
+  `pnpm exec prettier --check ...audit review touched files...` green;
+  `git diff --check -- ...audit review touched files...` green;
+  `pnpm typecheck --pretty false` green;
+  `pnpm typecheck:no-unused --pretty false` hit Node heap OOM at default heap;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false` green.
+- remaining:
+  Browser screenshot/keyboard proof for the audit review page is still pending. Broader `Plans.md` objective remains
+  open beyond this audit queue slice.

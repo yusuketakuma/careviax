@@ -8,6 +8,7 @@ import { buildPagination } from '@/lib/api/search';
 import { parseBoundedInteger } from '@/lib/api/pagination';
 import { redactAuditLogsForResponse } from '@/lib/audit-logs/redaction';
 import {
+  buildAuditLogReviewerWhere,
   buildAuditLogReviewStateWhere,
   buildAuditLogRiskTierWhere,
   enrichAuditLogsForReview,
@@ -62,16 +63,26 @@ const authenticatedGET = withAuthContext(
       ...dateWhere,
     };
 
+    const reviewFilterWheres = [
+      filters.reviewState ? buildAuditLogReviewStateWhere(filters.reviewState, ctx.orgId) : null,
+      filters.reviewedBy ? buildAuditLogReviewerWhere(filters.reviewedBy, ctx.orgId) : null,
+    ].filter((item): item is NonNullable<typeof item> => item !== null);
+
+    const reviewFilterWhere = reviewFilterWheres.length > 0 ? { AND: reviewFilterWheres } : {};
+
     const where = {
       ...baseWhere,
       ...(filters.riskTier ? buildAuditLogRiskTierWhere(filters.riskTier) : {}),
-      ...(filters.reviewState ? buildAuditLogReviewStateWhere(filters.reviewState, ctx.orgId) : {}),
+      ...reviewFilterWhere,
     };
 
     const highRiskWhere = buildAuditLogRiskTierWhere('high');
     const standardRiskWhere = buildAuditLogRiskTierWhere('standard');
     const pendingReviewWhere = buildAuditLogReviewStateWhere('pending', ctx.orgId);
     const reviewedWhere = buildAuditLogReviewStateWhere('reviewed', ctx.orgId);
+    const reviewerWhere = filters.reviewedBy
+      ? buildAuditLogReviewerWhere(filters.reviewedBy, ctx.orgId)
+      : null;
 
     const [
       logs,
@@ -106,18 +117,14 @@ const authenticatedGET = withAuthContext(
       prisma.auditLog.count({
         where: {
           ...baseWhere,
-          ...(filters.reviewState
-            ? buildAuditLogReviewStateWhere(filters.reviewState, ctx.orgId)
-            : {}),
+          ...reviewFilterWhere,
           ...highRiskWhere,
         },
       }),
       prisma.auditLog.count({
         where: {
           ...baseWhere,
-          ...(filters.reviewState
-            ? buildAuditLogReviewStateWhere(filters.reviewState, ctx.orgId)
-            : {}),
+          ...reviewFilterWhere,
           ...standardRiskWhere,
         },
       }),
@@ -125,28 +132,28 @@ const authenticatedGET = withAuthContext(
         where: {
           ...baseWhere,
           ...(filters.riskTier ? buildAuditLogRiskTierWhere(filters.riskTier) : {}),
-          ...pendingReviewWhere,
+          ...(reviewerWhere ? { AND: [reviewerWhere, pendingReviewWhere] } : pendingReviewWhere),
         },
       }),
       prisma.auditLog.count({
         where: {
           ...baseWhere,
           ...(filters.riskTier ? buildAuditLogRiskTierWhere(filters.riskTier) : {}),
-          ...reviewedWhere,
+          ...(reviewerWhere ? { AND: [reviewerWhere, reviewedWhere] } : reviewedWhere),
         },
       }),
       prisma.auditLog.count({
         where: {
           ...baseWhere,
           ...highRiskWhere,
-          ...pendingReviewWhere,
+          ...(reviewerWhere ? { AND: [reviewerWhere, pendingReviewWhere] } : pendingReviewWhere),
         },
       }),
       prisma.auditLog.count({
         where: {
           ...baseWhere,
           ...highRiskWhere,
-          ...reviewedWhere,
+          ...(reviewerWhere ? { AND: [reviewerWhere, reviewedWhere] } : reviewedWhere),
         },
       }),
     ]);
@@ -162,6 +169,7 @@ const authenticatedGET = withAuthContext(
               review_state: true,
               reviewed_at: true,
               reviewed_by: true,
+              reason_code: true,
             },
           })
         : [];
@@ -180,6 +188,7 @@ const authenticatedGET = withAuthContext(
           action: filters.action ?? null,
           riskTier: filters.riskTier ?? null,
           reviewState: filters.reviewState ?? null,
+          reviewed_by_used: Boolean(filters.reviewedBy),
           from: filters.from?.toISOString() ?? null,
           to: filters.to?.toISOString() ?? null,
         },
@@ -214,6 +223,7 @@ const authenticatedGET = withAuthContext(
           filters: {
             risk_tier: filters.riskTier ?? null,
             review_state: filters.reviewState ?? null,
+            reviewed_by_used: Boolean(filters.reviewedBy),
             target_type: filters.targetType ?? null,
             action: filters.action ?? null,
             date_from: filters.from?.toISOString() ?? null,

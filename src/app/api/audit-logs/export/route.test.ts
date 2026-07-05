@@ -137,6 +137,9 @@ describe('/api/audit-logs/export GET', () => {
     expect(body.split('\n')[0]).toContain('risk_tier');
     expect(body.split('\n')[0]).toContain('redaction_state');
     expect(body.split('\n')[0]).toContain('review_state');
+    expect(body.split('\n')[0]).toContain('reviewed_at');
+    expect(body.split('\n')[0]).toContain('reviewed_by');
+    expect(body.split('\n')[0]).toContain('reason_code');
     expect(body).toContain('"audit_1"');
     expect(body).toContain('"visit_record"');
     expect(body).toContain('"high"');
@@ -189,6 +192,7 @@ describe('/api/audit-logs/export GET', () => {
         review_state: 'reviewed',
         reviewed_at: new Date('2026-03-29T00:00:00.000Z'),
         reviewed_by: 'admin_1',
+        reason_code: 'expected_access',
       },
     ]);
 
@@ -204,8 +208,39 @@ describe('/api/audit-logs/export GET', () => {
         review_state: 'reviewed',
         reviewed_at: '2026-03-29T00:00:00.000Z',
         reviewed_by: 'admin_1',
+        reason_code: 'expected_access',
       }),
     ]);
+  });
+
+  it('includes safe review workflow fields in csv export rows', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    auditLogReviewFindManyMock.mockResolvedValue([
+      {
+        audit_log_id: 'audit_1',
+        review_state: 'reviewed',
+        reviewed_at: new Date('2026-03-29T00:00:00.000Z'),
+        reviewed_by: 'admin_1',
+        reason_code: 'expected_access',
+      },
+    ]);
+
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }, 'format=csv'),
+      emptyRouteContext,
+    )) as Response;
+    const body = await response.text();
+
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    expect(body.split('\n')[0]).toContain('reviewed_at');
+    expect(body.split('\n')[0]).toContain('reviewed_by');
+    expect(body.split('\n')[0]).toContain('reason_code');
+    expect(body).toContain('"2026-03-29T00:00:00.000Z"');
+    expect(body).toContain('"admin_1"');
+    expect(body).toContain('"expected_access"');
+    expect(body).not.toContain('reason_note');
   });
 
   it('filters and records audit export by risk tier', async () => {
@@ -252,12 +287,16 @@ describe('/api/audit-logs/export GET', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           org_id: 'org_1',
-          reviews: {
-            some: {
-              org_id: 'org_1',
-              review_state: 'reviewed',
+          AND: expect.arrayContaining([
+            {
+              reviews: {
+                some: {
+                  org_id: 'org_1',
+                  review_state: 'reviewed',
+                },
+              },
             },
-          },
+          ]),
         }),
       }),
     );
@@ -266,6 +305,85 @@ describe('/api/audit-logs/export GET', () => {
       expect.objectContaining({
         filters: expect.objectContaining({
           reviewState: 'reviewed',
+        }),
+      }),
+    );
+  });
+
+  it('filters and records audit export by reviewer', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }, 'format=json&reviewed_by=admin_1'),
+      emptyRouteContext,
+    )) as Response;
+
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    expect(findManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          AND: expect.arrayContaining([
+            {
+              reviews: {
+                some: {
+                  org_id: 'org_1',
+                  reviewed_by: 'admin_1',
+                },
+              },
+            },
+          ]),
+        }),
+      }),
+    );
+    expect(recordDataExportAuditMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        filters: expect.objectContaining({
+          reviewedBy: 'admin_1',
+        }),
+      }),
+    );
+  });
+
+  it('combines export review state and reviewer filters with AND', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = (await GET(
+      createRequest(
+        { 'x-org-id': 'org_1' },
+        'format=json&review_state=reviewed&reviewed_by=admin_1',
+      ),
+      emptyRouteContext,
+    )) as Response;
+
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    expect(findManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          AND: expect.arrayContaining([
+            {
+              reviews: {
+                some: {
+                  org_id: 'org_1',
+                  review_state: 'reviewed',
+                },
+              },
+            },
+            {
+              reviews: {
+                some: {
+                  org_id: 'org_1',
+                  reviewed_by: 'admin_1',
+                },
+              },
+            },
+          ]),
         }),
       }),
     );

@@ -99,8 +99,13 @@ export const AUDIT_LOG_REVIEW_STATE_LABEL_MAP = {
   reviewed: 'レビュー済み',
 } as const satisfies Record<string, string>;
 
+export const AUDIT_LOG_REVIEW_REASON_OPTIONS = Object.entries(
+  AUDIT_LOG_REVIEW_REASON_LABEL_MAP,
+).map(([value, label]) => ({ value, label }));
+
 export const AUDIT_LOG_REDACTION_STATE_LABEL_MAP = {
   redacted: '本文マスク済',
   minimized: '最小化済',
   not_applicable: '対象外',
 } as const satisfies Record<string, string>;
+import { AUDIT_LOG_REVIEW_REASON_LABEL_MAP } from '@/lib/audit-logs/review';

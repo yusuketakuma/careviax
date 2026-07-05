@@ -6,14 +6,14 @@ import { internalError, notFound, success, validationError } from '@/lib/api/res
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withAuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import {
+  AUDIT_LOG_REVIEW_REASON_CODES,
+  DEFAULT_AUDIT_LOG_REVIEW_REASON_CODE,
+} from '@/lib/audit-logs/review';
 
 const reviewBodySchema = z.object({
   review_state: z.enum(['pending', 'reviewed']),
-  reason_code: z
-    .string()
-    .trim()
-    .regex(/^[a-z0-9_.:-]{1,80}$/)
-    .optional(),
+  reason_code: z.enum(AUDIT_LOG_REVIEW_REASON_CODES).optional(),
   reason_note: z.string().trim().max(500).optional(),
 });
 
@@ -46,13 +46,17 @@ const authenticatedPATCH = withAuthContext(
 
     const now = new Date();
     const isReviewed = parsed.data.review_state === 'reviewed';
-    const noteSummary: Prisma.InputJsonValue | typeof Prisma.DbNull = parsed.data.reason_note
-      ? {
-          present: true,
-          length: parsed.data.reason_note.length,
-          redacted: true,
-        }
-      : Prisma.DbNull;
+    const reasonCode = isReviewed
+      ? (parsed.data.reason_code ?? DEFAULT_AUDIT_LOG_REVIEW_REASON_CODE)
+      : null;
+    const noteSummary: Prisma.InputJsonValue | typeof Prisma.DbNull =
+      isReviewed && parsed.data.reason_note
+        ? {
+            present: true,
+            length: parsed.data.reason_note.length,
+            redacted: true,
+          }
+        : Prisma.DbNull;
 
     const review = await prisma.$transaction(async (tx) => {
       const row = await tx.auditLogReview.upsert({
@@ -68,14 +72,14 @@ const authenticatedPATCH = withAuthContext(
           review_state: parsed.data.review_state,
           reviewed_by: isReviewed ? ctx.userId : null,
           reviewed_at: isReviewed ? now : null,
-          reason_code: parsed.data.reason_code ?? null,
+          reason_code: reasonCode,
           reason_note: noteSummary,
         },
         update: {
           review_state: parsed.data.review_state,
           reviewed_by: isReviewed ? ctx.userId : null,
           reviewed_at: isReviewed ? now : null,
-          reason_code: parsed.data.reason_code ?? null,
+          reason_code: reasonCode,
           reason_note: noteSummary,
         },
         select: {
@@ -83,6 +87,7 @@ const authenticatedPATCH = withAuthContext(
           review_state: true,
           reviewed_at: true,
           reviewed_by: true,
+          reason_code: true,
         },
       });
 
@@ -92,10 +97,10 @@ const authenticatedPATCH = withAuthContext(
         targetId: auditLog.id,
         changes: {
           review_state: parsed.data.review_state,
-          reason_code: parsed.data.reason_code ?? null,
-          reason_note_present: Boolean(parsed.data.reason_note),
-          reason_note_length: parsed.data.reason_note?.length ?? 0,
-          reason_note_redacted: Boolean(parsed.data.reason_note),
+          reason_code: reasonCode,
+          reason_note_present: Boolean(isReviewed && parsed.data.reason_note),
+          reason_note_length: isReviewed ? (parsed.data.reason_note?.length ?? 0) : 0,
+          reason_note_redacted: Boolean(isReviewed && parsed.data.reason_note),
         },
       });
 
@@ -108,6 +113,7 @@ const authenticatedPATCH = withAuthContext(
         review_state: review.review_state === 'reviewed' ? 'reviewed' : 'pending',
         reviewed_at: review.reviewed_at?.toISOString() ?? null,
         reviewed_by: review.reviewed_by,
+        reason_code: review.review_state === 'reviewed' ? review.reason_code : null,
       },
     });
   },

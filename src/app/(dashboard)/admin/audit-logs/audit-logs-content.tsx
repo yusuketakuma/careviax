@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { format, parseISO, subDays } from 'date-fns';
@@ -14,6 +14,14 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -28,16 +36,19 @@ import {
   AUDIT_LOG_ACTION_LABEL_MAP,
   AUDIT_LOG_ACTION_OPTIONS,
   AUDIT_LOG_REDACTION_STATE_LABEL_MAP,
+  AUDIT_LOG_REVIEW_REASON_OPTIONS,
   AUDIT_LOG_REVIEW_STATE_LABEL_MAP,
   AUDIT_LOG_REVIEW_STATE_OPTIONS,
   AUDIT_LOG_RISK_TIER_OPTIONS,
   AUDIT_LOG_TARGET_TYPE_OPTIONS,
 } from '@/lib/audit-logs/filter-options';
+import { DEFAULT_AUDIT_LOG_REVIEW_REASON_CODE } from '@/lib/audit-logs/review';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { messageFromError } from '@/lib/utils/error-message';
 import type { AuditLogListRow, AuditLogsResponse } from '@/types/api/audit-logs';
+import type { AuditLogReviewReasonCode } from '@/lib/audit-logs/review';
 
 // --- Helpers ---
 
@@ -99,17 +110,23 @@ export function AuditLogsContent() {
   const [actorFilter, setActorFilter] = useState('');
   const [riskTierFilter, setRiskTierFilter] = useState('');
   const [reviewStateFilter, setReviewStateFilter] = useState('');
+  const [reviewedByFilter, setReviewedByFilter] = useState('');
   const [targetTypeFilter, setTargetTypeFilter] = useState('');
   const [actionFilter, setActionFilter] = useState('');
   const [dateFrom, setDateFrom] = useState(format(subDays(new Date(), 30), 'yyyy-MM-dd'));
   const [dateTo, setDateTo] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [reviewingLogId, setReviewingLogId] = useState<string | null>(null);
+  const [reviewErrorByLogId, setReviewErrorByLogId] = useState<Record<string, string>>({});
+  const [reviewConfirmLog, setReviewConfirmLog] = useState<AuditLogListRow | null>(null);
+  const [reviewReasonCode, setReviewReasonCode] = useState<AuditLogReviewReasonCode | ''>('');
+  const [reviewConfirmationChecked, setReviewConfirmationChecked] = useState(false);
 
   const queryParams = new URLSearchParams({
     limit: String(RESULT_LIMIT),
     ...(actorFilter ? { actor: actorFilter } : {}),
     ...(riskTierFilter ? { risk_tier: riskTierFilter } : {}),
     ...(reviewStateFilter ? { review_state: reviewStateFilter } : {}),
+    ...(reviewedByFilter ? { reviewed_by: reviewedByFilter } : {}),
     ...(targetTypeFilter ? { target_type: targetTypeFilter } : {}),
     ...(actionFilter ? { action: actionFilter } : {}),
     ...(dateFrom ? { date_from: dateFrom } : {}),
@@ -123,6 +140,7 @@ export function AuditLogsContent() {
       actorFilter,
       riskTierFilter,
       reviewStateFilter,
+      reviewedByFilter,
       targetTypeFilter,
       actionFilter,
       dateFrom,
@@ -148,7 +166,13 @@ export function AuditLogsContent() {
   const isCapped = logs.length >= RESULT_LIMIT;
 
   const reviewMutation = useMutation({
-    mutationFn: async (auditLogId: string) => {
+    mutationFn: async ({
+      auditLogId,
+      reasonCode,
+    }: {
+      auditLogId: string;
+      reasonCode: AuditLogReviewReasonCode;
+    }) => {
       const res = await fetch(`/api/audit-logs/${encodeURIComponent(auditLogId)}/review`, {
         method: 'PATCH',
         headers: {
@@ -157,7 +181,7 @@ export function AuditLogsContent() {
         },
         body: JSON.stringify({
           review_state: 'reviewed',
-          reason_code: 'admin_reviewed',
+          reason_code: reasonCode,
         }),
       });
       return readApiJson<{ data: { audit_log_id: string; review_state: 'reviewed' | 'pending' } }>(
@@ -165,17 +189,53 @@ export function AuditLogsContent() {
         '監査ログレビューの更新に失敗しました',
       );
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      setReviewErrorByLogId((current) => {
+        const next = { ...current };
+        delete next[variables.auditLogId];
+        return next;
+      });
+      setReviewConfirmLog(null);
+      setReviewReasonCode('');
+      setReviewConfirmationChecked(false);
       toast.success('監査ログをレビュー済みにしました');
       void refetch();
     },
-    onError: (error) => {
-      toast.error(messageFromError(error, '監査ログレビューの更新に失敗しました'));
+    onError: (error, variables) => {
+      const message = messageFromError(error, '監査ログレビューの更新に失敗しました');
+      setReviewErrorByLogId((current) => ({ ...current, [variables.auditLogId]: message }));
+      toast.error(message);
     },
     onSettled: () => {
       setReviewingLogId(null);
     },
   });
+
+  const submitReview = useCallback(
+    (log: AuditLogListRow, reasonCode: AuditLogReviewReasonCode) => {
+      setReviewErrorByLogId((current) => {
+        const next = { ...current };
+        delete next[log.id];
+        return next;
+      });
+      setReviewingLogId(log.id);
+      reviewMutation.mutate({ auditLogId: log.id, reasonCode });
+    },
+    [reviewMutation],
+  );
+
+  const requestReview = useCallback(
+    (log: AuditLogListRow) => {
+      if (log.risk_tier === 'high') {
+        setReviewConfirmLog(log);
+        setReviewReasonCode('');
+        setReviewConfirmationChecked(false);
+        return;
+      }
+      submitReview(log, DEFAULT_AUDIT_LOG_REVIEW_REASON_CODE);
+    },
+    [submitReview],
+  );
 
   const columns = useMemo<ColumnDef<AuditLogListRow>[]>(
     () => [
@@ -249,8 +309,9 @@ export function AuditLogsContent() {
       {
         accessorKey: 'review_state',
         header: 'レビュー',
-        cell: ({ row }) =>
-          row.original.review_state === 'reviewed' ? (
+        cell: ({ row }) => {
+          const reviewError = reviewErrorByLogId[row.original.id];
+          return row.original.review_state === 'reviewed' ? (
             <Badge
               variant="outline"
               className={`text-xs ${reviewBadgeClass(row.original.review_state)}`}
@@ -259,21 +320,37 @@ export function AuditLogsContent() {
               {AUDIT_LOG_REVIEW_STATE_LABEL_MAP.reviewed}
             </Badge>
           ) : (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="h-11 min-h-[44px] whitespace-nowrap"
-              disabled={reviewingLogId === row.original.id}
-              onClick={() => {
-                setReviewingLogId(row.original.id);
-                reviewMutation.mutate(row.original.id);
-              }}
-              aria-label={`${row.original.risk_label} ${row.original.actor_name ?? row.original.actor_id} ${actionLabel(row.original.action)} ${row.original.target_type} ${row.original.target_id}をレビュー済みにする`}
-            >
-              {reviewingLogId === row.original.id ? '更新中' : 'レビュー済み'}
-            </Button>
-          ),
+            <div className="flex min-w-[12rem] flex-col gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={reviewError ? 'destructive' : 'outline'}
+                className="h-11 min-h-[44px] whitespace-nowrap"
+                disabled={reviewingLogId === row.original.id}
+                onClick={() => {
+                  requestReview(row.original);
+                }}
+                aria-describedby={reviewError ? `review-error-${row.original.id}` : undefined}
+                aria-label={`${row.original.risk_label} ${row.original.actor_name ?? row.original.actor_id} ${actionLabel(row.original.action)} ${row.original.target_type} ${row.original.target_id}をレビュー済みにする`}
+              >
+                {reviewingLogId === row.original.id
+                  ? '更新中'
+                  : reviewError
+                    ? '再試行'
+                    : 'レビュー済み'}
+              </Button>
+              {reviewError ? (
+                <p
+                  id={`review-error-${row.original.id}`}
+                  role="alert"
+                  className="text-xs leading-5 text-state-blocked"
+                >
+                  {reviewError}
+                </p>
+              ) : null}
+            </div>
+          );
+        },
       },
       {
         accessorKey: 'ip_address',
@@ -285,7 +362,7 @@ export function AuditLogsContent() {
         ),
       },
     ],
-    [reviewMutation, reviewingLogId],
+    [requestReview, reviewErrorByLogId, reviewingLogId],
   );
 
   async function handleExport(format: 'csv' | 'json') {
@@ -404,6 +481,7 @@ export function AuditLogsContent() {
                   'すべて',
               },
               ...(actorFilter ? [{ label: '操作者', value: actorFilter }] : []),
+              ...(reviewedByFilter ? [{ label: '確認者', value: reviewedByFilter }] : []),
             ]}
             actions={
               <Button
@@ -456,7 +534,7 @@ export function AuditLogsContent() {
               表示条件を変更
               <Filter className="size-4 text-muted-foreground" aria-hidden="true" />
             </summary>
-            <div className="grid gap-4 border-t border-border px-4 py-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+            <div className="grid gap-4 border-t border-border px-4 py-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
               <div className="space-y-1.5">
                 <Label htmlFor="actor-filter">操作者</Label>
                 <div className="relative">
@@ -469,6 +547,22 @@ export function AuditLogsContent() {
                     value={actorFilter}
                     onChange={(e) => setActorFilter(e.target.value)}
                     placeholder="ユーザーIDで検索"
+                    className="h-11 pl-8 sm:h-11 sm:min-h-[44px]"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="reviewer-filter">確認者</Label>
+                <div className="relative">
+                  <Search
+                    className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                  <Input
+                    id="reviewer-filter"
+                    value={reviewedByFilter}
+                    onChange={(e) => setReviewedByFilter(e.target.value)}
+                    placeholder="確認者IDで検索"
                     className="h-11 pl-8 sm:h-11 sm:min-h-[44px]"
                   />
                 </div>
@@ -592,6 +686,126 @@ export function AuditLogsContent() {
           )}
         </div>
       </PageSection>
+      <Dialog
+        open={reviewConfirmLog != null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setReviewConfirmLog(null);
+            setReviewReasonCode('');
+            setReviewConfirmationChecked(false);
+          }
+        }}
+      >
+        <DialogContent size="lg">
+          <DialogHeader>
+            <DialogTitle>高リスク監査ログをレビュー済みにする</DialogTitle>
+          </DialogHeader>
+          {reviewConfirmLog ? (
+            <div className="space-y-4">
+              <div
+                className="rounded-md border border-state-confirm/30 bg-state-confirm/5 px-4 py-3 text-sm"
+                role="status"
+              >
+                高リスクログは、対象・操作・redaction
+                状態を確認し、理由を選択してからレビュー済みにします。
+              </div>
+              <dl className="grid gap-3 rounded-md border border-border/70 bg-muted/30 p-4 text-sm sm:grid-cols-2">
+                <div>
+                  <dt className="text-xs text-muted-foreground">日時</dt>
+                  <dd className="font-medium tabular-nums">
+                    {format(parseISO(reviewConfirmLog.created_at), 'yyyy/MM/dd HH:mm:ss', {
+                      locale: ja,
+                    })}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">操作者</dt>
+                  <dd className="font-medium">
+                    {reviewConfirmLog.actor_name ?? reviewConfirmLog.actor_id}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">操作</dt>
+                  <dd className="font-medium">{actionLabel(reviewConfirmLog.action)}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">対象</dt>
+                  <dd className="break-all font-mono text-xs">
+                    {reviewConfirmLog.target_type}:{reviewConfirmLog.target_id}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Redaction</dt>
+                  <dd>{AUDIT_LOG_REDACTION_STATE_LABEL_MAP[reviewConfirmLog.redaction_state]}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">現在のレビュー状態</dt>
+                  <dd>{AUDIT_LOG_REVIEW_STATE_LABEL_MAP[reviewConfirmLog.review_state]}</dd>
+                </div>
+              </dl>
+              <div className="space-y-1.5">
+                <Label htmlFor="audit-review-reason">レビュー理由</Label>
+                <select
+                  id="audit-review-reason"
+                  value={reviewReasonCode}
+                  onChange={(event) =>
+                    setReviewReasonCode(event.target.value as AuditLogReviewReasonCode | '')
+                  }
+                  className="h-11 min-h-[44px] w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="">理由を選択</option>
+                  {AUDIT_LOG_REVIEW_REASON_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <label className="flex min-h-[44px] items-start gap-3 rounded-md border border-border/70 px-3 py-3 text-sm">
+                <Checkbox
+                  checked={reviewConfirmationChecked}
+                  onCheckedChange={(checked) => setReviewConfirmationChecked(checked === true)}
+                  aria-label="対象ログを確認しました"
+                />
+                <span>
+                  対象日時・操作者・操作・対象ID・redaction
+                  状態を確認し、この高リスクログをレビュー済みにします。
+                </span>
+              </label>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setReviewConfirmLog(null);
+                setReviewReasonCode('');
+                setReviewConfirmationChecked(false);
+              }}
+            >
+              キャンセル
+            </Button>
+            <Button
+              type="button"
+              disabled={
+                !reviewConfirmLog ||
+                !reviewReasonCode ||
+                !reviewConfirmationChecked ||
+                reviewingLogId === reviewConfirmLog.id
+              }
+              onClick={() => {
+                if (!reviewConfirmLog || !reviewReasonCode) return;
+                submitReview(reviewConfirmLog, reviewReasonCode);
+              }}
+            >
+              {reviewConfirmLog && reviewingLogId === reviewConfirmLog.id
+                ? '更新中'
+                : 'レビュー済みにする'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

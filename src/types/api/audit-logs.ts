@@ -1,5 +1,6 @@
 import type {
   AuditLogRedactionState,
+  AuditLogReviewReasonCode,
   AuditLogReviewState,
   AuditLogRiskTier,
 } from '@/lib/audit-logs/review';
@@ -18,6 +19,7 @@ export type AuditLogListRow = {
   review_state: AuditLogReviewState;
   reviewed_at: string | null;
   reviewed_by: string | null;
+  reason_code: AuditLogReviewReasonCode | null;
   ip_address: string | null;
   created_at: string;
 };
@@ -50,6 +52,7 @@ export type AuditLogReviewDashboardSummary = {
     actor_pharmacy_used: boolean;
     actor_site_used: boolean;
     patient_used: boolean;
+    reviewed_by_used: boolean;
   };
 };
 

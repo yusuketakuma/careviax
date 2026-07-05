@@ -93,6 +93,7 @@ function makeAuditLogSummary(totalCount: number, highRiskPending = totalCount > 
         actor_pharmacy_used: false,
         actor_site_used: false,
         patient_used: false,
+        reviewed_by_used: false,
       },
     },
   };
@@ -140,6 +141,7 @@ function makeAuditLog(index: number) {
     review_state: index === 0 ? 'pending' : 'reviewed',
     reviewed_at: index === 0 ? null : '2026-06-20T02:00:00.000Z',
     reviewed_by: index === 0 ? null : 'admin_1',
+    reason_code: index === 0 ? null : 'admin_reviewed',
     ip_address: null,
     created_at: '2026-06-20T01:00:00.000Z',
   };
@@ -273,6 +275,7 @@ describe('AuditLogsContent', () => {
     expect(screen.getByRole('button', { name: 'JSON出力' }).className).toContain('sm:min-h-[44px]');
     expect(screen.getByRole('button', { name: 'CSV出力' }).className).toContain('sm:min-h-[44px]');
     expect(screen.getByPlaceholderText('ユーザーIDで検索').className).toContain('sm:min-h-[44px]');
+    expect(screen.getByPlaceholderText('確認者IDで検索').className).toContain('sm:min-h-[44px]');
     expect(document.getElementById('risk-tier-filter')?.className).toContain('sm:min-h-[44px]');
     expect(document.getElementById('review-state-filter')?.className).toContain('sm:min-h-[44px]');
     expect(document.getElementById('target-type-filter')?.className).toContain('sm:min-h-[44px]');
@@ -289,6 +292,9 @@ describe('AuditLogsContent', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'レビュー待ち' })[0]);
     fireEvent.click(screen.getByRole('button', { name: '同意記録' }));
     fireEvent.click(screen.getByRole('button', { name: '同意記録閲覧' }));
+    fireEvent.change(screen.getByPlaceholderText('確認者IDで検索'), {
+      target: { value: 'admin_1' },
+    });
 
     await waitFor(() => {
       expect(
@@ -299,6 +305,7 @@ describe('AuditLogsContent', () => {
           return (
             params.get('risk_tier') === 'high' &&
             params.get('review_state') === 'pending' &&
+            params.get('reviewed_by') === 'admin_1' &&
             params.get('target_type') === 'consent_record' &&
             params.get('action') === 'consent_record_viewed'
           );
@@ -316,10 +323,12 @@ describe('AuditLogsContent', () => {
       const params = searchParamsFromUrl(String(exportCall?.[0]));
       expect(params.get('risk_tier')).toBe('high');
       expect(params.get('review_state')).toBe('pending');
+      expect(params.get('reviewed_by')).toBe('admin_1');
       expect(params.get('target_type')).toBe('consent_record');
       expect(params.get('action')).toBe('consent_record_viewed');
       expect(params.get('format')).toBe('json');
     });
+    expect(screen.getByText(/確認者\s*admin_1/)).toBeTruthy();
   });
 
   it('shows risk and redaction badges returned by the audit API', async () => {
@@ -349,7 +358,7 @@ describe('AuditLogsContent', () => {
           }),
           body: JSON.stringify({
             review_state: 'reviewed',
-            reason_code: 'admin_reviewed',
+            reason_code: 'expected_access',
           }),
         });
         return new Response(
@@ -384,12 +393,97 @@ describe('AuditLogsContent', () => {
     expect(reviewButton.className).toContain('min-h-[44px]');
     fireEvent.click(reviewButton);
 
+    const dialog = await screen.findByRole('dialog', {
+      name: '高リスク監査ログをレビュー済みにする',
+    });
+    expect(dialog.textContent).toContain('操作者0');
+    expect(dialog.textContent).toContain('target_0');
+    expect(dialog.textContent).toContain('本文マスク済');
+    expect(screen.getByText('業務上想定された操作')).toBeTruthy();
+    expect(dialog.textContent).not.toContain('expected_access');
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input) === '/api/audit-logs/log_0/review'),
+    ).toBe(false);
+    const confirmButton = screen.getByRole('button', { name: 'レビュー済みにする' });
+    expect((confirmButton as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('レビュー理由'), {
+      target: { value: 'expected_access' },
+    });
+    fireEvent.click(screen.getByLabelText('対象ログを確認しました'));
+    expect((confirmButton as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(confirmButton);
+
     await waitFor(() => {
       expect(toast.success).toHaveBeenCalledWith('監査ログをレビュー済みにしました');
     });
     expect(
       fetchMock.mock.calls.some(([input]) => String(input) === '/api/audit-logs/log_0/review'),
     ).toBe(true);
+    const reviewCall = fetchMock.mock.calls.find(
+      ([input]) => String(input) === '/api/audit-logs/log_0/review',
+    );
+    expect((reviewCall?.[1] as RequestInit | undefined)?.body).toBe(
+      JSON.stringify({
+        review_state: 'reviewed',
+        reason_code: 'expected_access',
+      }),
+    );
+  });
+
+  it('keeps failed audit review updates visible in the row and retries the same log', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/audit-logs/log_1/review') {
+        void init;
+        return new Response(JSON.stringify({ message: '監査ログレビューを更新できませんでした' }), {
+          status: 500,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.startsWith('/api/audit-logs?')) {
+        const standardPending = {
+          ...makeAuditLog(1),
+          review_state: 'pending',
+          reviewed_at: null,
+          reviewed_by: null,
+          reason_code: null,
+        };
+        return new Response(
+          JSON.stringify({
+            data: [standardPending],
+            summary: makeAuditLogSummary(1, 0),
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderContent();
+
+    const reviewButton = (
+      await screen.findAllByRole('button', {
+        name: /通常.*操作者1.*target_1をレビュー済みにする/,
+      })
+    )[0];
+    fireEvent.click(reviewButton);
+
+    const alerts = await screen.findAllByRole('alert');
+    expect(
+      alerts.some((alert) => alert.textContent?.includes('監査ログレビューを更新できませんでした')),
+    ).toBe(true);
+    const retryButton = screen.getAllByRole('button', {
+      name: /通常.*target_1をレビュー済みにする/,
+    })[0];
+    expect(retryButton.textContent).toContain('再試行');
+    fireEvent.click(retryButton);
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.filter(([input]) => String(input) === '/api/audit-logs/log_1/review'),
+      ).toHaveLength(2);
+    });
   });
 
   it('uses the server message from a failed audit export response', async () => {

@@ -17,6 +17,7 @@ type ParsedAuditLogFilters =
       action?: string;
       riskTier?: AuditLogRiskTier;
       reviewState?: AuditLogReviewState;
+      reviewedBy?: string;
       from?: Date;
       to?: Date;
     };
@@ -55,6 +56,7 @@ export function parseAuditLogFilters(searchParams: URLSearchParams): ParsedAudit
   const action = searchParams.get('action') ?? undefined;
   const riskTierInput = searchParams.get('risk_tier') ?? undefined;
   const reviewStateInput = searchParams.get('review_state') ?? undefined;
+  const reviewedBy = searchParams.get('reviewed_by') ?? searchParams.get('reviewer') ?? undefined;
 
   const fromInput = searchParams.get('date_from') ?? searchParams.get('from');
   const toInput = searchParams.get('date_to') ?? searchParams.get('to');
@@ -88,6 +90,7 @@ export function parseAuditLogFilters(searchParams: URLSearchParams): ParsedAudit
     action,
     riskTier,
     reviewState,
+    reviewedBy,
     from: from.date,
     to: to.date,
   };

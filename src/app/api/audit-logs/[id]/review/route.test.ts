@@ -79,6 +79,7 @@ describe('/api/audit-logs/[id]/review PATCH', () => {
       review_state: 'reviewed',
       reviewed_at: new Date('2026-04-10T00:00:00.000Z'),
       reviewed_by: 'admin_1',
+      reason_code: 'admin_reviewed',
     });
     createAuditLogEntryMock.mockResolvedValue({ id: 'audit_review_1' });
     transactionMock.mockImplementation(async (callback) =>
@@ -147,6 +148,7 @@ describe('/api/audit-logs/[id]/review PATCH', () => {
         review_state: true,
         reviewed_at: true,
         reviewed_by: true,
+        reason_code: true,
       },
     });
     expect(createAuditLogEntryMock).toHaveBeenCalledWith(
@@ -171,6 +173,32 @@ describe('/api/audit-logs/[id]/review PATCH', () => {
         review_state: 'reviewed',
         reviewed_at: '2026-04-10T00:00:00.000Z',
         reviewed_by: 'admin_1',
+        reason_code: 'admin_reviewed',
+      },
+    });
+  });
+
+  it('defaults a reviewed audit log reason code when omitted', async () => {
+    const response = (await patch(
+      createRequest({
+        review_state: 'reviewed',
+      }),
+    )) as Response;
+
+    expect(response.status).toBe(200);
+    expect(auditLogReviewUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          reason_code: 'admin_reviewed',
+        }),
+        update: expect.objectContaining({
+          reason_code: 'admin_reviewed',
+        }),
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        reason_code: 'admin_reviewed',
       },
     });
   });
@@ -181,11 +209,14 @@ describe('/api/audit-logs/[id]/review PATCH', () => {
       review_state: 'pending',
       reviewed_at: null,
       reviewed_by: null,
+      reason_code: null,
     });
 
     const response = (await patch(
       createRequest({
         review_state: 'pending',
+        reason_code: 'expected_access',
+        reason_note: 'pending時は保存しない',
       }),
     )) as Response;
 
@@ -212,14 +243,32 @@ describe('/api/audit-logs/[id]/review PATCH', () => {
         review_state: 'pending',
         reviewed_at: null,
         reviewed_by: null,
+        reason_code: null,
       },
     });
+    expect(JSON.stringify(auditLogReviewUpsertMock.mock.calls)).not.toContain(
+      'pending時は保存しない',
+    );
   });
 
   it('returns 400 before writes for invalid request bodies', async () => {
     const response = (await patch(
       createRequest({
         review_state: 'done',
+      }),
+    )) as Response;
+
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    expect(auditLogFindFirstMock).not.toHaveBeenCalled();
+    expect(transactionMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 before writes for unknown review reason codes', async () => {
+    const response = (await patch(
+      createRequest({
+        review_state: 'reviewed',
+        reason_code: 'free_text_reason',
       }),
     )) as Response;
 

@@ -1,12 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AUDIT_LOG_REVIEW_REASON_CODES,
+  AUDIT_LOG_REVIEW_REASON_LABEL_MAP,
   buildAuditLogRiskTierWhere,
   classifyAuditLogRedactionState,
   classifyAuditLogRisk,
   enrichAuditLogForReview,
+  isAuditLogReviewReasonCode,
 } from './review';
 
 describe('audit log review registry', () => {
+  it('keeps review reason codes closed and user-facing labels localized', () => {
+    expect(AUDIT_LOG_REVIEW_REASON_CODES).toEqual([
+      'admin_reviewed',
+      'expected_access',
+      'policy_exception',
+      'resolved_elsewhere',
+      'false_positive',
+    ]);
+    expect(isAuditLogReviewReasonCode('expected_access')).toBe(true);
+    expect(isAuditLogReviewReasonCode('free_text_reason')).toBe(false);
+    expect(AUDIT_LOG_REVIEW_REASON_LABEL_MAP.admin_reviewed).toBe('内容確認済み（問題なし）');
+  });
+
   it('classifies exports, patient views, external shares, billing decisions, and destructive actions as high risk', () => {
     expect(
       classifyAuditLogRisk({
@@ -151,6 +167,7 @@ describe('audit log review registry', () => {
       review_state: 'pending',
       reviewed_at: null,
       reviewed_by: null,
+      reason_code: null,
     });
   });
 
@@ -166,6 +183,7 @@ describe('audit log review registry', () => {
         review_state: 'reviewed',
         reviewed_at: new Date('2026-04-10T00:00:00.000Z'),
         reviewed_by: 'admin_1',
+        reason_code: 'expected_access',
       },
     );
 
@@ -173,6 +191,7 @@ describe('audit log review registry', () => {
       review_state: 'reviewed',
       reviewed_at: '2026-04-10T00:00:00.000Z',
       reviewed_by: 'admin_1',
+      reason_code: 'expected_access',
     });
   });
 

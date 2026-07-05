@@ -1,6 +1,14 @@
 export type AuditLogRiskTier = 'high' | 'standard';
 export type AuditLogRedactionState = 'redacted' | 'minimized' | 'not_applicable';
 export type AuditLogReviewState = 'pending' | 'reviewed';
+export const AUDIT_LOG_REVIEW_REASON_CODES = [
+  'admin_reviewed',
+  'expected_access',
+  'policy_exception',
+  'resolved_elsewhere',
+  'false_positive',
+] as const;
+export type AuditLogReviewReasonCode = (typeof AUDIT_LOG_REVIEW_REASON_CODES)[number];
 
 export type AuditLogReviewFields = {
   risk_tier: AuditLogRiskTier;
@@ -10,6 +18,7 @@ export type AuditLogReviewFields = {
   review_state: AuditLogReviewState;
   reviewed_at: string | null;
   reviewed_by: string | null;
+  reason_code: AuditLogReviewReasonCode | null;
 };
 
 type AuditLogForReview = {
@@ -24,7 +33,18 @@ export type AuditLogReviewRecordLike = {
   review_state: string;
   reviewed_at?: Date | string | null;
   reviewed_by?: string | null;
+  reason_code?: string | null;
 };
+
+export const DEFAULT_AUDIT_LOG_REVIEW_REASON_CODE: AuditLogReviewReasonCode = 'admin_reviewed';
+
+export const AUDIT_LOG_REVIEW_REASON_LABEL_MAP = {
+  admin_reviewed: '内容確認済み（問題なし）',
+  expected_access: '業務上想定された操作',
+  policy_exception: '例外承認済み',
+  resolved_elsewhere: '別対応で解決済み',
+  false_positive: '誤検知として確認',
+} as const satisfies Record<AuditLogReviewReasonCode, string>;
 
 const HIGH_RISK_ACTIONS = [
   'break_glass',
@@ -212,6 +232,8 @@ export function enrichAuditLogForReview<T extends AuditLogForReview>(
     reviewed_at:
       isReviewed && review?.reviewed_at ? new Date(review.reviewed_at).toISOString() : null,
     reviewed_by: isReviewed ? (review.reviewed_by ?? null) : null,
+    reason_code:
+      isReviewed && isAuditLogReviewReasonCode(review?.reason_code) ? review.reason_code : null,
   };
 }
 
@@ -233,6 +255,15 @@ export function isAuditLogReviewState(
   value: string | null | undefined,
 ): value is AuditLogReviewState {
   return value === 'pending' || value === 'reviewed';
+}
+
+export function isAuditLogReviewReasonCode(
+  value: string | null | undefined,
+): value is AuditLogReviewReasonCode {
+  return (
+    typeof value === 'string' &&
+    (AUDIT_LOG_REVIEW_REASON_CODES as readonly string[]).includes(value)
+  );
 }
 
 export function buildAuditLogRiskTierWhere(riskTier: AuditLogRiskTier) {
@@ -273,6 +304,17 @@ export function buildAuditLogReviewStateWhere(reviewState: AuditLogReviewState, 
       none: {
         org_id: orgId,
         review_state: 'reviewed',
+      },
+    },
+  };
+}
+
+export function buildAuditLogReviewerWhere(reviewedBy: string, orgId: string) {
+  return {
+    reviews: {
+      some: {
+        org_id: orgId,
+        reviewed_by: reviewedBy,
       },
     },
   };

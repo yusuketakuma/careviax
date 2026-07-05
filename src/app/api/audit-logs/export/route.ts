@@ -7,6 +7,7 @@ import { internalError, validationError } from '@/lib/api/response';
 import { parseAuditLogFilters } from '@/lib/api/audit-log-filters';
 import { redactAuditLogsForResponse } from '@/lib/audit-logs/redaction';
 import {
+  buildAuditLogReviewerWhere,
   buildAuditLogReviewStateWhere,
   buildAuditLogRiskTierWhere,
   enrichAuditLogsForReview,
@@ -38,6 +39,10 @@ const authenticatedGET = withAuthContext(
     }
 
     const { format } = parsed.data;
+    const reviewFilterWheres = [
+      filters.reviewState ? buildAuditLogReviewStateWhere(filters.reviewState, ctx.orgId) : null,
+      filters.reviewedBy ? buildAuditLogReviewerWhere(filters.reviewedBy, ctx.orgId) : null,
+    ].filter((item): item is NonNullable<typeof item> => item !== null);
 
     const where = {
       org_id: ctx.orgId,
@@ -48,7 +53,7 @@ const authenticatedGET = withAuthContext(
       ...(filters.targetType ? { target_type: filters.targetType } : {}),
       ...(filters.action ? { action: filters.action } : {}),
       ...(filters.riskTier ? buildAuditLogRiskTierWhere(filters.riskTier) : {}),
-      ...(filters.reviewState ? buildAuditLogReviewStateWhere(filters.reviewState, ctx.orgId) : {}),
+      ...(reviewFilterWheres.length > 0 ? { AND: reviewFilterWheres } : {}),
       ...((filters.from ?? filters.to)
         ? {
             created_at: {
@@ -77,6 +82,7 @@ const authenticatedGET = withAuthContext(
               review_state: true,
               reviewed_at: true,
               reviewed_by: true,
+              reason_code: true,
             },
           })
         : [];
@@ -98,6 +104,7 @@ const authenticatedGET = withAuthContext(
         action: filters.action ?? null,
         riskTier: filters.riskTier ?? null,
         reviewState: filters.reviewState ?? null,
+        reviewedBy: filters.reviewedBy ?? null,
         from: filters.from?.toISOString() ?? null,
         to: filters.to?.toISOString() ?? null,
       },
@@ -137,6 +144,9 @@ const authenticatedGET = withAuthContext(
       'risk_tier',
       'redaction_state',
       'review_state',
+      'reviewed_at',
+      'reviewed_by',
+      'reason_code',
       'action',
       'target_type',
       'target_id',
@@ -157,6 +167,9 @@ const authenticatedGET = withAuthContext(
         log.risk_tier,
         log.redaction_state,
         log.review_state,
+        log.reviewed_at ?? '',
+        log.reviewed_by ?? '',
+        log.reason_code ?? '',
         log.action,
         log.target_type,
         log.target_id,
