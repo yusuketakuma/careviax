@@ -328,14 +328,18 @@ FE 仕上げ（低優先）:
 
 - [ ] `src/lib/calendar/visit-availability.ts` を新設せず拡張する。現 `canVisitOn` の reason code を planner/API diagnostics と共有する。
 - [ ] 訪問可能枠 DB 化前は、既存 PharmacyOperatingHours/BusinessHoliday + PharmacistShift + patient/facility preference の intersection を唯一の訪問可能判定にする。
-- [ ] 薬剤準備は既存 workflow gate / preparation state を調査し、`medication_ready_at` / `min_schedulable_at` を直接 DB 追加する前に derived helper と diagnostics で接続する。
+- [x] 薬剤準備は既存 workflow gate / preparation state を調査し、`medication_ready_at` / `min_schedulable_at` を直接 DB 追加する前に derived helper と diagnostics で接続する。
+      2026-07-05: schedule 作成前は `VisitPreparation` が存在しないため、既存 daily demand と同じ
+      `MedicationCycle.overall_status in ('set_audited', 'visit_ready')` を derived readiness として採用。
+      未満の cycle は `medication_not_ready` diagnostic で proposal 生成を fail-closed し、
+      response/audit/detail 用 normalizer は cycle_id/status/required_statuses の enum 値だけを通す。
 - [x] 緊急予備枠は初期値を service 定数にし、`remainingSlackMinutes` / `slackPenalty` と conflict しない形で `emergency_reserve_preserved` diagnostic を出す。DB field は VS-AUTO-7。
       2026-07-05: `EMERGENCY_RESERVE_MINUTES = 60` を planner に追加し、緊急以外の候補は
       `remainingSlackMinutes < 60` で rejected diagnostics に落とす。緊急提案は予備枠を使用可能。
       response/audit/detail 用 diagnostics normalizer は `emergency_reserve` を whitelist し、PHI/free-text を通さない。
 - テスト:
   - `canVisitOn` の既存 fail-closed tests を維持。
-  - medication ready 前の候補除外。
+  - [x] medication ready 前の候補除外。
   - [x] emergency reserve を超える自動充填拒否。
   - max_daily/max_weekly/vehicle capacity rejected diagnostics 維持。
 

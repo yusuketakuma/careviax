@@ -75,12 +75,14 @@ function buildProposalDiagnosticsInput(args: {
   rejected?: unknown[];
   deadlinePolicy?: unknown[];
   reviewCandidates?: unknown[];
+  medicationReadiness?: unknown[];
 }) {
   return {
     accepted: args.accepted ?? [],
     rejected: args.rejected ?? [],
     deadline_policy: args.deadlinePolicy ?? [],
     review_candidates: args.reviewCandidates ?? [],
+    medication_readiness: args.medicationReadiness ?? [],
   };
 }
 
@@ -1038,6 +1040,7 @@ const authenticatedPOST = withAuthContext(
           buildProposalDiagnosticsInput({
             rejected: plannerDiagnostics?.rejected,
             deadlinePolicy: plannerDiagnostics?.deadline_policy,
+            medicationReadiness: plannerDiagnostics?.medication_readiness,
           }),
           { mode: 'response' },
         ),
@@ -1137,6 +1140,7 @@ const authenticatedPOST = withAuthContext(
             buildProposalDiagnosticsInput({
               rejected: [...(plannerDiagnostics?.rejected ?? []), ...rejectedByBilling],
               deadlinePolicy: plannerDiagnostics?.deadline_policy,
+              medicationReadiness: plannerDiagnostics?.medication_readiness,
             }),
             { mode: 'response' },
           ),
@@ -1163,6 +1167,7 @@ const authenticatedPOST = withAuthContext(
         rejected: [...(plannerDiagnostics?.rejected ?? []), ...rejectedByBilling],
         deadlinePolicy: plannerDiagnostics?.deadline_policy,
         reviewCandidates: reviewCandidateDiagnostics,
+        medicationReadiness: plannerDiagnostics?.medication_readiness,
       }),
       { mode: 'response' },
     );
@@ -1383,6 +1388,7 @@ const authenticatedPOST = withAuthContext(
                 reviewCandidates: acceptedDiagnostic
                   ? buildReviewCandidateDiagnosticsFromAccepted([acceptedDiagnostic])
                   : [],
+                medicationReadiness: plannerDiagnostics?.medication_readiness,
               }),
               { mode: 'audit' },
             );

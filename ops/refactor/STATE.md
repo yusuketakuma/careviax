@@ -40,6 +40,25 @@
 
 ## 直近の land（本日・要点）
 
+- codex: VS-AUTO-4 medication readiness derived gate slice(in-progress on main) implementation complete。
+  - planner: `src/server/services/visit-schedule-planner.ts` は schedule 作成前に `VisitPreparation` が無いことを前提に、
+    既存 daily demand と同じ `MedicationCycle.overall_status in ('set_audited', 'visit_ready')` を
+    derived medication readiness として採用。`dispensing` / `audit_pending` など未準備 cycle や cycle 欠落は
+    proposal を作らず、`medication_not_ready` diagnostics で fail-closed する。
+  - diagnostics/privacy: `src/lib/visit-schedule-proposals/diagnostics.ts` は `medication_readiness[]` を whitelist
+    正規化し、`code`、`cycle_id`、enum `status`、enum `required_statuses` のみを response/audit/detail に通す。
+    detail、患者名、薬剤名、任意 string は通さない。
+  - API: `src/app/api/visit-schedule-proposals/route.ts` は zero-draft validation、billing-all-rejected validation、
+    success response、creation audit の diagnostics input に `medication_readiness` を追加。旧互換の暗黙 ready 扱いは
+    残さず、planner test fixture も `overall_status: 'set_audited'` を明示。
+  - validation:
+    `pnpm exec vitest run src/server/services/visit-schedule-planner.test.ts src/app/api/visit-schedule-proposals/route.test.ts --reporter=dot --testTimeout=30000`
+    green（2 files / 142 tests）;
+    `pnpm exec vitest run src/server/services/visit-schedule-planner.test.ts src/app/api/visit-schedule-proposals/route.test.ts src/lib/calendar/visit-availability.test.ts src/server/services/visit-medication-deadline.test.ts src/server/jobs/daily.test.ts --reporter=dot --testTimeout=30000`
+    green（5 files / 210 tests）; scoped eslint green; `pnpm format:check` green; `git diff --check`
+    green; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` green。
+    next: scoped commit → origin/main push → VS-AUTO-6 overload rebalancer preview or remaining VS-AUTO-4 availability policy cleanup。
 - codex: VS-AUTO-4 emergency reserve preservation slice(in-progress on main) implementation complete。
   - planner: `src/server/services/visit-schedule-planner.ts` に `EMERGENCY_RESERVE_MINUTES = 60` を追加し、
     `remainingSlackMinutes` 算出後、緊急以外の候補が予備枠 60 分未満まで自動充填する場合は

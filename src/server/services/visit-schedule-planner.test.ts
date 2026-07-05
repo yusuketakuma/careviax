@@ -133,6 +133,7 @@ describe('generateVisitScheduleProposalDrafts', () => {
     });
     medicationCycleFindFirstMock.mockResolvedValue({
       id: 'cycle_1',
+      overall_status: 'set_audited',
       prescription_intakes: [],
     });
     visitRecordFindFirstMock.mockResolvedValue(null);
@@ -222,6 +223,35 @@ describe('generateVisitScheduleProposalDrafts', () => {
     });
     expect(result.drafts[0].proposal_reason).toContain('主担当薬剤師を優先');
     expect(result.diagnostics.accepted[0]?.pharmacist_id).toBe('pharmacist_primary');
+  });
+
+  it('rejects proposal generation before medication is set audited', async () => {
+    medicationCycleFindFirstMock.mockResolvedValueOnce({
+      id: 'cycle_dispensing',
+      overall_status: 'dispensing',
+      prescription_intakes: [],
+    });
+
+    const result = await generateVisitScheduleProposalDrafts({
+      orgId: 'org_1',
+      caseId: 'case_1',
+      visitType: 'regular',
+      priority: 'normal',
+      candidateCount: 1,
+      startDate: new Date('2026-03-27T00:00:00.000Z'),
+    });
+
+    expect(result.drafts).toHaveLength(0);
+    expect(result.diagnostics.medication_readiness).toEqual([
+      {
+        code: 'medication_not_ready',
+        cycle_id: 'cycle_dispensing',
+        status: 'dispensing',
+        required_statuses: ['set_audited', 'visit_ready'],
+      },
+    ]);
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(pharmacistShiftFindManyMock).not.toHaveBeenCalled();
   });
 
   it('prioritizes pharmacists whose visit specialties match required special procedures', async () => {
@@ -2900,6 +2930,7 @@ describe('generateVisitScheduleProposalDrafts', () => {
   it('uses the earliest continuing non-PRN medication end date as an inclusive deadline', async () => {
     medicationCycleFindFirstMock.mockResolvedValueOnce({
       id: 'cycle_1',
+      overall_status: 'set_audited',
       prescription_intakes: [
         {
           refill_next_dispense_date: null,
@@ -3020,6 +3051,7 @@ describe('generateVisitScheduleProposalDrafts', () => {
   it('applies per-site operating deadline policy without shrinking the initial shift search window', async () => {
     medicationCycleFindFirstMock.mockResolvedValueOnce({
       id: 'cycle_1',
+      overall_status: 'set_audited',
       prescription_intakes: [
         {
           refill_next_dispense_date: null,
@@ -3206,6 +3238,7 @@ describe('generateVisitScheduleProposalDrafts', () => {
   it('moves holiday-chain medication deadlines before closures and applies the operating-day buffer', async () => {
     medicationCycleFindFirstMock.mockResolvedValueOnce({
       id: 'cycle_1',
+      overall_status: 'set_audited',
       prescription_intakes: [
         {
           refill_next_dispense_date: null,
@@ -3398,6 +3431,7 @@ describe('generateVisitScheduleProposalDrafts', () => {
   it('hard-blocks locked dates that exceed the per-site recommended deadline', async () => {
     medicationCycleFindFirstMock.mockResolvedValueOnce({
       id: 'cycle_1',
+      overall_status: 'set_audited',
       prescription_intakes: [
         {
           refill_next_dispense_date: null,
@@ -3518,6 +3552,7 @@ describe('generateVisitScheduleProposalDrafts', () => {
   it('derives medication end dates from start_date and days when stored end_date is missing', async () => {
     medicationCycleFindFirstMock.mockResolvedValueOnce({
       id: 'cycle_1',
+      overall_status: 'set_audited',
       prescription_intakes: [
         {
           refill_next_dispense_date: null,
@@ -3552,6 +3587,7 @@ describe('generateVisitScheduleProposalDrafts', () => {
   it('uses split dispensing next dispense dates when deriving the visit deadline', async () => {
     medicationCycleFindFirstMock.mockResolvedValueOnce({
       id: 'cycle_1',
+      overall_status: 'set_audited',
       prescription_intakes: [
         {
           refill_next_dispense_date: null,
@@ -3639,6 +3675,7 @@ describe('generateVisitScheduleProposalDrafts', () => {
   it('caps the visit deadline by earlier split dispensing dates even when line supply lasts longer', async () => {
     medicationCycleFindFirstMock.mockResolvedValueOnce({
       id: 'cycle_1',
+      overall_status: 'set_audited',
       prescription_intakes: [
         {
           refill_next_dispense_date: null,
@@ -3673,6 +3710,7 @@ describe('generateVisitScheduleProposalDrafts', () => {
   it('uses the latest visit-record suggestion as a deadline candidate', async () => {
     medicationCycleFindFirstMock.mockResolvedValueOnce({
       id: 'cycle_1',
+      overall_status: 'set_audited',
       prescription_intakes: [
         {
           refill_next_dispense_date: null,
@@ -3781,6 +3819,7 @@ describe('generateVisitScheduleProposalDrafts', () => {
   it('does not reuse an older visit-record suggestion when the latest visit has none', async () => {
     medicationCycleFindFirstMock.mockResolvedValueOnce({
       id: 'cycle_1',
+      overall_status: 'set_audited',
       prescription_intakes: [
         {
           refill_next_dispense_date: null,
@@ -3860,6 +3899,7 @@ describe('generateVisitScheduleProposalDrafts', () => {
   it('keeps overdue medication deadlines urgent and returns an ASAP candidate', async () => {
     medicationCycleFindFirstMock.mockResolvedValueOnce({
       id: 'cycle_1',
+      overall_status: 'set_audited',
       prescription_intakes: [
         {
           refill_next_dispense_date: null,

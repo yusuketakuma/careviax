@@ -1,5 +1,11 @@
 import { addDays, differenceInCalendarDays, getDay } from 'date-fns';
-import type { Prisma, VisitPriority, VisitType, VisitAssignmentMode } from '@prisma/client';
+import type {
+  MedicationCycleStatus,
+  Prisma,
+  VisitPriority,
+  VisitType,
+  VisitAssignmentMode,
+} from '@prisma/client';
 import { buildOperatingCalendarFromDbRows } from '@/lib/calendar/operating-day-adapter';
 import { resolveOperatingState } from '@/lib/calendar/operating-day';
 import { canVisitOn, type VisitAvailabilityBlockedReason } from '@/lib/calendar/visit-availability';
@@ -30,6 +36,13 @@ import {
 
 const DEFAULT_VISIT_DURATION_MINUTES = 60;
 const EMERGENCY_RESERVE_MINUTES = DEFAULT_VISIT_DURATION_MINUTES;
+const VISIT_SCHEDULABLE_MEDICATION_STATUSES = [
+  'set_audited',
+  'visit_ready',
+] as const satisfies readonly MedicationCycleStatus[];
+const VISIT_SCHEDULABLE_MEDICATION_STATUS_SET = new Set<MedicationCycleStatus>(
+  VISIT_SCHEDULABLE_MEDICATION_STATUSES,
+);
 const DEFAULT_SHIFT_START = '09:00';
 const DEFAULT_SHIFT_END = '18:00';
 const MAX_SEARCH_DAYS = 21;
@@ -289,6 +302,13 @@ export type ProposalDeadlinePolicyDiagnostic =
       value: string;
     };
 
+export type ProposalMedicationReadinessDiagnostic = {
+  code: 'medication_not_ready';
+  cycle_id: string | null;
+  status: MedicationCycleStatus | null;
+  required_statuses: (typeof VISIT_SCHEDULABLE_MEDICATION_STATUSES)[number][];
+};
+
 export type AcceptedProposalDiagnostic = {
   pharmacist_id: string;
   pharmacist_name: string;
@@ -322,6 +342,7 @@ export type GenerateVisitScheduleProposalResult = {
     accepted: AcceptedProposalDiagnostic[];
     rejected: ProposalCandidateDiagnostic[];
     deadline_policy?: ProposalDeadlinePolicyDiagnostic[];
+    medication_readiness?: ProposalMedicationReadinessDiagnostic[];
   };
 };
 
@@ -376,6 +397,27 @@ const REJECTION_REASON_LABELS: Record<ProposalCandidateRejectionCode, string> = 
   not_selected: '候補上限外',
   evaluation_error: '評価エラー',
 };
+
+function buildMedicationReadinessDiagnostic(
+  cycle:
+    | {
+        id: string;
+        overall_status?: MedicationCycleStatus | null;
+      }
+    | null
+    | undefined,
+): ProposalMedicationReadinessDiagnostic | null {
+  const status = cycle?.overall_status ?? null;
+  if (status && VISIT_SCHEDULABLE_MEDICATION_STATUS_SET.has(status)) {
+    return null;
+  }
+  return {
+    code: 'medication_not_ready',
+    cycle_id: cycle?.id ?? null,
+    status,
+    required_statuses: [...VISIT_SCHEDULABLE_MEDICATION_STATUSES],
+  };
+}
 
 function operatingDayRejectionDetail(reason: 'holiday' | 'regular_closed') {
   return reason === 'regular_closed' ? '拠点定休日のため候補外です' : '拠点休業日のため候補外です';
@@ -1449,6 +1491,17 @@ export async function generateVisitScheduleProposalDrafts(
       },
     },
   });
+  const medicationReadinessDiagnostic = buildMedicationReadinessDiagnostic(cycle);
+  if (medicationReadinessDiagnostic) {
+    return {
+      drafts: [],
+      diagnostics: {
+        accepted: [],
+        rejected: [],
+        medication_readiness: [medicationReadinessDiagnostic],
+      },
+    };
+  }
 
   const latestVisitSuggestion = await prisma.visitRecord.findFirst({
     where: {

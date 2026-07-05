@@ -2636,6 +2636,7 @@ describe('/api/visit-schedule-proposals', () => {
                   missing_label_count: 1,
                 }),
               ],
+              medication_readiness: [],
             },
           }),
         }),
@@ -2683,6 +2684,15 @@ describe('/api/visit-schedule-proposals', () => {
             notes: '玄関暗証番号1234',
           },
         ],
+        medication_readiness: [
+          {
+            code: 'medication_not_ready',
+            cycle_id: 'cycle_dispensing',
+            status: 'dispensing',
+            required_statuses: ['set_audited', 'visit_ready', '患者A'],
+            detail: '患者A / アムロジピン',
+          },
+        ],
       },
     });
 
@@ -2714,6 +2724,14 @@ describe('/api/visit-schedule-proposals', () => {
               date_key: '2026-04-12',
               value: '2026-04-10',
             }),
+          ],
+          medication_readiness: [
+            {
+              code: 'medication_not_ready',
+              cycle_id: 'cycle_dispensing',
+              status: 'dispensing',
+              required_statuses: ['set_audited', 'visit_ready'],
+            },
           ],
         },
       },

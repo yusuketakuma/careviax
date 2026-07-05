@@ -9,6 +9,26 @@ const REVIEW_CANDIDATE_REASON_CODES = new Set([
 ]);
 const REVIEW_CANDIDATE_MATCH_STATUS = new Set(['unmatched', 'unknown']);
 const REVIEW_CANDIDATE_COUNT_MAX = 100;
+const MEDICATION_READINESS_CODES = new Set(['medication_not_ready']);
+const MEDICATION_CYCLE_STATUSES = new Set([
+  'intake_received',
+  'structuring',
+  'inquiry_pending',
+  'inquiry_resolved',
+  'ready_to_dispense',
+  'dispensing',
+  'dispensed',
+  'audit_pending',
+  'audited',
+  'setting',
+  'set_audited',
+  'visit_ready',
+  'visit_completed',
+  'reported',
+  'on_hold',
+  'cancelled',
+]);
+const MEDICATION_READY_STATUSES = new Set(['set_audited', 'visit_ready']);
 
 type DiagnosticMode = 'response' | 'audit';
 
@@ -72,11 +92,19 @@ export type SafeProposalReviewCandidateDiagnostic = {
   required_label_count?: number;
 };
 
+export type SafeProposalMedicationReadinessDiagnostic = {
+  code: 'medication_not_ready';
+  cycle_id: string | null;
+  status: string | null;
+  required_statuses: string[];
+};
+
 export type SafeProposalGenerationDiagnostics = {
   accepted: SafeProposalAcceptedDiagnostic[];
   rejected: SafeProposalRejectedDiagnostic[];
   deadline_policy: SafeDeadlinePolicyDiagnostic[];
   review_candidates: SafeProposalReviewCandidateDiagnostic[];
+  medication_readiness: SafeProposalMedicationReadinessDiagnostic[];
   billing_constraint_count?: number;
 };
 
@@ -319,6 +347,29 @@ function normalizeReviewCandidateDiagnostic(
   return normalized;
 }
 
+function normalizeMedicationReadinessDiagnostic(
+  value: unknown,
+): SafeProposalMedicationReadinessDiagnostic | null {
+  if (!isRecord(value)) return null;
+  const code = readString(value, 'code');
+  if (!code || !MEDICATION_READINESS_CODES.has(code)) return null;
+  const status = readNullableString(value, 'status');
+  if (status != null && !MEDICATION_CYCLE_STATUSES.has(status)) return null;
+  const requiredStatusesSource = Array.isArray(value.required_statuses)
+    ? value.required_statuses
+    : [];
+  const requiredStatuses = requiredStatusesSource.filter(
+    (item): item is string => typeof item === 'string' && MEDICATION_READY_STATUSES.has(item),
+  );
+  if (requiredStatuses.length === 0) return null;
+  return {
+    code: 'medication_not_ready',
+    cycle_id: readNullableString(value, 'cycle_id'),
+    status,
+    required_statuses: Array.from(new Set(requiredStatuses)),
+  };
+}
+
 export function normalizeProposalGenerationDiagnostics(
   value: unknown,
   options: { mode: DiagnosticMode },
@@ -329,6 +380,9 @@ export function normalizeProposalGenerationDiagnostics(
   const deadlinePolicySource = Array.isArray(source.deadline_policy) ? source.deadline_policy : [];
   const reviewCandidateSource = Array.isArray(source.review_candidates)
     ? source.review_candidates
+    : [];
+  const medicationReadinessSource = Array.isArray(source.medication_readiness)
+    ? source.medication_readiness
     : [];
   const accepted = acceptedSource
     .map((item) => normalizeAcceptedDiagnostic(item, options.mode))
@@ -342,6 +396,9 @@ export function normalizeProposalGenerationDiagnostics(
   const reviewCandidates = reviewCandidateSource
     .map(normalizeReviewCandidateDiagnostic)
     .filter((item): item is SafeProposalReviewCandidateDiagnostic => item != null);
+  const medicationReadiness = medicationReadinessSource
+    .map(normalizeMedicationReadinessDiagnostic)
+    .filter((item): item is SafeProposalMedicationReadinessDiagnostic => item != null);
   const billingConstraintCount = rejected.filter(
     (item) => item.reason_code === 'billing_constraint',
   ).length;
@@ -351,6 +408,7 @@ export function normalizeProposalGenerationDiagnostics(
     rejected,
     deadline_policy: deadlinePolicy,
     review_candidates: reviewCandidates,
+    medication_readiness: medicationReadiness,
     ...(billingConstraintCount > 0 ? { billing_constraint_count: billingConstraintCount } : {}),
   };
 }
