@@ -203,6 +203,30 @@ function buildSerializableConflictError() {
   });
 }
 
+function expectNoRescheduleSideEffects() {
+  expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+  expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
+  expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+  expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+  expect(visitScheduleCountMock).not.toHaveBeenCalled();
+  expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();
+  expect(withOrgContextMock).not.toHaveBeenCalled();
+  expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+  expect(visitScheduleProposalFindManyMock).not.toHaveBeenCalled();
+  expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+  expect(visitScheduleOverrideCreateMock).not.toHaveBeenCalled();
+  expect(visitScheduleOverrideUpdateMock).not.toHaveBeenCalled();
+  expect(contactPartyFindManyMock).not.toHaveBeenCalled();
+  expect(careTeamLinkFindManyMock).not.toHaveBeenCalled();
+  expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+  expect(communicationEventCreateMock).not.toHaveBeenCalled();
+  expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+  expect(taskUpdateManyMock).not.toHaveBeenCalled();
+  expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+  expect(auditLogCreateMock).not.toHaveBeenCalled();
+  expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+}
+
 describe('/api/visit-schedules/[id]/reschedule POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -437,6 +461,38 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
     expect(communicationRequestCreateMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
+
+  it.each([
+    [
+      'well-formed body',
+      createRequest({ reason: '患者都合で変更', reason_code: 'patient_request' }),
+    ],
+    ['malformed JSON', createMalformedJsonRequest()],
+  ])(
+    'denies pharmacist trainees before parsing or reschedule side effects: %s',
+    async (_label, req) => {
+      requireAuthContextMock.mockResolvedValueOnce({
+        ctx: {
+          orgId: 'org_1',
+          userId: 'trainee_1',
+          role: 'pharmacist_trainee',
+        },
+      });
+
+      const response = await POST(req, {
+        params: Promise.resolve({ id: 'schedule_1' }),
+      });
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(403);
+      expectSensitiveNoStore(response);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'AUTH_FORBIDDEN',
+        message: '訪問予定のリスケを要求する権限がありません',
+      });
+      expectNoRescheduleSideEffects();
+    },
+  );
 
   it.each([
     'completed',
@@ -704,7 +760,7 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
         case_id: 'case_1',
         vehicle_resource_id: 'vehicle_1',
         reschedule_source_schedule_id: 'schedule_1',
-        proposal_reason: '担当者不在のため再配置 / リスケ理由: 緊急訪問が割り込んだため',
+        proposal_reason: '担当者不在のため再配置 / リスケ理由分類: 緊急訪問の割込み',
       }),
     });
     expect(visitScheduleProposalCreateMock).toHaveBeenCalledWith({
@@ -771,6 +827,12 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
         related_entity_type: 'visit_schedule',
         related_entity_id: 'schedule_1',
         status: 'draft',
+        context_snapshot: expect.objectContaining({
+          reason_code: 'emergency_insert',
+          reason_label: '緊急訪問の割込み',
+          reason_text_present: true,
+        }),
+        content: expect.stringContaining('理由分類: 緊急訪問の割込み'),
       }),
     });
     expect(communicationEventCreateMock).toHaveBeenCalledWith({
@@ -779,6 +841,7 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
         case_id: 'case_1',
         event_type: 'schedule_change',
         channel: 'phone',
+        content: expect.stringContaining('理由分類: 緊急訪問の割込み'),
       }),
     });
     expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
@@ -787,6 +850,12 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
         orgId: 'org_1',
         taskType: 'visit_schedule_override_approval',
         dedupeKey: 'visit-reschedule-approval:schedule_1',
+        description: '理由分類: 緊急訪問の割込み',
+        metadata: expect.objectContaining({
+          reason_code: 'emergency_insert',
+          reason_label: '緊急訪問の割込み',
+          reason_text_present: true,
+        }),
       }),
     );
     expect(taskUpdateManyMock).toHaveBeenCalledWith({
@@ -814,6 +883,8 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
         target_id: 'schedule_1',
         changes: expect.objectContaining({
           reason_code: 'emergency_insert',
+          reason_label: '緊急訪問の割込み',
+          reason_text_present: true,
           communication_channel: 'phone',
           communication_result: 'pending',
           communication_target_count: 4,
@@ -828,6 +899,73 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
       orgId: 'org_1',
       payload: { source: 'visit_schedules_reschedule_request', schedule_id: 'schedule_1' },
     });
+  });
+
+  it('keeps raw reschedule reasons out of proposal, communication, task, audit, and notify surfaces', async () => {
+    const hostileReason = '患者 山田花子 090-1234-5678 玄関暗証番号1234 ワーファリン調整';
+
+    const response = await POST(
+      createRequest(
+        {
+          reason: hostileReason,
+          reason_code: 'patient_request',
+          communication_channel: 'phone',
+          communication_result: 'pending',
+          start_date: '2026-03-28',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'schedule_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+
+    expect(visitScheduleOverrideCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          source_schedule_id: 'schedule_1',
+          reason: hostileReason,
+        }),
+      }),
+    );
+
+    const minimizedSurfaces = JSON.stringify([
+      visitScheduleProposalCreateMock.mock.calls,
+      communicationRequestCreateMock.mock.calls,
+      communicationEventCreateMock.mock.calls,
+      upsertOperationalTaskMock.mock.calls,
+      dispatchNotificationEventMock.mock.calls,
+      auditLogCreateMock.mock.calls,
+      notifyWorkflowMutationMock.mock.calls,
+      body,
+    ]);
+    for (const token of ['山田花子', '090-1234-5678', '玄関暗証番号1234', 'ワーファリン']) {
+      expect(minimizedSurfaces).not.toContain(token);
+    }
+
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        changes: expect.objectContaining({
+          reason_code: 'patient_request',
+          reason_label: '患者都合',
+          reason_text_present: true,
+        }),
+      }),
+    });
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        description: '理由分類: 患者都合',
+        metadata: expect.objectContaining({
+          reason_code: 'patient_request',
+          reason_label: '患者都合',
+          reason_text_present: true,
+        }),
+      }),
+    );
   });
 
   it('skips impacted emergency reschedule side effects when the impacted schedule state changes', async () => {

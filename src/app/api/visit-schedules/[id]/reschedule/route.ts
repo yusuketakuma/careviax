@@ -10,10 +10,20 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { timeDateToString } from '@/lib/visits/time-of-day';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound, conflict, internalError } from '@/lib/api/response';
+import {
+  success,
+  validationError,
+  notFound,
+  conflict,
+  internalError,
+  forbiddenResponse,
+} from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
-import { buildVisitScheduleAssignmentWhere } from '@/lib/auth/visit-schedule-access';
+import {
+  buildVisitScheduleAssignmentWhere,
+  canManageVisitScheduleLifecycle,
+} from '@/lib/auth/visit-schedule-access';
 import { z } from 'zod';
 import { generateVisitScheduleProposalDrafts } from '@/server/services/visit-schedule-planner';
 import { buildVisitScheduleSnapshot } from '@/server/services/visit-schedule-audit';
@@ -297,6 +307,25 @@ function toAuditIsoDate(value: Date | null | undefined) {
   return value?.toISOString() ?? null;
 }
 
+function buildReasonAuditFields(reasonCode: z.infer<typeof rescheduleSchema>['reason_code']) {
+  return {
+    reason_code: reasonCode,
+    reason_label: RESCHEDULE_REASON_LABELS[reasonCode],
+    reason_text_present: true,
+  };
+}
+
+function buildRescheduleCommunicationContent(args: {
+  scheduledDate: Date;
+  reasonCode: z.infer<typeof rescheduleSchema>['reason_code'];
+  visitBeforeContactRequired: boolean;
+}) {
+  const prefix = args.visitBeforeContactRequired
+    ? '【要訪問前連絡】訪問前に患者への連絡が必要です。'
+    : '';
+  return `${prefix}${format(args.scheduledDate, 'yyyy/MM/dd')} の訪問予定を変更します。理由分類: ${RESCHEDULE_REASON_LABELS[args.reasonCode]}`;
+}
+
 async function writePendingRescheduleOverride(
   tx: Prisma.TransactionClient,
   existingOverride: ExistingRescheduleOverride,
@@ -432,6 +461,10 @@ const authenticatedPOST = async (
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('訪問予定IDが不正です');
 
+  if (!canManageVisitScheduleLifecycle(ctx)) {
+    return forbiddenResponse('訪問予定のリスケを要求する権限がありません');
+  }
+
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
 
@@ -538,6 +571,7 @@ const authenticatedPOST = async (
     preferredPharmacistId: parsed.data.preferred_pharmacist_id ?? null,
     requestedVehicleResourceId: parsed.data.vehicle_resource_id ?? null,
   });
+  const reasonAuditFields = buildReasonAuditFields(parsed.data.reason_code);
 
   const existingPendingReschedule = await withOrgContext(ctx.orgId, async (tx) =>
     loadExistingPendingReschedule({ tx, ctx, schedule, requestIntentKey }),
@@ -694,7 +728,9 @@ const authenticatedPOST = async (
           tx.visitScheduleProposal.create({
             data: {
               ...draft,
-              proposal_reason: `${draft.proposal_reason} / リスケ理由: ${parsed.data.reason}`,
+              proposal_reason: `${draft.proposal_reason} / リスケ理由分類: ${
+                reasonAuditFields.reason_label
+              }`,
             },
           }),
         ),
@@ -1077,8 +1113,8 @@ const authenticatedPOST = async (
                 related_entity_id: schedule.id,
                 context_snapshot: {
                   reason_code: parsed.data.reason_code,
-                  reason_label: RESCHEDULE_REASON_LABELS[parsed.data.reason_code],
-                  reason: parsed.data.reason,
+                  reason_label: reasonAuditFields.reason_label,
+                  reason_text_present: reasonAuditFields.reason_text_present,
                   // HVI-01F: use effective channel (may be overridden by intake preferred_contact_method)
                   communication_channel: effectiveChannel,
                   communication_result: parsed.data.communication_result,
@@ -1095,10 +1131,11 @@ const authenticatedPOST = async (
                 },
                 status: parsed.data.communication_result === 'pending' ? 'draft' : 'sent',
                 subject: `訪問予定変更の連絡 (${RESCHEDULE_REASON_LABELS[parsed.data.reason_code]})`,
-                // HVI-01F: prepend patient-contact-first flag when visit_before_contact_required
-                content: schedulingPreference.visitBeforeContactRequired
-                  ? `【要訪問前連絡】${format(schedule.scheduled_date, 'yyyy/MM/dd')} の訪問予定を変更します。訪問前に患者への連絡が必要です。理由: ${parsed.data.reason}`
-                  : `${format(schedule.scheduled_date, 'yyyy/MM/dd')} の訪問予定を変更します。理由: ${parsed.data.reason}`,
+                content: buildRescheduleCommunicationContent({
+                  scheduledDate: schedule.scheduled_date,
+                  reasonCode: parsed.data.reason_code,
+                  visitBeforeContactRequired: schedulingPreference.visitBeforeContactRequired,
+                }),
                 requested_by: ctx.userId,
                 // HVI-01F: SLA due date from pharmacy_decision_due_date when available
                 due_date: slaDueDate,
@@ -1118,9 +1155,11 @@ const authenticatedPOST = async (
           channel: toVisitScheduleCommunicationEventChannel(effectiveChannel),
           direction: 'outbound',
           subject: `訪問予定変更 (${RESCHEDULE_REASON_LABELS[parsed.data.reason_code]})`,
-          content: schedulingPreference.visitBeforeContactRequired
-            ? `【要訪問前連絡】${format(schedule.scheduled_date, 'yyyy/MM/dd')} の訪問予定を変更します。訪問前に患者への連絡が必要です。理由: ${parsed.data.reason}`
-            : `${format(schedule.scheduled_date, 'yyyy/MM/dd')} の訪問予定を変更します。理由: ${parsed.data.reason}`,
+          content: buildRescheduleCommunicationContent({
+            scheduledDate: schedule.scheduled_date,
+            reasonCode: parsed.data.reason_code,
+            visitBeforeContactRequired: schedulingPreference.visitBeforeContactRequired,
+          }),
           counterpart_name:
             communicationTargets.length > 0
               ? communicationTargets.map((target) => target.recipientName).join(' / ')
@@ -1135,7 +1174,7 @@ const authenticatedPOST = async (
         title: schedulingPreference.visitBeforeContactRequired
           ? '【要訪問前連絡】確定済み訪問の変更承認が必要です'
           : '確定済み訪問の変更承認が必要です',
-        description: parsed.data.reason,
+        description: `理由分類: ${reasonAuditFields.reason_label}`,
         priority: parsed.data.priority === 'emergency' ? 'urgent' : 'high',
         dueDate: slaDueDate,
         // HVI-01F: use pharmacy_decision_due_date as SLA deadline when provided
@@ -1148,6 +1187,7 @@ const authenticatedPOST = async (
           impacted_schedule_count: impactedScheduleCount,
           proposal_ids: createdProposals.map((proposal) => proposal.id),
           source_schedule_id: schedule.id,
+          ...reasonAuditFields,
           // HVI-01F: intake-derived scheduling metadata in task for approver context
           preferred_contact_method: schedulingPreference.preferredContactMethod,
           visit_before_contact_required: schedulingPreference.visitBeforeContactRequired,
@@ -1201,8 +1241,7 @@ const authenticatedPOST = async (
         targetType: 'VisitSchedule',
         targetId: schedule.id,
         changes: {
-          reason: parsed.data.reason,
-          reason_code: parsed.data.reason_code,
+          ...reasonAuditFields,
           communication_channel: parsed.data.communication_channel,
           communication_result: parsed.data.communication_result,
           communication_target_count: communicationTargets.length,
