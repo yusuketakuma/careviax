@@ -3787,6 +3787,7 @@
 ## 2026-07-06 Dashboard Comment Feed Rail slice
 
 - codex: `DASH-COMM-001` minimal dashboard team conversation feed implemented.
+  Implementation commit: `d17c1e8b9` (`Add dashboard comment feed rail`).
   Dashboard cockpit 右レールの `チームの会話` を、既存 `TaskComment` から供給する独立 segment
   `/api/dashboard/cockpit/comments` として追加した。既存 `/api/comments/recent` は current-user
   authored/mentioned feed で、dashboard team scope と担当 case/patient scope を表せないため再利用せず、
