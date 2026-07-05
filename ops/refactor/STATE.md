@@ -170,6 +170,13 @@
   endpoints / patient-scoped POST bodies / org JSON headers / hostile identity handling /
   toast-invalidation contract は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 business-holidays readApiJson slice(fe3056b9) land。focused Vitest 16、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。business-holiday save/delete mutation
+  responses を readApiJson へ収束し、business holidays / pharmacy sites reads、path helper、
+  hostile-id encoding、dot-segment fail-closed、org headers、request bodies、success toasts、
+  invalidation contract は保持。bulk creation は multi-response partial-failure contract が別なので未変更。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
+  維持しつつ、本sliceでは不要。
 - codex: R40/R44 report-detail-mutations readApiJson slice(ecb66652) land。focused Vitest 39、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。report detail confirm /
   single-send / bulk-send mutation responses を readApiJson へ収束し、care-report
