@@ -39,10 +39,16 @@
 
 ## 直近の land（本日・要点）
 
-- codex: ledger-consolidation rule change land pending。2026-07-05 ユーザー指示により、
+- codex: ledger-consolidation rule change(7a2e798c) land。2026-07-05 ユーザー指示により、
   active progress/SSOT ledger は `ops/refactor/STATE.md` のみ。
   `.codex/ralph-state.md`、`CODEX_GOAL_PROGRESS.md`、`ops/refactor/LOG.md`、
   `ops/refactor/BACKLOG.md` は historical/reference とし、新規 slice entry は追記しない。
+- codex: R40/R44 shared-viewer readApiJson slice(86aa951c) land。focused Vitest 10、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。external access GET /
+  self-report POST responses を readApiJson へ収束し、OTP header、idempotency key、
+  self-report body、draft autosave/clear、409/429 fixed toast contract、archive display は保持。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
+  維持しつつ、本sliceでは不要。
 - coordinator mode refresh(0164b797) / agmsg turn hook(025ee516) / W3-E1 shifts RHF(c5ec2727)
   / W3-E2 DataTable selectable-listbox contract(757ca20c) / prescriptions-table DataTable migration(2d0d80b4)
   / W3-E1 facilities RHF(a18abc1c) — coordinator review + focused validation green。DataTable contract は
