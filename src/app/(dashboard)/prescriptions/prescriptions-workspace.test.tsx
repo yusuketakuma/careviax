@@ -204,7 +204,7 @@ describe('PrescriptionsWorkspace', () => {
 
     const options = latestInfiniteQueryOptions();
     // infinite queryKey carries the status/source filters; realtime invalidation key (['prescription-intakes','org_1']) is separate.
-    expect(options.queryKey).toEqual(['prescription-intakes', 'org_1', 'all', 'all']);
+    expect(options.queryKey).toEqual(['prescription-intakes', 'org_1', 'all', 'all', '']);
     expect(options.refetchInterval).toBeUndefined();
     expect(options.getNextPageParam({ nextCursor: 'cursor_1' })).toBe('cursor_1');
 
@@ -256,13 +256,64 @@ describe('PrescriptionsWorkspace', () => {
     fireEvent.click(screen.getByRole('button', { name: 'FAX' }));
 
     const options = latestInfiniteQueryOptions();
-    expect(options.queryKey).toEqual(['prescription-intakes', 'org_1', 'inquiry_pending', 'fax']);
+    expect(options.queryKey).toEqual([
+      'prescription-intakes',
+      'org_1',
+      'inquiry_pending',
+      'fax',
+      '',
+    ]);
 
     await options.queryFn({ pageParam: undefined });
 
     const url = parseFetchUrl();
     expect(url.searchParams.get('status')).toBe('inquiry_pending');
     expect(url.searchParams.get('source_type')).toBe('fax');
+    expect(resetSelectionMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('submits prescription search as a server-side q filter', async () => {
+    render(<PrescriptionsWorkspace />);
+
+    fireEvent.change(
+      screen.getByRole('textbox', {
+        name: '患者名・カナ・処方医・医療機関・受付番号で検索',
+      }),
+      { target: { value: '山田' } },
+    );
+    fireEvent.click(screen.getByRole('button', { name: '検索' }));
+
+    const options = latestInfiniteQueryOptions();
+    expect(options.queryKey).toEqual(['prescription-intakes', 'org_1', 'all', 'all', '山田']);
+
+    await options.queryFn({ pageParam: undefined });
+
+    const url = parseFetchUrl();
+    expect(url.searchParams.get('q')).toBe('山田');
+    expect(url.searchParams.get('limit')).toBe('50');
+    expect(url.searchParams.get('include_total')).toBe('1');
+    expect(screen.getByText(/検索条件全件/)).toBeTruthy();
+    expect(resetSelectionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears active prescription search and removes q from the server request', async () => {
+    render(<PrescriptionsWorkspace />);
+
+    const searchBox = screen.getByRole('textbox', {
+      name: '患者名・カナ・処方医・医療機関・受付番号で検索',
+    });
+    fireEvent.change(searchBox, { target: { value: '山田' } });
+    fireEvent.click(screen.getByRole('button', { name: '検索' }));
+    fireEvent.click(screen.getByRole('button', { name: '検索語をクリア' }));
+
+    const options = latestInfiniteQueryOptions();
+    expect(options.queryKey).toEqual(['prescription-intakes', 'org_1', 'all', 'all', '']);
+
+    await options.queryFn({ pageParam: undefined });
+
+    const url = parseFetchUrl();
+    expect(url.searchParams.has('q')).toBe(false);
+    expect(screen.queryByText(/検索条件全件/)).toBeNull();
     expect(resetSelectionMock).toHaveBeenCalledTimes(2);
   });
 

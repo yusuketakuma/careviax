@@ -1,12 +1,13 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, type FormEvent } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { FilePlus, FileText, Keyboard } from 'lucide-react';
+import { FilePlus, FileText, Keyboard, Search, X } from 'lucide-react';
 import Link from 'next/link';
 import { ActionRail } from '@/components/ui/action-rail';
 import { Button } from '@/components/ui/button';
 import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
+import { Input } from '@/components/ui/input';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -140,10 +141,12 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
   const orgId = useOrgId();
   const [statusFilter, setStatusFilter] = useState<FilterKey>('all');
   const [sourceFilter, setSourceFilter] = useState<FilterKey>('all');
+  const [searchDraft, setSearchDraft] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const queryKey = useMemo(
-    () => ['prescription-intakes', orgId, statusFilter, sourceFilter] as const,
-    [orgId, statusFilter, sourceFilter],
+    () => ['prescription-intakes', orgId, statusFilter, sourceFilter, searchQuery] as const,
+    [orgId, statusFilter, sourceFilter, searchQuery],
   );
 
   const {
@@ -165,6 +168,7 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
       if (pageParam) params.set('cursor', pageParam);
       if (statusFilter !== 'all') params.set('status', statusFilter);
       if (sourceFilter !== 'all') params.set('source_type', sourceFilter);
+      if (searchQuery) params.set('q', searchQuery);
 
       const res = await fetch(`/api/prescription-intakes?${params}`, {
         headers: buildOrgHeaders(orgId),
@@ -231,9 +235,29 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
     void refetch();
   }, [refetch]);
 
+  const handleSubmitSearch = useCallback(
+    (event?: FormEvent<HTMLFormElement>) => {
+      event?.preventDefault();
+      const nextQuery = searchDraft.trim();
+      if (nextQuery === searchQuery) return;
+      setSearchQuery(nextQuery);
+      resetSelection();
+    },
+    [resetSelection, searchDraft, searchQuery],
+  );
+
+  const handleClearSearch = useCallback(() => {
+    setSearchDraft('');
+    if (searchQuery) {
+      setSearchQuery('');
+      resetSelection();
+    }
+  }, [resetSelection, searchQuery]);
+
   const inquiryCount = statusCounts['inquiry_pending'] ?? 0;
   const readyCount = statusCounts['ready_to_dispense'] ?? 0;
   const intakeErrorMessage = error instanceof Error ? error.message : undefined;
+  const isSearchActive = searchQuery.length > 0;
 
   return (
     <div
@@ -246,10 +270,57 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
           <span className="text-sm font-semibold text-foreground">処方受付</span>
         </div>
 
+        <form
+          role="search"
+          aria-label="処方受付を検索"
+          className="flex min-w-0 flex-1 items-center gap-2 lg:max-w-[30rem]"
+          onSubmit={handleSubmitSearch}
+        >
+          <div className="relative min-w-0 flex-1">
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+              aria-hidden="true"
+            />
+            <Input
+              value={searchDraft}
+              onChange={(event) => setSearchDraft(event.target.value)}
+              className="min-h-[44px] pl-9 pr-9 text-sm"
+              placeholder="患者名・カナ・処方医・医療機関・受付番号で検索"
+              aria-label="患者名・カナ・処方医・医療機関・受付番号で検索"
+            />
+            {searchDraft ? (
+              <button
+                type="button"
+                className="absolute right-1 top-1/2 inline-flex min-h-[36px] min-w-[36px] -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                onClick={handleClearSearch}
+                aria-label="検索語をクリア"
+              >
+                <X className="size-4" aria-hidden="true" />
+              </button>
+            ) : null}
+          </div>
+          <Button
+            type="submit"
+            variant={isSearchActive ? 'default' : 'outline'}
+            size="sm"
+            className="!h-auto !min-h-[44px] px-3 text-xs sm:!h-auto sm:!min-h-[44px]"
+          >
+            検索
+          </Button>
+        </form>
+
         <FilterSummaryBar
           className="min-w-0 flex-1 border-border/60 bg-background/70 py-2 lg:py-1.5"
           items={[
             { label: '読込', value: `${loadedItems.length}/${totalMatchingCount}件` },
+            ...(isSearchActive
+              ? [
+                  {
+                    label: '検索条件全件',
+                    value: `${totalMatchingCount}件`,
+                  },
+                ]
+              : []),
             {
               label: '疑義',
               value: `${inquiryCount}件`,

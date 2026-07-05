@@ -40,6 +40,45 @@
 
 ## 直近の land（本日・要点）
 
+- codex: RX-REG-UX-001 Prescription list server-side search UI slice complete（未コミット）。
+  - current task:
+    Goal 継続として `RX-REG-UX-001` を実装。処方受付 API の既存 `q` server-side search を
+    処方受付ワークスペース UI に接続し、検索語を queryKey / API `q` / count 表示へ反映。
+    UI 変更のため `imagegen` skill を読み、`gpt-image-2` 方針に沿う処方受付検索ヘッダー mockup を
+    生成してから実装した。
+  - design reference:
+    `/Users/yusuke/.codex/generated_images/019f2c7e-d969-7882-bd11-432a10abb930/ig_089f7adb6b6e603f016a4a812d3b508191b677d6a38a042a51.png`
+    （preview only。repo asset としては参照しない）
+  - files inspected:
+    `.codex/skills/.system/imagegen/SKILL.md`, `docs/ui-ux-design-guidelines.md`,
+    `src/app/(dashboard)/prescriptions/prescriptions-workspace.tsx`,
+    `src/app/(dashboard)/prescriptions/prescriptions-workspace.test.tsx`,
+    `src/app/(dashboard)/prescriptions/prescriptions-table.tsx`,
+    `src/app/api/prescription-intakes/route.ts`,
+    `src/app/api/prescription-intakes/route.test.ts`,
+    `src/components/ui/filter-summary-bar.tsx`。
+  - files changed:
+    `src/app/(dashboard)/prescriptions/prescriptions-workspace.tsx`,
+    `src/app/(dashboard)/prescriptions/prescriptions-workspace.test.tsx`,
+    `ops/refactor/STATE.md`。
+  - bugs/security risks fixed:
+    処方受付一覧の検索導線が API の server-side `q` に接続されておらず、取得済み window だけを検索していると
+    誤解される UI risk を解消。検索実行時のみ `q` を送信し、検索条件全件 count を表示する。
+    PHI/PII の新規出力は増やさず、既存の internal prescription list permission と API response contract を維持。
+  - performance issues improved:
+    入力ごとに fetch せず、Enter/検索ボタンで検索語を確定するため、処方受付 BFF への過剰リクエストを避ける。
+    queryKey に検索語を含め、React Query cache を状態/種別/search の server-side filter 単位に分離。
+  - validation commands/results:
+    `pnpm vitest run 'src/app/(dashboard)/prescriptions/prescriptions-workspace.test.tsx' --reporter=dot` green（1 file / 12 tests）;
+    `pnpm exec eslint 'src/app/(dashboard)/prescriptions/prescriptions-workspace.tsx' 'src/app/(dashboard)/prescriptions/prescriptions-workspace.test.tsx'` green;
+    `git diff --check -- 'src/app/(dashboard)/prescriptions/prescriptions-workspace.tsx' 'src/app/(dashboard)/prescriptions/prescriptions-workspace.test.tsx'` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。
+  - remaining work:
+    RX-REG-UX-002 facet counts（loaded counts ではなく全体 facet）、global search 側の stale comment/client補完整理、
+    browser screenshot は未実行。
+  - next action:
+    scoped commit を作成。次は `RX-REG-UX-002` facet counts、または `DASH-PERF-001` / `PAT-DETAIL-PERF-002`。
+
 - codex: ONB-001 Consent / Management Plan Renewal Board API slice complete（未コミット）。
   - current task:
     Goal 継続として `ONB-001` を実装。同意期限・管理計画見直し期限の欠落/期限切れ/期限接近を
