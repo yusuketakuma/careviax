@@ -24,6 +24,7 @@ import {
 import { prisma } from '@/lib/db/client';
 import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { canFinalizeClinicalState } from '@/lib/auth/clinical-finalization';
 import { getRequestAuthContext, runWithRequestAuthContext } from '@/lib/auth/request-context';
 import {
   buildVisitRecordScheduleAssignmentWhere,
@@ -1071,6 +1072,9 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
     if (!canWriteVisitRecordForSchedule(ctx, schedule)) {
       return { error: 'schedule_forbidden' as const };
     }
+    if (!canFinalizeClinicalState(ctx.role)) {
+      return { error: 'visit_record_finalization_forbidden' as const };
+    }
     const existingRecord = await loadExistingVisitRecordConflict(tx, ctx.orgId, schedule_id);
     const canOverwrite =
       existingRecord != null &&
@@ -1778,6 +1782,9 @@ async function authenticatedPOST(req: NextRequest) {
       }
       if (result.error === 'schedule_forbidden') {
         return forbiddenResponse('この訪問予定の記録を作成する権限がありません');
+      }
+      if (result.error === 'visit_record_finalization_forbidden') {
+        return forbiddenResponse('訪問結果の確定には薬剤師の確認が必要です');
       }
       if (result.error === 'schedule_status_conflict') {
         return conflict('訪問予定が同時に更新されました。再読み込みしてください', {

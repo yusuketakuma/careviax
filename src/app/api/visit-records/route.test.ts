@@ -2023,27 +2023,76 @@ describe('/api/visit-records POST', () => {
     expect(processHandoffExtractionMock).not.toHaveBeenCalled();
   });
 
-  it('allows a pharmacist trainee to create a record for their assigned schedule', async () => {
-    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist_trainee' });
+  it.each([
+    ['completed', { structured_soap: completedVisitStructuredSoap }],
+    ['completed_with_issue', { structured_soap: completedVisitStructuredSoap }],
+    ['revisit_needed', { revisit_reason: '残薬確認のため再訪問' }],
+    ['delivery_only', {}],
+    ['postponed', { postpone_reason: '発熱のため延期' }],
+    ['cancelled', { cancellation_reason: '入院のため中止' }],
+  ] as const)(
+    'denies an assigned pharmacist trainee before finalizing visit outcome %s',
+    async (outcomeStatus, extraPayload) => {
+      membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist_trainee' });
 
-    const response = await POST(
-      createRequest(
-        {
-          schedule_id: 'schedule_1',
-          patient_id: 'patient_1',
-          visit_date: '2026-03-26',
-          outcome_status: 'completed',
-          structured_soap: completedVisitStructuredSoap,
-        },
-        { 'x-org-id': 'org_1' },
-      ),
-    );
+      const response = await POST(
+        createRequest(
+          {
+            schedule_id: 'schedule_1',
+            patient_id: 'patient_1',
+            visit_date: '2026-03-26',
+            outcome_status: outcomeStatus,
+            ...extraPayload,
+          },
+          { 'x-org-id': 'org_1' },
+        ),
+      );
 
-    if (!response) throw new Error('response is required');
-    expect(response.status).toBe(201);
-    expect(careCaseFindFirstMock).toHaveBeenCalled();
-    expect(visitRecordCreateMock).toHaveBeenCalled();
-  });
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(403);
+      expectSensitiveNoStore(response);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'AUTH_FORBIDDEN',
+        message: '訪問結果の確定には薬剤師の確認が必要です',
+      });
+      expect(visitScheduleFindFirstMock).toHaveBeenCalledOnce();
+      expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+      expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+      expect(visitRecordFindManyMock).not.toHaveBeenCalled();
+      expect(visitRecordCreateMock).not.toHaveBeenCalled();
+      expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
+      expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+      expect(listBillingEvidenceBlockersMock).not.toHaveBeenCalled();
+      expect(billingEvidenceUpsertMock).not.toHaveBeenCalled();
+      expect(buildPatientStateSnapshotMock).not.toHaveBeenCalled();
+      expect(drugMasterFindManyMock).not.toHaveBeenCalled();
+      expect(residualMedicationDeleteManyMock).not.toHaveBeenCalled();
+      expect(residualMedicationCreateMock).not.toHaveBeenCalled();
+      expect(patientLabObservationDeleteManyMock).not.toHaveBeenCalled();
+      expect(patientLabObservationCreateManyMock).not.toHaveBeenCalled();
+      expect(firstVisitDocumentFindFirstMock).not.toHaveBeenCalled();
+      expect(firstVisitDocumentCreateMock).not.toHaveBeenCalled();
+      expect(firstVisitDocumentUpdateMock).not.toHaveBeenCalled();
+      expect(templateFindFirstMock).not.toHaveBeenCalled();
+      expect(auditLogCreateMock).not.toHaveBeenCalled();
+      expect(medicationIssueFindFirstMock).not.toHaveBeenCalled();
+      expect(medicationIssueCreateMock).not.toHaveBeenCalled();
+      expect(tracingReportFindFirstMock).not.toHaveBeenCalled();
+      expect(tracingReportCreateMock).not.toHaveBeenCalled();
+      expect(communicationRequestFindFirstMock).not.toHaveBeenCalled();
+      expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+      expect(consentRecordFindFirstMock).not.toHaveBeenCalled();
+      expect(medicationCycleFindFirstMock).not.toHaveBeenCalled();
+      expect(medicationCycleFindManyMock).not.toHaveBeenCalled();
+      expect(medicationCycleUpdateMock).not.toHaveBeenCalled();
+      expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
+      expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
+      expect(workflowExceptionFindFirstMock).not.toHaveBeenCalled();
+      expect(workflowExceptionCreateMock).not.toHaveBeenCalled();
+      expect(taskUpsertMock).not.toHaveBeenCalled();
+      expect(processHandoffExtractionMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('marks postponed visits as postponed without advancing the visit workflow', async () => {
     const response = await POST(

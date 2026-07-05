@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 import { batchResolveNames } from '@/lib/utils/name-resolver';
 import { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
+import { canFinalizeClinicalState } from '@/lib/auth/clinical-finalization';
 import {
   canAccessVisitScheduleAssignment,
   canWriteVisitRecordForSchedule,
@@ -320,6 +321,9 @@ async function authenticatedPATCH(
         return 'forbidden' as const;
       }
       const schedule = existing.schedule;
+      if (rest.outcome_status !== undefined && !canFinalizeClinicalState(ctx.role)) {
+        return 'visit_record_finalization_forbidden' as const;
+      }
       if (existing.version !== version) return 'conflict' as const;
 
       const nextVisitStartedAt =
@@ -502,6 +506,9 @@ async function authenticatedPATCH(
   if (!updated) return notFound('訪問記録が見つかりません');
   if (updated === 'forbidden') {
     return forbiddenResponse('この訪問記録を更新する権限がありません');
+  }
+  if (updated === 'visit_record_finalization_forbidden') {
+    return forbiddenResponse('訪問結果の確定には薬剤師の確認が必要です');
   }
   if (updated === 'conflict') {
     return conflict(

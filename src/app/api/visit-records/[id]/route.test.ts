@@ -116,6 +116,33 @@ function createMalformedJsonRequest() {
   });
 }
 
+const completedVisitStructuredSoap = {
+  subjective: { symptom_checks: [], free_text: '服薬状況を確認' },
+  objective: {
+    medication_status: 'full_compliance',
+    adherence_score: 4,
+    side_effect_checks: ['none'],
+    lab_values: {
+      egfr: 42,
+      scr: 1.2,
+    },
+  },
+  assessment: {
+    problem_checks: ['interaction_risk'],
+  },
+  plan: {
+    intervention_checks: ['physician_report'],
+    free_text: '医師へ報告し次回も確認',
+  },
+  home_visit_2026: {
+    medication_review_completed: true,
+    residual_medication_checked: true,
+    adverse_event_checked: true,
+    polypharmacy_reviewed: true,
+    after_hours_contact_confirmed: true,
+  },
+};
+
 describe('/api/visit-records/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -685,6 +712,61 @@ describe('/api/visit-records/[id]', () => {
     expect(patientSchedulePreferenceFindFirstMock).not.toHaveBeenCalled();
   });
 
+  it('denies an assigned pharmacist trainee before changing a final visit outcome', async () => {
+    requireAuthContextMock.mockResolvedValue({
+      ctx: {
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist_trainee',
+      },
+    });
+
+    const response = await PATCH(
+      createRequest({
+        version: 1,
+        outcome_status: 'completed',
+        structured_soap: completedVisitStructuredSoap,
+        residual_medications: [
+          {
+            drug_name: 'アムロジピン錠5mg',
+            drug_master_id: 'drug_master_amlodipine',
+            remaining_quantity: 10,
+            is_prohibited_reduction: false,
+          },
+        ],
+        attachments: [{ file_id: '11111111-1111-4111-8111-111111111111' }],
+      }),
+      {
+        params: Promise.resolve({ id: 'visit_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_FORBIDDEN',
+      message: '訪問結果の確定には薬剤師の確認が必要です',
+    });
+    expect(txVisitRecordFindFirstMock).toHaveBeenCalledOnce();
+    expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitRecordFindManyMock).not.toHaveBeenCalled();
+    expect(medicationCycleFindManyMock).not.toHaveBeenCalled();
+    expect(listBillingEvidenceBlockersMock).not.toHaveBeenCalled();
+    expect(drugMasterFindManyMock).not.toHaveBeenCalled();
+    expect(residualMedicationDeleteManyMock).not.toHaveBeenCalled();
+    expect(residualMedicationCreateMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdRangeMock).not.toHaveBeenCalled();
+    expect(patientLabObservationDeleteManyMock).not.toHaveBeenCalled();
+    expect(patientLabObservationCreateManyMock).not.toHaveBeenCalled();
+    expect(getStoredFileRecordMock).not.toHaveBeenCalled();
+    expect(toVisitRecordAttachmentMock).not.toHaveBeenCalled();
+    expect(auditLogFindFirstMock).not.toHaveBeenCalled();
+    expect(userFindManyMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(patientSchedulePreferenceFindFirstMock).not.toHaveBeenCalled();
+  });
+
   it('allows a pharmacist trainee to update a visit record for their assigned schedule', async () => {
     requireAuthContextMock.mockResolvedValue({
       ctx: {
@@ -716,6 +798,11 @@ describe('/api/visit-records/[id]', () => {
         }),
       }),
     );
+    expect(visitRecordFindManyMock).not.toHaveBeenCalled();
+    expect(medicationCycleFindManyMock).not.toHaveBeenCalled();
+    expect(listBillingEvidenceBlockersMock).not.toHaveBeenCalled();
+    expect(residualMedicationDeleteManyMock).not.toHaveBeenCalled();
+    expect(patientLabObservationCreateManyMock).not.toHaveBeenCalled();
   });
 
   it('clears next visit suggestion and receipt timestamp when empty strings are patched', async () => {
