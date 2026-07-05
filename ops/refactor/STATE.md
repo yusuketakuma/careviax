@@ -39,6 +39,25 @@
 
 ## 直近の land（本日・要点）
 
+- codex: FormularyChangeRequest audit free-text minimization batch(d02a64fb) land。
+  ユーザー指示により本sliceでは subagent を投入（privacy_compliance_reviewer /
+  api_contract_reviewer CHANGES_REQUESTED→対応、verifier APPROVE）。focused Vitest 78、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。`AuditLog.changes` の
+  FormularyChangeRequest 系 action（`pharmacy_drug_stock_change_requested` /
+  `pharmacy_drug_stock_change_approved` / `pharmacy_drug_stock_change_rejected`）と
+  `target_type: FormularyChangeRequest` を同一 helper に収束し、`requested_payload.adoption_note`、
+  `current_snapshot.adoption_note`、root `reason`、`decision_note` は raw text を保存/出力せず、
+  `*_present` / `*_length` / `*_redacted` の構造化 metadata のみ残す方針に変更。
+  create / approve / reject の write-time audit persistence を最小化し、既存 historical row は
+  `/api/audit-logs` list と `/api/audit-logs/export?format=json|csv` の response/export redaction で防御。
+  business table 側の `FormularyChangeRequest.reason` / `requested_payload` / `current_snapshot`、
+  decision `decision_note`、承認時 `PharmacyDrugStock.adoption_note` は業務データとして保持。
+  body/status/root shape、no-store headers、canAdmin/org scoping、CSV header、structured trace fields
+  (`site_id` / `drug_master_id` / `request_id` / `applied_stock_id`) は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) に基づき product API /
+  PHI-adjacent audit minimization を変更、DB schema/migration/billing/deploy/package dependency 変更は不要。
+  残る別slice候補: 既存DB内の historical `AuditLog.changes` raw free-text は今回 backfill/migration せず
+  at-rest には残り得るため、運用承認付きの SELECT-only inventory と backfill 計画を別途評価。
 - codex: R40/R44 formulary mutation responses no-store hardening batch(32381d1a) land。
   ユーザー指示により subagent を投入（api_contract_reviewer APPROVE、privacy_compliance_reviewer
   CHANGES_REQUESTED→対応）。focused Vitest 28、scoped ESLint/Prettier/diff-check、
