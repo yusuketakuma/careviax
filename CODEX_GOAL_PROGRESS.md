@@ -1,5 +1,42 @@
 # CODEX Goal Progress
 
+## R40/R44 Patient Share Mutations readApiJson Partial - 2026-07-05 09:37 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/patients/[id]/share/external-share-content.tsx`
+- Scope:
+  - Reused `readApiJson` for patient share follow-up task creation and reply
+    request creation mutation responses.
+  - Existing focused coverage continues to prove task/reply request POST
+    endpoint, method, JSON body, and `x-org-id` header contracts remain
+    unchanged, with mutation toast fallback behavior preserved.
+  - Preserved patient-scoped request body, task dedupe metadata, patient/request
+    hostile identity handling, success toasts, and request invalidation
+    behavior.
+- Safety:
+  - Product UI mutation response handling internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx'`
+    passed `1` file / `12` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `5d836984`
+    (`refactor(ui): reuse readApiJson in patient share mutations`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher/mutation PHI/body-read review
+    before converting additional manual response handling.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Report Share Mutations readApiJson Partial - 2026-07-05 09:32 JST
 
 - Status:
