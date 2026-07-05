@@ -158,6 +158,12 @@ type MixedRouteItem = {
 };
 
 type ProposalGenerationDiagnostics = ProposalGenerationDiagnosticsCardData;
+type CreateProposalResponse = {
+  data: Proposal[];
+  alerts?: unknown[];
+  diagnostics?: ProposalGenerationDiagnostics;
+  replayed?: boolean;
+};
 
 const EMPTY_CASES: CaseOption[] = [];
 const EMPTY_SCHEDULES: VisitSchedule[] = [];
@@ -420,14 +426,7 @@ async function requestVisitScheduleProposal(
     headers: buildOrgJsonHeaders(orgId),
     body: JSON.stringify(payload),
   });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.message ?? '候補生成に失敗しました');
-  }
-  return response.json() as Promise<{
-    data: Proposal[];
-    diagnostics?: ProposalGenerationDiagnostics;
-  }>;
+  return readApiJson<CreateProposalResponse>(response, '候補生成に失敗しました');
 }
 
 export function ScheduleWeeklyOptimizer({
@@ -787,11 +786,7 @@ export function ScheduleWeeklyOptimizer({
           travel_mode: plannerSettings.travel_mode,
         }),
       });
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.message ?? 'ルートプレビューの取得に失敗しました');
-      }
-      return response.json();
+      return readApiJson<VisitRoutePlan>(response, 'ルートプレビューの取得に失敗しました');
     },
     enabled: Boolean(
       orgId &&

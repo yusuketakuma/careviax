@@ -233,6 +233,7 @@ type CreateProposalResponse = {
   data: Proposal[];
   diagnostics?: ProposalGenerationDiagnostics;
 };
+type ProposalMutationResponse = { data: unknown };
 type CaseSearchResponse = { data: CaseOption[] };
 type ContactOutcome = 'attempted' | 'declined' | 'change_requested' | 'unreachable' | 'confirmed';
 type ContactMethod = 'phone' | 'fax' | 'email';
@@ -1163,16 +1164,15 @@ export function ScheduleProposalsContent({
         const message = messageFromError(error, '候補更新に失敗しました');
         throw new Error(proposalActionFailureDisplayMessage(message, false));
       }
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(
-          proposalActionFailureDisplayMessage(error.message ?? '候補更新に失敗しました', true),
-        );
-      }
       try {
-        return await response.json();
-      } catch {
-        throw new Error(proposalActionFailureDisplayMessage('候補更新に失敗しました', true));
+        return await readApiJson<ProposalMutationResponse>(response, '候補更新に失敗しました');
+      } catch (error) {
+        throw new Error(
+          proposalActionFailureDisplayMessage(
+            messageFromError(error, '候補更新に失敗しました'),
+            true,
+          ),
+        );
       }
     },
     onSuccess: async (_data, variables) => {
@@ -1256,18 +1256,8 @@ export function ScheduleProposalsContent({
             } satisfies BulkActionFailure;
           }
 
-          if (!response.ok) {
-            const error = await response.json().catch(() => ({}));
-            return {
-              proposal,
-              ok: false as const,
-              message: error.message ?? '一括更新に失敗しました',
-              reachedServer: true,
-            } satisfies BulkActionFailure;
-          }
-
           try {
-            await response.json();
+            await readApiJson<ProposalMutationResponse>(response, '一括更新に失敗しました');
             return { proposal, ok: true as const };
           } catch (error) {
             return {
@@ -1411,11 +1401,7 @@ export function ScheduleProposalsContent({
           idempotency_key: createProposalGenerationIdempotencyKey(detail.id),
         }),
       });
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.message ?? '再提案の生成に失敗しました');
-      }
-      return response.json() as Promise<CreateProposalResponse>;
+      return readApiJson<CreateProposalResponse>(response, '再提案の生成に失敗しました');
     },
     onSuccess: async (payload) => {
       setLastGenerationDiagnostics(payload.diagnostics ?? null);

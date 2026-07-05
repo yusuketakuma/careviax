@@ -358,6 +358,51 @@ describe('ScheduleWeeklyOptimizer', () => {
     }
   });
 
+  it('reads route preview as a top-level VisitRoutePlan response', async () => {
+    const routePlan = {
+      status: 'ok',
+      note: null,
+      travelMode: 'DRIVE',
+      origin: null,
+      encodedPath: null,
+      orderedScheduleIds: ['proposal:proposal_2', 'schedule_1'],
+      totalDistanceMeters: null,
+      totalDurationSeconds: null,
+      stopSummaries: [],
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () => Response.json(routePlan));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ScheduleWeeklyOptimizer />);
+
+    const routePreviewQuery = useQueryMock.mock.calls
+      .map(([config]) => config as QueryConfig)
+      .find((config) => config.queryKey[0] === 'weekly-optimizer-route-preview');
+
+    await expect(routePreviewQuery?.queryFn?.()).resolves.toMatchObject({
+      orderedScheduleIds: ['proposal:proposal_2', 'schedule_1'],
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/visit-routes',
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
+  it('keeps route preview API messages on failed preview fetches', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({ message: 'ルート計算対象が見つかりません' }, 404),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ScheduleWeeklyOptimizer />);
+
+    const routePreviewQuery = useQueryMock.mock.calls
+      .map(([config]) => config as QueryConfig)
+      .find((config) => config.queryKey[0] === 'weekly-optimizer-route-preview');
+
+    await expect(routePreviewQuery?.queryFn?.()).rejects.toThrow('ルート計算対象が見つかりません');
+  });
+
   it('keeps proposal generation disabled reasons visible until a case is selected', () => {
     useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
       if (queryKey[0] === 'cases' && queryKey[1] === 'weekly-optimizer') {
