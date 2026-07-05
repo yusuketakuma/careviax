@@ -39,6 +39,13 @@
 
 ## 直近の land（本日・要点）
 
+- codex: R40/R44 patient-labs mutations readApiJson slice(d5be8acb) land。focused Vitest 14、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。patient lab create / update mutation
+  responses を readApiJson へ収束し、patient path helper、org JSON headers、raw patient query-key
+  invalidation、getPatientCareQueryKeys invalidation、dot-segment fail-closed、server-message fallback は保持。
+  テストでは fetch mock を call ごとに fresh Response にし、readApiJson の text() 消費 semantics に合わせた。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
+  維持しつつ、本sliceでは不要。
 - codex: ledger-consolidation rule change(7a2e798c) land。2026-07-05 ユーザー指示により、
   active progress/SSOT ledger は `ops/refactor/STATE.md` のみ。
   `.codex/ralph-state.md`、`CODEX_GOAL_PROGRESS.md`、`ops/refactor/LOG.md`、
