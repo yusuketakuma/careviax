@@ -3605,3 +3605,43 @@
 - remaining:
   Browser screenshot/keyboard proof for the audit review page is still pending. Broader `Plans.md` objective remains
   open beyond this audit queue slice.
+
+## 2026-07-06 Audit Review Browser Proof slice
+
+- codex: `UX-AUD-001` audit review browser/keyboard proof added.
+  前回 slice の残件だった audit review page の browser screenshot / keyboard proof を Playwright spec として
+  固定した。route-mocked browser で `/admin/audit-logs` を開き、高リスク未レビュー summary、keyboard
+  `Enter` での high-risk review dialog 起動、理由選択、明示 checkbox、review PATCH payload、
+  standard row の 500 retry error persistence、retry mutation を検証する。
+- files inspected:
+  `Plans.md`, `ops/refactor/STATE.md`, `tools/tests/helpers/local-auth.ts`,
+  `tools/tests/helpers/route-mocks.ts`, `playwright.local.config.ts`,
+  `src/app/(dashboard)/admin/audit-logs/page.tsx`,
+  `src/app/(dashboard)/admin/audit-logs/audit-logs-content.tsx`.
+- files changed:
+  `tools/tests/ui-audit-logs-review.spec.ts`, `ops/refactor/STATE.md`.
+- bugs found/fixed:
+  Playwright proof initially exposed two test-contract mismatches: the current action label for `break_glass_access`
+  is raw action id rather than a Japanese label, and Radix Checkbox exposes a long accessible name plus checkbox
+  internals. The spec now asserts the current accessible contract without hardcoding an unavailable translation.
+- security/PHI risks reduced:
+  Browser proof uses only safe display ids and abstract audit rows; no real patient name, address, phone, prescription,
+  report body, insurance data, or external share URL is present in route mocks or screenshots. The test proves
+  high-risk review cannot be completed until the reason and explicit confirmation are both set.
+- performance issues improved:
+  The proof is route-mocked and single-project `chromium`, so it gives browser coverage for the audit review workflow
+  without depending on live audit-log DB contents or full medical-ui gate runtime.
+- validation:
+  `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-audit-logs-review.spec.ts --project=chromium --timeout=90000`
+  green (1 passed);
+  screenshot artifact:
+  `/var/folders/yg/_v84mvr55kb5dqdpzhvm79bc0000gn/T/careviax-playwright-artifacts/26765/screenshots/audit-logs-review-dashboard-confirmation.png`;
+  `pnpm exec eslint --max-warnings=0 tools/tests/ui-audit-logs-review.spec.ts` green;
+  `pnpm exec prettier --check tools/tests/ui-audit-logs-review.spec.ts` green after formatting;
+  `git diff --check -- tools/tests/ui-audit-logs-review.spec.ts` green;
+  `pnpm typecheck --pretty false` hit Node heap OOM at default heap;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck --pretty false` green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false` green.
+- remaining:
+  Broader `Plans.md` objective remains open. `break_glass_access` Japanese display label is a low-risk polish
+  candidate, but the browser proof intentionally records the current accessible name.
