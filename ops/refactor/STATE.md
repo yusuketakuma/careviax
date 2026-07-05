@@ -40,6 +40,63 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Case Risk Cockpit data quality residence geocode adapter slice（committed）。
+  - current task:
+    `Plans.md` の `RISK-CORE-3 / CORE-003` / data_quality adapter 拡張として、対象患者の primary
+    `Residence` の座標品質を Case Risk Cockpit に接続した。query は `org_id` / `patient_id` /
+    `is_primary=true` で scope し、`adaptResidenceGeocodeToRiskFinding` が座標欠落、0/0 仮座標、
+    緯度経度同値、geocode 再確認、低精度を data_quality domain の controlled finding へ変換する。
+  - subagent:
+    新規投入なし。直前に `multi_agent_v1.spawn_agent(code_mapper)` が `agent thread limit reached` で
+    起動不可だったため、Codex 本体で `Residence` schema / visit constraints validation /
+    operational task presentation / Case Risk Cockpit / registry / tests を確認して実装・検証した。
+  - design / imagegen:
+    backend adapter/API response slice で視覚レイアウト変更を伴わないため、`imagegen` / `gpt-image-2` の
+    新規生成は省略。住所座標 risk を患者詳細 Command Center や地図/住所編集 UI に表示する slice では
+    PH-OS UI/UX SSOT と `gpt-image-2` 方針に従い、非 PHI mockup を先に作る。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `prisma/schema/patient.prisma`,
+    `src/lib/validations/visit-constraints.ts`,
+    `src/lib/tasks/operational-task-presentation.ts`,
+    `src/lib/patient/navigation.ts`,
+    `src/server/services/case-risk-cockpit.ts`,
+    `src/server/services/case-risk-cockpit.test.ts`,
+    `src/server/services/risk-finding-registry.ts`,
+    `src/server/services/risk-finding-registry.test.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/case-risk-cockpit.ts`,
+    `src/server/services/case-risk-cockpit.test.ts`,
+    `src/server/services/risk-finding-registry.ts`,
+    `src/server/services/risk-finding-registry.test.ts`.
+  - bugs / risks reduced:
+    Case Risk Cockpit の data_quality section が空のままで、訪問提案・移動時間計算に影響する住所座標品質が
+    患者/ケース単位の risk に出なかった。primary residence の座標品質を bounded finding として返す。
+  - security / PHI reviewed:
+    住所本文は PHI なので query で select しない。finding は controlled title/detail のみを返し、
+    action href は encoded patient id の住所編集導線を使う。
+  - performance issues improved:
+    `Residence(org_id)` / `Residence(patient_id)` index に沿う bounded `take: 2` query。
+    payload は id/lat/lng/geocode_status/geocode_accuracy/updated_at の最小 select。
+  - validation commands:
+    `pnpm exec prettier --write Plans.md ops/refactor/STATE.md src/server/services/case-risk-cockpit.ts src/server/services/case-risk-cockpit.test.ts src/server/services/risk-finding-registry.ts src/server/services/risk-finding-registry.test.ts`;
+    `git diff --check`;
+    `pnpm exec vitest run src/server/services/case-risk-cockpit.test.ts src/server/services/risk-finding-registry.test.ts src/lib/risk/risk-finding.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm typecheck`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`;
+    `pnpm lint`.
+  - validation results:
+    prettier completed; diff check green; focused vitest green（3 files / 22 tests）;
+    typecheck green; typecheck:no-unused green; `pnpm lint` green with existing unrelated warnings in
+    `src/lib/platform/break-glass.test.ts` (`_tx`, `_input` unused warnings only).
+  - remaining work:
+    Broader `Plans.md` objective remains open。残: privacy_security / integration adapters、
+    住所座標 review task bridge の domain 接続、Case Risk Cockpit UI 接続。
+
 - codex: Case Risk Cockpit notification registry adapter slice（committed）。
   - current task:
     `Plans.md` の `RISK-CORE-3 / CORE-003` / notification adapter 拡張として、現在ユーザー宛の

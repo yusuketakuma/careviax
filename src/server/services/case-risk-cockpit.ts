@@ -17,6 +17,7 @@ import {
   adaptNotificationToRiskFinding,
   adaptOperationalTaskToRiskFinding,
   adaptPrescriptionLineReconciliationToRiskFinding,
+  adaptResidenceGeocodeToRiskFinding,
   adaptUpcomingVisitPreparationToRiskFindings,
 } from '@/server/services/risk-finding-registry';
 import type {
@@ -44,6 +45,7 @@ type CaseRiskCockpitDbReader = {
   dispenseTask: FindManyDelegate<DispenseTaskRow>;
   prescriptionLine: FindManyDelegate<PrescriptionLineRiskRow>;
   notification: FindManyDelegate<NotificationRiskRow>;
+  residence: FindManyDelegate<ResidenceRiskRow>;
   task: FindManyDelegate<TaskRow>;
   billingEvidence: FindManyDelegate<BillingEvidenceRow>;
 };
@@ -125,6 +127,15 @@ type NotificationRiskRow = {
   event_type: string | null;
   link: string | null;
   created_at: Date;
+};
+
+type ResidenceRiskRow = {
+  id: string;
+  lat: number | null;
+  lng: number | null;
+  geocode_status: string | null;
+  geocode_accuracy: string | null;
+  updated_at: Date;
 };
 
 type TaskRow = {
@@ -318,6 +329,21 @@ function pushNotificationFindings(args: {
   }
 }
 
+function pushDataQualityFindings(args: {
+  findings: CaseRiskFinding[];
+  patientId: string;
+  caseId: string;
+  residences: ResidenceRiskRow[];
+}) {
+  for (const residence of args.residences) {
+    const finding = adaptResidenceGeocodeToRiskFinding(residence, {
+      patientId: args.patientId,
+      caseId: args.caseId,
+    });
+    if (finding) args.findings.push(finding);
+  }
+}
+
 function pushTaskFindings(args: {
   findings: CaseRiskFinding[];
   patientId: string;
@@ -413,6 +439,7 @@ export async function getCaseRiskCockpit(
     dispenseTasks,
     prescriptionLines,
     notifications,
+    residences,
     tasks,
   ] = await Promise.all([
     db.consentRecord.findFirst({
@@ -571,6 +598,23 @@ export async function getCaseRiskCockpit(
         created_at: true,
       },
     }),
+    db.residence.findMany({
+      where: {
+        org_id: args.orgId,
+        patient_id: careCase.patient_id,
+        is_primary: true,
+      },
+      orderBy: [{ updated_at: 'desc' }],
+      take: 2,
+      select: {
+        id: true,
+        lat: true,
+        lng: true,
+        geocode_status: true,
+        geocode_accuracy: true,
+        updated_at: true,
+      },
+    }),
     db.task.findMany({
       where: {
         org_id: args.orgId,
@@ -605,6 +649,7 @@ export async function getCaseRiskCockpit(
   const selectedDispenseTasks = dispenseTasks as DispenseTaskRow[];
   const selectedPrescriptionLines = prescriptionLines as PrescriptionLineRiskRow[];
   const selectedNotifications = notifications as NotificationRiskRow[];
+  const selectedResidences = residences as ResidenceRiskRow[];
   const selectedTasks = tasks as TaskRow[];
 
   const visitRecordIds = selectedSchedules
@@ -687,6 +732,12 @@ export async function getCaseRiskCockpit(
     patientId: careCase.patient_id,
     caseId: careCase.id,
     notifications: selectedNotifications,
+  });
+  pushDataQualityFindings({
+    findings,
+    patientId: careCase.patient_id,
+    caseId: careCase.id,
+    residences: selectedResidences,
   });
   pushTaskFindings({
     findings,

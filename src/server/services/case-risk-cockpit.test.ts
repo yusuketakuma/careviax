@@ -12,6 +12,7 @@ function buildDb() {
     dispenseTask: { findMany: vi.fn() },
     prescriptionLine: { findMany: vi.fn() },
     notification: { findMany: vi.fn() },
+    residence: { findMany: vi.fn() },
     task: { findMany: vi.fn() },
     billingEvidence: { findMany: vi.fn() },
   };
@@ -71,6 +72,7 @@ describe('getCaseRiskCockpit', () => {
     expect(db.dispenseTask.findMany).not.toHaveBeenCalled();
     expect(db.prescriptionLine.findMany).not.toHaveBeenCalled();
     expect(db.notification.findMany).not.toHaveBeenCalled();
+    expect(db.residence.findMany).not.toHaveBeenCalled();
     expect(db.task.findMany).not.toHaveBeenCalled();
     expect(db.billingEvidence.findMany).not.toHaveBeenCalled();
   });
@@ -136,6 +138,17 @@ describe('getCaseRiskCockpit', () => {
         created_at: new Date('2026-07-05T01:00:00.000Z'),
         title: '患者 太郎様の通知',
         message: '患者 太郎様の詳細本文',
+      },
+    ]);
+    db.residence.findMany.mockResolvedValue([
+      {
+        id: 'residence/1',
+        lat: 0,
+        lng: 0,
+        geocode_status: 'review_required',
+        geocode_accuracy: 'low',
+        updated_at: new Date('2026-07-05T02:00:00.000Z'),
+        address: '東京都千代田区1-1-1',
       },
     ]);
     db.task.findMany.mockResolvedValue([
@@ -221,7 +234,7 @@ describe('getCaseRiskCockpit', () => {
     expect(result?.overall).toMatchObject({
       status: 'blocked',
       blocking_count: 3,
-      urgent_count: 4,
+      urgent_count: 5,
       warning_count: 4,
     });
 
@@ -235,6 +248,7 @@ describe('getCaseRiskCockpit', () => {
         'visit_preparation_incomplete:schedule/1',
         'drug_master_reconciliation:line/1',
         'notification:notification/1',
+        'residence_geocode:residence/1:zero_coordinates',
         'dispense_task:dispense/1',
         'report_delivery_failed:report_1',
         'task:task/1',
@@ -251,6 +265,7 @@ describe('getCaseRiskCockpit', () => {
     expect(JSON.stringify(result)).not.toContain('至急タスク');
     expect(JSON.stringify(result)).not.toContain('患者 太郎様の通知');
     expect(JSON.stringify(result)).not.toContain('患者 太郎様の詳細本文');
+    expect(JSON.stringify(result)).not.toContain('東京都千代田区1-1-1');
     expect(JSON.stringify(result)).toContain('正本確認タスク');
 
     for (const finding of findings) {
@@ -327,6 +342,23 @@ describe('getCaseRiskCockpit', () => {
         },
       }),
     );
+    expect(db.residence.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          patient_id: patientId,
+          is_primary: true,
+        },
+        select: {
+          id: true,
+          lat: true,
+          lng: true,
+          geocode_status: true,
+          geocode_accuracy: true,
+          updated_at: true,
+        },
+      }),
+    );
     expect(db.billingEvidence.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -356,6 +388,7 @@ describe('getCaseRiskCockpit', () => {
     db.dispenseTask.findMany.mockResolvedValue([]);
     db.prescriptionLine.findMany.mockResolvedValue([]);
     db.notification.findMany.mockResolvedValue([]);
+    db.residence.findMany.mockResolvedValue([]);
     db.task.findMany.mockResolvedValue([
       {
         id: 'task_due_jst',

@@ -98,6 +98,15 @@ export type NotificationRiskInput = {
   created_at?: Date | string | null;
 };
 
+export type ResidenceGeocodeRiskInput = {
+  id: string;
+  lat?: number | null;
+  lng?: number | null;
+  geocode_status?: string | null;
+  geocode_accuracy?: string | null;
+  updated_at?: Date | string | null;
+};
+
 const BILLING_BLOCKER_TITLE: Record<BillingEvidenceBlocker['key'], string> = {
   missing_visit_consent: '訪問同意が未整備です',
   missing_management_plan: '管理計画書が未整備です',
@@ -173,6 +182,34 @@ function prescriptionLineReconciliationSeverity(
 
 function notificationSeverity(notification: NotificationRiskInput): RiskSeverity {
   return notification.type === 'urgent' ? 'urgent' : 'warning';
+}
+
+const COORDINATE_SAME_VALUE_TOLERANCE = 0.000001;
+
+function residenceGeocodeIssue(residence: ResidenceGeocodeRiskInput) {
+  const lat = residence.lat;
+  const lng = residence.lng;
+  if (lat == null || lng == null) return 'missing_coordinates';
+  if (lat === 0 && lng === 0) return 'zero_coordinates';
+  if (Math.abs(lat - lng) <= COORDINATE_SAME_VALUE_TOLERANCE) return 'same_coordinates';
+  if (residence.geocode_status === 'failed' || residence.geocode_status === 'review_required') {
+    return 'geocode_review_required';
+  }
+  if (residence.geocode_accuracy === 'low') return 'low_accuracy';
+  return null;
+}
+
+function residenceGeocodeSeverity(issue: NonNullable<ReturnType<typeof residenceGeocodeIssue>>) {
+  if (issue === 'zero_coordinates' || issue === 'same_coordinates') return 'urgent';
+  return 'warning';
+}
+
+function residenceGeocodeTitle(issue: NonNullable<ReturnType<typeof residenceGeocodeIssue>>) {
+  if (issue === 'missing_coordinates') return '患者住所の座標確認が必要です';
+  if (issue === 'zero_coordinates') return '患者住所に仮座標が残っています';
+  if (issue === 'same_coordinates') return '患者住所の座標値が不自然です';
+  if (issue === 'low_accuracy') return '患者住所の座標精度確認が必要です';
+  return '住所ジオコードの再確認が必要です';
 }
 
 function foundationSeverity(status: PatientFoundationItem['status']): RiskSeverity {
@@ -567,6 +604,31 @@ export function adaptNotificationToRiskFinding(
     due_at: iso(notification.created_at),
     action_href: `/notifications?notification_id=${encodeURIComponent(notification.id)}`,
     action_label: '通知を確認',
+  });
+}
+
+export function adaptResidenceGeocodeToRiskFinding(
+  residence: ResidenceGeocodeRiskInput,
+  context: RiskFindingAdapterContext = {},
+): RiskFinding | null {
+  const issue = residenceGeocodeIssue(residence);
+  if (!issue) return null;
+
+  return createRiskFinding({
+    key: `residence_geocode:${residence.id}:${issue}`,
+    domain: 'data_quality',
+    severity: residenceGeocodeSeverity(issue),
+    title: residenceGeocodeTitle(issue),
+    detail: '訪問提案・移動時間計算に使う患者住所の座標品質を確認してください。',
+    patient_id: context.patientId ?? null,
+    case_id: context.caseId ?? null,
+    related_entity_type: 'residence',
+    related_entity_id: residence.id,
+    due_at: iso(residence.updated_at),
+    action_href: context.patientId
+      ? `/patients/${encodeURIComponent(context.patientId)}/edit?section=visit#intake.address`
+      : '/patients?foundation_gap=1',
+    action_label: '住所座標を確認',
   });
 }
 

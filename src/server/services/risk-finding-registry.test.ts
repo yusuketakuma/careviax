@@ -8,6 +8,7 @@ import {
   adaptOperationalTaskToRiskFinding,
   adaptPatientFoundationItemToRiskFinding,
   adaptPrescriptionLineReconciliationToRiskFinding,
+  adaptResidenceGeocodeToRiskFinding,
   adaptUpcomingVisitPreparationToRiskFindings,
   adaptVisitReadyTransitionBlockersToRiskFindings,
   riskFindingToTaskDedupeKey,
@@ -402,6 +403,60 @@ describe('risk-finding-registry adapters', () => {
     });
     expect(JSON.stringify([urgent, business])).not.toContain('患者 太郎');
     expect(JSON.stringify([urgent, business])).not.toContain('薬が切れそう');
+  });
+
+  it('maps residence geocode quality gaps without exposing addresses', () => {
+    const zero = adaptResidenceGeocodeToRiskFinding(
+      {
+        id: 'residence/1',
+        lat: 0,
+        lng: 0,
+        geocode_status: 'review_required',
+        geocode_accuracy: 'low',
+        updated_at: '2026-07-06T00:00:00.000Z',
+      },
+      { patientId: 'patient/1?x=1', caseId: 'case_1' },
+    );
+    const valid = adaptResidenceGeocodeToRiskFinding(
+      {
+        id: 'residence_2',
+        lat: 35.681236,
+        lng: 139.767125,
+        geocode_status: 'resolved',
+        geocode_accuracy: 'high',
+      },
+      { patientId: 'patient_1', caseId: 'case_1' },
+    );
+    const missing = adaptResidenceGeocodeToRiskFinding(
+      {
+        id: 'residence_3',
+        lat: null,
+        lng: 139.767125,
+        geocode_status: null,
+        geocode_accuracy: null,
+      },
+      { patientId: 'patient_1', caseId: 'case_1' },
+    );
+
+    expect(zero).toMatchObject({
+      key: 'residence_geocode:residence/1:zero_coordinates',
+      domain: 'data_quality',
+      severity: 'urgent',
+      title: '患者住所に仮座標が残っています',
+      related_entity_type: 'residence',
+      related_entity_id: 'residence/1',
+      due_at: '2026-07-06T00:00:00.000Z',
+      action_label: '住所座標を確認',
+    });
+    expect(zero?.action_href).toBe(
+      `/patients/${encodeURIComponent('patient/1?x=1')}/edit?section=visit#intake.address`,
+    );
+    expect(valid).toBeNull();
+    expect(missing).toMatchObject({
+      key: 'residence_geocode:residence_3:missing_coordinates',
+      severity: 'warning',
+    });
+    expect(JSON.stringify([zero, missing])).not.toContain('東京都千代田区');
   });
 
   it('keeps patient foundation task dedupe keys distinct per patient', () => {
