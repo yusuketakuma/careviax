@@ -1,4 +1,5 @@
 import { addDays, addYears } from 'date-fns';
+import { weekdayOfDateKey } from '@/lib/calendar/operating-day';
 import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
@@ -13,7 +14,7 @@ import {
   type GeneratedTaskSpec,
 } from '../daily-helpers';
 import { generateVisitScheduleProposalDrafts } from '@/server/services/visit-schedule-planner';
-import { resolveMedicationDeadlineSummary } from '@/server/services/visit-medication-deadline';
+import { resolveVisitDeadlinePolicy } from '@/server/services/visit-medication-deadline';
 import { allocateProposalRouteOrders } from '@/lib/visit-schedule-proposals/route-order';
 import {
   formatVisitWorkflowGateIssues,
@@ -24,6 +25,13 @@ import { dispatchNotificationEvent } from '@/server/services/notifications';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import { createManyNotifications, getSafeDailyOperationErrorMessage } from './shared';
 import { buildVisitHref } from '@/lib/visits/navigation';
+
+const VISIT_DEMAND_DEADLINE_SAFETY_BUFFER_OPERATING_DAYS = 0;
+
+function isDefaultVisitDemandOperatingDate(dateKey: string) {
+  const weekday = weekdayOfDateKey(dateKey);
+  return weekday >= 1 && weekday <= 5;
+}
 
 export async function checkVisitRecordRetention() {
   return runJob('visit_record_retention_check', async () => {
@@ -165,6 +173,10 @@ export async function generateVisitDemands() {
           include: {
             lines: {
               select: {
+                id: true,
+                drug_master_id: true,
+                drug_code: true,
+                source_drug_code: true,
                 drug_name: true,
                 end_date: true,
                 start_date: true,
@@ -247,20 +259,26 @@ export async function generateVisitDemands() {
         continue;
       }
 
-      const medicationDeadlineSummary = resolveMedicationDeadlineSummary(
-        cycle.prescription_intakes,
-        {
-          nextVisitSuggestionDate:
-            latestVisitSuggestionByCase.get(`${cycle.org_id}:${cycle.case_id}`) ?? null,
-        },
-      );
-      const visitDeadlineDate = medicationDeadlineSummary.visitDeadlineDate;
+      const deadlinePolicy = resolveVisitDeadlinePolicy(cycle.prescription_intakes, {
+        nextVisitSuggestionDate:
+          latestVisitSuggestionByCase.get(`${cycle.org_id}:${cycle.case_id}`) ?? null,
+        planningStartDateKey: localDateKey(startOfToday),
+        isVisitableDate: isDefaultVisitDemandOperatingDate,
+        safetyBufferOperatingDays: VISIT_DEMAND_DEADLINE_SAFETY_BUFFER_OPERATING_DAYS,
+      });
+      const visitDeadlineDate = deadlinePolicy.recommendedDeadlineDateKey
+        ? utcDateFromLocalKey(deadlinePolicy.recommendedDeadlineDateKey)
+        : null;
       if (!visitDeadlineDate || visitDeadlineDate > demandWindow) {
         continue;
       }
 
       try {
-        const deadlineOverdue = visitDeadlineDate < startOfToday;
+        const deadlineOverdue =
+          visitDeadlineDate < startOfToday ||
+          deadlinePolicy.diagnostics.some(
+            (diagnostic) => diagnostic.code === 'deadline_overdue_asap',
+          );
         const proposalStartDate = deadlineOverdue ? startOfToday : addUtcDays(startOfToday, 1);
         const demandPriority =
           deadlineOverdue || visitDeadlineDate <= addUtcDays(startOfToday, 3) ? 'urgent' : 'normal';
@@ -306,6 +324,14 @@ export async function generateVisitDemands() {
               case_id: cycle.case_id,
               patient_id: cycle.patient_id,
               proposal_count: drafts.length,
+              deadline_raw_date_key: deadlinePolicy.rawDeadlineDateKey,
+              deadline_recommended_date_key: deadlinePolicy.recommendedDeadlineDateKey,
+              deadline_review_required: deadlinePolicy.reviewReasons.some(
+                (reason) => reason.severity === 'review_required',
+              ),
+              deadline_review_reasons: Array.from(
+                new Set(deadlinePolicy.reviewReasons.map((reason) => reason.code)),
+              ),
             },
           });
 

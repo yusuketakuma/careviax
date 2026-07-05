@@ -2758,6 +2758,10 @@ describe('generateVisitScheduleProposalDrafts', () => {
     );
     expect(cycleQuery?.include?.prescription_intakes?.include?.lines?.select).toEqual(
       expect.objectContaining({
+        id: true,
+        drug_master_id: true,
+        drug_code: true,
+        source_drug_code: true,
         frequency: true,
         route: true,
         notes: true,
@@ -2772,6 +2776,312 @@ describe('generateVisitScheduleProposalDrafts', () => {
         }),
       ]),
     );
+  });
+
+  it('applies per-site operating deadline policy without shrinking the initial shift search window', async () => {
+    medicationCycleFindFirstMock.mockResolvedValueOnce({
+      id: 'cycle_1',
+      prescription_intakes: [
+        {
+          refill_next_dispense_date: null,
+          split_next_dispense_date: null,
+          lines: [
+            {
+              id: 'line_sunday',
+              drug_master_id: 'drug_1',
+              drug_code: 'YJ001',
+              source_drug_code: 'HOT001',
+              drug_name: '継続薬',
+              frequency: '朝食後',
+              end_date: new Date('2026-04-12T00:00:00.000Z'),
+            },
+          ],
+        },
+      ],
+    });
+    pharmacyOperatingHoursFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'sun_closed',
+        site_id: 'site_1',
+        weekday: 0,
+        is_open: false,
+        open_time: null,
+        close_time: null,
+        note: null,
+      },
+      {
+        id: 'mon_open',
+        site_id: 'site_1',
+        weekday: 1,
+        is_open: true,
+        open_time: null,
+        close_time: null,
+        note: null,
+      },
+      {
+        id: 'tue_open',
+        site_id: 'site_1',
+        weekday: 2,
+        is_open: true,
+        open_time: null,
+        close_time: null,
+        note: null,
+      },
+      {
+        id: 'wed_open',
+        site_id: 'site_1',
+        weekday: 3,
+        is_open: true,
+        open_time: null,
+        close_time: null,
+        note: null,
+      },
+      {
+        id: 'thu_open',
+        site_id: 'site_1',
+        weekday: 4,
+        is_open: true,
+        open_time: null,
+        close_time: null,
+        note: null,
+      },
+      {
+        id: 'fri_open',
+        site_id: 'site_1',
+        weekday: 5,
+        is_open: true,
+        open_time: null,
+        close_time: null,
+        note: null,
+      },
+      {
+        id: 'sat_closed',
+        site_id: 'site_1',
+        weekday: 6,
+        is_open: false,
+        open_time: null,
+        close_time: null,
+        note: null,
+      },
+    ]);
+    pharmacistShiftFindManyMock.mockResolvedValueOnce([
+      {
+        date: new Date('2026-04-09T00:00:00.000Z'),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
+        available: true,
+        user_id: 'pharmacist_primary',
+        site_id: 'site_1',
+        user: {
+          id: 'pharmacist_primary',
+          name: '主担当薬剤師',
+          max_daily_visits: null,
+          max_weekly_visits: null,
+          max_travel_minutes: null,
+          can_accept_emergency: true,
+          visit_specialties: [],
+        },
+        site: { id: 'site_1', name: '本店', address: '東京都港区2-2-2', lat: 35.01, lng: 139.01 },
+      },
+      {
+        date: new Date('2026-04-10T00:00:00.000Z'),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
+        available: true,
+        user_id: 'pharmacist_backup',
+        site_id: 'site_1',
+        user: {
+          id: 'pharmacist_backup',
+          name: '副担当薬剤師',
+          max_daily_visits: null,
+          max_weekly_visits: null,
+          max_travel_minutes: null,
+          can_accept_emergency: true,
+          visit_specialties: [],
+        },
+        site: { id: 'site_1', name: '本店', address: '東京都港区2-2-2', lat: 35.01, lng: 139.01 },
+      },
+      {
+        date: new Date('2026-04-13T00:00:00.000Z'),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
+        available: true,
+        user_id: 'pharmacist_late',
+        site_id: 'site_1',
+        user: {
+          id: 'pharmacist_late',
+          name: '遅延候補',
+          max_daily_visits: null,
+          max_weekly_visits: null,
+          max_travel_minutes: null,
+          can_accept_emergency: true,
+          visit_specialties: [],
+        },
+        site: { id: 'site_1', name: '本店', address: '東京都港区2-2-2', lat: 35.01, lng: 139.01 },
+      },
+    ]);
+
+    const result = await generateVisitScheduleProposalDrafts({
+      orgId: 'org_1',
+      caseId: 'case_1',
+      visitType: 'regular',
+      priority: 'normal',
+      candidateCount: 1,
+      startDate: new Date('2026-04-01T00:00:00.000Z'),
+    });
+
+    expect(result.drafts[0]).toMatchObject({
+      proposed_date: new Date('2026-04-09T00:00:00.000Z'),
+      visit_deadline_date: new Date('2026-04-09T00:00:00.000Z'),
+    });
+    const shiftQuery = pharmacistShiftFindManyMock.mock.calls[0]?.[0];
+    expect(shiftQuery?.where?.date?.lte).toEqual(new Date('2026-04-19T00:00:00.000Z'));
+    expect(result.diagnostics.deadline_policy).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'deadline_raw', date_key: '2026-04-12' }),
+        expect.objectContaining({
+          code: 'deadline_adjusted_to_operating_day',
+          from_date_key: '2026-04-12',
+          to_date_key: '2026-04-10',
+          site_id: 'site_1',
+        }),
+        expect.objectContaining({
+          code: 'deadline_buffer_applied',
+          from_date_key: '2026-04-10',
+          to_date_key: '2026-04-09',
+          site_id: 'site_1',
+        }),
+      ]),
+    );
+    expect(result.diagnostics.rejected).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          pharmacist_id: 'pharmacist_backup',
+          reason_code: 'beyond_deadline',
+          detail: '訪問期限 2026-04-09 を超えるため候補外です',
+        }),
+      ]),
+    );
+  });
+
+  it('hard-blocks locked dates that exceed the per-site recommended deadline', async () => {
+    medicationCycleFindFirstMock.mockResolvedValueOnce({
+      id: 'cycle_1',
+      prescription_intakes: [
+        {
+          refill_next_dispense_date: null,
+          split_next_dispense_date: null,
+          lines: [
+            {
+              id: 'line_locked',
+              drug_master_id: 'drug_1',
+              drug_code: 'YJ001',
+              source_drug_code: 'HOT001',
+              drug_name: '継続薬',
+              frequency: '朝食後',
+              end_date: new Date('2026-04-10T00:00:00.000Z'),
+            },
+          ],
+        },
+      ],
+    });
+    pharmacyOperatingHoursFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'mon_open',
+        site_id: 'site_1',
+        weekday: 1,
+        is_open: true,
+        open_time: null,
+        close_time: null,
+        note: null,
+      },
+      {
+        id: 'tue_open',
+        site_id: 'site_1',
+        weekday: 2,
+        is_open: true,
+        open_time: null,
+        close_time: null,
+        note: null,
+      },
+      {
+        id: 'wed_open',
+        site_id: 'site_1',
+        weekday: 3,
+        is_open: true,
+        open_time: null,
+        close_time: null,
+        note: null,
+      },
+      {
+        id: 'thu_open',
+        site_id: 'site_1',
+        weekday: 4,
+        is_open: true,
+        open_time: null,
+        close_time: null,
+        note: null,
+      },
+      {
+        id: 'fri_open',
+        site_id: 'site_1',
+        weekday: 5,
+        is_open: true,
+        open_time: null,
+        close_time: null,
+        note: null,
+      },
+    ]);
+    pharmacistShiftFindManyMock.mockResolvedValueOnce([
+      {
+        date: new Date('2026-04-13T00:00:00.000Z'),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
+        available: true,
+        user_id: 'pharmacist_primary',
+        site_id: 'site_1',
+        user: {
+          id: 'pharmacist_primary',
+          name: '主担当薬剤師',
+          max_daily_visits: null,
+          max_weekly_visits: null,
+          max_travel_minutes: null,
+          can_accept_emergency: true,
+          visit_specialties: [],
+        },
+        site: { id: 'site_1', name: '本店', address: '東京都港区2-2-2', lat: 35.01, lng: 139.01 },
+      },
+    ]);
+
+    const result = await generateVisitScheduleProposalDrafts({
+      orgId: 'org_1',
+      caseId: 'case_1',
+      visitType: 'regular',
+      priority: 'normal',
+      candidateCount: 1,
+      startDate: new Date('2026-04-01T00:00:00.000Z'),
+      lockedDate: new Date('2026-04-13T00:00:00.000Z'),
+    });
+
+    expect(result.drafts).toHaveLength(0);
+    expect(result.diagnostics.rejected).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          reason_code: 'locked_date_deadline_violation',
+          detail: '固定日 2026-04-13 は訪問期限 2026-04-09 を超えるため候補外です',
+        }),
+      ]),
+    );
+    expect(result.diagnostics.deadline_policy).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'locked_date_deadline_violation',
+          date_key: '2026-04-13',
+          value: '2026-04-09',
+        }),
+      ]),
+    );
+    expect(JSON.stringify(result)).not.toContain('継続薬');
   });
 
   it('derives medication end dates from start_date and days when stored end_date is missing', async () => {

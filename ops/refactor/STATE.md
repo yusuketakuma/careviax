@@ -40,6 +40,40 @@
 
 ## 直近の land（本日・要点）
 
+- codex: VS-AUTO-2 planner/daily DeadlinePolicy connection slice(in-progress on
+  `codex/vs-auto-2-deadline-policy`) implementation complete。
+  - planner: `src/server/services/visit-schedule-planner.ts` は legacy
+    `resolveMedicationDeadlineSummary` 依存の global cutoff をやめ、preliminary
+    `resolveVisitDeadlinePolicy` の `rawDeadlineDateKey` で `planningEnd` を
+    `rawDeadline + buffer scan` に広げたまま shift/site を取得し、site calendar 構築後に per-site
+    `recommendedDeadlineDateKey` を候補 cutoff として適用する。
+  - diagnostics: `deadline_policy` は PHI/free-text を入れず、`deadline_raw` /
+    `deadline_adjusted_to_operating_day` / `deadline_buffer_applied` / `deadline_overdue_asap` /
+    `locked_date_deadline_violation` を dateKey・`site_id`・machine code で返す。
+  - locked/overdue: `locked_date` が site cutoff を超える場合は draft を作らず
+    `locked_date_deadline_violation` で hard-block。overdue は raw clinical deadline を
+    `visit_deadline_date` に保持しつつ ASAP search horizon を cutoff に使う。
+  - daily: `src/server/jobs/daily/visits.ts` は `resolveVisitDeadlinePolicy` に接続し、daily demand の
+    due/SLA/priority 判定に policy recommended date を使う。daily は site 未確定のため generic weekday
+    visitability だけを適用し、最終の営業日 buffer/cutoff は planner per-site policy で強制する。
+  - provenance/privacy: planner/daily の `PrescriptionLine` select に `id` / `drug_master_id` /
+    `drug_code` / `source_drug_code` を追加。task metadata には sanitized `deadline_*_date_key` と
+    `deadline_review_reasons` machine codes のみを保持。DB schema/migration/auth/authorization/
+    PHI payload/billing/deploy/package dependency 変更は不要。
+  - subagents: implementation_planner APPROVE。medical_safety_reviewer/test_architect は planningEnd
+    premature shrink、provenance select、locked date hard-block、daily recommended deadline、
+    PHI-safe diagnostics を CHANGES_REQUESTED として指摘し、実装・tests へ反映。
+  - remaining: `canVisitOn` との理由コード完全統合、連休専用 planner regression、proposal
+    API/audit/UI diagnostics 展開は後続 VS-AUTO-2/5/7/8 に残す。
+  - validation:
+    `pnpm exec vitest run src/server/services/visit-schedule-planner.test.ts src/server/jobs/daily.test.ts --reporter=dot --testTimeout=30000`
+    green（2 files / 92 tests）;
+    `pnpm exec vitest run src/server/services/visit-medication-deadline.test.ts src/lib/calendar/operating-day.test.ts src/lib/calendar/visit-availability.test.ts src/lib/calendar/operating-day-adapter.test.ts src/lib/utils/date-boundary.test.ts --reporter=dot --testTimeout=30000`
+    green（5 files / 85 tests）; combined focused run green（7 files / 177 tests）; scoped eslint green;
+    `pnpm format:check` green; `git diff --check` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` green。next: scoped commit →
+    origin/main push。
 - codex: VS-AUTO-1 DeadlinePolicy pure helper slice(in-progress on main) implementation complete。
   `src/server/services/visit-medication-deadline.ts` に既存 `resolveMedicationDeadlineSummary` を残したまま
   `resolveVisitDeadlinePolicy` を追加。policy boundary は Asia/Tokyo `YYYY-MM-DD` dateKey で、

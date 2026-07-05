@@ -1705,6 +1705,20 @@ describe('generateVisitDemands', () => {
         where: {
           overall_status: { in: ['set_audited', 'visit_ready'] },
         },
+        include: expect.objectContaining({
+          prescription_intakes: expect.objectContaining({
+            include: expect.objectContaining({
+              lines: expect.objectContaining({
+                select: expect.objectContaining({
+                  id: true,
+                  drug_master_id: true,
+                  drug_code: true,
+                  source_drug_code: true,
+                }),
+              }),
+            }),
+          }),
+        }),
       }),
     );
     expect(activeRouteOrderFindManyMock).toHaveBeenCalledWith(
@@ -1827,6 +1841,65 @@ describe('generateVisitDemands', () => {
       expect.objectContaining({
         dueDate: new Date('2026-06-10T00:00:00.000Z'),
         slaDueAt: new Date('2026-06-10T00:00:00.000Z'),
+      }),
+    );
+  });
+
+  it('uses the policy-recommended weekday deadline for weekend medication runout demand', async () => {
+    medicationCycleFindManyMock.mockResolvedValue([
+      {
+        id: 'cycle_1',
+        org_id: 'org_1',
+        case_id: 'case_1',
+        patient_id: 'patient_1',
+        case_: {
+          primary_pharmacist_id: 'pharmacist_1',
+        },
+        prescription_intakes: [
+          {
+            refill_next_dispense_date: null,
+            split_next_dispense_date: null,
+            lines: [
+              {
+                id: 'line_sunday',
+                drug_master_id: 'drug_1',
+                drug_code: 'YJ001',
+                source_drug_code: 'HOT001',
+                drug_name: '継続薬',
+                frequency: '朝食後',
+                end_date: new Date('2026-06-14T00:00:00.000Z'),
+                start_date: null,
+                days: 7,
+              },
+            ],
+          },
+        ],
+        visit_schedules: [],
+        visit_schedule_proposals: [],
+      },
+    ]);
+    mockGeneratedDemandDraft();
+    mockDemandProposalWrite();
+
+    const result = await generateVisitDemands();
+
+    expect(result).toEqual({ processedCount: 1 });
+    expect(generateVisitScheduleProposalDrafts).toHaveBeenCalledWith(
+      expect.objectContaining({
+        priority: 'normal',
+        startDate: new Date('2026-06-09T00:00:00.000Z'),
+      }),
+    );
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        dueDate: new Date('2026-06-12T00:00:00.000Z'),
+        slaDueAt: new Date('2026-06-12T00:00:00.000Z'),
+        metadata: expect.objectContaining({
+          deadline_raw_date_key: '2026-06-14',
+          deadline_recommended_date_key: '2026-06-12',
+          deadline_review_required: false,
+        }),
       }),
     );
   });
@@ -2094,8 +2167,8 @@ describe('generateVisitDemands', () => {
       expect.anything(),
       expect.objectContaining({
         priority: 'urgent',
-        dueDate: new Date('2026-06-07T00:00:00.000Z'),
-        slaDueAt: new Date('2026-06-07T00:00:00.000Z'),
+        dueDate: new Date('2026-06-08T00:00:00.000Z'),
+        slaDueAt: new Date('2026-06-08T00:00:00.000Z'),
       }),
     );
   });

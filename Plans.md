@@ -274,7 +274,8 @@ FE 仕上げ（低優先）:
   - `source_kind`: `regular_medication_end` / `next_dispense` / `next_visit_suggestion` / `stockout_estimate` / `manual_locked_date`。
   - `prescription_intake_id` / `prescription_line_id` / `drug_master_id` / `drug_code` / `source_drug_code` は取得できる場合に保持し、名前だけの候補は `confidence='low'` + review required。
   - `raw_date_key` / `adjusted_date_key` / `confidence` / `requires_pharmacist_review` / `reason_code` / `audit_ref` を持つ。
-- [ ] 現行 planner/daily の select は `drug_name` 等だけなので、VS-AUTO-2 接続時に `PrescriptionLine.id` / `drug_master_id` / `drug_code` / `source_drug_code` を select に追加する。未解決 drug master・同名別規格・差分不明は hard review gate 候補にする。
+- [x] 現行 planner/daily の select は `drug_name` 等だけなので、VS-AUTO-2 接続時に `PrescriptionLine.id` / `drug_master_id` / `drug_code` / `source_drug_code` を select に追加する。2026-07-05:
+      planner/daily の query select に provenance fields を追加。未解決 drug master・同名別規格・差分不明の hard review gate 接続は VS-AUTO-7/8 に残す。
 - [x] 既存 `resolveMedicationDeadlineSummary` はそのまま維持し、既存 route/planner/tests の `visitDeadlineDate` 互換を壊さない。
 - [x] `rawDeadline` が休業日/訪問不可日なら `nearestOperatingDay(..., 'backward')` 相当で直前訪問可能日へ補正し、そこから `addOperatingDays(..., -buffer)` で recommended deadline を作る。
 - [x] Date object を直接 policy 境界に広げず、Asia/Tokyo 業務日の `YYYY-MM-DD` date key を主入出力にする。DB `@db.Date` 変換は caller/adapter 層。
@@ -290,20 +291,25 @@ FE 仕上げ（低優先）:
 
 #### VS-AUTO-2. Planner deadline 接続と per-site 訪問可能期限 `cc:TODO`
 
-- [ ] `src/server/services/visit-schedule-planner.ts` の `planningEnd` を単純に recommended deadline へ縮めすぎない。現行は shift/site 取得後に operating calendar が分かるため、初期検索窓は `rawDeadline + buffer scan` を確保し、shift/site 評価時に per-site `candidateDeadlineDate` を適用する。
-- [ ] `buildOperatingCalendarFromDbRows` / `resolveOperatingState` / `canVisitOn` を使い、planner 内の独自 operating/shift 判定と `visit-availability.ts` の理由コードを揃える。
-- [ ] planner diagnostics に `deadline_policy` 系 reason を追加する:
+- [x] `src/server/services/visit-schedule-planner.ts` の `planningEnd` を単純に recommended deadline へ縮めすぎない。現行は shift/site 取得後に operating calendar が分かるため、初期検索窓は `rawDeadline + buffer scan` を確保し、shift/site 評価時に per-site `candidateDeadlineDate` を適用する。2026-07-05:
+      preliminary policy の `rawDeadlineDateKey` で検索窓を確保し、site calendar 構築後に shift/site ごとの `recommendedDeadlineDateKey` を cutoff として適用。
+- [ ] `buildOperatingCalendarFromDbRows` / `resolveOperatingState` / `canVisitOn` を使い、planner 内の独自 operating/shift 判定と `visit-availability.ts` の理由コードを揃える。2026-07-05:
+      `buildOperatingCalendarFromDbRows` / `resolveOperatingState` は per-site policy と既存休業日判定で使用済み。`canVisitOn` との理由コード完全統合は後続に残す。
+- [x] planner diagnostics に `deadline_policy` 系 reason を追加する:
   - `deadline_raw`
   - `deadline_adjusted_to_operating_day`
   - `deadline_buffer_applied`
   - `deadline_overdue_asap`
   - `locked_date_deadline_violation`
-- [ ] 既存の患者希望時間、施設受入時間、薬局営業時間、薬剤師シフト intersection、車両/route/capacity/算定 checks は維持し、削除・再実装しない。
-- [ ] `locked_date` は最優先候補。ただし休業日・シフト不可・期限超過は proposal を作らず diagnostics を返す。休業日上書き理由がある場合だけ override audit へ接続する。
+- [x] 既存の患者希望時間、施設受入時間、薬局営業時間、薬剤師シフト intersection、車両/route/capacity/算定 checks は維持し、削除・再実装しない。
+- [x] `locked_date` は最優先候補。ただし休業日・シフト不可・期限超過は proposal を作らず diagnostics を返す。休業日上書き理由がある場合だけ override audit へ接続する。2026-07-05:
+      deadline 超過は `locked_date_deadline_violation` で hard-block。休業日 override の audit 接続拡張は VS-AUTO-5 側に残す。
 - テスト:
-  - `visit-schedule-planner.test.ts` に日曜薬切れ→木曜、連休、locked date hard-block を追加。
-  - 既存 `beyond_deadline` / `business_holiday` / capacity / vehicle tests を維持。
-  - daily job `src/server/jobs/daily/visits.ts` が新 policy の recommended deadline を使う。
+  - [x] `visit-schedule-planner.test.ts` に日曜薬切れ→木曜、locked date hard-block を追加。
+  - [ ] `visit-schedule-planner.test.ts` に連休専用 regression を追加。
+  - [x] 既存 `beyond_deadline` / `business_holiday` / capacity / vehicle tests を維持。
+  - [x] daily job `src/server/jobs/daily/visits.ts` が新 policy の recommended deadline を使う。2026-07-05:
+        daily は site 未確定のため generic weekday visitability で demand due/SLA を補正し、最終 buffer/cutoff は planner per-site policy で強制。
 
 #### VS-AUTO-3. `visit-schedules/generate` の proposal-first 互換移行 `cc:TODO`
 
