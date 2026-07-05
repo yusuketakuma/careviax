@@ -555,11 +555,7 @@ export function FacilitiesContent() {
             : buildCreatePayload(currentForm),
         ),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error((payload as { message?: string }).message ?? '保存に失敗しました');
-      }
-      return payload;
+      return readApiJson<unknown>(response, '保存に失敗しました');
     },
     onSuccess: async () => {
       toast.success(editingFacility ? '施設マスターを更新しました' : '施設を登録しました');
@@ -581,11 +577,7 @@ export function FacilitiesContent() {
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error((payload as { message?: string }).message ?? '削除に失敗しました');
-      }
-      return payload;
+      return readApiJson<unknown>(response, '削除に失敗しました');
     },
     onSuccess: async () => {
       toast.success('施設マスターを削除しました');

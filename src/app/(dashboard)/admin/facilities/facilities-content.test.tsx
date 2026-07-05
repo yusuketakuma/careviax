@@ -318,6 +318,92 @@ describe('FacilitiesContent', () => {
     });
   });
 
+  it('surfaces API error messages when facility save fails', async () => {
+    const facility = facilityFixture();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/admin/facilities?' && !init?.method) {
+        return new Response(
+          JSON.stringify({
+            data: [facility],
+            total_count: 1,
+            visible_count: 1,
+            hidden_count: 0,
+            truncated: false,
+          }),
+          { status: 200 },
+        );
+      }
+      if (url === '/api/admin/facilities' && init?.method === 'POST') {
+        return new Response(JSON.stringify({ message: '施設名が重複しています' }), {
+          status: 409,
+        });
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderContent();
+
+    await screen.findByText('グリーンヒル');
+    fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
+    fireEvent.change(screen.getByLabelText('施設名'), {
+      target: { value: '新宿ケアホーム' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('施設名が重複しています');
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/admin/facilities',
+      expect.objectContaining({
+        method: 'POST',
+        headers: buildOrgJsonHeaders('org_1'),
+      }),
+    );
+  });
+
+  it('surfaces API error messages when facility delete fails', async () => {
+    const facility = { ...facilityFixture(), patient_count: 0 };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/admin/facilities?' && !init?.method) {
+        return new Response(
+          JSON.stringify({
+            data: [facility],
+            total_count: 1,
+            visible_count: 1,
+            hidden_count: 0,
+            truncated: false,
+          }),
+          { status: 200 },
+        );
+      }
+      if (url === '/api/admin/facilities/facility_1' && init?.method === 'DELETE') {
+        return new Response(JSON.stringify({ message: '入居患者がいる施設は削除できません' }), {
+          status: 409,
+        });
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'グリーンヒル を削除' }));
+    fireEvent.click(screen.getByRole('button', { name: '削除する' }));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('入居患者がいる施設は削除できません');
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/admin/facilities/facility_1',
+      expect.objectContaining({
+        method: 'DELETE',
+        headers: buildOrgHeaders('org_1'),
+      }),
+    );
+  });
+
   it('loads facility units when editing a facility', async () => {
     const fetchMock = stubFetchWithFacility();
     renderContent();
