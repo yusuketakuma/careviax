@@ -39,6 +39,24 @@
 
 ## 直近の land（本日・要点）
 
+- codex: template list metadata/body separation batch(17724ba0) land。
+  ユーザー指示により本sliceでは subagent を投入（code_mapper / privacy_compliance_reviewer /
+  frontend_reviewer / test_architect / api_contract_reviewer / verifier）。privacy_compliance_reviewer、
+  api_contract_reviewer、最終 verifier は APPROVE。focused Vitest 74、scoped ESLint/Prettier/diff-check、
+  `pnpm typecheck` green。`GET /api/templates` は counted list envelope、filters、limit、canAdmin、
+  org scoping、no-store、sanitized 500 を維持しつつ、`Template.content` を DB select / response から外して
+  metadata-only list に変更。本文が必要な管理画面向けに `GET /api/templates/:id` を追加し、
+  `canAdmin`、`normalizeRequiredRouteParam`、`withOrgContext`、`where: { id, org_id }`、
+  `withSensitiveNoStore`、404 cross-org fail-closed、sanitized 500 を固定。Admin document templates UI は
+  list row を metadata 型へ分離し、編集フォームと body editor は `/api/templates/:id` の lazy detail fetch
+  で本文を取得してから hydrate / PATCH する。detail 取得失敗時は edit mode / PATCH に進まず、body editor は
+  textarea/save を disabled にする。遅い detail response が後着して最新選択を上書きしないよう
+  request-token guard と deferred-response regression を追加。consent template / pharmacy cooperation contract
+  template callers は metadata-only list で green。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) に基づき product API /
+  PHI-adjacent payload minimization と admin UI contract を変更、DB schema/migration/billing/deploy/package
+  dependency 変更は不要。残る別slice候補: full template detail GET は admin 向けに本文を返すため、
+  将来テンプレート本文に患者固有PHIを保存する運用へ広がる場合は narrower permission / read audit を再評価。
 - codex: billing-rules optimistic concurrency hardening batch(0f2d0856) land。
   ユーザー指示により本sliceでは subagent を投入（code_mapper / data_integrity_auditor /
   api_contract_reviewer CHANGES_REQUESTED→対応、verifier + final api_contract_reviewer APPROVE）。
