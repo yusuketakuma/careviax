@@ -37,6 +37,7 @@ type PanelOptions = {
   canConfirm?: boolean;
   requiresOverrideReason?: boolean;
   overrideReasonMaxLength?: number;
+  supervisionConfirmTaskId?: string | null;
   canRequestSupervision?: boolean;
   supervisionRequestNoteMaxLength?: number;
 };
@@ -46,6 +47,7 @@ function renderPanel({
   canConfirm = true,
   requiresOverrideReason = false,
   overrideReasonMaxLength,
+  supervisionConfirmTaskId,
   canRequestSupervision,
   supervisionRequestNoteMaxLength,
 }: PanelOptions = {}) {
@@ -57,6 +59,7 @@ function renderPanel({
       canConfirm={canConfirm}
       requiresOverrideReason={requiresOverrideReason}
       overrideReasonMaxLength={overrideReasonMaxLength}
+      supervisionConfirmTaskId={supervisionConfirmTaskId}
       canRequestSupervision={canRequestSupervision}
       supervisionRequestNoteMaxLength={supervisionRequestNoteMaxLength}
     />,
@@ -232,6 +235,38 @@ describe('HandoffConfirmPanel', () => {
       request_note: '上長確認をお願いします',
     });
     expect(body).not.toHaveProperty('confirmed');
+  });
+
+  it('uses the dedicated supervisor confirmation endpoint for supervision tasks', async () => {
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(JSON.stringify({ data: { confirmed_at: '2026-06-11T01:00:00.000Z' } }), {
+          status: 200,
+        }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    renderPanel({
+      canConfirm: false,
+      supervisionConfirmTaskId: 'task_supervision_1',
+    });
+
+    expect(screen.queryByRole('button', { name: '上長確認を依頼' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '確認' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '上長確認を確定' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalled();
+    });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      '/api/visit-records/visit_record_1/handoff/supervision-confirm',
+    );
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('POST');
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(body).toEqual({
+      confirmed: true,
+      expected_visit_record_version: 7,
+      task_id: 'task_supervision_1',
+    });
   });
 
   it('keeps server messages when supervision request fails', async () => {

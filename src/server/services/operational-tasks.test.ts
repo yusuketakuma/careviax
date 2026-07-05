@@ -234,6 +234,29 @@ describe('resolveOperationalTasks', () => {
     expect(call.data.status).toBe('cancelled');
     expect(call.data.completed_at).toBeNull();
   });
+
+  it('can scope resolution to one selected task id', async () => {
+    taskUpdateManyMock.mockResolvedValue({ count: 1 });
+
+    await resolveOperationalTasks(tx, {
+      orgId: 'org-1',
+      taskId: 'task-1',
+      taskType: 'handoff_supervision_review',
+      relatedEntityType: 'visit_record',
+      relatedEntityId: 'visit-record-1',
+      assignedToUserId: 'supervisor-1',
+    });
+
+    const call = taskUpdateManyMock.mock.calls[0][0];
+    expect(call.where).toMatchObject({
+      id: 'task-1',
+      org_id: 'org-1',
+      task_type: 'handoff_supervision_review',
+      related_entity_type: 'visit_record',
+      related_entity_id: 'visit-record-1',
+      OR: [{ assigned_to: 'supervisor-1' }],
+    });
+  });
 });
 
 describe('describeOperationalTask', () => {

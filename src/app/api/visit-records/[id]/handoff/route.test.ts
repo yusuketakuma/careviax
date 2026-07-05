@@ -14,6 +14,7 @@ const {
   visitHandoffExtractionFindUniqueMock,
   confirmHandoffMock,
   readConfirmableHandoffDataMock,
+  VisitHandoffAlreadyConfirmedErrorMock,
   VisitHandoffInvalidDataErrorMock,
   VisitHandoffMissingDataErrorMock,
 } = vi.hoisted(() => ({
@@ -29,6 +30,7 @@ const {
   visitHandoffExtractionFindUniqueMock: vi.fn(),
   confirmHandoffMock: vi.fn(),
   readConfirmableHandoffDataMock: vi.fn(),
+  VisitHandoffAlreadyConfirmedErrorMock: class VisitHandoffAlreadyConfirmedError extends Error {},
   VisitHandoffInvalidDataErrorMock: class VisitHandoffInvalidDataError extends Error {},
   VisitHandoffMissingDataErrorMock: class VisitHandoffMissingDataError extends Error {},
 }));
@@ -57,6 +59,7 @@ vi.mock('@/lib/db/client', () => ({
 vi.mock('@/server/services/visit-handoff', () => ({
   confirmHandoff: confirmHandoffMock,
   readConfirmableHandoffData: readConfirmableHandoffDataMock,
+  VisitHandoffAlreadyConfirmedError: VisitHandoffAlreadyConfirmedErrorMock,
   VisitHandoffInvalidDataError: VisitHandoffInvalidDataErrorMock,
   VisitHandoffMissingDataError: VisitHandoffMissingDataErrorMock,
   VisitHandoffStaleRecordError: class VisitHandoffStaleRecordError extends Error {},
@@ -66,6 +69,7 @@ vi.mock('@/server/services/visit-handoff', () => ({
 
 import { GET, PUT } from './route';
 import {
+  VisitHandoffAlreadyConfirmedError,
   VisitHandoffInvalidDataError,
   VisitHandoffMissingDataError,
   VisitHandoffStaleRecordError,
@@ -769,6 +773,29 @@ describe('/api/visit-records/[id]/handoff', () => {
         code: 'WORKFLOW_CONFLICT',
         message: '訪問記録が同時に更新されました。再読み込みしてください',
       });
+    });
+
+    it('maps already confirmed handoffs to a sanitized conflict', async () => {
+      visitRecordFindFirstMock.mockResolvedValue(
+        buildVisitRecord({ structured_soap: { handoff: confirmableHandoff } }),
+      );
+      confirmHandoffMock.mockRejectedValueOnce(new VisitHandoffAlreadyConfirmedError('vr_1'));
+
+      const req = createRequest('http://localhost/api/visit-records/vr_1/handoff', {
+        confirmed: true,
+        expected_visit_record_version: VISIT_RECORD_VERSION,
+      });
+
+      const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+      expect(res!.status).toBe(409);
+      expectSensitiveNoStore(res!);
+      const payload = await res!.json();
+      expect(payload).toEqual({
+        code: 'WORKFLOW_CONFLICT',
+        message: '申し送りはすでに確認済みです',
+      });
+      expect(JSON.stringify(payload)).not.toContain('vr_1');
     });
 
     it('maps typed missing handoff data to a sanitized not found response', async () => {

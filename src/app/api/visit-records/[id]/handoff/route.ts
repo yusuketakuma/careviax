@@ -26,6 +26,7 @@ import { prisma } from '@/lib/db/client';
 import {
   confirmHandoff,
   readConfirmableHandoffData,
+  VisitHandoffAlreadyConfirmedError,
   VisitHandoffInvalidDataError,
   VisitHandoffMissingDataError,
   VisitHandoffStaleRecordError,
@@ -150,6 +151,9 @@ async function authenticatedPUT(req: NextRequest, { params }: { params: Promise<
       return withSensitiveNoStore(
         conflict('訪問記録が同時に更新されました。再読み込みしてください'),
       );
+    }
+    if (cause instanceof VisitHandoffAlreadyConfirmedError) {
+      return withSensitiveNoStore(conflict('申し送りはすでに確認済みです'));
     }
     return withSensitiveNoStore(error('internal_error', '引継ぎの確定処理に失敗しました', 500));
   }

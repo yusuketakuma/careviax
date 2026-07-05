@@ -22,6 +22,7 @@ type HandoffConfirmPanelProps = {
   canConfirm?: boolean;
   requiresOverrideReason?: boolean;
   overrideReasonMaxLength?: number;
+  supervisionConfirmTaskId?: string | null;
   canRequestSupervision?: boolean;
   supervisionRequestNoteMaxLength?: number;
   onConfirmed?: () => void;
@@ -132,6 +133,7 @@ export function HandoffConfirmPanel({
   canConfirm = false,
   requiresOverrideReason = false,
   overrideReasonMaxLength = 500,
+  supervisionConfirmTaskId = null,
   canRequestSupervision = false,
   supervisionRequestNoteMaxLength = 500,
   onConfirmed,
@@ -139,11 +141,22 @@ export function HandoffConfirmPanel({
   const orgId = useOrgId();
   const queryClient = useQueryClient();
   const isUnconfirmed = !handoff.confirmed_at;
-  const isOverrideOnly = isUnconfirmed && !canConfirm && requiresOverrideReason;
+  const isSupervisionConfirm = isUnconfirmed && Boolean(supervisionConfirmTaskId);
+  const canSubmitFinalConfirmation = canConfirm || isSupervisionConfirm;
+  const isOverrideOnly =
+    isUnconfirmed && !isSupervisionConfirm && !canConfirm && requiresOverrideReason;
   const isSupervisionRequestOnly =
-    isUnconfirmed && !canConfirm && !requiresOverrideReason && canRequestSupervision;
+    isUnconfirmed &&
+    !isSupervisionConfirm &&
+    !canConfirm &&
+    !requiresOverrideReason &&
+    canRequestSupervision;
   const isReadOnly =
-    isUnconfirmed && !canConfirm && !requiresOverrideReason && !canRequestSupervision;
+    isUnconfirmed &&
+    !isSupervisionConfirm &&
+    !canConfirm &&
+    !requiresOverrideReason &&
+    !canRequestSupervision;
   const [editMode, setEditMode] = useState(false);
   const [overrideReason, setOverrideReason] = useState('');
   const [supervisionRequestNote, setSupervisionRequestNote] = useState('');
@@ -175,12 +188,15 @@ export function HandoffConfirmPanel({
           decision_rationale?: string;
         };
         override_reason?: string;
+        task_id?: string;
       } = {
         confirmed: true,
         expected_visit_record_version: expectedVisitRecordVersion,
       };
 
-      if (requiresOverrideReason) {
+      if (isSupervisionConfirm && supervisionConfirmTaskId) {
+        payload.task_id = supervisionConfirmTaskId;
+      } else if (requiresOverrideReason) {
         payload.override_reason = overrideReasonTrimmed;
       }
 
@@ -192,8 +208,11 @@ export function HandoffConfirmPanel({
         };
       }
 
-      const res = await fetch(`/api/visit-records/${visitRecordId}/handoff`, {
-        method: 'PUT',
+      const endpoint = isSupervisionConfirm
+        ? `/api/visit-records/${visitRecordId}/handoff/supervision-confirm`
+        : `/api/visit-records/${visitRecordId}/handoff`;
+      const res = await fetch(endpoint, {
+        method: isSupervisionConfirm ? 'POST' : 'PUT',
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(payload),
       });
@@ -201,12 +220,17 @@ export function HandoffConfirmPanel({
     },
     onSuccess: () => {
       toast.success(
-        requiresOverrideReason ? '管理者として申し送りを確定しました' : '申し送りを確定しました',
+        isSupervisionConfirm
+          ? '上長確認として申し送りを確定しました'
+          : requiresOverrideReason
+            ? '管理者として申し送りを確定しました'
+            : '申し送りを確定しました',
       );
       setEditMode(false);
       setOverrideReason('');
       void queryClient.invalidateQueries({ queryKey: ['visit-record', visitRecordId] });
       void queryClient.invalidateQueries({ queryKey: ['visit-handoff'] });
+      void queryClient.invalidateQueries({ queryKey: ['tasks', 'handoff-confirmation', orgId] });
       onConfirmed?.();
     },
     onError: (err: Error) => {
@@ -471,9 +495,15 @@ export function HandoffConfirmPanel({
                 type="button"
                 size="sm"
                 onClick={() => confirmMutation.mutate()}
-                disabled={confirmMutation.isPending || !canConfirm}
+                disabled={confirmMutation.isPending || !canSubmitFinalConfirmation}
               >
-                {confirmMutation.isPending ? '確定中...' : '編集して確定'}
+                {confirmMutation.isPending
+                  ? isSupervisionConfirm
+                    ? '上長確認中...'
+                    : '確定中...'
+                  : isSupervisionConfirm
+                    ? '編集して上長確認'
+                    : '編集して確定'}
               </Button>
               <Button
                 type="button"
@@ -493,28 +523,34 @@ export function HandoffConfirmPanel({
             </>
           ) : (
             <>
-              {isUnconfirmed && (canConfirm || requiresOverrideReason) && (
+              {isUnconfirmed && (canSubmitFinalConfirmation || requiresOverrideReason) && (
                 <Button
                   type="button"
                   size="sm"
                   onClick={() => confirmMutation.mutate()}
-                  disabled={confirmMutation.isPending || !canSubmitOverride}
+                  disabled={
+                    confirmMutation.isPending || (!isSupervisionConfirm && !canSubmitOverride)
+                  }
                   aria-describedby={
                     requiresOverrideReason ? 'handoff-override-reason-helper' : undefined
                   }
                 >
                   {confirmMutation.isPending
-                    ? requiresOverrideReason
-                      ? '代行確定中...'
-                      : '確定中...'
-                    : requiresOverrideReason
-                      ? '管理者として確定'
-                      : '確認'}
+                    ? isSupervisionConfirm
+                      ? '上長確認中...'
+                      : requiresOverrideReason
+                        ? '代行確定中...'
+                        : '確定中...'
+                    : isSupervisionConfirm
+                      ? '上長確認を確定'
+                      : requiresOverrideReason
+                        ? '管理者として確定'
+                        : '確認'}
                 </Button>
               )}
-              {canConfirm && (
+              {canSubmitFinalConfirmation && (
                 <Button type="button" size="sm" variant="outline" onClick={() => setEditMode(true)}>
-                  編集して確定
+                  {isSupervisionConfirm ? '編集して上長確認' : '編集して確定'}
                 </Button>
               )}
               {isSupervisionRequestOnly && (

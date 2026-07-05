@@ -38,6 +38,12 @@ export class VisitHandoffAlreadyConfirmedError extends Error {
   }
 }
 
+export class VisitHandoffSupervisionTaskUnavailableError extends Error {
+  constructor(taskId: string) {
+    super(`Handoff supervision task ${taskId} is no longer available`);
+  }
+}
+
 function readStructuredSoap(value: unknown): Partial<StructuredSoap> {
   return readJsonObject(value) ?? {};
 }
@@ -82,6 +88,15 @@ function countHandoffContent(
     decision_rationale_present: (handoff.decision_rationale?.trim().length ?? 0) > 0,
     decision_rationale_length: handoff.decision_rationale?.length ?? 0,
   };
+}
+
+function readMutationCount(result: unknown) {
+  return typeof result === 'object' &&
+    result !== null &&
+    'count' in result &&
+    typeof result.count === 'number'
+    ? result.count
+    : null;
 }
 
 function editedHandoffFieldNames(
@@ -389,8 +404,15 @@ export async function confirmHandoff(
       | 'assigned_schedule'
       | 'case_primary_or_backup'
       | 'task_assignee'
+      | 'supervision_task_assignee'
       | 'admin_emergency_override';
     overrideReason?: string | null;
+    supervisionReview?: {
+      taskId: string;
+      traineeUserId: string | null;
+      supervisorUserId: string;
+      requestedVisitRecordVersion: number | null;
+    };
   },
 ): Promise<VisitHandoff> {
   const {
@@ -403,6 +425,7 @@ export async function confirmHandoff(
     confirmationWhere,
     confirmationBasis,
     overrideReason,
+    supervisionReview,
   } = args;
 
   let confirmed: HandoffData | null = null;
@@ -430,6 +453,10 @@ export async function confirmHandoff(
       }
 
       const currentHandoff = currentHandoffResult.handoff;
+      if (currentHandoff.confirmed_at || currentHandoff.confirmed_by) {
+        throw new VisitHandoffAlreadyConfirmedError(visitRecordId);
+      }
+
       const editedFields = editedHandoffFieldNames(edits);
 
       confirmed = {
@@ -451,6 +478,26 @@ export async function confirmHandoff(
         throw new VisitHandoffInvalidDataError(visitRecordId);
       }
 
+      if (supervisionReview) {
+        const supervisionTaskClaim = await tx.task.updateMany({
+          where: {
+            id: supervisionReview.taskId,
+            org_id: orgId,
+            task_type: 'handoff_supervision_review',
+            status: { in: ['pending', 'in_progress'] },
+            assigned_to: confirmedBy,
+            related_entity_type: 'visit_record',
+            related_entity_id: visitRecordId,
+          },
+          data: {
+            status: 'in_progress',
+          },
+        });
+        if (supervisionTaskClaim.count !== 1) {
+          throw new VisitHandoffSupervisionTaskUnavailableError(supervisionReview.taskId);
+        }
+      }
+
       const updated = {
         ...currentSoap,
         handoff: confirmed,
@@ -470,7 +517,7 @@ export async function confirmHandoff(
         throw new VisitHandoffStaleRecordError(visitRecordId);
       }
 
-      await resolveOperationalTasks(tx, {
+      const directConfirmationResolution = await resolveOperationalTasks(tx, {
         orgId,
         dedupeKey: `handoff_confirm_${visitRecordId}`,
         taskType: 'handoff_confirmation',
@@ -478,9 +525,33 @@ export async function confirmHandoff(
         includeUnassigned: true,
       });
 
+      const traineeConfirmationResolution =
+        supervisionReview?.traineeUserId && supervisionReview.traineeUserId !== confirmedBy
+          ? await resolveOperationalTasks(tx, {
+              orgId,
+              dedupeKey: `handoff_confirm_${visitRecordId}`,
+              taskType: 'handoff_confirmation',
+              assignedToUserId: supervisionReview.traineeUserId,
+            })
+          : null;
+
+      let supervisionTaskResolution: unknown = null;
+      if (supervisionReview) {
+        supervisionTaskResolution = await resolveOperationalTasks(tx, {
+          orgId,
+          taskId: supervisionReview.taskId,
+          taskType: 'handoff_supervision_review',
+          relatedEntityType: 'visit_record',
+          relatedEntityId: visitRecordId,
+          assignedToUserId: confirmedBy,
+        });
+      }
+
       if (requestContext) {
         await createAuditLogEntry(tx, requestContext, {
-          action: 'visit_handoff_confirmed',
+          action: supervisionReview
+            ? 'visit_handoff_supervision_confirmed'
+            : 'visit_handoff_confirmed',
           targetType: 'visit_record',
           targetId: visitRecordId,
           changes: {
@@ -488,6 +559,20 @@ export async function confirmHandoff(
             schedule_id: record.schedule_id,
             confirmed_by: confirmedBy,
             authorized_basis: confirmationBasis ?? 'service_call',
+            ...(supervisionReview
+              ? {
+                  handoff_supervision_task_id: supervisionReview.taskId,
+                  trainee_user_id: supervisionReview.traineeUserId,
+                  supervisor_user_id: supervisionReview.supervisorUserId,
+                  requested_visit_record_version: supervisionReview.requestedVisitRecordVersion,
+                  confirmed_visit_record_version: expectedVersion,
+                  handoff_confirmation_tasks_resolved_count:
+                    (readMutationCount(directConfirmationResolution) ?? 0) +
+                    (readMutationCount(traineeConfirmationResolution) ?? 0),
+                  handoff_supervision_tasks_resolved_count:
+                    readMutationCount(supervisionTaskResolution),
+                }
+              : {}),
             ...(overrideReason
               ? {
                   override_reason_present: true,

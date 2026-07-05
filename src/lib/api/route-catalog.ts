@@ -232,6 +232,20 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'visits',
   },
   {
+    path: '/api/visit-records/:id/handoff/supervision-request',
+    methods: ['POST'],
+    permission: 'canVisit',
+    description: '研修中薬剤師による申し送り上長確認依頼',
+    area: 'visits',
+  },
+  {
+    path: '/api/visit-records/:id/handoff/supervision-confirm',
+    methods: ['POST'],
+    permission: 'canVisit',
+    description: '上長確認タスクに基づく申し送り最終確認',
+    area: 'visits',
+  },
+  {
     path: '/api/visit-records/:id/reflected-fields',
     methods: ['GET'],
     permission: 'canVisit',
@@ -425,6 +439,13 @@ export const routeCatalog: RouteCatalogEntry[] = [
     methods: ['GET', 'PATCH'],
     permission: 'purpose-based',
     description: '報告書詳細取得と編集（閲覧は canReport、編集は canAuthorReport）',
+    area: 'reports',
+  },
+  {
+    path: '/api/care-reports/:id/finalize',
+    methods: ['POST'],
+    permission: 'canAuthorReport',
+    description: '報告書の確定と版固定',
     area: 'reports',
   },
   {

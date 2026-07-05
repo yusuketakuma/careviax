@@ -107,6 +107,7 @@ export async function fetchOperationCockpit(orgId: string): Promise<DashboardCoc
 
 export type HandoffConfirmationTask = {
   id: string;
+  task_type: string;
   title: string;
   priority: string;
   due_date: string | null;
@@ -136,7 +137,7 @@ export async function fetchHandoffConfirmationTasks(
 ): Promise<HandoffConfirmationTask[]> {
   const params = new URLSearchParams({
     status: 'pending',
-    task_type: 'handoff_confirmation',
+    task_types: 'handoff_confirmation,handoff_supervision_review',
   });
   const res = await fetch(`/api/tasks?${params.toString()}`, {
     headers: buildOrgHeaders(orgId),
@@ -1238,13 +1239,11 @@ function VisitHandoffConfirmationWorkspace({
   error: Error | null;
   onConfirmed: () => void;
 }) {
-  const [selectedVisitRecordId, setSelectedVisitRecordId] = useState<string | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
   const availableTasks = tasks.filter((task) => Boolean(task.related_entity_id));
   const selectedTask =
-    availableTasks.find((task) => task.related_entity_id === selectedVisitRecordId) ??
-    availableTasks[0] ??
-    null;
+    availableTasks.find((task) => task.id === selectedTaskId) ?? availableTasks[0] ?? null;
   const visitRecordId = selectedTask?.related_entity_id ?? null;
 
   const visitHandoffQuery = useQuery({
@@ -1309,11 +1308,11 @@ function VisitHandoffConfirmationWorkspace({
             <button
               key={task.id}
               type="button"
-              onClick={() => setSelectedVisitRecordId(task.related_entity_id)}
-              aria-pressed={task.related_entity_id === visitRecordId}
+              onClick={() => setSelectedTaskId(task.id)}
+              aria-pressed={task.id === selectedTask?.id}
               className={cn(
                 'min-h-[44px] rounded-full border px-3 py-1 text-xs font-medium transition-colors',
-                task.related_entity_id === visitRecordId
+                task.id === selectedTask?.id
                   ? 'border-primary bg-primary/5 text-primary'
                   : 'border-border/70 text-muted-foreground hover:bg-muted/50',
               )}
@@ -1351,6 +1350,9 @@ function VisitHandoffConfirmationWorkspace({
             }
             canRequestSupervision={
               visitHandoffQuery.data.confirmation_policy?.can_request_supervision ?? false
+            }
+            supervisionConfirmTaskId={
+              selectedTask?.task_type === 'handoff_supervision_review' ? selectedTask.id : null
             }
             supervisionRequestNoteMaxLength={
               visitHandoffQuery.data.confirmation_policy?.supervision_request_note_max_length

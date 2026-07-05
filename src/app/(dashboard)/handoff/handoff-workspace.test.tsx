@@ -248,6 +248,14 @@ function stubFetch(
       return new Response(JSON.stringify({ data: recentComments }), { status: 200 });
     }
     if (url.includes('/api/visit-records/visit_record_1/handoff')) {
+      if (url.includes('/supervision-confirm') && init?.method === 'POST') {
+        return new Response(
+          JSON.stringify({ data: { confirmed_at: '2026-06-11T01:00:00.000Z' } }),
+          {
+            status: 200,
+          },
+        );
+      }
       if (url.includes('/supervision-request') && init?.method === 'POST') {
         return new Response(JSON.stringify({ data: { status: 'requested' } }), {
           status: 200,
@@ -350,7 +358,7 @@ describe('HandoffWorkspace', () => {
     expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual([
       '/api/handoff-board',
       '/api/dashboard/cockpit',
-      '/api/tasks?status=pending&task_type=handoff_confirmation',
+      '/api/tasks?status=pending&task_types=handoff_confirmation%2Chandoff_supervision_review',
       '/api/comments/recent',
       '/api/visit-records/visit_record_1/handoff',
     ]);
@@ -606,6 +614,79 @@ describe('HandoffWorkspace', () => {
       request_note: '上長確認をお願いします',
     });
     expect(postBody).not.toHaveProperty('confirmed');
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) =>
+          String(input) === '/api/visit-records/visit_record_1/handoff' && init?.method === 'PUT',
+      ),
+    ).toBe(false);
+  });
+
+  it('uses the selected supervision review task for supervisor final confirmation', async () => {
+    useAuthStore.getState().setCurrentUser({ id: 'supervisor_1' });
+    const fetchMock = stubFetch(BOARD, {
+      handoffTasks: [
+        {
+          id: 'task_supervision_1',
+          title: '申し送り上長確認',
+          task_type: 'handoff_supervision_review',
+          priority: 'normal',
+          due_date: null,
+          related_entity_id: 'visit_record_1',
+          created_at: '2026-06-11T00:00:00.000Z',
+        },
+      ],
+      handoffDetail: {
+        data: {
+          next_check_items: ['残薬を確認'],
+          ongoing_monitoring: ['眠気'],
+          decision_rationale: '訪問時に眠気の訴えあり',
+          ai_extracted: true,
+          ai_confidence: 0.88,
+          confirmed_by: null,
+          confirmed_at: null,
+          extracted_at: '2026-06-11T00:00:00.000Z',
+        },
+        visit_record_version: 7,
+        visit_record_updated_at: '2026-06-11T00:00:00.000Z',
+        confirmation_policy: {
+          can_confirm: false,
+          requires_override_reason: false,
+          authorized_basis: null,
+          override_reason_max_length: 500,
+          can_request_supervision: false,
+        },
+      },
+    });
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '上長確認を確定' })).toBeTruthy();
+    });
+    expect(screen.queryByRole('button', { name: '確認' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '上長確認を依頼' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '上長確認を確定' }));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            String(input) === '/api/visit-records/visit_record_1/handoff/supervision-confirm' &&
+            init?.method === 'POST',
+        ),
+      ).toBe(true);
+    });
+    const postCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        String(input) === '/api/visit-records/visit_record_1/handoff/supervision-confirm' &&
+        init?.method === 'POST',
+    );
+    expect(JSON.parse(String(postCall?.[1]?.body))).toEqual({
+      confirmed: true,
+      expected_visit_record_version: 7,
+      task_id: 'task_supervision_1',
+    });
     expect(
       fetchMock.mock.calls.some(
         ([input, init]) =>

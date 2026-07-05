@@ -42,6 +42,7 @@ type UpsertOperationalTaskInput = {
 
 type ResolveOperationalTaskInput = {
   orgId: string;
+  taskId?: string | null;
   dedupeKey?: string | null;
   relatedEntityType?: string | null;
   relatedEntityId?: string | null;
@@ -183,6 +184,7 @@ export async function resolveOperationalTasks(tx: Tx, input: ResolveOperationalT
 
   return tx.task.updateMany({
     where: {
+      ...(input.taskId ? { id: input.taskId } : {}),
       org_id: input.orgId,
       status: {
         in: ['pending', 'in_progress'],
