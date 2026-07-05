@@ -40,7 +40,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: Risk Finding to OperationalTask bridge initial slice（commit: pending）。
+- codex: Risk Finding to OperationalTask bridge initial slice（commit `9201b5b62`）。
   - current task:
     `Plans.md` の `RISK-CORE-2 / CORE-002` に沿って、active な `blocking` / `urgent`
     `RiskFinding` を PHI-minimized `upsertOperationalTask` 入力へ変換する bridge と、同じ dedupe identity で
