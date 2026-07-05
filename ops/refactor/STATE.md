@@ -40,6 +40,40 @@
 
 ## 直近の land（本日・要点）
 
+- codex: `gpt-image-2` UI design generation requirement mirrored into `AGENTS.md`（commit `23ef2e6ad`）。
+  - current task:
+    ユーザー指示「gpt-image-2 を使うことを追記」に対応。`Plans.md` と
+    `docs/ui-ux-design-guidelines.md` には既に `imagegen` + `gpt-image-2` 方針が入っていたため、
+    repo entrypoint の `AGENTS.md` にも、視覚再構築またはデザイン参照が必要な UI/UX 変更では
+    実装前に `imagegen` の標準画像モデルとして `gpt-image-2` を使うことを明示した。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `AGENTS.md`,
+    `Plans.md`,
+    `docs/ui-ux-design-guidelines.md`,
+    `ops/refactor/STATE.md`,
+    `/Users/yusuke/.codex/memories/MEMORY.md`。
+  - files changed:
+    `AGENTS.md`,
+    `ops/refactor/STATE.md`,
+    `/Users/yusuke/.codex/memories/extensions/ad_hoc/notes/20260706-064805-careviax-gpt-image-2-ui-policy.md`。
+  - bugs found:
+    なし。既存の UI/UX SSOT と Plans 方針は整合済みで、`AGENTS.md` 側だけ明示が不足していた。
+  - security risks found:
+    `gpt-image-2` prompt に実在患者名、住所、電話、処方本文、報告書本文、保険情報、外部共有 URL、
+    secret を入れない方針を `AGENTS.md` とメモリ追記に保持。
+  - performance issues found:
+    なし。運用ルール追記のみ。
+  - validation commands:
+    `pnpm exec prettier --check AGENTS.md ops/refactor/STATE.md`;
+    `git diff --check -- AGENTS.md ops/refactor/STATE.md`。
+  - validation results:
+    prettier check green; diff whitespace check green.
+  - remaining work:
+    Broader `Plans.md` objective remains open。実際の UI slice では対象画面の既存コード、
+    `docs/ui-ux-design-guidelines.md`、`imagegen` skill を確認し、必要時に `gpt-image-2` の非 PHI
+    参照案を作る。
+
 - codex: Patients Board Card Model Extraction slice complete（commit `2e9d77b20`）。
   - current task:
     `Plans.md` の `UX-CMD-001 / PERF-BFF-001` 継続として、`/api/patients/board` に直書き
