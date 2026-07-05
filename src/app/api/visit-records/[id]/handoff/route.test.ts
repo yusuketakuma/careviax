@@ -244,6 +244,13 @@ describe('/api/visit-records/[id]/handoff', () => {
           requires_override_reason: true,
           authorized_basis: 'admin_emergency_override',
           override_reason_max_length: 500,
+          override_reason_code_required: false,
+          override_reason_codes: expect.arrayContaining([
+            expect.objectContaining({
+              code: 'assignee_unavailable',
+              label: expect.any(String),
+            }),
+          ]),
         },
       });
     });
@@ -450,6 +457,8 @@ describe('/api/visit-records/[id]/handoff', () => {
       const req = createRequest('http://localhost/api/visit-records/vr_1/handoff', {
         confirmed: true,
         expected_visit_record_version: VISIT_RECORD_VERSION,
+        override_reason_code: 'assignee_unavailable',
+        override_reason: '担当者本人が確認しているため代行理由は無視される',
       });
       const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
 
@@ -485,9 +494,10 @@ describe('/api/visit-records/[id]/handoff', () => {
         confirmationBasis: 'assigned_schedule',
       });
       expect(confirmHandoffMock.mock.calls[0]?.[1]).not.toHaveProperty('overrideReason');
+      expect(confirmHandoffMock.mock.calls[0]?.[1]).not.toHaveProperty('overrideReasonCode');
     });
 
-    it('allows owner/admin emergency override with an explicit reason', async () => {
+    it('allows legacy owner/admin emergency override with an explicit reason only', async () => {
       requireAuthContextMock.mockResolvedValue({
         ctx: { ...authCtx.ctx, userId: 'owner_1', role: 'owner' },
       });
@@ -520,6 +530,43 @@ describe('/api/visit-records/[id]/handoff', () => {
         confirmationBasis: 'admin_emergency_override',
         overrideReason: '担当者不在のため本日訪問前に確認が必要',
       });
+      expect(confirmHandoffMock.mock.calls[0]?.[1]).not.toHaveProperty('overrideReasonCode');
+    });
+
+    it('allows owner/admin emergency override with a standardized reason code', async () => {
+      requireAuthContextMock.mockResolvedValue({
+        ctx: { ...authCtx.ctx, userId: 'owner_1', role: 'owner' },
+      });
+      canConfirmVisitHandoffMock.mockReturnValue(false);
+      canOverrideVisitHandoffConfirmationMock.mockReturnValue(true);
+      visitRecordFindFirstMock.mockResolvedValue(
+        buildVisitRecord({ structured_soap: { handoff: confirmableHandoff } }),
+      );
+      confirmHandoffMock.mockResolvedValue({ confirmed: true, confirmed_by: 'owner_1' });
+
+      const req = createRequest('http://localhost/api/visit-records/vr_1/handoff', {
+        confirmed: true,
+        expected_visit_record_version: VISIT_RECORD_VERSION,
+        override_reason_code: 'assignee_unavailable',
+        override_reason: ' 担当者不在のため本日訪問前に確認が必要 ',
+      });
+      const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+      expect(res!.status).toBe(200);
+      expectSensitiveNoStore(res!);
+      expect(buildVisitHandoffConfirmationWhereMock).not.toHaveBeenCalled();
+      expect(confirmHandoffMock).toHaveBeenCalledWith(expect.anything(), {
+        orgId: 'org_1',
+        visitRecordId: 'vr_1',
+        confirmedBy: 'owner_1',
+        expectedVersion: VISIT_RECORD_VERSION,
+        edits: undefined,
+        requestContext: expect.objectContaining({ userId: 'owner_1', role: 'owner' }),
+        confirmationWhere: undefined,
+        confirmationBasis: 'admin_emergency_override',
+        overrideReason: '担当者不在のため本日訪問前に確認が必要',
+        overrideReasonCode: 'assignee_unavailable',
+      });
     });
 
     it('keeps owner/admin non-assignee confirmation denied without an override reason', async () => {
@@ -535,6 +582,28 @@ describe('/api/visit-records/[id]/handoff', () => {
       const req = createRequest('http://localhost/api/visit-records/vr_1/handoff', {
         confirmed: true,
         expected_visit_record_version: VISIT_RECORD_VERSION,
+      });
+      const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+      expect(res!.status).toBe(403);
+      expectSensitiveNoStore(res!);
+      expect(confirmHandoffMock).not.toHaveBeenCalled();
+    });
+
+    it('keeps owner/admin override denied when only a reason code is supplied', async () => {
+      requireAuthContextMock.mockResolvedValue({
+        ctx: { ...authCtx.ctx, userId: 'owner_1', role: 'owner' },
+      });
+      canConfirmVisitHandoffMock.mockReturnValue(false);
+      canOverrideVisitHandoffConfirmationMock.mockReturnValue(true);
+      visitRecordFindFirstMock.mockResolvedValue(
+        buildVisitRecord({ structured_soap: { handoff: confirmableHandoff } }),
+      );
+
+      const req = createRequest('http://localhost/api/visit-records/vr_1/handoff', {
+        confirmed: true,
+        expected_visit_record_version: VISIT_RECORD_VERSION,
+        override_reason_code: 'assignee_unavailable',
       });
       const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
 
@@ -563,6 +632,30 @@ describe('/api/visit-records/[id]/handoff', () => {
       expect(confirmHandoffMock).not.toHaveBeenCalled();
     });
 
+    it('rejects invalid override reason codes before loading the visit record', async () => {
+      const maliciousCode = 'patient_tanaka_token_secret';
+      const req = createRequest('http://localhost/api/visit-records/vr_1/handoff', {
+        confirmed: true,
+        expected_visit_record_version: VISIT_RECORD_VERSION,
+        override_reason_code: maliciousCode,
+        override_reason: '担当者不在のため本日訪問前に確認が必要',
+      });
+      const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+      expect(res!.status).toBe(400);
+      expectSensitiveNoStore(res!);
+      const json = await res!.json();
+      expect(json).toMatchObject({
+        code: 'VALIDATION_ERROR',
+        details: {
+          override_reason_code: expect.any(Array),
+        },
+      });
+      expect(JSON.stringify(json)).not.toContain(maliciousCode);
+      expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+      expect(confirmHandoffMock).not.toHaveBeenCalled();
+    });
+
     it('rejects pharmacist and trainee override attempts even with a reason', async () => {
       for (const role of ['pharmacist', 'pharmacist_trainee'] as const) {
         vi.clearAllMocks();
@@ -582,6 +675,7 @@ describe('/api/visit-records/[id]/handoff', () => {
         const req = createRequest('http://localhost/api/visit-records/vr_1/handoff', {
           confirmed: true,
           expected_visit_record_version: VISIT_RECORD_VERSION,
+          override_reason_code: 'assignee_unavailable',
           override_reason: '担当者不在のため本日訪問前に確認が必要',
         });
         const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });

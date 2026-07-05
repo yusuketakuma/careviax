@@ -4,6 +4,10 @@ import { withOrgContext } from '@/lib/db/rls';
 import type { RequestAuthContext } from '@/lib/auth/request-context';
 import { readJsonObject, toPrismaJsonInput } from '@/lib/db/json';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import {
+  normalizeVisitHandoffOverrideReasonCode,
+  type VisitHandoffOverrideReasonCode,
+} from '@/lib/visits/handoff-override-reasons';
 import type { HandoffData, StructuredSoap } from '@/types/structured-soap';
 import type { VisitHandoff } from '@/types/visit-brief';
 import { extractHandoffFromSoap } from './visit-brief-ai';
@@ -406,6 +410,7 @@ export async function confirmHandoff(
       | 'task_assignee'
       | 'supervision_task_assignee'
       | 'admin_emergency_override';
+    overrideReasonCode?: VisitHandoffOverrideReasonCode | null;
     overrideReason?: string | null;
     supervisionReview?: {
       taskId: string;
@@ -424,6 +429,7 @@ export async function confirmHandoff(
     requestContext,
     confirmationWhere,
     confirmationBasis,
+    overrideReasonCode,
     overrideReason,
     supervisionReview,
   } = args;
@@ -575,6 +581,8 @@ export async function confirmHandoff(
               : {}),
             ...(overrideReason
               ? {
+                  override_reason_code: normalizeVisitHandoffOverrideReasonCode(overrideReasonCode),
+                  override_reason_code_present: Boolean(overrideReasonCode),
                   override_reason_present: true,
                   override_reason_length: overrideReason.trim().length,
                   override_reason_redacted: true,

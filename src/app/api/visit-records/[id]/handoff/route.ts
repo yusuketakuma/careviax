@@ -24,6 +24,10 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
 import {
+  VISIT_HANDOFF_OVERRIDE_REASON_OPTIONS,
+  VISIT_HANDOFF_SELECTABLE_OVERRIDE_REASON_CODES,
+} from '@/lib/visits/handoff-override-reasons';
+import {
   confirmHandoff,
   readConfirmableHandoffData,
   VisitHandoffAlreadyConfirmedError,
@@ -40,6 +44,7 @@ const confirmHandoffSchema = z.object({
     .number()
     .int('訪問記録の版情報が不正です')
     .positive('訪問記録の版情報が不正です'),
+  override_reason_code: z.enum(VISIT_HANDOFF_SELECTABLE_OVERRIDE_REASON_CODES).optional(),
   override_reason: z.string().trim().min(8, '上書き理由を入力してください').max(500).optional(),
   edits: z
     .object({
@@ -102,7 +107,11 @@ async function authenticatedPUT(req: NextRequest, { params }: { params: Promise<
     return withSensitiveNoStore(await forbiddenResponse('この訪問記録を更新する権限がありません'));
   }
 
-  const { edits, override_reason: overrideReason } = parsed.data;
+  const {
+    edits,
+    override_reason: overrideReason,
+    override_reason_code: overrideReasonCode,
+  } = parsed.data;
   const isOverrideConfirmation = !canConfirmDirectly && canOverride;
   if (isOverrideConfirmation && !overrideReason) {
     return withSensitiveNoStore(await forbiddenResponse('この訪問記録を更新する権限がありません'));
@@ -133,7 +142,9 @@ async function authenticatedPUT(req: NextRequest, { params }: { params: Promise<
         : record.schedule?.pharmacist_id === ctx.userId
           ? 'assigned_schedule'
           : 'case_primary_or_backup',
-      ...(isOverrideConfirmation ? { overrideReason } : {}),
+      ...(isOverrideConfirmation
+        ? { overrideReason, ...(overrideReasonCode ? { overrideReasonCode } : {}) }
+        : {}),
     });
     return withSensitiveNoStore(success(handoff));
   } catch (cause) {
@@ -272,6 +283,11 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
             ? 'admin_emergency_override'
             : null,
         override_reason_max_length: 500,
+        override_reason_code_required: false,
+        override_reason_codes:
+          !canConfirmDirectly && canOverrideVisitHandoffConfirmation(ctx) && Boolean(handoff)
+            ? VISIT_HANDOFF_OVERRIDE_REASON_OPTIONS
+            : [],
         can_request_supervision: canRequestSupervision,
         supervision_required:
           Boolean(handoff) &&

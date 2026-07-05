@@ -714,9 +714,13 @@ describe('confirmHandoff', () => {
     expect(auditText).not.toContain('残薬管理');
     expect(auditText).not.toContain('急変リスクあり');
     expect(auditText).not.toContain('申し送り内容を確認済み');
+    const changes = createAuditLogEntryMock.mock.calls[0]?.[2]?.changes;
+    expect(changes).not.toHaveProperty('override_reason_code');
+    expect(changes).not.toHaveProperty('override_reason_code_present');
+    expect(changes).not.toHaveProperty('override_reason_present');
   });
 
-  it('redacts owner/admin override reasons in confirmation audit metadata', async () => {
+  it('redacts legacy owner/admin override reasons in confirmation audit metadata', async () => {
     const existingHandoff = {
       next_check_items: ['血圧確認'],
       ongoing_monitoring: ['残薬管理'],
@@ -775,6 +779,82 @@ describe('confirmHandoff', () => {
         action: 'visit_handoff_confirmed',
         changes: expect.objectContaining({
           authorized_basis: 'admin_emergency_override',
+          override_reason_code: 'legacy_unclassified',
+          override_reason_code_present: false,
+          override_reason_present: true,
+          override_reason_length: overrideReason.trim().length,
+          override_reason_redacted: true,
+        }),
+      }),
+    );
+    const auditText = JSON.stringify(createAuditLogEntryMock.mock.calls);
+    expect(auditText).not.toContain('田中太郎');
+    expect(auditText).not.toContain('token=secret');
+    expect(auditText).not.toContain(overrideReason.trim());
+  });
+
+  it('records standardized owner/admin override reason codes without raw reason text', async () => {
+    const existingHandoff = {
+      next_check_items: ['血圧確認'],
+      ongoing_monitoring: ['残薬管理'],
+      decision_rationale: '急変リスクあり',
+      ai_extracted: true,
+      ai_confidence: 0.85,
+      confirmed_by: null,
+      confirmed_at: null,
+      extracted_at: '2026-04-01T00:00:00Z',
+    };
+    const overrideReason = ' 患者 田中太郎 の急変対応 token=secret のため管理者確認 ';
+
+    const visitRecordFindUniqueOrThrowMock = vi.fn().mockResolvedValue({
+      version: 2,
+      schedule_id: 'schedule-1',
+      structured_soap: { ...baseSoap, handoff: existingHandoff },
+    });
+    const visitRecordUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+    resolveOperationalTasksMock.mockResolvedValue({ count: 1 });
+    createAuditLogEntryMock.mockResolvedValue({ id: 'audit-1' });
+
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = {
+          visitRecord: {
+            findUniqueOrThrow: visitRecordFindUniqueOrThrowMock,
+            updateMany: visitRecordUpdateManyMock,
+          },
+          auditLog: { create: vi.fn() },
+        };
+        return fn(tx);
+      },
+    );
+
+    const db = {} as Parameters<typeof confirmHandoff>[0];
+    await confirmHandoff(db, {
+      orgId: 'org-1',
+      visitRecordId: 'vr-1',
+      confirmedBy: 'owner-1',
+      expectedVersion: 2,
+      requestContext: {
+        orgId: 'org-1',
+        userId: 'owner-1',
+        role: 'owner',
+        ipAddress: '127.0.0.1',
+        userAgent: 'test',
+      },
+      confirmationBasis: 'admin_emergency_override',
+      overrideReasonCode: 'assignee_unavailable',
+      overrideReason,
+    });
+
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ orgId: 'org-1', userId: 'owner-1' }),
+      expect.objectContaining({
+        action: 'visit_handoff_confirmed',
+        changes: expect.objectContaining({
+          authorized_basis: 'admin_emergency_override',
+          override_reason_code: 'assignee_unavailable',
+          override_reason_code_present: true,
           override_reason_present: true,
           override_reason_length: overrideReason.trim().length,
           override_reason_redacted: true,

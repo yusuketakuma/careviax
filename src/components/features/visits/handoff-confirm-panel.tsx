@@ -13,6 +13,11 @@ import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { messageFromError } from '@/lib/utils/error-message';
+import {
+  VISIT_HANDOFF_OVERRIDE_REASON_OPTIONS,
+  type VisitHandoffOverrideReasonOption,
+  type VisitHandoffSelectableOverrideReasonCode,
+} from '@/lib/visits/handoff-override-reasons';
 import type { VisitHandoff } from '@/types/visit-brief';
 
 type HandoffConfirmPanelProps = {
@@ -22,6 +27,7 @@ type HandoffConfirmPanelProps = {
   canConfirm?: boolean;
   requiresOverrideReason?: boolean;
   overrideReasonMaxLength?: number;
+  overrideReasonOptions?: readonly VisitHandoffOverrideReasonOption[];
   supervisionConfirmTaskId?: string | null;
   canRequestSupervision?: boolean;
   supervisionRequestNoteMaxLength?: number;
@@ -133,6 +139,7 @@ export function HandoffConfirmPanel({
   canConfirm = false,
   requiresOverrideReason = false,
   overrideReasonMaxLength = 500,
+  overrideReasonOptions,
   supervisionConfirmTaskId = null,
   canRequestSupervision = false,
   supervisionRequestNoteMaxLength = 500,
@@ -157,14 +164,24 @@ export function HandoffConfirmPanel({
     !canConfirm &&
     !requiresOverrideReason &&
     !canRequestSupervision;
+  const selectableOverrideReasonOptions =
+    overrideReasonOptions ?? VISIT_HANDOFF_OVERRIDE_REASON_OPTIONS;
   const [editMode, setEditMode] = useState(false);
+  const [overrideReasonCode, setOverrideReasonCode] = useState<
+    VisitHandoffSelectableOverrideReasonCode | ''
+  >(selectableOverrideReasonOptions[0]?.code ?? '');
   const [overrideReason, setOverrideReason] = useState('');
   const [supervisionRequestNote, setSupervisionRequestNote] = useState('');
   const overrideReasonTrimmed = overrideReason.trim();
   const supervisionRequestNoteTrimmed = supervisionRequestNote.trim();
+  const canSubmitOverrideReasonCode =
+    !requiresOverrideReason ||
+    (overrideReasonCode.length > 0 &&
+      selectableOverrideReasonOptions.some((option) => option.code === overrideReasonCode));
   const canSubmitOverride =
     !requiresOverrideReason ||
-    (overrideReasonTrimmed.length >= OVERRIDE_REASON_MIN_LENGTH &&
+    (canSubmitOverrideReasonCode &&
+      overrideReasonTrimmed.length >= OVERRIDE_REASON_MIN_LENGTH &&
       overrideReasonTrimmed.length <= overrideReasonMaxLength);
   const canSubmitSupervisionRequest =
     !supervisionRequestNoteTrimmed ||
@@ -188,6 +205,7 @@ export function HandoffConfirmPanel({
           decision_rationale?: string;
         };
         override_reason?: string;
+        override_reason_code?: VisitHandoffSelectableOverrideReasonCode;
         task_id?: string;
       } = {
         confirmed: true,
@@ -198,6 +216,9 @@ export function HandoffConfirmPanel({
         payload.task_id = supervisionConfirmTaskId;
       } else if (requiresOverrideReason) {
         payload.override_reason = overrideReasonTrimmed;
+        if (overrideReasonCode) {
+          payload.override_reason_code = overrideReasonCode;
+        }
       }
 
       if (editMode) {
@@ -228,6 +249,7 @@ export function HandoffConfirmPanel({
       );
       setEditMode(false);
       setOverrideReason('');
+      setOverrideReasonCode(selectableOverrideReasonOptions[0]?.code ?? '');
       void queryClient.invalidateQueries({ queryKey: ['visit-record', visitRecordId] });
       void queryClient.invalidateQueries({ queryKey: ['visit-handoff'] });
       void queryClient.invalidateQueries({ queryKey: ['tasks', 'handoff-confirmation', orgId] });
@@ -416,6 +438,35 @@ export function HandoffConfirmPanel({
             <p className="text-sm text-muted-foreground">
               担当者が直接確認できないため、管理者として代行確定できます。理由は監査ログに記録されます。
             </p>
+            <div className="space-y-1.5">
+              <label
+                htmlFor="handoff-override-reason-code"
+                className="text-xs font-medium text-foreground"
+              >
+                代行理由区分
+              </label>
+              <select
+                id="handoff-override-reason-code"
+                value={overrideReasonCode}
+                onChange={(e) =>
+                  setOverrideReasonCode(e.target.value as VisitHandoffSelectableOverrideReasonCode)
+                }
+                disabled={selectableOverrideReasonOptions.length === 0}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                aria-describedby="handoff-override-reason-code-helper"
+              >
+                {selectableOverrideReasonOptions.map((option) => (
+                  <option key={option.code} value={option.code}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <p id="handoff-override-reason-code-helper" className="text-xs text-muted-foreground">
+                {selectableOverrideReasonOptions.length > 0
+                  ? '監査用の標準区分として記録されます。'
+                  : '代行理由区分を取得できません。'}
+              </p>
+            </div>
             <div className="flex items-center justify-between gap-2">
               <label
                 htmlFor="handoff-override-reason"

@@ -518,6 +518,14 @@ describe('HandoffWorkspace', () => {
           requires_override_reason: true,
           authorized_basis: 'admin_emergency_override',
           override_reason_max_length: 500,
+          override_reason_code_required: false,
+          override_reason_codes: [
+            {
+              code: 'assignee_unavailable',
+              label: '担当者不在',
+              description: '担当者が確認できないため、管理者が代行確認する',
+            },
+          ],
         },
       },
     });
@@ -550,6 +558,7 @@ describe('HandoffWorkspace', () => {
     expect(JSON.parse(String(putCall?.[1]?.body))).toEqual({
       confirmed: true,
       expected_visit_record_version: 7,
+      override_reason_code: 'assignee_unavailable',
       override_reason: '担当者不在のため本日訪問前に確認が必要',
     });
   });

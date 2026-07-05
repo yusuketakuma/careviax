@@ -37,6 +37,7 @@ import { hasPermission } from '@/lib/auth/permission-matrix';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import { cn } from '@/lib/utils';
 import { messageFromError } from '@/lib/utils/error-message';
+import type { VisitHandoffOverrideReasonOption } from '@/lib/visits/handoff-override-reasons';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import type { VisitHandoff } from '@/types/visit-brief';
 import {
@@ -125,6 +126,8 @@ export type VisitHandoffResponse = {
     requires_override_reason?: boolean;
     authorized_basis?: string | null;
     override_reason_max_length?: number;
+    override_reason_code_required?: boolean;
+    override_reason_codes?: VisitHandoffOverrideReasonOption[];
     can_request_supervision?: boolean;
     supervision_required?: boolean;
     supervision_available?: boolean;
@@ -1347,6 +1350,11 @@ function VisitHandoffConfirmationWorkspace({
             }
             overrideReasonMaxLength={
               visitHandoffQuery.data.confirmation_policy?.override_reason_max_length
+            }
+            overrideReasonOptions={
+              visitHandoffQuery.data.confirmation_policy?.requires_override_reason
+                ? (visitHandoffQuery.data.confirmation_policy.override_reason_codes ?? [])
+                : undefined
             }
             canRequestSupervision={
               visitHandoffQuery.data.confirmation_policy?.can_request_supervision ?? false

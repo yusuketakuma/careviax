@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { createQueryClientWrapper } from '@/test/query-client-test-utils';
+import type { VisitHandoffOverrideReasonOption } from '@/lib/visits/handoff-override-reasons';
 import { HandoffConfirmPanel } from './handoff-confirm-panel';
 import type { VisitHandoff } from '@/types/visit-brief';
 
@@ -37,6 +38,7 @@ type PanelOptions = {
   canConfirm?: boolean;
   requiresOverrideReason?: boolean;
   overrideReasonMaxLength?: number;
+  overrideReasonOptions?: readonly VisitHandoffOverrideReasonOption[];
   supervisionConfirmTaskId?: string | null;
   canRequestSupervision?: boolean;
   supervisionRequestNoteMaxLength?: number;
@@ -47,6 +49,7 @@ function renderPanel({
   canConfirm = true,
   requiresOverrideReason = false,
   overrideReasonMaxLength,
+  overrideReasonOptions,
   supervisionConfirmTaskId,
   canRequestSupervision,
   supervisionRequestNoteMaxLength,
@@ -59,6 +62,7 @@ function renderPanel({
       canConfirm={canConfirm}
       requiresOverrideReason={requiresOverrideReason}
       overrideReasonMaxLength={overrideReasonMaxLength}
+      overrideReasonOptions={overrideReasonOptions}
       supervisionConfirmTaskId={supervisionConfirmTaskId}
       canRequestSupervision={canRequestSupervision}
       supervisionRequestNoteMaxLength={supervisionRequestNoteMaxLength}
@@ -172,6 +176,7 @@ describe('HandoffConfirmPanel', () => {
     expect(screen.queryByRole('button', { name: '編集して確定' })).toBeNull();
     const button = screen.getByRole('button', { name: '管理者として確定' }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
+    expect(screen.getByLabelText('代行理由区分')).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText('代行理由'), {
       target: { value: '短い' },
@@ -191,8 +196,24 @@ describe('HandoffConfirmPanel', () => {
     expect(body).toEqual({
       confirmed: true,
       expected_visit_record_version: 7,
+      override_reason_code: 'assignee_unavailable',
       override_reason: '担当者不在のため本日訪問前に確認が必要',
     });
+  });
+
+  it('keeps admin override disabled when reason code options are unavailable', () => {
+    renderPanel({
+      canConfirm: false,
+      requiresOverrideReason: true,
+      overrideReasonOptions: [],
+    });
+
+    const button = screen.getByRole('button', { name: '管理者として確定' }) as HTMLButtonElement;
+    expect(screen.getByText('代行理由区分を取得できません。')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('代行理由'), {
+      target: { value: '担当者不在のため本日訪問前に確認が必要' },
+    });
+    expect(button.disabled).toBe(true);
   });
 
   it('renders read-only state without confirmation actions', () => {
