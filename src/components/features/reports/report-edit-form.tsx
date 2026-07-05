@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { StateBadge } from '@/components/ui/state-badge';
 import { Textarea } from '@/components/ui/textarea';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildCareReportApiPath } from '@/lib/reports/api-paths';
@@ -591,11 +592,7 @@ export function ReportEditForm({ reportId, reportType, updatedAt, content, onSav
           content: updatedContent,
         }),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => null);
-        throw new Error(err?.message ?? '保存に失敗しました');
-      }
-      return res.json();
+      return readApiJson<unknown>(res, '保存に失敗しました');
     },
     onSuccess: () => {
       toast.success('報告書を保存しました');
