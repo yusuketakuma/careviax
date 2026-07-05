@@ -39,6 +39,18 @@
 
 ## 直近の land（本日・要点）
 
+- codex: R40/R44 document templates/delivery rules readApiJson + templates API hardening batch(1d9264cf)
+  land。document-template UI/helper Vitest 35、templates/document-delivery-rules route Vitest 45、
+  combined focused Vitest 85、scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。
+  template save-delete / body editor save / delivery-rule save-delete responses を readApiJson へ収束し、
+  server `{ message }` / `{ error }` と fallback regressions を追加。privacy_compliance_reviewer と
+  api_contract_reviewer の CHANGES_REQUESTED に対応し、`/api/templates` / `/api/templates/:id` を
+  `withSensitiveNoStore` + fixed `internalError()` + safe structured logger へ硬化。template content / consent /
+  contract/privacy template text の cache/raw-error leakage を削減。既存 endpoint、org headers、payloads、
+  canAdmin/org scoping、encoded id helpers、delivery-rules no-store contract は保持。残る別slice候補:
+  template list GET の metadata/body 分離による payload minimization。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) に基づき API/PHI hardening を実施、
+  DB/billing/deploy/package dependency 変更は不要。
 - codex: R40/R44 handoff workspace actions readApiJson batch(65614b77) land。focused Vitest 29、
   handoff-board route Vitest 33、scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。
   transfer create / message send-read / consult create-resolve / receipt confirm responses を
