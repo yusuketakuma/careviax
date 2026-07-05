@@ -15,6 +15,7 @@ import { ActionRail } from '@/components/ui/action-rail';
 import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildCommunicationRequestResolveFollowupApiPath } from '@/lib/communications/api-paths';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -197,10 +198,7 @@ export function CommunicationRequestsContent({
           ...(followup ? { followup } : {}),
         }),
       });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message ?? '対応の記録に失敗しました');
-      }
+      await readApiJson<unknown>(res, '対応の記録に失敗しました');
     },
     onSuccess: async () => {
       toast.success('対応済みにしました');

@@ -365,6 +365,68 @@ describe('CommunicationRequestsContent', () => {
     expect(String(init.body)).not.toContain(hostileRequestId);
   });
 
+  it('surfaces API error messages when focused follow-up resolution fails', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ message: '連携依頼の更新権限がありません' }, 403));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<CommunicationRequestsContent />);
+
+    const mutationOptions = useMutationMock.mock.calls[0]?.[0] as {
+      mutationFn: (input: {
+        item: {
+          id: string;
+          request_type: string;
+          subject: string;
+          status: string;
+          requested_at: string;
+          updated_at: string;
+          due_date: string | null;
+          patient_id: string | null;
+          related_entity_type: string | null;
+          related_entity_id: string | null;
+          recipient_name: string | null;
+          recipient_role: string | null;
+          responses: [];
+        };
+        responderName: string;
+        content: string;
+        followup: string;
+      }) => Promise<void>;
+    };
+
+    await expect(
+      mutationOptions.mutationFn({
+        item: {
+          id: 'request_1',
+          request_type: 'tracing_report',
+          subject: '服薬情報提供書の確認',
+          status: 'sent',
+          requested_at: '2026-05-12T00:00:00.000Z',
+          updated_at: '2026-06-18T00:00:00.000Z',
+          due_date: null,
+          patient_id: 'patient_1',
+          related_entity_type: 'tracing_report',
+          related_entity_id: 'tracing_1',
+          recipient_name: '在宅主治医',
+          recipient_role: 'physician',
+          responses: [],
+        },
+        responderName: '',
+        content: '服薬状況の確認が取れました',
+        followup: '',
+      }),
+    ).rejects.toThrow('連携依頼の更新権限がありません');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/communication-requests/request_1/resolve-followup',
+      expect.objectContaining({
+        method: 'POST',
+        headers: buildOrgJsonHeaders('org_1'),
+      }),
+    );
+  });
+
   it.each(['.', '..'])(
     'fails closed before fetch when resolving a dot-segment request id (%s)',
     async (dotRequestId) => {
