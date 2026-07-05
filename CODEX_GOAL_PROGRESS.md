@@ -1,5 +1,52 @@
 # CODEX Goal Progress
 
+## R40/R44 Facility Mutations readApiJson Partial - 2026-07-05 10:51 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/admin/facilities/facilities-content.tsx`
+    - `src/app/(dashboard)/admin/facilities/facilities-content.test.tsx`
+- Scope:
+  - Reused `readApiJson` for admin facility create/update and delete
+    responses.
+  - Added focused UI coverage proving API JSON `message` from failed facility
+    save and delete responses is preserved in toast output.
+  - Preserved `/api/admin/facilities` and facility units read behavior,
+    `ADMIN_FACILITIES_API_PATH`, `buildAdminFacilityApiPath`,
+    hostile-id encoding, dot-segment fail-closed behavior, `buildOrgHeaders`,
+    `buildOrgJsonHeaders`, request body shape including
+    `expected_updated_at`, success toasts, and `admin-facilities`
+    invalidation.
+  - Facility unit create/update/delete responses intentionally remain
+    unchanged in this slice and require a separate focused migration.
+- Safety:
+  - Facilities UI facility-level mutation response handling internals changed
+    only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary remains
+    recorded in `ops/refactor/STATE.md`; this slice did not require those
+    changes.
+  - Preserved DB/schema, API route contracts, auth/authorization semantics,
+    PHI projection, billing behavior, deployment, package dependency, live DB
+    operation, external send, secret handling, push, and destructive operation
+    boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/admin/facilities/facilities-content.test.tsx'`
+    passed `1` file / `13` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `d4bfd28a`
+    (`refactor(ui): reuse readApiJson for facility mutations`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher/mutation PHI/body-read review
+    before converting additional manual response handling.
+  - Facility unit save/delete response handling remains a candidate for a
+    follow-up slice.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Vehicle Mutations readApiJson Partial - 2026-07-05 10:46 JST
 
 - Status:
