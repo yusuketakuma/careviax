@@ -70,6 +70,7 @@ const allowedFilterKeysByTarget = new Map<string, Set<string>>([
       'to',
     ]),
   ],
+  ['pharmacy_drug_stock', new Set(['purpose'])],
 ]);
 
 const allowedMetadataKeysByTarget = new Map<string, Set<string>>([
@@ -103,6 +104,7 @@ const allowedMetadataKeysByTarget = new Map<string, Set<string>>([
       'exported_patient_id_hashes_truncated',
     ]),
   ],
+  ['pharmacy_drug_stock', new Set(['source'])],
 ]);
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

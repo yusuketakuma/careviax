@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
-import { createAuditLogEntry } from '@/lib/audit/audit-entry';
-import { notFound, validationError } from '@/lib/api/response';
+import { error, notFound, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
 import { formatDateKey, formatNullableDateKey } from '@/lib/date-key';
 import { quotedCsvCell as safeCsvCell } from '@/lib/csv/safe-csv';
+import { recordDataExportAudit } from '@/server/services/export-audit';
 
 const exportQuerySchema = z.object({
   site_id: z.string().trim().min(1, 'site_id は必須です'),
@@ -38,11 +38,8 @@ function formatSafetyFlags(drug: {
     .join(' / ');
 }
 
-function buildExportFilename(
-  purpose: z.infer<typeof exportQuerySchema>['purpose'],
-  siteId: string,
-) {
-  return encodeURIComponent(`formulary-${purpose}-${siteId}-${formatDateKey(new Date())}.csv`);
+function buildExportFilename(purpose: z.infer<typeof exportQuerySchema>['purpose']) {
+  return encodeURIComponent(`formulary-${purpose}-${formatDateKey(new Date())}.csv`);
 }
 
 export const GET = withAuthContext(
@@ -54,64 +51,103 @@ export const GET = withAuthContext(
       );
     }
 
-    const site = await prisma.pharmacySite.findFirst({
-      where: { id: parsed.data.site_id, org_id: authCtx.orgId },
-      select: { id: true, name: true },
-    });
+    const readFailureResponse = () =>
+      withSensitiveNoStore(
+        error(
+          'PHARMACY_DRUG_STOCK_EXPORT_FAILED',
+          '採用薬CSVのエクスポートを準備できませんでした',
+          500,
+        ),
+      );
+
+    let site;
+    try {
+      site = await prisma.pharmacySite.findFirst({
+        where: { id: parsed.data.site_id, org_id: authCtx.orgId },
+        select: { id: true, name: true },
+      });
+    } catch {
+      return readFailureResponse();
+    }
     if (!site) return withSensitiveNoStore(notFound('対象の薬局拠点が見つかりません'));
 
-    const stocks = await prisma.pharmacyDrugStock.findMany({
-      where: {
-        org_id: authCtx.orgId,
-        site_id: site.id,
-        is_stocked: true,
-      },
-      orderBy: [{ drug_master: { drug_name_kana: 'asc' } }, { drug_master: { drug_name: 'asc' } }],
-      select: {
-        is_stocked: true,
-        reorder_point: true,
-        adoption_note: true,
-        last_reviewed_at: true,
-        follow_up_status: true,
-        follow_up_reason: true,
-        follow_up_due_date: true,
-        updated_at: true,
-        drug_master: {
-          select: {
-            yj_code: true,
-            receipt_code: true,
-            drug_name: true,
-            generic_name: true,
-            drug_price: true,
-            unit: true,
-            dosage_form: true,
-            manufacturer: true,
-            is_narcotic: true,
-            is_psychotropic: true,
-            is_high_risk: true,
-            is_lasa_risk: true,
-            transitional_expiry_date: true,
+    let stocks;
+    try {
+      stocks = await prisma.pharmacyDrugStock.findMany({
+        where: {
+          org_id: authCtx.orgId,
+          site_id: site.id,
+          is_stocked: true,
+        },
+        orderBy: [
+          { drug_master: { drug_name_kana: 'asc' } },
+          { drug_master: { drug_name: 'asc' } },
+        ],
+        select: {
+          is_stocked: true,
+          reorder_point: true,
+          adoption_note: true,
+          last_reviewed_at: true,
+          follow_up_status: true,
+          follow_up_reason: true,
+          follow_up_due_date: true,
+          updated_at: true,
+          drug_master: {
+            select: {
+              yj_code: true,
+              receipt_code: true,
+              drug_name: true,
+              generic_name: true,
+              drug_price: true,
+              unit: true,
+              dosage_form: true,
+              manufacturer: true,
+              is_narcotic: true,
+              is_psychotropic: true,
+              is_high_risk: true,
+              is_lasa_risk: true,
+              transitional_expiry_date: true,
+            },
+          },
+          preferred_generic: {
+            select: {
+              yj_code: true,
+              drug_name: true,
+            },
           },
         },
-        preferred_generic: {
-          select: {
-            yj_code: true,
-            drug_name: true,
-          },
-        },
-      },
-    });
+      });
+    } catch {
+      return readFailureResponse();
+    }
 
-    await createAuditLogEntry(prisma, authCtx, {
-      action: 'pharmacy_drug_stock_exported',
-      targetType: 'PharmacySite',
-      targetId: site.id,
-      changes: {
-        site_id: site.id,
-        purpose: parsed.data.purpose,
-        row_count: stocks.length,
-      },
-    });
+    try {
+      await recordDataExportAudit(prisma, {
+        orgId: authCtx.orgId,
+        actorId: authCtx.userId,
+        actorSiteId: authCtx.actorSiteId,
+        targetType: 'pharmacy_drug_stock',
+        targetId: site.id,
+        format: 'csv',
+        recordCount: stocks.length,
+        filters: {
+          purpose: parsed.data.purpose,
+        },
+        metadata: {
+          source: 'pharmacy_drug_stocks_export',
+        },
+        ipAddress: authCtx.ipAddress,
+        userAgent: authCtx.userAgent,
+      });
+    } catch {
+      return withSensitiveNoStore(
+        error(
+          'PHARMACY_DRUG_STOCK_EXPORT_AUDIT_FAILED',
+          '採用薬CSVのエクスポート監査を記録できませんでした',
+          500,
+        ),
+      );
+    }
 
     const exportRows = {
       operations: {
@@ -191,14 +227,13 @@ export const GET = withAuthContext(
         ]),
       },
       posting: {
-        header: ['医薬品名', '一般名', '剤形', '単位', 'メーカー', '備考'],
+        header: ['医薬品名', '一般名', '剤形', '単位', 'メーカー'],
         rows: stocks.map((stock) => [
           stock.drug_master.drug_name,
           stock.drug_master.generic_name,
           stock.drug_master.dosage_form,
           stock.drug_master.unit,
           stock.drug_master.manufacturer,
-          stock.adoption_note,
         ]),
       },
       pharmacist_review: {
@@ -236,7 +271,7 @@ export const GET = withAuthContext(
     const header = exportRows.header;
     const rows = exportRows.rows;
     const csv = [header, ...rows].map((row) => row.map(safeCsvCell).join(',')).join('\n');
-    const fileName = buildExportFilename(parsed.data.purpose, site.id);
+    const fileName = buildExportFilename(parsed.data.purpose);
 
     return withSensitiveNoStore(
       new NextResponse(`\uFEFF${csv}`, {

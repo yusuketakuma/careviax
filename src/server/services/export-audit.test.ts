@@ -317,6 +317,57 @@ describe('recordDataExportAudit', () => {
     expect(persisted).not.toContain('token=secret');
   });
 
+  it('keeps pharmacy drug stock export purpose while dropping raw PHI markers', async () => {
+    auditLogCreateMock.mockResolvedValue({});
+
+    await recordDataExportAudit(db, {
+      orgId: 'org-1',
+      actorId: 'user-1',
+      targetType: 'pharmacy_drug_stock',
+      targetId: 'site-1',
+      format: 'csv',
+      recordCount: 1,
+      filters: {
+        purpose: 'posting',
+        site_id: 'site-1',
+        phone: '03-1234-5678',
+        note: '患者 山田 太郎 アムロジピン 保険者番号12345678',
+      },
+      metadata: {
+        source: 'pharmacy_drug_stocks_export',
+        adoption_note: '患者 山田 太郎 090-1234-5678',
+        follow_up_reason: 'provider raw error token=secret',
+        signed_url: 'https://signed.example/raw?token=secret',
+      },
+    });
+
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        target_type: 'pharmacy_drug_stock',
+        changes: {
+          format: 'csv',
+          record_count: 1,
+          filters: {
+            purpose: 'posting',
+          },
+          metadata: {
+            source: 'pharmacy_drug_stocks_export',
+          },
+        },
+      }),
+    });
+    const persisted = JSON.stringify(auditLogCreateMock.mock.calls);
+    expect(persisted).not.toContain('site_id');
+    expect(persisted).not.toContain('03-1234-5678');
+    expect(persisted).not.toContain('090-1234-5678');
+    expect(persisted).not.toContain('山田 太郎');
+    expect(persisted).not.toContain('アムロジピン');
+    expect(persisted).not.toContain('保険者番号');
+    expect(persisted).not.toContain('signed.example');
+    expect(persisted).not.toContain('provider raw error');
+    expect(persisted).not.toContain('token=secret');
+  });
+
   it('records file downloads without reusing PDF or ZIP export formats', async () => {
     auditLogCreateMock.mockResolvedValue({});
 

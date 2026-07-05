@@ -20,7 +20,10 @@ vi.mock('@/lib/db/client', () => ({
 }));
 
 import { GET } from './route';
-import { expectSensitiveNoStore } from '@/test/api-response-assertions';
+import {
+  expectPhiExportSnapshotRedacted,
+  expectSensitiveNoStore,
+} from '@/test/api-response-assertions';
 
 function createRequest(url = 'http://localhost/api/pharmacy-drug-stocks/export?site_id=site_1') {
   return new NextRequest(url, {
@@ -89,7 +92,7 @@ describe('/api/pharmacy-drug-stocks/export', () => {
     expectSensitiveNoStore(response);
     expect(response.headers.get('content-type')).toContain('text/csv');
     expect(response.headers.get('content-disposition')).toBe(
-      `attachment; filename="${encodeURIComponent('formulary-operations-site_1-2026-04-02.csv')}"; filename*=UTF-8''${encodeURIComponent('formulary-operations-site_1-2026-04-02.csv')}`,
+      `attachment; filename="${encodeURIComponent('formulary-operations-2026-04-02.csv')}"; filename*=UTF-8''${encodeURIComponent('formulary-operations-2026-04-02.csv')}`,
     );
     const bytes = new Uint8Array(await response.arrayBuffer());
     expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
@@ -109,12 +112,21 @@ describe('/api/pharmacy-drug-stocks/export', () => {
         data: expect.objectContaining({
           org_id: 'org_1',
           actor_id: 'user_1',
-          action: 'pharmacy_drug_stock_exported',
+          action: 'export',
+          target_type: 'pharmacy_drug_stock',
           target_id: 'site_1',
-          changes: { site_id: 'site_1', purpose: 'operations', row_count: 1 },
+          changes: {
+            format: 'csv',
+            record_count: 1,
+            filters: { purpose: 'operations' },
+            metadata: { source: 'pharmacy_drug_stocks_export' },
+          },
         }),
       }),
     );
+    expectPhiExportSnapshotRedacted(JSON.stringify(prismaMock.auditLog.create.mock.calls), [
+      'site_id',
+    ]);
   });
 
   it('exports a purpose-specific posting CSV with a scoped audit log', async () => {
@@ -122,7 +134,7 @@ describe('/api/pharmacy-drug-stocks/export', () => {
       {
         is_stocked: true,
         reorder_point: 5,
-        adoption_note: '在宅向け採用',
+        adoption_note: '在宅向け採用 山田 太郎 090-1234-5678 token=secret',
         last_reviewed_at: new Date('2026-05-20T00:00:00.000Z'),
         follow_up_status: 'resolved',
         follow_up_reason: null,
@@ -156,17 +168,27 @@ describe('/api/pharmacy-drug-stocks/export', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    expect(response.headers.get('content-disposition')).toContain('formulary-posting-site_1-');
+    expectSensitiveNoStore(response);
+    const disposition = response.headers.get('content-disposition') ?? '';
+    expect(disposition).toContain('formulary-posting-');
+    expect(disposition).not.toContain('site_1');
     const csv = await response.text();
-    expect(csv).toContain('"医薬品名","一般名","剤形","単位","メーカー","備考"');
-    expect(csv).toContain(
-      '"アムロジピン錠5mg","アムロジピン","内用薬","錠","PH-OS製薬","在宅向け採用"',
-    );
+    expect(csv).toContain('"医薬品名","一般名","剤形","単位","メーカー"');
+    expect(csv).toContain('"アムロジピン錠5mg","アムロジピン","内用薬","錠","PH-OS製薬"');
     expect(csv).not.toContain('"YJコード","レセ電コード"');
+    expect(csv).not.toContain('在宅向け採用');
+    expect(csv).not.toContain('090-1234-5678');
+    expect(csv).not.toContain('山田 太郎');
+    expect(csv).not.toContain('token=secret');
     expect(prismaMock.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          changes: { site_id: 'site_1', purpose: 'posting', row_count: 1 },
+          changes: {
+            format: 'csv',
+            record_count: 1,
+            filters: { purpose: 'posting' },
+            metadata: { source: 'pharmacy_drug_stocks_export' },
+          },
         }),
       }),
     );
@@ -211,6 +233,7 @@ describe('/api/pharmacy-drug-stocks/export', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     const csv = await response.text();
     expect(csv).toContain('"メーカー","安全属性","採用"');
     expect(csv).toContain('"PH-OS製薬","麻薬 / 向精神薬 / ハイリスク","採用"');
@@ -218,7 +241,12 @@ describe('/api/pharmacy-drug-stocks/export', () => {
     expect(prismaMock.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          changes: { site_id: 'site_1', purpose: 'audit', row_count: 1 },
+          changes: {
+            format: 'csv',
+            record_count: 1,
+            filters: { purpose: 'audit' },
+            metadata: { source: 'pharmacy_drug_stocks_export' },
+          },
         }),
       }),
     );
@@ -277,7 +305,12 @@ describe('/api/pharmacy-drug-stocks/export', () => {
     expect(prismaMock.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          changes: { site_id: 'site_1', purpose: 'pharmacist_review', row_count: 1 },
+          changes: {
+            format: 'csv',
+            record_count: 1,
+            filters: { purpose: 'pharmacist_review' },
+            metadata: { source: 'pharmacy_drug_stocks_export' },
+          },
         }),
       }),
     );
@@ -343,6 +376,72 @@ describe('/api/pharmacy-drug-stocks/export', () => {
     expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
   });
 
+  it('fails closed before returning CSV when export audit persistence fails', async () => {
+    prismaMock.auditLog.create.mockRejectedValueOnce(
+      new Error('audit storage failed for patient 山田 太郎 token=secret'),
+    );
+    prismaMock.pharmacyDrugStock.findMany.mockResolvedValue([
+      {
+        is_stocked: true,
+        reorder_point: 10,
+        adoption_note: '棚卸確認済み',
+        last_reviewed_at: null,
+        follow_up_status: null,
+        follow_up_reason: null,
+        follow_up_due_date: null,
+        updated_at: null,
+        drug_master: {
+          yj_code: '123456789012',
+          receipt_code: '123456789',
+          drug_name: 'アムロジピン錠5mg',
+          generic_name: 'アムロジピン',
+          drug_price: '10.20',
+          unit: '錠',
+          dosage_form: '内用薬',
+          manufacturer: 'PH-OS製薬',
+          is_narcotic: false,
+          is_psychotropic: false,
+          is_high_risk: true,
+          is_lasa_risk: true,
+          transitional_expiry_date: null,
+        },
+        preferred_generic: null,
+      },
+    ]);
+
+    const response = await GET(createRequest(), { params: Promise.resolve({}) });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    expect(response.headers.get('content-type')).toContain('application/json');
+    const body = await response.text();
+    expect(body).toContain('PHARMACY_DRUG_STOCK_EXPORT_AUDIT_FAILED');
+    expect(body).not.toContain('アムロジピン');
+    expect(body).not.toContain('山田 太郎');
+    expect(body).not.toContain('token=secret');
+  });
+
+  it('returns a no-store fixed error when stock loading fails with hostile raw text', async () => {
+    prismaMock.pharmacyDrugStock.findMany.mockRejectedValueOnce(
+      new Error('stock read failed for patient 山田 太郎 アムロジピン token=secret'),
+    );
+
+    const response = await GET(createRequest(), { params: Promise.resolve({}) });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    expect(response.headers.get('content-type') ?? '').not.toContain('text/csv');
+    const body = await response.text();
+    expect(body).toContain('PHARMACY_DRUG_STOCK_EXPORT_FAILED');
+    expect(body).not.toContain('stock read failed');
+    expect(body).not.toContain('山田 太郎');
+    expect(body).not.toContain('アムロジピン');
+    expect(body).not.toContain('token=secret');
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
   it('encodes CRLF characters out of the download filename', async () => {
     prismaMock.pharmacySite.findFirst.mockResolvedValue({
       id: 'site_1\r\nX-Injected: yes',
@@ -355,7 +454,9 @@ describe('/api/pharmacy-drug-stocks/export', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     const disposition = response.headers.get('content-disposition') ?? '';
-    expect(disposition).toContain(encodeURIComponent('site_1\r\nX-Injected: yes'));
+    expect(disposition).toContain('formulary-operations-');
+    expect(disposition).not.toContain('site_1');
+    expect(disposition).not.toContain('X-Injected');
     expect(disposition).not.toContain('\r');
     expect(disposition).not.toContain('\n');
   });
