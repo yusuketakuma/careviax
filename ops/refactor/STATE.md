@@ -40,7 +40,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: Patient detail dynamic panel split slice complete（code/test: commit pending）。
+- codex: Patient detail dynamic panel split slice complete（code/test: fd2184b62）。
   - current task:
     Goal 継続として `Plans.md` の `PAT-DETAIL-PERF-001` / `FE-X-001` に対応。
     患者詳細のタブ化・lazy-on-first-open を土台に、初期表示に不要な別ファイル Client Component
