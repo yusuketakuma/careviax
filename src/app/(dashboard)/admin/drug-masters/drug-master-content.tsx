@@ -587,10 +587,10 @@ function DrugMasterOperationalContent({
           previewLimit: 5,
         }),
       });
-      const json = await res.json().catch(() => null);
-      if (!res.ok) {
-        throw new Error(json?.message ?? `${definition.label}の差分確認に失敗しました`);
-      }
+      const json = await readApiJson<{ data?: OfficialImportPreviewData }>(
+        res,
+        `${definition.label}の差分確認に失敗しました`,
+      );
 
       setOfficialImportPreview({
         action,
@@ -618,19 +618,16 @@ function DrugMasterOperationalContent({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(definition.body ?? {}),
       });
-      const json = await res.json().catch(() => null);
-      if (!res.ok) {
-        throw new Error(json?.message ?? `${definition.label}に失敗しました`);
-      }
+      const json = await readApiJson<{
+        data: {
+          importedCount: number;
+          entryName: string;
+        };
+      }>(res, `${definition.label}に失敗しました`);
       return {
         action,
         definition,
-        response: json as {
-          data: {
-            importedCount: number;
-            entryName: string;
-          };
-        },
+        response: json,
       };
     },
     onSuccess: async (result) => {
@@ -664,14 +661,13 @@ function DrugMasterOperationalContent({
         method: 'POST',
         headers: buildOrgHeaders(orgId),
       });
-      const json = await res.json().catch(() => null);
-      if (!res.ok) {
-        throw new Error(json?.message ?? '一括更新の実行に失敗しました');
-      }
-      return json as { data?: { processedCount?: number } };
+      return readApiJson<{ jobType?: string; processedCount?: number; errors?: string[] }>(
+        res,
+        '一括更新の実行に失敗しました',
+      );
     },
     onSuccess: async (result) => {
-      const processedCount = result.data?.processedCount;
+      const processedCount = result.processedCount;
       toast.success(
         processedCount != null
           ? `フリーマスター一括更新が完了しました（${processedCount.toLocaleString()}件）`
@@ -702,11 +698,10 @@ function DrugMasterOperationalContent({
         method: 'POST',
         headers: buildOrgHeaders(orgId),
       });
-      const json = await res.json().catch(() => null);
-      if (!res.ok) {
-        throw new Error(json?.message ?? 'マスター鮮度チェックに失敗しました');
-      }
-      return json as { processedCount?: number; errors?: string[] };
+      return readApiJson<{ processedCount?: number; errors?: string[] }>(
+        res,
+        'マスター鮮度チェックに失敗しました',
+      );
     },
     onSuccess: async (result) => {
       toast.success(
@@ -743,11 +738,10 @@ function DrugMasterOperationalContent({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(payload),
       });
-      const json = await res.json().catch(() => null);
-      if (!res.ok) {
-        throw new Error(json?.message ?? '採用品設定の保存に失敗しました');
-      }
-      return json as { site: PharmacySiteOption; data: PharmacyDrugStockConfig };
+      return readApiJson<{ site: PharmacySiteOption; data: PharmacyDrugStockConfig }>(
+        res,
+        '採用品設定の保存に失敗しました',
+      );
     },
     onSuccess: async (result) => {
       toast.success(result.data.is_stocked ? '採用品設定を保存しました' : '採用品から外しました');
@@ -782,11 +776,10 @@ function DrugMasterOperationalContent({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(payload),
       });
-      const json = await res.json().catch(() => null);
-      if (!res.ok) {
-        throw new Error(json?.message ?? '採用品変更申請の作成に失敗しました');
-      }
-      return json as { data: FormularyChangeRequestItem };
+      return readApiJson<{ data: FormularyChangeRequestItem }>(
+        res,
+        '採用品変更申請の作成に失敗しました',
+      );
     },
     onSuccess: async () => {
       toast.success('採用品変更申請を作成しました');
@@ -811,11 +804,10 @@ function DrugMasterOperationalContent({
           decision_note: payload.decision_note ?? null,
         }),
       });
-      const json = await res.json().catch(() => null);
-      if (!res.ok) {
-        throw new Error(json?.message ?? '採用品変更申請の決裁に失敗しました');
-      }
-      return json as { request: FormularyChangeRequestItem; stock: PharmacyDrugStockConfig | null };
+      return readApiJson<{
+        request: FormularyChangeRequestItem;
+        stock: PharmacyDrugStockConfig | null;
+      }>(res, '採用品変更申請の決裁に失敗しました');
     },
     onSuccess: async (result) => {
       toast.success(
@@ -848,16 +840,12 @@ function DrugMasterOperationalContent({
         dry_run: dryRun,
       }),
     });
-    const json = await res.json().catch(() => null);
-    if (!res.ok) {
-      throw new Error(json?.message ?? '採用薬リストの一括登録に失敗しました');
-    }
-    return json as {
+    return readApiJson<{
       importedCount: number;
       unmatchedRows: Array<{ rowNumber: number; yj_code?: string; drug_name?: string }>;
       invalidRows: Array<{ rowNumber: number; reason: string }>;
       preview?: BulkPreviewResponse['preview'];
-    };
+    }>(res, '採用薬リストの一括登録に失敗しました');
   };
 
   const bulkPreviewMutation = useMutation({
@@ -948,12 +936,12 @@ function DrugMasterOperationalContent({
           dry_run: dryRun,
         }),
       });
-      const json = await res.json().catch(() => null);
-      if (!res.ok) {
-        throw new Error(json?.message ?? '採用薬リストのコピーに失敗しました');
-      }
+      const json = await readApiJson<FormularyCopyPreviewResponse>(
+        res,
+        '採用薬リストのコピーに失敗しました',
+      );
       return {
-        ...(json as FormularyCopyPreviewResponse),
+        ...json,
         requestTargetSiteId,
         requestSourceSiteId,
         requestOverwrite,
@@ -1005,9 +993,10 @@ function DrugMasterOperationalContent({
           source_site_id: effectiveSelectedSiteId,
         }),
       });
-      const json = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(json?.message ?? '採用品テンプレートの作成に失敗しました');
-      return json as { data: FormularyTemplateItem };
+      return readApiJson<{ data: FormularyTemplateItem }>(
+        res,
+        '採用品テンプレートの作成に失敗しました',
+      );
     },
     onSuccess: async () => {
       toast.success('採用品テンプレートを作成しました');
@@ -1036,10 +1025,12 @@ function DrugMasterOperationalContent({
           dry_run: dryRun,
         }),
       });
-      const json = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(json?.message ?? '採用品テンプレートの適用に失敗しました');
+      const json = await readApiJson<FormularyTemplatePreviewResponse>(
+        res,
+        '採用品テンプレートの適用に失敗しました',
+      );
       return {
-        ...(json as FormularyTemplatePreviewResponse),
+        ...json,
         requestTargetSiteId,
         requestTemplateId,
         requestOverwrite,
@@ -1084,9 +1075,10 @@ function DrugMasterOperationalContent({
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });
-      const json = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(json?.message ?? '採用品テンプレートの削除に失敗しました');
-      return json as { deleted: boolean; data: FormularyTemplateItem };
+      return readApiJson<{ deleted: boolean; data: FormularyTemplateItem }>(
+        res,
+        '採用品テンプレートの削除に失敗しました',
+      );
     },
     onSuccess: async () => {
       toast.success('採用品テンプレートを削除しました');
@@ -1108,9 +1100,7 @@ function DrugMasterOperationalContent({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ site_id: effectiveSelectedSiteId }),
       });
-      const json = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(json?.message ?? '採用薬レビューの記録に失敗しました');
-      return json as { reviewedCount: number };
+      return readApiJson<{ reviewedCount: number }>(res, '採用薬レビューの記録に失敗しました');
     },
     onSuccess: async (result) => {
       toast.success(`採用薬レビューを記録しました（${result.reviewedCount.toLocaleString()}件）`);
@@ -1136,13 +1126,11 @@ function DrugMasterOperationalContent({
           due_in_days: 30,
         }),
       });
-      const json = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(json?.message ?? '安全性フォローアップの作成に失敗しました');
-      return json as {
+      return readApiJson<{
         matchedCount: number;
         updatedCount: number;
         skippedUnresolvedCount: number;
-      };
+      }>(res, '安全性フォローアップの作成に失敗しました');
     },
     onSuccess: async (result) => {
       toast.success(
@@ -1170,8 +1158,7 @@ function DrugMasterOperationalContent({
         headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) {
-        const json = await res.json().catch(() => null);
-        throw new Error(json?.message ?? '採用薬CSVの出力に失敗しました');
+        await readApiJson<never>(res, '採用薬CSVの出力に失敗しました');
       }
       return res.blob();
     },
@@ -1198,8 +1185,7 @@ function DrugMasterOperationalContent({
         headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) {
-        const json = await res.json().catch(() => null);
-        throw new Error(json?.message ?? '採用薬CSVテンプレートの取得に失敗しました');
+        await readApiJson<never>(res, '採用薬CSVテンプレートの取得に失敗しました');
       }
       return res.blob();
     },

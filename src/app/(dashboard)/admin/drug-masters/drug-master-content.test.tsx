@@ -765,6 +765,12 @@ function confirmAutoRefreshAction() {
   fireEvent.click(screen.getByRole('button', { name: '一括更新' }));
 }
 
+async function runCurrentMutation(...args: unknown[]) {
+  const options = lastMutationOptions.current;
+  expect(options?.mutationFn).toBeTruthy();
+  return options!.mutationFn!(...args);
+}
+
 describe('DrugMasterContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -828,9 +834,8 @@ describe('DrugMasterContent', () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       void input;
       void init;
-      return {
-        ok: true,
-        json: async () => ({
+      return jsonResponse(
+        {
           data: {
             dryRun: true,
             mode: 'all',
@@ -877,8 +882,9 @@ describe('DrugMasterContent', () => {
               },
             },
           },
-        }),
-      };
+        },
+        200,
+      );
     });
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
@@ -942,6 +948,80 @@ describe('DrugMasterContent', () => {
           method: 'POST',
         }),
       );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('surfaces official import preview API error payloads', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ error: 'source URL未設定' }, 500));
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
+
+    try {
+      render(<DrugMasterContent />);
+
+      fireEvent.click(screen.getByRole('button', { name: '一般名/後発更新' }));
+      fireEvent.click(screen.getByRole('button', { name: '差分確認' }));
+
+      const alert = await screen.findByRole('alert');
+      expect(alert.textContent).toContain('source URL未設定');
+      expect(toastErrorMock).toHaveBeenCalledWith('source URL未設定');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('preserves official import and job mutation API messages', async () => {
+    render(<DrugMasterContent />);
+
+    confirmMasterImportAction();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({ message: '医薬品マスター取込は管理者のみ実行できます' }, 403),
+      ),
+    );
+    try {
+      await expect(runCurrentMutation('ssk')).rejects.toThrow(
+        '医薬品マスター取込は管理者のみ実行できます',
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('reads auto-refresh processedCount from the top-level job response', async () => {
+    render(<DrugMasterContent />);
+
+    confirmAutoRefreshAction();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({ jobType: 'drug-master-auto-refresh', processedCount: 7 }, 200),
+      ),
+    );
+    try {
+      const result = await runCurrentMutation();
+      await act(async () => {
+        await lastMutationOptions.current?.onSuccess?.(result);
+      });
+
+      expect(toastSuccessMock).toHaveBeenCalledWith('フリーマスター一括更新が完了しました（7件）');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('falls back when job mutation errors are non-JSON', async () => {
+    render(<DrugMasterContent />);
+
+    confirmAutoRefreshAction();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('not-json', { status: 500 })),
+    );
+    try {
+      await expect(runCurrentMutation()).rejects.toThrow('一括更新の実行に失敗しました');
     } finally {
       vi.unstubAllGlobals();
     }
@@ -1208,10 +1288,7 @@ describe('DrugMasterContent', () => {
     };
     const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
     vi.mocked(buildOrgHeaders).mockReturnValue(sentinelHeaders);
-    const fetchMock = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({ data: [], recommendations: [] }),
-    }));
+    const fetchMock = vi.fn(async () => jsonResponse({ data: [], recommendations: [] }, 200));
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
     try {
@@ -1283,10 +1360,9 @@ describe('DrugMasterContent', () => {
     const orgHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
     vi.mocked(buildOrgJsonHeaders).mockReturnValue(jsonHeaders);
     vi.mocked(buildOrgHeaders).mockReturnValue(orgHeaders);
-    const fetchMock = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({ request: { status: 'approved' }, data: {}, deleted: true }),
-    }));
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({ request: { status: 'approved' }, data: {}, deleted: true }, 200),
+    );
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
     try {
@@ -1329,6 +1405,56 @@ describe('DrugMasterContent', () => {
       expect(fetchMock).toHaveBeenLastCalledWith(
         '/api/pharmacy-drug-stock-templates/__helper_template__',
         expect.objectContaining({ method: 'DELETE', headers: orgHeaders }),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('preserves server and fallback messages for formulary mutation groups', async () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    fireEvent.change(screen.getByLabelText('CSV一括登録'), {
+      target: { value: '222222222200,CSV薬1,1,,,' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^差分確認$/ }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({ error: 'YJコードを指定してください' }, 422)),
+    );
+    try {
+      await expect(runCurrentMutation()).rejects.toThrow('YJコードを指定してください');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'コピー元拠点' }), {
+      target: { value: 'site_2' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /コピー差分確認/ }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({ message: 'コピー元拠点が見つかりません' }, 404)),
+    );
+    try {
+      await expect(runCurrentMutation({ dryRun: true })).rejects.toThrow(
+        'コピー元拠点が見つかりません',
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    fireEvent.change(screen.getByRole('combobox', { name: '適用する採用品テンプレート' }), {
+      target: { value: 'template_1' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /適用差分確認/ }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('not-json', { status: 500 })),
+    );
+    try {
+      await expect(runCurrentMutation({ dryRun: true })).rejects.toThrow(
+        '採用品テンプレートの適用に失敗しました',
       );
     } finally {
       vi.unstubAllGlobals();
@@ -1495,10 +1621,7 @@ describe('DrugMasterContent formulary select migration (slice4a)', () => {
   async function runCapturedDryRun(serverJson: unknown, vars?: unknown) {
     const options = lastMutationOptions.current;
     if (!options?.mutationFn) throw new Error('no captured mutationFn');
-    const fetchMock = vi.fn(async () => ({
-      ok: true,
-      json: async () => serverJson,
-    }));
+    const fetchMock = vi.fn(async () => jsonResponse(serverJson, 200));
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
     try {
       return await options.mutationFn(vars);
@@ -2452,6 +2575,34 @@ describe('DrugMasterContent filter select migration (slice4b)', () => {
 
     expect(requestedUrl).toContain('/api/pharmacy-drug-stocks/export');
     expect(new URL(requestedUrl, 'http://localhost').searchParams.get('purpose')).toBe('audit');
+  });
+
+  it('preserves JSON error messages for CSV blob endpoints without parsing success blobs as JSON', async () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /CSV出力/ }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({ message: '採用薬CSVは管理者のみ出力できます' }, 403)),
+    );
+    try {
+      await expect(runCurrentMutation()).rejects.toThrow('採用薬CSVは管理者のみ出力できます');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: /CSVテンプレート/ }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('not-json', { status: 500 })),
+    );
+    try {
+      await expect(runCurrentMutation()).rejects.toThrow(
+        '採用薬CSVテンプレートの取得に失敗しました',
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('keeps >=44px on all slice4b filter triggers (#4/#5/#6/#7)', () => {
