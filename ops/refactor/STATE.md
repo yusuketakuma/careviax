@@ -703,6 +703,14 @@
   route preview top-level VisitRoutePlan と failed preview message preservation の regression tests を追加。
   SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
   維持しつつ、本sliceでは不要。
+- codex: R40/R44 conference mutations readApiJson slice(06369187) land。focused UI Vitest 19、
+  conference API route Vitest 75、scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。
+  conference note create / community activity create / action-item task conversion / conference report generation
+  responses を readApiJson へ収束し、endpoint、method、org JSON headers、body、dynamic note path encoding、
+  sync summary、server message preservation は保持。code_mapper で残存 cluster を棚卸しし、
+  api_contract_reviewer で conference-notes/community-activities/tasks/generate-report の response envelope と
+  PHI-safe error presentation を確認(APPROVE)。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 
@@ -729,4 +737,7 @@
 2. codex: W3-B9 `monthly_cap_shared` rule-engine fix は ae81a9f7 で land 済み。長い gate が走っていないことを確認後、
    次の backend/business-domain 候補を read-only triage。
 3. codex: Plans.md 未完了40件（open 37 + partial 3）を継続棚卸しし、human/external gate と実装候補を分離して task supply を維持。
-4. held: `R40-PRINT-HUB-READAPIJSON` / high-risk W3-B6/ID migration/PMDA/AWS/UAT/legal は明示GOまたは human gate まで保留。
+4. codex: 次の R40/R44 readApiJson 候補は code_mapper 棚卸しより、患者詳細 Home Operations /
+   PCA ポンプ台帳 / admin master mutation / Drug Master/Formulary reads / PHI print GETs。
+   外部 PUT/blob/export/Auth/MFA は別sliceで扱う。
+5. held: `R40-PRINT-HUB-READAPIJSON` / high-risk W3-B6/ID migration/PMDA/AWS/UAT/legal は明示GOまたは human gate まで保留。
