@@ -40,7 +40,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: Patients Board Card Model Extraction slice complete（commit pending）。
+- codex: Patients Board Card Model Extraction slice complete（commit `2e9d77b20`）。
   - current task:
     `Plans.md` の `UX-CMD-001 / PERF-BFF-001` 継続として、`/api/patients/board` に直書き
     されていた患者カード派生、attention/foundation sort、foundation issue filter/count を
