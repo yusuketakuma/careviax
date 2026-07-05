@@ -115,11 +115,17 @@ type RuntimePerformanceSnapshot = {
     overall_p50_ms: number;
     overall_p95_ms: number;
     overall_p95_payload_bytes: number | null;
+    critical_routes: number;
+    payload_budgeted_routes: number;
+    routes_over_payload_budget: number;
+    routes_with_unconfigured_payload_budget: number;
     routes_over_target: number;
   };
   routes: Array<{
     route: string;
     method: string;
+    critical_route: boolean;
+    critical_route_family: string | null;
     request_count: number;
     error_count: number;
     slow_count: number;
@@ -132,12 +138,49 @@ type RuntimePerformanceSnapshot = {
     average_payload_bytes: number | null;
     p95_payload_bytes: number | null;
     max_payload_bytes: number | null;
+    payload_budget_bytes: number | null;
+    payload_budget_status: 'unconfigured' | 'unmeasured' | 'within_budget' | 'over_budget';
+    payload_budget_met: boolean | null;
+    payload_budget_over_count: number;
     last_seen_at: string | null;
     last_status: number | null;
     last_payload_bytes: number | null;
     target_met: boolean;
   }>;
 };
+
+function formatPayloadBudget(route: RuntimePerformanceSnapshot['routes'][number]) {
+  if (route.payload_budget_bytes == null) return '未設定';
+  const budget = `${route.payload_budget_bytes.toLocaleString()}B`;
+  switch (route.payload_budget_status) {
+    case 'within_budget':
+      return `${budget}以内`;
+    case 'over_budget':
+      return `${budget}超過`;
+    case 'unmeasured':
+      return `${budget} / 未計測`;
+    case 'unconfigured':
+    default:
+      return '未設定';
+  }
+}
+
+function payloadBudgetBadge(route: RuntimePerformanceSnapshot['routes'][number]) {
+  switch (route.payload_budget_status) {
+    case 'within_budget':
+      return { label: 'payload OK', variant: 'secondary' as const };
+    case 'over_budget':
+      return { label: 'payload over', variant: 'destructive' as const };
+    case 'unmeasured':
+      return { label: 'payload 未計測', variant: 'outline' as const };
+    case 'unconfigured':
+    default:
+      return {
+        label: route.critical_route ? 'payload 未設定' : 'payload 任意',
+        variant: 'outline' as const,
+      };
+  }
+}
 
 // KPI 健全度: 目標達成=done(緑) / 未達=confirm(橙, 要対応)
 function kpiToneClass(value: number, target: number, reverse = false) {
@@ -745,7 +788,10 @@ export default function PerformancePage() {
                       <div className="flex items-center gap-2">
                         <Badge variant="outline">{route.method}</Badge>
                         <Badge variant={route.target_met ? 'secondary' : 'destructive'}>
-                          {route.target_met ? 'target in' : 'over target'}
+                          {route.target_met ? 'latency OK' : 'latency over'}
+                        </Badge>
+                        <Badge variant={payloadBudgetBadge(route).variant}>
+                          {payloadBudgetBadge(route).label}
                         </Badge>
                       </div>
                       <p className="mt-1 break-all text-sm font-semibold text-foreground">
@@ -757,17 +803,22 @@ export default function PerformancePage() {
                       <p>max {route.max_ms}ms</p>
                     </div>
                   </div>
-                  <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-5">
+                  <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-7">
                     <div>件数 {route.request_count}</div>
                     <div>平均 {route.average_ms}ms</div>
                     <div>超過率 {route.slow_rate}%</div>
                     <div>5xx {route.error_count}</div>
+                    <div>
+                      route family{' '}
+                      {route.critical_route_family == null ? '通常' : route.critical_route_family}
+                    </div>
                     <div>
                       payload P95{' '}
                       {route.p95_payload_bytes == null
                         ? '未計測'
                         : `${route.p95_payload_bytes.toLocaleString()}B`}
                     </div>
+                    <div>payload budget {formatPayloadBudget(route)}</div>
                   </div>
                 </div>
               ))

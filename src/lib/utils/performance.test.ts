@@ -44,10 +44,16 @@ describe('performance metrics', () => {
     expect(snapshot.summary.overall_p50_ms).toBe(180);
     expect(snapshot.summary.overall_p95_ms).toBe(620);
     expect(snapshot.summary.overall_p95_payload_bytes).toBe(6200);
+    expect(snapshot.summary.critical_routes).toBe(0);
+    expect(snapshot.summary.payload_budgeted_routes).toBe(0);
+    expect(snapshot.summary.routes_over_payload_budget).toBe(0);
+    expect(snapshot.summary.routes_with_unconfigured_payload_budget).toBe(0);
     expect(snapshot.summary.routes_over_target).toBe(2);
     expect(snapshot.routes[0]).toMatchObject({
       route: '/api/visit-schedules',
       method: 'GET',
+      critical_route: false,
+      critical_route_family: null,
       request_count: 5,
       slow_count: 2,
       p95_ms: 620,
@@ -55,6 +61,9 @@ describe('performance metrics', () => {
       average_payload_bytes: 3360,
       p95_payload_bytes: 6200,
       max_payload_bytes: 6200,
+      payload_budget_bytes: null,
+      payload_budget_status: 'unconfigured',
+      payload_budget_met: null,
       target_met: false,
     });
   });
@@ -91,7 +100,110 @@ describe('performance metrics', () => {
       average_payload_bytes: 11,
       p95_payload_bytes: 11,
       max_payload_bytes: 11,
+      critical_route: true,
+      critical_route_family: 'patients-board',
+      payload_budget_bytes: 300 * 1024,
+      payload_budget_status: 'within_budget',
+      payload_budget_met: true,
       last_payload_bytes: 11,
+    });
+  });
+
+  it('marks critical route payload budgets using normalized route keys', () => {
+    recordRoutePerformance({
+      route: '/api/patients/patient_123456/overview',
+      method: 'GET',
+      status: 200,
+      durationMs: 120,
+      payloadBytes: 260 * 1024,
+    });
+    recordRoutePerformance({
+      route: '/api/patients/board',
+      method: 'GET',
+      status: 200,
+      durationMs: 90,
+      payloadBytes: 320 * 1024,
+    });
+
+    const snapshot = getPerformanceSnapshot({ topRoutes: 5 });
+
+    expect(snapshot.summary.payload_budgeted_routes).toBe(2);
+    expect(snapshot.summary.routes_over_payload_budget).toBe(2);
+    expect(snapshot.routes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          route: '/api/patients/:id/overview',
+          critical_route: true,
+          critical_route_family: 'patient-detail-initial',
+          payload_budget_bytes: 250 * 1024,
+          payload_budget_status: 'over_budget',
+          payload_budget_met: false,
+          payload_budget_over_count: 1,
+        }),
+        expect.objectContaining({
+          route: '/api/patients/board',
+          critical_route: true,
+          critical_route_family: 'patients-board',
+          payload_budget_bytes: 300 * 1024,
+          payload_budget_status: 'over_budget',
+          payload_budget_met: false,
+          payload_budget_over_count: 1,
+        }),
+      ]),
+    );
+  });
+
+  it('drops query strings and hash fragments before route bucketing', () => {
+    recordRoutePerformance({
+      route: '/api/patients/board?search=patient-name&org_id=org_1#section',
+      method: 'GET',
+      status: 200,
+      durationMs: 120,
+      payloadBytes: 10,
+    });
+    recordRoutePerformance({
+      route: 'https://example.test/api/patients/board?search=other-patient',
+      method: 'GET',
+      status: 200,
+      durationMs: 90,
+      payloadBytes: 10,
+    });
+
+    const snapshot = getPerformanceSnapshot({ topRoutes: 5 });
+
+    expect(snapshot.summary.route_count).toBe(1);
+    expect(snapshot.routes[0]).toMatchObject({
+      route: '/api/patients/board',
+      request_count: 2,
+      critical_route: true,
+      payload_budget_status: 'within_budget',
+    });
+    expect(JSON.stringify(snapshot)).not.toContain('patient-name');
+    expect(JSON.stringify(snapshot)).not.toContain('org_1');
+    expect(JSON.stringify(snapshot)).not.toContain('search=');
+  });
+
+  it('marks critical route families without configured budgets as unconfigured', () => {
+    recordRoutePerformance({
+      route: '/api/billing/close-board?month=2026-07',
+      method: 'GET',
+      status: 200,
+      durationMs: 150,
+      payloadBytes: 2048,
+    });
+
+    const snapshot = getPerformanceSnapshot({ topRoutes: 5 });
+
+    expect(snapshot.summary.critical_routes).toBe(1);
+    expect(snapshot.summary.payload_budgeted_routes).toBe(0);
+    expect(snapshot.summary.routes_with_unconfigured_payload_budget).toBe(1);
+    expect(snapshot.routes[0]).toMatchObject({
+      route: '/api/billing/close-board',
+      critical_route: true,
+      critical_route_family: 'billing',
+      payload_budget_bytes: null,
+      payload_budget_status: 'unconfigured',
+      payload_budget_met: null,
     });
   });
 

@@ -3116,6 +3116,37 @@
   exact payload budget thresholds are not enforced yet, patients board query count is not measured,
   foundation filters remain memory-side after bounded fetch, and broader critical BFF routes still need either
   measured JSON responses or a safe response-construction helper.
+- codex: DEV-PAY/PERF-RTE route payload budget registry/status slice complete。
+  前スライスの measured payload bytes を `DEV-PAY-001` の budget 判定へ接続した。Subagents:
+  `observability_engineer` は `recordRoutePerformance()` 直呼び時に query/hash が route label に残ると
+  検索語・患者名・org id などが admin metrics label へ混入し得る点を指摘、`spec_guardian` は
+  budget 値が文書外に散ると overclaim になる点を指摘。これを受け、`normalizeRoutePath()` を
+  pathname-only に修正し、full URL / query / hash を保存しないテストを追加した。さらに
+  `Plans.md` に初期 route payload budget registry を明文化し、`performance.ts` では
+  normalized route/family 単位で `critical_route`, `critical_route_family`,
+  `payload_budget_bytes`, `payload_budget_status`, `payload_budget_over_count` を返すよう拡張。
+  budget 設定済み route は `within_budget` / `over_budget` / `unmeasured`、未設定 critical family は
+  `unconfigured` として表示し、通常 route は passing 扱いにしない。Admin performance UI は
+  latency badge と payload badge を分離し、`payload over` / `payload OK` / `payload 未計測` /
+  `payload 未設定` を route row に表示する。Files changed:
+  `Plans.md`,
+  `src/lib/utils/performance.ts`,
+  `src/lib/utils/performance.test.ts`,
+  `src/app/(dashboard)/admin/performance/page.tsx`,
+  `src/app/(dashboard)/admin/performance/page.test.tsx`,
+  `ops/refactor/STATE.md`。Validation green:
+  `pnpm exec prettier --write src/lib/utils/performance.ts src/lib/utils/performance.test.ts src/app/'(dashboard)'/admin/performance/page.tsx src/app/'(dashboard)'/admin/performance/page.test.tsx Plans.md`;
+  `pnpm exec vitest run src/lib/utils/performance.test.ts src/app/api/admin/performance-metrics/route.test.ts src/app/'(dashboard)'/admin/performance/page.test.tsx --reporter=dot --testTimeout=30000`
+  (3 files / 23 tests; 初回は unconfigured 集計が通常 route も数えて FAIL、critical route のみへ修正後 green);
+  scoped ESLint for touched performance/admin files;
+  `pnpm format:check`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `git diff --check -- src/lib/utils/performance.ts src/lib/utils/performance.test.ts src/app/api/admin/performance-metrics/route.test.ts src/app/'(dashboard)'/admin/performance/page.tsx src/app/'(dashboard)'/admin/performance/page.test.tsx Plans.md`。
+  Remaining:
+  `perf:smoke` はまだ response payload bytes / budget threshold を計測していない。
+  query count collection, persistent metrics sink/deploy_sha, and broader BFF measured JSON response coverage
+  are still open. `Plans.md` 初期 budget は 50KB/300KB/250KB/250KB/200KB の第一版で、
+  production baseline 取得後に調整する。
 
 ## 進行中 / 凍結
 

@@ -734,6 +734,21 @@ FE 仕上げ（低優先）:
   `/api/tasks`, `/api/notifications`.
 - UI: 患者一覧、患者/ケース詳細、訪問準備、訪問記録、スケジュールボード、請求、報告書、薬剤マスタ、通知センター、監査ログ。
 
+**初期 route payload budget registry**:
+
+> `DEV-PAY-001` の初期閾値。`Content-Length` など応答 payload bytes が取れる route のみ判定する。query string、hash、患者ID、org ID、検索語などは performance label / budget key に含めない。未登録 critical route は `unconfigured` として表示し、passing 扱いにしない。
+
+| family                  | method | normalized route                    | p95 budget |
+| ----------------------- | ------ | ----------------------------------- | ---------- |
+| dashboard-summary       | GET    | `/api/dashboard/cockpit/summary`    | 50KB       |
+| patients-board          | GET    | `/api/patients/board`               | 300KB      |
+| patient-detail-initial  | GET    | `/api/patients/:id/overview`        | 250KB      |
+| reports-today-workspace | GET    | `/api/care-reports/today-workspace` | 250KB      |
+| visit-preparation       | GET    | `/api/visits/today-preparation`     | 200KB      |
+| billing                 | any    | `/api/billing*`                     | 未設定     |
+| tasks                   | any    | `/api/tasks`                        | 未設定     |
+| notifications           | any    | `/api/notifications`                | 未設定     |
+
 #### 多角レビュー / リファクタリング同時実装プロトコル（2026-07-05 追加） `cc:TODO`
 
 > `RISK-*` / `UX-*` / `PERF-*` / `DEV-*` は機能追加単体で進めない。各実装 slice は、既存コードを読んだうえで近傍の重複・旧 contract・warning-only 表示を同時に整理し、最新 contract に完全上書きする。互換性維持は不要だが、患者安全、PHI、請求、権限、監査、migration/deploy gate は緩和しない。

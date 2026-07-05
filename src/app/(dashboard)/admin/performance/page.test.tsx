@@ -158,6 +158,73 @@ describe('PerformancePage polling policy', () => {
     expect(refetch).toHaveBeenCalledTimes(1);
   });
 
+  it('shows payload budget status separately from latency target status', () => {
+    useRealtimeQueryMock.mockReturnValue({ data: undefined, isLoading: false, refetch: vi.fn() });
+    useQueryMock.mockReturnValue({
+      isLoading: false,
+      refetch: vi.fn(),
+      data: {
+        data: {
+          scope: 'current-process',
+          target_ms: 500,
+          collected_since: '2026-07-05T00:00:00.000Z',
+          summary: {
+            route_count: 1,
+            total_requests: 12,
+            slow_requests: 0,
+            error_requests: 0,
+            slow_request_rate: 0,
+            overall_p50_ms: 80,
+            overall_p95_ms: 140,
+            overall_p95_payload_bytes: 327_680,
+            critical_routes: 1,
+            payload_budgeted_routes: 1,
+            routes_over_payload_budget: 1,
+            routes_with_unconfigured_payload_budget: 0,
+            routes_over_target: 0,
+          },
+          routes: [
+            {
+              route: '/api/patients/board',
+              method: 'GET',
+              critical_route: true,
+              critical_route_family: 'patients-board',
+              request_count: 12,
+              error_count: 0,
+              slow_count: 0,
+              slow_rate: 0,
+              average_ms: 90,
+              p50_ms: 80,
+              p95_ms: 140,
+              max_ms: 160,
+              payload_sample_count: 12,
+              average_payload_bytes: 310_000,
+              p95_payload_bytes: 327_680,
+              max_payload_bytes: 330_000,
+              payload_budget_bytes: 307_200,
+              payload_budget_status: 'over_budget',
+              payload_budget_met: false,
+              payload_budget_over_count: 3,
+              last_seen_at: '2026-07-05T00:01:00.000Z',
+              last_status: 200,
+              last_payload_bytes: 327_680,
+              target_met: true,
+            },
+          ],
+        },
+      },
+    });
+
+    render(<PerformancePage />);
+
+    expect(screen.getByText('latency OK')).toBeTruthy();
+    expect(screen.getByText('payload over')).toBeTruthy();
+    expect(screen.getByText('/api/patients/board')).toBeTruthy();
+    expect(screen.getByText('route family patients-board')).toBeTruthy();
+    expect(screen.getByText('payload P95 327,680B')).toBeTruthy();
+    expect(screen.getByText('payload budget 307,200B超過')).toBeTruthy();
+  });
+
   it('uses the shared JSON reader for performance read queries', async () => {
     const workflowPayload = {
       data: {
@@ -191,6 +258,11 @@ describe('PerformancePage polling policy', () => {
           slow_request_rate: 0,
           overall_p50_ms: 20,
           overall_p95_ms: 50,
+          overall_p95_payload_bytes: null,
+          critical_routes: 0,
+          payload_budgeted_routes: 0,
+          routes_over_payload_budget: 0,
+          routes_with_unconfigured_payload_budget: 0,
           routes_over_target: 0,
         },
         routes: [],

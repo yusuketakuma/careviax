@@ -5,6 +5,71 @@ const DEFAULT_MAX_SAMPLES_PER_ROUTE = 200;
 const DEFAULT_MAX_ROUTES = 500;
 const DEFAULT_TOP_ROUTES = 8;
 const EXCLUDED_PATHS = new Set(['/api/admin/performance-metrics']);
+const KIB = 1024;
+
+type PayloadBudgetDefinition = {
+  method: string;
+  route: string;
+  family: string;
+  budget_bytes: number | null;
+};
+
+const CRITICAL_ROUTE_PAYLOAD_BUDGETS: PayloadBudgetDefinition[] = [
+  {
+    method: 'GET',
+    route: '/api/dashboard/cockpit/summary',
+    family: 'dashboard-summary',
+    budget_bytes: 50 * KIB,
+  },
+  {
+    method: 'GET',
+    route: '/api/patients/board',
+    family: 'patients-board',
+    budget_bytes: 300 * KIB,
+  },
+  {
+    method: 'GET',
+    route: '/api/patients/:id/overview',
+    family: 'patient-detail-initial',
+    budget_bytes: 250 * KIB,
+  },
+  {
+    method: 'GET',
+    route: '/api/care-reports/today-workspace',
+    family: 'reports-today-workspace',
+    budget_bytes: 250 * KIB,
+  },
+  {
+    method: 'GET',
+    route: '/api/visits/today-preparation',
+    family: 'visit-preparation',
+    budget_bytes: 200 * KIB,
+  },
+  {
+    method: '*',
+    route: '/api/billing*',
+    family: 'billing',
+    budget_bytes: null,
+  },
+  {
+    method: '*',
+    route: '/api/tasks',
+    family: 'tasks',
+    budget_bytes: null,
+  },
+  {
+    method: '*',
+    route: '/api/notifications',
+    family: 'notifications',
+    budget_bytes: null,
+  },
+];
+
+const EXACT_ROUTE_PAYLOAD_BUDGETS = new Map(
+  CRITICAL_ROUTE_PAYLOAD_BUDGETS.filter((definition) => !definition.route.endsWith('*')).map(
+    (definition) => [routeMetricsKey(definition.method, definition.route), definition],
+  ),
+);
 
 type RoutePerformanceSample = {
   duration_ms: number;
@@ -29,6 +94,8 @@ type RoutePerformanceStore = {
 export type RoutePerformanceSummary = {
   route: string;
   method: string;
+  critical_route: boolean;
+  critical_route_family: string | null;
   request_count: number;
   error_count: number;
   slow_count: number;
@@ -41,6 +108,10 @@ export type RoutePerformanceSummary = {
   average_payload_bytes: number | null;
   p95_payload_bytes: number | null;
   max_payload_bytes: number | null;
+  payload_budget_bytes: number | null;
+  payload_budget_status: PayloadBudgetStatus;
+  payload_budget_met: boolean | null;
+  payload_budget_over_count: number;
   last_seen_at: string | null;
   last_status: number | null;
   last_payload_bytes: number | null;
@@ -60,10 +131,16 @@ export type PerformanceSnapshot = {
     overall_p50_ms: number;
     overall_p95_ms: number;
     overall_p95_payload_bytes: number | null;
+    critical_routes: number;
+    payload_budgeted_routes: number;
+    routes_over_payload_budget: number;
+    routes_with_unconfigured_payload_budget: number;
     routes_over_target: number;
   };
   routes: RoutePerformanceSummary[];
 };
+
+export type PayloadBudgetStatus = 'unconfigured' | 'unmeasured' | 'within_budget' | 'over_budget';
 
 declare global {
   var __phOsRoutePerformanceStore: RoutePerformanceStore | undefined;
@@ -112,6 +189,14 @@ function shouldTrackRoute(route: string): boolean {
   return !EXCLUDED_PATHS.has(route);
 }
 
+function routeMetricsKey(method: string, route: string): string {
+  return `${method.toUpperCase()} ${route}`;
+}
+
+function routeMetricsKeys(method: string, route: string): string[] {
+  return [routeMetricsKey(method, route), routeMetricsKey('*', route)];
+}
+
 function isDynamicRouteSegment(segment: string): boolean {
   if (/^\d+$/.test(segment)) return true;
   if (/^[0-9a-f]{24}$/i.test(segment)) return true;
@@ -123,8 +208,16 @@ function isDynamicRouteSegment(segment: string): boolean {
   return segment.length >= 8 && /\d/.test(segment) && /^[a-z0-9_-]+$/i.test(segment);
 }
 
+function pathnameOnly(route: string): string {
+  try {
+    return new URL(route).pathname || '/';
+  } catch {
+    return route.split(/[?#]/, 1)[0] || '/';
+  }
+}
+
 function normalizeRoutePath(route: string): string {
-  const [pathname = '/', suffix = ''] = route.split(/([?#].*)/, 2);
+  const pathname = pathnameOnly(route);
   const normalizedPathname = pathname
     .split('/')
     .map((segment) => {
@@ -133,7 +226,31 @@ function normalizeRoutePath(route: string): string {
     })
     .join('/');
 
-  return `${normalizedPathname || '/'}${suffix}`;
+  return normalizedPathname || '/';
+}
+
+function resolvePayloadBudget(method: string, route: string): PayloadBudgetDefinition | null {
+  for (const key of routeMetricsKeys(method, route)) {
+    const exact = EXACT_ROUTE_PAYLOAD_BUDGETS.get(key);
+    if (exact) return exact;
+  }
+
+  return (
+    CRITICAL_ROUTE_PAYLOAD_BUDGETS.find((definition) => {
+      if (!definition.route.endsWith('*')) return false;
+      if (definition.method !== '*' && definition.method !== method.toUpperCase()) return false;
+      return route.startsWith(definition.route.slice(0, -1));
+    }) ?? null
+  );
+}
+
+function payloadBudgetStatus(
+  budgetBytes: number | null,
+  p95PayloadBytes: number | null,
+): PayloadBudgetStatus {
+  if (budgetBytes == null) return 'unconfigured';
+  if (p95PayloadBytes == null) return 'unmeasured';
+  return p95PayloadBytes <= budgetBytes ? 'within_budget' : 'over_budget';
 }
 
 export function recordRoutePerformance(args: {
@@ -144,11 +261,11 @@ export function recordRoutePerformance(args: {
   payloadBytes?: number | null;
   recordedAt?: number;
 }): void {
-  if (!shouldTrackRoute(args.route)) return;
-
   const store = getStore();
   const route = normalizeRoutePath(args.route);
-  const key = `${args.method.toUpperCase()} ${route}`;
+  if (!shouldTrackRoute(route)) return;
+
+  const key = routeMetricsKey(args.method, route);
   const bucket = store.routes.get(key) ?? {
     route,
     method: args.method.toUpperCase(),
@@ -198,6 +315,14 @@ export function getPerformanceSnapshot(options?: {
     const payloadBytes = bucket.samples
       .map((sample) => sample.payload_bytes)
       .filter((value): value is number => value != null);
+    const payloadBudget = resolvePayloadBudget(bucket.method, bucket.route);
+    const payloadBudgetBytes = payloadBudget?.budget_bytes ?? null;
+    const p95PayloadBytes = payloadBytes.length ? percentile(payloadBytes, 0.95) : null;
+    const budgetStatus = payloadBudgetStatus(payloadBudgetBytes, p95PayloadBytes);
+    const payloadBudgetOverCount =
+      payloadBudgetBytes == null
+        ? 0
+        : payloadBytes.filter((value) => value > payloadBudgetBytes).length;
     const slowCount = bucket.samples.filter((sample) => sample.duration_ms > targetMs).length;
     const errorCount = bucket.samples.filter((sample) => sample.status >= 500).length;
     const lastSample = bucket.samples[bucket.samples.length - 1];
@@ -210,6 +335,8 @@ export function getPerformanceSnapshot(options?: {
     routeSummaries.push({
       route: bucket.route,
       method: bucket.method,
+      critical_route: payloadBudget != null,
+      critical_route_family: payloadBudget?.family ?? null,
       request_count: bucket.samples.length,
       error_count: errorCount,
       slow_count: slowCount,
@@ -220,8 +347,15 @@ export function getPerformanceSnapshot(options?: {
       max_ms: durations.length ? Math.max(...durations) : 0,
       payload_sample_count: payloadBytes.length,
       average_payload_bytes: payloadBytes.length ? average(payloadBytes) : null,
-      p95_payload_bytes: payloadBytes.length ? percentile(payloadBytes, 0.95) : null,
+      p95_payload_bytes: p95PayloadBytes,
       max_payload_bytes: payloadBytes.length ? Math.max(...payloadBytes) : null,
+      payload_budget_bytes: payloadBudgetBytes ?? null,
+      payload_budget_status: budgetStatus,
+      payload_budget_met:
+        budgetStatus === 'unmeasured' || budgetStatus === 'unconfigured'
+          ? null
+          : budgetStatus === 'within_budget',
+      payload_budget_over_count: payloadBudgetOverCount,
       last_seen_at: lastSample ? new Date(lastSample.recorded_at).toISOString() : null,
       last_status: lastSample?.status ?? null,
       last_payload_bytes: lastSample?.payload_bytes ?? null,
@@ -248,6 +382,15 @@ export function getPerformanceSnapshot(options?: {
       overall_p50_ms: percentile(allDurations, 0.5),
       overall_p95_ms: percentile(allDurations, 0.95),
       overall_p95_payload_bytes: allPayloadBytes.length ? percentile(allPayloadBytes, 0.95) : null,
+      critical_routes: routeSummaries.filter((route) => route.critical_route).length,
+      payload_budgeted_routes: routeSummaries.filter((route) => route.payload_budget_bytes != null)
+        .length,
+      routes_over_payload_budget: routeSummaries.filter(
+        (route) => route.payload_budget_status === 'over_budget',
+      ).length,
+      routes_with_unconfigured_payload_budget: routeSummaries.filter(
+        (route) => route.critical_route && route.payload_budget_status === 'unconfigured',
+      ).length,
       routes_over_target: routeSummaries.filter((route) => !route.target_met).length,
     },
     routes: routeSummaries.slice(0, topRoutes),
