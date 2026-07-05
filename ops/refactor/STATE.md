@@ -3783,3 +3783,74 @@
 - remaining:
   Broader `Plans.md` objective remains open. 実際の UI/UX 実装 slice では、この SSOT に従い
   必要時に `imagegen` / `gpt-image-2` の非 PHI 参照案を作る。
+
+## 2026-07-06 Dashboard Comment Feed Rail slice
+
+- codex: `DASH-COMM-001` minimal dashboard team conversation feed implemented.
+  Dashboard cockpit 右レールの `チームの会話` を、既存 `TaskComment` から供給する独立 segment
+  `/api/dashboard/cockpit/comments` として追加した。既存 `/api/comments/recent` は current-user
+  authored/mentioned feed で、dashboard team scope と担当 case/patient scope を表せないため再利用せず、
+  dashboard assignment scope に沿って `medication_cycle` / `dispense_task` / `set_plan` /
+  `visit_record` / `care_report` / `patient` の見える entity だけを返す BFF にした。
+- skill / design reference:
+  `docs/ui-ux-design-guidelines.md` と `imagegen` skill を確認し、`gpt-image-2` 方針の非PHI mockup を生成:
+  `/Users/yusuke/.codex/generated_images/019f2c7e-d969-7882-bd11-432a10abb930/...png`。
+  生成案は右レールの情報設計参照に限定し、実装は PH-OS の既存 `WorkspaceActionRail` / card radius /
+  false-empty/error 分離 / 44px target 方針に翻訳した。
+- subagents:
+  `code_mapper` subagent `019f33dc-5e48-7352-81eb-a9a4ea4c7a91` を read-only で投入。
+  既存 `TaskComment`、`/api/comments/recent` の current-user 限定性、dashboard TODO の
+  cross-entity feed 不足、dashboard assignment scope 再利用方針を確認した。追加 agent は thread
+  limit のため起動不可。
+- files inspected:
+  `Plans.md`, `docs/ui-ux-design-guidelines.md`,
+  `/Users/yusuke/.codex/skills/.system/imagegen/SKILL.md`,
+  `/Users/yusuke/workspace/careviax/.agents/skills/redesign-existing-projects/SKILL.md`,
+  `prisma/schema/communication.prisma`,
+  `src/app/api/comments/recent/route.ts`,
+  `src/app/api/comments/route.ts`,
+  `src/server/services/collaboration-access.ts`,
+  `src/server/services/dashboard-assignment-scope.ts`,
+  `src/server/services/dashboard-cockpit.ts`,
+  `src/types/dashboard-cockpit.ts`,
+  `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+  `src/app/api/dashboard/cockpit/route.test.ts`,
+  `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`.
+- files changed:
+  `Plans.md`,
+  `src/types/dashboard-cockpit.ts`,
+  `src/server/services/dashboard-cockpit.ts`,
+  `src/app/api/dashboard/cockpit/comments/route.ts`,
+  `src/app/api/dashboard/cockpit/route.test.ts`,
+  `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+  `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`,
+  `ops/refactor/STATE.md`.
+- bugs found/fixed:
+  Dashboard cockpit に「チームの会話」の UI 計画はあったが横断コメント feed が無く、現場の
+  コメント/メンションから該当作業へ戻る導線が欠けていた。`comments` segment は cockpit 本体や
+  summary/details/team の cache と分離し、取得失敗時も右レールの next action / blocker / evidence
+  を false-empty にしない。
+- security/PHI risks reduced:
+  comments segment は no-store、permission `canViewDashboard`、dashboard assignment scope を通し、
+  list response では `content` 全文ではなく `content_excerpt` のみを返す。未知 entity type は落とし、
+  author lookup も表示対象コメントの user id だけに限定。`gpt-image-2` prompt / tests は架空データのみで
+  実在患者名、住所、電話、処方本文、報告本文、保険情報、外部共有 URL、secret を含めない。
+- performance issues improved:
+  `/api/dashboard/cockpit/comments` は cockpit full BFF から分離した段階ロードで、初期 summary/details/team
+  を巻き込まず fail-soft にした。コメント feed は `take=80`、UI 表示は5件に制限し、author lookup は
+  表示対象分だけ行う。残課題として `TaskComment(org_id, created_at)` index を Plans に記録。
+- validation:
+  `pnpm exec prettier --write src/types/dashboard-cockpit.ts src/server/services/dashboard-cockpit.ts src/app/api/dashboard/cockpit/comments/route.ts src/app/api/dashboard/cockpit/route.test.ts 'src/app/(dashboard)/dashboard/dashboard-cockpit.tsx' 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx'`
+  green;
+  `pnpm exec vitest run src/app/api/dashboard/cockpit/route.test.ts 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx' --reporter=dot --testTimeout=30000`
+  green (2 files / 39 tests);
+  `git diff --check -- ...dashboard comments touched files...` green;
+  `pnpm exec eslint --max-warnings=0 src/types/dashboard-cockpit.ts src/server/services/dashboard-cockpit.ts src/app/api/dashboard/cockpit/comments/route.ts src/app/api/dashboard/cockpit/route.test.ts 'src/app/(dashboard)/dashboard/dashboard-cockpit.tsx' 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx'`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck --pretty false` green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false` green.
+- remaining:
+  Broader `Plans.md` objective remains open. `DASH-COMM-001` の残りは unread/resolved/unresolved
+  状態、comment resolution lifecycle、`TaskComment(org_id, created_at)` index migration、より詳細な
+  entity label、browser smoke。次の安全な候補は `PAT-LIST-PERF-001` / `DSP-PERF-001` /
+  `VISIT-UX-001`。

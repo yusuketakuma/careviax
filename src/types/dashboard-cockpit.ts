@@ -60,6 +60,26 @@ export type CockpitTeamMember = {
   busy_ratio: number | null;
 };
 
+export type CockpitCommentItem = {
+  id: string;
+  entity_type:
+    | 'dispense_task'
+    | 'medication_cycle'
+    | 'set_plan'
+    | 'visit_record'
+    | 'care_report'
+    | 'patient';
+  entity_id: string;
+  entity_label: string;
+  author_id: string;
+  author_name: string;
+  content_excerpt: string;
+  mentions_me: boolean;
+  authored_by_me: boolean;
+  created_at: string;
+  href: string;
+};
+
 export type DashboardCockpitScope = 'mine' | 'team';
 
 export type DashboardCockpitScopeMetadata = {
@@ -108,6 +128,14 @@ export type DashboardCockpitTeamResponse = DashboardCockpitScopeMetadata & {
   team_capacity: CockpitTeamMember[];
 };
 
+export type DashboardCockpitCommentsResponse = DashboardCockpitScopeMetadata & {
+  /** Dashboard scope で閲覧可能な直近コメント。本文は短い抜粋だけ返す。 */
+  comments: CockpitCommentItem[];
+  comments_total_count: number;
+  comments_visible_count: number;
+  comments_hidden_count: number;
+};
+
 export type DashboardCockpitResponse = DashboardCockpitScopeMetadata & {
   /** MedicationCycle.overall_status → 件数(cancelled を除く)。工程の今(9工程)の元データ */
   cycle_status_counts: Record<string, number>;
@@ -127,4 +155,9 @@ export type DashboardCockpitResponse = DashboardCockpitScopeMetadata & {
   carryover_count: number;
   /** チームの余白(残り時間の目安)。工程の今の隣に表示 */
   team_capacity: CockpitTeamMember[];
+  /** 右レール「チームの会話」。旧 full route 用。 */
+  comments?: CockpitCommentItem[];
+  comments_total_count?: number;
+  comments_visible_count?: number;
+  comments_hidden_count?: number;
 };

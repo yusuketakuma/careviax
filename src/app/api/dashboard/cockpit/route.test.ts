@@ -9,7 +9,13 @@ const {
   loggerErrorMock,
   withRoutePerformanceMock,
   medicationCycleGroupByMock,
+  medicationCycleFindManyMock,
   dispenseTaskFindManyMock,
+  setPlanFindManyMock,
+  visitRecordFindManyMock,
+  careReportFindManyMock,
+  taskCommentFindManyMock,
+  userFindManyMock,
   queryRawMock,
   visitScheduleFindManyMock,
   workflowExceptionFindManyMock,
@@ -26,7 +32,13 @@ const {
   loggerErrorMock: vi.fn(),
   withRoutePerformanceMock: vi.fn((_req, handler) => handler()),
   medicationCycleGroupByMock: vi.fn(),
+  medicationCycleFindManyMock: vi.fn(),
   dispenseTaskFindManyMock: vi.fn(),
+  setPlanFindManyMock: vi.fn(),
+  visitRecordFindManyMock: vi.fn(),
+  careReportFindManyMock: vi.fn(),
+  taskCommentFindManyMock: vi.fn(),
+  userFindManyMock: vi.fn(),
   queryRawMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
   workflowExceptionFindManyMock: vi.fn(),
@@ -48,8 +60,13 @@ vi.mock('@/lib/auth/request-context', () => ({
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
-    medicationCycle: { groupBy: medicationCycleGroupByMock },
+    medicationCycle: { groupBy: medicationCycleGroupByMock, findMany: medicationCycleFindManyMock },
     dispenseTask: { findMany: dispenseTaskFindManyMock },
+    setPlan: { findMany: setPlanFindManyMock },
+    visitRecord: { findMany: visitRecordFindManyMock },
+    careReport: { findMany: careReportFindManyMock },
+    taskComment: { findMany: taskCommentFindManyMock },
+    user: { findMany: userFindManyMock },
     $queryRaw: queryRawMock,
     visitSchedule: { findMany: visitScheduleFindManyMock },
     workflowException: { findMany: workflowExceptionFindManyMock },
@@ -79,6 +96,7 @@ import { GET } from './route';
 import { GET as GETDetails } from './details/route';
 import { GET as GETSummary } from './summary/route';
 import { GET as GETTeam } from './team/route';
+import { GET as GETComments } from './comments/route';
 
 function createRequest(search = '', path = '/api/dashboard/cockpit') {
   return new NextRequest(`http://localhost${path}${search}`, {
@@ -193,6 +211,12 @@ describe('/api/dashboard/cockpit', () => {
       { user_id: 'user_2', role: 'clerk', user: { name: '鈴木 さくら' } },
     ]);
     pharmacistShiftFindManyMock.mockResolvedValue([]);
+    medicationCycleFindManyMock.mockResolvedValue([]);
+    setPlanFindManyMock.mockResolvedValue([]);
+    visitRecordFindManyMock.mockResolvedValue([]);
+    careReportFindManyMock.mockResolvedValue([]);
+    taskCommentFindManyMock.mockResolvedValue([]);
+    userFindManyMock.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -445,6 +469,187 @@ describe('/api/dashboard/cockpit', () => {
       expect.objectContaining({ team_capacity: expect.any(Array) }),
       15_000,
     );
+  });
+
+  it('returns a PHI-minimized comments segment without cockpit cache writes', async () => {
+    taskCommentFindManyMock.mockResolvedValue([
+      {
+        id: 'comment_1',
+        entity_type: 'medication_cycle',
+        entity_id: 'cycle_1',
+        content:
+          '監査前に家族連絡の結果だけ確認してください。長い自由記載は一覧では短く切ります。'.repeat(
+            2,
+          ),
+        author_id: 'user_2',
+        mentions: ['user_1'],
+        created_at: new Date('2026-06-12T00:35:00.000Z'),
+      },
+      {
+        id: 'comment_2',
+        entity_type: 'care_report',
+        entity_id: 'report_1',
+        content: '報告書の送付先を確認済みです。',
+        author_id: 'user_1',
+        mentions: [],
+        created_at: new Date('2026-06-12T00:30:00.000Z'),
+      },
+      {
+        id: 'comment_unknown',
+        entity_type: 'external_share',
+        entity_id: 'share_1',
+        content: 'unknown entity',
+        author_id: 'user_2',
+        mentions: [],
+        created_at: new Date('2026-06-12T00:20:00.000Z'),
+      },
+    ]);
+    medicationCycleFindManyMock.mockResolvedValue([{ id: 'cycle_1', patient_id: 'patient_1' }]);
+    careReportFindManyMock.mockResolvedValue([{ id: 'report_1' }]);
+    userFindManyMock.mockResolvedValue([
+      { id: 'user_1', name: '山田 太郎' },
+      { id: 'user_2', name: '鈴木 さくら' },
+    ]);
+
+    const response = (await GETComments(createRequest('', '/api/dashboard/cockpit/comments'), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const json = await response.json();
+    expect(json.data.comments_total_count).toBe(2);
+    expect(json.data.comments_visible_count).toBe(2);
+    expect(json.data.comments_hidden_count).toBe(0);
+    expect(json.data.comments).toEqual([
+      expect.objectContaining({
+        id: 'comment_1',
+        entity_type: 'medication_cycle',
+        entity_label: '処方サイクル',
+        author_name: '鈴木 さくら',
+        mentions_me: true,
+        authored_by_me: false,
+        href: '/patients/patient_1',
+      }),
+      expect.objectContaining({
+        id: 'comment_2',
+        entity_type: 'care_report',
+        entity_label: '報告書',
+        author_name: '山田 太郎',
+        mentions_me: false,
+        authored_by_me: true,
+        href: '/reports/report_1',
+      }),
+    ]);
+    expect(json.data.comments[0].content_excerpt.length).toBeLessThanOrEqual(96);
+    expect(JSON.stringify(json)).not.toContain('"content"');
+    expect(JSON.stringify(json)).not.toContain('unknown entity');
+    expect(serverCacheGetMock).not.toHaveBeenCalled();
+    expect(serverCacheSetMock).not.toHaveBeenCalled();
+    expect(userFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: { in: ['user_2', 'user_1'] }, org_id: 'org_1' },
+      }),
+    );
+  });
+
+  it('filters comments by personal assignment scope for non-admin members', async () => {
+    authContextMock.role = 'pharmacist';
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
+    taskCommentFindManyMock.mockResolvedValue([
+      {
+        id: 'comment_patient_allowed',
+        entity_type: 'patient',
+        entity_id: 'patient_1',
+        content: '担当患者のコメント',
+        author_id: 'user_2',
+        mentions: [],
+        created_at: new Date('2026-06-12T00:35:00.000Z'),
+      },
+      {
+        id: 'comment_patient_denied',
+        entity_type: 'patient',
+        entity_id: 'patient_other',
+        content: '担当外患者のコメント',
+        author_id: 'user_2',
+        mentions: [],
+        created_at: new Date('2026-06-12T00:34:00.000Z'),
+      },
+      {
+        id: 'comment_cycle_allowed',
+        entity_type: 'medication_cycle',
+        entity_id: 'cycle_allowed',
+        content: '担当ケースのサイクル',
+        author_id: 'user_3',
+        mentions: ['user_1'],
+        created_at: new Date('2026-06-12T00:33:00.000Z'),
+      },
+      {
+        id: 'comment_cycle_denied',
+        entity_type: 'medication_cycle',
+        entity_id: 'cycle_denied',
+        content: '担当外ケースのサイクル',
+        author_id: 'user_3',
+        mentions: [],
+        created_at: new Date('2026-06-12T00:32:00.000Z'),
+      },
+    ]);
+    medicationCycleFindManyMock.mockResolvedValue([
+      { id: 'cycle_allowed', patient_id: 'patient_1' },
+    ]);
+    userFindManyMock.mockResolvedValue([
+      { id: 'user_2', name: '鈴木 さくら' },
+      { id: 'user_3', name: '佐藤 恵' },
+    ]);
+
+    const response = (await GETComments(createRequest('', '/api/dashboard/cockpit/comments'), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const json = await response.json();
+    expect(json.data.scope).toEqual({
+      requested: 'mine',
+      applied: 'mine',
+      can_view_team: false,
+    });
+    expect(json.data.comments.map((comment: { id: string }) => comment.id)).toEqual([
+      'comment_patient_allowed',
+      'comment_cycle_allowed',
+    ]);
+    expect(JSON.stringify(json)).not.toContain('担当外患者');
+    expect(JSON.stringify(json)).not.toContain('担当外ケース');
+    expect(medicationCycleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: { in: ['cycle_allowed', 'cycle_denied'] },
+          org_id: 'org_1',
+          case_id: { in: ['case_1'] },
+        }),
+      }),
+    );
+  });
+
+  it('returns an empty comments segment without author lookups', async () => {
+    taskCommentFindManyMock.mockResolvedValue([]);
+
+    const response = (await GETComments(createRequest('', '/api/dashboard/cockpit/comments'), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        comments: [],
+        comments_total_count: 0,
+        comments_visible_count: 0,
+        comments_hidden_count: 0,
+      },
+    });
+    expect(userFindManyMock).not.toHaveBeenCalled();
+    expect(serverCacheSetMock).not.toHaveBeenCalled();
   });
 
   it('uses the personal assignment scope when an admin requests mine', async () => {

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { Lock, TriangleAlert } from 'lucide-react';
+import { Lock, MessageSquare, TriangleAlert } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
@@ -28,8 +28,10 @@ import { buildDailyOpsBlockedReasons } from '@/lib/workspace/daily-ops-rail';
 import { cn } from '@/lib/utils';
 import type {
   CockpitAuditQueueItem,
+  CockpitCommentItem,
   CockpitTeamMember,
   CockpitVisit,
+  DashboardCockpitCommentsResponse,
   DashboardCockpitScope,
   DashboardCockpitDetailsResponse,
   DashboardCockpitResponse,
@@ -81,7 +83,7 @@ export async function fetchDashboardCockpit(
 async function fetchDashboardCockpitSegment<TData>(
   orgId: string,
   scope: DashboardCockpitScope,
-  segment: 'summary' | 'details' | 'team',
+  segment: 'summary' | 'details' | 'team' | 'comments',
   errorMessage: string,
 ): Promise<TData> {
   const params = new URLSearchParams({ scope });
@@ -121,6 +123,13 @@ export function fetchDashboardCockpitTeam(
   scope: DashboardCockpitScope = 'mine',
 ): Promise<DashboardCockpitTeamResponse> {
   return fetchDashboardCockpitSegment(orgId, scope, 'team', 'チーム状況の取得に失敗しました');
+}
+
+export function fetchDashboardCockpitComments(
+  orgId: string,
+  scope: DashboardCockpitScope = 'mine',
+): Promise<DashboardCockpitCommentsResponse> {
+  return fetchDashboardCockpitSegment(orgId, scope, 'comments', 'チームの会話の取得に失敗しました');
 }
 
 type DashboardViewScope = 'mine' | 'team';
@@ -715,6 +724,154 @@ function ActionRailLoading() {
   );
 }
 
+function formatCommentTimestamp(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return format(date, 'HH:mm');
+}
+
+function commentBadge(comment: CockpitCommentItem) {
+  if (comment.mentions_me) {
+    return { label: '自分宛', className: 'bg-state-confirm/10 text-state-confirm' };
+  }
+  if (comment.authored_by_me) {
+    return { label: '自分の投稿', className: 'bg-tag-info/10 text-tag-info' };
+  }
+  return { label: '共有', className: 'bg-muted text-muted-foreground' };
+}
+
+function TeamConversationPanel({
+  comments,
+  hiddenCount,
+  isLoading,
+  isError,
+  error,
+  onRetry,
+}: {
+  comments: CockpitCommentItem[];
+  hiddenCount: number;
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+  onRetry: () => void;
+}) {
+  if (isLoading) {
+    return (
+      <section
+        aria-label="チームの会話を読み込み中"
+        className="rounded-lg border border-border/70 bg-card p-4"
+        role="status"
+        data-testid="dashboard-comments-loading"
+      >
+        <div className="flex items-center gap-2">
+          <MessageSquare className="size-4 text-muted-foreground" aria-hidden="true" />
+          <h3 className="text-sm font-semibold text-foreground">チームの会話</h3>
+        </div>
+        <div className="mt-3 space-y-2">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <Skeleton key={index} className="h-16 w-full rounded-md" />
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  if (isError) {
+    return (
+      <section
+        className="rounded-lg border border-border/70 bg-card p-4"
+        data-testid="dashboard-comments-error"
+      >
+        <ErrorState
+          variant="server"
+          title="チームの会話を表示できません"
+          description="コメントだけ取得に失敗しました。次にやることと止まっている理由は表示したまま再試行できます。"
+          detail={error instanceof Error ? error.message : undefined}
+          onRetry={onRetry}
+        />
+      </section>
+    );
+  }
+
+  return (
+    <section
+      aria-labelledby="dashboard-team-conversation-heading"
+      className="space-y-3 rounded-lg border border-border/70 bg-card p-4"
+      data-testid="dashboard-comments-panel"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <MessageSquare className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <div className="min-w-0">
+            <h3
+              id="dashboard-team-conversation-heading"
+              className="text-sm font-semibold text-foreground"
+            >
+              チームの会話
+            </h3>
+            <p className="text-xs leading-5 text-muted-foreground">
+              コメントから該当作業へ移動します
+            </p>
+          </div>
+        </div>
+        <Link href="/handoff" className="shrink-0 text-xs font-medium text-primary hover:underline">
+          すべて見る
+        </Link>
+      </div>
+      {comments.length === 0 ? (
+        <p className="rounded-md border border-border/70 bg-muted/30 px-3 py-4 text-sm leading-6 text-muted-foreground">
+          直近のコメントはありません。
+        </p>
+      ) : (
+        <ul className="space-y-2" role="list">
+          {comments.map((comment) => {
+            const badge = commentBadge(comment);
+            return (
+              <li key={comment.id} className="rounded-md border border-border/70 bg-background p-3">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span
+                    className={cn(
+                      'inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold',
+                      badge.className,
+                    )}
+                  >
+                    {badge.label}
+                  </span>
+                  <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                    {comment.entity_label}
+                  </span>
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {formatCommentTimestamp(comment.created_at)}
+                  </span>
+                </div>
+                <p className="mt-2 line-clamp-2 text-sm leading-5 text-foreground">
+                  {comment.content_excerpt}
+                </p>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <span className="min-w-0 truncate text-xs text-muted-foreground">
+                    {comment.author_name}
+                  </span>
+                  <Link
+                    href={comment.href}
+                    className="shrink-0 text-xs font-medium text-primary hover:underline"
+                  >
+                    開く
+                  </Link>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {hiddenCount > 0 ? (
+        <p className="text-xs leading-5 text-muted-foreground">
+          他{hiddenCount}件はハンドオフで確認できます。
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // 右レール(次にやること / 止まっている理由 / 根拠・記録)
 // ---------------------------------------------------------------------------
@@ -801,6 +958,13 @@ export function DashboardCockpit({ focusRole = 'common' }: { focusRole?: Dashboa
     enabled: segmentQueriesEnabled,
     invalidateOn: ['cycle_transition', 'workflow_refresh'],
   });
+  const commentsQuery = useRealtimeQuery({
+    queryKey: ['dashboard', 'cockpit', 'comments', orgId, viewScope],
+    queryFn: () => fetchDashboardCockpitComments(orgId, viewScope),
+    staleTime: COCKPIT_FRESHNESS_WINDOW_MS,
+    enabled: segmentQueriesEnabled,
+    invalidateOn: ['comment_refresh', 'workflow_refresh'],
+  });
 
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -809,10 +973,12 @@ export function DashboardCockpit({ focusRole = 'common' }: { focusRole?: Dashboa
   }, []);
   const details = detailsQuery.data ?? null;
   const team = teamQuery.data ?? null;
+  const comments = commentsQuery.data ?? null;
   const hasStaleRefetchError =
     (summary != null && (summaryQuery.isRefetchError || summaryQuery.isError)) ||
     (details != null && (detailsQuery.isRefetchError || detailsQuery.isError)) ||
-    (team != null && (teamQuery.isRefetchError || teamQuery.isError));
+    (team != null && (teamQuery.isRefetchError || teamQuery.isError)) ||
+    (comments != null && (commentsQuery.isRefetchError || commentsQuery.isError));
   const appliedScope = summary?.scope?.applied ?? viewScope;
   const canViewTeam = summary?.scope?.can_view_team ?? true;
   const scopeLabel =
@@ -850,6 +1016,10 @@ export function DashboardCockpit({ focusRole = 'common' }: { focusRole?: Dashboa
   const teamInitialError = !teamReady && teamQuery.isError;
   const teamInitialLoading =
     !teamReady && (teamQuery.isLoading || summary != null) && !teamInitialError;
+  const commentsReady = comments != null;
+  const commentsInitialError = !commentsReady && commentsQuery.isError;
+  const commentsInitialLoading =
+    !commentsReady && (commentsQuery.isLoading || summary != null) && !commentsInitialError;
 
   return (
     <section aria-label="運用コックピット" data-testid="dashboard-cockpit">
@@ -928,6 +1098,7 @@ export function DashboardCockpit({ focusRole = 'common' }: { focusRole?: Dashboa
                     void summaryQuery.refetch();
                     void detailsQuery.refetch();
                     void teamQuery.refetch();
+                    void commentsQuery.refetch();
                   }}
                 >
                   再試行
@@ -994,7 +1165,16 @@ export function DashboardCockpit({ focusRole = 'common' }: { focusRole?: Dashboa
                 blockedReasonsEmptyLabel="止まっている作業はありません"
                 evidence={evidence}
                 evidenceOpenLabel="開く"
-              />
+              >
+                <TeamConversationPanel
+                  comments={comments?.comments ?? []}
+                  hiddenCount={comments?.comments_hidden_count ?? 0}
+                  isLoading={commentsInitialLoading}
+                  isError={commentsInitialError}
+                  error={commentsQuery.error}
+                  onRetry={() => void commentsQuery.refetch()}
+                />
+              </WorkspaceActionRail>
             ) : detailsInitialError ? null : (
               <ActionRailLoading />
             )}

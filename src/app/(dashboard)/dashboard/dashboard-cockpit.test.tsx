@@ -7,6 +7,7 @@ import { stubJsonFetch } from '@/test/fetch-test-utils';
 import { useUIStore } from '@/lib/stores/ui-store';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import type {
+  DashboardCockpitCommentsResponse,
   DashboardCockpitDetailsResponse,
   DashboardCockpitResponse,
   DashboardCockpitSummaryResponse,
@@ -212,6 +213,44 @@ function buildTeamFixture(data = buildFixture()): DashboardCockpitTeamResponse {
   };
 }
 
+function buildCommentsFixture(data = buildFixture()): DashboardCockpitCommentsResponse {
+  return {
+    generated_at: data.generated_at,
+    scope: data.scope,
+    comments: [
+      {
+        id: 'comment_1',
+        entity_type: 'medication_cycle',
+        entity_id: 'cycle_1',
+        entity_label: '処方サイクル',
+        author_id: 'user_2',
+        author_name: '鈴木 さくら',
+        content_excerpt: '監査前に家族連絡の結果だけ確認してください。',
+        mentions_me: true,
+        authored_by_me: false,
+        created_at: localIso(9, 20),
+        href: '/patients/patient_1',
+      },
+      {
+        id: 'comment_2',
+        entity_type: 'care_report',
+        entity_id: 'report_1',
+        entity_label: '報告書',
+        author_id: 'user_1',
+        author_name: '山田 太郎',
+        content_excerpt: '報告書の送付先を確認済みです。',
+        mentions_me: false,
+        authored_by_me: true,
+        created_at: localIso(9, 10),
+        href: '/reports/report_1',
+      },
+    ],
+    comments_total_count: 4,
+    comments_visible_count: 2,
+    comments_hidden_count: 2,
+  };
+}
+
 function successQuery<TData>(data: TData): SegmentQueryState<TData> {
   return {
     data,
@@ -227,16 +266,19 @@ function mockDashboardQueries({
   summary,
   details,
   team,
+  comments,
 }: {
   fixture?: DashboardCockpitResponse;
   summary?: Partial<SegmentQueryState<DashboardCockpitSummaryResponse>>;
   details?: Partial<SegmentQueryState<DashboardCockpitDetailsResponse>>;
   team?: Partial<SegmentQueryState<DashboardCockpitTeamResponse>>;
+  comments?: Partial<SegmentQueryState<DashboardCockpitCommentsResponse>>;
 } = {}) {
   const states = {
     summary: { ...successQuery(buildSummaryFixture(fixture)), ...summary },
     details: { ...successQuery(buildDetailsFixture(fixture)), ...details },
     team: { ...successQuery(buildTeamFixture(fixture)), ...team },
+    comments: { ...successQuery(buildCommentsFixture(fixture)), ...comments },
   };
 
   useRealtimeQueryMock.mockImplementation((config: { queryKey: unknown[] }) => {
@@ -244,11 +286,15 @@ function mockDashboardQueries({
     if (segment === 'summary') return states.summary;
     if (segment === 'details') return states.details;
     if (segment === 'team') return states.team;
+    if (segment === 'comments') return states.comments;
     return successQuery(fixture);
   });
 }
 
-function queryConfigFor(segment: 'summary' | 'details' | 'team', scope: 'mine' | 'team' = 'mine') {
+function queryConfigFor(
+  segment: 'summary' | 'details' | 'team' | 'comments',
+  scope: 'mine' | 'team' = 'mine',
+) {
   return useRealtimeQueryMock.mock.calls
     .map((call) => call[0] as { queryKey: unknown[]; queryFn: () => Promise<unknown> })
     .find((config) => config.queryKey[2] === segment && config.queryKey[4] === scope);
@@ -291,6 +337,7 @@ describe('DashboardCockpit', () => {
     const mineSummaryConfig = queryConfigFor('summary');
     const mineDetailsConfig = queryConfigFor('details');
     const mineTeamConfig = queryConfigFor('team');
+    const mineCommentsConfig = queryConfigFor('comments');
     expect(mineSummaryConfig?.queryKey).toEqual([
       'dashboard',
       'cockpit',
@@ -306,14 +353,23 @@ describe('DashboardCockpit', () => {
       'mine',
     ]);
     expect(mineTeamConfig?.queryKey).toEqual(['dashboard', 'cockpit', 'team', 'org_1', 'mine']);
+    expect(mineCommentsConfig?.queryKey).toEqual([
+      'dashboard',
+      'cockpit',
+      'comments',
+      'org_1',
+      'mine',
+    ]);
 
     await mineSummaryConfig?.queryFn();
     await mineDetailsConfig?.queryFn();
     await mineTeamConfig?.queryFn();
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    await mineCommentsConfig?.queryFn();
+    expect(fetchMock).toHaveBeenCalledTimes(4);
     expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/dashboard/cockpit/summary?scope=mine');
     expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/dashboard/cockpit/details?scope=mine');
     expect(fetchMock.mock.calls[2]?.[0]).toBe('/api/dashboard/cockpit/team?scope=mine');
+    expect(fetchMock.mock.calls[3]?.[0]).toBe('/api/dashboard/cockpit/comments?scope=mine');
     expect((fetchMock.mock.calls[0]?.[1] as RequestInit).headers).toBe(sentinelHeaders);
 
     fireEvent.click(screen.getByRole('button', { name: 'チーム全体' }));
@@ -331,7 +387,7 @@ describe('DashboardCockpit', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/dashboard/cockpit/summary?scope=team');
     expect((fetchMock.mock.calls[0]?.[1] as RequestInit).headers).toBe(sentinelHeaders);
-    expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledTimes(4);
+    expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledTimes(5);
     expect(vi.mocked(buildOrgHeaders)).toHaveBeenNthCalledWith(1, 'org_1');
     expect(vi.mocked(buildOrgHeaders)).toHaveBeenNthCalledWith(2, 'org_1');
   });
@@ -471,7 +527,7 @@ describe('DashboardCockpit', () => {
     expect(within(section).getByRole('link', { name: '→ ハンドオフへ' })).toBeTruthy();
   });
 
-  it('renders the action rail with next action, blocked reasons, and evidence only', () => {
+  it('renders the action rail with next action, blockers, evidence, and team conversation', () => {
     render(<DashboardCockpit />);
 
     const nextAction = screen.getByTestId('next-action-panel');
@@ -498,6 +554,17 @@ describe('DashboardCockpit', () => {
 
     // デザイン 01: 右レールは 3 点セットのみ。「私の今日」リストカードは置かない
     expect(screen.queryByTestId('dashboard-my-today')).toBeNull();
+
+    const comments = screen.getByTestId('dashboard-comments-panel');
+    expect(within(comments).getByRole('heading', { name: 'チームの会話', level: 3 })).toBeTruthy();
+    expect(within(comments).getByText('自分宛')).toBeTruthy();
+    expect(within(comments).getByText('処方サイクル')).toBeTruthy();
+    expect(within(comments).getByText('監査前に家族連絡の結果だけ確認してください。')).toBeTruthy();
+    expect(within(comments).getByText('自分の投稿')).toBeTruthy();
+    expect(within(comments).getByText('報告書')).toBeTruthy();
+    expect(within(comments).getByText('他2件はハンドオフで確認できます。')).toBeTruthy();
+    expect(within(comments).getByRole('link', { name: 'すべて見る' })).toBeTruthy();
+    expect(within(comments).getAllByRole('link', { name: '開く' })).toHaveLength(2);
   });
 
   it('marks cockpit evidence as stale when the generated snapshot is older than the realtime freshness window', () => {
@@ -585,7 +652,7 @@ describe('DashboardCockpit', () => {
     expect(screen.queryByText('ダッシュボードを表示できません')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: '再試行' }));
-    expect(refetchMock).toHaveBeenCalledTimes(3);
+    expect(refetchMock).toHaveBeenCalledTimes(4);
   });
 
   it('keeps summary sections visible when details fail before the first payload arrives', () => {
@@ -626,5 +693,23 @@ describe('DashboardCockpit', () => {
     expect(screen.getByTestId('dashboard-process-now')).toBeTruthy();
     expect(screen.getByText('チーム状況を表示できません')).toBeTruthy();
     expect(screen.queryByTestId('dashboard-team-capacity')).toBeNull();
+  });
+
+  it('keeps the action rail visible when the conversation feed fails before the first payload arrives', () => {
+    mockDashboardQueries({
+      comments: {
+        data: undefined,
+        isLoading: false,
+        isError: true,
+        error: new Error('comments down'),
+      },
+    });
+
+    render(<DashboardCockpit />);
+
+    expect(screen.getByTestId('next-action-panel')).toBeTruthy();
+    expect(screen.getByText('チームの会話を表示できません')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(refetchMock).toHaveBeenCalledTimes(1);
   });
 });

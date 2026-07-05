@@ -6,8 +6,13 @@ import { COCKPIT_CACHE_TTL_MS } from '@/lib/constants/workflow';
 import { success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { formatNullableDateKey } from '@/lib/date-key';
+import { buildDispenseTaskHref } from '@/lib/dispense/navigation';
 import { extractPackagingInstructionTags } from '@/lib/dispensing/packaging';
+import { buildPatientHref } from '@/lib/patient/navigation';
+import { buildReportHref } from '@/lib/reports/navigation';
+import { buildSetPlanHref } from '@/lib/set/navigation';
 import { canViewAllDashboardWork } from '@/lib/auth/visit-schedule-access';
+import { buildVisitHref } from '@/lib/visits/navigation';
 import { timeDateToString } from '@/lib/visits/time-of-day';
 import { serverCache } from '@/lib/utils/server-cache';
 import { japanDayInstantRange, todayUtcRange } from '@/lib/utils/date-boundary';
@@ -24,7 +29,9 @@ import { buildBlockedReasons } from '@/lib/workflow/blocked-reason-projection';
 import type {
   CockpitAuditQueueItem,
   CockpitBlockedReason,
+  CockpitCommentItem,
   CockpitVisit,
+  DashboardCockpitCommentsResponse,
   DashboardCockpitDetailsResponse,
   DashboardCockpitResponse,
   DashboardCockpitScope,
@@ -37,18 +44,22 @@ import { buildTeamCapacity } from '@/app/api/dashboard/cockpit/team-capacity';
 const AUDIT_QUEUE_FETCH_LIMIT = 30;
 const AUDIT_QUEUE_RESPONSE_LIMIT = 5;
 const BLOCKED_REASONS_LIMIT = 3;
+const COMMENT_FEED_FETCH_LIMIT = 80;
+const COMMENT_FEED_RESPONSE_LIMIT = 5;
+const COMMENT_EXCERPT_LENGTH = 96;
 
 type DashboardScopeQuery =
   | { ok: true; scope: DashboardCockpitScope | null }
   | { ok: false; response: ReturnType<typeof validationError> };
 
-type DashboardCockpitPart = 'full' | 'summary' | 'details' | 'team';
+type DashboardCockpitPart = 'full' | 'summary' | 'details' | 'team' | 'comments';
 
 type DashboardCockpitSegmentResponse =
   | DashboardCockpitResponse
   | DashboardCockpitSummaryResponse
   | DashboardCockpitDetailsResponse
-  | DashboardCockpitTeamResponse;
+  | DashboardCockpitTeamResponse
+  | DashboardCockpitCommentsResponse;
 
 type DashboardCockpitScopeContext = {
   now: Date;
@@ -71,6 +82,16 @@ type AuditTaskLine = {
 
 type AuditQueueCountRow = {
   count: bigint | number | string | null;
+};
+
+type DashboardCommentCandidate = {
+  id: string;
+  entity_type: CockpitCommentItem['entity_type'];
+  entity_id: string;
+  content: string;
+  author_id: string;
+  mentions: string[];
+  created_at: Date;
 };
 
 const TASK_PRIORITY_WEIGHT: Record<string, number> = {
@@ -392,6 +413,254 @@ function mapTodayVisits(rows: Awaited<ReturnType<typeof readTodayVisits>>): Cock
   }));
 }
 
+const DASHBOARD_COMMENT_ENTITY_LABELS: Record<CockpitCommentItem['entity_type'], string> = {
+  dispense_task: '調剤',
+  medication_cycle: '処方サイクル',
+  set_plan: 'セット',
+  visit_record: '訪問記録',
+  care_report: '報告書',
+  patient: '患者',
+};
+
+function isDashboardCommentEntityType(value: string): value is CockpitCommentItem['entity_type'] {
+  return value in DASHBOARD_COMMENT_ENTITY_LABELS;
+}
+
+function hasRestrictedDashboardScope(assignmentScope: DashboardAssignmentScope) {
+  return assignmentScope.caseIds !== undefined || assignmentScope.patientIds !== undefined;
+}
+
+function createEntityIdBucket() {
+  return {
+    dispense_task: new Set<string>(),
+    medication_cycle: new Set<string>(),
+    set_plan: new Set<string>(),
+    visit_record: new Set<string>(),
+    care_report: new Set<string>(),
+    patient: new Set<string>(),
+  } satisfies Record<CockpitCommentItem['entity_type'], Set<string>>;
+}
+
+function normalizeCommentExcerpt(content: string) {
+  const normalized = content.replace(/\s+/g, ' ').trim();
+  if (!normalized) return 'コメント本文なし';
+  if (normalized.length <= COMMENT_EXCERPT_LENGTH) return normalized;
+  return `${normalized.slice(0, COMMENT_EXCERPT_LENGTH - 1)}…`;
+}
+
+function buildDashboardCommentHref(
+  comment: Pick<CockpitCommentItem, 'entity_type' | 'entity_id'>,
+  cyclePatientIds: Map<string, string>,
+) {
+  switch (comment.entity_type) {
+    case 'patient':
+      return buildPatientHref(comment.entity_id);
+    case 'dispense_task':
+      return buildDispenseTaskHref(comment.entity_id);
+    case 'set_plan':
+      return buildSetPlanHref(comment.entity_id);
+    case 'visit_record':
+      return buildVisitHref(comment.entity_id);
+    case 'care_report':
+      return buildReportHref(comment.entity_id);
+    case 'medication_cycle': {
+      const patientId = cyclePatientIds.get(comment.entity_id);
+      return patientId ? buildPatientHref(patientId) : '/handoff';
+    }
+    default:
+      return '/handoff';
+  }
+}
+
+async function readAllowedCommentEntities(args: {
+  orgId: string;
+  assignmentScope: DashboardAssignmentScope;
+  entityIds: Record<CockpitCommentItem['entity_type'], Set<string>>;
+}) {
+  const allowed = createEntityIdBucket();
+  const cyclePatientIds = new Map<string, string>();
+  const restricted = hasRestrictedDashboardScope(args.assignmentScope);
+
+  if (!restricted) {
+    for (const entityType of Object.keys(args.entityIds) as CockpitCommentItem['entity_type'][]) {
+      for (const id of args.entityIds[entityType]) {
+        allowed[entityType].add(id);
+      }
+    }
+  } else if (args.assignmentScope.patientIds && args.assignmentScope.patientIds.length > 0) {
+    const allowedPatientIds = new Set(args.assignmentScope.patientIds);
+    for (const id of args.entityIds.patient) {
+      if (allowedPatientIds.has(id)) allowed.patient.add(id);
+    }
+  }
+
+  const caseIds = args.assignmentScope.caseIds;
+  const hasCaseScope = caseIds === undefined || caseIds.length > 0;
+
+  const cycleIds = Array.from(args.entityIds.medication_cycle);
+  const dispenseTaskIds = Array.from(args.entityIds.dispense_task);
+  const setPlanIds = Array.from(args.entityIds.set_plan);
+  const visitRecordIds = Array.from(args.entityIds.visit_record);
+  const careReportIds = Array.from(args.entityIds.care_report);
+
+  const [cycles, dispenseTasks, setPlans, visitRecords, careReports] = await Promise.all([
+    cycleIds.length > 0 && hasCaseScope
+      ? prisma.medicationCycle.findMany({
+          where: {
+            id: { in: cycleIds },
+            org_id: args.orgId,
+            ...(caseIds ? { case_id: { in: caseIds } } : {}),
+          },
+          select: { id: true, patient_id: true },
+        })
+      : [],
+    dispenseTaskIds.length > 0 && hasCaseScope
+      ? prisma.dispenseTask.findMany({
+          where: {
+            id: { in: dispenseTaskIds },
+            org_id: args.orgId,
+            ...(caseIds ? { cycle: { case_id: { in: caseIds } } } : {}),
+          },
+          select: { id: true },
+        })
+      : [],
+    setPlanIds.length > 0 && hasCaseScope
+      ? prisma.setPlan.findMany({
+          where: {
+            id: { in: setPlanIds },
+            org_id: args.orgId,
+            ...(caseIds ? { cycle: { case_id: { in: caseIds } } } : {}),
+          },
+          select: { id: true },
+        })
+      : [],
+    visitRecordIds.length > 0 && hasCaseScope
+      ? prisma.visitRecord.findMany({
+          where: {
+            id: { in: visitRecordIds },
+            org_id: args.orgId,
+            ...(caseIds ? { schedule: { case_id: { in: caseIds } } } : {}),
+          },
+          select: { id: true },
+        })
+      : [],
+    careReportIds.length > 0 && hasCaseScope
+      ? prisma.careReport.findMany({
+          where: {
+            id: { in: careReportIds },
+            org_id: args.orgId,
+            ...(caseIds
+              ? {
+                  OR: [
+                    { case_id: { in: caseIds } },
+                    ...(args.assignmentScope.patientIds &&
+                    args.assignmentScope.patientIds.length > 0
+                      ? [
+                          {
+                            case_id: null,
+                            patient_id: { in: args.assignmentScope.patientIds },
+                          },
+                        ]
+                      : []),
+                  ],
+                }
+              : {}),
+          },
+          select: { id: true },
+        })
+      : [],
+  ]);
+
+  for (const cycle of cycles) {
+    allowed.medication_cycle.add(cycle.id);
+    cyclePatientIds.set(cycle.id, cycle.patient_id);
+  }
+  for (const task of dispenseTasks) allowed.dispense_task.add(task.id);
+  for (const plan of setPlans) allowed.set_plan.add(plan.id);
+  for (const record of visitRecords) allowed.visit_record.add(record.id);
+  for (const report of careReports) allowed.care_report.add(report.id);
+
+  return { allowed, cyclePatientIds };
+}
+
+async function readDashboardComments(args: {
+  ctx: AuthContext;
+  scopeContext: DashboardCockpitScopeContext;
+}): Promise<DashboardCockpitCommentsResponse> {
+  const rawComments = await prisma.taskComment.findMany({
+    where: { org_id: args.ctx.orgId },
+    orderBy: { created_at: 'desc' },
+    take: COMMENT_FEED_FETCH_LIMIT,
+    select: {
+      id: true,
+      entity_type: true,
+      entity_id: true,
+      content: true,
+      author_id: true,
+      mentions: true,
+      created_at: true,
+    },
+  });
+  const candidates: DashboardCommentCandidate[] = rawComments
+    .filter((comment): comment is DashboardCommentCandidate =>
+      isDashboardCommentEntityType(comment.entity_type),
+    )
+    .map((comment) => ({
+      id: comment.id,
+      entity_type: comment.entity_type,
+      entity_id: comment.entity_id,
+      content: comment.content,
+      author_id: comment.author_id,
+      mentions: comment.mentions,
+      created_at: comment.created_at,
+    }));
+
+  const entityIds = createEntityIdBucket();
+  for (const comment of candidates) {
+    entityIds[comment.entity_type].add(comment.entity_id);
+  }
+
+  const { allowed, cyclePatientIds } = await readAllowedCommentEntities({
+    orgId: args.ctx.orgId,
+    assignmentScope: args.scopeContext.assignmentScope,
+    entityIds,
+  });
+
+  const visibleCandidates = candidates.filter((comment) =>
+    allowed[comment.entity_type].has(comment.entity_id),
+  );
+  const visible = visibleCandidates.slice(0, COMMENT_FEED_RESPONSE_LIMIT);
+  const authorIds = Array.from(new Set(visible.map((comment) => comment.author_id)));
+  const authors =
+    authorIds.length === 0
+      ? []
+      : await prisma.user.findMany({
+          where: { id: { in: authorIds }, org_id: args.ctx.orgId },
+          select: { id: true, name: true },
+        });
+  const authorMap = new Map(authors.map((author) => [author.id, author.name]));
+
+  return {
+    ...args.scopeContext.metadata,
+    comments: visible.map((comment) => ({
+      id: comment.id,
+      entity_type: comment.entity_type,
+      entity_id: comment.entity_id,
+      entity_label: DASHBOARD_COMMENT_ENTITY_LABELS[comment.entity_type],
+      author_id: comment.author_id,
+      author_name: authorMap.get(comment.author_id) ?? '不明',
+      content_excerpt: normalizeCommentExcerpt(comment.content),
+      mentions_me: comment.mentions.includes(args.ctx.userId),
+      authored_by_me: comment.author_id === args.ctx.userId,
+      created_at: comment.created_at.toISOString(),
+      href: buildDashboardCommentHref(comment, cyclePatientIds),
+    })),
+    comments_total_count: visibleCandidates.length,
+    comments_visible_count: visible.length,
+    comments_hidden_count: Math.max(visibleCandidates.length - visible.length, 0),
+  };
+}
+
 async function buildCockpitSummary(
   ctx: AuthContext,
   scopeContext: DashboardCockpitScopeContext,
@@ -638,6 +907,10 @@ async function buildCockpitSegment(args: {
     requestedScope: args.requestedScope,
     part: args.part,
   });
+  if (args.part === 'comments') {
+    return readDashboardComments({ ctx: args.ctx, scopeContext });
+  }
+
   const cachedData = serverCache.get<DashboardCockpitSegmentResponse>(scopeContext.cacheKey);
   if (cachedData) return cachedData;
 

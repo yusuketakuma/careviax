@@ -722,6 +722,15 @@ FE 仕上げ（低優先）:
 
 **実装済み partials（UX/PERF/DEV）**:
 
+- `DASH-COMM-001` partial（2026-07-06）: `/api/dashboard/cockpit/comments` を追加し、
+  `TaskComment` の直近コメントを dashboard scope（mine/team と担当 case/patient）で絞って返す。
+  右レールの `チームの会話` は独立した段階ロードになり、コメント取得失敗でも next action /
+  blocker / evidence は表示を継続する。レスポンスは `content_excerpt` のみで本文全文を返さず、
+  `medication_cycle` / `dispense_task` / `set_plan` / `visit_record` / `care_report` / `patient`
+  から該当作業へ遷移する。実装前に `imagegen` skill と `gpt-image-2` 方針を確認し、非 PHI の
+  dashboard right-rail mockup を参照案として生成した。残: unread / resolved / unresolved 状態、
+  `TaskComment(org_id, created_at)` 追加 index、より詳細な entity label、browser smoke。
+
 - `REPORT-PERF-001 / PERF-BFF-001` partial（2026-07-06）: `/reports` は
   `/api/dashboard/cockpit` を再取得せず、`/api/care-reports/today-workspace` の
   `action_rail`（next action / blocked reasons / evidence）で右レールを描画する。
