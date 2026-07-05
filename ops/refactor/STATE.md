@@ -40,6 +40,62 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Case Risk Cockpit dispensing registry adapter slice（committed）。
+  - current task:
+    `Plans.md` の `RISK-CORE-3 / CORE-003` / dispensing adapter 拡張として、open `DispenseTask`
+    を Case Risk Cockpit に接続した。query は `MedicationCycle.case_id` / `patient_id` / `org_id` で
+    case scope し、`adaptDispenseTaskToRiskFinding` が dispensing domain の controlled finding を返す。
+  - subagent:
+    新規投入なし。既存 subagent thread 上限により、Codex 本体で schema / navigation /
+    dispense-workbench status SSOT / cockpit / registry / tests を確認して実装・検証した。
+  - design / imagegen:
+    backend adapter/API response slice で視覚レイアウト変更を伴わないため、`imagegen` / `gpt-image-2` の
+    新規生成は省略。dispensing risk を患者詳細 Command Center や調剤 SLA board に表示する UI slice では
+    PH-OS UI/UX SSOT に従う。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `prisma/schema/prescription.prisma`,
+    `src/lib/dispense/navigation.ts`,
+    `src/lib/dispensing/dispense-workbench-shared.ts`,
+    `src/server/services/case-risk-cockpit.ts`,
+    `src/server/services/case-risk-cockpit.test.ts`,
+    `src/server/services/risk-finding-registry.ts`,
+    `src/server/services/risk-finding-registry.test.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/case-risk-cockpit.ts`,
+    `src/server/services/case-risk-cockpit.test.ts`,
+    `src/server/services/risk-finding-registry.ts`,
+    `src/server/services/risk-finding-registry.test.ts`.
+  - bugs / risks reduced:
+    Case Risk Cockpit の dispensing section が空のままで、調剤/監査タスク滞留が患者/ケース単位の
+    next action に出なかった。open `DispenseTask` を case scope して risk finding 化し、
+    priority `emergency` / `urgent` と期限超過は urgent、通常未完了は warning として表示できる。
+  - security / PHI reviewed:
+    新規 DB field / PHI field は追加していない。dispense task title/free text は使わず、task id/status/
+    priority/due_date/assigned_to のみから controlled finding を作る。task href は `buildDispenseTaskHref`
+    により encoded query を使う。
+  - performance issues improved:
+    Case scope 後の bounded `take: 5` query を追加。既存 `MedicationCycle.case_id` index と
+    `DispenseTask(org_id,status)` index を利用できる条件にした。追加 payload は id/status/priority/due_date/
+    assigned_to の最小 select。
+  - validation commands:
+    `pnpm exec vitest run src/server/services/case-risk-cockpit.test.ts src/server/services/risk-finding-registry.test.ts src/lib/risk/risk-finding.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm typecheck`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`;
+    `pnpm lint`.
+  - validation results:
+    focused vitest green（3 files / 19 tests）; typecheck green; typecheck:no-unused green;
+    `pnpm lint` green with existing unrelated warnings in `src/lib/platform/break-glass.test.ts`
+    (`_tx`, `_input` unused warnings only).
+  - remaining work:
+    Broader `Plans.md` objective remains open。残: medication / notification / privacy_security /
+    integration / data_quality adapters、dispensing SLA board の phase facet / cursor pagination、
+    Case Risk Cockpit UI 接続、RiskFinding -> OperationalTask bridge の実 domain 接続。
+
 - codex: Case Risk Cockpit consent-plan lifecycle registry adapter slice（committed）。
   - current task:
     `Plans.md` の `RISK-CORE-3 / CORE-003` domain adapter 拡張として、Case Risk Cockpit の

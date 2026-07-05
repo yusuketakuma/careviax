@@ -3,6 +3,7 @@ import {
   adaptBillingEvidenceBlockerToRiskFinding,
   adaptCareReportToRiskFinding,
   adaptConsentPlanLifecycleToRiskFindings,
+  adaptDispenseTaskToRiskFinding,
   adaptOperationalTaskToRiskFinding,
   adaptPatientFoundationItemToRiskFinding,
   adaptUpcomingVisitPreparationToRiskFindings,
@@ -282,6 +283,44 @@ describe('risk-finding-registry adapters', () => {
       due_at: '2026-07-07T00:00:00.000Z',
       action_label: '未完了チェックを確認',
     });
+  });
+
+  it('maps dispense tasks into dispensing risks with encoded task hrefs', () => {
+    const urgent = adaptDispenseTaskToRiskFinding(
+      {
+        id: 'dispense/1?x=1',
+        priority: 'emergency',
+        status: 'pending',
+        assigned_to: 'user_1',
+        due_date: new Date('2026-07-08T00:00:00.000Z'),
+      },
+      { patientId: 'patient_1', caseId: 'case_1', now: new Date('2026-07-06T00:00:00.000Z') },
+    );
+    const overdue = adaptDispenseTaskToRiskFinding(
+      {
+        id: 'dispense_2',
+        priority: 'normal',
+        status: 'in_progress',
+        due_date: new Date('2026-07-01T00:00:00.000Z'),
+      },
+      { patientId: 'patient_1', caseId: 'case_1', now: new Date('2026-07-06T00:00:00.000Z') },
+    );
+
+    expect(urgent).toMatchObject({
+      key: 'dispense_task:dispense/1?x=1',
+      domain: 'dispensing',
+      severity: 'urgent',
+      title: '調剤・監査タスクが未完了です',
+      related_entity_type: 'dispense_task',
+      related_entity_id: 'dispense/1?x=1',
+      action_label: '調剤タスクを確認',
+    });
+    expect(urgent.action_href).toBe(`/dispense?taskId=${encodeURIComponent('dispense/1?x=1')}`);
+    expect(overdue).toMatchObject({
+      severity: 'urgent',
+      due_at: '2026-07-01T00:00:00.000Z',
+    });
+    expect(JSON.stringify(urgent)).not.toContain('provider raw error');
   });
 
   it('keeps patient foundation task dedupe keys distinct per patient', () => {

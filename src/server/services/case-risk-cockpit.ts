@@ -13,6 +13,7 @@ import {
   adaptBillingEvidenceBlockerToRiskFinding,
   adaptCareReportToRiskFinding,
   adaptConsentPlanLifecycleToRiskFindings,
+  adaptDispenseTaskToRiskFinding,
   adaptOperationalTaskToRiskFinding,
   adaptUpcomingVisitPreparationToRiskFindings,
 } from '@/server/services/risk-finding-registry';
@@ -38,6 +39,7 @@ type CaseRiskCockpitDbReader = {
   managementPlan: FindFirstDelegate<ManagementPlanRow>;
   visitSchedule: FindManyDelegate<VisitScheduleRow>;
   careReport: FindManyDelegate<CareReportRow>;
+  dispenseTask: FindManyDelegate<DispenseTaskRow>;
   task: FindManyDelegate<TaskRow>;
   billingEvidence: FindManyDelegate<BillingEvidenceRow>;
 };
@@ -97,6 +99,14 @@ type CareReportRow = {
   display_id: string | null;
   status: string;
   updated_at: Date;
+};
+
+type DispenseTaskRow = {
+  id: string;
+  priority: string | null;
+  status: string;
+  assigned_to: string | null;
+  due_date: Date | null;
 };
 
 type TaskRow = {
@@ -240,6 +250,24 @@ function pushReportFindings(args: {
   }
 }
 
+function pushDispensingFindings(args: {
+  findings: CaseRiskFinding[];
+  patientId: string;
+  caseId: string;
+  dispenseTasks: DispenseTaskRow[];
+  now: Date;
+}) {
+  for (const task of args.dispenseTasks) {
+    args.findings.push(
+      adaptDispenseTaskToRiskFinding(task, {
+        patientId: args.patientId,
+        caseId: args.caseId,
+        now: args.now,
+      }),
+    );
+  }
+}
+
 function pushTaskFindings(args: {
   findings: CaseRiskFinding[];
   patientId: string;
@@ -326,7 +354,7 @@ export async function getCaseRiskCockpit(
 
   const patientHref = buildPatientHref(careCase.patient.id);
 
-  const [consent, managementPlan, firstVisitDocument, schedules, reports, tasks] =
+  const [consent, managementPlan, firstVisitDocument, schedules, reports, dispenseTasks, tasks] =
     await Promise.all([
       db.consentRecord.findFirst({
         where: {
@@ -418,6 +446,26 @@ export async function getCaseRiskCockpit(
           updated_at: true,
         },
       }),
+      db.dispenseTask.findMany({
+        where: {
+          org_id: args.orgId,
+          status: { in: ['pending', 'in_progress'] },
+          cycle: {
+            org_id: args.orgId,
+            case_id: careCase.id,
+            patient_id: careCase.patient_id,
+          },
+        },
+        orderBy: [{ priority: 'asc' }, { due_date: 'asc' }, { updated_at: 'desc' }],
+        take: 5,
+        select: {
+          id: true,
+          priority: true,
+          status: true,
+          assigned_to: true,
+          due_date: true,
+        },
+      }),
       db.task.findMany({
         where: {
           org_id: args.orgId,
@@ -449,6 +497,7 @@ export async function getCaseRiskCockpit(
   const scopedFirstVisitDocument = firstVisitDocument as FirstVisitDocumentRow | null;
   const selectedSchedules = schedules as VisitScheduleRow[];
   const selectedReports = reports as CareReportRow[];
+  const selectedDispenseTasks = dispenseTasks as DispenseTaskRow[];
   const selectedTasks = tasks as TaskRow[];
 
   const visitRecordIds = selectedSchedules
@@ -512,6 +561,13 @@ export async function getCaseRiskCockpit(
     patientId: careCase.patient_id,
     caseId: careCase.id,
     reports: scopedReports,
+  });
+  pushDispensingFindings({
+    findings,
+    patientId: careCase.patient_id,
+    caseId: careCase.id,
+    dispenseTasks: selectedDispenseTasks,
+    now,
   });
   pushTaskFindings({
     findings,

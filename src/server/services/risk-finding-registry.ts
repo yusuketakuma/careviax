@@ -7,6 +7,7 @@ import {
   type VisitReadyTransitionBlockers,
 } from '@/server/services/visit-preparation-readiness';
 import type { PatientFoundationItem } from '@/server/services/patient-detail-foundation';
+import { buildDispenseTaskHref } from '@/lib/dispense/navigation';
 import { describeOperationalTask } from '@/lib/tasks/operational-task-presentation';
 import {
   buildRiskDedupeKey,
@@ -75,6 +76,14 @@ export type ConsentPlanRiskInput = {
   now: Date | string;
 };
 
+export type DispenseTaskRiskInput = {
+  id: string;
+  priority: string | null;
+  status: string;
+  assigned_to?: string | null;
+  due_date?: Date | string | null;
+};
+
 const BILLING_BLOCKER_TITLE: Record<BillingEvidenceBlocker['key'], string> = {
   missing_visit_consent: '訪問同意が未整備です',
   missing_management_plan: '管理計画書が未整備です',
@@ -133,6 +142,13 @@ function taskSeverity(task: OperationalTaskRiskInput, now = new Date()): RiskSev
   const due = dueAt instanceof Date ? dueAt : new Date(dueAt);
   if (Number.isNaN(due.getTime())) return 'warning';
   return due < now ? 'urgent' : 'warning';
+}
+
+function dispenseTaskSeverity(task: DispenseTaskRiskInput, now = new Date()): RiskSeverity {
+  if (task.priority === 'emergency' || task.priority === 'urgent') return 'urgent';
+  const due = task.due_date ? new Date(task.due_date) : null;
+  if (due && !Number.isNaN(due.getTime()) && due < now) return 'urgent';
+  return 'warning';
 }
 
 function foundationSeverity(status: PatientFoundationItem['status']): RiskSeverity {
@@ -467,6 +483,27 @@ export function adaptUpcomingVisitPreparationToRiskFindings(
   }
 
   return findings;
+}
+
+export function adaptDispenseTaskToRiskFinding(
+  task: DispenseTaskRiskInput,
+  context: RiskFindingAdapterContext & { now?: Date } = {},
+): RiskFinding {
+  return createRiskFinding({
+    key: `dispense_task:${task.id}`,
+    domain: 'dispensing',
+    severity: dispenseTaskSeverity(task, context.now),
+    title: '調剤・監査タスクが未完了です',
+    detail: '調剤、監査、セット準備の未完了タスクがあります。',
+    patient_id: context.patientId ?? null,
+    case_id: context.caseId ?? null,
+    assigned_to: task.assigned_to ?? null,
+    due_at: iso(task.due_date),
+    related_entity_type: 'dispense_task',
+    related_entity_id: task.id,
+    action_href: buildDispenseTaskHref(task.id),
+    action_label: '調剤タスクを確認',
+  });
 }
 
 export function adaptOperationalTaskToRiskFinding(

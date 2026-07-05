@@ -9,6 +9,7 @@ function buildDb() {
     managementPlan: { findFirst: vi.fn() },
     visitSchedule: { findMany: vi.fn() },
     careReport: { findMany: vi.fn() },
+    dispenseTask: { findMany: vi.fn() },
     task: { findMany: vi.fn() },
     billingEvidence: { findMany: vi.fn() },
   };
@@ -65,6 +66,7 @@ describe('getCaseRiskCockpit', () => {
     expect(db.firstVisitDocument.findFirst).not.toHaveBeenCalled();
     expect(db.visitSchedule.findMany).not.toHaveBeenCalled();
     expect(db.careReport.findMany).not.toHaveBeenCalled();
+    expect(db.dispenseTask.findMany).not.toHaveBeenCalled();
     expect(db.task.findMany).not.toHaveBeenCalled();
     expect(db.billingEvidence.findMany).not.toHaveBeenCalled();
   });
@@ -103,6 +105,15 @@ describe('getCaseRiskCockpit', () => {
         display_id: 'REP-001',
         status: 'failed',
         updated_at: new Date('2026-07-05T00:00:00.000Z'),
+      },
+    ]);
+    db.dispenseTask.findMany.mockResolvedValue([
+      {
+        id: 'dispense/1',
+        priority: 'normal',
+        status: 'pending',
+        assigned_to: 'user_3',
+        due_date: null,
       },
     ]);
     db.task.findMany.mockResolvedValue([
@@ -189,7 +200,7 @@ describe('getCaseRiskCockpit', () => {
       status: 'blocked',
       blocking_count: 3,
       urgent_count: 2,
-      warning_count: 3,
+      warning_count: 4,
     });
 
     const findings = result?.sections.flatMap((section) => section.findings) ?? [];
@@ -200,6 +211,7 @@ describe('getCaseRiskCockpit', () => {
         'first_visit_document_not_delivered',
         'visit_carry_items_blocked:schedule/1',
         'visit_preparation_incomplete:schedule/1',
+        'dispense_task:dispense/1',
         'report_delivery_failed:report_1',
         'task:task/1',
         'billing:bill_1:report_delivery_incomplete',
@@ -241,6 +253,19 @@ describe('getCaseRiskCockpit', () => {
         }),
       }),
     );
+    expect(db.dispenseTask.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          status: { in: ['pending', 'in_progress'] },
+          cycle: {
+            org_id: 'org_1',
+            case_id: 'case_1',
+            patient_id: patientId,
+          },
+        }),
+      }),
+    );
     expect(db.billingEvidence.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -267,6 +292,7 @@ describe('getCaseRiskCockpit', () => {
     });
     db.visitSchedule.findMany.mockResolvedValue([]);
     db.careReport.findMany.mockResolvedValue([]);
+    db.dispenseTask.findMany.mockResolvedValue([]);
     db.task.findMany.mockResolvedValue([
       {
         id: 'task_due_jst',
