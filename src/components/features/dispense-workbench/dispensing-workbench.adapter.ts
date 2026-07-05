@@ -43,6 +43,7 @@ import {
   buildPrescriptionLineApiPath,
   buildSetPlanApiPath,
 } from '@/lib/dispensing/api-paths';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import {
   WorkbenchConflictError,
@@ -147,7 +148,7 @@ async function fetchJson<T>(url: string, scope: WorkbenchFetchScope = {}): Promi
       cache: 'no-store',
     });
     if (!res.ok) return null;
-    return (await res.json()) as T;
+    return await readApiJson<T>(res, 'ワークベンチデータの取得に失敗しました');
   } catch {
     return null;
   }

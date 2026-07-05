@@ -40,6 +40,28 @@
 
 ## 直近の land（本日・要点）
 
+- codex: R40/R44 dispense-workbench read helper JSON convergence batch(in-progress on
+  `refactor/dispense-workbench-read-json-convergence-20260705`) implementation complete。前sliceの
+  code_mapper 結果に基づき、`dispensing-workbench.adapter` は read helper と mutation helper を分離し、
+  本sliceでは read-only `fetchJson` だけを `readApiJson` へ収束。非2xx / network error / malformed
+  OK JSON は従来通り `null` に畳み、患者一覧では fetch failure `{ ok:false }` と成功空 `{ ok:true }`
+  の distinction、calendar planId branch では取得失敗を false-empty にせず `{ status:'error' }` へ分類する
+  fail-closed contract を維持。mutation helper、409 `WorkbenchConflictError` details、non-409
+  `WorkbenchWriteError` status/server-message、barcode/line assignment/set batch/dispense audit writes は
+  medication-safety 上の別sliceとして除外。regression は patients fetch HTTP failure、malformed OK JSON
+  failure、successful empty patients、calendar 500/404/malformed success error classification、successful
+  calendar load を固定。SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/
+  package dependency) は維持しつつ、本sliceでは product dispense workbench read adapter/test のみ変更。
+  DB schema/migration/auth/authorization/tenant_id/PHI payload/billing/deploy/package dependency 変更は不要。
+  validation:
+  `pnpm exec vitest run src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts --reporter=dot --testTimeout=30000`
+  green（1 file / 23 tests）;
+  `pnpm exec vitest run src/app/api/dispense-workbench/patients/route.test.ts 'src/app/api/dispense-tasks/[id]/workbench/route.test.ts' 'src/app/api/set-plans/[id]/calendar/route.test.ts' --reporter=dot --testTimeout=30000`
+  green（3 files / 36 tests、既存 sanitized 500 route test の stderr error log は想定内）; scoped
+  `eslint` green; scoped `prettier --check` green; `git diff --check` green;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。next: commit → main ff merge →
+  origin/main push → short-lived branch cleanup。残候補: `dispensing-workbench.adapter` mutation helper は
+  conflict details / WorkbenchWriteError status を保持する専用sliceでのみ処理。
 - codex: R40/R44 patient-form duplicate/qualification response JSON convergence batch(in-progress on
   `refactor/patient-form-json-convergence-20260705`) implementation complete。SSOT 残候補の
   `patient-form` / `dispensing-workbench` を再棚卸しし、code_mapper subagent を bounded read-only で投入。

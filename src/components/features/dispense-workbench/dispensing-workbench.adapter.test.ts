@@ -632,6 +632,17 @@ describe('dispensing-workbench.adapter real-data default + phase filtering', () 
     expect(result).toEqual({ patients: [], rows: [], ok: false });
   });
 
+  it('reports ok=false when the patients fetch succeeds with malformed JSON', async () => {
+    process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
+    const fetchMock = vi.fn(async () => new Response('not json', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { loadWorkbenchPatientRowsAsync } = await import('./dispensing-workbench.adapter');
+    const result = await loadWorkbenchPatientRowsAsync({ phase: 'dispense' });
+
+    expect(result).toEqual({ patients: [], rows: [], ok: false });
+  });
+
   it('reports ok=true on a successful but empty patients fetch (0 件は空状態)', async () => {
     process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
     const fetchMock = vi.fn(async () => jsonResponse({ data: [] }));
@@ -732,6 +743,18 @@ describe('dispensing-workbench.adapter classifyCalendarPlanLoad (set/seta planId
   it('treats a 404 calendar response as error as well (a missing plan calendar is a failure, never an empty queue)', async () => {
     process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
     const fetchMock = vi.fn(async () => new Response('not found', { status: 404 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { loadCalendarWriteContextAsync, classifyCalendarPlanLoad } =
+      await import('./dispensing-workbench.adapter');
+    const result = await loadCalendarWriteContextAsync('patient_1', 'plan_1', { orgId: 'org_1' });
+
+    expect(classifyCalendarPlanLoad(result)).toEqual({ status: 'error' });
+  });
+
+  it('treats a malformed successful calendar response as error, not an empty queue', async () => {
+    process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
+    const fetchMock = vi.fn(async () => new Response('not json', { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
 
     const { loadCalendarWriteContextAsync, classifyCalendarPlanLoad } =
