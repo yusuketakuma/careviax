@@ -241,6 +241,56 @@ describe('VehiclesContent', () => {
     });
   });
 
+  it('surfaces API error messages when vehicle save fails', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method;
+      if (url === '/api/visit-vehicle-resources?limit=200' && !method) {
+        return new Response(
+          JSON.stringify({
+            data: [vehicleFixture()],
+            total_count: 1,
+            visible_count: 1,
+            hidden_count: 0,
+            truncated: false,
+          }),
+          { status: 200 },
+        );
+      }
+      if (url === '/api/pharmacy-sites' && !method) {
+        return new Response(JSON.stringify({ data: [{ id: 'site_1', name: '本店' }] }), {
+          status: 200,
+        });
+      }
+      if (url === '/api/visit-vehicle-resources' && method === 'POST') {
+        return new Response(JSON.stringify({ message: '車両コードが重複しています' }), {
+          status: 409,
+        });
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderContent();
+
+    await screen.findByRole('button', { name: '軽バン1号 を編集' });
+    fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
+    fireEvent.change(screen.getByLabelText('車両名'), {
+      target: { value: '社用車2号' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('車両コードが重複しています');
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/visit-vehicle-resources',
+      expect.objectContaining({
+        method: 'POST',
+        headers: buildOrgJsonHeaders('org_1'),
+      }),
+    );
+  });
+
   it('keeps existing save blockers reactive and prevents invalid create requests', async () => {
     const fetchMock = stubFetchWithVehicle();
     renderContent();
@@ -334,6 +384,52 @@ describe('VehiclesContent', () => {
     expect(JSON.parse((patchCall![1] as RequestInit).body as string)).toEqual({
       available: false,
     });
+  });
+
+  it('surfaces API error messages when vehicle availability update fails', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method;
+      if (url === '/api/visit-vehicle-resources?limit=200' && !method) {
+        return new Response(
+          JSON.stringify({
+            data: [vehicleFixture()],
+            total_count: 1,
+            visible_count: 1,
+            hidden_count: 0,
+            truncated: false,
+          }),
+          { status: 200 },
+        );
+      }
+      if (url === '/api/pharmacy-sites' && !method) {
+        return new Response(JSON.stringify({ data: [{ id: 'site_1', name: '本店' }] }), {
+          status: 200,
+        });
+      }
+      if (url === '/api/visit-vehicle-resources/vehicle_1' && method === 'PATCH') {
+        return new Response(JSON.stringify({ message: '稼働中の訪問予定がある車両です' }), {
+          status: 409,
+        });
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: '軽バン1号 を無効化' }));
+    fireEvent.click(screen.getByRole('button', { name: '無効化する' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('稼働中の訪問予定がある車両です');
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/visit-vehicle-resources/vehicle_1',
+      expect.objectContaining({
+        method: 'PATCH',
+        headers: buildOrgJsonHeaders('org_1'),
+      }),
+    );
   });
 
   it('fails closed before PATCH when the vehicle id is a dot segment', async () => {

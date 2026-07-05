@@ -391,11 +391,8 @@ export function VehiclesContent() {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(vehicle ? buildUpdatePayload(values) : buildCreatePayload(values)),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error((payload as { message?: string }).message ?? '保存に失敗しました');
-      }
-      return { payload, wasEditing: Boolean(vehicle) };
+      await readApiJson<unknown>(response, '保存に失敗しました');
+      return { wasEditing: Boolean(vehicle) };
     },
     onSuccess: async ({ wasEditing }) => {
       toast.success(wasEditing ? '車両マスターを更新しました' : '車両を登録しました');
@@ -415,11 +412,7 @@ export function VehiclesContent() {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ available: target.available }),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error((payload as { message?: string }).message ?? '状態変更に失敗しました');
-      }
-      return payload;
+      return readApiJson<unknown>(response, '状態変更に失敗しました');
     },
     onSuccess: async (_payload, target) => {
       toast.success(target.available ? '車両を有効化しました' : '車両を無効化しました');
