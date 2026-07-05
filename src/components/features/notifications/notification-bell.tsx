@@ -14,6 +14,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   getBrowserNotificationPreference,
@@ -33,6 +34,16 @@ type Notification = {
   link?: string | null;
   created_at: string;
   is_read: boolean;
+};
+
+type NotificationSummaryPayload = {
+  data?: {
+    unreadCount?: number;
+  };
+};
+
+type NotificationListPayload = {
+  data?: Notification[];
 };
 
 const NOTIFICATION_STREAM_DISABLED = process.env.NEXT_PUBLIC_DISABLE_NOTIFICATION_STREAM === '1';
@@ -58,6 +69,28 @@ export function pruneSeenNotificationIds(
     if (seenIds.size <= limit) return;
     seenIds.delete(id);
   }
+}
+
+async function readNotificationRefreshJson<T>(response: Promise<Response>): Promise<T | null> {
+  try {
+    const res = await response;
+    if (!res.ok) return null;
+    return await readApiJson<T>(res, '通知の取得に失敗しました');
+  } catch {
+    return null;
+  }
+}
+
+function getUnreadSummaryCount(payload: NotificationSummaryPayload): number | null {
+  const count = payload.data?.unreadCount;
+  if (count == null) return 0;
+  return typeof count === 'number' ? count : null;
+}
+
+function getNotificationList(payload: NotificationListPayload): Notification[] | null {
+  const notifications = payload.data;
+  if (notifications == null) return [];
+  return Array.isArray(notifications) ? notifications : null;
 }
 
 export function NotificationBell() {
@@ -138,23 +171,29 @@ export function NotificationBell() {
 
   const refreshNotificationSummary = useCallback(async () => {
     if (!orgId) return;
-    const res = await fetch(buildNotificationsApiPath(new URLSearchParams({ summary: '1' })), {
-      headers: buildOrgHeaders(orgId),
-    });
-    if (!res.ok) return;
-    const payload = (await res.json()) as { data?: { unreadCount?: number } };
+    const payload = await readNotificationRefreshJson<NotificationSummaryPayload>(
+      fetch(buildNotificationsApiPath(new URLSearchParams({ summary: '1' })), {
+        headers: buildOrgHeaders(orgId),
+      }),
+    );
+    if (!payload) return;
+    const unreadCount = getUnreadSummaryCount(payload);
+    if (unreadCount == null) return;
     if (!mountedRef.current) return;
-    setUnreadSummaryCount(payload.data?.unreadCount ?? 0);
+    setUnreadSummaryCount(unreadCount);
   }, [orgId]);
 
   const refreshNotifications = useCallback(async () => {
     if (!orgId) return;
-    const res = await fetch(buildNotificationsApiPath(new URLSearchParams({ limit: '20' })), {
-      headers: buildOrgHeaders(orgId),
-    });
-    if (!res.ok) return;
-    const payload = (await res.json()) as { data?: Notification[] };
-    mergeNotifications(payload.data ?? [], { announce: false });
+    const payload = await readNotificationRefreshJson<NotificationListPayload>(
+      fetch(buildNotificationsApiPath(new URLSearchParams({ limit: '20' })), {
+        headers: buildOrgHeaders(orgId),
+      }),
+    );
+    if (!payload) return;
+    const notificationList = getNotificationList(payload);
+    if (!notificationList) return;
+    mergeNotifications(notificationList, { announce: false });
   }, [mergeNotifications, orgId]);
 
   // SSE connection via fetch (EventSource does not support custom headers)

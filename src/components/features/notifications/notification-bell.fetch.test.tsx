@@ -144,4 +144,101 @@ describe('NotificationBell fetch contracts', () => {
     );
     expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
   });
+
+  it('keeps notification refresh failures silent without reading failed response bodies', async () => {
+    const textMock = vi.fn(async () => 'patient:山田太郎 medication:ワルファリン');
+    const fetchMock = vi.fn(
+      async () => ({ ok: false, status: 500, text: textMock }) as unknown as Response,
+    );
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<NotificationBell />);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/notifications?summary=1', {
+        headers: { 'x-test-org-id': 'org_1' },
+      });
+    });
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/notifications?limit=20', {
+        headers: { 'x-test-org-id': 'org_1' },
+      });
+    });
+
+    expect(textMock).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    expect(consoleWarnSpy).not.toHaveBeenCalled();
+    expect(screen.queryByText(notification.message)).toBeNull();
+
+    consoleErrorSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
+  });
+
+  it('ignores malformed successful notification refresh bodies without surfacing an error', async () => {
+    const fetchMock = vi.fn(async () => new Response('not-json', { status: 200 }));
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<NotificationBell />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    expect(consoleWarnSpy).not.toHaveBeenCalled();
+    expect(screen.queryByText(notification.message)).toBeNull();
+
+    consoleErrorSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
+  });
+
+  it('keeps notification refresh network rejections silent', async () => {
+    const fetchMock = vi.fn(async () => {
+      throw new Error('patient:山田太郎 medication:ワルファリン');
+    });
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<NotificationBell />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    expect(consoleWarnSpy).not.toHaveBeenCalled();
+    expect(screen.queryByText(notification.message)).toBeNull();
+
+    consoleErrorSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
+  });
+
+  it('ignores wrong-shaped successful notification refresh bodies', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/notifications?summary=1') {
+        return Promise.resolve(jsonResponse({ data: { unreadCount: '6' } }));
+      }
+      if (url === '/api/notifications?limit=20') {
+        return Promise.resolve(jsonResponse({ data: {} }));
+      }
+      return Promise.resolve(jsonResponse({ data: [] }));
+    });
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<NotificationBell />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    expect(screen.getByTestId('app-header-notifications').textContent).toBe('通知');
+    expect(screen.queryByText(notification.message)).toBeNull();
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    expect(consoleWarnSpy).not.toHaveBeenCalled();
+
+    consoleErrorSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
+  });
 });

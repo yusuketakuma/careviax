@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildNavBadgesApiPath } from '@/lib/nav-badges/api-paths';
@@ -54,7 +55,10 @@ export function useNavBadges(): NavBadgeCounts {
         headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('ナビゲーションバッジ件数の取得に失敗しました');
-      const payload = (await res.json()) as NavBadgeApiPayload;
+      const payload = await readApiJson<NavBadgeApiPayload>(
+        res,
+        'ナビゲーションバッジ件数の取得に失敗しました',
+      );
       return payload.data ?? {};
     },
     enabled: Boolean(orgId),

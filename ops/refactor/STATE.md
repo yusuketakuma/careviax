@@ -40,6 +40,30 @@
 
 ## 直近の land（本日・要点）
 
+- codex: R40/R44 global notification/nav badge response JSON convergence batch(in-progress on
+  `refactor/global-notification-json-convergence-20260705`) implementation complete。前sliceの
+  subagent棚卸し残候補に基づき、`use-nav-badges` と `notification-bell` の shared UI refresh JSON
+  parsing を同一batchで処理。nav badges は non-ok response body を読まない既存 PHI-safe silent
+  non-display 契約を維持し、OK payload parsing のみ `readApiJson<NavBadgeApiPayload>` へ収束。
+  notification summary/list refresh は `readApiJson` を使いつつ、non-ok response body no-read、fetch reject、
+  malformed JSON、wrong-shaped `{ data }` をすべて silent no-update として保持し、toast/error UI/console
+  logging を増やさない。mark-read PATCH、SSE stream、OS notification PHI redaction、API route contracts は
+  対象外。frontend_reviewer subagent は bounded read-only で投入し、fetch reject unhandled path と wrong-shaped
+  JSON list shape を CHANGES_REQUESTED として指摘。対応として refresh helper を `Promise<Response>` 全体を
+  catch する形へ変更し、summary count と notification list に lightweight shape guard を追加。UI/UX SSOT
+  `docs/ui-ux-design-guidelines.md` の false-empty prevention / PHI masking / no hidden PHI metadata 方針を
+  確認。validation:
+  `pnpm exec vitest run src/components/layout/use-nav-badges.test.ts src/components/features/notifications/notification-bell.fetch.test.tsx src/components/features/notifications/notification-bell.test.ts --reporter=dot --testTimeout=30000`
+  green（3 files / 16 tests）;
+  `pnpm exec vitest run src/app/api/nav-badges/route.test.ts src/app/api/notifications/route.test.ts src/lib/notifications/api-paths.test.ts src/lib/nav-badges/api-paths.test.ts --reporter=dot --testTimeout=30000`
+  green（4 files / 17 tests）; scoped `eslint` green; scoped `prettier --check` green;
+  `git diff --check` green; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
+  維持しつつ、本sliceでは product shared UI response handling のみ変更。DB schema/migration/
+  auth/authorization/PHI/billing/deploy/package dependency 変更は不要。next: commit → main ff merge →
+  origin/main push → short-lived branch cleanup。残候補: `drug-master-suggestions` fail-soft schema batch、
+  `admin/audit-logs` export error-only batch、`patient-form` / `dispensing-workbench` は PHI/medication
+  safety-aware 別slice。
 - codex: R40/R44 admin remaining low-risk mutation response JSON convergence batch(in-progress on
   `refactor/admin-jobs-json-convergence-20260705`) implementation complete。ユーザー指示
   「近似箇所はまとめて実装して効率を向上。サブエージェントも投入」に基づき、code_mapper subagent を
