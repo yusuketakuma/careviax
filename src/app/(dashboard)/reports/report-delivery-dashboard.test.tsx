@@ -343,6 +343,26 @@ describe('ReportDeliveryDashboard', () => {
     expect(init.body).toBe(JSON.stringify({ overdue_days: 7 }));
   });
 
+  it('surfaces API error messages when delivery reminder queueing fails', async () => {
+    const fetchMock = stubJsonFetch({ message: '送達リマインドの起票権限がありません' }, 403);
+    primeDashboard();
+
+    render(<ReportDeliveryDashboard />);
+
+    const mutationOptions = useMutationMock.mock.calls[0]?.[0] as {
+      mutationFn: () => Promise<{ data: { queued_count: number } }>;
+    };
+
+    await expect(mutationOptions.mutationFn()).rejects.toThrow(
+      '送達リマインドの起票権限がありません',
+    );
+    expect(fetchMock).toHaveBeenCalledWith('/api/care-reports/reminders', {
+      method: 'POST',
+      headers: buildOrgJsonHeaders('org_1'),
+      body: JSON.stringify({ overdue_days: 7 }),
+    });
+  });
+
   it('passes a targeted snooze payload when an overdue row is deferred', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-04-10T00:00:00.000Z'));

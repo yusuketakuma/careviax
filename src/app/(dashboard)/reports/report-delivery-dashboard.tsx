@@ -130,13 +130,7 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
           ...(input.snoozeUntil ? { snooze_until: input.snoozeUntil } : {}),
         }),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(
-          (payload as { message?: string }).message ?? 'リマインド起票に失敗しました',
-        );
-      }
-      return payload as ReminderMutationResponse;
+      return readApiJson<ReminderMutationResponse>(response, 'リマインド起票に失敗しました');
     },
     onSuccess: async (payload, variables) => {
       toast.success(
