@@ -40,6 +40,32 @@
 
 ## 直近の land（本日・要点）
 
+- codex: visit record finalization supervision boundary batch(50cf79506)
+  implementation complete。ユーザー指示「近似箇所はまとめて実装して効率を向上。サブエージェントも投入」に基づき、
+  `POST /api/visit-records` と `PATCH /api/visit-records/:id` の担当 trainee final outcome surface を同一sliceで処理。
+  subagent は code_mapper / medical_safety_reviewer / test_architect を bounded read-only で投入し、全員が
+  `canWriteVisitRecordForSchedule` により assigned `pharmacist_trainee` が `completed` 等の訪問結果確定へ到達し、
+  POST では VisitRecord create/update、schedule status claim、MedicationCycle transition、first-visit document、
+  residual/lab derived data、tracing/communication/task、billing evidence、handoff extraction まで進む点を
+  Critical/High と指摘。対応として既存 `canFinalizeClinicalState` helper を visit-record route に再利用し、
+  POST は schedule assignment 確認直後、existing record / care case / residual drug master / billing blocker /
+  schedule update / cycle transition / task / billing / audit / handoff extraction 前に owner/admin/pharmacist 以外を
+  no-store 403。PATCH は担当 trainee の通常メモ更新を維持しつつ、`outcome_status` を含む final outcome 変更だけを
+  lookup 後・version/readiness/billing/residual/lab/attachment/update 前に no-store 403。tests は assigned trainee の
+  POST 全 outcome (`completed`, `completed_with_issue`, `revisit_needed`, `delivery_only`, `postponed`, `cancelled`)
+  denialと broad no-side-effect、PATCH outcome 変更 denial、PATCH non-outcome update success を固定。validation:
+  `pnpm exec vitest run src/lib/auth/__tests__/clinical-finalization.test.ts src/lib/auth/__tests__/visit-schedule-access.test.ts src/app/api/visit-records/route.test.ts 'src/app/api/visit-records/[id]/route.test.ts' --reporter=dot --testTimeout=30000`
+  green（4 files / 147 tests）;
+  `pnpm exec vitest run src/lib/auth/__tests__/clinical-finalization.test.ts src/lib/auth/__tests__/visit-schedule-access.test.ts src/app/api/visit-records/route.test.ts 'src/app/api/visit-records/[id]/route.test.ts' src/app/api/__tests__/workflow-full-cycle.test.ts src/server/services/billing-evidence.test.ts src/server/services/visit-record-derived-data.test.ts --reporter=dot --testTimeout=60000`
+  green（7 files / 169 tests。既存 visit_records_handoff_extraction_failed warn は非fatal）;
+  scoped `eslint` green; scoped `prettier --check` green; `git diff --check` green;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) に基づき product API /
+  authorization / PHI-adjacent visit evidence / billing-adjacent side-effect boundary を変更。DB schema/migration/
+  deploy/package dependency 変更は不要。残る高優先別slice候補: visit-record finalization supervision request/confirm
+  endpoint の設計（draft outcome schema がないため今回は final side-effect fail-closed に限定）、visit-record
+  finalization audit event の PHI-minimized 1本化、reschedule contact PII の `recipient_contact` / suggested_contacts
+  参照化・masking 契約設計、Task resolver actor trace を Task 自体へ残す schema設計。
 - codex: inquiry record clinical finalization boundary batch(2517928e5)
   implementation complete。ユーザー指示「近似箇所はまとめて実装して効率を向上。サブエージェントも投入」に基づき、
   medication issue に続く近接 clinical finalization surface として `PATCH /api/inquiry-records/:id` を同一sliceで処理。
