@@ -34,6 +34,8 @@ const VISIT_HANDOFF_CONFIRM_ROLES: ReadonlySet<MemberRole> = new Set([
   'pharmacist',
 ]);
 
+const VISIT_HANDOFF_CONFIRM_OVERRIDE_ROLES: ReadonlySet<MemberRole> = new Set(['owner', 'admin']);
+
 export function canBypassVisitScheduleAssignmentAccess(
   ctx: Pick<VisitScheduleAccessContext, 'role'>,
 ) {
@@ -81,6 +83,10 @@ export function canConfirmVisitHandoff(
 ) {
   if (!VISIT_HANDOFF_CONFIRM_ROLES.has(ctx.role)) return false;
   return isAssignedToVisitSchedule(ctx.userId, schedule);
+}
+
+export function canOverrideVisitHandoffConfirmation(ctx: Pick<VisitScheduleAccessContext, 'role'>) {
+  return VISIT_HANDOFF_CONFIRM_OVERRIDE_ROLES.has(ctx.role);
 }
 
 export function selectVisitHandoffConfirmationAssignee(

@@ -32,12 +32,27 @@ function baseHandoff(): VisitHandoff {
   };
 }
 
-function renderPanel(handoff: VisitHandoff = baseHandoff()) {
+type PanelOptions = {
+  handoff?: VisitHandoff;
+  canConfirm?: boolean;
+  requiresOverrideReason?: boolean;
+  overrideReasonMaxLength?: number;
+};
+
+function renderPanel({
+  handoff = baseHandoff(),
+  canConfirm = true,
+  requiresOverrideReason = false,
+  overrideReasonMaxLength,
+}: PanelOptions = {}) {
   return render(
     <HandoffConfirmPanel
       visitRecordId="visit_record_1"
       expectedVisitRecordVersion={7}
       handoff={handoff}
+      canConfirm={canConfirm}
+      requiresOverrideReason={requiresOverrideReason}
+      overrideReasonMaxLength={overrideReasonMaxLength}
     />,
     {
       wrapper: createQueryClientWrapper(),
@@ -132,5 +147,62 @@ describe('HandoffConfirmPanel', () => {
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith('申し送りの確定に失敗しました');
     });
+  });
+
+  it('requires an override reason before sending admin confirmation', async () => {
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(JSON.stringify({ data: { confirmed_at: '2026-06-11T01:00:00.000Z' } }), {
+          status: 200,
+        }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    renderPanel({ canConfirm: false, requiresOverrideReason: true });
+
+    expect(screen.queryByRole('button', { name: '確認' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '編集して確定' })).toBeNull();
+    const button = screen.getByRole('button', { name: '管理者として確定' }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText('代行理由'), {
+      target: { value: '短い' },
+    });
+    expect(button.disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText('代行理由'), {
+      target: { value: '担当者不在のため本日訪問前に確認が必要' },
+    });
+    expect(button.disabled).toBe(false);
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalled();
+    });
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(body).toEqual({
+      confirmed: true,
+      expected_visit_record_version: 7,
+      override_reason: '担当者不在のため本日訪問前に確認が必要',
+    });
+  });
+
+  it('renders read-only state without confirmation actions', () => {
+    renderPanel({ canConfirm: false });
+
+    expect(screen.getByText(/閲覧のみ:/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '確認' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '編集して確定' })).toBeNull();
+  });
+
+  it('formats confirmed timestamps in JST', () => {
+    renderPanel({
+      handoff: {
+        ...baseHandoff(),
+        confirmed_at: '2026-06-11T00:00:00.000Z',
+        confirmed_by: 'user_1',
+      },
+    });
+
+    expect(screen.getByText(/確認日時: 2026\/06\/11 09:00 JST/)).toBeTruthy();
   });
 });

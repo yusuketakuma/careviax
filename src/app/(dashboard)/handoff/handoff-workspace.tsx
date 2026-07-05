@@ -119,6 +119,12 @@ export type VisitHandoffResponse = {
   extraction?: unknown;
   visit_record_version: number;
   visit_record_updated_at?: string;
+  confirmation_policy?: {
+    can_confirm?: boolean;
+    requires_override_reason?: boolean;
+    authorized_basis?: string | null;
+    override_reason_max_length?: number;
+  };
 };
 
 export async function fetchHandoffConfirmationTasks(
@@ -1332,6 +1338,13 @@ function VisitHandoffConfirmationWorkspace({
             visitRecordId={visitRecordId}
             expectedVisitRecordVersion={visitHandoffQuery.data.visit_record_version}
             handoff={visitHandoffQuery.data.data}
+            canConfirm={visitHandoffQuery.data.confirmation_policy?.can_confirm ?? false}
+            requiresOverrideReason={
+              visitHandoffQuery.data.confirmation_policy?.requires_override_reason ?? false
+            }
+            overrideReasonMaxLength={
+              visitHandoffQuery.data.confirmation_policy?.override_reason_max_length
+            }
             onConfirmed={onConfirmed}
           />
         ) : null}

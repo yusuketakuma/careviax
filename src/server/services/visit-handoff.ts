@@ -379,7 +379,12 @@ export async function confirmHandoff(
     expectedVersion: number;
     requestContext?: RequestAuthContext;
     confirmationWhere?: Prisma.VisitRecordWhereInput;
-    confirmationBasis?: 'assigned_schedule' | 'case_primary_or_backup' | 'task_assignee';
+    confirmationBasis?:
+      | 'assigned_schedule'
+      | 'case_primary_or_backup'
+      | 'task_assignee'
+      | 'admin_emergency_override';
+    overrideReason?: string | null;
   },
 ): Promise<VisitHandoff> {
   const {
@@ -391,6 +396,7 @@ export async function confirmHandoff(
     requestContext,
     confirmationWhere,
     confirmationBasis,
+    overrideReason,
   } = args;
 
   let confirmed: HandoffData | null = null;
@@ -476,6 +482,13 @@ export async function confirmHandoff(
             schedule_id: record.schedule_id,
             confirmed_by: confirmedBy,
             authorized_basis: confirmationBasis ?? 'service_call',
+            ...(overrideReason
+              ? {
+                  override_reason_present: true,
+                  override_reason_length: overrideReason.trim().length,
+                  override_reason_redacted: true,
+                }
+              : {}),
             edited_fields: editedFields,
             before: countHandoffContent(currentHandoff),
             after: countHandoffContent(confirmed),

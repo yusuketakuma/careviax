@@ -19,14 +19,33 @@ type HandoffConfirmPanelProps = {
   visitRecordId: string;
   expectedVisitRecordVersion: number;
   handoff: VisitHandoff;
+  canConfirm?: boolean;
+  requiresOverrideReason?: boolean;
+  overrideReasonMaxLength?: number;
   onConfirmed?: () => void;
 };
+
+const OVERRIDE_REASON_MIN_LENGTH = 8;
 
 type EditableHandoff = {
   next_check_items: string[];
   ongoing_monitoring: string[];
   decision_rationale: string;
 };
+
+function formatConfirmedAt(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return `${new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date)} JST`;
+}
 
 function EditableTagList({
   label,
@@ -107,12 +126,23 @@ export function HandoffConfirmPanel({
   visitRecordId,
   expectedVisitRecordVersion,
   handoff,
+  canConfirm = false,
+  requiresOverrideReason = false,
+  overrideReasonMaxLength = 500,
   onConfirmed,
 }: HandoffConfirmPanelProps) {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
   const isUnconfirmed = !handoff.confirmed_at;
+  const isOverrideOnly = isUnconfirmed && !canConfirm && requiresOverrideReason;
+  const isReadOnly = isUnconfirmed && !canConfirm && !requiresOverrideReason;
   const [editMode, setEditMode] = useState(false);
+  const [overrideReason, setOverrideReason] = useState('');
+  const overrideReasonTrimmed = overrideReason.trim();
+  const canSubmitOverride =
+    !requiresOverrideReason ||
+    (overrideReasonTrimmed.length >= OVERRIDE_REASON_MIN_LENGTH &&
+      overrideReasonTrimmed.length <= overrideReasonMaxLength);
 
   const [edits, setEdits] = useState<EditableHandoff>({
     next_check_items: [...handoff.next_check_items],
@@ -130,10 +160,15 @@ export function HandoffConfirmPanel({
           ongoing_monitoring?: string[];
           decision_rationale?: string;
         };
+        override_reason?: string;
       } = {
         confirmed: true,
         expected_visit_record_version: expectedVisitRecordVersion,
       };
+
+      if (requiresOverrideReason) {
+        payload.override_reason = overrideReasonTrimmed;
+      }
 
       if (editMode) {
         payload.edits = {
@@ -151,8 +186,11 @@ export function HandoffConfirmPanel({
       return readApiJson<unknown>(res, '申し送りの確定に失敗しました');
     },
     onSuccess: () => {
-      toast.success('申し送りを確定しました');
+      toast.success(
+        requiresOverrideReason ? '管理者として申し送りを確定しました' : '申し送りを確定しました',
+      );
       setEditMode(false);
+      setOverrideReason('');
       void queryClient.invalidateQueries({ queryKey: ['visit-record', visitRecordId] });
       void queryClient.invalidateQueries({ queryKey: ['visit-handoff'] });
       onConfirmed?.();
@@ -286,9 +324,55 @@ export function HandoffConfirmPanel({
 
         {handoff.confirmed_at && !editMode && (
           <p className="text-xs text-muted-foreground">
-            確認日時: {handoff.confirmed_at.slice(0, 16).replace('T', ' ')}
+            確認日時: {formatConfirmedAt(handoff.confirmed_at)}
             {handoff.confirmed_by ? ` (${handoff.confirmed_by})` : ''}
           </p>
+        )}
+
+        {isReadOnly && (
+          <div className="rounded-md border border-border/70 bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+            閲覧のみ: この申し送りは担当薬剤師または主/副担当のみ確定できます。
+          </div>
+        )}
+
+        {isOverrideOnly && !editMode && (
+          <div className="space-y-2 rounded-md border border-border/70 bg-card p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <StateBadge role="confirm" className="text-xs">
+                代行確認
+              </StateBadge>
+              <p className="text-sm font-medium text-foreground">管理者代行確認</p>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              担当者が直接確認できないため、管理者として代行確定できます。理由は監査ログに記録されます。
+            </p>
+            <div className="flex items-center justify-between gap-2">
+              <label
+                htmlFor="handoff-override-reason"
+                className="text-xs font-medium text-foreground"
+              >
+                代行理由
+              </label>
+              <span className="text-xs text-muted-foreground">
+                {overrideReasonTrimmed.length}/{overrideReasonMaxLength}
+              </span>
+            </div>
+            <Textarea
+              id="handoff-override-reason"
+              value={overrideReason}
+              onChange={(e) => setOverrideReason(e.target.value)}
+              placeholder="例: 担当者不在のため、本日訪問前に確認が必要"
+              rows={3}
+              maxLength={overrideReasonMaxLength}
+              className="resize-none text-sm"
+              aria-describedby="handoff-override-reason-helper"
+            />
+            <p id="handoff-override-reason-helper" className="text-xs text-muted-foreground">
+              {canSubmitOverride
+                ? '代行理由は監査ログへ本文を残さず記録されます。'
+                : '8文字以上の代行理由を入力すると確定できます。'}
+            </p>
+          </div>
         )}
 
         <div className="flex flex-wrap gap-2 pt-1">
@@ -298,7 +382,7 @@ export function HandoffConfirmPanel({
                 type="button"
                 size="sm"
                 onClick={() => confirmMutation.mutate()}
-                disabled={confirmMutation.isPending}
+                disabled={confirmMutation.isPending || !canConfirm}
               >
                 {confirmMutation.isPending ? '確定中...' : '編集して確定'}
               </Button>
@@ -320,19 +404,30 @@ export function HandoffConfirmPanel({
             </>
           ) : (
             <>
-              {isUnconfirmed && (
+              {isUnconfirmed && (canConfirm || requiresOverrideReason) && (
                 <Button
                   type="button"
                   size="sm"
                   onClick={() => confirmMutation.mutate()}
-                  disabled={confirmMutation.isPending}
+                  disabled={confirmMutation.isPending || !canSubmitOverride}
+                  aria-describedby={
+                    requiresOverrideReason ? 'handoff-override-reason-helper' : undefined
+                  }
                 >
-                  {confirmMutation.isPending ? '確定中...' : '確認'}
+                  {confirmMutation.isPending
+                    ? requiresOverrideReason
+                      ? '代行確定中...'
+                      : '確定中...'
+                    : requiresOverrideReason
+                      ? '管理者として確定'
+                      : '確認'}
                 </Button>
               )}
-              <Button type="button" size="sm" variant="outline" onClick={() => setEditMode(true)}>
-                編集して確定
-              </Button>
+              {canConfirm && (
+                <Button type="button" size="sm" variant="outline" onClick={() => setEditMode(true)}>
+                  編集して確定
+                </Button>
+              )}
             </>
           )}
         </div>

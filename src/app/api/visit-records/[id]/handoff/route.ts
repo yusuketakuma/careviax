@@ -6,6 +6,7 @@ import {
   buildVisitHandoffConfirmationWhere,
   canAccessVisitScheduleAssignment,
   canConfirmVisitHandoff,
+  canOverrideVisitHandoffConfirmation,
 } from '@/lib/auth/visit-schedule-access';
 import {
   conflict,
@@ -36,6 +37,7 @@ const confirmHandoffSchema = z.object({
     .number()
     .int('訪問記録の版情報が不正です')
     .positive('訪問記録の版情報が不正です'),
+  override_reason: z.string().trim().min(8, '上書き理由を入力してください').max(500).optional(),
   edits: z
     .object({
       next_check_items: z.array(z.string()).optional(),
@@ -90,15 +92,26 @@ async function authenticatedPUT(req: NextRequest, { params }: { params: Promise<
     select: visitRecordHandoffSelect,
   });
   if (!record) return withSensitiveNoStore(notFound('訪問記録が見つかりません'));
-  if (!canConfirmVisitHandoff(ctx, record.schedule)) {
-    return withSensitiveNoStore(await forbiddenResponse('この訪問記録を更新する権限がありません'));
-  }
-  const confirmationWhere = buildVisitHandoffConfirmationWhere(ctx);
-  if (!confirmationWhere) {
+
+  const canConfirmDirectly = canConfirmVisitHandoff(ctx, record.schedule);
+  const canOverride = canOverrideVisitHandoffConfirmation(ctx);
+  if (!canConfirmDirectly && !canOverride) {
     return withSensitiveNoStore(await forbiddenResponse('この訪問記録を更新する権限がありません'));
   }
 
-  const { edits } = parsed.data;
+  const { edits, override_reason: overrideReason } = parsed.data;
+  const isOverrideConfirmation = !canConfirmDirectly && canOverride;
+  if (isOverrideConfirmation && !overrideReason) {
+    return withSensitiveNoStore(await forbiddenResponse('この訪問記録を更新する権限がありません'));
+  }
+
+  const confirmationWhere = isOverrideConfirmation
+    ? undefined
+    : buildVisitHandoffConfirmationWhere(ctx);
+  if (!isOverrideConfirmation && !confirmationWhere) {
+    return withSensitiveNoStore(await forbiddenResponse('この訪問記録を更新する権限がありません'));
+  }
+
   if (record.version !== parsed.data.expected_visit_record_version) {
     return withSensitiveNoStore(conflict('訪問記録が同時に更新されました。再読み込みしてください'));
   }
@@ -111,11 +124,13 @@ async function authenticatedPUT(req: NextRequest, { params }: { params: Promise<
       expectedVersion: parsed.data.expected_visit_record_version,
       edits,
       requestContext: ctx,
-      confirmationWhere,
-      confirmationBasis:
-        record.schedule?.pharmacist_id === ctx.userId
+      confirmationWhere: confirmationWhere ?? undefined,
+      confirmationBasis: isOverrideConfirmation
+        ? 'admin_emergency_override'
+        : record.schedule?.pharmacist_id === ctx.userId
           ? 'assigned_schedule'
           : 'case_primary_or_backup',
+      ...(isOverrideConfirmation ? { overrideReason } : {}),
     });
     return withSensitiveNoStore(success(handoff));
   } catch (cause) {
@@ -195,6 +210,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
     );
   }
   const handoff = handoffResult.status === 'valid' ? handoffResult.handoff : null;
+  const canConfirmDirectly = canConfirmVisitHandoff(ctx, record.schedule);
   const extraction = handoffExtraction
     ? {
         status: handoffExtraction.status,
@@ -220,6 +236,19 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
       extraction,
       visit_record_version: record.version,
       visit_record_updated_at: record.updated_at.toISOString(),
+      confirmation_policy: {
+        can_confirm: canConfirmDirectly,
+        requires_override_reason:
+          !canConfirmDirectly && canOverrideVisitHandoffConfirmation(ctx) && Boolean(handoff),
+        authorized_basis: canConfirmDirectly
+          ? record.schedule?.pharmacist_id === ctx.userId
+            ? 'assigned_schedule'
+            : 'case_primary_or_backup'
+          : canOverrideVisitHandoffConfirmation(ctx) && Boolean(handoff)
+            ? 'admin_emergency_override'
+            : null,
+        override_reason_max_length: 500,
+      },
     }),
   );
 }

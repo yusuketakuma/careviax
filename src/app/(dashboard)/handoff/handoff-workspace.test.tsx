@@ -165,6 +165,7 @@ function stubFetch(
     cockpitStatus?: number;
     recentCommentsStatus?: number;
     recentComments?: Array<Record<string, unknown>>;
+    handoffDetail?: Record<string, unknown>;
     itemPostFailure?: Response | ((body: Record<string, unknown>) => Response);
     itemReadFailure?: Response;
     itemResolveFailure?: Response;
@@ -256,20 +257,28 @@ function stubFetch(
         );
       }
       return new Response(
-        JSON.stringify({
-          data: {
-            next_check_items: ['残薬を確認'],
-            ongoing_monitoring: ['眠気'],
-            decision_rationale: '訪問時に眠気の訴えあり',
-            ai_extracted: true,
-            ai_confidence: 0.88,
-            confirmed_by: null,
-            confirmed_at: null,
-            extracted_at: '2026-06-11T00:00:00.000Z',
+        JSON.stringify(
+          options.handoffDetail ?? {
+            data: {
+              next_check_items: ['残薬を確認'],
+              ongoing_monitoring: ['眠気'],
+              decision_rationale: '訪問時に眠気の訴えあり',
+              ai_extracted: true,
+              ai_confidence: 0.88,
+              confirmed_by: null,
+              confirmed_at: null,
+              extracted_at: '2026-06-11T00:00:00.000Z',
+            },
+            visit_record_version: 7,
+            visit_record_updated_at: '2026-06-11T00:00:00.000Z',
+            confirmation_policy: {
+              can_confirm: true,
+              requires_override_reason: false,
+              authorized_basis: 'assigned_schedule',
+              override_reason_max_length: 500,
+            },
           },
-          visit_record_version: 7,
-          visit_record_updated_at: '2026-06-11T00:00:00.000Z',
-        }),
+        ),
         { status: 200 },
       );
     }
@@ -360,6 +369,12 @@ describe('HandoffWorkspace', () => {
         },
         visit_record_version: 7,
         visit_record_updated_at: '2026-06-11T00:00:00.000Z',
+        confirmation_policy: {
+          can_confirm: true,
+          requires_override_reason: false,
+          authorized_basis: 'assigned_schedule',
+          override_reason_max_length: 500,
+        },
       }),
     );
     vi.stubGlobal('fetch', fetchMock);
@@ -367,6 +382,7 @@ describe('HandoffWorkspace', () => {
     await expect(fetchVisitHandoff('org_1', 'visit_record_1')).resolves.toMatchObject({
       data: { next_check_items: ['残薬を確認'] },
       visit_record_version: 7,
+      confirmation_policy: { can_confirm: true },
     });
   });
 
@@ -465,6 +481,63 @@ describe('HandoffWorkspace', () => {
     expect(JSON.parse(String(putCall?.[1]?.body))).toMatchObject({
       confirmed: true,
       expected_visit_record_version: 7,
+    });
+  });
+
+  it('passes override reason through the handoff workspace confirmation flow', async () => {
+    useAuthStore.getState().setCurrentUser({ id: 'owner_1' });
+    const fetchMock = stubFetch(BOARD, {
+      handoffDetail: {
+        data: {
+          next_check_items: ['残薬を確認'],
+          ongoing_monitoring: ['眠気'],
+          decision_rationale: '訪問時に眠気の訴えあり',
+          ai_extracted: true,
+          ai_confidence: 0.88,
+          confirmed_by: null,
+          confirmed_at: null,
+          extracted_at: '2026-06-11T00:00:00.000Z',
+        },
+        visit_record_version: 7,
+        visit_record_updated_at: '2026-06-11T00:00:00.000Z',
+        confirmation_policy: {
+          can_confirm: false,
+          requires_override_reason: true,
+          authorized_basis: 'admin_emergency_override',
+          override_reason_max_length: 500,
+        },
+      },
+    });
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getByText('管理者代行確認')).toBeTruthy();
+    });
+
+    const button = screen.getByRole('button', { name: '管理者として確定' }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('代行理由'), {
+      target: { value: '担当者不在のため本日訪問前に確認が必要' },
+    });
+    expect(button.disabled).toBe(false);
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            String(input) === '/api/visit-records/visit_record_1/handoff' && init?.method === 'PUT',
+        ),
+      ).toBe(true);
+    });
+    const putCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        String(input) === '/api/visit-records/visit_record_1/handoff' && init?.method === 'PUT',
+    );
+    expect(JSON.parse(String(putCall?.[1]?.body))).toEqual({
+      confirmed: true,
+      expected_visit_record_version: 7,
+      override_reason: '担当者不在のため本日訪問前に確認が必要',
     });
   });
 

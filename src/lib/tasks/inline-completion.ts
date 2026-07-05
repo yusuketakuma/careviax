@@ -2,6 +2,7 @@ const DEDICATED_COMPLETION_TASK_TYPES = new Set([
   'visit_preparation',
   'visit_contact_followup',
   'visit_schedule_override_approval',
+  'handoff_confirmation',
 ]);
 
 export function canCompleteTaskInline(task: { task_type: string }) {

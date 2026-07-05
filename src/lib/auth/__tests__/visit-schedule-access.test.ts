@@ -12,6 +12,7 @@ import {
   buildVisitHandoffConfirmationWhere,
   canAccessVisitScheduleAssignment,
   canConfirmVisitHandoff,
+  canOverrideVisitHandoffConfirmation,
   selectVisitHandoffConfirmationAssignee,
 } from '../visit-schedule-access';
 
@@ -54,6 +55,14 @@ describe('visit schedule assignment access', () => {
       canConfirmVisitHandoff({ userId: 'pharmacist_1', role: 'pharmacist_trainee' }, schedule),
     ).toBe(false);
     expect(canConfirmVisitHandoff({ userId: 'pharmacist_1', role: 'clerk' }, schedule)).toBe(false);
+  });
+
+  it('allows only owner and admin to use handoff confirmation override', () => {
+    expect(canOverrideVisitHandoffConfirmation({ role: 'owner' })).toBe(true);
+    expect(canOverrideVisitHandoffConfirmation({ role: 'admin' })).toBe(true);
+    expect(canOverrideVisitHandoffConfirmation({ role: 'pharmacist' })).toBe(false);
+    expect(canOverrideVisitHandoffConfirmation({ role: 'pharmacist_trainee' })).toBe(false);
+    expect(canOverrideVisitHandoffConfirmation({ role: 'clerk' })).toBe(false);
   });
 
   it('builds a strict handoff confirmation write claim for allowed roles only', () => {

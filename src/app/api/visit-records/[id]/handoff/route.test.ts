@@ -5,6 +5,7 @@ const {
   requireAuthContextMock,
   canAccessVisitScheduleAssignmentMock,
   canConfirmVisitHandoffMock,
+  canOverrideVisitHandoffConfirmationMock,
   buildVisitHandoffConfirmationWhereMock,
   visitRecordFindFirstMock,
   visitHandoffExtractionFindUniqueMock,
@@ -16,6 +17,7 @@ const {
   requireAuthContextMock: vi.fn(),
   canAccessVisitScheduleAssignmentMock: vi.fn(),
   canConfirmVisitHandoffMock: vi.fn(),
+  canOverrideVisitHandoffConfirmationMock: vi.fn(),
   buildVisitHandoffConfirmationWhereMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
   visitHandoffExtractionFindUniqueMock: vi.fn(),
@@ -32,6 +34,7 @@ vi.mock('@/lib/auth/context', () => ({
 vi.mock('@/lib/auth/visit-schedule-access', () => ({
   canAccessVisitScheduleAssignment: canAccessVisitScheduleAssignmentMock,
   canConfirmVisitHandoff: canConfirmVisitHandoffMock,
+  canOverrideVisitHandoffConfirmation: canOverrideVisitHandoffConfirmationMock,
   buildVisitHandoffConfirmationWhere: buildVisitHandoffConfirmationWhereMock,
 }));
 
@@ -130,6 +133,7 @@ describe('/api/visit-records/[id]/handoff', () => {
     requireAuthContextMock.mockResolvedValue(authCtx);
     canAccessVisitScheduleAssignmentMock.mockReturnValue(true);
     canConfirmVisitHandoffMock.mockReturnValue(true);
+    canOverrideVisitHandoffConfirmationMock.mockReturnValue(false);
     buildVisitHandoffConfirmationWhereMock.mockReturnValue({
       schedule: { pharmacist_id: 'user_1' },
     });
@@ -194,6 +198,37 @@ describe('/api/visit-records/[id]/handoff', () => {
       expect(json).toMatchObject({
         visit_record_version: VISIT_RECORD_VERSION,
         visit_record_updated_at: VISIT_RECORD_UPDATED_AT_ISO,
+        confirmation_policy: {
+          can_confirm: true,
+          requires_override_reason: false,
+          authorized_basis: 'assigned_schedule',
+          override_reason_max_length: 500,
+        },
+      });
+    });
+
+    it('returns additive override policy metadata for owner/admin non-assignees', async () => {
+      requireAuthContextMock.mockResolvedValue({
+        ctx: { ...authCtx.ctx, userId: 'owner_1', role: 'owner' },
+      });
+      canConfirmVisitHandoffMock.mockReturnValue(false);
+      canOverrideVisitHandoffConfirmationMock.mockReturnValue(true);
+      visitRecordFindFirstMock.mockResolvedValue(buildVisitRecord());
+
+      const req = createRequest('http://localhost/api/visit-records/vr_1/handoff');
+      const res = await GET(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+      expect(res!.status).toBe(200);
+      expectSensitiveNoStore(res!);
+      await expect(res!.json()).resolves.toMatchObject({
+        data: { next_check_items: ['血圧確認'] },
+        visit_record_version: VISIT_RECORD_VERSION,
+        confirmation_policy: {
+          can_confirm: false,
+          requires_override_reason: true,
+          authorized_basis: 'admin_emergency_override',
+          override_reason_max_length: 500,
+        },
       });
     });
 
@@ -341,6 +376,9 @@ describe('/api/visit-records/[id]/handoff', () => {
           error_message: '申し送り抽出に失敗しました。時間をおいて再実行してください',
           retryable: true,
         },
+        confirmation_policy: {
+          requires_override_reason: false,
+        },
       });
       const payloadText = JSON.stringify(payload);
       expect(payloadText).not.toContain('田中太郎');
@@ -392,6 +430,112 @@ describe('/api/visit-records/[id]/handoff', () => {
         confirmationWhere: { schedule: { pharmacist_id: 'user_1' } },
         confirmationBasis: 'assigned_schedule',
       });
+      expect(confirmHandoffMock.mock.calls[0]?.[1]).not.toHaveProperty('overrideReason');
+    });
+
+    it('allows owner/admin emergency override with an explicit reason', async () => {
+      requireAuthContextMock.mockResolvedValue({
+        ctx: { ...authCtx.ctx, userId: 'owner_1', role: 'owner' },
+      });
+      canConfirmVisitHandoffMock.mockReturnValue(false);
+      canOverrideVisitHandoffConfirmationMock.mockReturnValue(true);
+      visitRecordFindFirstMock.mockResolvedValue(
+        buildVisitRecord({ structured_soap: { handoff: confirmableHandoff } }),
+      );
+      const handoffResult = { confirmed: true, confirmed_by: 'owner_1' };
+      confirmHandoffMock.mockResolvedValue(handoffResult);
+
+      const req = createRequest('http://localhost/api/visit-records/vr_1/handoff', {
+        confirmed: true,
+        expected_visit_record_version: VISIT_RECORD_VERSION,
+        override_reason: ' 担当者不在のため本日訪問前に確認が必要 ',
+      });
+      const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+      expect(res!.status).toBe(200);
+      expectSensitiveNoStore(res!);
+      expect(buildVisitHandoffConfirmationWhereMock).not.toHaveBeenCalled();
+      expect(confirmHandoffMock).toHaveBeenCalledWith(expect.anything(), {
+        orgId: 'org_1',
+        visitRecordId: 'vr_1',
+        confirmedBy: 'owner_1',
+        expectedVersion: VISIT_RECORD_VERSION,
+        edits: undefined,
+        requestContext: expect.objectContaining({ userId: 'owner_1', role: 'owner' }),
+        confirmationWhere: undefined,
+        confirmationBasis: 'admin_emergency_override',
+        overrideReason: '担当者不在のため本日訪問前に確認が必要',
+      });
+    });
+
+    it('keeps owner/admin non-assignee confirmation denied without an override reason', async () => {
+      requireAuthContextMock.mockResolvedValue({
+        ctx: { ...authCtx.ctx, userId: 'owner_1', role: 'owner' },
+      });
+      canConfirmVisitHandoffMock.mockReturnValue(false);
+      canOverrideVisitHandoffConfirmationMock.mockReturnValue(true);
+      visitRecordFindFirstMock.mockResolvedValue(
+        buildVisitRecord({ structured_soap: { handoff: confirmableHandoff } }),
+      );
+
+      const req = createRequest('http://localhost/api/visit-records/vr_1/handoff', {
+        confirmed: true,
+        expected_visit_record_version: VISIT_RECORD_VERSION,
+      });
+      const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+      expect(res!.status).toBe(403);
+      expectSensitiveNoStore(res!);
+      expect(confirmHandoffMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects blank override reasons before loading the visit record', async () => {
+      const req = createRequest('http://localhost/api/visit-records/vr_1/handoff', {
+        confirmed: true,
+        expected_visit_record_version: VISIT_RECORD_VERSION,
+        override_reason: '   ',
+      });
+      const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+      expect(res!.status).toBe(400);
+      expectSensitiveNoStore(res!);
+      await expect(res!.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        details: {
+          override_reason: expect.any(Array),
+        },
+      });
+      expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+      expect(confirmHandoffMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects pharmacist and trainee override attempts even with a reason', async () => {
+      for (const role of ['pharmacist', 'pharmacist_trainee'] as const) {
+        vi.clearAllMocks();
+        requireAuthContextMock.mockResolvedValue({
+          ctx: { ...authCtx.ctx, userId: `${role}_1`, role },
+        });
+        canAccessVisitScheduleAssignmentMock.mockReturnValue(true);
+        canConfirmVisitHandoffMock.mockReturnValue(false);
+        canOverrideVisitHandoffConfirmationMock.mockReturnValue(false);
+        buildVisitHandoffConfirmationWhereMock.mockReturnValue({
+          schedule: { pharmacist_id: `${role}_1` },
+        });
+        visitRecordFindFirstMock.mockResolvedValue(
+          buildVisitRecord({ structured_soap: { handoff: confirmableHandoff } }),
+        );
+
+        const req = createRequest('http://localhost/api/visit-records/vr_1/handoff', {
+          confirmed: true,
+          expected_visit_record_version: VISIT_RECORD_VERSION,
+          override_reason: '担当者不在のため本日訪問前に確認が必要',
+        });
+        const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+        expect(res!.status).toBe(403);
+        expectSensitiveNoStore(res!);
+        expect(confirmHandoffMock).not.toHaveBeenCalled();
+      }
     });
 
     it('rejects blank visit record ids before confirming handoff data', async () => {

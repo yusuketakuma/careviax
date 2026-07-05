@@ -234,10 +234,10 @@ describe('/api/tasks/bulk', () => {
       },
       {
         id: 'task_2',
-        task_type: 'visit_preparation',
+        task_type: 'handoff_confirmation',
         status: 'pending',
-        related_entity_type: 'visit_schedule',
-        related_entity_id: 'schedule_1',
+        related_entity_type: 'visit_record',
+        related_entity_id: 'visit_record_1',
       },
     ]);
     taskUpdateManyMock.mockResolvedValueOnce({ count: 1 });
