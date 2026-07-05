@@ -80,6 +80,7 @@ export async function fetchPatientBoard(
 
 type BoardScope = 'mine' | 'all';
 type BoardSort = 'priority' | 'next_visit' | 'name';
+type BoardViewMode = 'card' | 'list';
 type BoardFoundationIssue = 'needs_confirmation' | PatientFoundationIssueKey;
 
 const SCOPE_OPTIONS: Array<{ value: BoardScope; label: string }> = [
@@ -91,6 +92,11 @@ const SORT_OPTIONS: Array<{ value: BoardSort; label: string }> = [
   { value: 'priority', label: '対応が必要な順' },
   { value: 'next_visit', label: '訪問が近い順' },
   { value: 'name', label: '氏名順' },
+];
+
+const VIEW_MODE_OPTIONS: Array<{ value: BoardViewMode; label: string }> = [
+  { value: 'card', label: 'カード' },
+  { value: 'list', label: 'リスト' },
 ];
 
 /**
@@ -533,6 +539,133 @@ function PatientBoardCardItem({ card, now }: { card: PatientBoardCard; now: Date
   );
 }
 
+function PatientBoardCompactList({ cards, now }: { cards: PatientBoardCard[]; now: Date }) {
+  return (
+    <div
+      className="overflow-hidden rounded-lg border border-border/70 bg-card"
+      data-testid="patients-board-list"
+    >
+      <div
+        className="hidden border-b border-border/70 bg-muted/30 px-3 py-2 text-xs font-semibold text-muted-foreground lg:grid lg:grid-cols-[minmax(190px,1.25fr)_minmax(120px,0.72fr)_minmax(150px,0.95fr)_minmax(150px,0.95fr)_minmax(150px,0.95fr)_minmax(180px,1fr)] lg:items-center lg:gap-3"
+        aria-hidden="true"
+      >
+        <span>患者</span>
+        <span>注意</span>
+        <span>リスク</span>
+        <span>次回訪問</span>
+        <span>基盤整備</span>
+        <span>アクション</span>
+      </div>
+      <ul role="list" className="divide-y divide-border/70">
+        {cards.map((card) => (
+          <PatientBoardCompactListRow key={card.patient_id} card={card} now={now} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function PatientBoardCompactListRow({ card, now }: { card: PatientBoardCard; now: Date }) {
+  const presentation = ATTENTION_PRESENTATIONS[card.attention];
+  const { tags, hiddenCount: hiddenSafetyTagCount } = selectVisibleSafetyTags(card.safety_tags);
+  const foundationSummary = card.foundation_summary;
+
+  return (
+    <li
+      className="grid gap-2 px-3 py-3 lg:grid-cols-[minmax(190px,1.25fr)_minmax(120px,0.72fr)_minmax(150px,0.95fr)_minmax(150px,0.95fr)_minmax(150px,0.95fr)_minmax(180px,1fr)] lg:items-center lg:gap-3"
+      data-testid="patient-board-list-row"
+      data-attention={card.attention}
+    >
+      <div className="min-w-0">
+        <Link
+          href={buildPatientHref(card.patient_id)}
+          className="inline-flex min-h-11 max-w-full items-center font-bold text-foreground underline-offset-4 hover:underline"
+          data-testid="patient-board-list-link"
+        >
+          <span className="truncate">{card.name}</span>
+        </Link>
+        <p className="text-xs tabular-nums text-muted-foreground">
+          {card.age != null ? `${card.age}歳・` : ''}
+          {card.residence_label}
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span
+          className={cn(
+            'inline-flex min-h-7 items-center rounded-full px-2 text-xs font-semibold',
+            presentation.badgeClass,
+          )}
+        >
+          {presentation.label}
+        </span>
+      </div>
+
+      <div className="flex min-w-0 flex-wrap gap-1" aria-label={`${card.name} 様の安全タグ`}>
+        {tags.length > 0 ? (
+          <>
+            {tags.map((tag) => (
+              <SafetyTagBadge key={tag} tag={tag} />
+            ))}
+            {hiddenSafetyTagCount > 0 ? (
+              <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                +{hiddenSafetyTagCount}
+              </span>
+            ) : null}
+          </>
+        ) : (
+          <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+            安全タグなし
+          </span>
+        )}
+      </div>
+
+      <div className="min-w-0 text-sm leading-5">
+        <p className="font-bold text-foreground tabular-nums">{formatNextVisitLabel(card, now)}</p>
+        {card.current_step ? (
+          <ProcessProgressDots currentStep={card.current_step} />
+        ) : (
+          <PausedDots />
+        )}
+      </div>
+
+      <div className="min-w-0 text-sm leading-5">
+        {foundationSummary ? (
+          <>
+            <p className={cn('font-semibold', FOUNDATION_STATUS_TEXT[foundationSummary.status])}>
+              {foundationSummary.label}
+            </p>
+            <p className="truncate text-xs text-muted-foreground">
+              {foundationSummary.items.join(' / ')}
+            </p>
+          </>
+        ) : (
+          <p className="text-xs text-muted-foreground">基盤確認なし</p>
+        )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Link
+          href={card.link_href}
+          className={cn(
+            buttonVariants({ variant: 'outline', size: 'sm' }),
+            '!h-auto !min-h-[44px]',
+          )}
+          aria-label={`${card.name} ${card.link_label}`}
+        >
+          → {card.link_label}
+        </Link>
+        <Link
+          href={card.foundation_href ?? buildPatientHref(card.patient_id)}
+          className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), '!h-auto !min-h-[44px]')}
+        >
+          患者詳細
+        </Link>
+      </div>
+    </li>
+  );
+}
+
 function buildNextAction(data: PatientBoardResponse): NextActionPanelProps {
   if (data.next_action) {
     const auditLabel = data.next_action.has_narcotic ? '麻薬監査' : '監査';
@@ -558,6 +691,7 @@ export function PatientsBoard() {
   const [scope, setScope] = useState<BoardScope>('mine');
   const [chip, setChip] = useState<BoardChipValue>('priority');
   const [sort, setSort] = useState<BoardSort>('priority');
+  const [viewMode, setViewMode] = useState<BoardViewMode>('card');
   const [searchQuery, setSearchQuery] = useState('');
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const boardSearchQuery = deferredSearchQuery.trim();
@@ -782,10 +916,7 @@ export function PatientsBoard() {
                 <button
                   type="button"
                   onClick={() => void boardQuery.refetch()}
-                  className={cn(
-                    buttonVariants({ variant: 'outline', size: 'sm' }),
-                    'min-h-[44px] sm:min-h-9',
-                  )}
+                  className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'min-h-[44px]')}
                 >
                   再試行
                 </button>
@@ -855,6 +986,15 @@ export function PatientsBoard() {
               ariaLabel="対応カテゴリの絞り込み"
             />
             <div className="ml-auto flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">表示</span>
+                <FilterChipBar
+                  options={VIEW_MODE_OPTIONS}
+                  value={viewMode}
+                  onChange={setViewMode}
+                  ariaLabel="患者一覧の表示切替"
+                />
+              </div>
               {data ? (
                 <p
                   className="text-xs text-muted-foreground"
@@ -911,12 +1051,18 @@ export function PatientsBoard() {
               {visibleCards.length === 0 ? (
                 <div className="phos-patient-empty-state rounded-lg border border-border/70 bg-card px-4 py-6">
                   <p className="text-sm font-medium text-foreground">
-                    条件に一致する患者がいません
+                    {data.truncated
+                      ? '取得済み範囲には一致する患者がいません'
+                      : '条件に一致する患者がいません'}
                   </p>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    チップ、検索語、並び順を確認してください。患者安全タグや警告は条件を戻すと再表示されます。
+                    {data.truncated
+                      ? '取得上限により未確認の患者が残っている可能性があります。検索語またはフィルタを絞って再取得してください。'
+                      : '検索語またはフィルタを解除してください。患者安全タグや警告は条件を戻すと再表示されます。'}
                   </p>
                 </div>
+              ) : viewMode === 'list' ? (
+                <PatientBoardCompactList cards={displayedCards} now={now} />
               ) : (
                 <div
                   className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
@@ -942,7 +1088,7 @@ export function PatientsBoard() {
                     }
                     className={cn(
                       buttonVariants({ variant: 'outline', size: 'sm' }),
-                      'min-h-[44px] sm:min-h-9',
+                      'min-h-[44px]',
                     )}
                   >
                     さらに表示

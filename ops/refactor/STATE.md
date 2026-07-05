@@ -3016,6 +3016,42 @@
   management-plan / medication-history / medication-calendar / visit-record-list / billing-document /
   pharmacy-invoice PDF audit profile expansion、audit-log response/export legacy row backstop、
   DataTable consumer wiring、attachment/report-delivery surfaces、broader export matrix。
+- codex: PAT-LIST-UX-002 PatientsBoard compact list mode slice complete。
+  User/Goal の Plans.md UI/UX/速度統合 objective に沿い、患者一覧の高密度運用向けに
+  card/list 表示切替を追加した。`imagegen` skill と `redesign-existing-projects` skill を読み、
+  UI design generation policy に従って `gpt-image-2` 方針の非PHI mockup を生成:
+  `/Users/yusuke/.codex/generated_images/019f2c7e-d969-7882-bd11-432a10abb930/ig_012aa2c52ac55d1e016a4a9019c540819182837686bfb1d43d.png`
+  （別variant:
+  `/Users/yusuke/.codex/generated_images/019f2c7e-d969-7882-bd11-432a10abb930/ig_00105b983fbccf56016a4a8f4a51408191a9374aee5e8e6268.png`）。
+  実装では既存 `PatientBoardCard` の状態語彙、`SafetyTagBadge`、`ProcessProgressDots`、
+  `buildPatientHref`、正本 summary を再利用し、compact list row を追加。カード既定表示は維持し、
+  「表示: カード/リスト」切替で1患者1行の高密度 row に変更できる。各 row は患者名、年齢/居住区分、
+  attention badge、安全タグ、次回訪問、工程、正本状態、工程 action、患者詳細 action を持つ。
+  近接修正として、患者一覧内の `再試行` / `さらに表示` button から `sm:min-h-9` を除去し、
+  PH-OS 44px target を全 breakpoint で維持。さらに `data.truncated && visibleCards.length === 0`
+  のとき通常の「条件に一致する患者がいません」と断定せず、取得済み範囲の部分空状態として表示する。
+  Subagents: `code_mapper` が PAT-LIST-PERF/UX の実装済み範囲と残課題（foundation filter DB-side、
+  chip count endpoint、route performance wrapper、shared adapter抽出）を整理。`frontend_reviewer` が
+  false-empty、foundation count semantics、44px target、空状態 copy を指摘し、今回のUI sliceでは
+  false-empty copy と 44px を反映。Files inspected:
+  `Plans.md`, `docs/ui-ux-design-guidelines.md`,
+  `.agents/skills/redesign-existing-projects/SKILL.md`,
+  `.codex/skills/.system/imagegen/SKILL.md`,
+  `src/types/patient-board.ts`,
+  `src/app/(dashboard)/patients/patients-board.tsx`,
+  `src/app/(dashboard)/patients/patients-board.test.tsx`,
+  `src/app/api/patients/board/route.ts`。Files changed:
+  `src/app/(dashboard)/patients/patients-board.tsx`,
+  `src/app/(dashboard)/patients/patients-board.test.tsx`,
+  `ops/refactor/STATE.md`。Validation green:
+  `pnpm exec vitest run src/app/'(dashboard)'/patients/patients-board.test.tsx --reporter=dot --testTimeout=30000`
+  (23 tests), scoped ESLint for the touched patients-board files, `pnpm format:check`,
+  `git diff --check -- src/app/'(dashboard)'/patients/patients-board.tsx src/app/'(dashboard)'/patients/patients-board.test.tsx`,
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`。Remaining:
+  PAT-LIST-PERF foundation filters are still mostly memory-side after bounded fetch, foundation chip counts remain
+  scoped to returned cards, `/api/patients/board` is still one heavy BFF without summary/details/chip-count split,
+  route performance/payload budget is not wired, and patient-board adapter extraction for Command Center/Risk Cockpit
+  remains open.
 
 ## 進行中 / 凍結
 

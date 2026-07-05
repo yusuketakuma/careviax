@@ -354,6 +354,38 @@ describe('PatientsBoard', () => {
     expect(within(paused as HTMLElement).getByText(/80歳・入院中/)).toBeTruthy();
   });
 
+  it('switches from card grid to compact list mode without dropping safety and action cues', () => {
+    render(<PatientsBoard />);
+
+    expect(screen.getByTestId('patients-board-grid')).toBeTruthy();
+    const viewModeBar = screen.getByRole('group', { name: '患者一覧の表示切替' });
+    fireEvent.click(within(viewModeBar).getByRole('button', { name: 'リスト' }));
+
+    expect(screen.queryByTestId('patients-board-grid')).toBeNull();
+    const list = screen.getByTestId('patients-board-list');
+    const rows = within(list).getAllByTestId('patient-board-list-row');
+    expect(rows).toHaveLength(5);
+
+    const urgent = rows.find((node) => node.getAttribute('data-attention') === 'urgent_now');
+    expect(urgent).toBeTruthy();
+    expect(within(urgent as HTMLElement).getByRole('link', { name: '田中 一郎' })).toBeTruthy();
+    expect(within(urgent as HTMLElement).getByText('今すぐ対応')).toBeTruthy();
+    expect(within(urgent as HTMLElement).getByText('麻薬')).toBeTruthy();
+    expect(within(urgent as HTMLElement).getByText('冷所')).toBeTruthy();
+    expect(within(urgent as HTMLElement).getByText('+1')).toBeTruthy();
+    expect(within(urgent as HTMLElement).getByText('本日 14:00')).toBeTruthy();
+    expect(within(urgent as HTMLElement).getByText('安全確認あり')).toBeTruthy();
+    expect(within(urgent as HTMLElement).getByTestId('process-progress-dots')).toBeTruthy();
+    const workflowLink = within(urgent as HTMLElement).getByRole('link', {
+      name: '田中 一郎 監査へ',
+    });
+    expect(workflowLink.getAttribute('href')).toBe('/audit');
+    expect(workflowLink.className).toContain('!min-h-[44px]');
+    const detailLink = within(urgent as HTMLElement).getByRole('link', { name: '患者詳細' });
+    expect(detailLink.getAttribute('href')).toBe('/patients/pt_tanaka#patient-foundation');
+    expect(detailLink.className).toContain('!min-h-[44px]');
+  });
+
   it('routes patient card links through the shared patient href helper', () => {
     const data = buildFixture();
     const hostilePatientId = 'pt/1?x=y#z';
@@ -540,7 +572,10 @@ describe('PatientsBoard', () => {
     // stale 警告を出し、鮮度ラベルは描画時刻でなく取得時刻(09:30)を表示する。
     expect(screen.getByText('最新化に失敗・前回取得時点を表示中')).toBeTruthy();
     expect(screen.getByText(/6\/12\(金\) 09:30 — カードの色＝いま必要な対応/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    const retryButton = screen.getByRole('button', { name: '再試行' });
+    expect(retryButton.className).toContain('min-h-[44px]');
+    expect(retryButton.className).not.toContain('sm:min-h-9');
+    fireEvent.click(retryButton);
     expect(refetchMock).toHaveBeenCalled();
   });
 
@@ -576,6 +611,23 @@ describe('PatientsBoard', () => {
     expect(screen.getByText(/患者安全タグや警告は条件を戻すと再表示されます/)).toBeTruthy();
     expect(screen.getByRole('status').textContent).toContain('0名を表示中');
     expect(screen.queryByText('東京都千代田区')).toBeNull();
+  });
+
+  it('does not present a truncated foundation filter response as a definitive empty board', () => {
+    useRealtimeQueryMock.mockReturnValue({
+      data: { ...buildFixture(), assigned_total: 600, truncated: true, cards: [] },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: refetchMock,
+    });
+    render(<PatientsBoard />);
+
+    expect(screen.queryAllByTestId('patient-board-card')).toHaveLength(0);
+    expect(screen.getByText('取得済み範囲には一致する患者がいません')).toBeTruthy();
+    expect(screen.queryByText('条件に一致する患者がいません')).toBeNull();
+    expect(screen.getByText(/取得上限により未確認の患者が残っている可能性/)).toBeTruthy();
+    expect(screen.getByTestId('patients-board-truncation-note').textContent).toContain('取得上限');
   });
 
   it('does not use legacy address-only payload fields as client-side hidden search text', async () => {
@@ -694,8 +746,11 @@ describe('PatientsBoard', () => {
     const note = screen.getByTestId('patients-board-visible-count-note');
     expect(note.textContent).toContain('130名中');
     expect(note.textContent).toContain('60名を表示');
+    const loadMoreButton = screen.getByRole('button', { name: 'さらに表示' });
+    expect(loadMoreButton.className).toContain('min-h-[44px]');
+    expect(loadMoreButton.className).not.toContain('sm:min-h-9');
 
-    fireEvent.click(screen.getByRole('button', { name: 'さらに表示' }));
+    fireEvent.click(loadMoreButton);
 
     expect(screen.getAllByTestId('patient-board-card')).toHaveLength(120);
     expect(screen.getByTestId('patients-board-visible-count-note').textContent).toContain(
