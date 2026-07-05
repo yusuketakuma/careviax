@@ -62,6 +62,10 @@ type PrescriptionIntakesPage = {
   hasMore: boolean;
   nextCursor?: string;
   totalCount?: number;
+  facets?: {
+    status?: Record<string, number>;
+    source_type?: Record<string, number>;
+  };
 };
 
 function PrescriptionFilterGroup({
@@ -164,6 +168,7 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
       const params = new URLSearchParams({
         limit: String(PRESCRIPTION_INTAKE_PAGE_SIZE),
         include_total: '1',
+        facets: '1',
       });
       if (pageParam) params.set('cursor', pageParam);
       if (statusFilter !== 'all') params.set('status', statusFilter);
@@ -189,15 +194,7 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
   const loadedItems = useMemo(() => data?.pages.flatMap((page) => page.data) ?? [], [data]);
   const totalMatchingCount = data?.pages[0]?.totalCount ?? loadedItems.length;
 
-  // Counts reflect the loaded page window. Totals come from the server-side filtered query.
-  const statusCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const item of loadedItems) {
-      const s = item.cycle.overall_status;
-      counts[s] = (counts[s] ?? 0) + 1;
-    }
-    return counts;
-  }, [loadedItems]);
+  const statusFacetCounts = data?.pages[0]?.facets?.status ?? {};
 
   // Selection state
   const { selectedItem, handleMoveUp, handleMoveDown, handleRowClick, resetSelection } =
@@ -254,8 +251,8 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
     }
   }, [resetSelection, searchQuery]);
 
-  const inquiryCount = statusCounts['inquiry_pending'] ?? 0;
-  const readyCount = statusCounts['ready_to_dispense'] ?? 0;
+  const inquiryCount = statusFacetCounts['inquiry_pending'] ?? 0;
+  const readyCount = statusFacetCounts['ready_to_dispense'] ?? 0;
   const intakeErrorMessage = error instanceof Error ? error.message : undefined;
   const isSearchActive = searchQuery.length > 0;
 

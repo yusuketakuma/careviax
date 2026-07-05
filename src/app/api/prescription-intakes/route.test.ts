@@ -2845,6 +2845,7 @@ describe('/api/prescription-intakes GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     enforceFeatureRateLimitMock.mockResolvedValue(null);
+    prescriptionIntakeCountMock.mockResolvedValue(2);
     prescriptionIntakeFindManyMock.mockResolvedValue([
       {
         id: 'intake_2',
@@ -3075,6 +3076,10 @@ describe('/api/prescription-intakes GET', () => {
       '?include_total=yes',
       { include_total: ['include_total は0または1を指定してください'] },
     ],
+    ['facets', '?facets=', { facets: ['facets を指定してください'] }],
+    ['blank facets', '?facets=%20%20', { facets: ['facets を指定してください'] }],
+    ['padded facets', '?facets=%201', { facets: ['facets は0または1を指定してください'] }],
+    ['invalid facets', '?facets=yes', { facets: ['facets は0または1を指定してください'] }],
   ])('rejects malformed explicit %s before querying intakes', async (_name, query, details) => {
     const response = await GET(
       createGetRequest(`http://localhost/api/prescription-intakes${query}`),
@@ -3098,6 +3103,7 @@ describe('/api/prescription-intakes GET', () => {
     ['source_type', '?source_type=paper&source_type=fax'],
     ['care_tags', '?care_tags=narcotic&care_tags=cold_storage'],
     ['include_total', '?include_total=1&include_total=0'],
+    ['facets', '?facets=1&facets=0'],
   ])('rejects duplicate %s query values before querying intakes', async (fieldName, query) => {
     const response = await GET(
       createGetRequest(`http://localhost/api/prescription-intakes${query}`),
@@ -3150,6 +3156,61 @@ describe('/api/prescription-intakes GET', () => {
       totalCount: 2,
     });
     expect(body.data).toHaveLength(1);
+  });
+
+  it('returns optional facet counts without treating the loaded page window as totals', async () => {
+    prescriptionIntakeCountMock.mockResolvedValue(7);
+
+    const response = await GET(
+      createGetRequest(
+        'http://localhost/api/prescription-intakes?limit=1&status=ready_to_dispense&source_type=paper&include_total=1&facets=1',
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: [{ id: 'intake_2' }],
+      totalCount: 7,
+      facets: {
+        status: {
+          ready_to_dispense: 7,
+          inquiry_pending: 7,
+        },
+        source_type: {
+          paper: 7,
+          fax: 7,
+        },
+      },
+    });
+
+    const statusFacetCall = prescriptionIntakeCountMock.mock.calls.find(
+      ([args]) => args.where?.cycle?.overall_status === 'inquiry_pending',
+    )?.[0];
+    expect(statusFacetCall).toEqual(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          source_type: 'paper',
+          cycle: { overall_status: 'inquiry_pending' },
+        }),
+      }),
+    );
+
+    const sourceFacetCall = prescriptionIntakeCountMock.mock.calls.find(
+      ([args]) => args.where?.source_type === 'fax',
+    )?.[0];
+    expect(sourceFacetCall).toEqual(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          source_type: 'fax',
+          cycle: { overall_status: 'ready_to_dispense' },
+        }),
+      }),
+    );
   });
 
   it('does not mark hasMore when normal intake results exactly fill the requested limit', async () => {

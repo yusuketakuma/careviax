@@ -40,6 +40,40 @@
 
 ## 直近の land（本日・要点）
 
+- codex: RX-REG-UX-002 Prescription list facet counts slice complete（commit pending）。
+  - current task:
+    Goal 継続として `RX-REG-UX-002` を実装。処方受付 API に `facets=1` を追加し、
+    status/source の全体 facet count を返すようにした。処方受付ワークスペース UI は
+    loaded window 由来の `statusCounts` を廃止し、server facet の `inquiry_pending` /
+    `ready_to_dispense` を疑義/調剤待件数に使う。
+  - files inspected:
+    `src/app/api/prescription-intakes/route.ts`,
+    `src/app/api/prescription-intakes/route.test.ts`,
+    `src/app/(dashboard)/prescriptions/prescriptions-workspace.tsx`,
+    `src/app/(dashboard)/prescriptions/prescriptions-workspace.test.tsx`。
+  - files changed:
+    `src/app/api/prescription-intakes/route.ts`,
+    `src/app/api/prescription-intakes/route.test.ts`,
+    `src/app/(dashboard)/prescriptions/prescriptions-workspace.tsx`,
+    `src/app/(dashboard)/prescriptions/prescriptions-workspace.test.tsx`,
+    `ops/refactor/STATE.md`。
+  - bugs/security risks fixed:
+    処方受付 UI の疑義/調剤待件数が loaded page window の件数になり、全体件数と誤解され得る
+    counted-list contract risk を解消。`facets=1` は既存 auth/assignment/q/care_tags を共有し、
+    status facet は status filter だけ、source facet は source filter だけを外して数える。
+  - performance issues improved:
+    facet count は明示 `facets=1` の時だけ発火。UI は処方受付一覧で必要な件数を同一 API response から取得し、
+    別 endpoint fan-out を増やさない。入力ごとの fetch は前 slice と同様に避ける。
+  - validation commands/results:
+    `pnpm vitest run src/app/api/prescription-intakes/route.test.ts 'src/app/(dashboard)/prescriptions/prescriptions-workspace.test.tsx' --reporter=dot` green（2 files / 94 tests）;
+    `pnpm exec eslint src/app/api/prescription-intakes/route.ts src/app/api/prescription-intakes/route.test.ts 'src/app/(dashboard)/prescriptions/prescriptions-workspace.tsx' 'src/app/(dashboard)/prescriptions/prescriptions-workspace.test.tsx'` green;
+    `git diff --check -- src/app/api/prescription-intakes/route.ts src/app/api/prescription-intakes/route.test.ts 'src/app/(dashboard)/prescriptions/prescriptions-workspace.tsx' 'src/app/(dashboard)/prescriptions/prescriptions-workspace.test.tsx'` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。
+  - remaining work:
+    source facet counts の UI 表示、global search 側の stale comment/client補完整理、browser screenshot は未実行。
+  - next action:
+    scoped commit を作成。次は global search の prescription q 利用整理、または `DASH-PERF-001`。
+
 - codex: RX-REG-UX-001 Prescription list server-side search UI slice complete（未コミット）。
   - current task:
     Goal 継続として `RX-REG-UX-001` を実装。処方受付 API の既存 `q` server-side search を

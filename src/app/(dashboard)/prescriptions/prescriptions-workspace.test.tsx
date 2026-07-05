@@ -175,6 +175,16 @@ describe('PrescriptionsWorkspace', () => {
             hasMore: true,
             nextCursor: 'intake_1',
             totalCount: 75,
+            facets: {
+              status: {
+                inquiry_pending: 12,
+                ready_to_dispense: 34,
+              },
+              source_type: {
+                paper: 40,
+                fax: 20,
+              },
+            },
           },
         ],
       },
@@ -192,6 +202,12 @@ describe('PrescriptionsWorkspace', () => {
         hasMore: true,
         nextCursor: 'cursor_1',
         totalCount: 75,
+        facets: {
+          status: {
+            inquiry_pending: 12,
+            ready_to_dispense: 34,
+          },
+        },
       }),
     );
   });
@@ -215,6 +231,7 @@ describe('PrescriptionsWorkspace', () => {
     expect(url.pathname).toBe('/api/prescription-intakes');
     expect(url.searchParams.get('limit')).toBe('50');
     expect(url.searchParams.get('include_total')).toBe('1');
+    expect(url.searchParams.get('facets')).toBe('1');
     expect(url.searchParams.has('cursor')).toBe(false);
     expect(url.searchParams.has('status')).toBe(false);
     expect(url.searchParams.has('source_type')).toBe(false);
@@ -232,6 +249,13 @@ describe('PrescriptionsWorkspace', () => {
     expect(url.searchParams.get('cursor')).toBe('cursor_1');
   });
 
+  it('shows server facet counts instead of loaded-window status counts', () => {
+    render(<PrescriptionsWorkspace />);
+
+    expect(screen.getByText(/疑義 12件/)).toBeTruthy();
+    expect(screen.getByText(/調剤待 34件/)).toBeTruthy();
+  });
+
   it('keeps the API message when the prescription intake list fetch fails', async () => {
     fetchMock.mockResolvedValue(jsonResponse({ message: '処方受付一覧を表示できません' }, 403));
 
@@ -247,6 +271,7 @@ describe('PrescriptionsWorkspace', () => {
     expect(url.searchParams.get('cursor')).toBe('cursor_1');
     expect(url.searchParams.get('limit')).toBe('50');
     expect(url.searchParams.get('include_total')).toBe('1');
+    expect(url.searchParams.get('facets')).toBe('1');
   });
 
   it('passes status and source filters as API query params', async () => {
@@ -269,6 +294,7 @@ describe('PrescriptionsWorkspace', () => {
     const url = parseFetchUrl();
     expect(url.searchParams.get('status')).toBe('inquiry_pending');
     expect(url.searchParams.get('source_type')).toBe('fax');
+    expect(url.searchParams.get('facets')).toBe('1');
     expect(resetSelectionMock).toHaveBeenCalledTimes(2);
   });
 
@@ -292,6 +318,7 @@ describe('PrescriptionsWorkspace', () => {
     expect(url.searchParams.get('q')).toBe('山田');
     expect(url.searchParams.get('limit')).toBe('50');
     expect(url.searchParams.get('include_total')).toBe('1');
+    expect(url.searchParams.get('facets')).toBe('1');
     expect(screen.getByText(/検索条件全件/)).toBeTruthy();
     expect(resetSelectionMock).toHaveBeenCalledTimes(1);
   });
@@ -313,6 +340,7 @@ describe('PrescriptionsWorkspace', () => {
 
     const url = parseFetchUrl();
     expect(url.searchParams.has('q')).toBe(false);
+    expect(url.searchParams.get('facets')).toBe('1');
     expect(screen.queryByText(/検索条件全件/)).toBeNull();
     expect(resetSelectionMock).toHaveBeenCalledTimes(2);
   });

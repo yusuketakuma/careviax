@@ -67,7 +67,13 @@ type PostCreateHookLine = Parameters<
   typeof runPrescriptionIntakePostCreateHooks
 >[0]['lines'][number];
 type PrescriptionCareTag = z.infer<typeof prescriptionCareTagSchema>;
-type PrescriptionIntakeQueryName = 'q' | 'status' | 'source_type' | 'care_tags' | 'include_total';
+type PrescriptionIntakeQueryName =
+  | 'q'
+  | 'status'
+  | 'source_type'
+  | 'care_tags'
+  | 'include_total'
+  | 'facets';
 
 function createPrescriptionIntakeFilterError(message: string, details: Record<string, string[]>) {
   return {
@@ -182,6 +188,14 @@ function parsePrescriptionIntakeListFilters(searchParams: URLSearchParams) {
     return createPrescriptionIntakeFilterError('検索条件が不正です', includeTotalResult.details);
   }
 
+  const facetsResult = readSinglePrescriptionIntakeQueryValue(searchParams, 'facets', {
+    blank: 'facets を指定してください',
+    invalid: 'facets は0または1を指定してください',
+  });
+  if (!facetsResult.ok) {
+    return createPrescriptionIntakeFilterError('検索条件が不正です', facetsResult.details);
+  }
+
   const status = statusResult.value
     ? medicationCycleStatusSchema.safeParse(statusResult.value)
     : null;
@@ -208,6 +222,11 @@ function parsePrescriptionIntakeListFilters(searchParams: URLSearchParams) {
       include_total: ['include_total は0または1を指定してください'],
     });
   }
+  if (facetsResult.value !== undefined && !['0', '1'].includes(facetsResult.value)) {
+    return createPrescriptionIntakeFilterError('検索条件が不正です', {
+      facets: ['facets は0または1を指定してください'],
+    });
+  }
 
   return {
     ok: true as const,
@@ -216,6 +235,101 @@ function parsePrescriptionIntakeListFilters(searchParams: URLSearchParams) {
     sourceType: sourceType?.data ?? null,
     careTags: careTags.data,
     includeTotal: includeTotalResult.value === '1',
+    includeFacets: facetsResult.value === '1',
+  };
+}
+
+type ParsedPrescriptionIntakeListFilters = Extract<
+  ReturnType<typeof parsePrescriptionIntakeListFilters>,
+  { ok: true }
+>;
+
+function buildPrescriptionIntakeListWhere(args: {
+  orgId: string;
+  assignmentWhere: Prisma.PrescriptionIntakeWhereInput;
+  filters: ParsedPrescriptionIntakeListFilters;
+  omitStatus?: boolean;
+  omitSourceType?: boolean;
+}) {
+  const scopedAssignmentWhere =
+    Object.keys(args.assignmentWhere).length > 0 ? args.assignmentWhere : null;
+  const accessAndSearchWhere = [
+    scopedAssignmentWhere,
+    args.filters.searchQuery ? buildPrescriptionIntakeSearchWhere(args.filters.searchQuery) : null,
+  ].filter((item): item is Prisma.PrescriptionIntakeWhereInput => Boolean(item));
+
+  return {
+    org_id: args.orgId,
+    ...(!args.omitSourceType && args.filters.sourceType
+      ? { source_type: args.filters.sourceType }
+      : {}),
+    ...(!args.omitStatus && args.filters.status
+      ? {
+          cycle: {
+            overall_status: args.filters.status,
+          },
+        }
+      : {}),
+    ...(args.filters.careTags.length > 0
+      ? {
+          lines: {
+            some: {
+              packaging_instruction_tags: {
+                hasSome: args.filters.careTags,
+              },
+            },
+          },
+        }
+      : {}),
+    ...(accessAndSearchWhere.length > 0 ? { AND: accessAndSearchWhere } : {}),
+  } satisfies Prisma.PrescriptionIntakeWhereInput;
+}
+
+async function buildPrescriptionIntakeFacets(args: {
+  orgId: string;
+  assignmentWhere: Prisma.PrescriptionIntakeWhereInput;
+  filters: ParsedPrescriptionIntakeListFilters;
+}) {
+  const [statusEntries, sourceEntries] = await Promise.all([
+    Promise.all(
+      MEDICATION_CYCLE_STATUSES.map(async (status) => [
+        status,
+        await prisma.prescriptionIntake.count({
+          where: {
+            ...buildPrescriptionIntakeListWhere({
+              orgId: args.orgId,
+              assignmentWhere: args.assignmentWhere,
+              filters: args.filters,
+              omitStatus: true,
+            }),
+            cycle: {
+              overall_status: status,
+            },
+          },
+        }),
+      ]),
+    ),
+    Promise.all(
+      PRESCRIPTION_SOURCE_TYPES.map(async (sourceType) => [
+        sourceType,
+        await prisma.prescriptionIntake.count({
+          where: {
+            ...buildPrescriptionIntakeListWhere({
+              orgId: args.orgId,
+              assignmentWhere: args.assignmentWhere,
+              filters: args.filters,
+              omitSourceType: true,
+            }),
+            source_type: sourceType,
+          },
+        }),
+      ]),
+    ),
+  ]);
+
+  return {
+    status: Object.fromEntries(statusEntries),
+    source_type: Object.fromEntries(sourceEntries),
   };
 }
 
@@ -415,38 +529,22 @@ const authenticatedGET = withAuthContext(
     const filters = parsePrescriptionIntakeListFilters(searchParams);
     if (!filters.ok) return filters.response;
 
-    const assignmentWhere = buildPrescriptionIntakeAssignmentWhere(ctx);
-    const accessAndSearchWhere = [
+    const assignmentWhere = buildPrescriptionIntakeAssignmentWhere(ctx) ?? {};
+    const where = buildPrescriptionIntakeListWhere({
+      orgId: ctx.orgId,
       assignmentWhere,
-      filters.searchQuery ? buildPrescriptionIntakeSearchWhere(filters.searchQuery) : null,
-    ].filter((item): item is Prisma.PrescriptionIntakeWhereInput => Boolean(item));
-
-    const where: Prisma.PrescriptionIntakeWhereInput = {
-      org_id: ctx.orgId,
-      ...(filters.sourceType ? { source_type: filters.sourceType } : {}),
-      ...(filters.status
-        ? {
-            cycle: {
-              overall_status: filters.status,
-            },
-          }
-        : {}),
-      ...(filters.careTags.length > 0
-        ? {
-            lines: {
-              some: {
-                packaging_instruction_tags: {
-                  hasSome: filters.careTags,
-                },
-              },
-            },
-          }
-        : {}),
-      ...(accessAndSearchWhere.length > 0 ? { AND: accessAndSearchWhere } : {}),
-    };
+      filters,
+    });
+    const facetsPromise = filters.includeFacets
+      ? buildPrescriptionIntakeFacets({
+          orgId: ctx.orgId,
+          assignmentWhere,
+          filters,
+        })
+      : Promise.resolve(undefined);
 
     if (filters.searchQuery) {
-      const [intakes, totalCount] = await Promise.all([
+      const [intakes, totalCount, facets] = await Promise.all([
         prisma.prescriptionIntake.findMany({
           where,
           take: limit + 1,
@@ -481,6 +579,7 @@ const authenticatedGET = withAuthContext(
         filters.includeTotal
           ? prisma.prescriptionIntake.count({ where })
           : Promise.resolve(undefined),
+        facetsPromise,
       ]);
 
       const page = buildCursorPage(intakes, limit, (intake) => intake.id);
@@ -492,11 +591,12 @@ const authenticatedGET = withAuthContext(
           hasMore: page.hasMore,
           nextCursor: page.nextCursor,
           ...(filters.includeTotal ? { totalCount } : {}),
+          ...(filters.includeFacets ? { facets } : {}),
         }),
       );
     }
 
-    const [intakes, totalCount] = await Promise.all([
+    const [intakes, totalCount, facets] = await Promise.all([
       prisma.prescriptionIntake.findMany({
         where,
         take: limit + 1,
@@ -534,6 +634,7 @@ const authenticatedGET = withAuthContext(
       filters.includeTotal
         ? prisma.prescriptionIntake.count({ where })
         : Promise.resolve(undefined),
+      facetsPromise,
     ]);
 
     const page = buildCursorPage(intakes, limit, (intake) => intake.id);
@@ -544,6 +645,7 @@ const authenticatedGET = withAuthContext(
         hasMore: page.hasMore,
         nextCursor: page.nextCursor,
         ...(filters.includeTotal ? { totalCount } : {}),
+        ...(filters.includeFacets ? { facets } : {}),
       }),
     );
   },
