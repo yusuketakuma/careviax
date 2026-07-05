@@ -181,8 +181,8 @@ export function AuditLogsContent() {
         headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as { message?: string } | null;
-        throw new Error(payload?.message ?? '監査ログのエクスポートに失敗しました');
+        await readApiJson<never>(response, '監査ログのエクスポートに失敗しました');
+        throw new Error('監査ログのエクスポートに失敗しました');
       }
 
       const blob = await response.blob();

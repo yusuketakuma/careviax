@@ -263,6 +263,55 @@ describe('AuditLogsContent', () => {
     });
   });
 
+  it('uses the server message from a failed audit export response', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith('/api/audit-logs/export?')) {
+        return new Response(JSON.stringify({ message: '監査ログの出力権限がありません' }), {
+          status: 403,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.startsWith('/api/audit-logs?')) {
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderContent();
+    await screen.findByText('ログがありません');
+
+    fireEvent.click(screen.getByRole('button', { name: 'JSON出力' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('監査ログの出力権限がありません');
+    });
+  });
+
+  it('uses the audit export fallback toast when a failed audit export response is not JSON', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith('/api/audit-logs/export?')) {
+        return new Response('not json', { status: 500 });
+      }
+      if (url.startsWith('/api/audit-logs?')) {
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderContent();
+    await screen.findByText('ログがありません');
+
+    fireEvent.click(screen.getByRole('button', { name: 'CSV出力' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('監査ログのエクスポートに失敗しました');
+    });
+  });
+
   it('uses the audit export fallback toast when the thrown error has an empty message', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -284,6 +333,42 @@ describe('AuditLogsContent', () => {
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith('監査ログのエクスポートに失敗しました');
     });
+  });
+
+  it('keeps successful audit export downloads on the blob path without reading JSON text', async () => {
+    const exportResponse = new Response(JSON.stringify([]), {
+      status: 200,
+      headers: {
+        'content-type': 'application/json',
+        'content-disposition': 'attachment; filename="audit-logs.json"',
+      },
+    });
+    const blobSpy = vi.spyOn(exportResponse, 'blob');
+    const textSpy = vi.spyOn(exportResponse, 'text');
+    const jsonSpy = vi.spyOn(exportResponse, 'json');
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith('/api/audit-logs/export?')) {
+        return exportResponse;
+      }
+      if (url.startsWith('/api/audit-logs?')) {
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderContent();
+    await screen.findByText('ログがありません');
+
+    fireEvent.click(screen.getByRole('button', { name: 'JSON出力' }));
+
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith('監査ログをJSON形式で出力しました');
+    });
+    expect(blobSpy).toHaveBeenCalledOnce();
+    expect(textSpy).not.toHaveBeenCalled();
+    expect(jsonSpy).not.toHaveBeenCalled();
   });
 
   it('requests the audit log list with the 100-row display limit', async () => {

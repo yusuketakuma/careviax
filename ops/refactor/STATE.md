@@ -40,6 +40,26 @@
 
 ## 直近の land（本日・要点）
 
+- codex: R40/R44 admin audit-log export failed-response JSON convergence batch(in-progress on
+  `refactor/audit-logs-export-json-convergence-20260705`) implementation complete。残候補だった
+  `admin/audit-logs` export error-only batch を単独sliceで処理。`AuditLogsContent` の一覧取得は既に
+  `readApiJson` 済みで、export は success response が CSV/JSON attachment の blob/download contract を持つため、
+  `!response.ok` branch の failed JSON parsing だけを `readApiJson<never>` へ収束。success path の
+  `response.blob()`、`Content-Disposition` filename extraction、download link、success toast、filter query
+  propagation は変更なし。privacy_compliance_reviewer subagent を bounded read-only で投入し、failed
+  export toast は server fixed/sanitized `message` / compatible `error` のみを表示、unexpected route errors は
+  no-store sanitized envelope、export success/error no-store、CSV/JSON redaction coverage 維持として APPROVE。
+  regression は failed JSON `{ message }` server copy、failed non-JSON fallback、fetch-thrown empty-message fallback、
+  successful export が `blob()` path のまま `text()` / `json()` を読まないことを追加/固定。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは
+  product admin UI export error handling/test のみ変更。DB schema/migration/auth/authorization/tenant_id/
+  PHI payload/export format/billing/deploy/package dependency 変更は不要。validation:
+  `pnpm exec vitest run 'src/app/(dashboard)/admin/audit-logs/audit-logs-content.test.tsx' src/app/api/audit-logs/route.test.ts src/app/api/audit-logs/export/route.test.ts --reporter=dot --testTimeout=30000`
+  green（3 files / 57 tests、既存 sanitized 500 route tests の stderr error log は想定内）; scoped
+  `eslint` green; scoped `prettier --check` green; `git diff --check` green;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。next: commit → main ff merge →
+  origin/main push → short-lived branch cleanup。残候補: `patient-form` / `dispensing-workbench` は
+  PHI/medication safety-aware 別slice。
 - codex: R40/R44 drug-master suggestions fail-soft JSON/schema convergence batch(in-progress on
   `refactor/drug-suggestions-json-convergence-20260705`) implementation complete。global notification
   slice の残候補から、`src/lib/pharmacy/drug-master-suggestions.ts` を単独低リスク batch として処理。
