@@ -40,6 +40,43 @@
 
 ## 直近の land（本日・要点）
 
+- codex: visit preparation readiness write boundary batch(b7b86bcbe)
+  implementation complete。ユーザー指示により本sliceでも subagent を投入（code_mapper /
+  medical_safety_reviewer / security_critic / test_architect）。code_mapper は
+  `PUT /api/visit-preparations/:scheduleId` を primary gap として、`pharmacist_trainee` が org-wide
+  access と `canVisit` だけで `VisitPreparation.upsert`、`prepared_at/prepared_by`、`mark_ready` による
+  `VisitSchedule.schedule_status=ready`、`pre_visit_checklist_completed`、`vehicle_resource_id`、
+  `visit_preparation` task resolve/upsert へ到達できる点を提示。test_architect は malformed body 前の
+  403/no-side-effect、well-formed `mark_ready + route_plan_snapshot.vehicle_resource` denial、
+  no transaction/no DB write を P0 とし、車両 capacity cross-pharmacist と vehicle-only OCC は別P1として
+  指摘。medical_safety_reviewer は現 dirty diff の `canManageVisitScheduleLifecycle` gate を APPROVE
+  しつつ、authorized readiness write の PHI-minimized audit と task resolver actor trace を後続課題に指定。
+  security_critic は、現差分で visit-preparations と facility-batch 近接 side-effect surfaces が body parse /
+  DB lookup / route planning / transaction / audit / notify 前に deny されることを read-only review と focused
+  Vitest で APPROVE。対応として `PUT /api/visit-preparations/:scheduleId` は route param 正規化後、body
+  parse、schedule lookup、vehicle lookup、route compute、`withOrgContext`、`VisitPreparation.upsert`、
+  `VisitSchedule.update/updateMany`、task resolve/upsert 前に `owner|admin|pharmacist` 以外を no-store
+  403。ユーザー指示「近似箇所はまとめて実装」に基づき、同じ facility visit operational readiness /
+  route-order side-effect surface である `POST /api/facility-visit-batches`、`DELETE
+/api/facility-visit-batches/:id`、`PATCH /api/facility-visit-batches/:id` も同じ helper で early deny。
+  これにより trainee は facility batch create/update、schedule attach/detach、route_order reorder、
+  bulk carry_items_confirmed による `VisitPreparation.upsert/prepared_at`、audit、workflow notify の前で
+  停止する。route tests は malformed body と well-formed mark-ready vehicle assignment の trainee 403、
+  facility batch POST/PATCH/DELETE の trainee 403/no-side-effect、driver 等 non-lifecycle role の early deny
+  を固定し、既存 pharmacist success と validation/error paths は維持。validation:
+  `pnpm exec vitest run src/lib/auth/__tests__/visit-schedule-access.test.ts 'src/app/api/visit-preparations/[scheduleId]/route.test.ts' src/app/api/facility-visit-batches/route.test.ts 'src/app/api/facility-visit-batches/[id]/route.test.ts'`
+  green（4 files / 120 tests）; focused implementation set green（3 files / 98 tests）;
+  visit-schedules lifecycle regression
+  `pnpm exec vitest run src/app/api/visit-schedules/reorder/route.test.ts 'src/app/api/visit-schedules/[id]/route.test.ts' 'src/app/api/visit-schedules/[id]/reopen/route.test.ts'`
+  green（3 files / 134 tests）; scoped `eslint` green; scoped `prettier --check` green;
+  `git diff --check` green; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) に基づき
+  product API / authorization / PHI-adjacent operational readiness / visit-ready and billing-prep side-effect
+  boundary を変更。DB schema/migration/deploy/package dependency 変更は不要。残る高優先別slice候補:
+  visit-preparation authorized readiness write の PHI-minimized audit / workflow notify / task resolver actor
+  trace、vehicle-only assignment の OCC guard、同一車両 capacity の pharmacist 横断検証、reschedule request
+  の unassigned trainee side effect と free-text audit/communication、assigned trainee の visit-record
+  completion/finalization supervision、medication issue resolve/promote の trainee clinical-state boundary。
 - codex: visit schedule lifecycle write boundary batch(e4e897a2c)
   implementation complete。ユーザー指示により本sliceでも subagent を投入（code_mapper /
   security_critic / medical_safety_reviewer / verifier）。code_mapper は visit-schedule lifecycle
