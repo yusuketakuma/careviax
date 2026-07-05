@@ -25,7 +25,9 @@ const {
   visitVehicleResourceFindFirstMock,
   visitScheduleUpdateMock,
   visitScheduleUpdateManyMock,
+  createAuditLogEntryMock,
   computeOptimizedVisitRouteMock,
+  notifyWorkflowMutationMock,
   withOrgContextMock,
   upsertOperationalTaskMock,
   resolveOperationalTasksMock,
@@ -52,7 +54,9 @@ const {
   visitVehicleResourceFindFirstMock: vi.fn(),
   visitScheduleUpdateMock: vi.fn(),
   visitScheduleUpdateManyMock: vi.fn(),
+  createAuditLogEntryMock: vi.fn(),
   computeOptimizedVisitRouteMock: vi.fn(),
+  notifyWorkflowMutationMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   upsertOperationalTaskMock: vi.fn(),
   resolveOperationalTasksMock: vi.fn(),
@@ -105,6 +109,14 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/audit/audit-entry', () => ({
+  createAuditLogEntry: createAuditLogEntryMock,
+}));
+
+vi.mock('@/server/services/workflow-dashboard-cache', () => ({
+  notifyWorkflowMutation: notifyWorkflowMutationMock,
 }));
 
 vi.mock('@/server/services/home-care-ops', () => ({
@@ -1775,6 +1787,8 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
         },
       ],
     });
+    createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
+    notifyWorkflowMutationMock.mockResolvedValue(undefined);
     visitScheduleUpdateMock.mockResolvedValue({
       id: 'schedule_1',
       vehicle_resource_id: 'vehicle_1',
@@ -1822,6 +1836,8 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
     expect(visitPreparationUpsertMock).not.toHaveBeenCalled();
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
     expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object preparation payloads before schedule lookup or upsert', async () => {
@@ -2174,6 +2190,37 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
         status: 'completed',
       }),
     );
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      expect.objectContaining({
+        action: 'visit_preparation_updated',
+        changes: expect.objectContaining({
+          schedule_id: 'schedule_1',
+          preparation: expect.objectContaining({
+            mark_ready_requested: true,
+            preparation_ready: true,
+          }),
+          schedule_transition: {
+            from: 'planned',
+            to: 'ready',
+          },
+          task_trace: expect.objectContaining({
+            action: 'resolved',
+            status: 'completed',
+            actor_user_id: 'user_1',
+          }),
+        }),
+      }),
+    );
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      payload: {
+        source: 'visit_preparations_update',
+        schedule_id: 'schedule_1',
+        case_id: 'case_1',
+      },
+    });
   });
 
   it('returns a sanitized no-store 500 when the preparation transaction fails unexpectedly', async () => {
@@ -2472,6 +2519,56 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
       },
     });
     expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+      }),
+      {
+        action: 'visit_preparation_updated',
+        targetType: 'VisitPreparation',
+        targetId: 'prep_1',
+        changes: expect.objectContaining({
+          schedule_id: 'schedule_1',
+          case_id: 'case_1',
+          preparation: expect.objectContaining({
+            route_confirmed: true,
+            mark_ready_requested: false,
+            preparation_ready: true,
+          }),
+          schedule_transition: null,
+          vehicle_assignment: expect.objectContaining({
+            changed: true,
+            previous_vehicle_resource_id: null,
+            vehicle_resource_id: 'vehicle_1',
+          }),
+          task_trace: expect.objectContaining({
+            action: 'resolved',
+            task_type: 'visit_preparation',
+            dedupe_key: 'visit-preparation:schedule_1',
+            status: 'completed',
+            resolution_count: 1,
+            actor_user_id: 'user_1',
+          }),
+        }),
+      },
+    );
+    const auditPayload = JSON.stringify(createAuditLogEntryMock.mock.calls);
+    expect(auditPayload).not.toContain('山田太郎');
+    expect(auditPayload).not.toContain('東京都千代田区1-1');
+    expect(auditPayload).not.toContain('ヒューリスティック順序');
+    expect(auditPayload).not.toContain('route_plan_snapshot');
+    expect(auditPayload).not.toContain('checklist');
+    expect(auditPayload).not.toContain('stopSummaries');
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      payload: {
+        source: 'visit_preparations_update',
+        schedule_id: 'schedule_1',
+        case_id: 'case_1',
+      },
+    });
   });
 
   it('rejects vehicle-only assignment when the schedule changed before the guarded update', async () => {
@@ -2521,6 +2618,8 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
     );
     expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
     expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('does not assign a vehicle from a stale route snapshot when route is not confirmed', async () => {
@@ -3000,6 +3099,8 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(visitPreparationUpsertMock).not.toHaveBeenCalled();
     expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('keeps the readiness gate blocked when previous issues are not reviewed', async () => {
@@ -3019,6 +3120,10 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
     const response = await PUT(
       createPutRequest({
         ...completePreparationBody,
+        checklist: {
+          access_key: '玄関暗証番号1234',
+          patient_name: '山田太郎',
+        },
         previous_issues_reviewed: false,
       }),
       {
@@ -3047,9 +3152,43 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
         taskType: 'visit_preparation',
         assignedTo: 'user_1',
         dedupeKey: 'visit-preparation:schedule_1',
+        metadata: {
+          source: 'visit_preparation_put',
+          schedule_id: 'schedule_1',
+          case_id: 'case_1',
+          route_confirmed: true,
+          mark_ready_requested: false,
+          preparation_ready: false,
+          updated_by: 'user_1',
+        },
       }),
     );
     expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      expect.objectContaining({
+        action: 'visit_preparation_updated',
+        changes: expect.objectContaining({
+          schedule_id: 'schedule_1',
+          case_id: 'case_1',
+          task_trace: expect.objectContaining({
+            action: 'upserted',
+            status: 'pending',
+            resolution_count: null,
+            actor_user_id: 'user_1',
+          }),
+        }),
+      }),
+    );
+    const sideEffectPayload = JSON.stringify([
+      createAuditLogEntryMock.mock.calls,
+      notifyWorkflowMutationMock.mock.calls,
+      upsertOperationalTaskMock.mock.calls,
+    ]);
+    expect(sideEffectPayload).not.toContain('玄関暗証番号1234');
+    expect(sideEffectPayload).not.toContain('patient_name');
+    expect(sideEffectPayload).not.toContain('checklist');
     await expect(response.json()).resolves.toMatchObject({
       data: {
         previous_issues_reviewed: false,

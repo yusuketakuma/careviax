@@ -23,6 +23,7 @@ import {
   internalError,
 } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { hasPermission } from '@/lib/auth/permissions';
 import { upsertVisitPreparationSchema } from '@/lib/validations/visit-preparation';
 import {
@@ -34,6 +35,7 @@ import {
   upsertOperationalTask,
   resolveOperationalTasks,
 } from '@/server/services/operational-tasks';
+import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { listBillingEvidenceBlockers } from '@/server/services/billing-evidence';
 import {
   buildVisitReadyReadinessBlockers,
@@ -570,6 +572,25 @@ function buildPreviousStructuredVisitReuse(
 
 function buildPreparationTaskKey(scheduleId: string) {
   return `visit-preparation:${scheduleId}`;
+}
+
+function buildVisitPreparationTaskMetadata(args: {
+  scheduleId: string;
+  caseId: string;
+  routeConfirmed: boolean;
+  markReadyRequested: boolean;
+  preparationReady: boolean;
+  updatedBy: string;
+}): Prisma.InputJsonObject {
+  return {
+    source: 'visit_preparation_put',
+    schedule_id: args.scheduleId,
+    case_id: args.caseId,
+    route_confirmed: args.routeConfirmed,
+    mark_ready_requested: args.markReadyRequested,
+    preparation_ready: args.preparationReady,
+    updated_by: args.updatedBy,
+  };
 }
 
 const MARK_READY_SOURCE_STATUSES = new Set(['planned', 'in_preparation']);
@@ -2135,12 +2156,24 @@ async function authenticatedPUT(
         }
       }
 
+      const taskMetadata = buildVisitPreparationTaskMetadata({
+        scheduleId: schedule.id,
+        caseId: schedule.case_id,
+        routeConfirmed: parsed.data.route_confirmed,
+        markReadyRequested: parsed.data.mark_ready,
+        preparationReady,
+        updatedBy: ctx.userId,
+      });
+      let preparationTaskResolutionCount: number | null = null;
+
       if (preparationReady) {
-        await resolveOperationalTasks(tx, {
+        const resolvedTasks = (await resolveOperationalTasks(tx, {
           orgId: ctx.orgId,
           dedupeKey: buildPreparationTaskKey(schedule.id),
           status: 'completed',
-        });
+        })) as { count?: number };
+        preparationTaskResolutionCount =
+          typeof resolvedTasks.count === 'number' ? resolvedTasks.count : null;
       } else {
         await upsertOperationalTask(tx, {
           orgId: ctx.orgId,
@@ -2154,8 +2187,46 @@ async function authenticatedPUT(
           relatedEntityType: 'visit_schedule',
           relatedEntityId: schedule.id,
           dedupeKey: buildPreparationTaskKey(schedule.id),
+          metadata: taskMetadata,
         });
       }
+
+      await createAuditLogEntry(tx, ctx, {
+        action: 'visit_preparation_updated',
+        targetType: 'VisitPreparation',
+        targetId: preparation.id,
+        changes: {
+          schedule_id: schedule.id,
+          case_id: schedule.case_id,
+          preparation: {
+            route_confirmed: parsed.data.route_confirmed,
+            mark_ready_requested: parsed.data.mark_ready,
+            preparation_ready: preparationReady,
+            offline_synced: parsed.data.offline_synced,
+          },
+          schedule_transition: shouldAdvanceScheduleToReady
+            ? {
+                from: schedule.schedule_status,
+                to: 'ready',
+              }
+            : null,
+          vehicle_assignment: {
+            changed:
+              routeVehicleResourceId != null &&
+              routeVehicleResourceId !== schedule.vehicle_resource_id,
+            previous_vehicle_resource_id: schedule.vehicle_resource_id,
+            vehicle_resource_id: routeVehicleResourceId,
+          },
+          task_trace: {
+            action: preparationReady ? 'resolved' : 'upserted',
+            task_type: 'visit_preparation',
+            dedupe_key: buildPreparationTaskKey(schedule.id),
+            status: preparationReady ? 'completed' : 'pending',
+            resolution_count: preparationTaskResolutionCount,
+            actor_user_id: ctx.userId,
+          },
+        },
+      });
 
       return preparation;
     });
@@ -2171,6 +2242,15 @@ async function authenticatedPUT(
     }
     throw cause;
   }
+
+  await notifyWorkflowMutation({
+    orgId: ctx.orgId,
+    payload: {
+      source: 'visit_preparations_update',
+      schedule_id: schedule.id,
+      case_id: schedule.case_id,
+    },
+  });
 
   return success({ data: result });
 }
