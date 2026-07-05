@@ -336,11 +336,7 @@ export function PatientLabsCard({ patientId, orgId }: { patientId: string; orgId
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(buildCreatePayload(createForm)),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error((payload as { message?: string }).message ?? '検査値の登録に失敗しました');
-      }
-      return payload;
+      return readApiJson<unknown>(response, '検査値の登録に失敗しました');
     },
     onSuccess: async () => {
       toast.success('検査値を登録しました');
@@ -366,11 +362,7 @@ export function PatientLabsCard({ patientId, orgId }: { patientId: string; orgId
           body: JSON.stringify(buildEditPayload(editDrafts[labId])),
         },
       );
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error((payload as { message?: string }).message ?? '検査値の更新に失敗しました');
-      }
-      return payload;
+      return readApiJson<unknown>(response, '検査値の更新に失敗しました');
     },
     onSuccess: async () => {
       toast.success('検査値を更新しました');

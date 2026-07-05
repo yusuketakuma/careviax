@@ -262,7 +262,7 @@ describe('PatientLabsCard', () => {
     vi.clearAllMocks();
     capturedSelectItems.length = 0;
     capturedSelectTriggers.length = 0;
-    fetchMock.mockResolvedValue(jsonResponse({ data: [] }));
+    fetchMock.mockImplementation(async () => jsonResponse({ data: [] }));
     vi.stubGlobal('fetch', fetchMock);
   });
 
@@ -412,6 +412,27 @@ describe('PatientLabsCard', () => {
     expect(fetchMock).not.toHaveBeenCalledWith(
       `/api/patients/${patientId}/labs`,
       expect.anything(),
+    );
+  });
+
+  it('surfaces API error messages when lab mutations fail', async () => {
+    const createError = '検査値の登録権限がありません';
+    const updateError = '検査値が他の画面で更新されています';
+    const { mutationOptions } = setupComponent({ labs: [baseLab] });
+
+    fireEvent.click(screen.getByRole('button', { name: '検査値を追加' }));
+    fireEvent.change(screen.getByLabelText('測定日時'), {
+      target: { value: '2026-04-10T09:30' },
+    });
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({ message: createError }, 403));
+    await expect(latestCreateMutation(mutationOptions).mutationFn()).rejects.toThrow(createError);
+
+    fireEvent.click(screen.getByRole('button', { name: '補正' }));
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({ message: updateError }, 409));
+    await expect(latestUpdateMutation(mutationOptions).mutationFn(baseLab.id)).rejects.toThrow(
+      updateError,
     );
   });
 
