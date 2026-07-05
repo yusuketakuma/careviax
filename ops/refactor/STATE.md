@@ -39,6 +39,22 @@
 
 ## 直近の land（本日・要点）
 
+- codex: R40/R44 formulary mutation responses no-store hardening batch(32381d1a) land。
+  ユーザー指示により subagent を投入（api_contract_reviewer APPROVE、privacy_compliance_reviewer
+  CHANGES_REQUESTED→対応）。focused Vitest 28、scoped ESLint/Prettier/diff-check、
+  `pnpm typecheck` green。`/api/pharmacy-drug-stock-requests` と
+  `/api/pharmacy-drug-stock-templates` の POST export を `authenticatedPOST` +
+  `withSensitiveNoStore(await authenticatedPOST(...))` へ揃え、201 success、400 validation /
+  malformed JSON、404 missing site、409 duplicate / empty source-stock conflict、401 unauthenticated、
+  403 canAdmin denied、handler fixed 500 まで no-store を固定。body/status/root shape、DB transaction、
+  `createAuditLogEntry`、org/site scoping、request/template audit semantics は保持。500 tests で raw
+  unsafe error 非露出と safe structured logger context を固定し、template audit は
+  `{ source_site_id, item_count }` の最小 changes に regression proof を追加。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) に基づき product API /
+  PHI-adjacent mutation response hardening を変更、DB schema/migration/billing/deploy/package dependency
+  変更は不要。残る別slice候補: `FormularyChangeRequest` の `reason` / `adoption_note` /
+  `current_snapshot` audit retention は traceability と privacy minimization の policy decision として
+  downstream audit export 露出を含めて別途評価。
 - codex: R40/R44 formulary read routes no-store hardening batch(7dc08176) land。
   ユーザー指示により本sliceでは subagent を投入（api_contract_reviewer /
   privacy_compliance_reviewer）。focused Vitest 33、scoped ESLint/Prettier/diff-check、
