@@ -35,6 +35,24 @@ const IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const DOCUMENT_MIME_TYPES = new Set([...IMAGE_MIME_TYPES, 'application/pdf']);
 const VISIT_ATTACHMENT_MIME_TYPES = new Set([...DOCUMENT_MIME_TYPES]);
 
+const DOWNLOAD_FILE_STEM_BY_PURPOSE: Record<AnyFilePurpose, string> = {
+  prescription: 'prescription-file',
+  'visit-photo': 'visit-attachment',
+  report: 'report-file',
+  'set-photo': 'set-photo',
+  'consent-document': 'consent-document',
+  'contract-document': 'contract-document',
+  'bulk-export': 'bulk-export',
+};
+
+const DOWNLOAD_EXTENSION_BY_MIME_TYPE: Record<string, string> = {
+  'application/pdf': 'pdf',
+  'application/zip': 'zip',
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+};
+
 export type FilePurpose =
   | 'prescription'
   | 'visit-photo'
@@ -350,6 +368,12 @@ function isMissingS3ObjectError(error: unknown) {
 function sanitizeFileName(fileName: string) {
   const normalized = fileName.trim().replaceAll(/[^A-Za-z0-9._-]/g, '_');
   return normalized.length > 0 ? normalized.slice(-120) : 'upload.bin';
+}
+
+function resolveSafeDownloadFileName(record: StoredFileRecord) {
+  const stem = DOWNLOAD_FILE_STEM_BY_PURPOSE[record.purpose];
+  const extension = DOWNLOAD_EXTENSION_BY_MIME_TYPE[record.mimeType] ?? 'bin';
+  return sanitizeFileName(`${stem}-${record.id}.${extension}`);
 }
 
 function buildPrescriptionObjectLockRetention(purpose: FilePurpose) {
@@ -1639,20 +1663,21 @@ export async function createPresignedDownload({
     throw new FileStorageError('FILE_EXPIRED', 'ファイルの保存期限が切れています', 410);
   }
 
+  const downloadFileName = resolveSafeDownloadFileName(record);
   const downloadUrl = await getSignedUrl(
     getClient(),
     new GetObjectCommand({
       Bucket: bucketName,
       Key: record.storageKey,
       ResponseContentType: record.mimeType,
-      ResponseContentDisposition: `${record.downloadDisposition ?? 'inline'}; filename="${record.originalName}"`,
+      ResponseContentDisposition: `${record.downloadDisposition ?? 'inline'}; filename="${downloadFileName}"`,
     }),
     { expiresIn: DOWNLOAD_EXPIRY_SECONDS },
   );
 
   return {
     id: record.id,
-    fileName: record.originalName,
+    fileName: downloadFileName,
     mimeType: record.mimeType,
     sizeBytes: record.sizeBytes,
     purpose: record.purpose,

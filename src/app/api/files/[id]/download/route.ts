@@ -20,7 +20,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { id } = await params;
   const fileId = normalizeRequiredRouteParam(id);
-  if (!fileId) return validationError('ファイルIDが不正です');
+  if (!fileId) return withSensitiveNoStore(validationError('ファイルIDが不正です'));
 
   try {
     const data = await createPresignedDownload({
@@ -71,13 +71,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     const response = NextResponse.redirect(data.downloadUrl);
-    response.headers.set('Cache-Control', 'private, no-store, max-age=0');
-    return response;
+    return withSensitiveNoStore(response);
   } catch (cause) {
     if (cause instanceof FileStorageError) {
-      return error(cause.code, cause.message, cause.status);
+      return withSensitiveNoStore(error(cause.code, cause.message, cause.status));
     }
 
-    return error('EXTERNAL_FILE_DOWNLOAD_FAILED', 'ダウンロードURLの発行に失敗しました', 502);
+    return withSensitiveNoStore(
+      error('EXTERNAL_FILE_DOWNLOAD_FAILED', 'ダウンロードURLの発行に失敗しました', 502),
+    );
   }
 }

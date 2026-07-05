@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { PHOS_DISABLE_LEGACY_FILE_API_ENV } from '@/lib/api/legacy-file-api-boundary';
+import {
+  expectPhiExportSnapshotRedacted,
+  expectSensitiveNoStore,
+} from '@/test/api-response-assertions';
 
 const {
   requireAuthContextMock,
@@ -70,11 +74,13 @@ describe('/api/files/[id]/download GET', () => {
     });
     createPresignedDownloadMock.mockResolvedValue({
       id: 'file_1',
-      fileName: '山田花子-report.pdf',
+      fileName:
+        'Taro Yamada 090-1234-5678 アムロジピン storageKey=s3 token=secret provider raw error.pdf',
       mimeType: 'application/pdf',
       sizeBytes: 1024,
       purpose: 'report',
-      downloadUrl: 'https://example.com/archive.zip',
+      downloadUrl:
+        'https://example.com/archive.zip?response-content-disposition=report-file-file_1.pdf&X-Amz-Signature=abc',
       expiresIn: 900,
     });
     recordFileDownloadAuditMock.mockResolvedValue(undefined);
@@ -127,8 +133,11 @@ describe('/api/files/[id]/download GET', () => {
       throw new Error('Expected a response from file download GET');
     }
     expect(response.status).toBe(307);
-    expect(response.headers.get('location')).toBe('https://example.com/archive.zip');
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('location')).toBe(
+      'https://example.com/archive.zip?response-content-disposition=report-file-file_1.pdf&X-Amz-Signature=abc',
+    );
+    expectSensitiveNoStore(response);
+    expectPhiExportSnapshotRedacted(response.headers.get('location') ?? '', ['Taro', 'Yamada']);
     expect(createPresignedDownloadMock).toHaveBeenCalledWith({
       orgId: 'org_1',
       fileId: 'file_1',
@@ -159,10 +168,12 @@ describe('/api/files/[id]/download GET', () => {
       ipAddress: '203.0.113.10',
       userAgent: 'TestBrowser/1.0',
     });
-    expect(JSON.stringify(recordFileDownloadAuditMock.mock.calls)).not.toContain(
-      'https://example.com/archive.zip',
-    );
-    expect(JSON.stringify(recordFileDownloadAuditMock.mock.calls)).not.toContain('山田花子');
+    const auditPayload = JSON.stringify(recordFileDownloadAuditMock.mock.calls);
+    expect(auditPayload).not.toContain('https://example.com/archive.zip');
+    expect(auditPayload).not.toContain('downloadUrl');
+    expect(auditPayload).not.toContain('response-content-disposition');
+    expect(auditPayload).not.toContain('X-Amz-Signature');
+    expectPhiExportSnapshotRedacted(auditPayload, ['Taro', 'Yamada']);
   });
 
   it('normalizes padded file ids before signing the download redirect', async () => {
@@ -194,6 +205,7 @@ describe('/api/files/[id]/download GET', () => {
       throw new Error('Expected a response from file download GET');
     }
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(createPresignedDownloadMock).not.toHaveBeenCalled();
     expect(resolveFileDownloadAuditContextMock).not.toHaveBeenCalled();
     expect(recordFileDownloadAuditMock).not.toHaveBeenCalled();
@@ -211,7 +223,7 @@ describe('/api/files/[id]/download GET', () => {
     }
     expect(response.status).toBe(500);
     expect(response.headers.get('location')).toBeNull();
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'FILE_DOWNLOAD_AUDIT_FAILED',
     });
@@ -231,6 +243,7 @@ describe('/api/files/[id]/download GET', () => {
       throw new Error('Expected a response from file download GET');
     }
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
     expect(resolveFileDownloadAuditContextMock).not.toHaveBeenCalled();
     expect(recordFileDownloadAuditMock).not.toHaveBeenCalled();
   });

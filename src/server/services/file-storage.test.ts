@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { expectPhiExportSnapshotRedacted } from '@/test/api-response-assertions';
 
 const {
   getSignedUrlMock,
@@ -776,12 +777,13 @@ describe('file-storage', () => {
     expect(s3SendMock).not.toHaveBeenCalled();
   });
 
-  it('sanitizes stored filenames before building download response metadata', async () => {
+  it('uses PHI-safe delivery filenames instead of stored original filenames', async () => {
     mockStoredFile({
       purpose: 'report',
       reportId: 'report_1',
       storageKey: 'reports/org_1/report_1/file_1-report.pdf',
-      originalName: 'report"\r\nx.pdf',
+      originalName:
+        'Taro Yamada 090-1234-5678 アムロジピン storageKey=s3 token=secret provider raw error.pdf',
       status: 'uploaded',
     });
 
@@ -791,13 +793,18 @@ describe('file-storage', () => {
       accessContext: assignedAccessContext,
     });
 
-    expect(result.fileName).toBe('report___x.pdf');
+    expect(result.fileName).toBe('report-file-file_1.pdf');
+    expectPhiExportSnapshotRedacted(result.fileName, ['Taro', 'Yamada']);
     const getObjectCommand = getSignedUrlMock.mock.calls[0]?.[1] as {
       input: Record<string, unknown>;
     };
     expect(getObjectCommand.input).toMatchObject({
-      ResponseContentDisposition: 'inline; filename="report___x.pdf"',
+      ResponseContentDisposition: 'inline; filename="report-file-file_1.pdf"',
     });
+    expectPhiExportSnapshotRedacted(String(getObjectCommand.input.ResponseContentDisposition), [
+      'Taro',
+      'Yamada',
+    ]);
   });
 
   it('rejects expired generated bulk export downloads before signing', async () => {
@@ -1220,7 +1227,7 @@ describe('file-storage', () => {
       input: Record<string, unknown>;
     };
     expect(getObjectCommand.input).toMatchObject({
-      ResponseContentDisposition: 'attachment; filename="medication-history.zip"',
+      ResponseContentDisposition: 'attachment; filename="bulk-export-file_1.zip"',
     });
   });
 
@@ -1447,7 +1454,7 @@ describe('file-storage', () => {
     };
     expect(getObjectCommand.input).toMatchObject({
       Key: 'contract-documents/org_1/generated/contract-document-contract_1/contract_file_1-contract.pdf',
-      ResponseContentDisposition: 'attachment; filename="contract.pdf"',
+      ResponseContentDisposition: 'attachment; filename="contract-document-contract_file_1.pdf"',
     });
   });
 

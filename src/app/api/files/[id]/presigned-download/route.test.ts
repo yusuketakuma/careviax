@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { PHOS_DISABLE_LEGACY_FILE_API_ENV } from '@/lib/api/legacy-file-api-boundary';
+import {
+  expectPhiExportSnapshotRedacted,
+  expectSensitiveNoStore,
+} from '@/test/api-response-assertions';
 
 const {
   requireAuthContextMock,
@@ -70,11 +74,13 @@ describe('/api/files/[id]/presigned-download GET', () => {
     });
     createPresignedDownloadMock.mockResolvedValue({
       id: 'file_1',
-      fileName: '山田花子-report.pdf',
+      fileName:
+        'Taro Yamada 090-1234-5678 アムロジピン storageKey=s3 token=secret provider raw error.pdf',
       mimeType: 'application/pdf',
       sizeBytes: 1024,
       purpose: 'report',
-      downloadUrl: 'https://example.com/download',
+      downloadUrl:
+        'https://example.com/download?response-content-disposition=report-file-file_1.pdf&X-Amz-Signature=abc',
       expiresIn: 900,
     });
     recordFileDownloadAuditMock.mockResolvedValue(undefined);
@@ -123,6 +129,7 @@ describe('/api/files/[id]/presigned-download GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(createPresignedDownloadMock).toHaveBeenCalledWith({
       orgId: 'org_1',
       fileId: 'file_1',
@@ -153,15 +160,23 @@ describe('/api/files/[id]/presigned-download GET', () => {
       ipAddress: '203.0.113.10',
       userAgent: 'TestBrowser/1.0',
     });
-    expect(JSON.stringify(recordFileDownloadAuditMock.mock.calls)).not.toContain(
-      'https://example.com/download',
-    );
-    expect(JSON.stringify(recordFileDownloadAuditMock.mock.calls)).not.toContain('山田花子');
-    await expect(response.json()).resolves.toMatchObject({
+    const auditPayload = JSON.stringify(recordFileDownloadAuditMock.mock.calls);
+    expect(auditPayload).not.toContain('https://example.com/download');
+    expect(auditPayload).not.toContain('downloadUrl');
+    expect(auditPayload).not.toContain('response-content-disposition');
+    expect(auditPayload).not.toContain('X-Amz-Signature');
+    expectPhiExportSnapshotRedacted(auditPayload, ['Taro', 'Yamada']);
+    const body = await response.json();
+    expect(body).toMatchObject({
       data: {
-        downloadUrl: 'https://example.com/download',
+        downloadUrl:
+          'https://example.com/download?response-content-disposition=report-file-file_1.pdf&X-Amz-Signature=abc',
+        expiresIn: 900,
       },
     });
+    expect(Object.keys(body.data).sort()).toEqual(['downloadUrl', 'expiresIn']);
+    expect(JSON.stringify(body)).not.toContain('fileName');
+    expectPhiExportSnapshotRedacted(JSON.stringify(body), ['Taro', 'Yamada']);
   });
 
   it('normalizes padded file ids before creating a presigned download', async () => {
@@ -189,6 +204,7 @@ describe('/api/files/[id]/presigned-download GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(createPresignedDownloadMock).not.toHaveBeenCalled();
     expect(resolveFileDownloadAuditContextMock).not.toHaveBeenCalled();
     expect(recordFileDownloadAuditMock).not.toHaveBeenCalled();
@@ -204,8 +220,11 @@ describe('/api/files/[id]/presigned-download GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(307);
-    expect(response.headers.get('location')).toBe('https://example.com/download');
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('location')).toBe(
+      'https://example.com/download?response-content-disposition=report-file-file_1.pdf&X-Amz-Signature=abc',
+    );
+    expectSensitiveNoStore(response);
+    expectPhiExportSnapshotRedacted(response.headers.get('location') ?? '', ['Taro', 'Yamada']);
     expect(recordFileDownloadAuditMock).toHaveBeenCalledWith(
       prismaMock,
       expect.objectContaining({
@@ -243,7 +262,7 @@ describe('/api/files/[id]/presigned-download GET', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(500);
     expect(response.headers.get('location')).toBeNull();
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expectSensitiveNoStore(response);
   });
 
   it('does not audit when presigned download creation fails', async () => {
@@ -258,6 +277,7 @@ describe('/api/files/[id]/presigned-download GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     expect(resolveFileDownloadAuditContextMock).not.toHaveBeenCalled();
     expect(recordFileDownloadAuditMock).not.toHaveBeenCalled();
   });
