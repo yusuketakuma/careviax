@@ -36,8 +36,16 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: routerPushMock }),
 }));
 
+vi.mock('sonner', () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
 import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import type { SavedViewRecord } from '@/lib/views/saved-filter-views';
+import { toast } from 'sonner';
 import { SavedViewsContent } from './saved-views-content';
 
 function renderPage() {
@@ -198,6 +206,38 @@ describe('SavedViewsContent', () => {
     });
   });
 
+  it('surfaces API error messages when saving current conditions fails', async () => {
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      const target = String(url);
+      if (target.startsWith('/api/saved-views')) {
+        return jsonResponse({ data: [] });
+      }
+      if (init?.method === 'PATCH') {
+        return jsonResponse({ message: '保存済み条件の更新権限がありません' }, 403);
+      }
+      return jsonResponse({ data: { work_mode: 'pharmacist' } });
+    });
+    renderPage();
+
+    const saveButton = await screen.findByTestId('save-current-filter');
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('保存済み条件の更新権限がありません');
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/me/preferences',
+      expect.objectContaining({
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': 'org-json:org_1',
+          'x-test-helper': 'buildOrgJsonHeaders',
+        },
+      }),
+    );
+  });
+
   it('applies a named saved view by navigating to the schedule proposals list', async () => {
     mockPreferences({ work_mode: 'pharmacist' }, [
       {
@@ -276,6 +316,40 @@ describe('SavedViewsContent', () => {
         expect.objectContaining({ method: 'DELETE' }),
       );
     });
+  });
+
+  it('surfaces API error messages when named saved-view creation fails', async () => {
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      const target = String(url);
+      if (target.startsWith('/api/saved-views')) {
+        if (init?.method === 'POST') {
+          return jsonResponse({ message: '同じ名前の保存ビューが既に存在します' }, 409);
+        }
+        return jsonResponse({ data: [] });
+      }
+      return jsonResponse({ data: { work_mode: 'pharmacist' } });
+    });
+    renderPage();
+
+    fireEvent.change(await screen.findByTestId('named-view-name-input'), {
+      target: { value: '朝の確認' },
+    });
+    fireEvent.click(screen.getByTestId('named-view-create'));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('同じ名前の保存ビューが既に存在します');
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/saved-views',
+      expect.objectContaining({
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': 'org-json:org_1',
+          'x-test-helper': 'buildOrgJsonHeaders',
+        },
+      }),
+    );
   });
 
   it('single-encodes saved-view mutation paths and preserves bodies/headers', async () => {

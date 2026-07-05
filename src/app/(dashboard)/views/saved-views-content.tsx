@@ -116,11 +116,10 @@ function CurrentFilterCard({ orgId }: { orgId: string }) {
           saved_view: { conditions: next, saved_at: new Date().toISOString() },
         }),
       });
-      if (!res.ok) {
-        const payload = (await res.json().catch(() => ({}))) as { message?: string };
-        throw new Error(payload.message ?? '絞り込み条件の保存に失敗しました');
-      }
-      const json = await res.json();
+      const json = await readApiJson<{ data?: PreferencesValue }>(
+        res,
+        '絞り込み条件の保存に失敗しました',
+      );
       return (json.data ?? {}) as PreferencesValue;
     },
     onSuccess: (updated) => {
@@ -216,11 +215,6 @@ async function fetchSavedViews(orgId: string): Promise<SavedViewRecord[]> {
   return Array.isArray(json.data) ? json.data : [];
 }
 
-async function readErrorMessage(res: Response, fallback: string): Promise<string> {
-  const payload = (await res.json().catch(() => ({}))) as { message?: string };
-  return payload.message ?? fallback;
-}
-
 /**
  * 名前付き保存ビュー(SavedView)。現在ユーザーのビュー + org 共有ビューを
  * チップ一覧で表示し、現在の絞り込み条件に名前を付けて保存・呼び出し(適用)・
@@ -263,7 +257,7 @@ function NamedSavedViewsCard({
           filters: { conditions: currentConditions },
         }),
       });
-      if (!res.ok) throw new Error(await readErrorMessage(res, '保存ビューの作成に失敗しました'));
+      await readApiJson<unknown>(res, '保存ビューの作成に失敗しました');
     },
     onSuccess: () => {
       setNewName('');
@@ -282,7 +276,7 @@ function NamedSavedViewsCard({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ name }),
       });
-      if (!res.ok) throw new Error(await readErrorMessage(res, '名前の変更に失敗しました'));
+      await readApiJson<unknown>(res, '名前の変更に失敗しました');
     },
     onSuccess: () => {
       setRenamingId(null);
@@ -302,7 +296,7 @@ function NamedSavedViewsCard({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ is_shared: isShared }),
       });
-      if (!res.ok) throw new Error(await readErrorMessage(res, '共有設定の変更に失敗しました'));
+      await readApiJson<unknown>(res, '共有設定の変更に失敗しました');
     },
     onSuccess: () => {
       invalidate();
@@ -318,7 +312,7 @@ function NamedSavedViewsCard({
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error(await readErrorMessage(res, '削除に失敗しました'));
+      await readApiJson<unknown>(res, '削除に失敗しました');
     },
     onSuccess: () => {
       setDeleteTarget(null);
