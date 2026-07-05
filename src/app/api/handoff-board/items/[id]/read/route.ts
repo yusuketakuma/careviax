@@ -1,12 +1,15 @@
 import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
-import { success, notFound, internalError } from '@/lib/api/response';
+import { success, notFound, internalError, forbidden, validationError } from '@/lib/api/response';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
 
 const authenticatedPATCH = withAuthContext<{ id: string }>(
   async (_req, ctx, routeContext) => {
-    const { id } = await routeContext.params;
+    const { id: rawId } = await routeContext.params;
+    const id = normalizeRequiredRouteParam(rawId);
+    if (!id) return validationError('申し送り項目IDが不正です');
 
     const item = await withOrgContext(
       ctx.orgId,
@@ -20,7 +23,10 @@ const authenticatedPATCH = withAuthContext<{ id: string }>(
           },
         });
         if (!current || current.board.org_id !== ctx.orgId) {
-          return null;
+          return { error: 'not_found' as const };
+        }
+        if (current.recipient_user_id !== ctx.userId) {
+          return { error: 'forbidden' as const };
         }
 
         if (current.read_by.includes(ctx.userId)) {
@@ -28,17 +34,27 @@ const authenticatedPATCH = withAuthContext<{ id: string }>(
         }
 
         await tx.$executeRaw`
-          UPDATE "HandoffItem"
-          SET read_by = array_append(read_by, ${ctx.userId}::text)
-          WHERE id = ${id}
-          AND NOT (${ctx.userId}::text = ANY(read_by))
+          UPDATE "HandoffItem" AS item
+          SET read_by = array_append(item.read_by, ${ctx.userId}::text)
+          FROM "HandoffBoard" AS board
+          WHERE item.id = ${id}
+          AND item.board_id = board.id
+          AND board.org_id = ${ctx.orgId}
+          AND item.recipient_user_id = ${ctx.userId}
+          AND NOT (${ctx.userId}::text = ANY(item.read_by))
         `;
-        return tx.handoffItem.findUniqueOrThrow({ where: { id } });
+        const updated = await tx.handoffItem.findFirst({
+          where: { id, recipient_user_id: ctx.userId, board: { org_id: ctx.orgId } },
+        });
+        return updated ?? { error: 'not_found' as const };
       },
       { requestContext: ctx },
     );
 
-    if (!item) {
+    if ('error' in item) {
+      if (item.error === 'forbidden') {
+        return forbidden('この申し送り項目の受領確認権限がありません');
+      }
       return notFound('申し送り項目が見つかりません');
     }
 

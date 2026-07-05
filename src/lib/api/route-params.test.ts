@@ -10,6 +10,12 @@ describe('normalizeRequiredRouteParam', () => {
     expect(normalizeRequiredRouteParam('   ')).toBeNull();
   });
 
+  it('returns null for exact dot-segment route params', () => {
+    expect(normalizeRequiredRouteParam('.')).toBeNull();
+    expect(normalizeRequiredRouteParam('..')).toBeNull();
+    expect(normalizeRequiredRouteParam(' . ')).toBeNull();
+  });
+
   it('treats tabs, newlines, and non-breaking spaces as route param padding', () => {
     expect(normalizeRequiredRouteParam('\t\n\r')).toBeNull();
     expect(normalizeRequiredRouteParam('\u00a0file_1\u00a0')).toBe('file_1');

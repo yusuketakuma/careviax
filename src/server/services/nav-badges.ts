@@ -23,21 +23,19 @@ function toDateOnly(dateStr: string): Date {
 }
 
 /**
- * バッジに数える「要対応」判定。種別で要対応の意味が異なる:
- * - 責任移転 / 相談: 自分が関与(作成者) または 自分が未読
- * - 連絡(伝言): 自分宛で未読のものだけ(自分が送った連絡はバッジに数えない)
+ * バッジに数える「要対応」判定:
+ * - 責任移転 / 相談 / 連絡(伝言) は自分宛で未読のものだけ数える。
+ * - 自分が作成したものや他人宛の未読は、受領確認 API で消せないためバッジ対象にしない。
  * legacy のシフトメモ(全 null・宛先なし)は数えない。
  */
 function isActionableHandoffItem(item: HandoffBadgeItemSummary, viewerUserId: string): boolean {
-  const isTransferOrConsult = item.lifecycle_status != null || item.consult_status != null;
-  if (isTransferOrConsult) {
-    return item.created_by === viewerUserId || !(item.read_by ?? []).includes(viewerUserId);
-  }
-  const isMessage = item.recipient_user_id != null;
-  if (isMessage) {
-    return item.recipient_user_id === viewerUserId && !(item.read_by ?? []).includes(viewerUserId);
-  }
-  return false;
+  const isCurrentItem =
+    item.lifecycle_status != null || item.consult_status != null || item.recipient_user_id != null;
+  return (
+    isCurrentItem &&
+    item.recipient_user_id === viewerUserId &&
+    !(item.read_by ?? []).includes(viewerUserId)
+  );
 }
 
 export function countMyHandoffBadgeItems(
@@ -82,15 +80,14 @@ export async function countHandoffBadge(ctx: AuthContext): Promise<number | unde
             shift_date: shiftDate,
           },
           OR: [
-            // 責任移転 / 相談: 自分が作成者 または 未読
+            // 責任移転 / 相談: 自分宛で未読のものだけ
             {
               AND: [
                 {
                   OR: [{ lifecycle_status: { not: null } }, { consult_status: { not: null } }],
                 },
-                {
-                  OR: [{ created_by: ctx.userId }, { NOT: { read_by: { has: ctx.userId } } }],
-                },
+                { recipient_user_id: ctx.userId },
+                { NOT: { read_by: { has: ctx.userId } } },
               ],
             },
             // 連絡(伝言): 自分宛で未読のものだけ

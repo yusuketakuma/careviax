@@ -6,14 +6,12 @@ const {
   authMock,
   membershipFindFirstMock,
   handoffItemTxFindFirstMock,
-  handoffItemFindUniqueOrThrowMock,
   executeRawMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   handoffItemTxFindFirstMock: vi.fn(),
-  handoffItemFindUniqueOrThrowMock: vi.fn(),
   executeRawMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
@@ -52,7 +50,6 @@ describe('/api/handoff-board/items/[id]/read', () => {
         $executeRaw: executeRawMock,
         handoffItem: {
           findFirst: handoffItemTxFindFirstMock,
-          findUniqueOrThrow: handoffItemFindUniqueOrThrowMock,
         },
       }),
     );
@@ -62,10 +59,17 @@ describe('/api/handoff-board/items/[id]/read', () => {
     handoffItemTxFindFirstMock.mockResolvedValue({
       id: 'item_1',
       read_by: [],
+      recipient_user_id: 'user_1',
       board: { org_id: 'org_1' },
     });
-    const updated = { id: 'item_1', read_by: ['user_1'] };
-    handoffItemFindUniqueOrThrowMock.mockResolvedValue(updated);
+    const updated = { id: 'item_1', read_by: ['user_1'], recipient_user_id: 'user_1' };
+    handoffItemTxFindFirstMock.mockResolvedValueOnce({
+      id: 'item_1',
+      read_by: [],
+      recipient_user_id: 'user_1',
+      board: { org_id: 'org_1' },
+    });
+    handoffItemTxFindFirstMock.mockResolvedValueOnce(updated);
 
     const req = createRequest('http://localhost/api/handoff-board/items/item_1/read');
     const res = await PATCH(req, { params: Promise.resolve({ id: 'item_1' }) });
@@ -75,13 +79,16 @@ describe('/api/handoff-board/items/[id]/read', () => {
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       requestContext: expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
     });
-    expect(handoffItemTxFindFirstMock).toHaveBeenCalledWith({
+    expect(handoffItemTxFindFirstMock).toHaveBeenNthCalledWith(1, {
       where: { id: 'item_1' },
       include: {
         board: {
           select: { org_id: true },
         },
       },
+    });
+    expect(handoffItemTxFindFirstMock).toHaveBeenNthCalledWith(2, {
+      where: { id: 'item_1', recipient_user_id: 'user_1', board: { org_id: 'org_1' } },
     });
     expect(executeRawMock).toHaveBeenCalledTimes(1);
     await expect(res!.json()).resolves.toEqual({ data: updated });
@@ -91,6 +98,7 @@ describe('/api/handoff-board/items/[id]/read', () => {
     const alreadyRead = {
       id: 'item_1',
       read_by: ['user_1'],
+      recipient_user_id: 'user_1',
       board: { org_id: 'org_1' },
     };
     handoffItemTxFindFirstMock.mockResolvedValue(alreadyRead);
@@ -104,7 +112,6 @@ describe('/api/handoff-board/items/[id]/read', () => {
       requestContext: expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
     });
     expect(executeRawMock).not.toHaveBeenCalled();
-    expect(handoffItemFindUniqueOrThrowMock).not.toHaveBeenCalled();
     await expect(res!.json()).resolves.toEqual({ data: alreadyRead });
   });
 
@@ -117,13 +124,13 @@ describe('/api/handoff-board/items/[id]/read', () => {
     expect(res!.status).toBe(404);
     expectSensitiveNoStore(res!);
     expect(executeRawMock).not.toHaveBeenCalled();
-    expect(handoffItemFindUniqueOrThrowMock).not.toHaveBeenCalled();
   });
 
   it('returns 404 without update when the RLS-scoped row belongs to another org', async () => {
     handoffItemTxFindFirstMock.mockResolvedValue({
       id: 'item_1',
       read_by: [],
+      recipient_user_id: 'user_1',
       board: { org_id: 'org_2' },
     });
 
@@ -133,8 +140,97 @@ describe('/api/handoff-board/items/[id]/read', () => {
     expect(res!.status).toBe(404);
     expectSensitiveNoStore(res!);
     expect(executeRawMock).not.toHaveBeenCalled();
-    expect(handoffItemFindUniqueOrThrowMock).not.toHaveBeenCalled();
   });
+
+  it('returns 403 before DB access when the role cannot view handoffs', async () => {
+    membershipFindFirstMock.mockResolvedValueOnce({ role: 'driver' });
+
+    const req = createRequest('http://localhost/api/handoff-board/items/item_1/read');
+    const res = await PATCH(req, { params: Promise.resolve({ id: 'item_1' }) });
+
+    expect(res!.status).toBe(403);
+    expectSensitiveNoStore(res!);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(executeRawMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 without update when the caller is not the recipient', async () => {
+    handoffItemTxFindFirstMock.mockResolvedValue({
+      id: 'item_1',
+      read_by: [],
+      recipient_user_id: 'user_2',
+      board: { org_id: 'org_1' },
+    });
+
+    const req = createRequest('http://localhost/api/handoff-board/items/item_1/read');
+    const res = await PATCH(req, { params: Promise.resolve({ id: 'item_1' }) });
+
+    expect(res!.status).toBe(403);
+    expectSensitiveNoStore(res!);
+    expect(executeRawMock).not.toHaveBeenCalled();
+    await expect(res!.json()).resolves.toEqual({
+      code: 'AUTH_FORBIDDEN',
+      message: 'この申し送り項目の受領確認権限がありません',
+    });
+  });
+
+  it('returns 403 without update when the caller created an item addressed to someone else', async () => {
+    handoffItemTxFindFirstMock.mockResolvedValue({
+      id: 'item_1',
+      read_by: [],
+      created_by: 'user_1',
+      recipient_user_id: 'user_2',
+      board: { org_id: 'org_1' },
+    });
+
+    const req = createRequest('http://localhost/api/handoff-board/items/item_1/read');
+    const res = await PATCH(req, { params: Promise.resolve({ id: 'item_1' }) });
+
+    expect(res!.status).toBe(403);
+    expectSensitiveNoStore(res!);
+    expect(executeRawMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 without update for legacy items without a recipient', async () => {
+    handoffItemTxFindFirstMock.mockResolvedValue({
+      id: 'item_1',
+      read_by: [],
+      recipient_user_id: null,
+      board: { org_id: 'org_1' },
+    });
+
+    const req = createRequest('http://localhost/api/handoff-board/items/item_1/read');
+    const res = await PATCH(req, { params: Promise.resolve({ id: 'item_1' }) });
+
+    expect(res!.status).toBe(403);
+    expectSensitiveNoStore(res!);
+    expect(executeRawMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 before DB access when the route id is blank', async () => {
+    const req = createRequest('http://localhost/api/handoff-board/items/%20%20/read');
+    const res = await PATCH(req, { params: Promise.resolve({ id: '   ' }) });
+
+    expect(res!.status).toBe(400);
+    expectSensitiveNoStore(res!);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    await expect(res!.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '申し送り項目IDが不正です',
+    });
+  });
+
+  it.each(['.', '..'])(
+    'returns 400 before DB access when the route id is exact dot-segment %s',
+    async (id) => {
+      const req = createRequest(`http://localhost/api/handoff-board/items/${id}/read`);
+      const res = await PATCH(req, { params: Promise.resolve({ id }) });
+
+      expect(res!.status).toBe(400);
+      expectSensitiveNoStore(res!);
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('returns a sanitized no-store 500 when marking read fails unexpectedly', async () => {
     withOrgContextMock.mockRejectedValueOnce(

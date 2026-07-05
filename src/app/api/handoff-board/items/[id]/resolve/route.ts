@@ -1,7 +1,15 @@
 import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { success, validationError, notFound, conflict, internalError } from '@/lib/api/response';
+import {
+  success,
+  validationError,
+  notFound,
+  conflict,
+  internalError,
+  forbidden,
+} from '@/lib/api/response';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
@@ -51,7 +59,9 @@ const NEXT_CONSULT_STATUS: Record<z.infer<typeof resolutionActionSchema>, string
 
 const authenticatedPOST = withAuthContext<{ id: string }>(
   async (req, ctx, routeContext) => {
-    const { id } = await routeContext.params;
+    const { id: rawId } = await routeContext.params;
+    const id = normalizeRequiredRouteParam(rawId);
+    if (!id) return validationError('相談IDが不正です');
 
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
@@ -62,15 +72,14 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
     }
 
     const item = await prisma.handoffItem.findFirst({
-      where: { id },
-      include: {
-        board: {
-          select: { org_id: true },
-        },
-      },
+      where: { id, board: { org_id: ctx.orgId } },
+      select: { id: true, consult_status: true, recipient_user_id: true },
     });
-    if (!item || item.board.org_id !== ctx.orgId) {
+    if (!item) {
       return notFound('相談が見つかりません');
+    }
+    if (item.recipient_user_id !== ctx.userId) {
+      return forbidden('この相談に対応する権限がありません');
     }
     // consult_status が null の行は従来の引き継ぎ/作業移譲アイテム（相談ではない）。
     // 相談解決エンドポイントで誤って consult 化しないようガードする。
@@ -89,6 +98,8 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
         const claim = await tx.handoffItem.updateMany({
           where: {
             id,
+            board: { org_id: ctx.orgId },
+            recipient_user_id: ctx.userId,
             consult_status: item.consult_status,
             resolution_action: null,
             resolved_at: null,
@@ -106,7 +117,14 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
         }
 
         const result = await tx.handoffItem.findFirst({
-          where: { id },
+          where: { id, board: { org_id: ctx.orgId }, recipient_user_id: ctx.userId },
+          select: {
+            id: true,
+            consult_status: true,
+            resolution_action: true,
+            resolved_by: true,
+            resolved_at: true,
+          },
         });
         if (!result) {
           return { error: 'state_changed' as const };
@@ -119,7 +137,9 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
           changes: {
             consult_status: nextConsultStatus,
             resolution_action: resolutionAction,
-            resolution_note: resolutionNote,
+            resolution_note_present: resolutionNote != null,
+            resolution_note_length: resolutionNote?.length ?? 0,
+            resolution_note_redacted: resolutionNote != null,
             resolved_at: resolvedAt.toISOString(),
           },
         });

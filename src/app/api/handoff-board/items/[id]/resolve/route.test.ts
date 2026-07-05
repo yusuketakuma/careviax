@@ -54,13 +54,15 @@ describe('/api/handoff-board/items/[id]/resolve', () => {
     handoffItemFindFirstMock.mockResolvedValue({
       id: 'item_1',
       consult_status: 'open',
-      board: { org_id: 'org_1' },
+      recipient_user_id: 'user_1',
     });
     handoffItemUpdateManyMock.mockResolvedValue({ count: 1 });
     handoffItemTxFindFirstMock.mockResolvedValue({
       id: 'item_1',
       consult_status: 'checking',
       resolution_action: 'acknowledged',
+      resolved_by: 'user_1',
+      resolved_at: new Date('2026-07-05T00:00:00.000Z'),
     });
     auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
     withOrgContextMock.mockImplementation(async (_orgId: string, fn: (tx: unknown) => unknown) =>
@@ -94,6 +96,8 @@ describe('/api/handoff-board/items/[id]/resolve', () => {
     expect(handoffItemUpdateManyMock).toHaveBeenCalledWith({
       where: {
         id: 'item_1',
+        board: { org_id: 'org_1' },
+        recipient_user_id: 'user_1',
         consult_status: 'open',
         resolution_action: null,
         resolved_at: null,
@@ -105,15 +109,67 @@ describe('/api/handoff-board/items/[id]/resolve', () => {
         resolved_at: expect.any(Date),
       }),
     });
+    expect(handoffItemTxFindFirstMock).toHaveBeenCalledWith({
+      where: { id: 'item_1', board: { org_id: 'org_1' }, recipient_user_id: 'user_1' },
+      select: {
+        id: true,
+        consult_status: true,
+        resolution_action: true,
+        resolved_by: true,
+        resolved_at: true,
+      },
+    });
     expect(auditLogCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           action: 'handoff_consult_resolved',
           target_type: 'handoff_item',
           target_id: 'item_1',
+          changes: expect.objectContaining({
+            resolution_action: 'acknowledged',
+            resolution_note_present: false,
+            resolution_note_length: 0,
+            resolution_note_redacted: false,
+          }),
         }),
       }),
     );
+  });
+
+  it('redacts free-text resolution notes from the audit payload', async () => {
+    const rawNote = '鈴木 一郎さんのロキソプロフェン処方について処方元へ確認済み';
+
+    const response = await POST(
+      createRequest({
+        resolution_action: 'returned_to_clerk',
+        resolution_note: rawNote,
+      }),
+      { params: Promise.resolve({ id: 'item_1' }) },
+    );
+
+    expect(response!.status).toBe(200);
+    expect(auditLogCreateMock).toHaveBeenCalledOnce();
+    const responseBody = await response!.json();
+    expect(JSON.stringify(responseBody)).not.toContain(rawNote);
+    expect(JSON.stringify(responseBody)).not.toContain('鈴木 一郎');
+    expect(JSON.stringify(responseBody)).not.toContain('ロキソプロフェン');
+    const auditPayload = auditLogCreateMock.mock.calls[0]?.[0]?.data;
+    expect(auditPayload).toEqual(
+      expect.objectContaining({
+        action: 'handoff_consult_resolved',
+        target_type: 'handoff_item',
+        target_id: 'item_1',
+        changes: expect.objectContaining({
+          resolution_action: 'returned_to_clerk',
+          resolution_note_present: true,
+          resolution_note_length: rawNote.length,
+          resolution_note_redacted: true,
+        }),
+      }),
+    );
+    expect(JSON.stringify(auditPayload)).not.toContain(rawNote);
+    expect(JSON.stringify(auditPayload)).not.toContain('鈴木 一郎');
+    expect(JSON.stringify(auditPayload)).not.toContain('ロキソプロフェン');
   });
 
   it('returns a sanitized no-store 500 when consult resolution fails unexpectedly', async () => {
@@ -156,6 +212,7 @@ describe('/api/handoff-board/items/[id]/resolve', () => {
     );
 
     expect(response!.status).toBe(409);
+    expectSensitiveNoStore(response!);
     await expect(response!.json()).resolves.toMatchObject({
       code: 'WORKFLOW_CONFLICT',
       message: 'この相談は他のユーザーによって更新されています。再読み込みしてください',
@@ -168,7 +225,7 @@ describe('/api/handoff-board/items/[id]/resolve', () => {
     handoffItemFindFirstMock.mockResolvedValueOnce({
       id: 'item_1',
       consult_status: null,
-      board: { org_id: 'org_1' },
+      recipient_user_id: 'user_1',
     });
 
     const response = await POST(
@@ -181,6 +238,63 @@ describe('/api/handoff-board/items/[id]/resolve', () => {
     expect(response!.status).toBe(400);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(handoffItemUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 without side effects when a pharmacist is not the consult recipient', async () => {
+    handoffItemFindFirstMock.mockResolvedValueOnce({
+      id: 'item_1',
+      consult_status: 'open',
+      recipient_user_id: 'user_2',
+    });
+
+    const response = await POST(
+      createRequest({
+        resolution_action: 'acknowledged',
+      }),
+      { params: Promise.resolve({ id: 'item_1' }) },
+    );
+
+    expect(response!.status).toBe(403);
+    expectSensitiveNoStore(response!);
+    await expect(response!.json()).resolves.toEqual({
+      code: 'AUTH_FORBIDDEN',
+      message: 'この相談に対応する権限がありません',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(handoffItemUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 without side effects when the consult belongs to another org', async () => {
+    handoffItemFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await POST(
+      createRequest({
+        resolution_action: 'acknowledged',
+      }),
+      { params: Promise.resolve({ id: 'item_1' }) },
+    );
+
+    expect(response!.status).toBe(404);
+    expectSensitiveNoStore(response!);
+    expect(handoffItemFindFirstMock).toHaveBeenCalledWith({
+      where: { id: 'item_1', board: { org_id: 'org_1' } },
+      select: { id: true, consult_status: true, recipient_user_id: true },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(handoffItemUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 before DB access when the route id is invalid', async () => {
+    const response = await POST(createRequest({ resolution_action: 'acknowledged' }), {
+      params: Promise.resolve({ id: '..' }),
+    });
+
+    expect(response!.status).toBe(400);
+    expectSensitiveNoStore(response!);
+    expect(handoffItemFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
   it('forbids clerks from recording a pharmacist consult response (canAuthorReport gate)', async () => {

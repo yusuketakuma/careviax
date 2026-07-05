@@ -50,18 +50,39 @@ describe('nav badge service', () => {
     );
   });
 
-  it('counts only current handoff items that involve the viewer or remain unread', () => {
+  it('counts only current unread handoff items addressed to the viewer', () => {
     expect(
       countMyHandoffBadgeItems(
         [
-          { created_by: 'user_1', read_by: ['user_2'], lifecycle_status: 'proposed' },
-          { created_by: 'user_2', read_by: [], consult_status: 'open' },
-          { created_by: 'user_2', read_by: ['user_1'], lifecycle_status: 'proposed' },
+          {
+            created_by: 'user_1',
+            read_by: ['user_2'],
+            lifecycle_status: 'proposed',
+            recipient_user_id: 'user_2',
+          },
+          {
+            created_by: 'user_2',
+            read_by: [],
+            consult_status: 'open',
+            recipient_user_id: 'user_1',
+          },
+          {
+            created_by: 'user_2',
+            read_by: [],
+            lifecycle_status: 'proposed',
+            recipient_user_id: 'user_3',
+          },
+          {
+            created_by: 'user_2',
+            read_by: ['user_1'],
+            lifecycle_status: 'proposed',
+            recipient_user_id: 'user_1',
+          },
           { created_by: 'user_2', read_by: [], lifecycle_status: null, consult_status: null },
         ],
         'user_1',
       ),
-    ).toBe(2);
+    ).toBe(1);
   });
 
   it('counts unread incoming messages but not my own sent or already-read messages', () => {
@@ -149,9 +170,8 @@ describe('nav badge service', () => {
               {
                 OR: [{ lifecycle_status: { not: null } }, { consult_status: { not: null } }],
               },
-              {
-                OR: [{ created_by: 'user_1' }, { NOT: { read_by: { has: 'user_1' } } }],
-              },
+              { recipient_user_id: 'user_1' },
+              { NOT: { read_by: { has: 'user_1' } } },
             ],
           },
           {
