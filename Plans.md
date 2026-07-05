@@ -789,6 +789,16 @@ FE 仕上げ（低優先）:
   PH-OS のタブ/高密度/状態5分離へ翻訳して実装した。
   残: source 別 skeleton の精緻化、payload budget、browser smoke。
 
+- `UX-CMD-001 / PERF-BFF-001` partial（2026-07-06）: 患者詳細 `CardWorkspace` に直書きされていた
+  工程、次アクション、止まっている理由、根拠リンクの派生を
+  `patient-command-center-model.ts` へ抽出した。UI component 型へ密結合させず、Command Center 用の
+  構造型として `nextAction` / `blockedReasons` / `evidence` / `currentStep` / `processLabel` を返す。
+  `CardWorkspace` はモデル結果を既存 `PatientCommandCenterPanel` / `WorkspaceActionRail` へ渡すだけにし、
+  詳細画面が同じ状態語彙を別計算し続ける旧挙動を上書きした。視覚レイアウト変更を伴わない
+  adapter/refactor slice のため `imagegen` / `gpt-image-2` 生成は省略した。
+  残: PatientBoard 派生ロジックとの adapter 統合、Case Risk Cockpit への接続、timeline 抜粋を
+  Command Center block に含めること、payload budget / browser smoke。
+
 **追加実装順序**:
 
 1. `UX-CMD-001` + `PERF-BFF-001`: Command Center は重い詳細BFFになりやすいため、最初から summary/detail batch 分割を前提に設計する。

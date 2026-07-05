@@ -4232,3 +4232,69 @@
 - remaining:
   Broader `Plans.md` objective remains open. 残りは source 別 skeleton の精緻化、
   payload budget、browser smoke、Command Center からの timeline 抜粋利用。
+
+## 2026-07-06 Patient Command Center Model Extraction slice
+
+- codex: `UX-CMD-001 / PERF-BFF-001` patient detail command model partial implemented.
+  患者詳細 `CardWorkspace` に直書きされていた工程、次アクション、止まっている理由、根拠リンクの
+  派生を `patient-command-center-model.ts` へ抽出した。`CardWorkspace` はモデル結果を
+  `PatientCommandCenterPanel` / `WorkspaceActionRail` へ渡すだけになり、Command Center / Risk Cockpit /
+  PatientBoard adapter へ寄せるための純粋 selector 境界を作った。
+- subagent:
+  `code_mapper`（Mapper the 20th）を読み取り専用で投入し、`card-workspace.tsx` の
+  `currentStep` / `nextAction` / `blockedReasons` / `evidence` 抽出候補、既存 tests、
+  href encoding / PHI / performance risks を path:line 付きで確認した。指摘に従い、抽出モデルは
+  UI component 型への密結合を避け、Command Center 用の構造型を export する形へ調整した。
+- design / imagegen:
+  PH-OS UI/UX SSOT `docs/ui-ux-design-guidelines.md` は確認済み。今回の slice は視覚レイアウト変更を
+  伴わない adapter/refactor で、既存表示を維持するため `imagegen` / `gpt-image-2` の新規生成は省略。
+  Command Center の視覚再配置や患者詳細 command block の見た目を変える slice では、`Plans.md` の
+  `gpt-image-2` 方針に従い非 PHI mockup を生成する。
+- files inspected:
+  `git status --short --branch --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `docs/ui-ux-design-guidelines.md`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+  `src/app/(dashboard)/patients/[id]/patient-detail.types.ts`,
+  `src/components/features/workspace/action-rail.tsx`,
+  `src/lib/prescription/cycle-workspace.ts`,
+  `src/types/visit-brief.ts`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+  `src/app/(dashboard)/patients/[id]/patient-command-center-model.ts`,
+  `src/app/(dashboard)/patients/[id]/patient-command-center-model.test.ts`.
+- bugs / risks reduced:
+  詳細画面内で工程、期限付き next action、workflow exception、unresolved item、evidence を
+  UI コンポーネント直下で個別計算していたため、Command Center / Risk Cockpit / PatientBoard 共有時に
+  状態語彙 drift が起きやすかった。純粋モデルと unit tests に切り出し、unknown status / unknown exception /
+  invalid date / eGFR なし / urgent-high severity mapping を固定した。
+- security / PHI reviewed:
+  新規 API / DB / PHI field は追加していない。患者リンクは既存 `buildPatientHref`、
+  連絡導線は `buildCommunicationRequestsHref` を使い、raw patient id interpolation を増やしていない。
+  evidence は既存の処方画像 URL / 照会回答 href / profile anchor を移動しただけで、自由記載本文や
+  hidden PHI metadata は追加していない。
+- performance issues improved:
+  `CardWorkspace` の render path から 100 行規模の inline derivation を外し、fetch / router / store を
+  持たない pure model にした。今後の summary/detail batch 分割時に、同じ selector を BFF/detail UI で
+  共有できる境界を作った。
+- validation:
+  `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-command-center-model.test.ts' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' --reporter=dot --testTimeout=30000`
+  green (2 files / 81 tests);
+  `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/patient-command-center-model.ts' 'src/app/(dashboard)/patients/[id]/patient-command-center-model.test.ts' 'src/app/(dashboard)/patients/[id]/card-workspace.tsx'`
+  green;
+  `pnpm exec prettier --check 'src/app/(dashboard)/patients/[id]/patient-command-center-model.ts' 'src/app/(dashboard)/patients/[id]/patient-command-center-model.test.ts' 'src/app/(dashboard)/patients/[id]/card-workspace.tsx'`
+  green;
+  `git diff --check -- 'src/app/(dashboard)/patients/[id]/patient-command-center-model.ts' 'src/app/(dashboard)/patients/[id]/patient-command-center-model.test.ts' 'src/app/(dashboard)/patients/[id]/card-workspace.tsx'`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck --pretty false`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  green.
+- remaining:
+  Broader `Plans.md` objective remains open. 残りは PatientBoard 派生 logic との adapter 統合、
+  Case Risk Cockpit への接続、timeline 抜粋の Command Center block 化、payload budget、
+  browser smoke。

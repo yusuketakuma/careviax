@@ -6,13 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
 import { memo, useEffect, useState } from 'react';
-import {
-  differenceInYears,
-  format,
-  formatDistanceToNowStrict,
-  isSameDay,
-  parseISO,
-} from 'date-fns';
+import { differenceInYears, format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { messageFromError } from '@/lib/utils/error-message';
@@ -54,12 +48,6 @@ import {
   type EvidenceItem,
   type NextActionPanelProps,
 } from '@/components/features/workspace/action-rail';
-import {
-  PROCESS_STEPS_9,
-  getCycleWorkspaceAction,
-  getProcessStepIndex,
-  getProcessStepKeyForStatus,
-} from '@/lib/prescription/cycle-workspace';
 import { formatPrescriptionCardNumber } from '@/lib/prescription/rx-number';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { readApiJson } from '@/lib/api/client-json';
@@ -70,7 +58,6 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildPrescriptionIntakeApiPath } from '@/lib/prescriptions/api-paths';
-import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import { usePresenceHeartbeat } from '@/lib/hooks/use-presence-heartbeat';
 import { cn } from '@/lib/utils';
 import { CASE_STATUS_LABELS } from '@/lib/constants/status-labels';
@@ -98,12 +85,12 @@ import type {
   PatientWorkspaceTodayTask,
 } from './patient-detail.types';
 import type { PatientActivityTimelineProps } from './patient-activity-timeline';
+import { buildPatientCommandCenterModel, formatActivityTime } from './patient-command-center-model';
 import type {
   PatientHomeOperationItem,
   PatientHomeOperationKey,
   PatientHomeOperationsSnapshot,
 } from '@/types/patient-home-operations';
-import type { VisitBriefUnresolvedItem } from '@/types/visit-brief';
 
 type FirstVisitDocumentsPanelProps = {
   cases: PatientOverview['cases'];
@@ -212,44 +199,6 @@ const TODAY_TONE_CLASSES: Record<PatientWorkspaceTodayTask['tone'], string> = {
 function buildPatientCompareHref(patientId: string) {
   return `/patients/compare?${new URLSearchParams({ patients: patientId }).toString()}`;
 }
-
-/** 止まっている理由: WorkflowException type → カテゴリ色チップ(患者/事務/医療機関) */
-const EXCEPTION_CATEGORY_LABELS: Record<string, string> = {
-  no_show: '患者',
-  hospitalized: '患者',
-  refused_receipt: '患者',
-  discontinued_collection_unconfirmed: '患者',
-  family_consent_pending: '患者',
-  awaiting_reply: '医療機関',
-  prescription_structuring_block: '事務',
-  outpatient_injection_eligibility_block: '事務',
-  delivery_target_confirmation: '事務',
-  report_failed: '事務',
-};
-
-/** 止まっている理由: type 別の個別アクション(06_card 右レール「再連絡する→」等) */
-const EXCEPTION_ACTIONS: Record<string, { label: string; href: string }> = {
-  family_consent_pending: { label: '再連絡する', href: '/communications/requests' },
-  delivery_target_confirmation: { label: '状況を見る', href: '/admin/contact-profiles' },
-};
-
-function resolveExceptionAction(exceptionType: string, patientId: string) {
-  const action = EXCEPTION_ACTIONS[exceptionType];
-  if (exceptionType === 'family_consent_pending' || exceptionType === 'awaiting_reply') {
-    return {
-      label: action?.label ?? '再連絡する',
-      href: buildCommunicationRequestsHref({ status: 'sent', patientId }),
-    };
-  }
-  return action ?? { label: '状況を見る', href: '/workflow' };
-}
-
-const UNRESOLVED_CATEGORY_LABELS: Record<VisitBriefUnresolvedItem['source_type'], string> = {
-  task: '事務',
-  issue: '患者',
-  inquiry: '医療機関',
-  billing: '事務',
-};
 
 const SSR_PATIENT_OVERVIEW_STALE_TIME_MS = 30_000;
 const PATIENT_TIMELINE_INITIAL_LIMIT = 5;
@@ -430,21 +379,6 @@ const DEFAULT_PATIENT_SHARE_SCOPE_FORM: PatientShareScopeForm = {
   pdf_output: false,
   download: false,
 };
-
-/** 当日は HH:mm、それ以外は M/d 表示(06_card 直近の動きの時刻表記) */
-function formatActivityTime(value: string): string {
-  const date = parseISO(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return isSameDay(date, new Date()) ? format(date, 'HH:mm') : format(date, 'M/d', { locale: ja });
-}
-
-/** 経過時間ラベル(「1日」「30分」)。解釈できない値は undefined。 */
-function formatAgeLabel(value: string | null | undefined): string | undefined {
-  if (!value) return undefined;
-  const date = parseISO(value);
-  if (Number.isNaN(date.getTime())) return undefined;
-  return formatDistanceToNowStrict(date, { locale: ja });
-}
 
 function formatQuantityLabel(line: {
   quantity: number | null;
@@ -4969,100 +4903,15 @@ export function CardWorkspace({
     );
   }
 
-  const currentStep = getProcessStepKeyForStatus(workspace.overall_status);
-  const currentStepLabel =
-    currentStep != null ? (PROCESS_STEPS_9[getProcessStepIndex(currentStep)]?.label ?? null) : null;
-  const cycleAction = getCycleWorkspaceAction(workspace.overall_status, {
-    patientId: workspace.action_context.patient_id ?? patientId,
-    prescriptionIntakeId:
-      workspace.action_context.prescription_intake_id ?? workspace.current_intake?.id,
-    visitScheduleId: workspace.action_context.visit_schedule_id,
-    visitRecordId: workspace.action_context.visit_record_id,
-    reportId: workspace.action_context.report_id,
-  });
-  const processLabel = currentStepLabel
-    ? `工程: ${currentStepLabel}(いまここ)`
-    : cycleAction
-      ? `工程: ${cycleAction.statusLabel}`
-      : null;
-
-  // 次にやること(主操作はこの 1 つだけ青)。期限つきタスクがあればラベルに内包する。
-  const deadlineTask = workspace.today_tasks.find((task) => task.due_time != null) ?? null;
-  const nextAction = cycleAction
-    ? {
-        description: cycleAction.description,
-        actionLabel: deadlineTask?.due_time
-          ? `${cycleAction.actionLabel} — ${deadlineTask.due_time}期限`
-          : cycleAction.actionLabel,
-        actionHref: cycleAction.actionHref,
-      }
-    : undefined;
-
-  const unresolved = patient.visit_brief?.unresolved_items ?? [];
-  const blockedReasons: BlockedReason[] = [
-    ...workspace.open_exceptions.map((exception) => {
-      const action = resolveExceptionAction(exception.exception_type, patient.id);
-      return {
-        id: exception.id,
-        label: exception.description,
-        severity: exception.severity,
-        categoryLabel: EXCEPTION_CATEGORY_LABELS[exception.exception_type] ?? '事務',
-        ageLabel: formatAgeLabel(exception.created_at),
-        actionLabel: `${action.label} →`,
-        actionHref: action.href,
-      };
-    }),
-    ...unresolved.map((item, index) => ({
-      id: `${item.source_type}-${index}`,
-      label: item.title,
-      severity: (item.severity === 'urgent' || item.severity === 'high'
-        ? 'critical'
-        : 'warning') as BlockedReason['severity'],
-      categoryLabel: UNRESOLVED_CATEGORY_LABELS[item.source_type],
-      actionLabel: '状況を見る →',
-      actionHref: item.href,
-    })),
-  ];
-
-  const latestInquiryActivity =
-    workspace.recent_activities.find((activity) => activity.type === 'inquiry') ?? null;
-  const hasEgfr = patient.lab_summary.some((lab) => lab.analyte_code === 'egfr');
-  const intakeDateLabel = workspace.current_intake
-    ? formatActivityTime(workspace.current_intake.prescribed_date)
-    : undefined;
-  const evidence: EvidenceItem[] = [
-    ...(workspace.prescription_document_url
-      ? [
-          {
-            id: 'prescription-image',
-            label: '処方せん画像',
-            meta: intakeDateLabel,
-            href: workspace.prescription_document_url,
-          },
-        ]
-      : []),
-    {
-      id: 'medication-notebook',
-      label: 'お薬手帳(最新)',
-      href: buildPatientHref(patientId, '#patient-profile-summary'),
-    },
-    ...(latestInquiryActivity
-      ? [
-          {
-            id: 'inquiry-response',
-            label: '照会回答',
-            meta: formatActivityTime(latestInquiryActivity.at),
-            href: latestInquiryActivity.href,
-          },
-        ]
-      : []),
-    {
-      id: 'lab-trend',
-      label: '検査値の推移',
-      meta: hasEgfr ? 'eGFR' : undefined,
-      href: buildPatientHref(patientId, '#patient-profile-summary'),
-    },
-  ];
+  const {
+    currentStep,
+    currentStepLabel,
+    cycleAction,
+    processLabel,
+    nextAction,
+    blockedReasons,
+    evidence,
+  } = buildPatientCommandCenterModel({ patient, patientId, workspace });
   return (
     <div className="space-y-4" data-testid="card-workspace">
       {headerRow}
