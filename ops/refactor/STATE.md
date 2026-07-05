@@ -3855,3 +3855,61 @@
   状態、comment resolution lifecycle、`TaskComment(org_id, created_at)` index migration、より詳細な
   entity label、browser smoke。次の安全な候補は `PAT-LIST-PERF-001` / `DSP-PERF-001` /
   `VISIT-UX-001`。
+
+## 2026-07-06 Patients Board Foundation Prefilter slice
+
+- codex: `PAT-LIST-PERF-001 / PERF-BFF-001` partial implemented.
+  `/api/patients/board` の `foundation_issue` filter について、DB 条件として安全に表現できる
+  `missing_parking` / `missing_care_level` / `missing_insurance` / `missing_consent_plan` を Prisma
+  prefilter に移した。`q` search と foundation prefilter は同じ `patientWhere` に入り、`findMany`
+  と `count` の両方に適用される。既存の `derivePatientBoardCard` 後の `matchesFoundationIssue` は
+  correctness backstop として残した。
+- subagents:
+  `code_mapper` subagent `019f33ea-0790-7580-a677-f1c5cfa917db` を read-only で投入。
+  `q` は既に DB-side search かつ UI query key に接続済み、`foundation_issue` は 500-row bounded
+  fetch 後の memory-side filter が主残課題、`missing_contact` / `missing_care_team` は contact
+  readiness・primary role 正規化を DB に完全移植すると false-empty リスクがあることを確認した。
+- design / imagegen:
+  視覚設計変更を伴わない API/performance slice のため、`imagegen` / `gpt-image-2` の新規生成は省略。
+  PH-OS UI/UX SSOT の `gpt-image-2` 方針は、患者一覧の見た目や配置を変更する slice で適用する。
+- files inspected:
+  `git status --short --branch --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/api/patients/board/route.ts`,
+  `src/app/api/patients/board/route.test.ts`,
+  `src/app/(dashboard)/patients/patients-board.tsx`,
+  `src/app/(dashboard)/patients/patients-board.test.tsx`,
+  `src/types/patient-board.ts`,
+  `src/lib/patient/care-team-contact.ts`,
+  `prisma/schema/patient.prisma`.
+- files changed:
+  `Plans.md`,
+  `src/app/api/patients/board/route.ts`,
+  `src/app/api/patients/board/route.test.ts`,
+  `ops/refactor/STATE.md`.
+- bugs/performance issues found and fixed:
+  `foundation_issue` 指定時も、DB query は最大 500 件を取得してから派生 card を memory-side filter
+  していた。今回、直接表現できる基盤不足を DB 境界で候補削減し、`q` と組み合わせた検索でも
+  取りこぼしにくくした。`assigned_total` / `truncated` の既存 contract は維持。
+- security/PHI risks reviewed:
+  新規 response field は追加していない。検索語や foundation condition をログへ出す処理も追加していない。
+  `Content-Length` payload measurement は既存どおり body size のみで、患者名・住所・連絡先・保険番号を
+  metrics key に含めない。`missing_contact` / `missing_care_team` は DB だけで厳密化すると空白文字や
+  primary 正規化差による false-empty があり得るため、今回は derived backstop 側に残した。
+- validation:
+  `pnpm exec vitest run src/app/api/patients/board/route.test.ts 'src/app/(dashboard)/patients/patients-board.test.tsx' --reporter=dot --testTimeout=30000`
+  green (2 files / 48 tests);
+  `pnpm exec eslint src/app/api/patients/board/route.ts src/app/api/patients/board/route.test.ts`
+  green;
+  `pnpm exec prettier --check src/app/api/patients/board/route.ts src/app/api/patients/board/route.test.ts`
+  green;
+  `git diff --check -- src/app/api/patients/board/route.ts src/app/api/patients/board/route.test.ts`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck --pretty false` green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false` green.
+- remaining:
+  Broader `Plans.md` objective remains open. `PAT-LIST-PERF-001` / `PERF-BFF-001` の残りは
+  `missing_contact` / `missing_care_team` の安全な DB 化または専用 materialized/facet strategy、
+  chip/foundation facet count endpoint、summary/detail batch split、DB index/EXPLAIN、query count、
+  payload budget enforcement、browser smoke。

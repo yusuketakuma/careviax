@@ -660,8 +660,10 @@ describe('/api/patients/board', () => {
       needs_confirmation: 2,
       missing_contact: 1,
     });
-    // foundation_issue filter reduced cards to 1 of 2 FETCHED, but the fetch was NOT
-    // capped (assigned_total 2 === fetched 2) — filtering is not truncation.
+    // foundation_issue filter reduced cards to 1 of 2 fetched rows, but the fetch was
+    // not capped (assigned_total 2 === fetched 2) — filtering is not truncation.
+    // This issue still relies on derived-card filtering because contact readiness has
+    // whitespace/primary-contact semantics that are not safely expressible as a DB predicate.
     expect(json.data.assigned_total).toBe(2);
     expect(json.data.truncated).toBe(false);
   });
@@ -749,6 +751,90 @@ describe('/api/patients/board', () => {
         ]),
       }),
     });
+  });
+
+  it('combines q with a database-side prefilter for directly expressible foundation issues', async () => {
+    const response = (await GET(
+      createRequest('?scope=all&q=%E4%BD%90%E8%97%A4&foundation_issue=missing_insurance'),
+      {
+        params: Promise.resolve({}),
+      },
+    ))!;
+
+    expect(response.status).toBe(200);
+    const expectedInsurancePrefilter = {
+      AND: [
+        { OR: [{ medical_insurance_number: null }, { medical_insurance_number: '' }] },
+        { OR: [{ care_insurance_number: null }, { care_insurance_number: '' }] },
+      ],
+    };
+    expect(patientFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          archived_at: null,
+          OR: expect.arrayContaining([
+            { name: { contains: '佐藤', mode: 'insensitive' } },
+            { name_kana: { contains: '佐藤', mode: 'insensitive' } },
+          ]),
+          AND: [expectedInsurancePrefilter],
+        }),
+        take: 500,
+      }),
+    );
+    expect(patientCountMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        OR: expect.arrayContaining([
+          { name: { contains: '佐藤', mode: 'insensitive' } },
+          { name_kana: { contains: '佐藤', mode: 'insensitive' } },
+        ]),
+        AND: [expectedInsurancePrefilter],
+      }),
+    });
+  });
+
+  it('prefilters consent and management-plan foundation gaps at the database boundary', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-12T08:00:00+09:00'));
+
+    const response = (await GET(createRequest('?scope=all&foundation_issue=missing_consent_plan'), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(200);
+    const prefilter = patientFindManyMock.mock.calls[0][0].where.AND[0];
+    expect(prefilter).toMatchObject({
+      OR: expect.arrayContaining([
+        {
+          consents: {
+            none: expect.objectContaining({
+              consent_type: 'visit_medication_management',
+              is_active: true,
+              revoked_date: null,
+            }),
+          },
+        },
+        {
+          cases: {
+            some: expect.objectContaining({
+              management_plans: { none: expect.any(Object) },
+            }),
+          },
+        },
+        {
+          cases: {
+            some: expect.objectContaining({
+              management_plans: {
+                some: expect.objectContaining({
+                  next_review_date: { lt: new Date('2026-06-12T00:00:00.000Z') },
+                }),
+              },
+            }),
+          },
+        },
+      ]),
+    });
+    expect(patientCountMock.mock.calls[0][0].where.AND[0]).toEqual(prefilter);
   });
 
   it('rejects invalid board foundation issue values before querying patients', async () => {

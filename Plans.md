@@ -731,6 +731,16 @@ FE 仕上げ（低優先）:
   dashboard right-rail mockup を参照案として生成した。残: unread / resolved / unresolved 状態、
   `TaskComment(org_id, created_at)` 追加 index、より詳細な entity label、browser smoke。
 
+- `PAT-LIST-PERF-001 / PERF-BFF-001` partial（2026-07-06）: `/api/patients/board` の
+  `foundation_issue` のうち、DB 条件として安全に表現できる `missing_parking` /
+  `missing_care_level` / `missing_insurance` / `missing_consent_plan` を Prisma prefilter へ寄せた。
+  既存の `derivePatientBoardCard` 後の `matchesFoundationIssue` は backstop として残し、患者安全や
+  空白文字・primary contact 正規化の差で false-empty を作らない。`q` と `foundation_issue` は同じ
+  `where` に合成され、`findMany` と `count` の両方へ渡る。視覚設計変更を伴わない API/perf slice のため
+  `imagegen` / `gpt-image-2` 生成は省略した。残: `missing_contact` / `missing_care_team` の安全な
+  DB 化、chip/foundation facet count endpoint、summary/detail batch 分割、DB index/EXPLAIN、query count
+  と payload budget gate。
+
 - `REPORT-PERF-001 / PERF-BFF-001` partial（2026-07-06）: `/reports` は
   `/api/dashboard/cockpit` を再取得せず、`/api/care-reports/today-workspace` の
   `action_rail`（next action / blocked reasons / evidence）で右レールを描画する。

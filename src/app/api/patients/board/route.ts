@@ -164,6 +164,90 @@ function buildPatientBoardSearchWhere(query: string | undefined): Prisma.Patient
   };
 }
 
+function activeVisitConsentWhere(now: Date): Prisma.ConsentRecordWhereInput {
+  return {
+    consent_type: 'visit_medication_management',
+    is_active: true,
+    revoked_date: null,
+    OR: [{ expiry_date: null }, { expiry_date: { gte: now } }],
+  };
+}
+
+function approvedManagementPlanWhere(now: Date): Prisma.ManagementPlanWhereInput {
+  return {
+    status: 'approved',
+    approved_at: { not: null },
+    OR: [{ effective_from: null }, { effective_from: { lte: now } }],
+  };
+}
+
+function hasBoardWhereClause(where: Prisma.PatientWhereInput): boolean {
+  return Object.keys(where).length > 0;
+}
+
+function buildPatientBoardFoundationPrefilterWhere(args: {
+  issue: z.infer<typeof boardQuerySchema>['foundation_issue'];
+  caseScopeWhere: Prisma.CareCaseWhereInput;
+  now: Date;
+  today: Date;
+}): Prisma.PatientWhereInput {
+  switch (args.issue) {
+    case 'missing_parking':
+      return {
+        OR: [
+          { scheduling_preference: { is: null } },
+          { scheduling_preference: { is: { parking_available: null } } },
+        ],
+      };
+    case 'missing_care_level':
+      return {
+        OR: [
+          { scheduling_preference: { is: null } },
+          { scheduling_preference: { is: { care_level: null } } },
+          { scheduling_preference: { is: { care_level: '' } } },
+        ],
+      };
+    case 'missing_insurance':
+      return {
+        AND: [
+          { OR: [{ medical_insurance_number: null }, { medical_insurance_number: '' }] },
+          { OR: [{ care_insurance_number: null }, { care_insurance_number: '' }] },
+        ],
+      };
+    case 'missing_consent_plan': {
+      const planWhere = approvedManagementPlanWhere(args.now);
+      return {
+        OR: [
+          { consents: { none: activeVisitConsentWhere(args.now) } },
+          {
+            cases: {
+              some: {
+                ...args.caseScopeWhere,
+                management_plans: { none: planWhere },
+              },
+            },
+          },
+          {
+            cases: {
+              some: {
+                ...args.caseScopeWhere,
+                management_plans: {
+                  some: {
+                    ...planWhere,
+                    next_review_date: { lt: args.today },
+                  },
+                },
+              },
+            },
+          },
+        ],
+      };
+    }
+    default:
+      return {};
+  }
+}
+
 const ACTIVE_SCHEDULE_STATUSES = [
   'planned',
   'in_preparation',
@@ -680,17 +764,26 @@ const authenticatedGET = withAuthContext(
       scope === 'mine' && !canBypassVisitScheduleAssignmentAccess(accessContext)
         ? (buildCareCaseAssignmentWhere(accessContext) ?? {})
         : {};
-    const caseScopeWhere = {
+    const caseScopeWhere: Prisma.CareCaseWhereInput = {
       status: { notIn: ['terminated' as const] },
       ...mineCaseWhere,
     };
 
-    const patientWhere = {
+    const foundationPrefilterWhere = buildPatientBoardFoundationPrefilterWhere({
+      issue: foundationIssue,
+      caseScopeWhere,
+      now,
+      today,
+    });
+    const patientWhere: Prisma.PatientWhereInput = {
       org_id: ctx.orgId,
       archived_at: null,
       cases: { some: caseScopeWhere },
       ...buildPatientBoardSearchWhere(query),
     };
+    if (hasBoardWhereClause(foundationPrefilterWhere)) {
+      patientWhere.AND = [foundationPrefilterWhere];
+    }
 
     const [patients, assignedTotal, auditTasks, openExceptions] = await Promise.all([
       prisma.patient.findMany({
