@@ -78,6 +78,16 @@ type TimelineGroup = {
   items: TimelineEvent[];
 };
 
+export type PatientActivityTimelineProps = {
+  timelineEvents: TimelineEvent[];
+  selfReports: SelfReport[];
+  isPartial?: boolean;
+  fullLimit?: number;
+  isLoadingFull?: boolean;
+  partialFailures?: { source: string; message: string }[];
+  onLoadFull?: () => void;
+};
+
 // 種別・系列軸の色は状態色ではない（design-language L180）。
 // 系列には globals.css の --chart-1..5（Tailwind の bg-/text-/border-chart-N）を使い、
 // 個別の bg-sky-50 等の state 色ベタ書きは使わない（L170）。色は単独の signal にせず
@@ -423,10 +433,12 @@ function TimelineEntry({ event, isLast }: { event: TimelineEvent; isLast: boolea
 export function PatientActivityTimeline({
   timelineEvents,
   selfReports,
-}: {
-  timelineEvents: TimelineEvent[];
-  selfReports: SelfReport[];
-}) {
+  isPartial = false,
+  fullLimit = 40,
+  isLoadingFull = false,
+  partialFailures = [],
+  onLoadFull,
+}: PatientActivityTimelineProps) {
   const [category, setCategory] = useState<TimelineCategory>('all');
   const [query, setQuery] = useState('');
   const deferredQuery = useDeferredValue(query.trim().toLowerCase());
@@ -478,7 +490,9 @@ export function PatientActivityTimeline({
             <Badge variant="outline">
               {isFiltered
                 ? `表示 ${filteredEvents.length} / 全 ${timelineEvents.length} 件`
-                : `最新 ${timelineEvents.length} 件`}
+                : isPartial
+                  ? `直近 ${timelineEvents.length} 件`
+                  : `最新 ${timelineEvents.length} 件`}
             </Badge>
           </div>
 
@@ -532,13 +546,45 @@ export function PatientActivityTimeline({
         <CardContent className="space-y-4 pt-4">
           <p
             data-testid="timeline-completeness-note"
-            className="flex items-start gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-xs leading-5 text-muted-foreground"
+            className="flex flex-wrap items-start gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-xs leading-5 text-muted-foreground"
           >
             <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-            <span>
-              直近のアクティビティを表示しています（全履歴ではありません）。各情報源の最近の記録をまとめた抜粋です。
+            <span className="min-w-0 flex-1">
+              {isPartial
+                ? '直近5件のアクティビティを先に表示しています。全履歴は必要な時だけ読み込みます。'
+                : `履歴を最大${fullLimit}件まで読み込んでいます。検索と種別フィルタで絞り込めます。`}
             </span>
+            {isPartial && onLoadFull ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="min-h-9 shrink-0 bg-background"
+                disabled={isLoadingFull}
+                onClick={onLoadFull}
+              >
+                {isLoadingFull ? '全履歴を読み込み中' : `全履歴を読み込む（最大${fullLimit}件）`}
+              </Button>
+            ) : null}
           </p>
+          {partialFailures.length > 0 ? (
+            <div
+              role="status"
+              className="rounded-lg border border-border/70 border-l-4 border-l-state-confirm bg-card px-3 py-2 text-xs leading-5 text-muted-foreground"
+              data-testid="timeline-partial-failures"
+            >
+              <p className="font-medium text-state-confirm">
+                一部の履歴ソースを取得できませんでした。
+              </p>
+              <ul className="mt-1 list-inside list-disc">
+                {partialFailures.map((failure) => (
+                  <li key={`${failure.source}:${failure.message}`}>
+                    {failure.source}: {failure.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           {timelineGroups.length === 0 ? (
             <EmptyState
               icon={Activity}

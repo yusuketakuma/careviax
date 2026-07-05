@@ -10,6 +10,7 @@ import { useUIStore } from '@/lib/stores/ui-store';
 import type {
   PatientDocumentsSnapshot,
   PatientOverview,
+  PatientTimelineSnapshot,
   PatientWorkspace,
 } from './patient-detail.types';
 import type { PatientHomeOperationsSnapshot } from '@/types/patient-home-operations';
@@ -352,6 +353,10 @@ function mockPatientQuery(
       next_prescription_expected_date: string | null;
     };
     headerSummaryError?: boolean;
+    timeline?: PatientTimelineSnapshot;
+    timelineError?: Error;
+    timelineLoading?: boolean;
+    timelineRefetch?: ReturnType<typeof vi.fn>;
     patientOverviewLoading?: boolean;
     executePatientShareCaseMutation?: boolean;
   } = {},
@@ -690,6 +695,52 @@ function mockPatientQuery(
     ],
     first_visit_documents: [],
   };
+  const timelineData: PatientTimelineSnapshot = options.timeline ?? {
+    timeline_events: [
+      {
+        id: 'timeline_visit_record_1',
+        event_type: 'visit_record',
+        category: 'visit',
+        occurred_at: '2026-06-18T09:00:00.000Z',
+        title: '訪問記録を保存',
+        summary: '服薬状況と次回方針を記録',
+        href: '/visits/visit_record_1',
+        action_label: '訪問記録へ',
+        status: 'completed',
+        status_label: '完了',
+        actor_name: '佐藤 薬剤師',
+        metadata: ['直近抜粋'],
+      },
+      {
+        id: 'timeline_care_report_1',
+        event_type: 'care_report',
+        category: 'document',
+        occurred_at: '2026-06-17T10:00:00.000Z',
+        title: '報告書を作成',
+        summary: '医師向け報告書の下書きを作成',
+        href: '/reports/report_1',
+        action_label: '報告書へ',
+        status: 'draft',
+        status_label: '下書き',
+        actor_name: null,
+        metadata: [],
+      },
+    ],
+    self_reports: [
+      {
+        id: 'self_report_1',
+        subject: '患者からの相談',
+        category: 'symptom',
+        content: '夜間の不安について相談あり',
+        relation: '本人',
+        status: 'submitted',
+        reported_by_name: '本人',
+        requested_callback: true,
+        preferred_contact_time: '午前',
+        created_at: '2026-06-18T08:00:00.000Z',
+      },
+    ],
+  };
 
   useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
     if (queryKey[0] === 'pharmacy-partnerships') {
@@ -776,6 +827,17 @@ function mockPatientQuery(
         isLoading: false,
         isError: false,
         error: null,
+      };
+    }
+
+    if (queryKey[0] === 'patient-timeline') {
+      return {
+        data: options.timelineLoading || options.timelineError ? undefined : timelineData,
+        isLoading: Boolean(options.timelineLoading),
+        isFetching: Boolean(options.timelineLoading),
+        isError: Boolean(options.timelineError),
+        error: options.timelineError ?? null,
+        refetch: options.timelineRefetch ?? vi.fn(),
       };
     }
 
@@ -1343,6 +1405,49 @@ describe('CardWorkspace', () => {
     );
     expect(screen.queryByTestId('patient-profile-summary')).toBeNull();
     expect(await screen.findByTestId('patient-card-documents-panel')).toBeTruthy();
+  });
+
+  it('loads the patient history tab as a 5-item timeline first and expands to the bounded full timeline on demand', async () => {
+    mockPatientQuery(buildWorkspace());
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    const initialTimelineConfig = useQueryMock.mock.calls
+      .map(([config]) => config as { queryKey?: unknown[]; enabled?: boolean })
+      .find((config) => config.queryKey?.[0] === 'patient-timeline');
+    expect(initialTimelineConfig).toMatchObject({
+      queryKey: ['patient-timeline', 'patient_1', 'org_1', 5],
+      enabled: false,
+    });
+
+    fireEvent.click(screen.getByRole('tab', { name: /履歴・構造化/ }));
+
+    expect(
+      await screen.findByText(
+        '直近5件のアクティビティを先に表示しています。全履歴は必要な時だけ読み込みます。',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: '全履歴を読み込む（最大40件）' })).toBeTruthy();
+    expect(screen.getAllByText('訪問記録を保存').length).toBeGreaterThanOrEqual(1);
+
+    const enabledTimelineConfig = useQueryMock.mock.calls
+      .map(([config]) => config as { queryKey?: unknown[]; enabled?: boolean })
+      .find((config) => config.queryKey?.[0] === 'patient-timeline' && config.enabled === true);
+    expect(enabledTimelineConfig).toMatchObject({
+      queryKey: ['patient-timeline', 'patient_1', 'org_1', 5],
+      enabled: true,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '全履歴を読み込む（最大40件）' }));
+
+    await waitFor(() => {
+      expect(
+        useQueryMock.mock.calls.some(([config]) => {
+          const queryConfig = config as { queryKey?: unknown[] };
+          return queryConfig.queryKey?.[0] === 'patient-timeline' && queryConfig.queryKey[3] === 40;
+        }),
+      ).toBe(true);
+    });
   });
 
   it('switches patient detail tabs when section hashes change', async () => {
@@ -3533,6 +3638,37 @@ describe('CardWorkspace', () => {
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
       expect(buildPatientApiPath).toHaveBeenCalledWith(hostileId, `/${segment}`);
       expect(url).toBe(`/api/patients/${encodeURIComponent(hostileId)}/${segment}`);
+      expect(url).not.toContain('?x=y');
+      expect(url).not.toContain('#z');
+      expect(url).not.toContain('%25');
+      expect(init.headers).toEqual(buildOrgHeaders('org_1'));
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('fetches the patient timeline from an encoded patient path with a bounded initial limit and org headers', async () => {
+    const hostileId = 'pt/1?x=y#z';
+    const getConfig = captureWorkspaceQueryConfig('patient-timeline', hostileId);
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ timeline_events: [], self_reports: [] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<CardWorkspace patientId={hostileId} />);
+
+      const config = getConfig();
+      expect(config?.queryKey).toEqual(['patient-timeline', hostileId, 'org_1', 5]);
+      await config?.queryFn?.();
+
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(buildPatientApiPath).toHaveBeenCalledWith(hostileId, '/timeline');
+      expect(url).toBe(`/api/patients/${encodeURIComponent(hostileId)}/timeline?limit=5`);
       expect(url).not.toContain('?x=y');
       expect(url).not.toContain('#z');
       expect(url).not.toContain('%25');

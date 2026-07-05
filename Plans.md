@@ -782,9 +782,12 @@ FE 仕上げ（低優先）:
   `/api/patients/[id]/timeline` に `limit=1..40` contract を追加し、service 側の最終
   timeline projection と inline operation-history read を同じ上限で絞れるようにした。
   既定は 40 件のまま、履歴タブ初期表示や Command Center から `?limit=5` の直近抜粋を取得できる。
-  視覚設計変更を伴わない API/perf foundation のため `imagegen` / `gpt-image-2` 生成は省略。
-  残: 患者詳細履歴タブの `limit=5` 初期取得、全履歴「もっと見る」、source 別 skeleton/fail-soft UI、
-  payload budget / browser smoke。
+  追加 partial として、患者詳細の履歴タブは開かれるまで timeline API を呼ばず、初回は
+  `?limit=5` の直近抜粋を表示し、ユーザー操作で `?limit=40` の「全履歴（最大40件）」へ拡張する。
+  取得失敗は `ErrorState` で再試行可能にし、`partial_failures` は履歴内に source 別 warning として表示する。
+  視覚判断が入る UI slice のため `imagegen` skill と `gpt-image-2` 方針に沿う非 PHI mockup を生成し、
+  PH-OS のタブ/高密度/状態5分離へ翻訳して実装した。
+  残: source 別 skeleton の精緻化、payload budget、browser smoke。
 
 **追加実装順序**:
 

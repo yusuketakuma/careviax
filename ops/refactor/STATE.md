@@ -4177,3 +4177,58 @@
   Broader `Plans.md` objective remains open. `PAT-DETAIL-PERF-002` の残りは患者詳細履歴タブの
   `limit=5` 初期取得、全履歴「もっと見る」、source 別 skeleton/fail-soft UI、payload budget、
   browser smoke。
+
+## 2026-07-06 Patient Detail Timeline Progressive Loading slice
+
+- codex: `PAT-DETAIL-PERF-002 / FE-BUD-001` UI partial implemented.
+  患者詳細の `履歴・構造化` タブは、タブが開かれるまで timeline API を呼ばず、初回は
+  `/api/patients/[id]/timeline?limit=5` の直近抜粋を表示する。利用者が必要な場合だけ
+  「全履歴を読み込む（最大40件）」で `limit=40` に拡張し、患者詳細初期表示の payload と
+  operation-history read を軽く保つ。
+- design / imagegen:
+  UI 変更のため `docs/ui-ux-design-guidelines.md` と `imagegen` skill を確認し、`gpt-image-2`
+  方針の非PHI mockup を生成:
+  `/Users/yusuke/.codex/generated_images/019f2c7e-d969-7882-bd11-432a10abb930/ig_0dd49025846a8724016a4ac40ccd2c8191b96858abc5f276ee.png`。
+  prompt は safe display id と抽象ラベルのみで、実在患者名、住所、電話、処方/報告本文、
+  保険情報、外部共有 URL、secret は含めていない。生成案の「直近5件」「全履歴読み込み」
+  「source status」を、PH-OS の既存 tabs / ErrorState / high-density timeline へ翻訳して実装した。
+- files inspected:
+  `git status --short --branch --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `docs/ui-ux-design-guidelines.md`,
+  `/Users/yusuke/.codex/skills/.system/imagegen/SKILL.md`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+  `src/app/(dashboard)/patients/[id]/patient-activity-timeline.tsx`,
+  `src/app/(dashboard)/patients/[id]/patient-detail.types.ts`,
+  `src/app/api/patients/[id]/timeline/route.ts`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+  `src/app/(dashboard)/patients/[id]/patient-activity-timeline.tsx`.
+- performance issues improved:
+  履歴タブが未表示の間は timeline query を無効化し、表示時も `limit=5` で初期取得する。
+  `limit=40` は明示操作時のみ発火するため、患者詳細の初期 hydrate/first interaction から
+  full timeline payload を外した。
+- safety / PHI reviewed:
+  新規 API field は追加せず、既存 `PatientTimelineSnapshot` を `readApiJson` で読む。
+  fetch URL は `buildPatientApiPath(patientId, '/timeline')` と `URLSearchParams({ limit })` で
+  組み、org header を維持。取得失敗は空状態に潰さず `ErrorState` で再試行可能にした。
+  `partial_failures` は source/message のみを表示し、PHI や raw provider diagnostics は追加していない。
+- validation:
+  `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' --reporter=dot --testTimeout=30000`
+  green (1 file / 79 tests);
+  `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-activity-timeline.tsx'`
+  green;
+  `pnpm exec prettier --check 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-activity-timeline.tsx'`
+  green;
+  `git diff --check -- 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-activity-timeline.tsx'`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck --pretty false` green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false` green.
+- remaining:
+  Broader `Plans.md` objective remains open. 残りは source 別 skeleton の精緻化、
+  payload budget、browser smoke、Command Center からの timeline 抜粋利用。

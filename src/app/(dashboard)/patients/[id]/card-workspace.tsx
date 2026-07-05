@@ -62,6 +62,7 @@ import {
 } from '@/lib/prescription/cycle-workspace';
 import { formatPrescriptionCardNumber } from '@/lib/prescription/rx-number';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { readApiJson } from '@/lib/api/client-json';
 import { formatDisplayEntityLabel } from '@/lib/display-id/display-labels';
 import { downscaleImage } from '@/lib/files/downscale-image';
 import { encodePathSegment } from '@/lib/http/path-segment';
@@ -91,10 +92,12 @@ import {
 import type {
   PatientDocumentsSnapshot,
   PatientOverview,
+  PatientTimelineSnapshot,
   PatientWorkspaceActivity,
   PatientWorkspacePrescriptionLine,
   PatientWorkspaceTodayTask,
 } from './patient-detail.types';
+import type { PatientActivityTimelineProps } from './patient-activity-timeline';
 import type {
   PatientHomeOperationItem,
   PatientHomeOperationKey,
@@ -171,6 +174,13 @@ const PatientStructuredCarePanel = dynamic<PatientIdPanelProps>(
   },
 );
 
+const PatientActivityTimelinePanel = dynamic<PatientActivityTimelineProps>(
+  () => import('./patient-activity-timeline').then((mod) => mod.PatientActivityTimeline),
+  {
+    loading: () => <PatientDetailPanelLoading label="患者アクションタイムラインを読み込み中" />,
+  },
+);
+
 /**
  * design/images/new 06_card: カード = 1 処方サイクル(1 RX 番号)の作業台。
  * 患者識別と主要アクションは固定の上部領域に置き、詳細情報はタブで分割する。
@@ -242,6 +252,8 @@ const UNRESOLVED_CATEGORY_LABELS: Record<VisitBriefUnresolvedItem['source_type']
 };
 
 const SSR_PATIENT_OVERVIEW_STALE_TIME_MS = 30_000;
+const PATIENT_TIMELINE_INITIAL_LIMIT = 5;
+const PATIENT_TIMELINE_FULL_LIMIT = 40;
 
 type PatientDetailTab = 'command' | 'foundation' | 'medication' | 'sharing' | 'billing' | 'history';
 
@@ -4181,6 +4193,14 @@ export function CardWorkspace({
   const [activeDetailTab, setActiveDetailTab] = useState<PatientDetailTab>(() =>
     resolveInitialPatientDetailTab(),
   );
+  const [timelineRequest, setTimelineRequest] = useState(() => ({
+    patientId,
+    limit: PATIENT_TIMELINE_INITIAL_LIMIT,
+  }));
+  const timelineLimit =
+    timelineRequest.patientId === patientId
+      ? timelineRequest.limit
+      : PATIENT_TIMELINE_INITIAL_LIMIT;
   const [mountedDetailTabs, setMountedDetailTabs] = useState<ReadonlySet<PatientDetailTab>>(
     () => new Set<PatientDetailTab>([resolveInitialPatientDetailTab()]),
   );
@@ -4263,6 +4283,26 @@ export function CardWorkspace({
       return res.json();
     },
     enabled: Boolean(orgId && patient),
+  });
+
+  const {
+    data: timelineSnapshot,
+    isLoading: timelineLoading,
+    isFetching: timelineFetching,
+    isError: timelineError,
+    error: timelineErrorDetail,
+    refetch: refetchTimeline,
+  } = useQuery<PatientTimelineSnapshot>({
+    queryKey: ['patient-timeline', patientId, orgId, timelineLimit],
+    queryFn: async () => {
+      const path = `${buildPatientApiPath(patientId, '/timeline')}?${new URLSearchParams({
+        limit: String(timelineLimit),
+      }).toString()}`;
+      const response = await fetch(path, { headers: buildOrgHeaders(orgId) });
+      return readApiJson<PatientTimelineSnapshot>(response, '患者履歴の取得に失敗しました');
+    },
+    enabled: Boolean(orgId && patient && isDetailTabMounted('history')),
+    staleTime: 30_000,
   });
 
   const markFaxOriginalCollectedMutation = useMutation({
@@ -4611,6 +4651,38 @@ export function CardWorkspace({
   // patient が存在する場合は、背景 refetch が失敗(error)していてもワークスペースを維持して表示する
   // (react-query v5 は cached/initialData がある状態で error をセットしても data を保持する)。
 
+  const renderPatientTimelinePanel = () => {
+    if (timelineLoading) {
+      return <PatientDetailPanelLoading label="患者アクションタイムラインを読み込み中" />;
+    }
+
+    if (timelineError) {
+      return (
+        <ErrorState
+          variant="server"
+          title="患者アクションタイムラインを表示できません"
+          cause="患者履歴の取得に失敗しました。"
+          nextAction="通信状態または権限を確認して再試行してください。"
+          detail={timelineErrorDetail instanceof Error ? timelineErrorDetail.message : undefined}
+          onRetry={() => void refetchTimeline()}
+          headingLevel={3}
+        />
+      );
+    }
+
+    return (
+      <PatientActivityTimelinePanel
+        timelineEvents={timelineSnapshot?.timeline_events ?? []}
+        selfReports={timelineSnapshot?.self_reports ?? []}
+        isPartial={timelineLimit < PATIENT_TIMELINE_FULL_LIMIT}
+        fullLimit={PATIENT_TIMELINE_FULL_LIMIT}
+        isLoadingFull={timelineFetching && timelineLimit >= PATIENT_TIMELINE_FULL_LIMIT}
+        partialFailures={timelineSnapshot?.partial_failures}
+        onLoadFull={() => setTimelineRequest({ patientId, limit: PATIENT_TIMELINE_FULL_LIMIT })}
+      />
+    );
+  };
+
   const workspace = patient.workspace;
   const rxNumber = workspace?.current_intake
     ? formatPrescriptionCardNumber(
@@ -4886,6 +4958,7 @@ export function CardWorkspace({
           {isDetailTabMounted('history') ? (
             <TabsContent value="history" keepMounted className="space-y-4">
               <h2 className="text-lg font-bold text-foreground">履歴・構造化</h2>
+              {renderPatientTimelinePanel()}
               <div id="patient-structured-care" data-testid="patient-structured-care">
                 <PatientStructuredCarePanel patientId={patientId} />
               </div>
@@ -5151,6 +5224,7 @@ export function CardWorkspace({
             {isDetailTabMounted('history') ? (
               <TabsContent value="history" keepMounted className="space-y-4">
                 <h2 className="text-lg font-bold text-foreground">履歴・構造化</h2>
+                {renderPatientTimelinePanel()}
                 {/* 変更履歴: 患者項目の業務差分(誰がいつ何を何から何へ・確認元) */}
                 <SectionCard
                   id="patient-field-revisions"
