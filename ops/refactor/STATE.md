@@ -40,6 +40,39 @@
 
 ## 直近の land（本日・要点）
 
+- codex: visit schedule lifecycle write boundary batch(e4e897a2c)
+  implementation complete。ユーザー指示により本sliceでも subagent を投入（code_mapper /
+  security_critic / medical_safety_reviewer / verifier）。code_mapper は visit-schedule lifecycle
+  mutation の最小高価値面として reopen / cancel を提示し、medical_safety_reviewer はさらに
+  PATCH / reorder / preparation mark_ready / reschedule request を trainee clinical/operational
+  side-effect risk として CHANGES_REQUESTED。security_critic は初期 reopen/delete hardening 後も
+  generic PATCH と reorder が残ると指摘。対応として `src/lib/auth/visit-schedule-access.ts` に
+  `canManageVisitScheduleLifecycle` を追加し、訪問予定の lifecycle / operational mutation を
+  `owner|admin|pharmacist` に限定。`POST /api/visit-schedules/:id/reopen`、`PATCH
+/api/visit-schedules/:id`、`DELETE /api/visit-schedules/:id`、`PATCH
+/api/visit-schedules/reorder` は `pharmacist_trainee` / clerk / driver / external_viewer を
+  body parse、schedule lookup、org transaction、updateMany、override/proposal/task side effect、
+  audit、workflow notify の前で no-store 403 にする。既存の org-wide read/access helper と
+  visit-record assigned trainee write helper は維持し、schedule assignment read policy と final
+  operational write boundary を分離。route tests は reopen / PATCH / DELETE / reorder の trainee
+  denial と no-side-effect を固定し、reorder は route_order update と pharmacist reassignment の近似箇所を
+  同一境界でまとめて検証。helper test は owner/admin/pharmacist allow、trainee/clerk/driver/
+  external_viewer deny を固定。validation:
+  `pnpm exec vitest run src/lib/auth/__tests__/visit-schedule-access.test.ts 'src/app/api/visit-schedules/[id]/reopen/route.test.ts' 'src/app/api/visit-schedules/[id]/route.test.ts' src/app/api/visit-schedules/reorder/route.test.ts`
+  green（4 files / 156 tests）; expanded focused set with
+  `'src/app/api/visit-preparations/[scheduleId]/route.test.ts'` green（5 files / 193 tests）;
+  scoped `eslint` green; scoped `prettier --check` green; `git diff --check` green;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。verifier subagent は read-only final diff
+  review と focused Vitest / scoped ESLint / scoped Prettier / diff-check / typecheck を独立実行して
+  APPROVE。`pnpm typecheck:no-unused` は Node default heap で OOM、8192MB heap では今回差分外の既存
+  `src/app/(dashboard)/admin/document-templates/template-body-editor.render.test.tsx:83` unused
+  `input` で failure。SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/
+  package dependency) に基づき product API / authorization / PHI-adjacent operational lifecycle /
+  billing-visit readiness side-effect boundary を変更。DB schema/migration/deploy/package dependency 変更は不要。
+  残る高優先別slice候補: `PUT /api/visit-preparations/:scheduleId` mark_ready / prepared_at /
+  task resolution / vehicle assignment の trainee boundary、reschedule request の unassigned trainee
+  side effect と free-text audit/communication、assigned trainee の visit-record completion/finalization
+  supervision 方針、medication issue resolve/promote の trainee clinical-state boundary。
 - codex: visit record trainee cross-assignment write boundary batch(bef4d7b8a)
   implementation complete。ユーザー指示により本sliceでも subagent を投入（api_contract_reviewer /
   medical_safety_reviewer / test_architect / verifier）。test_architect は `POST /api/visit-records` と
