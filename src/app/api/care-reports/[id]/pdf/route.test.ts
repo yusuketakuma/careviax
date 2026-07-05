@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
-import { expectSensitiveNoStore } from '@/test/api-response-assertions';
+import {
+  expectPhiExportSnapshotRedacted,
+  expectSensitiveNoStore,
+} from '@/test/api-response-assertions';
 
 const {
   requireAuthContextMock,
@@ -57,9 +60,11 @@ describe('/api/care-reports/[id]/pdf', () => {
   });
 
   it('returns the rendered care report pdf', async () => {
+    const hostileFileName =
+      'Taro Yamada 090-1234-5678 アムロジピン storageKey=s3 token=secret provider raw error.pdf';
     buildCareReportPdfMock.mockResolvedValue({
       buffer: Buffer.from('pdf'),
-      fileName: 'care-report.pdf',
+      fileName: hostileFileName,
       reportUpdatedAt: new Date('2026-03-28T09:00:00.000Z'),
     });
 
@@ -73,18 +78,27 @@ describe('/api/care-reports/[id]/pdf', () => {
       userId: 'user_1',
       role: 'pharmacist',
     });
-    expect(pdfResponseMock).toHaveBeenCalledWith(expect.any(Buffer), 'care-report.pdf');
-    expect(recordDataExportAuditMock).toHaveBeenCalledWith(
-      expect.any(Object),
-      expect.objectContaining({
-        targetType: 'care_report',
-        format: 'pdf',
-        targetId: 'report_1',
-        metadata: {
-          report_updated_at: '2026-03-28T09:00:00.000Z',
-        },
-      }),
-    );
+    expect(pdfResponseMock).toHaveBeenCalledWith(expect.any(Buffer), hostileFileName);
+    expect(recordDataExportAuditMock).toHaveBeenCalledWith(expect.any(Object), {
+      orgId: 'org_1',
+      actorId: 'user_1',
+      targetType: 'care_report',
+      targetId: 'report_1',
+      format: 'pdf',
+      recordCount: 1,
+      metadata: {
+        surface: 'care_report_pdf',
+        output_profile: 'external_submission_pdf',
+        report_updated_at: '2026-03-28T09:00:00.000Z',
+      },
+      ipAddress: undefined,
+      userAgent: undefined,
+    });
+    expectPhiExportSnapshotRedacted(JSON.stringify(recordDataExportAuditMock.mock.calls), [
+      'Taro',
+      'Yamada',
+      'storageKey=s3',
+    ]);
   });
 
   it('requires report send permission before rendering or auditing the export', async () => {

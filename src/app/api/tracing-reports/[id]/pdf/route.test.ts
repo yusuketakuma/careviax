@@ -37,7 +37,10 @@ vi.mock('@/server/services/export-audit', () => ({
 
 import { PdfNotFoundError } from '@/server/services/pdf-errors';
 import { GET } from './route';
-import { expectSensitiveNoStore } from '@/test/api-response-assertions';
+import {
+  expectPhiExportSnapshotRedacted,
+  expectSensitiveNoStore,
+} from '@/test/api-response-assertions';
 
 function createRequest() {
   return new NextRequest('http://localhost/api/tracing-reports/report_1/pdf');
@@ -70,9 +73,11 @@ describe('/api/tracing-reports/[id]/pdf', () => {
   });
 
   it('returns the rendered tracing report pdf', async () => {
+    const hostileFileName =
+      'Taro Yamada 090-1234-5678 アムロジピン storageKey=s3 token=secret provider raw error.pdf';
     buildTracingReportPdfMock.mockResolvedValue({
       buffer: Buffer.from('pdf'),
-      fileName: 'tracing-report.pdf',
+      fileName: hostileFileName,
     });
 
     const response = (await GET(createRequest(), {
@@ -85,15 +90,49 @@ describe('/api/tracing-reports/[id]/pdf', () => {
       userId: 'user_1',
       role: 'pharmacist',
     });
-    expect(pdfResponseMock).toHaveBeenCalledWith(expect.any(Buffer), 'tracing-report.pdf');
-    expect(recordDataExportAuditMock).toHaveBeenCalledWith(
-      expect.any(Object),
-      expect.objectContaining({
-        targetType: 'tracing_report',
-        format: 'pdf',
-        targetId: 'report_1',
-      }),
+    expect(pdfResponseMock).toHaveBeenCalledWith(expect.any(Buffer), hostileFileName);
+    expect(recordDataExportAuditMock).toHaveBeenCalledWith(expect.any(Object), {
+      orgId: 'org_1',
+      actorId: 'user_1',
+      targetType: 'tracing_report',
+      targetId: 'report_1',
+      format: 'pdf',
+      recordCount: 1,
+      metadata: {
+        surface: 'tracing_report_pdf',
+        output_profile: 'internal_pdf',
+      },
+      ipAddress: undefined,
+      userAgent: undefined,
+    });
+    expectPhiExportSnapshotRedacted(JSON.stringify(recordDataExportAuditMock.mock.calls), [
+      'Taro',
+      'Yamada',
+      'storageKey=s3',
+    ]);
+  });
+
+  it('fails closed when the tracing report PDF export audit cannot be recorded', async () => {
+    buildTracingReportPdfMock.mockResolvedValue({
+      buffer: Buffer.from('pdf'),
+      fileName: 'tracing-report.pdf',
+    });
+    recordDataExportAuditMock.mockRejectedValueOnce(
+      new Error('audit unavailable for 山田 太郎 090-1234-5678'),
     );
+
+    const response = (await GET(createRequest(), {
+      params: Promise.resolve({ id: 'report_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'TRACING_REPORT_PDF_EXPORT_AUDIT_FAILED',
+      message: 'トレーシングレポート PDF 出力監査を記録できませんでした',
+    });
+    expect(recordDataExportAuditMock).toHaveBeenCalled();
+    expect(pdfResponseMock).not.toHaveBeenCalled();
   });
 
   it('returns 404 without rendering or audit when the tracing report is not accessible', async () => {

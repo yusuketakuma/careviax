@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
-import { expectSensitiveNoStore } from '@/test/api-response-assertions';
+import {
+  expectPhiExportSnapshotRedacted,
+  expectSensitiveNoStore,
+} from '@/test/api-response-assertions';
 
 const {
   requireAuthContextMock,
@@ -63,9 +66,11 @@ describe('/api/conference-notes/[id]/pdf', () => {
   });
 
   it('returns the rendered conference note pdf', async () => {
+    const hostileFileName =
+      'Taro Yamada 090-1234-5678 アムロジピン storageKey=s3 token=secret provider raw error.pdf';
     buildConferenceNotePdfMock.mockResolvedValue({
       buffer: Buffer.from('pdf'),
-      fileName: 'conference-note.pdf',
+      fileName: hostileFileName,
     });
 
     const response = (await GET(createRequest(), {
@@ -78,11 +83,49 @@ describe('/api/conference-notes/[id]/pdf', () => {
       userId: 'user_1',
       role: 'pharmacist',
     });
-    expect(pdfResponseMock).toHaveBeenCalledWith(expect.any(Buffer), 'conference-note.pdf');
-    expect(recordDataExportAuditMock).toHaveBeenCalledWith(
-      expect.any(Object),
-      expect.objectContaining({ targetType: 'conference_note', format: 'pdf', targetId: 'note_1' }),
+    expect(pdfResponseMock).toHaveBeenCalledWith(expect.any(Buffer), hostileFileName);
+    expect(recordDataExportAuditMock).toHaveBeenCalledWith(expect.any(Object), {
+      orgId: 'org_1',
+      actorId: 'user_1',
+      targetType: 'conference_note',
+      targetId: 'note_1',
+      format: 'pdf',
+      recordCount: 1,
+      metadata: {
+        surface: 'conference_note_pdf',
+        output_profile: 'internal_pdf',
+      },
+      ipAddress: undefined,
+      userAgent: undefined,
+    });
+    expectPhiExportSnapshotRedacted(JSON.stringify(recordDataExportAuditMock.mock.calls), [
+      'Taro',
+      'Yamada',
+      'storageKey=s3',
+    ]);
+  });
+
+  it('fails closed when the conference note PDF export audit cannot be recorded', async () => {
+    buildConferenceNotePdfMock.mockResolvedValue({
+      buffer: Buffer.from('pdf'),
+      fileName: 'conference-note.pdf',
+    });
+    recordDataExportAuditMock.mockRejectedValueOnce(
+      new Error('audit unavailable for 山田 太郎 provider raw error'),
     );
+
+    const response = (await GET(createRequest(), {
+      params: Promise.resolve({ id: 'note_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'CONFERENCE_NOTE_PDF_EXPORT_AUDIT_FAILED',
+      message: 'カンファレンス記録 PDF 出力監査を記録できませんでした',
+    });
+    expect(recordDataExportAuditMock).toHaveBeenCalled();
+    expect(pdfResponseMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank conference note ids before rendering or auditing the export', async () => {

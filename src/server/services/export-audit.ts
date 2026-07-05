@@ -105,7 +105,39 @@ const allowedMetadataKeysByTarget = new Map<string, Set<string>>([
     ]),
   ],
   ['pharmacy_drug_stock', new Set(['source'])],
+  ['care_report', new Set(['surface', 'output_profile', 'report_updated_at'])],
+  ['tracing_report', new Set(['surface', 'output_profile'])],
+  ['visit_record', new Set(['surface', 'output_profile'])],
+  ['conference_note', new Set(['surface', 'output_profile'])],
 ]);
+
+const reportPdfMetadataProfileByTarget = {
+  care_report: {
+    surface: 'care_report_pdf',
+    output_profile: 'external_submission_pdf',
+    allowReportUpdatedAt: true,
+  },
+  tracing_report: {
+    surface: 'tracing_report_pdf',
+    output_profile: 'internal_pdf',
+    allowReportUpdatedAt: false,
+  },
+  visit_record: {
+    surface: 'visit_record_pdf',
+    output_profile: 'internal_pdf',
+    allowReportUpdatedAt: false,
+  },
+  conference_note: {
+    surface: 'conference_note_pdf',
+    output_profile: 'internal_pdf',
+    allowReportUpdatedAt: false,
+  },
+} as const satisfies Record<
+  string,
+  { surface: string; output_profile: string; allowReportUpdatedAt: boolean }
+>;
+
+type ReportPdfAuditTarget = keyof typeof reportPdfMetadataProfileByTarget;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -155,12 +187,52 @@ function sanitizeAuditValue(value: unknown): unknown {
   return undefined;
 }
 
+function isReportPdfAuditTarget(targetType: string): targetType is ReportPdfAuditTarget {
+  return targetType in reportPdfMetadataProfileByTarget;
+}
+
+function isCanonicalIsoDateTime(value: string) {
+  const parsed = new Date(value);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString() === value;
+}
+
+function sanitizeReportPdfAuditMetadata(
+  targetType: ReportPdfAuditTarget,
+  values: Record<string, unknown> | undefined,
+) {
+  if (!values) return {};
+  const profile = reportPdfMetadataProfileByTarget[targetType];
+  const sanitized: Record<string, unknown> = {};
+
+  if (values.surface === profile.surface) {
+    sanitized.surface = profile.surface;
+  }
+
+  if (values.output_profile === profile.output_profile) {
+    sanitized.output_profile = profile.output_profile;
+  }
+
+  if (
+    profile.allowReportUpdatedAt &&
+    typeof values.report_updated_at === 'string' &&
+    isCanonicalIsoDateTime(values.report_updated_at)
+  ) {
+    sanitized.report_updated_at = values.report_updated_at;
+  }
+
+  return sanitized;
+}
+
 function sanitizeAuditRecord(
   targetType: string,
   values: Record<string, unknown> | undefined,
   allowedKeysByTarget: Map<string, Set<string>>,
 ) {
   if (!values) return {};
+  if (allowedKeysByTarget === allowedMetadataKeysByTarget && isReportPdfAuditTarget(targetType)) {
+    return sanitizeReportPdfAuditMetadata(targetType, values);
+  }
+
   const allowedKeys = allowedKeysByTarget.get(targetType);
   if (!allowedKeys) return {};
   const sanitized: Record<string, unknown> = {};

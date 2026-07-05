@@ -37,7 +37,10 @@ vi.mock('@/server/services/export-audit', () => ({
 
 import { PdfNotFoundError } from '@/server/services/pdf-errors';
 import { GET } from './route';
-import { expectSensitiveNoStore } from '@/test/api-response-assertions';
+import {
+  expectPhiExportSnapshotRedacted,
+  expectSensitiveNoStore,
+} from '@/test/api-response-assertions';
 
 function createGetRequest() {
   return new NextRequest('http://localhost/api/visit-records/visit_1/pdf');
@@ -54,9 +57,11 @@ describe('/api/visit-records/[id]/pdf', () => {
   });
 
   it('returns the rendered visit record pdf', async () => {
+    const hostileFileName =
+      'Taro Yamada 090-1234-5678 アムロジピン storageKey=s3 token=secret provider raw error.pdf';
     buildVisitRecordPdfMock.mockResolvedValue({
       buffer: Buffer.from('pdf'),
-      fileName: 'visit-record.pdf',
+      fileName: hostileFileName,
     });
 
     const response = (await GET(createGetRequest(), {
@@ -69,11 +74,49 @@ describe('/api/visit-records/[id]/pdf', () => {
       userId: 'user_1',
       role: 'pharmacist',
     });
-    expect(pdfResponseMock).toHaveBeenCalledWith(expect.any(Buffer), 'visit-record.pdf');
-    expect(recordDataExportAuditMock).toHaveBeenCalledWith(
-      expect.any(Object),
-      expect.objectContaining({ targetType: 'visit_record', format: 'pdf', targetId: 'visit_1' }),
+    expect(pdfResponseMock).toHaveBeenCalledWith(expect.any(Buffer), hostileFileName);
+    expect(recordDataExportAuditMock).toHaveBeenCalledWith(expect.any(Object), {
+      orgId: 'org_1',
+      actorId: 'user_1',
+      targetType: 'visit_record',
+      targetId: 'visit_1',
+      format: 'pdf',
+      recordCount: 1,
+      metadata: {
+        surface: 'visit_record_pdf',
+        output_profile: 'internal_pdf',
+      },
+      ipAddress: undefined,
+      userAgent: undefined,
+    });
+    expectPhiExportSnapshotRedacted(JSON.stringify(recordDataExportAuditMock.mock.calls), [
+      'Taro',
+      'Yamada',
+      'storageKey=s3',
+    ]);
+  });
+
+  it('fails closed when the visit record PDF export audit cannot be recorded', async () => {
+    buildVisitRecordPdfMock.mockResolvedValue({
+      buffer: Buffer.from('pdf'),
+      fileName: 'visit-record.pdf',
+    });
+    recordDataExportAuditMock.mockRejectedValueOnce(
+      new Error('audit unavailable for 山田 太郎 アムロジピン'),
     );
+
+    const response = (await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'visit_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VISIT_RECORD_PDF_EXPORT_AUDIT_FAILED',
+      message: '訪問記録 PDF 出力監査を記録できませんでした',
+    });
+    expect(recordDataExportAuditMock).toHaveBeenCalled();
+    expect(pdfResponseMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank visit record ids before rendering or auditing the export', async () => {

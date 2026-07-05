@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { expectPhiExportSnapshotRedacted } from '@/test/api-response-assertions';
 
 const { auditLogCreateMock } = vi.hoisted(() => ({
   auditLogCreateMock: vi.fn(),
@@ -366,6 +367,161 @@ describe('recordDataExportAudit', () => {
     expect(persisted).not.toContain('signed.example');
     expect(persisted).not.toContain('provider raw error');
     expect(persisted).not.toContain('token=secret');
+  });
+
+  it('keeps report PDF audit profiles while dropping hostile metadata', async () => {
+    auditLogCreateMock.mockResolvedValue({});
+
+    await recordDataExportAudit(db, {
+      orgId: 'org-1',
+      actorId: 'user-1',
+      targetType: 'care_report',
+      targetId: 'report-1',
+      format: 'pdf',
+      recordCount: 1,
+      metadata: {
+        surface: 'care_report_pdf',
+        output_profile: 'external_submission_pdf',
+        report_updated_at: '2026-03-28T09:00:00.000Z',
+        patient_id: 'patient_1',
+        patient_name: '山田 太郎',
+        address: '東京都千代田区1-1-1',
+        phone: '090-1234-5678',
+        medication_name: 'アムロジピン',
+        free_text: '家族へ事前共有',
+        storageKey: 'reports/org_1/report_1/raw.pdf',
+        signed_url: 'https://signed.example/raw?token=secret',
+        provider_raw_error: 'provider raw error token=secret',
+      },
+    });
+
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        target_type: 'care_report',
+        changes: {
+          format: 'pdf',
+          record_count: 1,
+          filters: {},
+          metadata: {
+            surface: 'care_report_pdf',
+            output_profile: 'external_submission_pdf',
+            report_updated_at: '2026-03-28T09:00:00.000Z',
+          },
+        },
+      }),
+    });
+    expectPhiExportSnapshotRedacted(JSON.stringify(auditLogCreateMock.mock.calls), [
+      'patient_1',
+      'raw.pdf',
+    ]);
+  });
+
+  it.each([
+    ['tracing_report', 'tracing_report_pdf'],
+    ['visit_record', 'visit_record_pdf'],
+    ['conference_note', 'conference_note_pdf'],
+  ])('keeps %s PDF audit metadata to the safe profile only', async (targetType, surface) => {
+    auditLogCreateMock.mockResolvedValue({});
+
+    await recordDataExportAudit(db, {
+      orgId: 'org-1',
+      actorId: 'user-1',
+      targetType,
+      targetId: 'target-1',
+      format: 'pdf',
+      recordCount: 1,
+      metadata: {
+        surface,
+        output_profile: 'internal_pdf',
+        report_updated_at: '2026-03-28T09:00:00.000Z',
+        patient_name: '山田 太郎',
+        phone: '090-1234-5678',
+        medication_name: 'アムロジピン',
+        content: '家族へ事前共有',
+        storageKey: 'reports/org_1/raw.pdf',
+        signed_url: 'https://signed.example/raw?token=secret',
+        provider_raw_error: 'provider raw error token=secret',
+      },
+    });
+
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        target_type: targetType,
+        changes: {
+          format: 'pdf',
+          record_count: 1,
+          filters: {},
+          metadata: {
+            surface,
+            output_profile: 'internal_pdf',
+          },
+        },
+      }),
+    });
+    const persisted = JSON.stringify(auditLogCreateMock.mock.calls);
+    expect(persisted).not.toContain('report_updated_at');
+    expectPhiExportSnapshotRedacted(persisted, ['raw.pdf']);
+  });
+
+  it('drops PHI-bearing values even when they are placed in report PDF allowed keys', async () => {
+    auditLogCreateMock.mockResolvedValue({});
+
+    await recordDataExportAudit(db, {
+      orgId: 'org-1',
+      actorId: 'user-1',
+      targetType: 'care_report',
+      targetId: 'report-1',
+      format: 'pdf',
+      recordCount: 1,
+      metadata: {
+        surface: { patient_name: '山田 太郎' },
+        output_profile: '家族へ事前共有 090-1234-5678',
+        report_updated_at: '2026-03-28T09:00:00.000Z patient 山田 太郎',
+      },
+    });
+
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        target_type: 'care_report',
+        changes: {
+          format: 'pdf',
+          record_count: 1,
+          filters: {},
+          metadata: {},
+        },
+      }),
+    });
+    expectPhiExportSnapshotRedacted(JSON.stringify(auditLogCreateMock.mock.calls));
+  });
+
+  it('accepts only the expected report PDF metadata literals', async () => {
+    auditLogCreateMock.mockResolvedValue({});
+
+    await recordDataExportAudit(db, {
+      orgId: 'org-1',
+      actorId: 'user-1',
+      targetType: 'care_report',
+      targetId: 'report-1',
+      format: 'pdf',
+      recordCount: 1,
+      metadata: {
+        surface: 'care_report_pdf',
+        output_profile: 'external_submission_pdf',
+        report_updated_at: '2026-03-28T09:00:00.000Z',
+      },
+    });
+
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        changes: expect.objectContaining({
+          metadata: {
+            surface: 'care_report_pdf',
+            output_profile: 'external_submission_pdf',
+            report_updated_at: '2026-03-28T09:00:00.000Z',
+          },
+        }),
+      }),
+    });
   });
 
   it('records file downloads without reusing PDF or ZIP export formats', async () => {

@@ -23,22 +23,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return withSensitiveNoStore(validationError('カンファレンス記録IDが不正です'));
 
+  let rendered: Awaited<ReturnType<typeof buildConferenceNotePdf>>;
   try {
-    const rendered = await buildConferenceNotePdf(authResult.ctx.orgId, id, {
+    rendered = await buildConferenceNotePdf(authResult.ctx.orgId, id, {
       userId: authResult.ctx.userId,
       role: authResult.ctx.role,
     });
-    await recordDataExportAudit(prisma, {
-      orgId: authResult.ctx.orgId,
-      actorId: authResult.ctx.userId,
-      targetType: 'conference_note',
-      targetId: id,
-      format: 'pdf',
-      recordCount: 1,
-      ipAddress: authResult.ctx.ipAddress,
-      userAgent: authResult.ctx.userAgent,
-    });
-    return withSensitiveNoStore(pdfResponse(rendered.buffer, rendered.fileName));
   } catch (cause) {
     unstable_rethrow(cause);
     if (cause instanceof PdfNotFoundError) {
@@ -49,4 +39,31 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       error('EXTERNAL_PDF_RENDER_FAILED', 'カンファレンス記録 PDF を生成できませんでした', 500),
     );
   }
+
+  try {
+    await recordDataExportAudit(prisma, {
+      orgId: authResult.ctx.orgId,
+      actorId: authResult.ctx.userId,
+      targetType: 'conference_note',
+      targetId: id,
+      format: 'pdf',
+      recordCount: 1,
+      metadata: {
+        surface: 'conference_note_pdf',
+        output_profile: 'internal_pdf',
+      },
+      ipAddress: authResult.ctx.ipAddress,
+      userAgent: authResult.ctx.userAgent,
+    });
+  } catch {
+    return withSensitiveNoStore(
+      error(
+        'CONFERENCE_NOTE_PDF_EXPORT_AUDIT_FAILED',
+        'カンファレンス記録 PDF 出力監査を記録できませんでした',
+        500,
+      ),
+    );
+  }
+
+  return withSensitiveNoStore(pdfResponse(rendered.buffer, rendered.fileName));
 }

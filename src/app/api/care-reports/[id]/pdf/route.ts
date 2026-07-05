@@ -58,6 +58,8 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
       format: 'pdf',
       recordCount: 1,
       metadata: {
+        surface: 'care_report_pdf',
+        output_profile: 'external_submission_pdf',
         report_updated_at: rendered.reportUpdatedAt.toISOString(),
       },
       ipAddress: authResult.ctx.ipAddress,
