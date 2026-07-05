@@ -40,6 +40,50 @@
 
 ## 直近の land（本日・要点）
 
+- codex: R-PR0 FILE-000 file upload API minimization slice implementation complete。
+  - current task: `/api/files/presigned-upload` と `/api/files/complete` の公開レスポンスを最小化し、
+    PHI/内部 storage key/object key/entity id を success/error/auth/validation response から漏らさない。
+  - files inspected:
+    `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`、
+    `src/app/api/files/presigned-upload/route.ts`、
+    `src/app/api/files/presigned-upload/route.test.ts`、`src/app/api/files/complete/route.ts`、
+    `src/app/api/files/complete/route.test.ts`、`src/server/services/file-storage.ts`、
+    `src/server/services/file-storage.test.ts`、`src/test/api-response-assertions.ts`。
+  - files changed:
+    `src/app/api/files/presigned-upload/route.ts`、`src/app/api/files/presigned-upload/route.test.ts`、
+    `src/app/api/files/complete/route.ts`、`src/app/api/files/complete/route.test.ts`。
+  - bugs/security risks fixed:
+    presigned upload success response から `objectKey` を公開しない public DTO に変更。
+    complete success response から `storageKey`、`orgId`、`patientId`、`visitRecordId`、`reportId`、
+    `uploadedBy`、`etag` など内部/関連 entity metadata を返さない public DTO に変更。
+    両 route の auth/legacy disabled/validation/domain/service error/success を `withSensitiveNoStore` で
+    no-store 化し、unexpected service error は固定 502 文言に収束。
+  - performance issues found: なし。mapping は route-local DTO projection のみ。
+  - subagents:
+    code_mapper は FILE-000 の影響範囲を files route + route tests + internal file-storage service に限定し、
+    service DTO は内部維持、route mapper で公開契約を固定する方針を確認。
+    test_architect は shared `expectSensitiveNoStore`、auth no-store、hostile internal field fixture、
+    unexpected provider error の regression test を要求し、反映済み。
+    privacy_compliance_reviewer は FILE-000 外の次スライスとして EXP-001/SEC-002 の high risk を確認:
+    bulk export job/audit の raw patient ID arrays、partial export output の per-patient errors、
+    AuditLog changes の中央 allowlist/minifier 不足、`recordDataExportAudit` の arbitrary filters/metadata。
+  - validation commands/results:
+    `pnpm exec prettier --write src/app/api/files/presigned-upload/route.ts src/app/api/files/presigned-upload/route.test.ts src/app/api/files/complete/route.ts src/app/api/files/complete/route.test.ts` green;
+    `pnpm exec vitest run src/app/api/files/presigned-upload/route.test.ts src/app/api/files/complete/route.test.ts --reporter=dot --testTimeout=30000` green (2 files / 40 tests);
+    `pnpm exec eslint src/app/api/files/presigned-upload/route.ts src/app/api/files/presigned-upload/route.test.ts src/app/api/files/complete/route.ts src/app/api/files/complete/route.test.ts` green;
+    `pnpm exec vitest run src/server/services/file-storage.test.ts src/app/api/files/presigned-upload/route.test.ts src/app/api/files/complete/route.test.ts --reporter=dot --testTimeout=30000` green (3 files / 112 tests);
+    consumer smoke `pnpm exec vitest run src/app/api/files/presigned-upload/route.test.ts src/app/api/files/complete/route.test.ts src/lib/offline/evidence-drafts.test.ts 'src/app/(dashboard)/patients/[id]/residual-adjustment/residual-adjustment-content.headers.test.tsx' 'src/app/(dashboard)/patients/[id]/consent/consent-records-content.test.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' --reporter=dot --testTimeout=30000` green (6 files / 91 tests; existing React act warning only);
+    `git diff --check -- src/app/api/files/presigned-upload/route.ts src/app/api/files/presigned-upload/route.test.ts src/app/api/files/complete/route.ts src/app/api/files/complete/route.test.ts` green;
+    `pnpm format:check` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` green。
+  - remaining work:
+    EXP-001A/EXP-001B と SEC-002A/SEC-002B は未実装。bulk export audit/job terminal minimization、
+    export audit helper minimizer、AuditLog response/export minifier registry、high-risk audit persistence hook を
+    次の R-PR0 security slice として扱う。
+  - next action: scoped commit `fix(files): minimize upload response metadata` → origin/main push →
+    次スライスで EXP-001/SEC-002 を実装。
+
 - codex: Plans.md risk-improvement expansion slice(in-progress on main) implementation complete。
   - user source: 2026-07-05 ユーザー提示「CareVIAx リスク改善 多角的修正計画・実装タスク化レポート（拡張版）」を、単純貼り付けではなく現行コードと既存 Plans の task 構造に合わせて再構成。
   - inspected plan/code surfaces:

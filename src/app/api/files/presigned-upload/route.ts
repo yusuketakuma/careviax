@@ -1,15 +1,24 @@
 import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import type { MemberRole } from '@prisma/client';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
-import { error, forbiddenResponse, success, validationError } from '@/lib/api/response';
+import {
+  error,
+  forbiddenResponse,
+  internalError,
+  success,
+  validationError,
+} from '@/lib/api/response';
 import { legacyFileApiDisabledResponse } from '@/lib/api/legacy-file-api-boundary';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { hasPermission } from '@/lib/auth/permissions';
 import {
   canAccessVisitScheduleAssignment,
   canBypassVisitScheduleAssignmentAccess,
 } from '@/lib/auth/visit-schedule-access';
 import { prisma } from '@/lib/db/client';
+import { logger } from '@/lib/utils/logger';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { trimStringOrUndefined } from '@/lib/validations/string';
 import { requireWritablePatient } from '@/server/services/patient-write-guard';
@@ -19,6 +28,8 @@ import {
   FileStorageError,
   type FilePurpose,
 } from '@/server/services/file-storage';
+
+type PresignedUploadResult = Awaited<ReturnType<typeof createPresignedUpload>>;
 
 const optionalTrimmedStringSchema = z.preprocess(
   trimStringOrUndefined,
@@ -244,7 +255,16 @@ async function resolveReportPatientIdForUpload(args: {
   return null;
 }
 
-export async function POST(req: NextRequest) {
+function toPublicPresignedUpload(data: PresignedUploadResult) {
+  return {
+    id: data.id,
+    uploadUrl: data.uploadUrl,
+    expiresIn: data.expiresIn,
+    headers: data.headers,
+  };
+}
+
+async function handlePOST(req: NextRequest) {
   const disabledResponse = legacyFileApiDisabledResponse();
   if (disabledResponse) return disabledResponse;
 
@@ -440,12 +460,30 @@ export async function POST(req: NextRequest) {
       reportId: parsed.data.purpose === 'report' ? parsed.data.report_id : undefined,
     });
 
-    return success({ data }, 201);
+    return success({ data: toPublicPresignedUpload(data) }, 201);
   } catch (cause) {
     if (cause instanceof FileStorageError) {
       return error(cause.code, cause.message, cause.status);
     }
 
     return error('EXTERNAL_FILE_UPLOAD_FAILED', 'アップロードURLの発行に失敗しました', 502);
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    return withSensitiveNoStore(await handlePOST(req));
+  } catch (err) {
+    unstable_rethrow(err);
+    logger.error(
+      {
+        event: 'files_presigned_upload_unhandled_error',
+        route: '/api/files/presigned-upload',
+        method: req.method,
+        status: 500,
+      },
+      err,
+    );
+    return withSensitiveNoStore(internalError());
   }
 }

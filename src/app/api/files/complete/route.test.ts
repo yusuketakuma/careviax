@@ -1,11 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { PHOS_DISABLE_LEGACY_FILE_API_ENV } from '@/lib/api/legacy-file-api-boundary';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
-const { requireAuthContextMock, completeUploadedFileMock } = vi.hoisted(() => ({
-  requireAuthContextMock: vi.fn(),
-  completeUploadedFileMock: vi.fn(),
-}));
+const { requireAuthContextMock, completeUploadedFileMock, FileStorageErrorMock } = vi.hoisted(
+  () => ({
+    requireAuthContextMock: vi.fn(),
+    completeUploadedFileMock: vi.fn(),
+    FileStorageErrorMock: class FileStorageError extends Error {
+      code: string;
+      status: number;
+
+      constructor(code: string, message: string, status: number) {
+        super(message);
+        this.code = code;
+        this.status = status;
+      }
+    },
+  }),
+);
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
@@ -13,16 +26,7 @@ vi.mock('@/lib/auth/context', () => ({
 
 vi.mock('@/server/services/file-storage', () => ({
   completeUploadedFile: completeUploadedFileMock,
-  FileStorageError: class FileStorageError extends Error {
-    code: string;
-    status: number;
-
-    constructor(code: string, message: string, status: number) {
-      super(message);
-      this.code = code;
-      this.status = status;
-    }
-  },
+  FileStorageError: FileStorageErrorMock,
 }));
 
 import { POST } from './route';
@@ -57,7 +61,21 @@ describe('/api/files/complete', () => {
     });
     completeUploadedFileMock.mockResolvedValue({
       id: 'file_1',
-      status: 'completed',
+      orgId: 'org_1',
+      purpose: 'visit-photo',
+      storageKey: 'visit-photos/org_1/visit_1/file_1-photo.png',
+      originalName: 'photo.png',
+      mimeType: 'image/png',
+      sizeBytes: 1024,
+      status: 'uploaded',
+      patientId: 'patient_1',
+      visitRecordId: 'visit_1',
+      reportId: 'report_1',
+      uploadedBy: 'user_1',
+      etag: 'etag-1',
+      createdAt: '2026-07-04T00:00:00.000Z',
+      updatedAt: '2026-07-05T00:00:00.000Z',
+      completedAt: '2026-07-05T00:00:00.000Z',
     });
   });
 
@@ -80,10 +98,35 @@ describe('/api/files/complete', () => {
     ))!;
 
     expect(response.status).toBe(410);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'PHOS_LEGACY_FILE_API_DISABLED',
     });
     expect(requireAuthContextMock).not.toHaveBeenCalled();
+    expect(completeUploadedFileMock).not.toHaveBeenCalled();
+  });
+
+  it('preserves auth rejection bodies while applying no-store headers', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: new Response(
+        JSON.stringify({ code: 'AUTH_UNAUTHENTICATED', message: '認証が必要です' }),
+        { status: 401, headers: { 'Content-Type': 'application/json' } },
+      ),
+    });
+
+    const response = (await POST(
+      createRequest({
+        file_id: '11111111-1111-4111-8111-111111111111',
+        etag: 'etag-1',
+      }),
+    ))!;
+
+    expect(response.status).toBe(401);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'AUTH_UNAUTHENTICATED',
+      message: '認証が必要です',
+    });
     expect(completeUploadedFileMock).not.toHaveBeenCalled();
   });
 
@@ -96,6 +139,18 @@ describe('/api/files/complete', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      data: {
+        id: 'file_1',
+        purpose: 'visit-photo',
+        originalName: 'photo.png',
+        mimeType: 'image/png',
+        sizeBytes: 1024,
+        status: 'uploaded',
+        completedAt: '2026-07-05T00:00:00.000Z',
+      },
+    });
     expect(completeUploadedFileMock).toHaveBeenCalledWith({
       orgId: 'org_1',
       fileId: '11111111-1111-4111-8111-111111111111',
@@ -138,6 +193,7 @@ describe('/api/files/complete', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(completeUploadedFileMock).not.toHaveBeenCalled();
   });
 
@@ -145,6 +201,7 @@ describe('/api/files/complete', () => {
     const response = (await POST(createRequest([])))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(completeUploadedFileMock).not.toHaveBeenCalled();
   });
 
@@ -152,9 +209,81 @@ describe('/api/files/complete', () => {
     const response = (await POST(createMalformedJsonRequest()))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
     expect(completeUploadedFileMock).not.toHaveBeenCalled();
+  });
+
+  it('returns no-store storage errors without exposing storage keys', async () => {
+    completeUploadedFileMock.mockRejectedValueOnce(
+      new FileStorageErrorMock(
+        'FILE_NOT_READY',
+        'ファイル本体のアップロード完了を確認できませんでした',
+        409,
+      ),
+    );
+
+    const response = (await POST(
+      createRequest({
+        file_id: '11111111-1111-4111-8111-111111111111',
+        etag: 'etag-1',
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'FILE_NOT_READY',
+    });
+    expect(JSON.stringify(body)).not.toContain('storageKey');
+    expect(JSON.stringify(body)).not.toContain('visit-photos/org_1/visit_1');
+  });
+
+  it('returns fixed no-store completion errors without exposing raw provider details', async () => {
+    completeUploadedFileMock.mockRejectedValueOnce(
+      new Error('S3 failed storageKey=visit-photos/org_1/visit_1/file_1-photo.png patient=患者A'),
+    );
+
+    const response = (await POST(
+      createRequest({
+        file_id: '11111111-1111-4111-8111-111111111111',
+        etag: 'etag-1',
+      }),
+    ))!;
+
+    expect(response.status).toBe(502);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'EXTERNAL_FILE_COMPLETE_FAILED',
+      message: 'ファイル状態の更新に失敗しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('storageKey');
+    expect(JSON.stringify(body)).not.toContain('visit-photos/org_1/visit_1');
+    expect(JSON.stringify(body)).not.toContain('患者A');
+  });
+
+  it('does not expose storage keys, entity ids, or etags in completed file responses', async () => {
+    const response = (await POST(
+      createRequest({
+        file_id: '11111111-1111-4111-8111-111111111111',
+        etag: 'etag-1',
+      }),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(JSON.stringify(body)).not.toContain('storageKey');
+    expect(JSON.stringify(body)).not.toContain('visit-photos/org_1/visit_1');
+    expect(JSON.stringify(body)).not.toContain('org_1');
+    expect(JSON.stringify(body)).not.toContain('patient_1');
+    expect(JSON.stringify(body)).not.toContain('visit_1');
+    expect(JSON.stringify(body)).not.toContain('report_1');
+    expect(JSON.stringify(body)).not.toContain('uploadedBy');
+    expect(JSON.stringify(body)).not.toContain('etag-1');
   });
 });

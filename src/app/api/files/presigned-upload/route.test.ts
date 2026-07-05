@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { PHOS_DISABLE_LEGACY_FILE_API_ENV } from '@/lib/api/legacy-file-api-boundary';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
   requireAuthContextMock,
@@ -123,8 +124,15 @@ describe('/api/files/presigned-upload POST', () => {
       id: 'file_1',
       uploadUrl: 'https://example.com/upload',
       objectKey: 'reports/org_1/report_1/file_1-report.pdf',
+      storageKey: 'reports/org_1/report_1/file_1-report.pdf',
       expiresIn: 300,
       headers: { 'Content-Type': 'application/pdf' },
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      visitRecordId: 'visit_1',
+      reportId: 'report_1',
+      uploadedBy: 'user_1',
+      etag: 'etag-1',
     });
   });
 
@@ -151,6 +159,7 @@ describe('/api/files/presigned-upload POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(410);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'PHOS_LEGACY_FILE_API_DISABLED',
     });
@@ -161,6 +170,36 @@ describe('/api/files/presigned-upload POST', () => {
     expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
     expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(createPresignedUploadMock).not.toHaveBeenCalled();
+  });
+
+  it('preserves auth rejection bodies while applying no-store headers', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: new Response(
+        JSON.stringify({ code: 'AUTH_UNAUTHENTICATED', message: '認証が必要です' }),
+        { status: 401, headers: { 'Content-Type': 'application/json' } },
+      ),
+    });
+
+    const response = await POST(
+      createRequest({
+        purpose: 'report',
+        file_name: 'report.pdf',
+        mime_type: 'application/pdf',
+        size_bytes: 1024,
+        report_id: 'report_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(401);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'AUTH_UNAUTHENTICATED',
+      message: '認証が必要です',
+    });
+    expect(assertFileUploadConstraintsMock).not.toHaveBeenCalled();
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
     expect(createPresignedUploadMock).not.toHaveBeenCalled();
   });
 
@@ -176,6 +215,7 @@ describe('/api/files/presigned-upload POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
     });
@@ -202,6 +242,7 @@ describe('/api/files/presigned-upload POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
     expect(assertFileUploadConstraintsMock).not.toHaveBeenCalled();
     expect(careReportFindFirstMock).not.toHaveBeenCalled();
     expect(createPresignedUploadMock).not.toHaveBeenCalled();
@@ -228,6 +269,7 @@ describe('/api/files/presigned-upload POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
     expect(assertFileUploadConstraintsMock).not.toHaveBeenCalled();
     expect(careReportFindFirstMock).not.toHaveBeenCalled();
     expect(createPresignedUploadMock).not.toHaveBeenCalled();
@@ -238,6 +280,7 @@ describe('/api/files/presigned-upload POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(assertFileUploadConstraintsMock).not.toHaveBeenCalled();
     expect(careReportFindFirstMock).not.toHaveBeenCalled();
     expect(patientFindFirstMock).not.toHaveBeenCalled();
@@ -252,6 +295,7 @@ describe('/api/files/presigned-upload POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -277,6 +321,7 @@ describe('/api/files/presigned-upload POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       details: {
@@ -353,6 +398,7 @@ describe('/api/files/presigned-upload POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     expect(createPresignedUploadMock).not.toHaveBeenCalled();
   });
 
@@ -377,6 +423,7 @@ describe('/api/files/presigned-upload POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'FILE_UPLOAD_INVALID_MIME',
     });
@@ -384,6 +431,60 @@ describe('/api/files/presigned-upload POST', () => {
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
     expect(createPresignedUploadMock).not.toHaveBeenCalled();
+  });
+
+  it('returns no-store storage errors without exposing object keys', async () => {
+    createPresignedUploadMock.mockRejectedValueOnce(
+      new FileStorageErrorMock('FILE_STORAGE_UNAVAILABLE', 'ストレージを利用できません', 503),
+    );
+
+    const response = await POST(
+      createRequest({
+        purpose: 'report',
+        file_name: 'report.pdf',
+        mime_type: 'application/pdf',
+        size_bytes: 1024,
+        report_id: 'report_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(503);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'FILE_STORAGE_UNAVAILABLE',
+    });
+    expect(JSON.stringify(body)).not.toContain('storageKey');
+    expect(JSON.stringify(body)).not.toContain('reports/org_1/report_1');
+  });
+
+  it('returns fixed no-store presign errors without exposing raw provider details', async () => {
+    createPresignedUploadMock.mockRejectedValueOnce(
+      new Error('S3 failed storageKey=reports/org_1/report_1/file_1-report.pdf patient=患者A'),
+    );
+
+    const response = await POST(
+      createRequest({
+        purpose: 'report',
+        file_name: 'report.pdf',
+        mime_type: 'application/pdf',
+        size_bytes: 1024,
+        report_id: 'report_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(502);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'EXTERNAL_FILE_UPLOAD_FAILED',
+      message: 'アップロードURLの発行に失敗しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('storageKey');
+    expect(JSON.stringify(body)).not.toContain('reports/org_1/report_1');
+    expect(JSON.stringify(body)).not.toContain('患者A');
   });
 
   it('rejects entity ids that do not belong to the selected purpose', async () => {
@@ -400,6 +501,7 @@ describe('/api/files/presigned-upload POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       details: {
@@ -430,6 +532,7 @@ describe('/api/files/presigned-upload POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'AUTH_FORBIDDEN',
     });
@@ -481,6 +584,7 @@ describe('/api/files/presigned-upload POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     expect(assertFileUploadConstraintsMock).toHaveBeenCalledWith({
       purpose: 'contract-document',
       mimeType: 'application/pdf',
@@ -501,6 +605,39 @@ describe('/api/files/presigned-upload POST', () => {
     });
   });
 
+  it('minimizes successful presigned upload responses without exposing storage keys or entity ids', async () => {
+    const response = await POST(
+      createRequest({
+        purpose: 'report',
+        file_name: 'report.pdf',
+        mime_type: 'application/pdf',
+        size_bytes: 1024,
+        report_id: 'report_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toEqual({
+      data: {
+        id: 'file_1',
+        uploadUrl: 'https://example.com/upload',
+        expiresIn: 300,
+        headers: { 'Content-Type': 'application/pdf' },
+      },
+    });
+    expect(JSON.stringify(body)).not.toContain('objectKey');
+    expect(JSON.stringify(body)).not.toContain('storageKey');
+    expect(JSON.stringify(body)).not.toContain('reports/org_1/report_1');
+    expect(JSON.stringify(body)).not.toContain('report_1');
+    expect(JSON.stringify(body)).not.toContain('patient_1');
+    expect(JSON.stringify(body)).not.toContain('visit_1');
+    expect(JSON.stringify(body)).not.toContain('uploadedBy');
+    expect(JSON.stringify(body)).not.toContain('etag-1');
+  });
+
   it('returns 400 when the referenced report does not exist', async () => {
     careReportFindFirstMock.mockResolvedValue(null);
 
@@ -516,6 +653,7 @@ describe('/api/files/presigned-upload POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
     });
@@ -579,6 +717,7 @@ describe('/api/files/presigned-upload POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     expect(createPresignedUploadMock).not.toHaveBeenCalled();
   });
 
@@ -642,6 +781,7 @@ describe('/api/files/presigned-upload POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     expect(createPresignedUploadMock).not.toHaveBeenCalled();
   });
 
