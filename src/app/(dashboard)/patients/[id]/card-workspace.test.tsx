@@ -814,6 +814,18 @@ function buildActivePatientCase(): PatientOverview['cases'][number] {
   };
 }
 
+function openPatientDetailTab(label: RegExp) {
+  fireEvent.click(screen.getByRole('tab', { name: label }));
+}
+
+function openFoundationTab() {
+  openPatientDetailTab(/正本・在宅運用/);
+}
+
+function openSharingTab() {
+  openPatientDetailTab(/共有・文書/);
+}
+
 describe('CardWorkspace', () => {
   it('shows a patient workspace skeleton while the overview query is loading', () => {
     mockPatientQuery(buildWorkspace(), null, {}, { patientOverviewLoading: true });
@@ -874,7 +886,7 @@ describe('CardWorkspace', () => {
     expect(screen.getByRole('heading', { name: '処方カード作業台', level: 1 })).toBeTruthy();
   });
 
-  it('renders the 06_card single-scroll workspace: header, safety board, prescription, activities, rail', () => {
+  it('renders the 06_card tabbed workspace: header, safety board, tab sections, prescription, activities, rail', () => {
     mockPatientQuery(buildWorkspace(), {
       generated_at: '2026-06-16T00:00:00.000Z',
       attention_count: 3,
@@ -1043,12 +1055,23 @@ describe('CardWorkspace', () => {
     const collaborationLink = screen.getByRole('link', { name: 'いま見ている人' });
     expect(collaborationLink.getAttribute('href')).toBe('/patients/patient_1/collaboration');
     expect(collaborationLink.className).toContain('!min-h-11');
-    const profileLink = screen.getByRole('link', { name: 'プロフィールを確認' });
-    expect(profileLink.getAttribute('href')).toBe('#patient-profile-summary');
-    expect(profileLink.className).toContain('!min-h-11');
+    const profileButton = screen.getByRole('button', { name: 'プロフィールを確認' });
+    expect(profileButton.className).toContain('!min-h-11');
     const compareLink = screen.getByRole('link', { name: 'カードを分割表示' });
     expect(compareLink.getAttribute('href')).toBe('/patients/compare?patients=patient_1');
     expect(compareLink.className).toContain('!min-h-11');
+    expect(screen.getByRole('tablist', { name: '患者詳細セクション' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /処方・訪問/ }).getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(screen.getByRole('tab', { name: /正本・在宅運用/ })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /共有・文書/ })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /履歴・構造化/ })).toBeTruthy();
+
+    fireEvent.click(profileButton);
+    expect(screen.getByRole('tab', { name: /正本・在宅運用/ }).getAttribute('aria-selected')).toBe(
+      'true',
+    );
     expect(screen.getByTestId('patient-profile-summary')).toBeTruthy();
     const foundationPanel = screen.getByTestId('patient-foundation-panel');
     expect(within(foundationPanel).getByRole('heading', { name: '正本確認' })).toBeTruthy();
@@ -1143,6 +1166,10 @@ describe('CardWorkspace', () => {
         .getAllByRole('link', { name: /文書状態へ/ })
         .some((link) => link.getAttribute('href') === '/patients/patient_1#patient-documents'),
     ).toBe(true);
+    fireEvent.click(screen.getByRole('tab', { name: /共有・文書/ }));
+    expect(screen.getByRole('tab', { name: /共有・文書/ }).getAttribute('aria-selected')).toBe(
+      'true',
+    );
     const sharePanel = screen.getByTestId('patient-share-case-create-panel');
     expect(within(sharePanel).getByRole('heading', { name: '薬局間共有ケース' })).toBeTruthy();
     expect(
@@ -1165,6 +1192,10 @@ describe('CardWorkspace', () => {
     expect(
       within(documentsPanel).getByRole('link', { name: '印刷プレビュー' }).getAttribute('href'),
     ).toBe('/reports/print?type=first_visit_documents&patient_id=patient_1');
+    fireEvent.click(screen.getByRole('tab', { name: /正本・在宅運用/ }));
+    expect(screen.getByRole('tab', { name: /正本・在宅運用/ }).getAttribute('aria-selected')).toBe(
+      'true',
+    );
     const mcsExternalLink = within(homeOps).getByRole('link', { name: /MCSを開く/ });
     expect(mcsExternalLink.getAttribute('href')).toBe(
       'https://www.medical-care.net/projects/medical/57886227',
@@ -1195,8 +1226,10 @@ describe('CardWorkspace', () => {
         .getAttribute('href'),
     ).toBe('/conferences?patient_id=patient_1&case_id=case_1&focus=notes&context=patient_detail');
 
-    // タブ UI は廃止(単一スクロール構成)
-    expect(screen.queryByRole('tab')).toBeNull();
+    fireEvent.click(screen.getByRole('tab', { name: /処方・訪問/ }));
+    expect(screen.getByRole('tab', { name: /処方・訪問/ }).getAttribute('aria-selected')).toBe(
+      'true',
+    );
 
     // 共通患者ヘッダーの安全層: アレルギー / 腎機能 / 取扱タグ / 嚥下 / 注意
     const safetyBoard = screen.getByTestId('patient-header-safety');
@@ -1298,6 +1331,7 @@ describe('CardWorkspace', () => {
     expect(within(header).getByTestId('patient-header-archive-notice').textContent).toContain(
       '復元するまで新規作業・共有・更新には使わないでください',
     );
+    openFoundationTab();
     const foundationPanel = screen.getByTestId('patient-foundation-panel');
     expect(within(foundationPanel).getByText('アーカイブ中の患者です')).toBeTruthy();
     expect(within(foundationPanel).queryByText('未確認を作業化')).toBeNull();
@@ -1489,6 +1523,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
+    openSharingTab();
     const documentsPanel = screen.getByTestId('patient-card-documents-panel');
     expect(
       within(documentsPanel).getByRole('heading', { name: '初回訪問文書・交付記録' }),
@@ -1513,6 +1548,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
+    openSharingTab();
     const documentsPanel = screen.getByTestId('patient-card-documents-panel');
     expect(
       within(documentsPanel).getByRole('status', {
@@ -1544,6 +1580,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
+    openSharingTab();
     const documentsPanel = screen.getByTestId('patient-card-documents-panel');
     expect(
       within(documentsPanel).getByRole('heading', { name: '初回訪問文書・交付記録' }),
@@ -1560,6 +1597,7 @@ describe('CardWorkspace', () => {
 
     expect(screen.getByRole('heading', { name: '処方カード作業台', level: 1 })).toBeTruthy();
     expect(screen.getByText('進行中のカードがありません')).toBeTruthy();
+    openFoundationTab();
     expect(screen.getByTestId('patient-profile-summary')).toBeTruthy();
     expect(screen.getByTestId('patient-home-operations-panel')).toBeTruthy();
     expect(screen.queryByTestId('card-prescription-section')).toBeNull();
@@ -1571,6 +1609,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
+    openFoundationTab();
     const homeOps = screen.getByTestId('patient-home-operations-panel');
     // 取得失敗を「主要項目 確認済み」(偽の全クリア)に潰さない。
     expect(within(homeOps).queryByText('主要項目 確認済み')).toBeNull();
@@ -1589,6 +1628,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
+    openFoundationTab();
     // 成功時は劣化バナーを出さない(誤検知防止)。
     expect(screen.queryByTestId('patient-home-operations-error')).toBeNull();
     expect(
@@ -1668,6 +1708,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
+    openSharingTab();
     const panel = screen.getByTestId('patient-share-case-create-panel');
     expect(
       within(panel).getByRole('option', { name: 'ケース cc0000000001 / 稼働中' }),
@@ -1753,6 +1794,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
+    openSharingTab();
     const panel = screen.getByTestId('patient-share-case-create-panel');
     const managementPlanSelect = within(panel).getByLabelText(
       '共有ケース作成の管理計画版',
@@ -1794,6 +1836,7 @@ describe('CardWorkspace', () => {
     const { patientShareCaseMutate } = mockPatientQuery(buildWorkspace(), null, {}, queryOptions);
     const { rerender } = render(<CardWorkspace patientId="patient_1" />);
 
+    openSharingTab();
     const panel = screen.getByTestId('patient-share-case-create-panel');
     const managementPlanSelect = within(panel).getByLabelText(
       '共有ケース作成の管理計画版',
@@ -1805,6 +1848,7 @@ describe('CardWorkspace', () => {
     const erroredMocks = mockPatientQuery(buildWorkspace(), null, {}, queryOptions);
     rerender(<CardWorkspace patientId="patient_1" />);
 
+    openSharingTab();
     const erroredPanel = screen.getByTestId('patient-share-case-create-panel');
     const erroredManagementPlanSelect = within(erroredPanel).getByLabelText(
       '共有ケース作成の管理計画版',
@@ -1849,6 +1893,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
+    openSharingTab();
     const panel = screen.getByTestId('patient-share-case-create-panel');
     expect(within(panel).getByText('承認済み計画なし')).toBeTruthy();
     expect(within(panel).queryByRole('alert')).toBeNull();
@@ -1886,6 +1931,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
+    openSharingTab();
     const panel = screen.getByTestId('patient-share-case-create-panel');
     fireEvent.change(within(panel).getByLabelText('共有ケース作成の共有開始日'), {
       target: { value: '2026-12-31' },
@@ -1975,6 +2021,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
+    openFoundationTab();
     const foundationPanel = screen.getByTestId('patient-foundation-panel');
     fireEvent.click(within(foundationPanel).getAllByRole('button', { name: 'タスク化' })[0]);
 
@@ -2036,6 +2083,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
+    openFoundationTab();
     fireEvent.click(screen.getByRole('button', { name: /原本到着を記録/ }));
 
     expect(faxMutate).toHaveBeenCalledWith('intake_0500');
@@ -2119,6 +2167,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
+    openFoundationTab();
     fireEvent.click(screen.getByRole('button', { name: /MCS確認ログを記録/ }));
     expect(screen.getByText('MCS確認内容を入力してください。')).toBeTruthy();
     expect(mcsCheckLogMutate).not.toHaveBeenCalled();
@@ -2176,6 +2225,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
+    openFoundationTab();
     const savingButton = screen.getByRole('button', { name: '保存中' });
     expect(savingButton.getAttribute('aria-busy')).toBe('true');
     expect((savingButton as HTMLButtonElement).disabled).toBe(true);
@@ -2214,6 +2264,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
+    openFoundationTab();
     fireEvent.change(screen.getByLabelText('画像/PDF URL'), {
       target: { value: 'https://example.com/prescriptions/intake_0500.pdf' },
     });
@@ -2280,6 +2331,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
+    openFoundationTab();
     const file = new File(['pdf'], 'prescription.pdf', { type: 'application/pdf' });
     fireEvent.change(screen.getByLabelText('ファイル'), {
       target: { files: [file] },
@@ -2353,6 +2405,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
+    openFoundationTab();
     expect(screen.getByText('保存される原本管理')).toBeTruthy();
     expect(screen.getByLabelText('原本到着日時')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('照合結果'), { target: { value: 'discrepancy' } });
@@ -2415,6 +2468,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
+    openFoundationTab();
     fireEvent.change(screen.getByLabelText('照合結果'), { target: { value: 'discrepancy' } });
     fireEvent.click(screen.getByRole('button', { name: /原本管理を記録/ }));
     expect(screen.getByRole('alert').textContent).toContain(
@@ -2494,6 +2548,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
+    openFoundationTab();
     fireEvent.change(screen.getByLabelText('入金額'), { target: { value: '3240' } });
     fireEvent.change(screen.getByLabelText('領収証番号'), {
       target: { value: 'R20260616-001' },
@@ -2569,6 +2624,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
+    openFoundationTab();
     fireEvent.change(screen.getByLabelText('状態'), { target: { value: 'partial' } });
     fireEvent.change(screen.getByLabelText('入金額'), { target: { value: '3240' } });
     fireEvent.click(screen.getByRole('button', { name: /集金記録を登録/ }));
@@ -2615,6 +2671,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
+    openFoundationTab();
     expect(screen.getByText('保存される集金履歴')).toBeTruthy();
     expect(screen.getByText('番号未入力')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('入金額'), { target: { value: '3240' } });
@@ -2662,6 +2719,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
+    openFoundationTab();
     fireEvent.change(screen.getByLabelText('入金額'), { target: { value: '3240' } });
     fireEvent.click(screen.getByRole('button', { name: /集金記録を更新/ }));
 
@@ -2708,6 +2766,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
+    openFoundationTab();
     fireEvent.change(screen.getByLabelText('状態'), { target: { value: 'billed' } });
     fireEvent.change(screen.getByLabelText('入金額'), { target: { value: '0' } });
     fireEvent.click(screen.getByRole('button', { name: /集金記録を更新/ }));
@@ -2752,6 +2811,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
+    openFoundationTab();
     fireEvent.change(screen.getByLabelText('支払者'), {
       target: { value: 'family' },
     });
@@ -2865,6 +2925,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
+    openFoundationTab();
     fireEvent.change(screen.getByLabelText('支払者'), {
       target: { value: 'family' },
     });
@@ -2910,6 +2971,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
+    openFoundationTab();
     fireEvent.change(screen.getByLabelText('支払者'), {
       target: { value: 'family' },
     });
@@ -2969,6 +3031,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
+    openFoundationTab();
     expect(screen.getByText('保存される会議連動')).toBeTruthy();
     expect(screen.getByText('対面 / CM')).toBeTruthy();
     expect(screen.getByText('ケアマネ向け報告書')).toBeTruthy();
@@ -3107,6 +3170,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
+    openFoundationTab();
     fireEvent.click(screen.getByRole('button', { name: /会議要点を登録/ }));
     expect(screen.getByRole('alert').textContent).toContain(
       '会議名・開催日時・会議要点を入力してください。',
@@ -3828,6 +3892,7 @@ describe('CardWorkspace', () => {
   }
 
   function triggerPrescriptionUpload() {
+    openFoundationTab();
     const file = new File(['pdf'], 'prescription.pdf', { type: 'application/pdf' });
     fireEvent.change(screen.getByLabelText('ファイル'), { target: { files: [file] } });
     fireEvent.click(screen.getByRole('button', { name: /画像\/PDFを保存/ }));

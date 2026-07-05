@@ -40,6 +40,45 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Patient detail tabbed layout slice complete（code/test: 6729fc48e）。
+  - current task:
+    ユーザー指示「患者詳細画面配置はタブ化してください」に対応。PH-OS UI/UX SSOT
+    `docs/ui-ux-design-guidelines.md` と repo-local `redesign-existing-projects` skill を確認し、
+    患者識別ヘッダーと右側 action rail は維持したまま、患者詳細本文を
+    `処方・訪問` / `正本・在宅運用` / `共有・文書` / `履歴・構造化` の4タブへ再配置。
+  - files inspected:
+    `docs/ui-ux-design-guidelines.md`,
+    `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/page.md`,
+    `.agents/skills/redesign-existing-projects/SKILL.md`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+    `package.json`, `ops/refactor/STATE.md`。
+  - files changed:
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+    `ops/refactor/STATE.md`。
+  - bugs/security risks fixed:
+    患者詳細の単一長大スクロール配置を廃止し、目的別タブで情報到達性を改善。
+    PHI/共有/文書/正本/履歴は既存 panel と権限・redaction contract を流用し、外部共有や文書機能の
+    API/DB/auth/PHI contract は変更しない。非表示タブ内の要素は hidden/inert のまま維持し、
+    テストも実際のタブ操作後に対象パネルを検証する形へ更新。
+  - performance issues improved:
+    初期 active tab を `処方・訪問` にし、現場の最初の判断対象を上位に固定。
+    ただし `keepMounted` により既存 quick-form state/query contract を維持したため、bundle/lazy split は未実施。
+    後続の `PAT-DETAIL-PERF-001` / `FE-X-001` で heavy panel lazy import を実装予定。
+  - validation commands/results:
+    `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx'` green;
+    `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' --reporter=dot --testTimeout=30000` green (1 file / 69 tests);
+    `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx'` green;
+    `git diff --check -- 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx'` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。
+  - remaining work:
+    実ブラウザ/スクリーンショット確認、患者詳細 heavy panel の dynamic import、timeline lazy loading、
+    mobile 下部ジャンプ導線は未着手。
+  - next action:
+    push は current-task で未指示のため未実施。次の安全な実装候補は `PAT-DETAIL-PERF-001` または
+    `PAT-DETAIL-PERF-002`。
+
 - codex: Plans.md multi-angle implementation/refactor review update complete（docs-only slice、commit pending）。
   - current task:
     ユーザー指示「Plans.md の内容を多角的にレビュー。コードリファクタリングしながら実装することを盛り込む」に対応。
