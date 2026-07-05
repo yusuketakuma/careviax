@@ -40,6 +40,48 @@
 
 ## 直近の land（本日・要点）
 
+- codex: ONB-001 Consent / Management Plan Renewal Board API slice complete（未コミット）。
+  - current task:
+    Goal 継続として `ONB-001` を実装。同意期限・管理計画見直し期限の欠落/期限切れ/期限接近を
+    renewal board として抽出し、POST で `OperationalTask` へ upsert/resolve できる API を追加。
+    併せて、ユーザー指示の UI 実装方針として `Plans.md` に `imagegen` + `gpt-image-2` の
+    design generation policy を正式追記した。
+  - files inspected:
+    `Plans.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `prisma/schema/patient.prisma`, `prisma/schema/core-task.prisma`,
+    `src/server/services/management-plans.ts`, `src/server/services/operational-tasks.ts`,
+    `src/server/services/management-plans.test.ts`, `src/app/api/tasks/route.ts`,
+    `src/app/api/dashboard/workflow/route.ts`, `src/lib/auth/permission-matrix.ts`。
+  - files changed:
+    `Plans.md`,
+    `src/server/services/management-plans.ts`,
+    `src/server/services/management-plans.test.ts`,
+    `src/app/api/onboarding/renewal-board/route.ts`,
+    `src/app/api/onboarding/renewal-board/route.test.ts`,
+    `ops/refactor/STATE.md`。
+  - bugs/security risks fixed:
+    同意/管理計画の期限到来前・期限切れ・未整備が個別画面の warning に留まりやすい問題を、
+    `visit_consent_renewal` / `management_plan_missing` / 既存 `management_plan_review` の
+    dedupe task へ接続。API は `canViewDashboard`、RLS `withOrgContext`、`withSensitiveNoStore`、
+    `withRoutePerformance` を通し、response には患者名/display_id、case id/status、非PHI issue/dedupe/action
+    に限定して返す。サブエージェント spawn は thread limit reached で失敗したため、ローカルで同等調査を実施。
+  - performance issues improved:
+    renewal board は患者/ケース/同意/計画を1つの bounded query（default 250 / max 500）で抽出し、
+    追加API fan-out を発生させない。route performance 計測対象に含め、GET は read-only、
+    task 同期は POST の明示操作に限定した。
+  - validation commands/results:
+    `pnpm vitest run src/server/services/management-plans.test.ts src/app/api/onboarding/renewal-board/route.test.ts --reporter=dot` green（2 files / 26 tests）;
+    `pnpm exec eslint src/server/services/management-plans.ts src/server/services/management-plans.test.ts src/app/api/onboarding/renewal-board/route.ts src/app/api/onboarding/renewal-board/route.test.ts` green;
+    `git diff --check -- Plans.md src/server/services/management-plans.ts src/server/services/management-plans.test.ts src/app/api/onboarding/renewal-board/route.ts src/app/api/onboarding/renewal-board/route.test.ts` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。
+  - remaining work:
+    Renewal Board UI、患者/ケース Command Center への接続、同意/計画更新 task の dashboard 表示、
+    broader test suite/build は未実行。既存 audit/export dirty files は別作業として未接触。
+  - next action:
+    scoped commit を作成。次は `RX-REG-UX-001` prescription list server-side search UI、
+    または renewal board UI / dashboard 接続へ進む。
+
 - codex: PatientsBoard consent/management-plan foundation filter slice complete（code/test: 2887666d1）。
   - current task:
     Goal 継続として `PAT-LIST-UX-001` と `ONB-001` の接続点を実装。

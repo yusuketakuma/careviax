@@ -6,6 +6,8 @@ const {
   dispatchNotificationEventMock,
   managementPlanFindFirstMock,
   managementPlanFindManyMock,
+  patientFindManyMock,
+  resolveOperationalTasksMock,
   upsertOperationalTaskMock,
 } = vi.hoisted(() => ({
   consentRecordFindFirstMock: vi.fn(),
@@ -13,6 +15,8 @@ const {
   dispatchNotificationEventMock: vi.fn(),
   managementPlanFindFirstMock: vi.fn(),
   managementPlanFindManyMock: vi.fn(),
+  patientFindManyMock: vi.fn(),
+  resolveOperationalTasksMock: vi.fn(),
   upsertOperationalTaskMock: vi.fn(),
 }));
 
@@ -26,7 +30,7 @@ vi.mock('./notifications', () => ({
 
 vi.mock('./operational-tasks', () => ({
   upsertOperationalTask: upsertOperationalTaskMock,
-  resolveOperationalTasks: vi.fn().mockResolvedValue({ count: 1 }),
+  resolveOperationalTasks: resolveOperationalTasksMock,
 }));
 
 import {
@@ -40,6 +44,8 @@ import {
   isVisitWorkflowGateIssue,
   parseVisitWorkflowGateErrorMessage,
   scheduleManagementPlanReviewAlert,
+  buildOnboardingRenewalBoard,
+  syncOnboardingRenewalTasks,
 } from './management-plans';
 
 function makeGateDb() {
@@ -48,6 +54,19 @@ function makeGateDb() {
     managementPlan: {
       findFirst: managementPlanFindFirstMock,
       findMany: managementPlanFindManyMock,
+    },
+  };
+}
+
+function makeRenewalDb() {
+  return {
+    ...makeGateDb(),
+    patient: { findMany: patientFindManyMock },
+    task: {
+      create: vi.fn(),
+      updateMany: vi.fn(),
+      upsert: vi.fn(),
+      findFirst: vi.fn(),
     },
   };
 }
@@ -526,5 +545,256 @@ describe('scheduleManagementPlanReviewAlert', () => {
         },
       }),
     );
+  });
+});
+
+describe('buildOnboardingRenewalBoard', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('extracts missing, expired, and due-soon consent and management plan renewal findings', async () => {
+    patientFindManyMock.mockResolvedValue([
+      {
+        id: 'patient-1',
+        display_id: 'P-001',
+        name: '青葉 太郎',
+        primary_pharmacist_id: 'pharmacist-1',
+        primary_staff_id: null,
+        consents: [],
+        cases: [
+          {
+            id: 'case-1',
+            display_id: 'C-001',
+            status: 'active',
+            primary_pharmacist_id: null,
+            primary_staff_id: null,
+            management_plans: [],
+          },
+        ],
+      },
+      {
+        id: 'patient-2',
+        display_id: 'P-002',
+        name: '桜 花子',
+        primary_pharmacist_id: null,
+        primary_staff_id: 'clerk-1',
+        consents: [
+          {
+            id: 'consent-2',
+            expiry_date: new Date('2026-07-20T00:00:00.000Z'),
+            obtained_date: new Date('2026-01-01T00:00:00.000Z'),
+          },
+        ],
+        cases: [
+          {
+            id: 'case-2',
+            display_id: 'C-002',
+            status: 'active',
+            primary_pharmacist_id: 'pharmacist-2',
+            primary_staff_id: null,
+            management_plans: [
+              {
+                id: 'plan-2',
+                next_review_date: new Date('2026-07-25T00:00:00.000Z'),
+                effective_from: new Date('2026-01-01T00:00:00.000Z'),
+                version: 1,
+                approved_at: new Date('2026-01-01T00:00:00.000Z'),
+              },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'patient-3',
+        display_id: 'P-003',
+        name: '港 三郎',
+        primary_pharmacist_id: null,
+        primary_staff_id: null,
+        consents: [
+          {
+            id: 'consent-3',
+            expiry_date: new Date('2026-07-01T00:00:00.000Z'),
+            obtained_date: new Date('2026-01-01T00:00:00.000Z'),
+          },
+        ],
+        cases: [
+          {
+            id: 'case-3',
+            display_id: 'C-003',
+            status: 'active',
+            primary_pharmacist_id: null,
+            primary_staff_id: null,
+            management_plans: [
+              {
+                id: 'plan-3',
+                next_review_date: new Date('2026-07-01T00:00:00.000Z'),
+                effective_from: new Date('2026-01-01T00:00:00.000Z'),
+                version: 1,
+                approved_at: new Date('2026-01-01T00:00:00.000Z'),
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const board = await buildOnboardingRenewalBoard(makeRenewalDb(), {
+      orgId: 'org_1',
+      now: new Date('2026-07-05T03:00:00.000Z'),
+      windowDays: 30,
+    });
+
+    expect(board.as_of).toBe('2026-07-05');
+    expect(board.window_days).toBe(30);
+    expect(board.summary).toMatchObject({
+      total: 6,
+      blocking: 3,
+      urgent: 1,
+      warning: 2,
+      missing_visit_consent: 1,
+      visit_consent_expired: 1,
+      visit_consent_expiring: 1,
+      missing_management_plan: 1,
+      management_plan_review_overdue: 1,
+      management_plan_review_due: 1,
+    });
+    expect(board.items.map((item) => item.issue)).toEqual([
+      'visit_consent_expired',
+      'missing_visit_consent',
+      'missing_management_plan',
+      'management_plan_review_overdue',
+      'visit_consent_expiring',
+      'management_plan_review_due',
+    ]);
+    expect(board.items).toContainEqual(
+      expect.objectContaining({
+        issue: 'missing_visit_consent',
+        task_type: 'visit_consent_renewal',
+        dedupe_key: 'onboarding-renewal:visit-consent:patient-1',
+        action_href: '/patients/patient-1/consent',
+      }),
+    );
+    expect(board.items).toContainEqual(
+      expect.objectContaining({
+        issue: 'management_plan_review_due',
+        management_plan_id: 'plan-2',
+        task_type: 'management_plan_review',
+        dedupe_key: 'management-plan-review:plan-2',
+        assigned_to: 'pharmacist-2',
+      }),
+    );
+  });
+});
+
+describe('syncOnboardingRenewalTasks', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    dispatchNotificationEventMock.mockResolvedValue([]);
+    resolveOperationalTasksMock.mockResolvedValue({ count: 1 });
+    upsertOperationalTaskMock.mockResolvedValue({ id: 'task-1' });
+  });
+
+  it('upserts open renewal findings and resolves stale dedupe tasks for scanned patients', async () => {
+    patientFindManyMock
+      .mockResolvedValueOnce([
+        {
+          id: 'patient-1',
+          display_id: 'P-001',
+          name: '青葉 太郎',
+          primary_pharmacist_id: 'pharmacist-1',
+          primary_staff_id: null,
+          consents: [],
+          cases: [
+            {
+              id: 'case-1',
+              display_id: 'C-001',
+              status: 'active',
+              primary_pharmacist_id: null,
+              primary_staff_id: null,
+              management_plans: [
+                {
+                  id: 'plan-1',
+                  next_review_date: new Date('2026-07-20T00:00:00.000Z'),
+                  effective_from: new Date('2026-01-01T00:00:00.000Z'),
+                  version: 1,
+                  approved_at: new Date('2026-01-01T00:00:00.000Z'),
+                },
+              ],
+            },
+          ],
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'patient-1',
+          cases: [{ id: 'case-1', management_plans: [{ id: 'plan-1' }] }],
+        },
+        {
+          id: 'patient-2',
+          cases: [{ id: 'case-2', management_plans: [{ id: 'plan-2' }] }],
+        },
+      ]);
+
+    const result = await syncOnboardingRenewalTasks(makeRenewalDb(), {
+      orgId: 'org_1',
+      now: new Date('2026-07-05T03:00:00.000Z'),
+      windowDays: 30,
+    });
+
+    expect(result.synced.upserted).toBe(2);
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        taskType: 'visit_consent_renewal',
+        dedupeKey: 'onboarding-renewal:visit-consent:patient-1',
+        relatedEntityType: 'patient',
+        relatedEntityId: 'patient-1',
+      }),
+    );
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        taskType: 'management_plan_review',
+        dedupeKey: 'management-plan-review:plan-1',
+        relatedEntityType: 'management_plan',
+        relatedEntityId: 'plan-1',
+      }),
+    );
+    expect(dispatchNotificationEventMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        eventType: 'management_plan_review_due',
+        dedupeKey: 'management-plan-review:plan-1',
+      }),
+    );
+    expect(resolveOperationalTasksMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        taskType: 'visit_consent_renewal',
+        dedupeKey: 'onboarding-renewal:visit-consent:patient-2',
+      }),
+    );
+    expect(resolveOperationalTasksMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        taskType: 'management_plan_missing',
+        dedupeKey: 'onboarding-renewal:management-plan:case-2',
+      }),
+    );
+    expect(resolveOperationalTasksMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        taskType: 'management_plan_review',
+        dedupeKey: 'management-plan-review:plan-2',
+      }),
+    );
+    expect(result.synced.resolved).toBeGreaterThanOrEqual(3);
   });
 });
