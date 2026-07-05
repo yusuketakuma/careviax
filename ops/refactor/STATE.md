@@ -40,6 +40,44 @@
 
 ## 直近の land（本日・要点）
 
+- codex: PatientsBoard consent/management-plan foundation filter slice complete（code/test: commit pending）。
+  - current task:
+    Goal 継続として `PAT-LIST-UX-001` と `ONB-001` の接続点を実装。
+    前回の原因別 foundation filter に `同意・計画未確認` を追加し、患者board BFFが
+    有効な訪問同意、承認済み管理計画、管理計画見直し期限を最小selectで評価して
+    `missing_consent_plan` を `foundation_issue_keys` に返すようにした。
+  - files inspected:
+    `src/server/services/management-plans.ts`, `src/server/services/patient-detail-foundation.ts`,
+    `prisma/schema/patient.prisma`, `src/types/patient-board.ts`,
+    `src/app/api/patients/board/route.ts`, `src/app/api/patients/board/route.test.ts`,
+    `src/app/(dashboard)/patients/patients-board.tsx`,
+    `src/app/(dashboard)/patients/patients-board.test.tsx`。
+  - files changed:
+    `src/types/patient-board.ts`,
+    `src/server/services/patient-detail-foundation.ts`,
+    `src/app/api/patients/board/route.ts`,
+    `src/app/api/patients/board/route.test.ts`,
+    `src/app/(dashboard)/patients/patients-board.tsx`,
+    `src/app/(dashboard)/patients/patients-board.test.tsx`,
+    `ops/refactor/STATE.md`。
+  - bugs/security risks fixed:
+    同意・計画不足が患者一覧の正本未整備理由として直接絞れない問題を解消。
+    BFFは同意/計画の ID と期限判定に必要な最小項目だけを取得し、カードレスポンスには
+    `missing_consent_plan` の非PHIキーと summary label だけを返す。
+  - performance issues improved:
+    患者一覧から同意/計画不足を原因別に server-side filter できるようになり、一覧上での目視探索を削減。
+    追加selectは既存患者board query内に閉じ、患者ごとの追加API fan-out は発生させない。
+  - validation commands/results:
+    `pnpm exec prettier --write 'src/types/patient-board.ts' 'src/server/services/patient-detail-foundation.ts' 'src/app/api/patients/board/route.ts' 'src/app/api/patients/board/route.test.ts' 'src/app/(dashboard)/patients/patients-board.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx'` green;
+    `pnpm exec vitest run 'src/app/api/patients/board/route.test.ts' 'src/app/(dashboard)/patients/patients-board.test.tsx' --reporter=dot --testTimeout=30000` green (2 files / 43 tests);
+    `pnpm exec eslint 'src/types/patient-board.ts' 'src/server/services/patient-detail-foundation.ts' 'src/app/api/patients/board/route.ts' 'src/app/api/patients/board/route.test.ts' 'src/app/(dashboard)/patients/patients-board.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx'` green;
+    `git diff --check -- 'src/types/patient-board.ts' 'src/server/services/patient-detail-foundation.ts' 'src/app/api/patients/board/route.ts' 'src/app/api/patients/board/route.test.ts' 'src/app/(dashboard)/patients/patients-board.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx'` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green。
+  - remaining work:
+    同意/計画の renewal board、operational task 自動生成、server facet counts、browser screenshot は未着手。
+  - next action:
+    scoped commit を作成。次は `ONB-001` renewal-board API か `RX-REG-UX-001` prescription search UI。
+
 - codex: PatientsBoard expanded foundation issue keys slice complete（code/test: f4576b210）。
   - current task:
     Goal 継続として `PAT-LIST-UX-001` の残りを実装。前回UIで露出した原因別チップをさらに拡張し、

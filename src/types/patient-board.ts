@@ -32,6 +32,7 @@ export type PatientResidenceKind = 'home' | 'facility' | 'hospital';
 
 export type PatientFoundationIssueKey =
   | 'missing_contact'
+  | 'missing_consent_plan'
   | 'missing_parking'
   | 'missing_care_level'
   | 'missing_insurance'

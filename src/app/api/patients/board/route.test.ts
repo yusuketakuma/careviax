@@ -90,10 +90,17 @@ function buildPatientRow(scheduledDate: Date) {
     ],
     residences: [],
     lab_observations: [],
+    consents: [{ id: 'consent_1' }],
     cases: [
       {
         id: 'case_1',
         status: 'active',
+        management_plans: [
+          {
+            id: 'plan_1',
+            next_review_date: null,
+          },
+        ],
         care_team_links: [
           {
             role: 'physician',
@@ -534,6 +541,7 @@ describe('/api/patients/board', () => {
           {
             id: 'case_newer_on_hold',
             status: 'on_hold',
+            management_plans: [{ id: 'plan_on_hold', next_review_date: null }],
             care_team_links: [
               {
                 role: 'physician',
@@ -563,6 +571,7 @@ describe('/api/patients/board', () => {
           {
             id: 'case_active',
             status: 'active',
+            management_plans: [{ id: 'plan_active', next_review_date: null }],
             care_team_links: [
               {
                 role: 'physician',
@@ -653,6 +662,7 @@ describe('/api/patients/board', () => {
     ['missing_parking', 'patient_missing_parking', '駐車未確認'],
     ['missing_care_level', 'patient_missing_care_level', '介護度未確認'],
     ['missing_insurance', 'patient_missing_insurance', '保険確認1件'],
+    ['missing_consent_plan', 'patient_missing_consent_plan', '同意・計画未確認'],
   ] as const)(
     'filters board cards by expanded foundation issue %s',
     async (issue, patientId, expectedItem) => {
@@ -669,6 +679,7 @@ describe('/api/patients/board', () => {
         },
         medical_insurance_number: issue === 'missing_insurance' ? null : 'medical_1',
         care_insurance_number: null,
+        consents: issue === 'missing_consent_plan' ? [] : [{ id: 'consent_1' }],
       };
       patientFindManyMock.mockResolvedValue([
         buildPatientRow(new Date('2026-06-12T00:00:00.000Z')),

@@ -56,6 +56,7 @@ const boardQuerySchema = z.object({
     .enum([
       'needs_confirmation',
       'missing_contact',
+      'missing_consent_plan',
       'missing_parking',
       'missing_care_level',
       'missing_insurance',
@@ -294,9 +295,14 @@ type PatientQueryRow = {
     building_id: string | null;
   }>;
   lab_observations: Array<{ id: string }>;
+  consents: Array<{ id: string }>;
   cases: Array<{
     id: string;
     status: string;
+    management_plans: Array<{
+      id: string;
+      next_review_date: Date | null;
+    }>;
     care_team_links: Array<{
       role: string;
       phone: string | null;
@@ -367,6 +373,10 @@ function isVisitPreparationDisplayReady(schedule: NextVisitSchedule): boolean {
     preparation.offline_synced &&
     !isVisitCarryItemsStatusBlockingReady(schedule?.carry_items_status),
   );
+}
+
+function isManagementPlanReviewOverdue(nextReviewDate: Date | null, todayKey: string): boolean {
+  return Boolean(nextReviewDate && formatUtcDateKey(nextReviewDate) < todayKey);
 }
 
 /** 1 患者 → 患者カード(状態語彙・危険タグ・工程・自然文)導出。 */
@@ -515,9 +525,16 @@ function derivePatientBoardCard(patient: PatientQueryRow, now: Date): DerivedCar
     contacts: patient.contacts,
     careTeamLinks: careCase?.care_team_links ?? [],
   });
+  const hasActiveVisitConsent = patient.consents.length > 0;
+  const currentManagementPlan = careCase?.management_plans[0] ?? null;
+  const consentPlanMissing =
+    !hasActiveVisitConsent ||
+    !currentManagementPlan ||
+    isManagementPlanReviewOverdue(currentManagementPlan.next_review_date, todayKey);
   const insuranceMissing = !patient.medical_insurance_number && !patient.care_insurance_number;
   const foundationIssueKeys: PatientFoundationIssueKey[] = [
     contactReadiness.ready ? null : 'missing_contact',
+    consentPlanMissing ? 'missing_consent_plan' : null,
     preference?.parking_available == null ? 'missing_parking' : null,
     preference?.care_level ? null : 'missing_care_level',
     insuranceMissing ? 'missing_insurance' : null,
@@ -539,6 +556,7 @@ function derivePatientBoardCard(patient: PatientQueryRow, now: Date): DerivedCar
     safetyTagCount: safetyTags.length,
     insuranceAlertCount: insuranceMissing ? 1 : 0,
     careTeamReliabilityAlertCount: careTeamReliability.alert_count,
+    consentPlanAlertCount: consentPlanMissing ? 1 : 0,
   });
 
   return {
@@ -675,6 +693,17 @@ const authenticatedGET = withAuthContext(
             take: 1,
             select: { id: true },
           },
+          consents: {
+            where: {
+              consent_type: 'visit_medication_management',
+              is_active: true,
+              revoked_date: null,
+              OR: [{ expiry_date: null }, { expiry_date: { gte: now } }],
+            },
+            orderBy: [{ obtained_date: 'desc' }],
+            take: 1,
+            select: { id: true },
+          },
           cases: {
             where: caseScopeWhere,
             orderBy: { updated_at: 'desc' },
@@ -682,6 +711,19 @@ const authenticatedGET = withAuthContext(
             select: {
               id: true,
               status: true,
+              management_plans: {
+                where: {
+                  status: 'approved',
+                  approved_at: { not: null },
+                  OR: [{ effective_from: null }, { effective_from: { lte: now } }],
+                },
+                orderBy: [{ effective_from: 'desc' }, { version: 'desc' }, { approved_at: 'desc' }],
+                take: 1,
+                select: {
+                  id: true,
+                  next_review_date: true,
+                },
+              },
               care_team_links: {
                 orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
                 select: {

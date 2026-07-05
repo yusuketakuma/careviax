@@ -109,6 +109,7 @@ type BoardChipValue =
   | 'visit_today'
   | 'foundation_gap'
   | 'foundation_contact_gap'
+  | 'foundation_consent_plan_gap'
   | 'foundation_care_team_gap'
   | 'foundation_parking_gap'
   | 'foundation_care_level_gap'
@@ -192,6 +193,7 @@ const STATUS_TONE_CLASSES: Record<PatientStatusTone, string> = {
 function getFoundationIssueForChip(chip: BoardChipValue): BoardFoundationIssue | undefined {
   if (chip === 'foundation_gap') return 'needs_confirmation';
   if (chip === 'foundation_contact_gap') return 'missing_contact';
+  if (chip === 'foundation_consent_plan_gap') return 'missing_consent_plan';
   if (chip === 'foundation_care_team_gap') return 'missing_care_team';
   if (chip === 'foundation_parking_gap') return 'missing_parking';
   if (chip === 'foundation_care_level_gap') return 'missing_care_level';
@@ -604,6 +606,9 @@ export function PatientsBoard() {
             if (chip === 'foundation_contact_gap') {
               return cardHasFoundationIssue(card, 'missing_contact');
             }
+            if (chip === 'foundation_consent_plan_gap') {
+              return cardHasFoundationIssue(card, 'missing_consent_plan');
+            }
             if (chip === 'foundation_care_team_gap') {
               return cardHasFoundationIssue(card, 'missing_care_team');
             }
@@ -663,6 +668,13 @@ export function PatientsBoard() {
         label: '連絡先未設定',
         count: data
           ? countCards(data.cards, (card) => cardHasFoundationIssue(card, 'missing_contact'))
+          : 0,
+      },
+      {
+        value: 'foundation_consent_plan_gap' as const,
+        label: '同意・計画未確認',
+        count: data
+          ? countCards(data.cards, (card) => cardHasFoundationIssue(card, 'missing_consent_plan'))
           : 0,
       },
       {

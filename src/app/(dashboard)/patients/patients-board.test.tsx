@@ -55,7 +55,7 @@ function card(overrides: Partial<PatientBoardCard>): PatientBoardCard {
       label: '未確認2件',
       items: ['連絡先未設定', '駐車未確認'],
     },
-    foundation_issue_keys: ['missing_contact', 'missing_parking'],
+    foundation_issue_keys: ['missing_contact', 'missing_consent_plan', 'missing_parking'],
     foundation_href: '/patients/pt_default#patient-foundation',
     link_label: 'セットへ',
     link_href: '/set',
@@ -248,6 +248,7 @@ describe('PatientsBoard', () => {
     expect(within(chipBar).getByRole('button', { name: /本日訪問 3＋施設12名/ })).toBeTruthy();
     expect(within(chipBar).getByRole('button', { name: /正本未整備/ })).toBeTruthy();
     expect(within(chipBar).getByRole('button', { name: /連絡先未設定/ })).toBeTruthy();
+    expect(within(chipBar).getByRole('button', { name: /同意・計画未確認/ })).toBeTruthy();
     expect(within(chipBar).getByRole('button', { name: /連携先未設定/ })).toBeTruthy();
     expect(within(chipBar).getByRole('button', { name: /駐車未確認/ })).toBeTruthy();
     expect(within(chipBar).getByRole('button', { name: /介護度未確認/ })).toBeTruthy();
@@ -421,6 +422,14 @@ describe('PatientsBoard', () => {
     expect(useRealtimeQueryMock).toHaveBeenLastCalledWith(
       expect.objectContaining({
         queryKey: ['patients', 'board', 'org_1', 'mine', 'missing_contact', ''],
+      }),
+    );
+
+    fireEvent.click(within(chipBar).getByRole('button', { name: /同意・計画未確認/ }));
+    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(4);
+    expect(useRealtimeQueryMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        queryKey: ['patients', 'board', 'org_1', 'mine', 'missing_consent_plan', ''],
       }),
     );
 

@@ -167,6 +167,7 @@ export function buildPatientFoundationSummary(args: {
   medicationRiskAlertCount?: number;
   preVisitPreparationAlertCount?: number;
   careTeamReliabilityAlertCount?: number;
+  consentPlanAlertCount?: number;
   foundationConfirmationAlertCount?: number;
   archived?: boolean;
 }): PatientFoundationSummary {
@@ -183,6 +184,7 @@ export function buildPatientFoundationSummary(args: {
     args.parkingAvailable == null ? '駐車未確認' : null,
     args.careLevel ? null : '介護度未確認',
     args.careTeamReliabilityAlertCount ? `連携先${args.careTeamReliabilityAlertCount}件` : null,
+    args.consentPlanAlertCount ? '同意・計画未確認' : null,
     args.visitToday && !args.visitPrepared ? '訪問準備未完' : null,
     args.insuranceAlertCount ? `保険確認${args.insuranceAlertCount}件` : null,
     args.staleLabCount ? `検査値古い${args.staleLabCount}件` : null,
