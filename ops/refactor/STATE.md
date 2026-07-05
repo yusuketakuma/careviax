@@ -40,7 +40,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: PatientsBoard server-side search slice complete（code/test: commit pending）。
+- codex: PatientsBoard server-side search slice complete（code/test: 35a86bcc3）。
   - current task:
     Goal 継続として `Plans.md` の `PAT-LIST-PERF-001` / `PERF-BFF-001` に対応。
     患者一覧の検索を「取得済みカード内の client-side search」から `/api/patients/board?q=...`
