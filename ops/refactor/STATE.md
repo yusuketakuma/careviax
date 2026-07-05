@@ -737,6 +737,16 @@
   api_contract_reviewer で conference-notes/community-activities/tasks/generate-report の response envelope と
   PHI-safe error presentation を確認(APPROVE)。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 drug master/formulary mutation readApiJson slice(26ad685f) land。focused Vitest
+  `drug-master-content` + `client-json` 103、drug-master/pharmacy-drug-stocks api-path Vitest 6、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。official import preview/run、
+  drug-master job、formulary stock/request/bulk/copy/template/review/safety-follow-up mutation error parsing を
+  readApiJson へ収束し、server `{message}` / `{error}` と non-JSON fallback regression tests を追加。
+  api_contract_reviewer と medical_safety_reviewer を投入し、CSV export/template は成功 Blob path を維持、
+  error path のみ readApiJson、auto-refresh job は top-level `processedCount` contract へ修正。
+  typed confirmation、org JSON/header split、hostile-id path helpers、dry-run request-context stamping、
+  stale preview sync clearing、採用薬CSVのYJ identity fail-closed behavior は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 
