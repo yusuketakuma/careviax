@@ -1,5 +1,48 @@
 # CODEX Goal Progress
 
+## R40/R44 External Viewer Mutations readApiJson Partial - 2026-07-05 11:10 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/external/external-viewer-content.tsx`
+    - `src/app/(dashboard)/external/external-viewer-content.test.tsx`
+- Scope:
+  - Reused `readApiJson` for external viewer self-report status update and
+    self-report task creation mutation responses.
+  - Added focused mutation coverage proving API JSON `message` from failed
+    self-report update and task creation responses is preserved through
+    mutation errors and toast output.
+  - Preserved external access, self-report, and community-activity read
+    behavior, org-scoped JSON headers, self-report `updated_at` version body,
+    task creation body including dedupe key and metadata, follow-up
+    `converted_to_task` update, success toast, and query invalidation.
+  - Existing external-viewer read helper slice `798e1e08` remains unchanged.
+- Safety:
+  - External viewer UI mutation response handling internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary remains
+    recorded in `ops/refactor/STATE.md`; this slice did not require those
+    changes.
+  - Preserved DB/schema, API route contracts, auth/authorization semantics,
+    optimistic self-report version handling, task dedupe behavior, PHI
+    projection, billing behavior, deployment, package dependency, live DB
+    operation, external send, secret handling, push, and destructive operation
+    boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/external/external-viewer-content.test.tsx'`
+    passed `1` file / `11` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `60c0a3ad`
+    (`refactor(ui): reuse readApiJson for external viewer mutations`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher/mutation PHI/body-read review
+    before converting additional manual response handling.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Data Explorer Save readApiJson Partial - 2026-07-05 11:05 JST
 
 - Status:

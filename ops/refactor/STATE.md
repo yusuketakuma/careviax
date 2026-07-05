@@ -409,6 +409,12 @@
   community activities の org-scoped read GET を readApiJson へ収束し、queryKey/endpoint/header、
   retry/error UI、self-report/task mutation contract は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 external-viewer-mutations readApiJson slice(60c0a3ad) land。focused Vitest 11、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。external viewer self-report update /
+  task creation mutation responses を readApiJson へ収束し、org JSON headers、updated_at body、
+  task dedupe/metadata、converted_to_task 後続更新、success toast、invalidation contract は保持。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
+  維持しつつ、本sliceでは不要。
 - codex: R40/R44 my-day readApiJson slice(bc78bc28) land。focused Vitest 20、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。assigned visit schedules / admin
   status-change audit-log read GET を readApiJson へ収束し、queryKey/enabled gates/JST day

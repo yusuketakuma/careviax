@@ -5,6 +5,21 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-05 R40/R44-external-viewer-mutations 60c0a3ad
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 対象: `src/app/(dashboard)/external/external-viewer-content.tsx` とtest。
+- 実施: self-report update / task creation mutation responses を `readApiJson` へ移行し、
+  failed update/task creation の API JSON `message` 表面化テストを追加。
+- 挙動変更: external viewer UI mutation response handling の helper 収束のみ。org JSON headers、
+  updated_at body、task dedupe/metadata、converted_to_task 後続更新、success toast、invalidation は維持。
+- 安全: external viewer UI internals のみ。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- 検証: focused external-viewer Vitest `1 file / 11 tests` green。
+  scoped eslint/prettier/diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit 60c0a3ad。
+- 残課題: R40/R44 は partial。
+
 ## 2026-07-05 R40/R44-data-explorer-save f5494af5
 
 - 分類: query-helper / client fetch error handling → `readApiJson` 収束。
