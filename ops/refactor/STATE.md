@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: MOV-001 visit/prescription occurrence-only timeline hardening（作業中）。
+- codex: MOV-001 visit/prescription occurrence-only timeline hardening（commit 1c943327a）。
   - current task:
     ユーザー方針「処方・訪問・文書登録があったことが timeline で確認できればよい。
     詳細は deep link で確認する」を、旧 `timeline_events` payload の処方・訪問 source にも適用する。
@@ -84,7 +84,7 @@
     `MOV-001` remains partial for formal `InboundCommunicationSignal`, formal MedicationStock Ledger
     source, safety finding source, and mobile Playwright smoke.
   - next action:
-    Scoped commit/push する。
+    Continue `MOV-001` with formal `InboundCommunicationSignal` or safety finding source integration.
 
 - codex: MOV-001 first visit document timeline hardening（commit 31f9e1849）。
   - current task:
