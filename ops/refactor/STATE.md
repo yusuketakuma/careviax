@@ -41,6 +41,57 @@
 
 ## 直近の land（本日・要点）
 
+- codex: COMM-FILE-001 communication attachment filename removal implemented.
+  - current task:
+    `Plans.md` の `COMM-FILE-001` を追加・実装。`/api/communication-events` の添付 summary から
+    `file_name` を廃止し、`FileAsset.original_name` / `storage_key` を route で select しないようにした。
+    保存 payload は `file_id`, `mime_type`, `size_bytes`, `uploaded_at`, `purpose` の allowlist のみに縮小。
+    GET/POST response は legacy `attachments` JSON も presenter で正規化し、`file_name`, `storage_key`,
+    `provider_error`, hostile filename 由来の患者名/電話/薬剤名を落とす。添付なしの既存 nullable contract は
+    `attachments: null` として保持する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/api/communication-events/route.ts`,
+    `src/app/api/communication-events/route.test.ts`,
+    `src/app/api/__tests__/api-conventions-static.test.ts`,
+    `src/app/api/__tests__/protected-get-routes.test.ts`,
+    `src/app/api/__tests__/protected-post-routes.test.ts`,
+    `src/lib/api/pagination.ts`,
+    `prisma/schema/communication.prisma`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/api/communication-events/route.ts`,
+    `src/app/api/communication-events/route.test.ts`,
+    `src/app/api/__tests__/api-conventions-static.test.ts`.
+  - subagent / review:
+    `api_contract_reviewer` (`019f3604-9b6c-7272-abd6-78e9686f0d4c`) returned
+    `CHANGES_REQUESTED` for unintended `attachments: null -> []` shape change; fixed by making
+    `normalizeStoredCommunicationAttachments()` return `null` for null/undefined/non-array input
+    and adding GET/POST nullable contract tests plus a static route convention test.
+  - validation:
+    `pnpm exec vitest run src/app/api/communication-events/route.test.ts src/app/api/__tests__/api-conventions-static.test.ts --reporter=dot --testTimeout=30000`
+    passed: 2 files / 32 tests.
+    `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts src/app/api/__tests__/protected-post-routes.test.ts --reporter=dot --testTimeout=30000`
+    passed: 2 files / 526 tests; existing `webhook.org_dispatch_failed` stderr appeared in
+    `billing-candidates/close POST` but tests passed.
+    `pnpm exec eslint src/app/api/communication-events/route.ts src/app/api/communication-events/route.test.ts src/app/api/__tests__/api-conventions-static.test.ts`
+    passed.
+    `pnpm format:check` passed after formatting touched files.
+    `git diff --check -- Plans.md src/app/api/communication-events/route.ts src/app/api/communication-events/route.test.ts src/app/api/__tests__/api-conventions-static.test.ts`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck` passed.
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false` passed.
+  - remaining work:
+    `FILE-DOWNLOAD-001` remains: deprecate browser-visible JSON signed URLs or move UI to
+    same-origin `/api/files/:id/download`; broader `DEV-PHI-001` still needs signed URL/export/PDF
+    snapshot breadth and live AWS S3 verification.
+  - next action:
+    scoped commit/push for COMM-FILE-001, then continue with `FILE-DOWNLOAD-001` or the next
+    highest-risk Plans item.
+
 - codex: S3-PHI-001 file/S3 PHI boundary gate implemented.
   - current task:
     `Plans.md` の `S3-PHI-001` を実装。S3 bucket policy / ECS runtime policy / validator /

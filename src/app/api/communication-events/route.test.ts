@@ -165,6 +165,72 @@ describe('/api/communication-events', () => {
     });
   });
 
+  it('preserves null attachments when listing events without attachments', async () => {
+    communicationEventFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'event_without_attachments',
+        event_type: 'fax',
+        attachments: null,
+      },
+    ]);
+
+    const response = (await GET(createGetRequest()))!;
+
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [
+        {
+          id: 'event_without_attachments',
+          attachments: null,
+        },
+      ],
+    });
+  });
+
+  it('redacts legacy communication attachment filenames when listing events', async () => {
+    communicationEventFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'event_legacy',
+        event_type: 'fax',
+        attachments: [
+          {
+            file_id: 'file_1',
+            file_name: '患者 山田太郎 090-1234-5678 アムロジピン.pdf',
+            storage_key: 'reports/org_1/report_1/file_1-secret.pdf',
+            mime_type: 'application/pdf',
+            size_bytes: 2048,
+            uploaded_at: '2026-03-30T01:05:00.000Z',
+            purpose: 'report',
+            provider_error: 'raw storageKey=reports/org_1/report_1/file_1',
+          },
+        ],
+      },
+    ]);
+
+    const response = (await GET(createGetRequest()))!;
+
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    const body = await response.json();
+    expect(body.data[0].attachments).toEqual([
+      {
+        file_id: 'file_1',
+        mime_type: 'application/pdf',
+        size_bytes: 2048,
+        uploaded_at: '2026-03-30T01:05:00.000Z',
+        purpose: 'report',
+      },
+    ]);
+    const responseText = JSON.stringify(body);
+    expect(responseText).not.toContain('file_name');
+    expect(responseText).not.toContain('山田太郎');
+    expect(responseText).not.toContain('090-1234-5678');
+    expect(responseText).not.toContain('アムロジピン');
+    expect(responseText).not.toContain('storage_key');
+    expect(responseText).not.toContain('provider_error');
+  });
+
   it('treats omitted optional filters as absent when listing communication events', async () => {
     const response = (await GET(createGetRequest('')))!;
 
@@ -308,6 +374,11 @@ describe('/api/communication-events', () => {
 
     expect(response.status).toBe(201);
     expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        attachments: null,
+      },
+    });
     expect(communicationEventCreateMock).toHaveBeenCalled();
     expect(learnContactProfileFromCommunicationMock).toHaveBeenCalledWith(expect.anything(), {
       orgId: 'org_1',
@@ -355,7 +426,7 @@ describe('/api/communication-events', () => {
       {
         id: '11111111-1111-4111-8111-111111111111',
         purpose: 'prescription',
-        original_name: 'prescription.pdf',
+        original_name: '患者 山田太郎 090-1234-5678 アムロジピン.pdf',
         mime_type: 'application/pdf',
         size_bytes: 1024,
         status: 'uploaded',
@@ -385,13 +456,13 @@ describe('/api/communication-events', () => {
         },
       }),
     );
+    expect(fileAssetFindManyMock.mock.calls[0][0].select).not.toHaveProperty('original_name');
     expect(communicationEventCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           attachments: [
             {
               file_id: '11111111-1111-4111-8111-111111111111',
-              file_name: 'prescription.pdf',
               mime_type: 'application/pdf',
               size_bytes: 1024,
               uploaded_at: '2026-03-30T01:05:00.000Z',
@@ -401,6 +472,11 @@ describe('/api/communication-events', () => {
         }),
       }),
     );
+    const createPayloadText = JSON.stringify(communicationEventCreateMock.mock.calls[0][0]);
+    expect(createPayloadText).not.toContain('file_name');
+    expect(createPayloadText).not.toContain('山田太郎');
+    expect(createPayloadText).not.toContain('090-1234-5678');
+    expect(createPayloadText).not.toContain('アムロジピン');
   });
 
   it('allows report attachments when the report belongs to the event case patient', async () => {

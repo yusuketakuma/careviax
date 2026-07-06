@@ -41,7 +41,6 @@ type CommunicationEventAttachmentRef = z.infer<typeof communicationEventAttachme
 
 type CommunicationEventAttachmentSummary = {
   file_id: string;
-  file_name: string;
   mime_type: string;
   size_bytes: number;
   uploaded_at: string | null;
@@ -59,6 +58,47 @@ type AttachmentValidationSuccess = {
 };
 
 const COMMUNICATION_ATTACHMENT_PURPOSES = new Set(['prescription', 'report', 'visit-photo']);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function normalizeStoredCommunicationAttachments(
+  value: Prisma.JsonValue | null | undefined,
+): CommunicationEventAttachmentSummary[] | null {
+  if (!Array.isArray(value)) return null;
+
+  const attachments: CommunicationEventAttachmentSummary[] = [];
+  for (const item of value) {
+    if (!isRecord(item)) continue;
+    if (
+      typeof item.file_id !== 'string' ||
+      typeof item.mime_type !== 'string' ||
+      typeof item.size_bytes !== 'number' ||
+      !Number.isFinite(item.size_bytes) ||
+      typeof item.purpose !== 'string' ||
+      !(typeof item.uploaded_at === 'string' || item.uploaded_at === null)
+    ) {
+      continue;
+    }
+
+    attachments.push({
+      file_id: item.file_id,
+      mime_type: item.mime_type,
+      size_bytes: item.size_bytes,
+      uploaded_at: item.uploaded_at,
+      purpose: item.purpose,
+    });
+  }
+  return attachments;
+}
+
+function toPublicCommunicationEvent<T extends { attachments?: Prisma.JsonValue | null }>(event: T) {
+  return {
+    ...event,
+    attachments: normalizeStoredCommunicationAttachments(event.attachments),
+  };
+}
 
 function parseCommunicationEventListFilters(searchParams: URLSearchParams) {
   const patientResult = readStrictOptionalSearchParam(searchParams, 'patient_id', {
@@ -157,7 +197,6 @@ async function resolveCommunicationEventAttachments(args: {
     select: {
       id: true,
       purpose: true,
-      original_name: true,
       mime_type: true,
       size_bytes: true,
       status: true,
@@ -245,7 +284,6 @@ async function resolveCommunicationEventAttachments(args: {
 
     summaries.push({
       file_id: asset.id,
-      file_name: asset.original_name,
       mime_type: asset.mime_type,
       size_bytes: asset.size_bytes,
       uploaded_at: asset.completed_at?.toISOString() ?? null,
@@ -302,7 +340,9 @@ const authenticatedGET = withAuthContext(
       },
     });
 
-    return withSensitiveNoStore(success(buildCursorPage(events, limit, (event) => event.id)));
+    return withSensitiveNoStore(
+      success(buildCursorPage(events.map(toPublicCommunicationEvent), limit, (event) => event.id)),
+    );
   },
   {
     permission: 'canReport',
@@ -385,7 +425,7 @@ const authenticatedPOST = withAuthContext(
 
     if (!eventResult.ok) return eventResult.response;
 
-    return success({ data: eventResult.event }, 201);
+    return success({ data: toPublicCommunicationEvent(eventResult.event) }, 201);
   },
   {
     permission: 'canReport',

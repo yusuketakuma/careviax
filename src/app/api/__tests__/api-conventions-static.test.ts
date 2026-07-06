@@ -88,4 +88,15 @@ describe('API route conventions', () => {
     expect(presignedDownloadTest).toContain("not.toContain('downloadUrl')");
     expect(downloadTest).toContain("not.toContain('downloadUrl')");
   });
+
+  it('keeps communication event attachment DTOs away from raw FileAsset names and keys', () => {
+    const source = readFileSync(
+      join(process.cwd(), 'src/app/api/communication-events/route.ts'),
+      'utf8',
+    );
+
+    expect(source).not.toContain('original_name');
+    expect(source).not.toContain('storage_key');
+    expect(source).not.toContain('file_name');
+  });
 });
