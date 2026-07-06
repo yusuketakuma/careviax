@@ -541,6 +541,7 @@ export const TASK_TYPE_LABELS: Record<string, string> = {
   visit_carry_item_review: '持参物確認',
   facility_batch_tracker: '施設訪問',
   mobile_visit_mode: 'オフライン同期',
+  'pharmacy.inbound_schedule_request_review_required': '受信訪問調整',
 };
 
 export const SCHEDULING_TASK_TYPES = new Set(Object.keys(TASK_TYPE_LABELS));

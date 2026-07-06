@@ -1391,6 +1391,47 @@ describe('ScheduleTeamBoard', () => {
     );
   });
 
+  it('routes inbound schedule request tasks to schedule and proposal detail views', () => {
+    mockQueries({
+      board: {
+        ...buildBoardFixture(),
+        operational_tasks: [
+          buildScheduleTask({
+            id: 'task_inbound_schedule',
+            task_type: 'pharmacy.inbound_schedule_request_review_required',
+            title: '受信訪問調整を確認',
+            description: null,
+            related_entity_type: 'visit_schedule',
+            related_entity_id: 'visit_1',
+          }),
+          buildScheduleTask({
+            id: 'task_inbound_proposal',
+            task_type: 'pharmacy.inbound_schedule_request_review_required',
+            title: '受信訪問調整を確認',
+            description: null,
+            related_entity_type: 'visit_schedule_proposal',
+            related_entity_id: 'proposal_1',
+          }),
+        ],
+      },
+    });
+
+    render(<ScheduleTeamBoard initialDate={TODAY_KEY} activeView="list" />);
+
+    const operationalTasks = screen.getByTestId('schedule-operational-tasks');
+    expect(within(operationalTasks).getAllByText('受信訪問調整')).toHaveLength(2);
+    const scheduleLink = within(operationalTasks).getByRole('link', {
+      name: /伊藤 キヨ様.*訪問調整を確認を開く/,
+    });
+    expect(scheduleLink.getAttribute('href')).toBe('/schedules?focus=schedule&schedule_id=visit_1');
+    const proposalLink = within(operationalTasks).getByRole('link', {
+      name: /鈴木 新様.*訪問調整を確認を開く/,
+    });
+    expect(proposalLink.getAttribute('href')).toBe(
+      '/schedules/proposals?workspace=dashboard&detail=proposal_1',
+    );
+  });
+
   it('offers visit status changes from the staff gantt', () => {
     const mutate = vi.fn();
     useMutationMock.mockReturnValue({

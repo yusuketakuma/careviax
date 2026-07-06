@@ -1552,6 +1552,14 @@ function operationalTaskActionHref(task: ScheduleDayBoardOperationalTask) {
   if (task.task_type === 'visit_schedule_reproposal_needed' && task.related_entity_id) {
     return `/schedules/proposals?workspace=dashboard&status=reschedule_pending&preset=reschedule&detail=${encodeURIComponent(task.related_entity_id)}`;
   }
+  if (task.task_type === 'pharmacy.inbound_schedule_request_review_required') {
+    if (task.related_entity_type === 'visit_schedule' && task.related_entity_id) {
+      return buildScheduleFocusHref(task.related_entity_id);
+    }
+    if (task.related_entity_type === 'visit_schedule_proposal' && task.related_entity_id) {
+      return `/schedules/proposals?workspace=dashboard&detail=${encodeURIComponent(task.related_entity_id)}`;
+    }
+  }
   return '/tasks';
 }
 
@@ -1562,6 +1570,9 @@ function operationalTaskActionLabel(task: ScheduleDayBoardOperationalTask) {
   if (task.task_type === 'visit_schedule_override_approval') return '変更承認へ';
   if (task.task_type === 'visit_contact_followup') return '連絡結果を記録';
   if (task.task_type === 'visit_schedule_reproposal_needed') return '再提案へ';
+  if (task.task_type === 'pharmacy.inbound_schedule_request_review_required') {
+    return '訪問調整を確認';
+  }
   return 'タスクへ';
 }
 

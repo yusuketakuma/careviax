@@ -351,6 +351,7 @@ describe('/api/visit-schedules/day-board', () => {
             'visit_carry_item_review',
             'facility_batch_tracker',
             'mobile_visit_mode',
+            'pharmacy.inbound_schedule_request_review_required',
           ],
         },
         status: { in: ['pending', 'in_progress'] },
@@ -656,6 +657,7 @@ describe('/api/visit-schedules/day-board', () => {
             'visit_carry_item_review',
             'facility_batch_tracker',
             'mobile_visit_mode',
+            'pharmacy.inbound_schedule_request_review_required',
           ],
         },
         status: { in: ['pending', 'in_progress'] },
@@ -809,6 +811,21 @@ describe('/api/visit-schedules/day-board', () => {
         created_at: new Date('2026-06-12T01:00:00.000Z'),
       },
       {
+        id: 'task_inbound_schedule_today',
+        task_type: 'pharmacy.inbound_schedule_request_review_required',
+        title: 'MCS本文: 来週の訪問時間を変えたい',
+        description: '電話メモ raw schedule request',
+        status: 'pending',
+        priority: 'high',
+        assigned_to: null,
+        due_date: null,
+        sla_due_at: new Date('2026-06-12T05:00:00.000Z'),
+        related_entity_type: 'visit_schedule_proposal',
+        related_entity_id: 'proposal_today',
+        metadata: { raw_note: 'raw inbound note should not leak' },
+        created_at: new Date('2026-06-12T01:30:00.000Z'),
+      },
+      {
         id: 'task_override_today',
         task_type: 'visit_schedule_override_approval',
         title: '変更承認',
@@ -870,6 +887,7 @@ describe('/api/visit-schedules/day-board', () => {
               'visit_carry_item_review',
               'facility_batch_tracker',
               'mobile_visit_mode',
+              'pharmacy.inbound_schedule_request_review_required',
             ],
           },
           status: { in: ['pending', 'in_progress'] },
@@ -905,6 +923,13 @@ describe('/api/visit-schedules/day-board', () => {
         metadata: null,
       }),
       expect.objectContaining({
+        id: 'task_inbound_schedule_today',
+        title: '受信訪問調整を確認',
+        description: null,
+        sla_due_at: '2026-06-12T05:00:00.000Z',
+        metadata: null,
+      }),
+      expect.objectContaining({
         id: 'task_override_today',
         metadata: {
           proposal_ids: ['proposal_reschedule', 'proposal_leading_space'],
@@ -917,6 +942,9 @@ describe('/api/visit-schedules/day-board', () => {
     expect(JSON.stringify(json.data)).not.toContain('proposal/unsafe');
     expect(JSON.stringify(json.data)).not.toContain('自由記載は出さない');
     expect(JSON.stringify(json.data)).not.toContain('自由記載は返さない');
+    expect(JSON.stringify(json.data)).not.toContain('MCS本文');
+    expect(JSON.stringify(json.data)).not.toContain('電話メモ raw schedule request');
+    expect(JSON.stringify(json.data)).not.toContain('raw inbound note should not leak');
   });
 
   it('reports hidden staff visit and task counts without exposing hidden task details', async () => {
@@ -1029,6 +1057,7 @@ describe('/api/visit-schedules/day-board', () => {
             'visit_carry_item_review',
             'facility_batch_tracker',
             'mobile_visit_mode',
+            'pharmacy.inbound_schedule_request_review_required',
           ],
         },
         status: { in: ['pending', 'in_progress'] },

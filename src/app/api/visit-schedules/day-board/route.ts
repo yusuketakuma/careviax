@@ -72,6 +72,7 @@ const SCHEDULE_BOARD_TASK_TYPES = [
   'visit_carry_item_review',
   'facility_batch_tracker',
   'mobile_visit_mode',
+  'pharmacy.inbound_schedule_request_review_required',
 ] as const;
 const OPEN_OPERATIONAL_TASK_STATUSES = ['pending', 'in_progress'] as const;
 const VEHICLE_ASSIGNABLE_STATUSES = new Set([
@@ -225,6 +226,10 @@ function sanitizeOperationalTaskMetadata(task: {
   return Object.keys(safeMetadata).length > 0 ? safeMetadata : null;
 }
 
+function isInboundScheduleRequestTask(taskType: string) {
+  return taskType === 'pharmacy.inbound_schedule_request_review_required';
+}
+
 function scheduleReadyAsOf(schedule: Pick<DayBoardScheduleReadySource, 'scheduled_date'>) {
   return schedule.scheduled_date instanceof Date ? schedule.scheduled_date : new Date(0);
 }
@@ -247,8 +252,8 @@ function serializeOperationalTask(task: {
   return {
     id: task.id,
     task_type: task.task_type,
-    title: task.title,
-    description: task.description,
+    title: isInboundScheduleRequestTask(task.task_type) ? '受信訪問調整を確認' : task.title,
+    description: isInboundScheduleRequestTask(task.task_type) ? null : task.description,
     status: task.status as ScheduleDayBoardOperationalTask['status'],
     priority: task.priority as ScheduleDayBoardOperationalTask['priority'],
     assigned_to: task.assigned_to,

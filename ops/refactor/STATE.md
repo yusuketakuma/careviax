@@ -41,7 +41,56 @@
 
 ## 直近の land（本日・要点）
 
-- codex: MOV-001 prescription/visit/document marker planning clarification（commit pending）。
+- codex: INB-001 inbound schedule request day-board linkage（commit pending）。
+  - current task:
+    他職種受信の訪問調整確認 task `pharmacy.inbound_schedule_request_review_required` を、
+    Schedule Day Board の operational tasks に接続する。Patient Movement Timeline では
+    generic task のまま扱い、実際のスケジュール作業導線は日次ボードへ寄せる。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `git log -5 --oneline`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/lib/tasks/task-registry.ts`,
+    `src/app/api/visit-schedules/day-board/route.ts`,
+    `src/app/api/visit-schedules/day-board/route.test.ts`,
+    `src/app/(dashboard)/schedules/day-view.shared.ts`,
+    `src/app/(dashboard)/schedules/schedule-team-board.tsx`,
+    `src/app/(dashboard)/schedules/schedule-team-board.test.tsx`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/api/visit-schedules/day-board/route.ts`,
+    `src/app/api/visit-schedules/day-board/route.test.ts`,
+    `src/app/(dashboard)/schedules/day-view.shared.ts`,
+    `src/app/(dashboard)/schedules/schedule-team-board.tsx`,
+    `src/app/(dashboard)/schedules/schedule-team-board.test.tsx`.
+  - implementation:
+    `SCHEDULE_BOARD_TASK_TYPES` に `pharmacy.inbound_schedule_request_review_required` を追加。
+    day-board response ではこの task の `title` / `description` を controlled text に丸め、
+    raw inbound memo や metadata は返さない。UI は `受信訪問調整` label と
+    `訪問調整を確認` CTA を追加し、`visit_schedule` は focused schedule、`visit_schedule_proposal`
+    は proposal detail へ deep link する。
+  - validation:
+    `pnpm vitest run src/app/api/visit-schedules/day-board/route.test.ts --reporter=dot --testTimeout=30000`
+    passed: 1 file / 23 tests.
+    `pnpm vitest run 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' --reporter=dot --testTimeout=30000`
+    passed: 1 file / 30 tests.
+    `pnpm vitest run src/lib/tasks/task-registry.test.ts --reporter=dot --testTimeout=30000`
+    passed: 1 file / 6 tests.
+    `pnpm exec eslint src/app/api/visit-schedules/day-board/route.ts src/app/api/visit-schedules/day-board/route.test.ts 'src/app/(dashboard)/schedules/day-view.shared.ts' 'src/app/(dashboard)/schedules/schedule-team-board.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx'`
+    passed.
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/app/api/visit-schedules/day-board/route.ts src/app/api/visit-schedules/day-board/route.test.ts 'src/app/(dashboard)/schedules/day-view.shared.ts' 'src/app/(dashboard)/schedules/schedule-team-board.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx'`
+    passed after formatting `Plans.md` and `schedule-team-board.test.tsx`.
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/app/api/visit-schedules/day-board/route.ts src/app/api/visit-schedules/day-board/route.test.ts 'src/app/(dashboard)/schedules/day-view.shared.ts' 'src/app/(dashboard)/schedules/schedule-team-board.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx'`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+  - remaining:
+    Scoped commit/push。
+  - next action:
+    Scoped commit/push.
+
+- codex: MOV-001 prescription/visit/document marker planning clarification（commit c3d116772）。
   - current task:
     ユーザー確認に合わせ、Patient Movement Timeline の「処方・訪問・文書登録を表示する」を、
     内容表示ではなく「処方・訪問・文書登録があったことを marker として時系列確認し、詳細は
@@ -63,9 +112,9 @@
     `pnpm exec prettier --check Plans.md ops/refactor/STATE.md` passed.
     `git diff --check -- Plans.md ops/refactor/STATE.md` passed.
   - remaining:
-    Scoped commit/push。
+    なし。
   - next action:
-    Scoped commit/push.
+    Landed and pushed to `origin/main`.
 
 - codex: MOV-001 Patient Movement Timeline risk/stock task source classification（commit 4dc1f4bdf）。
   - current task:
