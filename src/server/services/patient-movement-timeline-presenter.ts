@@ -68,6 +68,9 @@ function movementCategoryOf(event: TimelineEvent): PatientMovementCategory {
 }
 
 function movementTypeOf(event: TimelineEvent): PatientMovementEventType {
+  if (event.category === 'visit') return 'visit_event';
+  if (event.category === 'prescription') return 'prescription_event';
+  if (event.category === 'document') return 'document_registered';
   if (VISIT_EVENT_TYPES.has(event.event_type)) return 'visit_event';
   if (PRESCRIPTION_EVENT_TYPES.has(event.event_type)) return 'prescription_event';
   if (DOCUMENT_EVENT_TYPES.has(event.event_type)) return 'document_registered';

@@ -112,4 +112,58 @@ describe('patient-movement-timeline-presenter', () => {
     expect(serialized).not.toContain('patient-name-yamada.pdf');
     expect(serialized).not.toContain('storage.example.com');
   });
+
+  it('normalizes prescription and document operation history as marker events', () => {
+    const movementEvents = buildPatientMovementTimelineEvents(
+      [
+        baseEvent({
+          id: 'operation_history:audit_rx_1',
+          event_type: 'operation_history',
+          category: 'prescription',
+          title: '処方せん画像/PDFを保存',
+          summary: '処方せん画像 filename-yamada-rx.pdf / EP-12345 / カロナール500mg',
+          href: '/prescriptions/intake_1',
+          action_label: '処方受付を開く',
+          metadata: ['filename-yamada-rx.pdf', 'EP-12345'],
+        }),
+        baseEvent({
+          id: 'operation_history:audit_doc_1',
+          event_type: 'operation_history',
+          category: 'document',
+          title: '服薬カレンダーPDFを出力',
+          summary: '服薬カレンダー本文 / calendar-yamada.pdf',
+          href: '/patients/patient_1#patient-documents',
+          action_label: '文書を開く',
+          metadata: ['calendar-yamada.pdf'],
+        }),
+      ],
+      { patientId: 'patient_1' },
+    );
+
+    expect(movementEvents).toEqual([
+      expect.objectContaining({
+        id: 'operation_history:audit_rx_1',
+        event_type: 'prescription_event',
+        category: 'prescription',
+        summary: '処方登録または処方変更がありました。内容は処方詳細で確認してください。',
+        href: '/prescriptions/intake_1',
+        metadata: [],
+      }),
+      expect.objectContaining({
+        id: 'operation_history:audit_doc_1',
+        event_type: 'document_registered',
+        category: 'document',
+        summary: '文書登録または文書状態の更新がありました。本文は詳細画面で確認してください。',
+        href: '/patients/patient_1#patient-documents',
+        metadata: [],
+      }),
+    ]);
+
+    const serialized = JSON.stringify(movementEvents);
+    expect(serialized).not.toContain('filename-yamada-rx.pdf');
+    expect(serialized).not.toContain('calendar-yamada.pdf');
+    expect(serialized).not.toContain('EP-12345');
+    expect(serialized).not.toContain('カロナール500mg');
+    expect(serialized).not.toContain('服薬カレンダー本文');
+  });
 });

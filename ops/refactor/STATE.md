@@ -41,7 +41,53 @@
 
 ## 直近の land（本日・要点）
 
-- codex: MOV-001 marker-only acceptance lock（pending commit）。
+- codex: MOV-001 operation-history marker normalization（pending commit）。
+  - current task:
+    Patient Movement Timeline で処方原本保存や文書PDF出力などの `operation_history` 由来イベントも、
+    category が処方/訪問/文書なら発生 marker として扱い、内容表示ではなく正本 deep link へ誘導する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `git log --oneline -8`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-movement-timeline-presenter.ts`,
+    `src/server/services/patient-movement-timeline-presenter.test.ts`,
+    `src/types/patient-movement-timeline.ts`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail.test.ts`,
+    `src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-movement-timeline-presenter.ts`,
+    `src/server/services/patient-movement-timeline-presenter.test.ts`.
+  - implementation:
+    `movementTypeOf()` が category=`visit` / `prescription` / `document` を優先して
+    `visit_event` / `prescription_event` / `document_registered` に正規化するよう変更。
+    `operation_history` 由来の処方・文書イベントも movement payload では発生 marker として扱い、
+    generic summary、空 metadata、正本 href のみを返す。追加 unit test で薬剤名、処方番号、
+    ファイル名、文書本文が movement payload に出ないことを固定した。
+  - validation:
+    `pnpm vitest run src/server/services/patient-movement-timeline-presenter.test.ts --reporter=dot --testTimeout=30000`
+    passed: 1 file / 3 tests.
+    `pnpm exec eslint src/server/services/patient-movement-timeline-presenter.ts src/server/services/patient-movement-timeline-presenter.test.ts`
+    passed.
+    `pnpm exec prettier --check src/server/services/patient-movement-timeline-presenter.ts src/server/services/patient-movement-timeline-presenter.test.ts`
+    passed.
+    `git diff --check -- src/server/services/patient-movement-timeline-presenter.ts src/server/services/patient-movement-timeline-presenter.test.ts`
+    passed.
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/server/services/patient-movement-timeline-presenter.ts src/server/services/patient-movement-timeline-presenter.test.ts`
+    passed.
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/server/services/patient-movement-timeline-presenter.ts src/server/services/patient-movement-timeline-presenter.test.ts`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+  - remaining:
+    scoped commit、push。
+  - next action:
+    Commit and push to `origin/main`.
+
+- codex: MOV-001 marker-only acceptance lock（commit e845fb6ba, pushed）。
   - current task:
     ユーザー確認に合わせ、Patient Movement Timeline の処方・訪問・文書登録表示を
     「発生 marker を時系列で確認し、詳細は正本 deep link で開く」受入条件としてさらに固定する。
@@ -62,9 +108,9 @@
     `pnpm exec prettier --check Plans.md ops/refactor/STATE.md` passed.
     `git diff --check -- Plans.md ops/refactor/STATE.md` passed.
   - remaining:
-    scoped commit、push。
+    なし。
   - next action:
-    Commit and push this plan-only scope to `origin/main`.
+    Landed and pushed to `origin/main`.
 
 - codex: INB-001 inbound communication Case Risk provider bridge（commit c0428271b）。
   - current task:
