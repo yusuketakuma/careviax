@@ -41,6 +41,42 @@
 
 ## 直近の land（本日・要点）
 
+- codex: FE-ERR-001 admin alert-rules signal tuning segment hardening（pending commit）。
+  - current task:
+    admin alert-rules の「気になる処方の表示設定」取得失敗/読み込みを shared segment pattern に寄せ、
+    raw backend error detail を UI に出さず、保存済み設定を all-standard に見せない fail-closed state として固定する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/components/ui/segment-state.tsx`,
+    `src/components/ui/error-state.tsx`,
+    `src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.tsx`,
+    `src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.test.tsx`.
+  - subagent review:
+    `frontend_reviewer` に admin screen 群の次 FE-ERR-001 候補探索を依頼中。
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.tsx`,
+    `src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.test.tsx`.
+  - implementation:
+    `SignalTuningPanel` の fetch error branch を `SegmentError` へ、pending branch を `SegmentLoading` へ移行した。
+    API error message は detail に渡さず、controlled cause/nextAction と retry のみ表示する。
+  - security risks reduced:
+    alert-rule 取得失敗時に patient name、token、storage key、API route/query 等が UI に出る面を縮小した。
+    患者安全シグナルの保存済み強調設定を取得できない時に all-standard panel として誤表示しない。
+  - validation:
+    `pnpm exec vitest run 'src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.test.tsx' src/components/ui/segment-state.test.tsx --reporter=dot --testTimeout=30000` → pass（2 files / 14 tests）。
+    `pnpm exec eslint 'src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.tsx' 'src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.test.tsx'` → pass。
+    `pnpm typecheck` → pass。
+    `pnpm exec prettier --check 'src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.tsx' 'src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.test.tsx'` → pass。
+  - remaining:
+    FE-ERR-001 は他 admin screen 群への段階展開が残る。Formal `InboundCommunicationEvent` /
+    `InboundCommunicationSignal` DB/API/review UI and MedicationStock Ledger source remain.
+  - next action:
+    Prettier/diff-check、scoped commit/push this admin alert-rules slice, then use subagent findings to pick next admin target.
+
 - codex: FE-ERR-001 tasks main list segment hardening（pending commit）。
   - current task:
     `/tasks` の main list 取得失敗表示を shared segment pattern に寄せ、false-empty / false-zero に倒さず

@@ -215,7 +215,13 @@ describe('SignalTuningPanel', () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/drug-alert-rules' && !init?.method) {
-        return new Response(JSON.stringify({ message: 'boom' }), { status: 500 });
+        return new Response(
+          JSON.stringify({
+            message:
+              'boom patient_name=山田 太郎 storage_key=s3://secret token=secret /api/drug-alert-rules?debug=1',
+          }),
+          { status: 500 },
+        );
       }
       return new Response(JSON.stringify({}), { status: 200 });
     });
@@ -225,6 +231,10 @@ describe('SignalTuningPanel', () => {
     expect(await screen.findByText('表示設定を取得できませんでした')).toBeTruthy();
     // the misleading panel (with all-standard signals) must not render on fetch failure
     expect(screen.queryByTestId('signal-tuning-panel')).toBeNull();
+    expect(screen.queryByText(/patient_name=山田/)).toBeNull();
+    expect(screen.queryByText(/storage_key/)).toBeNull();
+    expect(screen.queryByText(/token=secret/)).toBeNull();
+    expect(screen.queryByText(/\/api\/drug-alert-rules/)).toBeNull();
 
     fireEvent.click(await screen.findByRole('button', { name: '再試行' }));
     await waitFor(() => {

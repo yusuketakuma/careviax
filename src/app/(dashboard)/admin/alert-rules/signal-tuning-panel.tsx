@@ -5,8 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ErrorState } from '@/components/ui/error-state';
-import { SkeletonRows } from '@/components/ui/loading';
+import { SegmentError, SegmentLoading } from '@/components/ui/segment-state';
 import { readApiJson } from '@/lib/api/client-json';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
@@ -144,17 +143,12 @@ export function SignalTuningPanel() {
     // misrepresents the saved emphasis config on a patient-safety surface). Surface a
     // retryable error instead of the misleading all-standard panel.
     return (
-      <ErrorState
-        variant="server"
-        size="inline"
+      <SegmentError
         title="表示設定を取得できませんでした"
-        description={
-          rulesQuery.error instanceof Error
-            ? rulesQuery.error.message
-            : 'アラートルールの取得に失敗しました'
-        }
+        cause="アラートルールの取得に失敗しました。"
+        nextAction="保存済み設定を標準扱いにせず、再試行してください。"
         onRetry={() => void rulesQuery.refetch()}
-        live="polite"
+        retryLabel="再試行"
       />
     );
   }
@@ -164,13 +158,14 @@ export function SignalTuningPanel() {
     // (enabled: !!orgId) and leaves it pending-but-not-fetching in React Query v5 — shows
     // loading rather than buildSignalTuningState([]) defaulting every signal to 標準.
     return (
-      <div
-        role="status"
-        aria-label="表示設定を読み込み中"
-        aria-live="polite"
-        data-testid="signal-tuning-loading"
-      >
-        <SkeletonRows rows={2} cols={2} status={false} />
+      <div data-testid="signal-tuning-loading">
+        <SegmentLoading
+          label="表示設定を読み込み中"
+          description="保存済みの安全シグナル表示設定を確認しています。"
+          rows={2}
+          cols={2}
+          size="compact"
+        />
       </div>
     );
   }
