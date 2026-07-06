@@ -20,17 +20,6 @@
       "targets": ["./pharmacy-partnerships"]
     },
     {
-      "path": "src/server/services/visit-brief.ts",
-      "expectedCount": 4,
-      "reason": "訪問ブリーフが調剤セット法/院外処方区分/JAHIS 補足記録ビュー/服薬差分 (dispensing/pharmacy/prescription 系) を集約している既存負債。訪問準備資料が薬局固有データを直接読み込んでいる。",
-      "targets": [
-        "@/lib/dispensing/set-methods",
-        "@/lib/dispensing/outside-med-classification",
-        "@/lib/pharmacy/jahis-supplemental-records-view",
-        "@/lib/prescription/medication-diff"
-      ]
-    },
-    {
       "path": "src/server/services/visit-medication-deadline.ts",
       "expectedCount": 1,
       "reason": "訪問服薬期限が院外処方区分 (dispensing/outside-med-classification) を参照している既存負債。期限計算が調剤区分に依存している。",

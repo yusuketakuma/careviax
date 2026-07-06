@@ -41,6 +41,52 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOD-VISIT-001 Visit Brief pharmacy presentation extraction.
+  - current task:
+    `Plans.md` の `MOD-VISIT-001` first slice として、訪問ブリーフ内の薬局固有 presentation
+    helper を `src/modules/pharmacy/visit/brief-presentation.ts` へ移した。既存 `VisitBrief` response
+    と query構造は維持し、`src/server/services/visit-brief.ts` から `dispensing/set-methods`、
+    `dispensing/outside-med-classification`、`pharmacy/jahis-supplemental-records-view`、
+    `prescription/medication-diff` の direct import を削除した。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/visit-brief.ts`,
+    `src/server/services/visit-brief.test.ts`,
+    `src/modules/pharmacy/index.ts`,
+    `tools/module-boundary-allowlist.json`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/modules/pharmacy/index.ts`,
+    `src/modules/pharmacy/visit/brief-presentation.ts`,
+    `src/server/services/visit-brief.ts`,
+    `tools/module-boundary-allowlist.json`.
+  - bugs / risks reduced:
+    訪問ブリーフの common service が、処方差分、JAHIS補足record detail、調剤/セット/院外薬 evidence
+    表示のために薬局固有 lib を直接 import していた `DEBT-VISIT-001` を削減した。
+    `tools/module-boundary-allowlist.json` から `visit-brief.ts` entry を削除し、boundary debt は
+    8 imports / 7 files へ減少した。
+  - validation:
+    `pnpm vitest run src/server/services/visit-brief.test.ts --reporter=dot --testTimeout=30000`
+    passed: 1 file / 8 tests.
+    `pnpm boundaries:check` passed: 0 new violations, 8 allowlisted debt imports across 7 files.
+    `pnpm eslint src/server/services/visit-brief.ts src/modules/pharmacy/index.ts src/modules/pharmacy/visit/brief-presentation.ts`
+    passed.
+    `pnpm typecheck` passed.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed.
+    `pnpm prettier --write src/server/services/visit-brief.ts src/modules/pharmacy/index.ts src/modules/pharmacy/visit/brief-presentation.ts tools/module-boundary-allowlist.json`
+    applied formatting.
+  - remaining work:
+    `MOD-VISIT-001` is partial. The next slice should add `src/core/visit/visit-brief-core.ts`
+    and an explicit contributor registry, then split common patient/address/consent/contact/task/recent visits/
+    collaboration/emergency contacts sections from pharmacy prescription/deadline/residual/dispensing/JAHIS
+    sections with an adapter failure policy. No DB migration, deploy, external send, or production mutation was run.
+  - next action:
+    Re-run final diff/format checks, commit/push this visit-brief slice, then continue with `MOD-REPORT-001`
+    or the next `MOD-VISIT-001` contributor registry slice.
+
 - codex: MOD-PATIENT-001 Patient Workspace panel provider seam.
   - current task:
     `Plans.md` の `MOD-PATIENT-001` に沿って、患者詳細 workspace の first slice を実装した。

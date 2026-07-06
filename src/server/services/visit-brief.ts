@@ -5,7 +5,6 @@ import { mapWithConcurrency, normalizeConcurrencyLimit } from '@/lib/utils/concu
 import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
 import { formatDateKey } from '@/lib/date-key';
 import { buildPatientArchiveSummary } from '@/lib/patient/archive-summary';
-import { detectMedicationChanges as detectChangesShared } from '@/lib/prescription/medication-diff';
 import { listBillingEvidenceBlockers } from '@/server/services/billing-evidence';
 import type { BillingEvidenceBlockersReader } from '@/server/services/billing-evidence';
 import {
@@ -26,17 +25,15 @@ import {
   type PatientLabSummaryDb,
 } from '@/server/services/patient-detail-labs';
 import { getHomeVisitIntake, buildBaselineContext } from '@/lib/patient/home-visit-intake';
-import { SET_METHOD_LABELS } from '@/lib/dispensing/set-methods';
-import {
-  deriveOutsideMedEvidenceKind,
-  OUTSIDE_MED_EVIDENCE_KIND_LABELS,
-} from '@/lib/dispensing/outside-med-classification';
 import { timeDateToString } from '@/lib/visits/time-of-day';
-import { readJahisSupplementalDetails } from '@/lib/pharmacy/jahis-supplemental-records-view';
+import {
+  buildPharmacyVisitBriefDispensingItems,
+  detectPharmacyVisitBriefMedicationChanges,
+  normalizePharmacyJahisSupplementalRecordsForVisitBrief,
+} from '@/modules/pharmacy';
 import type {
   VisitBrief,
   VisitBriefAiSummary,
-  VisitBriefChangeType,
   VisitBriefCommunicationItem,
   VisitBriefConferenceSummary,
   VisitBriefDeliveryItem,
@@ -331,19 +328,6 @@ type JahisSupplementalRecordForBrief = {
   created_at: Date;
 };
 
-const DISPENSING_METHOD_LABELS: Record<string, string> = {
-  standard: '通常',
-  unit_dose: '一包化',
-  crushed: '粉砕',
-  other: 'その他',
-};
-
-const SET_AUDIT_LABELS: Record<string, string> = {
-  approved: '承認',
-  partial_approved: '部分承認',
-  rejected: '差戻し',
-};
-
 // facility acceptance_time_from/to are @db.Time() values (stored as a UTC
 // 1970-01-01 date). Format them through the shared UTC-based helper so the
 // clock time is not shifted by the server's local timezone. Using getHours()
@@ -424,20 +408,6 @@ async function listJahisSupplementalRecordsForBrief(
   });
 }
 
-function normalizeJahisSupplementalRecordsForBrief(
-  records: JahisSupplementalRecordForBrief[],
-): VisitBriefJahisSupplementalRecord[] {
-  return records.map((record) => ({
-    id: record.id,
-    record_type: record.record_type,
-    record_label: record.record_label,
-    summary: record.summary,
-    details: readJahisSupplementalDetails(record.payload),
-    raw_line: record.raw_line,
-    created_at: record.created_at.toISOString(),
-  }));
-}
-
 function severityFromPriority(priority: string | null | undefined): VisitBriefSeverity {
   switch (priority) {
     case 'urgent':
@@ -451,24 +421,6 @@ function severityFromPriority(priority: string | null | undefined): VisitBriefSe
     default:
       return 'normal';
   }
-}
-
-function detectMedicationChanges(
-  currentLines: PrescriptionLineLike[],
-  previousLines: PrescriptionLineLike[],
-  prescribedDate: string | null,
-  prescriberName: string | null,
-): VisitBriefMedicationChange[] {
-  const rawChanges = detectChangesShared(currentLines, previousLines);
-  return rawChanges.map((c) => ({
-    drug_name: c.drug_name,
-    drug_code: c.drug_code,
-    change_type: c.change_type as VisitBriefChangeType,
-    previous: c.previous,
-    current: c.current ?? '中止',
-    prescribed_date: prescribedDate,
-    prescriber_name: prescriberName,
-  }));
 }
 
 type DrugMasterEnrichment = {
@@ -592,64 +544,6 @@ async function buildDrugCautions(
   }
 
   return cautions;
-}
-
-function buildDispensingItems(args: {
-  currentLines: PrescriptionLineLike[];
-  latestSetPlan: {
-    set_method?: string | null;
-    target_period_start?: Date | null;
-    target_period_end?: Date | null;
-    notes?: string | null;
-    audits?: Array<{ result: string }>;
-  } | null;
-}): VisitBriefDispensingItem[] {
-  const latestAuditResult = args.latestSetPlan?.audits?.[0]?.result;
-  const auditStatus = latestAuditResult
-    ? (SET_AUDIT_LABELS[latestAuditResult] ?? latestAuditResult)
-    : null;
-  const setMethod = args.latestSetPlan?.set_method
-    ? (SET_METHOD_LABELS[args.latestSetPlan.set_method as keyof typeof SET_METHOD_LABELS] ??
-      args.latestSetPlan.set_method)
-    : null;
-  const setPeriodLabel =
-    args.latestSetPlan?.target_period_start && args.latestSetPlan?.target_period_end
-      ? `${formatDateKey(args.latestSetPlan.target_period_start)} - ${formatDateKey(args.latestSetPlan.target_period_end)}`
-      : null;
-
-  const items = args.currentLines.flatMap((line) => {
-    const outsideMedKind = deriveOutsideMedEvidenceKind(line);
-    if (!line.dispensing_method && !line.packaging_instructions && !setMethod && !outsideMedKind) {
-      return [];
-    }
-
-    const methodLabel = line.dispensing_method
-      ? (DISPENSING_METHOD_LABELS[line.dispensing_method] ?? line.dispensing_method)
-      : null;
-    const noteParts = [
-      methodLabel ? `方法: ${methodLabel}` : null,
-      line.packaging_instructions ? `包装: ${line.packaging_instructions}` : null,
-      setMethod ? `セット: ${setMethod}` : null,
-      auditStatus ? `鑑査: ${auditStatus}` : null,
-      args.latestSetPlan?.notes ? `備考: ${args.latestSetPlan.notes}` : null,
-    ].filter((value): value is string => Boolean(value));
-
-    return [
-      {
-        drug_name: line.drug_name,
-        dispensing_method: methodLabel,
-        packaging_instructions: line.packaging_instructions,
-        set_method: setMethod,
-        set_period_label: setPeriodLabel,
-        audit_status: auditStatus,
-        outside_med_kind: outsideMedKind,
-        outside_med_label: outsideMedKind ? OUTSIDE_MED_EVIDENCE_KIND_LABELS[outsideMedKind] : null,
-        note: noteParts.join(' / '),
-      },
-    ];
-  });
-
-  return items.slice(0, 8);
 }
 
 function buildDeliveryItems(
@@ -1688,7 +1582,7 @@ export async function getPatientVisitBrief(
   const previousLines = previousIntake?.lines ?? [];
 
   const medicationChanges = currentIntake
-    ? detectMedicationChanges(
+    ? detectPharmacyVisitBriefMedicationChanges(
         currentLines,
         previousLines,
         currentIntake.prescribed_date.toISOString(),
@@ -1725,7 +1619,7 @@ export async function getPatientVisitBrief(
 
   // Build drug cautions from package inserts for visit preparation
   const drugCautions = await buildDrugCautions(db, drugCodes);
-  const dispensingItems = buildDispensingItems({
+  const dispensingItems = buildPharmacyVisitBriefDispensingItems({
     currentLines,
     latestSetPlan,
   });
@@ -1741,7 +1635,8 @@ export async function getPatientVisitBrief(
     communicationRequests,
     contactLogs,
   });
-  const jahisSupplementalRecords = normalizeJahisSupplementalRecordsForBrief(jahisSupplementalRows);
+  const jahisSupplementalRecords =
+    normalizePharmacyJahisSupplementalRecordsForVisitBrief(jahisSupplementalRows);
   const latestLabs = buildVisitBriefLatestLabs(latestLabRows, new Date());
   const unresolvedInquiries = inquiries.map((item) => ({
     ...item,

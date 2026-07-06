@@ -8,6 +8,11 @@ export {
   type PharmacyPatientWorkspaceReadModel,
 } from './patient-workspace/workspace-read-model';
 export { createPharmacyCaseRiskProviders } from './risk/case-risk-providers';
+export {
+  buildPharmacyVisitBriefDispensingItems,
+  detectPharmacyVisitBriefMedicationChanges,
+  normalizePharmacyJahisSupplementalRecordsForVisitBrief,
+} from './visit/brief-presentation';
 
 export const pharmacyModule = definePhosModule({
   id: 'pharmacy',
