@@ -1043,6 +1043,10 @@ function openMedicationTab() {
   openPatientDetailTab(/薬剤・訪問/);
 }
 
+function openMovementTab() {
+  openPatientDetailTab(/患者の動き/);
+}
+
 function openSharingTab() {
   openPatientDetailTab(/共有・文書/);
 }
@@ -1542,7 +1546,7 @@ describe('CardWorkspace', () => {
     expect(within(commandTimeline).getByText('訪問記録を保存')).toBeTruthy();
     expect(within(commandTimeline).getByText('報告書を作成')).toBeTruthy();
     expect(
-      within(commandTimeline).getByRole('link', { name: '履歴タブへ', hidden: true }),
+      within(commandTimeline).getByRole('link', { name: '患者の動きへ', hidden: true }),
     ).toBeTruthy();
   });
 
@@ -1827,11 +1831,11 @@ describe('CardWorkspace', () => {
       enabled: true,
     });
 
-    fireEvent.click(screen.getByRole('tab', { name: /履歴・構造化/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /患者の動き/ }));
 
     expect(
       await screen.findByText(
-        '直近5件のアクティビティを先に表示しています。全履歴は必要な時だけ読み込みます。',
+        '直近5件の患者の動きを先に表示しています。全件は必要な時だけ読み込みます。',
       ),
     ).toBeTruthy();
     expect(screen.getByRole('button', { name: '全履歴を読み込む（最大40件）' })).toBeTruthy();
@@ -1855,6 +1859,90 @@ describe('CardWorkspace', () => {
         }),
       ).toBe(true);
     });
+  });
+
+  it('keeps change history separate from the patient movement timeline', async () => {
+    mockPatientQuery(buildWorkspace());
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    fireEvent.click(screen.getByRole('tab', { name: /履歴・構造化/ }));
+
+    expect(await screen.findByTestId('card-field-revisions')).toBeTruthy();
+    expect(screen.getByTestId('patient-structured-care')).toBeTruthy();
+    expect(screen.queryByText('直近5件のアクティビティを先に表示しています。')).toBeNull();
+
+    openMovementTab();
+
+    expect((await screen.findAllByText('訪問記録を保存')).length).toBeGreaterThan(0);
+  });
+
+  it('prefers movement-safe timeline events on the patient movement tab', async () => {
+    mockPatientQuery(
+      buildWorkspace(),
+      null,
+      {},
+      {
+        timeline: {
+          timeline_events: [
+            {
+              id: 'visit_record:visit_unsafe',
+              event_type: 'visit_record',
+              category: 'visit',
+              occurred_at: '2026-06-18T09:00:00.000Z',
+              title: '訪問記録を保存',
+              summary: 'SOAP本文と訪問内容の詳細',
+              href: '/visits/visit_unsafe',
+              action_label: '訪問記録へ',
+              status: 'completed',
+              status_label: '完了',
+              actor_name: '佐藤 薬剤師',
+              metadata: ['SOAP本文あり'],
+            },
+          ],
+          movement_events: [
+            {
+              id: 'visit_record:visit_unsafe',
+              event_type: 'visit_event',
+              category: 'visit',
+              occurred_at: '2026-06-18T09:00:00.000Z',
+              title: '訪問記録を保存',
+              summary: '訪問予定または訪問記録が登録されました。内容は訪問詳細で確認してください。',
+              href: '/visits/visit_unsafe',
+              action_label: '訪問記録へ',
+              status: 'completed',
+              status_label: '完了',
+              actor_name: '佐藤 薬剤師',
+              actor_role: null,
+              source_channel: null,
+              source_label: null,
+              related_entity_type: 'visit_record',
+              related_entity_id: 'visit_unsafe',
+              severity: 'normal',
+              badges: [{ label: '完了', tone: 'success' }],
+              metadata: [],
+              privacy_level: 'summary',
+              raw_available: false,
+            },
+          ],
+          self_reports: [],
+        },
+      },
+    );
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    openMovementTab();
+
+    expect(
+      (
+        await screen.findAllByText(
+          '訪問予定または訪問記録が登録されました。内容は訪問詳細で確認してください。',
+        )
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText('SOAP本文と訪問内容の詳細')).toBeNull();
+    expect(screen.queryByText('SOAP本文あり')).toBeNull();
   });
 
   it('switches patient detail tabs when section hashes change', async () => {
@@ -1896,6 +1984,11 @@ describe('CardWorkspace', () => {
   it.each([
     ['#card-prescription-section', /薬剤・訪問/, 'card-prescription-section'],
     ['#patient-visit-preparation', /薬剤・訪問/, 'card-prescription-section'],
+    ['#patient-movement', /患者の動き/, 'patient-movement-panel'],
+    ['#patient-timeline', /患者の動き/, 'patient-movement-panel'],
+    ['#inbound-communications', /患者の動き/, 'patient-movement-panel'],
+    ['#inbound-signals', /患者の動き/, 'patient-movement-panel'],
+    ['#medication-stock-events', /患者の動き/, 'patient-movement-panel'],
     ['#patient-home-operations', /請求・会議/, 'patient-home-operations-panel'],
     ['#patient-billing', /請求・会議/, 'patient-home-operations-panel'],
     ['#patient-conference', /請求・会議/, 'patient-home-operations-panel'],
@@ -2224,7 +2317,7 @@ describe('CardWorkspace', () => {
     expect(screen.queryByText('進行中のカードがありません')).toBeNull();
     expect(
       screen.getByText(
-        '進行中の処方カードがないため、正本・共有・履歴タブで患者情報を確認してください。',
+        '進行中の処方カードがないため、正本・共有・患者の動きで患者情報を確認してください。',
       ),
     ).toBeTruthy();
     expect(screen.getByTestId('case-risk-actions-panel')).toBeTruthy();

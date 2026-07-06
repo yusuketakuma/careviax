@@ -1,4 +1,5 @@
 import type { HomeCareFeatureSummary } from '@/types/home-care';
+import type { PatientMovementTimelineEvent } from '@/types/patient-movement-timeline';
 import type { VisitBrief } from '@/types/visit-brief';
 import type { AllergyEntry } from '@/lib/validations/patient-allergy';
 import type { JahisSupplementalRecordDbView } from '@/lib/pharmacy/jahis-supplemental-records-view';
@@ -574,6 +575,7 @@ export type PatientTimelineEvent = {
 
 export type PatientTimelineSnapshot = {
   timeline_events: PatientTimelineEvent[];
+  movement_events?: PatientMovementTimelineEvent[];
   self_reports: Array<{
     id: string;
     subject: string;

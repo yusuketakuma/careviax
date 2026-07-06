@@ -8,6 +8,7 @@ import {
   Activity,
   ArrowUpRight,
   CalendarDays,
+  CheckCircle2,
   CircleDollarSign,
   ClipboardList,
   FileText,
@@ -25,26 +26,15 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
+import type {
+  PatientMovementCategory,
+  PatientMovementEventType,
+} from '@/types/patient-movement-timeline';
 
 type TimelineEvent = {
   id: string;
-  event_type:
-    | 'visit_schedule'
-    | 'visit_record'
-    | 'prescription_intake'
-    | 'dispense_result'
-    | 'inquiry'
-    | 'care_report'
-    | 'delivery_record'
-    | 'management_plan'
-    | 'first_visit_document'
-    | 'conference_note'
-    | 'billing_candidate'
-    | 'operation_history'
-    | 'self_report'
-    | 'communication'
-    | 'external_share';
-  category: 'visit' | 'prescription' | 'billing' | 'document' | 'communication';
+  event_type: PatientMovementEventType;
+  category: PatientMovementCategory;
   occurred_at: string;
   title: string;
   summary: string | null;
@@ -144,6 +134,31 @@ const CATEGORY_META: Record<
     className: CHART_SERIES_CHIP[4],
     countClassName: CHART_SERIES_COUNT[4],
   },
+  medication_stock: {
+    label: '残数・薬剤',
+    className: CHART_SERIES_CHIP[2],
+    countClassName: CHART_SERIES_COUNT[2],
+  },
+  interprofessional: {
+    label: '他職種受信',
+    className: CHART_SERIES_CHIP[4],
+    countClassName: CHART_SERIES_COUNT[4],
+  },
+  task: {
+    label: 'タスク',
+    className: CHART_SERIES_CHIP[1],
+    countClassName: CHART_SERIES_COUNT[1],
+  },
+  safety: {
+    label: '安全',
+    className: CHART_SERIES_CHIP[5],
+    countClassName: CHART_SERIES_COUNT[5],
+  },
+  system: {
+    label: 'システム',
+    className: CHART_SERIES_CHIP[3],
+    countClassName: CHART_SERIES_COUNT[3],
+  },
 };
 
 const HOME_OPERATION_FOCUS_META: Record<
@@ -181,6 +196,11 @@ const EVENT_META: Record<
   TimelineEvent['event_type'],
   { label: string; icon: typeof Activity; className: string }
 > = {
+  visit_event: {
+    label: '訪問',
+    icon: CalendarDays,
+    className: CHART_SERIES_CHIP[1],
+  },
   visit_schedule: {
     label: '訪問予定',
     icon: CalendarDays,
@@ -190,6 +210,11 @@ const EVENT_META: Record<
     label: '訪問記録',
     icon: ClipboardList,
     className: CHART_SERIES_CHIP[1],
+  },
+  prescription_event: {
+    label: '処方',
+    icon: Pill,
+    className: CHART_SERIES_CHIP[2],
   },
   prescription_intake: {
     label: '処方受付',
@@ -214,6 +239,11 @@ const EVENT_META: Record<
   delivery_record: {
     label: '送付',
     icon: ArrowUpRight,
+    className: CHART_SERIES_CHIP[3],
+  },
+  document_registered: {
+    label: '文書登録',
+    icon: FileText,
     className: CHART_SERIES_CHIP[3],
   },
   management_plan: {
@@ -256,6 +286,81 @@ const EVENT_META: Record<
     icon: Share2,
     className: CHART_SERIES_CHIP[5],
   },
+  inbound_communication: {
+    label: '他職種受信',
+    icon: Phone,
+    className: CHART_SERIES_CHIP[4],
+  },
+  inbound_mcs: {
+    label: 'MCS受信',
+    icon: MessageSquareWarning,
+    className: CHART_SERIES_CHIP[4],
+  },
+  inbound_phone: {
+    label: '電話受信',
+    icon: Phone,
+    className: CHART_SERIES_CHIP[4],
+  },
+  inbound_fax: {
+    label: 'FAX受信',
+    icon: FileText,
+    className: CHART_SERIES_CHIP[4],
+  },
+  inbound_email: {
+    label: 'メール受信',
+    icon: MessageSquareWarning,
+    className: CHART_SERIES_CHIP[4],
+  },
+  inbound_medication_stock_signal: {
+    label: '残数報告',
+    icon: Pill,
+    className: CHART_SERIES_CHIP[2],
+  },
+  medication_stock_event: {
+    label: '残数管理',
+    icon: Package,
+    className: CHART_SERIES_CHIP[2],
+  },
+  medication_stock_snapshot: {
+    label: '残数更新',
+    icon: Package,
+    className: CHART_SERIES_CHIP[2],
+  },
+  medication_equivalence_review: {
+    label: '名寄せ確認',
+    icon: Pill,
+    className: CHART_SERIES_CHIP[2],
+  },
+  interprofessional_note: {
+    label: '他職種メモ',
+    icon: MessageSquareWarning,
+    className: CHART_SERIES_CHIP[4],
+  },
+  care_team_update: {
+    label: 'ケアチーム',
+    icon: MessageSquareWarning,
+    className: CHART_SERIES_CHIP[4],
+  },
+  safety_signal: {
+    label: '安全',
+    icon: MessageSquareWarning,
+    className: CHART_SERIES_CHIP[5],
+  },
+  task_created: {
+    label: 'タスク作成',
+    icon: ClipboardList,
+    className: CHART_SERIES_CHIP[1],
+  },
+  task_resolved: {
+    label: 'タスク完了',
+    icon: CheckCircle2,
+    className: CHART_SERIES_CHIP[1],
+  },
+  support_session: {
+    label: 'サポート',
+    icon: Activity,
+    className: CHART_SERIES_CHIP[3],
+  },
 };
 
 const SELF_REPORT_STATUS_LABELS: Record<string, string> = {
@@ -289,7 +394,8 @@ function previewText(value: string | null | undefined, maxLength = 96) {
 }
 
 function workflowHaystack(event: TimelineEvent) {
-  return [event.title, event.summary, event.status_label, ...event.metadata]
+  const metadata = isOccurrenceOnlyCategory(event) ? [] : event.metadata;
+  return [event.title, safeEventSummary(event), event.status_label, ...metadata]
     .filter(Boolean)
     .join(' ');
 }
@@ -306,20 +412,39 @@ function getHomeOperationFocus(event: TimelineEvent): HomeOperationFocus | null 
   return null;
 }
 
+function isOccurrenceOnlyCategory(event: TimelineEvent) {
+  return (
+    event.category === 'prescription' || event.category === 'visit' || event.category === 'document'
+  );
+}
+
+function safeEventSummary(event: TimelineEvent) {
+  if (event.category === 'prescription') {
+    return '処方登録または処方変更がありました。内容は処方詳細で確認してください。';
+  }
+  if (event.category === 'visit') {
+    return '訪問予定または訪問記録が登録されました。内容は訪問詳細で確認してください。';
+  }
+  if (event.category === 'document') {
+    return '文書登録または文書状態の更新がありました。本文は詳細画面で確認してください。';
+  }
+  return event.summary;
+}
+
 function matchesQuery(event: TimelineEvent, query: string) {
   if (!query) return true;
   const workflowFocus = getHomeOperationFocus(event);
 
   const haystack = [
     event.title,
-    event.summary,
+    safeEventSummary(event),
     event.status_label,
     event.actor_name,
     EVENT_META[event.event_type].label,
     CATEGORY_META[event.category].label,
     workflowFocus ? HOME_OPERATION_FOCUS_META[workflowFocus].label : null,
     workflowFocus ? HOME_OPERATION_FOCUS_META[workflowFocus].summaryLabel : null,
-    ...event.metadata,
+    ...(isOccurrenceOnlyCategory(event) ? [] : event.metadata),
   ]
     .filter(Boolean)
     .join(' ')
@@ -354,76 +479,85 @@ function TimelineEntry({ event, isLast }: { event: TimelineEvent; isLast: boolea
   const meta = EVENT_META[event.event_type];
   const workflowFocus = getHomeOperationFocus(event);
   const Icon = meta.icon;
+  const summary = safeEventSummary(event);
+  const metadata = isOccurrenceOnlyCategory(event) ? [] : event.metadata;
 
   return (
-    <li className="px-4 py-4">
-      <div className="flex gap-3">
-        <div className="hidden w-10 flex-col items-center sm:flex">
-          <div
-            className={cn(
-              'flex size-8 items-center justify-center rounded-full border',
-              meta.className,
-            )}
-            aria-hidden="true"
-          >
-            <Icon className="size-4" />
+    <li className="px-3 py-3 sm:px-4">
+      <div className="grid gap-3 sm:grid-cols-[72px_minmax(0,1fr)]">
+        <time
+          dateTime={event.occurred_at}
+          className="pt-1 text-sm font-medium tabular-nums text-foreground sm:text-right"
+        >
+          {formatOccurredAt(event.occurred_at)}
+        </time>
+
+        <div className="grid min-w-0 grid-cols-[32px_minmax(0,1fr)] gap-3">
+          <div className="flex flex-col items-center">
+            <div
+              className={cn(
+                'flex size-8 items-center justify-center rounded-full border bg-background',
+                meta.className,
+              )}
+              aria-hidden="true"
+            >
+              <Icon className="size-4" />
+            </div>
+            {!isLast ? <div className="mt-2 w-px flex-1 bg-border/70" /> : null}
           </div>
-          {!isLast ? <div className="mt-2 w-px flex-1 bg-border/70" /> : null}
-        </div>
 
-        <div className="min-w-0 flex-1 space-y-2">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0 space-y-2">
-              <p className="text-xs font-medium text-muted-foreground">
-                {formatOccurredAt(event.occurred_at)}
-                {event.actor_name ? ` ・ ${event.actor_name}` : ''}
-              </p>
-
-              <div className="flex flex-wrap gap-2">
-                <Badge variant="outline" className={meta.className}>
-                  {meta.label}
-                </Badge>
-                {workflowFocus ? (
-                  <Badge
-                    variant="outline"
-                    className={HOME_OPERATION_FOCUS_META[workflowFocus].className}
-                  >
-                    {HOME_OPERATION_FOCUS_META[workflowFocus].label}
+          <article className="min-w-0 rounded-lg border border-border/70 bg-card px-3 py-3">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0 space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="outline" className={meta.className}>
+                    {meta.label}
                   </Badge>
-                ) : null}
-                {event.status_label ? (
-                  <Badge variant="secondary">{event.status_label}</Badge>
-                ) : null}
+                  {workflowFocus ? (
+                    <Badge
+                      variant="outline"
+                      className={HOME_OPERATION_FOCUS_META[workflowFocus].className}
+                    >
+                      {HOME_OPERATION_FOCUS_META[workflowFocus].label}
+                    </Badge>
+                  ) : null}
+                  {event.status_label ? (
+                    <Badge variant="secondary">{event.status_label}</Badge>
+                  ) : null}
+                </div>
+
+                <div className="space-y-1">
+                  <h3 className="text-sm font-medium text-foreground">{event.title}</h3>
+                  {summary ? (
+                    <p className="text-sm leading-6 text-muted-foreground">{summary}</p>
+                  ) : null}
+                  {event.actor_name ? (
+                    <p className="text-xs text-muted-foreground">{event.actor_name}</p>
+                  ) : null}
+                </div>
               </div>
 
-              <div className="space-y-1">
-                <h3 className="text-sm font-medium text-foreground">{event.title}</h3>
-                {event.summary ? (
-                  <p className="text-sm leading-6 text-muted-foreground">{event.summary}</p>
-                ) : null}
+              <Button asChild variant="outline" size="sm" className="min-h-10 shrink-0">
+                <Link href={event.href}>
+                  {event.action_label}
+                  <ArrowUpRight className="size-3.5" aria-hidden="true" />
+                </Link>
+              </Button>
+            </div>
+
+            {metadata.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {metadata.map((item) => (
+                  <span
+                    key={`${event.id}-${item}`}
+                    className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+                  >
+                    {item}
+                  </span>
+                ))}
               </div>
-            </div>
-
-            <Button asChild variant="ghost" size="sm">
-              <Link href={event.href}>
-                {event.action_label}
-                <ArrowUpRight className="size-3.5" aria-hidden="true" />
-              </Link>
-            </Button>
-          </div>
-
-          {event.metadata.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
-              {event.metadata.map((item) => (
-                <span
-                  key={`${event.id}-${item}`}
-                  className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
-                >
-                  {item}
-                </span>
-              ))}
-            </div>
-          ) : null}
+            ) : null}
+          </article>
         </div>
       </div>
     </li>
@@ -453,14 +587,14 @@ export function PatientActivityTimeline({
 
   const timelineGroups = buildGroups(filteredEvents);
   const isFiltered = category !== 'all' || Boolean(deferredQuery);
-  const categoryCounts = {
-    all: timelineEvents.length,
-    visit: timelineEvents.filter((event) => event.category === 'visit').length,
-    prescription: timelineEvents.filter((event) => event.category === 'prescription').length,
-    billing: timelineEvents.filter((event) => event.category === 'billing').length,
-    document: timelineEvents.filter((event) => event.category === 'document').length,
-    communication: timelineEvents.filter((event) => event.category === 'communication').length,
-  } satisfies Record<TimelineCategory, number>;
+  const categoryCounts = Object.fromEntries(
+    (Object.keys(CATEGORY_META) as TimelineCategory[]).map((key) => [
+      key,
+      key === 'all'
+        ? timelineEvents.length
+        : timelineEvents.filter((event) => event.category === key).length,
+    ]),
+  ) as Record<TimelineCategory, number>;
   const homeOperationCounts = {
     documents: timelineEvents.filter((event) => getHomeOperationFocus(event) === 'documents')
       .length,
@@ -473,18 +607,48 @@ export function PatientActivityTimeline({
   } satisfies Record<HomeOperationFocus, number>;
   const latestEvent = filteredEvents[0] ?? null;
   const recentSelfReports = selfReports.slice(0, 3);
+  const movementSummaryCards = [
+    {
+      key: 'inbound',
+      label: '未処理の受信',
+      value: timelineEvents.filter(
+        (event) =>
+          event.category === 'interprofessional' &&
+          !['resolved', 'completed', 'done'].includes(event.status ?? ''),
+      ).length,
+      className: CHART_SERIES_CHIP[4],
+    },
+    {
+      key: 'review',
+      label: '薬剤師確認待ち',
+      value: timelineEvents.filter((event) =>
+        [event.status, event.status_label, event.title].filter(Boolean).join(' ').includes('確認'),
+      ).length,
+      className: CHART_SERIES_CHIP[5],
+    },
+    {
+      key: 'rx_visit',
+      label: '処方・訪問',
+      value: categoryCounts.prescription + categoryCounts.visit,
+      className: CHART_SERIES_CHIP[2],
+    },
+    {
+      key: 'document',
+      label: '文書登録',
+      value: categoryCounts.document,
+      className: CHART_SERIES_CHIP[3],
+    },
+  ];
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_340px]">
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_320px]">
       <Card className="border border-border/70">
         <CardHeader className="space-y-4 border-b border-border/70">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-1">
-              <h2 className="font-heading text-base leading-snug font-medium">
-                患者アクションタイムライン
-              </h2>
+              <h2 className="font-heading text-base leading-snug font-medium">患者の動き</h2>
               <CardDescription>
-                訪問、処方、調剤、文書、共有連絡など、薬局側の患者対応を最新順で追えます。
+                処方、訪問、文書登録、連絡の発生を時系列で確認し、詳細は正本画面で開きます。
               </CardDescription>
             </div>
             <Badge variant="outline">
@@ -496,6 +660,18 @@ export function PatientActivityTimeline({
             </Badge>
           </div>
 
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4" aria-label="患者の動きサマリー">
+            {movementSummaryCards.map((item) => (
+              <div key={item.key} className={cn('rounded-lg border px-3 py-2', item.className)}>
+                <p className="text-xs text-muted-foreground">{item.label}</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums text-foreground">
+                  {item.value}
+                  <span className="ml-1 text-xs font-medium text-muted-foreground">件</span>
+                </p>
+              </div>
+            ))}
+          </div>
+
           <div className="space-y-3">
             <div className="space-y-1">
               <Label htmlFor="patient-activity-search" className="text-xs">
@@ -505,7 +681,7 @@ export function PatientActivityTimeline({
                 id="patient-activity-search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="例: MCS、契約、処方せん、集金、カンファレンス"
+                placeholder="例: MCS、電話、処方、訪問、文書登録"
               />
             </div>
 
@@ -551,8 +727,8 @@ export function PatientActivityTimeline({
             <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
             <span className="min-w-0 flex-1">
               {isPartial
-                ? '直近5件のアクティビティを先に表示しています。全履歴は必要な時だけ読み込みます。'
-                : `履歴を最大${fullLimit}件まで読み込んでいます。検索と種別フィルタで絞り込めます。`}
+                ? '直近5件の患者の動きを先に表示しています。全件は必要な時だけ読み込みます。'
+                : `患者の動きを最大${fullLimit}件まで読み込んでいます。検索と種別フィルタで絞り込めます。`}
             </span>
             {isPartial && onLoadFull ? (
               <Button
@@ -602,10 +778,13 @@ export function PatientActivityTimeline({
                 className="overflow-hidden rounded-lg border border-border/70 bg-background"
               >
                 <div className="flex items-center justify-between border-b border-border/70 bg-muted/20 px-4 py-3">
-                  <h3 className="text-sm font-semibold text-foreground">{group.label}</h3>
+                  <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                    <span className="size-2 rounded-full bg-primary" aria-hidden="true" />
+                    {group.label}
+                  </h3>
                   <span className="text-xs text-muted-foreground">{group.items.length}件</span>
                 </div>
-                <ol className="divide-y divide-border/70">
+                <ol>
                   {group.items.map((event, index) => (
                     <TimelineEntry
                       key={event.id}
@@ -623,9 +802,9 @@ export function PatientActivityTimeline({
       <div className="space-y-4">
         <Card className="border border-border/70">
           <CardHeader>
-            <h2 className="font-heading text-base leading-snug font-medium">履歴サマリー</h2>
+            <h2 className="font-heading text-base leading-snug font-medium">タイムライン要約</h2>
             <CardDescription>
-              最新アクションと種別別の件数を患者別に集約しています。
+              発生したイベントの内訳と直近の確認先を集約しています。
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -668,9 +847,9 @@ export function PatientActivityTimeline({
                   {formatOccurredAtLong(latestEvent.occurred_at)}
                   {latestEvent.actor_name ? ` ・ ${latestEvent.actor_name}` : ''}
                 </p>
-                {latestEvent.summary ? (
+                {safeEventSummary(latestEvent) ? (
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                    {latestEvent.summary}
+                    {safeEventSummary(latestEvent)}
                   </p>
                 ) : null}
               </div>

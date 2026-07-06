@@ -277,7 +277,14 @@ const SSR_PATIENT_OVERVIEW_STALE_TIME_MS = 30_000;
 const PATIENT_TIMELINE_INITIAL_LIMIT = 5;
 const PATIENT_TIMELINE_FULL_LIMIT = 40;
 
-type PatientDetailTab = 'command' | 'foundation' | 'medication' | 'sharing' | 'billing' | 'history';
+type PatientDetailTab =
+  | 'command'
+  | 'foundation'
+  | 'medication'
+  | 'movement'
+  | 'sharing'
+  | 'billing'
+  | 'history';
 
 const PATIENT_DETAIL_TABS: Array<{ value: PatientDetailTab; label: string; description: string }> =
   [
@@ -295,6 +302,11 @@ const PATIENT_DETAIL_TABS: Array<{ value: PatientDetailTab; label: string; descr
       value: 'medication',
       label: '薬剤・訪問',
       description: '今回の処方、訪問前確認、直近の動き',
+    },
+    {
+      value: 'movement',
+      label: '患者の動き',
+      description: '訪問、処方、文書登録、連絡を時系列で確認',
     },
     {
       value: 'sharing',
@@ -322,6 +334,11 @@ const PATIENT_DETAIL_HASH_TABS: Record<string, PatientDetailTab> = {
   'patient-conference': 'billing',
   'card-prescription-section': 'medication',
   'patient-visit-preparation': 'medication',
+  'patient-movement': 'movement',
+  'patient-timeline': 'movement',
+  'inbound-communications': 'movement',
+  'inbound-signals': 'movement',
+  'medication-stock-events': 'movement',
   'patient-share-case': 'sharing',
   'patient-documents': 'sharing',
   'patient-field-revisions': 'history',
@@ -4078,7 +4095,7 @@ function PatientCommandCenterPanel({
           <SectionCard aria-label="次にやること" data-testid="next-action-panel">
             <h3 className="text-sm font-semibold text-foreground">次にやること</h3>
             <p className="mt-3 text-sm text-muted-foreground">
-              進行中の処方カードがないため、正本・共有・履歴タブで患者情報を確認してください。
+              進行中の処方カードがないため、正本・共有・患者の動きで患者情報を確認してください。
             </p>
           </SectionCard>
         )}
@@ -4118,14 +4135,14 @@ function CommandTimelineExcerptPanel({
           </p>
         </div>
         <Link
-          href="#patient-timeline"
+          href="#patient-movement"
           className={buttonVariants({
             variant: 'outline',
             size: 'sm',
             className: 'min-h-11 shrink-0',
           })}
         >
-          履歴タブへ
+          患者の動きへ
         </Link>
       </div>
 
@@ -4905,7 +4922,7 @@ export function CardWorkspace({
       return readApiJson<PatientTimelineSnapshot>(response, '患者履歴の取得に失敗しました');
     },
     enabled: Boolean(
-      orgId && patient && (isDetailTabMounted('command') || isDetailTabMounted('history')),
+      orgId && patient && (isDetailTabMounted('command') || isDetailTabMounted('movement')),
     ),
     staleTime: 30_000,
   });
@@ -5321,7 +5338,7 @@ export function CardWorkspace({
   // patient が存在する場合は、背景 refetch が失敗(error)していてもワークスペースを維持して表示する
   // (react-query v5 は cached/initialData がある状態で error をセットしても data を保持する)。
 
-  const renderPatientTimelinePanel = () => {
+  const renderPatientTimelinePanel = (mode: 'activity' | 'movement' = 'activity') => {
     if (timelineLoading) {
       return <PatientDetailPanelLoading label="患者アクションタイムラインを読み込み中" />;
     }
@@ -5342,7 +5359,11 @@ export function CardWorkspace({
 
     return (
       <PatientActivityTimelinePanel
-        timelineEvents={timelineSnapshot?.timeline_events ?? []}
+        timelineEvents={
+          mode === 'movement'
+            ? (timelineSnapshot?.movement_events ?? timelineSnapshot?.timeline_events ?? [])
+            : (timelineSnapshot?.timeline_events ?? [])
+        }
         selfReports={timelineSnapshot?.self_reports ?? []}
         isPartial={timelineLimit < PATIENT_TIMELINE_FULL_LIMIT}
         fullLimit={PATIENT_TIMELINE_FULL_LIMIT}
@@ -5672,6 +5693,14 @@ export function CardWorkspace({
               {renderHomeOperationsPanel(['prescription'], 'patient-home-operations-medication')}
             </TabsContent>
           ) : null}
+          {isDetailTabMounted('movement') ? (
+            <TabsContent value="movement" keepMounted className="space-y-4">
+              <div id="patient-movement" data-testid="patient-movement-panel" className="space-y-4">
+                <h2 className="text-lg font-bold text-foreground">患者の動き</h2>
+                {renderPatientTimelinePanel('movement')}
+              </div>
+            </TabsContent>
+          ) : null}
           {isDetailTabMounted('sharing') ? (
             <TabsContent value="sharing" keepMounted className="space-y-4">
               <h2 className="text-lg font-bold text-foreground">共有・文書</h2>
@@ -5689,7 +5718,6 @@ export function CardWorkspace({
           {isDetailTabMounted('history') ? (
             <TabsContent value="history" keepMounted className="space-y-4">
               <h2 className="text-lg font-bold text-foreground">履歴・構造化</h2>
-              {renderPatientTimelinePanel()}
               <div id="patient-structured-care" data-testid="patient-structured-care">
                 <PatientStructuredCarePanel patientId={patientId} />
               </div>
@@ -5847,6 +5875,19 @@ export function CardWorkspace({
               </TabsContent>
             ) : null}
 
+            {isDetailTabMounted('movement') ? (
+              <TabsContent value="movement" keepMounted className="space-y-4">
+                <div
+                  id="patient-movement"
+                  data-testid="patient-movement-panel"
+                  className="space-y-4"
+                >
+                  <h2 className="text-lg font-bold text-foreground">患者の動き</h2>
+                  {renderPatientTimelinePanel('movement')}
+                </div>
+              </TabsContent>
+            ) : null}
+
             {isDetailTabMounted('foundation') ? (
               <TabsContent value="foundation" keepMounted className="space-y-4">
                 <h2 className="text-lg font-bold text-foreground">正本・在宅運用</h2>
@@ -5882,7 +5923,6 @@ export function CardWorkspace({
             {isDetailTabMounted('history') ? (
               <TabsContent value="history" keepMounted className="space-y-4">
                 <h2 className="text-lg font-bold text-foreground">履歴・構造化</h2>
-                {renderPatientTimelinePanel()}
                 {/* 変更履歴: 患者項目の業務差分(誰がいつ何を何から何へ・確認元) */}
                 <SectionCard
                   id="patient-field-revisions"

@@ -130,7 +130,7 @@ describe('PatientActivityTimeline', () => {
   it('groups actions by day and renders patient-originated updates separately', () => {
     render(<PatientActivityTimeline timelineEvents={timelineEvents} selfReports={selfReports} />);
 
-    for (const heading of ['患者アクションタイムライン', '履歴サマリー', '患者からの更新']) {
+    for (const heading of ['患者の動き', 'タイムライン要約', '患者からの更新']) {
       expect(screen.getByRole('heading', { level: 2, name: heading }).tagName).toBe('H2');
     }
     expect(screen.getByText('2026年4月3日')).toBeTruthy();
@@ -140,6 +140,8 @@ describe('PatientActivityTimeline', () => {
     expect(screen.getByText('夕方にふらつきあり')).toBeTruthy();
     expect(screen.getByText(/未対応/)).toBeTruthy();
     expect(screen.getByText('在宅運用履歴')).toBeTruthy();
+    expect(screen.getByText('処方・訪問')).toBeTruthy();
+    expect(screen.getByText('文書登録')).toBeTruthy();
     for (const label of [
       '契約・同意・書類',
       'MCS・外部連携',
@@ -152,6 +154,18 @@ describe('PatientActivityTimeline', () => {
     expect(
       screen.getByText('立ち上がり時にふらつきがあり、折り返し連絡を希望しています。'),
     ).toBeTruthy();
+    expect(screen.queryByText('服薬状況は安定しています。')).toBeNull();
+    expect(screen.queryByText('アムロジピン 30錠 / 持参')).toBeNull();
+    expect(screen.queryByText('訪問薬剤管理指導計画書 / 次回見直し 2026/05/01')).toBeNull();
+    expect(screen.getByRole('link', { name: /訪問記録を開く/ }).getAttribute('href')).toBe(
+      '/visits/visit_1/record',
+    );
+    expect(screen.getByRole('link', { name: /処方記録を開く/ }).getAttribute('href')).toBe(
+      '/prescriptions/intake_1',
+    );
+    expect(screen.getByRole('link', { name: /計画書を開く/ }).getAttribute('href')).toBe(
+      '/patients/patient_1/management-plan',
+    );
   });
 
   it('styles categories and event types with chart series tokens, not bespoke palette colors', () => {
@@ -178,10 +192,16 @@ describe('PatientActivityTimeline', () => {
   });
 
   it('shows a recent-activity (not full history) completeness note', () => {
-    render(<PatientActivityTimeline timelineEvents={timelineEvents} selfReports={selfReports} />);
+    render(
+      <PatientActivityTimeline
+        timelineEvents={timelineEvents}
+        selfReports={selfReports}
+        isPartial
+      />,
+    );
 
     const note = screen.getByTestId('timeline-completeness-note');
-    expect(note.textContent).toContain('全履歴ではありません');
+    expect(note.textContent).toContain('直近');
   });
 
   it('filters the timeline by category', () => {
@@ -215,6 +235,28 @@ describe('PatientActivityTimeline', () => {
       expect(screen.getAllByText('管理計画書を承認').length).toBeGreaterThan(0);
       expect(screen.queryByText('訪問記録を登録')).toBeNull();
       expect(screen.queryByText('調剤を記録')).toBeNull();
+    });
+  });
+
+  it('does not match occurrence-only prescription and visit raw summaries in search', async () => {
+    render(<PatientActivityTimeline timelineEvents={timelineEvents} selfReports={selfReports} />);
+
+    fireEvent.change(screen.getByLabelText('タイムライン検索'), {
+      target: { value: 'アムロジピン' },
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText('調剤を記録')).toBeNull();
+      expect(screen.queryByText('訪問記録を登録')).toBeNull();
+      expect(screen.queryByText('管理計画書を承認')).toBeNull();
+    });
+
+    fireEvent.change(screen.getByLabelText('タイムライン検索'), {
+      target: { value: '処方登録' },
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByText('調剤を記録').length).toBeGreaterThan(0);
     });
   });
 

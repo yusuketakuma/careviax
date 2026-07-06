@@ -50,6 +50,7 @@ import {
   type TimelineTasks,
 } from '@/server/services/patient-detail-timeline-registry';
 import { buildPatientTimelineOperationHistoryFilters } from '@/server/services/patient-detail-timeline-query';
+import { buildPatientMovementTimelineEvents } from '@/server/services/patient-movement-timeline-presenter';
 import {
   buildAssignedCareCaseWhere,
   buildPatientDetailWhere,
@@ -70,6 +71,10 @@ const PATIENT_TIMELINE_MAX_LIMIT = 40;
 
 export type PatientTimelineArgs = PatientDetailScopeArgs & {
   timelineLimit?: number;
+};
+
+export type PatientMovementTimelineEventDetailArgs = PatientTimelineArgs & {
+  eventId: string;
 };
 
 type JahisSupplementalRecordProjection = {
@@ -864,7 +869,43 @@ export async function getPatientTimelineData(runScoped: ScopedTxRunner, args: Pa
 
   return {
     timeline_events: timelineEvents,
+    movement_events: buildPatientMovementTimelineEvents(timelineEvents, {
+      patientId: args.patientId,
+    }),
     self_reports: selfReports,
     ...(partialFailures.length > 0 ? { partial_failures: partialFailures } : {}),
+  };
+}
+
+export async function getPatientMovementTimelineEventDetail(
+  runScoped: ScopedTxRunner,
+  args: PatientMovementTimelineEventDetailArgs,
+) {
+  const timeline = await getPatientTimelineData(runScoped, {
+    ...args,
+    timelineLimit: PATIENT_TIMELINE_MAX_LIMIT,
+  });
+  if (!timeline) return null;
+
+  const event = timeline.movement_events.find((item) => item.id === args.eventId);
+  if (!event) return null;
+
+  return {
+    patient_id: args.patientId,
+    event_id: args.eventId,
+    event,
+    destination: {
+      href: event.href,
+      label: event.action_label,
+      related_entity_type: event.related_entity_type,
+      related_entity_id: event.related_entity_id,
+    },
+    raw_text: {
+      available: event.raw_available,
+      included: false as const,
+      reason: event.raw_available
+        ? 'raw_text は一覧/ resolver では返さず、遷移先で再認可して表示します。'
+        : 'このイベントの raw_text は resolver では提供しません。',
+    },
   };
 }
