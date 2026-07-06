@@ -89,13 +89,16 @@ describe('DataTable', () => {
   });
 
   it('disables export and print actions while table data is invalid', () => {
-    const toolbar = { enableExport: true, enablePrint: true };
+    const toolbar = {
+      clientExport: { enabled: true, nonPhiExport: true } as const,
+      enablePrint: true,
+    };
     const { rerender } = render(<DataTable columns={columns} data={[]} toolbar={toolbar} />);
 
-    expectButtonDisabled('読込済みCSV出力', true);
+    expectButtonDisabled('非PHI読込済みCSV出力', true);
     expectButtonDisabled('印刷', true);
     expect(
-      screen.getByRole('button', { name: '読込済みCSV出力' }).getAttribute('aria-describedby'),
+      screen.getByRole('button', { name: '非PHI読込済みCSV出力' }).getAttribute('aria-describedby'),
     ).toBe(screen.getByText('出力できる行がありません').id);
 
     rerender(
@@ -107,7 +110,7 @@ describe('DataTable', () => {
       />,
     );
 
-    expectButtonDisabled('読込済みCSV出力', true);
+    expectButtonDisabled('非PHI読込済みCSV出力', true);
 
     rerender(
       <DataTable
@@ -118,7 +121,7 @@ describe('DataTable', () => {
       />,
     );
 
-    expectButtonDisabled('読込済みCSV出力', true);
+    expectButtonDisabled('非PHI読込済みCSV出力', true);
 
     rerender(
       <DataTable
@@ -128,7 +131,7 @@ describe('DataTable', () => {
       />,
     );
 
-    expectButtonDisabled('読込済みCSV出力', false);
+    expectButtonDisabled('非PHI読込済みCSV出力', false);
     expectButtonDisabled('印刷', false);
   });
 
@@ -392,11 +395,11 @@ describe('DataTable', () => {
         <DataTable
           columns={columns}
           data={[{ id: 'evil-1', name: '=SUM(A1:A9)' }]}
-          toolbar={{ enableExport: true }}
+          toolbar={{ clientExport: { enabled: true, nonPhiExport: true } }}
         />,
       );
 
-      fireEvent.click(screen.getByRole('button', { name: '読込済みCSV出力' }));
+      fireEvent.click(screen.getByRole('button', { name: '非PHI読込済みCSV出力' }));
 
       expect(createObjectURL).toHaveBeenCalledTimes(1);
       const [blob] = createObjectURL.mock.calls[0] ?? [];
@@ -418,20 +421,101 @@ describe('DataTable', () => {
     }
   });
 
-  it('labels client CSV export as loaded-row export and warns when more rows exist server-side', () => {
+  it('does not expose client CSV export without explicit non-PHI opt-in', () => {
+    render(
+      <DataTable columns={columns} data={[{ id: 'safe-1', name: 'Non PHI row' }]} toolbar={{}} />,
+    );
+
+    expect(screen.queryByRole('button', { name: '非PHI読込済みCSV出力' })).toBeNull();
+  });
+
+  it('falls back to a safe non-PHI client export filename', () => {
+    const createObjectURL = vi.fn<(object: Blob | MediaSource) => string>(() => 'blob:mock');
+    const revokeObjectURL = vi.fn();
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = createObjectURL as unknown as typeof URL.createObjectURL;
+    URL.revokeObjectURL = revokeObjectURL as unknown as typeof URL.revokeObjectURL;
+
+    try {
+      render(
+        <DataTable
+          columns={columns}
+          data={[{ id: 'safe-1', name: 'Non PHI row' }]}
+          toolbar={{
+            clientExport: {
+              enabled: true,
+              nonPhiExport: true,
+              fileName: 'operations-summary.csv',
+            },
+          }}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: '非PHI読込済みCSV出力' }));
+
+      const downloadedAnchor = anchorClick.mock.instances[0] as HTMLAnchorElement | undefined;
+      expect(downloadedAnchor?.download).toBe('operations-summary.csv');
+    } finally {
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+      anchorClick.mockRestore();
+    }
+  });
+
+  it('rejects unsafe client export filenames', () => {
+    const createObjectURL = vi.fn<(object: Blob | MediaSource) => string>(() => 'blob:mock');
+    const revokeObjectURL = vi.fn();
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = createObjectURL as unknown as typeof URL.createObjectURL;
+    URL.revokeObjectURL = revokeObjectURL as unknown as typeof URL.revokeObjectURL;
+
+    try {
+      render(
+        <DataTable
+          columns={columns}
+          data={[{ id: 'safe-1', name: 'Non PHI row' }]}
+          toolbar={{
+            clientExport: {
+              enabled: true,
+              nonPhiExport: true,
+              fileName: '山田 太郎.csv',
+            },
+          }}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: '非PHI読込済みCSV出力' }));
+
+      const downloadedAnchor = anchorClick.mock.instances[0] as HTMLAnchorElement | undefined;
+      expect(downloadedAnchor?.download).toBe('table-export.csv');
+    } finally {
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+      anchorClick.mockRestore();
+    }
+  });
+
+  it('disables client CSV export when more rows exist server-side', () => {
     render(
       <DataTable
         columns={columns}
         data={[{ id: 'loaded-1', name: '読込済み患者' }]}
         hasMore
         onLoadMore={vi.fn()}
-        toolbar={{ enableExport: true }}
+        toolbar={{ clientExport: { enabled: true, nonPhiExport: true } }}
       />,
     );
 
-    const exportButton = screen.getByRole('button', { name: '読込済みCSV出力' });
-    const warning = screen.getByText('未読込行は出力対象外です。');
+    const exportButton = screen.getByRole('button', { name: '非PHI読込済みCSV出力' });
+    const warning = screen.getByText(
+      '未読込行があるため、読込済みCSV出力は使えません。検索条件全件出力を使用してください。',
+    );
 
+    expect((exportButton as HTMLButtonElement).disabled).toBe(true);
     expect(exportButton.getAttribute('aria-describedby')).toBe(warning.id);
     expect(screen.queryByRole('button', { name: 'CSV出力' })).toBeNull();
   });
@@ -444,7 +528,7 @@ describe('DataTable', () => {
         hasMore
         onLoadMore={vi.fn()}
         toolbar={{
-          enableExport: true,
+          clientExport: { enabled: true, nonPhiExport: true },
           serverExport: buildApprovedServerExportDescriptor(
             'communication_requests_external_csv',
             '/api/communication-requests/export?profile=external',
@@ -453,7 +537,7 @@ describe('DataTable', () => {
       />,
     );
 
-    const loadedExportButton = screen.getByRole('button', { name: '読込済みCSV出力' });
+    const loadedExportButton = screen.getByRole('button', { name: '非PHI読込済みCSV出力' });
     const serverExportLink = screen.getByRole('link', { name: '検索条件全件CSV出力' });
     const serverExportDescription = screen.getByText(
       '監査ログを残し、外部共有向けに PHI を抑制した検索条件全件を出力します。',
@@ -465,8 +549,11 @@ describe('DataTable', () => {
     expect(serverExportLink.getAttribute('aria-describedby')).toBe(serverExportDescription.id);
     expect(serverExportLink.className).toContain('min-h-[44px]');
     expect(serverExportLink.className).toContain('!min-h-[44px]');
+    expect((loadedExportButton as HTMLButtonElement).disabled).toBe(true);
     expect(loadedExportButton.getAttribute('aria-describedby')).toBe(
-      screen.getByText('未読込行は出力対象外です。').id,
+      screen.getByText(
+        '未読込行があるため、読込済みCSV出力は使えません。検索条件全件出力を使用してください。',
+      ).id,
     );
   });
 
@@ -568,7 +655,7 @@ describe('DataTable', () => {
     expect(screen.getAllByRole('checkbox', { name: '現在表示中の読込済み行をすべて選択' }));
   });
 
-  it('exports only the currently filtered loaded rows without fetching unloaded server rows', async () => {
+  it('does not export filtered loaded rows when server-side rows are still unloaded', async () => {
     const createObjectURL = vi.fn<(object: Blob | MediaSource) => string>(() => 'blob:mock');
     const revokeObjectURL = vi.fn();
     const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
@@ -588,7 +675,10 @@ describe('DataTable', () => {
           ]}
           hasMore
           onLoadMore={onLoadMore}
-          toolbar={{ enableExport: true, enableGlobalFilter: true }}
+          toolbar={{
+            clientExport: { enabled: true, nonPhiExport: true },
+            enableGlobalFilter: true,
+          }}
         />,
       );
 
@@ -596,20 +686,17 @@ describe('DataTable', () => {
         target: { value: 'Alpha' },
       });
 
-      const exportButton = screen.getByRole('button', { name: '読込済みCSV出力' });
-      const warning = screen.getByText('未読込行は出力対象外です。');
+      const exportButton = screen.getByRole('button', { name: '非PHI読込済みCSV出力' });
+      const warning = screen.getByText(
+        '未読込行があるため、読込済みCSV出力は使えません。検索条件全件出力を使用してください。',
+      );
+      expect((exportButton as HTMLButtonElement).disabled).toBe(true);
       expect(exportButton.getAttribute('aria-describedby')).toBe(warning.id);
       fireEvent.click(exportButton);
 
       expect(onLoadMore).not.toHaveBeenCalled();
-      expect(anchorClick).toHaveBeenCalledTimes(1);
-      const [blob] = createObjectURL.mock.calls[0] ?? [];
-      if (!(blob instanceof Blob)) {
-        throw new Error('CSV export did not pass a Blob to URL.createObjectURL');
-      }
-      const csv = await blob.text();
-      expect(csv).toContain('Alpha Loaded');
-      expect(csv).not.toContain('Bravo Loaded');
+      expect(anchorClick).not.toHaveBeenCalled();
+      expect(createObjectURL).not.toHaveBeenCalled();
       expect(screen.queryByRole('button', { name: 'CSV出力' })).toBeNull();
     } finally {
       URL.createObjectURL = originalCreate;
@@ -618,23 +705,23 @@ describe('DataTable', () => {
     }
   });
 
-  it('uses column exportValue for PHI-minimized client CSV snapshots', async () => {
-    type PhiRow = {
+  it('uses column exportValue for explicitly non-PHI client CSV snapshots', async () => {
+    type NonPhiRow = {
       id: string;
-      patientName: string;
-      phone: string;
+      displayName: string;
+      internalNote: string;
       exportLabel: string;
     };
-    const phiColumns: ColumnDef<PhiRow>[] = [
+    const nonPhiColumns: ColumnDef<NonPhiRow>[] = [
       {
-        accessorKey: 'patientName',
-        header: '患者',
-        meta: { exportValue: (row: PhiRow) => row.exportLabel },
+        accessorKey: 'displayName',
+        header: '表示名',
+        meta: { exportValue: (row: NonPhiRow) => row.exportLabel },
       },
       {
-        accessorKey: 'phone',
-        header: '電話',
-        meta: { exportValue: () => '電話番号は出力対象外' },
+        accessorKey: 'internalNote',
+        header: '内部メモ',
+        meta: { exportValue: () => 'メモは出力対象外' },
       },
     ];
     const createObjectURL = vi.fn<(object: Blob | MediaSource) => string>(() => 'blob:mock');
@@ -648,23 +735,29 @@ describe('DataTable', () => {
     try {
       render(
         <DataTable
-          columns={phiColumns}
+          columns={nonPhiColumns}
           data={[
             {
-              id: 'patient_1',
-              patientName: '山田 太郎',
-              phone: '090-1234-5678',
-              exportLabel: '患者リンクのみ',
+              id: 'row_1',
+              displayName: '公開ラベル',
+              internalNote: 'raw provider error',
+              exportLabel: '公開ラベルのみ',
             },
           ]}
-          toolbar={{ enableExport: true }}
+          toolbar={{
+            clientExport: {
+              enabled: true,
+              nonPhiExport: true,
+              fileName: 'safe-export.csv',
+            },
+          }}
         />,
       );
 
-      expect(screen.getAllByText('山田 太郎').length).toBeGreaterThan(0);
-      expect(screen.getAllByText('090-1234-5678').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('公開ラベル').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('raw provider error').length).toBeGreaterThan(0);
 
-      fireEvent.click(screen.getByRole('button', { name: '読込済みCSV出力' }));
+      fireEvent.click(screen.getByRole('button', { name: '非PHI読込済みCSV出力' }));
 
       expect(anchorClick).toHaveBeenCalledTimes(1);
       const [blob] = createObjectURL.mock.calls[0] ?? [];
@@ -672,13 +765,12 @@ describe('DataTable', () => {
         throw new Error('CSV export did not pass a Blob to URL.createObjectURL');
       }
       const csv = await blob.text();
-      expect(csv).toContain('患者リンクのみ');
-      expect(csv).toContain('電話番号は出力対象外');
-      expect(csv).not.toContain('山田');
-      expect(csv).not.toContain('090-1234-5678');
-      expect(csv).not.toContain('patient_');
-      expect(csv).not.toContain('signed-url');
+      expect(csv).toContain('公開ラベルのみ');
+      expect(csv).toContain('メモは出力対象外');
+      expect(csv).not.toContain('row_1');
       expect(csv).not.toContain('raw provider error');
+      const downloadedAnchor = anchorClick.mock.instances[0] as HTMLAnchorElement | undefined;
+      expect(downloadedAnchor?.download).toBe('safe-export.csv');
     } finally {
       URL.createObjectURL = originalCreate;
       URL.revokeObjectURL = originalRevoke;

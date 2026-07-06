@@ -8526,3 +8526,60 @@
   green.
 - remaining:
   Commit/push this storage slice. Broader `FE-OFFLINE-001` browser storage PHI audit remains open.
+
+## 2026-07-06 DataTable client export policy tightening
+
+- codex: implemented `FE-TBL-001` minimal frontend export boundary hardening. `DataTable` client CSV
+  export now requires explicit `toolbar.clientExport: { enabled: true, nonPhiExport: true }`,
+  labels the action as non-PHI, rejects unsafe client filenames to `table-export.csv`, and disables
+  client export whenever `hasMore` indicates server-side rows are still unloaded.
+- files inspected:
+  `git status --short --branch --untracked-files=all`,
+  `src/components/ui/data-table.tsx`,
+  `src/components/ui/data-table.test.tsx`,
+  `src/lib/audit/server-export-registry.ts`,
+  `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`,
+  `src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx`,
+  `src/app/api/billing-candidates/export/route.ts`,
+  `src/app/(dashboard)/admin/audit-logs/audit-logs-content.tsx`,
+  `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`.
+- files changed:
+  `src/components/ui/data-table.tsx`,
+  `src/components/ui/data-table.test.tsx`,
+  `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`,
+  `src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  Removed the PHI-risk loaded-row client CSV export from billing candidates. Billing CSV remains on the
+  page-owned server export flow that performs preview, org-scoped fetch headers, server masking, and
+  audit. Developers can no longer enable client CSV with only `enableExport`; non-PHI intent is now
+  explicit at the call site.
+- security / PHI reviewed:
+  PHI/export boundary change. Oracle/GPT-5.5 Pro consultation was attempted with the GitHub repo URL
+  and minimal files, but Oracle ended with `chrome-disconnected` / Node `setTypeOfService EINVAL`, so
+  no advisory answer was available. Local implementation therefore followed existing server export
+  registry/API tests and fail-closed DataTable behavior. No secrets or PHI samples were sent.
+- performance issues improved:
+  Prevents client Blob generation for incomplete server-side result windows and removes the billing
+  table's duplicate client-side CSV path.
+- design / imagegen:
+  No visual redesign or layout placement change; `gpt-image-2` generation skipped. UI copy was limited
+  to export action semantics.
+- validation:
+  `pnpm exec vitest run src/components/ui/data-table.test.tsx 'src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx'`
+  green (2 files / 37 tests);
+  `pnpm exec eslint src/components/ui/data-table.tsx src/components/ui/data-table.test.tsx 'src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx' 'src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx'`
+  green;
+  `pnpm exec prettier --check src/components/ui/data-table.tsx src/components/ui/data-table.test.tsx 'src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx' 'src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx'`
+  green;
+  `git diff --check -- src/components/ui/data-table.tsx src/components/ui/data-table.test.tsx 'src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx' 'src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx'`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck --pretty false`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  green;
+  `pnpm build`
+  green.
+- remaining:
+  Commit/push this export boundary slice. Broader PHI export snapshot coverage and admin-wide
+  DataTable policy audit remain open.

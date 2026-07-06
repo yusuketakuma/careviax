@@ -71,11 +71,18 @@ type DataTableToolbarOptions = {
   enableGlobalFilter?: boolean;
   globalFilterPlaceholder?: string;
   enableColumnVisibility?: boolean;
-  enableExport?: boolean;
+  clientExport?: {
+    enabled: true;
+    /**
+     * Required acknowledgement that this table's client-side CSV contains no PHI.
+     * PHI-bearing tables must use serverExport or a page-owned audited export flow.
+     */
+    nonPhiExport: true;
+    fileName?: string;
+  };
   serverExport?: DataTableServerExportDescriptor;
   enablePrint?: boolean;
   disableActionsWhenInvalid?: boolean;
-  exportFileName?: string;
   filterFields?: Array<{
     columnId: string;
     label: string;
@@ -147,6 +154,14 @@ function normalizeServerExportEndpoint(endpoint: string | undefined) {
   if (!trimmed.startsWith('/') || trimmed.startsWith('//')) return null;
   if (!trimmed.startsWith('/api/')) return null;
   if (/[\r\n\t]/.test(trimmed)) return null;
+  return trimmed;
+}
+
+function normalizeNonPhiClientExportFileName(fileName: string | undefined) {
+  const fallback = 'table-export.csv';
+  const trimmed = fileName?.trim();
+  if (!trimmed) return fallback;
+  if (!/^[a-z0-9][a-z0-9._-]{0,78}\.csv$/i.test(trimmed)) return fallback;
   return trimmed;
 }
 
@@ -385,6 +400,14 @@ export function DataTable<TData>({
         ? '出力できる行がありません'
         : undefined;
   const hasUnloadedRows = Boolean(hasMore);
+  const hasClientExport =
+    toolbar?.clientExport?.enabled === true && toolbar.clientExport.nonPhiExport === true;
+  const clientExportDisabledReason = hasUnloadedRows
+    ? '未読込行があるため、読込済みCSV出力は使えません。検索条件全件出力を使用してください。'
+    : toolbarDisabledReason;
+  const clientExportDisabled =
+    hasUnloadedRows ||
+    (toolbar?.disableActionsWhenInvalid !== false && Boolean(toolbarDisabledReason));
   const serverExportDescriptorProblem = getApprovedServerExportDescriptorProblem(
     toolbar?.serverExport,
   );
@@ -407,11 +430,11 @@ export function DataTable<TData>({
   const serverExportDisabled =
     toolbar?.disableActionsWhenInvalid !== false && Boolean(serverExportBlockReason);
   const serverExportDisabledReason = serverExportDisabled ? serverExportBlockReason : undefined;
-  const exportAriaDescription = toolbarActionsDisabled
-    ? toolbarDisabledReasonId
-    : hasUnloadedRows
+  const exportAriaDescription = clientExportDisabledReason
+    ? hasUnloadedRows
       ? exportScopeWarningId
-      : undefined;
+      : toolbarDisabledReasonId
+    : undefined;
   const serverExportAriaDescription = serverExportDisabledReason
     ? serverExportDisabledReasonId
     : serverExportDescriptionId;
@@ -445,7 +468,7 @@ export function DataTable<TData>({
   );
 
   function handleExport() {
-    if (toolbarActionsDisabled) return;
+    if (!hasClientExport || clientExportDisabled) return;
 
     const headers = visibleLeafColumns.map((column) => getColumnLabel(column.columnDef, column.id));
     const rows = fullRows.map((row) =>
@@ -461,7 +484,7 @@ export function DataTable<TData>({
     const objectUrl = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = objectUrl;
-    link.download = toolbar?.exportFileName ?? 'table-export.csv';
+    link.download = normalizeNonPhiClientExportFileName(toolbar?.clientExport?.fileName);
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -605,26 +628,26 @@ export function DataTable<TData>({
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
-            {toolbar.enableExport && (
+            {hasClientExport && (
               <div className="flex max-w-full flex-col items-start gap-1">
                 <Button
                   size="sm"
                   variant="outline"
                   className={TOOLBAR_ACTION_BUTTON_CLASSNAME}
-                  disabled={toolbarActionsDisabled}
-                  title={toolbarDisabledReason}
+                  disabled={clientExportDisabled}
+                  title={clientExportDisabledReason}
                   aria-describedby={exportAriaDescription}
                   onClick={handleExport}
                 >
                   <Download className="mr-1.5 size-3.5" aria-hidden="true" />
-                  読込済みCSV出力
+                  非PHI読込済みCSV出力
                 </Button>
-                {hasUnloadedRows && !toolbarActionsDisabled ? (
+                {hasUnloadedRows ? (
                   <p
                     id={exportScopeWarningId}
                     className="max-w-[18rem] text-xs leading-5 text-muted-foreground"
                   >
-                    未読込行は出力対象外です。
+                    {clientExportDisabledReason}
                   </p>
                 ) : null}
               </div>

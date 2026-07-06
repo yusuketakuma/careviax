@@ -1112,9 +1112,7 @@ export function BillingCandidatesContent({
           enableGlobalFilter: true,
           globalFilterPlaceholder: '請求コード・算定名称で絞り込み',
           enableColumnVisibility: true,
-          enableExport: true,
           enablePrint: true,
-          exportFileName: `billing-candidates-${billingDomain}-${billingMonthStr}.csv`,
           filterFields: [
             {
               columnId: 'billing_code',
