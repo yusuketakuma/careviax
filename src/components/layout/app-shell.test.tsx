@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import {
@@ -64,7 +64,11 @@ vi.mock('sonner', () => ({ toast: { info: vi.fn(), error: vi.fn() } }));
 vi.mock('@/components/layout/app-header', () => ({ AppHeader: () => null }));
 vi.mock('@/components/layout/network-status-banner', () => ({ NetworkStatusBanner: () => null }));
 vi.mock('@/components/layout/route-progress', () => ({ RouteProgress: () => null }));
-vi.mock('@/components/features/pwa/install-prompt', () => ({ InstallPrompt: () => null }));
+vi.mock('@/components/features/pwa/install-prompt', () => ({
+  InstallPrompt: ({ initialPrompt }: { initialPrompt?: Event | null }) => (
+    <div data-testid="install-prompt" data-initial-prompt={initialPrompt ? 'true' : 'false'} />
+  ),
+}));
 vi.mock('@/components/layout/sidebar', () => ({ Sidebar: () => null }));
 vi.mock('@/components/layout/mobile-nav', () => ({ MobileNav: () => null }));
 vi.mock('@/components/auth/session-timeout-modal', () => ({ SessionTimeoutModal: () => null }));
@@ -74,7 +78,9 @@ vi.mock('@/components/features/mobile/mobile-orientation-guard', () => ({
 vi.mock('@/components/features/keyboard/shortcut-help-modal', () => ({
   ShortcutHelpModal: () => null,
 }));
-vi.mock('@/components/features/search/command-palette', () => ({ CommandPalette: () => null }));
+vi.mock('@/components/features/search/command-palette', () => ({
+  CommandPalette: () => <div data-testid="command-palette" />,
+}));
 vi.mock('@/components/ui/sheet', () => ({
   Sheet: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   SheetContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -233,6 +239,38 @@ describe('AppShell global search shortcuts', () => {
 
     nav.pathname = '/dashboard'; // reset
     paletteState.open = false;
+  });
+
+  it('lazy mounts the command palette only while the palette store is open', async () => {
+    const { AppShell } = await import('./app-shell');
+    paletteState.open = false;
+    const closed = render(<AppShell>content</AppShell>);
+
+    expect(screen.queryByTestId('command-palette')).toBeNull();
+    closed.unmount();
+
+    paletteState.open = true;
+    render(<AppShell>content</AppShell>);
+
+    expect(await screen.findByTestId('command-palette')).toBeTruthy();
+    paletteState.open = false;
+  });
+
+  it('lazy mounts the install prompt only after beforeinstallprompt is captured', async () => {
+    const { AppShell } = await import('./app-shell');
+    render(<AppShell>content</AppShell>);
+
+    expect(screen.queryByTestId('install-prompt')).toBeNull();
+
+    const installEvent = new Event('beforeinstallprompt', { cancelable: true });
+    act(() => {
+      window.dispatchEvent(installEvent);
+    });
+
+    expect(installEvent.defaultPrevented).toBe(true);
+    expect((await screen.findByTestId('install-prompt')).getAttribute('data-initial-prompt')).toBe(
+      'true',
+    );
   });
 
   it('exposes keyboard-only skip actions for main, search, and shortcut help', async () => {

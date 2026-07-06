@@ -5,17 +5,23 @@ import { Download, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-interface BeforeInstallPromptEvent extends Event {
+export interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
   readonly userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
+
+type InstallPromptProps = {
+  initialPrompt?: BeforeInstallPromptEvent | null;
+};
 
 /**
  * Captures the browser's beforeinstallprompt event and shows a banner
  * allowing the user to add PH-OS to their home screen.
  */
-export function InstallPrompt() {
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+export function InstallPrompt({ initialPrompt = null }: InstallPromptProps) {
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(
+    initialPrompt,
+  );
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {

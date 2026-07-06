@@ -1,14 +1,13 @@
 'use client';
 
 import { Suspense, useEffect, useRef, useMemo, useCallback, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { AppHeader } from '@/components/layout/app-header';
 import { NetworkStatusBanner } from '@/components/layout/network-status-banner';
 import { RouteProgress } from '@/components/layout/route-progress';
-import { InstallPrompt } from '@/components/features/pwa/install-prompt';
+import type { BeforeInstallPromptEvent } from '@/components/features/pwa/install-prompt';
 import { Sidebar } from '@/components/layout/sidebar';
 import { MobileNav } from '@/components/layout/mobile-nav';
-import { SessionTimeoutModal } from '@/components/auth/session-timeout-modal';
-import { MobileOrientationGuard } from '@/components/features/mobile/mobile-orientation-guard';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { useUIStore } from '@/lib/stores/ui-store';
 import {
@@ -16,13 +15,38 @@ import {
   type ShortcutDefinition,
 } from '@/components/features/keyboard/use-keyboard-shortcuts';
 import { useFocusNotObscured } from '@/components/features/keyboard/use-focus-not-obscured';
-import { ShortcutHelpModal } from '@/components/features/keyboard/shortcut-help-modal';
 import { GLOBAL_SHORTCUTS } from '@/components/features/keyboard/global-shortcuts';
-import { CommandPalette } from '@/components/features/search/command-palette';
 import { useCommandPaletteStore } from '@/lib/stores/command-palette-store';
 import { usePathname, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+
+const DynamicInstallPrompt = dynamic(
+  () => import('@/components/features/pwa/install-prompt').then((mod) => mod.InstallPrompt),
+  { ssr: false },
+);
+const DynamicSessionTimeoutModal = dynamic(
+  () => import('@/components/auth/session-timeout-modal').then((mod) => mod.SessionTimeoutModal),
+  { ssr: false },
+);
+const DynamicMobileOrientationGuard = dynamic(
+  () =>
+    import('@/components/features/mobile/mobile-orientation-guard').then(
+      (mod) => mod.MobileOrientationGuard,
+    ),
+  { ssr: false },
+);
+const DynamicShortcutHelpModal = dynamic(
+  () =>
+    import('@/components/features/keyboard/shortcut-help-modal').then(
+      (mod) => mod.ShortcutHelpModal,
+    ),
+  { ssr: false },
+);
+const DynamicCommandPalette = dynamic(
+  () => import('@/components/features/search/command-palette').then((mod) => mod.CommandPalette),
+  { ssr: false },
+);
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -123,6 +147,9 @@ export function AppShell({ children }: AppShellProps) {
     isTabletLayout: false,
     isCompactLayout: false,
   });
+  const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(
+    null,
+  );
   const {
     sidebarOpen,
     setSidebarOpen,
@@ -158,6 +185,21 @@ export function AppShell({ children }: AppShellProps) {
       tabletQuery.removeEventListener?.('change', syncViewport);
     };
   }, []);
+
+  useEffect(() => {
+    if (useMinimalShell || typeof window === 'undefined') return;
+
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPromptEvent(event as BeforeInstallPromptEvent);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, [useMinimalShell]);
 
   useEffect(() => {
     if (!viewport.isReady) return;
@@ -424,7 +466,9 @@ export function AppShell({ children }: AppShellProps) {
         )}
         {chromeHidden ? null : (
           <div data-print-skip="true">
-            <MobileOrientationGuard />
+            {viewport.isReady && viewport.isCompactLayout ? (
+              <DynamicMobileOrientationGuard />
+            ) : null}
           </div>
         )}
 
@@ -451,29 +495,36 @@ export function AppShell({ children }: AppShellProps) {
       )}
       {chromeHidden ? null : (
         <div data-print-skip="true">
-          <InstallPrompt />
+          {installPromptEvent ? (
+            <DynamicInstallPrompt
+              key={String(installPromptEvent.timeStamp)}
+              initialPrompt={installPromptEvent}
+            />
+          ) : null}
         </div>
       )}
       {chromeHidden ? null : (
         <div data-print-skip="true">
-          <SessionTimeoutModal />
+          <DynamicSessionTimeoutModal />
         </div>
       )}
 
       {/* Keyboard shortcut help modal */}
       {chromeHidden ? null : (
         <div data-print-skip="true">
-          <ShortcutHelpModal
-            open={shortcutHelpOpen}
-            onOpenChange={setShortcutHelpOpen}
-            shortcuts={GLOBAL_SHORTCUTS}
-          />
+          {shortcutHelpOpen ? (
+            <DynamicShortcutHelpModal
+              open={shortcutHelpOpen}
+              onOpenChange={setShortcutHelpOpen}
+              shortcuts={GLOBAL_SHORTCUTS}
+            />
+          ) : null}
         </div>
       )}
 
       {/* グローバル検索コマンドパレット(⌘K / "/" で開く。AppShell が唯一の描画元) */}
       <div data-print-skip="true">
-        <CommandPalette />
+        {paletteOpen && !useMinimalShell ? <DynamicCommandPalette /> : null}
       </div>
     </div>
   );

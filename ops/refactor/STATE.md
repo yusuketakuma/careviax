@@ -41,7 +41,58 @@
 
 ## 直近の land（本日・要点）
 
-- codex: FE-REPORT-001 Reports realtime query migration evidence sync（commit pending）。
+- codex: FE-SHELL-001 AppShell heavy globals dynamic import partial（commit pending）。
+  - current task:
+    AppShell の常時 static import / mount される heavy global UI を top-level `next/dynamic` へ移し、
+    open/viewport/PWA 条件に応じて lazy mount する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `node_modules/next/dist/docs/01-app/02-guides/lazy-loading.md`,
+    `src/components/layout/app-shell.tsx`,
+    `src/components/layout/app-shell.test.tsx`,
+    `src/components/features/pwa/install-prompt.tsx`,
+    `src/components/auth/session-timeout-modal.tsx`,
+    `src/components/features/mobile/mobile-orientation-guard.tsx`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/components/layout/app-shell.tsx`,
+    `src/components/layout/app-shell.test.tsx`,
+    `src/components/features/pwa/install-prompt.tsx`.
+  - implementation:
+    Next.js lazy-loading docs に従い、`next/dynamic` を module top-level literal import で定義。
+    `CommandPalette` は palette store open 時だけ、`ShortcutHelpModal` は help open 時だけ、
+    `MobileOrientationGuard` は compact viewport hydration 後だけ、`InstallPrompt` は
+    `beforeinstallprompt` event を AppShell で捕捉した後だけ dynamic mount する。
+    `SessionTimeoutModal` は session expiry 監視の安全性を優先し、mount 条件は変えず static import
+    から dynamic chunk へ移した。`InstallPrompt` は捕捉済み prompt event を `initialPrompt` として
+    受け取れるようにした。
+  - performance issues improved:
+    AppShell の初期 static import から command palette、shortcut help modal、PWA install prompt、
+    mobile orientation guard、session timeout modal の runtime code を外し、必要時の dynamic chunk
+    へ寄せた。
+  - validation:
+    `pnpm exec vitest run src/components/layout/app-shell.test.tsx src/components/auth/session-timeout-modal.test.tsx --reporter=dot --testTimeout=30000`
+    passed: 2 files / 19 tests.
+    `pnpm exec eslint src/components/layout/app-shell.tsx src/components/layout/app-shell.test.tsx src/components/features/pwa/install-prompt.tsx`
+    passed.
+    `pnpm exec prettier --check src/components/layout/app-shell.tsx src/components/layout/app-shell.test.tsx src/components/features/pwa/install-prompt.tsx`
+    passed.
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/components/layout/app-shell.tsx src/components/layout/app-shell.test.tsx src/components/features/pwa/install-prompt.tsx`
+    passed after formatting `Plans.md`.
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/components/layout/app-shell.tsx src/components/layout/app-shell.test.tsx src/components/features/pwa/install-prompt.tsx`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`
+    passed.
+  - remaining:
+    commit、push。Bundle analyzer / route metrics での初期 JS 実測と
+    SessionTimeoutModal の event-gated mount 可否検証は残。
+  - next action:
+    Finish validation and land the partial AppShell lazy import slice.
+
+- codex: FE-REPORT-001 Reports realtime query migration evidence sync（commit 6ad38ed82, pushed）。
   - current task:
     Plans の `FE-REPORT-001` と現行 report workspace 実装の整合を確認し、完了証跡を Plans に反映する。
   - files inspected:
