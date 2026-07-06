@@ -41,6 +41,41 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOV-001 MCS / partner visit marker minimization（未コミット）。
+  - current task:
+    Patient Movement Timeline の inbound bridge source から投稿者名・所属名・協力薬局名・薬剤師名を外し、
+    MCS投稿受信/協力薬局訪問記録受信の marker + 正本 deep link へ寄せる。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-movement-timeline-presenter.ts`,
+    `src/server/services/patient-detail.test.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-movement-timeline-presenter.ts`,
+    `src/server/services/patient-detail.test.ts`.
+  - implementation:
+    `patientMcsMessagesSource` は author name / role / organization / posted_at_label を select せず、MCS投稿受信の発生、返信/リアクション件数、MCS連携 deep link だけを返す。
+    `partnerVisitRecordsSource` は pharmacist name / owner partner pharmacy name を select せず、協力薬局訪問記録の受信/確認、訪問日、連携記録 deep link だけを返す。
+    `PatientMovementTimelineEvent.privacy_level` は inbound MCS / interprofessional note も `summary` に統一し、raw/detail は正本画面の再認可へ委譲する。
+  - security risks reduced:
+    他職種投稿者名、所属名、協力薬局名、協力薬局側薬剤師名が patient movement payload / 検索 haystack に流れる面を縮小した。
+  - validation:
+    `pnpm exec vitest run src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.test.ts 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx' --reporter=dot --testTimeout=30000` → pass（3 files / 91 tests）。
+    `pnpm exec eslint src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.ts src/server/services/patient-movement-timeline-presenter.test.ts 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx'` → pass。
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.ts` → pass after formatting `patient-detail-timeline-registry.ts`。
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.ts` → pass。
+  - remaining:
+    Formal `InboundCommunicationEvent` / `InboundCommunicationSignal` DB/API/review UI and MedicationStock Ledger source remain.
+  - next action:
+    Scoped commit/push, then record landed commit hash.
+
 - codex: MOV-001 external share / conference / billing marker minimization（commit 8e7eed4af, pushed）。
   - current task:
     Patient Movement Timeline の残り source から自由記載・人物名・算定詳細を外し、

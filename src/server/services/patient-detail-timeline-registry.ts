@@ -436,11 +436,7 @@ export const patientMcsMessagesSource = defineTimelineSource<
       take: 8,
       select: {
         id: true,
-        author_name: true,
-        author_role: true,
-        author_organization: true,
         posted_at: true,
-        posted_at_label: true,
         reaction_count: true,
         reply_count: true,
         created_at: true,
@@ -455,8 +451,6 @@ export const patientMcsMessagesSource = defineTimelineSource<
       title: 'MCS投稿を受信',
       summary:
         compactTimelineValues([
-          item.author_role,
-          item.author_organization,
           item.reply_count > 0 ? `返信 ${item.reply_count}件` : null,
           item.reaction_count > 0 ? `リアクション ${item.reaction_count}件` : null,
         ]).join(' / ') || null,
@@ -464,8 +458,8 @@ export const patientMcsMessagesSource = defineTimelineSource<
       action_label: 'MCS連携を開く',
       status: 'received',
       status_label: '受信',
-      actor_name: item.author_name,
-      metadata: compactTimelineValues([item.posted_at_label]),
+      actor_name: null,
+      metadata: [],
     })),
 });
 
@@ -490,16 +484,10 @@ export const partnerVisitRecordsSource = defineTimelineSource<
       select: {
         id: true,
         status: true,
-        pharmacist_name: true,
         visit_at: true,
         submitted_at: true,
         confirmed_at: true,
         updated_at: true,
-        owner_partner_pharmacy: {
-          select: {
-            name: true,
-          },
-        },
       },
     }),
   toEvents: (rows, { hrefs }) =>
@@ -510,15 +498,12 @@ export const partnerVisitRecordsSource = defineTimelineSource<
       occurred_at: item.confirmed_at ?? item.submitted_at ?? item.updated_at,
       title: item.status === 'confirmed' ? '協力薬局の訪問記録を確認' : '協力薬局の訪問記録を受信',
       summary:
-        compactTimelineValues([
-          item.owner_partner_pharmacy.name,
-          `訪問日 ${formatTimelineDate(item.visit_at)}`,
-        ]).join(' / ') || null,
+        compactTimelineValues([`訪問日 ${formatTimelineDate(item.visit_at)}`]).join(' / ') || null,
       href: hrefs.patientCollaborationHref,
       action_label: '連携記録を開く',
       status: item.status,
       status_label: PARTNER_VISIT_RECORD_STATUS_LABELS[item.status] ?? item.status,
-      actor_name: item.pharmacist_name,
+      actor_name: null,
       metadata: [],
     })),
 });

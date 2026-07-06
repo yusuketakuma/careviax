@@ -4262,6 +4262,10 @@ describe('getPatientTimelineData', () => {
       expect.objectContaining({
         where: { org_id: 'org_1', patient_id: 'patient_1' },
         select: expect.not.objectContaining({
+          author_name: true,
+          author_role: true,
+          author_organization: true,
+          posted_at_label: true,
           body: true,
           raw_payload: true,
           source_url: true,
@@ -4276,6 +4280,8 @@ describe('getPatientTimelineData', () => {
           status: { in: ['submitted', 'confirmed'] },
         }),
         select: expect.not.objectContaining({
+          pharmacist_name: true,
+          owner_partner_pharmacy: true,
           record_content: true,
           attachments: true,
         }),
@@ -4291,8 +4297,8 @@ describe('getPatientTimelineData', () => {
           title: 'MCS投稿を受信',
           href: '/patients/patient_1/mcs',
           action_label: 'MCS連携を開く',
-          actor_name: '訪問看護師A',
-          privacy_level: 'detail',
+          actor_name: null,
+          privacy_level: 'summary',
         }),
         expect.objectContaining({
           id: 'partner_visit_record:partner_visit_record_1',
@@ -4301,8 +4307,8 @@ describe('getPatientTimelineData', () => {
           title: '協力薬局の訪問記録を確認',
           href: '/patients/patient_1/collaboration',
           action_label: '連携記録を開く',
-          actor_name: '協力薬局 薬剤師',
-          privacy_level: 'detail',
+          actor_name: null,
+          privacy_level: 'summary',
         }),
       ]),
     );
@@ -4312,6 +4318,9 @@ describe('getPatientTimelineData', () => {
     expect(serialized).not.toContain('source_url');
     expect(serialized).not.toContain('record_content');
     expect(serialized).not.toContain('SOAP');
+    expect(serialized).not.toContain('訪問看護師A');
+    expect(serialized).not.toContain('訪問看護ステーション');
+    expect(serialized).not.toContain('協力薬局 薬剤師');
   });
 
   it('adds patient and case operational tasks to movement timeline without selecting task free text', async () => {

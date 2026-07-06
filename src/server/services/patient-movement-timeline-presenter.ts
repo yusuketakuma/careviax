@@ -140,12 +140,6 @@ function relatedEntityIdOf(event: TimelineEvent) {
 
 function privacyLevelOf(event: TimelineEvent, category: PatientMovementCategory) {
   if (category === 'communication') return 'detail';
-  if (
-    category === 'interprofessional' &&
-    (event.event_type === 'inbound_mcs' || event.event_type === 'interprofessional_note')
-  ) {
-    return 'detail';
-  }
   return 'summary';
 }
 

@@ -157,11 +157,7 @@ export type CommunicationTimelineSource = {
 
 export type PatientMcsMessageTimelineSource = {
   id: string;
-  author_name: string;
-  author_role: string | null;
-  author_organization: string | null;
   posted_at: Date | null;
-  posted_at_label: string;
   reaction_count: number;
   reply_count: number;
   created_at: Date;
@@ -170,14 +166,10 @@ export type PatientMcsMessageTimelineSource = {
 export type PartnerVisitRecordTimelineSource = {
   id: string;
   status: string;
-  pharmacist_name: string | null;
   visit_at: Date;
   submitted_at: Date | null;
   confirmed_at: Date | null;
   updated_at: Date;
-  owner_partner_pharmacy: {
-    name: string;
-  };
 };
 
 export type OperationalTaskTimelineSource = {

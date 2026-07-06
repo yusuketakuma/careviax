@@ -1153,6 +1153,7 @@ notification:
 > `cc:PARTIAL 2026-07-07`: 初回訪問文書の `operation_history` bridge は、`document_action.template_name` / `template_version` / `storage_location` / `reason` / `note` を timeline helper で読まない。未知の `document_type` は「初回訪問文書」、未知の action は「更新」へ丸め、audit changes 内の自由記載や患者名入りラベルが文書 marker / movement payload に出ないよう固定する。
 > `cc:PARTIAL 2026-07-07`: `selfReportsSource` は `subject` / `content` / `reported_by_name` を select しない。`self_reports` snapshot も同じ最小DTOへ変換し、患者起点更新は「自己申告があった」事実、category、status、折返し希望、希望時間、連携 deep link のみに限定する。件名・本文・報告者名は患者連携の正本画面で再認可して確認する。
 > `cc:PARTIAL 2026-07-07`: `externalSharesSource` / `conferenceNotesSource` / `billingCandidatesSource` も marker-only 契約へ寄せた。外部共有は共有先名、会議記録は title/action items、算定候補は billing name / points / exclusion reason を select しない。timeline は共有・会議・算定候補が更新された事実、controlled status、正本 deep link のみに限定し、詳細は共有設定・会議記録・算定候補画面で再認可して確認する。
+> `cc:PARTIAL 2026-07-07`: `patientMcsMessagesSource` / `partnerVisitRecordsSource` も inbound marker-only 契約へ寄せた。MCS は投稿者名、投稿者職種、所属、投稿時刻ラベルを select せず、協力薬局訪問記録は協力薬局名、薬剤師名を select しない。timeline は MCS投稿受信・協力薬局訪問記録受信/確認の発生事実、返信/リアクション件数または訪問日、正本 deep link のみに限定し、`privacy_level` は summary とする。
 
 **重要なUI方針**:
 
