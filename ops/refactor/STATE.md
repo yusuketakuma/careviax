@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: MOV-001 operation history target metadata minimization（未コミット）。
+- codex: MOV-001 operation history target metadata minimization（commit f57a0332d, pushed）。
   - current task:
     legacy `timeline_events` の `operation_history` でも、処方・訪問・文書 marker から
     `target_type` / `target_id` metadata を外し、発生事実 + 正本 deep link だけへ寄せる。
@@ -72,7 +72,7 @@
   - remaining:
     Formal `InboundCommunicationEvent` / `InboundCommunicationSignal` DB/API/review UI and MedicationStock Ledger source remain.
   - next action:
-    scoped commit/push 後に commit hash を記録する。
+    Continue remaining MOV-001 sources only when they can stay marker-only + canonical deep link.
 
 - codex: MOV-001 prescription / visit / document actor minimization（commit 4ff1ec46d, pushed）。
   - current task:
