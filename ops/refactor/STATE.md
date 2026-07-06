@@ -6842,3 +6842,60 @@
 - remaining:
   Broader `Plans.md` objective remains open. 残りは high-risk bulk action consumer（調剤/セット workbench など）
   の文言/確認 dialog sweep と、broader Command Center / BFF split / risk registry integration tasks。
+
+## 2026-07-06 Dispense workbench bulk scope wording slice
+
+- codex: `UX-TBL-001 / DSP-UX` scope wording sweep implemented.
+  調剤/監査/セット/セット監査 workbench の一括 button label を、全件操作に見えないよう
+  `表示中をすべて調剤済` / `調剤済みをすべて監査OK` /
+  `表示中セルをすべてセット済` / `表示中セルをすべて監査OK` へ変更した。
+  F5 shortcut 表示も `表示中を一括` にし、工程ごとの `bulkLabel` と shortcut label を
+  `buildView` unit test で固定した。
+- design / imagegen:
+  `redesign-existing-projects` skill と `docs/ui-ux-design-guidelines.md` を確認。既存 button / F-key label の
+  scope wording contract 修正で、視覚再構築や配置変更を伴わないため `imagegen` / `gpt-image-2`
+  の新規生成は省略した。
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `docs/ui-ux-design-guidelines.md`,
+  `/Users/yusuke/workspace/careviax/.agents/skills/redesign-existing-projects/SKILL.md`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/components/features/dispense-workbench/use-workbench-view.ts`,
+  `src/components/features/dispense-workbench/use-workbench-view.test.ts`,
+  `src/components/features/dispense-workbench/use-workbench-write-handlers.ts`,
+  `src/components/features/dispense-workbench/prescription-grid.tsx`,
+  `src/components/features/dispense-workbench/medication-calendar-grid.tsx`,
+  `src/components/features/dispense-workbench/prescription-grid.test.tsx`,
+  `src/components/features/dispense-workbench/medication-calendar-grid.test.tsx`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/components/features/dispense-workbench/use-workbench-view.ts`,
+  `src/components/features/dispense-workbench/use-workbench-view.test.ts`,
+  `src/components/features/dispense-workbench/use-workbench-write-handlers.ts`.
+- bugs / risks reduced:
+  一括操作の `全て` / `全セル` 表現が、現在患者・表示中セル・調剤済み行に閉じる既存挙動より広い
+  全件操作に見える risk を低減した。監査工程は既存実装通り、未調剤行ではなく調剤済み行の一括監査であることを
+  label に反映した。
+- security / PHI reviewed:
+  button label、F-key label、interface comment、unit test のみ。患者名、住所、電話、処方本文、保険情報、
+  secret、API payload、audit payload は変更しない。
+- performance issues reviewed:
+  render string と test expectation のみ。DB query、network call、mutation contract、calendar cell processing は変更なし。
+- validation:
+  `pnpm exec vitest run src/components/features/dispense-workbench/use-workbench-view.test.ts src/components/features/dispense-workbench/prescription-grid.test.tsx src/components/features/dispense-workbench/medication-calendar-grid.test.tsx --reporter=dot --testTimeout=30000`
+  green (3 files / 34 tests);
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  green;
+  `pnpm lint`
+  green with existing warnings in `src/lib/platform/break-glass.test.ts` (`_tx`, `_input` unused);
+  `pnpm format:check`
+  green after formatting the updated test file;
+  `git diff --check -- Plans.md src/components/features/dispense-workbench/use-workbench-view.ts src/components/features/dispense-workbench/use-workbench-write-handlers.ts src/components/features/dispense-workbench/use-workbench-view.test.ts`
+  green.
+- remaining:
+  Broader `Plans.md` objective remains open. 残りは high-risk bulk action confirmation dialog sweep、
+  server-side 全件操作 UI registry、Command Center / BFF split / risk registry integration tasks。
