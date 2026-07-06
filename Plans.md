@@ -1151,7 +1151,8 @@ notification:
 - 患者詳細画面に新規タブ **患者の動き** を追加する。
 - 薬局内イベントだけでなく、他職種受信、MCS、電話、残数/使用量signal、残数台帳反映、安全signal、task、処方、訪問、文書登録、調剤、報告、共有、請求の発生を時系列で追えるようにする。
 - 処方、訪問、文書登録はタイムライン上では発生確認に留め、内容・本文・明細は正本画面への deep link で確認する。
-- 各イベントは詳細画面またはイベント詳細 drawer へ deep link できる。
+- 各イベントは `event.href` を primary CTA として deep link できる。
+- 特に処方・訪問・文書登録は、中間 drawer/detail shell ではなく、処方詳細・訪問記録・共有/文書タブなど正本画面へ直接遷移する。
 - `history` タブは変更履歴、構造化ケア、監査寄り情報に整理する。
 - 一覧では raw text を出さず、詳細表示時に再認可と監査ログを通す。
 
@@ -1303,6 +1304,23 @@ document:
 - deep link は `event.href` を primary CTA とし、正本画面に直接遷移する。
 - safe resolver `/api/patients/:id/timeline/:eventId` は fallback / destination 解決用に残すが、処方・訪問・文書の本文を返さない。
 
+**処方・訪問・文書登録の最小表示要件**:
+
+```text
+timelineで確認できればよいこと:
+  処方登録/処方受付があった。
+  訪問予定/訪問記録/訪問完了があった。
+  文書登録/文書更新があった。
+
+timelineから直接開けること:
+  処方 -> 処方詳細または処方サイクル。
+  訪問 -> 訪問記録または訪問準備。
+  文書 -> 共有・文書タブ、文書詳細、報告詳細、FileAsset detail。
+
+timelineに持ち込まないこと:
+  処方内容、薬剤明細、用法用量、訪問本文、SOAP本文、文書本文、添付ファイル名、OCR全文。
+```
+
 発生確認カードの表示制約:
 
 - 一覧カードは「何があったか」「いつ起きたか」「未処理か」「どこで詳細確認するか」に限定する。
@@ -1414,8 +1432,8 @@ delivery_record
   -> /reports/:reportId#delivery-records
 
 document_registered
-  -> /patients/:patientId/timeline/document_registered:eventId
-  -> detail resolver が正本文書画面または文書一覧 destination を返す
+  -> /patients/:patientId#patient-documents
+  または文書詳細/報告詳細/FileAsset detail が存在する場合はその正本画面
 
 billing_candidate
   -> /billing?candidate=:candidateId
@@ -1598,7 +1616,7 @@ UI:
 - 訪問、処方・調剤、他職種受信、残数・薬剤、安全、報告・共有、請求、task で filter できる。
 - 処方カードでは処方登録/変更があったことを確認でき、CTAから処方詳細へ遷移できる。
 - 訪問カードでは訪問予定/記録/完了があったことを確認でき、CTAから訪問詳細へ遷移できる。
-- 文書登録カードでは文書登録があったことを確認でき、CTAから文書詳細へ遷移できる。
+- 文書登録カードでは文書登録があったことを確認でき、CTAから共有・文書タブ、文書詳細、報告詳細、または FileAsset detail へ直接遷移できる。
 - 検索できる。
 - event card のCTAから detail へ遷移できる。
 - mobile で map-less vertical timeline が崩れない。
@@ -1634,7 +1652,8 @@ MCS残数報告
 - 訪問イベントでは訪問予定/記録/完了があったことを確認でき、詳細は deep link 先で確認できる。
 - 文書イベントでは文書登録があったことを確認でき、詳細は deep link 先で確認できる。
 - 各イベントには deep link がある。
-- deep link は相対パスで、該当詳細画面または event detail shell に遷移する。
+- deep link は相対パスで、該当詳細画面または安全な event detail shell に遷移する。
+- 処方・訪問・文書登録イベントの primary CTA は event detail shell ではなく、正本画面へ直接遷移する。
 - MCS/電話の raw_text は一覧に出さず、詳細で権限確認後に表示する。
 - raw_text 閲覧は監査ログに残る。
 - 種別フィルタ、検索、表示密度切替がある。
