@@ -81,6 +81,8 @@ function buildDb<T extends Record<string, unknown> = Record<string, never>>(over
     careReport: { findMany: vi.fn().mockResolvedValue([]) },
     auditLog: { findMany: vi.fn().mockResolvedValue([]) },
     communicationEvent: { findMany: vi.fn().mockResolvedValue([]) },
+    patientMcsMessage: { findMany: vi.fn().mockResolvedValue([]) },
+    partnerVisitRecord: { findMany: vi.fn().mockResolvedValue([]) },
     patientSelfReport: { findMany: vi.fn().mockResolvedValue([]) },
     externalAccessGrant: { findMany: vi.fn().mockResolvedValue([]) },
     inquiryRecord: { findMany: vi.fn().mockResolvedValue([]) },
@@ -3884,6 +3886,110 @@ describe('getPatientTimelineData', () => {
     expect(result?.timeline_events.map((item) => item.id)).not.toContain(
       'communication:comm_self_report',
     );
+  });
+
+  it('adds MCS and partner visit records to movement timeline without selecting raw message bodies', async () => {
+    const patientMcsMessageFindManyMock = vi.fn().mockResolvedValue([
+      {
+        id: 'mcs_message_1',
+        author_name: '訪問看護師A',
+        author_role: '訪問看護師',
+        author_organization: '訪問看護ステーション',
+        posted_at: new Date('2026-04-04T09:00:00.000Z'),
+        posted_at_label: '2026/04/04 18:00',
+        reaction_count: 1,
+        reply_count: 2,
+        created_at: new Date('2026-04-04T09:01:00.000Z'),
+      },
+    ]);
+    const partnerVisitRecordFindManyMock = vi.fn().mockResolvedValue([
+      {
+        id: 'partner_visit_record_1',
+        status: 'confirmed',
+        pharmacist_name: '協力薬局 薬剤師',
+        visit_at: new Date('2026-04-03T01:00:00.000Z'),
+        submitted_at: new Date('2026-04-03T03:00:00.000Z'),
+        confirmed_at: new Date('2026-04-03T04:00:00.000Z'),
+        updated_at: new Date('2026-04-03T04:00:00.000Z'),
+        owner_partner_pharmacy: { name: '協力薬局' },
+      },
+    ]);
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      patientMcsMessage: {
+        findMany: patientMcsMessageFindManyMock,
+      },
+      partnerVisitRecord: {
+        findMany: partnerVisitRecordFindManyMock,
+      },
+    });
+
+    const result = await getPatientTimelineData(runnerFor(db), {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+    });
+
+    expect(patientMcsMessageFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { org_id: 'org_1', patient_id: 'patient_1' },
+        select: expect.not.objectContaining({
+          body: true,
+          raw_payload: true,
+          source_url: true,
+        }),
+      }),
+    );
+    expect(partnerVisitRecordFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          share_case: { base_patient_id: 'patient_1' },
+          status: { in: ['submitted', 'confirmed'] },
+        }),
+        select: expect.not.objectContaining({
+          record_content: true,
+          attachments: true,
+        }),
+      }),
+    );
+
+    expect(result?.movement_events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'patient_mcs_message:mcs_message_1',
+          event_type: 'inbound_mcs',
+          category: 'interprofessional',
+          title: 'MCS投稿を受信',
+          href: '/patients/patient_1/mcs',
+          action_label: 'MCS連携を開く',
+          actor_name: '訪問看護師A',
+          privacy_level: 'detail',
+        }),
+        expect.objectContaining({
+          id: 'partner_visit_record:partner_visit_record_1',
+          event_type: 'interprofessional_note',
+          category: 'interprofessional',
+          title: '協力薬局の訪問記録を確認',
+          href: '/patients/patient_1/collaboration',
+          action_label: '連携記録を開く',
+          actor_name: '協力薬局 薬剤師',
+          privacy_level: 'detail',
+        }),
+      ]),
+    );
+
+    const serialized = JSON.stringify(result?.movement_events);
+    expect(serialized).not.toContain('raw_payload');
+    expect(serialized).not.toContain('source_url');
+    expect(serialized).not.toContain('record_content');
+    expect(serialized).not.toContain('SOAP');
   });
 
   it('bounds first-visit document timeline reads and keeps legacy audit filters visible', async () => {

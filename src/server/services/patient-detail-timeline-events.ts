@@ -159,6 +159,31 @@ export type CommunicationTimelineSource = {
   occurred_at: Date;
 };
 
+export type PatientMcsMessageTimelineSource = {
+  id: string;
+  author_name: string;
+  author_role: string | null;
+  author_organization: string | null;
+  posted_at: Date | null;
+  posted_at_label: string;
+  reaction_count: number;
+  reply_count: number;
+  created_at: Date;
+};
+
+export type PartnerVisitRecordTimelineSource = {
+  id: string;
+  status: string;
+  pharmacist_name: string | null;
+  visit_at: Date;
+  submitted_at: Date | null;
+  confirmed_at: Date | null;
+  updated_at: Date;
+  owner_partner_pharmacy: {
+    name: string;
+  };
+};
+
 export type SelfReportTimelineSource = {
   id: string;
   subject: string | null;
@@ -280,6 +305,8 @@ export type BuildPatientTimelineEventsInput = {
   visitRecords: readonly VisitRecordTimelineSource[];
   careReports: readonly CareReportTimelineSource[];
   communicationEvents: readonly CommunicationTimelineSource[];
+  patientMcsMessages: readonly PatientMcsMessageTimelineSource[];
+  partnerVisitRecords: readonly PartnerVisitRecordTimelineSource[];
   selfReports: readonly SelfReportTimelineSource[];
   externalShares: readonly ExternalShareTimelineSource[];
   inquiryRecords: readonly InquiryTimelineSource[];
@@ -780,6 +807,8 @@ export function buildPatientTimelineEvents(
     visitRecords,
     careReports,
     communicationEvents,
+    patientMcsMessages,
+    partnerVisitRecords,
     selfReports,
     externalShares,
     inquiryRecords,
@@ -802,6 +831,8 @@ export function buildPatientTimelineEvents(
     visitRecords,
     careReports,
     communicationEvents,
+    patientMcsMessages,
+    partnerVisitRecords,
     selfReports,
     externalShares,
     inquiryRecords,

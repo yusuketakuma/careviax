@@ -24,6 +24,29 @@ const DOCUMENT_EVENT_TYPES = new Set([
   'management_plan',
   'first_visit_document',
 ]);
+const DIRECT_MOVEMENT_EVENT_TYPES = new Set<PatientMovementEventType>([
+  'communication',
+  'self_report',
+  'external_share',
+  'conference_note',
+  'billing_candidate',
+  'operation_history',
+  'inbound_communication',
+  'inbound_mcs',
+  'inbound_phone',
+  'inbound_fax',
+  'inbound_email',
+  'inbound_medication_stock_signal',
+  'medication_stock_event',
+  'medication_stock_snapshot',
+  'medication_equivalence_review',
+  'interprofessional_note',
+  'care_team_update',
+  'safety_signal',
+  'task_created',
+  'task_resolved',
+  'support_session',
+]);
 
 function normalizeRelativeHref(href: string | null | undefined, fallback: string) {
   if (!href) return fallback;
@@ -37,6 +60,10 @@ function movementCategoryOf(event: TimelineEvent): PatientMovementCategory {
   if (event.category === 'document') return 'document';
   if (event.category === 'billing') return 'billing';
   if (event.category === 'communication') return 'communication';
+  if (event.category === 'interprofessional') return 'interprofessional';
+  if (event.category === 'medication_stock') return 'medication_stock';
+  if (event.category === 'safety') return 'safety';
+  if (event.category === 'task') return 'task';
   return 'system';
 }
 
@@ -44,12 +71,9 @@ function movementTypeOf(event: TimelineEvent): PatientMovementEventType {
   if (VISIT_EVENT_TYPES.has(event.event_type)) return 'visit_event';
   if (PRESCRIPTION_EVENT_TYPES.has(event.event_type)) return 'prescription_event';
   if (DOCUMENT_EVENT_TYPES.has(event.event_type)) return 'document_registered';
-  if (event.event_type === 'communication') return 'communication';
-  if (event.event_type === 'self_report') return 'self_report';
-  if (event.event_type === 'external_share') return 'external_share';
-  if (event.event_type === 'conference_note') return 'conference_note';
-  if (event.event_type === 'billing_candidate') return 'billing_candidate';
-  if (event.event_type === 'operation_history') return 'operation_history';
+  if (DIRECT_MOVEMENT_EVENT_TYPES.has(event.event_type as PatientMovementEventType)) {
+    return event.event_type as PatientMovementEventType;
+  }
   return 'operation_history';
 }
 
@@ -140,7 +164,8 @@ export function toPatientMovementTimelineEvent(
     severity: severityOf(event),
     badges: statusLabel ? [{ label: statusLabel, tone: statusBadgeTone(event) }] : [],
     metadata: metadataOf(event),
-    privacy_level: category === 'communication' ? 'detail' : 'summary',
+    privacy_level:
+      category === 'communication' || category === 'interprofessional' ? 'detail' : 'summary',
     raw_available: false,
   };
 }

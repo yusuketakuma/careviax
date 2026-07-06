@@ -41,6 +41,63 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOV-001 existing inbound source integration slice（未コミット）。
+  - current task:
+    Patient Movement Timeline に、正式な `InboundCommunicationEvent` / `InboundCommunicationSignal`
+    migration 前でも使える既存 source として `PatientMcsMessage` と `PartnerVisitRecord` を追加した。
+    ユーザー確認に合わせ、タイムラインは処方・訪問・文書登録や他職種情報が「あったこと」だけを示し、
+    詳細確認は deep link 先の正本画面へ委譲する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/api/patients/[id]/route.ts`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-movement-timeline-presenter.ts`,
+    `src/server/services/patient-detail.test.ts`,
+    Prisma schema models for `PatientMcsMessage`, `PartnerVisitRecord`, and `PatientShareCase`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/api/patients/[id]/route.ts`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-movement-timeline-presenter.ts`,
+    `src/server/services/patient-detail.test.ts`.
+  - implementation:
+    Added `patientMcsMessagesSource` and `partnerVisitRecordsSource` to the timeline registry.
+    MCS rows become `inbound_mcs` / `interprofessional` events with `/patients/:id/mcs` deep link.
+    Submitted/confirmed partner visit records become `interprofessional_note` / `interprofessional`
+    events with `/patients/:id/collaboration` deep link. The patient details fallback route passes empty
+    arrays so additive movement DTO requirements do not break the older direct route.
+  - security / PHI reviewed:
+    MCS timeline reads select only author/source metadata and counts; they do not select `body`,
+    `raw_payload`, or `source_url`. Partner visit record reads do not select `record_content` or
+    `attachments`. Movement event serialization tests assert raw payload/source URL/record content and
+    SOAP-like text do not appear in the timeline DTO. raw text remains a destination-screen concern with
+    separate authorization/audit.
+  - validation:
+    `pnpm vitest run src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.test.ts 'src/app/(dashboard)/patients/[id]/patient-activity-timeline.test.tsx' --reporter=dot --testTimeout=30000`
+    passed: 3 files / 84 tests.
+    `pnpm exec eslint 'src/app/api/patients/[id]/route.ts' src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-movement-timeline-presenter.ts src/server/services/patient-detail.test.ts`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+    `pnpm boundaries:check` passed: 0 new violations, 7 allowlisted debt imports across 6 files.
+    `pnpm exec prettier --check 'src/app/api/patients/[id]/route.ts' src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-movement-timeline-presenter.ts src/server/services/patient-detail.test.ts Plans.md`
+    passed after scoped Prettier write on `Plans.md`.
+    `git diff --check -- 'src/app/api/patients/[id]/route.ts' src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-movement-timeline-presenter.ts src/server/services/patient-detail.test.ts Plans.md`
+    passed.
+  - remaining:
+    `MOV-001` remains partial for formal `InboundCommunicationEvent` / `InboundCommunicationSignal`
+    persistence, phone/FAX/email sources, MedicationStock source integration, task/safety source
+    integration, dedicated component split/rename, and Playwright mobile smoke.
+    `INB-001` remains partial for DB正本、API/queue/UI、MedicationStock/Risk/Task/VisitBrief/Schedule/Report
+    接続。
+  - next action:
+    Continue with formal inbound persistence/review queue or MedicationStock source integration once the
+    DB/API contract slice is selected.
+
 - codex: MOV-001 Patient Movement Timeline map-less rail UI slice（未コミット）。
   - current task:
     患者詳細 `movement` タブのタイムラインを、上部地図なしの Google Maps 風 vertical rail UI に寄せた。

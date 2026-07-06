@@ -29,6 +29,8 @@ import {
   PRESCRIPTION_SOURCE_LABELS,
   SELF_REPORT_STATUS_LABELS,
   VISIT_TYPE_LABELS,
+  type PartnerVisitRecordTimelineSource,
+  type PatientMcsMessageTimelineSource,
   type BillingCandidateTimelineSource,
   type CareReportTimelineSource,
   type CommunicationTimelineSource,
@@ -67,6 +69,8 @@ export type PatientTimelineRegistryDb = {
   inquiryRecord: Pick<Prisma.TransactionClient['inquiryRecord'], 'findMany'>;
   managementPlan: Pick<Prisma.TransactionClient['managementPlan'], 'findMany'>;
   patientSelfReport: Pick<Prisma.TransactionClient['patientSelfReport'], 'findMany'>;
+  patientMcsMessage: Pick<Prisma.TransactionClient['patientMcsMessage'], 'findMany'>;
+  partnerVisitRecord: Pick<Prisma.TransactionClient['partnerVisitRecord'], 'findMany'>;
   prescriptionIntake: Pick<Prisma.TransactionClient['prescriptionIntake'], 'findMany'>;
   visitRecord: Pick<Prisma.TransactionClient['visitRecord'], 'findMany'>;
   visitSchedule: Pick<Prisma.TransactionClient['visitSchedule'], 'findMany'>;
@@ -105,6 +109,12 @@ export function defineTimelineSource<Key extends string, Row>(
 }
 
 const PATIENT_TIMELINE_EXTERNAL_SHARE_LIMIT = 8;
+const PARTNER_VISIT_RECORD_STATUS_LABELS: Record<string, string> = {
+  draft: '下書き',
+  submitted: '提出済み',
+  confirmed: '確認済み',
+  returned: '差戻し',
+};
 
 const FIRST_VISIT_DOCUMENT_ACTION_VERBS: Record<string, string> = {
   generated: '作成',
@@ -372,6 +382,110 @@ export const communicationEventsSource = defineTimelineSource<
           metadata: [],
         };
       }),
+});
+
+// --- patientMcsMessages -----------------------------------------------------
+export const patientMcsMessagesSource = defineTimelineSource<
+  'patientMcsMessages',
+  PatientMcsMessageTimelineSource
+>({
+  key: 'patientMcsMessages',
+  emptyFallback: EMPTY,
+  fetch: ({ db, orgId, patientId }) =>
+    db.patientMcsMessage.findMany({
+      where: {
+        org_id: orgId,
+        patient_id: patientId,
+      },
+      orderBy: [{ posted_at: 'desc' }, { created_at: 'desc' }],
+      take: 8,
+      select: {
+        id: true,
+        author_name: true,
+        author_role: true,
+        author_organization: true,
+        posted_at: true,
+        posted_at_label: true,
+        reaction_count: true,
+        reply_count: true,
+        created_at: true,
+      },
+    }),
+  toEvents: (rows, { hrefs }) =>
+    rows.map((item) => ({
+      id: `patient_mcs_message:${item.id}`,
+      event_type: 'inbound_mcs',
+      category: 'interprofessional',
+      occurred_at: item.posted_at ?? item.created_at,
+      title: 'MCS投稿を受信',
+      summary:
+        compactTimelineValues([
+          item.author_role,
+          item.author_organization,
+          item.reply_count > 0 ? `返信 ${item.reply_count}件` : null,
+          item.reaction_count > 0 ? `リアクション ${item.reaction_count}件` : null,
+        ]).join(' / ') || null,
+      href: hrefs.patientMcsHref,
+      action_label: 'MCS連携を開く',
+      status: 'received',
+      status_label: '受信',
+      actor_name: item.author_name,
+      metadata: compactTimelineValues([item.posted_at_label]),
+    })),
+});
+
+// --- partnerVisitRecords ----------------------------------------------------
+export const partnerVisitRecordsSource = defineTimelineSource<
+  'partnerVisitRecords',
+  PartnerVisitRecordTimelineSource
+>({
+  key: 'partnerVisitRecords',
+  emptyFallback: EMPTY,
+  fetch: ({ db, orgId, patientId }) =>
+    db.partnerVisitRecord.findMany({
+      where: {
+        org_id: orgId,
+        share_case: {
+          base_patient_id: patientId,
+        },
+        status: { in: ['submitted', 'confirmed'] },
+      },
+      orderBy: [{ confirmed_at: 'desc' }, { submitted_at: 'desc' }, { visit_at: 'desc' }],
+      take: 8,
+      select: {
+        id: true,
+        status: true,
+        pharmacist_name: true,
+        visit_at: true,
+        submitted_at: true,
+        confirmed_at: true,
+        updated_at: true,
+        owner_partner_pharmacy: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    }),
+  toEvents: (rows, { hrefs }) =>
+    rows.map((item) => ({
+      id: `partner_visit_record:${item.id}`,
+      event_type: 'interprofessional_note',
+      category: 'interprofessional',
+      occurred_at: item.confirmed_at ?? item.submitted_at ?? item.updated_at,
+      title: item.status === 'confirmed' ? '協力薬局の訪問記録を確認' : '協力薬局の訪問記録を受信',
+      summary:
+        compactTimelineValues([
+          item.owner_partner_pharmacy.name,
+          `訪問日 ${formatTimelineDate(item.visit_at)}`,
+        ]).join(' / ') || null,
+      href: hrefs.patientCollaborationHref,
+      action_label: '連携記録を開く',
+      status: item.status,
+      status_label: PARTNER_VISIT_RECORD_STATUS_LABELS[item.status] ?? item.status,
+      actor_name: item.pharmacist_name,
+      metadata: [],
+    })),
 });
 
 // --- selfReports ------------------------------------------------------------
@@ -950,6 +1064,8 @@ export const TIMELINE_SOURCES = [
   visitRecordsSource,
   careReportsSource,
   communicationEventsSource,
+  patientMcsMessagesSource,
+  partnerVisitRecordsSource,
   selfReportsSource,
   externalSharesSource,
   inquiryRecordsSource,
