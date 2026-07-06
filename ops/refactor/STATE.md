@@ -35,10 +35,82 @@
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
 - Phase C（実装ループ）: Codex 単独運用体制（2026-07-04〜）。
-  現在の供給源は `Plans.md` 未完了40件（open 37 + partial 3）。即時実装は W3-E1/E2 の低リスクUI、
+  現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
+  即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の land（本日・要点）
+
+- codex: Operational Task Health Board dedicated filters completed（implementation commit `ffb445c0f`）。
+  - current task:
+    `Plans.md` の `TASK-001` 残作業「Health Board 専用の risk_domain / team scope filter UI」に対応。
+    `/tasks` 上段の Health Board に専用 `scope` / `risk_domain` filter を追加し、Health Board の集計範囲を
+    task list の `assigned_to=me` URL/state から独立させた。`risk_domain` 選択時は一覧の
+    `task_type` 継承を解除し、`GET /api/tasks/health-board` が拒否する `task_type + risk_domain` 競合を
+    UI 側でも発生させない。
+  - subagent / review:
+    `frontend_reviewer`（`UI Review the 23rd` / `019f352c-0d07-7b42-8ac7-9e77d1671f49`）を read-only review に投入。
+    指摘された dedicated UI 欠落、`risk_domain` と `task_type` の衝突、Health Board scope と task list
+    filter の結合、Select 44px regression、PHI 最小表示の維持をすべて反映した。
+  - design / imagegen:
+    UI slice のため `/Users/yusuke/.codex/skills/.system/imagegen/SKILL.md`、
+    `docs/ui-ux-design-guidelines.md`、Next.js local docs を確認し、`gpt-image-2` 方針の非 PHI preview
+    mockup を生成:
+    `/Users/yusuke/.codex/generated_images/019f2c7e-d969-7882-bd11-432a10abb930/ig_0c9d8e7469c49590016a4b0d5a249c819182bea46ba278be8b.png`。
+    prompt は safe task id と抽象ラベルのみで、実在患者名、住所、電話、処方本文、報告書本文、保険情報、
+    外部共有 URL、secret は含めていない。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `docs/ui-ux-design-guidelines.md`,
+    `/Users/yusuke/.codex/skills/.system/imagegen/SKILL.md`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md`,
+    `src/app/(dashboard)/tasks/task-health-board-panel.tsx`,
+    `src/app/(dashboard)/tasks/tasks-content.tsx`,
+    `src/app/(dashboard)/tasks/tasks-content.test.tsx`,
+    `src/app/api/tasks/health-board/route.test.ts`,
+    `src/server/services/operational-task-health.test.ts`,
+    `src/components/ui/select.tsx`,
+    `tools/tests/helpers/local-auth.ts`,
+    `tools/tests/helpers/route-mocks.ts`.
+  - files changed:
+    `Plans.md`,
+    `src/app/(dashboard)/tasks/task-health-board-panel.tsx`,
+    `src/app/(dashboard)/tasks/tasks-content.tsx`,
+    `src/app/(dashboard)/tasks/tasks-content.test.tsx`,
+    `tools/tests/tasks-health-board-filters.spec.ts`.
+  - bugs / risks reduced:
+    Health Board の `risk_domain` filter と一覧由来の `task_type` filter が同時送信されると API contract 上
+    400 になり、リスク領域別の health 集計が取得失敗に見える可能性があった。`risk_domain` 選択中は
+    `task_type` を送らないようにし、説明文も「一覧の種別フィルタとは独立して集計」に切り替えた。
+    Health Board scope は task list の assigned filter を変更しないため、チーム集計を確認しても一覧の
+    「自分」filter は壊れない。
+  - security / PHI reviewed:
+    新 UI は enum label、scope label、集計件数、PHI-minimized task ref だけを表示し、task title、
+    description、metadata、dedupe key、risk detail は出さない。route-mocked browser smoke では
+    住所/電話/薬剤名サンプル文字列が画面に出ないことを確認した。
+  - performance / UX reviewed:
+    既存 Health Board query の URL だけを切り替え、polling や追加BFFは増やしていない。Select trigger は
+    `sm:h-8` の縮小を上書きする `!min-h-[44px]` / `sm:!min-h-[44px]` を付け、Playwright で
+    desktop/mobile とも touch target 44px 以上、横スクロールなしを確認した。
+  - validation commands:
+    `pnpm exec vitest run src/lib/tasks/api-paths.test.ts 'src/app/(dashboard)/tasks/tasks-content.test.tsx' src/server/services/operational-task-health.test.ts src/app/api/tasks/health-board/route.test.ts --reporter=dot --testTimeout=30000`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`;
+    `pnpm lint`;
+    `pnpm format:check`;
+    `git diff --check`;
+    `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 PLAYWRIGHT=1 AUTH_SECRET=ph-os-local-auth-secret NEXTAUTH_SECRET=ph-os-local-auth-secret NEXTAUTH_URL=http://localhost:3012 NEXT_PUBLIC_DISABLE_NOTIFICATION_STREAM=1 pnpm exec playwright test --config playwright.local.config.ts tools/tests/tasks-health-board-filters.spec.ts --reporter=list`.
+  - validation results:
+    focused vitest green（4 files / 38 tests）; high-memory typecheck green; typecheck:no-unused green;
+    `pnpm lint` green with existing unrelated warnings only in `src/lib/platform/break-glass.test.ts` (`_tx`, `_input`);
+    `pnpm format:check` green; `git diff --check` green; Playwright route-mocked smoke green（chromium +
+    mobile-chromium, 2 passed）。
+  - remaining work:
+    Broader `Plans.md` objective remains open。`TASK-001` は完了。`RISK-CORE-2` 残は domain 別 durable resolve
+    predicate。次候補は `PERF-X-001` critical BFF instrumentation、または `NTF-001` Notification Delivery
+    Health Board。
 
 - codex: Operational Task Health Board UI connected to `/tasks`（implementation commit `6c3dabfbf`）。
   - current task:
