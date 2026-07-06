@@ -6077,3 +6077,73 @@
   Broader `Plans.md` objective remains open. CORE-002 は `Plans.md` 上 `cc:DONE` に更新。次の候補は
   CORE-003 / PAT-001 の患者詳細 Command Center 接続、または high-complexity domain
   (billing / consent_plan / visit_preparation / privacy_security) の追加 DB predicate hardening を別 slice で進める。
+
+## 2026-07-06 Patient Command Center Case Risk Actions slice
+
+- codex: `UX-CMD-001 / CORE-003` patient Command Center risk action slice implemented.
+  患者詳細 Command tab の主表示に Case Risk Cockpit `overall` / `next_actions` を接続し、
+  task-backed action と non-task action の両方を「横断リスクの次アクション」として表示する。
+  免除 panel は引き続き task-backed action だけを対象にし、免除理由未入力の disabled state は
+  helper text を `aria-describedby` へ接続した。
+- false-empty fix:
+  処方 cycle workspace がない患者でも active/latest case の Risk Cockpit action を表示し、旧
+  「進行中のカードがありません」だけで終わる false-empty を廃止した。対象 case なし、取得中、
+  未取得、取得失敗、action なしを別々に表示する。
+- design / imagegen:
+  UI slice のため、前段で `/Users/yusuke/.codex/skills/.system/imagegen/SKILL.md`、
+  `docs/ui-ux-design-guidelines.md`、Next.js local docs を確認済み。`gpt-image-2` 方針の非 PHI
+  mockup を参照し、実装では PH-OS の高密度、状態分離、44px target、PHI を含まない action label
+  表示へ翻訳した。
+- subagent:
+  `Locator the 23rd` と `Frontend the 23rd` の read-only findings を採用。最小 write set を
+  `patient-command-center-model.ts` / `card-workspace.tsx` / tests に限定し、non-task next action が
+  waiver に混ざらないこと、workspace=null でも risk action を隠さないことを受入条件にした。
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `docs/ui-ux-design-guidelines.md`,
+  `/Users/yusuke/.codex/skills/.system/imagegen/SKILL.md`,
+  `node_modules/next/dist/docs/01-app/03-api-reference/05-config/02-typescript.md`,
+  `src/types/case-risk-cockpit.ts`,
+  `src/app/api/cases/[id]/risk-cockpit/route.ts`,
+  `src/app/(dashboard)/patients/[id]/patient-command-center-model.ts`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+  `src/app/(dashboard)/patients/[id]/patient-command-center-model.test.ts`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`.
+- files changed:
+  `Plans.md`,
+  `src/app/(dashboard)/patients/[id]/patient-command-center-model.ts`,
+  `src/app/(dashboard)/patients/[id]/patient-command-center-model.test.ts`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  Case Risk Cockpit の `next_actions` が waiver panel 側に寄り、non-task action がユーザーに見えない
+  UX risk を修正。workspace 不在時に患者/ケース単位の risk action まで消える false-empty を防止した。
+  waiver submit disabled state の理由も明示し、モバイルで action label がはみ出しにくい `break-words`
+  表示にした。
+- security / PHI reviewed:
+  Case Risk Cockpit の `patient.name` / finding detail は Command 主表示に使わず、next action の
+  safe label / href / priority / due_at のみに制限。waiver request body に task display id、患者名、
+  action label を含めない既存テストを維持した。
+- performance issues reviewed:
+  新規 API は追加せず、既存 `case-risk-cockpit` query と pure selector で UI 表示を構成。
+  Command tab が mounted のときだけ既存 query を使う方針を維持し、表示 action は上位4件に制限した。
+- validation:
+  `pnpm exec vitest run src/app/(dashboard)/patients/[id]/patient-command-center-model.test.ts src/app/(dashboard)/patients/[id]/card-workspace.test.tsx --reporter=dot --testTimeout=30000`
+  green (2 files / 91 tests);
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  green;
+  `pnpm lint`
+  green with existing warnings in `src/lib/platform/break-glass.test.ts` (`_tx`, `_input` unused);
+  `pnpm format:check`
+  green;
+  `git diff --check`
+  green.
+- remaining:
+  Broader `Plans.md` objective remains open. 次候補は PatientBoard 派生ロジックとの adapter 統合、
+  timeline 抜粋の Command Center block 化、payload budget / browser smoke、または CORE-003 の
+  remaining domain adapters と UI browser proof。
