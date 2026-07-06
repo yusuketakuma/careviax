@@ -1,18 +1,32 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { dispenseTaskFindFirstMock, visitRecordFindFirstMock, patientFindFirstMock } = vi.hoisted(
-  () => ({
-    dispenseTaskFindFirstMock: vi.fn(),
-    visitRecordFindFirstMock: vi.fn(),
-    patientFindFirstMock: vi.fn(),
-  }),
-);
+const {
+  dispenseTaskFindFirstMock,
+  visitRecordFindFirstMock,
+  patientFindFirstMock,
+  medicationCycleFindFirstMock,
+  setPlanFindFirstMock,
+  careReportFindFirstMock,
+  careCaseFindManyMock,
+} = vi.hoisted(() => ({
+  dispenseTaskFindFirstMock: vi.fn(),
+  visitRecordFindFirstMock: vi.fn(),
+  patientFindFirstMock: vi.fn(),
+  medicationCycleFindFirstMock: vi.fn(),
+  setPlanFindFirstMock: vi.fn(),
+  careReportFindFirstMock: vi.fn(),
+  careCaseFindManyMock: vi.fn(),
+}));
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
     dispenseTask: { findFirst: dispenseTaskFindFirstMock },
     visitRecord: { findFirst: visitRecordFindFirstMock },
     patient: { findFirst: patientFindFirstMock },
+    medicationCycle: { findFirst: medicationCycleFindFirstMock },
+    setPlan: { findFirst: setPlanFindFirstMock },
+    careReport: { findFirst: careReportFindFirstMock },
+    careCase: { findMany: careCaseFindManyMock },
   },
 }));
 
@@ -63,6 +77,38 @@ describe('collaboration-access', () => {
     ).resolves.toBe(false);
   });
 
+  it('checks medication cycle access through the pharmacy provider', async () => {
+    medicationCycleFindFirstMock.mockResolvedValue({ id: 'mc_1' });
+
+    await expect(
+      canAccessCollaborationEntity(pharmacistCtx, 'medication_cycle', 'mc_1'),
+    ).resolves.toBe(true);
+
+    expect(medicationCycleFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'mc_1',
+        org_id: 'org_1',
+      },
+      select: { id: true },
+    });
+  });
+
+  it('checks set plan access through the pharmacy provider', async () => {
+    setPlanFindFirstMock.mockResolvedValue({ id: 'sp_1' });
+
+    await expect(canAccessCollaborationEntity(pharmacistCtx, 'set_plan', 'sp_1')).resolves.toBe(
+      true,
+    );
+
+    expect(setPlanFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'sp_1',
+        org_id: 'org_1',
+      },
+      select: { id: true },
+    });
+  });
+
   it('checks visit record access through schedule assignment scope', async () => {
     visitRecordFindFirstMock.mockResolvedValue({ id: 'vr_1' });
 
@@ -101,6 +147,27 @@ describe('collaboration-access', () => {
     await expect(
       canAccessCollaborationEntity(pharmacistCtx, 'patient', 'pt_unassigned'),
     ).resolves.toBe(false);
+  });
+
+  it('fails closed for unknown entity types without querying Prisma', async () => {
+    await expect(
+      canAccessCollaborationEntity(pharmacistCtx, 'unknown_entity', 'entity_1'),
+    ).resolves.toBe(false);
+
+    expect(dispenseTaskFindFirstMock).not.toHaveBeenCalled();
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(medicationCycleFindFirstMock).not.toHaveBeenCalled();
+    expect(setPlanFindFirstMock).not.toHaveBeenCalled();
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when a provider query throws', async () => {
+    patientFindFirstMock.mockRejectedValue(new Error('database unavailable'));
+
+    await expect(canAccessCollaborationEntity(pharmacistCtx, 'patient', 'pt_1')).resolves.toBe(
+      false,
+    );
   });
 
   it('uses org-only patient lookup for owner/admin bypass roles', async () => {

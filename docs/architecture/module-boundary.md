@@ -22,8 +22,12 @@ Forbidden:
 - Future `home_medical` or `home_nursing` modules must not import pharmacy
   implementations.
 
-Composition roots are allowed to assemble active modules. Today that root is
-`src/modules/active-modules.ts`.
+Composition roots are allowed to assemble active modules. They are edge wiring
+points, not places for domain rules:
+
+- `src/modules/active-modules.ts` assembles module metadata.
+- `src/server/collaboration/active-access-registry.ts` assembles collaboration
+  access providers for server-side authorization checks.
 
 ## Registry Role
 

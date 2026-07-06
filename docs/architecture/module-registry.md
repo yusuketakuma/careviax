@@ -4,7 +4,7 @@
 helpers. It deliberately imports no feature module.
 
 `src/modules/pharmacy` defines the only active feature module today.
-`src/modules/active-modules.ts` is the composition root:
+`src/modules/active-modules.ts` is the module-metadata composition root:
 
 ```ts
 export const activeModules = [pharmacyModule];
@@ -20,6 +20,11 @@ The registry records architecture references:
 - PHI boundary classification
 
 It must not duplicate the business rules owned by those registries.
+
+Provider registries use separate server-side composition roots. For example,
+`src/server/collaboration/active-access-registry.ts` assembles core and pharmacy
+collaboration access providers without putting executable authorization logic
+into `src/core/module-registry`.
 
 ## Reserved Future Modules
 

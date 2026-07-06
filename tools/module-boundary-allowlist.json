@@ -60,12 +60,6 @@
       "targets": ["@/server/services/drug-master-import/shared"]
     },
     {
-      "path": "src/server/services/collaboration-access.ts",
-      "expectedCount": 1,
-      "reason": "多職種連携アクセス判定が処方アクセス判定 (prescription-access) を参照している既存負債。連携の閲覧可否が薬局固有の処方共有ルールに依存している。将来はアクセス判定を薬局非依存の共有基盤へ切り出す。",
-      "targets": ["@/server/services/prescription-access"]
-    },
-    {
       "path": "src/server/services/report-templates.ts",
       "expectedCount": 1,
       "reason": "報告書テンプレートが院外処方区分 (dispensing/outside-med-classification) を参照している既存負債。報告書整形が調剤区分に依存している。将来は区分ラベルを薬局非依存の場所へ切り出す。",

@@ -1,5 +1,7 @@
 import { definePhosModule } from '@/core/module-registry';
 
+export { createPharmacyCollaborationAccessProviders } from './collaboration/access-providers';
+
 export const pharmacyModule = definePhosModule({
   id: 'pharmacy',
   label: 'Pharmacy home care',

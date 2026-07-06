@@ -41,6 +41,80 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOD-COLLAB-001 collaboration access provider registry.
+  - current task:
+    `Plans.md` の `MOD-COLLAB-001` に沿って、`collaboration-access.ts` に残っていた
+    pharmacy-specific `prescription-access` direct import と `dispense_task` / `medication_cycle` /
+    `set_plan` の直接分岐を provider registry 化した。認可境界のため、実装前に Oracle
+    GPT-5.5-Pro へ GitHub context 付きで相談し、`Option A`（pure registry + server composition root +
+    module-owned adapters）を採用した。bounded subagent review も同じ方向（unknown/throw fail-closed、
+    `org_id` と assignment predicate 維持、allowlist ratchet）を要求した。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `git remote -v`,
+    `gh repo view`,
+    `src/server/services/collaboration-access.ts`,
+    `src/server/services/collaboration-access.test.ts`,
+    `src/server/services/prescription-access.ts`,
+    `src/server/services/patient-access.ts`,
+    `src/server/services/care-report-access.ts`,
+    `src/lib/auth/visit-schedule-access.ts`,
+    `src/app/api/comments/route.ts`,
+    `src/app/api/presence/route.ts`,
+    `src/app/api/notifications/stream/route.ts`,
+    `src/core/module-registry/index.ts`,
+    `src/modules/pharmacy/index.ts`,
+    `src/modules/active-modules.ts`,
+    `tools/scripts/check-module-boundaries.mjs`,
+    `tools/module-boundary-allowlist.json`,
+    `docs/architecture/module-boundary.md`,
+    `docs/architecture/module-registry.md`,
+    `Plans.md`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `docs/architecture/module-boundary.md`,
+    `docs/architecture/module-registry.md`,
+    `src/core/collaboration/registry.ts`,
+    `src/core/collaboration/registry.test.ts`,
+    `src/server/collaboration/core-access-providers.ts`,
+    `src/server/collaboration/active-access-registry.ts`,
+    `src/modules/pharmacy/index.ts`,
+    `src/modules/pharmacy/collaboration/access-providers.ts`,
+    `src/modules/pharmacy/collaboration/access-providers.test.ts`,
+    `src/server/services/collaboration-access.ts`,
+    `src/server/services/collaboration-access.test.ts`,
+    `tools/module-boundary-allowlist.json`.
+  - bugs / risks reduced:
+    多職種連携のコメント・presence・SSE presence subscription の低権限 collaboration surface で、
+    common facade が薬局固有 entity/model/helper を直接知る構造を解消した。registry miss と provider
+    exception は strict false に倒し、unknown entity が既存 default branch へ落ちる余地を閉じた。
+    pharmacy provider は既存の `org_id: ctx.orgId` と non-org-scoped assignment predicate
+    (`MedicationCycle -> CareCase` / `SetPlan -> cycle`) を維持する。`collaboration-access.ts` の
+    allowlist debt を削除し、境界負債は 18 imports / 11 files から 17 imports / 10 files に減った。
+  - validation:
+    Oracle consult: `mod-collab-authz-review` completed after reattach; GitHub connector reached
+    `yusuketakuma/careviax`, browser GitHub URL was private/404. CLI foreground ended with Node
+    `setTypeOfService EINVAL` after saving artifacts, then `oracle session mod-collab-authz-review --render-plain`
+    recovered the completed transcript.
+    `pnpm exec vitest run src/core/collaboration/registry.test.ts src/modules/pharmacy/collaboration/access-providers.test.ts src/server/services/collaboration-access.test.ts --reporter=dot --testTimeout=30000`
+    passed: 3 files / 25 tests.
+    `pnpm boundaries:check` passed: 0 new violations, 17 allowlisted debt imports across 10 files.
+    `pnpm exec eslint src/core/collaboration/registry.ts src/core/collaboration/registry.test.ts src/server/collaboration/core-access-providers.ts src/server/collaboration/active-access-registry.ts src/modules/pharmacy/index.ts src/modules/pharmacy/collaboration/access-providers.ts src/modules/pharmacy/collaboration/access-providers.test.ts src/server/services/collaboration-access.ts src/server/services/collaboration-access.test.ts`
+    passed.
+    `pnpm exec prettier --check src/core/collaboration/registry.ts src/core/collaboration/registry.test.ts src/server/collaboration/core-access-providers.ts src/server/collaboration/active-access-registry.ts src/modules/pharmacy/index.ts src/modules/pharmacy/collaboration/access-providers.ts src/modules/pharmacy/collaboration/access-providers.test.ts src/server/services/collaboration-access.ts src/server/services/collaboration-access.test.ts docs/architecture/module-boundary.md docs/architecture/module-registry.md tools/module-boundary-allowlist.json`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck --pretty false` passed.
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false` passed.
+  - remaining work:
+    `MOD-COLLAB-001` is complete for access authorization. Follow-up debt remains in comment mention-link
+    presentation (`comments/route.ts` still maps pharmacy entity type to href directly), but that is not the
+    authz boundary targeted by this slice. DB migration, production data mutation, deploy, and external sends
+    were not performed.
+  - next action:
+    Scoped commit this collaboration-access provider slice, then continue with the next highest-value
+    `Plans.md` modularization candidate (`MOD-RISK-001` or `MOD-TASK-001`) after live-state verification.
+
 - codex: MOD-ARCH-001 / MOD-BOUND-001 backend module registry foundation.
   - current task:
     ユーザー提示の「PH-OS バックエンド・モジュール化 + 技術的負債解消 実装仕様書」を
