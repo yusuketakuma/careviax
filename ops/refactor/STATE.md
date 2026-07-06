@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: MOV-001 Patient Movement Timeline marker/deep-link scope plan（commit 39398066e）。
+- codex: MOV-001 Patient Movement Timeline marker/deep-link scope plan（commit 687169786）。
   - current task:
     ユーザー指示に合わせ、Patient Movement Timeline の処方・訪問・文書登録表示を
     「発生 marker + 正本画面 deep link」に固定する計画追記。
@@ -66,7 +66,7 @@
   - remaining:
     なし。
   - next action:
-    Landed and push pending.
+    Landed and push pending; this state hash correction is recorded in the follow-up landing commit.
 
 - codex: INB-001 inbound communication report action rail evidence（commit 97ba345bf）。
   - current task:
