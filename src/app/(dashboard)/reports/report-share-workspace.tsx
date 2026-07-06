@@ -687,7 +687,6 @@ export function ReportShareWorkspace() {
       loadingAriaLabel="報告アクションを読み込み中"
       errorTitle="報告アクションを表示できません"
       errorDescription="次にやることと止まっている理由の取得に失敗しました。再試行してください。"
-      errorDetail={workspaceQuery.error instanceof Error ? workspaceQuery.error.message : undefined}
       nextAction={data?.action_rail.next_action}
       blockedReasons={data?.action_rail.blocked_reasons ?? []}
       blockedReasonsEmptyLabel="止まっている作業はありません"
@@ -726,9 +725,6 @@ export function ReportShareWorkspace() {
               title="報告・共有を表示できません"
               cause="当日報告ワークスペースの集計取得に失敗しました。"
               nextAction="再読み込みして、下書き作成や送付前確認の状態を取り直してください。"
-              detail={
-                workspaceQuery.error instanceof Error ? workspaceQuery.error.message : undefined
-              }
               onRetry={() => void workspaceQuery.refetch()}
             />
           </div>

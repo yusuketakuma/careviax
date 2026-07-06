@@ -4041,7 +4041,7 @@ function PatientCommandCenterPanel({
   timelineExcerpt: {
     events: PatientTimelineEvent[];
     isLoading: boolean;
-    error: Error | null;
+    error: boolean;
     onRetry: () => void;
   };
   evidenceOpenLabel?: string;

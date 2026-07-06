@@ -41,6 +41,50 @@
 
 ## 直近の land（本日・要点）
 
+- codex: FE-ERR-001 shared action rail / report workspace segment hardening（pending commit）。
+  - current task:
+    shared `GuardedWorkspaceActionRail` と `/reports` workspace の取得失敗表示を shared segment pattern に寄せ、
+    raw backend error detail を UI に出さない retryable state として固定する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/components/ui/segment-state.tsx`,
+    `src/components/features/workspace/action-rail.tsx`,
+    `src/components/features/workspace/action-rail.test.tsx`,
+    `src/app/(dashboard)/reports/report-share-workspace.tsx`,
+    `src/app/(dashboard)/reports/report-share-workspace.test.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/components/features/workspace/action-rail.tsx`,
+    `src/components/features/workspace/action-rail.test.tsx`,
+    `src/app/(dashboard)/reports/report-share-workspace.tsx`,
+    `src/app/(dashboard)/reports/report-share-workspace.test.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`.
+  - implementation:
+    `GuardedWorkspaceActionRail` の loading を `SegmentLoading`、error を `SegmentError` へ移行し、
+    legacy `errorDetail` を props から削除した。`/reports` workspace の action rail と全体取得失敗から
+    `workspaceQuery.error.message` detail を除去した。`pnpm typecheck` で露出した
+    Patient Movement Timeline excerpt の `error` props 型不整合は、raw error を表示しない実装意図に合わせて
+    boolean に統一した。
+  - security risks reduced:
+    report workspace / shared action rail の取得失敗時に、patient name、token、storage key、API route/query などが
+    operator UI へ表示される面を縮小した。取得失敗を false-empty にせず retry 導線を維持する。
+  - validation:
+    `pnpm exec vitest run src/components/features/workspace/action-rail.test.tsx src/components/ui/segment-state.test.tsx 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' --reporter=dot --testTimeout=30000` → pass（5 files / 117 tests、既存 handoff act warning あり）。
+    `pnpm exec vitest run src/components/features/workspace/action-rail.test.tsx src/components/ui/segment-state.test.tsx 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' --reporter=dot --testTimeout=30000` → pass（4 files / 147 tests）。
+    `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' src/components/features/workspace/action-rail.tsx src/components/features/workspace/action-rail.test.tsx 'src/app/(dashboard)/reports/report-share-workspace.tsx' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx'` → pass。
+    `pnpm typecheck` → pass。
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' src/components/features/workspace/action-rail.tsx src/components/features/workspace/action-rail.test.tsx 'src/app/(dashboard)/reports/report-share-workspace.tsx' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx'` → pass。
+    `git diff --check -- Plans.md ops/refactor/STATE.md 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' src/components/features/workspace/action-rail.tsx src/components/features/workspace/action-rail.test.tsx 'src/app/(dashboard)/reports/report-share-workspace.tsx' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx'` → pass。
+  - remaining:
+    FE-ERR-001 は task/admin への段階展開が残る。Formal `InboundCommunicationEvent` /
+    `InboundCommunicationSignal` DB/API/review UI and MedicationStock Ledger source remain.
+  - next action:
+    scoped commit/push this action rail/report workspace hardening slice, then continue task/admin or next P0/P1 safe slice.
+
 - codex: FE-ERR-001 visits/schedules segment error hardening（pending commit）。
   - current task:
     `/visits` today-preparation、`/schedules` calendar、`/schedules` list board の取得失敗表示を

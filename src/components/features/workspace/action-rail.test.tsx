@@ -7,6 +7,7 @@ import { useUIStore } from '@/lib/stores/ui-store';
 import {
   BlockedReasonsPanel,
   EvidencePanel,
+  GuardedWorkspaceActionRail,
   NextActionPanel,
   WorkspaceActionRail,
 } from './action-rail';
@@ -278,5 +279,63 @@ describe('WorkspaceActionRail', () => {
     expect(screen.getByTestId('workspace-action-rail')).toBeTruthy();
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(useUIStore.getState().workspaceRailOpen).toBe(false);
+  });
+});
+
+describe('GuardedWorkspaceActionRail', () => {
+  it('renders loading through the shared segment loading state', () => {
+    render(
+      <GuardedWorkspaceActionRail
+        isLoading
+        isError={false}
+        onRetry={vi.fn()}
+        loadingTestId="workspace-action-rail-loading"
+        loadingAriaLabel="稼働状況を読み込み中"
+      />,
+    );
+
+    expect(screen.getByTestId('workspace-action-rail-loading')).toBeTruthy();
+    const status = screen.getByRole('status', { name: '稼働状況を読み込み中' });
+    expect(status.getAttribute('aria-live')).toBe('polite');
+    expect(within(status).getByText('補助パネルの状態を取得しています。')).toBeTruthy();
+  });
+
+  it('renders a retryable segment error without raw backend detail', () => {
+    const onRetry = vi.fn();
+    const unsafeLegacyProps = {
+      errorDetail:
+        '患者: 山田 太郎 storage_key=s3://secret/report.pdf token=secret /api/dashboard/cockpit?debug=raw',
+    } as { errorDetail: string };
+    render(
+      <GuardedWorkspaceActionRail
+        isLoading={false}
+        isError
+        onRetry={onRetry}
+        loadingTestId="workspace-action-rail-loading"
+        loadingAriaLabel="稼働状況を読み込み中"
+        errorTitle="稼働状況を取得できませんでした"
+        errorDescription="次にやることと止まっている理由の取得に失敗しました。再試行してください。"
+        {...unsafeLegacyProps}
+      />,
+    );
+
+    expect(
+      screen.getByRole('heading', { level: 2, name: '稼働状況を取得できませんでした' }),
+    ).toBeTruthy();
+    const status = screen.getByRole('status');
+    expect(status.textContent).toContain(
+      '次にやることと止まっている理由の取得に失敗しました。再試行してください。',
+    );
+    expect(status.textContent).toContain(
+      '取得失敗は問題なしではありません。通信状態を確認して再試行してください。',
+    );
+    expect(screen.queryByText(/storage_key/)).toBeNull();
+    expect(screen.queryByText(/山田 太郎/)).toBeNull();
+    expect(screen.queryByText(/token=secret/)).toBeNull();
+    expect(screen.queryByText(/patient_name/)).toBeNull();
+    expect(screen.queryByText(/\/api\/dashboard\/cockpit/)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
   });
 });

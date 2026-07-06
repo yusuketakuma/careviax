@@ -362,6 +362,18 @@ function stubFetch(
   return fetchMock;
 }
 
+function stubWorkspaceFailure(message: string) {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes('/api/care-reports/today-workspace')) {
+      return new Response(JSON.stringify({ message }), { status: 500 });
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
 function renderWorkspace() {
   return render(<ReportShareWorkspace />, { wrapper: createQueryClientWrapper() });
 }
@@ -994,6 +1006,33 @@ describe('ReportShareWorkspace', () => {
     expect(screen.queryByText(/doctor@example\.com/)).toBeNull();
     expect(screen.queryByText(/090-1234-5678/)).toBeNull();
     expect(screen.queryByText(/SMTP 550/)).toBeNull();
+  });
+
+  it('does not render raw workspace fetch errors in the action rail or main segment error', async () => {
+    const fetchMock = stubWorkspaceFailure(
+      'DB timeout /api/care-reports/today-workspace patient_name=山田 storage_key=s3://phi',
+    );
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('報告・共有を表示できません').length).toBeGreaterThanOrEqual(1);
+    });
+    expect(screen.queryByText(/patient_name=山田/)).toBeNull();
+    expect(screen.queryByText(/storage_key/)).toBeNull();
+    expect(screen.queryByText(/s3:\/\/phi/)).toBeNull();
+    expect(screen.queryByText(/\/api\/care-reports\/today-workspace/)).toBeNull();
+    expect(screen.queryByText('作成済み報告書はありません。')).toBeNull();
+    expect(screen.queryByTestId('report-today-drafts')).toBeNull();
+    expect(screen.queryByTestId('report-created-list')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.filter(([input]) =>
+          String(input).includes('/api/care-reports/today-workspace'),
+        ).length,
+      ).toBeGreaterThanOrEqual(2);
+    });
   });
 
   it('renders the report workspace action rail without refetching dashboard cockpit', async () => {
