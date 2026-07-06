@@ -41,7 +41,53 @@
 
 ## 直近の land（本日・要点）
 
-- codex: RX-002 MedicationStock RiskFinding -> dedicated task bridge（commit pending）。
+- codex: INB-001 inbound interprofessional task registry entries（commit pending）。
+  - current task:
+    他職種受信の review workflow を DB 正本/API 実装前に task registry へ接続し、
+    source/raw id を URL に出さない PHI-safe action presentation を固定する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/lib/tasks/task-registry.ts`,
+    `src/lib/tasks/task-registry.test.ts`,
+    `src/server/services/communication-queue.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/lib/tasks/task-registry.ts`,
+    `src/lib/tasks/task-registry.test.ts`.
+  - implementation:
+    `core.inbound_communication_review_required`,
+    `pharmacy.inbound_medication_stock_signal_review_required`,
+    `pharmacy.inbound_low_stock_unquantified_report`,
+    `pharmacy.inbound_medication_safety_review_required`,
+    `pharmacy.inbound_schedule_request_review_required`
+    を registry に登録。patient 関連 task だけ患者詳細の `#inbound-communications` または
+    `#medication-stock-events` anchor へ遷移し、`inbound_communication` /
+    `communication_event` / `inbound_medication_stock_signal` / schedule系 id は task type queue
+    へフォールバックする。table-driven test で module/defaultPriority/allowed related entity/
+    action labels/patient href/non-patient fallback/PHI非混入を固定。
+  - validation:
+    `pnpm vitest run src/lib/tasks/task-registry.test.ts --reporter=dot --testTimeout=30000`
+    passed: 1 file / 6 tests.
+    `pnpm vitest run src/lib/tasks/task-registry.test.ts src/lib/tasks/operational-task-presentation.test.ts src/server/services/communication-queue.test.ts --reporter=dot --testTimeout=30000`
+    passed: 3 files / 63 tests.
+    `pnpm exec eslint src/lib/tasks/task-registry.ts src/lib/tasks/task-registry.test.ts`
+    passed.
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/lib/tasks/task-registry.ts src/lib/tasks/task-registry.test.ts`
+    passed.
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/lib/tasks/task-registry.ts src/lib/tasks/task-registry.test.ts`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+    `pnpm boundaries:check` passed: 0 new violations, 7 allowlisted debt imports across 6 files.
+  - remaining:
+    INB-001 remains partial for dedicated DB正本、registration/review API、review UI、
+    VisitBrief/Schedule/Report linkage、formal provider integration.
+  - next action:
+    Scoped commit/push, then continue with review API/UI or VisitBrief/Schedule/Report linkage.
+
+- codex: RX-002 MedicationStock RiskFinding -> dedicated task bridge（commit de785e4d0）。
   - current task:
     Medication Stock の controlled `RiskFinding` が generic `risk_medication` ではなく、
     直前に登録した専用 `pharmacy.medication_stock_*` task type へ task 化されるよう

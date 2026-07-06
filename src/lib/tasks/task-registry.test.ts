@@ -133,6 +133,105 @@ describe('task-registry', () => {
     }
   });
 
+  it('registers inbound interprofessional task types with patient-scoped action links only', () => {
+    const inboundTaskTypes = [
+      {
+        taskType: 'core.inbound_communication_review_required',
+        module: 'core',
+        defaultPriority: 'high',
+        allowedRelatedEntityTypes: ['patient', 'inbound_communication', 'communication_event'],
+        actionLabel: '受信情報を確認',
+        queueLabel: '他職種受信',
+        patientHref: '/patients/patient%2F1%3Fx%3Dy%23frag#inbound-communications',
+      },
+      {
+        taskType: 'pharmacy.inbound_medication_stock_signal_review_required',
+        module: 'pharmacy',
+        defaultPriority: 'high',
+        allowedRelatedEntityTypes: ['patient', 'inbound_medication_stock_signal'],
+        actionLabel: '残数シグナルを確認',
+        queueLabel: '受信残数シグナル',
+        patientHref: '/patients/patient%2F1%3Fx%3Dy%23frag#medication-stock-events',
+      },
+      {
+        taskType: 'pharmacy.inbound_low_stock_unquantified_report',
+        module: 'pharmacy',
+        defaultPriority: 'high',
+        allowedRelatedEntityTypes: ['patient', 'inbound_medication_stock_signal'],
+        actionLabel: '不足報告を確認',
+        queueLabel: '数量不明の不足報告',
+        patientHref: '/patients/patient%2F1%3Fx%3Dy%23frag#medication-stock-events',
+      },
+      {
+        taskType: 'pharmacy.inbound_medication_safety_review_required',
+        module: 'pharmacy',
+        defaultPriority: 'urgent',
+        allowedRelatedEntityTypes: ['patient', 'inbound_communication', 'communication_event'],
+        actionLabel: '薬剤安全シグナルを確認',
+        queueLabel: '受信薬剤安全',
+        patientHref: '/patients/patient%2F1%3Fx%3Dy%23frag#inbound-communications',
+      },
+      {
+        taskType: 'pharmacy.inbound_schedule_request_review_required',
+        module: 'pharmacy',
+        defaultPriority: 'high',
+        allowedRelatedEntityTypes: [
+          'patient',
+          'inbound_communication',
+          'communication_event',
+          'visit_schedule',
+          'visit_schedule_proposal',
+        ],
+        actionLabel: '訪問調整を確認',
+        queueLabel: '受信訪問調整',
+        patientHref: '/patients/patient%2F1%3Fx%3Dy%23frag#inbound-communications',
+      },
+    ] as const;
+
+    for (const taskType of inboundTaskTypes) {
+      expect(getTaskTypeDefinition(taskType.taskType)).toMatchObject({
+        module: taskType.module,
+        taskType: taskType.taskType,
+        defaultPriority: taskType.defaultPriority,
+        allowedRelatedEntityTypes: taskType.allowedRelatedEntityTypes,
+      });
+
+      expect(
+        describeRegisteredOperationalTask({
+          task_type: taskType.taskType,
+          related_entity_type: 'patient',
+          related_entity_id: 'patient/1?x=y#frag',
+        }),
+      ).toMatchObject({
+        actionHref: taskType.patientHref,
+        actionLabel: taskType.actionLabel,
+        queueLabel: taskType.queueLabel,
+      });
+
+      for (const relatedEntityType of taskType.allowedRelatedEntityTypes) {
+        if (relatedEntityType === 'patient') {
+          continue;
+        }
+
+        const presentation = describeRegisteredOperationalTask({
+          task_type: taskType.taskType,
+          related_entity_type: relatedEntityType,
+          related_entity_id: 'mcs_message_1?patient_name=山田太郎&raw_text=湿布',
+        });
+
+        expect(presentation).toMatchObject({
+          actionHref: `/tasks?status=&task_type=${taskType.taskType}`,
+          actionLabel: taskType.actionLabel,
+          queueLabel: taskType.queueLabel,
+        });
+        expect(JSON.stringify(presentation)).not.toContain('mcs_message_1');
+        expect(JSON.stringify(presentation)).not.toContain('山田太郎');
+        expect(JSON.stringify(presentation)).not.toContain('湿布');
+        expect(JSON.stringify(presentation)).not.toContain('raw_text');
+      }
+    }
+  });
+
   it('rejects unknown task types for creation gates', () => {
     expect(() => assertRegisteredOperationalTaskType('unknown_task_type')).toThrow(
       'Unregistered operational task_type: unknown_task_type',

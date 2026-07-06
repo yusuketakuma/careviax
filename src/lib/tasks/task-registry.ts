@@ -100,6 +100,20 @@ function buildMedicationStockTaskPresentation(
   };
 }
 
+function buildInboundCommunicationTaskPresentation(
+  task: TaskLike,
+  labels: Pick<TaskActionPresentation, 'actionLabel' | 'queueLabel'>,
+  patientAnchor: '#inbound-communications' | '#medication-stock-events' = '#inbound-communications',
+): TaskActionPresentation {
+  return {
+    actionHref:
+      task.related_entity_type === 'patient' && task.related_entity_id
+        ? buildPatientHref(task.related_entity_id, patientAnchor)
+        : buildTasksHref({ status: '', taskType: task.task_type }),
+    ...labels,
+  };
+}
+
 const ACTIVE_FINDING_ABSENT_WITH_ENTITY = {
   strategy: 'active_finding_absent',
   requires_related_entity: true,
@@ -363,6 +377,17 @@ const TASK_TYPE_DEFINITION_SEEDS = [
       actionLabel: '依頼内容を確認',
       queueLabel: '業務依頼',
     }),
+  }),
+  coreTask('core.inbound_communication_review_required', {
+    label: '他職種受信確認',
+    description: '他職種から薬局へ届いた受信情報を確認する。',
+    defaultPriority: 'high',
+    allowedRelatedEntityTypes: ['patient', 'inbound_communication', 'communication_event'],
+    actionBuilder: (task) =>
+      buildInboundCommunicationTaskPresentation(task, {
+        actionLabel: '受信情報を確認',
+        queueLabel: '他職種受信',
+      }),
   }),
   coreTask('core.visit_demand', {
     legacyTaskTypes: ['visit_demand'],
@@ -803,6 +828,64 @@ const TASK_TYPE_DEFINITION_SEEDS = [
       buildMedicationStockTaskPresentation(task, {
         actionLabel: '残数報告を確認',
         queueLabel: '他職種残数報告',
+      }),
+  }),
+  pharmacyTask('pharmacy.inbound_medication_stock_signal_review_required', {
+    label: '受信残数シグナル',
+    description: '他職種受信情報から抽出された残数・使用量シグナルを確認する。',
+    defaultPriority: 'high',
+    allowedRelatedEntityTypes: ['patient', 'inbound_medication_stock_signal'],
+    actionBuilder: (task) =>
+      buildInboundCommunicationTaskPresentation(
+        task,
+        {
+          actionLabel: '残数シグナルを確認',
+          queueLabel: '受信残数シグナル',
+        },
+        '#medication-stock-events',
+      ),
+  }),
+  pharmacyTask('pharmacy.inbound_low_stock_unquantified_report', {
+    label: '数量不明の不足報告',
+    description: '数量が不明な外用薬・頓服薬の不足報告を確認する。',
+    defaultPriority: 'high',
+    allowedRelatedEntityTypes: ['patient', 'inbound_medication_stock_signal'],
+    actionBuilder: (task) =>
+      buildInboundCommunicationTaskPresentation(
+        task,
+        {
+          actionLabel: '不足報告を確認',
+          queueLabel: '数量不明の不足報告',
+        },
+        '#medication-stock-events',
+      ),
+  }),
+  pharmacyTask('pharmacy.inbound_medication_safety_review_required', {
+    label: '受信薬剤安全確認',
+    description: '他職種受信情報に含まれる薬剤安全シグナルを薬剤師が確認する。',
+    defaultPriority: 'urgent',
+    allowedRelatedEntityTypes: ['patient', 'inbound_communication', 'communication_event'],
+    actionBuilder: (task) =>
+      buildInboundCommunicationTaskPresentation(task, {
+        actionLabel: '薬剤安全シグナルを確認',
+        queueLabel: '受信薬剤安全',
+      }),
+  }),
+  pharmacyTask('pharmacy.inbound_schedule_request_review_required', {
+    label: '受信訪問調整',
+    description: '他職種受信情報に含まれる訪問希望・日程変更希望を確認する。',
+    defaultPriority: 'high',
+    allowedRelatedEntityTypes: [
+      'patient',
+      'inbound_communication',
+      'communication_event',
+      'visit_schedule',
+      'visit_schedule_proposal',
+    ],
+    actionBuilder: (task) =>
+      buildInboundCommunicationTaskPresentation(task, {
+        actionLabel: '訪問調整を確認',
+        queueLabel: '受信訪問調整',
       }),
   }),
   coreTask('core.visit_carry_item_review', {
