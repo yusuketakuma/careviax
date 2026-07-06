@@ -41,6 +41,45 @@
 
 ## 直近の land（本日・要点）
 
+- codex: FILE-000 file API minimization evidence sync（commit pending）。
+  - current task:
+    Plans 上で未完了扱いだった `FILE-000` が現行コードでは実装済みかを確認し、file API の
+    public DTO / no-store / PHI leakage regression evidence に合わせて計画を同期する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/api/files/complete/route.ts`,
+    `src/app/api/files/complete/route.test.ts`,
+    `src/app/api/files/presigned-upload/route.ts`,
+    `src/app/api/files/presigned-upload/route.test.ts`,
+    `src/app/api/__tests__/api-conventions-static.test.ts`,
+    `src/server/services/file-storage.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `FILE-000` を `cc:DONE 2026-07-07` として Plans に同期した。`/api/files/complete` は
+    `id/status/completedAt` のみ返し、`/api/files/presigned-upload` は public presenter で
+    `id/uploadUrl/expiresIn/headers` のみに絞る。service 内部の `objectKey/storageKey` や
+    patient/report/visit id、originalName、mimeType、sizeBytes、purpose、etag、uploadedBy は
+    public response に出さないことを既存 tests が固定している。
+  - safety:
+    stale plan のみ更新。file API route / service の挙動変更は行っていない。
+  - validation:
+    `pnpm exec vitest run src/app/api/files/complete/route.test.ts src/app/api/files/presigned-upload/route.test.ts src/app/api/__tests__/api-conventions-static.test.ts --reporter=dot --testTimeout=30000`
+    passed: 3 files / 45 tests.
+    `pnpm exec eslint src/app/api/files/complete/route.ts src/app/api/files/complete/route.test.ts src/app/api/files/presigned-upload/route.ts src/app/api/files/presigned-upload/route.test.ts src/app/api/__tests__/api-conventions-static.test.ts`
+    passed.
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md`
+    passed after formatting `Plans.md`.
+    `git diff --check -- Plans.md ops/refactor/STATE.md`
+    passed.
+  - remaining:
+    commit/push。
+  - next action:
+    Land the file API minimization evidence sync.
+
 - codex: FE-ERR-001 Dashboard segment state migration（commit 46314c2c6, pushed）。
   - current task:
     前回追加した shared segment state wrapper を dashboard cockpit の summary/details/team/comments
