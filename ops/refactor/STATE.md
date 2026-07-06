@@ -41,6 +41,70 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOD-REPORT-001 Report Template provider registry.
+  - current task:
+    `Plans.md` の `MOD-REPORT-001` first slice として、報告書 template builder を
+    `src/modules/pharmacy/reports/report-templates.ts` へ移し、`src/core/report/template-registry.ts` と
+    `src/server/report/active-template-registry.ts` 経由の provider registry に接続した。既存
+    `report-generator` は pharmacy builder を直接 import せず、`activeReportTemplateRegistry.render()`
+    から draft content を生成する。provider metadata には target role、`canSendCareReport`、
+    masking profile、audit surface、printable を保持した。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `src/core/module-registry/index.ts`,
+    `src/lib/reports/care-report-target-role.ts`,
+    `src/lib/auth/permission-matrix.ts`,
+    `src/server/services/report-generator.ts`,
+    `src/server/services/report-generator.test.ts`,
+    `src/modules/pharmacy/index.ts`,
+    `tools/module-boundary-allowlist.json`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/core/report/template-registry.ts`,
+    `src/core/report/template-registry.test.ts`,
+    `src/server/report/active-template-registry.ts`,
+    `src/server/report/active-template-registry.test.ts`,
+    `src/modules/pharmacy/index.ts`,
+    `src/modules/pharmacy/reports/report-template-providers.ts`,
+    `src/modules/pharmacy/reports/report-template-providers.test.ts`,
+    `src/modules/pharmacy/reports/report-templates.ts`,
+    `src/modules/pharmacy/reports/report-templates.test.ts`,
+    `src/server/services/report-generator.ts`,
+    `src/server/services/report-generator.test.ts`,
+    `tools/module-boundary-allowlist.json`.
+  - bugs / risks reduced:
+    `report-generator.ts` が医師/ケアマネ/訪看/施設向け薬局 template builder を直接 import していた
+    `DEBT-REPORT-001` を削減した。`src/modules/pharmacy/index.ts` から raw builder export を出さず、
+    public module surface は provider factory のみにした。template provider unknown/duplicate/provider
+    exception は fail-closed。不正な non-object template output は `{}` に落として空レポートを保存せず、
+    DB write 前に例外化する。
+  - security / PHI reviewed:
+    Oracle/GPT-5.5 Pro final review を `report-template-registry-review` session で実施。GitHub context
+    と dirty diff を渡し、判定は “Go as registry seam first slice”。指摘は、policy metadata は
+    enforcement ではないこと、raw builder は internal export として残るが public index 露出は解消済み、
+    unknown report type は registry 到達時に fail-closed するが DB read 前の事前拒否は後続候補、
+    maskingProfile は将来 union/registry 化すべき、という内容。commit 前 blocker はなし。
+  - validation:
+    `pnpm exec vitest run src/core/report/template-registry.test.ts src/server/report/active-template-registry.test.ts src/modules/pharmacy/reports/report-template-providers.test.ts src/modules/pharmacy/reports/report-templates.test.ts src/server/services/report-generator.test.ts --reporter=dot --testTimeout=30000`
+    passed: 5 files / 38 tests.
+    `pnpm boundaries:check` passed: 0 new violations, 7 allowlisted debt imports across 6 files.
+    `pnpm exec eslint ...report registry/template/generator files` passed.
+    `pnpm exec prettier --check ... Plans.md` passed after formatting.
+    `pnpm typecheck` passed.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed.
+    `git diff --check -- ...touched paths` passed.
+    `rg "reports/report-templates|\\./report-templates|\\bbuildPhysicianReport\\b|\\bbuildCareManagerReport\\b|\\bbuildVisitingNurseReport\\b|\\bbuildFacilityReport\\b" src -g '*.ts' -g '*.tsx'`
+    showed only `src/modules/pharmacy/reports/report-templates.ts`, provider, and local tests.
+  - remaining work:
+    `MOD-REPORT-001` is partial. Policy metadata is annotation only; actual send gate / masking enforcement /
+    delivery audit minimization / `ReportTemplate.module` and `CareReport.discipline` migration plan remain in
+    `REP-*`, `SEC-*`, and `MOD-DATA-001`. No DB migration, deploy, external send, or production mutation was run.
+  - next action:
+    Commit/push this report-template registry slice, then continue with `MOD-SHARE-001`, `MOD-BILLING-001`,
+    or the remaining `MOD-VISIT-001` contributor registry work.
+
 - codex: README system overview refresh.
   - current task:
     ユーザー指示により、GitHub README の一般的な役割を公式 GitHub Docs で確認し、現行コードと

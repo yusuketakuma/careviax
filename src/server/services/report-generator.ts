@@ -10,12 +10,8 @@ import {
   buildCareReportVisitSourceProvenance,
 } from './care-report-source-provenance';
 import type { StructuredSoap } from '@/types/structured-soap';
-import {
-  buildPhysicianReport,
-  buildCareManagerReport,
-  buildVisitingNurseReport,
-  buildFacilityReport,
-} from './report-templates';
+import type { ReportTemplateType } from '@/core/report/template-registry';
+import { activeReportTemplateRegistry } from '@/server/report/active-template-registry';
 import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
 import type { VisitWorkflowConferenceContext } from '@/lib/visits/visit-workflow-projection';
 import { buildReportableConferenceHighlightsFromStructuredContent } from '@/lib/conferences/conference-report-disclosure';
@@ -45,7 +41,7 @@ import {
 
 // CareReport.report_type は Prisma enum ReportType に対応する。
 // 訪問看護向け = nurse_share / 施設向け = facility_handoff（schema 既存値を再利用）。
-type ReportType = 'physician_report' | 'care_manager_report' | 'nurse_share' | 'facility_handoff';
+type ReportType = ReportTemplateType;
 type ExistingCareReport = {
   id: string;
   report_type: ReportType;
@@ -99,8 +95,19 @@ function readConferenceActionItems(value: unknown): string[] {
     .filter((item): item is string => Boolean(item?.trim()));
 }
 
-function readGeneratedReportContent(value: unknown): Record<string, unknown> {
-  return readJsonObject(value) ?? {};
+function readGeneratedReportContent(type: ReportType, value: unknown): Record<string, unknown> {
+  const content = readJsonObject(value);
+  if (!content) {
+    throw new Error(`Report template provider returned invalid content: ${type}`);
+  }
+  return content;
+}
+
+function renderReportTemplate(
+  type: ReportType,
+  context: Record<string, unknown>,
+): Record<string, unknown> {
+  return readGeneratedReportContent(type, activeReportTemplateRegistry.render(type, context));
 }
 
 function isRefreshableDraftReport(
@@ -407,40 +414,36 @@ export async function generateReportsFromVisit(
   for (const type of typesToGenerate) {
     if (type === 'physician_report') {
       contentByType.set(type, {
-        ...readGeneratedReportContent(
-          buildPhysicianReport({
-            patient: patientInput,
-            visitRecord: visitRecordInput,
-            structuredSoap: reportStructuredSoap,
-            prescriptionLines: prescriptionLinesNormalized,
-            residualMedications: residualMedicationsNormalized,
-            prescriber: { name: prescriber.name, organization_name: prescriber.organization_name },
-            pharmacistName,
-            intake,
-            conferenceContext,
-          }),
-        ),
+        ...renderReportTemplate(type, {
+          patient: patientInput,
+          visitRecord: visitRecordInput,
+          structuredSoap: reportStructuredSoap,
+          prescriptionLines: prescriptionLinesNormalized,
+          residualMedications: residualMedicationsNormalized,
+          prescriber: { name: prescriber.name, organization_name: prescriber.organization_name },
+          pharmacistName,
+          intake,
+          conferenceContext,
+        }),
         billing_context: billingContext,
         source_provenance: sourceProvenance,
       });
     } else if (type === 'care_manager_report') {
       contentByType.set(type, {
-        ...readGeneratedReportContent(
-          buildCareManagerReport({
-            patient: { name: patient.name, birth_date: patient.birth_date },
-            visitRecord: visitRecordInput,
-            structuredSoap: reportStructuredSoap,
-            prescriptionLines: prescriptionLinesNormalized,
-            residualMedications: residualMedicationsNormalized,
-            careManager: {
-              name: careManager.name,
-              organization_name: careManager.organization_name,
-            },
-            pharmacistName,
-            intake,
-            conferenceContext,
-          }),
-        ),
+        ...renderReportTemplate(type, {
+          patient: { name: patient.name, birth_date: patient.birth_date },
+          visitRecord: visitRecordInput,
+          structuredSoap: reportStructuredSoap,
+          prescriptionLines: prescriptionLinesNormalized,
+          residualMedications: residualMedicationsNormalized,
+          careManager: {
+            name: careManager.name,
+            organization_name: careManager.organization_name,
+          },
+          pharmacistName,
+          intake,
+          conferenceContext,
+        }),
         billing_context: billingContext,
         source_provenance: sourceProvenance,
       });
@@ -456,12 +459,8 @@ export async function generateReportsFromVisit(
         intake,
         conferenceContext,
       };
-      const audienceContent =
-        type === 'nurse_share'
-          ? buildVisitingNurseReport(audienceContext)
-          : buildFacilityReport(audienceContext);
       contentByType.set(type, {
-        ...readGeneratedReportContent(audienceContent),
+        ...renderReportTemplate(type, audienceContext),
         billing_context: billingContext,
         source_provenance: sourceProvenance,
       });

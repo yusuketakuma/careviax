@@ -63,11 +63,16 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
-vi.mock('./report-templates', () => ({
-  buildPhysicianReport: buildPhysicianReportMock,
-  buildCareManagerReport: buildCareManagerReportMock,
-  buildVisitingNurseReport: buildVisitingNurseReportMock,
-  buildFacilityReport: buildFacilityReportMock,
+vi.mock('@/server/report/active-template-registry', () => ({
+  activeReportTemplateRegistry: {
+    render: vi.fn((type: string, context: unknown) => {
+      if (type === 'physician_report') return buildPhysicianReportMock(context);
+      if (type === 'care_manager_report') return buildCareManagerReportMock(context);
+      if (type === 'nurse_share') return buildVisitingNurseReportMock(context);
+      if (type === 'facility_handoff') return buildFacilityReportMock(context);
+      throw new Error(`Unexpected report template type in test: ${type}`);
+    }),
+  },
 }));
 
 vi.mock('@/lib/patient/home-visit-intake', () => ({
@@ -1126,7 +1131,7 @@ describe('generateReportsFromVisit', () => {
     });
   });
 
-  it('drops non-object template content while keeping generated report metadata', async () => {
+  it('rejects non-object template content before writing generated reports', async () => {
     visitRecordFindFirstMock.mockResolvedValue({
       id: 'vr-1',
       org_id: 'org-1',
@@ -1174,26 +1179,10 @@ describe('generateReportsFromVisit', () => {
         }),
     );
 
-    await generateReportsFromVisit('org-1', 'user-1', 'vr-1');
-
-    expect(careReportCreateManyMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: [
-          expect.objectContaining({
-            content: {
-              billing_context: null,
-              source_provenance: expect.objectContaining({
-                visit_record_id: 'vr-1',
-                schedule_id: 'vs-1',
-                patient_id: 'p-1',
-                case_id: 'case-1',
-                prescription_line_ids: [],
-              }),
-            },
-          }),
-        ],
-      }),
+    await expect(generateReportsFromVisit('org-1', 'user-1', 'vr-1')).rejects.toThrow(
+      'Report template provider returned invalid content: physician_report',
     );
+    expect(careReportCreateManyMock).not.toHaveBeenCalled();
   });
 
   it('throws when patient not found', async () => {

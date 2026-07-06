@@ -8,6 +8,7 @@ export {
   type PharmacyPatientWorkspaceReadModel,
 } from './patient-workspace/workspace-read-model';
 export { createPharmacyCaseRiskProviders } from './risk/case-risk-providers';
+export { createPharmacyReportTemplateProviders } from './reports/report-template-providers';
 export {
   buildPharmacyVisitBriefDispensingItems,
   detectPharmacyVisitBriefMedicationChanges,
@@ -38,6 +39,7 @@ export const pharmacyModule = definePhosModule({
     'src/server/services/dispense-workbench-patients.ts',
     'src/server/services/visit-preparation-readiness.ts',
     'src/server/services/billing-evidence/core.ts',
+    'src/modules/pharmacy/reports/report-template-providers.ts',
   ],
   riskDomainsRef: ['risk:medication', 'risk:dispensing', 'risk:visit_preparation', 'risk:billing'],
   taskRegistryRef: ['task:src/lib/tasks/task-registry.ts'],

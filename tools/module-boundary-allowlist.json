@@ -32,12 +32,6 @@
       "targets": ["@/server/services/drug-master-import/shared"]
     },
     {
-      "path": "src/server/services/report-templates.ts",
-      "expectedCount": 1,
-      "reason": "報告書テンプレートが院外処方区分 (dispensing/outside-med-classification) を参照している既存負債。報告書整形が調剤区分に依存している。将来は区分ラベルを薬局非依存の場所へ切り出す。",
-      "targets": ["@/lib/dispensing/outside-med-classification"]
-    },
-    {
       "path": "src/server/services/visit-schedule-billing-preview.ts",
       "expectedCount": 1,
       "reason": "訪問スケジュール請求プレビューが処方取込区分 (prescription-intake-classification) を参照している既存負債。算定プレビューが薬局固有の処方区分に依存している。将来は区分判定を薬局非依存の場所へ切り出す。",
