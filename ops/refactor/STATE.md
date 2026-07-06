@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: MOV-001 Inquiry marker fallback deep link hardening（commit pending）。
+- codex: MOV-001 Inquiry marker fallback deep link hardening（commit 8ad53d392, pushed）。
   - current task:
     Patient Movement Timeline の処方系 marker で、正本 deep link が広すぎる fallback に逃げないようにする。
   - files inspected:
@@ -81,9 +81,9 @@
     `git diff --check -- Plans.md ops/refactor/STATE.md src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.test.ts`
     passed.
   - remaining:
-    commit and push this scoped slice. Formal INB signal / MedicationStock Ledger source work remains.
+    Formal INB signal / MedicationStock Ledger source work remains.
   - next action:
-    Commit and push the scoped MOV-001 fallback hardening.
+    Continue with the next Plans item.
 
 - codex: FILE-000 file API minimization evidence sync（commit 8a47033ad, pushed）。
   - current task:
