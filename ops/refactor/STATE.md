@@ -11292,3 +11292,37 @@
   `INB-001` implementation remains planned. Next safe implementation slice is pure inbound domain
   classification/tests, then additive schema/migration dry-run only after review. Medication Stock DB
   schema, API, VisitRecord adapter, and inbound signal adapter remain future slices.
+
+## 2026-07-07 VISIT-SYNC plan/status resync
+
+- codex:
+  Synced `Plans.md` with the current `VISIT-SYNC-001` implementation state. The code already
+  includes immediate draft flush on mobile step changes, residual medication row add/remove, and
+  attachment selection, plus sync queue retry backoff via `nextAttemptAt`. The plan still described
+  those as remaining work, so this slice corrects the task ledger without changing runtime code.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `git log --oneline --decorate`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`,
+  `src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx`,
+  `src/lib/stores/sync-engine.ts`,
+  `src/lib/stores/sync-engine.test.ts`,
+  `src/lib/stores/offline-db.ts`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  Reduced execution risk from stale planning text. Future `VISIT-SYNC-001` work should not
+  reimplement immediate step/residual/attachment flush or retry backoff; it should focus on the
+  remaining save-state UI matrix, attachment reload recovery contract if required, and mobile E2E.
+- validation:
+  `pnpm exec vitest run 'src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx' src/lib/stores/sync-engine.test.ts src/lib/stores/offline-store.test.ts src/components/providers/offline-sync-bridge.test.tsx --reporter=dot --testTimeout=30000`
+  green (4 files / 73 tests);
+  `pnpm exec prettier --check Plans.md ops/refactor/STATE.md` green after formatting `Plans.md`;
+  `git diff --check -- Plans.md ops/refactor/STATE.md` green.
+- remaining:
+  `VISIT-SYNC-001` remains partial. Remaining implementation is the persistent UI state matrix
+  (`保存中` / `端末保存済` / `同期待ち` / `同期済` / `競合あり`), mobile E2E, and any explicit
+  encrypted attachment draft reload recovery contract.
