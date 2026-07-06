@@ -6525,3 +6525,64 @@
 - remaining:
   Broader `Plans.md` objective remains open. `UX-TBL-001 / DEV-PHI-001` の残りは approved export registry、
   real consumer の PHI export snapshot、他 bulk action consumer の scope wording sweep。
+
+## 2026-07-06 Approved server export registry slice
+
+- codex: `UX-TBL-001 / DEV-PHI-001` approved server export registry implemented.
+  DataTable の `serverExport` descriptor を `src/lib/audit/server-export-registry.ts` の approved surface
+  registry に接続した。`surfaceId` ごとの endpoint prefix / audit event / masking profile / description が
+  一致しない full export は fail-closed にし、任意 same-origin path に「監査・マスキング済み」文言を出せない
+  contract にした。
+- implementation:
+  `buildApprovedServerExportDescriptor` で承認済み surface から descriptor を生成し、
+  `getApprovedServerExportDescriptorProblem` で runtime validation する。初期 registry は
+  `audit_logs_csv`、`billing_candidates_csv`、`communication_requests_external_csv` を持つ。
+  DataTable test は `communication_requests_external_csv` の registry builder を使うように更新し、
+  endpoint mismatch と masking profile 改ざんを fail-closed test で固定した。
+- design / imagegen:
+  共有 DataTable contract と pure registry の追加で、新規画面レイアウト再構築を伴わないため
+  `imagegen` / `gpt-image-2` の新規生成は省略した。
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `docs/ui-ux-design-guidelines.md`,
+  `src/components/ui/data-table.tsx`,
+  `src/components/ui/data-table.test.tsx`,
+  `src/server/services/export-audit.ts`,
+  `src/server/services/export-audit.test.ts`,
+  `src/lib/audit/export-audit-sanitizer.ts`,
+  `src/app/api/communication-requests/export/route.ts`,
+  `src/app/api/billing-candidates/export/route.ts`.
+- files changed:
+  `Plans.md`,
+  `src/lib/audit/server-export-registry.ts`,
+  `src/lib/audit/server-export-registry.test.ts`,
+  `src/components/ui/data-table.tsx`,
+  `src/components/ui/data-table.test.tsx`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  raw same-app export URL と任意説明文だけで full export を「監査・マスキング済み」と見せられる
+  DEV-PHI risk を低減した。承認済み surface と一致しない endpoint/metadata は disabled reason を出す。
+- security / PHI reviewed:
+  export payload は変更なし。registry は UI が表示する export safety claim を audit/masking profile に
+  紐づけるための guard で、患者名、住所、電話、処方本文、保険情報、外部共有 URL、secret は扱わない。
+- performance issues reviewed:
+  registry lookup と string validation のみ。DB query、network call、payload field、row model 計算は追加なし。
+- validation:
+  `pnpm exec vitest run src/lib/audit/server-export-registry.test.ts src/components/ui/data-table.test.tsx --reporter=dot --testTimeout=30000`
+  green (2 files / 27 tests);
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  green;
+  `pnpm lint`
+  green with existing warnings in `src/lib/platform/break-glass.test.ts` (`_tx`, `_input` unused);
+  `pnpm format:check`
+  green after formatting `src/lib/audit/server-export-registry.ts` and
+  `src/lib/audit/server-export-registry.test.ts`;
+  `git diff --check`
+  green.
+- remaining:
+  Broader `Plans.md` objective remains open. 残りは real consumer の PHI export snapshot、他 bulk action
+  consumer の scope wording sweep、route 側 export audit metadata と registry surface id の突合。
