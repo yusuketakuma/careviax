@@ -184,6 +184,20 @@ export type PartnerVisitRecordTimelineSource = {
   };
 };
 
+export type OperationalTaskTimelineSource = {
+  id: string;
+  task_type: string;
+  status: string;
+  priority: string;
+  due_date: Date | null;
+  sla_due_at: Date | null;
+  completed_at: Date | null;
+  related_entity_type: string | null;
+  related_entity_id: string | null;
+  created_at: Date;
+  updated_at: Date;
+};
+
 export type SelfReportTimelineSource = {
   id: string;
   subject: string | null;
@@ -307,6 +321,7 @@ export type BuildPatientTimelineEventsInput = {
   communicationEvents: readonly CommunicationTimelineSource[];
   patientMcsMessages: readonly PatientMcsMessageTimelineSource[];
   partnerVisitRecords: readonly PartnerVisitRecordTimelineSource[];
+  operationalTasks: readonly OperationalTaskTimelineSource[];
   selfReports: readonly SelfReportTimelineSource[];
   externalShares: readonly ExternalShareTimelineSource[];
   inquiryRecords: readonly InquiryTimelineSource[];
@@ -809,6 +824,7 @@ export function buildPatientTimelineEvents(
     communicationEvents,
     patientMcsMessages,
     partnerVisitRecords,
+    operationalTasks,
     selfReports,
     externalShares,
     inquiryRecords,
@@ -833,6 +849,7 @@ export function buildPatientTimelineEvents(
     communicationEvents,
     patientMcsMessages,
     partnerVisitRecords,
+    operationalTasks,
     selfReports,
     externalShares,
     inquiryRecords,

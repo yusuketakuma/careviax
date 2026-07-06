@@ -1562,6 +1562,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
     communicationEvents,
     patientMcsMessages: [],
     partnerVisitRecords: [],
+    operationalTasks: [],
     selfReports,
     externalShares,
     inquiryRecords,

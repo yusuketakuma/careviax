@@ -41,6 +41,58 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOV-001 operational task timeline source slice（未コミット）。
+  - current task:
+    Patient Movement Timeline に既存 `Task` の患者/ケース紐づき運用タスクを追加した。
+    タイムラインではタスクが作成/完了された事実だけを表示し、詳細確認は `/tasks` の related entity
+    絞り込み deep link へ委譲する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `prisma/schema/core-task.prisma`,
+    `src/lib/tasks/task-registry.ts`,
+    `src/lib/dashboard/home-link-builders.ts`,
+    `src/server/services/patient-detail.ts`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail.test.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/api/patients/[id]/route.ts`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail.test.ts`.
+  - implementation:
+    Added `operationalTasksSource` to `TIMELINE_SOURCES`. It reads tasks scoped to
+    `related_entity_type='patient'` / current patient or `related_entity_type='case'` / current case ids,
+    emits `task_created` for open tasks and `task_resolved` for completed/cancelled tasks, and links to
+    `/tasks` with `status=&task_type=&related_entity_type=&related_entity_id=` filters.
+    The legacy patient detail route passes an empty `operationalTasks` array to preserve the additive
+    timeline builder contract.
+  - security / PHI reviewed:
+    Task `title`, `description`, and `metadata` may contain free text or PHI, so the source does not select
+    them. Timeline summary uses only registered task type label, controlled status/priority labels,
+    due date, SLA date, and related entity type.
+  - validation:
+    `pnpm vitest run src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.test.ts --reporter=dot --testTimeout=30000`
+    passed: 2 files / 75 tests.
+    `pnpm exec eslint 'src/app/api/patients/[id]/route.ts' src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts`
+    passed.
+    `pnpm exec prettier --check 'src/app/api/patients/[id]/route.ts' src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+    `pnpm boundaries:check` passed: 0 new violations, 7 allowlisted debt imports across 6 files.
+    `git diff --check -- 'src/app/api/patients/[id]/route.ts' src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts`
+    passed.
+  - remaining:
+    `MOV-001` remains partial for formal inbound signal source, MedicationStock source, safety finding
+    source, dedicated component split/rename, and Playwright mobile smoke.
+  - next action:
+    Continue with safety finding source or MedicationStock source integration, unless the next selected
+    slice opens the formal inbound persistence/review queue.
+
 - codex: MOV-001 existing inbound source integration slice（未コミット）。
   - current task:
     Patient Movement Timeline に、正式な `InboundCommunicationEvent` / `InboundCommunicationSignal`

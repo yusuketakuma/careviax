@@ -50,6 +50,7 @@ function buildDb<T extends Record<string, unknown> = Record<string, never>>(over
     },
     task: {
       count: vi.fn().mockResolvedValue(0),
+      findMany: vi.fn().mockResolvedValue([]),
     },
     consentRecord: {
       findFirst: vi.fn(),
@@ -3990,6 +3991,109 @@ describe('getPatientTimelineData', () => {
     expect(serialized).not.toContain('source_url');
     expect(serialized).not.toContain('record_content');
     expect(serialized).not.toContain('SOAP');
+  });
+
+  it('adds patient and case operational tasks to movement timeline without selecting task free text', async () => {
+    const taskFindManyMock = vi.fn().mockResolvedValue([
+      {
+        id: 'task_patient_1',
+        task_type: 'patient_self_report_followup',
+        status: 'pending',
+        priority: 'high',
+        due_date: new Date('2026-04-07T09:00:00.000Z'),
+        sla_due_at: null,
+        completed_at: null,
+        related_entity_type: 'patient',
+        related_entity_id: 'patient_1',
+        created_at: new Date('2026-04-04T10:00:00.000Z'),
+        updated_at: new Date('2026-04-04T10:00:00.000Z'),
+      },
+      {
+        id: 'task_case_1',
+        task_type: 'risk_medication',
+        status: 'completed',
+        priority: 'urgent',
+        due_date: null,
+        sla_due_at: new Date('2026-04-05T09:00:00.000Z'),
+        completed_at: new Date('2026-04-04T11:00:00.000Z'),
+        related_entity_type: 'case',
+        related_entity_id: 'case_1',
+        created_at: new Date('2026-04-04T08:00:00.000Z'),
+        updated_at: new Date('2026-04-04T11:00:00.000Z'),
+      },
+    ]);
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      task: {
+        count: vi.fn().mockResolvedValue(2),
+        findMany: taskFindManyMock,
+      },
+    });
+
+    const result = await getPatientTimelineData(runnerFor(db), {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+    });
+
+    expect(taskFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          OR: expect.arrayContaining([
+            {
+              related_entity_type: 'patient',
+              related_entity_id: 'patient_1',
+            },
+            {
+              related_entity_type: 'case',
+              related_entity_id: { in: ['case_1'] },
+            },
+          ]),
+        }),
+        select: expect.not.objectContaining({
+          title: true,
+          description: true,
+          metadata: true,
+        }),
+      }),
+    );
+
+    expect(result?.movement_events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'task:task_patient_1',
+          event_type: 'task_created',
+          category: 'task',
+          title: '運用タスクを作成',
+          href: '/tasks?status=&task_type=patient_self_report_followup&related_entity_type=patient&related_entity_id=patient_1',
+          action_label: 'タスクを開く',
+          status: 'pending',
+          status_label: '未着手',
+          privacy_level: 'summary',
+        }),
+        expect.objectContaining({
+          id: 'task:task_case_1',
+          event_type: 'task_resolved',
+          category: 'task',
+          title: '運用タスクを完了',
+          href: '/tasks?status=&task_type=risk_medication&related_entity_type=case&related_entity_id=case_1',
+          status: 'completed',
+          status_label: '完了',
+          privacy_level: 'summary',
+        }),
+      ]),
+    );
+
+    const serialized = JSON.stringify(result?.movement_events);
+    expect(serialized).not.toContain('患者名入りタスク本文');
+    expect(serialized).not.toContain('description');
   });
 
   it('bounds first-visit document timeline reads and keeps legacy audit filters visible', async () => {

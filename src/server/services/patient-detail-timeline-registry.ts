@@ -12,8 +12,10 @@ import {
   getInquiryPrimaryDetail,
 } from '@/lib/inquiries/presentation';
 import { CYCLE_STATUS_LABELS } from '@/lib/prescription/cycle-workspace';
+import { buildTasksHref } from '@/lib/dashboard/home-link-builders';
 import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';
 import { buildReportHref } from '@/lib/reports/navigation';
+import { getTaskTypeDefinition } from '@/lib/tasks/task-registry';
 import { buildVisitHref, buildVisitRecordHref } from '@/lib/visits/navigation';
 import { getConferenceTypeLabel } from '@/lib/visits/visit-workflow-projection';
 import { buildVisibleExternalAccessGrantWhere } from '@/server/services/external-access';
@@ -30,6 +32,7 @@ import {
   SELF_REPORT_STATUS_LABELS,
   VISIT_TYPE_LABELS,
   type PartnerVisitRecordTimelineSource,
+  type OperationalTaskTimelineSource,
   type PatientMcsMessageTimelineSource,
   type BillingCandidateTimelineSource,
   type CareReportTimelineSource,
@@ -71,6 +74,7 @@ export type PatientTimelineRegistryDb = {
   patientSelfReport: Pick<Prisma.TransactionClient['patientSelfReport'], 'findMany'>;
   patientMcsMessage: Pick<Prisma.TransactionClient['patientMcsMessage'], 'findMany'>;
   partnerVisitRecord: Pick<Prisma.TransactionClient['partnerVisitRecord'], 'findMany'>;
+  task: Pick<Prisma.TransactionClient['task'], 'findMany'>;
   prescriptionIntake: Pick<Prisma.TransactionClient['prescriptionIntake'], 'findMany'>;
   visitRecord: Pick<Prisma.TransactionClient['visitRecord'], 'findMany'>;
   visitSchedule: Pick<Prisma.TransactionClient['visitSchedule'], 'findMany'>;
@@ -114,6 +118,18 @@ const PARTNER_VISIT_RECORD_STATUS_LABELS: Record<string, string> = {
   submitted: '提出済み',
   confirmed: '確認済み',
   returned: '差戻し',
+};
+const TASK_STATUS_LABELS: Record<string, string> = {
+  pending: '未着手',
+  in_progress: '対応中',
+  completed: '完了',
+  cancelled: '取消',
+};
+const TASK_PRIORITY_LABELS: Record<string, string> = {
+  urgent: '至急',
+  high: '高',
+  normal: '通常',
+  low: '低',
 };
 
 const FIRST_VISIT_DOCUMENT_ACTION_VERBS: Record<string, string> = {
@@ -486,6 +502,85 @@ export const partnerVisitRecordsSource = defineTimelineSource<
       actor_name: item.pharmacist_name,
       metadata: [],
     })),
+});
+
+// --- operationalTasks -------------------------------------------------------
+export const operationalTasksSource = defineTimelineSource<
+  'operationalTasks',
+  OperationalTaskTimelineSource
+>({
+  key: 'operationalTasks',
+  emptyFallback: EMPTY,
+  fetch: ({ db, orgId, patientId, caseIds }) =>
+    db.task.findMany({
+      where: {
+        org_id: orgId,
+        OR: [
+          {
+            related_entity_type: 'patient',
+            related_entity_id: patientId,
+          },
+          ...(caseIds.length > 0
+            ? [
+                {
+                  related_entity_type: 'case',
+                  related_entity_id: {
+                    in: caseIds,
+                  },
+                },
+              ]
+            : []),
+        ],
+      },
+      orderBy: [{ updated_at: 'desc' }, { created_at: 'desc' }],
+      take: 12,
+      select: {
+        id: true,
+        task_type: true,
+        status: true,
+        priority: true,
+        due_date: true,
+        sla_due_at: true,
+        completed_at: true,
+        related_entity_type: true,
+        related_entity_id: true,
+        created_at: true,
+        updated_at: true,
+      },
+    }),
+  toEvents: (rows) =>
+    rows.map((item) => {
+      const isResolved = item.status === 'completed' || item.status === 'cancelled';
+      const taskType = getTaskTypeDefinition(item.task_type);
+      const taskLabel = taskType?.label ?? item.task_type;
+      const statusLabel = TASK_STATUS_LABELS[item.status] ?? item.status;
+      const priorityLabel = TASK_PRIORITY_LABELS[item.priority] ?? item.priority;
+      return {
+        id: `task:${item.id}`,
+        event_type: isResolved ? 'task_resolved' : 'task_created',
+        category: 'task',
+        occurred_at: isResolved ? (item.completed_at ?? item.updated_at) : item.created_at,
+        title: isResolved ? '運用タスクを完了' : '運用タスクを作成',
+        summary:
+          compactTimelineValues([
+            taskLabel,
+            `優先度 ${priorityLabel}`,
+            item.sla_due_at ? `SLA ${formatTimelineDate(item.sla_due_at)}` : null,
+            item.due_date ? `期限 ${formatTimelineDate(item.due_date)}` : null,
+          ]).join(' / ') || null,
+        href: buildTasksHref({
+          status: '',
+          taskType: item.task_type,
+          relatedEntityType: item.related_entity_type ?? undefined,
+          relatedEntityId: item.related_entity_id ?? undefined,
+        }),
+        action_label: 'タスクを開く',
+        status: item.status,
+        status_label: statusLabel,
+        actor_name: null,
+        metadata: compactTimelineValues([item.related_entity_type]),
+      };
+    }),
 });
 
 // --- selfReports ------------------------------------------------------------
@@ -1066,6 +1161,7 @@ export const TIMELINE_SOURCES = [
   communicationEventsSource,
   patientMcsMessagesSource,
   partnerVisitRecordsSource,
+  operationalTasksSource,
   selfReportsSource,
   externalSharesSource,
   inquiryRecordsSource,
