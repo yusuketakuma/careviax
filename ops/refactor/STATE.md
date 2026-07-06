@@ -41,6 +41,27 @@
 
 ## 直近の land（本日・要点）
 
+- codex: AWS official-reference implementation rule recorded.
+  - current task:
+    AWS 関連コードを実装するときは AWS 公式ドキュメントまたは公式 API reference を事前確認する、
+    というユーザー指示を `AGENTS.md` の PH-OS Required Context に追記した。既に `Plans.md` の
+    `AWS実装リファレンスルール` に同趣旨のルールがあるため、実装計画と実作業ルールを整合させた。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `AGENTS.md`.
+  - files changed:
+    `AGENTS.md`,
+    `ops/refactor/STATE.md`.
+  - validation:
+    `git diff --check -- AGENTS.md ops/refactor/STATE.md` passed.
+  - remaining work:
+    Future AWS code/IaC/ops changes must record official AWS reference name, URL, and confirmation date
+    in STATE/PR/docs before implementation.
+  - next action:
+    Commit and push this documentation-rule slice.
+
 - codex: COMM-FILE-001 communication attachment filename removal implemented.
   - current task:
     `Plans.md` の `COMM-FILE-001` を追加・実装。`/api/communication-events` の添付 summary から

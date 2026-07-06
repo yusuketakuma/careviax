@@ -7,6 +7,8 @@ This version of Next.js has breaking changes. Read the relevant guide in `node_m
 For any UI/UX change, read `docs/ui-ux-design-guidelines.md` first and treat it as the PH-OS UI/UX SSOT. Reference that file when proposing, implementing, or reviewing page structure, grouping, borders, spacing, and heading hierarchy.
 When a UI/UX change requires visual reconstruction or a design reference, use `imagegen` with `gpt-image-2` as the standard image model before implementation. Keep prompts PHI/secret-free; if a non-visual slice omits image generation, record the omission reason in `ops/refactor/STATE.md`.
 
+For any AWS-related implementation, consult the relevant AWS official documentation or API reference before editing code, IaC, runtime env, IAM/S3/RDS/ECS/DynamoDB/SES/Cognito/CloudWatch/Route 53/ACM/Secrets Manager/EventBridge configuration, or operational scripts. Record the official reference name, URL, and confirmation date in the implementation notes, PR description, `ops/refactor/STATE.md`, or the relevant docs. If AWS official guidance conflicts with repository planning docs, prefer the official guidance and update `Plans.md` with the delta before implementation.
+
 Runtime model, approval, sandbox, service tier, MCP, and custom-agent registration belong in the user-level `~/.codex/config.toml`. This repository file defines PH-OS-specific working rules and should not be treated as the effective runtime configuration layer.
 
 ## Mission
