@@ -41,7 +41,44 @@
 
 ## 直近の land（本日・要点）
 
-- codex: FE-TBL-002 DataTable filter debounce（commit pending）。
+- codex: FE-REPORT-001 Reports realtime query migration evidence sync（commit pending）。
+  - current task:
+    Plans の `FE-REPORT-001` と現行 report workspace 実装の整合を確認し、完了証跡を Plans に反映する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/reports/report-share-workspace.tsx`,
+    `src/app/(dashboard)/reports/report-share-workspace.test.tsx`,
+    `src/lib/hooks/use-realtime-query.ts`,
+    `src/lib/hooks/use-realtime-query.test.tsx`,
+    `src/lib/hooks/use-realtime-invalidation.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    現行 `ReportShareWorkspace` は既に `useRealtimeQuery` を使い、
+    `fallbackRefetchInterval=60_000` と report event 限定 invalidation に移行済みだった。
+    `useRealtimeQuery` unit は connected 時に fallback polling を `false` にする contract を固定し、
+    report workspace test は無関係 event では refetch せず、`report_delivery_update` では refetch
+    することと、dashboard cockpit を再取得しないことを固定している。コード変更は不要だったため、
+    Plans を `cc:DONE` に更新した。
+  - performance issues improved:
+    報告画面の固定 60秒 polling は realtime connected 時に停止でき、report-relevant event のみで
+    BFF refetch する設計が確認済み。
+  - validation:
+    `pnpm exec vitest run 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' src/lib/hooks/use-realtime-query.test.tsx src/lib/hooks/use-realtime-invalidation.test.tsx --reporter=dot --testTimeout=30000`
+    passed: 3 files / 39 tests.
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md`
+    passed after formatting.
+    `git diff --check -- Plans.md ops/refactor/STATE.md`
+    passed.
+  - remaining:
+    commit、push。
+  - next action:
+    Land evidence sync.
+
+- codex: FE-TBL-002 DataTable filter debounce（commit e24cb7608, pushed）。
   - current task:
     shared `DataTable` の global filter / column filter を入力ごとの即 table filtering から
     150ms debounce 適用へ変更し、大量行の不要再計算を抑える。
