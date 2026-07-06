@@ -154,7 +154,6 @@ function stubFetch(records: TestConsentRecord[] = [defaultConsentRecord]) {
         JSON.stringify({
           data: {
             id: 'file_1',
-            originalName: 'consent.pdf',
           },
         }),
         { status: 200 },

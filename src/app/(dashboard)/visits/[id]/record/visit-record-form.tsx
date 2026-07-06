@@ -1102,9 +1102,9 @@ export function VisitRecordForm({
 
     return {
       file_id: completeJson.data.id,
-      file_name: completeJson.data.originalName,
-      mime_type: completeJson.data.mimeType,
-      size_bytes: completeJson.data.sizeBytes,
+      file_name: uploadFile.name,
+      mime_type: uploadFile.type,
+      size_bytes: uploadFile.size,
       uploaded_at: completeJson.data.completedAt ?? null,
       kind: attachment.kind,
     } satisfies UploadedVisitAttachment;

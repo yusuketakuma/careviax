@@ -7101,3 +7101,53 @@
   `git diff --check -- Plans.md ops/refactor/STATE.md` passed.
 - remaining:
   `/api/files/complete` response minimization implementation is still in-progress in the working tree and will be validated/committed separately.
+
+## 2026-07-06 FILE-COMPLETE response minimization
+
+- codex: `FILE-COMPLETE-001` implementation complete.
+  `/api/files/complete` の success response から PHI になり得る file metadata を除去し、
+  upload consumer は complete response ではなく local `File` metadata を使うようにした。
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/api/files/complete/route.ts`,
+  `src/app/api/files/complete/route.test.ts`,
+  `src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx`,
+  `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`,
+  `src/app/(dashboard)/patients/[id]/consent/consent-records-content.test.tsx`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+  `src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/api/files/complete/route.ts`,
+  `src/app/api/files/complete/route.test.ts`,
+  `src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx`,
+  `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`,
+  `src/app/(dashboard)/patients/[id]/consent/consent-records-content.test.tsx`.
+- bugs / risks reduced:
+  `originalName`、`mimeType`、`sizeBytes`、`purpose` を complete response から除去し、
+  患者名、電話番号、薬剤名、処方文言が含まれ得る filename の browser/API 露出面を縮小した。
+- security / PHI reviewed:
+  route test に hostile PHI filename snapshot を追加し、患者名、電話番号、薬剤名、storage key、
+  object key、entity id、etag、mime/size/purpose が response に出ないことを固定した。
+- performance issues reviewed:
+  response field 削減のみ。DB query、upload/presign flow、storage write path、file completion mutation は変更なし。
+- validation:
+  `pnpm exec vitest run src/app/api/files/complete/route.test.ts 'src/app/(dashboard)/patients/[id]/consent/consent-records-content.test.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' 'src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx' --reporter=dot --testTimeout=30000`
+  green (4 files / 130 tests; existing React act warning in consent DataTable test only);
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  green;
+  `pnpm lint`
+  green with existing warnings in `src/lib/platform/break-glass.test.ts` (`_tx`, `_input` unused);
+  `pnpm format:check`
+  green;
+  `git diff --check -- src/app/api/files/complete/route.ts src/app/api/files/complete/route.test.ts 'src/app/(dashboard)/patients/[id]/consent/consent-records-content.test.tsx' 'src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx' 'src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx'`
+  green.
+- remaining:
+  Broader `Plans.md` objective remains open. 次は `VISIT-SYNC-001`、`PAT-BOARD-PAGE-001`、
+  `DSP-QUEUE-PAGE-001`、`PERF-RTE-001A` を優先する。

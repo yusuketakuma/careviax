@@ -20,10 +20,6 @@ const completeUploadSchema = z.object({
 function toPublicCompletedFile(data: CompletedFileRecord) {
   return {
     id: data.id,
-    purpose: data.purpose,
-    originalName: data.originalName,
-    mimeType: data.mimeType,
-    sizeBytes: data.sizeBytes,
     status: data.status,
     completedAt: data.completedAt,
   };

@@ -967,7 +967,7 @@ export function PrescriptionIntakeForm() {
 
     return {
       fileId: completeJson.data.id as string,
-      fileName: completeJson.data.originalName as string,
+      fileName: uploadFile.name,
     };
   };
 

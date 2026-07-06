@@ -64,7 +64,7 @@ describe('/api/files/complete', () => {
       orgId: 'org_1',
       purpose: 'visit-photo',
       storageKey: 'visit-photos/org_1/visit_1/file_1-photo.png',
-      originalName: 'photo.png',
+      originalName: '患者 山田太郎 処方薬一覧 090-1234-5678.png',
       mimeType: 'image/png',
       sizeBytes: 1024,
       status: 'uploaded',
@@ -143,10 +143,6 @@ describe('/api/files/complete', () => {
     await expect(response.json()).resolves.toEqual({
       data: {
         id: 'file_1',
-        purpose: 'visit-photo',
-        originalName: 'photo.png',
-        mimeType: 'image/png',
-        sizeBytes: 1024,
         status: 'uploaded',
         completedAt: '2026-07-05T00:00:00.000Z',
       },
@@ -266,7 +262,7 @@ describe('/api/files/complete', () => {
     expect(JSON.stringify(body)).not.toContain('患者A');
   });
 
-  it('does not expose storage keys, entity ids, or etags in completed file responses', async () => {
+  it('does not expose file metadata, storage keys, entity ids, or etags in completed file responses', async () => {
     const response = (await POST(
       createRequest({
         file_id: '11111111-1111-4111-8111-111111111111',
@@ -277,6 +273,19 @@ describe('/api/files/complete', () => {
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
     const body = await response.json();
+    expect(Object.keys(body.data).sort()).toEqual(['completedAt', 'id', 'status']);
+    expect(JSON.stringify(body)).not.toContain('患者');
+    expect(JSON.stringify(body)).not.toContain('山田');
+    expect(JSON.stringify(body)).not.toContain('090-1234-5678');
+    expect(JSON.stringify(body)).not.toContain('処方薬一覧');
+    expect(JSON.stringify(body)).not.toContain('photo.png');
+    expect(JSON.stringify(body)).not.toContain('visit-photo');
+    expect(JSON.stringify(body)).not.toContain('image/png');
+    expect(JSON.stringify(body)).not.toContain('1024');
+    expect(body.data).not.toHaveProperty('purpose');
+    expect(body.data).not.toHaveProperty('originalName');
+    expect(body.data).not.toHaveProperty('mimeType');
+    expect(body.data).not.toHaveProperty('sizeBytes');
     expect(JSON.stringify(body)).not.toContain('storageKey');
     expect(JSON.stringify(body)).not.toContain('visit-photos/org_1/visit_1');
     expect(JSON.stringify(body)).not.toContain('org_1');
