@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: INB-001 inbound schedule request day-board linkage（commit pending）。
+- codex: INB-001 inbound schedule request day-board linkage（commit 4c80c9929）。
   - current task:
     他職種受信の訪問調整確認 task `pharmacy.inbound_schedule_request_review_required` を、
     Schedule Day Board の operational tasks に接続する。Patient Movement Timeline では
@@ -86,9 +86,9 @@
     passed.
     `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
   - remaining:
-    Scoped commit/push。
+    なし。
   - next action:
-    Scoped commit/push.
+    Landed and pushed to `origin/main`.
 
 - codex: MOV-001 prescription/visit/document marker planning clarification（commit c3d116772）。
   - current task:
