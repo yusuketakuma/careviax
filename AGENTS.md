@@ -9,6 +9,43 @@ When a UI/UX change requires visual reconstruction or a design reference, use `i
 
 For any AWS-related implementation, consult the relevant AWS official documentation or API reference before editing code, IaC, runtime env, IAM/S3/RDS/ECS/DynamoDB/SES/Cognito/CloudWatch/Route 53/ACM/Secrets Manager/EventBridge configuration, or operational scripts. Record the official reference name, URL, and confirmation date in the implementation notes, PR description, `ops/refactor/STATE.md`, or the relevant docs. If AWS official guidance conflicts with repository planning docs, prefer the official guidance and update `Plans.md` with the delta before implementation.
 
+For high-risk implementation or unclear failures, consult Oracle/GPT-5.5 Pro as an advisory safety gate before proceeding. Use the project `.oracle/config.json` defaults and keep machine-local browser paths, remote tokens, API keys, cookies, and secrets in `~/.oracle/config.json`, environment variables, or explicit CLI flags only.
+
+Mandatory Oracle consultation triggers:
+
+- authentication, authorization, tenant isolation, platform/support-mode access, or cross-tenant grants;
+- database schema, Prisma migrations, RLS policies, idempotency/OCC constraints, retention/legal-hold schema, or destructive data workflows;
+- audit logs, PHI/PII handling, medical information, billing/claims logic, exports/imports, files/attachments, Web Push/SSE/Webhook payload boundaries, secrets, production runtime, deploy/IaC, or API contract changes;
+- broad refactors with cross-cutting blast radius;
+- two failed implementation attempts, unclear test failures, ambiguous production-risk errors, or hidden coupling across frontend/backend/DB/auth;
+- final review for high-risk diffs before commit when the changed surface includes the above areas.
+
+Default command shape:
+
+```bash
+npx -y @steipete/oracle \
+  --engine browser \
+  --model gpt-5.5-pro \
+  --browser-manual-login \
+  --browser-auto-reattach-delay 5s \
+  --browser-auto-reattach-interval 3s \
+  --browser-auto-reattach-timeout 60s \
+  --browser-thinking-time heavy \
+  --heartbeat 30 \
+  -p "<focused PH-OS consultation prompt>" \
+  --file "<minimal relevant files>"
+```
+
+Before sending a large file set, preview first with:
+
+```bash
+npx -y @steipete/oracle --dry-run summary --files-report \
+  -p "<focused PH-OS consultation prompt>" \
+  --file "<minimal relevant files>"
+```
+
+Never send secrets, `.env` files, private keys, access tokens, raw patient data, raw medical records, production credentials, or unredacted PHI/PII to Oracle. Use the smallest file set that contains the truth, prefer redacted fixtures, and treat Oracle output as advisory until verified by code inspection, tests, typecheck, lint, and local execution. If Oracle detaches or times out, do not start duplicate consultations; inspect `oracle status --hours 72`, `oracle session <id> --render`, or `oracle restart <id>`.
+
 Runtime model, approval, sandbox, service tier, MCP, and custom-agent registration belong in the user-level `~/.codex/config.toml`. This repository file defines PH-OS-specific working rules and should not be treated as the effective runtime configuration layer.
 
 ## Mission

@@ -41,6 +41,40 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Oracle / GPT-5.5 Pro consultation rule recorded.
+  - current task:
+    高リスク実装・判断不能・2回失敗時に Oracle Browser mode 経由で GPT-5.5 Pro へ
+    相談するルールを `AGENTS.md` に記録した。project-level `.oracle/config.json` には
+    secret-free な workflow defaults のみを置き、remote token / Chrome path / cookie path /
+    API key は user config・環境変数・CLI flag 側に残す境界にした。
+  - official references checked (2026-07-06):
+    Oracle README / Codex skill integration
+    `https://github.com/steipete/oracle`,
+    Oracle configuration docs
+    `https://github.com/steipete/oracle/blob/main/docs/configuration.md`,
+    Oracle browser mode docs
+    `https://github.com/steipete/oracle/blob/main/docs/browser-mode.md`.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `AGENTS.md`,
+    `.gitignore`,
+    `package.json`,
+    `ops/refactor/STATE.md`,
+    Oracle official README/configuration/browser-mode docs.
+  - files changed:
+    `AGENTS.md`,
+    `.oracle/config.json`,
+    `ops/refactor/STATE.md`.
+  - validation:
+    `node -e "JSON.parse(require('node:fs').readFileSync('.oracle/config.json','utf8')); console.log('oracle config json ok')"`
+    passed.
+    `git diff --check -- AGENTS.md .oracle/config.json ops/refactor/STATE.md` passed.
+    `pnpm format:check` passed.
+  - remaining work:
+    Scoped commit/push this documentation/config slice.
+  - next action:
+    Scoped commit/push.
+
 - codex: FILE-DOWNLOAD-002 same-origin streamed download implemented.
   - current task:
     `Plans.md` の `FILE-DOWNLOAD-002` を追加・実装。`/api/files/[id]/download` を
