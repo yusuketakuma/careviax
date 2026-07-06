@@ -786,6 +786,69 @@ describe('getPatientVisitBrief', () => {
       archived_at: '2026-06-30T09:00:00.000Z',
     });
   });
+
+  it('includes inbound communication queue items as summary-only visit checks', async () => {
+    const db = buildMinimalBriefDb();
+    listCommunicationQueueMock.mockResolvedValue({
+      summary: {
+        pending_count: 1,
+        overdue_count: 0,
+        self_reports: 0,
+        callback_followups: 0,
+        open_requests: 0,
+        delivery_backlog: 0,
+        expiring_external_shares: 0,
+        unconfirmed_count: 0,
+        reply_waiting_count: 0,
+        failed_count: 0,
+      },
+      items: [
+        {
+          id: 'inbound_communication:mcs_message_1?patient_name=山田太郎&raw_text=湿布',
+          queue_type: 'inbound_communication',
+          title: 'MCS連絡を受信',
+          summary: '他職種または関係者からの受信情報があります。内容は連絡履歴で確認してください。',
+          channel: 'mcs',
+          status: 'needs_review',
+          priority: 'high',
+          patient_id: 'patient_1',
+          patient_name: '山田太郎',
+          due_at: '2026-07-07T10:00:00.000Z',
+          action_href: '/patients/patient_1/collaboration',
+          action_label: '受信情報を確認',
+        },
+      ],
+      timeline: [],
+      emergency_drafts: [],
+    });
+
+    const result = await getPatientVisitBrief(db, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      context: 'patient',
+      caseIds: ['case_1'],
+    });
+
+    expect(result.multidisciplinary_updates).toEqual([
+      expect.objectContaining({
+        source_type: 'inbound_communication',
+        title: 'MCS連絡を受信',
+        summary: '他職種または関係者からの受信情報があります。内容は連絡履歴で確認してください。',
+        occurred_at: '2026-07-07T10:00:00.000Z',
+        counterpart: null,
+        severity: 'high',
+        action_href: '/patients/patient_1/collaboration',
+        action_label: '受信情報を確認',
+      }),
+    ]);
+    expect(result.must_check_today).toContain('MCS連絡を受信');
+
+    const serialized = JSON.stringify(result.multidisciplinary_updates);
+    expect(serialized).not.toContain('mcs_message_1');
+    expect(serialized).not.toContain('山田太郎');
+    expect(serialized).not.toContain('湿布');
+    expect(serialized).not.toContain('raw_text');
+  });
 });
 
 describe('getScheduleVisitBriefsForPatients', () => {

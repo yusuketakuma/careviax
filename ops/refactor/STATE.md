@@ -41,7 +41,50 @@
 
 ## 直近の land（本日・要点）
 
-- codex: INB-001 inbound interprofessional task registry entries（commit pending）。
+- codex: INB-001 inbound communication VisitBrief summary bridge（commit pending）。
+  - current task:
+    正式 `InboundCommunicationEvent` DB 追加前の bridge として、
+    `CommunicationQueue.items(queue_type='inbound_communication')` を VisitBrief の
+    `multidisciplinary_updates` と `must_check_today` へ summary-only で表示する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/visit-brief.ts`,
+    `src/server/services/visit-brief.test.ts`,
+    `src/server/services/communication-queue.ts`,
+    `src/types/visit-brief.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/visit-brief.ts`,
+    `src/server/services/visit-brief.test.ts`,
+    `src/types/visit-brief.ts`.
+  - implementation:
+    `VisitBriefCommunicationItem.source_type` に `inbound_communication` を追加し、
+    `listCommunicationQueue(...).items` の inbound summary-only item を
+    `buildCommunicationItems()` に取り込む。queue側で生成済みの controlled title/summary/action
+    だけを使い、`id`、`patient_name`、raw本文、薬剤名、source record id は VisitBrief payload に出さない。
+  - validation:
+    `pnpm vitest run src/server/services/visit-brief.test.ts --reporter=dot --testTimeout=30000`
+    passed: 1 file / 9 tests.
+    `pnpm vitest run src/server/services/visit-brief.test.ts src/server/services/communication-queue.test.ts --reporter=dot --testTimeout=30000`
+    passed: 2 files / 26 tests.
+    `pnpm exec eslint src/server/services/visit-brief.ts src/server/services/visit-brief.test.ts src/types/visit-brief.ts`
+    passed.
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/server/services/visit-brief.ts src/server/services/visit-brief.test.ts src/types/visit-brief.ts`
+    passed.
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/server/services/visit-brief.ts src/server/services/visit-brief.test.ts src/types/visit-brief.ts`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+    `pnpm boundaries:check` passed: 0 new violations, 7 allowlisted debt imports across 6 files.
+  - remaining:
+    INB-001 remains partial for dedicated DB正本、registration/review API、review UI、
+    Schedule/Report linkage、formal provider integration.
+  - next action:
+    Run related communication/brief tests, format/type/boundary checks, then scoped commit/push.
+
+- codex: INB-001 inbound interprofessional task registry entries（commit 274a9cef1）。
   - current task:
     他職種受信の review workflow を DB 正本/API 実装前に task registry へ接続し、
     source/raw id を URL に出さない PHI-safe action presentation を固定する。

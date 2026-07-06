@@ -11,7 +11,10 @@ import {
   getInquiryPresentationBadges,
   getInquiryPrimaryDetail,
 } from '@/lib/inquiries/presentation';
-import { listCommunicationQueue } from '@/server/services/communication-queue';
+import {
+  listCommunicationQueue,
+  type CommunicationQueueItem,
+} from '@/server/services/communication-queue';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { formatLabAnalyteLabel } from '@/lib/patient/lab-analytes';
@@ -655,6 +658,7 @@ function sortCommunications(left: VisitBriefCommunicationItem, right: VisitBrief
 }
 
 function buildCommunicationItems(args: {
+  communicationQueueItems: CommunicationQueueItem[];
   selfReports: Array<{
     subject: string;
     category: string;
@@ -693,7 +697,20 @@ function buildCommunicationItems(args: {
     called_at: Date;
   }>;
 }): VisitBriefCommunicationItem[] {
+  const inboundQueueItems = args.communicationQueueItems.filter(
+    (item) => item.queue_type === 'inbound_communication',
+  );
   const items: VisitBriefCommunicationItem[] = [
+    ...inboundQueueItems.map((item) => ({
+      source_type: 'inbound_communication' as const,
+      title: item.title,
+      summary: item.summary,
+      occurred_at: item.due_at,
+      counterpart: null,
+      severity: (item.priority === 'urgent' ? 'urgent' : 'high') as VisitBriefSeverity,
+      action_href: item.action_href,
+      action_label: item.action_label,
+    })),
     ...args.selfReports.map((item) => ({
       source_type: 'self_report' as const,
       title: `自己申告 ${item.category}`,
@@ -1630,6 +1647,7 @@ export async function getPatientVisitBrief(
     medicationIssues,
   });
   const communicationItems = buildCommunicationItems({
+    communicationQueueItems: communicationQueue.items,
     selfReports,
     communicationEvents,
     communicationRequests,

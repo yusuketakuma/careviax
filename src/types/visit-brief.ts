@@ -99,7 +99,13 @@ export type VisitBriefDosageFormCandidate = {
 };
 
 export type VisitBriefCommunicationItem = {
-  source_type: 'self_report' | 'communication' | 'request' | 'contact_log' | 'care_team';
+  source_type:
+    | 'self_report'
+    | 'communication'
+    | 'request'
+    | 'contact_log'
+    | 'care_team'
+    | 'inbound_communication';
   title: string;
   summary: string;
   occurred_at: string | null;
