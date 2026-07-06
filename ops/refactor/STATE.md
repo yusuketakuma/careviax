@@ -41,7 +41,51 @@
 
 ## 直近の land（本日・要点）
 
-- codex: MOV-001 residual medication movement timeline bridge（未コミット）。
+- codex: MOV-001 first visit document timeline hardening（作業中）。
+  - current task:
+    ユーザー方針「処方・訪問・文書登録があったことが timeline で確認できればよい。
+    詳細は deep link で確認する」に合わせ、初回訪問文書 source を発生確認 + 文書タブ
+    deep link に寄せる。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail.test.ts`,
+    `src/server/services/patient-movement-timeline-presenter.ts`,
+    `Plans.md`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail.test.ts`.
+  - implementation:
+    `firstVisitDocumentsSource` の select から `document_url` / `delivered_to` を外し、timeline
+    event は controlled summary と `/patients/:id#patient-documents` deep link のみにした。
+    操作履歴由来のテンプレート名、保管場所、理由、メモは title/status の controlled identity
+    以外に使わない。初回訪問文書の `operation_history` event も controlled summary と文書タブ
+    deep link に揃えた。
+  - security / PHI reviewed:
+    文書URL、交付先、テンプレート名、理由、メモ、storage系情報を timeline一覧/search payload
+    に出さない regression test を追加。詳細確認は共有・文書タブ側で再認可する前提。
+  - validation:
+    `pnpm vitest run src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.test.ts --reporter=dot --testTimeout=30000`
+    passed: 2 files / 76 tests.
+    `pnpm exec eslint src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts`
+    passed.
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts`
+    passed.
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+    `pnpm boundaries:check` passed: 0 new violations, 7 allowlisted debt imports across 6 files.
+  - remaining:
+    `MOV-001` remains partial for formal `InboundCommunicationSignal`, formal MedicationStock Ledger
+    source, safety finding source, and mobile Playwright smoke.
+  - next action:
+    Scoped commit/push する。
+
+- codex: MOV-001 residual medication movement timeline bridge（commit 190a95fb3）。
   - current task:
     Patient Movement Timeline に、正式 MedicationStock Ledger 前の bridge として既存
     `ResidualMedication` を `medication_stock_event` source へ接続した。

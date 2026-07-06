@@ -3053,7 +3053,16 @@ describe('getPatientTimelineData', () => {
     );
   });
 
-  it('uses first visit document audit details for document timeline identity', async () => {
+  it('keeps first visit document timeline events summary-only with document tab deep links', async () => {
+    const firstVisitDocumentFindManyMock = vi.fn().mockResolvedValue([
+      {
+        id: 'doc_1',
+        document_url: 'https://files.example.test/private/important-matters.pdf',
+        delivered_at: null,
+        delivered_to: '山田花子',
+        created_at: new Date('2026-04-01T09:00:00.000Z'),
+      },
+    ]);
     const db = buildDb({
       patient: {
         findFirst: vi.fn().mockResolvedValue({
@@ -3062,15 +3071,7 @@ describe('getPatientTimelineData', () => {
         }),
       },
       firstVisitDocument: {
-        findMany: vi.fn().mockResolvedValue([
-          {
-            id: 'doc_1',
-            document_url: null,
-            delivered_at: null,
-            delivered_to: null,
-            created_at: new Date('2026-04-01T09:00:00.000Z'),
-          },
-        ]),
+        findMany: firstVisitDocumentFindManyMock,
       },
       auditLog: {
         findMany: vi.fn().mockResolvedValue([
@@ -3087,6 +3088,7 @@ describe('getPatientTimelineData', () => {
                 template_name: '重要事項説明書 2026年版',
                 template_version: 'v2',
                 storage_location: 'store',
+                reason: '署名者を長女へ訂正',
                 note: '患者詳細から作成',
               },
             },
@@ -3114,7 +3116,7 @@ describe('getPatientTimelineData', () => {
           category: 'document',
           occurred_at: new Date('2026-04-02T10:00:00.000Z'),
           title: '重要事項説明書を作成',
-          summary: '重要事項説明書 2026年版 / 版 v2 / 交付未記録 / 保管 店舗 / 患者詳細から作成',
+          summary: '初回訪問文書が登録されました。内容は共有・文書で確認してください。',
           href: '/patients/patient_1#patient-documents',
           action_label: '文書状態を開く',
           status: 'generated',
@@ -3124,6 +3126,20 @@ describe('getPatientTimelineData', () => {
         }),
       ]),
     );
+    expect(firstVisitDocumentFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.not.objectContaining({
+          document_url: true,
+          delivered_to: true,
+        }),
+      }),
+    );
+    const serializedTimeline = JSON.stringify(result?.timeline_events ?? []);
+    expect(serializedTimeline).not.toContain('files.example.test');
+    expect(serializedTimeline).not.toContain('山田花子');
+    expect(serializedTimeline).not.toContain('重要事項説明書 2026年版');
+    expect(serializedTimeline).not.toContain('署名者を長女へ訂正');
+    expect(serializedTimeline).not.toContain('患者詳細から作成');
     expect(db.auditLog.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({

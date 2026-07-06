@@ -1099,9 +1099,7 @@ export const firstVisitDocumentsSource = defineTimelineSource<
           take: 8,
           select: {
             id: true,
-            document_url: true,
             delivered_at: true,
-            delivered_to: true,
             created_at: true,
           },
         }),
@@ -1121,18 +1119,11 @@ export const firstVisitDocumentsSource = defineTimelineSource<
         category: 'document',
         occurred_at: latestAction?.occurredAt ?? item.delivered_at ?? item.created_at,
         title: `${documentLabel}を${actionVerb}`,
-        summary:
-          compactTimelineValues([
-            latestAction?.templateName ?? null,
-            latestAction?.templateVersion ? `版 ${latestAction.templateVersion}` : null,
-            item.delivered_to,
-            isDelivered ? '交付記録あり' : '交付未記録',
-            latestAction?.storageLabel ? `保管 ${latestAction.storageLabel}` : null,
-            latestAction?.reason,
-            latestAction?.note,
-          ]).join(' / ') || null,
-        href: item.document_url ?? hrefs.patientDocumentsHref,
-        action_label: item.document_url ? 'PDFを見る' : '文書状態を開く',
+        summary: isDelivered
+          ? '初回訪問文書の交付記録が更新されました。内容は共有・文書で確認してください。'
+          : '初回訪問文書が登録されました。内容は共有・文書で確認してください。',
+        href: hrefs.patientDocumentsHref,
+        action_label: '文書状態を開く',
         status: latestAction?.action ?? (isDelivered ? 'delivered' : 'created'),
         status_label: latestAction
           ? (FIRST_VISIT_DOCUMENT_ACTION_VERBS[latestAction.action] ?? latestAction.action)

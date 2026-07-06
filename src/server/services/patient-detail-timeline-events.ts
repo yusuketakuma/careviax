@@ -286,9 +286,7 @@ export type ManagementPlanTimelineSource = {
 
 export type FirstVisitDocumentTimelineSource = {
   id: string;
-  document_url: string | null;
   delivered_at: Date | null;
-  delivered_to: string | null;
   created_at: Date;
 };
 
@@ -606,6 +604,9 @@ export function latestFirstVisitDocumentActionByDocumentId(
 
 function buildOperationHistorySummary(item: OperationHistoryTimelineSource) {
   const changes = isRecord(item.changes) ? item.changes : {};
+  if (item.target_type === 'first_visit_document') {
+    return '初回訪問文書の操作履歴が記録されました。内容は共有・文書で確認してください。';
+  }
   const documentAction = isRecord(changes.document_action) ? changes.document_action : {};
   const collection = isRecord(changes.collection) ? changes.collection : {};
   const conferenceNote = isRecord(changes.conference_note) ? changes.conference_note : {};
@@ -791,6 +792,7 @@ export function buildOperationHistoryEvents(
     const isPrescription = item.action.startsWith('prescription_');
     const isMcs = item.action.startsWith('patient_mcs_');
     const isConference = item.action.startsWith('conference_note.');
+    const isFirstVisitDocument = item.target_type === 'first_visit_document';
 
     return {
       id: `operation_history:${item.id}`,
@@ -807,7 +809,9 @@ export function buildOperationHistoryEvents(
             ? hrefs.patientMcsHref
             : isConference
               ? hrefs.patientConferencesHref
-              : hrefs.patientDetailHref,
+              : isFirstVisitDocument
+                ? hrefs.patientDocumentsHref
+                : hrefs.patientDetailHref,
       action_label: isBilling
         ? '請求を開く'
         : isPrescription
@@ -816,7 +820,9 @@ export function buildOperationHistoryEvents(
             ? 'MCS連携を開く'
             : isConference
               ? '会議を開く'
-              : '患者詳細を開く',
+              : isFirstVisitDocument
+                ? '文書状態を開く'
+                : '患者詳細を開く',
       status: item.action,
       status_label: meta.statusLabel,
       actor_name: actorNameMap.get(item.actor_id) ?? null,
