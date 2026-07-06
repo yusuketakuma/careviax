@@ -41,6 +41,40 @@
 
 ## 直近の land（本日・要点）
 
+- codex: FE-ERR-001 patient movement timeline segment state（commit a227316d5, pending push）。
+  - current task:
+    患者詳細の Patient Movement Timeline 取得状態を shared segment pattern に寄せ、取得失敗時に
+    raw error detail を画面へ出さず retryable なセグメントエラーとして表示する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/components/ui/segment-state.tsx`,
+    `src/components/ui/error-state.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`.
+  - files changed:
+    `Plans.md`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`.
+  - implementation:
+    `renderPatientTimelinePanel()` の loading を `SegmentLoading`、error を `SegmentError` へ移行。
+    `timelineErrorDetail` をカード表示と Command 履歴抜粋から外し、履歴取得失敗は controlled
+    message と再取得ボタンだけにした。
+  - security risks reduced:
+    患者履歴取得失敗時に fetch/route/exception 由来の内部文言や raw response が患者詳細画面へ
+    表示される面を縮小した。
+  - validation:
+    `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' --reporter=dot --testTimeout=30000` → pass（1 file / 95 tests）。
+    `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx'` → pass。
+    `pnpm exec prettier --check Plans.md 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx'` → pass。
+    `git diff --check -- Plans.md 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx'` → pass。
+  - remaining:
+    FE-ERR-001 は訪問準備、スケジュール、task/admin への段階展開が残る。Formal
+    `InboundCommunicationEvent` / `InboundCommunicationSignal` DB/API/review UI and MedicationStock Ledger source remain.
+  - next action:
+    Push implementation + ledger commits, then continue the next safe P0/P1 slice that avoids migration/destructive gates.
+
 - codex: MOV-001 patient export operation marker minimization（commit a1082d6b4, pushed）。
   - current task:
     患者単位 export の `operation_history` が薬歴PDF/服薬カレンダー/訪問記録PDF/処方履歴CSV
