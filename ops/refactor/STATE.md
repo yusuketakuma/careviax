@@ -41,7 +41,33 @@
 
 ## 直近の land（本日・要点）
 
-- codex: RX-002/INB-001 MedicationStock inbound signal adapter（commit pending）。
+- codex: MOV-001 Patient Movement Timeline scope lock（commit pending）。
+  - current task:
+    ユーザー方針「処方・訪問・文書登録があったことが timeline で確認できればよい。
+    詳細は deep link で確認する」を `Plans.md` の MOV-001 に最終スコープ固定として追記する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `git log --oneline -8`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    MOV-001 に「最終スコープ固定（2026-07-07）」を追加し、Patient Movement Timeline は
+    処方・訪問・文書の詳細内容を読む画面ではなく、発生確認と正本画面への直接 deep link を
+    提供する索引画面であることを明文化した。処方内容、薬剤明細、訪問本文、SOAP本文、
+    文書本文、添付ファイル名、storage key、signed URL は timeline に表示しない。
+  - validation:
+    `pnpm exec prettier --check Plans.md` passed.
+    `git diff --check -- Plans.md` passed.
+  - remaining:
+    MOV-001 remains partial for formal InboundCommunicationSignal, formal MedicationStock Ledger,
+    safety source integration, and mobile Playwright smoke.
+  - next action:
+    Scoped commit/push, then continue with the next DB-free MOV/RX/INB linkage slice.
+
+- codex: RX-002/INB-001 MedicationStock inbound signal adapter（commit 6e7c7c372）。
   - current task:
     DB migration / API 実装前に、INB-001 の pure `InboundSignalCandidate` を RX-002
     Medication Stock external observation staging へ接続する adapter を追加する。
