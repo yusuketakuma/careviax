@@ -1206,6 +1206,29 @@ timelineでしないこと:
 - `history` タブは変更履歴、構造化ケア、監査寄り情報に整理する。
 - 一覧では raw text を出さず、詳細表示時に再認可と監査ログを通す。
 
+**処方・訪問・文書 marker の最小契約**:
+
+```text
+timeline card で必須:
+  ・event_type / category
+  ・occurred_at
+  ・controlled title
+  ・controlled status / badge
+  ・正本画面への相対 href
+  ・action_label
+
+timeline card で禁止:
+  ・処方内容、薬剤明細、用法用量
+  ・訪問本文、SOAP本文、観察内容、位置情報
+  ・文書本文、OCR全文、添付ファイル名、FileAsset storage key
+  ・href 未整備を補うための本文抜粋
+
+完了条件:
+  ・処方があったこと、訪問があったこと、文書登録があったことが日付順に分かる。
+  ・詳細確認は primary CTA の deep link 先で行う。
+  ・deep link が作れない source は marker-only 完了に含めず、href 実装を残タスク化する。
+```
+
 **現行コードとの整合**:
 
 | 現行実装                                               | 状態                                                                                                                     | MOV-001での扱い                                                                                                                                                            |
