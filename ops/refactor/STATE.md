@@ -41,6 +41,49 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOV-001 Inbound task movement classification（commit pending）。
+  - current task:
+    `core.inbound_communication_review_required` task を generic task ではなく他職種受信 marker として
+    Patient Movement Timeline に表示し、正式 inbound DB 前でも受信確認待ちを患者の動き上で追えるようにする。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/lib/tasks/task-registry.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail.test.ts`,
+    `src/server/services/patient-movement-timeline-presenter.ts`,
+    `src/server/services/patient-movement-timeline-presenter.test.ts`,
+    `src/types/patient-movement-timeline.ts`,
+    `src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail.test.ts`,
+    `src/server/services/patient-movement-timeline-presenter.ts`.
+  - implementation:
+    `core.inbound_communication_review_required` を `inbound_communication` / `interprofessional`
+    movement marker に分類した。title は controlled な「他職種受信確認タスクを作成/完了」にし、
+    href は既存 task queue deep link を使う。MCS/協力薬局記録は `privacy_level='detail'` のまま、
+    task 起点の inbound communication marker は `summary` として扱う presenter helper を追加した。
+  - security risks reduced:
+    他職種受信 task を患者の動きで見つけやすくしつつ、`Task.title` / `description` / `metadata`
+    は select しない既存契約を維持した。source id や raw inbound text は URL と movement payload に出さない。
+  - validation:
+    `pnpm exec vitest run src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.test.ts --reporter=dot --testTimeout=30000`
+    passed: 2 files / 77 tests.
+    `pnpm exec eslint src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.ts src/server/services/patient-movement-timeline-presenter.test.ts`
+    passed.
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.ts src/server/services/patient-movement-timeline-presenter.test.ts`
+    passed.
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.ts src/server/services/patient-movement-timeline-presenter.test.ts`
+    passed.
+  - remaining:
+    commit and push this scoped slice. Formal inbound DB/API/review UI and signal source remain.
+  - next action:
+    Commit and push the scoped MOV-001 inbound task classification.
+
 - codex: INB-001 Case Risk inbound communication scoped action（commit 4ba2b63e9, pushed）。
   - current task:
     Case Risk Cockpit の他職種受信 aggregate finding が広い workflow action に逃げないよう、

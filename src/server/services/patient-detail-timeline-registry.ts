@@ -137,6 +137,7 @@ const MEDICATION_STOCK_SIGNAL_TASK_TYPES = new Set([
   'pharmacy.inbound_low_stock_unquantified_report',
 ]);
 const SAFETY_SIGNAL_TASK_TYPES = new Set(['pharmacy.inbound_medication_safety_review_required']);
+const INBOUND_COMMUNICATION_TASK_TYPES = new Set(['core.inbound_communication_review_required']);
 const INBOUND_COMMUNICATION_EVENT_TYPE_BY_CHANNEL: Record<string, string> = {
   phone: 'inbound_phone',
   fax: 'inbound_fax',
@@ -163,8 +164,11 @@ function getInboundCommunicationEventType(item: CommunicationTimelineSource) {
   return INBOUND_COMMUNICATION_EVENT_TYPE_BY_CHANNEL[item.channel] ?? null;
 }
 
-function getTaskMovementKind(taskType: string): 'task' | 'safety' | 'medication_stock' {
+function getTaskMovementKind(
+  taskType: string,
+): 'task' | 'safety' | 'medication_stock' | 'interprofessional' {
   const canonicalTaskType = getTaskTypeDefinition(taskType)?.taskType ?? taskType;
+  if (INBOUND_COMMUNICATION_TASK_TYPES.has(canonicalTaskType)) return 'interprofessional';
   if (MEDICATION_STOCK_SIGNAL_TASK_TYPES.has(canonicalTaskType)) return 'medication_stock';
   if (canonicalTaskType.includes('.risk_') || SAFETY_SIGNAL_TASK_TYPES.has(canonicalTaskType)) {
     return 'safety';
@@ -576,28 +580,41 @@ export const operationalTasksSource = defineTimelineSource<
       const movementKind = getTaskMovementKind(item.task_type);
       const isSafetySignal = movementKind === 'safety';
       const isMedicationStockSignal = movementKind === 'medication_stock';
+      const isInboundCommunication = movementKind === 'interprofessional';
       return {
         id: `task:${item.id}`,
-        event_type: isSafetySignal
-          ? 'safety_signal'
-          : isMedicationStockSignal
-            ? 'inbound_medication_stock_signal'
-            : isResolved
-              ? 'task_resolved'
-              : 'task_created',
-        category: isSafetySignal ? 'safety' : isMedicationStockSignal ? 'medication_stock' : 'task',
+        event_type: isInboundCommunication
+          ? 'inbound_communication'
+          : isSafetySignal
+            ? 'safety_signal'
+            : isMedicationStockSignal
+              ? 'inbound_medication_stock_signal'
+              : isResolved
+                ? 'task_resolved'
+                : 'task_created',
+        category: isInboundCommunication
+          ? 'interprofessional'
+          : isSafetySignal
+            ? 'safety'
+            : isMedicationStockSignal
+              ? 'medication_stock'
+              : 'task',
         occurred_at: isResolved ? (item.completed_at ?? item.updated_at) : item.created_at,
-        title: isSafetySignal
+        title: isInboundCommunication
           ? isResolved
-            ? '安全確認タスクを完了'
-            : '安全確認タスクを作成'
-          : isMedicationStockSignal
+            ? '他職種受信確認タスクを完了'
+            : '他職種受信確認タスクを作成'
+          : isSafetySignal
             ? isResolved
-              ? '残数確認タスクを完了'
-              : '残数確認タスクを作成'
-            : isResolved
-              ? '運用タスクを完了'
-              : '運用タスクを作成',
+              ? '安全確認タスクを完了'
+              : '安全確認タスクを作成'
+            : isMedicationStockSignal
+              ? isResolved
+                ? '残数確認タスクを完了'
+                : '残数確認タスクを作成'
+              : isResolved
+                ? '運用タスクを完了'
+                : '運用タスクを作成',
         summary:
           compactTimelineValues([
             taskLabel,

@@ -138,6 +138,17 @@ function relatedEntityIdOf(event: TimelineEvent) {
   return rest.length > 0 ? rest.join(':') : null;
 }
 
+function privacyLevelOf(event: TimelineEvent, category: PatientMovementCategory) {
+  if (category === 'communication') return 'detail';
+  if (
+    category === 'interprofessional' &&
+    (event.event_type === 'inbound_mcs' || event.event_type === 'interprofessional_note')
+  ) {
+    return 'detail';
+  }
+  return 'summary';
+}
+
 export function toPatientMovementTimelineEvent(
   event: TimelineEvent,
   options: MovementProjectionOptions,
@@ -167,8 +178,7 @@ export function toPatientMovementTimelineEvent(
     severity: severityOf(event),
     badges: statusLabel ? [{ label: statusLabel, tone: statusBadgeTone(event) }] : [],
     metadata: metadataOf(event),
-    privacy_level:
-      category === 'communication' || category === 'interprofessional' ? 'detail' : 'summary',
+    privacy_level: privacyLevelOf(event, category),
     raw_available: false,
   };
 }
