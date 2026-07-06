@@ -6428,3 +6428,55 @@
   Broader `Plans.md` objective remains open. `UX-TBL-001 / DEV-PHI-001` の残りは、
   `serverExportEndpoint` を raw string ではなく audit/masking registry backed descriptor へ寄せること、
   real consumer の screen-level PHI export snapshot、bulk action button 側の選択範囲文言テスト。
+
+## 2026-07-06 DataTable server export descriptor slice
+
+- codex: `UX-TBL-001 / DEV-PHI-001` DataTable server export descriptor implemented.
+  shared `DataTable` の server-side full export contract を raw `serverExportEndpoint` 文字列から
+  `serverExport` descriptor（`endpoint` / `auditEvent` / `maskingProfile` / `description`）へ置換した。
+  `/api/` 以外の endpoint、監査 event 欠落、masking profile 欠落、説明文欠落は fail-closed にし、
+  「監査・マスキング済みの検索条件全件出力」という UI 表示を typed contract で最低限裏づける。
+- subagent:
+  `Frontend the 24th` の CHANGES_REQUESTED 2 件目（raw same-app path に対して強い安全文言が出る
+  DEV-PHI risk）を反映した。現行 repo scan では `serverExportEndpoint` の実利用は test のみで、
+  実画面はページ固有 export を使っていたため、互換 prop を残さず descriptor へ上書きした。
+- design / imagegen:
+  既存 DataTable toolbar contract の型・fail-closed 状態追加で、新規レイアウト再構築を伴わないため
+  `imagegen` / `gpt-image-2` の新規生成は省略した。実 consumer に全件出力導線を配置する UI slice では
+  PH-OS UI/UX SSOT と `gpt-image-2` 方針に従う。
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/components/ui/data-table.tsx`,
+  `src/components/ui/data-table.test.tsx`,
+  `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`.
+- files changed:
+  `Plans.md`,
+  `src/components/ui/data-table.tsx`,
+  `src/components/ui/data-table.test.tsx`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  shared DataTable が任意の same-origin path に対して「監査・マスキング済み」と表示できる余地を減らした。
+  descriptor metadata が欠ける場合は disabled button と sr-only reason で fail-closed になる。
+- security / PHI reviewed:
+  export payload は変更なし。新 contract は PHI 出力の安全性を UI 上で過大表示しないための
+  audit/masking metadata gate。実在患者名、住所、電話、処方本文、保険情報、外部共有 URL、secret は扱わない。
+- performance issues reviewed:
+  render-time validation だけで、DB query、network call、payload field、row model 計算は追加なし。
+- validation:
+  `pnpm exec vitest run src/components/ui/data-table.test.tsx --reporter=dot --testTimeout=30000`
+  green (1 file / 23 tests);
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  green;
+  `pnpm lint`
+  green with existing warnings in `src/lib/platform/break-glass.test.ts` (`_tx`, `_input` unused);
+  `pnpm format:check`
+  green after formatting `src/components/ui/data-table.tsx` and `src/components/ui/data-table.test.tsx`;
+  `git diff --check`
+  green.
+- remaining:
+  Broader `Plans.md` objective remains open. `UX-TBL-001 / DEV-PHI-001` の残りは approved export registry、
+  real consumer の screen-level PHI export snapshot、bulk action button 側の選択範囲文言テスト。
