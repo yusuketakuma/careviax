@@ -41,6 +41,43 @@
 
 ## 直近の land（本日・要点）
 
+- codex: FE-ERR-001 admin UAT segment hardening（pending commit）。
+  - current task:
+    `/admin/uat` の launch dossier / summary / org audit / saved feedback / collaborator 取得失敗を
+    shared segment state に寄せ、raw query error message を UI に出さない。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/components/ui/segment-state.tsx`,
+    `src/app/(dashboard)/admin/uat/uat-content.tsx`,
+    `src/app/(dashboard)/admin/uat/uat-content.test.tsx`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/admin/uat/uat-content.tsx`,
+    `src/app/(dashboard)/admin/uat/uat-content.test.tsx`.
+  - implementation:
+    `LoadingRows` を `SegmentLoading` wrapper に変更し、dossier/summary/org audit/saved feedback/collaborator
+    の取得失敗を `SegmentError` に移行した。各 segment は固定文言と retry のみを表示する。
+  - bugs found:
+    UAT 管理画面の複数セクションで raw `error.message` を直接表示していた。
+  - security risks reduced:
+    UAT 関連 API の raw route、org id、patient name、storage key、token、provider error 等が UI に出る面を縮小した。
+  - performance issues improved:
+    なし。表示状態の正確性と fail-soft の修正。
+  - validation:
+    `pnpm exec vitest run 'src/app/(dashboard)/admin/uat/uat-content.test.tsx' src/components/ui/segment-state.test.tsx --reporter=dot --testTimeout=30000` → pass（2 files / 13 tests）。
+    `pnpm exec eslint 'src/app/(dashboard)/admin/uat/uat-content.tsx' 'src/app/(dashboard)/admin/uat/uat-content.test.tsx'` → pass。
+    `rg -n "error\\.message|SkeletonRows" 'src/app/(dashboard)/admin/uat/uat-content.tsx' 'src/app/(dashboard)/admin/uat/uat-content.test.tsx'` → no matches。
+    `pnpm typecheck` → pass。
+    `pnpm exec prettier --check 'src/app/(dashboard)/admin/uat/uat-content.tsx' 'src/app/(dashboard)/admin/uat/uat-content.test.tsx'` → pass after targeted write。
+  - remaining:
+    FE-ERR-001 は packaging-methods / service-areas / drug-master detail sheet など admin screen 群への段階展開が残る。
+    Formal `InboundCommunicationEvent` / `InboundCommunicationSignal` DB/API/review UI and MedicationStock Ledger source remain.
+  - next action:
+    Plans/STATE format/diff check、scoped commit/push。
+
 - codex: FE-ERR-001 admin settings segment hardening（pending commit）。
   - current task:
     `/admin/settings` の設定値、外部連携監視、店舗一覧取得失敗で raw query error message を表示せず、

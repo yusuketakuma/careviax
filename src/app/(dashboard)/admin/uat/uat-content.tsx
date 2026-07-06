@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { SkeletonRows } from '@/components/ui/loading';
+import { SegmentError, SegmentLoading } from '@/components/ui/segment-state';
 import { SegmentedProgressBar } from '@/components/ui/segmented-progress-bar';
 import { Separator } from '@/components/ui/separator';
 import { readApiJson } from '@/lib/api/client-json';
@@ -42,11 +42,7 @@ const UAT_FEEDBACK_FORM_DEFAULTS = {
 } satisfies UatFeedbackForm;
 
 function LoadingRows({ label, rows = 3 }: { label: string; rows?: number }) {
-  return (
-    <div role="status" aria-label={label}>
-      <SkeletonRows rows={rows} cols={2} status={false} />
-    </div>
-  );
+  return <SegmentLoading label={label} rows={rows} cols={2} size="compact" />;
 }
 
 type UatFeedbackItem = {
@@ -411,10 +407,6 @@ export function UatContent() {
   const orgAudit = orgAuditQuery.data?.data;
   const dossier = dossierQuery.data?.data;
   const collaborators = dedupeCollaboratorOptions(collaboratorsQuery.data?.data ?? []);
-  const collaboratorError =
-    collaboratorsQuery.error instanceof Error
-      ? collaboratorsQuery.error.message
-      : '担当候補の取得に失敗しました';
   const feedbackError =
     typeof feedbackFormErrors.feedback?.message === 'string'
       ? feedbackFormErrors.feedback.message
@@ -493,11 +485,13 @@ export function UatContent() {
           {dossierQuery.isLoading ? (
             <LoadingRows label="ローンチ前提を読み込み中" rows={4} />
           ) : dossierQuery.error ? (
-            <p className="text-sm text-destructive">
-              {dossierQuery.error instanceof Error
-                ? dossierQuery.error.message
-                : 'pilot launch dossier の取得に失敗しました'}
-            </p>
+            <SegmentError
+              title="ローンチ前提を取得できませんでした"
+              cause="Pilot Launch Dossier を表示できません。"
+              nextAction="通信状態を確認して再読み込みしてください。"
+              onRetry={() => void dossierQuery.refetch()}
+              retryLabel="再試行"
+            />
           ) : dossier ? (
             <>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -666,11 +660,13 @@ export function UatContent() {
           {summaryQuery.isLoading ? (
             <LoadingRows label="UAT集計を読み込み中" rows={4} />
           ) : summaryQuery.error ? (
-            <p className="text-sm text-destructive">
-              {summaryQuery.error instanceof Error
-                ? summaryQuery.error.message
-                : 'UAT 集計の取得に失敗しました'}
-            </p>
+            <SegmentError
+              title="UAT集計を取得できませんでした"
+              cause="フィードバック集計を表示できません。"
+              nextAction="通信状態を確認して再読み込みしてください。"
+              onRetry={() => void summaryQuery.refetch()}
+              retryLabel="再試行"
+            />
           ) : summary ? (
             <>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -762,11 +758,13 @@ export function UatContent() {
           {orgAuditQuery.isLoading ? (
             <LoadingRows label="監査サマリーを読み込み中" rows={4} />
           ) : orgAuditQuery.error ? (
-            <p className="text-sm text-destructive">
-              {orgAuditQuery.error instanceof Error
-                ? orgAuditQuery.error.message
-                : 'pilot org audit の取得に失敗しました'}
-            </p>
+            <SegmentError
+              title="監査サマリーを取得できませんでした"
+              cause="Target Pharmacy Audit を表示できません。"
+              nextAction="通信状態を確認して再読み込みしてください。"
+              onRetry={() => void orgAuditQuery.refetch()}
+              retryLabel="再試行"
+            />
           ) : orgAudit ? (
             <>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -1012,11 +1010,13 @@ export function UatContent() {
         {feedbackQuery.isLoading ? (
           <LoadingRows label="保存済みフィードバックを読み込み中" rows={3} />
         ) : feedbackQuery.error ? (
-          <p className="text-sm text-destructive">
-            {feedbackQuery.error instanceof Error
-              ? feedbackQuery.error.message
-              : 'UAT フィードバックの取得に失敗しました'}
-          </p>
+          <SegmentError
+            title="保存済みフィードバックを取得できませんでした"
+            cause="保存済みフィードバック一覧を表示できません。"
+            nextAction="通信状態を確認して再読み込みしてください。"
+            onRetry={() => void feedbackQuery.refetch()}
+            retryLabel="再試行"
+          />
         ) : (feedbackQuery.data?.data.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">まだ保存済みフィードバックはありません。</p>
         ) : (
@@ -1100,7 +1100,14 @@ export function UatContent() {
                         </SelectContent>
                       </Select>
                       {collaboratorsQuery.error ? (
-                        <p className="text-xs text-destructive">{collaboratorError}</p>
+                        <SegmentError
+                          title="担当候補を取得できませんでした"
+                          cause="担当者候補を表示できません。"
+                          nextAction="通信状態を確認して再読み込みしてください。"
+                          onRetry={() => void collaboratorsQuery.refetch()}
+                          retryLabel="再試行"
+                          className="mt-2"
+                        />
                       ) : null}
                     </div>
 

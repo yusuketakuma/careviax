@@ -9,16 +9,26 @@ import { UatContent } from './uat-content';
 
 setupDomTestEnv();
 
-const { mutateAsyncMock, invalidateQueriesMock, loadingQueryKeysMock, queryOptionsMock } =
-  vi.hoisted(() => ({
-    mutateAsyncMock: vi.fn(),
-    invalidateQueriesMock: vi.fn(),
-    loadingQueryKeysMock: new Set<string>(),
-    queryOptionsMock: [] as Array<{
-      queryKey?: readonly unknown[];
-      queryFn?: () => Promise<unknown>;
-    }>,
-  }));
+const {
+  mutateAsyncMock,
+  invalidateQueriesMock,
+  loadingQueryKeysMock,
+  errorQueryMessagesMock,
+  dataQueryPayloadsMock,
+  refetchMock,
+  queryOptionsMock,
+} = vi.hoisted(() => ({
+  mutateAsyncMock: vi.fn(),
+  invalidateQueriesMock: vi.fn(),
+  loadingQueryKeysMock: new Set<string>(),
+  errorQueryMessagesMock: new Map<string, string>(),
+  dataQueryPayloadsMock: new Map<string, unknown>(),
+  refetchMock: vi.fn(),
+  queryOptionsMock: [] as Array<{
+    queryKey?: readonly unknown[];
+    queryFn?: () => Promise<unknown>;
+  }>,
+}));
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
@@ -33,12 +43,33 @@ vi.mock('@tanstack/react-query', () => ({
         data: undefined,
         isLoading: true,
         error: null,
+        refetch: refetchMock,
+      };
+    }
+    if (errorQueryMessagesMock.has(queryName)) {
+      return {
+        data: undefined,
+        isLoading: false,
+        isError: true,
+        error: new Error(errorQueryMessagesMock.get(queryName)),
+        refetch: refetchMock,
+      };
+    }
+    if (dataQueryPayloadsMock.has(queryName)) {
+      return {
+        data: dataQueryPayloadsMock.get(queryName),
+        isLoading: false,
+        isError: false,
+        error: null,
+        refetch: refetchMock,
       };
     }
     return {
       data: undefined,
       isLoading: false,
+      isError: false,
       error: null,
+      refetch: refetchMock,
     };
   },
   useMutation: (options: {
@@ -102,6 +133,8 @@ describe('UatContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     loadingQueryKeysMock.clear();
+    errorQueryMessagesMock.clear();
+    dataQueryPayloadsMock.clear();
     queryOptionsMock.length = 0;
     vi.stubGlobal(
       'fetch',
@@ -174,6 +207,28 @@ describe('UatContent', () => {
     expect(screen.queryByText('監査サマリーを読み込み中...', { selector: 'p' })).toBeNull();
   });
 
+  it('uses safe retryable segment errors for UAT summary surfaces', () => {
+    const unsafeMessage =
+      '/api/admin/uat-feedback org_123 patient_name=山田 太郎 storage_key=s3://secret token=secret';
+    errorQueryMessagesMock.set('pilot-launch-dossier', unsafeMessage);
+    errorQueryMessagesMock.set('uat-feedback-summary', unsafeMessage);
+    errorQueryMessagesMock.set('pilot-org-audit', unsafeMessage);
+
+    render(<UatContent />);
+
+    expect(screen.getByText('ローンチ前提を取得できませんでした')).toBeTruthy();
+    expect(screen.getByText('UAT集計を取得できませんでした')).toBeTruthy();
+    expect(screen.getByText('監査サマリーを取得できませんでした')).toBeTruthy();
+    expect(screen.queryByText('/api/admin/uat-feedback')).toBeNull();
+    expect(screen.queryByText('org_123')).toBeNull();
+    expect(screen.queryByText('patient_name=山田 太郎')).toBeNull();
+    expect(screen.queryByText('storage_key=s3://secret')).toBeNull();
+    expect(screen.queryByText('token=secret')).toBeNull();
+
+    fireEvent.click(screen.getAllByRole('button', { name: '再試行' })[0]);
+    expect(refetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('uses an announced skeleton while saved feedback is loading', () => {
     loadingQueryKeysMock.add('uat-feedback');
 
@@ -181,6 +236,58 @@ describe('UatContent', () => {
 
     expect(screen.getByRole('status', { name: '保存済みフィードバックを読み込み中' })).toBeTruthy();
     expect(screen.queryByText('読み込み中...', { selector: 'p' })).toBeNull();
+  });
+
+  it('uses a safe retryable segment error for saved feedback', () => {
+    const unsafeMessage =
+      '/api/pharmacists org_123 patient_name=山田 太郎 provider_error=timeout token=secret';
+    errorQueryMessagesMock.set('uat-feedback', unsafeMessage);
+
+    render(<UatContent />);
+
+    expect(screen.getByText('保存済みフィードバックを取得できませんでした')).toBeTruthy();
+    expect(screen.queryByText('/api/pharmacists')).toBeNull();
+    expect(screen.queryByText('provider_error=timeout')).toBeNull();
+    expect(screen.queryByText('token=secret')).toBeNull();
+    expect(screen.queryByText('まだ保存済みフィードバックはありません。')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(refetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses safe retryable copy for collaborator loading failures inside triage rows', () => {
+    const unsafeMessage =
+      '/api/pharmacists org_123 patient_name=山田 太郎 provider_error=timeout token=secret';
+    dataQueryPayloadsMock.set('uat-feedback', {
+      data: [
+        {
+          id: 'feedback_1',
+          priority: 'high',
+          status: 'open',
+          owner_user_id: null,
+          feedback: 'UATで確認したい導線があります',
+          checklist_progress: '1/8',
+          checked_items: ['flow_patient_to_report'],
+          source: 'pilot_pharmacy',
+          linked_work_item: null,
+          due_date: null,
+          resolved_at: null,
+          created_at: '2026-07-07T00:00:00.000Z',
+        },
+      ],
+    });
+    errorQueryMessagesMock.set('uat-feedback-collaborators', unsafeMessage);
+
+    render(<UatContent />);
+
+    expect(screen.getByText('担当候補を取得できませんでした')).toBeTruthy();
+    expect(screen.getByText(/担当者候補を表示できません/)).toBeTruthy();
+    expect(screen.queryByText('/api/pharmacists')).toBeNull();
+    expect(screen.queryByText('provider_error=timeout')).toBeNull();
+    expect(screen.queryByText('token=secret')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(refetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('uses org-scoped headers for UAT read endpoints', async () => {
