@@ -118,6 +118,27 @@ describe('SettingsContent polling policy', () => {
     expect(screen.queryByText('設定を読み込んでいます...')).toBeNull();
   });
 
+  it('shows a safe retryable segment when settings query fails', () => {
+    const refetch = vi.fn();
+    mockQueryErrorFor(
+      'admin-settings',
+      'GET /api/settings?scope=system org_1 token=secret storage_key=s3://secret',
+      refetch,
+    );
+
+    render(<SettingsContent />);
+
+    expect(screen.getByText('設定を取得できませんでした')).toBeTruthy();
+    expect(screen.getByText(/設定値を表示できません/)).toBeTruthy();
+    expect(screen.queryByText('GET /api/settings?scope=system')).toBeNull();
+    expect(screen.queryByText('org_1')).toBeNull();
+    expect(screen.queryByText('token=secret')).toBeNull();
+    expect(screen.queryByText('storage_key=s3://secret')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
   function mockQueryErrorFor(errorKey: string, message: string, refetch: () => void) {
     useQueryMock.mockImplementation(({ queryKey }: QueryOption) => {
       if (queryKey[0] === errorKey) {
@@ -162,11 +183,19 @@ describe('SettingsContent polling policy', () => {
   it('surfaces a retryable error instead of a perpetual loading health monitor when /api/health fails', () => {
     // false-empty 封止: 取得失敗を「確認中」(loading) カードに畳まず、エラー + 再試行を出す。
     const refetch = vi.fn();
-    mockQueryErrorFor('admin-health-monitor', '外部連携監視の取得に失敗しました', refetch);
+    mockQueryErrorFor(
+      'admin-health-monitor',
+      'GET /api/health org_1 provider_error=timeout token=secret',
+      refetch,
+    );
 
     render(<SettingsContent />);
 
-    expect(screen.getByText('外部連携監視の取得に失敗しました')).toBeTruthy();
+    expect(screen.getByText('外部連携監視を取得できませんでした')).toBeTruthy();
+    expect(screen.getByText(/連携監視の状態を表示できません/)).toBeTruthy();
+    expect(screen.queryByText('GET /api/health')).toBeNull();
+    expect(screen.queryByText('provider_error=timeout')).toBeNull();
+    expect(screen.queryByText('token=secret')).toBeNull();
     expect(screen.queryByText('確認中')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '再試行' }));
     expect(refetch).toHaveBeenCalledTimes(1);
@@ -246,14 +275,22 @@ describe('SettingsContent polling policy', () => {
 
   it('surfaces a retryable error instead of an empty store selector when /api/pharmacy-sites fails', () => {
     const refetch = vi.fn();
-    mockQueryErrorFor('pharmacy-sites', '店舗一覧の取得に失敗しました', refetch);
+    mockQueryErrorFor(
+      'pharmacy-sites',
+      'GET /api/pharmacy-sites org_1 patient_name=山田 token=secret',
+      refetch,
+    );
 
     render(<SettingsContent />);
 
     // 店舗セレクタは「店舗」タブ配下にあるため、タブを開いてから検証する。
     fireEvent.click(screen.getByRole('tab', { name: '店舗' }));
 
-    expect(screen.getByText('店舗一覧の取得に失敗しました')).toBeTruthy();
+    expect(screen.getByText('店舗一覧を取得できませんでした')).toBeTruthy();
+    expect(screen.getByText(/設定対象の店舗を表示できません/)).toBeTruthy();
+    expect(screen.queryByText('GET /api/pharmacy-sites')).toBeNull();
+    expect(screen.queryByText('patient_name=山田')).toBeNull();
+    expect(screen.queryByText('token=secret')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '再試行' }));
     expect(refetch).toHaveBeenCalledTimes(1);
   });

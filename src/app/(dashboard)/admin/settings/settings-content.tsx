@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { SkeletonRows } from '@/components/ui/loading';
+import { SegmentError, SegmentLoading } from '@/components/ui/segment-state';
 import {
   Select,
   SelectContent,
@@ -335,11 +335,23 @@ function ScopePanel({
       <Card>
         <CardContent className="px-4 py-0">
           {query.isLoading ? (
-            <div className="py-4" role="status" aria-label="設定を読み込み中" aria-live="polite">
-              <SkeletonRows rows={3} cols={2} status={false} />
+            <SegmentLoading
+              label="設定を読み込み中"
+              description="保存済みの設定値を確認しています。"
+              rows={3}
+              cols={2}
+              className="my-4"
+            />
+          ) : query.isError ? (
+            <div className="py-4">
+              <SegmentError
+                title="設定を取得できませんでした"
+                cause="設定値を表示できません。"
+                nextAction="通信状態を確認して再読み込みしてください。"
+                onRetry={() => void query.refetch()}
+                retryLabel="再試行"
+              />
             </div>
-          ) : query.error instanceof Error ? (
-            <div className="py-6 text-sm text-destructive">{query.error.message}</div>
           ) : editorMode === 'json' ? (
             <div className="space-y-3 py-4">
               <p className="text-xs text-muted-foreground">
@@ -420,22 +432,13 @@ export function SettingsContent() {
         </CardHeader>
         <CardContent className={healthQuery.isError ? '' : 'grid gap-4 md:grid-cols-3'}>
           {healthQuery.isError ? (
-            // 取得失敗を永続「確認中」に畳まず、エラーと再試行を明示する(false-empty 封止)
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
-              <span>
-                {healthQuery.error instanceof Error
-                  ? healthQuery.error.message
-                  : '外部連携監視の取得に失敗しました'}
-              </span>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => healthQuery.refetch()}
-              >
-                再試行
-              </Button>
-            </div>
+            <SegmentError
+              title="外部連携監視を取得できませんでした"
+              cause="連携監視の状態を表示できません。"
+              nextAction="通信状態を確認して再読み込みしてください。"
+              onRetry={() => void healthQuery.refetch()}
+              retryLabel="再試行"
+            />
           ) : (
             <>
               <HealthCard
@@ -505,23 +508,14 @@ export function SettingsContent() {
               </SelectContent>
             </Select>
             {sitesQuery.isError ? (
-              // 取得失敗を空の店舗セレクタに畳まず、エラーと再試行を明示する(false-empty 封止)
-              <p className="flex flex-wrap items-center gap-x-2 text-sm text-destructive">
-                <span>
-                  {sitesQuery.error instanceof Error
-                    ? sitesQuery.error.message
-                    : '店舗一覧の取得に失敗しました'}
-                </span>
-                <Button
-                  type="button"
-                  variant="link"
-                  size="sm"
-                  className="h-auto p-0 text-sm"
-                  onClick={() => sitesQuery.refetch()}
-                >
-                  再試行
-                </Button>
-              </p>
+              <SegmentError
+                title="店舗一覧を取得できませんでした"
+                cause="設定対象の店舗を表示できません。"
+                nextAction="通信状態を確認して再読み込みしてください。"
+                onRetry={() => void sitesQuery.refetch()}
+                retryLabel="再試行"
+                className="mt-2"
+              />
             ) : null}
           </div>
           <ScopePanel

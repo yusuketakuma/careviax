@@ -41,6 +41,46 @@
 
 ## 直近の land（本日・要点）
 
+- codex: FE-ERR-001 admin settings segment hardening（pending commit）。
+  - current task:
+    `/admin/settings` の設定値、外部連携監視、店舗一覧取得失敗で raw query error message を表示せず、
+    retryable shared segment state に寄せる。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `docs/ui-ux-design-guidelines.md`,
+    `src/components/ui/segment-state.tsx`,
+    `src/app/(dashboard)/admin/settings/settings-content.tsx`,
+    `src/app/(dashboard)/admin/settings/settings-content.test.tsx`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/admin/settings/settings-content.tsx`,
+    `src/app/(dashboard)/admin/settings/settings-content.test.tsx`.
+  - implementation:
+    `ScopePanel` の設定読み込みを `SegmentLoading`、取得失敗を `SegmentError` へ移行した。
+    外部連携監視と店舗一覧の取得失敗も `SegmentError` へ移行し、固定文言と retry のみを表示する。
+  - bugs found:
+    settings/health/sites query の raw `error.message` が admin UI に直接出ていた。
+  - security risks reduced:
+    settings/health/sites 取得失敗時に route、org id、token、storage key、provider error 等が UI に出る面を縮小した。
+  - performance issues improved:
+    なし。表示状態の正確性と fail-soft の修正。
+  - validation:
+    `pnpm exec vitest run 'src/app/(dashboard)/admin/settings/settings-content.test.tsx' src/components/ui/segment-state.test.tsx --reporter=dot --testTimeout=30000` → pass（2 files / 19 tests）。
+    `pnpm exec eslint 'src/app/(dashboard)/admin/settings/settings-content.tsx' 'src/app/(dashboard)/admin/settings/settings-content.test.tsx'` → pass。
+    `rg -n "error\\.message|SkeletonRows" 'src/app/(dashboard)/admin/settings/settings-content.tsx' 'src/app/(dashboard)/admin/settings/settings-content.test.tsx'` → no matches。
+    `pnpm typecheck` → pass。
+    `pnpm exec prettier --check 'src/app/(dashboard)/admin/settings/settings-content.tsx' 'src/app/(dashboard)/admin/settings/settings-content.test.tsx'` → pass。
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md 'src/app/(dashboard)/admin/settings/settings-content.tsx' 'src/app/(dashboard)/admin/settings/settings-content.test.tsx'` → pass。
+    `git diff --check -- Plans.md ops/refactor/STATE.md 'src/app/(dashboard)/admin/settings/settings-content.tsx' 'src/app/(dashboard)/admin/settings/settings-content.test.tsx'` → pass。
+  - remaining:
+    FE-ERR-001 は UAT など admin screen 群への段階展開が残る。Formal `InboundCommunicationEvent` /
+    `InboundCommunicationSignal` DB/API/review UI and MedicationStock Ledger source remain.
+  - next action:
+    Plans/STATE format/diff check、scoped commit/push。
+
 - codex: FE-ERR-001 admin contact-profiles false-zero hardening（pending commit）。
   - current task:
     `/admin/contact-profiles` の送付先一覧取得失敗時に、ヘッダー KPI が `表示中 0件` /
