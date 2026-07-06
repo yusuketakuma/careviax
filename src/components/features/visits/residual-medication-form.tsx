@@ -25,7 +25,11 @@ type FormValues = {
  * Inline residual medication entry sub-form.
  * Must be used inside a react-hook-form <FormProvider>.
  */
-export function ResidualMedicationForm() {
+export function ResidualMedicationForm({
+  onImmediateDraftSave,
+}: {
+  onImmediateDraftSave?: () => void;
+}) {
   const {
     register,
     watch,
@@ -53,6 +57,7 @@ export function ResidualMedicationForm() {
       remaining_quantity: 0,
       is_prohibited_reduction: false,
     });
+    void Promise.resolve().then(() => onImmediateDraftSave?.());
   }
 
   return (
@@ -116,7 +121,10 @@ export function ResidualMedicationForm() {
                     type="button"
                     variant="ghost"
                     size="icon-sm"
-                    onClick={() => remove(index)}
+                    onClick={() => {
+                      remove(index);
+                      void Promise.resolve().then(() => onImmediateDraftSave?.());
+                    }}
                     aria-label={`薬剤 ${index + 1} を削除`}
                   >
                     <Trash2 className="size-3.5 text-muted-foreground" aria-hidden="true" />

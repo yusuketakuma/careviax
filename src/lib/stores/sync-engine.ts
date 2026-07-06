@@ -8,6 +8,7 @@ import { offlineDb, type OfflineSyncQueue } from './offline-db';
 import type { VisitRecordConflictServerSnapshotInput } from '@/types/visit-record-conflict';
 
 const MAX_RETRIES = 3;
+const RETRY_BACKOFF_MS = [30_000, 120_000, 300_000] as const;
 const GENERIC_SYNC_ERROR_MESSAGE = '同期に失敗しました';
 const activeSyncQueueRuns = new Map<string, Promise<{ synced: number; failed: number }>>();
 const autoSyncSubscriptions = new Map<
@@ -223,6 +224,30 @@ function safeSyncErrorMessage(): string {
   return GENERIC_SYNC_ERROR_MESSAGE;
 }
 
+function computeNextAttemptAt(retryCount: number, now = new Date()): Date {
+  const index = Math.min(Math.max(retryCount - 1, 0), RETRY_BACKOFF_MS.length - 1);
+  return new Date(now.getTime() + RETRY_BACKOFF_MS[index]);
+}
+
+function isSyncQueueItemDue(item: OfflineSyncQueue, now = new Date()): boolean {
+  const nextAttemptAt = readDateTime(item.nextAttemptAt);
+  return nextAttemptAt === null || nextAttemptAt <= now.getTime();
+}
+
+function buildRetryFailureUpdate(
+  item: OfflineSyncQueue,
+  updates: Pick<OfflineSyncQueue, 'lastError'> &
+    Partial<Pick<OfflineSyncQueue, 'conflict_state' | 'conflict_payload'>>,
+): Pick<OfflineSyncQueue, 'retryCount' | 'nextAttemptAt' | 'lastError'> &
+  Partial<Pick<OfflineSyncQueue, 'conflict_state' | 'conflict_payload'>> {
+  const retryCount = item.retryCount + 1;
+  return {
+    ...updates,
+    retryCount,
+    nextAttemptAt: computeNextAttemptAt(retryCount),
+  };
+}
+
 function isBrowserOffline() {
   return typeof window !== 'undefined' && window.navigator?.onLine === false;
 }
@@ -272,7 +297,10 @@ async function processSyncQueueOnce(config: SyncConfig): Promise<{
   failed: number;
 }> {
   const endpoints = resolveSyncEndpoints(config);
-  const pending = await offlineDb.syncQueue.where('retryCount').below(MAX_RETRIES).toArray();
+  const now = new Date();
+  const pending = (
+    await offlineDb.syncQueue.where('retryCount').below(MAX_RETRIES).toArray()
+  ).filter((item) => isSyncQueueItemDue(item, now));
 
   let synced = 0;
   let failed = 0;
@@ -281,6 +309,16 @@ async function processSyncQueueOnce(config: SyncConfig): Promise<{
     try {
       const endpoint = endpoints[item.entityType];
       if (!endpoint) {
+        if (item.id !== undefined) {
+          await offlineDb.syncQueue.update(
+            item.id,
+            buildRetryFailureUpdate(item, {
+              lastError: 'Missing sync endpoint',
+              conflict_state: undefined,
+              conflict_payload: undefined,
+            }),
+          );
+        }
         failed++;
         continue;
       }
@@ -290,6 +328,7 @@ async function processSyncQueueOnce(config: SyncConfig): Promise<{
         await offlineDb.syncQueue.update(item.id!, {
           payload: await buildLegacyPlaintextPayloadTombstone(),
           retryCount: MAX_RETRIES,
+          nextAttemptAt: undefined,
           lastError: 'Legacy plaintext sync payload discarded',
           conflict_state: undefined,
           conflict_payload: undefined,
@@ -298,12 +337,14 @@ async function processSyncQueueOnce(config: SyncConfig): Promise<{
         continue;
       }
       if (payload.status === 'invalid') {
-        await offlineDb.syncQueue.update(item.id!, {
-          retryCount: item.retryCount + 1,
-          lastError: 'Invalid sync payload',
-          conflict_state: undefined,
-          conflict_payload: undefined,
-        });
+        await offlineDb.syncQueue.update(
+          item.id!,
+          buildRetryFailureUpdate(item, {
+            lastError: 'Invalid sync payload',
+            conflict_state: undefined,
+            conflict_payload: undefined,
+          }),
+        );
         failed++;
         continue;
       }
@@ -332,6 +373,7 @@ async function processSyncQueueOnce(config: SyncConfig): Promise<{
         // Keep the draft in queue so the user can resolve the conflict later.
         await offlineDb.syncQueue.update(item.id!, {
           retryCount: MAX_RETRIES,
+          nextAttemptAt: undefined,
           lastError: 'HTTP 409 conflict',
           conflict_state: 'server_conflict',
           conflict_payload: await encryptOfflinePayloadRequired(
@@ -344,19 +386,23 @@ async function processSyncQueueOnce(config: SyncConfig): Promise<{
         });
         failed++;
       } else {
-        await offlineDb.syncQueue.update(item.id!, {
-          retryCount: item.retryCount + 1,
-          lastError: `HTTP ${res.status}`,
-          conflict_state: undefined,
-          conflict_payload: undefined,
-        });
+        await offlineDb.syncQueue.update(
+          item.id!,
+          buildRetryFailureUpdate(item, {
+            lastError: `HTTP ${res.status}`,
+            conflict_state: undefined,
+            conflict_payload: undefined,
+          }),
+        );
         failed++;
       }
     } catch {
-      await offlineDb.syncQueue.update(item.id!, {
-        retryCount: item.retryCount + 1,
-        lastError: safeSyncErrorMessage(),
-      });
+      await offlineDb.syncQueue.update(
+        item.id!,
+        buildRetryFailureUpdate(item, {
+          lastError: safeSyncErrorMessage(),
+        }),
+      );
       failed++;
     }
   }
@@ -384,6 +430,7 @@ function isSameQueueItemForCompletion(current: OfflineSyncQueue, completed: Offl
     current.payload === completed.payload &&
     currentCreatedAt === completedCreatedAt &&
     current.retryCount === completed.retryCount &&
+    readDateTime(current.nextAttemptAt) === readDateTime(completed.nextAttemptAt) &&
     current.lastError === completed.lastError &&
     current.conflict_state === completed.conflict_state &&
     current.conflict_payload === completed.conflict_payload
@@ -456,6 +503,7 @@ export async function enqueueForSync(
     scope_id: scopeId,
     createdAt: new Date(),
     retryCount: 0,
+    nextAttemptAt: undefined,
     lastError: undefined,
     conflict_state: undefined,
     conflict_payload: undefined,
@@ -529,6 +577,7 @@ export async function registerVisitRecordConflict(args: {
     scope_id: args.scheduleId,
     createdAt: new Date(),
     retryCount: MAX_RETRIES,
+    nextAttemptAt: undefined,
     lastError: 'HTTP 409 conflict',
     conflict_state: 'server_conflict' as const,
     conflict_payload: await encryptOfflinePayloadRequired(
@@ -560,7 +609,11 @@ export async function resetFailedSyncQueueRetries(): Promise<number> {
     .toArray();
   await Promise.all(
     failed.map((item) =>
-      offlineDb.syncQueue.update(item.id!, { retryCount: 0, lastError: undefined }),
+      offlineDb.syncQueue.update(item.id!, {
+        retryCount: 0,
+        nextAttemptAt: undefined,
+        lastError: undefined,
+      }),
     ),
   );
   return failed.length;
@@ -629,6 +682,7 @@ export async function overwriteVisitRecordConflict(
     const server = readExistingRecordFromConflictResponse(await readJsonResponseBody(res));
     await offlineDb.syncQueue.update(itemId, {
       retryCount: MAX_RETRIES,
+      nextAttemptAt: undefined,
       lastError: 'HTTP 409 conflict',
       conflict_state: 'server_conflict',
       conflict_payload: await encryptOfflinePayloadRequired(

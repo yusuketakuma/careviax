@@ -41,6 +41,65 @@
 
 ## 直近の land（本日・要点）
 
+- codex: VISIT-SYNC-001 immediate draft flush + sync retry backoff continuation.
+  - current task:
+    `Plans.md` の `VISIT-SYNC-001` 残タスクから、訪問記録モバイル現場での入力喪失リスクを
+    さらに下げる slice を実装した。ステップ移動、残薬行の追加/削除、添付選択時に現在の
+    local SOAP draft を即時 flush する。既存 5秒 debounce autosave は維持しつつ、即時 flush 後に
+    pending timer を消すため、同じ入力に対する二重 local save を避ける。sync queue は
+    retryable failure に `nextAttemptAt` を保存し、due 前の row を decrypt/fetch しない backoff を
+    追加した。conflict / legacy tombstone / reset / enqueue は `nextAttemptAt` を明示クリアする。
+  - subagent review:
+    前回投入した `Test Architect the 27th` の read-only 指摘（ResidualMedicationForm / VisitAttachmentsField
+    mock が即時保存経路を検証できない）を反映済み。`ResidualMedicationForm` は実 component を使い、
+    添付は prop-driving mock で `onAddFiles` を通す。`Patch the 27th` の sync retry backoff patch を
+    main worktree へ統合した。新規 spawn は agent thread limit のため見送り、完了済み agent を close した。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`,
+    `src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx`,
+    `src/components/features/visits/residual-medication-form.tsx`,
+    `src/lib/stores/offline-db.ts`,
+    `src/lib/stores/sync-engine.ts`,
+    `src/lib/stores/sync-engine.test.ts`,
+    `src/lib/stores/offline-store.test.ts`,
+    `src/components/providers/offline-sync-bridge.test.tsx`.
+  - files changed:
+    `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`,
+    `src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx`,
+    `src/components/features/visits/residual-medication-form.tsx`,
+    `src/lib/stores/offline-db.ts`,
+    `src/lib/stores/sync-engine.ts`,
+    `src/lib/stores/sync-engine.test.ts`,
+    `ops/refactor/STATE.md`.
+  - bugs / risks reduced:
+    モバイル step transition 直前の入力、残薬行の構造変更、添付選択直後の入力が 5秒 debounce 待ちで
+    端末から失われるリスクを縮小。HTTP/network/invalid payload failure 後の sync queue が即時再試行を
+    繰り返す無駄な I/O を backoff で抑制。unexpected sync error は既存の汎用文言のみ保持し、
+    `nextAttemptAt` は PHI-free metadata として患者名/薬剤名/SOAP/filename/provider diagnostics を含めない。
+  - validation:
+    `pnpm exec vitest run 'src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx' src/lib/stores/sync-engine.test.ts src/lib/stores/offline-store.test.ts src/components/providers/offline-sync-bridge.test.tsx --reporter=dot --testTimeout=30000`
+    passed: 4 files / 73 tests.
+    `pnpm exec eslint 'src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx' 'src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx' src/components/features/visits/residual-medication-form.tsx src/lib/stores/offline-db.ts src/lib/stores/sync-engine.ts src/lib/stores/sync-engine.test.ts src/lib/stores/offline-store.test.ts src/components/providers/offline-sync-bridge.test.tsx`
+    passed.
+    `pnpm exec prettier --check 'src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx' 'src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx' src/components/features/visits/residual-medication-form.tsx src/lib/stores/offline-db.ts src/lib/stores/sync-engine.ts src/lib/stores/sync-engine.test.ts src/lib/stores/offline-store.test.ts src/components/providers/offline-sync-bridge.test.tsx`
+    passed.
+    `git diff --check -- <owned VISIT-SYNC paths>` passed.
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck --pretty false` passed.
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false` passed.
+    `pnpm colors:check` passed.
+    `pnpm build` passed.
+  - remaining work:
+    `VISIT-SYNC-001` remains partial. 残: 保存状態 UI matrix（保存中 / 端末保存済 / 同期待ち /
+    同期済 / 競合あり）の常時表示、attachment draft の reload recovery を要求する場合の encrypted
+    evidence draft contract、mobile E2E。今回の attachment slice は「添付選択時に現在のフォーム draft を
+    flush する」範囲であり、File Blob 自体の永続化は別 contract。
+  - next action:
+    Commit this VISIT-SYNC continuation slice, then choose next high-value item from `PAT-BOARD-PAGE-001`,
+    `DSP-QUEUE-PAGE-001`, `FILES-COMPLETE-001`, or remaining `VISIT-SYNC-001` UI state matrix.
+
 - codex: Login screen minimal UI follow-up.
   - current task:
     ユーザー指示により、ログイン画面を再確認し、医療向けサービスの公開ログイン/ポータル情報

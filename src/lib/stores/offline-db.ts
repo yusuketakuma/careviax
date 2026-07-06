@@ -53,6 +53,7 @@ export type OfflineSyncQueue = {
   scope_id?: string;
   createdAt: Date;
   retryCount: number;
+  nextAttemptAt?: Date;
   lastError?: string;
   conflict_state?: 'server_conflict';
   conflict_payload?: string;

@@ -65,6 +65,7 @@ async function waitForAsyncAssertion(assertion: () => void) {
 
 describe('sync-engine PHI persistence', () => {
   beforeEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.clearAllMocks();
     cryptoMocks.encryptOfflinePayloadRequired.mockImplementation(
@@ -377,6 +378,7 @@ describe('sync-engine PHI persistence', () => {
     expect(fetch).not.toHaveBeenCalled();
     expect(dbMocks.update).toHaveBeenCalledWith(9, {
       retryCount: 2,
+      nextAttemptAt: expect.any(Date),
       lastError: 'Invalid sync payload',
       conflict_state: undefined,
       conflict_payload: undefined,
@@ -394,6 +396,105 @@ describe('sync-engine PHI persistence', () => {
     expect(dbMocks.where).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
     expect(dbMocks.update).not.toHaveBeenCalled();
+  });
+
+  it('skips failed queue rows until their next attempt time is due', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-01T00:00:00.000Z'));
+    dbMocks.toArray.mockResolvedValue([
+      {
+        id: 19,
+        entityType: 'visit_record',
+        payload: 'encv1:valid-sync-payload',
+        scope_id: 'schedule-1',
+        createdAt: new Date('2026-04-01T00:00:00.000Z'),
+        retryCount: 1,
+        nextAttemptAt: new Date('2026-04-01T00:00:30.000Z'),
+        lastError: 'HTTP 503',
+      },
+    ]);
+
+    await expect(processSyncQueue({ orgId: 'org-1', endpoints: {} })).resolves.toEqual({
+      synced: 0,
+      failed: 0,
+    });
+
+    expect(cryptoMocks.decryptOfflinePayload).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(dbMocks.update).not.toHaveBeenCalled();
+    expect(dbMocks.delete).not.toHaveBeenCalled();
+  });
+
+  it('processes failed queue rows once nextAttemptAt is due', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-01T00:00:31.000Z'));
+    dbMocks.toArray.mockResolvedValue([
+      {
+        id: 20,
+        entityType: 'visit_record',
+        payload: 'encv1:valid-sync-payload',
+        scope_id: 'schedule-1',
+        createdAt: new Date('2026-04-01T00:00:00.000Z'),
+        retryCount: 1,
+        nextAttemptAt: new Date('2026-04-01T00:00:30.000Z'),
+        lastError: 'HTTP 503',
+      },
+    ]);
+    cryptoMocks.decryptOfflinePayload.mockImplementation(
+      async (value: string | null | undefined) => {
+        if (value === 'encv1:valid-sync-payload') {
+          return JSON.stringify({ schedule_id: 'schedule-1', soap_subjective: '眠気あり' });
+        }
+        return value ?? null;
+      },
+    );
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ data: { id: 'record-1' } })));
+
+    await expect(processSyncQueue({ orgId: 'org-1', endpoints: {} })).resolves.toEqual({
+      synced: 1,
+      failed: 0,
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(dbMocks.delete).toHaveBeenCalledWith(20);
+  });
+
+  it('stores deterministic backoff metadata after a retryable HTTP failure', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-01T00:00:00.000Z'));
+    dbMocks.toArray.mockResolvedValue([
+      {
+        id: 27,
+        entityType: 'visit_record',
+        payload: 'encv1:valid-sync-payload',
+        scope_id: 'schedule-1',
+        createdAt: new Date('2026-04-01T00:00:00.000Z'),
+        retryCount: 1,
+        lastError: 'HTTP 502',
+      },
+    ]);
+    cryptoMocks.decryptOfflinePayload.mockImplementation(
+      async (value: string | null | undefined) => {
+        if (value === 'encv1:valid-sync-payload') {
+          return JSON.stringify({ schedule_id: 'schedule-1', soap_subjective: '眠気あり' });
+        }
+        return value ?? null;
+      },
+    );
+    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 503 }));
+
+    await expect(processSyncQueue({ orgId: 'org-1', endpoints: {} })).resolves.toEqual({
+      synced: 0,
+      failed: 1,
+    });
+
+    expect(dbMocks.update).toHaveBeenCalledWith(27, {
+      retryCount: 2,
+      nextAttemptAt: new Date('2026-04-01T00:02:00.000Z'),
+      lastError: 'HTTP 503',
+      conflict_state: undefined,
+      conflict_payload: undefined,
+    });
   });
 
   it('rejects legacy plaintext sync payloads without sending PHI to the server', async () => {
@@ -421,6 +522,7 @@ describe('sync-engine PHI persistence', () => {
     expect(dbMocks.update).toHaveBeenCalledWith(14, {
       payload: 'encv1:sync queue legacy plaintext tombstone:sealed',
       retryCount: 3,
+      nextAttemptAt: undefined,
       lastError: 'Legacy plaintext sync payload discarded',
       conflict_state: undefined,
       conflict_payload: undefined,
@@ -459,6 +561,7 @@ describe('sync-engine PHI persistence', () => {
     expect(fetch).not.toHaveBeenCalled();
     expect(dbMocks.update).toHaveBeenCalledWith(12, {
       retryCount: 1,
+      nextAttemptAt: expect.any(Date),
       lastError: 'Invalid sync payload',
       conflict_state: undefined,
       conflict_payload: undefined,
@@ -495,6 +598,7 @@ describe('sync-engine PHI persistence', () => {
 
     expect(dbMocks.update).toHaveBeenCalledWith(18, {
       retryCount: 1,
+      nextAttemptAt: expect.any(Date),
       lastError: '同期に失敗しました',
     });
     const persisted = JSON.stringify(dbMocks.update.mock.calls);

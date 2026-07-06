@@ -844,6 +844,14 @@ export function VisitRecordForm({
     [clearAutosaveTimer, form, isFormDirty, notifyDraftSaveFailure, saveDraftSnapshot, visitGeoLog],
   );
 
+  const flushCurrentDraftSnapshot = useCallback(
+    (options?: { force?: boolean; onSaved?: () => void }) => {
+      if (!schedule?.patient_id || !draftHydrated) return;
+      flushDraftSnapshot(form.getValues() as FormValues, visitGeoLog, options);
+    },
+    [draftHydrated, flushDraftSnapshot, form, schedule?.patient_id, visitGeoLog],
+  );
+
   useEffect(() => {
     if (!orgId || typeof window === 'undefined') return;
 
@@ -977,11 +985,13 @@ export function VisitRecordForm({
     watchedValues,
   ]);
 
-  const handleAddAttachments = useCallback((files: File[]) => {
-    setSelectedAttachments((current) => {
-      const next = [...current];
+  const handleAddAttachments = useCallback(
+    (files: File[]) => {
+      const next = [...selectedAttachments];
       const existingKeys = new Set(
-        current.map((item) => `${item.file.name}:${item.file.size}:${item.file.lastModified}`),
+        selectedAttachments.map(
+          (item) => `${item.file.name}:${item.file.size}:${item.file.lastModified}`,
+        ),
       );
 
       for (const file of files) {
@@ -1009,9 +1019,13 @@ export function VisitRecordForm({
         existingKeys.add(duplicateKey);
       }
 
-      return next;
-    });
-  }, []);
+      if (next.length > selectedAttachments.length) {
+        setSelectedAttachments(next);
+        flushCurrentDraftSnapshot({ force: true });
+      }
+    },
+    [flushCurrentDraftSnapshot, selectedAttachments],
+  );
 
   const handleRemoveAttachment = useCallback((id: string) => {
     setSelectedAttachments((current) => current.filter((item) => item.id !== id));
@@ -1551,16 +1565,20 @@ export function VisitRecordForm({
   const activeStepId = useVisitStepSpy();
 
   // p0_23 モバイルウィザード: ステップ移動(移動後は先頭から読めるよう最上部へ)
-  const handleMobileStepSelect = useCallback((stepId: VisitRecordStepId) => {
-    setMobileStepId(stepId);
-    if (typeof document === 'undefined') return;
-    const main = document.getElementById('main-content');
-    if (main) {
-      main.scrollTo({ top: 0 });
-    } else {
-      window.scrollTo({ top: 0 });
-    }
-  }, []);
+  const handleMobileStepSelect = useCallback(
+    (stepId: VisitRecordStepId) => {
+      flushCurrentDraftSnapshot();
+      setMobileStepId(stepId);
+      if (typeof document === 'undefined') return;
+      const main = document.getElementById('main-content');
+      if (main) {
+        main.scrollTo({ top: 0 });
+      } else {
+        window.scrollTo({ top: 0 });
+      }
+    },
+    [flushCurrentDraftSnapshot],
+  );
 
   // p0_23 撮影用 dev フック: 未同期写真 2 件相当(橙バナー+未同期バッジ)を再現する
   useEffect(() => {
@@ -2602,7 +2620,9 @@ export function VisitRecordForm({
                 )}
               >
                 <CardContent className="pt-4">
-                  <ResidualMedicationForm />
+                  <ResidualMedicationForm
+                    onImmediateDraftSave={() => flushCurrentDraftSnapshot({ force: true })}
+                  />
                 </CardContent>
               </Card>
 

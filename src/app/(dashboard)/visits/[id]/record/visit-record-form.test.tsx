@@ -174,10 +174,6 @@ vi.mock('@/components/ui/select', async () => {
   };
 });
 
-vi.mock('@/components/features/visits/residual-medication-form', () => ({
-  ResidualMedicationForm: () => <div data-testid="residual-medication-form" />,
-}));
-
 vi.mock('@/components/features/visits/soap-voice-field-toggle', () => ({
   SoapVoiceFieldToggle: () => null,
 }));
@@ -207,7 +203,21 @@ vi.mock('@/components/features/visits/visit-report-readiness-panel', () => ({
 }));
 
 vi.mock('@/components/features/visits/visit-attachments-field', () => ({
-  VisitAttachmentsField: () => null,
+  VisitAttachmentsField: ({ onAddFiles }: { onAddFiles: (files: File[]) => void }) => (
+    <button
+      type="button"
+      onClick={() =>
+        onAddFiles([
+          new File(['pdf'], 'visit-evidence.pdf', {
+            type: 'application/pdf',
+            lastModified: 1_775_000_000_000,
+          }),
+        ])
+      }
+    >
+      添付テスト追加
+    </button>
+  ),
 }));
 
 vi.mock('@/components/features/cds/alert-panel', () => ({
@@ -255,6 +265,10 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
         callback(0);
         return 0;
       },
+    });
+    Object.defineProperty(window, 'scrollTo', {
+      configurable: true,
+      value: vi.fn(),
     });
 
     vi.stubGlobal(
@@ -749,6 +763,128 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
         subjective: { free_text: '眠気が改善' },
       });
       expect(JSON.stringify(saveDraftMock.mock.calls)).not.toContain('眠気が強い');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('flushes the current draft immediately when the mobile step changes', async () => {
+    renderVisitRecordForm();
+
+    await waitFor(() => {
+      expect((document.querySelector('input[name="patient_id"]') as HTMLInputElement)?.value).toBe(
+        'patient_1',
+      );
+    });
+
+    saveDraftMock.mockClear();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      fireEvent.change(screen.getByLabelText('主観情報'), {
+        target: { value: 'ステップ移動前の入力' },
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4_999);
+      });
+      expect(saveDraftMock).not.toHaveBeenCalled();
+
+      const nextButtons = screen.getAllByRole('button', { name: '次へ' });
+      fireEvent.click(nextButtons[nextButtons.length - 1]!);
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(saveDraftMock).toHaveBeenCalledTimes(1);
+      expect(saveDraftMock.mock.calls[0]?.[0]).toMatchObject({
+        subjective: { free_text: 'ステップ移動前の入力' },
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(saveDraftMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('flushes the draft immediately when residual medication rows are added and removed', async () => {
+    renderVisitRecordForm();
+
+    await waitFor(() => {
+      expect((document.querySelector('input[name="patient_id"]') as HTMLInputElement)?.value).toBe(
+        'patient_1',
+      );
+    });
+
+    saveDraftMock.mockClear();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      fireEvent.click(screen.getByRole('button', { name: '薬剤を追加' }));
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(saveDraftMock).toHaveBeenCalledTimes(1);
+      expect(saveDraftMock.mock.calls[0]?.[2]).toMatchObject({
+        residualMedications: [
+          {
+            drug_name: '',
+            remaining_quantity: 0,
+            is_prohibited_reduction: false,
+          },
+        ],
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: '薬剤 1 を削除' }));
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(saveDraftMock).toHaveBeenCalledTimes(2);
+      expect(saveDraftMock.mock.calls[1]?.[2]).toMatchObject({
+        residualMedications: [],
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+      expect(saveDraftMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('flushes the current draft immediately when an attachment is selected', async () => {
+    renderVisitRecordForm();
+
+    await waitFor(() => {
+      expect((document.querySelector('input[name="patient_id"]') as HTMLInputElement)?.value).toBe(
+        'patient_1',
+      );
+    });
+
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      fireEvent.change(screen.getByLabelText('主観情報'), {
+        target: { value: '添付前メモ' },
+      });
+      saveDraftMock.mockClear();
+
+      fireEvent.click(screen.getByRole('button', { name: '添付テスト追加' }));
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(saveDraftMock).toHaveBeenCalledTimes(1);
+      expect(saveDraftMock.mock.calls[0]?.[0]).toMatchObject({
+        subjective: { free_text: '添付前メモ' },
+      });
+      expect(fetchUrls).not.toContain('/api/files/presigned-upload');
+      expect(enqueueForSyncMock).not.toHaveBeenCalled();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+      expect(saveDraftMock).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
     }
