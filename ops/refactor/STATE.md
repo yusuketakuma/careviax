@@ -41,7 +41,35 @@
 
 ## 直近の land（本日・要点）
 
-- codex: INB-001 inbound communication VisitBrief summary bridge（commit pending）。
+- codex: MOV-001 Patient Movement Timeline final scope lock（commit pending）。
+  - current task:
+    ユーザー確認に合わせ、Patient Movement Timeline は処方・訪問・文書の内容閲覧画面ではなく、
+    「登録/記録/更新があったこと」と「正本画面への deep link」を確認する索引UIであることを
+    `Plans.md` に固定する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `src/server/services/patient-movement-timeline-presenter.ts`,
+    `src/server/services/patient-movement-timeline-presenter.test.ts`,
+    `src/types/patient-movement-timeline.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `MOV-001` に `final scope lock 2026-07-07` を追記し、処方/訪問/文書 event は
+    `PatientMovementTimelineEvent.href` を primary CTA にした相対 deep link を持つこと、
+    deep link 未整備を本文/明細表示で補わないこと、source adapter の select に
+    薬剤明細・訪問本文・SOAP・文書本文・OCR・添付ファイル名・storage key・signed URL を
+    追加しないことを実装ガードとして明文化した。
+  - validation:
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md` passed.
+    `git diff --check -- Plans.md ops/refactor/STATE.md` passed.
+  - remaining:
+    正式 INB signal / MedicationStock Ledger / safety source の追加、Playwright mobile smoke。
+  - next action:
+    Scoped commit/push.
+
+- codex: INB-001 inbound communication VisitBrief summary bridge（commit f483a70ad）。
   - current task:
     正式 `InboundCommunicationEvent` DB 追加前の bridge として、
     `CommunicationQueue.items(queue_type='inbound_communication')` を VisitBrief の
@@ -82,7 +110,7 @@
     INB-001 remains partial for dedicated DB正本、registration/review API、review UI、
     Schedule/Report linkage、formal provider integration.
   - next action:
-    Run related communication/brief tests, format/type/boundary checks, then scoped commit/push.
+    Landed and pushed to `origin/main`.
 
 - codex: INB-001 inbound interprofessional task registry entries（commit 274a9cef1）。
   - current task:

@@ -1131,6 +1131,7 @@ notification:
 > `cc:PARTIAL 2026-07-07`: 非PHIの `gpt-image-2` 向け design reference（保存先: `/Users/yusuke/.codex/generated_images/019f2c7e-d969-7882-bd11-432a10abb930/ig_06dd9af84cea72a5016a4bcf1c7dac81919b9b9626e50e041f.png`）を作成し、上部地図なしの map-less vertical rail UI、summary strip、発生確認カードへ既存 `PatientActivityTimeline` を寄せた。処方・訪問・文書カテゴリは UI 側でも safe summary に固定し、薬剤明細、SOAP本文、訪問内容、文書本文、添付ファイル名、storage key をカード上に出さない。
 > `cc:PARTIAL 2026-07-07`: ユーザー確認により、タイムラインの主導線は中間の rendered detail shell ではなく、処方詳細・訪問詳細・文書詳細など正本画面への直接 deep link とする。カード上では処方・訪問・文書登録があった事実だけを表示し、検索 haystack でも薬剤名、訪問本文、文書名、添付ファイル名を使わない。`/api/patients/:id/timeline/:eventId` は将来の safe resolver / event detail API として維持するが、現行 UI の primary CTA は `event.href` を使う。
 > `scope clarification 2026-07-07`: 処方・訪問・文書登録は、timeline 上で「その出来事があったこと」と「正本へ移動するリンク」が分かればよい。カード内で処方内容、訪問内容、文書内容を再表示しない。処方は処方詳細、訪問は訪問記録/訪問準備、文書は文書詳細/共有・文書タブへ直接 deep link する。
+> `final scope lock 2026-07-07`: ユーザー確認により、処方・訪問・文書登録は「発生した事実を時系列で確認できること」と「詳細を正本画面で開けること」を完了条件に固定する。Patient Movement Timeline は Google Maps のタイムラインに近い map-less vertical rail の索引 UI とし、処方内容・訪問内容・文書本文の閲覧画面にはしない。実装では `PatientMovementTimelineEvent.href` を primary CTA にし、処方/訪問/文書 event は必ず相対 deep link を持つ。相対 deep link が作れない場合は詳細本文を出さず、患者の動きタブへの fallback と不足実装タスクとして扱う。
 > `cc:PARTIAL 2026-07-07`: 正式な `InboundCommunicationEvent` / `InboundCommunicationSignal` DB migration 前の接続として、既存 `PatientMcsMessage` と `PartnerVisitRecord` を timeline source に追加した。MCSは `inbound_mcs`、協力薬局の提出/確認済み訪問記録は `interprofessional_note` として表示する。どちらも発生確認と deep link だけを出し、MCS `body` / `raw_payload` / `source_url`、協力薬局 `record_content` / `attachments` は select しない。
 > `cc:PARTIAL 2026-07-07`: 既存 `Task` のうち患者/ケースへ直接紐づく運用タスクを `task_created` / `task_resolved` として timeline source に追加した。タスク title/description/metadata は自由記載やPHIを含み得るため select せず、登録済み task type label、status、priority、期限/SLA と `/tasks` の related entity 絞り込み deep link だけを表示する。
 > `cc:PARTIAL 2026-07-07`: 既存 `CommunicationEvent` の受信 `phone` / `fax` / `email` を、正式 inbound DB 追加前の bridge として `inbound_phone` / `inbound_fax` / `inbound_email` に正規化した。タイムラインは「電話/FAX/メール連絡を受信」の発生確認と `/conferences?patient_id=...` deep link のみに留め、`subject`、`counterpart_name`、`counterpart_contact`、`content`、`attachments` は select しない。
@@ -1162,6 +1163,7 @@ timelineで必須にすること:
   ・各イベントに正本画面へ直接移動する deep link を持たせる。
   ・カード上の primary CTA は event detail shell ではなく event.href を使う。
   ・処方は処方詳細/処方サイクル、訪問は訪問記録/訪問準備、文書は共有・文書タブ/文書詳細/報告詳細/FileAsset detail へ遷移する。
+  ・処方/訪問/文書 event に相対 deep link を作れない source は、本文や明細を代替表示せず、fallback と不足実装として扱う。
 
 timelineでしないこと:
   ・処方内容、薬剤明細、用法用量を表示しない。
@@ -1176,6 +1178,8 @@ timelineでしないこと:
 - 処方、訪問、文書登録はタイムライン上では発生確認に留め、内容・本文・明細は正本画面への deep link で確認する。
 - 各イベントは `event.href` を primary CTA として deep link できる。
 - 特に処方・訪問・文書登録は、中間 drawer/detail shell ではなく、処方詳細・訪問記録・共有/文書タブなど正本画面へ直接遷移する。
+- 処方・訪問・文書登録については、「登録/記録/更新があったこと」「いつ起きたか」「処理状態」「どこで詳細を見るか」だけを card に載せる。
+- deep link がないことを詳細抜粋で補わない。リンク先が未整備なら、その source の detail href を実装する。
 - `history` タブは変更履歴、構造化ケア、監査寄り情報に整理する。
 - 一覧では raw text を出さず、詳細表示時に再認可と監査ログを通す。
 
@@ -1343,6 +1347,16 @@ timelineから直接開けること:
 timelineに持ち込まないこと:
   処方内容、薬剤明細、用法用量、訪問本文、SOAP本文、文書本文、添付ファイル名、OCR全文。
 ```
+
+**source adapter 実装ガード**:
+
+- 処方 source は「処方受付/登録/変更/疑義照会があった」こと、controlled status、発生時刻、正本 href だけを返す。
+- 訪問 source は「訪問予定/訪問記録/訪問完了があった」こと、controlled status、発生時刻、正本 href だけを返す。
+- 文書 source は「文書登録/更新があった」こと、controlled document type、scan/retention/shareability status、発生時刻、正本 href だけを返す。
+- source adapter の `select` に薬剤明細、訪問本文、SOAP、文書本文、OCR、添付ファイル名、storage key、signed URL を追加しない。
+- `PatientMovementTimelineEvent.summary` は controlled sentence に固定し、DB自由記載を転記しない。
+- `href` は相対パスのみ。外部URL、S3 URL、signed URL、storage URL は破棄し、正本画面または患者の動き fallback へ丸める。
+- Unit test は「処方/訪問/文書の raw detail が movement event JSON に含まれないこと」と「href が正本画面へ相対 deep link されること」を固定する。
 
 発生確認カードの表示制約:
 
