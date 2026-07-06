@@ -41,6 +41,48 @@
 
 ## 直近の land（本日・要点）
 
+- codex: FE-TBL-001 DataTable client export policy static guard（commit pending）。
+  - current task:
+    PHI を含む主要画面で loaded-row client CSV が再導入されないよう、shared `DataTable`
+    export policy を Plans 上で完了扱いに更新し、production source の静的回帰テストを追加する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/components/ui/data-table.tsx`,
+    `src/components/ui/data-table.test.tsx`,
+    `src/lib/audit/server-export-registry.ts`,
+    `src/lib/csv/safe-csv.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/components/ui/data-table-export-policy.test.ts`.
+  - implementation:
+    `DataTable` は既に旧 `enableExport` ではなく `toolbar.clientExport.enabled=true` +
+    `nonPhiExport=true` の明示 opt-in、非PHI filename validator、`hasMore=true` client export
+    disabled、approved `serverExport` descriptor fail-closed を備えていた。今回の slice では
+    `src/app` と `src/components/features` の production source に `clientExport` または legacy
+    `enableExport` が直書きされたら fail する静的テストを追加し、Plans の `FE-TBL-001` を
+    `cc:DONE` に更新した。
+  - security risks reduced:
+    患者、処方、訪問、報告、請求、監査ログなど PHI 画面で、読込済み行だけの browser-side CSV
+    生成が再導入される回帰を検出できるようにした。
+  - validation:
+    `pnpm exec vitest run src/components/ui/data-table.test.tsx src/components/ui/data-table-export-policy.test.ts --reporter=dot --testTimeout=30000`
+    passed: 2 files / 29 tests.
+    `pnpm exec eslint src/components/ui/data-table-export-policy.test.ts`
+    passed.
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/components/ui/data-table-export-policy.test.ts`
+    passed after formatting `Plans.md`.
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/components/ui/data-table-export-policy.test.ts`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`
+    passed.
+  - remaining:
+    commit、push。
+  - next action:
+    Land the focused export-policy guard slice.
+
 - codex: NTF-STREAM-001 SSE-safe notification stream policy（commit 9c1512c30, pushed）。
   - current task:
     Notification stream payload normalizer を field-safe から content-safe へ進め、SSE user-channel、
