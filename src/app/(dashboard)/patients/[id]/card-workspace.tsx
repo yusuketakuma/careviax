@@ -78,6 +78,7 @@ import {
 import type {
   PatientDocumentsSnapshot,
   PatientOverview,
+  PatientTimelineEvent,
   PatientTimelineSnapshot,
   PatientWorkspaceActivity,
   PatientWorkspacePrescriptionLine,
@@ -4008,6 +4009,7 @@ function PatientCommandCenterPanel({
   blockedReasons,
   evidence,
   recentActivities,
+  timelineExcerpt,
   evidenceOpenLabel,
   caseRisk,
   riskTaskSync,
@@ -4017,6 +4019,12 @@ function PatientCommandCenterPanel({
   blockedReasons: BlockedReason[];
   evidence: EvidenceItem[];
   recentActivities: PatientCommandRecentActivityItem[];
+  timelineExcerpt: {
+    events: PatientTimelineEvent[];
+    isLoading: boolean;
+    error: Error | null;
+    onRetry: () => void;
+  };
   evidenceOpenLabel?: string;
   caseRisk: {
     caseId: string | null;
@@ -4076,6 +4084,7 @@ function PatientCommandCenterPanel({
         <CaseRiskActionsPanel {...caseRisk} />
         <BlockedReasonsPanel reasons={blockedReasons} emptyLabel="止まっている作業はありません" />
         <CommandRecentActivitiesPanel activities={recentActivities} />
+        <CommandTimelineExcerptPanel {...timelineExcerpt} />
       </div>
       <div className="space-y-4">
         <EvidencePanel items={evidence} openLabel={evidenceOpenLabel} />
@@ -4083,6 +4092,100 @@ function PatientCommandCenterPanel({
         <RiskTaskResolutionPanel {...riskTaskResolution} />
       </div>
     </div>
+  );
+}
+
+function CommandTimelineExcerptPanel({
+  events,
+  isLoading,
+  error,
+  onRetry,
+}: {
+  events: PatientTimelineEvent[];
+  isLoading: boolean;
+  error: Error | null;
+  onRetry: () => void;
+}) {
+  const excerpt = events.slice(0, 3);
+  return (
+    <SectionCard aria-label="Command 履歴抜粋" data-testid="command-timeline-excerpt-panel">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 space-y-1">
+          <h3 className="text-sm font-semibold text-foreground">履歴抜粋</h3>
+          <p className="text-sm text-muted-foreground">
+            訪問、報告、請求、共有の直近履歴を最大5件だけ確認します。
+          </p>
+        </div>
+        <Link
+          href="#patient-timeline"
+          className={buttonVariants({
+            variant: 'outline',
+            size: 'sm',
+            className: 'min-h-11 shrink-0',
+          })}
+        >
+          履歴タブへ
+        </Link>
+      </div>
+
+      {isLoading ? (
+        <p role="status" className="mt-3 text-sm text-muted-foreground">
+          履歴抜粋を確認しています。
+        </p>
+      ) : null}
+
+      {error ? (
+        <div
+          role="alert"
+          className="mt-3 rounded-md border border-state-blocked/40 bg-state-blocked/10 p-3 text-sm text-state-blocked"
+        >
+          <div className="flex items-center gap-2 font-medium">
+            <TriangleAlert aria-hidden className="size-4" />
+            履歴抜粋を表示できません
+          </div>
+          <p className="mt-1">{messageFromError(error, '患者履歴の取得に失敗しました')}</p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-3 min-h-11"
+            onClick={onRetry}
+          >
+            再試行
+          </Button>
+        </div>
+      ) : null}
+
+      {!isLoading && !error && excerpt.length === 0 ? (
+        <p className="mt-3 text-sm text-muted-foreground">履歴抜粋はまだありません。</p>
+      ) : null}
+
+      {excerpt.length > 0 ? (
+        <ul className="mt-3 divide-y divide-border/60" role="list">
+          {excerpt.map((event) => (
+            <li key={event.id} className="flex items-center gap-2 py-2.5 first:pt-0 last:pb-0">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-foreground">{event.title}</p>
+                <p className="text-xs text-muted-foreground">
+                  {formatActivityTime(event.occurred_at)}
+                  {event.status_label ? ` / ${event.status_label}` : ''}
+                </p>
+              </div>
+              <Link
+                href={event.href}
+                className={buttonVariants({
+                  variant: 'outline',
+                  size: 'sm',
+                  className: 'min-h-11 shrink-0',
+                })}
+              >
+                {event.action_label || '開く'}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </SectionCard>
   );
 }
 
@@ -4800,7 +4903,9 @@ export function CardWorkspace({
       const response = await fetch(path, { headers: buildOrgHeaders(orgId) });
       return readApiJson<PatientTimelineSnapshot>(response, '患者履歴の取得に失敗しました');
     },
-    enabled: Boolean(orgId && patient && isDetailTabMounted('history')),
+    enabled: Boolean(
+      orgId && patient && (isDetailTabMounted('command') || isDetailTabMounted('history')),
+    ),
     staleTime: 30_000,
   });
 
@@ -5440,6 +5545,12 @@ export function CardWorkspace({
       })),
     onWaive: waiveRiskTaskMutation.mutate,
   };
+  const commandTimelineExcerptProps = {
+    events: timelineSnapshot?.timeline_events ?? [],
+    isLoading: timelineLoading,
+    error: timelineError && timelineErrorDetail instanceof Error ? timelineErrorDetail : null,
+    onRetry: () => void refetchTimeline(),
+  };
 
   const renderHomeOperationsPanel = (
     visibleKeys: PatientHomeOperationKey[],
@@ -5533,6 +5644,7 @@ export function CardWorkspace({
                 blockedReasons={[]}
                 evidence={[]}
                 recentActivities={[]}
+                timelineExcerpt={commandTimelineExcerptProps}
                 evidenceOpenLabel="開く"
                 caseRisk={commandCaseRiskProps}
                 riskTaskSync={commandRiskTaskSyncProps}
@@ -5644,6 +5756,7 @@ export function CardWorkspace({
                   blockedReasons={blockedReasons}
                   evidence={evidence}
                   recentActivities={recentActivities}
+                  timelineExcerpt={commandTimelineExcerptProps}
                   evidenceOpenLabel="開く"
                   caseRisk={{
                     ...commandCaseRiskProps,

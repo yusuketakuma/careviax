@@ -988,8 +988,10 @@ FE 仕上げ（低優先）:
   新規 API は増やさず、overview に既に含まれる工程遷移・疑義照会・処方取込の lightweight excerpt を
   model selector で整形し、Command tab の「次にやること」「横断リスク」「止まっている理由」と同じ
   流れに置く。full timeline API は履歴タブの lazy loading に残し、Command では上位3件だけを表示する。
-  残: PatientBoard 派生ロジックとの adapter 統合、full timeline `?limit=5` 抜粋の Command block 化、
-  payload budget / browser smoke。
+  追加 partial として、Command tab 初期表示でも `/api/patients/[id]/timeline?limit=5` だけを有効化し、
+  `CommandTimelineExcerptPanel` で訪問/報告/請求/共有の履歴抜粋を最大3件表示する。full timeline の
+  `limit=40` 展開は履歴タブのユーザー操作に限定する。
+  残: PatientBoard 派生ロジックとの adapter 統合、payload budget / browser smoke。
 
 - `PAT-DETAIL-PERF-001 / UX-CMD-001` partial（2026-07-06）: 患者詳細の在宅運用管理 fallback
   （home-operations BFF 取得失敗時の近似表示）を `patient-home-operations-model.ts` へ抽出した。

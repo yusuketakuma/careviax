@@ -1538,6 +1538,12 @@ describe('CardWorkspace', () => {
     expect(
       within(commandActivities).getAllByRole('link', { name: '開く', hidden: true }),
     ).toHaveLength(3);
+    const commandTimeline = screen.getByTestId('command-timeline-excerpt-panel');
+    expect(within(commandTimeline).getByText('訪問記録を保存')).toBeTruthy();
+    expect(within(commandTimeline).getByText('報告書を作成')).toBeTruthy();
+    expect(
+      within(commandTimeline).getByRole('link', { name: '履歴タブへ', hidden: true }),
+    ).toBeTruthy();
   });
 
   it('syncs active case risks into operational tasks from the Command tab without exposing finding detail', async () => {
@@ -1807,17 +1813,18 @@ describe('CardWorkspace', () => {
     expect(await screen.findByTestId('patient-card-documents-panel')).toBeTruthy();
   });
 
-  it('loads the patient history tab as a 5-item timeline first and expands to the bounded full timeline on demand', async () => {
+  it('loads a 5-item timeline excerpt for Command and expands to the bounded full timeline on demand', async () => {
     mockPatientQuery(buildWorkspace());
 
     render(<CardWorkspace patientId="patient_1" />);
 
     const initialTimelineConfig = useQueryMock.mock.calls
       .map(([config]) => config as { queryKey?: unknown[]; enabled?: boolean })
-      .find((config) => config.queryKey?.[0] === 'patient-timeline');
+      .filter((config) => config.queryKey?.[0] === 'patient-timeline')
+      .at(-1);
     expect(initialTimelineConfig).toMatchObject({
       queryKey: ['patient-timeline', 'patient_1', 'org_1', 5],
-      enabled: false,
+      enabled: true,
     });
 
     fireEvent.click(screen.getByRole('tab', { name: /履歴・構造化/ }));
