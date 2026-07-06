@@ -316,6 +316,17 @@ function candidateBillingTargetLabel(candidate: BillingCandidate) {
   );
 }
 
+function candidateBillingTargetExportLabel(candidate: BillingCandidate) {
+  switch (candidate.billing_target_type) {
+    case 'patient':
+      return '患者請求先';
+    case 'institution':
+      return '施設請求先';
+    default:
+      return candidate.billing_target_type ? '請求先種別あり' : '請求先未設定';
+  }
+}
+
 function parseInitialBillingMonth(value: string | null | undefined) {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const parsed = new Date(`${value}T00:00:00`);
@@ -517,6 +528,8 @@ export function BillingCandidatesContent({
         meta: {
           label: '請求先',
           mobileLabel: '請求先',
+          exportValue: (candidate: BillingCandidate) =>
+            candidateBillingTargetExportLabel(candidate),
         },
         cell: ({ row }) => (
           <span className="text-sm">{candidateBillingTargetLabel(row.original)}</span>

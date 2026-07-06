@@ -408,6 +408,40 @@ describe('BillingCandidatesContent', () => {
     expect(String(previewCall?.[0])).toContain('billing_domain=home_care');
   });
 
+  it('keeps loaded-row billing CSV snapshots free of patient identifiers', async () => {
+    const createObjectURL = vi.fn<(object: Blob | MediaSource) => string>(() => 'blob:billing');
+    const revokeObjectURL = vi.fn();
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = createObjectURL as unknown as typeof URL.createObjectURL;
+    URL.revokeObjectURL = revokeObjectURL as unknown as typeof URL.revokeObjectURL;
+
+    try {
+      renderBillingCandidatesContent();
+
+      expect(await screen.findAllByText('山田 太郎')).not.toHaveLength(0);
+      fireEvent.click(screen.getByRole('button', { name: '読込済みCSV出力' }));
+
+      expect(anchorClick).toHaveBeenCalledTimes(1);
+      const [blob] = createObjectURL.mock.calls[0] ?? [];
+      if (!(blob instanceof Blob)) {
+        throw new Error('Billing candidate CSV export did not pass a Blob to URL.createObjectURL');
+      }
+      const csv = await blob.text();
+      expect(csv).toContain('患者請求先');
+      expect(csv).toContain('在宅患者訪問薬剤管理指導料');
+      expect(csv).not.toContain('山田');
+      expect(csv).not.toContain('太郎');
+      expect(csv).not.toContain('patient_1');
+      expect(csv).not.toContain('candidate_target');
+    } finally {
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+      anchorClick.mockRestore();
+    }
+  });
+
   it('sends expected_updated_at when reviewing a billing candidate', async () => {
     renderBillingCandidatesContent();
 

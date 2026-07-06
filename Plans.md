@@ -1055,7 +1055,10 @@ FE 仕上げ（低優先）:
   「表示中から選択したN件の訪問候補」へ変更し、表示中 selection scope を screen-level test で固定した。
   追加 partial として、報告書詳細の共有先一括送付 button を「選択した共有先N件へ一括送付」へ変更し、
   共有先 selection scope を screen-level test で固定した。
-  残: real consumer の screen-level PHI export snapshot、他 bulk action consumer の選択範囲文言 sweep。
+  追加 partial として、通常請求候補画面の読込済みCSV snapshot を実画面テストに追加し、画面には患者名が
+  表示されても client CSV には患者名、患者ID、候補IDが出ないことを固定した。請求先列の client export は
+  `患者請求先` / `施設請求先` などの種別ラベルへ丸める。
+  残: 他 bulk action consumer の選択範囲文言 sweep。
 
 **追加実装順序**:
 
