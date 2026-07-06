@@ -41,6 +41,40 @@
 
 ## 直近の land（本日・要点）
 
+- codex: FE-ERR-001 tasks main list segment hardening（pending commit）。
+  - current task:
+    `/tasks` の main list 取得失敗表示を shared segment pattern に寄せ、false-empty / false-zero に倒さず
+    retryable state として固定する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/components/ui/segment-state.tsx`,
+    `src/components/ui/error-state.tsx`,
+    `src/app/(dashboard)/tasks/tasks-content.tsx`,
+    `src/app/(dashboard)/tasks/tasks-content.test.tsx`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/tasks/tasks-content.tsx`,
+    `src/app/(dashboard)/tasks/tasks-content.test.tsx`.
+  - implementation:
+    tasks main list の `ErrorState` 直利用を `SegmentError` へ移行し、取得失敗時に task table / empty copy を
+    表示しないまま再読み込みできる状態へ統一した。raw backend detail は渡さない。
+  - security risks reduced:
+    タスク取得失敗時に raw route、patient name、token、storage key 等が UI に出る余地を縮小し、
+    取得失敗を「該当タスクなし」に見せる false-empty を防いだ。
+  - validation:
+    `pnpm exec vitest run 'src/app/(dashboard)/tasks/tasks-content.test.tsx' src/components/ui/segment-state.test.tsx --reporter=dot --testTimeout=30000` → pass（2 files / 27 tests）。
+    `pnpm exec eslint 'src/app/(dashboard)/tasks/tasks-content.tsx' 'src/app/(dashboard)/tasks/tasks-content.test.tsx'` → pass。
+    `pnpm typecheck` → pass。
+    `pnpm exec prettier --check 'src/app/(dashboard)/tasks/tasks-content.tsx' 'src/app/(dashboard)/tasks/tasks-content.test.tsx'` → pass。
+  - remaining:
+    FE-ERR-001 は admin screen 群への段階展開が残る。Formal `InboundCommunicationEvent` /
+    `InboundCommunicationSignal` DB/API/review UI and MedicationStock Ledger source remain.
+  - next action:
+    Prettier/diff-check、scoped commit/push this tasks segment hardening slice, then continue admin FE-ERR target.
+
 - codex: FE-ERR-001 shared action rail / report workspace segment hardening（pending commit）。
   - current task:
     shared `GuardedWorkspaceActionRail` と `/reports` workspace の取得失敗表示を shared segment pattern に寄せ、

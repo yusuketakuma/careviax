@@ -9,7 +9,6 @@ import { toast } from 'sonner';
 import { z } from 'zod';
 import { PageSection } from '@/components/layout/page-section';
 import { DataTable } from '@/components/ui/data-table';
-import { ErrorState } from '@/components/ui/error-state';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -19,6 +18,7 @@ import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { SkeletonRows } from '@/components/ui/loading';
+import { SegmentError } from '@/components/ui/segment-state';
 import { Textarea } from '@/components/ui/textarea';
 
 import {
@@ -950,10 +950,11 @@ export function TasksContent({
         contentClassName="space-y-4"
       >
         {isError ? (
-          // 取得失敗時は空一覧(false-empty)・偽の0件にせず、再読み込み導線つき ErrorState を出す。
-          <ErrorState
-            size="inline"
-            description="タスクを取得できませんでした。時間をおいて再読み込みしてください。"
+          // 取得失敗時は空一覧(false-empty)・偽の0件にせず、再読み込み導線つき SegmentError を出す。
+          <SegmentError
+            title="タスク一覧を表示できません"
+            cause="タスクを取得できませんでした。"
+            nextAction="時間をおいて再読み込みしてください。"
             onRetry={() => void refetch()}
             retryLabel="再読み込み"
           />

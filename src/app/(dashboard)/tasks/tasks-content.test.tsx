@@ -658,7 +658,7 @@ describe('TasksContent', () => {
     }
   });
 
-  it('shows ErrorState (not a false-empty list) with retry when the tasks query fails', () => {
+  it('shows SegmentError (not a false-empty list) with retry when the tasks query fails', () => {
     const refetch = vi.fn();
     useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
       if (options.queryKey?.[0] === 'tasks-health-board') {
@@ -667,15 +667,18 @@ describe('TasksContent', () => {
       if (options.queryKey?.[0] === 'staff-workload') {
         return { data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() };
       }
-      // タスク取得失敗 → 空一覧(false-empty)・偽の0件ではなく ErrorState + 再読み込み。
+      // タスク取得失敗 → 空一覧(false-empty)・偽の0件ではなく SegmentError + 再読み込み。
       return { data: undefined, isLoading: false, isError: true, refetch };
     });
 
     render(<TasksContent />);
 
-    expect(screen.getByText('サーバーエラーが発生しました')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'タスク一覧を表示できません' })).toBeTruthy();
+    expect(screen.getByText(/タスクを取得できませんでした/)).toBeTruthy();
+    expect(screen.getByText(/時間をおいて再読み込みしてください/)).toBeTruthy();
     expect(screen.queryByTestId('tasks-table')).toBeNull();
     expect(screen.queryByText('該当するタスクはありません')).toBeNull();
+    expect(screen.queryByText(/storage_key|token=|patient_name|\/api\/tasks/)).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
     expect(refetch).toHaveBeenCalledTimes(1);
