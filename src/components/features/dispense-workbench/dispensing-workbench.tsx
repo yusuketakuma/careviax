@@ -142,7 +142,7 @@ export function buildPrimaryConfirm(
   if (pending.phase === 'dispense') {
     return {
       title: '調剤を完了します',
-      description: `${who}調剤内容を確定し、監査工程へ進みます。確定後は取り消せません。`,
+      description: `${who}現在表示中の薬剤行の調剤内容を確定し、監査工程へ進みます。確定後は取り消せません。`,
       confirmLabel: '調剤完了',
     };
   }
@@ -150,13 +150,13 @@ export function buildPrimaryConfirm(
     if (pending.narcoticLines.length === 0) {
       return {
         title: '監査を承認します',
-        description: `${who}監査を承認し確定します。この操作は取り消せません。`,
+        description: `${who}調剤済み薬剤行の監査を承認し確定します。この操作は取り消せません。`,
         confirmLabel: '監査承認',
       };
     }
     return {
       title: '監査を承認します（麻薬を含む）',
-      description: `${who}麻薬 ${pending.narcoticLines.length} 件の二重計数を確認のうえ承認します。確定後は取り消せません。`,
+      description: `${who}調剤済み薬剤行のうち、麻薬 ${pending.narcoticLines.length} 件の二重計数を確認のうえ承認します。確定後は取り消せません。`,
       confirmLabel: '監査承認',
       requiredConfirmText: '麻薬',
       children: <NarcoticLineList lines={pending.narcoticLines} />,
@@ -165,7 +165,7 @@ export function buildPrimaryConfirm(
   // seta
   return {
     title: 'セット監査を承認します',
-    description: `${who}セット監査を承認し確定します。この操作は取り消せません。`,
+    description: `${who}表示中セルのセット監査を承認し確定します。この操作は取り消せません。`,
     confirmLabel: 'セット監査承認',
   };
 }

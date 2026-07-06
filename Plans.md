@@ -1063,7 +1063,10 @@ FE 仕上げ（低優先）:
   追加 partial として、調剤/監査/セット/セット監査 workbench の一括 button / F5 label を
   「表示中」「調剤済み」「表示中セル」に scope 明示し、工程ごとの bulk label を `buildView`
   unit test で固定した。
-  残: high-risk bulk action consumer の確認 dialog sweep と、server-side 全件操作 UI の registry 化。
+  追加 partial として、調剤完了・監査承認・麻薬監査承認・セット監査承認の不可逆 confirm
+  description に、`現在表示中の薬剤行` / `調剤済み薬剤行` / `表示中セル` と取消不可を明示し、
+  `buildPrimaryConfirm` unit test で固定した。
+  残: server-side 全件操作 UI の registry 化と、他画面の destructive/bulk confirm 文言 sweep。
 
 **追加実装順序**:
 
