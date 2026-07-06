@@ -821,12 +821,9 @@ function mockPatientQuery(
     self_reports: [
       {
         id: 'self_report_1',
-        subject: '患者からの相談',
         category: 'symptom',
-        content: '夜間の不安について相談あり',
         relation: '本人',
         status: 'submitted',
-        reported_by_name: '本人',
         requested_callback: true,
         preferred_contact_time: '午前',
         created_at: '2026-06-18T08:00:00.000Z',

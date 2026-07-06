@@ -220,7 +220,6 @@ export type SelfReportTimelineSource = {
 
 export type ExternalShareTimelineSource = {
   id: string;
-  granted_to_name: string | null;
   expires_at: Date | null;
   accessed_at: Date | null;
   created_at: Date;
@@ -271,22 +270,17 @@ export type FirstVisitDocumentTimelineSource = {
 export type ConferenceNoteTimelineSource = {
   id: string;
   note_type: string;
-  title: string | null;
   conference_date: Date;
   follow_up_date: Date | null;
   follow_up_completed: boolean;
   generated_report_id: string | null;
-  action_items: unknown;
 };
 
 export type BillingCandidateTimelineSource = {
   id: string;
   billing_month: Date;
   billing_code: string | null;
-  billing_name: string | null;
-  points: number | null;
   status: string;
-  exclusion_reason: string | null;
   updated_at: Date;
 };
 
@@ -571,7 +565,6 @@ function buildOperationHistorySummary(item: OperationHistoryTimelineSource) {
   if (item.target_type === 'prescription_intake') {
     return '処方せん原本または処方関連文書の操作履歴が記録されました。内容は処方詳細で確認してください。';
   }
-  const documentAction = isRecord(changes.document_action) ? changes.document_action : {};
   const collection = isRecord(changes.collection) ? changes.collection : {};
   const conferenceNote = isRecord(changes.conference_note) ? changes.conference_note : {};
   const exportFilters = isRecord(changes.filters) ? changes.filters : {};
@@ -613,19 +606,6 @@ function buildOperationHistorySummary(item: OperationHistoryTimelineSource) {
 
   return (
     compactTimelineValues([
-      readString(documentAction.document_type)
-        ? (FIRST_VISIT_DOCUMENT_TYPE_LABELS[readString(documentAction.document_type) ?? ''] ??
-          readString(documentAction.document_type))
-        : null,
-      readString(documentAction.template_name),
-      readString(documentAction.template_version)
-        ? `版 ${readString(documentAction.template_version)}`
-        : null,
-      readString(documentAction.storage_location)
-        ? (FIRST_VISIT_DOCUMENT_STORAGE_LABELS[readString(documentAction.storage_location) ?? ''] ??
-          readString(documentAction.storage_location))
-        : null,
-      readString(documentAction.reason),
       readString(changes.payer_name) ? `支払者 ${readString(changes.payer_name)}` : null,
       labelOf(BILLING_PAYMENT_METHOD_LABELS, changes.payment_method)
         ? `方法 ${labelOf(BILLING_PAYMENT_METHOD_LABELS, changes.payment_method)}`

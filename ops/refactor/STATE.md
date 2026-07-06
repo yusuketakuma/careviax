@@ -41,7 +41,45 @@
 
 ## 直近の land（本日・要点）
 
-- codex: MOV-001 Self report timeline minimization（commit 7378b650d, push pending）。
+- codex: MOV-001 external share / conference / billing marker minimization（未コミット）。
+  - current task:
+    Patient Movement Timeline の残り source から自由記載・人物名・算定詳細を外し、
+    発生 marker + 正本 deep link の索引UI契約をさらに広げる。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail.test.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail.test.ts`.
+  - implementation:
+    `externalSharesSource` は `granted_to_name` を select せず、共有先名を timeline payload に出さない。
+    `conferenceNotesSource` は `title` / `action_items` を select せず、会議記録の登録事実と報告ドラフト有無だけを controlled summary にした。
+    `billingCandidatesSource` は `billing_name` / `points` / `exclusion_reason` を select せず、算定候補更新の発生事実と算定候補 deep link だけを返す。
+    operation history の first-visit document detail fallback から文書種別/template/storage/reason の generic summary 混入経路を削除した。
+    `card-workspace.test.tsx` の古い `self_reports` fixture から subject/content/reported_by_name を削除した。
+  - security risks reduced:
+    外部共有先名、会議タイトル・合意事項、算定名・点数・除外理由、文書登録の詳細ラベル、自己申告本文系fixtureが patient movement payload / 検索 haystack に流れる面を縮小した。
+  - validation:
+    `pnpm exec vitest run src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.test.ts 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' --reporter=dot --testTimeout=30000` → pass（4 files / 185 tests）。
+    `pnpm exec eslint src/server/services/patient-detail.ts src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.ts 'src/app/(dashboard)/patients/[id]/patient-detail.types.ts' 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx' 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx'` → pass。
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx'` → pass。
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx'` → pass。
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit --pretty false --skipLibCheck false --project tsconfig.json --incremental false` → fail（既存の `.next/dev` vs `.next` duplicate identifiers、Google Maps namespace、React PDF/fontkit、next-auth/nodemailer/cookie、DOM/WebWorker lib duplicate、Vitest/jsdom 型問題）。今回差分由来だった `card-workspace` fixture と `FIRST_VISIT_DOCUMENT_STORAGE_LABELS` 参照のエラーは解消済み。
+  - remaining:
+    Formal inbound DB/API/review UI and MedicationStock Ledger source remain.
+  - next action:
+    Scoped commit/push, then record landed commit hash.
+
+- codex: MOV-001 Self report timeline minimization（commit 7378b650d, pushed）。
   - current task:
     Patient Movement Timeline と `/api/patients/:id/timeline` の self report 表示から件名/本文/報告者名を外し、
     患者起点更新も marker-only + 正本 deep link に寄せる。

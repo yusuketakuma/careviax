@@ -799,7 +799,6 @@ export const externalSharesSource = defineTimelineSource<
       take: PATIENT_TIMELINE_EXTERNAL_SHARE_LIMIT,
       select: {
         id: true,
-        granted_to_name: true,
         expires_at: true,
         accessed_at: true,
         created_at: true,
@@ -812,11 +811,9 @@ export const externalSharesSource = defineTimelineSource<
       category: 'communication',
       occurred_at: item.created_at,
       title: '外部共有リンクを発行',
-      summary:
-        compactTimelineValues([
-          item.granted_to_name,
-          item.accessed_at ? '閲覧済み' : '未閲覧',
-        ]).join(' / ') || null,
+      summary: item.accessed_at
+        ? '外部共有リンクが閲覧されました。共有先や詳細は共有設定で確認してください。'
+        : '外部共有リンクが発行されました。共有先や詳細は共有設定で確認してください。',
       href: hrefs.patientShareHref,
       action_label: '共有設定を開く',
       status: item.accessed_at ? 'accessed' : 'issued',
@@ -1147,39 +1144,31 @@ export const conferenceNotesSource = defineTimelineSource<
       select: {
         id: true,
         note_type: true,
-        title: true,
         conference_date: true,
         follow_up_date: true,
         follow_up_completed: true,
         generated_report_id: true,
-        action_items: true,
       },
     }),
   toEvents: (rows, { hrefs }) =>
-    rows.map((item) => {
-      const actionItemCount = Array.isArray(item.action_items) ? item.action_items.length : 0;
-      return {
-        id: `conference_note:${item.id}`,
-        event_type: 'conference_note',
-        category: 'communication',
-        occurred_at: item.conference_date,
-        title: `${getConferenceTypeLabel(item.note_type)}を記録`,
-        summary:
-          compactTimelineValues([
-            item.title,
-            actionItemCount > 0 ? `合意事項 ${actionItemCount}件` : null,
-            item.generated_report_id ? '報告ドラフトあり' : null,
-          ]).join(' / ') || null,
-        href: hrefs.patientConferencesHref,
-        action_label: '会議を開く',
-        status: item.follow_up_completed ? 'completed' : 'open',
-        status_label: item.follow_up_completed ? 'フォロー完了' : 'フォロー中',
-        actor_name: null,
-        metadata: compactTimelineValues([
-          item.follow_up_date ? `フォロー期限 ${formatTimelineDate(item.follow_up_date)}` : null,
-        ]),
-      };
-    }),
+    rows.map((item) => ({
+      id: `conference_note:${item.id}`,
+      event_type: 'conference_note',
+      category: 'communication',
+      occurred_at: item.conference_date,
+      title: `${getConferenceTypeLabel(item.note_type)}を記録`,
+      summary: item.generated_report_id
+        ? '会議記録が登録され、報告ドラフトが作成されています。内容は会議記録で確認してください。'
+        : '会議記録が登録されました。内容は会議記録で確認してください。',
+      href: hrefs.patientConferencesHref,
+      action_label: '会議を開く',
+      status: item.follow_up_completed ? 'completed' : 'open',
+      status_label: item.follow_up_completed ? 'フォロー完了' : 'フォロー中',
+      actor_name: null,
+      metadata: compactTimelineValues([
+        item.follow_up_date ? `フォロー期限 ${formatTimelineDate(item.follow_up_date)}` : null,
+      ]),
+    })),
 });
 
 // --- billingCandidates ------------------------------------------------------
@@ -1205,10 +1194,7 @@ export const billingCandidatesSource = defineTimelineSource<
             id: true,
             billing_month: true,
             billing_code: true,
-            billing_name: true,
-            points: true,
             status: true,
-            exclusion_reason: true,
             updated_at: true,
           },
         })
@@ -1220,12 +1206,7 @@ export const billingCandidatesSource = defineTimelineSource<
       category: 'billing',
       occurred_at: item.updated_at,
       title: '算定候補を更新',
-      summary:
-        compactTimelineValues([
-          item.billing_name,
-          item.points != null ? `${item.points}点` : null,
-          item.exclusion_reason,
-        ]).join(' / ') || null,
+      summary: '算定候補が更新されました。算定名・点数・除外理由は算定候補で確認してください。',
       href: buildPatientBillingCandidatesHref(patientId, {
         billingMonth: formatTokyoMonthStart(item.billing_month),
       }),

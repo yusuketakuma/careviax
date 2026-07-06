@@ -2907,6 +2907,26 @@ describe('getPatientTimelineData', () => {
         where: expect.objectContaining({
           patient_id: rawPatientId,
         }),
+        select: expect.not.objectContaining({
+          granted_to_name: true,
+        }),
+      }),
+    );
+    expect(db.conferenceNote.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.not.objectContaining({
+          title: true,
+          action_items: true,
+        }),
+      }),
+    );
+    expect(db.billingCandidate.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.not.objectContaining({
+          billing_name: true,
+          points: true,
+          exclusion_reason: true,
+        }),
       }),
     );
     expect(auditLogFindManyMock).toHaveBeenCalledWith(
@@ -2932,6 +2952,11 @@ describe('getPatientTimelineData', () => {
         }),
       }),
     );
+    const serializedTimeline = JSON.stringify(result);
+    expect(serializedTimeline).not.toContain('田中ケアマネ');
+    expect(serializedTimeline).not.toContain('退院前カンファレンス');
+    expect(serializedTimeline).not.toContain('居宅療養管理指導');
+    expect(serializedTimeline).not.toContain('518点');
   });
 
   it('summarizes billing collection history with bill, payment, receipt, invoice, and unpaid evidence', async () => {
@@ -3750,7 +3775,18 @@ describe('getPatientTimelineData', () => {
         }),
       ]),
     );
+    expect(db.conferenceNote.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.not.objectContaining({
+          title: true,
+          action_items: true,
+        }),
+      }),
+    );
     expect(JSON.stringify(result?.timeline_events)).not.toContain('退院後の服薬支援本文');
+    expect(JSON.stringify(result?.timeline_events)).not.toContain('山田 太郎様 サービス担当者会議');
+    expect(JSON.stringify(result?.timeline_events)).not.toContain('報告書作成');
+    expect(JSON.stringify(result?.timeline_events)).not.toContain('次回訪問調整');
     expect(auditLogFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -4013,10 +4049,14 @@ describe('getPatientTimelineData', () => {
           ]),
         }),
         take: 8,
+        select: expect.not.objectContaining({
+          granted_to_name: true,
+        }),
       }),
     );
     expect(externalAccessGrantFindManyMock.mock.calls[0][0]).not.toHaveProperty('skip');
     expect(JSON.stringify(result?.timeline_events)).not.toContain('grant_hidden');
+    expect(JSON.stringify(result?.timeline_events)).not.toContain('田中ケアマネ');
   });
 
   it('adds self reports to timeline and avoids duplicate self-report communication events', async () => {
@@ -4788,6 +4828,17 @@ describe('getPatientTimelineData', () => {
     expect(eventsById.get('billing_candidate:candidate_1')?.href).toBe(
       '/billing/candidates?billing_month=2026-04-01&patient_id=patient_1',
     );
+    expect(db.billingCandidate.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.not.objectContaining({
+          billing_name: true,
+          points: true,
+          exclusion_reason: true,
+        }),
+      }),
+    );
+    expect(JSON.stringify(result?.timeline_events)).not.toContain('居宅療養管理指導');
+    expect(JSON.stringify(result?.timeline_events)).not.toContain('518点');
   });
 
   it('uses a deterministic id tiebreaker for same-timestamp events', async () => {
