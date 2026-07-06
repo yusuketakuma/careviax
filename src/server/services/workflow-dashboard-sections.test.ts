@@ -20,6 +20,7 @@ function emptyCommunicationQueue(): CommunicationQueueFixture {
       overdue_count: 0,
       self_reports: 0,
       callback_followups: 0,
+      inbound_communications: 0,
       open_requests: 0,
       delivery_backlog: 0,
       expiring_external_shares: 0,
@@ -276,6 +277,34 @@ describe('workflow-dashboard-sections', () => {
     );
   });
 
+  it('counts inbound communication reviews in the pharmacist communication inbox', () => {
+    const communicationQueue = emptyCommunicationQueue();
+    communicationQueue.summary.self_reports = 1;
+    communicationQueue.summary.callback_followups = 2;
+    communicationQueue.summary.inbound_communications = 3;
+
+    const result = buildRoleInboxes(
+      {},
+      0,
+      [],
+      communicationQueue,
+      0,
+      { pending_override_requests: 0 },
+      [],
+      { blocked: 0 },
+      'pharmacist',
+    );
+
+    expect(result.buckets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: 'pharmacist',
+          communication_items: 6,
+        }),
+      ]),
+    );
+  });
+
   it('includes cadence summary in visit workbench items when preview is available', () => {
     const upcomingSchedules: UpcomingScheduleFixture[] = [
       {
@@ -431,6 +460,60 @@ describe('workflow-dashboard-sections', () => {
         }),
       ]),
     );
+  });
+
+  it('surfaces inbound communication reviews as controlled workflow aggregates', () => {
+    const communicationQueue = emptyCommunicationQueue();
+    communicationQueue.summary.pending_count = 1;
+    communicationQueue.summary.inbound_communications = 1;
+    communicationQueue.items = [
+      {
+        id: 'inbound_communication:event/1?x=y#frag',
+        queue_type: 'inbound_communication',
+        title: '電話連絡を受信',
+        summary: '他職種または関係者からの受信情報があります。内容は連絡履歴で確認してください。',
+        channel: 'phone',
+        status: 'needs_review',
+        priority: 'high',
+        patient_id: 'patient/1',
+        patient_name: '患者A',
+        due_at: '2026-04-02T10:00:00.000Z',
+        action_href: '/patients/patient%2F1/collaboration',
+        action_label: '受信情報を確認',
+      },
+    ];
+
+    const result = buildUnifiedWorkbench(
+      [],
+      [],
+      [],
+      [],
+      0,
+      [],
+      communicationQueue,
+      new Map(),
+      new Map(),
+    );
+
+    expect(result).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'aggregate:inbound_communications',
+          queue_label: '他職種受信',
+          title: '他職種からの受信情報があります',
+          summary: '1件が確認待ちです。',
+          priority: 'high',
+          action_href: '/patients/patient%2F1/collaboration',
+          action_label: '受信情報を確認',
+          badges: ['inbound_communication'],
+        }),
+      ]),
+    );
+
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain('湿布');
+    expect(serialized).not.toContain('090-0000-0000');
+    expect(serialized).not.toContain('storage_key');
   });
 
   it('focuses proposal and visit workbench actions on concrete schedule targets', () => {

@@ -288,6 +288,7 @@ const EMPTY_COMMUNICATION_QUEUE = {
     overdue_count: 0,
     self_reports: 0,
     callback_followups: 0,
+    inbound_communications: 0,
     open_requests: 0,
     delivery_backlog: 0,
     expiring_external_shares: 0,

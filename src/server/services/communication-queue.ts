@@ -217,6 +217,7 @@ export type CommunicationQueueOverview = {
     overdue_count: number;
     self_reports: number;
     callback_followups: number;
+    inbound_communications: number;
     open_requests: number;
     delivery_backlog: number;
     expiring_external_shares: number;
@@ -1031,6 +1032,7 @@ export async function listCommunicationQueue(
         .length,
       self_reports: selfReports.length,
       callback_followups: callbackLogs.length,
+      inbound_communications: inboundCommunicationEvents.length,
       open_requests: actionableRequests.length,
       delivery_backlog: actionableDeliveries.length,
       expiring_external_shares: visibleExternalShares.length,

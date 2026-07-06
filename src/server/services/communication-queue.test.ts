@@ -81,6 +81,7 @@ describe('listCommunicationQueue', () => {
     });
 
     expect(result.summary.pending_count).toBe(0);
+    expect(result.summary.inbound_communications).toBe(0);
     expect(result.items).toEqual([]);
     expect(result.timeline).toEqual([]);
     expect(result.emergency_drafts).toEqual([]);
@@ -255,6 +256,7 @@ describe('listCommunicationQueue', () => {
       }),
     ]);
     expect(result.summary.pending_count).toBe(1);
+    expect(result.summary.inbound_communications).toBe(1);
 
     const serialized = JSON.stringify(result.items);
     expect(serialized).not.toContain('case-1');

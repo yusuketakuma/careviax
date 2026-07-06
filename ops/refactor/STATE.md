@@ -41,6 +41,66 @@
 
 ## 直近の land（本日・要点）
 
+- codex: INB-001 inbound communication workflow dashboard aggregate（未コミット）。
+  - current task:
+    他職種からの inbound phone/FAX/email が CommunicationQueue には出ているが、workflow dashboard では
+    一般の未処理連絡に埋もれるため、PHI-free な件数 summary と unified workbench aggregate として明示する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/communication-queue.ts`,
+    `src/server/services/communication-queue.test.ts`,
+    `src/server/services/workflow-dashboard-sections.ts`,
+    `src/server/services/workflow-dashboard-sections.test.ts`,
+    `src/server/services/workflow-dashboard-queries.ts`,
+    `src/app/(dashboard)/workflow/workflow-dashboard.types.ts`,
+    `src/app/(dashboard)/workflow/workflow-dashboard-view.tsx`,
+    `src/app/(dashboard)/workflow/workflow-dashboard-view.test.tsx`,
+    `src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx`,
+    `src/app/(dashboard)/patients/[id]/patient-detail.types.ts`,
+    `src/server/services/visit-brief.test.ts`,
+    `src/app/api/patients/[id]/route.test.ts`,
+    `src/app/api/dashboard/workflow/route.test.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/communication-queue.ts`,
+    `src/server/services/communication-queue.test.ts`,
+    `src/server/services/workflow-dashboard-sections.ts`,
+    `src/server/services/workflow-dashboard-sections.test.ts`,
+    `src/server/services/workflow-dashboard-queries.ts`,
+    `src/app/(dashboard)/workflow/workflow-dashboard.types.ts`,
+    `src/app/(dashboard)/workflow/workflow-dashboard-view.tsx`,
+    `src/app/(dashboard)/workflow/workflow-dashboard-view.test.tsx`,
+    `src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx`,
+    `src/app/(dashboard)/patients/[id]/patient-detail.types.ts`,
+    `src/server/services/visit-brief.test.ts`,
+    `src/app/api/patients/[id]/route.test.ts`,
+    `src/app/api/dashboard/workflow/route.test.ts`.
+  - implementation:
+    `CommunicationQueueOverview.summary.inbound_communications` を追加し、既存
+    `queue_type='inbound_communication'` item 数を集計する。Workflow Role Inbox では薬剤師の
+    communication count に加算し、Unified Workbench には `aggregate:inbound_communications` を追加。
+    UI の連絡キュー summary card に「他職種受信」を追加した。aggregate/card は controlled label と件数、
+    既存 queue item の safe `action_href` だけを使い、受信本文・薬剤名・電話番号・storage key は出さない。
+  - validation:
+    `pnpm vitest run src/server/services/communication-queue.test.ts src/server/services/workflow-dashboard-sections.test.ts --reporter=dot --testTimeout=30000`
+    passed: 2 files / 31 tests.
+    `pnpm vitest run 'src/app/(dashboard)/workflow/workflow-dashboard-view.test.tsx' 'src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed: 2 files / 13 tests.
+    `pnpm exec eslint src/server/services/communication-queue.ts src/server/services/communication-queue.test.ts src/server/services/workflow-dashboard-sections.ts src/server/services/workflow-dashboard-sections.test.ts src/server/services/workflow-dashboard-queries.ts 'src/app/(dashboard)/workflow/workflow-dashboard.types.ts' 'src/app/(dashboard)/workflow/workflow-dashboard-view.tsx' 'src/app/(dashboard)/workflow/workflow-dashboard-view.test.tsx' 'src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-detail.types.ts' src/server/services/visit-brief.test.ts 'src/app/api/patients/[id]/route.test.ts' src/app/api/dashboard/workflow/route.test.ts`
+    passed.
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/server/services/communication-queue.ts src/server/services/communication-queue.test.ts src/server/services/workflow-dashboard-sections.ts src/server/services/workflow-dashboard-sections.test.ts src/server/services/workflow-dashboard-queries.ts 'src/app/(dashboard)/workflow/workflow-dashboard.types.ts' 'src/app/(dashboard)/workflow/workflow-dashboard-view.tsx' 'src/app/(dashboard)/workflow/workflow-dashboard-view.test.tsx' 'src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-detail.types.ts' src/server/services/visit-brief.test.ts 'src/app/api/patients/[id]/route.test.ts' src/app/api/dashboard/workflow/route.test.ts`
+    passed after formatting `Plans.md`.
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/server/services/communication-queue.ts src/server/services/communication-queue.test.ts src/server/services/workflow-dashboard-sections.ts src/server/services/workflow-dashboard-sections.test.ts src/server/services/workflow-dashboard-queries.ts 'src/app/(dashboard)/workflow/workflow-dashboard.types.ts' 'src/app/(dashboard)/workflow/workflow-dashboard-view.tsx' 'src/app/(dashboard)/workflow/workflow-dashboard-view.test.tsx' 'src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-detail.types.ts' src/server/services/visit-brief.test.ts 'src/app/api/patients/[id]/route.test.ts' src/app/api/dashboard/workflow/route.test.ts`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+  - remaining:
+    なし。DB正本、API/review UI、Report接続、正式 provider 統合は INB-001 の後続。
+  - next action:
+    Land and push this slice, then record commit hash.
+
 - codex: MOV-001 inbound schedule task generic movement regression test（commit 59d15ced2）。
   - current task:
     INB-001 の訪問調整 task は Schedule Day Board に作業導線を寄せ、Patient Movement Timeline では

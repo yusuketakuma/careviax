@@ -61,6 +61,7 @@ function buildWorkflowDataBase(): WorkflowData {
         overdue_count: 0,
         self_reports: 0,
         callback_followups: 0,
+        inbound_communications: 0,
         open_requests: 0,
         delivery_backlog: 0,
         expiring_external_shares: 0,
@@ -154,6 +155,17 @@ function buildProps(refillUpcoming: WorkflowData['refill_upcoming']) {
 }
 
 describe('WorkflowDashboardView - 継続調剤 次回対応テーブル', () => {
+  it('shows the inbound communication count in the communication queue summary', () => {
+    const props = buildProps([]);
+    props.workflow.communication_queue.summary.inbound_communications = 3;
+
+    render(<WorkflowDashboardView {...props} />);
+
+    expect(screen.getByText('他職種受信')).toBeTruthy();
+    expect(screen.getByText('MCS・電話・FAX')).toBeTruthy();
+    expect(screen.getByText('3')).toBeTruthy();
+  });
+
   it('shows the empty message when there is no upcoming refill/split item', () => {
     render(<WorkflowDashboardView {...buildProps([])} />);
 

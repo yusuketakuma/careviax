@@ -481,6 +481,12 @@ export function WorkflowDashboardView({
             caption="患者・家族"
           />
           <MetricCard
+            icon={BellRing}
+            label="他職種受信"
+            value={workflow?.communication_queue.summary.inbound_communications ?? 0}
+            caption="MCS・電話・FAX"
+          />
+          <MetricCard
             icon={XCircle}
             label="未確認"
             value={workflow?.communication_queue.summary.unconfirmed_count ?? 0}

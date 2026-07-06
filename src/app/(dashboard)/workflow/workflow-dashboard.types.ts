@@ -50,6 +50,7 @@ export type WorkflowData = {
       overdue_count: number;
       self_reports: number;
       callback_followups: number;
+      inbound_communications: number;
       open_requests: number;
       delivery_backlog: number;
       expiring_external_shares: number;

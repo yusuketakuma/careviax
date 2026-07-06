@@ -400,7 +400,9 @@ export function buildRoleInboxes(
         pendingProposals.filter((proposal) => ['urgent', 'emergency'].includes(proposal.priority))
           .length + communicationQueue.summary.callback_followups,
       communication_items:
-        communicationQueue.summary.self_reports + communicationQueue.summary.callback_followups,
+        communicationQueue.summary.self_reports +
+        communicationQueue.summary.callback_followups +
+        communicationQueue.summary.inbound_communications,
       action_href: buildWorkflowHref({ focus: 'workbench' }),
     },
     {
@@ -565,7 +567,29 @@ export function buildUnifiedWorkbench(
     ].filter((v): v is string => v != null),
   }));
 
+  const inboundCommunicationItems = communicationQueue.items.filter(
+    (item) => item.queue_type === 'inbound_communication',
+  );
+
   const aggregateItems: WorkbenchItem[] = [
+    ...(communicationQueue.summary.inbound_communications > 0
+      ? [
+          {
+            id: 'aggregate:inbound_communications',
+            item_type: 'aggregate' as const,
+            queue_label: '他職種受信',
+            title: '他職種からの受信情報があります',
+            summary: `${communicationQueue.summary.inbound_communications}件が確認待ちです。`,
+            priority: 'high' as const,
+            due_at: inboundCommunicationItems[0]?.due_at ?? null,
+            action_href: inboundCommunicationItems[0]?.action_href ?? '/communications/requests',
+            action_label: '受信情報を確認',
+            owner_name: null,
+            patient_name: inboundCommunicationItems[0]?.patient_name ?? null,
+            badges: ['inbound_communication'],
+          },
+        ]
+      : []),
     ...(communicationQueue.summary.unconfirmed_count > 0
       ? [
           {
