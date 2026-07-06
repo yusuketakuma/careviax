@@ -6147,3 +6147,56 @@
   Broader `Plans.md` objective remains open. 次候補は PatientBoard 派生ロジックとの adapter 統合、
   timeline 抜粋の Command Center block 化、payload budget / browser smoke、または CORE-003 の
   remaining domain adapters と UI browser proof。
+
+## 2026-07-06 Patient Command Center Recent Activity slice
+
+- codex: `UX-CMD-001 / PAT-DETAIL-PERF-002` Command recent activity excerpt implemented.
+  `PatientWorkspace.recent_activities` の直近3件を `patient-command-center-model.ts` で
+  Command Center 用の lightweight item に整形し、Command tab 内へ `CommandRecentActivitiesPanel` として
+  表示した。新規 API は増やさず、既存 overview payload の工程遷移・疑義照会・処方取込だけを使う。
+- design / imagegen:
+  既存 Command Center UI の同一小型 panel 追加で、前段の `gpt-image-2` 非 PHI mockup と
+  PH-OS UI/UX SSOT の高密度 panel / 44px target / 状態色 token を継承した。新規の画面再構築ではないため
+  追加 image generation は省略。
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/(dashboard)/patients/[id]/patient-detail.types.ts`,
+  `src/app/(dashboard)/patients/[id]/patient-command-center-model.ts`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+  `src/app/(dashboard)/patients/[id]/patient-command-center-model.test.ts`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`.
+- files changed:
+  `Plans.md`,
+  `src/app/(dashboard)/patients/[id]/patient-command-center-model.ts`,
+  `src/app/(dashboard)/patients/[id]/patient-command-center-model.test.ts`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  Command Center が「今どこで止まっているか」と next action に寄っていた一方、直近の工程遷移・照会・取込が
+  別 tab の処方エリアに散っていた。今回、同じ Command tab 上で直近3件を見せ、患者/ケースの現況判断を
+  1画面へ寄せた。
+- security / PHI reviewed:
+  新規外部出力や API はなし。既存 patient detail auth context 内で、overview の activity label / actor /
+  href / timestamp だけを再配置する。Case Risk finding detail や PHI export は追加しない。
+- performance issues reviewed:
+  full timeline API を Command tab 初期表示に追加せず、既存 overview の `recent_activities.slice(0, 3)` に限定。
+  panel は lazy import なしの小型表示で、payload 増加なし。
+- validation:
+  `pnpm exec vitest run src/app/(dashboard)/patients/[id]/patient-command-center-model.test.ts src/app/(dashboard)/patients/[id]/card-workspace.test.tsx --reporter=dot --testTimeout=30000`
+  green (2 files / 91 tests);
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  green;
+  `pnpm lint`
+  green with existing warnings in `src/lib/platform/break-glass.test.ts` (`_tx`, `_input` unused);
+  `pnpm format:check`
+  green;
+  `git diff --check`
+  green.
+- remaining:
+  Broader `Plans.md` objective remains open. 次候補は PatientBoard 派生ロジックとの adapter 統合、
+  full timeline `?limit=5` excerpt の Command block 化、payload budget / browser smoke。
