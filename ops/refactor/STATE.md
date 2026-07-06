@@ -41,6 +41,37 @@
 
 ## 直近の land（本日・要点）
 
+- codex: FE-ERR-001 admin master-hub segment hardening（pending commit）。
+  - current task:
+    `/admin/master-hub` のマスター鮮度集計取得失敗を raw backend detail なしの shared segment state に寄せる。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/admin/master-hub-content.tsx`,
+    `src/app/(dashboard)/admin/master-hub-content.test.tsx`,
+    `src/components/ui/segment-state.tsx`.
+  - files changed:
+    `src/app/(dashboard)/admin/master-hub-content.tsx`,
+    `src/app/(dashboard)/admin/master-hub-content.test.tsx`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `ErrorState.detail={hubQuery.error.message}` を廃止し、`SegmentError` の固定文言 + retry に置換した。
+  - bugs found:
+    マスター鮮度集計取得失敗時に backend `Error.message` を detail として表示し得た。
+  - security risks reduced:
+    master-hub の失敗表示に patient_name、storage_key、token、provider_error が出ないことを focused test で固定した。
+  - performance issues improved:
+    なし。fail-soft/error state の修正。
+  - validation:
+    `pnpm exec vitest run 'src/app/(dashboard)/admin/master-hub-content.test.tsx' src/components/ui/segment-state.test.tsx --reporter=dot --testTimeout=30000` → pass（2 files / 17 tests）。
+    `pnpm exec eslint 'src/app/(dashboard)/admin/master-hub-content.tsx' 'src/app/(dashboard)/admin/master-hub-content.test.tsx'` → pass。
+  - remaining:
+    FE-ERR-001 は admin screen 群への段階展開が残る。
+    Formal `InboundCommunicationEvent` / `InboundCommunicationSignal` DB/API/review UI and MedicationStock Ledger source remain.
+  - next action:
+    prettier / diff check、scoped commit/push。
+
 - codex: FE-ERR-001 admin drug-master detail sheet segment hardening（pending commit）。
   - current task:
     `/admin/drug-masters` の医薬品詳細 sheet 内の detail / 採用品設定 / 採用後発薬候補 /

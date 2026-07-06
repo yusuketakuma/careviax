@@ -5,8 +5,8 @@ import { useQuery } from '@tanstack/react-query';
 import { format, isSameDay, parseISO } from 'date-fns';
 import { Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
+import { SegmentError } from '@/components/ui/segment-state';
 import { StateBadge } from '@/components/ui/state-badge';
 import type { StatusRole } from '@/lib/constants/status-tokens';
 import {
@@ -199,12 +199,12 @@ export function MasterHubContent() {
           <MasterHubSkeleton />
         ) : hubQuery.isError || !data ? (
           <div className="rounded-lg border border-border/70 bg-card p-4">
-            <ErrorState
-              variant="server"
+            <SegmentError
               title="マスターを表示できません"
-              description="マスター鮮度の集計取得に失敗しました。再試行してください。"
-              detail={hubQuery.error instanceof Error ? hubQuery.error.message : undefined}
+              cause="マスター鮮度の集計取得に失敗しました。"
+              nextAction="通信状態を確認して再試行してください。"
               onRetry={() => void hubQuery.refetch()}
+              retryLabel="再試行"
             />
           </div>
         ) : (

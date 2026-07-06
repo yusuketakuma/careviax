@@ -448,13 +448,19 @@ describe('MasterHubContent', () => {
       data: undefined,
       isLoading: false,
       isError: true,
-      error: new Error('boom'),
+      error: new Error(
+        'GET /api/admin/master-hub patient_name=山田 太郎 storage_key=s3://secret token=secret provider_error=timeout',
+      ),
       refetch: refetchMock,
     });
 
     render(<MasterHubContent />);
 
     expect(screen.getByText('マスターを表示できません')).toBeTruthy();
+    expect(screen.queryByText(/patient_name/)).toBeNull();
+    expect(screen.queryByText(/storage_key/)).toBeNull();
+    expect(screen.queryByText(/token=secret/)).toBeNull();
+    expect(screen.queryByText(/provider_error/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '再試行' }));
     expect(refetchMock).toHaveBeenCalled();
   });
