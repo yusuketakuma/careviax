@@ -41,6 +41,46 @@
 
 ## 直近の land（本日・要点）
 
+- codex: FE-ERR-001 admin contact-profiles false-zero hardening（pending commit）。
+  - current task:
+    `/admin/contact-profiles` の送付先一覧取得失敗時に、ヘッダー KPI が `表示中 0件` /
+    `未完了 0件` / `方法未設定 0件` と見える false-zero を防ぎ、shared segment state に寄せる。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `docs/ui-ux-design-guidelines.md`,
+    `src/components/ui/segment-state.tsx`,
+    `src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.tsx`,
+    `src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.test.tsx`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.tsx`,
+    `src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.test.tsx`.
+  - implementation:
+    query error 時は KPI strip の代わりに `SegmentError` を表示し、raw backend message を出さず retry 可能にした。
+    loading 時は `SegmentLoading` へ移行し、成功データ取得後だけ数値 KPI を表示する。
+    list body は error/loading を空状態に倒さず、取得後に一覧を表示する旨だけを示す。
+  - bugs found:
+    取得失敗時でも `rows=[]` 由来の KPI がヘッダーに出るため、送付先 routing が全て安全に見える可能性があった。
+  - security risks reduced:
+    送付先取得 API の raw error message、route、org id、patient name、storage key 等が UI に出る面を縮小した。
+  - performance issues improved:
+    なし。表示状態の正確性と fail-soft の修正。
+  - validation:
+    `pnpm exec vitest run 'src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.test.tsx' src/components/ui/segment-state.test.tsx --reporter=dot --testTimeout=30000` → pass（2 files / 16 tests）。
+    `pnpm exec eslint 'src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.tsx' 'src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.test.tsx'` → pass。
+    `pnpm typecheck` → pass。
+    `pnpm exec prettier --check 'src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.tsx' 'src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.test.tsx'` → pass。
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md 'src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.tsx' 'src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.test.tsx'` → pass。
+    `git diff --check -- Plans.md ops/refactor/STATE.md 'src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.tsx' 'src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.test.tsx'` → pass。
+  - remaining:
+    FE-ERR-001 は UAT/settings など admin screen 群への段階展開が残る。Formal `InboundCommunicationEvent` /
+    `InboundCommunicationSignal` DB/API/review UI and MedicationStock Ledger source remain.
+  - next action:
+    Plans/STATE format/diff check、scoped commit/push。
+
 - codex: MOV-001 Patient Movement Timeline scope lock追記（plan-only）。
   - current task:
     最新ユーザー指示に合わせ、Patient Movement Timeline の処方・訪問・文書登録 marker の完成条件を

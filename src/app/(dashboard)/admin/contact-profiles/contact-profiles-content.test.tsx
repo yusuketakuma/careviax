@@ -144,6 +144,35 @@ describe('ContactProfilesContent', () => {
     expect(screen.queryByText('条件に一致する送付先がありません。')).toBeNull();
   });
 
+  it('shows a safe retryable segment instead of false-zero KPIs when profiles fail to load', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          message: '/api/contact-profiles org_123 patient_name=山田 太郎 storage_key=s3://secret',
+        }),
+        { status: 500 },
+      ),
+    );
+
+    renderContent();
+
+    expect(await screen.findByText('送付先サマリーを取得できませんでした')).toBeTruthy();
+    expect(screen.getByText('送付先一覧')).toBeTruthy();
+    expect(screen.getByText('再読み込み後に送付先一覧を表示します。')).toBeTruthy();
+    expect(screen.queryByText('条件に一致する送付先がありません。')).toBeNull();
+    expect(screen.queryByText('表示中')).toBeNull();
+    expect(screen.queryByText('未完了')).toBeNull();
+    expect(screen.queryByText('方法未設定')).toBeNull();
+    expect(screen.queryByText('0件')).toBeNull();
+    expect(screen.queryByText('/api/contact-profiles')).toBeNull();
+    expect(screen.queryByText('org_123')).toBeNull();
+    expect(screen.queryByText('patient_name=山田 太郎')).toBeNull();
+    expect(screen.queryByText('storage_key=s3://secret')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
+  });
+
   it('delegates contact profile paths and tenant headers to shared helpers', async () => {
     const fetchSpy = vi.spyOn(global, 'fetch');
 

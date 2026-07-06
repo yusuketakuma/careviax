@@ -7,12 +7,11 @@ import { Controller, useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import { Badge } from '@/components/ui/badge';
-import { ErrorState } from '@/components/ui/error-state';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { SkeletonRows } from '@/components/ui/loading';
+import { SegmentError, SegmentLoading } from '@/components/ui/segment-state';
 import {
   Select,
   SelectContent,
@@ -190,57 +189,68 @@ export function ContactProfilesContent() {
           <CardHeader>
             <div className="space-y-3">
               <h2 className="font-heading text-base leading-snug font-medium">送付先一覧</h2>
-              <div className="grid grid-cols-3 gap-2 text-xs">
-                <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2">
-                  <p className="font-medium text-muted-foreground">表示中</p>
-                  <p className="mt-1 text-base font-semibold text-foreground">{rows.length}件</p>
-                </div>
-                <div
-                  className={cn(
-                    'rounded-lg border border-border/70 border-l-2 bg-muted/20 px-3 py-2',
-                    hasPendingRows && 'border-l-state-confirm',
-                  )}
-                >
-                  <p
+              {profilesQuery.isError ? (
+                <SegmentError
+                  title="送付先サマリーを取得できませんでした"
+                  cause="送付先一覧の取得に失敗しました。"
+                  nextAction="通信状態を確認して再読み込みしてください。"
+                  onRetry={() => void profilesQuery.refetch()}
+                  retryLabel="再試行"
+                />
+              ) : profilesQuery.isLoading ? (
+                <SegmentLoading
+                  label="連携先を読み込み中"
+                  description="送付先件数と連絡先一覧を確認しています。"
+                  rows={2}
+                  cols={3}
+                  size="compact"
+                />
+              ) : (
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2">
+                    <p className="font-medium text-muted-foreground">表示中</p>
+                    <p className="mt-1 text-base font-semibold text-foreground">{rows.length}件</p>
+                  </div>
+                  <div
                     className={cn(
-                      'font-medium',
-                      hasPendingRows ? 'text-state-confirm' : 'text-muted-foreground',
+                      'rounded-lg border border-border/70 border-l-2 bg-muted/20 px-3 py-2',
+                      hasPendingRows && 'border-l-state-confirm',
                     )}
                   >
-                    未完了
-                  </p>
-                  <p
-                    className={cn(
-                      'mt-1 text-base font-semibold',
-                      hasPendingRows ? 'text-state-confirm' : 'text-foreground',
-                    )}
-                  >
-                    {pendingRowsCount}件
-                  </p>
+                    <p
+                      className={cn(
+                        'font-medium',
+                        hasPendingRows ? 'text-state-confirm' : 'text-muted-foreground',
+                      )}
+                    >
+                      未完了
+                    </p>
+                    <p
+                      className={cn(
+                        'mt-1 text-base font-semibold',
+                        hasPendingRows ? 'text-state-confirm' : 'text-foreground',
+                      )}
+                    >
+                      {pendingRowsCount}件
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2">
+                    <p className="font-medium text-muted-foreground">方法未設定</p>
+                    <p className="mt-1 text-base font-semibold text-foreground">
+                      {missingMethodRowsCount}件
+                    </p>
+                  </div>
                 </div>
-                <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2">
-                  <p className="font-medium text-muted-foreground">方法未設定</p>
-                  <p className="mt-1 text-base font-semibold text-foreground">
-                    {missingMethodRowsCount}件
-                  </p>
-                </div>
-              </div>
+              )}
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
             {profilesQuery.isError ? (
-              // 取得失敗を「送付先がありません」(空)に倒さず、ErrorState + 再試行で示す
-              <ErrorState
-                variant="server"
-                size="inline"
-                title="送付先を取得できませんでした"
-                description="時間をおいて再試行してください。"
-                onRetry={() => profilesQuery.refetch()}
-              />
+              <p className="text-sm text-muted-foreground">
+                再読み込み後に送付先一覧を表示します。
+              </p>
             ) : profilesQuery.isLoading ? (
-              <div role="status" aria-label="連携先を読み込み中" aria-live="polite">
-                <SkeletonRows rows={3} cols={3} status={false} />
-              </div>
+              <p className="text-sm text-muted-foreground">取得完了後に一覧を表示します。</p>
             ) : rows.length === 0 ? (
               <p className="rounded-lg border border-dashed border-border/70 px-4 py-8 text-sm text-muted-foreground">
                 条件に一致する送付先がありません。
