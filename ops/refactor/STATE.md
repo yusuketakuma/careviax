@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: MOV-001 patient export operation marker minimization（未コミット）。
+- codex: MOV-001 patient export operation marker minimization（commit a1082d6b4, pushed）。
   - current task:
     患者単位 export の `operation_history` が薬歴PDF/服薬カレンダー/訪問記録PDF/処方履歴CSV
     などの文書種別や filter 条件を timeline に出す経路を外し、処方・訪問・文書 marker-only 契約へ寄せる。
@@ -73,7 +73,7 @@
   - remaining:
     Formal `InboundCommunicationEvent` / `InboundCommunicationSignal` DB/API/review UI and MedicationStock Ledger source remain.
   - next action:
-    scoped commit/push 後に commit hash を記録する。
+    Continue remaining MOV-001 sources only when they can stay marker-only + canonical deep link.
 
 - codex: MOV-001 first visit document marker label minimization（commit e3a0bbc4d, pushed）。
   - current task:
