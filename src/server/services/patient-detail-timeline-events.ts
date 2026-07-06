@@ -258,9 +258,6 @@ export type DispenseResultTimelineSource = {
 export type ManagementPlanTimelineSource = {
   id: string;
   status: string;
-  title: string | null;
-  effective_from: Date | null;
-  next_review_date: Date | null;
   created_by: string;
   approved_by: string | null;
   approved_at: Date | null;

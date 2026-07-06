@@ -2126,6 +2126,74 @@ describe('getPatientTimelineData', () => {
     expect(JSON.stringify(result?.timeline_events)).not.toContain(`/reports/${rawReportId}`);
   });
 
+  it('keeps management plan timeline events marker-only without selecting document details', async () => {
+    const managementPlanFindManyMock = vi.fn().mockResolvedValue([
+      {
+        id: 'plan_1',
+        status: 'approved',
+        title: '訪問薬剤管理指導計画書 山田様',
+        effective_from: new Date('2026-04-01T00:00:00.000Z'),
+        next_review_date: new Date('2026-05-01T00:00:00.000Z'),
+        created_by: 'user_1',
+        approved_by: 'user_2',
+        approved_at: new Date('2026-04-02T09:00:00.000Z'),
+        reviewed_by: 'user_2',
+        reviewed_at: new Date('2026-04-02T09:00:00.000Z'),
+        created_at: new Date('2026-04-01T09:00:00.000Z'),
+      },
+    ]);
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      managementPlan: {
+        findMany: managementPlanFindManyMock,
+      },
+      user: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'user_2', name: '薬剤師B' }]),
+      },
+    });
+
+    const result = await getPatientTimelineData(runnerFor(db), {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+    });
+
+    expect(managementPlanFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.not.objectContaining({
+          title: true,
+          effective_from: true,
+          next_review_date: true,
+        }),
+      }),
+    );
+    expect(result?.timeline_events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'management_plan:plan_1',
+          event_type: 'management_plan',
+          category: 'document',
+          title: '管理計画書を承認',
+          summary: '管理計画書が登録または更新されました。内容は計画書で確認してください。',
+          href: '/patients/patient_1/management-plan',
+          action_label: '計画書を開く',
+          status: 'approved',
+          status_label: '承認済み',
+          actor_name: '薬剤師B',
+        }),
+      ]),
+    );
+    const serializedMovementEvents = JSON.stringify(result?.movement_events);
+    expect(serializedMovementEvents).not.toContain('訪問薬剤管理指導計画書 山田様');
+    expect(serializedMovementEvents).not.toContain('2026-05-01');
+  });
+
   it('encodes timeline visit and prescription hrefs while preserving raw identities', async () => {
     const rawScheduleWithRecordId = 'schedule/with-record?mode=x#frag';
     const rawScheduleRecordId = 'visit-record/from-schedule?mode=x#frag';

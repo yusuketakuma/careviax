@@ -41,6 +41,47 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOV-001 Management plan document marker hardening（未コミット）。
+  - current task:
+    Patient Movement Timeline の「処方・訪問・文書登録は発生 marker + 正本 deep link のみ」
+    という最新ユーザー方針に合わせ、管理計画書 source から文書詳細に近い自由記載/日付詳細の
+    選択を外す。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail.test.ts`,
+    `src/server/services/patient-movement-timeline-presenter.ts`,
+    `src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail.test.ts`.
+  - implementation:
+    `managementPlansSource` の select から `title`, `effective_from`, `next_review_date`
+    を削除し、summary を controlled sentence に固定した。管理計画書 marker は作成/承認の発生、
+    controlled status、計画書 deep link のみを返す。
+  - security risks reduced:
+    管理計画書タイトルや見直し日など、文書本文/文書名に近い情報が movement payload へ流れる面を
+    縮小した。詳細確認は `/patients/:id/management-plan` の正本画面へ委譲する。
+  - validation:
+    `pnpm exec vitest run src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.test.ts 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx' --reporter=dot --testTimeout=30000`
+    passed: 3 files / 90 tests.
+    `pnpm exec eslint src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.ts 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx'`
+    passed.
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.ts 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx'`
+    passed.
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.ts 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx'`
+    passed.
+  - remaining:
+    Formal inbound DB/API/review UI and MedicationStock Ledger source remain.
+  - next action:
+    Commit/push this scoped slice.
+
 - codex: MOV-001 Inbound task movement classification（commit 42ed967c1, pushed）。
   - current task:
     `core.inbound_communication_review_required` task を generic task ではなく他職種受信 marker として

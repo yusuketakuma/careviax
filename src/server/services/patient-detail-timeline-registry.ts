@@ -1041,9 +1041,6 @@ export const managementPlansSource = defineTimelineSource<
           select: {
             id: true,
             status: true,
-            title: true,
-            effective_from: true,
-            next_review_date: true,
             created_by: true,
             approved_by: true,
             approved_at: true,
@@ -1064,14 +1061,7 @@ export const managementPlansSource = defineTimelineSource<
         category: 'document',
         occurred_at: occurredAt,
         title: item.approved_at ? '管理計画書を承認' : '管理計画書を作成',
-        summary:
-          compactTimelineValues([
-            item.title,
-            item.effective_from ? `適用開始 ${formatTimelineDate(item.effective_from)}` : null,
-            item.next_review_date
-              ? `次回見直し ${formatTimelineDate(item.next_review_date)}`
-              : null,
-          ]).join(' / ') || null,
+        summary: '管理計画書が登録または更新されました。内容は計画書で確認してください。',
         href: hrefs.patientManagementPlanHref,
         action_label: '計画書を開く',
         status: item.status,
