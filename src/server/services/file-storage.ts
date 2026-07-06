@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { Readable } from 'node:stream';
 import {
   DeleteObjectCommand,
   GetObjectCommand,
@@ -186,6 +187,23 @@ type CreatePresignedDownloadArgs = {
   accessContext: FileAccessContext;
 };
 
+type CreateStreamedDownloadArgs = CreatePresignedDownloadArgs;
+
+export type StreamedFileDownload = {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  purpose: AnyFilePurpose;
+  downloadDisposition: DownloadDisposition;
+  body: ReadableStream<Uint8Array>;
+  expiresIn: 0;
+};
+
+export type PreparedFileDownload = Omit<StreamedFileDownload, 'body'> & {
+  storageKey: string;
+};
+
 type StoreGeneratedFileArgs = {
   orgId: string;
   purpose: GeneratedFilePurpose;
@@ -204,6 +222,7 @@ export class FileStorageError extends Error {
       | 'FILE_METADATA_NOT_FOUND'
       | 'FILE_METADATA_LOOKUP_FAILED'
       | 'FILE_NOT_READY'
+      | 'FILE_DOWNLOAD_BODY_UNAVAILABLE'
       | 'FILE_UPLOAD_REFERENCE_MISSING'
       | 'FILE_UPLOAD_INVALID_MIME'
       | 'FILE_UPLOAD_TOO_LARGE'
@@ -339,6 +358,71 @@ function getClient() {
   const client = withAwsClientTimeout(new S3Client({ region, ...awsClientConfig() }));
   s3Clients.set(region, client);
   return client;
+}
+
+function bufferToWebStream(value: Uint8Array) {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(value);
+      controller.close();
+    },
+  });
+}
+
+function toWebDownloadStream(body: unknown): ReadableStream<Uint8Array> {
+  if (!body) {
+    throw new FileStorageError(
+      'FILE_DOWNLOAD_BODY_UNAVAILABLE',
+      'ファイル本体を取得できませんでした',
+      502,
+    );
+  }
+
+  if (body instanceof ReadableStream) return body as ReadableStream<Uint8Array>;
+  if (body instanceof Uint8Array) return bufferToWebStream(body);
+
+  const sdkBody = body as {
+    transformToWebStream?: () => ReadableStream<Uint8Array>;
+    pipe?: unknown;
+  };
+  if (typeof sdkBody.transformToWebStream === 'function') {
+    return sdkBody.transformToWebStream();
+  }
+  if (typeof sdkBody.pipe === 'function') {
+    return Readable.toWeb(body as Readable) as ReadableStream<Uint8Array>;
+  }
+
+  throw new FileStorageError(
+    'FILE_DOWNLOAD_BODY_UNAVAILABLE',
+    'ファイル本体を取得できませんでした',
+    502,
+  );
+}
+
+async function discardDownloadBody(body: unknown) {
+  if (!body || body instanceof Uint8Array) return;
+
+  const maybeBody = body as {
+    cancel?: () => Promise<unknown> | unknown;
+    destroy?: () => void;
+    transformToWebStream?: () => ReadableStream<Uint8Array>;
+  };
+  if (typeof maybeBody.cancel === 'function') {
+    await maybeBody.cancel();
+    return;
+  }
+  if (typeof maybeBody.destroy === 'function') {
+    maybeBody.destroy();
+    return;
+  }
+  if (typeof maybeBody.transformToWebStream === 'function') {
+    await maybeBody.transformToWebStream().cancel();
+  }
+}
+
+async function failClosedAfterDiscard(body: unknown, error: FileStorageError): Promise<never> {
+  await discardDownloadBody(body);
+  throw error;
 }
 
 function normalizeEtag(etag: string | null | undefined) {
@@ -1658,19 +1742,11 @@ export async function createPresignedDownload({
   accessContext,
 }: CreatePresignedDownloadArgs) {
   const { bucketName } = getRequiredStorageConfig();
-  const { record } = await readStoredFileRecord(orgId, fileId);
-  await assertStoredFileAccess({ orgId, record, accessContext, mode: 'download' });
-
-  if (record.status !== 'uploaded') {
-    throw new FileStorageError('FILE_NOT_READY', 'ファイルアップロードがまだ完了していません', 409);
-  }
-
-  const expiresAt = resolveStoredFileExpiresAt(record);
-  if (expiresAt && expiresAt <= new Date()) {
-    throw new FileStorageError('FILE_EXPIRED', 'ファイルの保存期限が切れています', 410);
-  }
-
-  const downloadFileName = resolveSafeDownloadFileName(record);
+  const { record, downloadFileName } = await resolveDownloadableFileRecord({
+    orgId,
+    fileId,
+    accessContext,
+  });
   const downloadUrl = await getSignedUrl(
     getClient(),
     new GetObjectCommand({
@@ -1690,5 +1766,106 @@ export async function createPresignedDownload({
     purpose: record.purpose,
     downloadUrl,
     expiresIn: DOWNLOAD_EXPIRY_SECONDS,
+  };
+}
+
+async function resolveDownloadableFileRecord({
+  orgId,
+  fileId,
+  accessContext,
+}: CreatePresignedDownloadArgs) {
+  const { record } = await readStoredFileRecord(orgId, fileId);
+  await assertStoredFileAccess({ orgId, record, accessContext, mode: 'download' });
+
+  if (record.status !== 'uploaded') {
+    throw new FileStorageError('FILE_NOT_READY', 'ファイルアップロードがまだ完了していません', 409);
+  }
+
+  const expiresAt = resolveStoredFileExpiresAt(record);
+  if (expiresAt && expiresAt <= new Date()) {
+    throw new FileStorageError('FILE_EXPIRED', 'ファイルの保存期限が切れています', 410);
+  }
+
+  return {
+    record,
+    downloadFileName: resolveSafeDownloadFileName(record),
+  };
+}
+
+export async function prepareFileDownload({
+  orgId,
+  fileId,
+  accessContext,
+}: CreateStreamedDownloadArgs): Promise<PreparedFileDownload> {
+  getRequiredStorageConfig();
+  const { record, downloadFileName } = await resolveDownloadableFileRecord({
+    orgId,
+    fileId,
+    accessContext,
+  });
+
+  return {
+    id: record.id,
+    fileName: downloadFileName,
+    mimeType: record.mimeType,
+    sizeBytes: record.sizeBytes,
+    purpose: record.purpose,
+    downloadDisposition: record.downloadDisposition ?? 'inline',
+    storageKey: record.storageKey,
+    expiresIn: 0,
+  };
+}
+
+export async function openPreparedFileDownload(
+  prepared: PreparedFileDownload,
+): Promise<ReadableStream<Uint8Array>> {
+  const { bucketName } = getRequiredStorageConfig();
+  const response = await getClient().send(
+    new GetObjectCommand({
+      Bucket: bucketName,
+      Key: prepared.storageKey,
+    }),
+  );
+
+  if (!response.Body) {
+    throw new FileStorageError(
+      'FILE_DOWNLOAD_BODY_UNAVAILABLE',
+      'ファイル本体を取得できませんでした',
+      502,
+    );
+  }
+  if (response.ContentType && response.ContentType !== prepared.mimeType) {
+    await failClosedAfterDiscard(
+      response.Body,
+      new FileStorageError(
+        'FILE_DOWNLOAD_BODY_UNAVAILABLE',
+        'ファイル本体の形式が保存済みメタデータと一致しません',
+        502,
+      ),
+    );
+  }
+  if (typeof response.ContentLength === 'number' && response.ContentLength !== prepared.sizeBytes) {
+    await failClosedAfterDiscard(
+      response.Body,
+      new FileStorageError(
+        'FILE_DOWNLOAD_BODY_UNAVAILABLE',
+        'ファイル本体のサイズが保存済みメタデータと一致しません',
+        502,
+      ),
+    );
+  }
+
+  return toWebDownloadStream(response.Body);
+}
+
+export async function createStreamedDownload(
+  args: CreateStreamedDownloadArgs,
+): Promise<StreamedFileDownload> {
+  const prepared = await prepareFileDownload(args);
+  const body = await openPreparedFileDownload(prepared);
+
+  return {
+    ...prepared,
+    body,
   };
 }

@@ -143,7 +143,10 @@ import {
   completeUploadedFile,
   cleanupExpiredGeneratedFiles,
   createPresignedDownload,
+  createStreamedDownload,
   createPresignedUpload,
+  openPreparedFileDownload,
+  prepareFileDownload,
   deleteGeneratedFile,
   storeGeneratedFile,
   type StoredFileRecord,
@@ -815,6 +818,7 @@ describe('file-storage', () => {
       storageKey: 'reports/org_1/report_1/file_1-report.pdf',
       originalName:
         'Taro Yamada 090-1234-5678 アムロジピン storageKey=s3 token=secret provider raw error.pdf',
+      sizeBytes: 4,
       status: 'uploaded',
     });
 
@@ -836,6 +840,129 @@ describe('file-storage', () => {
       'Taro',
       'Yamada',
     ]);
+  });
+
+  it('streams downloads through the app without creating a signed URL', async () => {
+    mockStoredFile({
+      purpose: 'report',
+      reportId: 'report_1',
+      storageKey: 'reports/org_1/report_1/file_1-report.pdf',
+      originalName:
+        'Taro Yamada 090-1234-5678 アムロジピン storageKey=s3 token=secret provider raw error.pdf',
+      sizeBytes: 4,
+      status: 'uploaded',
+    });
+    s3SendMock.mockResolvedValueOnce({
+      Body: new Uint8Array([102, 105, 108, 101]),
+      ContentType: 'application/pdf',
+      ContentLength: 4,
+    });
+
+    const result = await createStreamedDownload({
+      orgId: 'org_1',
+      fileId: 'file_1',
+      accessContext: assignedAccessContext,
+    });
+
+    expect(result).toMatchObject({
+      id: 'file_1',
+      fileName: 'report-file-file_1.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 4,
+      purpose: 'report',
+      downloadDisposition: 'inline',
+      expiresIn: 0,
+    });
+    expect(await new Response(result.body).text()).toBe('file');
+    expect(getSignedUrlMock).not.toHaveBeenCalled();
+    expect(s3SendMock.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        input: {
+          Bucket: 'ph-os-files',
+          Key: 'reports/org_1/report_1/file_1-report.pdf',
+        },
+      }),
+    );
+    expectPhiExportSnapshotRedacted(result.fileName, ['Taro', 'Yamada']);
+  });
+
+  it('fails closed when S3 GetObject returns no download body', async () => {
+    mockStoredFile({
+      purpose: 'report',
+      reportId: 'report_1',
+      storageKey: 'reports/org_1/report_1/file_1-report.pdf',
+      status: 'uploaded',
+    });
+    s3SendMock.mockResolvedValueOnce({
+      ContentType: 'application/pdf',
+      ContentLength: 1024,
+    });
+
+    await expect(
+      createStreamedDownload({
+        orgId: 'org_1',
+        fileId: 'file_1',
+        accessContext: assignedAccessContext,
+      }),
+    ).rejects.toMatchObject({
+      code: 'FILE_DOWNLOAD_BODY_UNAVAILABLE',
+      status: 502,
+    });
+    expect(getSignedUrlMock).not.toHaveBeenCalled();
+  });
+
+  it('fails closed and cancels the S3 body when download content type drifts', async () => {
+    mockStoredFile({
+      purpose: 'report',
+      reportId: 'report_1',
+      storageKey: 'reports/org_1/report_1/file_1-report.pdf',
+      status: 'uploaded',
+    });
+    const cancel = vi.fn();
+    const prepared = await prepareFileDownload({
+      orgId: 'org_1',
+      fileId: 'file_1',
+      accessContext: assignedAccessContext,
+    });
+    s3SendMock.mockResolvedValueOnce({
+      Body: { cancel },
+      ContentType: 'text/html',
+      ContentLength: 2048,
+    });
+
+    await expect(openPreparedFileDownload(prepared)).rejects.toMatchObject({
+      code: 'FILE_DOWNLOAD_BODY_UNAVAILABLE',
+      status: 502,
+    });
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(getSignedUrlMock).not.toHaveBeenCalled();
+  });
+
+  it('fails closed and cancels the S3 body when download content length drifts', async () => {
+    mockStoredFile({
+      purpose: 'report',
+      reportId: 'report_1',
+      storageKey: 'reports/org_1/report_1/file_1-report.pdf',
+      status: 'uploaded',
+    });
+    const cancel = vi.fn();
+    const prepared = await prepareFileDownload({
+      orgId: 'org_1',
+      fileId: 'file_1',
+      accessContext: assignedAccessContext,
+    });
+    s3SendMock.mockResolvedValueOnce({
+      Body: { cancel },
+      ContentType: 'application/pdf',
+      ContentLength: 2049,
+    });
+
+    await expect(openPreparedFileDownload(prepared)).rejects.toMatchObject({
+      code: 'FILE_DOWNLOAD_BODY_UNAVAILABLE',
+      status: 502,
+    });
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(getSignedUrlMock).not.toHaveBeenCalled();
   });
 
   it('rejects expired generated bulk export downloads before signing', async () => {

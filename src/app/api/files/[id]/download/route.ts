@@ -9,7 +9,11 @@ import {
   recordFileDownloadAudit,
   resolveFileDownloadAuditContext,
 } from '@/server/services/file-download-audit';
-import { createPresignedDownload, FileStorageError } from '@/server/services/file-storage';
+import {
+  FileStorageError,
+  openPreparedFileDownload,
+  prepareFileDownload,
+} from '@/server/services/file-storage';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const disabledResponse = legacyFileApiDisabledResponse();
@@ -23,7 +27,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!fileId) return withSensitiveNoStore(validationError('ファイルIDが不正です'));
 
   try {
-    const data = await createPresignedDownload({
+    const data = await prepareFileDownload({
       orgId: authResult.ctx.orgId,
       fileId,
       accessContext: {
@@ -51,7 +55,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         sizeBytes: data.sizeBytes,
         expiresIn: data.expiresIn,
         surface: 'files_download',
-        responseMode: 'redirect',
+        responseMode: 'stream',
         ...(auditContext?.consentAttachmentContext
           ? { consentAttachmentContext: auditContext.consentAttachmentContext }
           : {}),
@@ -70,7 +74,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       );
     }
 
-    const response = NextResponse.redirect(data.downloadUrl);
+    const body = await openPreparedFileDownload(data);
+    const response = new NextResponse(body, {
+      status: 200,
+      headers: {
+        'Content-Type': data.mimeType,
+        'Content-Length': String(data.sizeBytes),
+        'Content-Disposition': `${data.downloadDisposition}; filename="${data.fileName}"`,
+        'Accept-Ranges': 'none',
+        'X-Content-Type-Options': 'nosniff',
+      },
+    });
     return withSensitiveNoStore(response);
   } catch (cause) {
     if (cause instanceof FileStorageError) {
@@ -78,7 +92,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     return withSensitiveNoStore(
-      error('EXTERNAL_FILE_DOWNLOAD_FAILED', 'ダウンロードURLの発行に失敗しました', 502),
+      error('EXTERNAL_FILE_DOWNLOAD_FAILED', 'ファイルダウンロードに失敗しました', 502),
     );
   }
 }

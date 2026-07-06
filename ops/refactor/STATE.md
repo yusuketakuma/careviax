@@ -41,6 +41,67 @@
 
 ## 直近の land（本日・要点）
 
+- codex: FILE-DOWNLOAD-002 same-origin streamed download implemented.
+  - current task:
+    `Plans.md` の `FILE-DOWNLOAD-002` を追加・実装。`/api/files/[id]/download` を
+    S3 signed URL redirect から same-origin streamed response へ変更した。
+    `createStreamedDownload()` は既存の認可・状態・期限・safe filename guard を共有し、
+    AWS SDK v3 `GetObjectCommand` の `Body` を Web Stream 化して返す。監査は
+    `response_mode: stream` / `expires_in_seconds: 0` として記録し、route response には
+    `Location` / `downloadUrl` / `X-Amz-Signature` を出さない。
+  - AWS official references checked (2026-07-06):
+    AWS SDK for JavaScript v3 S3 `GetObjectCommand` API Reference
+    `https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/client/s3/command/GetObjectCommand/`,
+    AWS SDK for JavaScript v3 S3 code examples
+    `https://docs.aws.amazon.com/sdk-for-javascript/v3/developer-guide/javascript_s3_code_examples.html`.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/api/files/[id]/download/route.ts`,
+    `src/app/api/files/[id]/download/route.test.ts`,
+    `src/server/services/file-storage.ts`,
+    `src/server/services/file-storage.test.ts`,
+    `src/server/services/file-download-audit.ts`,
+    `src/server/services/file-download-audit.test.ts`,
+    `src/app/api/__tests__/api-conventions-static.test.ts`,
+    `src/lib/api/route-catalog.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/api/files/[id]/download/route.ts`,
+    `src/app/api/files/[id]/download/route.test.ts`,
+    `src/server/services/file-storage.ts`,
+    `src/server/services/file-storage.test.ts`,
+    `src/server/services/file-download-audit.ts`,
+    `src/server/services/file-download-audit.test.ts`,
+    `src/app/api/__tests__/api-conventions-static.test.ts`,
+    `src/lib/api/route-catalog.ts`.
+  - subagent / review:
+    `security_critic` (`019f3619-9e85-7753-80b2-c686c8144466`) returned
+    `CHANGES_REQUESTED`: S3 body was opened before audit, stream body was not canceled on audit
+    failure, S3 ContentType/ContentLength drift was trusted, typecheck failed, and Range behavior
+    was implicit. Incorporated the findings by splitting `prepareFileDownload()` from
+    `openPreparedFileDownload()`, recording audit before S3 `GetObject`, validating remote
+    ContentType/ContentLength against recorded metadata, canceling/destroying mismatched bodies,
+    fixing stream conversion typing, and explicitly returning `Accept-Ranges: none`.
+  - validation:
+    `pnpm exec vitest run 'src/app/api/files/[id]/download/route.test.ts' src/server/services/file-storage.test.ts src/server/services/file-download-audit.test.ts src/app/api/__tests__/api-conventions-static.test.ts --reporter=dot --testTimeout=30000`
+    passed after subagent fixes: 4 files / 97 tests.
+    `pnpm exec vitest run 'src/app/api/files/[id]/presigned-download/route.test.ts' 'src/app/api/files/[id]/download/route.test.ts' src/app/api/files/complete/route.test.ts src/app/api/files/presigned-upload/route.test.ts src/server/services/file-storage.test.ts src/server/services/file-download-audit.test.ts src/app/api/__tests__/api-conventions-static.test.ts --reporter=dot --testTimeout=30000`
+    passed: 7 files / 143 tests.
+    `pnpm exec eslint 'src/app/api/files/[id]/download/route.ts' 'src/app/api/files/[id]/download/route.test.ts' src/server/services/file-storage.ts src/server/services/file-storage.test.ts src/server/services/file-download-audit.ts src/server/services/file-download-audit.test.ts src/app/api/__tests__/api-conventions-static.test.ts src/lib/api/route-catalog.ts`
+    passed.
+    `pnpm format:check` passed.
+    `git diff --check -- <owned FILE-DOWNLOAD-002 paths>` passed.
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck` passed.
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false` passed.
+  - remaining work:
+    Commit and push this slice. Later `FILE-001` / `DEV-PHI-001` should evaluate strict single
+    range support and large file egress/timeout observability for the same-origin proxy path.
+  - next action:
+    Scoped commit/push for FILE-DOWNLOAD-002.
+
 - codex: FILE-DOWNLOAD-001 presigned download JSON exposure removed.
   - current task:
     `Plans.md` の `FILE-DOWNLOAD-001` を追加・実装。`/api/files/[id]/presigned-download`

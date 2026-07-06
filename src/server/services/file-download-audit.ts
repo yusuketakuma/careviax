@@ -75,7 +75,7 @@ type FileDownloadContextClient = {
   };
 };
 
-export type FileDownloadAuditResponseMode = 'json' | 'redirect';
+export type FileDownloadAuditResponseMode = 'json' | 'redirect' | 'stream';
 export type FileDownloadConsentAttachmentContext = {
   patientShareConsentId: string;
   shareCaseId: string;

@@ -58,6 +58,40 @@ describe('recordFileDownloadAudit', () => {
     expect(JSON.stringify(recordDataExportAuditMock.mock.calls)).not.toContain('山田');
   });
 
+  it('records same-origin stream downloads without reusable URL metadata', async () => {
+    const db = { auditLog: { create: vi.fn() } };
+
+    await recordFileDownloadAudit(db, {
+      orgId: 'org_1',
+      actorId: 'user_1',
+      fileId: 'file_1',
+      purpose: 'report',
+      mimeType: 'application/pdf',
+      sizeBytes: 1024,
+      expiresIn: 0,
+      surface: 'files_download',
+      responseMode: 'stream',
+      ipAddress: '203.0.113.10',
+      userAgent: 'TestBrowser/1.0',
+    });
+
+    expect(recordDataExportAuditMock).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          expires_in_seconds: 0,
+          surface: 'files_download',
+          response_mode: 'stream',
+        }),
+      }),
+    );
+    const auditPayload = JSON.stringify(recordDataExportAuditMock.mock.calls);
+    expect(auditPayload).not.toContain('downloadUrl');
+    expect(auditPayload).not.toContain('X-Amz-Signature');
+    expect(auditPayload).not.toContain('storageKey');
+    expect(auditPayload).not.toContain('fileName');
+  });
+
   it('adds consent attachment context as identifiers and flags only', async () => {
     const db = { auditLog: { create: vi.fn() } };
 

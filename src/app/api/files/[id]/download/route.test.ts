@@ -8,13 +8,15 @@ import {
 
 const {
   requireAuthContextMock,
-  createPresignedDownloadMock,
+  prepareFileDownloadMock,
+  openPreparedFileDownloadMock,
   recordFileDownloadAuditMock,
   resolveFileDownloadAuditContextMock,
   prismaMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
-  createPresignedDownloadMock: vi.fn(),
+  prepareFileDownloadMock: vi.fn(),
+  openPreparedFileDownloadMock: vi.fn(),
   recordFileDownloadAuditMock: vi.fn(),
   resolveFileDownloadAuditContextMock: vi.fn(),
   prismaMock: {},
@@ -34,7 +36,8 @@ vi.mock('@/server/services/file-storage', () => ({
       super(message);
     }
   },
-  createPresignedDownload: createPresignedDownloadMock,
+  openPreparedFileDownload: openPreparedFileDownloadMock,
+  prepareFileDownload: prepareFileDownloadMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -58,6 +61,15 @@ function createRequest() {
   });
 }
 
+function createBodyStream(value = 'file body') {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(value));
+      controller.close();
+    },
+  });
+}
+
 describe('/api/files/[id]/download GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -72,17 +84,17 @@ describe('/api/files/[id]/download GET', () => {
         userAgent: 'TestBrowser/1.0',
       },
     });
-    createPresignedDownloadMock.mockResolvedValue({
+    prepareFileDownloadMock.mockResolvedValue({
       id: 'file_1',
-      fileName:
-        'Taro Yamada 090-1234-5678 アムロジピン storageKey=s3 token=secret provider raw error.pdf',
+      fileName: 'report-file-file_1.pdf',
       mimeType: 'application/pdf',
       sizeBytes: 1024,
       purpose: 'report',
-      downloadUrl:
-        'https://example.com/archive.zip?response-content-disposition=report-file-file_1.pdf&X-Amz-Signature=abc',
-      expiresIn: 900,
+      downloadDisposition: 'inline',
+      storageKey: 'reports/org_1/report_1/file_1-report.pdf',
+      expiresIn: 0,
     });
+    openPreparedFileDownloadMock.mockImplementation(() => Promise.resolve(createBodyStream()));
     recordFileDownloadAuditMock.mockResolvedValue(undefined);
     resolveFileDownloadAuditContextMock.mockResolvedValue({
       patientId: 'patient_1',
@@ -119,12 +131,13 @@ describe('/api/files/[id]/download GET', () => {
       code: 'PHOS_LEGACY_FILE_API_DISABLED',
     });
     expect(requireAuthContextMock).not.toHaveBeenCalled();
-    expect(createPresignedDownloadMock).not.toHaveBeenCalled();
+    expect(prepareFileDownloadMock).not.toHaveBeenCalled();
+    expect(openPreparedFileDownloadMock).not.toHaveBeenCalled();
     expect(resolveFileDownloadAuditContextMock).not.toHaveBeenCalled();
     expect(recordFileDownloadAuditMock).not.toHaveBeenCalled();
   });
 
-  it('redirects to the signed download url', async () => {
+  it('streams the file body from the same-origin route without returning a signed URL', async () => {
     const response = await GET(createRequest(), {
       params: Promise.resolve({ id: 'file_1' }),
     });
@@ -132,13 +145,20 @@ describe('/api/files/[id]/download GET', () => {
     if (!response) {
       throw new Error('Expected a response from file download GET');
     }
-    expect(response.status).toBe(307);
-    expect(response.headers.get('location')).toBe(
-      'https://example.com/archive.zip?response-content-disposition=report-file-file_1.pdf&X-Amz-Signature=abc',
+    expect(response.status).toBe(200);
+    expect(response.headers.get('location')).toBeNull();
+    expect(response.headers.get('Content-Type')).toBe('application/pdf');
+    expect(response.headers.get('Content-Length')).toBe('1024');
+    expect(response.headers.get('Content-Disposition')).toBe(
+      'inline; filename="report-file-file_1.pdf"',
     );
+    expect(response.headers.get('Accept-Ranges')).toBe('none');
+    expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
     expectSensitiveNoStore(response);
-    expectPhiExportSnapshotRedacted(response.headers.get('location') ?? '', ['Taro', 'Yamada']);
-    expect(createPresignedDownloadMock).toHaveBeenCalledWith({
+    expect(await response.text()).toBe('file body');
+    expect(JSON.stringify([...response.headers.entries()])).not.toContain('https://example.com');
+    expect(JSON.stringify([...response.headers.entries()])).not.toContain('X-Amz-Signature');
+    expect(prepareFileDownloadMock).toHaveBeenCalledWith({
       orgId: 'org_1',
       fileId: 'file_1',
       accessContext: {
@@ -146,6 +166,15 @@ describe('/api/files/[id]/download GET', () => {
         role: 'admin',
       },
     });
+    expect(recordFileDownloadAuditMock.mock.invocationCallOrder[0]).toBeLessThan(
+      openPreparedFileDownloadMock.mock.invocationCallOrder[0],
+    );
+    expect(openPreparedFileDownloadMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'file_1',
+        storageKey: 'reports/org_1/report_1/file_1-report.pdf',
+      }),
+    );
     expect(recordFileDownloadAuditMock).toHaveBeenCalledWith(prismaMock, {
       orgId: 'org_1',
       actorId: 'user_1',
@@ -155,9 +184,9 @@ describe('/api/files/[id]/download GET', () => {
       purpose: 'report',
       mimeType: 'application/pdf',
       sizeBytes: 1024,
-      expiresIn: 900,
+      expiresIn: 0,
       surface: 'files_download',
-      responseMode: 'redirect',
+      responseMode: 'stream',
       consentAttachmentContext: {
         patientShareConsentId: 'share_consent_1',
         shareCaseId: 'share_case_1',
@@ -176,7 +205,7 @@ describe('/api/files/[id]/download GET', () => {
     expectPhiExportSnapshotRedacted(auditPayload, ['Taro', 'Yamada']);
   });
 
-  it('normalizes padded file ids before signing the download redirect', async () => {
+  it('normalizes padded file ids before streaming the download', async () => {
     const response = await GET(createRequest(), {
       params: Promise.resolve({ id: '  file_1  ' }),
     });
@@ -184,8 +213,8 @@ describe('/api/files/[id]/download GET', () => {
     if (!response) {
       throw new Error('Expected a response from file download GET');
     }
-    expect(response.status).toBe(307);
-    expect(createPresignedDownloadMock).toHaveBeenCalledWith({
+    expect(response.status).toBe(200);
+    expect(prepareFileDownloadMock).toHaveBeenCalledWith({
       orgId: 'org_1',
       fileId: 'file_1',
       accessContext: {
@@ -196,7 +225,7 @@ describe('/api/files/[id]/download GET', () => {
     expect(recordFileDownloadAuditMock).toHaveBeenCalledOnce();
   });
 
-  it('rejects blank file ids before signing a download redirect', async () => {
+  it('rejects blank file ids before streaming', async () => {
     const response = await GET(createRequest(), {
       params: Promise.resolve({ id: '   ' }),
     });
@@ -206,12 +235,13 @@ describe('/api/files/[id]/download GET', () => {
     }
     expect(response.status).toBe(400);
     expectSensitiveNoStore(response);
-    expect(createPresignedDownloadMock).not.toHaveBeenCalled();
+    expect(prepareFileDownloadMock).not.toHaveBeenCalled();
+    expect(openPreparedFileDownloadMock).not.toHaveBeenCalled();
     expect(resolveFileDownloadAuditContextMock).not.toHaveBeenCalled();
     expect(recordFileDownloadAuditMock).not.toHaveBeenCalled();
   });
 
-  it('fails closed without returning a redirect when download audit cannot be recorded', async () => {
+  it('fails closed without streaming when download audit cannot be recorded', async () => {
     recordFileDownloadAuditMock.mockRejectedValueOnce(new Error('audit unavailable'));
 
     const response = await GET(createRequest(), {
@@ -223,15 +253,17 @@ describe('/api/files/[id]/download GET', () => {
     }
     expect(response.status).toBe(500);
     expect(response.headers.get('location')).toBeNull();
+    expect(response.headers.get('Content-Disposition')).toBeNull();
     expectSensitiveNoStore(response);
+    expect(openPreparedFileDownloadMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       code: 'FILE_DOWNLOAD_AUDIT_FAILED',
     });
   });
 
-  it('does not audit when presigned download creation fails', async () => {
+  it('does not audit when download preparation fails', async () => {
     const { FileStorageError } = await import('@/server/services/file-storage');
-    createPresignedDownloadMock.mockRejectedValueOnce(
+    prepareFileDownloadMock.mockRejectedValueOnce(
       new FileStorageError('FILE_METADATA_NOT_FOUND', 'ファイルが見つかりません', 404),
     );
 
@@ -244,6 +276,7 @@ describe('/api/files/[id]/download GET', () => {
     }
     expect(response.status).toBe(404);
     expectSensitiveNoStore(response);
+    expect(openPreparedFileDownloadMock).not.toHaveBeenCalled();
     expect(resolveFileDownloadAuditContextMock).not.toHaveBeenCalled();
     expect(recordFileDownloadAuditMock).not.toHaveBeenCalled();
   });

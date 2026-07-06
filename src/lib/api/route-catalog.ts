@@ -943,7 +943,7 @@ export const routeCatalog: RouteCatalogEntry[] = [
     path: '/api/files/:id/download',
     methods: ['GET'],
     permission: 'purpose-based',
-    description: '用途別権限を確認した上で S3 署名付きURLへリダイレクトしてファイルをダウンロード',
+    description: '用途別権限と監査記録を確認した上で同一オリジンからファイル本文をストリーム返却',
     area: 'files',
   },
   {

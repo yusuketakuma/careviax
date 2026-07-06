@@ -83,6 +83,10 @@ describe('API route conventions', () => {
       join(process.cwd(), 'src/app/api/files/[id]/download/route.test.ts'),
       'utf8',
     );
+    const downloadRoute = readFileSync(
+      join(process.cwd(), 'src/app/api/files/[id]/download/route.ts'),
+      'utf8',
+    );
 
     expect(testsMissingNoStoreAssertions).toEqual([]);
     expect(completeTest).toContain("not.toHaveProperty('originalName')");
@@ -93,6 +97,11 @@ describe('API route conventions', () => {
     expect(presignedDownloadRoute).not.toContain('downloadUrl');
     expect(presignedDownloadRoute).not.toContain('createPresignedDownload');
     expect(downloadTest).toContain("not.toContain('downloadUrl')");
+    expect(downloadTest).toContain("headers.get('location')).toBeNull()");
+    expect(downloadTest).toContain("responseMode: 'stream'");
+    expect(downloadRoute).not.toContain('createPresignedDownload');
+    expect(downloadRoute).not.toContain('NextResponse.redirect');
+    expect(downloadRoute).not.toContain('downloadUrl');
   });
 
   it('keeps communication event attachment DTOs away from raw FileAsset names and keys', () => {
