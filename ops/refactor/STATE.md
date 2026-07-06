@@ -6374,3 +6374,57 @@
   Broader `Plans.md` objective remains open. 次候補は selector を Command Center の補助状態
   （reply wait / visit today 等）へさらに広げるかの検討、payload budget / browser smoke、
   または UX-TBL-001 / PERF-RTE-001 の別 lane。
+
+## 2026-07-06 DataTable pagination scope wording slice
+
+- codex: `UX-TBL-001 / DEV-PHI-001` DataTable loaded-row pagination wording implemented.
+  `enablePagination + hasMore` を併用する cursor/load-more 画面で、読込済み行だけを
+  `全N件中` と表示する false-all リスクを潰した。`hasMore=true` では summary を
+  `読込済みN件中 ... 未読込行あり` に切り替え、未読込行が残る状態を共有 component の単体テストで固定した。
+- subagent:
+  `Frontend the 24th` が read-only review を実施。DataTable の export/selection scope、server export、
+  DEV-PHI snapshot、bulk action wording を確認し、`enablePagination + hasMore` の false-all 表示を
+  CHANGES_REQUESTED として指摘した。今回の slice では最も直接的な false-all risk を修正し、
+  typed export descriptor / real consumer PHI snapshot / bulk action scope wording は後続に残した。
+- design / imagegen:
+  `docs/ui-ux-design-guidelines.md` の `gpt-image-2` 方針を確認済み。今回の変更は既存 DataTable の
+  scope wording contract と unit test の修正で、新規レイアウト再構築や配置変更を伴わないため、
+  `imagegen` / `gpt-image-2` の新規生成は省略した。
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `docs/ui-ux-design-guidelines.md`,
+  `src/components/ui/data-table.tsx`,
+  `src/components/ui/data-table.test.tsx`.
+- files changed:
+  `Plans.md`,
+  `src/components/ui/data-table.tsx`,
+  `src/components/ui/data-table.test.tsx`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  loaded cursor rows を実総数として読ませる表現をなくし、一覧/CSV/一括操作系 UX の
+  「表示中/読込済み/検索条件全件」scope contract に近づけた。
+- security / PHI reviewed:
+  PHI field や export payload は変更なし。文言は row count / scope のみで、患者名、住所、電話、
+  処方本文、保険情報、外部共有 URL、secret を扱わない。
+- performance issues reviewed:
+  追加処理は render-time boolean branch のみ。DB query、network call、payload field、row model 計算は
+  増やしていない。
+- validation:
+  `pnpm exec vitest run src/components/ui/data-table.test.tsx --reporter=dot --testTimeout=30000`
+  green (1 file / 22 tests);
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  green;
+  `pnpm lint`
+  green with existing warnings in `src/lib/platform/break-glass.test.ts` (`_tx`, `_input` unused);
+  `pnpm format:check`
+  green;
+  `git diff --check`
+  green.
+- remaining:
+  Broader `Plans.md` objective remains open. `UX-TBL-001 / DEV-PHI-001` の残りは、
+  `serverExportEndpoint` を raw string ではなく audit/masking registry backed descriptor へ寄せること、
+  real consumer の screen-level PHI export snapshot、bulk action button 側の選択範囲文言テスト。
