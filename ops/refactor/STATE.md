@@ -6200,3 +6200,47 @@
 - remaining:
   Broader `Plans.md` objective remains open. 次候補は PatientBoard 派生ロジックとの adapter 統合、
   full timeline `?limit=5` excerpt の Command block 化、payload budget / browser smoke。
+
+## 2026-07-06 Patient Command Center Timeline Excerpt slice
+
+- codex: `UX-CMD-001 / PAT-DETAIL-PERF-002` Command timeline excerpt implemented.
+  Command tab 初期表示で `/api/patients/[id]/timeline?limit=5` の lightweight query を有効化し、
+  `CommandTimelineExcerptPanel` で訪問/報告/請求/共有などの履歴抜粋を最大3件表示する。既存の
+  full timeline `limit=40` は履歴タブの「全履歴を読み込む」操作に残した。
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/(dashboard)/patients/[id]/patient-detail.types.ts`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`.
+- files changed:
+  `Plans.md`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  Command Center で「次にやること」と「横断リスク」は見えるが、患者の直近履歴が履歴タブを開くまで
+  見えない分断を縮小。取得失敗は Command 内 alert と再試行に分離し、空状態と混同しない。
+- security / PHI reviewed:
+  既存 patient detail auth context と `/timeline` API の org header / encoded patient path を再利用。
+  新規出力や export は追加せず、既存 timeline event の title/status/action href を患者詳細内で再配置する。
+- performance issues reviewed:
+  Command 初期表示では `limit=5` のみを取得し、panel 表示は `slice(0, 3)` に限定。
+  full `limit=40` は履歴タブの明示操作まで発火させない契約をテストで固定した。
+- validation:
+  `pnpm exec vitest run src/app/(dashboard)/patients/[id]/patient-command-center-model.test.ts src/app/(dashboard)/patients/[id]/card-workspace.test.tsx --reporter=dot --testTimeout=30000`
+  green (2 files / 91 tests);
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  green;
+  `pnpm lint`
+  green with existing warnings in `src/lib/platform/break-glass.test.ts` (`_tx`, `_input` unused);
+  `pnpm format:check`
+  green;
+  `git diff --check`
+  green.
+- remaining:
+  Broader `Plans.md` objective remains open. 次候補は PatientBoard 派生ロジックとの adapter 統合、
+  payload budget / browser smoke、または CORE-003 remaining domain adapter cleanup。
