@@ -6790,3 +6790,55 @@
 - remaining:
   Broader `Plans.md` objective remains open. 残りは他 bulk action consumer の scope wording sweep と、
   broader Command Center / BFF split / risk registry integration tasks。
+
+## 2026-07-06 Notification and offline retry scope wording slice
+
+- codex: `UX-TBL-001 / UX-NTF-001 / UX-MOB-001` scope wording sweep implemented.
+  通知ベルの drawer action を `全て既読` から `未読通知をすべて既読` へ変更し、読み込まれている未読通知IDを
+  まとめて既読にする既存 PATCH 契約を component test で固定した。offline sync の retry-all action も
+  `すべて再試行` から `未同期キューをすべて再試行` へ変更し、対象が未同期キューであることを明示した。
+- design / imagegen:
+  `redesign-existing-projects` skill と `docs/ui-ux-design-guidelines.md` を確認。既存 button label の
+  scope wording contract 修正で、視覚再構築や配置変更を伴わないため `imagegen` / `gpt-image-2`
+  の新規生成は省略した。
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `docs/ui-ux-design-guidelines.md`,
+  `/Users/yusuke/workspace/careviax/.agents/skills/redesign-existing-projects/SKILL.md`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/components/features/notifications/notification-bell.tsx`,
+  `src/components/features/notifications/notification-bell.fetch.test.tsx`,
+  `src/app/(dashboard)/offline-sync/offline-sync-content.tsx`,
+  `src/app/(dashboard)/offline-sync/offline-sync-content.test.tsx`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/components/features/notifications/notification-bell.tsx`,
+  `src/components/features/notifications/notification-bell.fetch.test.tsx`,
+  `src/app/(dashboard)/offline-sync/offline-sync-content.tsx`,
+  `src/app/(dashboard)/offline-sync/offline-sync-content.test.tsx`.
+- bugs / risks reduced:
+  「全て」「すべて」だけでは対象がページ全体/全期間/全データに見える risk を減らし、通知は未読通知、
+  offline sync は未同期キューに閉じた action として読めるようにした。
+- security / PHI reviewed:
+  button label と test expectation のみ。通知本文、患者名、住所、電話、処方本文、保険情報、secret は追加しない。
+  notification refresh failure の PHI 非表示 contract は既存テストを維持。
+- performance issues reviewed:
+  render string のみ。notification PATCH body、offline retry mutation、queue processing は変更なし。
+- validation:
+  `pnpm exec vitest run src/components/features/notifications/notification-bell.fetch.test.tsx src/app/(dashboard)/offline-sync/offline-sync-content.test.tsx --reporter=dot --testTimeout=30000`
+  green (2 files / 10 tests);
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  green;
+  `pnpm lint`
+  green with existing warnings in `src/lib/platform/break-glass.test.ts` (`_tx`, `_input` unused);
+  `pnpm format:check`
+  green;
+  `git diff --check -- Plans.md ops/refactor/STATE.md src/components/features/notifications/notification-bell.tsx src/components/features/notifications/notification-bell.fetch.test.tsx src/app/(dashboard)/offline-sync/offline-sync-content.tsx src/app/(dashboard)/offline-sync/offline-sync-content.test.tsx`
+  green.
+- remaining:
+  Broader `Plans.md` objective remains open. 残りは high-risk bulk action consumer（調剤/セット workbench など）
+  の文言/確認 dialog sweep と、broader Command Center / BFF split / risk registry integration tasks。
