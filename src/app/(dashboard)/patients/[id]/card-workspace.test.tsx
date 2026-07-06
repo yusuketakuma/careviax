@@ -1874,6 +1874,31 @@ describe('CardWorkspace', () => {
     expect((await screen.findAllByText('訪問記録を保存')).length).toBeGreaterThan(0);
   });
 
+  it('uses the shared segment error for patient movement timeline failures without exposing raw error detail', async () => {
+    const refetchTimeline = vi.fn();
+    mockPatientQuery(
+      buildWorkspace(),
+      null,
+      {},
+      {
+        timelineError: new Error('internal stack includes patient name and raw response'),
+        timelineRefetch: refetchTimeline,
+      },
+    );
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    openMovementTab();
+
+    expect(await screen.findByText('患者の動きを表示できません')).toBeTruthy();
+    expect(screen.getByText('患者履歴の取得に失敗しました。')).toBeTruthy();
+    expect(screen.getByText(/通信状態または権限を確認して再試行してください。/)).toBeTruthy();
+    expect(screen.queryByText(/internal stack includes patient name/)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '患者履歴を再取得' }));
+    expect(refetchTimeline).toHaveBeenCalledTimes(1);
+  });
+
   it('prefers movement-safe timeline events on the patient movement tab', async () => {
     mockPatientQuery(
       buildWorkspace(),

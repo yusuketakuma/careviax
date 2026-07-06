@@ -29,6 +29,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/loading';
 import { LoadingButton } from '@/components/ui/loading-button';
+import { SegmentError, SegmentLoading } from '@/components/ui/segment-state';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -4121,7 +4122,7 @@ function CommandTimelineExcerptPanel({
 }: {
   events: PatientTimelineEvent[];
   isLoading: boolean;
-  error: Error | null;
+  error: boolean;
   onRetry: () => void;
 }) {
   const excerpt = events.slice(0, 3);
@@ -4161,7 +4162,7 @@ function CommandTimelineExcerptPanel({
             <TriangleAlert aria-hidden className="size-4" />
             履歴抜粋を表示できません
           </div>
-          <p className="mt-1">{messageFromError(error, '患者履歴の取得に失敗しました')}</p>
+          <p className="mt-1">患者履歴の取得に失敗しました。</p>
           <Button
             type="button"
             variant="outline"
@@ -4910,7 +4911,6 @@ export function CardWorkspace({
     isLoading: timelineLoading,
     isFetching: timelineFetching,
     isError: timelineError,
-    error: timelineErrorDetail,
     refetch: refetchTimeline,
   } = useQuery<PatientTimelineSnapshot>({
     queryKey: ['patient-timeline', patientId, orgId, timelineLimit],
@@ -5340,19 +5340,32 @@ export function CardWorkspace({
 
   const renderPatientTimelinePanel = (mode: 'activity' | 'movement' = 'activity') => {
     if (timelineLoading) {
-      return <PatientDetailPanelLoading label="患者アクションタイムラインを読み込み中" />;
+      return (
+        <SegmentLoading
+          label={
+            mode === 'movement'
+              ? '患者の動きを読み込み中'
+              : '患者アクションタイムラインを読み込み中'
+          }
+          description="訪問、処方、文書、連絡の発生履歴を部分取得しています。"
+          rows={3}
+          cols={2}
+        />
+      );
     }
 
     if (timelineError) {
       return (
-        <ErrorState
-          variant="server"
-          title="患者アクションタイムラインを表示できません"
+        <SegmentError
+          title={
+            mode === 'movement'
+              ? '患者の動きを表示できません'
+              : '患者アクションタイムラインを表示できません'
+          }
           cause="患者履歴の取得に失敗しました。"
           nextAction="通信状態または権限を確認して再試行してください。"
-          detail={timelineErrorDetail instanceof Error ? timelineErrorDetail.message : undefined}
           onRetry={() => void refetchTimeline()}
-          headingLevel={3}
+          retryLabel="患者履歴を再取得"
         />
       );
     }
@@ -5567,7 +5580,7 @@ export function CardWorkspace({
   const commandTimelineExcerptProps = {
     events: timelineSnapshot?.timeline_events ?? [],
     isLoading: timelineLoading,
-    error: timelineError && timelineErrorDetail instanceof Error ? timelineErrorDetail : null,
+    error: timelineError,
     onRetry: () => void refetchTimeline(),
   };
 
