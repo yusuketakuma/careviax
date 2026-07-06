@@ -40,7 +40,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: Operational Task Health Board UI connected to `/tasks`（commit `dd9099854`）。
+- codex: Operational Task Health Board UI connected to `/tasks`（implementation commit `6c3dabfbf`）。
   - current task:
     `Plans.md` の `TASK-001` 残作業「Task Health Board UI 接続 / browser smoke」に対応。
     既存 `GET /api/tasks/health-board` を `/tasks` へ接続し、Health Board は「現在ロード済み行」ではなく
