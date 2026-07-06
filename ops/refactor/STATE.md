@@ -41,6 +41,67 @@
 
 ## 直近の land（本日・要点）
 
+- codex: AWS-ARCH-001 deployment stages ADR implemented.
+  - current task:
+    `Plans.md` の `AWS-ARCH-001` を実装。低コスト実証、ECS/Fargate 本番最小、拡張構成、
+    テナント境界、PH-OS support session、フリーランス薬剤師 assignment、S3/observability/readiness を
+    1つの architecture ADR に固定し、docs index から辿れるようにした。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `docs/README.md`,
+    `docs/operations/aws-cost-minimal-deployment.md`,
+    `docs/compliance/backup-recovery-drill.md`,
+    `docs/operations/rate-limit-production-runbook.md`,
+    `tools/scripts/aws-lightsail-pilot-plan.ts`,
+    `tools/scripts/aws-ecs-express-plan.ts`,
+    `tools/infra/README.md`,
+    `tools/infra/lightsail-pilot-template.yaml`,
+    `tools/infra/ecs-express-runtime-policy-template.yaml`,
+    `tools/infra/rate-limit-dynamodb.json`,
+    `tools/infra/file-storage-bucket-policy.json`,
+    `tools/infra/prescription-object-lock.json`,
+    `tools/infra/cloudwatch-alarms.json`,
+    `tools/infra/eventbridge-schedules.json`,
+    `package.json`.
+  - files changed:
+    `Plans.md`,
+    `docs/README.md`,
+    `docs/architecture/README.md`,
+    `docs/architecture/aws-phos-deployment-stages.md`,
+    `ops/refactor/STATE.md`.
+  - subagent / review:
+    `code_mapper` (`019f35e9-576a-7790-8e50-24c1091febca`) を read-only mapping に投入。
+    既存 Lightsail/ECS/backup/rate-limit/S3/Cognito/SES/CloudWatch/EventBridge artifacts と
+    docs convention を確認し、`docs/architecture/aws-phos-deployment-stages.md` の配置と
+    `docs/README.md` index 更新を推奨。実装に反映済み。
+  - bugs found:
+    なし。既存 AWS plan scripts は存在し、対象テストも green。`docs/architecture/` は新規だったため、
+    `docs/architecture/README.md` と `docs/README.md` へ導線を追加した。
+  - security risks found:
+    ADR で Lightsail pilot の PHI 投入前条件、非公開DB、長期AWS key回避、S3 Object Lock/versioning、
+    no-store/RLS/audit、ECS task role least privilege、support session reason/audit、
+    freelance assignment 限定を明文化した。
+  - performance issues found:
+    ADR で CloudWatch alarm baseline、EventBridge metrics flush、multi-task scale時の shared backing、
+    Lightsail-to-ECS migration triggers を固定した。
+  - validation commands:
+    `pnpm exec prettier --write docs/architecture/aws-phos-deployment-stages.md docs/architecture/README.md docs/README.md Plans.md`;
+    `git diff --check -- Plans.md docs/README.md docs/architecture/README.md docs/architecture/aws-phos-deployment-stages.md`;
+    `pnpm format:check`;
+    `pnpm exec vitest run tools/scripts/aws-lightsail-pilot-plan.test.ts tools/scripts/aws-ecs-express-plan.test.ts tools/scripts/aws-cost-estimate.test.ts tools/scripts/aws-deployment-readiness.test.ts --reporter=dot --testTimeout=30000`.
+  - validation results:
+    Prettier write completed; diff check green; `pnpm format:check` green; focused vitest green
+    (4 files / 16 tests).
+  - remaining work:
+    `AWS-LS-001` pilot readiness gate、`S3-PHI-001` deploy gate、`TENANT-001/002/003` schema/API/permission
+    design、`RLS-USER-001` request/RLS context extension、`OPS-AWS-001` alarm application、
+    `OPS-MIGRATE-001` migration runbook が残る。
+  - next action:
+    scoped commit `Record AWS deployment stages ADR` → origin/main push。次候補は `AWS-LS-001` か、
+    API-CONTRACT-001/002/003 の coherent slice。
+
 - codex: AWS / tenant cross-access architecture backlog recorded in `Plans.md`.
   - current task:
     ユーザー提示の AWS 構成案（低コスト実証 → 本番最小 → 拡張）と、PH-OS運営者・フリーランス薬剤師を含む
