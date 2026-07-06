@@ -1060,7 +1060,10 @@ FE 仕上げ（低優先）:
   `患者請求先` / `施設請求先` などの種別ラベルへ丸める。
   追加 partial として、通知ベルの全既読 action を「未読通知をすべて既読」、offline sync の retry-all を
   「未同期キューをすべて再試行」へ変更し、対象範囲を component test で固定した。
-  残: high-risk bulk action consumer（調剤/セット workbench など）の文言/確認 dialog sweep。
+  追加 partial として、調剤/監査/セット/セット監査 workbench の一括 button / F5 label を
+  「表示中」「調剤済み」「表示中セル」に scope 明示し、工程ごとの bulk label を `buildView`
+  unit test で固定した。
+  残: high-risk bulk action consumer の確認 dialog sweep と、server-side 全件操作 UI の registry 化。
 
 **追加実装順序**:
 

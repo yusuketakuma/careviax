@@ -1013,7 +1013,7 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
       color: 'var(--wb-phase-disp)',
       fraction: prog.done + ' / ' + prog.total,
     };
-    bulkLabel = '全て調剤済';
+    bulkLabel = '表示中をすべて調剤済';
     primaryLabel = '調剤完了 → 監査へ ▶';
     primaryBg = dataUnavailable ? 'var(--wb-state-readonly)' : 'var(--wb-phase-disp-strong)';
     primaryBorder = dataUnavailable ? 'var(--wb-state-readonly)' : 'var(--wb-phase-disp-border)';
@@ -1032,7 +1032,7 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
       color: 'var(--wb-phase-audit)',
       fraction: prog.audit + ' / ' + prog.total,
     };
-    bulkLabel = '全て監査OK';
+    bulkLabel = '調剤済みをすべて監査OK';
     primaryLabel = '監査確定 → セットへ ▶';
     primaryBg = dataUnavailable ? 'var(--wb-state-readonly)' : 'var(--wb-phase-audit-strong)';
     primaryBorder = dataUnavailable ? 'var(--wb-state-readonly)' : 'var(--wb-phase-audit-border)';
@@ -1059,7 +1059,7 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
         color: 'var(--wb-phase-setp)',
         fraction: dnC + ' / ' + totC,
       };
-      bulkLabel = '全セルをセット済';
+      bulkLabel = '表示中セルをすべてセット済';
       primaryLabel = 'セット完了 → 監査へ ▶';
       primaryBg = 'var(--wb-phase-setp-strong)';
       primaryBorder = 'var(--wb-phase-setp-border)';
@@ -1071,7 +1071,7 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
         color: 'var(--wb-phase-seta)',
         fraction: dnC + ' / ' + totC,
       };
-      bulkLabel = '全セルOK';
+      bulkLabel = '表示中セルをすべて監査OK';
       primaryLabel = '監査承認（薬剤師）✓';
       primaryBg = 'var(--wb-phase-seta-strong)';
       primaryBorder = 'var(--wb-phase-seta-border)';
@@ -1138,7 +1138,7 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
   const fkeys: WorkbenchView['fkeys'] = [
     fkey('F3', '前患者', 'prevPatient'),
     fkey('F4', '次患者', 'nextPatient'),
-    fkey('F5', '一括処理', 'bulk', true),
+    fkey('F5', '表示中を一括', 'bulk', true),
     fkey('F7', '保留', 'hold'),
     fkey('F8', '調剤', 'phaseDispense', ph === 'dispense'),
     fkey('F9', '調剤監査', 'phaseAudit', ph === 'audit'),

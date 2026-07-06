@@ -119,7 +119,7 @@ export interface WorkbenchWriteHandlers {
   onDropTo: (gid: string) => void;
   /** 新規グループ追加。 */
   onAddGroup: () => void;
-  /** 一括処理（フェーズ依存・全調剤済 / 全監査OK / 全セット / 全OK）。 */
+  /** 一括処理（フェーズ依存・表示中調剤済 / 調剤済み監査OK / 表示中セルセット / 表示中セル監査OK）。 */
   onBulk: () => void;
   /**
    * 主操作（次工程へ）。real-data の不可逆 sign-off（dispense/audit/seta）では前段ゲート通過時に

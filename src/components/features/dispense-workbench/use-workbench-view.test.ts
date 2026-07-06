@@ -247,6 +247,41 @@ describe('buildView calendar period', () => {
     expect(allowedAudit.primary.cursor).toBe('pointer');
   });
 
+  it('labels bulk actions by the visible/current scope for each phase', () => {
+    const base = {
+      selId: patient.id,
+      sortMode: 'start' as const,
+      done: {},
+      audit: {},
+      setCells: {},
+      auditCells: {},
+      outChk: {},
+      checks: {},
+      ng: {},
+      target: null,
+      holdModal: null,
+      holdInfo: {},
+      packet: {},
+      compareOpen: false,
+      model,
+      patients: [patient],
+    };
+
+    expect(buildView({ ...base, phase: 'dispense' }).bulkLabel).toBe('表示中をすべて調剤済');
+    expect(buildView({ ...base, phase: 'audit' }).bulkLabel).toBe('調剤済みをすべて監査OK');
+    expect(buildView({ ...base, phase: 'setp' }).bulkLabel).toBe('表示中セルをすべてセット済');
+    expect(buildView({ ...base, phase: 'seta' }).bulkLabel).toBe('表示中セルをすべて監査OK');
+    expect(buildView({ ...base, phase: 'dispense' }).fkeys).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: 'F5',
+          label: '表示中を一括',
+          action: 'bulk',
+        }),
+      ]),
+    );
+  });
+
   it('blocks audit primary when narcotic double-count evidence is incomplete', () => {
     const narcoticModel: WorkbenchModel = {
       patient_api: [
