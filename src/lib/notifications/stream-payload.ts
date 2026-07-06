@@ -10,10 +10,36 @@ export type NotificationStreamItem = {
   created_at: string;
 };
 
-const NOTIFICATION_TYPES = new Set<string>(['urgent', 'business', 'reminder', 'system']);
+export type NotificationStreamContentPolicy = 'persisted-in-app' | 'sse-safe';
+
+const NOTIFICATION_TYPES = ['urgent', 'business', 'reminder', 'system'] as const;
+const NOTIFICATION_TYPE_SET = new Set<string>(NOTIFICATION_TYPES);
+const SSE_SAFE_NOTIFICATION_LINK = '/notifications';
+const SSE_SAFE_NOTIFICATION_CONTENT = {
+  urgent: {
+    title: '緊急通知',
+    message: 'アプリで詳細を確認してください',
+  },
+  business: {
+    title: '業務通知',
+    message: 'アプリで詳細を確認してください',
+  },
+  reminder: {
+    title: 'リマインダー',
+    message: 'アプリで詳細を確認してください',
+  },
+  system: {
+    title: 'システム通知',
+    message: 'アプリで詳細を確認してください',
+  },
+} satisfies Record<NotificationStreamItem['type'], { title: string; message: string }>;
+
+type NormalizeNotificationStreamOptions = {
+  contentPolicy?: NotificationStreamContentPolicy;
+};
 
 function isNotificationType(value: unknown): value is NotificationStreamItem['type'] {
-  return typeof value === 'string' && NOTIFICATION_TYPES.has(value);
+  return typeof value === 'string' && NOTIFICATION_TYPE_SET.has(value);
 }
 
 function normalizeNotificationCreatedAt(value: unknown) {
@@ -34,7 +60,10 @@ function normalizeNotificationLink(value: unknown) {
   return value;
 }
 
-export function normalizeNotificationStreamItem(value: unknown): NotificationStreamItem | null {
+export function normalizeNotificationStreamItem(
+  value: unknown,
+  options: NormalizeNotificationStreamOptions = {},
+): NotificationStreamItem | null {
   const object = readJsonObject(value);
   if (!object) return null;
   if (typeof object.id !== 'string') return null;
@@ -44,6 +73,19 @@ export function normalizeNotificationStreamItem(value: unknown): NotificationStr
   if (typeof object.is_read !== 'boolean') return null;
   const createdAt = normalizeNotificationCreatedAt(object.created_at);
   if (!createdAt) return null;
+  if (options.contentPolicy === 'sse-safe') {
+    const controlled = SSE_SAFE_NOTIFICATION_CONTENT[object.type];
+    return {
+      id: object.id,
+      type: object.type,
+      title: controlled.title,
+      message: controlled.message,
+      link: SSE_SAFE_NOTIFICATION_LINK,
+      is_read: object.is_read,
+      created_at: createdAt,
+    };
+  }
+
   const link = normalizeNotificationLink(object.link);
   if (object.link != null && link == null) return null;
 
@@ -58,10 +100,13 @@ export function normalizeNotificationStreamItem(value: unknown): NotificationStr
   };
 }
 
-export function normalizeNotificationStreamPayload(value: unknown): NotificationStreamItem[] {
+export function normalizeNotificationStreamPayload(
+  value: unknown,
+  options: NormalizeNotificationStreamOptions = {},
+): NotificationStreamItem[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item) => {
-    const notification = normalizeNotificationStreamItem(item);
+    const notification = normalizeNotificationStreamItem(item, options);
     return notification ? [notification] : [];
   });
 }

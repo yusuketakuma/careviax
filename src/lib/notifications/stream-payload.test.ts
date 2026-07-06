@@ -154,9 +154,90 @@ describe('normalizeNotificationStreamPayload', () => {
     }
   });
 
+  it('replaces title, message, and link with controlled content in sse-safe mode', () => {
+    const normalized = normalizeNotificationStreamPayload(
+      [
+        {
+          id: 'notification_5',
+          type: 'urgent',
+          title: '田中 一郎さんのモルヒネ残薬確認',
+          message: '山田花子 090-1234-5678 / モルヒネ硫酸塩徐放錠10mg',
+          link: '/patients/patient_1/reports/report_1?token=secret',
+          is_read: false,
+          created_at: '2026-05-31T00:04:00.000Z',
+          raw_message: '患者 山田花子 090-1234-5678',
+          metadata: { token: 'raw-token-secret' },
+          storage_key: 'org_1/patients/patient_1/reports/report_1.pdf',
+        },
+      ],
+      { contentPolicy: 'sse-safe' },
+    );
+
+    expect(normalized).toEqual([
+      {
+        id: 'notification_5',
+        type: 'urgent',
+        title: '緊急通知',
+        message: 'アプリで詳細を確認してください',
+        link: '/notifications',
+        is_read: false,
+        created_at: '2026-05-31T00:04:00.000Z',
+      },
+    ]);
+    const serialized = JSON.stringify(normalized);
+    for (const forbidden of [
+      '田中',
+      '一郎',
+      '山田花子',
+      '090-1234-5678',
+      'モルヒネ',
+      '硫酸塩徐放錠',
+      '/patients/',
+      'patient_1',
+      'report_1',
+      'token=secret',
+      'raw_message',
+      'metadata',
+      'storage_key',
+      'raw-token-secret',
+    ]) {
+      expect(serialized).not.toContain(forbidden);
+    }
+  });
+
+  it.each([
+    ['urgent', '緊急通知'],
+    ['business', '業務通知'],
+    ['reminder', 'リマインダー'],
+    ['system', 'システム通知'],
+  ] as const)('has controlled SSE content for %s notifications', (type, title) => {
+    expect(
+      normalizeNotificationStreamItem(
+        {
+          id: `notification_${type}`,
+          type,
+          title: '患者名を含む通知',
+          message: '薬剤名を含む本文',
+          link: '/patients/patient_1',
+          is_read: false,
+          created_at: '2026-05-31T00:04:00.000Z',
+        },
+        { contentPolicy: 'sse-safe' },
+      ),
+    ).toEqual({
+      id: `notification_${type}`,
+      type,
+      title,
+      message: 'アプリで詳細を確認してください',
+      link: '/notifications',
+      is_read: false,
+      created_at: '2026-05-31T00:04:00.000Z',
+    });
+  });
+
   it('rejects malformed rows and unsafe notification links', () => {
     const valid = {
-      id: 'notification_5',
+      id: 'notification_6',
       type: 'system',
       title: 'システム通知',
       message: '確認してください',

@@ -22,6 +22,9 @@ const POLL_INTERVAL_MS = 5_000;
 const SUBSCRIBED_SAFETY_POLL_INTERVAL_MS = 60_000;
 const MAX_STREAM_DURATION_MS = 5 * 60_000;
 const MAX_PRESENCE_STREAM_ROOMS = 8;
+const NOTIFICATION_STREAM_NORMALIZE_OPTIONS = {
+  contentPolicy: 'sse-safe',
+} as const;
 const SENSITIVE_JSON_HEADERS = {
   'Content-Type': 'application/json',
   'Cache-Control': 'no-store, no-cache, no-transform',
@@ -179,7 +182,10 @@ export async function GET(req: NextRequest) {
       const userChannel = `user:${userId}`;
       const orgListener = (data: unknown) => sendEvent(sanitizeOrgRealtimeEvent(data));
       const userListener = (data: unknown) => {
-        const notifications = normalizeNotificationStreamPayload(data);
+        const notifications = normalizeNotificationStreamPayload(
+          data,
+          NOTIFICATION_STREAM_NORMALIZE_OPTIONS,
+        );
         if (notifications.length > 0) sendEvent(notifications);
       };
       const presenceChannelListeners = presenceTargets.map((target) => ({
@@ -321,7 +327,10 @@ export async function GET(req: NextRequest) {
             consecutivePollFailures = 0;
           }
 
-          const streamNotifications = normalizeNotificationStreamPayload(notifications);
+          const streamNotifications = normalizeNotificationStreamPayload(
+            notifications,
+            NOTIFICATION_STREAM_NORMALIZE_OPTIONS,
+          );
           if (streamNotifications.length > 0) {
             sendEvent(streamNotifications);
           }

@@ -41,6 +41,69 @@
 
 ## 直近の land（本日・要点）
 
+- codex: NTF-STREAM-001 SSE-safe notification stream policy（current commit, pending push）。
+  - current task:
+    Notification stream payload normalizer を field-safe から content-safe へ進め、SSE user-channel、
+    DB safety poll、realtime broadcast で患者名・薬剤名・free text・raw deep link を流さない。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/lib/notifications/stream-payload.ts`,
+    `src/lib/notifications/stream-payload.test.ts`,
+    `src/app/api/notifications/stream/route.ts`,
+    `src/app/api/notifications/stream/route.test.ts`,
+    `src/server/services/notifications.ts`,
+    `src/server/services/notifications.test.ts`,
+    `src/app/api/notifications/route.ts`,
+    `src/components/features/notifications/notification-bell.tsx`,
+    `src/app/(dashboard)/notifications/notifications-content.tsx`,
+    `src/lib/notifications/os-bridge-redaction.ts`,
+    `prisma/schema/admin.prisma`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/lib/notifications/stream-payload.ts`,
+    `src/lib/notifications/stream-payload.test.ts`,
+    `src/app/api/notifications/stream/route.ts`,
+    `src/app/api/notifications/stream/route.test.ts`,
+    `src/server/services/notifications.ts`,
+    `src/server/services/notifications.test.ts`.
+  - Oracle:
+    `npx -y @steipete/oracle --engine browser --model gpt-5.5-pro ... --slug notification-stream-policy`
+    を実行。GitHub context は repo URL、main、commit `d63d810737adc64be78da6199b044d71e30b6c75`、
+    clean state を含めた。回答は Option B（`sse-safe` controlled content policy）を GO と判定。
+  - implementation:
+    `normalizeNotificationStreamItem()` / `normalizeNotificationStreamPayload()` に
+    `contentPolicy: 'persisted-in-app' | 'sse-safe'` を追加。default は既存 in-app 互換の
+    `persisted-in-app`。`sse-safe` では `urgent` / `business` / `reminder` / `system` の
+    controlled title/message と `/notifications` のみ返し、raw `title` / `message` / `link` は破棄する。
+    `/api/notifications/stream` の user-channel と DB safety poll、`notifications.ts` の realtime
+    broadcast はすべて `sse-safe` を使う。`/api/notifications` の authenticated inbox は変更しない。
+  - security risks reduced:
+    SSE/realtime payload が allowlisted `title` / `message` / same-origin `link` 経由で患者名、
+    薬剤名、電話、住所、free text、患者 deep link を流す余地を削減。
+  - validation:
+    `pnpm vitest run src/lib/notifications/stream-payload.test.ts --reporter=dot --testTimeout=30000`
+    passed: 1 file / 10 tests.
+    `pnpm vitest run src/app/api/notifications/stream/route.test.ts --reporter=dot --testTimeout=30000`
+    passed: 1 file / 19 tests.
+    `pnpm vitest run src/server/services/notifications.test.ts --reporter=dot --testTimeout=30000`
+    passed: 1 file / 16 tests.
+    `pnpm vitest run src/components/features/notifications/notification-bell.fetch.test.tsx 'src/app/(dashboard)/notifications/notifications-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed: 2 files / 20 tests.
+    `pnpm exec eslint src/lib/notifications/stream-payload.ts src/lib/notifications/stream-payload.test.ts src/app/api/notifications/stream/route.ts src/app/api/notifications/stream/route.test.ts src/server/services/notifications.ts src/server/services/notifications.test.ts`
+    passed.
+    `pnpm exec prettier --check src/lib/notifications/stream-payload.ts src/lib/notifications/stream-payload.test.ts src/app/api/notifications/stream/route.ts src/app/api/notifications/stream/route.test.ts src/server/services/notifications.ts src/server/services/notifications.test.ts`
+    passed.
+    `git diff --check -- src/lib/notifications/stream-payload.ts src/lib/notifications/stream-payload.test.ts src/app/api/notifications/stream/route.ts src/app/api/notifications/stream/route.test.ts src/server/services/notifications.ts src/server/services/notifications.test.ts`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+  - remaining:
+    push。
+  - next action:
+    Push current commit to `origin/main`.
+
 - codex: MOV-001 UI document marker raw-search guard（commit d5a29cef4, pushed）。
   - current task:
     Patient Movement Timeline の UI 側で、文書 marker の本文・OCR・添付ファイル名が

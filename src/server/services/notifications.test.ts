@@ -159,9 +159,9 @@ describe('dispatchNotificationEvent', () => {
       {
         id: 'notification_1',
         type: 'business',
-        title: '承認待ち',
-        message: '通知を確認してください',
-        link: null,
+        title: '業務通知',
+        message: 'アプリで詳細を確認してください',
+        link: '/notifications',
         is_read: false,
         created_at: '2026-06-17T00:00:00.000Z',
       },
@@ -177,6 +177,7 @@ describe('dispatchNotificationEvent', () => {
       'storage_key',
       'signed_url',
       'X-Amz-Signature',
+      '承認待ち',
     ]) {
       expect(broadcastPayload).not.toContain(forbidden);
     }
@@ -610,10 +611,16 @@ describe('dispatchNotificationEvent', () => {
     );
     expect(broadcastStatusUpdateMock).toHaveBeenCalledWith('user:user_1', [
       expect.objectContaining({
-        title: '田中 一郎さんの麻薬管理確認',
-        message: 'モルヒネ残薬と肺がん疼痛について確認してください',
+        title: '緊急通知',
+        message: 'アプリで詳細を確認してください',
+        link: '/notifications',
       }),
     ]);
+    const realtimePayload = JSON.stringify(broadcastStatusUpdateMock.mock.calls[0]?.[1]);
+    expect(realtimePayload).not.toContain('田中');
+    expect(realtimePayload).not.toContain('一郎');
+    expect(realtimePayload).not.toContain('モルヒネ');
+    expect(realtimePayload).not.toContain('肺がん');
 
     await runScheduledDeliveries();
 

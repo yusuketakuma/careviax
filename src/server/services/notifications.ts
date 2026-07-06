@@ -117,11 +117,14 @@ function buildNotificationUserChannel(userId: string) {
 }
 
 function toNotificationStreamItem(notification: PersistedNotification) {
-  return normalizeNotificationStreamItem({
-    ...notification,
-    is_read: notification.is_read ?? false,
-    created_at: notification.created_at ?? new Date(),
-  });
+  return normalizeNotificationStreamItem(
+    {
+      ...notification,
+      is_read: notification.is_read ?? false,
+      created_at: notification.created_at ?? new Date(),
+    },
+    { contentPolicy: 'sse-safe' },
+  );
 }
 
 export function buildExternalNotificationContent() {
