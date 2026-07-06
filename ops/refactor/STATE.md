@@ -44,13 +44,15 @@
 - codex: DSP-QUEUE-PAGE-001 DispenseWorkbench patient queue pagination implemented.
   - current task:
     `Plans.md` の `DSP-QUEUE-PAGE-001` を実装。`/api/dispense-workbench/patients`
-    を固定 500 cycle 一括取得前提から、signed cursor + `limit` + `phase` + `q`
-    - `include_set_plan` の page contract に変更した。工程判定は Oracle/GPT-5.5 Pro
-      の事前レビューに従い、`MedicationCycle` を直接 phase filter せず、org/access/q
-      filter → 患者ごとの最新 cycle 抽出 → set/set-audit の SetBatch 分類 → phase filter
-      → sort → cursor page → page rows のみ代表 task/SetPlan hydrate の順序にした。
-      レスポンスは `{ data, meta }` とし、`meta` に `has_more`, `next_cursor`,
-      `total_count`, `count_basis`, `filters_applied`, `facets` を返す。
+    を固定 500 cycle 一括取得前提から、signed cursor / `limit` / `phase` / `q` /
+    `include_set_plan` の page contract に変更した。工程判定は Oracle/GPT-5.5 Pro
+    の事前レビューに従い、`MedicationCycle` を直接 phase filter せず、org/access/q
+    filter → 患者ごとの最新 cycle 抽出 → set/set-audit の SetBatch 分類 → phase filter
+    → sort → cursor page → page rows のみ代表 task/SetPlan hydrate の順序にした。
+    レスポンスは `{ data, meta }` とし、`meta` に `has_more`, `next_cursor`, `total_count`,
+    `count_basis`, `filters_applied`, `facets` を返す。
+  - commit:
+    implementation slice committed as `ba56d60299884f2d43a07249c82b1a7d387ece2a`.
   - GitHub / Oracle context:
     target repo `https://github.com/yusuketakuma/careviax`, branch `main`,
     pre-slice commit `838f813d61573cca6d5a2149484b7a73f222a754`, dirty state clean.
