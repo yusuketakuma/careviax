@@ -111,6 +111,10 @@ describe('/api/jobs GET', () => {
           endpoint: '/api/jobs/daily-visit-support-sync',
         }),
         expect.objectContaining({
+          job_type: 'daily-case-risk-task-sync',
+          endpoint: '/api/jobs/daily-case-risk-task-sync',
+        }),
+        expect.objectContaining({
           job_type: 'bulk-export-artifact-cleanup',
           endpoint: '/api/jobs/bulk-export-artifact-cleanup',
         }),

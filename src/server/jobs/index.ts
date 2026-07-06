@@ -18,6 +18,7 @@ export {
   checkPrescriptionOriginalRetention,
   checkPcaPumpRentalOverdues,
   checkPcaPumpReturnInspectionPending,
+  syncCaseRiskCockpitRiskTasks,
   runDailyOperations,
 } from './daily';
 export { checkUnrecordedVisits, runEveningOperations } from './evening';

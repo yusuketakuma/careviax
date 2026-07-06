@@ -58,6 +58,11 @@ const JOB_DEFINITIONS = [
     endpoint: '/api/jobs/daily-visit-support-sync',
   },
   {
+    job_type: 'daily-case-risk-task-sync',
+    schedule_hint: '毎朝 + 要求時',
+    endpoint: '/api/jobs/daily-case-risk-task-sync',
+  },
+  {
     job_type: 'daily-facility-standard-expiry',
     schedule_hint: '毎朝',
     endpoint: '/api/jobs/daily-facility-standard-expiry',

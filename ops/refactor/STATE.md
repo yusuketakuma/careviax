@@ -40,6 +40,82 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Case Risk Cockpit risk task batch/job sync implemented（ready to commit）。
+  - current task:
+    `Plans.md` の `RISK-CORE-2 / CORE-002` 残作業「batch/job sync」に対応し、
+    `daily-case-risk-task-sync` job を追加した。既存の手動 `POST /api/cases/[id]/risk-cockpit/tasks`
+    契約は維持し、job 側は `/api/jobs/[jobType]` の `JOB_API_KEY` または `canAdmin` envelope に載せた。
+  - subagent:
+    前回起動済みの `api_contract_reviewer`（`Compatibility the 22nd` /
+    `019f34c4-741e-7833-b5fc-b69ba99b3067`）が read-only review を返し、単独 job type、
+    daily orchestrator へ初回から混ぜないこと、admin org scope / API key all-org、`withOrgContext`
+    per org、job response / IntegrationJob output の件数最小化、case/task/patient/finding refs 非返却を
+    推奨。実装で反映済み。新規 subagent 追加は thread limit で不可だった。
+  - design / imagegen:
+    backend job/API/test slice で視覚レイアウト変更を伴わないため、`imagegen` / `gpt-image-2` の新規生成は
+    省略。UI 配置を変更する slice では PH-OS UI/UX SSOT と `gpt-image-2` 方針を適用する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/api/jobs/route.ts`,
+    `src/app/api/jobs/route.test.ts`,
+    `src/app/api/jobs/[jobType]/route.ts`,
+    `src/app/api/jobs/[jobType]/route.test.ts`,
+    `src/server/jobs/runner.ts`,
+    `src/server/jobs/index.ts`,
+    `src/server/jobs/daily.ts`,
+    `src/server/jobs/daily/shared.ts`,
+    `src/server/jobs/daily/visit-support.ts`,
+    `src/server/jobs/daily/compliance-expiry.test.ts`,
+    `src/server/jobs/daily/conferences.test.ts`,
+    `src/server/services/case-risk-task-sync.ts`,
+    `src/server/services/case-risk-cockpit.ts`,
+    `src/lib/auth/visit-schedule-access.ts`,
+    `prisma/schema/patient.prisma`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/api/jobs/[jobType]/route.ts`,
+    `src/app/api/jobs/[jobType]/route.test.ts`,
+    `src/app/api/jobs/route.ts`,
+    `src/app/api/jobs/route.test.ts`,
+    `src/server/jobs/daily.ts`,
+    `src/server/jobs/index.ts`,
+    `src/server/jobs/daily/case-risk-tasks.ts`,
+    `src/server/jobs/daily/case-risk-tasks.test.ts`.
+  - bugs / risks reduced:
+    Case Risk Cockpit の active blocking/urgent finding task sync が手動 UI/API に限定されていたため、
+    batch で risk task を生成/ stale close する経路がなかった。新 job は active-ish case
+    (`assessment`, `active`, `on_hold`) を bounded selector（default 100 / max 500）で走査し、
+    authenticated admin では自 org のみ、`JOB_API_KEY` では org ごとに `withOrgContext` を切って処理する。
+  - security / PHI reviewed:
+    job response は `processedCount`, `scannedCount`, `upsertedTaskCount`,
+    `resolvedStaleTaskCount`, `taskableFindingCount`, `skippedFindingCount`, `skippedCaseCount`,
+    `errorCount`, `limited`, `limit` のみ。case id、patient id、task refs、finding title/detail、
+    dedupe key、raw error、PHI-like text は返さず、per-case failure も固定 event/count に留める。
+    `getCaseRiskCockpit` 呼び出しは system user id + admin role で assignment bypass を明示し、
+    route-level auth は既存 jobs の `JOB_API_KEY` / `canAdmin` に限定。
+  - performance issues improved:
+    daily orchestrator へ初回から混ぜず、単独 job type に分離。case 走査は status、stable order、
+    `take` limit を必須化し、`runJob` の singleton/stale lock envelope を利用する。
+  - validation commands:
+    `pnpm exec prettier --write src/server/jobs/daily/case-risk-tasks.ts src/server/jobs/daily/case-risk-tasks.test.ts src/app/api/jobs/[jobType]/route.ts src/app/api/jobs/[jobType]/route.test.ts src/app/api/jobs/route.ts src/app/api/jobs/route.test.ts src/server/jobs/daily.ts src/server/jobs/index.ts`;
+    `pnpm exec vitest run src/server/jobs/daily/case-risk-tasks.test.ts src/app/api/jobs/[jobType]/route.test.ts src/app/api/jobs/route.test.ts src/server/services/case-risk-task-sync.test.ts src/app/api/cases/[id]/risk-cockpit/tasks/route.test.ts --reporter=dot --testTimeout=30000`;
+    `git diff --check`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`;
+    `pnpm lint`;
+    `pnpm exec vitest run src/server/jobs/daily/case-risk-tasks.test.ts src/app/api/jobs/[jobType]/route.test.ts src/app/api/jobs/route.test.ts --reporter=dot --testTimeout=30000`.
+  - validation results:
+    focused vitest green（5 files / 46 tests）; follow-up focused vitest green（3 files / 38 tests）;
+    `git diff --check` green; high-memory typecheck green; typecheck:no-unused green; `pnpm lint`
+    green with existing unrelated warnings in `src/lib/platform/break-glass.test.ts` (`_tx`, `_input` only).
+  - remaining work:
+    Broader `Plans.md` objective remains open。`RISK-CORE-2` 残: waiver/override 時の理由必須 audit と
+    resolution note、domain 別 resolve predicate、孤児 task audit、Task Health Board 連携。次候補は
+    waiver/override audit か Task Health Board 側の risk task 集計。
+
 - codex: Case Risk Cockpit task sync Command UI failure-state regression（ready to commit）。
   - current task:
     直前の `Add case risk task sync UI` slice に対し、Command タブの risk task sync が失敗した場合に

@@ -656,8 +656,13 @@ FE 仕上げ（低優先）:
     の明示 UI 導線を追加。active case（なければ latest case）に対して件数だけで同期結果を表示し、
     `upserted_tasks` / `resolved_stale_tasks` の id/display_id、finding title/detail、dedupe key は
     UI に出さない。ケースなしでは disabled reason を表示し POST しない。
+  - 2026-07-06 追加 partial: `daily-case-risk-task-sync` job を `/api/jobs/[jobType]` と jobs 一覧へ
+    登録し、Case Risk Cockpit の active blocking/urgent finding task sync を batch 実行できるようにした。
+    job は active-ish case を bounded selector で走査し、authenticated admin では自 org のみ、`JOB_API_KEY`
+    では org ごとの `withOrgContext` で全 org を処理する。job response / IntegrationJob output は
+    processed/scanned/upserted/resolved/skipped/error/limit の件数だけに抑え、case/task/patient/finding refs、
+    dedupe key、raw error、PHI-like text は返さない。
 - 残:
-  - batch/job sync。
   - waiver/override 時の理由必須 audit と resolution note。
   - domain 別 resolve predicate、孤児 task audit、Task Health Board 連携。
 

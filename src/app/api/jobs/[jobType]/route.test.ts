@@ -38,6 +38,7 @@ const {
   checkPrescriptionOriginalRetentionMock,
   checkPcaPumpRentalOverduesMock,
   checkPcaPumpReturnInspectionPendingMock,
+  syncCaseRiskCockpitRiskTasksMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
@@ -75,6 +76,7 @@ const {
   checkPrescriptionOriginalRetentionMock: vi.fn(),
   checkPcaPumpRentalOverduesMock: vi.fn(),
   checkPcaPumpReturnInspectionPendingMock: vi.fn(),
+  syncCaseRiskCockpitRiskTasksMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -124,6 +126,7 @@ vi.mock('@/server/jobs', () => ({
   checkPrescriptionOriginalRetention: checkPrescriptionOriginalRetentionMock,
   checkPcaPumpRentalOverdues: checkPcaPumpRentalOverduesMock,
   checkPcaPumpReturnInspectionPending: checkPcaPumpReturnInspectionPendingMock,
+  syncCaseRiskCockpitRiskTasks: syncCaseRiskCockpitRiskTasksMock,
 }));
 
 import { POST } from './route';
@@ -191,6 +194,20 @@ describe('/api/jobs/[jobType] POST', () => {
     checkPrescriptionOriginalRetentionMock.mockResolvedValue({ processedCount: 1 });
     checkPcaPumpRentalOverduesMock.mockResolvedValue({ processedCount: 1 });
     checkPcaPumpReturnInspectionPendingMock.mockResolvedValue({ processedCount: 2 });
+    syncCaseRiskCockpitRiskTasksMock.mockResolvedValue({
+      processedCount: 2,
+      scannedCount: 3,
+      upsertedTaskCount: 4,
+      resolvedStaleTaskCount: 1,
+      taskableFindingCount: 5,
+      skippedFindingCount: 6,
+      skippedCaseCount: 1,
+      errorCount: 0,
+      limited: false,
+      limit: 100,
+      upserted_tasks: [{ id: 'task_1', display_id: 'tsk0000000001' }],
+      raw: '患者 山田太郎 token=secret risk:privacy_security:raw',
+    });
   });
 
   afterAll(() => {
@@ -336,6 +353,42 @@ describe('/api/jobs/[jobType] POST', () => {
       jobType: 'daily-public-subsidy-expiry',
       processedCount: 1,
     });
+  });
+
+  it('scopes authenticated case risk task sync to the admin organization and minimizes output', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = await POST(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ jobType: 'daily-case-risk-task-sync' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(syncCaseRiskCockpitRiskTasksMock).toHaveBeenCalledWith({ orgId: 'org_1' });
+    const bodyText = await response.text();
+    expect(bodyText).toContain('daily-case-risk-task-sync');
+    expect(bodyText).toContain('"processedCount":2');
+    expect(bodyText).toContain('"scannedCount":3');
+    expect(bodyText).toContain('"upsertedTaskCount":4');
+    expect(bodyText).toContain('"resolvedStaleTaskCount":1');
+    expect(bodyText).not.toContain('upserted_tasks');
+    expect(bodyText).not.toContain('task_1');
+    expect(bodyText).not.toContain('tsk0000000001');
+    expect(bodyText).not.toContain('山田太郎');
+    expect(bodyText).not.toContain('token=secret');
+    expect(bodyText).not.toContain('risk:privacy_security');
+    expect(bodyText).not.toContain('raw');
+  });
+
+  it('allows api key case risk task sync across organizations', async () => {
+    authMock.mockResolvedValue(null);
+
+    const response = await POST(createRequest({ 'x-api-key': 'job-secret' }), {
+      params: Promise.resolve({ jobType: 'daily-case-risk-task-sync' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(syncCaseRiskCockpitRiskTasksMock).toHaveBeenCalledWith(undefined);
   });
 
   it('allows api key public subsidy expiry checks across organizations', async () => {

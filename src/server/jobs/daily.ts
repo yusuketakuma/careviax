@@ -45,6 +45,11 @@ export { checkEmergencyCoverageGaps } from './daily/emergency';
 export { syncVisitSupportFeatureTasks } from './daily/visit-support';
 
 export {
+  DAILY_CASE_RISK_TASK_SYNC_JOB_TYPE,
+  syncCaseRiskCockpitRiskTasks,
+} from './daily/case-risk-tasks';
+
+export {
   checkFacilityStandardExpiry,
   checkCredentialExpiry,
   checkConsentExpiry,

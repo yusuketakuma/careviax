@@ -24,6 +24,7 @@ import {
   checkPrescriptionOriginalRetention,
   checkPcaPumpRentalOverdues,
   checkPcaPumpReturnInspectionPending,
+  syncCaseRiskCockpitRiskTasks,
   runDailyOperations,
   runEveningOperations,
   refreshMhlwDrugReferences,
@@ -49,6 +50,7 @@ type JobHandler = (context: JobExecutionContext) => Promise<{
   processedCount: number;
   scannedCount?: number;
   errors?: string[];
+  [key: string]: unknown;
 }>;
 
 const JOB_HANDLERS: Record<string, JobHandler> = {
@@ -65,6 +67,10 @@ const JOB_HANDLERS: Record<string, JobHandler> = {
   'daily-initial-home-visit-assessment': checkInitialHomeVisitAssessmentBacklog,
   'daily-billing-evidence': generateBillingEvidenceDaily,
   'daily-visit-support-sync': syncVisitSupportFeatureTasks,
+  'daily-case-risk-task-sync': (context) =>
+    syncCaseRiskCockpitRiskTasks(
+      context.authType === 'auth' && context.orgId ? { orgId: context.orgId } : undefined,
+    ),
   'evening-unrecorded-visits': checkUnrecordedVisits,
   'next-day': runNextDayOperations,
   monthly: runMonthlyOperations,
@@ -146,6 +152,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ job
         jobType,
         processedCount: result.processedCount,
         errorCount: result.errors?.length ?? 0,
+      }) as NextResponse;
+    }
+    if (jobType === 'daily-case-risk-task-sync') {
+      return success({
+        jobType,
+        processedCount: result.processedCount,
+        scannedCount: result.scannedCount,
+        upsertedTaskCount:
+          typeof result.upsertedTaskCount === 'number' ? result.upsertedTaskCount : 0,
+        resolvedStaleTaskCount:
+          typeof result.resolvedStaleTaskCount === 'number' ? result.resolvedStaleTaskCount : 0,
+        taskableFindingCount:
+          typeof result.taskableFindingCount === 'number' ? result.taskableFindingCount : 0,
+        skippedFindingCount:
+          typeof result.skippedFindingCount === 'number' ? result.skippedFindingCount : 0,
+        skippedCaseCount: typeof result.skippedCaseCount === 'number' ? result.skippedCaseCount : 0,
+        errorCount: typeof result.errorCount === 'number' ? result.errorCount : 0,
+        limited: result.limited === true,
+        limit: typeof result.limit === 'number' ? result.limit : undefined,
       }) as NextResponse;
     }
     return success({ jobType, ...result }) as NextResponse;
