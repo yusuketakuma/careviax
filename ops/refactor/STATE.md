@@ -6244,3 +6244,65 @@
 - remaining:
   Broader `Plans.md` objective remains open. 次候補は PatientBoard 派生ロジックとの adapter 統合、
   payload budget / browser smoke、または CORE-003 remaining domain adapter cleanup。
+
+## 2026-07-06 PatientBoard / Command blocked reason projection slice
+
+- codex: `UX-CMD-001 / PERF-BFF-001` blocked reason projection integration implemented.
+  既存 SSOT `src/lib/workflow/blocked-reason-projection.ts` に workflow exception status text と
+  patient-scoped action href resolver を追加し、患者詳細 Command Center と PatientBoard card model の
+  workflow exception 表示を同じ projection へ寄せた。
+- PHI minimization:
+  Command Center は `WorkflowException.description` を blocker label に使わず、PatientBoard と同じ
+  controlled text (`返信待ち — 再確認できます` 等) を表示する。raw description に薬剤名、電話、住所、
+  自由記載が混ざっても Command blocker に出ないことを unit/RTL で固定した。
+- subagent:
+  `Surface the 24th` を read-only `code_mapper` として投入。PatientBoard / Command の重複を棚卸しし、
+  最小安全 slice として既存 `blocked-reason-projection` への統合、次段として
+  `src/lib/patient/*` の pure workflow-state selector 抽出を推奨。今回の実装はその前者に限定した。
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/lib/workflow/blocked-reason-projection.ts`,
+  `src/lib/workflow/blocked-reason-projection.test.ts`,
+  `src/app/api/patients/board/patient-board-card-model.ts`,
+  `src/app/api/patients/board/patient-board-card-model.test.ts`,
+  `src/app/(dashboard)/patients/[id]/patient-command-center-model.ts`,
+  `src/app/(dashboard)/patients/[id]/patient-command-center-model.test.ts`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+  `src/app/api/patients/board/route.test.ts`,
+  `src/app/api/visits/today-preparation/route.test.ts`.
+- files changed:
+  `Plans.md`,
+  `src/lib/workflow/blocked-reason-projection.ts`,
+  `src/lib/workflow/blocked-reason-projection.test.ts`,
+  `src/app/api/patients/board/patient-board-card-model.ts`,
+  `src/app/(dashboard)/patients/[id]/patient-command-center-model.ts`,
+  `src/app/(dashboard)/patients/[id]/patient-command-center-model.test.ts`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  PatientBoard / route rail / Command Center で workflow exception category/action/status 文言が分岐する
+  drift を縮小。Command blocker が raw exception description をそのまま表示する PHI risk を削減した。
+- security / PHI reviewed:
+  action href は `buildCommunicationRequestsHref` / `buildPatientHref` を通し、hostile patient id encoding を維持。
+  unknown exception type は raw type/description を表示せず fallback controlled text を返す。
+- performance issues reviewed:
+  追加処理は pure mapping のみ。PatientBoard 一覧の per-card derivation に DB/I/O/async 処理を追加していない。
+- validation:
+  `pnpm exec vitest run src/lib/workflow/blocked-reason-projection.test.ts src/app/api/patients/board/patient-board-card-model.test.ts src/app/(dashboard)/patients/[id]/patient-command-center-model.test.ts src/app/(dashboard)/patients/[id]/card-workspace.test.tsx src/app/api/patients/board/route.test.ts src/app/api/visits/today-preparation/route.test.ts --reporter=dot --testTimeout=30000`
+  green (6 files / 142 tests);
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  green;
+  `pnpm lint`
+  green with existing warnings in `src/lib/platform/break-glass.test.ts` (`_tx`, `_input` unused);
+  `pnpm format:check`
+  green;
+  `git diff --check`
+  green.
+- remaining:
+  Broader `Plans.md` objective remains open. 次候補は PatientBoard の
+  attention/status_tone/status_text/current_step 判定を `src/lib/patient/*` の pure selector へ抽出し、
+  Command Center process 補助状態へ段階接続すること、payload budget / browser smoke。
