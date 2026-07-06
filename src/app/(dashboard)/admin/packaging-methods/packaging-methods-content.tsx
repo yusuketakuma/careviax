@@ -8,11 +8,10 @@ import { z } from 'zod';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ErrorState } from '@/components/ui/error-state';
 import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { SkeletonRows } from '@/components/ui/loading';
+import { SegmentError, SegmentLoading } from '@/components/ui/segment-state';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { readApiJson } from '@/lib/api/client-json';
@@ -248,25 +247,23 @@ export function PackagingMethodsContent() {
         </CardHeader>
         <CardContent>
           {methodsQuery.isError ? (
-            <ErrorState
-              variant="server"
-              size="inline"
+            <SegmentError
               title="配薬方法マスターを取得できませんでした"
-              description={
-                methodsQuery.error instanceof Error
-                  ? methodsQuery.error.message
-                  : '配薬方法マスターの取得に失敗しました'
-              }
+              cause="配薬方法マスターの取得に失敗しました。"
+              nextAction="再試行して、セット工程で選択できる方法を確認してください。"
               onRetry={() => void methodsQuery.refetch()}
-              live="polite"
+              retryLabel="再試行"
             />
           ) : methodsQuery.isPending ? (
             // isPending (not isLoading) so an unresolved orgId — which disables the query
             // (enabled: !!orgId) and leaves it pending-but-not-fetching — also shows loading
             // rather than the "未登録" empty-state.
-            <div role="status" aria-label="配薬方法を読み込み中" aria-live="polite">
-              <SkeletonRows rows={2} cols={2} status={false} />
-            </div>
+            <SegmentLoading
+              label="配薬方法を読み込み中"
+              description="セット工程で選択できるマスターを確認しています。"
+              rows={2}
+              cols={2}
+            />
           ) : methods.length === 0 ? (
             <p className="rounded-xl border-l-4 border-border/70 border-l-state-confirm bg-card px-3 py-2 text-sm text-state-confirm">
               配薬方法が未登録です。セット作成前に最低1件登録してください。

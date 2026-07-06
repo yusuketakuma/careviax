@@ -41,6 +41,41 @@
 
 ## 直近の land（本日・要点）
 
+- codex: FE-ERR-001 admin packaging-methods segment hardening（pending commit）。
+  - current task:
+    `/admin/packaging-methods` の配薬方法マスター取得失敗と pending/loading を shared segment state に寄せ、
+    未登録 false-empty と raw query error message を表示しない。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `docs/ui-ux-design-guidelines.md`,
+    `src/components/ui/segment-state.tsx`,
+    `src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.tsx`,
+    `src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.test.tsx`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.tsx`,
+    `src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.test.tsx`.
+  - implementation:
+    配薬方法マスター取得失敗を `SegmentError` へ、pending/loading を `SegmentLoading` へ移行した。
+    失敗時は固定文言と retry のみを表示し、`methodsQuery.error.message` を UI に出さない。
+  - bugs found:
+    配薬方法マスター取得失敗時に `methodsQuery.error.message` を本文として表示していた。
+  - security risks reduced:
+    配薬方法マスター取得失敗時に patient name、storage key、token、API route 等が UI に出る面を追加テストで固定した。
+  - performance issues improved:
+    なし。表示状態の正確性と fail-soft の修正。
+  - validation:
+    `pnpm exec vitest run 'src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.test.tsx' src/components/ui/segment-state.test.tsx --reporter=dot --testTimeout=30000` → pass（2 files / 15 tests）。
+    `pnpm exec eslint 'src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.tsx' 'src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.test.tsx'` → pass。
+  - remaining:
+    FE-ERR-001 は service-areas / drug-master detail sheet など admin screen 群への段階展開が残る。
+    Formal `InboundCommunicationEvent` / `InboundCommunicationSignal` DB/API/review UI and MedicationStock Ledger source remain.
+  - next action:
+    prettier / diff check、scoped commit/push。
+
 - codex: FE-ERR-001 admin realtime segment hardening（pending commit）。
   - current task:
     `/admin/realtime` の workflow KPI / live workbench / notifications 取得失敗と読み込みを

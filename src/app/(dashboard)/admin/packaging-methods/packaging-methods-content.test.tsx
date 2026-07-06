@@ -211,15 +211,24 @@ describe('PackagingMethodsContent', () => {
     useQueryMock.mockReturnValue({
       data: undefined,
       isError: true,
-      error: new Error('配薬方法マスターの取得に失敗しました'),
+      error: new Error(
+        'GET /api/packaging-methods?patient=田中一郎&storage_key=s3://phi-bucket/raw&token=secret',
+      ),
       refetch: refetchMock,
     });
     render(<PackagingMethodsContent />);
 
     expect(screen.getByText('配薬方法マスターを取得できませんでした')).toBeTruthy();
-    expect(screen.getByText('配薬方法マスターの取得に失敗しました')).toBeTruthy();
+    expect(screen.getByText(/配薬方法マスターの取得に失敗しました。/)).toBeTruthy();
+    expect(
+      screen.getByText(/再試行して、セット工程で選択できる方法を確認してください。/),
+    ).toBeTruthy();
     // the "未登録" empty-state copy must be gone so the failure is not read as "no data"
     expect(screen.queryByText(/配薬方法が未登録です/)).toBeNull();
+    expect(screen.queryByText(/田中一郎/)).toBeNull();
+    expect(screen.queryByText(/storage_key/)).toBeNull();
+    expect(screen.queryByText(/token/)).toBeNull();
+    expect(screen.queryByText(/\/api\/packaging-methods/)).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: '再試行' }));
     expect(refetchMock).toHaveBeenCalledTimes(1);
