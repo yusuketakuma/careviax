@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: MOV-001 first visit document marker label minimization（未コミット）。
+- codex: MOV-001 first visit document marker label minimization（commit e3a0bbc4d, pushed）。
   - current task:
     `firstVisitDocumentsSource` が初回訪問文書の種別ラベルを timeline title / metadata に出す経路を外し、
     「文書登録があったこと + 共有・文書 deep link」へ寄せる。
@@ -74,7 +74,7 @@
   - remaining:
     Formal `InboundCommunicationEvent` / `InboundCommunicationSignal` DB/API/review UI and MedicationStock Ledger source remain.
   - next action:
-    scoped commit/push 後に commit hash を記録する。
+    Continue remaining MOV-001 sources only when they can stay marker-only + canonical deep link.
 
 - codex: MOV-001 operation history target metadata minimization（commit f57a0332d, pushed）。
   - current task:
