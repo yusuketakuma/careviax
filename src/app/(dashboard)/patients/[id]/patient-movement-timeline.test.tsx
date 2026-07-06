@@ -274,10 +274,11 @@ describe('PatientMovementTimeline', () => {
       />,
     );
 
+    const renderedText = document.body.textContent ?? '';
     expect(screen.getAllByText('管理計画書を承認').length).toBeGreaterThan(0);
-    expect(screen.queryByText('重要事項説明本文')).toBeNull();
-    expect(screen.queryByText('patient-yamada-plan.pdf')).toBeNull();
-    expect(screen.queryByText('OCR全文あり')).toBeNull();
+    expect(renderedText).not.toContain('重要事項説明本文');
+    expect(renderedText).not.toContain('patient-yamada-plan.pdf');
+    expect(renderedText).not.toContain('OCR全文あり');
 
     fireEvent.change(screen.getByLabelText('タイムライン検索'), {
       target: { value: 'patient-yamada-plan.pdf' },
@@ -286,6 +287,77 @@ describe('PatientMovementTimeline', () => {
     await waitFor(() => {
       expect(screen.queryByText('管理計画書を承認')).toBeNull();
     });
+  });
+
+  it('keeps prescription, visit, and document markers as occurrence-only canonical links', () => {
+    render(
+      <PatientMovementTimeline
+        timelineEvents={[
+          {
+            ...timelineEvents[0],
+            id: 'event_visit_detail_guard',
+            summary: 'SOAP本文: 血圧と痛みの観察内容 / voice-note-yamada.m4a',
+            metadata: ['位置情報 33.0,130.0', 'visit-photo-yamada.jpg'],
+            href: '/visits/visit_1/record',
+            action_label: '訪問記録を開く',
+          },
+          {
+            ...timelineEvents[1],
+            id: 'event_document_detail_guard',
+            summary: '文書本文: 重要事項説明 / OCR全文 / signed-url',
+            metadata: ['document-yamada.pdf', 'storage_key=private/doc.pdf'],
+            href: '/patients/patient_1#patient-documents',
+            action_label: '文書を開く',
+          },
+          {
+            ...timelineEvents[2],
+            id: 'event_prescription_detail_guard',
+            summary: '処方内容: アムロジピン 30錠 / 用法用量 / file_id=file_1',
+            metadata: ['薬剤明細 アムロジピン', '処方箋OCR全文'],
+            href: '/prescriptions/intake_1',
+            action_label: '処方記録を開く',
+          },
+        ]}
+        selfReports={[]}
+      />,
+    );
+
+    expect(screen.getByRole('link', { name: /訪問記録を開く/ }).getAttribute('href')).toBe(
+      '/visits/visit_1/record',
+    );
+    expect(screen.getByRole('link', { name: /文書を開く/ }).getAttribute('href')).toBe(
+      '/patients/patient_1#patient-documents',
+    );
+    expect(screen.getByRole('link', { name: /処方記録を開く/ }).getAttribute('href')).toBe(
+      '/prescriptions/intake_1',
+    );
+
+    const hrefs = Array.from(document.querySelectorAll('a')).map((link) =>
+      link.getAttribute('href'),
+    );
+    expect(hrefs).not.toContain('/patients/patient_1/timeline/event_visit_detail_guard');
+    expect(hrefs).not.toContain('/patients/patient_1/timeline/event_document_detail_guard');
+    expect(hrefs).not.toContain('/patients/patient_1/timeline/event_prescription_detail_guard');
+
+    const renderedText = document.body.textContent ?? '';
+    for (const forbidden of [
+      'SOAP本文',
+      'voice-note-yamada.m4a',
+      'visit-photo-yamada.jpg',
+      '33.0,130.0',
+      '文書本文',
+      'OCR全文',
+      'document-yamada.pdf',
+      'storage_key',
+      '処方内容',
+      'アムロジピン 30錠',
+      '用法用量',
+      'file_id=file_1',
+      '薬剤明細',
+      '処方箋OCR全文',
+    ]) {
+      expect(renderedText).not.toContain(forbidden);
+    }
   });
 
   it('renders self report events in the main communication timeline', () => {

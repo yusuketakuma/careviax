@@ -11942,3 +11942,36 @@
   `MOV-001` still needs formal INB signal / MedicationStock Ledger / safety finding sources and
   any missing canonical href builders for sources that cannot currently produce direct relative
   deep links.
+
+## 2026-07-07 Patient movement marker UI regression
+
+- codex:
+  Added UI regression coverage for the latest `MOV-001` marker-only scope. Prescription, visit, and
+  document timeline cards now have tests proving the primary CTA uses the canonical `event.href`
+  directly, does not route through `/patients/:id/timeline/:eventId`, and does not render PHI-heavy
+  prescription details, SOAP/visit content, document bodies, filenames, OCR text, storage keys,
+  geolocation, or file ids.
+- files inspected:
+  `Plans.md`,
+  `docs/ui-ux-design-guidelines.md`,
+  `src/types/patient-movement-timeline.ts`,
+  `src/server/services/patient-movement-timeline-presenter.ts`,
+  `src/server/services/patient-movement-timeline-presenter.test.ts`,
+  `src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx`,
+  `src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx`.
+- files changed:
+  `src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  Tightened the UI-level guard for the patient movement timeline so future visual or search
+  improvements cannot accidentally turn occurrence markers into PHI-rich detail cards.
+- validation:
+  `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx' src/server/services/patient-movement-timeline-presenter.test.ts --reporter=dot --testTimeout=30000`
+  green (2 files / 15 tests);
+  `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx' src/server/services/patient-movement-timeline-presenter.test.ts`
+  green.
+- remaining:
+  `MOV-001` still needs formal INB signal / MedicationStock Ledger / safety finding sources and
+  any missing canonical href builders for sources that cannot currently produce direct relative
+  deep links.

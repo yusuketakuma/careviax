@@ -1144,6 +1144,7 @@ notification:
 > `cc:PARTIAL 2026-07-07`: 正式 MedicationStock Ledger DB 追加前の bridge として、既存 `ResidualMedication` を `medication_stock_event` source に追加した。source はまず権限確認済みの患者/ケースに属する `VisitRecord` id を取得し、その id 群に紐づく `ResidualMedication` を visit record 単位に集約する。timeline には「残薬確認を記録」、件数、減数検討/減数不可の controlled status、訪問記録 deep link だけを出し、`drug_name`、数量、残日数、余剰日数は select しない。正式な stock ledger / equivalence review / shortage finding source は引き続き Phase 6 残タスク。
 > `cc:PARTIAL 2026-07-07`: `PatientMovementTimelineEvent` presenter が category=`prescription` / `visit` / `document` の `operation_history` も、それぞれ `prescription_event` / `visit_event` / `document_registered` marker に正規化するよう変更。処方原本保存や文書PDF出力などの監査由来イベントも、timeline では内容表示ではなく発生 marker + 正本 deep link として扱う。unit test で薬剤名、処方番号、ファイル名、文書本文が movement payload に混入しないことを固定した。
 > `cc:PARTIAL 2026-07-07`: UI回帰テストで、document marker の `summary` / `metadata` に文書本文、OCR全文、添付ファイル名が混入しても、カード表示と検索 haystack に使われないことを固定した。処方・訪問・文書の表示改善は、本文再掲ではなく controlled label、badge、relative href、日付railに限定する。
+> `cc:PARTIAL 2026-07-07`: 最新ユーザー指示を受け、UI回帰テストに処方・訪問・文書 marker の primary CTA が正本 `event.href` を直接使うこと、`/patients/:id/timeline/:eventId` の event detail shell へ逃がさないこと、SOAP本文、訪問添付名、位置情報、処方内容、薬剤明細、文書本文、OCR全文、storage key、file id が card 表示に混入しないことを追加で固定した。これにより「処方・訪問・文書登録があったことだけを確認し、詳細は deep link 先で見る」方針を UI test で守る。
 
 **重要なUI方針**:
 
