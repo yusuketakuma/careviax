@@ -6693,3 +6693,52 @@
 - remaining:
   Broader `Plans.md` objective remains open. 残りは real consumer の screen-level PHI export snapshot と、
   schedule proposals / tasks 以外の bulk action consumer の scope wording sweep。
+
+## 2026-07-06 Report composer bulk send scope wording slice
+
+- codex: `UX-TBL-001` report composer bulk send selection scope wording implemented.
+  報告書詳細の共有先一括送付 button を `一括送付（N件）` から
+  `選択した共有先N件へ一括送付` へ変更し、共有先 multi-select の selection scope が action 名から
+  伝わるようにした。
+- design / imagegen:
+  `docs/ui-ux-design-guidelines.md` の `gpt-image-2` 方針は確認済み。今回の変更は既存 composer の
+  button label contract 修正で、新規の視覚再構築や配置変更を伴わないため `imagegen` / `gpt-image-2`
+  の新規生成は省略した。
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `docs/ui-ux-design-guidelines.md`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/(dashboard)/reports/[id]/page.tsx`,
+  `src/app/(dashboard)/reports/[id]/page.test.tsx`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/(dashboard)/reports/[id]/page.tsx`,
+  `src/app/(dashboard)/reports/[id]/page.test.tsx`.
+- bugs / risks reduced:
+  報告書一括送付で、実行対象が「共有先候補全件」ではなく「選択した共有先」であることを action label で
+  明示した。disabled state の recipient/checks error 連携は既存の `aria-describedby` を維持。
+- security / PHI reviewed:
+  文言と test expectation のみ。送付先名、連絡先、患者名、住所、処方本文、保険情報、secret は追加しない。
+  既存の送付前チェックと safe suggestion 表示を維持。
+- performance issues reviewed:
+  render string のみ。external professionals query、payload、bulk send body、mutation/idempotency は変更なし。
+- validation:
+  `pnpm exec vitest run src/app/(dashboard)/reports/[id]/page.test.tsx --reporter=dot --testTimeout=30000`
+  green (1 file / 39 tests);
+  `pnpm exec vitest run src/app/(dashboard)/reports/[id]/page.test.tsx src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx --reporter=dot --testTimeout=30000`
+  green (2 files / 79 tests) after formatting;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  green;
+  `pnpm lint`
+  green with existing warnings in `src/lib/platform/break-glass.test.ts` (`_tx`, `_input` unused);
+  `pnpm format:check`
+  green after formatting `src/app/(dashboard)/reports/[id]/page.test.tsx`;
+  `git diff --check -- Plans.md ops/refactor/STATE.md src/app/(dashboard)/reports/[id]/page.tsx src/app/(dashboard)/reports/[id]/page.test.tsx src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx`
+  green.
+- remaining:
+  Broader `Plans.md` objective remains open. 残りは real consumer の screen-level PHI export snapshot と、
+  remaining bulk action consumer の scope wording sweep。
