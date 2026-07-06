@@ -5,6 +5,12 @@ import { Home } from 'lucide-react';
 
 const allMainItems = SIDEBAR_MAIN_NAV_GROUPS.flatMap((group) => group.items);
 
+function activeMainLabels(pathname: string) {
+  return allMainItems
+    .filter((item) => isLayoutNavItemActive(pathname, item))
+    .map((item) => item.label);
+}
+
 describe('layout navigation active matching', () => {
   it('highlights the dashboard item for workflow/tasks/notifications sub pages', () => {
     const dashboard = allMainItems.find((item) => item.label === 'ダッシュボード');
@@ -90,5 +96,22 @@ describe('layout navigation active matching', () => {
     expect(isLayoutNavItemActive('/patients/new', cardLike)).toBe(false);
     expect(isLayoutNavItemActive('/patients/patient_1', cardLike)).toBe(true);
     expect(isLayoutNavItemActive('/prescriptions/new/scan', cardLike)).toBe(false);
+  });
+
+  it.each([
+    ['/patients', ['患者一覧']],
+    ['/patients/new', ['患者一覧']],
+    ['/patients/patient_1', ['カード']],
+    ['/patients/patient_1/medication-calendar', ['カード']],
+    ['/prescriptions', ['カード']],
+    ['/prescriptions/new', ['処方取込']],
+    ['/prescriptions/intake', ['処方取込']],
+    ['/qr-scan', ['処方取込']],
+    ['/visits/visit_1/record', ['訪問']],
+    ['/reports/print', ['報告・共有']],
+    ['/admin/settings', ['マスター']],
+    ['/admin/realtime', ['マスター']],
+  ])('keeps the primary sidebar active item stable for %s', (pathname, expectedLabels) => {
+    expect(activeMainLabels(pathname)).toEqual(expectedLabels);
   });
 });

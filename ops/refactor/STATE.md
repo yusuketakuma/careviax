@@ -11055,6 +11055,39 @@
 - remaining:
   Broader `FE-OFFLINE-001` browser storage PHI audit remains open.
 
+## 2026-07-07 Navigation active-state matrix test
+
+- codex: implemented `FE-NAV-001` active-state regression coverage for main sidebar routes.
+  `navigation-utils.test.ts` now includes a route-to-active-label matrix for patient list/new/detail,
+  prescription list/new/intake/QR, visit record, report print, and admin subpages.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/components/layout/navigation-config.ts`,
+  `src/components/layout/navigation-config.test.ts`,
+  `src/components/layout/navigation-utils.ts`,
+  `src/components/layout/navigation-utils.test.ts`,
+  `src/components/layout/mobile-nav.tsx`,
+  `src/components/layout/sidebar.tsx`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/components/layout/navigation-utils.test.ts`.
+- bugs / risks reduced:
+  Fixed the active-navigation contract as executable tests so `/patients/[id]` stays on `カード`,
+  `/patients` and `/patients/new` stay on `患者一覧`, prescription intake/new/QR stay on
+  `処方取込`, and `/reports/print` / `/admin/*` do not drift when route prefixes change.
+- validation:
+  `pnpm vitest run src/components/layout/navigation-utils.test.ts src/components/layout/navigation-config.test.ts --reporter=dot --testTimeout=30000`
+  green (2 files / 29 tests);
+  `pnpm exec eslint src/components/layout/navigation-utils.test.ts`
+  green;
+  `pnpm exec prettier --check src/components/layout/navigation-utils.test.ts`
+  green.
+- remaining:
+  Final docs/code formatting and diff checks are green; commit and push this navigation test slice.
+
 ## 2026-07-06 DataTable client export policy tightening
 
 - codex: implemented `FE-TBL-001` minimal frontend export boundary hardening. `DataTable` client CSV
