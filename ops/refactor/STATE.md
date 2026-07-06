@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: FILE-000 file API minimization evidence sync（commit pending）。
+- codex: FILE-000 file API minimization evidence sync（commit 8a47033ad, pushed）。
   - current task:
     Plans 上で未完了扱いだった `FILE-000` が現行コードでは実装済みかを確認し、file API の
     public DTO / no-store / PHI leakage regression evidence に合わせて計画を同期する。
@@ -76,9 +76,9 @@
     `git diff --check -- Plans.md ops/refactor/STATE.md`
     passed.
   - remaining:
-    commit/push。
+    none for this evidence sync.
   - next action:
-    Land the file API minimization evidence sync.
+    Continue with the next Plans item.
 
 - codex: FE-ERR-001 Dashboard segment state migration（commit 46314c2c6, pushed）。
   - current task:
