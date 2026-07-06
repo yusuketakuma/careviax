@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: MOV-001 UI document marker raw-search guard（pending commit）。
+- codex: MOV-001 UI document marker raw-search guard（commit d5a29cef4, pushed）。
   - current task:
     Patient Movement Timeline の UI 側で、文書 marker の本文・OCR・添付ファイル名が
     カード表示や検索 haystack に入らないことを回帰テストで固定する。
@@ -70,9 +70,9 @@
     `git diff --check -- 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx'`
     passed.
   - remaining:
-    Markdown validation、scoped commit、push。
+    なし。
   - next action:
-    Validate `Plans.md` / `ops/refactor/STATE.md`, commit and push to `origin/main`.
+    Continue from the next high-value `Plans.md` P0/P1 slice.
 
 - codex: MOV-001 operation-history marker normalization（commit 4e44c6865, pushed）。
   - current task:

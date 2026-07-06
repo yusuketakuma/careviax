@@ -2607,8 +2607,7 @@ forbidden:
   surface（operations / audit / posting / pharmacist_review）に接続し、route audit metadata に
   `export_surface_id` を追加した。button label は「対象拠点全件CSV出力」に変更し、UI descriptor、
   route audit、sanitizer の surface id を突合できるようにした。
-  残: `files/complete` response minimization、他画面の destructive/bulk confirm 文言 sweep、
-  server export surface 未接続画面の追加棚卸し。
+  残: 他画面の destructive/bulk confirm 文言 sweep、server export surface 未接続画面の追加棚卸し。
 
 **追加実装順序**:
 
