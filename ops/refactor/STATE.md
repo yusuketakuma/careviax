@@ -41,6 +41,49 @@
 
 ## 直近の land（本日・要点）
 
+- codex: AWS / tenant cross-access architecture backlog recorded in `Plans.md`.
+  - current task:
+    ユーザー提示の AWS 構成案（低コスト実証 → 本番最小 → 拡張）と、PH-OS運営者・フリーランス薬剤師を含む
+    論理テナント横断権限モデルを `Plans.md` に実装可能なタスクとして追記した。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/lib/api/response.ts`,
+    `src/lib/api/client-json.ts`,
+    `src/lib/auth/context.ts`,
+    `src/lib/auth/request-context.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - subagent / review:
+    `code_mapper` (`019f35e0-c7b5-7642-8e44-db349af373a9`) と `api_contract_reviewer`
+    (`019f35e1-1950-7422-867b-23912abdf25f`) を使用。API契約レビューで、helper-only の
+    `ApiSuccess/ApiError/request_id` 部分実装は旧/新 envelope 混在を増やすため不承認と判定された。
+    そのため未コミットのAPI基盤差分は自分の変更分のみ戻し、今回のland対象は `Plans.md` の
+    AWS/tenant backlog とこの台帳更新に限定した。
+  - bugs found:
+    API-CONTRACT 実装では、旧 `success/error/compatibilityError` を残したまま canonical helper だけ追加すると
+    public API envelope が混在する。次回は route/caller/static convention test まで含めた coherent slice が必要。
+  - security risks found:
+    AWS/tenant backlog に、S3 Object Lock/versioning/KMS policy、PH-OS support session の reason/audit、
+    freelance pharmacist の case assignment 限定、RLS context 拡張、ECS task-role least privilege を追加した。
+  - performance issues found:
+    AWS backlog に CloudWatch alarm baseline、performance metrics flush、Lightsail-to-ECS migration trigger を追加。
+  - validation commands:
+    `git diff --check -- Plans.md`;
+    `pnpm exec prettier --write Plans.md`;
+    `pnpm format:check`.
+  - validation results:
+    `git diff --check -- Plans.md` green; `pnpm format:check` は初回 `Plans.md` の整形で失敗し、
+    `pnpm exec prettier --write Plans.md` 後に green。
+  - remaining work:
+    `AWS-ARCH-001` / `AWS-LS-001` / `S3-PHI-001` の実文書・readiness gate 実装、
+    `TENANT-001` / `TENANT-002` / `TENANT-003` の schema/API/permission matrix 設計、
+    API-CONTRACT-001/002/003 の「helper-only ではない」全面 slice が残る。
+  - next action:
+    この文書スライスを scoped commit し、push 後に次の実装候補を選ぶ。
+
 - codex: Realtime / Web Push PHI boundary hardening and DB/API contract backlog task化。
   - implementation commit: `0075cbc0f` (`Harden realtime and push payload boundaries`)
   - current task:
