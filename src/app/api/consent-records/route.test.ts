@@ -454,7 +454,7 @@ describe('/api/consent-records', () => {
       id: 'consent_2',
       patient_id: 'patient_1',
       consent_type: 'external_sharing',
-      document_url: '/api/files/file_1/presigned-download?download=1',
+      document_url: '/api/files/file_1/download',
       document_file_id: 'file_1',
     });
 
@@ -483,13 +483,13 @@ describe('/api/consent-records', () => {
     });
     expect(consentRecordCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
-        document_url: '/api/files/file_1/presigned-download?download=1',
+        document_url: '/api/files/file_1/download',
         document_file_id: 'file_1',
       }),
     });
     expect(recordConsentRecordCreatedAuditMock).toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
-      document_url: '/api/files/file_1/presigned-download?download=1',
+      document_url: '/api/files/file_1/download',
       has_document_url: true,
       document_url_redacted: false,
     });
@@ -608,7 +608,7 @@ describe('/api/consent-records', () => {
         consent_type: 'external_sharing',
         method: 'paper_scan',
         obtained_date: '2026-03-29',
-        document_url: 'https://evil.example/api/files/file_1/presigned-download?download=1',
+        document_url: 'https://evil.example/api/files/file_1/download',
       }),
     ))!;
 

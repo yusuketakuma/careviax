@@ -935,7 +935,8 @@ export const routeCatalog: RouteCatalogEntry[] = [
     path: '/api/files/:id/presigned-download',
     methods: ['GET'],
     permission: 'purpose-based',
-    description: '用途別権限を確認した上で S3 presigned GET URL を発行',
+    description:
+      'legacy presigned download JSON を無効化し、download=1 のみ同一オリジンダウンロードへ誘導',
     area: 'files',
   },
   {

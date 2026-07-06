@@ -1,49 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { PHOS_DISABLE_LEGACY_FILE_API_ENV } from '@/lib/api/legacy-file-api-boundary';
-import {
-  expectPhiExportSnapshotRedacted,
-  expectSensitiveNoStore,
-} from '@/test/api-response-assertions';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
-const {
-  requireAuthContextMock,
-  createPresignedDownloadMock,
-  recordFileDownloadAuditMock,
-  resolveFileDownloadAuditContextMock,
-  prismaMock,
-} = vi.hoisted(() => ({
+const { requireAuthContextMock } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
-  createPresignedDownloadMock: vi.fn(),
-  recordFileDownloadAuditMock: vi.fn(),
-  resolveFileDownloadAuditContextMock: vi.fn(),
-  prismaMock: {},
 }));
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
-}));
-
-vi.mock('@/server/services/file-storage', () => ({
-  FileStorageError: class FileStorageError extends Error {
-    constructor(
-      readonly code: string,
-      message: string,
-      readonly status: number,
-    ) {
-      super(message);
-    }
-  },
-  createPresignedDownload: createPresignedDownloadMock,
-}));
-
-vi.mock('@/lib/db/client', () => ({
-  prisma: prismaMock,
-}));
-
-vi.mock('@/server/services/file-download-audit', () => ({
-  recordFileDownloadAudit: recordFileDownloadAuditMock,
-  resolveFileDownloadAuditContext: resolveFileDownloadAuditContextMock,
 }));
 
 import { GET } from './route';
@@ -72,28 +37,6 @@ describe('/api/files/[id]/presigned-download GET', () => {
         userAgent: 'TestBrowser/1.0',
       },
     });
-    createPresignedDownloadMock.mockResolvedValue({
-      id: 'file_1',
-      fileName:
-        'Taro Yamada 090-1234-5678 アムロジピン storageKey=s3 token=secret provider raw error.pdf',
-      mimeType: 'application/pdf',
-      sizeBytes: 1024,
-      purpose: 'report',
-      downloadUrl:
-        'https://example.com/download?response-content-disposition=report-file-file_1.pdf&X-Amz-Signature=abc',
-      expiresIn: 900,
-    });
-    recordFileDownloadAuditMock.mockResolvedValue(undefined);
-    resolveFileDownloadAuditContextMock.mockResolvedValue({
-      patientId: 'patient_1',
-      consentAttachmentContext: {
-        patientShareConsentId: 'share_consent_1',
-        shareCaseId: 'share_case_1',
-        hasConsentRecord: true,
-        hasValidUntil: false,
-        consentRevoked: false,
-      },
-    });
   });
 
   afterEach(() => {
@@ -117,100 +60,29 @@ describe('/api/files/[id]/presigned-download GET', () => {
       code: 'PHOS_LEGACY_FILE_API_DISABLED',
     });
     expect(requireAuthContextMock).not.toHaveBeenCalled();
-    expect(createPresignedDownloadMock).not.toHaveBeenCalled();
-    expect(resolveFileDownloadAuditContextMock).not.toHaveBeenCalled();
-    expect(recordFileDownloadAuditMock).not.toHaveBeenCalled();
   });
 
-  it('returns a presigned download url for the requested file', async () => {
+  it('rejects JSON presigned URL issuance without returning a signed downloadUrl', async () => {
     const response = await GET(createRequest(), {
       params: Promise.resolve({ id: 'file_1' }),
     });
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(410);
     expectSensitiveNoStore(response);
-    expect(createPresignedDownloadMock).toHaveBeenCalledWith({
-      orgId: 'org_1',
-      fileId: 'file_1',
-      accessContext: {
-        userId: 'user_1',
-        role: 'admin',
-      },
-    });
-    expect(recordFileDownloadAuditMock).toHaveBeenCalledWith(prismaMock, {
-      orgId: 'org_1',
-      actorId: 'user_1',
-      actorSiteId: 'site_1',
-      patientId: 'patient_1',
-      fileId: 'file_1',
-      purpose: 'report',
-      mimeType: 'application/pdf',
-      sizeBytes: 1024,
-      expiresIn: 900,
-      surface: 'files_presigned_download',
-      responseMode: 'json',
-      consentAttachmentContext: {
-        patientShareConsentId: 'share_consent_1',
-        shareCaseId: 'share_case_1',
-        hasConsentRecord: true,
-        hasValidUntil: false,
-        consentRevoked: false,
-      },
-      ipAddress: '203.0.113.10',
-      userAgent: 'TestBrowser/1.0',
-    });
-    const auditPayload = JSON.stringify(recordFileDownloadAuditMock.mock.calls);
-    expect(auditPayload).not.toContain('https://example.com/download');
-    expect(auditPayload).not.toContain('downloadUrl');
-    expect(auditPayload).not.toContain('response-content-disposition');
-    expect(auditPayload).not.toContain('X-Amz-Signature');
-    expectPhiExportSnapshotRedacted(auditPayload, ['Taro', 'Yamada']);
     const body = await response.json();
     expect(body).toMatchObject({
-      data: {
-        downloadUrl:
-          'https://example.com/download?response-content-disposition=report-file-file_1.pdf&X-Amz-Signature=abc',
-        expiresIn: 900,
-      },
+      code: 'FILE_PRESIGNED_DOWNLOAD_JSON_DISABLED',
     });
-    expect(Object.keys(body.data).sort()).toEqual(['downloadUrl', 'expiresIn']);
-    expect(JSON.stringify(body)).not.toContain('fileName');
-    expectPhiExportSnapshotRedacted(JSON.stringify(body), ['Taro', 'Yamada']);
+    const payload = JSON.stringify(body);
+    expect(payload).not.toContain('downloadUrl');
+    expect(payload).not.toContain('expiresIn');
+    expect(payload).not.toContain('https://');
+    expect(payload).not.toContain('X-Amz-Signature');
+    expect(payload).not.toContain('response-content-disposition');
   });
 
-  it('normalizes padded file ids before creating a presigned download', async () => {
-    const response = await GET(createRequest(), {
-      params: Promise.resolve({ id: '  file_1  ' }),
-    });
-
-    if (!response) throw new Error('response is required');
-    expect(response.status).toBe(200);
-    expect(createPresignedDownloadMock).toHaveBeenCalledWith({
-      orgId: 'org_1',
-      fileId: 'file_1',
-      accessContext: {
-        userId: 'user_1',
-        role: 'admin',
-      },
-    });
-    expect(recordFileDownloadAuditMock).toHaveBeenCalledOnce();
-  });
-
-  it('rejects blank file ids before creating a presigned download', async () => {
-    const response = await GET(createRequest(), {
-      params: Promise.resolve({ id: '   ' }),
-    });
-
-    if (!response) throw new Error('response is required');
-    expect(response.status).toBe(400);
-    expectSensitiveNoStore(response);
-    expect(createPresignedDownloadMock).not.toHaveBeenCalled();
-    expect(resolveFileDownloadAuditContextMock).not.toHaveBeenCalled();
-    expect(recordFileDownloadAuditMock).not.toHaveBeenCalled();
-  });
-
-  it('redirects to the presigned url when download=1 is specified', async () => {
+  it('redirects legacy download=1 requests to the same-origin download route', async () => {
     const response = await GET(
       createRequest('http://localhost/api/files/file_1/presigned-download?download=%201%20'),
       {
@@ -220,65 +92,48 @@ describe('/api/files/[id]/presigned-download GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(307);
-    expect(response.headers.get('location')).toBe(
-      'https://example.com/download?response-content-disposition=report-file-file_1.pdf&X-Amz-Signature=abc',
-    );
+    expect(response.headers.get('location')).toBe('http://localhost/api/files/file_1/download');
     expectSensitiveNoStore(response);
-    expectPhiExportSnapshotRedacted(response.headers.get('location') ?? '', ['Taro', 'Yamada']);
-    expect(recordFileDownloadAuditMock).toHaveBeenCalledWith(
-      prismaMock,
-      expect.objectContaining({
-        surface: 'files_presigned_download',
-        responseMode: 'redirect',
-      }),
-    );
+    expect(response.headers.get('location')).not.toContain('X-Amz-Signature');
+    expect(response.headers.get('location')).not.toContain('downloadUrl');
   });
 
-  it('fails closed without returning the presigned url when audit cannot be recorded', async () => {
-    recordFileDownloadAuditMock.mockRejectedValueOnce(new Error('audit unavailable'));
-
-    const response = await GET(createRequest(), {
-      params: Promise.resolve({ id: 'file_1' }),
-    });
-
-    if (!response) throw new Error('response is required');
-    expect(response.status).toBe(500);
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-    const text = await response.text();
-    expect(text).toContain('FILE_DOWNLOAD_AUDIT_FAILED');
-    expect(text).not.toContain('https://example.com/download');
-  });
-
-  it('fails closed without redirecting when redirect-mode audit cannot be recorded', async () => {
-    recordFileDownloadAuditMock.mockRejectedValueOnce(new Error('audit unavailable'));
-
+  it('normalizes padded file ids before redirecting to the same-origin download route', async () => {
     const response = await GET(
       createRequest('http://localhost/api/files/file_1/presigned-download?download=1'),
       {
-        params: Promise.resolve({ id: 'file_1' }),
+        params: Promise.resolve({ id: '  file_1  ' }),
       },
     );
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(500);
-    expect(response.headers.get('location')).toBeNull();
-    expectSensitiveNoStore(response);
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe('http://localhost/api/files/file_1/download');
   });
 
-  it('does not audit when presigned download creation fails', async () => {
-    const { FileStorageError } = await import('@/server/services/file-storage');
-    createPresignedDownloadMock.mockRejectedValueOnce(
-      new FileStorageError('FILE_NOT_READY', 'ファイルアップロードがまだ完了していません', 409),
-    );
-
+  it('rejects blank file ids before redirecting', async () => {
     const response = await GET(createRequest(), {
-      params: Promise.resolve({ id: 'file_1' }),
+      params: Promise.resolve({ id: '   ' }),
     });
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(400);
     expectSensitiveNoStore(response);
-    expect(resolveFileDownloadAuditContextMock).not.toHaveBeenCalled();
-    expect(recordFileDownloadAuditMock).not.toHaveBeenCalled();
+  });
+
+  it('encodes hostile file ids as a single same-origin path segment on legacy redirects', async () => {
+    const response = await GET(
+      createRequest('http://localhost/api/files/unused/presigned-download?download=1'),
+      {
+        params: Promise.resolve({ id: '../file?x=1#secret' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe(
+      'http://localhost/api/files/..%2Ffile%3Fx%3D1%23secret/download',
+    );
+    expectSensitiveNoStore(response);
   });
 });

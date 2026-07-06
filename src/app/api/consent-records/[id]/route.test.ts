@@ -110,7 +110,7 @@ describe('/api/consent-records/[id]', () => {
       method: 'paper_scan',
       is_active: true,
       expiry_date: new Date('2026-12-31T00:00:00.000Z'),
-      document_url: '/api/files/file_1/presigned-download?download=1',
+      document_url: '/api/files/file_1/download',
       document_file_id: null,
       template_id: 'template_1',
       template_version: 2,
@@ -254,7 +254,7 @@ describe('/api/consent-records/[id]', () => {
     const response = (await PATCH(
       createRequest('PATCH', {
         expiry_date: '2026-12-31',
-        document_url: '/api/files/file_1/presigned-download?download=1',
+        document_url: '/api/files/file_1/download',
       }),
       {
         params: Promise.resolve({ id: 'consent_1' }),
@@ -289,7 +289,7 @@ describe('/api/consent-records/[id]', () => {
       },
       data: {
         expiry_date: new Date('2026-12-31'),
-        document_url: '/api/files/file_1/presigned-download?download=1',
+        document_url: '/api/files/file_1/download',
       },
     });
     expect(consentRecordFindUniqueMock).toHaveBeenCalledWith({
@@ -315,7 +315,7 @@ describe('/api/consent-records/[id]', () => {
         }),
         after: expect.objectContaining({
           id: 'consent_1',
-          document_url: '/api/files/file_1/presigned-download?download=1',
+          document_url: '/api/files/file_1/download',
         }),
         changedFields: ['expiry_date', 'document_url'],
       },
@@ -331,7 +331,7 @@ describe('/api/consent-records/[id]', () => {
       method: 'paper_scan',
       is_active: true,
       expiry_date: new Date('2026-12-31T00:00:00.000Z'),
-      document_url: '/api/files/file_1/presigned-download?download=1',
+      document_url: '/api/files/file_1/download',
       document_file_id: 'file_1',
       template_id: 'template_1',
       template_version: 2,
@@ -365,7 +365,7 @@ describe('/api/consent-records/[id]', () => {
         updated_at: new Date('2026-01-01T00:00:00.000Z'),
       },
       data: {
-        document_url: '/api/files/file_1/presigned-download?download=1',
+        document_url: '/api/files/file_1/download',
         document_file_id: 'file_1',
       },
     });
@@ -540,7 +540,7 @@ describe('/api/consent-records/[id]', () => {
   it('rejects absolute audited-looking document urls before mutating the consent record', async () => {
     const response = (await PATCH(
       createRequest('PATCH', {
-        document_url: 'https://evil.example/api/files/file_1/presigned-download?download=1',
+        document_url: 'https://evil.example/api/files/file_1/download',
       }),
       {
         params: Promise.resolve({ id: 'consent_1' }),

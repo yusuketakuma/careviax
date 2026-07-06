@@ -293,7 +293,7 @@ describe('recordFileDownloadAudit', () => {
     expect(consentRecordFindFirst).toHaveBeenNthCalledWith(2, {
       where: {
         org_id: 'org_1',
-        document_url: '/api/files/file_1/presigned-download?download=1',
+        document_url: '/api/files/file_1/download',
       },
       select: {
         id: true,

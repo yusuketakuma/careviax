@@ -778,7 +778,7 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
         method: 'paper_scan',
         is_active: true,
         expiry_date: new Date('2026-12-31T00:00:00.000Z'),
-        document_url: '/api/files/file_1/presigned-download?download=1',
+        document_url: '/api/files/file_1/download',
         document_file_id: null,
         template_id: 'template_1',
         template_version: 2,

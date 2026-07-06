@@ -41,6 +41,83 @@
 
 ## 直近の land（本日・要点）
 
+- codex: FILE-DOWNLOAD-001 presigned download JSON exposure removed.
+  - current task:
+    `Plans.md` の `FILE-DOWNLOAD-001` を追加・実装。`/api/files/[id]/presigned-download`
+    の JSON `downloadUrl` / `expiresIn` 発行を 410 fail-closed に変更し、`download=1`
+    の旧リンクは S3 URL に直接署名せず same-origin `/api/files/[id]/download` へ誘導する。
+    ConsentRecord document URL は `/download` を canonical に変更し、旧
+    `presigned-download?download=1` は response 時に `/download` へ正規化する。
+    主要 UI consumer の手書き file download path は `buildFileDownloadHref()` に寄せた。
+    併せて `FileAsset.findFirst` 例外を legacy Setting fallback に落とさず
+    `FILE_METADATA_LOOKUP_FAILED` で fail-closed にした。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `git log --oneline -8`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/api/files/[id]/presigned-download/route.ts`,
+    `src/app/api/files/[id]/download/route.ts`,
+    `src/app/api/files/[id]/presigned-download/route.test.ts`,
+    `src/app/api/files/[id]/download/route.test.ts`,
+    `src/server/services/consent-record-documents.ts`,
+    `src/server/services/consent-record-documents.test.ts`,
+    `src/server/services/consent-record-audit.test.ts`,
+    `src/server/services/file-download-audit.ts`,
+    `src/server/services/file-download-audit.test.ts`,
+    `src/server/services/file-storage.ts`,
+    `src/server/services/file-storage.test.ts`,
+    `src/lib/files/navigation.ts`,
+    `src/lib/api/route-catalog.ts`,
+    `src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx`,
+    `src/app/(dashboard)/visits/[id]/visit-record-detail.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    consent-record route tests and protected route fixtures.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/api/files/[id]/presigned-download/route.ts`,
+    `src/app/api/files/[id]/presigned-download/route.test.ts`,
+    `src/app/api/__tests__/api-conventions-static.test.ts`,
+    `src/server/services/consent-record-documents.ts`,
+    `src/server/services/consent-record-documents.test.ts`,
+    `src/server/services/consent-record-audit.test.ts`,
+    `src/server/services/file-download-audit.test.ts`,
+    `src/server/services/file-storage.ts`,
+    `src/server/services/file-storage.test.ts`,
+    `src/lib/api/route-catalog.ts`,
+    `src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx`,
+    `src/app/(dashboard)/visits/[id]/visit-record-detail.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/api/consent-records/route.test.ts`,
+    `src/app/api/consent-records/[id]/route.test.ts`,
+    `src/app/api/__tests__/protected-get-routes.test.ts`.
+  - subagent / review:
+    `security_critic` (`019f360b-b106-7dc0-9f59-02ac3b4dc691`) returned
+    `CHANGES_REQUESTED` for JSON signed URL exposure, consent helper legacy URL emission,
+    FileAsset RLS lookup fallback, and manual file download path construction. Implemented the
+    high/medium findings in this slice. Residual low risk remains: `/download` still redirects
+    to a browser-visible S3 signed URL; eliminating that requires same-origin proxy/streaming or
+    controlled CDN design in a later file/export slice.
+  - validation:
+    `pnpm exec vitest run 'src/app/api/files/[id]/presigned-download/route.test.ts' 'src/app/api/files/[id]/download/route.test.ts' src/server/services/consent-record-documents.test.ts src/server/services/consent-record-audit.test.ts src/server/services/file-download-audit.test.ts src/server/services/file-storage.test.ts src/app/api/__tests__/api-conventions-static.test.ts --reporter=dot --testTimeout=30000`
+    passed: 7 files / 110 tests.
+    `pnpm exec vitest run src/app/api/consent-records/route.test.ts 'src/app/api/consent-records/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`
+    passed: 3 files / 416 tests.
+    `pnpm exec vitest run src/server/services/file-storage.test.ts 'src/app/api/files/[id]/presigned-download/route.test.ts' --reporter=dot --testTimeout=30000`
+    passed: 2 files / 79 tests after adding `FILE_METADATA_LOOKUP_FAILED`.
+    `pnpm exec eslint <owned FILE-DOWNLOAD-001 paths>` passed for code paths; Markdown inputs
+    (`Plans.md`, `ops/refactor/STATE.md`) were ignored by ESLint config with warnings only.
+    `pnpm format:check` passed.
+    `git diff --check -- <owned FILE-DOWNLOAD-001 paths>` passed.
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck` passed.
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false` passed.
+  - remaining work:
+    Commit and push this slice. Later `FILE-001` / `DEV-PHI-001` should evaluate same-origin
+    streaming download to remove redirect-level signed URL exposure entirely.
+  - next action:
+    Scoped commit/push for FILE-DOWNLOAD-001, then continue with the next highest-risk Plans item.
+
 - codex: AWS official-reference implementation rule recorded.
   - current task:
     AWS 関連コードを実装するときは AWS 公式ドキュメントまたは公式 API reference を事前確認する、

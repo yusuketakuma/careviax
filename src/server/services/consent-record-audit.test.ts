@@ -47,7 +47,7 @@ describe('consent record audit helpers', () => {
         },
         {
           id: 'consent_file',
-          document_url: '/api/files/file_1/presigned-download?download=1',
+          document_url: '/api/files/file_1/download',
         },
       ],
     });
@@ -94,7 +94,7 @@ describe('consent record audit helpers', () => {
     const after = {
       ...before,
       expiry_date: null,
-      document_url: '/api/files/file_1/presigned-download?download=1',
+      document_url: '/api/files/file_1/download',
     };
 
     await recordConsentRecordViewedAudit(db, ctx, before);

@@ -777,6 +777,37 @@ describe('file-storage', () => {
     expect(s3SendMock).not.toHaveBeenCalled();
   });
 
+  it('fails closed when FileAsset lookup fails instead of falling back to legacy Setting metadata', async () => {
+    fileAssetFindFirstMock.mockRejectedValueOnce(new Error('RLS context missing'));
+    mockStoredFile({
+      purpose: 'report',
+      reportId: 'report_1',
+      storageKey: 'reports/org_1/report_1/file_1-report.pdf',
+      status: 'uploaded',
+    });
+
+    await expect(
+      createPresignedDownload({
+        orgId: 'org_1',
+        fileId: 'file_1',
+        accessContext: assignedAccessContext,
+      }),
+    ).rejects.toMatchObject({
+      code: 'FILE_METADATA_LOOKUP_FAILED',
+      status: 502,
+    });
+
+    expect(settingFindFirstMock).not.toHaveBeenCalled();
+    expect(getSignedUrlMock).not.toHaveBeenCalled();
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'file_storage.file_asset_lookup_failed',
+        orgId: 'org_1',
+        entityId: 'file_1',
+      }),
+    );
+  });
+
   it('uses PHI-safe delivery filenames instead of stored original filenames', async () => {
     mockStoredFile({
       purpose: 'report',

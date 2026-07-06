@@ -202,6 +202,7 @@ export class FileStorageError extends Error {
     readonly code:
       | 'FILE_STORAGE_NOT_CONFIGURED'
       | 'FILE_METADATA_NOT_FOUND'
+      | 'FILE_METADATA_LOOKUP_FAILED'
       | 'FILE_NOT_READY'
       | 'FILE_UPLOAD_REFERENCE_MISSING'
       | 'FILE_UPLOAD_INVALID_MIME'
@@ -760,14 +761,15 @@ async function persistStoredFileRecord(record: StoredFileRecord) {
 async function readStoredFileRecord(orgId: string, fileId: string): Promise<StoredFileLookup> {
   const store = getFileAssetStore();
   const fileAsset = store
-    ? await store
-        .findFirst({
-          where: {
-            id: fileId,
-            org_id: orgId,
-          },
-        })
-        .catch((error) => {
+    ? await (async () => {
+        try {
+          return await store.findFirst({
+            where: {
+              id: fileId,
+              org_id: orgId,
+            },
+          });
+        } catch (error) {
           logger.warn({
             event: 'file_storage.file_asset_lookup_failed',
             orgId,
@@ -775,8 +777,13 @@ async function readStoredFileRecord(orgId: string, fileId: string): Promise<Stor
             entityId: fileId,
             code: error instanceof Error ? error.name : 'UNKNOWN_ERROR',
           });
-          return null;
-        })
+          throw new FileStorageError(
+            'FILE_METADATA_LOOKUP_FAILED',
+            'ファイルメタデータの確認に失敗しました',
+            502,
+          );
+        }
+      })()
     : null;
 
   const assetRecord = fileAsset ? fileAssetRowToStoredRecord(fileAsset) : null;

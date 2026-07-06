@@ -31,6 +31,7 @@ import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { formatDisplayEntityLabel } from '@/lib/display-id/display-labels';
 import { buildDrugMastersApiPath } from '@/lib/drug-masters/api-paths';
 import { downscaleImage } from '@/lib/files/downscale-image';
+import { buildFileDownloadHref } from '@/lib/files/navigation';
 import { PatientMcsSummarySection } from '@/components/patient-mcs/patient-mcs-summary-section';
 import { JahisSupplementalRecordsCard } from '@/components/features/prescriptions/jahis-supplemental-records-card';
 import { Badge } from '@/components/ui/badge';
@@ -1216,7 +1217,7 @@ export function PrescriptionIntakeForm() {
       const uploaded = await uploadPrescriptionDocument(file);
       updateDocument({
         originalDocumentUrl: new URL(
-          `/api/files/${uploaded.fileId}/download`,
+          buildFileDownloadHref(uploaded.fileId),
           window.location.origin,
         ).toString(),
         originalDocumentName: uploaded.fileName,

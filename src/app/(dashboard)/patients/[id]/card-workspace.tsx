@@ -53,6 +53,7 @@ import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { readApiJson } from '@/lib/api/client-json';
 import { formatDisplayEntityLabel } from '@/lib/display-id/display-labels';
 import { downscaleImage } from '@/lib/files/downscale-image';
+import { buildFileDownloadHref } from '@/lib/files/navigation';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
@@ -5012,10 +5013,7 @@ export function CardWorkspace({
       throw new Error(completeJson?.message ?? '処方せん画像/PDFのアップロード確定に失敗しました');
     }
 
-    return new URL(
-      `/api/files/${encodePathSegment(completeJson.data.id)}/download`,
-      window.location.origin,
-    ).toString();
+    return new URL(buildFileDownloadHref(completeJson.data.id), window.location.origin).toString();
   };
 
   const recordPrescriptionOriginalManagementMutation = useMutation({

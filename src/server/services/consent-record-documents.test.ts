@@ -7,15 +7,13 @@ import {
 
 describe('consent-record-documents', () => {
   it('builds canonical audited consent document urls', () => {
-    expect(buildAuditedConsentDocumentUrl('file_1')).toBe(
-      '/api/files/file_1/presigned-download?download=1',
-    );
+    expect(buildAuditedConsentDocumentUrl('file_1')).toBe('/api/files/file_1/download');
   });
 
   it('encodes hostile file ids as one audited download path segment', () => {
     const url = buildAuditedConsentDocumentUrl('../file?x=1#secret');
 
-    expect(url).toBe('/api/files/..%2Ffile%3Fx%3D1%23secret/presigned-download?download=1');
+    expect(url).toBe('/api/files/..%2Ffile%3Fx%3D1%23secret/download');
     expect(url).not.toContain('/file?');
     expect(url).not.toContain('#secret');
   });
@@ -25,26 +23,27 @@ describe('consent-record-documents', () => {
   });
 
   it('normalizes relative audited consent document urls only', () => {
+    expect(normalizeAuditedConsentDocumentUrl(' /api/files/file_1/download ')).toBe(
+      '/api/files/file_1/download',
+    );
+  });
+
+  it('normalizes legacy presigned audited urls to the same-origin download route', () => {
     expect(
       normalizeAuditedConsentDocumentUrl(' /api/files/file_1/presigned-download?download=1 '),
-    ).toBe('/api/files/file_1/presigned-download?download=1');
+    ).toBe('/api/files/file_1/download');
+    expect(normalizeAuditedConsentDocumentUrl('/api/files/file_1/presigned-download')).toBeNull();
   });
 
   it('redacts audited-looking urls with encoded dot-segment file ids', () => {
-    expect(
-      normalizeAuditedConsentDocumentUrl('/api/files/%2E/presigned-download?download=1'),
-    ).toBeNull();
-    expect(
-      normalizeAuditedConsentDocumentUrl('/api/files/%2E%2E/presigned-download?download=1'),
-    ).toBeNull();
+    expect(normalizeAuditedConsentDocumentUrl('/api/files/%2E/download')).toBeNull();
+    expect(normalizeAuditedConsentDocumentUrl('/api/files/%2E%2E/download')).toBeNull();
   });
 
   it('rejects external and absolute audited-looking urls', () => {
     expect(normalizeAuditedConsentDocumentUrl('https://files.example.test/consent.pdf')).toBeNull();
     expect(
-      normalizeAuditedConsentDocumentUrl(
-        'https://evil.example/api/files/file_1/presigned-download?download=1',
-      ),
+      normalizeAuditedConsentDocumentUrl('https://evil.example/api/files/file_1/download'),
     ).toBeNull();
   });
 
@@ -71,7 +70,7 @@ describe('consent-record-documents', () => {
       }),
     ).toMatchObject({
       id: 'consent_1',
-      document_url: '/api/files/file_1/presigned-download?download=1',
+      document_url: '/api/files/file_1/download',
       has_document_url: true,
       document_url_redacted: false,
     });

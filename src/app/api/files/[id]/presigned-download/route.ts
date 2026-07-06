@@ -1,15 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
-import { error, success, validationError } from '@/lib/api/response';
+import { error, validationError } from '@/lib/api/response';
 import { legacyFileApiDisabledResponse } from '@/lib/api/legacy-file-api-boundary';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import { prisma } from '@/lib/db/client';
-import {
-  recordFileDownloadAudit,
-  resolveFileDownloadAuditContext,
-} from '@/server/services/file-download-audit';
-import { createPresignedDownload, FileStorageError } from '@/server/services/file-storage';
+import { encodePathSegment } from '@/lib/http/path-segment';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const disabledResponse = legacyFileApiDisabledResponse();
@@ -17,78 +12,24 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const authResult = await requireAuthContext(req);
   if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
 
   const { id } = await params;
   const fileId = normalizeRequiredRouteParam(id);
   if (!fileId) return withSensitiveNoStore(validationError('ファイルIDが不正です'));
 
-  try {
-    const data = await createPresignedDownload({
-      orgId: ctx.orgId,
-      fileId,
-      accessContext: {
-        userId: ctx.userId,
-        role: ctx.role,
-      },
-    });
-
-    const shouldRedirect = new URL(req.url).searchParams.get('download')?.trim() === '1';
-    try {
-      const auditContext = await resolveFileDownloadAuditContext(prisma, {
-        orgId: ctx.orgId,
-        fileId: data.id,
-      });
-      await recordFileDownloadAudit(prisma, {
-        orgId: ctx.orgId,
-        actorId: ctx.userId,
-        ...(ctx.actorPharmacyId ? { actorPharmacyId: ctx.actorPharmacyId } : {}),
-        ...(ctx.actorSiteId ? { actorSiteId: ctx.actorSiteId } : {}),
-        ...(auditContext?.patientId ? { patientId: auditContext.patientId } : {}),
-        fileId: data.id,
-        purpose: data.purpose,
-        mimeType: data.mimeType,
-        sizeBytes: data.sizeBytes,
-        expiresIn: data.expiresIn,
-        surface: 'files_presigned_download',
-        responseMode: shouldRedirect ? 'redirect' : 'json',
-        ...(auditContext?.consentAttachmentContext
-          ? { consentAttachmentContext: auditContext.consentAttachmentContext }
-          : {}),
-        ...(auditContext?.consentRecordDocumentContext
-          ? { consentRecordDocumentContext: auditContext.consentRecordDocumentContext }
-          : {}),
-        ...(auditContext?.contractDocumentContext
-          ? { contractDocumentContext: auditContext.contractDocumentContext }
-          : {}),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-      });
-    } catch {
-      return withSensitiveNoStore(
-        error('FILE_DOWNLOAD_AUDIT_FAILED', 'ファイルダウンロード監査を記録できませんでした', 500),
-      );
-    }
-
-    if (shouldRedirect) {
-      const response = NextResponse.redirect(data.downloadUrl);
-      return withSensitiveNoStore(response);
-    }
-
-    const response = success({
-      data: {
-        downloadUrl: data.downloadUrl,
-        expiresIn: data.expiresIn,
-      },
-    });
-    return withSensitiveNoStore(response);
-  } catch (cause) {
-    if (cause instanceof FileStorageError) {
-      return withSensitiveNoStore(error(cause.code, cause.message, cause.status));
-    }
-
-    return withSensitiveNoStore(
-      error('EXTERNAL_FILE_DOWNLOAD_FAILED', 'ダウンロードURLの発行に失敗しました', 502),
+  const shouldRedirect = new URL(req.url).searchParams.get('download')?.trim() === '1';
+  if (shouldRedirect) {
+    const response = NextResponse.redirect(
+      new URL(`/api/files/${encodePathSegment(fileId)}/download`, req.url),
     );
+    return withSensitiveNoStore(response);
   }
+
+  return withSensitiveNoStore(
+    error(
+      'FILE_PRESIGNED_DOWNLOAD_JSON_DISABLED',
+      '署名付きダウンロードURLのJSON発行は無効です。同一オリジンのダウンロードURLを使用してください',
+      410,
+    ),
+  );
 }

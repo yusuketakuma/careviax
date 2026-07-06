@@ -43,6 +43,7 @@ import type { PatientHeaderSummary } from '@/server/services/patient-detail';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { formatFileSize } from '@/lib/files/format-file-size';
+import { buildFileDownloadHref } from '@/lib/files/navigation';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -1298,7 +1299,7 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
                       </div>
                     </div>
                     <Link
-                      href={`/api/files/${attachment.file_id}/download`}
+                      href={buildFileDownloadHref(attachment.file_id)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className={buttonVariants({

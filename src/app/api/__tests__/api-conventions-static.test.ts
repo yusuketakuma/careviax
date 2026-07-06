@@ -75,6 +75,10 @@ describe('API route conventions', () => {
       join(process.cwd(), 'src/app/api/files/[id]/presigned-download/route.test.ts'),
       'utf8',
     );
+    const presignedDownloadRoute = readFileSync(
+      join(process.cwd(), 'src/app/api/files/[id]/presigned-download/route.ts'),
+      'utf8',
+    );
     const downloadTest = readFileSync(
       join(process.cwd(), 'src/app/api/files/[id]/download/route.test.ts'),
       'utf8',
@@ -86,6 +90,8 @@ describe('API route conventions', () => {
     expect(presignedUploadTest).toContain("not.toContain('objectKey')");
     expect(presignedUploadTest).toContain("not.toContain('storageKey')");
     expect(presignedDownloadTest).toContain("not.toContain('downloadUrl')");
+    expect(presignedDownloadRoute).not.toContain('downloadUrl');
+    expect(presignedDownloadRoute).not.toContain('createPresignedDownload');
     expect(downloadTest).toContain("not.toContain('downloadUrl')");
   });
 
