@@ -7002,3 +7002,67 @@
 - remaining:
   Broader `Plans.md` objective remains open. 残りは drug master / formulary 等の手書き CSV export UI registry 化、
   他画面の destructive/bulk confirm wording sweep、Command Center / BFF split / risk registry integration tasks。
+
+## 2026-07-06 Formulary full export registry slice
+
+- codex: `UX-TBL-001 / DEV-PHI-001` formulary CSV export registry connection implemented.
+  採用薬/formulary の手書き CSV export UI を purpose 別 approved server export surface に接続した。
+  `operations` / `audit` / `posting` / `pharmacist_review` を `pharmacy_drug_stocks_*_csv` surface id に対応させ、
+  UI は registry descriptor validation を通ってから `/api/pharmacy-drug-stocks/export` を呼ぶ。
+  route audit metadata に `export_surface_id` を追加し、sanitizer でも PHI-free metadata として許可した。
+  button label は `対象拠点全件CSV出力` に変更した。
+- design / imagegen:
+  export contract / button label slice で視覚再構築や配置変更を伴わないため、`imagegen` / `gpt-image-2`
+  の新規生成は省略した。`docs/ui-ux-design-guidelines.md` の full-scope export wording、audit-near-action、
+  PHI 最小化方針に沿う。
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `docs/ui-ux-design-guidelines.md`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/lib/audit/server-export-registry.ts`,
+  `src/lib/audit/server-export-registry.test.ts`,
+  `src/lib/audit/export-audit-sanitizer.ts`,
+  `src/app/api/pharmacy-drug-stocks/export/route.ts`,
+  `src/app/api/pharmacy-drug-stocks/export/route.test.ts`,
+  `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`,
+  `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`,
+  `src/app/(dashboard)/admin/drug-masters/drug-master-formulary-operations-panel.tsx`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/lib/audit/server-export-registry.ts`,
+  `src/lib/audit/server-export-registry.test.ts`,
+  `src/lib/audit/export-audit-sanitizer.ts`,
+  `src/app/api/pharmacy-drug-stocks/export/route.ts`,
+  `src/app/api/pharmacy-drug-stocks/export/route.test.ts`,
+  `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`,
+  `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`,
+  `src/app/(dashboard)/admin/drug-masters/drug-master-formulary-operations-panel.tsx`.
+- bugs / risks reduced:
+  採用薬 CSV の手書き export UI が approved server export registry を迂回し、UI 上も scope が単なる
+  `CSV出力` に見える gap を縮小した。route の実 audit payload に purpose 別 surface id を残すため、
+  UI descriptor / route / audit sanitizer の突合が可能になった。
+- security / PHI reviewed:
+  新規 PHI field は追加しない。audit metadata へ追加したのは fixed enum surface id のみ。
+  `source` と `export_surface_id` 以外の pharmacy drug stock metadata は sanitizer で許可しない。
+- performance issues reviewed:
+  クリック時の small descriptor validation と fixed enum metadata 追加のみ。export DB query、CSV payload、
+  list query、mutation path は変更なし。
+- validation:
+  `pnpm exec vitest run src/lib/audit/server-export-registry.test.ts src/app/api/pharmacy-drug-stocks/export/route.test.ts 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' --reporter=dot --testTimeout=30000`
+  green (3 files / 110 tests);
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  green;
+  `pnpm lint`
+  green with existing warnings in `src/lib/platform/break-glass.test.ts` (`_tx`, `_input` unused);
+  `pnpm format:check`
+  green;
+  `git diff --check -- Plans.md ops/refactor/STATE.md src/lib/audit/server-export-registry.ts src/lib/audit/server-export-registry.test.ts src/lib/audit/export-audit-sanitizer.ts src/app/api/pharmacy-drug-stocks/export/route.ts src/app/api/pharmacy-drug-stocks/export/route.test.ts 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-formulary-operations-panel.tsx'`
+  green.
+- remaining:
+  Broader `Plans.md` objective remains open. 次はユーザー指定の P0 `files/complete` response minimization。
+  その後、Performance metrics 本番運用化、患者一覧 cursor pagination、訪問記録 autosave/sync、
+  調剤ワークベンチ queue pagination を優先する。
