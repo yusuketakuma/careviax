@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: MOV-001 Self report timeline minimization（未コミット）。
+- codex: MOV-001 Self report timeline minimization（commit 7378b650d, push pending）。
   - current task:
     Patient Movement Timeline と `/api/patients/:id/timeline` の self report 表示から件名/本文/報告者名を外し、
     患者起点更新も marker-only + 正本 deep link に寄せる。
