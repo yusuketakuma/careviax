@@ -4152,6 +4152,19 @@ describe('getPatientTimelineData', () => {
         created_at: new Date('2026-04-04T12:30:00.000Z'),
         updated_at: new Date('2026-04-04T12:30:00.000Z'),
       },
+      {
+        id: 'task_inbound_schedule_1',
+        task_type: 'pharmacy.inbound_schedule_request_review_required',
+        status: 'pending',
+        priority: 'high',
+        due_date: null,
+        sla_due_at: new Date('2026-04-04T14:00:00.000Z'),
+        completed_at: null,
+        related_entity_type: 'patient',
+        related_entity_id: 'patient_1',
+        created_at: new Date('2026-04-04T13:30:00.000Z'),
+        updated_at: new Date('2026-04-04T13:30:00.000Z'),
+      },
     ]);
     const db = buildDb({
       patient: {
@@ -4161,7 +4174,7 @@ describe('getPatientTimelineData', () => {
         }),
       },
       task: {
-        count: vi.fn().mockResolvedValue(4),
+        count: vi.fn().mockResolvedValue(5),
         findMany: taskFindManyMock,
       },
     });
@@ -4235,6 +4248,16 @@ describe('getPatientTimelineData', () => {
           category: 'medication_stock',
           title: '残数確認タスクを作成',
           href: '/tasks?status=&task_type=pharmacy.medication_stock_external_observation_review_required&related_entity_type=patient&related_entity_id=patient_1',
+          status: 'pending',
+          status_label: '未着手',
+          privacy_level: 'summary',
+        }),
+        expect.objectContaining({
+          id: 'task:task_inbound_schedule_1',
+          event_type: 'task_created',
+          category: 'task',
+          title: '運用タスクを作成',
+          href: '/tasks?status=&task_type=pharmacy.inbound_schedule_request_review_required&related_entity_type=patient&related_entity_id=patient_1',
           status: 'pending',
           status_label: '未着手',
           privacy_level: 'summary',

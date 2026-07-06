@@ -41,6 +41,33 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOV-001 inbound schedule task generic movement regression test（commit pending）。
+  - current task:
+    INB-001 の訪問調整 task は Schedule Day Board に作業導線を寄せ、Patient Movement Timeline では
+    safety/medication_stock signal に誤分類せず generic operational task として扱う設計をテストで固定する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `src/server/services/patient-detail.test.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `Plans.md`.
+  - files changed:
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-detail.test.ts`.
+  - implementation:
+    `getPatientTimelineData` の operational task test に
+    `pharmacy.inbound_schedule_request_review_required` を追加し、`event_type='task_created'`,
+    `category='task'`, controlled title `運用タスクを作成`, `/tasks` deep link のままになることを固定。
+  - validation:
+    `pnpm vitest run src/server/services/patient-detail.test.ts --reporter=dot --testTimeout=30000`
+    passed: 1 file / 74 tests.
+    `pnpm exec eslint src/server/services/patient-detail.test.ts` passed.
+    `pnpm exec prettier --check src/server/services/patient-detail.test.ts` passed.
+    `git diff --check -- src/server/services/patient-detail.test.ts` passed.
+  - remaining:
+    Scoped commit/push。
+  - next action:
+    Scoped commit/push.
+
 - codex: INB-001 inbound schedule request day-board linkage（commit 4c80c9929）。
   - current task:
     他職種受信の訪問調整確認 task `pharmacy.inbound_schedule_request_review_required` を、
