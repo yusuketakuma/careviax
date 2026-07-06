@@ -41,6 +41,47 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOV-001 Self report timeline minimization（未コミット）。
+  - current task:
+    Patient Movement Timeline と `/api/patients/:id/timeline` の self report 表示から件名/本文/報告者名を外し、
+    患者起点更新も marker-only + 正本 deep link に寄せる。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-detail.ts`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail.test.ts`,
+    `src/app/(dashboard)/patients/[id]/patient-detail.types.ts`,
+    `src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx`,
+    `src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-detail.ts`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail.test.ts`,
+    `src/app/(dashboard)/patients/[id]/patient-detail.types.ts`,
+    `src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx`,
+    `src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx`.
+  - implementation:
+    `selfReportsSource` の select から `subject`, `content`, `reported_by_name` を削除し、
+    timeline summary は category + 折返し希望の controlled summary に変更した。`self_reports`
+    snapshot も最小DTOへ変換し、右レールの「患者からの更新」も「自己申告あり」+
+    category/status/callback/日時のみにした。
+  - security risks reduced:
+    自己申告の件名、本文、報告者名が patient movement payload、検索 haystack、右レール表示に流れる面を縮小した。
+  - validation:
+    `pnpm exec vitest run src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.test.ts 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx' --reporter=dot --testTimeout=30000` → pass（91 tests）。
+    `pnpm exec eslint src/server/services/patient-detail.ts src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.ts 'src/app/(dashboard)/patients/[id]/patient-detail.types.ts' 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx' 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx'` → pass。
+    `pnpm exec prettier --write src/server/services/patient-detail.ts src/server/services/patient-detail-timeline-registry.ts` → applied formatting.
+  - remaining:
+    Formal inbound DB/API/review UI and MedicationStock Ledger source remain.
+  - next action:
+    Run final prettier check / diff check, then scoped commit/push if green.
+
 - codex: MOV-001 First visit document audit label hardening（commit 191ea5a00, pushed）。
   - current task:
     初回訪問文書の audit-derived marker が `document_action` 内の template/reason/note や未知ラベルを

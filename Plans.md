@@ -1151,6 +1151,7 @@ notification:
 > `cc:PARTIAL 2026-07-07`: `managementPlansSource` は文書 marker-only 契約に合わせ、管理計画書の `title`、適用開始日、次回見直し日を timeline source で select しない。timeline は「管理計画書を作成/承認した」発生事実、controlled status、計画書 deep link のみに限定し、計画書タイトルや本文相当の free text を `movement_events` に混入させない。
 > `cc:PARTIAL 2026-07-07`: `careReportsSource` の送付履歴 marker は `recipient_name` を select しない。報告書送付/受領確認は、送付・受領があった事実、channel、report type、controlled status、報告書 deep link のみに限定し、送付先名や本文相当の情報は正本画面で再認可して確認する。
 > `cc:PARTIAL 2026-07-07`: 初回訪問文書の `operation_history` bridge は、`document_action.template_name` / `template_version` / `storage_location` / `reason` / `note` を timeline helper で読まない。未知の `document_type` は「初回訪問文書」、未知の action は「更新」へ丸め、audit changes 内の自由記載や患者名入りラベルが文書 marker / movement payload に出ないよう固定する。
+> `cc:PARTIAL 2026-07-07`: `selfReportsSource` は `subject` / `content` / `reported_by_name` を select しない。`self_reports` snapshot も同じ最小DTOへ変換し、患者起点更新は「自己申告があった」事実、category、status、折返し希望、希望時間、連携 deep link のみに限定する。件名・本文・報告者名は患者連携の正本画面で再認可して確認する。
 
 **重要なUI方針**:
 

@@ -210,12 +210,9 @@ export type ResidualMedicationTimelineSource = {
 
 export type SelfReportTimelineSource = {
   id: string;
-  subject: string | null;
   category: string | null;
-  content: string | null;
   relation: string | null;
   status: string;
-  reported_by_name: string | null;
   requested_callback: boolean;
   preferred_contact_time: string | null;
   created_at: Date;

@@ -48,11 +48,9 @@ type TimelineEvent = {
 
 type SelfReport = {
   id: string;
-  subject: string;
   category: string;
   relation: string | null;
   status: string;
-  reported_by_name: string;
   requested_callback: boolean;
   preferred_contact_time: string | null;
   created_at: string;
@@ -385,12 +383,6 @@ function formatOccurredAt(value: string) {
 
 function formatOccurredAtLong(value: string) {
   return format(new Date(value), 'yyyy/MM/dd HH:mm', { locale: ja });
-}
-
-function previewText(value: string | null | undefined, maxLength = 96) {
-  const normalized = value?.replace(/\s+/g, ' ').trim();
-  if (!normalized) return null;
-  return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}...` : normalized;
 }
 
 function workflowHaystack(event: TimelineEvent) {
@@ -870,20 +862,13 @@ export function PatientMovementTimeline({
             ) : (
               recentSelfReports.map((item) => (
                 <div key={item.id} className="rounded-xl border border-border/70 bg-muted/10 p-3">
-                  <p className="text-sm font-medium text-foreground">{item.subject}</p>
+                  <p className="text-sm font-medium text-foreground">自己申告あり</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {item.reported_by_name}
-                    {item.relation ? ` (${item.relation})` : ''}
-                    {' / '}
                     {item.category}
+                    {item.relation ? ` / 関係 ${item.relation}` : ''}
                     {' / '}
                     {SELF_REPORT_STATUS_LABELS[item.status] ?? item.status}
                   </p>
-                  {item.content ? (
-                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                      {previewText(item.content)}
-                    </p>
-                  ) : null}
                   <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
                     {item.requested_callback ? <span>折返し希望</span> : null}
                     {item.preferred_contact_time ? (

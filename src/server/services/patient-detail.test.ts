@@ -4103,8 +4103,9 @@ describe('getPatientTimelineData', () => {
           id: 'self_report:self_report_1',
           event_type: 'self_report',
           title: '患者から自己申告を受信',
+          summary: '副作用・体調変化 / 折返し希望',
           status_label: '未対応',
-          actor_name: '山田花子',
+          actor_name: null,
           metadata: expect.arrayContaining(['関係 本人', '折返し希望', '希望時間 18:00以降']),
         }),
         expect.objectContaining({
@@ -4149,11 +4150,24 @@ describe('getPatientTimelineData', () => {
         take: 8,
       }),
     );
+    expect(db.patientSelfReport.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.not.objectContaining({
+          subject: true,
+          content: true,
+          reported_by_name: true,
+        }),
+      }),
+    );
     expect(result?.timeline_events.map((item) => item.id)).not.toContain(
       'communication:comm_self_report',
     );
-    expect(JSON.stringify(result?.movement_events)).not.toContain('服薬時間を相談');
-    expect(JSON.stringify(result?.movement_events)).not.toContain('長女');
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain('服薬時間を相談');
+    expect(serialized).not.toContain('長女');
+    expect(serialized).not.toContain('夕方にふらつきあり');
+    expect(serialized).not.toContain('夕方になると立ち上がり時にふらつきます');
+    expect(serialized).not.toContain('山田花子');
   });
 
   it('adds MCS and partner visit records to movement timeline without selecting raw message bodies', async () => {

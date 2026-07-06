@@ -579,12 +579,9 @@ export type PatientTimelineSnapshot = {
   movement_events?: PatientMovementTimelineEvent[];
   self_reports: Array<{
     id: string;
-    subject: string;
     category: string;
-    content: string;
     relation: string | null;
     status: string;
-    reported_by_name: string;
     requested_callback: boolean;
     preferred_contact_time: string | null;
     created_at: string;

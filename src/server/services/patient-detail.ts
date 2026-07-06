@@ -872,7 +872,15 @@ export async function getPatientTimelineData(runScoped: ScopedTxRunner, args: Pa
     movement_events: buildPatientMovementTimelineEvents(timelineEvents, {
       patientId: args.patientId,
     }),
-    self_reports: selfReports,
+    self_reports: selfReports.map((item) => ({
+      id: item.id,
+      category: item.category ?? '未分類',
+      relation: item.relation,
+      status: item.status,
+      requested_callback: item.requested_callback,
+      preferred_contact_time: item.preferred_contact_time,
+      created_at: item.created_at.toISOString(),
+    })),
     ...(partialFailures.length > 0 ? { partial_failures: partialFailures } : {}),
   };
 }

@@ -50,7 +50,6 @@ import {
   compactTimelineValues,
   formatTimelineDate,
   formatTokyoMonthStart,
-  previewTimelineText,
 } from '@/server/services/patient-detail-timeline-events';
 
 /** Shared frozen empty array; type-linked to each adapter's Row at the use site. */
@@ -750,12 +749,9 @@ export const selfReportsSource = defineTimelineSource<'selfReports', SelfReportT
       take: 8,
       select: {
         id: true,
-        subject: true,
         category: true,
-        content: true,
         relation: true,
         status: true,
-        reported_by_name: true,
         requested_callback: true,
         preferred_contact_time: true,
         created_at: true,
@@ -769,16 +765,14 @@ export const selfReportsSource = defineTimelineSource<'selfReports', SelfReportT
       occurred_at: item.created_at,
       title: '患者から自己申告を受信',
       summary:
-        compactTimelineValues([
-          item.subject,
-          item.category,
-          previewTimelineText(item.content),
-        ]).join(' / ') || null,
+        compactTimelineValues([item.category, item.requested_callback ? '折返し希望' : null]).join(
+          ' / ',
+        ) || null,
       href: hrefs.patientCollaborationHref,
       action_label: '連携を確認',
       status: item.status,
       status_label: SELF_REPORT_STATUS_LABELS[item.status] ?? item.status,
-      actor_name: item.reported_by_name,
+      actor_name: null,
       metadata: compactTimelineValues([
         item.relation ? `関係 ${item.relation}` : null,
         item.requested_callback ? '折返し希望' : null,

@@ -69,15 +69,12 @@ const timelineEvents = [
 const selfReports = [
   {
     id: 'self_report_1',
-    subject: '夕方にふらつきあり',
     category: '体調変化',
     relation: '本人',
     status: 'submitted',
-    reported_by_name: '山田花子',
     requested_callback: true,
     preferred_contact_time: '18:00以降',
     created_at: '2026-04-03T09:00:00.000Z',
-    content: '立ち上がり時にふらつきがあり、折り返し連絡を希望しています。',
   },
 ];
 
@@ -137,7 +134,7 @@ describe('PatientMovementTimeline', () => {
     expect(screen.getByText('2026年4月2日')).toBeTruthy();
     expect(screen.getAllByText('訪問記録を登録').length).toBeGreaterThan(0);
     expect(screen.getAllByText('管理計画書を承認').length).toBeGreaterThan(0);
-    expect(screen.getByText('夕方にふらつきあり')).toBeTruthy();
+    expect(screen.getByText('自己申告あり')).toBeTruthy();
     expect(screen.getByText(/未対応/)).toBeTruthy();
     expect(screen.getByText('在宅運用履歴')).toBeTruthy();
     expect(screen.getByText('処方・訪問')).toBeTruthy();
@@ -151,9 +148,10 @@ describe('PatientMovementTimeline', () => {
     ]) {
       expect(screen.getByText(label)).toBeTruthy();
     }
+    expect(screen.queryByText('夕方にふらつきあり')).toBeNull();
     expect(
-      screen.getByText('立ち上がり時にふらつきがあり、折り返し連絡を希望しています。'),
-    ).toBeTruthy();
+      screen.queryByText('立ち上がり時にふらつきがあり、折り返し連絡を希望しています。'),
+    ).toBeNull();
     expect(screen.queryByText('服薬状況は安定しています。')).toBeNull();
     expect(screen.queryByText('アムロジピン 30錠 / 持参')).toBeNull();
     expect(screen.queryByText('訪問薬剤管理指導計画書 / 次回見直し 2026/05/01')).toBeNull();
