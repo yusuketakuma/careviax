@@ -6,8 +6,8 @@ import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { Lock, MessageSquare, TriangleAlert } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
-import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
+import { SegmentError, SegmentStaleBanner } from '@/components/ui/segment-state';
 import { FilterChipBar } from '@/components/features/workspace/filter-chip-bar';
 import {
   WorkspaceActionRail,
@@ -655,12 +655,14 @@ function DashboardDetailsError({ error, onRetry }: { error: unknown; onRetry: ()
       className="rounded-lg border border-border/70 bg-card p-4"
       data-testid="dashboard-details-error"
     >
-      <ErrorState
-        variant="server"
+      <SegmentError
         title="対応詳細を表示できません"
-        description="監査キューと今日の訪問明細だけ取得に失敗しました。概要は表示したまま再試行できます。"
+        cause="監査キューと今日の訪問明細だけ取得に失敗しました。"
+        nextAction="概要は表示したまま、詳細セクションだけ再試行できます。"
         detail={error instanceof Error ? error.message : undefined}
         onRetry={onRetry}
+        retryLabel="再試行"
+        metadata={{ route: '/api/dashboard/cockpit/details' }}
       />
     </section>
   );
@@ -693,12 +695,14 @@ function TeamCapacityError({ error, onRetry }: { error: unknown; onRetry: () => 
       className="rounded-lg border border-border/70 bg-card p-4"
       data-testid="dashboard-team-error"
     >
-      <ErrorState
-        variant="server"
+      <SegmentError
         title="チーム状況を表示できません"
-        description="担当者の余白だけ取得に失敗しました。工程状況は表示したまま再試行できます。"
+        cause="担当者の余白だけ取得に失敗しました。"
+        nextAction="工程状況は表示したまま、チーム状況だけ再試行できます。"
         detail={error instanceof Error ? error.message : undefined}
         onRetry={onRetry}
+        retryLabel="再試行"
+        metadata={{ route: '/api/dashboard/cockpit/team' }}
       />
     </section>
   );
@@ -782,12 +786,14 @@ function TeamConversationPanel({
         className="rounded-lg border border-border/70 bg-card p-4"
         data-testid="dashboard-comments-error"
       >
-        <ErrorState
-          variant="server"
+        <SegmentError
           title="チームの会話を表示できません"
-          description="コメントだけ取得に失敗しました。次にやることと止まっている理由は表示したまま再試行できます。"
+          cause="コメントだけ取得に失敗しました。"
+          nextAction="次にやることと止まっている理由は表示したまま、チームの会話だけ再試行できます。"
           detail={error instanceof Error ? error.message : undefined}
           onRetry={onRetry}
+          retryLabel="再試行"
+          metadata={{ route: '/api/dashboard/cockpit/comments' }}
         />
       </section>
     );
@@ -1069,41 +1075,31 @@ export function DashboardCockpit({ focusRole = 'common' }: { focusRole?: Dashboa
           <CockpitSkeleton />
         ) : !summary ? (
           <div className="rounded-lg border border-border/70 bg-card p-4">
-            <ErrorState
-              variant="server"
+            <SegmentError
               title="ダッシュボードを表示できません"
-              description="運用コックピットの集計取得に失敗しました。再試行してください。"
+              cause="運用コックピットの集計取得に失敗しました。"
+              nextAction="再試行して、概要から読み込み直してください。"
               detail={summaryQuery.error instanceof Error ? summaryQuery.error.message : undefined}
               onRetry={() => void summaryQuery.refetch()}
+              retryLabel="再試行"
+              metadata={{ route: '/api/dashboard/cockpit/summary' }}
             />
           </div>
         ) : (
           <div className="space-y-4">
             {hasStaleRefetchError ? (
-              <div
-                role="status"
-                aria-live="polite"
-                className="flex flex-wrap items-center gap-3 rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-3 text-sm text-state-confirm"
-              >
-                <TriangleAlert className="size-4 shrink-0" aria-hidden="true" />
-                <p className="min-w-0 flex-1 leading-6">
-                  最新化に失敗しました。表示中の情報は前回取得時点のものです。
-                </p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="min-h-[44px] border-state-confirm/40 bg-card text-state-confirm hover:bg-state-confirm/15 sm:min-h-9"
-                  onClick={() => {
-                    void summaryQuery.refetch();
-                    void detailsQuery.refetch();
-                    void teamQuery.refetch();
-                    void commentsQuery.refetch();
-                  }}
-                >
-                  再試行
-                </Button>
-              </div>
+              <SegmentStaleBanner
+                title="前回取得時点の情報を表示中"
+                description="最新化に失敗しました。表示中の情報は前回取得時点のものです。"
+                retryLabel="再試行"
+                metadata={{ generatedAt: summary.generated_at }}
+                onRetry={() => {
+                  void summaryQuery.refetch();
+                  void detailsQuery.refetch();
+                  void teamQuery.refetch();
+                  void commentsQuery.refetch();
+                }}
+              />
             ) : null}
             <div className="min-w-0 space-y-4">
               <ConditionBanner data={summary} />

@@ -41,6 +41,46 @@
 
 ## 直近の land（本日・要点）
 
+- codex: FE-ERR-001 Dashboard segment state migration（commit pending）。
+  - current task:
+    前回追加した shared segment state wrapper を dashboard cockpit の summary/details/team/comments
+    segment に展開し、BFF segment 失敗時の fail-soft 表示を共通化する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`,
+    `src/components/ui/segment-state.tsx`,
+    `src/components/ui/segment-state.test.tsx`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`.
+  - implementation:
+    Dashboard summary 初回失敗、details 初回失敗、team 初回失敗、comments 初回失敗を
+    `SegmentError` へ移行した。背景 refetch 失敗の stale banner は `SegmentStaleBanner` へ
+    置換し、概要/詳細/team/comments の再試行導線を維持した。segment route metadata は
+    `/api/dashboard/cockpit/{summary|details|team|comments}` の controlled route だけを渡す。
+  - safety:
+    既存の fail-soft 契約（summary/process/action rail を消さず、失敗 segment だけ retry 可能にする）
+    を維持。エラー表示は `SegmentError` の route sanitization contract に乗せ、query/id を出さない。
+  - validation:
+    `pnpm exec vitest run 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx' src/components/ui/segment-state.test.tsx --reporter=dot --testTimeout=30000`
+    passed: 2 files / 24 tests.
+    `pnpm exec eslint 'src/app/(dashboard)/dashboard/dashboard-cockpit.tsx' src/components/ui/segment-state.tsx src/components/ui/segment-state.test.tsx`
+    passed.
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md 'src/app/(dashboard)/dashboard/dashboard-cockpit.tsx'`
+    passed after formatting `Plans.md` and `dashboard-cockpit.tsx`.
+    `git diff --check -- Plans.md ops/refactor/STATE.md 'src/app/(dashboard)/dashboard/dashboard-cockpit.tsx'`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`
+    passed.
+  - remaining:
+    commit、push。患者詳細 tabs、訪問準備、スケジュール、task/admin への展開は後続。
+  - next action:
+    Run final validation and land the dashboard segment migration.
+
 - codex: FE-ERR-001 Segment boundary shared state components（commit 24ce5481b, pushed）。
   - current task:
     partial BFF / section failure を画面全体の失敗や false-empty にしないための shared segment
