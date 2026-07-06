@@ -41,6 +41,58 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Oracle/GPT-5.5 Pro GitHub-context requirement clarified.
+  - current task:
+    ユーザー指示により、Oracle/GPT-5.5 Pro 相談基準を再整理した。全 Oracle 相談では
+    対象 repo の GitHub context（remote URL、branch、current commit、dirty/clean state、
+    関連 PR/issue があればその URL/state）を事前確認し、prompt に含めることを必須化した。
+    これは Oracle 自体の usage rules / flags / Browser mode / model selection / session handling
+    を変更する時だけ `steipete/oracle` 上流確認を追加必須にするルールとは別枠として明記した。
+  - GitHub context checked:
+    target repo `https://github.com/yusuketakuma/careviax`, branch `main`,
+    current commit `58d1436c42d881ffbbe33eacd612cfbb3f6b433a`,
+    default branch `main`, worktree had only this documentation/policy slice dirty after edits.
+  - Oracle upstream references checked (2026-07-06):
+    `https://github.com/steipete/oracle`,
+    `https://github.com/steipete/oracle/blob/main/skills/oracle/SKILL.md`,
+    `https://github.com/steipete/oracle/blob/main/docs/browser-mode.md`,
+    `https://github.com/steipete/oracle/blob/main/CHANGELOG.md`.
+    Upstream confirms Browser mode with `gpt-5.5-pro`, minimal file sets, `--dry-run` /
+    `--files-report`, manual-login profile reuse, stored sessions, and reattach/restart behavior.
+    Local CLI help was checked with `npx -y @steipete/oracle --help` and reported
+    Oracle CLI v0.15.1.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `git remote -v`,
+    `git rev-parse --abbrev-ref HEAD`,
+    `git rev-parse HEAD`,
+    `gh repo view --json nameWithOwner,url,defaultBranchRef`,
+    `AGENTS.md`,
+    `.agents/skills/oracle-consult/SKILL.md`,
+    `.oracle/config.json`,
+    `ops/refactor/STATE.md`,
+    Oracle upstream README / bundled skill / browser-mode docs / CHANGELOG.
+  - files changed:
+    `AGENTS.md`,
+    `.agents/skills/oracle-consult/SKILL.md`,
+    `ops/refactor/STATE.md`.
+  - security / privacy:
+    Oracle prompt requirements now require GitHub context while preserving data minimization:
+    no secrets, `.env`, credentials, raw patient data, raw medical records, production dumps,
+    or unredacted PHI/PII. GitHub context is metadata-first and must not claim verification when
+    GitHub/`gh` is unavailable.
+  - validation:
+    `python3 /Users/yusuke/.codex/skills/.system/skill-creator/scripts/quick_validate.py .agents/skills/oracle-consult`
+    passed.
+    `pnpm exec prettier --check AGENTS.md .agents/skills/oracle-consult/SKILL.md ops/refactor/STATE.md`
+    passed.
+    `git diff --check -- AGENTS.md .agents/skills/oracle-consult/SKILL.md ops/refactor/STATE.md`
+    passed.
+  - remaining work:
+    Run focused validation, scoped commit, and push this policy/docs slice.
+  - next action:
+    Resume `DSP-QUEUE-PAGE-001` after the Oracle policy slice is landed.
+
 - codex: PAT-BOARD-PAGE-001 PatientsBoard cursor pagination implemented.
   - current task:
     `Plans.md` の `PAT-BOARD-PAGE-001` を実装。`/api/patients/board` を固定

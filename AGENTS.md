@@ -60,6 +60,32 @@ confident claims about current Oracle behavior. This upstream check is required 
 when changing Oracle itself or its operating instructions, not for every implementation
 consultation.
 
+Last verified against upstream GitHub on 2026-07-06:
+Oracle README, bundled `skills/oracle/SKILL.md`, `docs/browser-mode.md`, and
+`CHANGELOG.md` confirm Browser mode with `gpt-5.5-pro`, minimal file sets,
+`--dry-run` / `--files-report`, manual-login profile reuse, stored sessions,
+and reattach/restart behavior. The local CLI help was also checked with
+`npx -y @steipete/oracle --help` and reported Oracle CLI v0.15.1.
+
+Before the first Oracle run in a session, run:
+
+```bash
+npx -y @steipete/oracle --help
+```
+
+GitHub context requirement for every Oracle/GPT-5.5 Pro consult:
+
+- Before consulting Oracle, inspect the current GitHub repository context:
+  `git remote -v`, current branch, current commit, and related PR/issue context
+  when available through `gh` or GitHub web.
+- Include that context in the Oracle prompt. At minimum include repository URL,
+  branch, current commit, dirty/clean state, and relevant PR/issue URL or state.
+- If GitHub or `gh` is unavailable, state that clearly in the prompt and final
+  notes. Do not claim GitHub-current context was reviewed when it was not.
+- Keep this distinct from the Oracle upstream verification requirement above:
+  every Oracle consult needs target-repo GitHub context; only Oracle operating
+  instruction changes need `steipete/oracle` upstream verification.
+
 Default Oracle command shape:
 
 ```bash
@@ -87,15 +113,18 @@ npx -y @steipete/oracle --dry-run summary --files-report \
 
 Before consulting Oracle, prepare a high-signal prompt with the goal, current state,
 exact blocker or uncertainty, files inspected, files changed, commands run, exact errors
-or logs, options considered, constraints, and the decision needed from GPT-5.5 Pro.
+or logs, options considered, constraints, GitHub repository/branch/commit/PR context,
+and the decision needed from GPT-5.5 Pro. Oracle prompts must explicitly ask GPT-5.5
+Pro to consider the GitHub context rather than only the attached local files.
 
 Never send secrets, `.env` files, private keys, access tokens, raw patient data, raw
 medical records, production credentials, or unredacted PHI/PII to Oracle. Use the
 smallest file set that contains the truth, prefer redacted fixtures, and treat Oracle
 output as advisory until verified by code inspection, tests, typecheck, lint, and local
 execution. If Oracle detaches or times out, do not start duplicate consultations;
-inspect `oracle status --hours 72`, `oracle session <id> --render`, or
-`oracle restart <id>`.
+inspect `npx -y @steipete/oracle status --hours 72`,
+`npx -y @steipete/oracle session <id> --render`, or
+`npx -y @steipete/oracle restart <id>`.
 
 Runtime model, approval, sandbox, service tier, MCP, and custom-agent registration belong in the user-level `~/.codex/config.toml`. This repository file defines PH-OS-specific working rules and should not be treated as the effective runtime configuration layer.
 

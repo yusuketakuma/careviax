@@ -73,6 +73,39 @@ If GitHub is unavailable, state that upstream verification could not be
 completed and avoid confident claims about current Oracle behavior. This rule is
 only for Oracle operating instructions, not every implementation consult.
 
+Last verified against upstream GitHub on 2026-07-06:
+
+- Oracle README
+- bundled `skills/oracle/SKILL.md`
+- `docs/browser-mode.md`
+- `CHANGELOG.md`
+
+The verified upstream behavior confirms Browser mode with `gpt-5.5-pro`, minimal
+file sets, `--dry-run` / `--files-report`, manual-login profile reuse, stored
+sessions, and reattach/restart behavior. The local CLI help was also checked
+with `npx -y @steipete/oracle --help` and reported Oracle CLI v0.15.1.
+
+## GitHub Context Requirement
+
+Every Oracle/GPT-5.5 Pro consult must include current target-repository GitHub
+context.
+
+Before consulting Oracle:
+
+1. Inspect `git remote -v`.
+2. Inspect the current branch and current commit.
+3. Inspect dirty/clean state.
+4. Inspect related PR/issue context when available through `gh` or GitHub web.
+
+Include repository URL, branch, current commit, dirty/clean state, and relevant
+PR/issue URL or state in the prompt. If GitHub or `gh` is unavailable, say so in
+the prompt and final notes. Do not claim GitHub-current context was reviewed
+when it was not.
+
+This is separate from upstream verification: every consult needs target-repo
+GitHub context, but only Oracle operating-instruction changes require
+`steipete/oracle` upstream verification.
+
 ## Data Minimization
 
 Never attach `.env`, `.env.*`, API keys, private keys, credentials, tokens,
@@ -83,15 +116,21 @@ truth.
 If more than a few files may be sent, preview first:
 
 ```bash
-oracle --dry-run summary --files-report \
+npx -y @steipete/oracle --dry-run summary --files-report \
   -p "<consultation prompt>" \
   --file "<minimal relevant files>"
+```
+
+Before the first Oracle run in a session, run:
+
+```bash
+npx -y @steipete/oracle --help
 ```
 
 ## Standard Command
 
 ```bash
-oracle \
+npx -y @steipete/oracle \
   --engine browser \
   --browser-manual-login \
   --browser-auto-reattach-delay 5s \
@@ -135,6 +174,9 @@ Files changed:
 Files attached:
 <list>
 
+GitHub context:
+<repository URL, branch, current commit, dirty/clean state, PR/issue URL or state if relevant, and any upstream/current GitHub context GPT-5.5 Pro must consider>
+
 Options considered:
 A. <option>
 B. <option>
@@ -160,7 +202,7 @@ run detaches or times out, reattach to the existing session instead of starting 
 duplicate run:
 
 ```bash
-oracle status --hours 72
-oracle session <id> --render
-oracle restart <id>
+npx -y @steipete/oracle status --hours 72
+npx -y @steipete/oracle session <id> --render
+npx -y @steipete/oracle restart <id>
 ```
