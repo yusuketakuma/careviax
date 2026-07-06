@@ -10,11 +10,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { ErrorState } from '@/components/ui/error-state';
 import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { SkeletonRows } from '@/components/ui/loading';
+import { SegmentError } from '@/components/ui/segment-state';
 import { Switch } from '@/components/ui/switch';
 import {
   Select,
@@ -413,18 +413,14 @@ export function DocumentDeliveryRuleManager() {
             </div>
           ) : null}
           {rulesQuery.isError ? (
-            <ErrorState
-              variant="server"
-              size="inline"
-              headingLevel={4}
+            <SegmentError
               title="送達ルールを取得できませんでした"
-              description={
-                rulesQuery.error instanceof Error
-                  ? rulesQuery.error.message
-                  : '文書送達ルールの取得に失敗しました'
-              }
+              cause="文書送達ルールの取得に失敗しました。"
+              nextAction="未登録ではなく取得エラーです。再読み込みしてください。"
+              headingLevel={4}
               onRetry={() => void rulesQuery.refetch()}
-              live="polite"
+              retryLabel="再試行"
+              className="px-4 py-6"
             />
           ) : rulesQuery.isPending ? (
             // isPending (not isLoading) so an unresolved orgId — which disables the query

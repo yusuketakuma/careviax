@@ -117,6 +117,7 @@ export function SegmentError({
   retryLabel = '再読み込み',
   metadata,
   detail,
+  headingLevel,
   className,
 }: {
   title?: string;
@@ -126,6 +127,7 @@ export function SegmentError({
   retryLabel?: string;
   metadata?: SegmentMetadata;
   detail?: ReactNode;
+  headingLevel?: 1 | 2 | 3 | 4 | 5 | 6;
   className?: string;
 }) {
   const metadataDetail = metadata ? <SegmentMetadataList {...metadata} /> : null;
@@ -136,6 +138,7 @@ export function SegmentError({
       title={title}
       cause={cause}
       nextAction={nextAction}
+      headingLevel={headingLevel}
       detail={
         detail || metadataDetail ? (
           <div className="space-y-2">

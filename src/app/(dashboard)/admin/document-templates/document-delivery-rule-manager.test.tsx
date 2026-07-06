@@ -400,7 +400,13 @@ describe('DocumentDeliveryRuleManager', () => {
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
         if (url === '/api/document-delivery-rules' && !init?.method) {
-          return new Response(JSON.stringify({ message: 'boom' }), { status: 500 });
+          return new Response(
+            JSON.stringify({
+              message:
+                'GET /api/document-delivery-rules patient_name=山田 太郎 storage_key=s3://secret token=secret provider_error=timeout',
+            }),
+            { status: 500 },
+          );
         }
         return new Response(JSON.stringify({ data: [] }), { status: 200 });
       }),
@@ -412,6 +418,10 @@ describe('DocumentDeliveryRuleManager', () => {
     expect(
       await screen.findByRole('heading', { level: 4, name: '送達ルールを取得できませんでした' }),
     ).toBeTruthy();
+    expect(screen.queryByText(/patient_name/)).toBeNull();
+    expect(screen.queryByText(/storage_key/)).toBeNull();
+    expect(screen.queryByText(/token=secret/)).toBeNull();
+    expect(screen.queryByText(/provider_error/)).toBeNull();
     expect(screen.queryByText('文書送達ルールはまだありません。')).toBeNull();
 
     fireEvent.click(await screen.findByRole('button', { name: '再試行' }));

@@ -41,7 +41,40 @@
 
 ## 直近の land（本日・要点）
 
-- codex: FE-ERR-001 admin master-hub segment hardening（pending commit）。
+- codex: FE-ERR-001 document delivery rule segment hardening（pending commit）。
+  - current task:
+    `/admin/document-templates` の文書送達ルール一覧取得失敗を raw backend detail なしの shared segment state に寄せる。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.tsx`,
+    `src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx`,
+    `src/components/ui/segment-state.tsx`.
+  - files changed:
+    `src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.tsx`,
+    `src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx`,
+    `src/components/ui/segment-state.tsx`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `rulesQuery.error.message` を失敗表示へ出す分岐を廃止し、`SegmentError` の固定文言 + retry に置換した。
+    一覧 panel の見出し階層を維持するため、`SegmentError` に `headingLevel` prop を追加した。
+  - bugs found:
+    文書送達ルール取得失敗時に backend `Error.message` を description として表示し得た。
+  - security risks reduced:
+    document delivery rule の失敗表示に patient_name、storage_key、token、provider_error が出ないことを focused test で固定した。
+  - performance issues improved:
+    なし。fail-soft/error state の修正。
+  - validation:
+    `pnpm exec vitest run 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx' src/components/ui/segment-state.test.tsx --reporter=dot --testTimeout=30000` → pass（2 files / 19 tests）。
+    `pnpm exec eslint 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.tsx' 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx' src/components/ui/segment-state.tsx` → pass。
+  - remaining:
+    FE-ERR-001 は admin screen 群への段階展開が残る。
+    Formal `InboundCommunicationEvent` / `InboundCommunicationSignal` DB/API/review UI and MedicationStock Ledger source remain.
+  - next action:
+    prettier / diff check、scoped commit/push。
+
+- codex: FE-ERR-001 admin master-hub segment hardening（commit `7ebd4bdb7`, pushed to `main`）。
   - current task:
     `/admin/master-hub` のマスター鮮度集計取得失敗を raw backend detail なしの shared segment state に寄せる。
   - files inspected:
@@ -70,9 +103,9 @@
     FE-ERR-001 は admin screen 群への段階展開が残る。
     Formal `InboundCommunicationEvent` / `InboundCommunicationSignal` DB/API/review UI and MedicationStock Ledger source remain.
   - next action:
-    prettier / diff check、scoped commit/push。
+    done。
 
-- codex: FE-ERR-001 admin drug-master detail sheet segment hardening（pending commit）。
+- codex: FE-ERR-001 admin drug-master detail sheet segment hardening（commit `eeb0794c9`, pushed to `main`）。
   - current task:
     `/admin/drug-masters` の医薬品詳細 sheet 内の detail / 採用品設定 / 採用後発薬候補 /
     推奨後発品 / 同一成分グループ / 採用品変更履歴の loading/error を shared segment state に寄せ、
@@ -106,7 +139,7 @@
     FE-ERR-001 は admin screen 群への段階展開が残る。
     Formal `InboundCommunicationEvent` / `InboundCommunicationSignal` DB/API/review UI and MedicationStock Ledger source remain.
   - next action:
-    prettier / diff check、scoped commit/push。
+    done。
 
 - codex: Plans.md implemented-task cleanup pass 2（commit `e7b390e68`, pushed to `main`）。
   - current task:
