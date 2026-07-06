@@ -41,6 +41,50 @@
 
 ## 直近の land（本日・要点）
 
+- codex: README top-level system overview polish.
+  - current task:
+    ユーザー指示により、README の一般的な構成要素を web 調査し、現行コードの route / package
+    scripts / module registry / architecture docs / UI SSOT を読み直したうえで `README.md` を再整理した。
+    冒頭で PH-OS Pharmacy が「在宅薬局向けに、患者・処方・調剤・訪問・報告・算定・タスク・通知・
+    ファイル・監査をつなぐ業務システム」であることを明示し、対象ユーザー、主業務フロー、
+    主要画面、architecture、tech stack、起動、validation、security/privacy、AWS 方針へ予測可能な順序で
+    読める構成にした。
+  - external references:
+    GitHub Docs `About READMEs`（README は project usefulness / what users can do / how to use を伝える）
+    と、README best-practice 資料（overview / installation / usage / validation / links の配置）を確認した。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `README.md`,
+    `package.json`,
+    `src/app/(dashboard)/**/page.tsx`,
+    `src/app/api/**/route.ts`,
+    `src/core/module-registry/index.ts`,
+    `src/modules/pharmacy/index.ts`,
+    `docs/README.md`,
+    `docs/architecture/README.md`,
+    `docs/architecture/aws-phos-deployment-stages.md`,
+    `docs/ui-ux-design-guidelines.md`,
+    `.codex/ralph-state.md`,
+    `ops/refactor/STATE.md`.
+  - files changed:
+    `README.md`,
+    `ops/refactor/STATE.md`.
+  - bugs / risks reduced:
+    初見の engineer/operator が「何のシステムか」「何を置き換えないか」「薬局のみが現行 active scope
+    であること」「どこを見れば起動・検証・AWS・セキュリティ境界が分かるか」を把握しやすくした。
+    将来 home medical / home nursing は予約拡張点であり、現行実装対象ではないと明示して過大表現を避けた。
+  - security / PHI reviewed:
+    README に secret、環境変数値、実患者情報、処方本文、報告書本文、production credential は含めていない。
+    Public API、S3 file、external share、notification、audit、tenant/org_id、RLS/no-store の注意点を
+    開発者向けの boundary として整理した。
+  - validation:
+    `pnpm exec prettier --check README.md` passed.
+    `git diff --check -- README.md` passed.
+  - remaining:
+    文書のみの変更のため build / typecheck / test は未実行。README のスクリーンショット追加や公開向け
+    marketing copy 化は今回の範囲外。UI 画像を追加する場合は `gpt-image-2` 生成方針と非 PHI demo data
+    を使う必要がある。
+
 - codex: MOD-REPORT-001 Report Template provider registry.
   - current task:
     `Plans.md` の `MOD-REPORT-001` first slice として、報告書 template builder を

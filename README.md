@@ -1,99 +1,178 @@
 # PH-OS Pharmacy
 
-PH-OS Pharmacy は、在宅訪問に強い保険薬局のための業務・連携プラットフォームです。患者・ケースを中心に、処方取込、調剤、監査、セット、訪問準備、訪問記録、報告、算定、タスク、通知、監査ログを 1 つの Next.js / PostgreSQL アプリでつなぎます。
+PH-OS Pharmacy is a home-care pharmacy operations system for managing patients,
+prescriptions, dispensing work, home visits, reports, billing evidence, tasks,
+notifications, files, and audit trails in one Next.js and PostgreSQL application.
 
-このリポジトリは CareVIAx / PH-OS の薬局機能を現在の主対象として実装しています。将来の訪問診療、訪問看護、地域在宅支援ネットワークへの拡張は、モジュラーモノリスの境界として予約していますが、現時点で実装対象としている業務価値は薬局在宅ケアです。
-
-## What This System Does
-
-PH-OS は、在宅患者に関わる薬局内外の業務状態を「次に誰が何をするか」まで落とし込む運用 OS です。
-
-- 患者・ケース管理: 患者一覧、患者詳細、Patient / Case Command Center、Case Risk Cockpit、基盤情報、同意、管理計画、ケアチーム、タイムライン。
-- 処方・薬剤管理: 処方受付、QR / JAHIS 系取込、薬剤マスタ、処方サイクル、薬剤変更、疑義照会、残薬、薬学リスク。
-- 調剤工程: 調剤、調剤監査、セット、セット監査、バーコード確認、保留、工程別ワークベンチ。
-- 訪問業務: 訪問スケジュール、候補提案、患者連絡、訪問準備、訪問ブリーフ、訪問記録、オフライン下書き、添付、位置情報、報告 readiness。
-- 報告・共有: ケアレポート、訪問記録からの下書き生成、PDF / 印刷、送付、外部共有、会議記録、連携コメント。
-- 算定・運用管理: 算定候補、請求根拠、請求ルール、集金、タスク SLA、通知、監査ログ、パフォーマンス、pilot readiness。
-- 薬局間・地域連携: 連携薬局、薬局訪問依頼、handoff、外部専門職、施設、カンファレンス、フリーランス薬剤師や PH-OS 運営者の将来横断運用を想定した設計。
-
-PH-OS は既存のレセコン、電子薬歴、フル在庫管理システムを置き換えるものではありません。責務は、在宅訪問薬剤管理の工程、リスク、連携、証跡、算定確認をつなぐことです。
-
-## Product Scope
-
-現在の active module は `pharmacy` のみです。
+The current product scope is pharmacy home care. The codebase already reserves
+module boundaries for future home medical, home nursing, and regional network
+operations, but those future modules are not the active product today. The
+active module is:
 
 ```text
 activeModules = [pharmacyModule]
 ```
 
-アーキテクチャ上は `home_medical`、`home_nursing`、`network_ops` を予約していますが、これは将来の拡張点です。共通 core が薬局固有実装へ直接依存しないよう、module registry、collaboration provider、risk provider、task registry、patient workspace panel、visit brief contributor へ段階的に分離しています。
+## What This System Is
 
-詳細は [Backend Module Boundary](docs/architecture/module-boundary.md) と [Module Registry](docs/architecture/module-registry.md) を参照してください。
+PH-OS helps a pharmacy team answer three operational questions for every home
+care patient:
+
+1. What is blocking this patient or case right now?
+2. Who owns the next action?
+3. What evidence, report, task, or audit trail proves the work was done?
+
+It is not intended to replace a receipt computer, electronic medication history
+system, full inventory platform, or EHR. Its role is to connect the operational
+work around home-visit pharmacy care: prescription intake, dispensing, audit,
+set preparation, visit readiness, visit records, external collaboration, report
+delivery, billing review, and risk/task follow-up.
+
+## Product At A Glance
+
+| Area                        | What PH-OS handles                                                                                                                      |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Patient and case operations | Patient board, patient detail tabs, Case Risk Cockpit, foundation data, consent, management plans, care team, timeline                  |
+| Prescription intake         | QR/JAHIS-oriented intake, prescription cycles, medication lines, medication master reconciliation, inquiry and issue tracking           |
+| Dispensing workflow         | Dispense, audit, set, set-audit workbenches, holds, representative tasks, high-risk flags, workflow state                               |
+| Visit workflow              | Schedule proposals, patient contact, confirmed visits, visit preparation, visit brief, mobile visit record, offline drafts, attachments |
+| Reports and sharing         | Care reports, report draft generation, delivery records, print/PDF/export policies, external access links, comments                     |
+| Billing evidence            | Billing candidates, billing rules, visit billing guards, monthly close review, blockers, operational task escalation                    |
+| Operations                  | Dashboard cockpit, task health, notifications, audit logs, admin tools, performance metrics, pilot readiness                            |
+| Platform boundary           | Organization tenancy, role permissions, audit logging, PHI-safe responses, S3 file handling, AWS deployment checks                      |
+
+## Primary Users
+
+- Pharmacists managing home-care medication work, visits, reports, and clinical
+  follow-up.
+- Clerks coordinating calls, document flow, external partners, billing
+  preparation, and operational queues.
+- Pharmacy managers reviewing risk, workload, SLA, reports, billing blockers,
+  staff operations, and audit logs.
+- PH-OS operators and future freelance pharmacists, through bounded support or
+  assignment-based access rather than unrestricted tenant-wide access.
+
+## Main Workflows
+
+```text
+Prescription intake
+  -> Medication cycle
+  -> Dispense
+  -> Audit
+  -> Set / set-audit
+  -> Visit preparation
+  -> Home visit record
+  -> Care report
+  -> Billing evidence
+  -> Task, notification, and audit follow-up
+```
+
+Cross-cutting services connect that flow:
+
+- **Risk Finding** turns blockers and warnings into consistent case-level
+  findings.
+- **Operational Task** escalates urgent or blocking work into deduplicated tasks.
+- **Patient / Case Command Center** brings next actions, blockers, recent
+  activity, risk, and task sync into the patient detail experience.
+- **External Share** and file policies keep shared patient information scoped,
+  no-store, audited, and minimized.
+- **Performance and readiness checks** track route speed, payload budget,
+  deployment readiness, backup readiness, and release gates.
 
 ## Main Screens
 
-主要画面は `src/app/(dashboard)` 配下にあります。
+Most authenticated screens live under `src/app/(dashboard)`.
 
-| Area                  | Routes                                                                                 |
-| --------------------- | -------------------------------------------------------------------------------------- |
-| Dashboard             | `/dashboard`, `/my-day`, `/workflow`                                                   |
-| Patients              | `/patients`, `/patients/[id]`, `/patients/new`, `/patients/compare`                    |
-| Prescriptions         | `/prescriptions`, `/prescriptions/intake`, `/prescriptions/qr-drafts`, `/qr-scan`      |
-| Dispensing            | `/dispense`, `/audit`, `/set`, `/set-audit`                                            |
-| Scheduling and visits | `/schedules`, `/schedules/proposals`, `/visits`, `/visits/[id]`, `/offline-sync`       |
-| Reports and billing   | `/reports`, `/reports/[id]`, `/billing`, `/billing/candidates`                         |
-| Collaboration         | `/communications`, `/conferences`, `/handoff`, `/external`, `/notifications`, `/tasks` |
-| Admin                 | `/admin/*`, `/settings`, `/statistics`, `/audit`                                       |
+| Area                        | Routes                                                                                 |
+| --------------------------- | -------------------------------------------------------------------------------------- |
+| Dashboard and work overview | `/dashboard`, `/my-day`, `/workflow`                                                   |
+| Patients                    | `/patients`, `/patients/[id]`, `/patients/new`, `/patients/compare`                    |
+| Prescriptions               | `/prescriptions`, `/prescriptions/intake`, `/prescriptions/qr-drafts`, `/qr-scan`      |
+| Dispensing                  | `/dispense`, `/audit`, `/set`, `/set-audit`                                            |
+| Scheduling and visits       | `/schedules`, `/schedules/proposals`, `/visits`, `/visits/[id]`, `/offline-sync`       |
+| Reports and billing         | `/reports`, `/reports/[id]`, `/billing`, `/billing/candidates`                         |
+| Collaboration               | `/communications`, `/conferences`, `/handoff`, `/external`, `/notifications`, `/tasks` |
+| Administration              | `/admin/*`, `/settings`, `/statistics`, `/audit`                                       |
 
-認証画面は `src/app/(auth)`、外部共有画面は `src/app/shared/[token]`、API は `src/app/api` にあります。
+Other important surfaces:
+
+- Authentication: `src/app/(auth)`
+- Public shared viewer: `src/app/shared/[token]`
+- API route handlers: `src/app/api`
+- Legal pages: `src/app/(legal)`
 
 ## Architecture
 
-PH-OS はマイクロサービスではなく、モジュラーモノリスです。
+PH-OS is a modular monolith. The code is structured so the pharmacy product can
+ship now while future service lines can add providers without rewriting the
+common core.
 
 ```text
 Next.js App Router
-  -> Route Handlers / Server Actions / BFF
-  -> server services and module adapters
+  -> Route Handlers / BFF endpoints
+  -> server services, presenters, and module adapters
   -> Prisma / PostgreSQL
-  -> AWS-ready integrations
+  -> AWS-ready operational integrations
 ```
 
-主な構成:
+Dependency direction:
+
+```text
+platform
+  -> core
+  -> modules/pharmacy
+  -> app/api and app UI
+```
+
+Key implementation points:
+
+- `src/core` contains module-independent contracts and registries.
+- `src/modules/pharmacy` contains pharmacy-specific adapters and providers.
+- `src/server` contains server-only orchestration, BFF services, jobs, and
+  integration logic.
+- `src/lib` contains shared runtime utilities, auth helpers, API helpers,
+  validation, task registry, billing helpers, and UI-safe constants.
+- `src/types` contains cross-boundary DTO and response contracts.
+
+See:
+
+- [Module boundary](docs/architecture/module-boundary.md)
+- [Module registry](docs/architecture/module-registry.md)
+- [AWS deployment stages](docs/architecture/aws-phos-deployment-stages.md)
+
+## Technology Stack
 
 - Next.js 16 App Router, React 19, React Compiler, standalone output
-- TypeScript, Zod, TanStack Query / Table, React Hook Form, Zustand
-- Prisma 7 + PostgreSQL を中心にした業務データモデル
-- NextAuth + Cognito 前提の認証設計
-- S3 file storage、SES、DynamoDB rate limit、CloudWatch metrics、ECS / Lightsail plan を含む AWS 運用資産
-- Serwist service worker と offline draft / sync 系の PWA 基盤
-- Vitest と Playwright による unit / API / UI / E2E 検証
-- RLS、route catalog、audit log、no-store、PHI redaction を前提にした医療情報境界
+- TypeScript 6, Zod, React Hook Form, TanStack Query, TanStack Table, Zustand
+- Prisma 7 and PostgreSQL
+- NextAuth with Cognito-oriented authentication flows
+- Serwist service worker, offline draft storage, and sync support
+- S3-oriented file storage, SES, DynamoDB rate limiting, CloudWatch metrics,
+  ECS / Lightsail planning assets
+- Vitest, Testing Library, Playwright, ESLint, Prettier, module-boundary checks
 
 ## Repository Layout
 
 ```text
-ph-os/
-├── docs/       # Architecture, compliance, operations, testing, design docs
-├── prisma/     # Prisma schema split by domain, migrations, seed
+.
+├── docs/       # Architecture, compliance, operations, testing, and UI docs
+├── prisma/     # Split Prisma schema, migrations, and seed
 ├── public/     # Static assets and generated service worker output
-├── src/        # Next.js app, API routes, server services, core/modules/lib/types
-├── tools/      # Operational scripts, infra templates, Playwright tests
-├── Plans.md    # Implementation backlog and progress plan
-└── README.md   # This overview
+├── src/        # App Router, API routes, server services, core/modules/lib/types
+├── tools/      # Scripts, infra templates, browser harness, Playwright tests
+├── Plans.md    # Implementation backlog and risk/modularization plan
+└── README.md   # Top-level system overview
 ```
 
-重要な entry point:
+Useful entry points:
 
-- `src/app/`: App Router pages and API route handlers
-- `src/core/`: module-independent core contracts and registries
-- `src/modules/pharmacy/`: current pharmacy feature module adapters
-- `src/server/`: server-only services, jobs, BFF orchestration
-- `src/lib/`: shared runtime libraries, auth, API helpers, task registry, validation
-- `src/types/`: public DTO and cross-boundary type contracts
-- `tools/scripts/`: readiness, AWS, DB, performance, compliance, import, and audit scripts
-- `tools/tests/`: Playwright E2E and UI audit tests
-- `tools/infra/`: AWS and security baseline templates
+- `src/app/`: pages, layouts, route handlers, and public surfaces
+- `src/components/`: UI, layout, dashboard, patient, visit, report, and workflow components
+- `src/core/`: provider registries and module-independent contracts
+- `src/modules/pharmacy/`: active pharmacy module adapters
+- `src/server/`: server-only services, report generation, risk, visit, billing, jobs
+- `tools/scripts/`: readiness, AWS, DB, import, audit, performance, and compliance scripts
+- `tools/tests/`: Playwright and medical UI gate tests
 
 ## Getting Started
 
@@ -101,7 +180,7 @@ ph-os/
 
 - Node.js `24.16.0`
 - pnpm `11.5.2`
-- PostgreSQL for local DB / E2E DB when running database-backed flows
+- PostgreSQL for local database-backed flows and E2E tests
 
 Install dependencies:
 
@@ -109,7 +188,7 @@ Install dependencies:
 pnpm install
 ```
 
-Generate Prisma client:
+Generate the Prisma client:
 
 ```bash
 pnpm db:generate
@@ -121,24 +200,34 @@ Start the development server:
 pnpm dev
 ```
 
-For the local E2E profile, prepare the E2E database first and run the pinned local server on port `3012`:
+### Local E2E Profile
+
+Prepare the local E2E database:
 
 ```bash
 pnpm db:e2e:prepare
+```
+
+Run the E2E development server on port `3012`:
+
+```bash
 pnpm dev:e2e:local
 ```
 
-Then run Playwright against the local server:
+Run Playwright against that server:
 
 ```bash
 pnpm test:e2e:local
 ```
 
-Local environment variables and production secrets are not documented in full in this README. Use the environment catalog and operations docs instead, and never commit `.env` files or secret values.
+Environment variable names and production setup are intentionally not fully
+listed here. Use the operations and compliance docs for deployment context, and
+never commit `.env` files or secret values.
 
 ## Common Validation Commands
 
-Run focused commands for the area you changed. Common gates are:
+Use focused checks for the area you changed, then widen only when the impact
+radius warrants it.
 
 ```bash
 pnpm lint
@@ -161,36 +250,55 @@ pnpm medical-ui:e2e:gate
 pnpm test:rls-proof
 ```
 
-Database-backed local E2E assumes the configured PostgreSQL instance is available, commonly on the repository's E2E connection settings.
+Database-backed E2E commands assume the configured local PostgreSQL instance is
+available, commonly through the repository E2E connection settings.
 
-## Security, Privacy, and Compliance Boundary
+## Security, Privacy, And Compliance
 
-This repository handles healthcare workflow code paths and PHI-adjacent surfaces. Treat all patient, prescription, visit, report, file, notification, audit, and billing surfaces as sensitive by default.
+Treat patient, prescription, visit, report, file, notification, audit, and
+billing surfaces as sensitive by default.
 
 Core rules:
 
-- Do not commit secrets, tokens, credentials, private keys, raw patient data, production dumps, or `.env` files.
-- Public API responses must not expose S3 storage keys, original file names, signed URLs, raw provider errors, raw metadata, or unrestricted free text.
-- Authenticated routes should use shared auth context, permission checks, organization scoping, and audit logging patterns.
-- Tenant-owned data should be constrained by `org_id`; RLS and application-layer guards are both part of the design.
-- Clinical output, CSV/PDF export, file download, external share, and notification delivery must go through masking, no-store, audit, and permission boundaries.
+- Do not commit secrets, tokens, credentials, private keys, production dumps,
+  raw patient data, or `.env` files.
+- Public API responses must not expose S3 storage keys, original file names,
+  signed URLs, raw provider errors, raw metadata, unrestricted free text, or
+  external provider internals.
+- Authenticated routes should use shared auth context, permission checks,
+  organization scoping, no-store responses, and audit logging patterns.
+- Tenant-owned data is scoped by `org_id`; RLS and application-layer guards are
+  both part of the design.
+- Clinical output, CSV/PDF export, file download, external share, and
+  notification delivery must go through masking, permission, audit, and
+  no-store boundaries.
+- Cross-tenant access must be justified by membership, assignment/grant, or a
+  support session with an auditable reason.
 
-Relevant docs:
+Reference docs:
 
 - [API conventions](docs/api-conventions.md)
 - [Compliance docs](docs/compliance/README.md)
-- [Architecture docs](docs/architecture/README.md)
+- [Operations docs](docs/operations/README.md)
 - [Testing docs](docs/testing/README.md)
+- [UI/UX design guidelines](docs/ui-ux-design-guidelines.md)
 
-## AWS and Deployment Direction
+## AWS And Deployment Direction
 
-The repository contains planning and validation assets for three AWS stages:
+PH-OS has staged AWS planning assets rather than a single mandatory topology:
 
-1. Low-cost pilot: Lightsail App VM, Lightsail PostgreSQL, S3, Cognito, SES, CloudWatch, DynamoDB rate limiting, ECR, Route 53, ACM.
-2. Production minimum: ECS Express / Fargate, ALB, RDS PostgreSQL, S3 Object Lock, Cognito, SES, DynamoDB, CloudWatch, Secrets Manager, EventBridge Scheduler.
-3. Scale-out: multiple Fargate tasks, RDS Multi-AZ, durable queues, WAF, GuardDuty, Security Hub, CloudTrail, AWS Backup.
+1. Low-cost pilot: Lightsail App VM, Lightsail PostgreSQL, S3, Cognito, SES,
+   CloudWatch, DynamoDB rate limiting, ECR, Route 53, ACM.
+2. Production minimum: ECS Express / Fargate, ALB, RDS PostgreSQL, S3 Object
+   Lock, Cognito, SES, DynamoDB, CloudWatch, Secrets Manager, EventBridge
+   Scheduler.
+3. Scale-out: multiple Fargate tasks, RDS Multi-AZ, durable queues, WAF,
+   GuardDuty, Security Hub, CloudTrail, AWS Backup.
 
-See [AWS Deployment Stages and Tenant Boundary ADR](docs/architecture/aws-phos-deployment-stages.md). When changing AWS-related code, scripts, IAM, S3, RDS, ECS, DynamoDB, SES, Cognito, CloudWatch, Route 53, ACM, Secrets Manager, or EventBridge behavior, verify against official AWS documentation before implementation and record the reference in the relevant plan, state, or PR notes.
+When changing AWS-related code, scripts, IAM, S3, RDS, ECS, DynamoDB, SES,
+Cognito, CloudWatch, Route 53, ACM, Secrets Manager, or EventBridge behavior,
+verify against official AWS documentation before implementation and record the
+reference in the relevant plan, state, or PR notes.
 
 ## Documentation Map
 
@@ -205,13 +313,22 @@ See [AWS Deployment Stages and Tenant Boundary ADR](docs/architecture/aws-phos-d
 
 ## Development Notes
 
-- Prefer existing route, presenter, DTO, auth, audit, and validation patterns over new one-off abstractions.
-- Keep API route handlers thin; move orchestration into server services or module application code.
-- Preserve existing response shapes unless a planned API-contract migration explicitly says otherwise.
-- Use `src/core` for module-independent contracts and `src/modules/pharmacy` for pharmacy-specific adapters.
-- Keep new common-core code from importing `src/modules/pharmacy` directly.
-- Validate changes with the smallest meaningful command first, then broader gates when the impact radius warrants it.
+- Prefer existing route, presenter, DTO, auth, audit, and validation patterns
+  over new one-off abstractions.
+- Keep API route handlers thin. Move orchestration into server services or
+  module application code.
+- Preserve existing response shapes unless a planned API-contract migration
+  explicitly says otherwise.
+- Use `src/core` for module-independent contracts and `src/modules/pharmacy`
+  for pharmacy-specific adapters.
+- Do not add new common-core imports from `src/modules/pharmacy`.
+- UI/UX changes must follow [PH-OS UI/UX Design Guidelines](docs/ui-ux-design-guidelines.md).
+- AWS-related implementation must be checked against official AWS references,
+  not memory alone.
 
 ## Status
 
-This is a private product repository under active development. The README is intended as the top-level orientation for engineers and operators; detailed release readiness remains in `Plans.md`, `ops/refactor/STATE.md`, and the operations/compliance docs.
+This is a private product repository under active development. `README.md` is
+the orientation page for engineers and operators. Detailed release readiness,
+open implementation tasks, and current operating state live in `Plans.md` and
+`ops/refactor/STATE.md`.
