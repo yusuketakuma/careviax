@@ -1,5 +1,20 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { putMetricsMock } = vi.hoisted(() => ({
+  putMetricsMock: vi.fn(),
+}));
+
+vi.mock('@/lib/aws/cloudwatch', () => ({
+  putMetrics: putMetricsMock,
+  StandardUnit: {
+    Count: 'Count',
+    Milliseconds: 'Milliseconds',
+    Percent: 'Percent',
+  },
+}));
+
 import {
+  flushPerformanceMetricsToCloudWatch,
   getPerformanceSnapshot,
   recordRoutePerformance,
   resetPerformanceMetrics,
@@ -8,7 +23,12 @@ import {
 
 describe('performance metrics', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     resetPerformanceMetrics();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it('aggregates per-route and overall percentiles', () => {
@@ -43,6 +63,7 @@ describe('performance metrics', () => {
     expect(snapshot.summary.error_requests).toBe(1);
     expect(snapshot.summary.overall_p50_ms).toBe(180);
     expect(snapshot.summary.overall_p95_ms).toBe(620);
+    expect(snapshot.summary.overall_p99_ms).toBe(620);
     expect(snapshot.summary.overall_p95_payload_bytes).toBe(6200);
     expect(snapshot.summary.critical_routes).toBe(0);
     expect(snapshot.summary.payload_budgeted_routes).toBe(0);
@@ -52,11 +73,13 @@ describe('performance metrics', () => {
     expect(snapshot.routes[0]).toMatchObject({
       route: '/api/visit-schedules',
       method: 'GET',
+      org_scope: 'without_org',
       critical_route: false,
       critical_route_family: null,
       request_count: 5,
       slow_count: 2,
       p95_ms: 620,
+      p99_ms: 620,
       payload_sample_count: 5,
       average_payload_bytes: 3360,
       p95_payload_bytes: 6200,
@@ -106,6 +129,31 @@ describe('performance metrics', () => {
       payload_budget_status: 'within_budget',
       payload_budget_met: true,
       last_payload_bytes: 11,
+      org_scope: 'without_org',
+    });
+  });
+
+  it('marks route summaries as mixed when samples include both org-scoped and unscoped requests', () => {
+    recordRoutePerformance({
+      route: '/api/patients/board',
+      method: 'GET',
+      status: 200,
+      durationMs: 100,
+      orgScopePresent: true,
+    });
+    recordRoutePerformance({
+      route: '/api/patients/board',
+      method: 'GET',
+      status: 200,
+      durationMs: 120,
+      orgScopePresent: false,
+    });
+
+    const snapshot = getPerformanceSnapshot({ topRoutes: 5 });
+
+    expect(snapshot.routes[0]).toMatchObject({
+      route: '/api/patients/board',
+      org_scope: 'mixed',
     });
   });
 
@@ -248,5 +296,79 @@ describe('performance metrics', () => {
 
     expect(snapshot.summary.route_count).toBeLessThanOrEqual(500);
     expect(snapshot.summary.total_requests).toBeLessThanOrEqual(500);
+  });
+
+  it('flushes p99 and payload-budget metrics with deployment dimensions for CloudWatch', async () => {
+    vi.stubEnv('APP_ENV', 'staging');
+    vi.stubEnv('DEPLOY_SHA', 'sha value with spaces');
+    vi.stubEnv('PHOS_INSTANCE_ID', 'task/instance one');
+    putMetricsMock.mockResolvedValue(undefined);
+
+    recordRoutePerformance({
+      route: '/api/patients/board',
+      method: 'GET',
+      status: 200,
+      durationMs: 100,
+      payloadBytes: 320 * 1024,
+      orgScopePresent: true,
+    });
+    recordRoutePerformance({
+      route: '/api/patients/board',
+      method: 'GET',
+      status: 200,
+      durationMs: 640,
+      payloadBytes: 10,
+      orgScopePresent: true,
+    });
+
+    await flushPerformanceMetricsToCloudWatch({ topRoutes: 5 });
+
+    expect(putMetricsMock).toHaveBeenCalledTimes(1);
+    const metricData = putMetricsMock.mock.calls[0]?.[0] as Array<{
+      MetricName: string;
+      Value: number;
+      Unit: string;
+      Dimensions: Array<{ Name: string; Value: string }>;
+    }>;
+
+    expect(metricData).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          MetricName: 'RouteP99LatencyMs',
+          Value: 640,
+          Unit: 'Milliseconds',
+          Dimensions: expect.arrayContaining([
+            { Name: 'Route', Value: '/api/patients/board' },
+            { Name: 'Method', Value: 'GET' },
+            { Name: 'OrgScope', Value: 'with_org' },
+            { Name: 'Environment', Value: 'staging' },
+            { Name: 'DeploySha', Value: 'sha_value_with_spaces' },
+            { Name: 'InstanceId', Value: 'task/instance_one' },
+          ]),
+        }),
+        expect.objectContaining({
+          MetricName: 'RoutePayloadBudgetOverCount',
+          Value: 1,
+          Unit: 'Count',
+        }),
+        expect.objectContaining({
+          MetricName: 'OverallP99LatencyMs',
+          Value: 640,
+          Unit: 'Milliseconds',
+          Dimensions: expect.arrayContaining([
+            { Name: 'OrgScope', Value: 'aggregate' },
+            { Name: 'Environment', Value: 'staging' },
+            { Name: 'DeploySha', Value: 'sha_value_with_spaces' },
+            { Name: 'InstanceId', Value: 'task/instance_one' },
+          ]),
+        }),
+        expect.objectContaining({
+          MetricName: 'PayloadBudgetOverRoutes',
+          Value: 1,
+          Unit: 'Count',
+        }),
+      ]),
+    );
+    expect(JSON.stringify(metricData)).not.toContain('org_');
   });
 });

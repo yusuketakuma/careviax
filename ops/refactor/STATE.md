@@ -11363,3 +11363,52 @@
 - remaining:
   `VISIT-SYNC-001` remains partial only for mobile E2E and any explicit encrypted attachment draft
   reload recovery contract if product scope requires preserving selected File blobs across reload.
+
+## 2026-07-07 PERF-RTE p99 CloudWatch dimensions
+
+- codex:
+  Advanced `PERF-RTE-001A` by adding p99 latency to the current-process performance snapshot and
+  adding deployment-safe CloudWatch dimensions for route metrics. Route samples now track only
+  whether an org scope was present (`with_org` / `without_org` / `mixed`), never a raw org id.
+- files inspected:
+  `src/lib/utils/performance.ts`,
+  `src/lib/utils/performance.test.ts`,
+  `src/lib/aws/cloudwatch.ts`,
+  `src/lib/aws/cloudwatch.test.ts`,
+  `src/app/api/admin/performance-metrics/route.ts`,
+  `src/app/api/admin/performance-metrics/route.test.ts`,
+  `src/app/api/admin/flush-metrics/route.ts`,
+  `src/app/api/jobs/flush-metrics/route.ts`,
+  `src/app/(dashboard)/admin/performance/page.tsx`,
+  `Plans.md`,
+  AWS official CloudWatch `PutMetricData` / `MetricDatum` references.
+- files changed:
+  `src/lib/utils/performance.ts`,
+  `src/lib/utils/performance.test.ts`,
+  `src/app/api/admin/performance-metrics/route.test.ts`,
+  `src/app/(dashboard)/admin/performance/page.tsx`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  Production performance telemetry now includes p99 and payload-budget-over metrics instead of
+  relying only on p95/current-process admin display. CloudWatch dimensions use controlled
+  environment/deploy/instance/org-scope values and do not emit raw org ids, query strings, patient
+  ids, or payload contents.
+- AWS official reference checked:
+  CloudWatch `PutMetricData` allows up to 1000 metrics per request, and `MetricDatum.Dimensions`
+  allows up to 30 dimensions. The existing 1000 datum batching remains in `src/lib/aws/cloudwatch.ts`;
+  this slice keeps route metrics to Route, Method, OrgScope, Environment, DeploySha, InstanceId.
+- validation:
+  `pnpm exec vitest run src/lib/utils/performance.test.ts src/app/api/admin/performance-metrics/route.test.ts src/app/api/admin/flush-metrics/route.test.ts src/app/api/jobs/flush-metrics/route.test.ts 'src/app/(dashboard)/admin/performance/page.test.tsx' --reporter=dot --testTimeout=30000`
+  green (5 files / 30 tests);
+  `pnpm exec eslint src/lib/utils/performance.ts src/lib/utils/performance.test.ts src/app/api/admin/performance-metrics/route.test.ts 'src/app/(dashboard)/admin/performance/page.tsx'`
+  green;
+  `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/lib/utils/performance.ts src/lib/utils/performance.test.ts src/app/api/admin/performance-metrics/route.test.ts 'src/app/(dashboard)/admin/performance/page.tsx'`
+  green after formatting `Plans.md`;
+  `git diff --check -- Plans.md ops/refactor/STATE.md src/lib/utils/performance.ts src/lib/utils/performance.test.ts src/app/api/admin/performance-metrics/route.test.ts 'src/app/(dashboard)/admin/performance/page.tsx'`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green.
+- remaining:
+  `PERF-RTE-001A` still needs deploy readiness / EventBridge schedule / release gate /
+  CloudWatch alarm connection so current-process snapshots are not treated as the only production
+  performance source.

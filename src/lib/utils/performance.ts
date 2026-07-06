@@ -18,6 +18,7 @@ type RoutePerformanceSample = {
   status: number;
   recorded_at: number;
   payload_bytes: number | null;
+  org_scope: RouteOrgScope;
 };
 
 type RoutePerformanceBucket = {
@@ -36,6 +37,7 @@ type RoutePerformanceStore = {
 export type RoutePerformanceSummary = {
   route: string;
   method: string;
+  org_scope: RouteOrgScopeSummary;
   critical_route: boolean;
   critical_route_family: string | null;
   request_count: number;
@@ -45,6 +47,7 @@ export type RoutePerformanceSummary = {
   average_ms: number;
   p50_ms: number;
   p95_ms: number;
+  p99_ms: number;
   max_ms: number;
   payload_sample_count: number;
   average_payload_bytes: number | null;
@@ -72,6 +75,7 @@ export type PerformanceSnapshot = {
     slow_request_rate: number;
     overall_p50_ms: number;
     overall_p95_ms: number;
+    overall_p99_ms: number;
     overall_p95_payload_bytes: number | null;
     critical_routes: number;
     payload_budgeted_routes: number;
@@ -81,6 +85,9 @@ export type PerformanceSnapshot = {
   };
   routes: RoutePerformanceSummary[];
 };
+
+type RouteOrgScope = 'with_org' | 'without_org';
+type RouteOrgScopeSummary = RouteOrgScope | 'mixed';
 
 declare global {
   var __phOsRoutePerformanceStore: RoutePerformanceStore | undefined;
@@ -125,6 +132,49 @@ function parsePayloadBytes(value: string | null): number | null {
   return Number.isSafeInteger(parsed) ? parsed : null;
 }
 
+function summarizeOrgScope(samples: RoutePerformanceSample[]): RouteOrgScopeSummary {
+  const scopes = new Set(samples.map((sample) => sample.org_scope));
+  if (scopes.size > 1) return 'mixed';
+  return scopes.has('with_org') ? 'with_org' : 'without_org';
+}
+
+function sanitizeDimensionValue(value: string | undefined, fallback: string): string {
+  const trimmed = value?.trim();
+  if (!trimmed) return fallback;
+  return trimmed.replace(/[^\w.:/@-]/g, '_').slice(0, 128) || fallback;
+}
+
+function resolveRuntimeMetricDimensions(): Array<{ Name: string; Value: string }> {
+  return [
+    {
+      Name: 'Environment',
+      Value: sanitizeDimensionValue(
+        process.env.APP_ENV ?? process.env.NEXT_PUBLIC_APP_ENV ?? process.env.NODE_ENV,
+        'unknown',
+      ),
+    },
+    {
+      Name: 'DeploySha',
+      Value: sanitizeDimensionValue(
+        process.env.DEPLOY_SHA ??
+          process.env.GITHUB_SHA ??
+          process.env.VERCEL_GIT_COMMIT_SHA ??
+          process.env.COMMIT_SHA,
+        'unknown',
+      ),
+    },
+    {
+      Name: 'InstanceId',
+      Value: sanitizeDimensionValue(
+        process.env.PHOS_INSTANCE_ID ??
+          process.env.ECS_CONTAINER_METADATA_URI_V4 ??
+          process.env.HOSTNAME,
+        'unknown',
+      ),
+    },
+  ];
+}
+
 function shouldTrackRoute(route: string): boolean {
   return !EXCLUDED_PATHS.has(route);
 }
@@ -135,6 +185,7 @@ export function recordRoutePerformance(args: {
   status: number;
   durationMs: number;
   payloadBytes?: number | null;
+  orgScopePresent?: boolean;
   recordedAt?: number;
 }): void {
   const store = getStore();
@@ -156,6 +207,7 @@ export function recordRoutePerformance(args: {
       typeof args.payloadBytes === 'number' && Number.isSafeInteger(args.payloadBytes)
         ? Math.max(0, args.payloadBytes)
         : null,
+    org_scope: args.orgScopePresent ? 'with_org' : 'without_org',
   });
 
   if (bucket.samples.length > store.max_samples_per_route) {
@@ -211,6 +263,7 @@ export function getPerformanceSnapshot(options?: {
     routeSummaries.push({
       route: bucket.route,
       method: bucket.method,
+      org_scope: summarizeOrgScope(bucket.samples),
       critical_route: payloadBudget != null,
       critical_route_family: payloadBudget?.family ?? null,
       request_count: bucket.samples.length,
@@ -220,6 +273,7 @@ export function getPerformanceSnapshot(options?: {
       average_ms: average(durations),
       p50_ms: percentile(durations, 0.5),
       p95_ms: percentile(durations, 0.95),
+      p99_ms: percentile(durations, 0.99),
       max_ms: durations.length ? Math.max(...durations) : 0,
       payload_sample_count: payloadBytes.length,
       average_payload_bytes: payloadBytes.length ? average(payloadBytes) : null,
@@ -257,6 +311,7 @@ export function getPerformanceSnapshot(options?: {
       slow_request_rate: toPercentage(slowRequests, allDurations.length),
       overall_p50_ms: percentile(allDurations, 0.5),
       overall_p95_ms: percentile(allDurations, 0.95),
+      overall_p99_ms: percentile(allDurations, 0.99),
       overall_p95_payload_bytes: allPayloadBytes.length ? percentile(allPayloadBytes, 0.95) : null,
       critical_routes: routeSummaries.filter((route) => route.critical_route).length,
       payload_budgeted_routes: routeSummaries.filter((route) => route.payload_budget_bytes != null)
@@ -299,6 +354,7 @@ export async function withRoutePerformance<T extends NextResponse | Response>(
       status: response.status,
       durationMs: Date.now() - startedAt,
       payloadBytes: parsePayloadBytes(response.headers.get('content-length')),
+      orgScopePresent: Boolean(req.headers?.get('x-org-id')),
     });
     return response;
   } catch (error) {
@@ -307,6 +363,7 @@ export async function withRoutePerformance<T extends NextResponse | Response>(
       method,
       status: 500,
       durationMs: Date.now() - startedAt,
+      orgScopePresent: Boolean(req.headers?.get('x-org-id')),
     });
     throw error;
   }
@@ -323,12 +380,13 @@ export function resetPerformanceMetrics(): void {
 
 /**
  * Flush the current performance snapshot as CloudWatch custom metrics.
- * Emits p50/p95 latency and error rate per route.
+ * Emits p50/p95/p99 latency and error rate per route.
  * Call this on a schedule (e.g., every 5 minutes) from a cron API route.
  * Silently no-ops when not in a Node.js server context.
  */
 export async function flushPerformanceMetricsToCloudWatch(options?: {
   targetMs?: number;
+  topRoutes?: number;
 }): Promise<void> {
   // Dynamic import so the CloudWatch SDK is never bundled into the client
   const { putMetrics, StandardUnit } = await import('@/lib/aws/cloudwatch');
@@ -337,46 +395,56 @@ export async function flushPerformanceMetricsToCloudWatch(options?: {
   if (snapshot.routes.length === 0) return;
 
   const timestamp = new Date();
+  const runtimeDimensions = resolveRuntimeMetricDimensions();
+  const routeDimensions = (route: RoutePerformanceSummary) => [
+    { Name: 'Route', Value: route.route },
+    { Name: 'Method', Value: route.method },
+    { Name: 'OrgScope', Value: route.org_scope },
+    ...runtimeDimensions,
+  ];
+  const summaryDimensions = [{ Name: 'OrgScope', Value: 'aggregate' }, ...runtimeDimensions];
   const datums = snapshot.routes.flatMap((route) => [
     {
       MetricName: 'RouteP50LatencyMs',
       Value: route.p50_ms,
       Unit: StandardUnit.Milliseconds,
       Timestamp: timestamp,
-      Dimensions: [
-        { Name: 'Route', Value: route.route },
-        { Name: 'Method', Value: route.method },
-      ],
+      Dimensions: routeDimensions(route),
     },
     {
       MetricName: 'RouteP95LatencyMs',
       Value: route.p95_ms,
       Unit: StandardUnit.Milliseconds,
       Timestamp: timestamp,
-      Dimensions: [
-        { Name: 'Route', Value: route.route },
-        { Name: 'Method', Value: route.method },
-      ],
+      Dimensions: routeDimensions(route),
+    },
+    {
+      MetricName: 'RouteP99LatencyMs',
+      Value: route.p99_ms,
+      Unit: StandardUnit.Milliseconds,
+      Timestamp: timestamp,
+      Dimensions: routeDimensions(route),
     },
     {
       MetricName: 'RouteErrorRate',
       Value: route.error_count > 0 ? (route.error_count / route.request_count) * 100 : 0,
       Unit: StandardUnit.Percent,
       Timestamp: timestamp,
-      Dimensions: [
-        { Name: 'Route', Value: route.route },
-        { Name: 'Method', Value: route.method },
-      ],
+      Dimensions: routeDimensions(route),
     },
     {
       MetricName: 'RouteSlowRate',
       Value: route.slow_rate,
       Unit: StandardUnit.Percent,
       Timestamp: timestamp,
-      Dimensions: [
-        { Name: 'Route', Value: route.route },
-        { Name: 'Method', Value: route.method },
-      ],
+      Dimensions: routeDimensions(route),
+    },
+    {
+      MetricName: 'RoutePayloadBudgetOverCount',
+      Value: route.payload_budget_over_count,
+      Unit: StandardUnit.Count,
+      Timestamp: timestamp,
+      Dimensions: routeDimensions(route),
     },
   ]);
 
@@ -387,14 +455,28 @@ export async function flushPerformanceMetricsToCloudWatch(options?: {
       Value: snapshot.summary.overall_p95_ms,
       Unit: StandardUnit.Milliseconds,
       Timestamp: timestamp,
-      Dimensions: [],
+      Dimensions: summaryDimensions,
+    },
+    {
+      MetricName: 'OverallP99LatencyMs',
+      Value: snapshot.summary.overall_p99_ms,
+      Unit: StandardUnit.Milliseconds,
+      Timestamp: timestamp,
+      Dimensions: summaryDimensions,
     },
     {
       MetricName: 'SlowRequestRate',
       Value: snapshot.summary.slow_request_rate,
       Unit: StandardUnit.Percent,
       Timestamp: timestamp,
-      Dimensions: [],
+      Dimensions: summaryDimensions,
+    },
+    {
+      MetricName: 'PayloadBudgetOverRoutes',
+      Value: snapshot.summary.routes_over_payload_budget,
+      Unit: StandardUnit.Count,
+      Timestamp: timestamp,
+      Dimensions: summaryDimensions,
     },
   );
 

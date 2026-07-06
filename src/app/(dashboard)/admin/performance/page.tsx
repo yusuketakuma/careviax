@@ -114,6 +114,7 @@ type RuntimePerformanceSnapshot = {
     slow_request_rate: number;
     overall_p50_ms: number;
     overall_p95_ms: number;
+    overall_p99_ms: number;
     overall_p95_payload_bytes: number | null;
     critical_routes: number;
     payload_budgeted_routes: number;
@@ -124,6 +125,7 @@ type RuntimePerformanceSnapshot = {
   routes: Array<{
     route: string;
     method: string;
+    org_scope: 'with_org' | 'without_org' | 'mixed';
     critical_route: boolean;
     critical_route_family: string | null;
     request_count: number;
@@ -133,6 +135,7 @@ type RuntimePerformanceSnapshot = {
     average_ms: number;
     p50_ms: number;
     p95_ms: number;
+    p99_ms: number;
     max_ms: number;
     payload_sample_count: number;
     average_payload_bytes: number | null;
@@ -800,14 +803,16 @@ export default function PerformancePage() {
                     </div>
                     <div className="text-right text-xs text-muted-foreground">
                       <p>P95 {route.p95_ms}ms</p>
+                      <p>P99 {route.p99_ms}ms</p>
                       <p>max {route.max_ms}ms</p>
                     </div>
                   </div>
-                  <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-7">
+                  <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-8">
                     <div>件数 {route.request_count}</div>
                     <div>平均 {route.average_ms}ms</div>
                     <div>超過率 {route.slow_rate}%</div>
                     <div>5xx {route.error_count}</div>
+                    <div>org scope {route.org_scope}</div>
                     <div>
                       route family{' '}
                       {route.critical_route_family == null ? '通常' : route.critical_route_family}
