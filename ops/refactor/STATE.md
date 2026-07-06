@@ -42,6 +42,7 @@
 ## 直近の land（本日・要点）
 
 - codex: AWS-LS-001 Lightsail pilot readiness gate implemented.
+  - implementation commit: `a4e506b54` (`Add AWS pilot readiness gate`)
   - current task:
     `Plans.md` の `AWS-LS-001` を実装。`pilot-readiness` に local/static no-live-AWS の
     `aws_pilot_summary` と `pilot_phi_entry` gate を追加し、Lightsail pilot / S3 PHI policy /
