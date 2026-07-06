@@ -5,7 +5,7 @@ const blockedAuditValuePattern =
 const lowerCodePattern = /^[a-z0-9_.:-]{1,128}$/;
 const safeMimeTypePattern = /^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+$/;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const shaLikePattern = /^(?:sha256[:_-])?[a-f0-9]{32,128}$/;
+const shaLikePattern = /^(?:sha256[:_-])?[a-f0-9]{16,128}$/;
 const safePatientAggregateKeys = new Set([
   'patient_count',
   'patient_selection_hash',
@@ -39,6 +39,7 @@ const safeCodeStringKeys = new Set([
   'contract_id',
   'document_type',
   'export_format',
+  'export_surface_id',
   'export_snapshot_id',
   'file_id',
   'file_purpose',
@@ -243,13 +244,14 @@ const allowedMetadataKeysByTarget = new Map<string, Set<string>>([
       'document_type',
     ]),
   ],
-  ['billing_candidate', new Set(['export_format'])],
+  ['billing_candidate', new Set(['export_format', 'export_surface_id'])],
   ['patients', new Set(['source'])],
   ['patient_list', new Set(['source'])],
   [
     'communication_request',
     new Set([
       'export_snapshot_id',
+      'export_surface_id',
       'exported_request_id_hashes',
       'exported_request_count',
       'exported_request_id_hashes_truncated',
@@ -397,7 +399,7 @@ function isSafeHashOrPrefixedHash(value: unknown): value is string {
   if (shaLikePattern.test(value)) return true;
   return (
     lowerCodePattern.test(value) &&
-    hasSafePrefix(value, ['hash', 'patient', 'patient-hash', 'request', 'request-hash'])
+    hasSafePrefix(value, ['hash', 'patient', 'patient-hash', 'request', 'request-hash', 'snapshot'])
   );
 }
 
@@ -440,7 +442,7 @@ function sanitizeExportAuditFieldValue(key: string, value: unknown): unknown {
     case 'patient_selection_hash':
       return isSafeHashOrPrefixedHash(value) ? value : undefined;
     case 'export_snapshot_id':
-      return sanitizePrefixedId(value, ['snapshot']);
+      return isSafeHashOrPrefixedHash(value) ? value : undefined;
     case 'patient_share_consent_id':
       return sanitizePrefixedId(value, ['share_consent']);
     case 'share_case_id':

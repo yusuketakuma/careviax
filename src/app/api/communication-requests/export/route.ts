@@ -16,8 +16,14 @@ import {
 } from '@/lib/validations/communication-request';
 import { recordDataExportAudit } from '@/server/services/export-audit';
 import { quotedCsvCell as csvCell } from '@/lib/csv/safe-csv';
+import type { ApprovedServerExportSurfaceId } from '@/lib/audit/server-export-registry';
 
 type ExportProfile = 'internal' | 'external';
+
+const EXPORT_SURFACE_BY_PROFILE = {
+  external: 'communication_requests_external_csv',
+  internal: 'communication_requests_internal_csv',
+} as const satisfies Record<ExportProfile, ApprovedServerExportSurfaceId>;
 
 const INTERNAL_HEADER = [
   'id',
@@ -100,12 +106,14 @@ function buildFilename(args: {
 function buildExportAuditMetadata(args: {
   requestIds: string[];
   patientIds?: Array<string | null>;
+  exportSurfaceId: ApprovedServerExportSurfaceId;
 }) {
   const requestIds = Array.from(new Set(args.requestIds.filter(Boolean))).sort();
   const patientIds = Array.from(
     new Set((args.patientIds ?? []).filter((id): id is string => Boolean(id))),
   ).sort();
   return {
+    export_surface_id: args.exportSurfaceId,
     export_snapshot_id: hashExportScopeId(requestIds.join('\n')),
     exported_request_id_hashes: requestIds.map(hashExportScopeId).slice(0, 100),
     exported_request_count: requestIds.length,
@@ -264,6 +272,7 @@ const authenticatedGET = withAuthContext(
                 },
                 metadata: buildExportAuditMetadata({
                   requestIds: requests.map((request) => request.id),
+                  exportSurfaceId: EXPORT_SURFACE_BY_PROFILE.external,
                 }),
                 ipAddress: ctx.ipAddress,
                 userAgent: ctx.userAgent,
@@ -374,6 +383,7 @@ const authenticatedGET = withAuthContext(
               metadata: buildExportAuditMetadata({
                 requestIds: requests.map((request) => request.id),
                 patientIds: requests.map((request) => request.patient_id),
+                exportSurfaceId: EXPORT_SURFACE_BY_PROFILE.internal,
               }),
               ipAddress: ctx.ipAddress,
               userAgent: ctx.userAgent,

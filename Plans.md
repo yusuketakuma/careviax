@@ -1047,8 +1047,11 @@ FE 仕上げ（低優先）:
   approved surface registry に接続し、surface id と endpoint prefix / audit event / masking profile /
   description が一致しない全件出力は fail-closed にした。DataTable は registry builder 由来の descriptor
   を使い、任意 same-origin path に「監査・マスキング済み」文言を出せない。
-  残: real consumer の screen-level PHI export snapshot、他 bulk action consumer の選択範囲文言 sweep、
-  route 側 export audit metadata と registry surface id の突合。
+  追加 partial として `billing-candidates/export` と `communication-requests/export` の audit metadata に
+  `export_surface_id` を追加し、route 側の実出力が registry surface id と突合できるようにした。
+  sanitizer は `export_surface_id` と 16桁 hash snapshot を PHI-free metadata として許可し、
+  日本語 request_type などの自由記述は audit filters へ残さない。
+  残: real consumer の screen-level PHI export snapshot、他 bulk action consumer の選択範囲文言 sweep。
 
 **追加実装順序**:
 

@@ -171,6 +171,7 @@ describe('/api/communication-requests/export GET', () => {
             care_report_rows_excluded: false,
           }),
           metadata: expect.objectContaining({
+            export_surface_id: 'communication_requests_internal_csv',
             exported_request_id_hashes: [expect.stringMatching(/^[a-f0-9]{16}$/)],
             exported_request_count: 1,
             exported_request_id_hashes_truncated: false,
@@ -243,10 +244,8 @@ describe('/api/communication-requests/export GET', () => {
     expect(auditLogCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         changes: expect.objectContaining({
-          filters: expect.objectContaining({
-            status: null,
+          filters: expect.not.objectContaining({
             request_type: '処方医フォロー',
-            profile: 'internal',
           }),
         }),
       }),
@@ -456,6 +455,7 @@ describe('/api/communication-requests/export GET', () => {
             redaction_profile: 'external',
           }),
           metadata: expect.objectContaining({
+            export_surface_id: 'communication_requests_external_csv',
             exported_request_id_hashes: [expect.stringMatching(/^[a-f0-9]{16}$/)],
             exported_request_count: 1,
             exported_patient_count: 0,

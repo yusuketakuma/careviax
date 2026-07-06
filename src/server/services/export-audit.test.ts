@@ -172,7 +172,10 @@ describe('recordDataExportAudit', () => {
       targetType: 'billing_candidate',
       format: 'claims-xml',
       recordCount: 3,
-      metadata: { export_format: 'claims-xml' },
+      metadata: {
+        export_format: 'claims-xml',
+        export_surface_id: 'billing_candidates_claims_xml',
+      },
     });
 
     expect(auditLogCreateMock).toHaveBeenCalledWith({
@@ -182,7 +185,10 @@ describe('recordDataExportAudit', () => {
         changes: expect.objectContaining({
           format: 'claims-xml',
           record_count: 3,
-          metadata: { export_format: 'claims-xml' },
+          metadata: {
+            export_format: 'claims-xml',
+            export_surface_id: 'billing_candidates_claims_xml',
+          },
         }),
       }),
     });
@@ -268,6 +274,7 @@ describe('recordDataExportAudit', () => {
         phone: '03-1234-5678',
       },
       metadata: {
+        export_surface_id: 'communication_requests_external_csv',
         export_snapshot_id: 'snapshot-hash',
         exported_request_id_hashes: ['request-hash'],
         exported_request_count: 1,
@@ -296,6 +303,7 @@ describe('recordDataExportAudit', () => {
             care_report_rows_excluded: false,
           },
           metadata: {
+            export_surface_id: 'communication_requests_external_csv',
             export_snapshot_id: 'snapshot-hash',
             exported_request_id_hashes: ['request-hash'],
             exported_request_count: 1,

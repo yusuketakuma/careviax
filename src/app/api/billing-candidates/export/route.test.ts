@@ -191,6 +191,9 @@ describe('/api/billing-candidates/export GET', () => {
         targetType: 'billing_candidate',
         format: 'csv',
         recordCount: 1,
+        metadata: expect.objectContaining({
+          export_surface_id: 'billing_candidates_csv',
+        }),
       }),
     );
   });
@@ -218,6 +221,7 @@ describe('/api/billing-candidates/export GET', () => {
         format: 'claims-xml',
         metadata: expect.objectContaining({
           export_format: 'claims-xml',
+          export_surface_id: 'billing_candidates_claims_xml',
           audit_phase: 'attempt',
         }),
       }),
@@ -230,6 +234,7 @@ describe('/api/billing-candidates/export GET', () => {
         format: 'claims-xml',
         metadata: expect.objectContaining({
           export_format: 'claims-xml',
+          export_surface_id: 'billing_candidates_claims_xml',
           audit_phase: 'success',
           claims_record_count: 1,
           site_id: 'site_1',

@@ -16,9 +16,15 @@ import { resolveClaimsExportSiteId } from '@/server/services/claims-export-site'
 import { BILLING_DOMAIN_ERROR_MESSAGE, parseOptionalBillingDomain } from '../billing-domain';
 import { BILLING_MONTH_FORMAT_MESSAGE, parseStrictBillingMonth } from '../billing-month';
 import { quotedCsvCell as csvCell } from '@/lib/csv/safe-csv';
+import type { ApprovedServerExportSurfaceId } from '@/lib/audit/server-export-registry';
 
 type ExportFormat = 'csv' | 'claims-xml';
 type ExportQueryName = 'billing_month' | 'patient_id' | 'billing_domain' | 'format' | 'preview';
+
+const EXPORT_SURFACE_BY_FORMAT = {
+  csv: 'billing_candidates_csv',
+  'claims-xml': 'billing_candidates_claims_xml',
+} as const satisfies Record<ExportFormat, ApprovedServerExportSurfaceId>;
 
 type ExportPreviewRecord = {
   billing_domain: string;
@@ -462,6 +468,7 @@ const authenticatedGET = withAuthContext(
             },
             metadata: {
               export_format: exportFormat,
+              export_surface_id: EXPORT_SURFACE_BY_FORMAT[exportFormat],
               patient_filter_hash: patientId ? hashBillingExportFilterId(patientId) : null,
               ...metadata,
             },
