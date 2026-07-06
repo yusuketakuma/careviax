@@ -41,7 +41,54 @@
 
 ## 直近の land（本日・要点）
 
-- codex: MOV-001 Patient Movement Timeline final scope lock（commit pending）。
+- codex: MOV-001 Patient Movement Timeline risk/stock task source classification（commit pending）。
+  - current task:
+    正式 `RiskFinding` / `MedicationStockEvent` source 追加前の bridge として、既存 `Task`
+    source から患者/ケース紐づきの risk・薬剤安全・MedicationStock task を Patient Movement
+    Timeline の `safety` / `medication_stock` category に分類する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail.test.ts`,
+    `src/server/services/patient-movement-timeline-presenter.ts`,
+    `src/lib/tasks/task-registry.ts`,
+    `src/server/services/risk-task-bridge.ts`,
+    `src/modules/pharmacy/medication-stock/application/medication-stock-risk-adapter.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail.test.ts`.
+  - implementation:
+    `operationalTasksSource` が task自由記載/metadataを選択しない既存制約を維持したまま、
+    canonical `risk_*` task と `pharmacy.inbound_medication_safety_review_required` を
+    `safety_signal` / `safety` に投影する。MedicationStock/受信残数系 task は
+    `inbound_medication_stock_signal` / `medication_stock` に投影し、通常運用taskは従来どおり
+    `task_created` / `task_resolved` のままにする。
+  - validation:
+    `pnpm vitest run src/server/services/patient-detail.test.ts --reporter=dot --testTimeout=30000`
+    passed: 1 file / 74 tests.
+    `pnpm exec eslint src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts`
+    passed.
+    `pnpm vitest run src/server/services/patient-movement-timeline-presenter.test.ts src/lib/tasks/task-registry.test.ts src/server/services/risk-task-bridge.test.ts --reporter=dot --testTimeout=30000`
+    passed: 3 files / 21 tests.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+    `pnpm boundaries:check` passed: 0 new violations, 7 allowlisted debt imports across 6 files.
+    `pnpm exec prettier --check src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts`
+    passed after formatting.
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts`
+    passed after formatting.
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts`
+    passed.
+  - remaining:
+    正式 `InboundCommunicationSignal` / `MedicationStockEvent` / safety finding source の追加、
+    review API/UI、Schedule/Report linkage、Playwright mobile smoke。
+  - next action:
+    Scoped commit/push.
+
+- codex: MOV-001 Patient Movement Timeline final scope lock（commit 6943dfa95）。
   - current task:
     ユーザー確認に合わせ、Patient Movement Timeline は処方・訪問・文書の内容閲覧画面ではなく、
     「登録/記録/更新があったこと」と「正本画面への deep link」を確認する索引UIであることを
@@ -67,7 +114,7 @@
   - remaining:
     正式 INB signal / MedicationStock Ledger / safety source の追加、Playwright mobile smoke。
   - next action:
-    Scoped commit/push.
+    Landed and pushed to `origin/main`.
 
 - codex: INB-001 inbound communication VisitBrief summary bridge（commit f483a70ad）。
   - current task:

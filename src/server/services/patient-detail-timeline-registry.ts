@@ -128,6 +128,15 @@ const TASK_PRIORITY_LABELS: Record<string, string> = {
   normal: '通常',
   low: '低',
 };
+const MEDICATION_STOCK_SIGNAL_TASK_TYPES = new Set([
+  'pharmacy.medication_stock_shortage_expected',
+  'pharmacy.medication_stock_usage_unknown',
+  'pharmacy.medication_stock_equivalence_review_required',
+  'pharmacy.medication_stock_external_observation_review_required',
+  'pharmacy.inbound_medication_stock_signal_review_required',
+  'pharmacy.inbound_low_stock_unquantified_report',
+]);
+const SAFETY_SIGNAL_TASK_TYPES = new Set(['pharmacy.inbound_medication_safety_review_required']);
 const INBOUND_COMMUNICATION_EVENT_TYPE_BY_CHANNEL: Record<string, string> = {
   phone: 'inbound_phone',
   fax: 'inbound_fax',
@@ -152,6 +161,15 @@ function getCommunicationDirectionLabel(direction: string) {
 function getInboundCommunicationEventType(item: CommunicationTimelineSource) {
   if (getCommunicationDirectionLabel(item.direction) !== '受信') return null;
   return INBOUND_COMMUNICATION_EVENT_TYPE_BY_CHANNEL[item.channel] ?? null;
+}
+
+function getTaskMovementKind(taskType: string): 'task' | 'safety' | 'medication_stock' {
+  const canonicalTaskType = getTaskTypeDefinition(taskType)?.taskType ?? taskType;
+  if (MEDICATION_STOCK_SIGNAL_TASK_TYPES.has(canonicalTaskType)) return 'medication_stock';
+  if (canonicalTaskType.includes('.risk_') || SAFETY_SIGNAL_TASK_TYPES.has(canonicalTaskType)) {
+    return 'safety';
+  }
+  return 'task';
 }
 
 // --- visitSchedules ---------------------------------------------------------
@@ -555,12 +573,31 @@ export const operationalTasksSource = defineTimelineSource<
       const taskLabel = taskType?.label ?? item.task_type;
       const statusLabel = TASK_STATUS_LABELS[item.status] ?? item.status;
       const priorityLabel = TASK_PRIORITY_LABELS[item.priority] ?? item.priority;
+      const movementKind = getTaskMovementKind(item.task_type);
+      const isSafetySignal = movementKind === 'safety';
+      const isMedicationStockSignal = movementKind === 'medication_stock';
       return {
         id: `task:${item.id}`,
-        event_type: isResolved ? 'task_resolved' : 'task_created',
-        category: 'task',
+        event_type: isSafetySignal
+          ? 'safety_signal'
+          : isMedicationStockSignal
+            ? 'inbound_medication_stock_signal'
+            : isResolved
+              ? 'task_resolved'
+              : 'task_created',
+        category: isSafetySignal ? 'safety' : isMedicationStockSignal ? 'medication_stock' : 'task',
         occurred_at: isResolved ? (item.completed_at ?? item.updated_at) : item.created_at,
-        title: isResolved ? '運用タスクを完了' : '運用タスクを作成',
+        title: isSafetySignal
+          ? isResolved
+            ? '安全確認タスクを完了'
+            : '安全確認タスクを作成'
+          : isMedicationStockSignal
+            ? isResolved
+              ? '残数確認タスクを完了'
+              : '残数確認タスクを作成'
+            : isResolved
+              ? '運用タスクを完了'
+              : '運用タスクを作成',
         summary:
           compactTimelineValues([
             taskLabel,
