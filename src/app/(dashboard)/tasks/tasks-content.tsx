@@ -41,6 +41,7 @@ import {
 } from '@/lib/tasks/bulk-completion-contract';
 import { summarizeBulkCompleteTaskFailures } from '@/lib/tasks/bulk-completion-messages';
 import { buildTasksHealthBoardApiPath } from '@/lib/tasks/api-paths';
+import type { RiskDomain } from '@/lib/risk/risk-finding';
 import { StateBadge } from '@/components/ui/state-badge';
 import {
   PRIORITY_ROLE,
@@ -54,7 +55,11 @@ import type {
   TasksStatusFilter,
 } from '@/lib/dashboard/home-link-builders';
 import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
-import { TaskHealthBoardPanel, taskHealthBoardEnvelopeSchema } from './task-health-board-panel';
+import {
+  TaskHealthBoardPanel,
+  taskHealthBoardEnvelopeSchema,
+  type TaskHealthBoard,
+} from './task-health-board-panel';
 
 // --- Types ---
 
@@ -237,6 +242,10 @@ export function TasksContent({
   const [requestDueDate, setRequestDueDate] = useState('');
   const [requestTitle, setRequestTitle] = useState(initialWorkRequestTitle ?? '');
   const [requestDescription, setRequestDescription] = useState(initialWorkRequestDescription ?? '');
+  const [healthBoardScope, setHealthBoardScope] = useState<TaskHealthBoard['scope']>(
+    initialAssigned === 'me' ? 'mine' : 'role_default',
+  );
+  const [healthBoardRiskDomain, setHealthBoardRiskDomain] = useState<RiskDomain | ''>('');
 
   const queryParams = useMemo(() => {
     const p = new URLSearchParams();
@@ -256,11 +265,13 @@ export function TasksContent({
     assignedToMe,
     currentUserId,
   ]);
-  const healthBoardScope = assignedToMe ? 'mine' : 'role_default';
+  const taskTypeFilterLabel =
+    TASK_TYPE_OPTIONS.find((option) => option.value === taskTypeFilter)?.label ?? taskTypeFilter;
   const healthBoardApiPath = buildTasksHealthBoardApiPath({
     scope: healthBoardScope,
     limit: 500,
-    task_type: taskTypeFilter || null,
+    task_type: healthBoardRiskDomain ? null : taskTypeFilter || null,
+    risk_domain: healthBoardRiskDomain || null,
   });
 
   const { data, isLoading, isError, refetch } = useQuery({
@@ -536,6 +547,13 @@ export function TasksContent({
         board={healthBoardData}
         isLoading={isHealthBoardLoading}
         isError={isHealthBoardError}
+        scope={healthBoardScope}
+        riskDomain={healthBoardRiskDomain}
+        inheritedTaskTypeLabel={
+          !healthBoardRiskDomain && taskTypeFilter ? taskTypeFilterLabel : null
+        }
+        onScopeChange={setHealthBoardScope}
+        onRiskDomainChange={setHealthBoardRiskDomain}
         onRetry={() => void refetchHealthBoard()}
       />
 

@@ -104,6 +104,101 @@ vi.mock('@/components/ui/data-table', async () => {
   };
 });
 
+vi.mock('@/components/ui/select', async () => {
+  const React = await import('react');
+
+  type TriggerProps = { id?: string; className?: string; children?: React.ReactNode };
+  type ItemProps = { value: string; children?: React.ReactNode };
+  type MarkedComponent<P> = React.FC<P> & { selectMockSlot?: string };
+  type TriggerElement = React.ReactElement<TriggerProps>;
+  type ItemElement = React.ReactElement<ItemProps>;
+
+  const SelectTriggerMock: MarkedComponent<TriggerProps> = () => null;
+  SelectTriggerMock.selectMockSlot = 'trigger';
+  const SelectContentMock: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+    <>{children}</>
+  );
+  const SelectItemMock: MarkedComponent<ItemProps> = () => null;
+  SelectItemMock.selectMockSlot = 'item';
+
+  function isTriggerElement(node: React.ReactNode): node is TriggerElement {
+    return (
+      React.isValidElement(node) &&
+      typeof node.type === 'function' &&
+      (node.type as MarkedComponent<TriggerProps>).selectMockSlot === 'trigger'
+    );
+  }
+
+  function isItemElement(node: React.ReactNode): node is ItemElement {
+    return (
+      React.isValidElement(node) &&
+      typeof node.type === 'function' &&
+      (node.type as MarkedComponent<ItemProps>).selectMockSlot === 'item'
+    );
+  }
+
+  function findTrigger(children: React.ReactNode): TriggerElement | null {
+    for (const child of React.Children.toArray(children)) {
+      if (isTriggerElement(child)) return child;
+      if (React.isValidElement(child)) {
+        const nested = findTrigger(
+          (child as React.ReactElement<{ children?: React.ReactNode }>).props.children,
+        );
+        if (nested) return nested;
+      }
+    }
+    return null;
+  }
+
+  function collectOptions(children: React.ReactNode): React.ReactNode[] {
+    const options: React.ReactNode[] = [];
+    for (const child of React.Children.toArray(children)) {
+      if (isItemElement(child)) {
+        options.push(
+          <option key={child.props.value || 'empty'} value={child.props.value}>
+            {child.props.children}
+          </option>,
+        );
+      } else if (React.isValidElement(child)) {
+        options.push(
+          ...collectOptions(
+            (child as React.ReactElement<{ children?: React.ReactNode }>).props.children,
+          ),
+        );
+      }
+    }
+    return options;
+  }
+
+  return {
+    Select: ({
+      value,
+      onValueChange,
+      children,
+    }: {
+      value?: string;
+      onValueChange?: (value: string) => void;
+      children: React.ReactNode;
+    }) => {
+      const trigger = findTrigger(children);
+      return (
+        <select
+          id={trigger?.props.id}
+          className={trigger?.props.className}
+          value={value ?? ''}
+          onChange={(event) => onValueChange?.(event.currentTarget.value)}
+        >
+          {collectOptions(children)}
+        </select>
+      );
+    },
+    SelectContent: SelectContentMock,
+    SelectItem: SelectItemMock,
+    SelectTrigger: SelectTriggerMock,
+    SelectValue: ({ placeholder }: { placeholder?: string }) => <>{placeholder}</>,
+  };
+});
+
 import { TasksContent } from './tasks-content';
 
 setupDomTestEnv();
@@ -212,6 +307,20 @@ function taskHealthBoardQueryResult(overrides: Record<string, unknown> = {}) {
     refetch: vi.fn(),
     ...overrides,
   };
+}
+
+function healthBoardQueryKeys() {
+  return useQueryMock.mock.calls
+    .map((call) => call[0]?.queryKey)
+    .filter((queryKey): queryKey is unknown[] => Array.isArray(queryKey))
+    .filter((queryKey) => queryKey[0] === 'tasks-health-board');
+}
+
+function taskListQueryKeys() {
+  return useQueryMock.mock.calls
+    .map((call) => call[0]?.queryKey)
+    .filter((queryKey): queryKey is unknown[] => Array.isArray(queryKey))
+    .filter((queryKey) => queryKey[0] === 'tasks');
 }
 
 function getCreateRequestMutationOptions() {
@@ -383,6 +492,9 @@ describe('TasksContent', () => {
     expect(healthBoardSection).toBeTruthy();
     const healthBoard = within(healthBoardSection as HTMLElement);
 
+    expect(healthBoard.getByRole('combobox', { name: 'ヘルス範囲' })).toBeTruthy();
+    expect(healthBoard.getByRole('combobox', { name: 'リスク領域' })).toBeTruthy();
+    expect(healthBoard.getByText('ヘルス集計条件')).toBeTruthy();
     expect(
       healthBoard.getByText('先頭500件で集計 / 未読込あり。件数はスキャン範囲内の下限です。'),
     ).toBeTruthy();
@@ -461,6 +573,89 @@ describe('TasksContent', () => {
       },
     );
     expect(buildOrgHeaders).toHaveBeenCalledWith('org_1');
+  });
+
+  it('filters the health board by risk domain without sending the inherited task type', async () => {
+    render(<TasksContent initialTaskType="conference_action_item" />);
+
+    expect(healthBoardQueryKeys()).toContainEqual([
+      'tasks-health-board',
+      'org_1',
+      '/api/tasks/health-board?scope=role_default&limit=500&task_type=conference_action_item',
+    ]);
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'リスク領域' }), {
+      target: { value: 'medication' },
+    });
+
+    await waitFor(() => {
+      expect(healthBoardQueryKeys()).toContainEqual([
+        'tasks-health-board',
+        'org_1',
+        '/api/tasks/health-board?scope=role_default&limit=500&risk_domain=medication',
+      ]);
+    });
+    expect(
+      healthBoardQueryKeys().some(
+        (queryKey) =>
+          String(queryKey[2]).includes('risk_domain=medication') &&
+          String(queryKey[2]).includes('task_type=conference_action_item'),
+      ),
+    ).toBe(false);
+    const healthBoardSection = screen
+      .getByRole('heading', { name: 'オペレーショナル タスクヘルスボード' })
+      .closest('section');
+    expect(healthBoardSection).toBeTruthy();
+    expect(
+      within(healthBoardSection as HTMLElement).getByText(
+        '一覧の種別フィルタとは独立して集計します。',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('changes the health board team scope without mutating the task-list assigned filter', async () => {
+    render(<TasksContent initialAssigned="me" initialStatus="pending" />);
+
+    expect(taskListQueryKeys()).toContainEqual([
+      'tasks',
+      'org_1',
+      'status=pending&assigned_to=user_1',
+    ]);
+    expect(healthBoardQueryKeys()).toContainEqual([
+      'tasks-health-board',
+      'org_1',
+      '/api/tasks/health-board?scope=mine&limit=500',
+    ]);
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'ヘルス範囲' }), {
+      target: { value: 'team' },
+    });
+
+    await waitFor(() => {
+      expect(healthBoardQueryKeys()).toContainEqual([
+        'tasks-health-board',
+        'org_1',
+        '/api/tasks/health-board?scope=team&limit=500',
+      ]);
+    });
+    expect(taskListQueryKeys()).toContainEqual([
+      'tasks',
+      'org_1',
+      'status=pending&assigned_to=user_1',
+    ]);
+    expect(taskListQueryKeys().some((queryKey) => String(queryKey[2]) === 'status=pending')).toBe(
+      false,
+    );
+  });
+
+  it('keeps new health board filter controls at the 44px touch target size', () => {
+    render(<TasksContent />);
+
+    for (const name of ['ヘルス範囲', 'リスク領域']) {
+      const trigger = screen.getByRole('combobox', { name });
+      expect(trigger.className).toContain('!min-h-[44px]');
+      expect(trigger.className).toContain('sm:!min-h-[44px]');
+    }
   });
 
   it('shows ErrorState (not a false-empty list) with retry when the tasks query fails', () => {
@@ -651,7 +846,10 @@ describe('TasksContent', () => {
       />,
     );
 
-    expect(screen.getByText('監査をしてほしい')).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: '依頼内容' })).toHaveProperty(
+      'value',
+      'staff_work_request_audit',
+    );
     expect(screen.getAllByText('通常').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByDisplayValue('田中さんの監査をしてほしい')).toBeTruthy();
     expect(screen.getByDisplayValue('14:00訪問前に完了')).toBeTruthy();

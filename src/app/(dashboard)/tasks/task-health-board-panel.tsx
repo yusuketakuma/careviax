@@ -9,9 +9,12 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
 import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
+import { Label } from '@/components/ui/label';
 import { SkeletonRows } from '@/components/ui/loading';
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { StateBadge } from '@/components/ui/state-badge';
 import { PRIORITY_ROLE } from '@/lib/constants/status-labels';
+import { RISK_DOMAIN_LABELS, RISK_DOMAIN_ORDER, type RiskDomain } from '@/lib/risk/risk-finding';
 import { formatDateLabel } from '@/lib/ui/date-format';
 
 const taskHealthRefSchema = z.object({
@@ -84,6 +87,11 @@ type TaskHealthBoardPanelProps = {
   board: TaskHealthBoard | undefined;
   isLoading: boolean;
   isError: boolean;
+  scope: TaskHealthBoard['scope'];
+  riskDomain: RiskDomain | '';
+  inheritedTaskTypeLabel: string | null;
+  onScopeChange: (nextScope: TaskHealthBoard['scope']) => void;
+  onRiskDomainChange: (nextDomain: RiskDomain | '') => void;
   onRetry: () => void;
 };
 
@@ -92,6 +100,32 @@ const SCOPE_LABELS: Record<TaskHealthBoard['scope'], string> = {
   mine: '自分',
   team: 'チーム',
 };
+
+const SCOPE_OPTIONS: Array<{
+  value: TaskHealthBoard['scope'];
+  label: string;
+  description: string;
+}> = [
+  { value: 'role_default', label: 'ロール既定', description: '職種に応じた通常範囲' },
+  { value: 'mine', label: '自分', description: '自分が所有する対応' },
+  { value: 'team', label: 'チーム', description: 'チーム全体の滞留' },
+];
+
+const RISK_DOMAIN_OPTIONS: RiskDomain[] = [
+  'medication',
+  'billing',
+  'report_delivery',
+  'task_sla',
+  'notification',
+  'data_quality',
+  'patient_foundation',
+  'consent_plan',
+  'dispensing',
+  'visit_preparation',
+  'visit_record',
+  'privacy_security',
+  'integration',
+];
 
 const TASK_TYPE_LABELS: Record<string, string> = {
   staff_work_request_visit: '訪問依頼',
@@ -234,12 +268,23 @@ export function TaskHealthBoardPanel({
   board,
   isLoading,
   isError,
+  scope,
+  riskDomain,
+  inheritedTaskTypeLabel,
+  onScopeChange,
+  onRiskDomainChange,
   onRetry,
 }: TaskHealthBoardPanelProps) {
   const attentionTasks = board ? collectAttentionTasks(board) : [];
   const metricItems = board ? buildMetricItems(board) : [];
   const topRiskGroups = board?.risk_domain_groups.slice(0, 5) ?? [];
   const orphanReasons = board?.orphan_audit.reasons.slice(0, 4) ?? [];
+  const riskDomainLabel = riskDomain ? RISK_DOMAIN_LABELS[riskDomain] : 'すべて';
+  const filterBasisLabel = riskDomain
+    ? `${riskDomainLabel}で集計`
+    : inheritedTaskTypeLabel
+      ? `一覧の種別: ${inheritedTaskTypeLabel}`
+      : '全risk task';
 
   return (
     <PageSection
@@ -256,6 +301,74 @@ export function TaskHealthBoardPanel({
       }
       contentClassName="space-y-4"
     >
+      <div className="grid gap-3 rounded-lg border border-border/70 bg-background p-3 md:grid-cols-[minmax(180px,240px)_minmax(220px,320px)_minmax(0,1fr)]">
+        <div className="space-y-1.5">
+          <Label htmlFor="task-health-scope">ヘルス範囲</Label>
+          <Select
+            value={scope}
+            onValueChange={(next) =>
+              onScopeChange((next ?? 'role_default') as TaskHealthBoard['scope'])
+            }
+          >
+            <SelectTrigger
+              id="task-health-scope"
+              className="!h-11 !min-h-[44px] w-full sm:!h-11 sm:!min-h-[44px]"
+            >
+              <span>{SCOPE_LABELS[scope]}</span>
+            </SelectTrigger>
+            <SelectContent>
+              {SCOPE_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            {SCOPE_OPTIONS.find((option) => option.value === scope)?.description ?? '通常範囲'}
+          </p>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="task-health-risk-domain">リスク領域</Label>
+          <Select
+            value={riskDomain}
+            onValueChange={(next) => onRiskDomainChange((next ?? '') as RiskDomain | '')}
+          >
+            <SelectTrigger
+              id="task-health-risk-domain"
+              className="!h-11 !min-h-[44px] w-full sm:!h-11 sm:!min-h-[44px]"
+            >
+              <span>{riskDomainLabel}</span>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">すべて</SelectItem>
+              {RISK_DOMAIN_OPTIONS.filter((domain) => RISK_DOMAIN_ORDER.includes(domain)).map(
+                (domain) => (
+                  <SelectItem key={domain} value={domain}>
+                    {RISK_DOMAIN_LABELS[domain]}
+                  </SelectItem>
+                ),
+              )}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            {riskDomain
+              ? '一覧の種別フィルタとは独立して集計します。'
+              : inheritedTaskTypeLabel
+                ? '一覧の種別フィルタをヘルス集計へ継承します。'
+                : 'リスク領域を選ぶと task_type 継承を解除します。'}
+          </p>
+        </div>
+        <div className="flex min-h-[44px] items-center rounded-md border border-border/70 px-3 py-2 text-sm">
+          <div className="min-w-0">
+            <p className="font-medium text-foreground">ヘルス集計条件</p>
+            <p className="truncate text-xs text-muted-foreground">
+              {SCOPE_LABELS[scope]} / {filterBasisLabel}
+            </p>
+          </div>
+        </div>
+      </div>
+
       {isLoading ? (
         <div role="status" aria-label="タスクヘルスボードを読み込み中" aria-live="polite">
           <SkeletonRows rows={3} cols={6} status={false} />
@@ -284,6 +397,7 @@ export function TaskHealthBoardPanel({
           <FilterSummaryBar
             items={[
               { label: '範囲', value: SCOPE_LABELS[board.scope] },
+              { label: '集計条件', value: filterBasisLabel },
               { label: '状態', value: board.scan.statuses.join(' / ') },
               { label: 'スキャン', value: `${board.scan.scanned_count}件` },
               { label: 'risk task', value: `${board.summary.risk_task_count}件` },
