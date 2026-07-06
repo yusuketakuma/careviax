@@ -11911,3 +11911,34 @@
   `FE-RT-001` still needs major screen callers gradually moved from broad event-type arrays to
   reviewed source-scoped rules where useful. The current slice provides the shared contract and
   regression tests.
+
+## 2026-07-07 Patient movement marker scope lock
+
+- codex:
+  Updated `MOV-001` planning with the latest user scope lock: prescription, visit, and document
+  events in Patient Movement Timeline only need to confirm that the event occurred and provide a
+  direct canonical deep link to the source screen. The timeline must not become a detail reader for
+  prescription lines, visit notes, SOAP text, document bodies, filenames, OCR text, storage keys, or
+  signed URLs.
+- files inspected:
+  `Plans.md`,
+  `docs/ui-ux-design-guidelines.md`,
+  `src/types/patient-movement-timeline.ts`,
+  `src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx`,
+  `src/server/services/patient-movement-timeline-presenter.ts`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  Reduced implementation ambiguity for `MOV-001`: future slices should build marker cards and
+  relative canonical hrefs, not duplicate PHI-heavy prescription, visit, or document contents into
+  timeline payloads, cards, or search haystacks.
+- validation:
+  `pnpm exec prettier --check Plans.md ops/refactor/STATE.md`
+  green;
+  `git diff --check -- Plans.md ops/refactor/STATE.md`
+  green.
+- remaining:
+  `MOV-001` still needs formal INB signal / MedicationStock Ledger / safety finding sources and
+  any missing canonical href builders for sources that cannot currently produce direct relative
+  deep links.

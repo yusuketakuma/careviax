@@ -1476,6 +1476,41 @@ Document marker:
     external URL / signed URL / storage key
 ```
 
+**最新ユーザー指示による完成判定（2026-07-07 追加）**:
+
+```text
+Patient Movement Timeline における処方・訪問・文書登録の目的:
+  処方があったこと、訪問があったこと、文書登録があったことを時系列で確認できるようにする。
+  詳細はタイムライン内で読ませず、正本画面への deep link で確認する。
+
+処方 marker の完成条件:
+  タイムラインに「処方受付/処方登録/処方変更/疑義照会があった」ことが出る。
+  marker は発生日時、controlled status、必要な badge、正本 deep link を持つ。
+  CTA は処方詳細、処方サイクル、薬剤変更レビュー、疑義照会などの正本画面へ直接遷移する。
+
+訪問 marker の完成条件:
+  タイムラインに「訪問予定/訪問記録/訪問完了があった」ことが出る。
+  marker は訪問日または記録時刻、controlled status、報告待ち/未完了 badge、正本 deep link を持つ。
+  CTA は訪問記録、訪問準備、スケジュール focus などの正本画面へ直接遷移する。
+
+文書 marker の完成条件:
+  タイムラインに「文書登録/文書更新/報告書作成/文書送付があった」ことが出る。
+  marker は登録/更新時刻、controlled document type、scan/retention/shareability badge、正本 deep link を持つ。
+  CTA は共有・文書タブ、文書詳細、報告詳細、FileAsset detail などの正本画面へ直接遷移する。
+
+明示的な非目標:
+  処方内容、薬剤明細、用法用量、訪問本文、SOAP本文、文書本文、添付ファイル名、OCR全文を timeline card に出さない。
+  deep link 未整備を本文プレビューで補わない。
+  中間の event detail shell を処方・訪問・文書の primary CTA にしない。
+```
+
+実装時の追加テスト観点:
+
+- 処方・訪問・文書 marker が日付順に出ること。
+- 各 marker の `href` が相対パスで、正本画面へ直接遷移すること。
+- `event.href` が primary CTA に使われ、処方・訪問・文書では event detail shell が primary CTA にならないこと。
+- 処方内容、訪問内容、文書本文、添付ファイル名、OCR全文、storage key、signed URL が `PatientMovementTimelineEvent` JSON、card 表示、検索 haystack に混入しないこと。
+
 実装者向け注意:
 
 - `patient-movement-timeline-presenter.ts` の `GENERIC_DETAIL_SUMMARIES` は削らない。処方・訪問・文書 category はこの controlled summary を通す。
