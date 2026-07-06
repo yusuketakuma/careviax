@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: INB-001 inbound communication Case Risk provider bridge（未コミット）。
+- codex: INB-001 inbound communication Case Risk provider bridge（commit c0428271b）。
   - current task:
     `CommunicationEvent` の既存 inbound phone/FAX/email を、Case Risk Cockpit の正式 provider 経由で
     PHI-minimized な aggregate warning として表示する。
@@ -101,9 +101,9 @@
     `pnpm typecheck:no-unused` failed with Node heap OOM at the default heap limit; rerun as
     `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed.
   - remaining:
-    scoped commit / push。
+    push。
   - next action:
-    Run final formatting/diff checks including `Plans.md` and `ops/refactor/STATE.md`, then commit and push.
+    Push `c0428271b` and this state-record commit to `origin/main`.
 
 - codex: MOV-001 Patient Movement Timeline marker/deep-link scope plan（commit 687169786）。
   - current task:
