@@ -10,6 +10,12 @@ type Tx = {
   };
 };
 
+type TaskResolutionMetadataTx = Tx & {
+  task: Tx['task'] & {
+    findMany(args: unknown): Promise<Array<{ id: string; metadata: Prisma.JsonValue | null }>>;
+  };
+};
+
 type TaskDisplayIdRow = {
   id: string;
   display_id: string | null;
@@ -50,6 +56,14 @@ export type ResolveOperationalTaskInput = {
   assignedToUserId?: string | null;
   includeUnassigned?: boolean;
   status?: Extract<TaskStatus, 'completed' | 'cancelled'>;
+  resolution?: {
+    state: 'resolved' | 'waived';
+    actorUserId?: string | null;
+    auditLogId?: string | null;
+    reasonPresent?: boolean;
+    reasonLength?: number | null;
+    reasonCode?: string | null;
+  };
 };
 
 async function ensureTaskDisplayId(
@@ -181,27 +195,67 @@ export async function upsertOperationalTask(tx: Tx, input: UpsertOperationalTask
 
 export async function resolveOperationalTasks(tx: Tx, input: ResolveOperationalTaskInput) {
   const nextStatus = input.status ?? 'completed';
+  const where = {
+    ...(input.taskId ? { id: input.taskId } : {}),
+    org_id: input.orgId,
+    status: {
+      in: ['pending', 'in_progress'],
+    },
+    ...(input.dedupeKey ? { dedupe_key: input.dedupeKey } : {}),
+    ...(input.taskType ? { task_type: input.taskType } : {}),
+    ...(input.relatedEntityType ? { related_entity_type: input.relatedEntityType } : {}),
+    ...(input.relatedEntityId ? { related_entity_id: input.relatedEntityId } : {}),
+    ...(input.assignedToUserId
+      ? {
+          OR: [
+            { assigned_to: input.assignedToUserId },
+            ...(input.includeUnassigned ? [{ assigned_to: null }] : []),
+          ],
+        }
+      : {}),
+  };
+
+  if (input.resolution) {
+    const resolutionTx = tx as Partial<TaskResolutionMetadataTx>;
+    if (!resolutionTx.task?.findMany) {
+      throw new Error('Task resolution metadata requires task.findMany');
+    }
+    const tasks = await resolutionTx.task.findMany({
+      where,
+      select: {
+        id: true,
+        metadata: true,
+      },
+    });
+
+    let count = 0;
+    const resolution = buildTaskResolutionMetadata(input.resolution);
+    for (const task of tasks) {
+      const result = await tx.task.updateMany({
+        where: {
+          ...where,
+          id: task.id,
+        },
+        data: {
+          status: nextStatus,
+          completed_at: nextStatus === 'completed' ? new Date() : null,
+          metadata: mergeTaskResolutionMetadata(task.metadata, resolution),
+        },
+      });
+      if (
+        typeof result === 'object' &&
+        result !== null &&
+        'count' in result &&
+        typeof result.count === 'number'
+      ) {
+        count += result.count;
+      }
+    }
+    return { count };
+  }
 
   return tx.task.updateMany({
-    where: {
-      ...(input.taskId ? { id: input.taskId } : {}),
-      org_id: input.orgId,
-      status: {
-        in: ['pending', 'in_progress'],
-      },
-      ...(input.dedupeKey ? { dedupe_key: input.dedupeKey } : {}),
-      ...(input.taskType ? { task_type: input.taskType } : {}),
-      ...(input.relatedEntityType ? { related_entity_type: input.relatedEntityType } : {}),
-      ...(input.relatedEntityId ? { related_entity_id: input.relatedEntityId } : {}),
-      ...(input.assignedToUserId
-        ? {
-            OR: [
-              { assigned_to: input.assignedToUserId },
-              ...(input.includeUnassigned ? [{ assigned_to: null }] : []),
-            ],
-          }
-        : {}),
-    },
+    where,
     data: {
       status: nextStatus,
       completed_at: nextStatus === 'completed' ? new Date() : null,
@@ -210,3 +264,39 @@ export async function resolveOperationalTasks(tx: Tx, input: ResolveOperationalT
 }
 
 export const describeOperationalTask = describeOperationalTaskShared;
+
+function buildTaskResolutionMetadata(
+  input: NonNullable<ResolveOperationalTaskInput['resolution']>,
+) {
+  const reasonLength =
+    typeof input.reasonLength === 'number' &&
+    Number.isFinite(input.reasonLength) &&
+    input.reasonLength > 0
+      ? Math.trunc(input.reasonLength)
+      : 0;
+  const reasonPresent = input.reasonPresent ?? reasonLength > 0;
+  return {
+    state: input.state,
+    actor_user_id: input.actorUserId?.trim() || null,
+    audit_log_id: input.auditLogId?.trim() || null,
+    reason_code: input.reasonCode?.trim() || null,
+    reason_present: reasonPresent,
+    reason_length: reasonPresent ? reasonLength : 0,
+    reason_redacted: reasonPresent,
+    recorded_at: new Date().toISOString(),
+  } satisfies Prisma.InputJsonObject;
+}
+
+function mergeTaskResolutionMetadata(
+  metadata: Prisma.JsonValue | null,
+  resolution: Prisma.InputJsonObject,
+) {
+  const base =
+    metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+      ? ({ ...metadata } as Prisma.InputJsonObject)
+      : {};
+  return {
+    ...base,
+    resolution,
+  } satisfies Prisma.InputJsonObject;
+}

@@ -207,6 +207,8 @@ describe('/api/tasks/[id]', () => {
     ['visit_schedule_override_approval', 'visit_schedule', 'schedule_1'],
     ['handoff_confirmation', 'visit_record', 'visit_record_1'],
     ['handoff_supervision_review', 'visit_record', 'visit_record_1'],
+    ['risk_billing', 'billing_evidence', 'bill_1'],
+    ['risk_medication', 'case', 'case_1'],
   ])(
     'rejects generic completion for %s tasks that require dedicated flows',
     async (taskType, relatedEntityType, relatedEntityId) => {
@@ -236,6 +238,33 @@ describe('/api/tasks/[id]', () => {
       expect(taskUpdateManyMock).not.toHaveBeenCalled();
     },
   );
+
+  it('rejects generic cancellation for risk tasks because waiver requires reason and audit', async () => {
+    taskFindFirstMock.mockResolvedValue({
+      id: 'task_1',
+      task_type: 'risk_billing',
+      assigned_to: 'user_1',
+      completed_at: null,
+      related_entity_type: 'billing_evidence',
+      related_entity_id: 'bill_1',
+    });
+
+    const response = (await PATCH(
+      createPatchRequest('task_1', {
+        status: 'cancelled',
+      }),
+      {
+        params: Promise.resolve({ id: 'task_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'このタスクは専用画面で完了してください',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(taskUpdateManyMock).not.toHaveBeenCalled();
+  });
 
   it('rejects archived related patients before updating operational tasks', async () => {
     patientFindFirstMock.mockResolvedValue({

@@ -620,9 +620,14 @@ FE 仕上げ（低優先）:
   - 既存 `src/server/services/operational-tasks.ts` の薄い拡張
 - [x] `RiskFinding.severity in ('blocking','urgent')` を task 化できる。
 - [x] `dedupe_key` は `risk:${domain}:${key}:${entityType}:${entityId}` を基本とし、患者/ケース/訪問/報告/請求根拠ごとに安定させる。
-- [~] risk 解消時は `resolveOperationalTasks` で `completed` または `cancelled` に寄せる。waive は理由付き audit と task resolution note を必須にする。
+- [x] risk 解消時は `resolveOperationalTasks` で `completed` または `cancelled` に寄せる。waive は理由付き audit と task resolution note を必須にする。
   2026-07-06: `resolved -> completed` / `waived -> cancelled` の resolve input と wrapper を追加。理由付き
   audit / task resolution note は waiver/override UI/API 接続時に実装する。
+  2026-07-06 追加: `waiveOperationalTaskForRiskWithAudit` を追加し、waiver 時に `risk_finding_waived`
+  audit を先に作成してから task を `cancelled` にする。`resolveOperationalTasks` は resolution metadata を
+  既存 task metadata へ merge できるようになり、`audit_log_id`、actor、reason_code、reason_present /
+  reason_length / reason_redacted だけを保存する。理由本文、finding title/detail、患者名・電話等の PHI-like
+  text は audit changes / task metadata に保存しない。
 - [x] task から元 risk、患者、ケース、訪問、報告、請求根拠へ遷移できる `action_href` を保持する。
 - [~] task registry には owner domain、default priority、dedupe builder、resolve condition、stale threshold、related entity type、patient_safety flag、billing_close flag を登録する。
   2026-07-06: domain ごとの owner、task_type、default_priority、stale threshold、related entity type、
@@ -662,8 +667,10 @@ FE 仕上げ（低優先）:
     では org ごとの `withOrgContext` で全 org を処理する。job response / IntegrationJob output は
     processed/scanned/upserted/resolved/skipped/error/limit の件数だけに抑え、case/task/patient/finding refs、
     dedupe key、raw error、PHI-like text は返さない。
+  - 2026-07-06 追加 partial: waiver/override 用の audit + resolution note contract を追加。
+    `risk_finding_waived` audit changes と task `metadata.resolution` は理由本文を保存せず、present/length/
+    redacted flag と audit id / actor / reason code だけを保持する。
 - 残:
-  - waiver/override 時の理由必須 audit と resolution note。
   - domain 別 resolve predicate、孤児 task audit、Task Health Board 連携。
 
 #### RISK-CORE-3. Case Risk Cockpit API contract `cc:PARTIAL`
@@ -813,6 +820,7 @@ FE 仕上げ（低優先）:
 - UI/UX 実装 slice は、対象画面の既存コードと `docs/ui-ux-design-guidelines.md` を確認したうえで、必要に応じて `imagegen` を使い `gpt-image-2` で再構築した画面デザイン案を先に作る。
 - UI/UX の新規・再配置・大幅改善では、原則として `imagegen` の生成モデルを `gpt-image-2` に固定する。既存画面の軽微な文言/状態修正、または既存スクリーンショットだけで十分な場合を除き、実装前に `gpt-image-2` の参照案を作る。
 - `imagegen` 実行時の標準モデル指定は `gpt-image-2` とし、生成画像の用途は UI 参照案・情報設計確認・モバイル/失敗状態の検討に限定する。
+- 実装者は `imagegen` 実行時にモデル名を明示できる環境では、標準として `model: gpt-image-2` を指定する。指定できない実行環境では、実行ログまたは台帳に `gpt-image-2` 方針で生成したことを記録する。
 - `gpt-image-2` の prompt には実在患者名、住所、電話、処方本文、報告書本文、保険情報、外部共有URLなどの PHI/secret を入れない。必要な場合は架空データ・抽象ラベル・safe display id だけで構成する。
 - 生成した参照案は、生成画像パス、画面状態、採用/不採用の判断、PH-OS SSOT へ合わせた実装差分を `ops/refactor/STATE.md` に記録する。
 - 生成デザインはそのまま模写せず、PH-OS の情報密度、権限/PHI 表示制約、業務導線、モバイル/アクセシビリティ要件に合わせて実装へ落とし込む。

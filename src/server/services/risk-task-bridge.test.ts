@@ -1,10 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createRiskFinding, type RiskFinding } from '@/lib/risk/risk-finding';
 import {
+  buildRiskTaskWaiverAuditChanges,
   riskFindingToOperationalTaskInput,
   riskFindingToResolveOperationalTaskInput,
   riskFindingToWaiveOperationalTaskInput,
   shouldCreateOperationalTaskForRisk,
+  waiveOperationalTaskForRiskWithAudit,
 } from './risk-task-bridge';
 import { adaptOperationalTaskToRiskFinding } from './risk-finding-registry';
 
@@ -169,5 +171,177 @@ describe('risk-task-bridge', () => {
         auditLogId: '',
       }),
     ).toThrow('Risk task waiver requires auditLogId');
+  });
+
+  it('builds waiver resolve input with redacted resolution note metadata', () => {
+    const waived = finding({ resolution_state: 'waived' });
+
+    const input = riskFindingToWaiveOperationalTaskInput({
+      orgId: 'org_1',
+      finding: waived,
+      actorUserId: 'user_1',
+      waiverReason: '患者 山田花子 raw waiver reason 090-1234-5678',
+      reasonCode: 'pharmacist_override',
+      auditLogId: 'audit_1',
+    });
+
+    expect(input).toMatchObject({
+      status: 'cancelled',
+      resolution: {
+        state: 'waived',
+        actorUserId: 'user_1',
+        auditLogId: 'audit_1',
+        reasonPresent: true,
+        reasonLength: '患者 山田花子 raw waiver reason 090-1234-5678'.length,
+        reasonCode: 'pharmacist_override',
+      },
+    });
+    expect(JSON.stringify(input)).not.toContain('山田花子');
+    expect(JSON.stringify(input)).not.toContain('090-1234-5678');
+    expect(JSON.stringify(input)).not.toContain('raw waiver reason');
+  });
+
+  it('builds PHI-minimized waiver audit changes without storing title/detail/reason text', () => {
+    const waived = finding({ resolution_state: 'waived' });
+
+    const changes = buildRiskTaskWaiverAuditChanges({
+      finding: waived,
+      waiverReason: '患者 山田花子 raw waiver reason 090-1234-5678',
+      reasonCode: 'pharmacist_override',
+    });
+
+    expect(changes).toMatchObject({
+      risk_domain: 'billing',
+      risk_severity: 'blocking',
+      risk_resolution_state: 'waived',
+      task_resolution_status: 'cancelled',
+      related_entity_type: 'billing_evidence',
+      related_entity_id: 'bill_1',
+      case_id: 'case_1',
+      reason_code: 'pharmacist_override',
+      reason_present: true,
+      reason_length: '患者 山田花子 raw waiver reason 090-1234-5678'.length,
+      reason_redacted: true,
+    });
+    const serialized = JSON.stringify(changes);
+    expect(serialized).not.toContain('山田花子');
+    expect(serialized).not.toContain('090-1234-5678');
+    expect(serialized).not.toContain('raw waiver reason');
+    expect(serialized).not.toContain('アムロジピン');
+    expect(serialized).not.toContain('東京都千代田区');
+  });
+
+  it('writes waiver audit before cancelling the task with the returned audit id', async () => {
+    const auditCreate = vi.fn().mockResolvedValue({ id: 'audit_1' });
+    const taskUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const taskFindMany = vi.fn().mockResolvedValue([
+      {
+        id: 'task_1',
+        metadata: {
+          source: 'risk_finding',
+          risk_domain: 'billing',
+        },
+      },
+    ]);
+    const tx = {
+      auditLog: { create: auditCreate },
+      task: {
+        create: vi.fn(),
+        updateMany: taskUpdateMany,
+        upsert: vi.fn(),
+        findMany: taskFindMany,
+      },
+    };
+
+    const result = await waiveOperationalTaskForRiskWithAudit(tx, {
+      orgId: 'org_1',
+      finding: finding({ resolution_state: 'waived' }),
+      waiverReason: '薬剤師確認のうえ免除',
+      reasonCode: 'pharmacist_override',
+      ctx: {
+        orgId: 'org_1',
+        userId: 'user_1',
+        actorSiteId: 'site_1',
+        ipAddress: '203.0.113.10',
+        userAgent: 'vitest',
+      },
+    });
+
+    expect(result).toEqual({ count: 1 });
+    expect(auditCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        org_id: 'org_1',
+        actor_id: 'user_1',
+        actor_site_id: 'site_1',
+        patient_id: 'patient_1',
+        action: 'risk_finding_waived',
+        target_type: 'risk_finding',
+        target_id:
+          'risk:billing:billing%3Abill_1%3Amissing_visit_consent:case:case_1:billing_evidence:bill_1',
+        changes: expect.objectContaining({
+          risk_resolution_state: 'waived',
+          reason_present: true,
+          reason_redacted: true,
+        }),
+      }),
+    });
+    expect(taskUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'cancelled',
+          metadata: expect.objectContaining({
+            resolution: expect.objectContaining({
+              state: 'waived',
+              actor_user_id: 'user_1',
+              audit_log_id: 'audit_1',
+              reason_code: 'pharmacist_override',
+              reason_present: true,
+              reason_redacted: true,
+            }),
+          }),
+        }),
+      }),
+    );
+    const serializedCalls = JSON.stringify({
+      audit: auditCreate.mock.calls,
+      task: taskUpdateMany.mock.calls,
+    });
+    expect(serializedCalls).not.toContain('山田花子');
+    expect(serializedCalls).not.toContain('090-1234-5678');
+    expect(serializedCalls).not.toContain('raw detail');
+  });
+
+  it('throws after audit when waiver does not update exactly one task so the transaction can roll back', async () => {
+    const auditCreate = vi.fn().mockResolvedValue({ id: 'audit_1' });
+    const taskUpdateMany = vi.fn().mockResolvedValue({ count: 0 });
+    const taskFindMany = vi.fn().mockResolvedValue([
+      {
+        id: 'task_1',
+        metadata: { source: 'risk_finding' },
+      },
+    ]);
+    const tx = {
+      auditLog: { create: auditCreate },
+      task: {
+        create: vi.fn(),
+        updateMany: taskUpdateMany,
+        upsert: vi.fn(),
+        findMany: taskFindMany,
+      },
+    };
+
+    await expect(
+      waiveOperationalTaskForRiskWithAudit(tx, {
+        orgId: 'org_1',
+        finding: finding({ resolution_state: 'waived' }),
+        waiverReason: '薬剤師確認のうえ免除',
+        ctx: {
+          orgId: 'org_1',
+          userId: 'user_1',
+        },
+      }),
+    ).rejects.toThrow('Risk task waiver did not update exactly one task');
+    expect(auditCreate).toHaveBeenCalledOnce();
+    expect(taskUpdateMany).toHaveBeenCalledOnce();
   });
 });

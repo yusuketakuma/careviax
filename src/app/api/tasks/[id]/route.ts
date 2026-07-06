@@ -47,7 +47,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   });
   if (!existing) return notFound('タスクが見つかりません');
 
-  if (parsed.data.status === 'completed' && requiresDedicatedTaskCompletion(existing)) {
+  if (
+    (parsed.data.status === 'completed' || parsed.data.status === 'cancelled') &&
+    requiresDedicatedTaskCompletion(existing)
+  ) {
     return validationError('このタスクは専用画面で完了してください', {
       status: ['専用の準備・連絡・承認フローで完了してください'],
     });

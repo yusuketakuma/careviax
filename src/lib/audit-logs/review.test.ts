@@ -96,6 +96,23 @@ describe('audit log review registry', () => {
     });
   });
 
+  it('classifies risk finding waiver as high-risk override evidence', () => {
+    expect(
+      classifyAuditLogRisk({
+        action: 'risk_finding_waived',
+        target_type: 'risk_finding',
+      }),
+    ).toMatchObject({
+      risk_tier: 'high',
+      risk_reasons: expect.arrayContaining(['high_risk_action', 'risk_waiver']),
+    });
+    expect(buildAuditLogRiskTierWhere('high')).toMatchObject({
+      OR: expect.arrayContaining([
+        { action: { in: expect.arrayContaining(['risk_finding_waived']) } },
+      ]),
+    });
+  });
+
   it('leaves low-impact settings updates in the standard tier', () => {
     expect(
       classifyAuditLogRisk({

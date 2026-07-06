@@ -66,6 +66,8 @@ const HIGH_RISK_ACTIONS = [
   'pharmacy_invoice_cancelled',
   'visit_schedule_updated',
   'visit_schedule_reschedule_requested',
+  'risk_finding_waived',
+  'risk_finding_override_applied',
 ] as const;
 
 const HIGH_RISK_ACTION_FRAGMENTS = [
@@ -84,6 +86,8 @@ const HIGH_RISK_ACTION_FRAGMENTS = [
   'cancel',
   'cancelled',
   'override',
+  'waive',
+  'waived',
 ] as const;
 
 const EXTERNAL_SHARE_TARGETS = new Set([
@@ -177,6 +181,10 @@ function classifyAuditLogRiskReasons(log: AuditLogForReview) {
 
   if (actionContains(action, 'override')) {
     reasons.add('override');
+  }
+
+  if (actionContains(action, 'waive') || actionContains(action, 'waived')) {
+    reasons.add('risk_waiver');
   }
 
   if (targetType === 'audit_log' && actionContains(action, 'export')) {

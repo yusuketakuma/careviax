@@ -4,12 +4,14 @@ const {
   taskUpsertMock,
   taskCreateMock,
   taskFindFirstMock,
+  taskFindManyMock,
   taskUpdateManyMock,
   allocateDisplayIdMock,
 } = vi.hoisted(() => ({
   taskUpsertMock: vi.fn(),
   taskCreateMock: vi.fn(),
   taskFindFirstMock: vi.fn(),
+  taskFindManyMock: vi.fn(),
   taskUpdateManyMock: vi.fn(),
   allocateDisplayIdMock: vi.fn(),
 }));
@@ -29,6 +31,7 @@ const tx = {
     upsert: taskUpsertMock,
     create: taskCreateMock,
     findFirst: taskFindFirstMock,
+    findMany: taskFindManyMock,
     updateMany: taskUpdateManyMock,
   },
 };
@@ -256,6 +259,77 @@ describe('resolveOperationalTasks', () => {
       related_entity_id: 'visit-record-1',
       OR: [{ assigned_to: 'supervisor-1' }],
     });
+  });
+
+  it('merges PHI-minimized resolution metadata without overwriting existing metadata', async () => {
+    taskFindManyMock.mockResolvedValue([
+      {
+        id: 'task-1',
+        metadata: {
+          source: 'risk_finding',
+          risk_domain: 'billing',
+          patient_id: 'patient_1',
+        },
+      },
+    ]);
+    taskUpdateManyMock.mockResolvedValue({ count: 1 });
+
+    const result = await resolveOperationalTasks(tx, {
+      orgId: 'org-1',
+      dedupeKey: 'dedup-1',
+      status: 'cancelled',
+      resolution: {
+        state: 'waived',
+        actorUserId: 'user_1',
+        auditLogId: 'audit_1',
+        reasonPresent: true,
+        reasonLength: '患者 山田太郎 raw waiver note 090-1234-5678'.length,
+        reasonCode: 'pharmacist_override',
+      },
+    });
+
+    expect(result).toEqual({ count: 1 });
+    expect(taskFindManyMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        org_id: 'org-1',
+        dedupe_key: 'dedup-1',
+        status: { in: ['pending', 'in_progress'] },
+      }),
+      select: {
+        id: true,
+        metadata: true,
+      },
+    });
+    expect(taskUpdateManyMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        id: 'task-1',
+        org_id: 'org-1',
+        dedupe_key: 'dedup-1',
+      }),
+      data: {
+        status: 'cancelled',
+        completed_at: null,
+        metadata: expect.objectContaining({
+          source: 'risk_finding',
+          risk_domain: 'billing',
+          patient_id: 'patient_1',
+          resolution: expect.objectContaining({
+            state: 'waived',
+            actor_user_id: 'user_1',
+            audit_log_id: 'audit_1',
+            reason_code: 'pharmacist_override',
+            reason_present: true,
+            reason_length: '患者 山田太郎 raw waiver note 090-1234-5678'.length,
+            reason_redacted: true,
+            recorded_at: expect.any(String),
+          }),
+        }),
+      },
+    });
+    const serializedMetadata = JSON.stringify(taskUpdateManyMock.mock.calls[0][0].data.metadata);
+    expect(serializedMetadata).not.toContain('山田太郎');
+    expect(serializedMetadata).not.toContain('090-1234-5678');
+    expect(serializedMetadata).not.toContain('raw waiver note');
   });
 });
 
