@@ -116,9 +116,10 @@
     saving/terminal/synced/conflict UI state matrix, and mobile E2E remain. Future Oracle
     consultations must include GitHub context per the updated `AGENTS.md` rule.
   - next action:
-    Scoped commit/push this VISIT-SYNC / Oracle-rule slice, then continue with the next
-    highest-priority `Plans.md` item (`PAT-BOARD-PAGE-001`, `DSP-QUEUE-PAGE-001`, or
-    remaining `VISIT-SYNC-001` UI/mobile follow-up).
+    Implementation/docs commit created as `4c129c27c` (`Harden visit record autosave sync`).
+    Push `main`, then continue with the next highest-priority `Plans.md` item
+    (`PAT-BOARD-PAGE-001`, `DSP-QUEUE-PAGE-001`, or remaining `VISIT-SYNC-001`
+    UI/mobile follow-up).
 
 - codex: Oracle / GPT-5.5 Pro consultation rule recorded.
   - current task:
