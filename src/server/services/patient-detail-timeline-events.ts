@@ -389,15 +389,6 @@ const PATIENT_EXPORT_LABELS: Record<string, { title: string; statusLabel: string
   prescription_history: { title: '処方履歴CSVを出力', statusLabel: '処方履歴CSV' },
 };
 
-const FIRST_VISIT_DOCUMENT_TYPE_LABELS: Record<string, string> = {
-  contract: '契約書',
-  important_matters: '重要事項説明書',
-  consent: '同意書',
-  privacy_consent: '個人情報同意書',
-  first_visit_document: '初回訪問文書',
-  other: 'その他',
-};
-
 const BILLING_COLLECTION_STATUS_LABELS: Record<string, string> = {
   unbilled: '未請求',
   billed: '請求済',
@@ -510,13 +501,9 @@ function readFirstVisitDocumentAction(item: OperationHistoryTimelineSource) {
   const documentAction = isRecord(changes.document_action) ? changes.document_action : {};
   const action =
     readString(documentAction.action) ?? item.action.replace('first_visit_document.', '');
-  const documentType = readString(documentAction.document_type);
 
   return {
     action,
-    documentTypeLabel: documentType
-      ? (FIRST_VISIT_DOCUMENT_TYPE_LABELS[documentType] ?? '初回訪問文書')
-      : '初回訪問文書',
     actorId: item.actor_id,
     occurredAt: item.created_at,
   };

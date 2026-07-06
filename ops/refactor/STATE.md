@@ -41,6 +41,41 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOV-001 first visit document marker label minimization（未コミット）。
+  - current task:
+    `firstVisitDocumentsSource` が初回訪問文書の種別ラベルを timeline title / metadata に出す経路を外し、
+    「文書登録があったこと + 共有・文書 deep link」へ寄せる。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `git log --oneline -8`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail.test.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail.test.ts`.
+  - implementation:
+    `readFirstVisitDocumentAction()` は `document_type` を label 化しない。
+    `firstVisitDocumentsSource` は title を `初回訪問文書を作成/更新/交付` に固定し、metadata を `[]` にした。
+    共有・文書タブ deep link、発生時刻、controlled status は維持した。
+  - security risks reduced:
+    初回訪問文書の種別ラベルや audit changes 由来の文書識別情報が patient movement payload /
+    検索候補に流れる面を縮小した。
+  - validation:
+    `pnpm exec vitest run src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.test.ts 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx' --reporter=dot --testTimeout=30000` → pass（3 files / 91 tests）。
+    `pnpm exec eslint src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.ts src/server/services/patient-movement-timeline-presenter.test.ts 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx'` → pass。
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts` → pass。
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts` → pass。
+  - remaining:
+    Formal `InboundCommunicationEvent` / `InboundCommunicationSignal` DB/API/review UI and MedicationStock Ledger source remain.
+  - next action:
+    scoped commit/push 後に commit hash を記録する。
+
 - codex: MOV-001 operation history target metadata minimization（commit f57a0332d, pushed）。
   - current task:
     legacy `timeline_events` の `operation_history` でも、処方・訪問・文書 marker から

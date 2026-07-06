@@ -3265,14 +3265,14 @@ describe('getPatientTimelineData', () => {
           event_type: 'first_visit_document',
           category: 'document',
           occurred_at: new Date('2026-04-02T10:00:00.000Z'),
-          title: '重要事項説明書を作成',
+          title: '初回訪問文書を作成',
           summary: '初回訪問文書が登録されました。内容は共有・文書で確認してください。',
           href: '/patients/patient_1#patient-documents',
           action_label: '文書状態を開く',
           status: 'generated',
           status_label: '作成',
           actor_name: null,
-          metadata: ['重要事項説明書'],
+          metadata: [],
         }),
       ]),
     );
@@ -3287,6 +3287,8 @@ describe('getPatientTimelineData', () => {
     const serializedTimeline = JSON.stringify(result?.timeline_events ?? []);
     expect(serializedTimeline).not.toContain('files.example.test');
     expect(serializedTimeline).not.toContain('山田花子');
+    expect(serializedTimeline).not.toContain('important_matters');
+    expect(serializedTimeline).not.toContain('重要事項説明書');
     expect(serializedTimeline).not.toContain('重要事項説明書 2026年版');
     expect(serializedTimeline).not.toContain('署名者を長女へ訂正');
     expect(serializedTimeline).not.toContain('患者詳細から作成');

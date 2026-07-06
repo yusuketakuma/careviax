@@ -1071,13 +1071,12 @@ export const firstVisitDocumentsSource = defineTimelineSource<
         : isDelivered
           ? '交付'
           : '作成';
-      const documentLabel = latestAction?.documentTypeLabel ?? '初回訪問文書';
       return {
         id: `first_visit_document:${item.id}`,
         event_type: 'first_visit_document',
         category: 'document',
         occurred_at: latestAction?.occurredAt ?? item.delivered_at ?? item.created_at,
-        title: `${documentLabel}を${actionVerb}`,
+        title: `初回訪問文書を${actionVerb}`,
         summary: isDelivered
           ? '初回訪問文書の交付記録が更新されました。内容は共有・文書で確認してください。'
           : '初回訪問文書が登録されました。内容は共有・文書で確認してください。',
@@ -1090,7 +1089,7 @@ export const firstVisitDocumentsSource = defineTimelineSource<
             ? '交付済み'
             : '作成済み',
         actor_name: null,
-        metadata: compactTimelineValues([latestAction?.documentTypeLabel ?? null]),
+        metadata: [],
       };
     }),
 });
