@@ -314,7 +314,6 @@ export const careReportsSource = defineTimelineSource<'careReports', CareReportT
           select: {
             id: true,
             channel: true,
-            recipient_name: true,
             status: true,
             sent_at: true,
             confirmed_at: true,
@@ -352,7 +351,6 @@ export const careReportsSource = defineTimelineSource<'careReports', CareReportT
         title: delivery.status === 'confirmed' ? '報告書の受領を確認' : '報告書を送付',
         summary:
           compactTimelineValues([
-            delivery.recipient_name,
             CHANNEL_LABELS[delivery.channel] ?? delivery.channel,
             REPORT_TYPE_LABELS[item.report_type] ?? item.report_type,
           ]).join(' / ') || null,

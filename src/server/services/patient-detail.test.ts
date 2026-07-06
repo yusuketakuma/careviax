@@ -2079,6 +2079,26 @@ describe('getPatientTimelineData', () => {
   it('encodes timeline care report hrefs while preserving raw report identities', async () => {
     const rawReportId = 'report/../x?download=1#frag';
     const rawDeliveryId = 'delivery/1?channel=fax#frag';
+    const careReportFindManyMock = vi.fn().mockResolvedValue([
+      {
+        id: rawReportId,
+        report_type: 'home_visit_report',
+        status: 'draft',
+        created_by: 'pharmacist_1',
+        created_at: new Date('2026-04-02T10:00:00.000Z'),
+        delivery_records: [
+          {
+            id: rawDeliveryId,
+            channel: 'fax',
+            recipient_name: '主治医 山田先生',
+            status: 'sent',
+            confirmed_at: null,
+            sent_at: new Date('2026-04-03T10:00:00.000Z'),
+            created_at: new Date('2026-04-03T09:00:00.000Z'),
+          },
+        ],
+      },
+    ]);
     const db = buildDb({
       patient: {
         findFirst: vi.fn().mockResolvedValue({
@@ -2087,26 +2107,7 @@ describe('getPatientTimelineData', () => {
         }),
       },
       careReport: {
-        findMany: vi.fn().mockResolvedValue([
-          {
-            id: rawReportId,
-            report_type: 'home_visit_report',
-            status: 'draft',
-            created_by: 'pharmacist_1',
-            created_at: new Date('2026-04-02T10:00:00.000Z'),
-            delivery_records: [
-              {
-                id: rawDeliveryId,
-                channel: 'fax',
-                recipient_name: '主治医',
-                status: 'sent',
-                confirmed_at: null,
-                sent_at: new Date('2026-04-03T10:00:00.000Z'),
-                created_at: new Date('2026-04-03T09:00:00.000Z'),
-              },
-            ],
-          },
-        ]),
+        findMany: careReportFindManyMock,
       },
     });
 
@@ -2117,6 +2118,17 @@ describe('getPatientTimelineData', () => {
       userId: 'user_1',
     });
 
+    expect(careReportFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          delivery_records: expect.objectContaining({
+            select: expect.not.objectContaining({
+              recipient_name: true,
+            }),
+          }),
+        }),
+      }),
+    );
     const eventsById = new Map(result?.timeline_events.map((event) => [event.id, event]));
     const encodedReportHref = `/reports/${encodeURIComponent(rawReportId)}`;
     expect(eventsById.get(`care_report:${rawReportId}`)?.href).toBe(encodedReportHref);
@@ -2124,6 +2136,7 @@ describe('getPatientTimelineData', () => {
     expect(eventsById.has(`care_report:${rawReportId}`)).toBe(true);
     expect(eventsById.has(`delivery_record:${rawDeliveryId}`)).toBe(true);
     expect(JSON.stringify(result?.timeline_events)).not.toContain(`/reports/${rawReportId}`);
+    expect(JSON.stringify(result?.movement_events)).not.toContain('主治医 山田先生');
   });
 
   it('keeps management plan timeline events marker-only without selecting document details', async () => {

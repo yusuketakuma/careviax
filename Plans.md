@@ -1149,6 +1149,7 @@ notification:
 > `cc:PARTIAL 2026-07-07`: 最新ユーザー指示を受け、UI回帰テストに処方・訪問・文書 marker の primary CTA が正本 `event.href` を直接使うこと、`/patients/:id/timeline/:eventId` の event detail shell へ逃がさないこと、SOAP本文、訪問添付名、位置情報、処方内容、薬剤明細、文書本文、OCR全文、storage key、file id が card 表示に混入しないことを追加で固定した。これにより「処方・訪問・文書登録があったことだけを確認し、詳細は deep link 先で見る」方針を UI test で守る。
 > `cc:PARTIAL 2026-07-07`: `inquiryRecord` の処方受付 `intake_id` がない場合の timeline href を広すぎる `/workflow` fallback から患者詳細の薬剤・訪問セクション `#card-prescription-section` へ変更。疑義照会 marker は本文や処方明細を代替表示せず、正本に最も近い患者内 medication context へ相対 deep link する。
 > `cc:PARTIAL 2026-07-07`: `managementPlansSource` は文書 marker-only 契約に合わせ、管理計画書の `title`、適用開始日、次回見直し日を timeline source で select しない。timeline は「管理計画書を作成/承認した」発生事実、controlled status、計画書 deep link のみに限定し、計画書タイトルや本文相当の free text を `movement_events` に混入させない。
+> `cc:PARTIAL 2026-07-07`: `careReportsSource` の送付履歴 marker は `recipient_name` を select しない。報告書送付/受領確認は、送付・受領があった事実、channel、report type、controlled status、報告書 deep link のみに限定し、送付先名や本文相当の情報は正本画面で再認可して確認する。
 
 **重要なUI方針**:
 

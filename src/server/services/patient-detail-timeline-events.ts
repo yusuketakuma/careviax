@@ -140,7 +140,6 @@ export type CareReportTimelineSource = {
   delivery_records: Array<{
     id: string;
     channel: string;
-    recipient_name: string | null;
     status: string;
     sent_at: Date | null;
     confirmed_at: Date | null;

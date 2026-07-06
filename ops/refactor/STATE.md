@@ -41,6 +41,44 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOV-001 Care report delivery marker hardening（未コミット）。
+  - current task:
+    Patient Movement Timeline の文書 marker-only 契約に合わせ、報告書送付/受領 marker から送付先名を
+    timeline source で読まないようにする。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail.test.ts`,
+    `src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail.test.ts`.
+  - implementation:
+    `careReportsSource` の delivery record select から `recipient_name` を削除し、送付履歴 summary は
+    channel/report type/status と報告書 deep link のみに寄せた。
+  - security risks reduced:
+    報告書送付先名が movement payload や legacy timeline summary に混入する面を縮小した。
+    詳細確認は `/reports/:id` の正本画面に委譲する。
+  - validation:
+    `pnpm exec vitest run src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.test.ts 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx' --reporter=dot --testTimeout=30000`
+    passed: 3 files / 90 tests.
+    `pnpm exec eslint src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.ts 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx'`
+    passed.
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.ts 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx'`
+    passed.
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.ts 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx'`
+    passed.
+  - remaining:
+    Formal inbound DB/API/review UI and MedicationStock Ledger source remain.
+  - next action:
+    Commit/push this scoped slice.
+
 - codex: MOV-001 Management plan document marker hardening（commit 622f40443, pushed）。
   - current task:
     Patient Movement Timeline の「処方・訪問・文書登録は発生 marker + 正本 deep link のみ」
