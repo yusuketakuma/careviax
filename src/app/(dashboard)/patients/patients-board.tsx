@@ -43,8 +43,11 @@ import { cn } from '@/lib/utils';
 import type {
   PatientAttentionKey,
   PatientBoardCard,
+  PatientBoardCardFilter,
+  PatientBoardPageResponse,
   PatientBoardResponse,
   PatientFoundationIssueKey,
+  PatientBoardSort,
   PatientStatusTone,
 } from '@/types/patient-board';
 import { PatientBoardLoadingShell } from './patient-board-loading';
@@ -63,23 +66,32 @@ export async function fetchPatientBoard(
   scope: 'mine' | 'all',
   foundationIssue?: BoardFoundationIssue,
   query?: string,
-): Promise<PatientBoardResponse> {
+  options: {
+    cardFilter?: PatientBoardCardFilter;
+    sort?: PatientBoardSort;
+    limit?: number;
+    cursor?: string | null;
+  } = {},
+): Promise<PatientBoardPageResponse> {
   const params = new URLSearchParams({ scope });
   if (foundationIssue) params.set('foundation_issue', foundationIssue);
   const trimmedQuery = query?.trim();
   if (trimmedQuery) params.set('q', trimmedQuery);
+  if (options.cardFilter && options.cardFilter !== 'all') {
+    params.set('card_filter', options.cardFilter);
+  }
+  if (options.sort && options.sort !== 'priority') {
+    params.set('sort', options.sort);
+  }
+  if (options.limit) params.set('limit', String(options.limit));
+  if (options.cursor) params.set('cursor', options.cursor);
   const res = await fetch(`/api/patients/board?${params}`, {
     headers: buildOrgHeaders(orgId),
   });
-  const json = await readApiJson<{ data: PatientBoardResponse }>(
-    res,
-    '患者一覧の取得に失敗しました',
-  );
-  return json.data;
+  return readApiJson<PatientBoardPageResponse>(res, '患者一覧の取得に失敗しました');
 }
 
 type BoardScope = 'mine' | 'all';
-type BoardSort = 'priority' | 'next_visit' | 'name';
 type BoardViewMode = 'card' | 'list';
 type BoardFoundationIssue = 'needs_confirmation' | PatientFoundationIssueKey;
 
@@ -88,7 +100,7 @@ const SCOPE_OPTIONS: Array<{ value: BoardScope; label: string }> = [
   { value: 'all', label: '全員' },
 ];
 
-const SORT_OPTIONS: Array<{ value: BoardSort; label: string }> = [
+const SORT_OPTIONS: Array<{ value: PatientBoardSort; label: string }> = [
   { value: 'priority', label: '対応が必要な順' },
   { value: 'next_visit', label: '訪問が近い順' },
   { value: 'name', label: '氏名順' },
@@ -99,12 +111,7 @@ const VIEW_MODE_OPTIONS: Array<{ value: BoardViewMode; label: string }> = [
   { value: 'list', label: 'リスト' },
 ];
 
-/**
- * 大量一覧の描画コスト対策(W2-F2)。カードグリッドの既存 UX(グリッドレイアウト)を
- * 崩さないよう仮想化ではなく「表示上限+もっと見る」を採用する。絞り込み変更時は先頭へ戻す。
- */
-const DEFAULT_VISIBLE_PATIENT_CARDS = 60;
-const PATIENT_CARDS_LOAD_MORE_STEP = 60;
+const PATIENT_BOARD_PAGE_LIMIT = 60;
 
 /** フィルタチップ。「今すぐ対応」=既定(優先順で全件表示)、他は絞り込み。 */
 // wait_release は summaryTile「再開できる」専用の絞り込み(tile-only)。下段 chipOptions には出さない。
@@ -207,8 +214,12 @@ function getFoundationIssueForChip(chip: BoardChipValue): BoardFoundationIssue |
   return undefined;
 }
 
-function cardHasFoundationIssue(card: PatientBoardCard, issue: PatientFoundationIssueKey): boolean {
-  return card.foundation_issue_keys?.includes(issue) ?? false;
+function getCardFilterForChip(chip: BoardChipValue): PatientBoardCardFilter {
+  if (chip === 'wait_release') return 'wait_release';
+  if (chip === 'external') return 'external';
+  if (chip === 'visit_today') return 'visit_today';
+  if (chip === 'paused') return 'paused';
+  return 'all';
 }
 
 /**
@@ -250,30 +261,6 @@ type SummaryTile = {
   labelClassName: string;
 };
 
-function countCards(
-  cards: PatientBoardCard[],
-  predicate: (card: PatientBoardCard) => boolean,
-): number {
-  return cards.reduce((count, card) => count + (predicate(card) ? 1 : 0), 0);
-}
-
-function getVisitSortKey(card: PatientBoardCard): string {
-  const date = card.next_visit_date ?? '9999-12-31';
-  const time = card.next_visit_time ?? '99:99';
-  return `${date}T${time}`;
-}
-
-function sortPatientCards(cards: PatientBoardCard[], sort: BoardSort): PatientBoardCard[] {
-  if (sort === 'priority') return cards;
-  return [...cards].sort((left, right) => {
-    if (sort === 'next_visit') {
-      const visitCompare = getVisitSortKey(left).localeCompare(getVisitSortKey(right));
-      if (visitCompare !== 0) return visitCompare;
-    }
-    return left.name.localeCompare(right.name, 'ja');
-  });
-}
-
 /** 次回訪問の表示(本日 14:00 / 6/13(土) 10:00 / 退院連絡待ち)。 */
 export function formatNextVisitLabel(card: PatientBoardCard, now: Date): string {
   if (!card.next_visit_date) return card.next_visit_label ?? '未定';
@@ -287,14 +274,45 @@ export function formatNextVisitLabel(card: PatientBoardCard, now: Date): string 
   return card.next_visit_time ? `${dateLabel} ${card.next_visit_time}` : dateLabel;
 }
 
-function buildSummaryTiles(data: PatientBoardResponse, todayKey: string): SummaryTile[] {
+function mergePatientBoardPages(pages: PatientBoardPageResponse[]): PatientBoardResponse | null {
+  const firstPage = pages[0] ?? null;
+  if (!firstPage) return null;
+  const lastPage = pages[pages.length - 1] ?? firstPage;
+  const seen = new Set<string>();
+  const cards: PatientBoardCard[] = [];
+  for (const page of pages) {
+    for (const card of page.data) {
+      if (seen.has(card.patient_id)) continue;
+      seen.add(card.patient_id);
+      cards.push(card);
+    }
+  }
+  return {
+    cards,
+    chip_counts: firstPage.meta.facets.chip_counts,
+    foundation_issue_counts: firstPage.meta.facets.foundation_issue_counts,
+    today_facility_patient_count: firstPage.meta.facets.today_facility_patient_count,
+    today_visit_count: firstPage.meta.facets.today_visit_count,
+    safety_tagged_count: firstPage.meta.facets.safety_tagged_count,
+    next_action: firstPage.meta.rail.next_action,
+    blocked_reasons: firstPage.meta.rail.blocked_reasons,
+    generated_at: firstPage.meta.generated_at,
+    scope: firstPage.meta.scope,
+    assigned_total: firstPage.meta.assigned_total,
+    filtered_total: firstPage.meta.total_count,
+    limit: firstPage.meta.limit,
+    has_more: lastPage.meta.has_more,
+    next_cursor: lastPage.meta.next_cursor,
+    filters_applied: firstPage.meta.filters_applied,
+    count_basis: firstPage.meta.count_basis,
+  };
+}
+
+function buildSummaryTiles(data: PatientBoardResponse): SummaryTile[] {
   const urgentCount = data.chip_counts.urgent_now;
-  const waitReleaseCount = countCards(data.cards, (card) => card.attention === 'wait_release');
-  const todayVisitCount = countCards(data.cards, (card) => card.next_visit_date === todayKey);
-  const externalCount = countCards(
-    data.cards,
-    (card) => card.attention === 'external_wait' || card.attention === 'reply_wait',
-  );
+  const waitReleaseCount = data.cards.filter((card) => card.attention === 'wait_release').length;
+  const todayVisitCount = data.today_visit_count;
+  const externalCount = data.chip_counts.external_wait;
 
   return [
     {
@@ -690,29 +708,59 @@ export function PatientsBoard() {
   const orgId = useOrgId();
   const [scope, setScope] = useState<BoardScope>('mine');
   const [chip, setChip] = useState<BoardChipValue>('priority');
-  const [sort, setSort] = useState<BoardSort>('priority');
+  const [sort, setSort] = useState<PatientBoardSort>('priority');
   const [viewMode, setViewMode] = useState<BoardViewMode>('card');
   const [searchQuery, setSearchQuery] = useState('');
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const boardSearchQuery = deferredSearchQuery.trim();
-  const [visibleCardCount, setVisibleCardCount] = useState(DEFAULT_VISIBLE_PATIENT_CARDS);
+  const [extraPages, setExtraPages] = useState<PatientBoardPageResponse[]>([]);
+  const [isLoadingNextPage, setIsLoadingNextPage] = useState(false);
+  const [nextPageError, setNextPageError] = useState<string | null>(null);
   const isBootstrappingOrg = !orgId;
 
   const foundationIssue = getFoundationIssueForChip(chip);
+  const cardFilter = getCardFilterForChip(chip);
   const boardQuery = useRealtimeQuery({
-    queryKey: ['patients', 'board', orgId, scope, foundationIssue, boardSearchQuery],
-    queryFn: () => fetchPatientBoard(orgId, scope, foundationIssue, boardSearchQuery),
+    queryKey: [
+      'patients',
+      'board',
+      orgId,
+      scope,
+      foundationIssue,
+      cardFilter,
+      sort,
+      boardSearchQuery,
+      PATIENT_BOARD_PAGE_LIMIT,
+    ],
+    queryFn: () =>
+      fetchPatientBoard(orgId, scope, foundationIssue, boardSearchQuery, {
+        cardFilter,
+        sort,
+        limit: PATIENT_BOARD_PAGE_LIMIT,
+      }),
     staleTime: 30_000,
     enabled: !isBootstrappingOrg,
     invalidateOn: ['cycle_transition', 'workflow_refresh'],
   });
 
+  const boardPageFilterKey = `${scope}|${chip}|${sort}|${deferredSearchQuery}`;
+  const [prevBoardPageFilterKey, setPrevBoardPageFilterKey] = useState(boardPageFilterKey);
+  if (prevBoardPageFilterKey !== boardPageFilterKey) {
+    setPrevBoardPageFilterKey(boardPageFilterKey);
+    setExtraPages([]);
+    setNextPageError(null);
+    setIsLoadingNextPage(false);
+  }
+
   const now = new Date();
-  const data = boardQuery.data ?? null;
+  const boardPages = useMemo(
+    () => (boardQuery.data ? [boardQuery.data, ...extraPages] : []),
+    [boardQuery.data, extraPages],
+  );
+  const data = useMemo(() => mergePatientBoardPages(boardPages), [boardPages]);
   const isRefreshing = Boolean(boardQuery.isFetching && !boardQuery.isLoading);
   const isSearchSettling = searchQuery !== deferredSearchQuery;
   // 鮮度ラベルは「描画時刻(now)」ではなく実データ取得時刻(dataUpdatedAt)を表示する。
-  // now は本日訪問フィルタ(todayKey)用にそのまま壁時計を使う。
   const freshnessTime = boardQuery.dataUpdatedAt ? new Date(boardQuery.dataUpdatedAt) : now;
   // react-query v5 はキャッシュ済み data がある状態で背景 refetch が失敗すると
   // status='error'(isError=true)になりつつ前回 data を保持する(QueryObserverRefetchErrorResult)。
@@ -720,61 +768,27 @@ export function PatientsBoard() {
   const isStaleAfterRefetchError = Boolean(boardQuery.isRefetchError && data);
   const dateLabel = `${format(freshnessTime, 'M/d(EEE) HH:mm', { locale: ja })} — カードの色＝いま必要な対応`;
 
-  const todayKey = format(now, 'yyyy-MM-dd');
-  const visibleCards = useMemo(() => {
-    const cards = data?.cards ?? [];
-    const byChip =
-      chip === 'priority'
-        ? cards
-        : cards.filter((card) => {
-            if (chip === 'external') {
-              return card.attention === 'external_wait' || card.attention === 'reply_wait';
-            }
-            // 再開できる(待ち解除): 照会回答などで工程を戻せる患者のみ。
-            if (chip === 'wait_release') return card.attention === 'wait_release';
-            // 本日訪問: 対応カテゴリに関わらず「今日訪問がある患者」
-            if (chip === 'visit_today') return card.next_visit_date === todayKey;
-            if (chip === 'foundation_gap') {
-              return card.foundation_summary?.status !== 'ready';
-            }
-            if (chip === 'foundation_contact_gap') {
-              return cardHasFoundationIssue(card, 'missing_contact');
-            }
-            if (chip === 'foundation_consent_plan_gap') {
-              return cardHasFoundationIssue(card, 'missing_consent_plan');
-            }
-            if (chip === 'foundation_care_team_gap') {
-              return cardHasFoundationIssue(card, 'missing_care_team');
-            }
-            if (chip === 'foundation_parking_gap') {
-              return cardHasFoundationIssue(card, 'missing_parking');
-            }
-            if (chip === 'foundation_care_level_gap') {
-              return cardHasFoundationIssue(card, 'missing_care_level');
-            }
-            if (chip === 'foundation_insurance_gap') {
-              return cardHasFoundationIssue(card, 'missing_insurance');
-            }
-            return card.attention === 'paused';
-          });
-    return sortPatientCards(byChip, sort);
-  }, [chip, data, sort, todayKey]);
-
-  // 絞り込み条件が変わったら表示件数を既定へ戻す(「もっと見る」の展開状態を引き継がない)。
-  // レンダー中に前回条件との差分を見て調整する(Effect ではなく React 推奨の
-  // 「prop変化に応じた state 調整」パターン。cascading render を避ける)。
-  const visibleCardFilterKey = `${scope}|${chip}|${sort}|${deferredSearchQuery}`;
-  const [prevVisibleCardFilterKey, setPrevVisibleCardFilterKey] = useState(visibleCardFilterKey);
-  if (prevVisibleCardFilterKey !== visibleCardFilterKey) {
-    setPrevVisibleCardFilterKey(visibleCardFilterKey);
-    setVisibleCardCount(DEFAULT_VISIBLE_PATIENT_CARDS);
+  const visibleCards = data?.cards ?? [];
+  const displayedCards = visibleCards;
+  const hasMoreCardsToShow = Boolean(data?.has_more && data.next_cursor);
+  async function loadNextPage() {
+    if (!data?.next_cursor || isLoadingNextPage || !orgId) return;
+    setIsLoadingNextPage(true);
+    setNextPageError(null);
+    try {
+      const page = await fetchPatientBoard(orgId, scope, foundationIssue, boardSearchQuery, {
+        cardFilter,
+        sort,
+        limit: PATIENT_BOARD_PAGE_LIMIT,
+        cursor: data.next_cursor,
+      });
+      setExtraPages((pages) => [...pages, page]);
+    } catch (error) {
+      setNextPageError(error instanceof Error ? error.message : '患者一覧の追加取得に失敗しました');
+    } finally {
+      setIsLoadingNextPage(false);
+    }
   }
-
-  const displayedCards = useMemo(
-    () => visibleCards.slice(0, visibleCardCount),
-    [visibleCards, visibleCardCount],
-  );
-  const hasMoreCardsToShow = visibleCards.length > displayedCards.length;
 
   const chipOptions = useMemo(() => {
     const counts = data?.chip_counts;
@@ -829,10 +843,7 @@ export function PatientsBoard() {
       { value: 'paused' as const, label: '休止', count: counts?.paused ?? 0 },
     ];
   }, [data]);
-  const summaryTiles = useMemo(
-    () => (data ? buildSummaryTiles(data, todayKey) : []),
-    [data, todayKey],
-  );
+  const summaryTiles = useMemo(() => (data ? buildSummaryTiles(data) : []), [data]);
 
   const blockedReasons: BlockedReason[] = buildDailyOpsBlockedReasons(data);
 
@@ -865,7 +876,13 @@ export function PatientsBoard() {
   return (
     <section
       aria-label="患者カード一覧"
-      aria-busy={isBootstrappingOrg || boardQuery.isLoading || isRefreshing || isSearchSettling}
+      aria-busy={
+        isBootstrappingOrg ||
+        boardQuery.isLoading ||
+        isRefreshing ||
+        isSearchSettling ||
+        isLoadingNextPage
+      }
       data-testid="patients-board"
       className="space-y-4"
     >
@@ -955,7 +972,7 @@ export function PatientsBoard() {
               並び
               <select
                 value={sort}
-                onChange={(event) => setSort(event.target.value as BoardSort)}
+                onChange={(event) => setSort(event.target.value as PatientBoardSort)}
                 className="min-h-[44px] rounded-lg border border-input bg-background px-2 py-1 text-sm font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 aria-label="患者カードの並び順"
               >
@@ -987,7 +1004,7 @@ export function PatientsBoard() {
                   className="text-xs text-muted-foreground"
                   data-testid="patients-board-scope-note"
                 >
-                  {scope === 'mine' ? '私の担当' : '全体'} {data.assigned_total}名のうち{' '}
+                  {scope === 'mine' ? '私の担当' : '全体'} {data.filtered_total}名中{' '}
                   {visibleCards.length}名を表示
                 </p>
               ) : null}
@@ -1038,14 +1055,10 @@ export function PatientsBoard() {
               {visibleCards.length === 0 ? (
                 <div className="phos-patient-empty-state rounded-lg border border-border/70 bg-card px-4 py-6">
                   <p className="text-sm font-medium text-foreground">
-                    {data.truncated
-                      ? '取得済み範囲には一致する患者がいません'
-                      : '条件に一致する患者がいません'}
+                    条件に一致する患者がいません
                   </p>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    {data.truncated
-                      ? '取得上限により未確認の患者が残っている可能性があります。検索語またはフィルタを絞って再取得してください。'
-                      : '検索語またはフィルタを解除してください。患者安全タグや警告は条件を戻すと再表示されます。'}
+                    検索語またはフィルタを解除してください。患者安全タグや警告は条件を戻すと再表示されます。
                   </p>
                 </div>
               ) : viewMode === 'list' ? (
@@ -1066,34 +1079,27 @@ export function PatientsBoard() {
                     className="text-xs text-muted-foreground"
                     data-testid="patients-board-visible-count-note"
                   >
-                    {visibleCards.length}名中 {displayedCards.length}名を表示
+                    全{data.filtered_total}名中 {displayedCards.length}名を表示
                   </p>
                   <button
                     type="button"
-                    onClick={() =>
-                      setVisibleCardCount((count) => count + PATIENT_CARDS_LOAD_MORE_STEP)
-                    }
+                    onClick={() => void loadNextPage()}
+                    disabled={isLoadingNextPage}
                     className={cn(
                       buttonVariants({ variant: 'outline', size: 'sm' }),
                       'min-h-[44px]',
                     )}
                   >
-                    さらに表示
+                    {isLoadingNextPage ? '読み込み中' : 'さらに読み込む'}
                   </button>
+                  {nextPageError ? (
+                    <p className="text-xs text-state-blocked" role="alert">
+                      {nextPageError}
+                    </p>
+                  ) : null}
                 </div>
               ) : null}
             </div>
-            {data.truncated ? (
-              <div
-                role="note"
-                data-testid="patients-board-truncation-note"
-                className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-2.5 text-xs leading-5 text-state-confirm"
-              >
-                全{data.assigned_total}名のうち取得上限により{data.cards.length}
-                名のみ取得しています。優先度の高い患者が表示範囲外の場合があります。
-                検索語はサーバー側で再取得します。見つからないときは検索語や条件を絞り込んでください。
-              </div>
-            ) : null}
             <WorkspaceActionRail
               nextAction={buildNextAction(data)}
               blockedReasons={blockedReasons}

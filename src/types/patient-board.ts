@@ -88,6 +88,10 @@ export type PatientBoardFoundationIssueCounts = Record<
   number
 >;
 
+export type PatientBoardCardFilter = 'all' | 'wait_release' | 'external' | 'visit_today' | 'paused';
+
+export type PatientBoardSort = 'priority' | 'next_visit' | 'name';
+
 export type PatientBoardNextAction = {
   patient_name: string;
   due_at: string | null;
@@ -104,33 +108,71 @@ export type PatientBoardBlockedReason = {
   action_href: string;
 };
 
-export type PatientBoardResponse = {
+export type PatientBoardFacets = {
+  chip_counts: PatientBoardChipCounts;
+  foundation_issue_counts: PatientBoardFoundationIssueCounts;
+  today_facility_patient_count: number;
+  today_visit_count: number;
+  safety_tagged_count: number;
+};
+
+export type PatientBoardCountBasis = {
+  total_count: 'filtered_result_exact';
+  chip_counts: 'scope_search_foundation_exact';
+  foundation_issue_counts: 'scope_search_without_active_foundation_issue_exact';
+  board_summary: 'scope_search_foundation_exact';
+};
+
+export type PatientBoardFiltersApplied = {
+  scope: 'mine' | 'all';
+  q_present: boolean;
+  foundation_issue: 'needs_confirmation' | PatientFoundationIssueKey | null;
+  card_filter: PatientBoardCardFilter;
+  sort: PatientBoardSort;
+};
+
+export type PatientBoardRail = {
+  next_action: PatientBoardNextAction | null;
+  blocked_reasons: PatientBoardBlockedReason[];
+};
+
+export type PatientBoardMeta = {
   generated_at: string;
   scope: 'mine' | 'all';
-  /** 担当患者の母数(「私の担当 N名のうち M名を表示」の N) */
+  limit: number;
+  returned_count: number;
+  has_more: boolean;
+  next_cursor: string | null;
+  total_count: number;
+  count_basis: PatientBoardCountBasis;
+  filters_applied: PatientBoardFiltersApplied;
+  facets: PatientBoardFacets;
+  rail: PatientBoardRail;
+  /** 担当患者の母数(「私の担当 N名のうち M名を表示」の N)。scope + q の全母数。 */
   assigned_total: number;
-  /**
-   * 取得上限で打ち切られたか = assigned_total > 取得行数(フィルタ/slice 前)。
-   * true のとき cards は assigned_total の一部(取得上限により返却された部分集合)で、
-   * 優先度の高い患者が表示範囲外にいる可能性がある。foundation_issue 等の絞り込みで
-   * cards が減るのは truncation ではない(この値は絞り込み前の取得行数で判定する)。
-   * UI は検索での絞り込みとは区別した truncation 注意を出す。
-   */
-  truncated: boolean;
+};
+
+export type PatientBoardResponse = {
   cards: PatientBoardCard[];
   chip_counts: PatientBoardChipCounts;
-  /**
-   * Active foundation_issue filter を除いた取得済み board basis 上の正本未整備件数。
-   * foundation chip が別 foundation chip の選択で false-zero にならないよう UI はここを使う。
-   * truncated=true の場合は取得上限内の件数であり、全母数の厳密件数ではない。
-   */
   foundation_issue_counts: PatientBoardFoundationIssueCounts;
-  /** 本日訪問のうち施設一括の対象人数(「本日訪問 3+施設12名」の 12) */
   today_facility_patient_count: number;
-  /** 個別の本日訪問件数 */
   today_visit_count: number;
-  /** 安全タグありの患者数(右レール 根拠・記録) */
   safety_tagged_count: number;
   next_action: PatientBoardNextAction | null;
   blocked_reasons: PatientBoardBlockedReason[];
+  generated_at: string;
+  scope: 'mine' | 'all';
+  assigned_total: number;
+  filtered_total: number;
+  limit: number;
+  has_more: boolean;
+  next_cursor: string | null;
+  filters_applied: PatientBoardFiltersApplied;
+  count_basis: PatientBoardCountBasis;
+};
+
+export type PatientBoardPageResponse = {
+  data: PatientBoardCard[];
+  meta: PatientBoardMeta;
 };

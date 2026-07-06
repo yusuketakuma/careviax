@@ -1,9 +1,12 @@
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import type { PackagingInstructionTag, Prisma } from '@prisma/client';
+import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
+import { getAuthSecret } from '@/lib/auth/secret';
 import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import { parseSearchParams } from '@/lib/api/validation';
+import { boundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
 import { japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { PACKAGING_INSTRUCTION_TAG_OPTIONS } from '@/lib/dispensing/packaging';
@@ -12,6 +15,7 @@ import {
   comparePatientBoardCards,
   derivePatientBoardCard,
   matchesPatientBoardFoundationIssue,
+  type DerivedPatientBoardCard,
 } from './patient-board-card-model';
 import { buildBlockedReasons } from '@/lib/workflow/blocked-reason-projection';
 import {
@@ -19,7 +23,14 @@ import {
   canBypassVisitScheduleAssignmentAccess,
   type VisitScheduleAccessContext,
 } from '@/lib/auth/visit-schedule-access';
-import type { PatientBoardBlockedReason, PatientBoardResponse } from '@/types/patient-board';
+import type {
+  PatientBoardBlockedReason,
+  PatientBoardCardFilter,
+  PatientBoardCountBasis,
+  PatientBoardFacets,
+  PatientBoardPageResponse,
+  PatientBoardSort,
+} from '@/types/patient-board';
 
 /**
  * new_02_patient_list(患者カード一覧)用 BFF。
@@ -28,8 +39,9 @@ import type { PatientBoardBlockedReason, PatientBoardResponse } from '@/types/pa
  * 読み取り専用集計(docs/design-gap-analysis-new.md new_02_patient_list)。
  */
 
-const PATIENT_FETCH_LIMIT = 80;
-const PATIENT_FILTERED_FETCH_LIMIT = 500;
+const DEFAULT_PATIENT_BOARD_PAGE_LIMIT = 60;
+const MAX_PATIENT_BOARD_PAGE_LIMIT = 100;
+const PATIENT_BOARD_CURSOR_TTL_MS = 10 * 60 * 1000;
 const BLOCKED_REASONS_LIMIT = 2;
 const jsonPayloadEncoder = new TextEncoder();
 
@@ -56,12 +68,34 @@ const boardQuerySchema = z.object({
       'missing_care_team',
     ])
     .optional(),
+  card_filter: z.enum(['all', 'wait_release', 'external', 'visit_today', 'paused']).optional(),
+  sort: z.enum(['priority', 'next_visit', 'name']).optional(),
+  limit: boundedIntegerSearchParam(
+    'limit',
+    1,
+    MAX_PATIENT_BOARD_PAGE_LIMIT,
+    DEFAULT_PATIENT_BOARD_PAGE_LIMIT,
+  ),
+  cursor: z
+    .string()
+    .trim()
+    .min(1)
+    .max(512)
+    .regex(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/)
+    .optional(),
 });
+
+type BoardQuery = z.infer<typeof boardQuerySchema>;
+type BoardFoundationIssue = BoardQuery['foundation_issue'];
 
 const boardSingleValueQueryNames = [
   'scope',
   'q',
   'foundation_issue',
+  'card_filter',
+  'sort',
+  'limit',
+  'cursor',
 ] as const satisfies readonly (keyof z.infer<typeof boardQuerySchema>)[];
 
 function findDuplicateBoardQueryParams(searchParams: URLSearchParams) {
@@ -74,6 +108,139 @@ function findDuplicateBoardQueryParams(searchParams: URLSearchParams) {
   }
 
   return Object.keys(fieldErrors).length > 0 ? fieldErrors : null;
+}
+
+type PatientBoardCursorPayload = {
+  v: 1;
+  offset: number;
+  limit: number;
+  fh: string;
+  iat_ms: number;
+};
+
+type PatientBoardCursorDecodeResult =
+  | { ok: true; offset: number }
+  | { ok: false; reason: 'malformed' | 'mismatch' | 'expired' };
+type PatientBoardCursorFailureReason = Extract<
+  PatientBoardCursorDecodeResult,
+  { ok: false }
+>['reason'];
+
+const PATIENT_BOARD_COUNT_BASIS: PatientBoardCountBasis = {
+  total_count: 'filtered_result_exact',
+  chip_counts: 'scope_search_foundation_exact',
+  foundation_issue_counts: 'scope_search_without_active_foundation_issue_exact',
+  board_summary: 'scope_search_foundation_exact',
+};
+
+function encodeBase64UrlJson(value: unknown) {
+  return Buffer.from(JSON.stringify(value), 'utf8').toString('base64url');
+}
+
+function signPatientBoardCursor(payloadPart: string, secret: string) {
+  return createHmac('sha256', secret).update(payloadPart).digest('base64url');
+}
+
+function safeEqualSignature(left: string, right: string) {
+  const leftBuffer = Buffer.from(left, 'base64url');
+  const rightBuffer = Buffer.from(right, 'base64url');
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function readPatientBoardCursorPayload(value: unknown): PatientBoardCursorPayload | null {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  if (record.v !== 1) return null;
+  if (!Number.isSafeInteger(record.offset) || (record.offset as number) < 0) return null;
+  if (!Number.isSafeInteger(record.limit) || (record.limit as number) < 1) return null;
+  if (typeof record.fh !== 'string' || !record.fh) return null;
+  if (!Number.isSafeInteger(record.iat_ms) || (record.iat_ms as number) < 0) return null;
+  return {
+    v: 1,
+    offset: record.offset as number,
+    limit: record.limit as number,
+    fh: record.fh,
+    iat_ms: record.iat_ms as number,
+  };
+}
+
+function buildPatientBoardFilterHash(args: {
+  orgId: string;
+  userId: string;
+  role: string;
+  scope: 'mine' | 'all';
+  query: string | undefined;
+  foundationIssue: BoardFoundationIssue | undefined;
+  cardFilter: PatientBoardCardFilter;
+  sort: PatientBoardSort;
+  limit: number;
+  secret: string;
+}) {
+  const payload = {
+    org_id: args.orgId,
+    user_id: args.userId,
+    role: args.role,
+    scope: args.scope,
+    q: args.query?.trim() || null,
+    foundation_issue: args.foundationIssue ?? null,
+    card_filter: args.cardFilter,
+    sort: args.sort,
+    limit: args.limit,
+  };
+  return createHmac('sha256', args.secret).update(JSON.stringify(payload)).digest('base64url');
+}
+
+function encodePatientBoardCursor(args: {
+  offset: number;
+  limit: number;
+  filterHash: string;
+  now: Date;
+  secret: string;
+}) {
+  const payloadPart = encodeBase64UrlJson({
+    v: 1,
+    offset: args.offset,
+    limit: args.limit,
+    fh: args.filterHash,
+    iat_ms: args.now.getTime(),
+  } satisfies PatientBoardCursorPayload);
+  return `${payloadPart}.${signPatientBoardCursor(payloadPart, args.secret)}`;
+}
+
+function decodePatientBoardCursor(args: {
+  cursor: string | undefined;
+  limit: number;
+  filterHash: string;
+  now: Date;
+  secret: string;
+}): PatientBoardCursorDecodeResult {
+  if (!args.cursor) return { ok: true, offset: 0 };
+  const [payloadPart, signature, ...extra] = args.cursor.split('.');
+  if (!payloadPart || !signature || extra.length > 0) return { ok: false, reason: 'malformed' };
+  const expectedSignature = signPatientBoardCursor(payloadPart, args.secret);
+  if (!safeEqualSignature(signature, expectedSignature)) {
+    return { ok: false, reason: 'malformed' };
+  }
+  try {
+    const parsed = JSON.parse(Buffer.from(payloadPart, 'base64url').toString('utf8')) as unknown;
+    const payload = readPatientBoardCursorPayload(parsed);
+    if (!payload) return { ok: false, reason: 'malformed' };
+    if (args.now.getTime() - payload.iat_ms > PATIENT_BOARD_CURSOR_TTL_MS) {
+      return { ok: false, reason: 'expired' };
+    }
+    if (payload.limit !== args.limit || payload.fh !== args.filterHash) {
+      return { ok: false, reason: 'mismatch' };
+    }
+    return { ok: true, offset: payload.offset };
+  } catch {
+    return { ok: false, reason: 'malformed' };
+  }
+}
+
+function cursorValidationMessage(reason: PatientBoardCursorFailureReason) {
+  if (reason === 'expired') return 'cursor の有効期限が切れています。先頭から再取得してください';
+  if (reason === 'mismatch') return '検索条件が変わったため先頭から再取得してください';
+  return 'cursor が無効です';
 }
 
 function buildPatientBoardSearchWhere(query: string | undefined): Prisma.PatientWhereInput {
@@ -145,6 +312,87 @@ function buildPatientBoardSearchWhere(query: string | undefined): Prisma.Patient
       },
     ],
   };
+}
+
+function getVisitSortKey(card: DerivedPatientBoardCard): string {
+  const date = card.next_visit_date ?? '9999-12-31';
+  const time = card.next_visit_time ?? '99:99';
+  return `${date}T${time}`;
+}
+
+function compareForPatientBoardSort(
+  left: DerivedPatientBoardCard,
+  right: DerivedPatientBoardCard,
+  sort: PatientBoardSort,
+) {
+  if (sort === 'next_visit') {
+    const visitCompare = getVisitSortKey(left).localeCompare(getVisitSortKey(right));
+    if (visitCompare !== 0) return visitCompare;
+  } else if (sort === 'name') {
+    const nameCompare = left.name.localeCompare(right.name, 'ja');
+    if (nameCompare !== 0) return nameCompare;
+  }
+
+  const priorityCompare = comparePatientBoardCards(left, right);
+  if (priorityCompare !== 0) return priorityCompare;
+  return left.patient_id.localeCompare(right.patient_id);
+}
+
+function matchesPatientBoardCardFilter(
+  card: DerivedPatientBoardCard,
+  filter: PatientBoardCardFilter,
+  todayKey: string,
+) {
+  if (filter === 'all') return true;
+  if (filter === 'wait_release') return card.attention === 'wait_release';
+  if (filter === 'external') {
+    return card.attention === 'external_wait' || card.attention === 'reply_wait';
+  }
+  if (filter === 'visit_today') return card.next_visit_date === todayKey;
+  return card.attention === 'paused';
+}
+
+function buildPatientBoardFacets(
+  cards: readonly DerivedPatientBoardCard[],
+  foundationIssueCounts: ReturnType<typeof buildPatientBoardFoundationIssueCounts>,
+  todayKey: string,
+): PatientBoardFacets {
+  const visitTodayCards = cards.filter((card) => card.next_visit_date === todayKey);
+  const facilityBatchSizes = new Map<string, number>();
+  let todayVisitCount = 0;
+
+  for (const card of visitTodayCards) {
+    if (card.facility_batch_id) {
+      facilityBatchSizes.set(card.facility_batch_id, card.facility_batch_patient_count);
+    } else {
+      todayVisitCount += 1;
+    }
+  }
+
+  return {
+    chip_counts: {
+      urgent_now: cards.filter((card) => card.attention === 'urgent_now').length,
+      external_wait: cards.filter(
+        (card) => card.attention === 'external_wait' || card.attention === 'reply_wait',
+      ).length,
+      visit_today: visitTodayCards.length,
+      paused: cards.filter((card) => card.attention === 'paused').length,
+    },
+    foundation_issue_counts: foundationIssueCounts,
+    today_facility_patient_count: Array.from(facilityBatchSizes.values()).reduce(
+      (sum, count) => sum + count,
+      0,
+    ),
+    today_visit_count: todayVisitCount,
+    safety_tagged_count: cards.filter((card) => card.safety_tags.length > 0).length,
+  };
+}
+
+function toPublicPatientBoardCard(card: DerivedPatientBoardCard) {
+  const { facility_batch_id, facility_batch_patient_count, ...publicCard } = card;
+  void facility_batch_id;
+  void facility_batch_patient_count;
+  return publicCard;
 }
 
 function activeVisitConsentWhere(now: Date): Prisma.ConsentRecordWhereInput {
@@ -254,6 +502,9 @@ const authenticatedGET = withAuthContext(
     const scope = parsed.data.scope ?? 'mine';
     const query = parsed.data.q;
     const foundationIssue = parsed.data.foundation_issue;
+    const cardFilter = parsed.data.card_filter ?? 'all';
+    const sort = parsed.data.sort ?? 'priority';
+    const limit = parsed.data.limit;
 
     const now = new Date();
     const todayKey = japanDateKey(now);
@@ -262,6 +513,35 @@ const authenticatedGET = withAuthContext(
     const today = utcDateFromLocalKey(todayKey);
 
     const accessContext: VisitScheduleAccessContext = { userId: ctx.userId, role: ctx.role };
+    const cursorSecret = getAuthSecret();
+    if (!cursorSecret) {
+      throw new Error('Patient board cursor secret is not configured');
+    }
+    const filterHash = buildPatientBoardFilterHash({
+      orgId: ctx.orgId,
+      userId: ctx.userId,
+      role: ctx.role,
+      scope,
+      query,
+      foundationIssue,
+      cardFilter,
+      sort,
+      limit,
+      secret: cursorSecret,
+    });
+    const decodedCursor = decodePatientBoardCursor({
+      cursor: parsed.data.cursor,
+      limit,
+      filterHash,
+      now,
+      secret: cursorSecret,
+    });
+    if (!decodedCursor.ok) {
+      return validationError('クエリパラメータが不正です', {
+        cursor: [cursorValidationMessage(decodedCursor.reason)],
+      });
+    }
+
     // 「私の担当」: 担当ケース(主担当/副担当/訪問割当)に絞る。owner/admin は全件(コックピットと同じ規約)。
     const mineCaseWhere =
       scope === 'mine' && !canBypassVisitScheduleAssignmentAccess(accessContext)
@@ -466,15 +746,13 @@ const authenticatedGET = withAuthContext(
       await Promise.all([
         prisma.patient.findMany({
           where: patientWhere,
-          orderBy: { name_kana: 'asc' },
-          take: foundationIssue ? PATIENT_FILTERED_FETCH_LIMIT : PATIENT_FETCH_LIMIT,
+          orderBy: [{ name_kana: 'asc' }, { id: 'asc' }],
           select: patientBoardSelect,
         }),
         shouldFetchFoundationCountBasis
           ? prisma.patient.findMany({
               where: basePatientWhere,
-              orderBy: { name_kana: 'asc' },
-              take: PATIENT_FILTERED_FETCH_LIMIT,
+              orderBy: [{ name_kana: 'asc' }, { id: 'asc' }],
               select: patientBoardSelect,
             })
           : Promise.resolve(null),
@@ -521,37 +799,30 @@ const authenticatedGET = withAuthContext(
       derivePatientBoardCard(patient, now),
     );
     const foundationIssueCounts = buildPatientBoardFoundationIssueCounts(foundationCountCards);
-    const filteredCards = allCards
-      .filter((card) => matchesPatientBoardFoundationIssue(card, foundationIssue))
-      .sort(comparePatientBoardCards);
-    const cards = filteredCards.slice(0, PATIENT_FETCH_LIMIT);
-
-    // 本日訪問は対応カテゴリに関わらず「今日訪問がある患者」を数える
-    // (今すぐ対応のカードも本日訪問に含まれ得る。例: 麻薬監査待ち × 14:00 訪問)
-    const visitTodayCards = cards.filter((card) => card.next_visit_date === todayKey);
-
-    const chipCounts = {
-      urgent_now: cards.filter((card) => card.attention === 'urgent_now').length,
-      external_wait: cards.filter(
-        (card) => card.attention === 'external_wait' || card.attention === 'reply_wait',
-      ).length,
-      visit_today: visitTodayCards.length,
-      paused: cards.filter((card) => card.attention === 'paused').length,
-    };
-
-    const facilityBatchSizes = new Map<string, number>();
-    let todayVisitCount = 0;
-    for (const card of visitTodayCards) {
-      if (card.facility_batch_id) {
-        facilityBatchSizes.set(card.facility_batch_id, card.facility_batch_patient_count);
-      } else {
-        todayVisitCount += 1;
-      }
-    }
-    const todayFacilityPatientCount = Array.from(facilityBatchSizes.values()).reduce(
-      (sum, count) => sum + count,
-      0,
+    const foundationFilteredCards = allCards.filter((card) =>
+      matchesPatientBoardFoundationIssue(card, foundationIssue),
     );
+    const facets = buildPatientBoardFacets(
+      foundationFilteredCards,
+      foundationIssueCounts,
+      todayKey,
+    );
+    const filteredCards = foundationFilteredCards
+      .filter((card) => matchesPatientBoardCardFilter(card, cardFilter, todayKey))
+      .sort((left, right) => compareForPatientBoardSort(left, right, sort));
+    const pageStart = decodedCursor.offset;
+    const pageCards = filteredCards.slice(pageStart, pageStart + limit);
+    const nextOffset = pageStart + pageCards.length;
+    const hasMore = nextOffset < filteredCards.length;
+    const nextCursor = hasMore
+      ? encodePatientBoardCursor({
+          offset: nextOffset,
+          limit,
+          filterHash,
+          now,
+          secret: cursorSecret,
+        })
+      : null;
 
     const auditQueue = auditTasks
       .filter((task) => {
@@ -572,30 +843,34 @@ const authenticatedGET = withAuthContext(
 
     const blockedReasons: PatientBoardBlockedReason[] = buildBlockedReasons(openExceptions, now);
 
-    const responseData: PatientBoardResponse = {
-      generated_at: now.toISOString(),
-      scope,
-      assigned_total: assignedTotal,
-      // 取得上限で実際に打ち切られたか = 母数 > 取得行数(フィルタ/slice 前の patients)。
-      // foundation_issue 等の絞り込みで cards が減るのは truncation ではないため、
-      // cards.length ではなく patients.length と比較する(誤検知防止)。
-      truncated: assignedTotal > patients.length || filteredCards.length > PATIENT_FETCH_LIMIT,
-      cards: cards.map((card) => {
-        const { facility_batch_id, facility_batch_patient_count, ...publicCard } = card;
-        void facility_batch_id;
-        void facility_batch_patient_count;
-        return publicCard;
-      }),
-      chip_counts: chipCounts,
-      foundation_issue_counts: foundationIssueCounts,
-      today_facility_patient_count: todayFacilityPatientCount,
-      today_visit_count: todayVisitCount,
-      safety_tagged_count: cards.filter((card) => card.safety_tags.length > 0).length,
-      next_action: auditQueue[0] ?? null,
-      blocked_reasons: blockedReasons,
+    const responseData: PatientBoardPageResponse = {
+      data: pageCards.map(toPublicPatientBoardCard),
+      meta: {
+        generated_at: now.toISOString(),
+        scope,
+        limit,
+        returned_count: pageCards.length,
+        has_more: hasMore,
+        next_cursor: nextCursor,
+        total_count: filteredCards.length,
+        count_basis: PATIENT_BOARD_COUNT_BASIS,
+        filters_applied: {
+          scope,
+          q_present: Boolean(query?.trim()),
+          foundation_issue: foundationIssue ?? null,
+          card_filter: cardFilter,
+          sort,
+        },
+        facets,
+        rail: {
+          next_action: auditQueue[0] ?? null,
+          blocked_reasons: blockedReasons,
+        },
+        assigned_total: assignedTotal,
+      },
     };
 
-    return successWithMeasuredJsonPayload({ data: responseData });
+    return successWithMeasuredJsonPayload(responseData);
   },
   {
     permission: 'canVisit',
@@ -606,7 +881,8 @@ const authenticatedGET = withAuthContext(
 export const GET: typeof authenticatedGET = async (req, routeContext) => {
   try {
     return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch {
+  } catch (err) {
+    unstable_rethrow(err);
     return withSensitiveNoStore(internalError());
   }
 };

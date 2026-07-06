@@ -232,8 +232,8 @@ describe('/api/patients/board', () => {
       String(new TextEncoder().encode(bodyText).length),
     );
     const json = JSON.parse(bodyText);
-    expect(json.data.chip_counts.visit_today).toBe(1);
-    expect(json.data.cards[0]).toMatchObject({
+    expect(json.meta.facets.chip_counts.visit_today).toBe(1);
+    expect(json.data[0]).toMatchObject({
       attention: 'visit_today',
       next_visit_date: '2026-06-12',
       next_visit_time: '09:00',
@@ -247,9 +247,14 @@ describe('/api/patients/board', () => {
       link_label: '訪問へ',
       link_href: '/schedules?focus=schedule&schedule_id=schedule_1',
     });
-    expect(JSON.stringify(json.data.cards[0])).not.toContain('090-1111-2222');
-    // assigned_total(1) === displayed(1) → not truncated
-    expect(json.data.truncated).toBe(false);
+    expect(JSON.stringify(json.data[0])).not.toContain('090-1111-2222');
+    expect(json.meta).toMatchObject({
+      assigned_total: 1,
+      total_count: 1,
+      returned_count: 1,
+      has_more: false,
+      next_cursor: null,
+    });
   });
 
   it('UTC runtime の日本早朝でも日本業務日の予定を本日訪問として集計する', async () => {
@@ -279,21 +284,21 @@ describe('/api/patients/board', () => {
       const scheduleWhere = select.cases.select.visit_schedules.where;
       expect(scheduleWhere.scheduled_date.gte.toISOString()).toBe('2026-06-12T00:00:00.000Z');
       const json = await response.json();
-      expect(json.data.chip_counts.visit_today).toBe(1);
-      expect(json.data.today_visit_count).toBe(1);
-      expect(json.data.cards[0]).toMatchObject({
+      expect(json.meta.facets.chip_counts.visit_today).toBe(1);
+      expect(json.meta.facets.today_visit_count).toBe(1);
+      expect(json.data[0]).toMatchObject({
         attention: 'visit_today',
         next_visit_date: '2026-06-12',
         next_visit_time: '09:00',
       });
-      expect(json.data.cards[1]).toMatchObject({
+      expect(json.data[1]).toMatchObject({
         patient_id: 'patient_future',
         attention: 'steady',
         next_visit_date: '2026-06-13',
         operation_summary: ['連絡先あり', '駐車場なし', '要介護 3'],
       });
-      expect(json.data.cards[1].operation_summary).not.toContain('準備未完');
-      expect(json.data.cards[1].operation_summary).not.toContain('訪問準備済');
+      expect(json.data[1].operation_summary).not.toContain('準備未完');
+      expect(json.data[1].operation_summary).not.toContain('訪問準備済');
     } finally {
       if (previousTz === undefined) {
         delete process.env.TZ;
@@ -303,19 +308,23 @@ describe('/api/patients/board', () => {
     }
   });
 
-  it('flags truncated when more patients exist than the name-ordered fetch returns', async () => {
+  it('keeps assigned_total separate from the filtered page metadata', async () => {
     vi.setSystemTime(new Date('2026-06-12T08:00:00+09:00'));
     patientFindManyMock.mockResolvedValue([buildPatientRow(new Date('2026-06-12T00:00:00.000Z'))]);
-    // 30 assigned patients but the name-ordered fetch returned 1 card → board is truncated,
-    // so a high-priority patient beyond the fetch limit could be hidden.
     patientCountMock.mockResolvedValue(30);
 
     const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
     expect(response.status).toBe(200);
     const json = await response.json();
-    expect(json.data.assigned_total).toBe(30);
-    expect(json.data.cards.length).toBe(1);
-    expect(json.data.truncated).toBe(true);
+    expect(json.meta.assigned_total).toBe(30);
+    expect(json.meta.total_count).toBe(1);
+    expect(json.meta.count_basis).toMatchObject({
+      total_count: 'filtered_result_exact',
+      chip_counts: 'scope_search_foundation_exact',
+      foundation_issue_counts: 'scope_search_without_active_foundation_issue_exact',
+    });
+    expect(json.data.length).toBe(1);
+    expect(json.meta.has_more).toBe(false);
   });
 
   it('encodes patient card and schedule hrefs while preserving raw patient ids', async () => {
@@ -347,7 +356,7 @@ describe('/api/patients/board', () => {
 
     const json = await response.json();
     const cardsByPatientId = new Map(
-      json.data.cards.map((card: { patient_id: string }) => [card.patient_id, card]),
+      json.data.map((card: { patient_id: string }) => [card.patient_id, card]),
     );
     const fallbackCard = cardsByPatientId.get(fallbackPatientId);
     const staticLinkCard = cardsByPatientId.get(staticLinkPatientId);
@@ -364,9 +373,9 @@ describe('/api/patients/board', () => {
       link_href: scheduleHref,
       foundation_href: `${staticLinkPatientHref}#patient-foundation`,
     });
-    expect(JSON.stringify(json.data.cards)).not.toContain(`/patients/${fallbackPatientId}`);
-    expect(JSON.stringify(json.data.cards)).not.toContain(`/patients/${staticLinkPatientId}`);
-    expect(JSON.stringify(json.data.cards)).not.toContain(scheduleId);
+    expect(JSON.stringify(json)).not.toContain(`/patients/${fallbackPatientId}`);
+    expect(JSON.stringify(json)).not.toContain(`/patients/${staticLinkPatientId}`);
+    expect(JSON.stringify(json)).not.toContain(scheduleId);
   });
 
   it('focuses reply-wait patient cards on the exact pending report', async () => {
@@ -405,14 +414,14 @@ describe('/api/patients/board', () => {
     });
 
     const json = await response.json();
-    expect(json.data.cards[0]).toMatchObject({
+    expect(json.data[0]).toMatchObject({
       patient_id: 'patient_1',
       attention: 'reply_wait',
       status_text: '報告先の返信待ち 1日 — 再送できます',
       link_label: '報告・共有へ',
       link_href: `/reports/${encodeURIComponent(reportId)}`,
     });
-    expect(JSON.stringify(json.data.cards[0])).not.toContain(reportId);
+    expect(JSON.stringify(json.data[0])).not.toContain(reportId);
   });
 
   it('does not return primary residence full address in the board card payload', async () => {
@@ -436,13 +445,13 @@ describe('/api/patients/board', () => {
     expect(response.status).toBe(200);
 
     const json = await response.json();
-    expect(json.data.cards[0]).not.toHaveProperty('address');
-    expect(json.data.cards[0]).toMatchObject({
+    expect(json.data[0]).not.toHaveProperty('address');
+    expect(json.data[0]).toMatchObject({
       patient_id: 'patient_1',
       residence_kind: 'home',
       residence_label: '在宅',
     });
-    expect(JSON.stringify(json.data)).not.toContain('東京都千代田区丸の内1-1-1');
+    expect(JSON.stringify(json)).not.toContain('東京都千代田区丸の内1-1-1');
   });
 
   it('does not expose facility names in the board residence label or search payload', async () => {
@@ -467,13 +476,13 @@ describe('/api/patients/board', () => {
     expect(response.status).toBe(200);
 
     const json = await response.json();
-    expect(json.data.cards[0]).toMatchObject({
+    expect(json.data[0]).toMatchObject({
       residence_kind: 'facility',
       residence_label: '施設',
     });
-    expect(JSON.stringify(json.data)).not.toContain('青空レジデンス丸の内');
-    expect(JSON.stringify(json.data)).not.toContain('丸の内');
-    expect(JSON.stringify(json.data)).not.toContain('東京都千代田区');
+    expect(JSON.stringify(json)).not.toContain('青空レジデンス丸の内');
+    expect(JSON.stringify(json)).not.toContain('丸の内');
+    expect(JSON.stringify(json)).not.toContain('東京都千代田区');
   });
 
   it.each(['partial', 'blocked'] as const)(
@@ -513,7 +522,7 @@ describe('/api/patients/board', () => {
       expect(response.status).toBe(200);
 
       const json = await response.json();
-      expect(json.data.cards[0]).toMatchObject({
+      expect(json.data[0]).toMatchObject({
         status_text: '本日訪問 — 出発前チェックを確認',
         operation_summary: ['準備未完', '連絡先あり', '駐車場なし', '要介護 3'],
         foundation_summary: {
@@ -522,8 +531,8 @@ describe('/api/patients/board', () => {
           items: ['訪問準備未完'],
         },
       });
-      expect(JSON.stringify(json.data.cards[0])).not.toContain('訪問準備済');
-      expect(JSON.stringify(json.data.cards[0])).not.toContain('準備完了');
+      expect(JSON.stringify(json.data[0])).not.toContain('訪問準備済');
+      expect(JSON.stringify(json.data[0])).not.toContain('準備完了');
     },
   );
 
@@ -607,7 +616,7 @@ describe('/api/patients/board', () => {
     expect(response.status).toBe(200);
 
     const json = await response.json();
-    expect(json.data.cards[0]).toMatchObject({
+    expect(json.data[0]).toMatchObject({
       operation_summary: ['準備未完', '連絡先未設定', '駐車場あり', '要介護 3'],
       foundation_summary: {
         status: 'needs_confirmation',
@@ -644,29 +653,22 @@ describe('/api/patients/board', () => {
     }))!;
 
     expect(response.status).toBe(200);
-    expect(patientFindManyMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        take: 500,
-      }),
-    );
+    expect(patientFindManyMock.mock.calls[0][0]).not.toHaveProperty('take');
     const json = await response.json();
-    expect(json.data.cards).toHaveLength(1);
-    expect(json.data.cards[0]).toMatchObject({
+    expect(json.data).toHaveLength(1);
+    expect(json.data[0]).toMatchObject({
       patient_id: 'patient_missing_contact',
       foundation_summary: {
         items: expect.arrayContaining(['連絡先未設定']),
       },
     });
-    expect(json.data.foundation_issue_counts).toMatchObject({
+    expect(json.meta.facets.foundation_issue_counts).toMatchObject({
       needs_confirmation: 2,
       missing_contact: 1,
     });
-    // foundation_issue filter reduced cards to 1 of 2 fetched rows, but the fetch was
-    // not capped (assigned_total 2 === fetched 2) — filtering is not truncation.
-    // This issue still relies on derived-card filtering because contact readiness has
-    // whitespace/primary-contact semantics that are not safely expressible as a DB predicate.
-    expect(json.data.assigned_total).toBe(2);
-    expect(json.data.truncated).toBe(false);
+    expect(json.meta.assigned_total).toBe(2);
+    expect(json.meta.total_count).toBe(1);
+    expect(json.meta.has_more).toBe(false);
   });
 
   it.each([
@@ -704,15 +706,15 @@ describe('/api/patients/board', () => {
 
       expect(response.status).toBe(200);
       const json = await response.json();
-      expect(json.data.cards).toHaveLength(1);
-      expect(json.data.cards[0]).toMatchObject({
+      expect(json.data).toHaveLength(1);
+      expect(json.data[0]).toMatchObject({
         patient_id: patientId,
         foundation_issue_keys: [issue],
         foundation_summary: {
           items: expect.arrayContaining([expectedItem]),
         },
       });
-      expect(json.data.foundation_issue_counts[issue]).toBe(1);
+      expect(json.meta.facets.foundation_issue_counts[issue]).toBe(1);
     },
   );
 
@@ -745,9 +747,9 @@ describe('/api/patients/board', () => {
 
     expect(response.status).toBe(200);
     const json = await response.json();
-    expect(json.data.cards).toHaveLength(1);
-    expect(json.data.cards[0].patient_id).toBe('patient_missing_insurance');
-    expect(json.data.foundation_issue_counts).toMatchObject({
+    expect(json.data).toHaveLength(1);
+    expect(json.data[0].patient_id).toBe('patient_missing_insurance');
+    expect(json.meta.facets.foundation_issue_counts).toMatchObject({
       missing_insurance: 1,
       missing_contact: 1,
       needs_confirmation: 2,
@@ -756,12 +758,11 @@ describe('/api/patients/board', () => {
       2,
       expect.objectContaining({
         where: expect.not.objectContaining({ AND: expect.any(Array) }),
-        take: 500,
       }),
     );
   });
 
-  it('sorts matching cards before applying the display limit and marks capped filtered results truncated', async () => {
+  it('sorts matching cards before applying the cursor page limit and reports has_more', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-06-12T08:00:00+09:00'));
     const patients = Array.from({ length: 81 }, (_, index) => ({
@@ -816,12 +817,148 @@ describe('/api/patients/board', () => {
 
     expect(response.status).toBe(200);
     const json = await response.json();
-    expect(json.data.cards).toHaveLength(80);
-    expect(json.data.cards[0]).toMatchObject({
+    expect(json.data).toHaveLength(60);
+    expect(json.data[0]).toMatchObject({
       patient_id: 'patient_urgent_last_in_db_order',
       attention: 'urgent_now',
     });
-    expect(json.data.truncated).toBe(true);
+    expect(json.meta.total_count).toBe(81);
+    expect(json.meta.has_more).toBe(true);
+    expect(json.meta.next_cursor).toEqual(expect.any(String));
+  });
+
+  it('returns stable cursor pages with exact non-page-derived counts', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-12T08:00:00+09:00'));
+    const patients = ['A', 'B', 'C'].map((suffix, index) => ({
+      ...buildPatientRow(new Date(`2026-06-${20 + index}T00:00:00.000Z`)),
+      id: `patient_${suffix.toLowerCase()}`,
+      name: `患者 ${suffix}`,
+      name_kana: `カンジャ ${suffix}`,
+    }));
+    patientFindManyMock.mockResolvedValue(patients);
+    patientCountMock.mockResolvedValue(3);
+
+    const first = (await GET(createRequest('?scope=all&limit=2'), {
+      params: Promise.resolve({}),
+    }))!;
+    expect(first.status).toBe(200);
+    const firstJson = await first.json();
+    expect(firstJson.data.map((card: { patient_id: string }) => card.patient_id)).toEqual([
+      'patient_a',
+      'patient_b',
+    ]);
+    expect(firstJson.meta).toMatchObject({
+      limit: 2,
+      returned_count: 2,
+      total_count: 3,
+      has_more: true,
+    });
+    expect(firstJson.meta.next_cursor).toEqual(expect.any(String));
+    expect(firstJson.meta.facets.chip_counts.visit_today).toBe(0);
+    expect(firstJson.meta.facets.safety_tagged_count).toBe(0);
+
+    const second = (await GET(
+      createRequest(`?scope=all&limit=2&cursor=${encodeURIComponent(firstJson.meta.next_cursor)}`),
+      { params: Promise.resolve({}) },
+    ))!;
+    expect(second.status).toBe(200);
+    const secondJson = await second.json();
+    expect(secondJson.data.map((card: { patient_id: string }) => card.patient_id)).toEqual([
+      'patient_c',
+    ]);
+    expect(secondJson.meta).toMatchObject({
+      limit: 2,
+      returned_count: 1,
+      total_count: 3,
+      has_more: false,
+      next_cursor: null,
+    });
+  });
+
+  it('rejects tampered and filter-mismatched cursors before querying patients', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-12T08:00:00+09:00'));
+    patientFindManyMock.mockResolvedValue([
+      {
+        ...buildPatientRow(new Date('2026-06-20T00:00:00.000Z')),
+        id: 'patient_a',
+        name: '患者 A',
+      },
+      {
+        ...buildPatientRow(new Date('2026-06-21T00:00:00.000Z')),
+        id: 'patient_b',
+        name: '患者 B',
+      },
+    ]);
+    patientCountMock.mockResolvedValue(2);
+
+    const first = (await GET(createRequest('?scope=all&limit=1'), {
+      params: Promise.resolve({}),
+    }))!;
+    const firstJson = await first.json();
+    const cursor = firstJson.meta.next_cursor as string;
+    expect(cursor).toEqual(expect.any(String));
+
+    patientFindManyMock.mockClear();
+    patientCountMock.mockClear();
+
+    const tampered = `${cursor.slice(0, -1)}${cursor.endsWith('A') ? 'B' : 'A'}`;
+    const tamperedResponse = (await GET(
+      createRequest(`?scope=all&limit=1&cursor=${encodeURIComponent(tampered)}`),
+      { params: Promise.resolve({}) },
+    ))!;
+    expect(tamperedResponse.status).toBe(400);
+    expectSensitiveNoStore(tamperedResponse);
+    const tamperedBody = await tamperedResponse.json();
+    expect(JSON.stringify(tamperedBody)).not.toContain(tampered);
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+    expect(patientCountMock).not.toHaveBeenCalled();
+
+    const mismatchResponse = (await GET(
+      createRequest(`?scope=mine&limit=1&cursor=${encodeURIComponent(cursor)}`),
+      { params: Promise.resolve({}) },
+    ))!;
+    expect(mismatchResponse.status).toBe(400);
+    expectSensitiveNoStore(mismatchResponse);
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+    expect(patientCountMock).not.toHaveBeenCalled();
+  });
+
+  it('does not echo raw q or patient identifiers inside cursor metadata', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-12T08:00:00+09:00'));
+    patientFindManyMock.mockResolvedValue([
+      {
+        ...buildPatientRow(new Date('2026-06-20T00:00:00.000Z')),
+        id: 'patient_sensitive_a',
+        name: '患者 A',
+      },
+      {
+        ...buildPatientRow(new Date('2026-06-21T00:00:00.000Z')),
+        id: 'patient_sensitive_b',
+        name: '患者 B',
+      },
+    ]);
+    patientCountMock.mockResolvedValue(2);
+    const rawQuery = '東京都千代田区丸の内1-1-1';
+
+    const response = (await GET(
+      createRequest(`?scope=all&limit=1&q=${encodeURIComponent(rawQuery)}`),
+      { params: Promise.resolve({}) },
+    ))!;
+    expect(response.status).toBe(200);
+    const bodyText = await response.text();
+    const json = JSON.parse(bodyText);
+    expect(json.meta.filters_applied).toMatchObject({
+      q_present: true,
+      card_filter: 'all',
+      sort: 'priority',
+    });
+    expect(json.meta.next_cursor).toEqual(expect.any(String));
+    expect(json.meta.next_cursor).not.toContain('patient_sensitive');
+    expect(json.meta.next_cursor).not.toContain(rawQuery);
+    expect(bodyText).not.toContain(rawQuery);
   });
 
   it('applies q as a database-side patient name/kana filter before taking board rows', async () => {
@@ -849,7 +986,6 @@ describe('/api/patients/board', () => {
             }),
           ]),
         }),
-        take: 80,
       }),
     );
     expect(patientCountMock).toHaveBeenCalledWith({
@@ -888,7 +1024,6 @@ describe('/api/patients/board', () => {
           ]),
           AND: [expectedInsurancePrefilter],
         }),
-        take: 500,
       }),
     );
     expect(patientCountMock).toHaveBeenCalledWith({
@@ -977,6 +1112,8 @@ describe('/api/patients/board', () => {
   it.each([
     ['scope', '?scope=mine&scope=all', { scope: ['scope は1つだけ指定してください'] }],
     ['q', '?scope=all&q=a&q=b', { q: ['q は1つだけ指定してください'] }],
+    ['limit', '?scope=all&limit=10&limit=20', { limit: ['limit は1つだけ指定してください'] }],
+    ['cursor', '?scope=all&cursor=a&cursor=b', { cursor: ['cursor は1つだけ指定してください'] }],
     [
       'foundation_issue',
       '?scope=all&foundation_issue=missing_contact&foundation_issue=missing_care_team',
@@ -992,6 +1129,23 @@ describe('/api/patients/board', () => {
       await expect(response.json()).resolves.toMatchObject({
         message: 'クエリパラメータが不正です',
         details,
+      });
+      expect(patientFindManyMock).not.toHaveBeenCalled();
+      expect(patientCountMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['0', '101', 'abc'] as const)(
+    'rejects invalid limit %s before querying patients',
+    async (limit) => {
+      const response = (await GET(createRequest(`?scope=all&limit=${limit}`), {
+        params: Promise.resolve({}),
+      }))!;
+
+      expect(response.status).toBe(400);
+      expectSensitiveNoStore(response);
+      await expect(response.json()).resolves.toMatchObject({
+        message: 'クエリパラメータが不正です',
       });
       expect(patientFindManyMock).not.toHaveBeenCalled();
       expect(patientCountMock).not.toHaveBeenCalled();

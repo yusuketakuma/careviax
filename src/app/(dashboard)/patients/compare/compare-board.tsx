@@ -13,7 +13,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { cn } from '@/lib/utils';
-import type { PatientBoardResponse } from '@/types/patient-board';
+import type { PatientBoardPageResponse } from '@/types/patient-board';
 import { fetchPatientBoard } from '../patients-board';
 import type { PatientOverview } from '../[id]/patient-detail.types';
 import {
@@ -169,7 +169,7 @@ export function CompareBoard({ requestedPatientIds }: { requestedPatientIds: str
   const orgId = useOrgId();
 
   // 並べる対象の導出と状態文のため、患者カード一覧 BFF を再利用(全員スコープ)
-  const boardQuery = useQuery<PatientBoardResponse>({
+  const boardQuery = useQuery<PatientBoardPageResponse>({
     queryKey: ['patients-board', 'all', orgId],
     queryFn: () => fetchPatientBoard(orgId, 'all'),
     enabled: Boolean(orgId),
@@ -179,7 +179,7 @@ export function CompareBoard({ requestedPatientIds }: { requestedPatientIds: str
   const targetPatientIds =
     requestedPatientIds.length > 0
       ? requestedPatientIds
-      : selectDefaultComparePatients(boardQuery.data?.cards ?? []);
+      : selectDefaultComparePatients(boardQuery.data?.data ?? []);
 
   // 1 リクエスト/患者で並列取得(カード作業台と同じ overview BFF を再利用)
   const overviewQueries = useQueries({
@@ -232,7 +232,7 @@ export function CompareBoard({ requestedPatientIds }: { requestedPatientIds: str
   }
 
   const boardCardByPatientId = new Map(
-    (boardQuery.data?.cards ?? []).map((card) => [card.patient_id, card]),
+    (boardQuery.data?.data ?? []).map((card) => [card.patient_id, card]),
   );
 
   return (

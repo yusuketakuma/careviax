@@ -41,6 +41,68 @@
 
 ## 直近の land（本日・要点）
 
+- codex: PAT-BOARD-PAGE-001 PatientsBoard cursor pagination implemented.
+  - current task:
+    `Plans.md` の `PAT-BOARD-PAGE-001` を実装。`/api/patients/board` を固定
+    80/500件 cap + `truncated` 表示から、signed cursor + `limit` + server-side
+    `card_filter` / `sort` + exact metadata contract へ変更した。レスポンスは
+    `{ data: PatientBoardCard[], meta: PatientBoardMeta }` に統一し、`meta` に
+    `has_more`, `next_cursor`, `total_count`, `count_basis`, `filters_applied`,
+    `facets`, `rail`, `assigned_total` を返す。患者一覧 UI は旧ローカル
+    「さらに表示」/ truncation warning を廃止し、`next_cursor` がある時だけ
+    「さらに読み込む」で次ページを取得する。比較画面も新ページ契約へ追従した。
+  - Oracle / GPT-5.5 Pro:
+    Existing completed session `ph-os-careviax-high-risk` was used as prior
+    high-risk review evidence for this slice. Advice accepted: signed PHI-free
+    cursor payload, server-side filter/sort, exact non-page-derived counts,
+    cursor tamper/filter mismatch tests, and no raw q/patient identifiers in
+    cursor metadata.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `ops/refactor/STATE.md`,
+    `Plans.md` PAT-BOARD-PAGE-001 task context,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`,
+    `src/types/patient-board.ts`,
+    `src/app/api/patients/board/route.ts`,
+    `src/app/api/patients/board/route.test.ts`,
+    `src/app/(dashboard)/patients/patients-board.tsx`,
+    `src/app/(dashboard)/patients/patients-board.test.tsx`,
+    `src/app/(dashboard)/patients/compare/compare-board.tsx`.
+  - files changed:
+    `src/types/patient-board.ts`,
+    `src/app/api/patients/board/route.ts`,
+    `src/app/api/patients/board/route.test.ts`,
+    `src/app/(dashboard)/patients/patients-board.tsx`,
+    `src/app/(dashboard)/patients/patients-board.test.tsx`,
+    `src/app/(dashboard)/patients/compare/compare-board.tsx`,
+    `ops/refactor/STATE.md`.
+  - validation:
+    `pnpm exec vitest run src/app/api/patients/board/route.test.ts 'src/app/(dashboard)/patients/patients-board.test.tsx' --reporter=dot --testTimeout=30000`
+    passed: 2 files / 57 tests.
+    `pnpm exec eslint src/types/patient-board.ts src/app/api/patients/board/route.ts src/app/api/patients/board/route.test.ts 'src/app/(dashboard)/patients/patients-board.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx' 'src/app/(dashboard)/patients/compare/compare-board.tsx'`
+    passed.
+    `pnpm exec prettier --check src/types/patient-board.ts src/app/api/patients/board/route.ts src/app/api/patients/board/route.test.ts 'src/app/(dashboard)/patients/patients-board.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx' 'src/app/(dashboard)/patients/compare/compare-board.tsx'`
+    passed.
+    `pnpm typecheck` passed.
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false` passed.
+  - bugs/security/performance fixed in this slice:
+    Broad patient board queries no longer depend on fixed 80/500 result caps for the
+    rendered page contract. Cursor payload is signed, expires, binds to org/user/role/
+    scope/filter/sort/limit, and does not expose raw query text or patient identifiers.
+    Cursor tampering, filter mismatch, duplicate query params, and invalid limits now
+    fail closed. Counts/chips/foundation facets are derived from the full server result
+    basis rather than the loaded page, preventing false-zero chips and false-empty client
+    searches. Client-side local sort/filter/truncation warnings were removed in favor of
+    server-owned semantics.
+  - remaining work:
+    Full production-scale DB pagination still uses the derived in-memory card basis for
+    this BFF because patient card status depends on multiple joined workflow adapters.
+    A later performance slice can move more coarse prefilters/counts into SQL/materialized
+    summaries once the API contract is stable.
+  - next action:
+    Run final diff check, scoped commit, and push this implementation slice.
+
 - codex: Oracle escalation policy narrowed and project skill added.
   - current task:
     ユーザー指示により、Oracle/GPT-5.5 Pro 相談基準を「相談時は常に GitHub access

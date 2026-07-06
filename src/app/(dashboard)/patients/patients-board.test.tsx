@@ -1,11 +1,16 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { useUIStore } from '@/lib/stores/ui-store';
 import { buildPatientHref } from '@/lib/patient/navigation';
-import type { PatientBoardCard, PatientBoardResponse } from '@/types/patient-board';
+import type {
+  PatientBoardCard,
+  PatientBoardFacets,
+  PatientBoardPageResponse,
+  PatientBoardRail,
+} from '@/types/patient-board';
 
 setupDomTestEnv();
 
@@ -63,90 +68,97 @@ function card(overrides: Partial<PatientBoardCard>): PatientBoardCard {
   };
 }
 
-function buildFixture(): PatientBoardResponse {
-  return {
-    generated_at: localIso(9, 42),
-    scope: 'mine',
-    assigned_total: 28,
-    truncated: false,
-    cards: [
-      card({
-        patient_id: 'pt_tanaka',
-        name: '田中 一郎',
-        age: 84,
-        attention: 'urgent_now',
-        safety_tags: ['narcotic', 'cold_storage', 'unit_dose', 'renal'],
-        next_visit_date: '2026-06-12',
-        next_visit_time: '14:00',
-        current_step: 'audit',
-        status_text: '麻薬監査 期限12:00 — 持参薬が未確定',
-        status_tone: 'critical',
-        operation_summary: ['連絡先あり', '駐車場なし', '要介護 3'],
-        foundation_summary: {
-          status: 'ready',
-          label: '安全確認あり',
-          items: ['安全タグ4件'],
-        },
-        foundation_issue_keys: [],
-        foundation_href: '/patients/pt_tanaka#patient-foundation',
-        link_label: '監査へ',
-        link_href: '/audit',
-      }),
-      card({
-        patient_id: 'pt_sasaki',
-        name: '佐々木 ハル',
-        age: 79,
-        attention: 'wait_release',
-        safety_tags: ['renal'],
-        next_visit_date: '2026-06-13',
-        next_visit_time: '10:00',
-        current_step: 'decision',
-        status_text: '照会回答が届きました(09:31) — 調剤を再開できます',
-        status_tone: 'positive',
-        link_label: '調剤へ',
-        link_href: '/dispense',
-      }),
-      card({
-        patient_id: 'pt_suzuki',
-        name: '鈴木 新',
-        age: 76,
-        attention: 'acceptance',
-        next_visit_label: '未定(調整中)',
-        current_step: null,
-        status_text: '受入の返答待ち — 訪問枠を調整中',
-        status_tone: 'caution',
-        link_label: 'スケジュールへ',
-        link_href: '/schedules',
-      }),
-      card({
-        patient_id: 'pt_ito',
-        name: '伊藤 キヨ',
-        age: 88,
-        attention: 'visit_today',
-        safety_tags: ['swallowing'],
-        next_visit_date: '2026-06-12',
-        next_visit_time: '10:30',
-        current_step: 'visit',
-        status_text: '準備完了 — パケット・ルート・セット✓',
-        status_tone: 'info',
-        link_label: '訪問へ',
-        link_href: '/visits',
-      }),
-      card({
-        patient_id: 'pt_yoshida',
-        name: '吉田 進',
-        age: 80,
-        residence_kind: 'hospital',
-        residence_label: '入院中',
-        attention: 'paused',
-        next_visit_label: '退院連絡待ち',
-        current_step: null,
-        status_text: '入院中 — 退院時共同指導の対象',
-        status_tone: 'neutral',
-        link_label: '算定チェックへ',
-        link_href: '/billing',
-      }),
-    ],
+type PatientBoardFixtureOverrides = {
+  data?: PatientBoardCard[];
+  meta?: Partial<Omit<PatientBoardPageResponse['meta'], 'facets' | 'rail'>> & {
+    facets?: Partial<PatientBoardFacets> & {
+      chip_counts?: Partial<PatientBoardFacets['chip_counts']>;
+      foundation_issue_counts?: Partial<PatientBoardFacets['foundation_issue_counts']>;
+    };
+    rail?: Partial<PatientBoardRail>;
+  };
+};
+
+function buildFixture(overrides: PatientBoardFixtureOverrides = {}): PatientBoardPageResponse {
+  const cards = overrides.data ?? [
+    card({
+      patient_id: 'pt_tanaka',
+      name: '田中 一郎',
+      age: 84,
+      attention: 'urgent_now',
+      safety_tags: ['narcotic', 'cold_storage', 'unit_dose', 'renal'],
+      next_visit_date: '2026-06-12',
+      next_visit_time: '14:00',
+      current_step: 'audit',
+      status_text: '麻薬監査 期限12:00 — 持参薬が未確定',
+      status_tone: 'critical',
+      operation_summary: ['連絡先あり', '駐車場なし', '要介護 3'],
+      foundation_summary: {
+        status: 'ready',
+        label: '安全確認あり',
+        items: ['安全タグ4件'],
+      },
+      foundation_issue_keys: [],
+      foundation_href: '/patients/pt_tanaka#patient-foundation',
+      link_label: '監査へ',
+      link_href: '/audit',
+    }),
+    card({
+      patient_id: 'pt_sasaki',
+      name: '佐々木 ハル',
+      age: 79,
+      attention: 'wait_release',
+      safety_tags: ['renal'],
+      next_visit_date: '2026-06-13',
+      next_visit_time: '10:00',
+      current_step: 'decision',
+      status_text: '照会回答が届きました(09:31) — 調剤を再開できます',
+      status_tone: 'positive',
+      link_label: '調剤へ',
+      link_href: '/dispense',
+    }),
+    card({
+      patient_id: 'pt_suzuki',
+      name: '鈴木 新',
+      age: 76,
+      attention: 'acceptance',
+      next_visit_label: '未定(調整中)',
+      current_step: null,
+      status_text: '受入の返答待ち — 訪問枠を調整中',
+      status_tone: 'caution',
+      link_label: 'スケジュールへ',
+      link_href: '/schedules',
+    }),
+    card({
+      patient_id: 'pt_ito',
+      name: '伊藤 キヨ',
+      age: 88,
+      attention: 'visit_today',
+      safety_tags: ['swallowing'],
+      next_visit_date: '2026-06-12',
+      next_visit_time: '10:30',
+      current_step: 'visit',
+      status_text: '準備完了 — パケット・ルート・セット✓',
+      status_tone: 'info',
+      link_label: '訪問へ',
+      link_href: '/visits',
+    }),
+    card({
+      patient_id: 'pt_yoshida',
+      name: '吉田 進',
+      age: 80,
+      residence_kind: 'hospital',
+      residence_label: '入院中',
+      attention: 'paused',
+      next_visit_label: '退院連絡待ち',
+      current_step: null,
+      status_text: '入院中 — 退院時共同指導の対象',
+      status_tone: 'neutral',
+      link_label: '算定チェックへ',
+      link_href: '/billing',
+    }),
+  ];
+  const facets = {
     chip_counts: { urgent_now: 1, external_wait: 0, visit_today: 1, paused: 1 },
     foundation_issue_counts: {
       needs_confirmation: 4,
@@ -160,6 +172,8 @@ function buildFixture(): PatientBoardResponse {
     today_facility_patient_count: 12,
     today_visit_count: 3,
     safety_tagged_count: 9,
+  };
+  const rail = {
     next_action: {
       patient_name: '田中 一郎',
       due_at: localIso(12, 0),
@@ -185,6 +199,49 @@ function buildFixture(): PatientBoardResponse {
         action_href: '/admin/contact-profiles',
       },
     ],
+  } satisfies PatientBoardRail;
+  return {
+    data: cards,
+    meta: {
+      generated_at: localIso(9, 42),
+      scope: 'mine',
+      limit: 60,
+      returned_count: cards.length,
+      has_more: false,
+      next_cursor: null,
+      total_count: cards.length,
+      count_basis: {
+        total_count: 'filtered_result_exact',
+        chip_counts: 'scope_search_foundation_exact',
+        foundation_issue_counts: 'scope_search_without_active_foundation_issue_exact',
+        board_summary: 'scope_search_foundation_exact',
+      },
+      filters_applied: {
+        scope: 'mine',
+        q_present: false,
+        foundation_issue: null,
+        card_filter: 'all',
+        sort: 'priority',
+      },
+      assigned_total: 28,
+      ...overrides.meta,
+      facets: {
+        ...facets,
+        ...overrides.meta?.facets,
+        chip_counts: {
+          ...facets.chip_counts,
+          ...overrides.meta?.facets?.chip_counts,
+        },
+        foundation_issue_counts: {
+          ...facets.foundation_issue_counts,
+          ...overrides.meta?.facets?.foundation_issue_counts,
+        },
+      },
+      rail: {
+        ...rail,
+        ...overrides.meta?.rail,
+      },
+    },
   };
 }
 
@@ -206,6 +263,7 @@ describe('PatientsBoard', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it('renders the header with the color legend, scope toggle and filter chips', () => {
@@ -245,7 +303,7 @@ describe('PatientsBoard', () => {
     expect(within(summary).getByText('再開できる')).toBeTruthy();
     expect(within(summary).getAllByText('1名')).toHaveLength(3);
     expect(within(summary).getByText('本日訪問')).toBeTruthy();
-    expect(within(summary).getByText('2名+施設12名')).toBeTruthy();
+    expect(within(summary).getByText('3名+施設12名')).toBeTruthy();
     expect(within(summary).getByText('止まっている')).toBeTruthy();
     expect(within(summary).getByText('外部待ち0名 / 休止1名')).toBeTruthy();
 
@@ -265,7 +323,7 @@ describe('PatientsBoard', () => {
     expect(within(chipBar).getByRole('button', { name: /休止/ })).toBeTruthy();
 
     expect(screen.getByTestId('patients-board-scope-note').textContent).toContain(
-      '私の担当 28名のうち 5名を表示',
+      '私の担当 5名中 5名を表示',
     );
     const search = screen.getByRole('searchbox', { name: '氏名・カナ・住所・施設で検索' });
     expect(search).toBeTruthy();
@@ -277,9 +335,48 @@ describe('PatientsBoard', () => {
     expect(screen.queryByTestId('patients-board-truncation-note')).toBeNull();
   });
 
-  it('shows a name-order truncation note (distinct from search) when the board is truncated', () => {
-    const data = buildFixture();
-    data.truncated = true;
+  it('loads the next server page with the signed cursor instead of local truncation', async () => {
+    vi.useRealTimers();
+    const firstPageCards = Array.from({ length: 60 }, (_, index) =>
+      card({
+        patient_id: `pt_page_1_${index}`,
+        name: `患者 A${index.toString().padStart(2, '0')}`,
+      }),
+    );
+    const secondPageCards = Array.from({ length: 5 }, (_, index) =>
+      card({
+        patient_id: `pt_page_2_${index}`,
+        name: `患者 B${index.toString().padStart(2, '0')}`,
+      }),
+    );
+    const data = buildFixture({
+      data: firstPageCards,
+      meta: {
+        assigned_total: 65,
+        total_count: 65,
+        returned_count: 60,
+        has_more: true,
+        next_cursor: 'cursor_2',
+      },
+    });
+    const nextPage = buildFixture({
+      data: secondPageCards,
+      meta: {
+        assigned_total: 65,
+        total_count: 65,
+        returned_count: 5,
+        has_more: false,
+        next_cursor: null,
+      },
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      void input;
+      return new Response(JSON.stringify(nextPage), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
     useRealtimeQueryMock.mockReturnValue({
       data,
       isLoading: false,
@@ -289,18 +386,21 @@ describe('PatientsBoard', () => {
     });
     render(<PatientsBoard />);
 
-    const note = screen.getByTestId('patients-board-truncation-note');
-    // honest: states the fetch was capped (取得上限), high-priority patients may be out
-    // of range, and search only covers the fetched set — so it does not read as a filter
-    // nor over-claim the displayed cards are the name-ordered top-N of all assigned.
-    expect(note.textContent).toContain('取得上限');
-    expect(note.textContent).toContain('優先度の高い患者が表示範囲外');
-    expect(note.textContent).toContain(`全${data.assigned_total}名`);
-    expect(note.textContent).toContain(`${data.cards.length}名`);
-    expect(
-      screen.getByTestId('patients-board-grid').compareDocumentPosition(note) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(screen.queryByTestId('patients-board-truncation-note')).toBeNull();
+    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(60);
+    expect(screen.getByTestId('patients-board-visible-count-note').textContent).toContain(
+      '全65名中 60名を表示',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'さらに読み込む' }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const requestedUrl = String(fetchMock.mock.calls[0]?.[0] ?? '');
+    expect(requestedUrl).toContain('limit=60');
+    expect(requestedUrl).toContain('cursor=cursor_2');
+    await waitFor(() => expect(screen.getAllByTestId('patient-board-card')).toHaveLength(65));
+    expect(screen.queryByTestId('patients-board-visible-count-note')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'さらに読み込む' })).toBeNull();
   });
 
   it('renders patient cards with hazard tags, next visit, process dots and step shortcuts', () => {
@@ -398,8 +498,8 @@ describe('PatientsBoard', () => {
   it('routes patient card links through the shared patient href helper', () => {
     const data = buildFixture();
     const hostilePatientId = 'pt/1?x=y#z';
-    data.cards[0] = {
-      ...data.cards[0],
+    data.data[0] = {
+      ...data.data[0],
       patient_id: hostilePatientId,
       foundation_href: undefined,
     };
@@ -434,76 +534,155 @@ describe('PatientsBoard', () => {
     expect(buildPatientHref).toHaveBeenCalledWith(hostilePatientId);
   });
 
-  it('filters cards by chip selection and sends the search query to the server-side board API', async () => {
+  it('sends chip filters and the search query to the server-side board API', async () => {
     render(<PatientsBoard />);
 
     const chipBar = screen.getByRole('group', { name: '対応カテゴリの絞り込み' });
 
     fireEvent.click(within(chipBar).getByRole('button', { name: /休止/ }));
-    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(1);
-    expect(screen.getByRole('link', { name: '吉田 進' })).toBeTruthy();
-
-    // 本日訪問チップは対応カテゴリに関わらず「今日訪問がある患者」(今すぐ対応の田中も含む)
-    fireEvent.click(within(chipBar).getByRole('button', { name: /本日訪問/ }));
-    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(2);
-    expect(screen.getByRole('link', { name: '田中 一郎' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: '伊藤 キヨ' })).toBeTruthy();
-
-    fireEvent.click(within(chipBar).getByRole('button', { name: /正本未整備/ }));
-    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(4);
-    expect(screen.queryByRole('link', { name: '田中 一郎' })).toBeNull();
+    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(5);
     expect(useRealtimeQueryMock).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        queryKey: ['patients', 'board', 'org_1', 'mine', 'needs_confirmation', ''],
+        queryKey: ['patients', 'board', 'org_1', 'mine', undefined, 'paused', 'priority', '', 60],
+      }),
+    );
+
+    fireEvent.click(within(chipBar).getByRole('button', { name: /本日訪問/ }));
+    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(5);
+    expect(useRealtimeQueryMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        queryKey: [
+          'patients',
+          'board',
+          'org_1',
+          'mine',
+          undefined,
+          'visit_today',
+          'priority',
+          '',
+          60,
+        ],
+      }),
+    );
+
+    fireEvent.click(within(chipBar).getByRole('button', { name: /正本未整備/ }));
+    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(5);
+    expect(useRealtimeQueryMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        queryKey: [
+          'patients',
+          'board',
+          'org_1',
+          'mine',
+          'needs_confirmation',
+          'all',
+          'priority',
+          '',
+          60,
+        ],
       }),
     );
 
     fireEvent.click(within(chipBar).getByRole('button', { name: /連絡先未設定/ }));
-    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(4);
     expect(useRealtimeQueryMock).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        queryKey: ['patients', 'board', 'org_1', 'mine', 'missing_contact', ''],
+        queryKey: [
+          'patients',
+          'board',
+          'org_1',
+          'mine',
+          'missing_contact',
+          'all',
+          'priority',
+          '',
+          60,
+        ],
       }),
     );
 
     fireEvent.click(within(chipBar).getByRole('button', { name: /同意・計画未確認/ }));
-    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(4);
     expect(useRealtimeQueryMock).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        queryKey: ['patients', 'board', 'org_1', 'mine', 'missing_consent_plan', ''],
+        queryKey: [
+          'patients',
+          'board',
+          'org_1',
+          'mine',
+          'missing_consent_plan',
+          'all',
+          'priority',
+          '',
+          60,
+        ],
       }),
     );
 
     fireEvent.click(within(chipBar).getByRole('button', { name: /連携先未設定/ }));
-    expect(screen.queryAllByTestId('patient-board-card')).toHaveLength(0);
-    expect(screen.getByText('条件に一致する患者がいません')).toBeTruthy();
+    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(5);
     expect(useRealtimeQueryMock).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        queryKey: ['patients', 'board', 'org_1', 'mine', 'missing_care_team', ''],
+        queryKey: [
+          'patients',
+          'board',
+          'org_1',
+          'mine',
+          'missing_care_team',
+          'all',
+          'priority',
+          '',
+          60,
+        ],
       }),
     );
 
     fireEvent.click(within(chipBar).getByRole('button', { name: /駐車未確認/ }));
-    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(4);
     expect(useRealtimeQueryMock).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        queryKey: ['patients', 'board', 'org_1', 'mine', 'missing_parking', ''],
+        queryKey: [
+          'patients',
+          'board',
+          'org_1',
+          'mine',
+          'missing_parking',
+          'all',
+          'priority',
+          '',
+          60,
+        ],
       }),
     );
 
     fireEvent.click(within(chipBar).getByRole('button', { name: /介護度未確認/ }));
-    expect(screen.queryAllByTestId('patient-board-card')).toHaveLength(0);
     expect(useRealtimeQueryMock).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        queryKey: ['patients', 'board', 'org_1', 'mine', 'missing_care_level', ''],
+        queryKey: [
+          'patients',
+          'board',
+          'org_1',
+          'mine',
+          'missing_care_level',
+          'all',
+          'priority',
+          '',
+          60,
+        ],
       }),
     );
 
     fireEvent.click(within(chipBar).getByRole('button', { name: /保険未確認/ }));
-    expect(screen.queryAllByTestId('patient-board-card')).toHaveLength(0);
     expect(useRealtimeQueryMock).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        queryKey: ['patients', 'board', 'org_1', 'mine', 'missing_insurance', ''],
+        queryKey: [
+          'patients',
+          'board',
+          'org_1',
+          'mine',
+          'missing_insurance',
+          'all',
+          'priority',
+          '',
+          60,
+        ],
       }),
     );
 
@@ -515,7 +694,7 @@ describe('PatientsBoard', () => {
     });
     expect(useRealtimeQueryMock).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        queryKey: ['patients', 'board', 'org_1', 'mine', undefined, '伊藤'],
+        queryKey: ['patients', 'board', 'org_1', 'mine', undefined, 'all', 'priority', '伊藤', 60],
       }),
     );
     // Search results are now owned by /api/patients/board?q=... rather than by
@@ -525,7 +704,7 @@ describe('PatientsBoard', () => {
 
   it('uses server-provided foundation counts instead of deriving false-zero counts from filtered cards', () => {
     const data = buildFixture();
-    data.cards = [
+    data.data = [
       card({
         patient_id: 'pt_contact_only',
         name: '連絡 不足',
@@ -537,7 +716,7 @@ describe('PatientsBoard', () => {
         },
       }),
     ];
-    data.foundation_issue_counts = {
+    data.meta.facets.foundation_issue_counts = {
       needs_confirmation: 8,
       missing_contact: 1,
       missing_consent_plan: 3,
@@ -566,20 +745,30 @@ describe('PatientsBoard', () => {
     expect(within(chipBar).getByRole('button', { name: /保険未確認5/ })).toBeTruthy();
   });
 
-  it('sorts visible cards without changing the stable patient card keys', () => {
+  it('requests server-side sort without reordering the stale client page locally', () => {
     render(<PatientsBoard />);
 
     const sortSelect = screen.getByRole('combobox', { name: '患者カードの並び順' });
+    const initialOrder = screen
+      .getAllByTestId('patient-board-card-link')
+      .map((link) => link.textContent);
 
     fireEvent.change(sortSelect, { target: { value: 'next_visit' } });
     expect(
       screen.getAllByTestId('patient-board-card-link').map((link) => link.textContent),
-    ).toEqual(['伊藤 キヨ', '田中 一郎', '佐々木 ハル', '吉田 進', '鈴木 新']);
+    ).toEqual(initialOrder);
+    expect(useRealtimeQueryMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        queryKey: ['patients', 'board', 'org_1', 'mine', undefined, 'all', 'next_visit', '', 60],
+      }),
+    );
 
     fireEvent.change(sortSelect, { target: { value: 'name' } });
-    expect(
-      screen.getAllByTestId('patient-board-card-link').map((link) => link.textContent),
-    ).toEqual(['伊藤 キヨ', '吉田 進', '佐々木 ハル', '田中 一郎', '鈴木 新']);
+    expect(useRealtimeQueryMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        queryKey: ['patients', 'board', 'org_1', 'mine', undefined, 'all', 'name', '', 60],
+      }),
+    );
   });
 
   it('keeps patient safety information visible while realtime refresh is pending', () => {
@@ -650,7 +839,10 @@ describe('PatientsBoard', () => {
 
   it('announces empty server-side results without exposing hidden search-only address data', () => {
     useRealtimeQueryMock.mockReturnValue({
-      data: { ...buildFixture(), assigned_total: 0, cards: [] },
+      data: buildFixture({
+        data: [],
+        meta: { assigned_total: 0, total_count: 0, returned_count: 0 },
+      }),
       isLoading: false,
       isError: false,
       error: null,
@@ -665,9 +857,12 @@ describe('PatientsBoard', () => {
     expect(screen.queryByText('東京都千代田区')).toBeNull();
   });
 
-  it('does not present a truncated foundation filter response as a definitive empty board', () => {
+  it('does not show the legacy truncation warning for an exact empty server result', () => {
     useRealtimeQueryMock.mockReturnValue({
-      data: { ...buildFixture(), assigned_total: 600, truncated: true, cards: [] },
+      data: buildFixture({
+        data: [],
+        meta: { assigned_total: 600, total_count: 0, returned_count: 0 },
+      }),
       isLoading: false,
       isError: false,
       error: null,
@@ -676,19 +871,18 @@ describe('PatientsBoard', () => {
     render(<PatientsBoard />);
 
     expect(screen.queryAllByTestId('patient-board-card')).toHaveLength(0);
-    expect(screen.getByText('取得済み範囲には一致する患者がいません')).toBeTruthy();
-    expect(screen.queryByText('条件に一致する患者がいません')).toBeNull();
-    expect(screen.getByText(/取得上限により未確認の患者が残っている可能性/)).toBeTruthy();
-    expect(screen.getByTestId('patients-board-truncation-note').textContent).toContain('取得上限');
+    expect(screen.getByText('条件に一致する患者がいません')).toBeTruthy();
+    expect(screen.queryByText(/取得上限|未確認の患者が残っている可能性/)).toBeNull();
+    expect(screen.queryByTestId('patients-board-truncation-note')).toBeNull();
   });
 
   it('does not use legacy address-only payload fields as client-side hidden search text', async () => {
     const data = buildFixture();
     const legacyAddressCard = {
-      ...data.cards[0],
+      ...data.data[0],
       address: '東京都千代田区丸の内1-1-1',
     } satisfies PatientBoardCard & { address: string };
-    data.cards = [legacyAddressCard, ...data.cards.slice(1)];
+    data.data = [legacyAddressCard, ...data.data.slice(1)];
     useRealtimeQueryMock.mockReturnValue({
       data,
       isLoading: false,
@@ -705,29 +899,61 @@ describe('PatientsBoard', () => {
 
     expect(useRealtimeQueryMock).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        queryKey: ['patients', 'board', 'org_1', 'mine', undefined, '丸の内'],
+        queryKey: [
+          'patients',
+          'board',
+          'org_1',
+          'mine',
+          undefined,
+          'all',
+          'priority',
+          '丸の内',
+          60,
+        ],
       }),
     );
     expect(screen.queryAllByTestId('patient-board-card')).toHaveLength(5);
     expect(screen.queryByText('東京都千代田区丸の内1-1-1')).toBeNull();
   });
 
-  it('uses summary tiles as shortcuts into the visible patient groups', () => {
+  it('uses summary tiles as server-side filter shortcuts', () => {
     render(<PatientsBoard />);
 
-    fireEvent.click(screen.getByRole('button', { name: /本日訪問2名\+施設12名/ }));
+    fireEvent.click(screen.getByRole('button', { name: /本日訪問3名\+施設12名/ }));
+    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(5);
+    expect(useRealtimeQueryMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        queryKey: [
+          'patients',
+          'board',
+          'org_1',
+          'mine',
+          undefined,
+          'visit_today',
+          'priority',
+          '',
+          60,
+        ],
+      }),
+    );
 
-    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(2);
-    expect(screen.getByRole('link', { name: '田中 一郎' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: '伊藤 キヨ' })).toBeTruthy();
-
-    // 「再開できる」(tile-only wait_release)は wait_release 患者のみに実フィルタする。
-    // (旧実装は chip=priority へ写像され全件表示=タイル意味と不一致だった)
     fireEvent.click(screen.getByRole('button', { name: /再開できる/ }));
-    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(1);
-    expect(screen.getByRole('link', { name: '佐々木 ハル' })).toBeTruthy();
-    expect(screen.queryByRole('link', { name: '田中 一郎' })).toBeNull();
-    expect(screen.queryByRole('link', { name: '伊藤 キヨ' })).toBeNull();
+    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(5);
+    expect(useRealtimeQueryMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        queryKey: [
+          'patients',
+          'board',
+          'org_1',
+          'mine',
+          undefined,
+          'wait_release',
+          'priority',
+          '',
+          60,
+        ],
+      }),
+    );
 
     // 特例除去の回帰: 「再開できる」tile が pressed、下段「今すぐ対応」chip は非選択。
     expect(screen.getByRole('button', { name: /再開できる/ }).getAttribute('aria-pressed')).toBe(
@@ -771,20 +997,24 @@ describe('PatientsBoard', () => {
     expect(within(evidence).getAllByRole('link', { name: /開く/ })).toHaveLength(3);
   });
 
-  it('caps the rendered card grid and expands it with さらに表示 instead of rendering every row (W2-F2)', () => {
-    const manyCards: PatientBoardCard[] = Array.from({ length: 130 }, (_, index) =>
+  it('does not show load-more controls when the server page has no next cursor', () => {
+    const manyCards: PatientBoardCard[] = Array.from({ length: 60 }, (_, index) =>
       card({
         patient_id: `pt_bulk_${index}`,
         name: `患者 ${index.toString().padStart(3, '0')}`,
       }),
     );
-    const data: PatientBoardResponse = {
-      ...buildFixture(),
-      assigned_total: manyCards.length,
-      cards: manyCards,
-    };
     useRealtimeQueryMock.mockReturnValue({
-      data,
+      data: buildFixture({
+        data: manyCards,
+        meta: {
+          assigned_total: manyCards.length,
+          total_count: manyCards.length,
+          returned_count: manyCards.length,
+          has_more: false,
+          next_cursor: null,
+        },
+      }),
       isLoading: false,
       isError: false,
       error: null,
@@ -793,61 +1023,9 @@ describe('PatientsBoard', () => {
 
     render(<PatientsBoard />);
 
-    // 既定 60 件のみ描画(仮想化ではなく表示上限+もっと見る)。
     expect(screen.getAllByTestId('patient-board-card')).toHaveLength(60);
-    const note = screen.getByTestId('patients-board-visible-count-note');
-    expect(note.textContent).toContain('130名中');
-    expect(note.textContent).toContain('60名を表示');
-    const loadMoreButton = screen.getByRole('button', { name: 'さらに表示' });
-    expect(loadMoreButton.className).toContain('min-h-[44px]');
-    expect(loadMoreButton.className).not.toContain('sm:min-h-9');
-
-    fireEvent.click(loadMoreButton);
-
-    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(120);
-    expect(screen.getByTestId('patients-board-visible-count-note').textContent).toContain(
-      '120名を表示',
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'さらに表示' }));
-
-    // 残数(10件)まで到達すると全件表示済みとなり、ボタン/件数注記は消える。
-    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(130);
     expect(screen.queryByTestId('patients-board-visible-count-note')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'さらに表示' })).toBeNull();
-  });
-
-  it('resets the card display cap to the default when the filter chip changes', () => {
-    const manyCards: PatientBoardCard[] = Array.from({ length: 130 }, (_, index) =>
-      card({
-        patient_id: `pt_bulk_${index}`,
-        name: `患者 ${index.toString().padStart(3, '0')}`,
-      }),
-    );
-    const data: PatientBoardResponse = {
-      ...buildFixture(),
-      assigned_total: manyCards.length,
-      cards: manyCards,
-    };
-    useRealtimeQueryMock.mockReturnValue({
-      data,
-      isLoading: false,
-      isError: false,
-      error: null,
-      refetch: refetchMock,
-    });
-
-    render(<PatientsBoard />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'さらに表示' }));
-    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(120);
-
-    fireEvent.change(screen.getByPlaceholderText('氏名・カナ・住所・施設で検索'), {
-      target: { value: '患者 00' },
-    });
-
-    // 検索条件が変わると展開状態はリセットされ、サーバー検索結果の先頭から再スタートする。
-    expect(screen.getAllByTestId('patient-board-card').length).toBeLessThanOrEqual(60);
+    expect(screen.queryByRole('button', { name: 'さらに読み込む' })).toBeNull();
   });
 });
 
