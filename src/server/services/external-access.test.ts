@@ -38,8 +38,94 @@ import {
   validateExternalAccessScopeForRole,
   validateExternalAccessGrant,
 } from './external-access';
+import {
+  EXTERNAL_ACCESS_UNSUPPORTED_SCOPE_KEYS,
+  externalAccessShareScopeRegistry,
+} from './external-access-scope-registry';
 
 describe('external access scope validation', () => {
+  it('registers MOD-SHARE planned core and pharmacy scope metadata', () => {
+    expect(externalAccessShareScopeRegistry.get('visit_schedule')).toMatchObject({
+      module: 'core',
+      requiredPermission: 'canVisit',
+      requiresCaseBoundary: true,
+      outputRisk: 'medium',
+    });
+    expect(externalAccessShareScopeRegistry.get('care_reports')).toMatchObject({
+      module: 'core',
+      requiredPermission: 'canSendCareReport',
+      requiresCaseBoundary: true,
+      requiresReportBoundary: true,
+      outputRisk: 'high',
+    });
+    expect(externalAccessShareScopeRegistry.get('attachments')).toMatchObject({
+      module: 'core',
+      requiredPermission: 'canSendCareReport',
+      outputRisk: 'high',
+    });
+    expect(externalAccessShareScopeRegistry.get('patient_summary')).toMatchObject({
+      module: 'core',
+      requiredPermission: 'canVisit',
+      outputRisk: 'high',
+    });
+    expect(externalAccessShareScopeRegistry.get('medication_list')).toMatchObject({
+      module: 'pharmacy',
+      requiredPermission: 'canVisit',
+      outputRisk: 'high',
+    });
+    expect(externalAccessShareScopeRegistry.get('allergy_info')).toMatchObject({
+      module: 'pharmacy',
+      requiredPermission: 'canVisit',
+      outputRisk: 'high',
+    });
+    expect(externalAccessShareScopeRegistry.get('prescription_summary')).toMatchObject({
+      module: 'pharmacy',
+      requiredPermission: 'canVisit',
+      outputRisk: 'high',
+    });
+    expect(externalAccessShareScopeRegistry.get('residual_medications')).toMatchObject({
+      module: 'pharmacy',
+      requiredPermission: 'canVisit',
+      outputRisk: 'high',
+    });
+  });
+
+  it('keeps planned but unimplemented scopes unsupported at write time', () => {
+    expect(EXTERNAL_ACCESS_UNSUPPORTED_SCOPE_KEYS).toEqual(
+      expect.arrayContaining([
+        'attachments',
+        'patient_summary',
+        'prescription_summary',
+        'residual_medications',
+        'self_report_history',
+      ]),
+    );
+
+    const result = validateExternalAccessScopeForRole(
+      {
+        attachments: true,
+        patient_summary: true,
+        prescription_summary: true,
+        residual_medications: true,
+      },
+      'pharmacist' as MemberRole,
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      kind: 'validation',
+      message: 'この共有範囲は現在サポートされていません',
+      details: {
+        unsupported_scope_keys: [
+          'attachments',
+          'patient_summary',
+          'prescription_summary',
+          'residual_medications',
+        ],
+      },
+    });
+  });
+
   it('rejects unknown scope keys', () => {
     const result = normalizeExternalAccessScope({
       medication_list: true,
@@ -193,6 +279,9 @@ describe('external access scope validation', () => {
     const result = normalizeStoredExternalAccessScope({
       care_reports: true,
       self_report_history: true,
+      attachments: true,
+      prescription_summary: true,
+      residual_medications: true,
       allowed_case_ids: ['case_1', 'case_1', 'case_2'],
       allowed_report_ids: ['report_1', 'report_1', 'report_2'],
     });
@@ -202,6 +291,9 @@ describe('external access scope validation', () => {
       scope: {
         care_reports: true,
         self_report_history: true,
+        attachments: true,
+        prescription_summary: true,
+        residual_medications: true,
         allowed_case_ids: ['case_1', 'case_2'],
         allowed_report_ids: ['report_1', 'report_2'],
       },
@@ -228,6 +320,24 @@ describe('external access scope validation', () => {
       kind: 'validation',
       message: '共有範囲が不正です',
       details: { allowed_case_ids: ['許可ケースIDの形式が不正です'] },
+    });
+  });
+
+  it('rejects raw file or metadata keys in stored scopes', () => {
+    expect(
+      normalizeStoredExternalAccessScope({
+        medication_list: true,
+        storage_key: 's3://private/key',
+        original_filename: 'patient-name.pdf',
+        raw_metadata: { source: 'upload' },
+      }),
+    ).toMatchObject({
+      ok: false,
+      kind: 'validation',
+      message: '共有範囲が不正です',
+      details: {
+        unknown_scope_keys: ['storage_key', 'original_filename', 'raw_metadata'],
+      },
     });
   });
 
@@ -539,6 +649,29 @@ describe('buildExternalAccessPayload', () => {
     expect(payload).toBeNull();
     expect(prismaMock.patient.findFirst).not.toHaveBeenCalled();
     expect(prismaMock.patientSelfReport.findMany).not.toHaveBeenCalled();
+  });
+
+  it('fails closed for stored grants that only contain planned unsupported scopes', async () => {
+    const payload = await buildExternalAccessPayload({
+      id: 'grant_planned_unsupported_only',
+      org_id: 'org_1',
+      patient_id: 'patient_1',
+      otp_hash: 'otp_hash',
+      expires_at: new Date('2026-04-01T00:00:00.000Z'),
+      revoked_at: null,
+      scope: {
+        attachments: true,
+        patient_summary: true,
+        prescription_summary: true,
+        residual_medications: true,
+        allowed_case_ids: ['case_1'],
+        allowed_report_ids: ['report_1'],
+      },
+    });
+
+    expect(payload).toBeNull();
+    expect(prismaMock.patient.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.careReport.findMany).not.toHaveBeenCalled();
   });
 
   it('fails closed for malformed stored grant scope roots before patient lookup', async () => {

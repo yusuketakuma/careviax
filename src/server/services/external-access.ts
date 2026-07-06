@@ -3,12 +3,21 @@ import bcrypt from 'bcryptjs';
 import type { MemberRole, Prisma } from '@prisma/client';
 import { decode, encode } from 'next-auth/jwt';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
-import { hasPermission, type PermissionKey } from '@/lib/auth/permissions';
+import { hasPermission } from '@/lib/auth/permissions';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject } from '@/lib/db/json';
 import { buildPatientArchiveSummary } from '@/lib/patient/archive-summary';
 import { maskContactValueForAudit } from '@/lib/privacy/contact-mask';
 import { todayUtcRange } from '@/lib/utils/date-boundary';
+import {
+  EXTERNAL_ACCESS_SCOPE_KEYS,
+  EXTERNAL_ACCESS_UNSUPPORTED_SCOPE_KEYS,
+  EXTERNAL_ACCESS_VISIBILITY_CASE_BOUNDARY_SCOPE_KEYS,
+  EXTERNAL_ACCESS_VISIBILITY_PATIENT_LEVEL_SCOPE_KEYS,
+  externalAccessShareScopeRegistry,
+  isExternalAccessScopeKey,
+  type ExternalAccessScopeKey,
+} from './external-access-scope-registry';
 
 type ExternalGrantRecord = {
   id: string;
@@ -22,15 +31,6 @@ type ExternalGrantRecord = {
   scope: StoredExternalAccessScope;
 };
 
-export const EXTERNAL_ACCESS_SCOPE_KEYS = [
-  'allergy_info',
-  'medication_list',
-  'visit_schedule',
-  'care_reports',
-  'self_report_history',
-] as const;
-
-export type ExternalAccessScopeKey = (typeof EXTERNAL_ACCESS_SCOPE_KEYS)[number];
 export type ExternalAccessScope = Partial<Record<ExternalAccessScopeKey, boolean>>;
 export type StoredExternalAccessScope = ExternalAccessScope & {
   allowed_case_ids?: string[];
@@ -49,37 +49,12 @@ type ExternalAccessScopeCheckResult =
       details?: unknown;
     };
 
-const EXTERNAL_ACCESS_SCOPE_KEY_SET = new Set<string>(EXTERNAL_ACCESS_SCOPE_KEYS);
 const EXTERNAL_ACCESS_ALLOWED_CASE_IDS_KEY = 'allowed_case_ids';
 const EXTERNAL_ACCESS_ALLOWED_REPORT_IDS_KEY = 'allowed_report_ids';
 const EXTERNAL_ACCESS_STORED_ONLY_SCOPE_KEYS = new Set([
   EXTERNAL_ACCESS_ALLOWED_CASE_IDS_KEY,
   EXTERNAL_ACCESS_ALLOWED_REPORT_IDS_KEY,
 ]);
-const CASE_BACKED_EXTERNAL_ACCESS_SCOPE_KEYS = [
-  'visit_schedule',
-  'care_reports',
-  'self_report_history',
-] as const satisfies ExternalAccessScopeKey[];
-const PATIENT_LEVEL_EXTERNAL_ACCESS_SCOPE_KEYS = [
-  'allergy_info',
-  'medication_list',
-] as const satisfies ExternalAccessScopeKey[];
-const UNSUPPORTED_EXTERNAL_ACCESS_SCOPE_KEYS = [
-  'self_report_history',
-] as const satisfies ExternalAccessScopeKey[];
-
-const SENSITIVE_SCOPE_PERMISSIONS = {
-  allergy_info: 'canVisit',
-  medication_list: 'canVisit',
-  care_reports: 'canSendCareReport',
-  self_report_history: 'canSendCareReport',
-  visit_schedule: 'canVisit',
-} satisfies Record<ExternalAccessScopeKey, PermissionKey>;
-
-function isExternalAccessScopeKey(value: string): value is ExternalAccessScopeKey {
-  return EXTERNAL_ACCESS_SCOPE_KEY_SET.has(value);
-}
 
 export function normalizeExternalAccessScope(scope: unknown): ExternalAccessScopeCheckResult {
   const scopeObject = readJsonObject(scope);
@@ -205,7 +180,9 @@ export function normalizeStoredExternalAccessScope(
 }
 
 export function externalAccessScopeRequiresCaseBoundary(scope: ExternalAccessScope) {
-  return CASE_BACKED_EXTERNAL_ACCESS_SCOPE_KEYS.some((scopeKey) => scope[scopeKey] === true);
+  return EXTERNAL_ACCESS_VISIBILITY_CASE_BOUNDARY_SCOPE_KEYS.some(
+    (scopeKey) => scope[scopeKey] === true,
+  );
 }
 
 export function externalAccessGrantVisibleForCaseIds(scope: unknown, caseIds: string[]) {
@@ -231,18 +208,18 @@ export function buildExternalAccessGrantVisibilityWhere(
   if (caseIds === undefined) return {};
 
   const caseBackedScopeIsEnabled: Prisma.ExternalAccessGrantWhereInput = {
-    OR: CASE_BACKED_EXTERNAL_ACCESS_SCOPE_KEYS.map((scopeKey) =>
+    OR: EXTERNAL_ACCESS_VISIBILITY_CASE_BOUNDARY_SCOPE_KEYS.map((scopeKey) =>
       externalAccessScopeEnabledWhere(scopeKey),
     ),
   };
   const patientLevelOnlyScope: Prisma.ExternalAccessGrantWhereInput = {
     AND: [
       {
-        OR: PATIENT_LEVEL_EXTERNAL_ACCESS_SCOPE_KEYS.map((scopeKey) =>
+        OR: EXTERNAL_ACCESS_VISIBILITY_PATIENT_LEVEL_SCOPE_KEYS.map((scopeKey) =>
           externalAccessScopeEnabledWhere(scopeKey),
         ),
       },
-      ...CASE_BACKED_EXTERNAL_ACCESS_SCOPE_KEYS.map((scopeKey) => ({
+      ...EXTERNAL_ACCESS_VISIBILITY_CASE_BOUNDARY_SCOPE_KEYS.map((scopeKey) => ({
         NOT: externalAccessScopeEnabledWhere(scopeKey),
       })),
     ],
@@ -308,7 +285,7 @@ export function toPublicExternalAccessScope(scope: unknown): ExternalAccessScope
   const publicScope = { ...normalized.scope };
   delete publicScope.allowed_case_ids;
   delete publicScope.allowed_report_ids;
-  for (const scopeKey of UNSUPPORTED_EXTERNAL_ACCESS_SCOPE_KEYS) {
+  for (const scopeKey of EXTERNAL_ACCESS_UNSUPPORTED_SCOPE_KEYS) {
     delete publicScope[scopeKey];
   }
   return publicScope;
@@ -321,7 +298,7 @@ export function validateExternalAccessScopeForRole(
   const normalized = normalizeExternalAccessScope(scope);
   if (!normalized.ok) return normalized;
 
-  const unsupportedScopes = UNSUPPORTED_EXTERNAL_ACCESS_SCOPE_KEYS.filter(
+  const unsupportedScopes = EXTERNAL_ACCESS_UNSUPPORTED_SCOPE_KEYS.filter(
     (scopeKey) => normalized.scope[scopeKey] === true,
   );
   if (unsupportedScopes.length > 0) {
@@ -335,7 +312,10 @@ export function validateExternalAccessScopeForRole(
 
   const deniedScopes = EXTERNAL_ACCESS_SCOPE_KEYS.filter(
     (scopeKey) => normalized.scope[scopeKey] === true,
-  ).filter((scopeKey) => !hasPermission(role, SENSITIVE_SCOPE_PERMISSIONS[scopeKey]));
+  ).filter((scopeKey) => {
+    const definition = externalAccessShareScopeRegistry.require(scopeKey);
+    return !hasPermission(role, definition.requiredPermission);
+  });
 
   if (deniedScopes.length > 0) {
     return {
