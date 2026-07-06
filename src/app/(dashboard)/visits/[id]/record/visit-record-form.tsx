@@ -74,6 +74,7 @@ import {
   VisitUnsyncedEvidenceBanner,
   useVisitStepSpy,
   type VisitRecordStepId,
+  type VisitSaveState,
 } from './visit-step-nav';
 import {
   FINAL_SECTION_STEP_IDS,
@@ -581,6 +582,7 @@ export function VisitRecordForm({
   // 撮影・動作確認用のデモ注入(dev 限定、p0_34 の window フックの作法)
   const [demoUnsyncedPhotoCount, setDemoUnsyncedPhotoCount] = useState<number | null>(null);
   const [selectedAttachments, setSelectedAttachments] = useState<VisitAttachmentDraft[]>([]);
+  const [draftSaveStatus, setDraftSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [visitGeoLog, setVisitGeoLog] = useState<VisitGeoLog | null>(null);
   const [locationTrackingEnabled] = useState(() =>
     typeof window === 'undefined' ? false : getVisitLocationTrackingPreference(),
@@ -602,6 +604,8 @@ export function VisitRecordForm({
   const carryItemAcknowledgementErrorId = 'carry-item-warning-acknowledgement-error';
   const isOffline = useOfflineStore((state) => state.isOffline);
   const pendingSyncCount = useOfflineStore((state) => state.pendingSyncCount);
+  const syncConflicts = useOfflineStore((state) => state.syncConflicts);
+  const lastSyncedAt = useOfflineStore((state) => state.lastSyncedAt);
   const syncOnlineStatus = useOfflineStore((state) => state.syncOnlineStatus);
   const refreshSyncCount = useOfflineStore((state) => state.refreshSyncCount);
   const refreshSyncState = useOfflineStore((state) => state.refreshSyncState);
@@ -813,12 +817,19 @@ export function VisitRecordForm({
       geoLog: VisitGeoLog | null,
       previousReuse?: VisitPreviousStructuredReuse | null,
     ) => {
-      await saveDraft(
-        buildStructuredSoap(values, previousReuse),
-        0,
-        buildDraftMetadata(values, geoLog),
-      );
-      draftSaveFailureNotifiedRef.current = false;
+      setDraftSaveStatus('saving');
+      try {
+        await saveDraft(
+          buildStructuredSoap(values, previousReuse),
+          0,
+          buildDraftMetadata(values, geoLog),
+        );
+        draftSaveFailureNotifiedRef.current = false;
+        setDraftSaveStatus('saved');
+      } catch (error) {
+        setDraftSaveStatus('idle');
+        throw error;
+      }
     },
     [saveDraft],
   );
@@ -1598,6 +1609,18 @@ export function VisitRecordForm({
     pendingSyncCount,
     unsyncedPhotoCount,
   );
+  const visitSaveState: VisitSaveState =
+    createRecord.isPending || draftSaveStatus === 'saving'
+      ? 'saving'
+      : syncConflicts.length > 0
+        ? 'conflict'
+        : isOffline || pendingSyncCount > 0 || unsyncedPhotoCount > 0
+          ? 'sync_waiting'
+          : draftSaveStatus === 'saved'
+            ? 'local_saved'
+            : lastSyncedAt
+              ? 'synced'
+              : 'local_saved';
   // 下部固定バーの「一時保存」(Cmd/Ctrl+S と同じ下書き保存)
   const handleManualDraftSave = useCallback(() => {
     const {
@@ -2750,6 +2773,7 @@ export function VisitRecordForm({
             <VisitStepActionBar
               activeId={activeStepId}
               mobileStepId={mobileStepId}
+              saveState={visitSaveState}
               onSaveDraft={handleManualDraftSave}
               onMobileStepSelect={handleMobileStepSelect}
               submitPending={createRecord.isPending}

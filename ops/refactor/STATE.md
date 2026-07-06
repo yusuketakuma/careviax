@@ -11326,3 +11326,40 @@
   `VISIT-SYNC-001` remains partial. Remaining implementation is the persistent UI state matrix
   (`保存中` / `端末保存済` / `同期待ち` / `同期済` / `競合あり`), mobile E2E, and any explicit
   encrypted attachment draft reload recovery contract.
+
+## 2026-07-07 VISIT-SYNC save-state indicator
+
+- codex:
+  Implemented the persistent save-state UI matrix for the visit record fixed action bar. The bar now
+  exposes a PHI-safe `role="status"` indicator with controlled labels only: `保存中`,
+  `端末保存済`, `同期待ち`, `同期済`, and `競合あり`.
+- files inspected:
+  `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`,
+  `src/app/(dashboard)/visits/[id]/record/visit-step-nav.tsx`,
+  `src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx`,
+  `src/lib/stores/offline-store.ts`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- files changed:
+  `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`,
+  `src/app/(dashboard)/visits/[id]/record/visit-step-nav.tsx`,
+  `src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  Visit users no longer have to infer draft/sync state from a transient toast or an offline-only
+  banner. The fixed bar consistently separates local draft persistence from queued sync and conflict
+  states without exposing patient names, medication names, SOAP text, raw sync errors, filenames, or
+  provider diagnostics.
+- validation:
+  `pnpm exec vitest run 'src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx' src/lib/stores/sync-engine.test.ts src/lib/stores/offline-store.test.ts src/components/providers/offline-sync-bridge.test.tsx --reporter=dot --testTimeout=30000`
+  green (4 files / 75 tests);
+  `pnpm exec eslint 'src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx' 'src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx' 'src/app/(dashboard)/visits/[id]/record/visit-step-nav.tsx'`
+  green;
+  `pnpm exec prettier --check Plans.md ops/refactor/STATE.md 'src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx' 'src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx' 'src/app/(dashboard)/visits/[id]/record/visit-step-nav.tsx'`
+  green after formatting `Plans.md` and the test file;
+  `git diff --check -- Plans.md ops/refactor/STATE.md 'src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx' 'src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx' 'src/app/(dashboard)/visits/[id]/record/visit-step-nav.tsx'`
+  green.
+- remaining:
+  `VISIT-SYNC-001` remains partial only for mobile E2E and any explicit encrypted attachment draft
+  reload recovery contract if product scope requires preserving selected File blobs across reload.

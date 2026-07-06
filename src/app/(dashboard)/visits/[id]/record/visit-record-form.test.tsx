@@ -45,6 +45,8 @@ const {
   offlineStoreState: {
     isOffline: false,
     pendingSyncCount: 0,
+    syncConflicts: [] as Array<{ id: number; conflict_state?: string }>,
+    lastSyncedAt: '2026-07-07T00:00:00.000Z' as string | null,
   },
   listEvidenceDraftSummariesForScheduleMock: vi.fn(),
   toastErrorMock: vi.fn(),
@@ -117,6 +119,8 @@ vi.mock('@/lib/stores/offline-store', () => ({
     selector({
       isOffline: offlineStoreState.isOffline,
       pendingSyncCount: offlineStoreState.pendingSyncCount,
+      syncConflicts: offlineStoreState.syncConflicts,
+      lastSyncedAt: offlineStoreState.lastSyncedAt,
       syncOnlineStatus: syncOnlineStatusMock,
       refreshSyncCount: refreshSyncCountMock,
       refreshSyncState: refreshSyncStateMock,
@@ -254,6 +258,8 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
     refreshSyncCountMock.mockResolvedValue(undefined);
     offlineStoreState.isOffline = false;
     offlineStoreState.pendingSyncCount = 0;
+    offlineStoreState.syncConflicts = [];
+    offlineStoreState.lastSyncedAt = '2026-07-07T00:00:00.000Z';
     listEvidenceDraftSummariesForScheduleMock.mockResolvedValue([]);
     cdsAlertPanelCalls.length = 0;
     visitRecordPostBodies.length = 0;
@@ -766,6 +772,60 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('shows a persistent PHI-safe save state indicator in the fixed action bar', async () => {
+    const { rerender } = renderVisitRecordForm();
+
+    await waitFor(() => {
+      expect((document.querySelector('input[name="patient_id"]') as HTMLInputElement)?.value).toBe(
+        'patient_1',
+      );
+    });
+
+    expect(screen.getByTestId('visit-save-state-indicator').textContent).toContain('同期済');
+
+    offlineStoreState.pendingSyncCount = 2;
+    rerender(<VisitRecordForm id="schedule_partial" facilityVisitContext={null} />);
+    expect(screen.getByTestId('visit-save-state-indicator').textContent).toContain('同期待ち');
+
+    offlineStoreState.syncConflicts = [{ id: 1, conflict_state: 'server_conflict' }];
+    rerender(<VisitRecordForm id="schedule_partial" facilityVisitContext={null} />);
+    expect(screen.getByTestId('visit-save-state-indicator').textContent).toContain('競合あり');
+    expect(screen.getByTestId('visit-save-state-indicator').textContent).not.toContain('患者');
+  });
+
+  it('updates the save state from saving to locally saved after a manual draft save', async () => {
+    let resolveDraftSave: (() => void) | null = null;
+    saveDraftMock.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveDraftSave = resolve;
+        }),
+    );
+
+    renderVisitRecordForm();
+
+    await waitFor(() => {
+      expect((document.querySelector('input[name="patient_id"]') as HTMLInputElement)?.value).toBe(
+        'patient_1',
+      );
+    });
+
+    saveDraftMock.mockClear();
+    fireEvent.click(screen.getAllByRole('button', { name: '一時保存' })[0]!);
+
+    expect(screen.getByTestId('visit-save-state-indicator').textContent).toContain('保存中');
+    expect(resolveDraftSave).toBeTypeOf('function');
+
+    await act(async () => {
+      resolveDraftSave?.();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('visit-save-state-indicator').textContent).toContain('端末保存済');
+    });
   });
 
   it('flushes the current draft immediately when the mobile step changes', async () => {

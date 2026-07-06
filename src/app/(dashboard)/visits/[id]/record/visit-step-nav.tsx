@@ -346,6 +346,24 @@ export type VisitEvidenceRailItem = {
   statusTone: 'pending' | 'done';
 };
 
+export type VisitSaveState = 'saving' | 'local_saved' | 'sync_waiting' | 'synced' | 'conflict';
+
+const VISIT_SAVE_STATE_LABELS: Record<VisitSaveState, string> = {
+  saving: '保存中',
+  local_saved: '端末保存済',
+  sync_waiting: '同期待ち',
+  synced: '同期済',
+  conflict: '競合あり',
+};
+
+const VISIT_SAVE_STATE_CLASSES: Record<VisitSaveState, string> = {
+  saving: 'border-tag-info/30 bg-tag-info/10 text-tag-info',
+  local_saved: 'border-state-done/30 bg-state-done/10 text-state-done',
+  sync_waiting: 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm',
+  synced: 'border-state-done/30 bg-state-done/10 text-state-done',
+  conflict: 'border-state-blocked/30 bg-state-blocked/10 text-state-blocked',
+};
+
 /**
  * p0_22 右レール「写真・証跡」: 添付ドラフトを同期状態付きで一覧する。
  * 保存前の添付は端末上のみ(=未同期)、保存時にまとめてアップロードされる。
@@ -411,6 +429,7 @@ export function VisitEvidenceRail({ items }: { items: VisitEvidenceRailItem[] })
 export function VisitStepActionBar({
   activeId,
   mobileStepId,
+  saveState,
   onSaveDraft,
   onMobileStepSelect,
   submitPending,
@@ -418,6 +437,7 @@ export function VisitStepActionBar({
   activeId: VisitRecordStepId | null;
   /** p0_23 モバイルウィザードの現在ステップ(state 管理。スクロール現在地とは独立) */
   mobileStepId: VisitRecordStepId;
+  saveState: VisitSaveState;
   onSaveDraft: () => void;
   onMobileStepSelect: (stepId: VisitRecordStepId) => void;
   submitPending: boolean;
@@ -425,12 +445,30 @@ export function VisitStepActionBar({
   const prevStep = resolveAdjacentVisitStep(activeId, 'prev');
   const nextStep = resolveAdjacentVisitStep(activeId, 'next');
   const mobileNextStep = resolveAdjacentVisitStep(mobileStepId, 'next');
+  const saveStateLabel = VISIT_SAVE_STATE_LABELS[saveState];
 
   return (
     <div
       data-testid="visit-step-action-bar"
       className="fixed inset-x-0 bottom-0 z-30 border-t border-border/70 bg-card/95 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] backdrop-blur supports-[backdrop-filter]:bg-card/85 sm:px-6 xl:left-56"
     >
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <span
+          role="status"
+          aria-live="polite"
+          data-testid="visit-save-state-indicator"
+          className={cn(
+            'inline-flex min-h-8 items-center rounded-full border px-2.5 py-1 text-xs font-semibold',
+            VISIT_SAVE_STATE_CLASSES[saveState],
+          )}
+        >
+          {saveStateLabel}
+        </span>
+        <span className="hidden text-xs text-muted-foreground md:inline">
+          端末保存後、通信可能なときに同期します。
+        </span>
+      </div>
+
       {/* md 以上: p0_22 のスクロール準拠ナビ */}
       <div className="hidden flex-wrap items-center gap-2 md:flex">
         <Button
