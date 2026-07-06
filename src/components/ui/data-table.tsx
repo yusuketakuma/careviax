@@ -59,6 +59,9 @@ import {
   type ApprovedServerExportDescriptor,
 } from '@/lib/audit/server-export-registry';
 
+const DATA_TABLE_FILTER_DEBOUNCE_MS = 150;
+const DATA_TABLE_RENDER_WARNING_THRESHOLD = 100;
+
 export type DataTableColumnMeta<TData> = {
   label?: string;
   mobileLabel?: string;
@@ -195,7 +198,9 @@ export function DataTable<TData>({
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [expanded, setExpanded] = useState<ExpandedState>({});
+  const [globalFilterInput, setGlobalFilterInput] = useState('');
   const [globalFilter, setGlobalFilter] = useState('');
+  const [columnFilterInputs, setColumnFilterInputs] = useState<Record<string, string>>({});
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [paginationState, setPaginationState] = useState<PaginationState>({
     pageIndex: 0,
@@ -246,6 +251,38 @@ export function DataTable<TData>({
       useSelectableListbox,
     ],
   );
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setGlobalFilter(globalFilterInput);
+    }, DATA_TABLE_FILTER_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [globalFilterInput]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setColumnFilters(
+        Object.entries(columnFilterInputs)
+          .filter(([, value]) => value.trim().length > 0)
+          .map(([id, value]) => ({ id, value })),
+      );
+    }, DATA_TABLE_FILTER_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [columnFilterInputs]);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return;
+    if (enablePagination || hasMore || data.length <= DATA_TABLE_RENDER_WARNING_THRESHOLD) return;
+
+    console.warn(
+      [
+        `DataTable is rendering ${data.length} rows without client pagination.`,
+        'Use enablePagination, server pagination, or a virtualized list for large tables.',
+      ].join(' '),
+    );
+  }, [data.length, enablePagination, hasMore]);
 
   const effectiveColumns = useMemo<ColumnDef<TData>[]>(() => {
     const leadingColumns: ColumnDef<TData>[] = [];
@@ -446,8 +483,8 @@ export function DataTable<TData>({
     ? '取得エラーのため一覧を表示できません'
     : emptyMessage;
   const hasActiveFilters =
-    globalFilter.trim().length > 0 ||
-    columnFilters.some((filter) => String(filter.value ?? '').trim().length > 0);
+    globalFilterInput.trim().length > 0 ||
+    Object.values(columnFilterInputs).some((value) => value.trim().length > 0);
   const emptyStateTitle = errorMessage
     ? displayedEmptyMessage
     : hasActiveFilters
@@ -564,8 +601,8 @@ export function DataTable<TData>({
                   aria-hidden="true"
                 />
                 <Input
-                  value={globalFilter}
-                  onChange={(event) => setGlobalFilter(event.target.value)}
+                  value={globalFilterInput}
+                  onChange={(event) => setGlobalFilterInput(event.target.value)}
                   placeholder={toolbar.globalFilterPlaceholder ?? 'テーブル内を絞り込み'}
                   className="min-h-[44px] pl-8 sm:h-8 sm:min-h-0"
                   aria-label={toolbar.globalFilterPlaceholder ?? 'テーブル内検索'}
@@ -575,10 +612,14 @@ export function DataTable<TData>({
             {toolbar.filterFields?.map((field) => (
               <div key={field.columnId} className="min-w-[180px] md:max-w-xs">
                 <Input
-                  value={(table.getColumn(field.columnId)?.getFilterValue() as string) ?? ''}
-                  onChange={(event) =>
-                    table.getColumn(field.columnId)?.setFilterValue(event.target.value)
-                  }
+                  value={columnFilterInputs[field.columnId] ?? ''}
+                  onChange={(event) => {
+                    const { value } = event.target;
+                    setColumnFilterInputs((previous) => ({
+                      ...previous,
+                      [field.columnId]: value,
+                    }));
+                  }}
                   placeholder={field.placeholder ?? `${field.label}で絞り込み`}
                   className="min-h-[44px] sm:h-8 sm:min-h-0"
                   aria-label={field.label}

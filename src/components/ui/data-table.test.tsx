@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -22,8 +22,16 @@ const columns: ColumnDef<RowData>[] = [
   },
 ];
 
+const FILTER_DEBOUNCE_MS = 150;
+
 function expectButtonDisabled(name: string, disabled: boolean) {
   expect((screen.getByRole('button', { name }) as HTMLButtonElement).disabled).toBe(disabled);
+}
+
+function flushFilterDebounce() {
+  act(() => {
+    vi.advanceTimersByTime(FILTER_DEBOUNCE_MS);
+  });
 }
 
 describe('DataTable', () => {
@@ -136,31 +144,38 @@ describe('DataTable', () => {
   });
 
   it('separates true empty data from filtered empty results', () => {
-    const { rerender } = render(<DataTable columns={columns} data={[]} />);
+    vi.useFakeTimers();
 
-    expect(
-      screen.getAllByRole('heading', { level: 3, name: 'データがありません' }).length,
-    ).toBeGreaterThan(0);
-    expect(screen.queryByText('検索語やフィルタを減らすと、表示できる行が戻ります。')).toBeNull();
+    try {
+      const { rerender } = render(<DataTable columns={columns} data={[]} />);
 
-    rerender(
-      <DataTable
-        columns={columns}
-        data={[{ id: 'patient-1', name: '山田 太郎' }]}
-        toolbar={{ enableGlobalFilter: true }}
-      />,
-    );
+      expect(
+        screen.getAllByRole('heading', { level: 3, name: 'データがありません' }).length,
+      ).toBeGreaterThan(0);
+      expect(screen.queryByText('検索語やフィルタを減らすと、表示できる行が戻ります。')).toBeNull();
 
-    fireEvent.change(screen.getByPlaceholderText('テーブル内を絞り込み'), {
-      target: { value: '存在しない患者' },
-    });
+      rerender(
+        <DataTable
+          columns={columns}
+          data={[{ id: 'patient-1', name: '山田 太郎' }]}
+          toolbar={{ enableGlobalFilter: true }}
+        />,
+      );
 
-    expect(
-      screen.getAllByRole('heading', { level: 3, name: '条件に一致する行がありません' }).length,
-    ).toBeGreaterThan(0);
-    expect(
-      screen.getAllByText('検索語やフィルタを減らすと、表示できる行が戻ります。').length,
-    ).toBeGreaterThan(0);
+      fireEvent.change(screen.getByPlaceholderText('テーブル内を絞り込み'), {
+        target: { value: '存在しない患者' },
+      });
+      flushFilterDebounce();
+
+      expect(
+        screen.getAllByRole('heading', { level: 3, name: '条件に一致する行がありません' }).length,
+      ).toBeGreaterThan(0);
+      expect(
+        screen.getAllByText('検索語やフィルタを減らすと、表示できる行が戻ります。').length,
+      ).toBeGreaterThan(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('names clickable desktop and mobile rows from the row accessibility label', () => {
@@ -269,76 +284,88 @@ describe('DataTable', () => {
   });
 
   it('keeps desktop row activation tied to the source data index after filtering', () => {
+    vi.useFakeTimers();
     const onRowClick = vi.fn();
 
-    render(
-      <DataTable
-        columns={columns}
-        data={[
-          { id: 'row-0', name: 'Bravo' },
-          { id: 'row-1', name: 'Alpha' },
-          { id: 'row-2', name: 'Zulu' },
-        ]}
-        selectedRowIndex={1}
-        getRowId={(row) => row.id}
-        getRowA11yLabel={(row) => row.name}
-        onRowClick={onRowClick}
-        toolbar={{ enableGlobalFilter: true }}
-      />,
-    );
+    try {
+      render(
+        <DataTable
+          columns={columns}
+          data={[
+            { id: 'row-0', name: 'Bravo' },
+            { id: 'row-1', name: 'Alpha' },
+            { id: 'row-2', name: 'Zulu' },
+          ]}
+          selectedRowIndex={1}
+          getRowId={(row) => row.id}
+          getRowA11yLabel={(row) => row.name}
+          onRowClick={onRowClick}
+          toolbar={{ enableGlobalFilter: true }}
+        />,
+      );
 
-    fireEvent.change(screen.getByPlaceholderText('テーブル内を絞り込み'), {
-      target: { value: 'Alpha' },
-    });
+      fireEvent.change(screen.getByPlaceholderText('テーブル内を絞り込み'), {
+        target: { value: 'Alpha' },
+      });
+      flushFilterDebounce();
 
-    const alphaDesktopRow = within(screen.getByRole('table')).getByRole('button', {
-      name: 'Alpha の詳細を表示',
-    });
+      const alphaDesktopRow = within(screen.getByRole('table')).getByRole('button', {
+        name: 'Alpha の詳細を表示',
+      });
 
-    expect(alphaDesktopRow.className).toContain('ring-primary/50');
+      expect(alphaDesktopRow.className).toContain('ring-primary/50');
 
-    fireEvent.click(alphaDesktopRow);
-    expect(onRowClick).toHaveBeenCalledWith(1);
+      fireEvent.click(alphaDesktopRow);
+      expect(onRowClick).toHaveBeenCalledWith(1);
 
-    onRowClick.mockClear();
-    fireEvent.keyDown(alphaDesktopRow, { key: 'Enter', code: 'Enter' });
-    expect(onRowClick).toHaveBeenCalledWith(1);
+      onRowClick.mockClear();
+      fireEvent.keyDown(alphaDesktopRow, { key: 'Enter', code: 'Enter' });
+      expect(onRowClick).toHaveBeenCalledWith(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('keeps selectable-listbox row activation tied to the source data index after sorting and filtering', () => {
+    vi.useFakeTimers();
     const onRowClick = vi.fn();
 
-    render(
-      <DataTable
-        columns={columns}
-        data={[
-          { id: 'row-0', name: 'Bravo' },
-          { id: 'row-1', name: 'Alpha' },
-          { id: 'row-2', name: 'Zulu' },
-        ]}
-        selectedRowIndex={1}
-        getRowId={(row) => row.id}
-        getRowA11yLabel={(row) => row.name}
-        onRowClick={onRowClick}
-        rowInteractionMode="selectable-listbox"
-        listboxLabel="処方受付一覧"
-        toolbar={{ enableGlobalFilter: true }}
-      />,
-    );
+    try {
+      render(
+        <DataTable
+          columns={columns}
+          data={[
+            { id: 'row-0', name: 'Bravo' },
+            { id: 'row-1', name: 'Alpha' },
+            { id: 'row-2', name: 'Zulu' },
+          ]}
+          selectedRowIndex={1}
+          getRowId={(row) => row.id}
+          getRowA11yLabel={(row) => row.name}
+          onRowClick={onRowClick}
+          rowInteractionMode="selectable-listbox"
+          listboxLabel="処方受付一覧"
+          toolbar={{ enableGlobalFilter: true }}
+        />,
+      );
 
-    fireEvent.click(screen.getByRole('button', { name: '氏名 で並び替え' }));
-    fireEvent.change(screen.getByPlaceholderText('テーブル内を絞り込み'), {
-      target: { value: 'Alpha' },
-    });
+      fireEvent.click(screen.getByRole('button', { name: '氏名 で並び替え' }));
+      fireEvent.change(screen.getByPlaceholderText('テーブル内を絞り込み'), {
+        target: { value: 'Alpha' },
+      });
+      flushFilterDebounce();
 
-    const alphaDesktopOption = within(screen.getByRole('table')).getByRole('option', {
-      name: 'Alpha',
-    });
-    expect(alphaDesktopOption.getAttribute('aria-selected')).toBe('true');
-    expect(alphaDesktopOption.getAttribute('tabindex')).toBe('0');
+      const alphaDesktopOption = within(screen.getByRole('table')).getByRole('option', {
+        name: 'Alpha',
+      });
+      expect(alphaDesktopOption.getAttribute('aria-selected')).toBe('true');
+      expect(alphaDesktopOption.getAttribute('tabindex')).toBe('0');
 
-    fireEvent.click(alphaDesktopOption);
-    expect(onRowClick).toHaveBeenCalledWith(1);
+      fireEvent.click(alphaDesktopOption);
+      expect(onRowClick).toHaveBeenCalledWith(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('does not emit stale option rows while selectable-listbox data is loading, failed, or empty', () => {
@@ -778,16 +805,86 @@ describe('DataTable', () => {
     }
   });
 
-  it('does not paginate by default (existing screens keep rendering every row)', () => {
+  it('does not paginate by default and warns in development for large loaded tables', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const manyRows: RowData[] = Array.from({ length: 120 }, (_, index) => ({
       id: `row-${index}`,
       name: `患者 ${index}`,
     }));
 
-    render(<DataTable columns={columns} data={manyRows} />);
+    try {
+      render(<DataTable columns={columns} data={manyRows} />);
 
-    expect(screen.getAllByText(/患者 /).length).toBeGreaterThanOrEqual(120);
-    expect(screen.queryByTestId('data-table-pagination')).toBeNull();
+      expect(screen.getAllByText(/患者 /).length).toBeGreaterThanOrEqual(120);
+      expect(screen.queryByTestId('data-table-pagination')).toBeNull();
+      expect(warnSpy).toHaveBeenCalledWith(
+        'DataTable is rendering 120 rows without client pagination. Use enablePagination, server pagination, or a virtualized list for large tables.',
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('debounces global filter application while keeping the input responsive', () => {
+    vi.useFakeTimers();
+
+    try {
+      render(
+        <DataTable
+          columns={columns}
+          data={[
+            { id: 'row-1', name: 'Alpha' },
+            { id: 'row-2', name: 'Bravo' },
+          ]}
+          toolbar={{ enableGlobalFilter: true }}
+        />,
+      );
+
+      const input = screen.getByPlaceholderText('テーブル内を絞り込み') as HTMLInputElement;
+      fireEvent.change(input, { target: { value: 'Alpha' } });
+
+      expect(input.value).toBe('Alpha');
+      expect(within(screen.getByRole('table')).getByText('Bravo')).toBeTruthy();
+
+      flushFilterDebounce();
+
+      expect(within(screen.getByRole('table')).getByText('Alpha')).toBeTruthy();
+      expect(within(screen.getByRole('table')).queryByText('Bravo')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('debounces column filter application while keeping the input responsive', () => {
+    vi.useFakeTimers();
+
+    try {
+      render(
+        <DataTable
+          columns={columns}
+          data={[
+            { id: 'row-1', name: 'Alpha' },
+            { id: 'row-2', name: 'Bravo' },
+          ]}
+          toolbar={{
+            filterFields: [{ columnId: 'name', label: '氏名' }],
+          }}
+        />,
+      );
+
+      const input = screen.getByLabelText('氏名') as HTMLInputElement;
+      fireEvent.change(input, { target: { value: 'Bravo' } });
+
+      expect(input.value).toBe('Bravo');
+      expect(within(screen.getByRole('table')).getByText('Alpha')).toBeTruthy();
+
+      flushFilterDebounce();
+
+      expect(within(screen.getByRole('table')).getByText('Bravo')).toBeTruthy();
+      expect(within(screen.getByRole('table')).queryByText('Alpha')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('paginates client-side when opted in, with a counted-list summary and working pager', () => {
@@ -861,30 +958,38 @@ describe('DataTable', () => {
   });
 
   it('resets to the first page when a filter narrows the paginated result set', () => {
+    vi.useFakeTimers();
     const manyRows: RowData[] = Array.from({ length: 250 }, (_, index) => ({
       id: `row-${index}`,
       name: index === 249 ? '該当患者' : `患者 ${index.toString().padStart(3, '0')}`,
     }));
 
-    render(
-      <DataTable
-        columns={columns}
-        data={manyRows}
-        enablePagination
-        pageSize={100}
-        toolbar={{ enableGlobalFilter: true }}
-      />,
-    );
+    try {
+      render(
+        <DataTable
+          columns={columns}
+          data={manyRows}
+          enablePagination
+          pageSize={100}
+          toolbar={{ enableGlobalFilter: true }}
+        />,
+      );
 
-    fireEvent.click(screen.getByRole('button', { name: '次のページ' }));
-    expect(screen.getByTestId('data-table-pagination-summary').textContent).toContain('101〜200件');
+      fireEvent.click(screen.getByRole('button', { name: '次のページ' }));
+      expect(screen.getByTestId('data-table-pagination-summary').textContent).toContain(
+        '101〜200件',
+      );
 
-    fireEvent.change(screen.getByPlaceholderText('テーブル内を絞り込み'), {
-      target: { value: '該当患者' },
-    });
+      fireEvent.change(screen.getByPlaceholderText('テーブル内を絞り込み'), {
+        target: { value: '該当患者' },
+      });
+      flushFilterDebounce();
 
-    expect(within(screen.getByRole('table')).getByText('該当患者')).toBeTruthy();
-    expect(screen.getByTestId('data-table-pagination-summary').textContent).toContain('全1件中');
-    expect(screen.getByTestId('data-table-pagination-summary').textContent).toContain('1〜1件');
+      expect(within(screen.getByRole('table')).getByText('該当患者')).toBeTruthy();
+      expect(screen.getByTestId('data-table-pagination-summary').textContent).toContain('全1件中');
+      expect(screen.getByTestId('data-table-pagination-summary').textContent).toContain('1〜1件');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

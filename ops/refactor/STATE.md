@@ -41,7 +41,47 @@
 
 ## 直近の land（本日・要点）
 
-- codex: FE-TBL-001 DataTable client export policy static guard（commit pending）。
+- codex: FE-TBL-002 DataTable filter debounce（commit pending）。
+  - current task:
+    shared `DataTable` の global filter / column filter を入力ごとの即 table filtering から
+    150ms debounce 適用へ変更し、大量行の不要再計算を抑える。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/components/ui/data-table.tsx`,
+    `src/components/ui/data-table.test.tsx`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/components/ui/data-table.tsx`,
+    `src/components/ui/data-table.test.tsx`.
+  - implementation:
+    `DataTable` に 150ms debounce を追加し、global/column filter の入力値は即時表示、
+    TanStack table filtering は debounce 後に反映するよう変更。pagination 有効時は debounce 後の
+    filter state に応じて page 1 へ戻す。100行超を `enablePagination=false` かつ `hasMore=false`
+    で描画する場合は development warning を出し、client pagination / server pagination /
+    virtualized list への移行を促す。
+  - performance issues improved:
+    検索/列フィルタ keystroke ごとの filter/sort 再計算を抑制し、shared table の large loaded rows
+    での入力体感悪化を減らした。
+  - validation:
+    `pnpm exec vitest run src/components/ui/data-table.test.tsx src/components/ui/data-table-export-policy.test.ts --reporter=dot --testTimeout=30000`
+    passed: 2 files / 31 tests.
+    `pnpm exec eslint src/components/ui/data-table.tsx src/components/ui/data-table.test.tsx src/components/ui/data-table-export-policy.test.ts`
+    passed.
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/components/ui/data-table.tsx src/components/ui/data-table.test.tsx src/components/ui/data-table-export-policy.test.ts`
+    passed after formatting `Plans.md`.
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/components/ui/data-table.tsx src/components/ui/data-table.test.tsx src/components/ui/data-table-export-policy.test.ts`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`
+    passed.
+  - remaining:
+    commit、push。
+  - next action:
+    Finish validation and land the focused DataTable filter performance slice.
+
+- codex: FE-TBL-001 DataTable client export policy static guard（commit 05033ba1d, pushed）。
   - current task:
     PHI を含む主要画面で loaded-row client CSV が再導入されないよう、shared `DataTable`
     export policy を Plans 上で完了扱いに更新し、production source の静的回帰テストを追加する。
