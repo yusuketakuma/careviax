@@ -1,7 +1,10 @@
 'use client';
 
 import { useQuery, type QueryKey, type UseQueryOptions } from '@tanstack/react-query';
-import { useRealtimeInvalidation } from './use-realtime-invalidation';
+import {
+  useRealtimeInvalidation,
+  type RealtimeInvalidationPolicy,
+} from './use-realtime-invalidation';
 import type { RealtimePresenceTarget } from '@/lib/realtime/shared-event-stream';
 
 interface UseRealtimeQueryOptions<TData> extends Omit<
@@ -10,7 +13,7 @@ interface UseRealtimeQueryOptions<TData> extends Omit<
 > {
   queryKey: QueryKey;
   queryFn: () => Promise<TData>;
-  invalidateOn?: readonly string[] | false;
+  invalidateOn?: RealtimeInvalidationPolicy;
   shouldInvalidate?: (event: unknown) => boolean;
   onRealtimeEvent?: (event: unknown) => void;
   fallbackRefetchInterval?: UseQueryOptions<TData>['refetchInterval'];
@@ -21,7 +24,7 @@ interface UseRealtimeQueryOptions<TData> extends Omit<
 export function useRealtimeQuery<TData>({
   queryKey,
   queryFn,
-  invalidateOn = [],
+  invalidateOn = false,
   shouldInvalidate,
   onRealtimeEvent,
   fallbackRefetchInterval,

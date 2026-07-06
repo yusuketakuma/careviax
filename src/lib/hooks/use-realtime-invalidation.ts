@@ -1,18 +1,22 @@
 'use client';
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useQueryClient, type QueryKey } from '@tanstack/react-query';
 import { useRealtimeEvents } from './use-realtime-events';
 import type { RealtimePresenceTarget } from '@/lib/realtime/shared-event-stream';
 
+export type RealtimeInvalidationPolicy = readonly string[] | 'all' | false;
+
 interface UseRealtimeInvalidationOptions {
   queryKey: QueryKey;
   enabled?: boolean;
-  invalidateOn?: readonly string[] | false;
+  invalidateOn?: RealtimeInvalidationPolicy;
   shouldInvalidate?: (event: unknown) => boolean;
   onRealtimeEvent?: (event: unknown) => void;
   presenceTargets?: RealtimePresenceTarget[];
 }
+
+const REALTIME_INVALIDATION_DEBOUNCE_MS = 150;
 
 function readRealtimeEventType(event: unknown) {
   return typeof event === 'object' && event !== null && 'type' in event
@@ -23,18 +27,23 @@ function readRealtimeEventType(event: unknown) {
 export function useRealtimeInvalidation({
   queryKey,
   enabled = true,
-  invalidateOn = [],
+  invalidateOn = false,
   shouldInvalidate,
   onRealtimeEvent,
   presenceTargets = [],
 }: UseRealtimeInvalidationOptions) {
   const queryClient = useQueryClient();
+  const invalidateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queryKeyHash = JSON.stringify(queryKey);
   const invalidateOnHash = JSON.stringify(invalidateOn);
   const presenceTargetsHash = JSON.stringify(presenceTargets);
-  const shouldInvalidateQuery = invalidateOn !== false;
+  const shouldInvalidateQuery =
+    invalidateOn === 'all' ||
+    (Array.isArray(invalidateOn) && invalidateOn.length > 0) ||
+    shouldInvalidate !== undefined;
+  const invalidateAllEvents = invalidateOn === 'all';
   const receivesRealtimeUpdates =
-    shouldInvalidateQuery || shouldInvalidate !== undefined || onRealtimeEvent !== undefined;
+    shouldInvalidateQuery || onRealtimeEvent !== undefined || presenceTargets.length > 0;
 
   const realtimeQueryKey = useMemo(
     () => queryKey,
@@ -43,7 +52,7 @@ export function useRealtimeInvalidation({
     [queryKeyHash],
   );
   const realtimeInvalidateOn = useMemo(
-    () => (invalidateOn === false ? [] : invalidateOn),
+    () => (Array.isArray(invalidateOn) ? invalidateOn : []),
     // Preserve structural comparison for callers that build equivalent event lists per render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [invalidateOnHash],
@@ -55,32 +64,50 @@ export function useRealtimeInvalidation({
     [presenceTargetsHash],
   );
 
+  const scheduleInvalidate = useCallback(() => {
+    if (invalidateTimerRef.current) return;
+
+    invalidateTimerRef.current = setTimeout(() => {
+      invalidateTimerRef.current = null;
+      queryClient.invalidateQueries({ queryKey: realtimeQueryKey });
+    }, REALTIME_INVALIDATION_DEBOUNCE_MS);
+  }, [queryClient, realtimeQueryKey]);
+
+  useEffect(
+    () => () => {
+      if (!invalidateTimerRef.current) return;
+      clearTimeout(invalidateTimerRef.current);
+      invalidateTimerRef.current = null;
+    },
+    [],
+  );
+
   const onEvent = useCallback(
     (event: unknown) => {
       if (shouldInvalidateQuery && shouldInvalidate) {
         if (shouldInvalidate(event)) {
-          queryClient.invalidateQueries({ queryKey: realtimeQueryKey });
+          scheduleInvalidate();
         }
         onRealtimeEvent?.(event);
         return;
       }
 
-      if (shouldInvalidateQuery && realtimeInvalidateOn.length === 0) {
-        queryClient.invalidateQueries({ queryKey: realtimeQueryKey });
+      if (shouldInvalidateQuery && invalidateAllEvents) {
+        scheduleInvalidate();
         onRealtimeEvent?.(event);
         return;
       }
 
       const eventType = readRealtimeEventType(event);
       if (shouldInvalidateQuery && eventType && realtimeInvalidateOn.includes(eventType)) {
-        queryClient.invalidateQueries({ queryKey: realtimeQueryKey });
+        scheduleInvalidate();
       }
       onRealtimeEvent?.(event);
     },
     [
-      queryClient,
-      realtimeQueryKey,
+      invalidateAllEvents,
       realtimeInvalidateOn,
+      scheduleInvalidate,
       shouldInvalidate,
       shouldInvalidateQuery,
       onRealtimeEvent,
@@ -89,7 +116,7 @@ export function useRealtimeInvalidation({
 
   const { connected } = useRealtimeEvents({
     onEvent,
-    enabled,
+    enabled: enabled && receivesRealtimeUpdates,
     presenceTargets: realtimePresenceTargets,
   });
 

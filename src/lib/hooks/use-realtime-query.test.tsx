@@ -1,8 +1,8 @@
 /**
  * @vitest-environment jsdom
  */
-import { renderHook } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, renderHook } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { useQueryMock, useQueryClientMock, useRealtimeEventsMock, invalidateQueriesMock } =
   vi.hoisted(() => ({
@@ -29,6 +29,10 @@ describe('useRealtimeQuery', () => {
     useQueryClientMock.mockReturnValue({ invalidateQueries: invalidateQueriesMock });
     useQueryMock.mockImplementation((options) => ({ options }));
     useRealtimeEventsMock.mockReturnValue({ connected: false });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('uses fallback polling only while realtime is disconnected', () => {
@@ -75,6 +79,7 @@ describe('useRealtimeQuery', () => {
   });
 
   it('invalidates matching realtime events', () => {
+    vi.useFakeTimers();
     renderHook(() =>
       useRealtimeQuery({
         queryKey: ['workflow'],
@@ -84,8 +89,11 @@ describe('useRealtimeQuery', () => {
     );
 
     const realtimeOptions = useRealtimeEventsMock.mock.calls[0]?.[0];
-    realtimeOptions.onEvent({ type: 'workflow_refresh' });
-    realtimeOptions.onEvent({ type: 'unrelated' });
+    act(() => {
+      realtimeOptions.onEvent({ type: 'workflow_refresh' });
+      realtimeOptions.onEvent({ type: 'unrelated' });
+      vi.advanceTimersByTime(150);
+    });
 
     expect(invalidateQueriesMock).toHaveBeenCalledTimes(1);
     expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ['workflow'] });
@@ -110,6 +118,7 @@ describe('useRealtimeQuery', () => {
   });
 
   it('uses the custom invalidation predicate when provided', () => {
+    vi.useFakeTimers();
     renderHook(() =>
       useRealtimeQuery({
         queryKey: ['presence', 'patient', 'patient_1', 'org_1'],
@@ -124,15 +133,18 @@ describe('useRealtimeQuery', () => {
     );
 
     const realtimeOptions = useRealtimeEventsMock.mock.calls[0]?.[0];
-    realtimeOptions.onEvent({
-      type: 'presence_update',
-      entity_type: 'patient',
-      entity_id: 'patient_2',
-    });
-    realtimeOptions.onEvent({
-      type: 'presence_update',
-      entity_type: 'patient',
-      entity_id: 'patient_1',
+    act(() => {
+      realtimeOptions.onEvent({
+        type: 'presence_update',
+        entity_type: 'patient',
+        entity_id: 'patient_2',
+      });
+      realtimeOptions.onEvent({
+        type: 'presence_update',
+        entity_type: 'patient',
+        entity_id: 'patient_1',
+      });
+      vi.advanceTimersByTime(150);
     });
 
     expect(invalidateQueriesMock).toHaveBeenCalledTimes(1);

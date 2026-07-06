@@ -112,7 +112,8 @@ function dispatchSseChunk(stream: SharedRealtimeStream, chunk: string) {
   if (!chunk.startsWith('data: ')) return;
   const parsed = parseSsePayload(chunk.slice(6));
   if (parsed == null) return;
-  const event = normalizeRealtimeEventPayload(parsed) ?? parsed;
+  const event = Array.isArray(parsed) ? parsed : normalizeRealtimeEventPayload(parsed);
+  if (event == null) return;
   for (const listener of stream.listeners) {
     try {
       listener(event);

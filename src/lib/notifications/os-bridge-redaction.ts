@@ -40,6 +40,13 @@ export type OsBridgeRedactedNotification = {
   url: string;
 };
 
+function readPushPayloadType(payload: unknown) {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return 'system';
+  const object = payload as Record<string, unknown>;
+  const type = object.type ?? object.notification_type;
+  return typeof type === 'string' ? type : 'system';
+}
+
 /**
  * in-app 通知 1 件を OS 通知ブリッジ用に redact する。
  * raw な title / message / link は破棄し、種別ベースの汎用文言と
@@ -53,4 +60,12 @@ export function redactNotificationForOsBridge(notification: {
     body: OS_BRIDGE_BODY_BY_TYPE[notification.type] ?? OS_BRIDGE_BODY_FALLBACK,
     url: OS_BRIDGE_LANDING_URL,
   };
+}
+
+/**
+ * Web Push payload を OS 通知ブリッジ用に fail-close で redact する。
+ * Service Worker は raw push payload を信用せず、種別だけを安全側に読む。
+ */
+export function redactPushPayloadForOsBridge(payload: unknown): OsBridgeRedactedNotification {
+  return redactNotificationForOsBridge({ type: readPushPayloadType(payload) });
 }

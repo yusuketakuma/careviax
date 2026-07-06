@@ -15,6 +15,10 @@ import {
   OFFLINE_PAGE_CACHE_NAME,
   resolveRuntimeCachePolicy,
 } from '../lib/offline/sw-cache-policy';
+import {
+  OS_BRIDGE_LANDING_URL,
+  redactPushPayloadForOsBridge,
+} from '../lib/notifications/os-bridge-redaction';
 
 declare global {
   interface ServiceWorkerGlobalScope {
@@ -84,19 +88,27 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('push', (event) => {
-  const data = event.data?.json() ?? { title: '新しい通知', body: '', link: '/' };
+  const redacted = redactPushPayloadForOsBridge(readPushPayload(event.data ?? null));
   event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
+    self.registration.showNotification(redacted.title, {
+      body: redacted.body,
       icon: '/icons/icon-192x192.png',
       badge: '/icons/icon-72x72.png',
-      data: { url: data.link },
+      data: { url: redacted.url },
     }),
   );
 });
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = event.notification.data?.url ?? '/';
-  event.waitUntil(self.clients.openWindow(url));
+  event.waitUntil(self.clients.openWindow(OS_BRIDGE_LANDING_URL));
 });
+
+function readPushPayload(data: PushMessageData | null): unknown {
+  if (!data) return null;
+  try {
+    return data.json();
+  } catch {
+    return null;
+  }
+}
