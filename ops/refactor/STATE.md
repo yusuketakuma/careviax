@@ -6007,3 +6007,73 @@
 - remaining:
   Broader `Plans.md` objective remains open. 残りは server `patient-home-operations` service との
   語彙 registry 化、summary/detail batch 接続、quick action registry、payload budget、browser smoke。
+
+## 2026-07-06 Risk Task Resolve Predicate slice
+
+- codex: `RISK-CORE-2 / CORE-002` domain resolve predicate slice landed (commit `475085abb`).
+  `src/lib/tasks/task-registry.ts` の全 `RiskDomain` に `resolve_condition` を追加し、
+  strategy / related entity requirement / optional predicate を registry 化した。Case Risk Cockpit task sync の
+  stale close は、active dedupe absence だけでなく `task_type`、`metadata.source='risk_finding'`、
+  `risk_domain`、`risk_key`、`case_id`、関連 entity type/id の整合を確認してから閉じる。
+  `task_sla` は `manual_or_waiver_only` として自動完了対象外に固定した。
+- domain DB predicates:
+  PHI/free text を読まない安全な first slice として、`integration` は
+  `PatientMcsLink.last_sync_status === 'success'`、`data_quality` は `Residence` の
+  `lat` / `lng` / `geocode_status` / `geocode_accuracy` だけを minimal select し、座標欠落・0/0・緯度経度同値・
+  failed/review_required・low accuracy が解消された時だけ stale task を自然完了できるようにした。
+- subagent:
+  `Surface the 23rd` を read-only code_mapper として投入。現状の task bridge / registry / sync / waiver /
+  Health Board を棚卸しし、最小安全 slice として `integration` + `data_quality` の DB-backed predicate を推奨。
+  そのレビューに従い、registry-only predicate に加えて MCS / residence の実体 predicate を実装した。
+- design / imagegen:
+  backend service/test slice で視覚レイアウト変更を伴わないため、`imagegen` / `gpt-image-2` の新規生成は省略。
+  UI に risk task sync/resolve 状態を新規配置する slice では、`docs/ui-ux-design-guidelines.md` と
+  `gpt-image-2` 方針に従い、非 PHI mockup を先に作る。
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/lib/tasks/task-registry.ts`,
+  `src/server/services/case-risk-task-sync.ts`,
+  `src/server/services/case-risk-task-sync.test.ts`,
+  `src/server/services/risk-task-bridge.ts`,
+  `src/server/services/risk-task-resolution.ts`,
+  `src/server/services/risk-finding-registry.ts`,
+  `src/server/services/case-risk-cockpit.ts`,
+  `prisma/schema/patient.prisma`.
+- files changed:
+  `Plans.md`,
+  `src/lib/tasks/task-registry.ts`,
+  `src/server/services/case-risk-task-sync.ts`,
+  `src/server/services/case-risk-task-sync.test.ts`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  以前は同一 case の open risk task が active dedupe set から消えただけで completed になり得た。
+  今回、metadata/domain/task type/related entity の不整合、manual-only `task_sla`、関連 entity 欠落、
+  MCS 失敗継続、住所座標品質未解消では stale close しないよう固定し、誤完了と IDOR 風の cross-entity close
+  regression を抑制した。
+- security / PHI reviewed:
+  predicate query は `org_id` と task metadata の `patient_id` / related entity id で scope し、
+  MCS の raw error / URL、住所本文、患者名、電話、保険番号、自由記載は選択しない。task payload の PHI-minimized
+  contract と waiver reason redaction は維持。
+- performance issues improved:
+  stale close predicate は task sync 時に open risk task 200 件上限の範囲でのみ評価し、DB-backed predicate は
+  MCS / Residence の単一行 minimal select に限定。重い domain は active finding absence guard に留め、
+  今後の domain predicate 追加を registry の `predicate` enum へ局所化した。
+- validation:
+  `pnpm exec vitest run src/server/services/case-risk-task-sync.test.ts src/server/services/risk-task-bridge.test.ts src/server/services/risk-task-resolution.test.ts --reporter=dot --testTimeout=30000`
+  green (3 files / 23 tests);
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  green;
+  `pnpm lint`
+  green with existing warnings in `src/lib/platform/break-glass.test.ts` (`_tx`, `_input` unused);
+  `pnpm format:check`
+  green;
+  `git diff --check`
+  green.
+- remaining:
+  Broader `Plans.md` objective remains open. CORE-002 は `Plans.md` 上 `cc:DONE` に更新。次の候補は
+  CORE-003 / PAT-001 の患者詳細 Command Center 接続、または high-complexity domain
+  (billing / consent_plan / visit_preparation / privacy_security) の追加 DB predicate hardening を別 slice で進める。
