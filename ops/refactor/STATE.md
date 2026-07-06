@@ -41,6 +41,38 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Plans.md implemented-task cleanup pass 2（pending commit）。
+  - current task:
+    `Plans.md` 内の実装済みサブタスク履歴を削除し、未完の親タスクは残作業だけに整理する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `git log --oneline -n 30`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    RISK-P0 / INB-001 / MOV-001 / RX-002 / latest-main review / frontend backlog / backend modularization rows の
+    完了済み partial 履歴を削り、残タスク形式へ圧縮した。`PAT-001 Case Risk Cockpit 初期実装` は
+    既存進捗と重複するため Plans から削除した。
+  - bugs found:
+    なし。計画台帳の整理。
+  - security risks reduced:
+    PHI/inbound/MedicationStock/timeline/source の未完タスクが Plans 上で見つけやすくなった。
+  - performance issues improved:
+    なし。
+  - validation:
+    `pnpm exec prettier --write Plans.md ops/refactor/STATE.md` → pass。
+    完了済みマーカー検索（チェック済み行 / `cc:DONE` / `cc:PARTIAL` / `実装済み` / `完了済み` / 追加証跡）→ no matches。
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md` → pass。
+    `git diff --check -- Plans.md ops/refactor/STATE.md` → pass。
+  - remaining:
+    historical prerequisite notes and external gate context はタスク行ではないため保持。
+    `src/app/(dashboard)/admin/drug-masters/*` の既存 dirty は未触及。
+  - next action:
+    scoped commit/push。
+
 - codex: FE-ERR-001 admin service-areas segment hardening（pending commit）。
   - current task:
     `/admin/service-areas` の拠点一覧 / 訪問エリア一覧取得失敗と pending/loading を shared segment state に寄せ、
