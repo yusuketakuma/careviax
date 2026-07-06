@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: MOV-001 MCS / partner visit marker minimization（未コミット）。
+- codex: MOV-001 MCS / partner visit marker minimization（commit 5e049d30f, pushed）。
   - current task:
     Patient Movement Timeline の inbound bridge source から投稿者名・所属名・協力薬局名・薬剤師名を外し、
     MCS投稿受信/協力薬局訪問記録受信の marker + 正本 deep link へ寄せる。
@@ -74,7 +74,7 @@
   - remaining:
     Formal `InboundCommunicationEvent` / `InboundCommunicationSignal` DB/API/review UI and MedicationStock Ledger source remain.
   - next action:
-    Scoped commit/push, then record landed commit hash.
+    Continue remaining MOV-001 sources only when they can stay marker-only + canonical deep link.
 
 - codex: MOV-001 external share / conference / billing marker minimization（commit 8e7eed4af, pushed）。
   - current task:
