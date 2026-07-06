@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: MOV-001 Inbound task movement classification（commit pending）。
+- codex: MOV-001 Inbound task movement classification（commit 42ed967c1, pushed）。
   - current task:
     `core.inbound_communication_review_required` task を generic task ではなく他職種受信 marker として
     Patient Movement Timeline に表示し、正式 inbound DB 前でも受信確認待ちを患者の動き上で追えるようにする。
@@ -80,9 +80,9 @@
     `git diff --check -- Plans.md ops/refactor/STATE.md src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.ts src/server/services/patient-movement-timeline-presenter.test.ts`
     passed.
   - remaining:
-    commit and push this scoped slice. Formal inbound DB/API/review UI and signal source remain.
+    Formal inbound DB/API/review UI and signal source remain.
   - next action:
-    Commit and push the scoped MOV-001 inbound task classification.
+    Continue with the next Plans item.
 
 - codex: INB-001 Case Risk inbound communication scoped action（commit 4ba2b63e9, pushed）。
   - current task:
