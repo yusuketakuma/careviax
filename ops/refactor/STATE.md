@@ -6899,3 +6899,53 @@
 - remaining:
   Broader `Plans.md` objective remains open. 残りは high-risk bulk action confirmation dialog sweep、
   server-side 全件操作 UI registry、Command Center / BFF split / risk registry integration tasks。
+
+## 2026-07-06 Dispense workbench irreversible confirm scope slice
+
+- codex: `UX-TBL-001 / DSP-UX` destructive confirm wording sweep implemented.
+  調剤完了・監査承認・麻薬監査承認・セット監査承認の不可逆 ConfirmDialog description に、
+  `現在表示中の薬剤行` / `調剤済み薬剤行` / `表示中セル` と取消不可を明示した。
+  前回の一括 button/F5 scope label と同じ語彙を不可逆 sign-off confirm にも通し、
+  `buildPrimaryConfirm` unit test で患者前置・対象範囲・麻薬二重計数・取消不可を固定した。
+- design / imagegen:
+  `docs/ui-ux-design-guidelines.md` を確認。既存 ConfirmDialog の文言 contract 修正で、視覚再構築や
+  配置変更を伴わないため `imagegen` / `gpt-image-2` の新規生成は省略した。
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `docs/ui-ux-design-guidelines.md`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/components/features/dispense-workbench/dispensing-workbench.tsx`,
+  `src/components/features/dispense-workbench/dispensing-workbench.confirm.test.tsx`,
+  `src/components/features/dispense-workbench/dispensing-workbench.write-types.ts`,
+  `src/components/features/dispense-workbench/use-workbench-write-handlers.ts`,
+  `src/components/features/dispense-workbench/use-workbench-view.test.ts`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/components/features/dispense-workbench/dispensing-workbench.tsx`,
+  `src/components/features/dispense-workbench/dispensing-workbench.confirm.test.tsx`.
+- bugs / risks reduced:
+  不可逆 sign-off の確認文が広すぎる範囲に見える/何を確定するか曖昧になる risk を低減した。
+  監査工程は `調剤済み薬剤行`、セット監査は `表示中セル` に閉じることを確認画面でも明示する。
+- security / PHI reviewed:
+  既存患者名/生年月日前置の表示方針は維持し、新規 PHI field は追加しない。API payload、audit payload、
+  mutation contract、required confirm text は既存通り。
+- performance issues reviewed:
+  pure helper の static string と unit test のみ。DB query、network call、render tree、mutation path は変更なし。
+- validation:
+  `pnpm exec vitest run src/components/features/dispense-workbench/dispensing-workbench.confirm.test.tsx --reporter=dot --testTimeout=30000`
+  green (1 file / 11 tests);
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  green;
+  `pnpm lint`
+  green with existing warnings in `src/lib/platform/break-glass.test.ts` (`_tx`, `_input` unused);
+  `pnpm format:check`
+  green;
+  `git diff --check -- Plans.md src/components/features/dispense-workbench/dispensing-workbench.tsx src/components/features/dispense-workbench/dispensing-workbench.confirm.test.tsx`
+  green.
+- remaining:
+  Broader `Plans.md` objective remains open. 残りは server-side 全件操作 UI registry、
+  他画面の destructive/bulk confirm 文言 sweep、Command Center / BFF split / risk registry integration tasks。
