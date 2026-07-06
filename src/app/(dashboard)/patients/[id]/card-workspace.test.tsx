@@ -1983,6 +1983,8 @@ describe('CardWorkspace', () => {
     render(<CardWorkspace patientId="patient_1" />);
 
     const blockedReasons = getVisibleTestId('blocked-reasons-panel');
+    expect(within(blockedReasons).getByText('家族同意待ち — 確認が必要です')).toBeTruthy();
+    expect(within(blockedReasons).queryByText('ご家族の同意待ち(新規契約)')).toBeNull();
     expect(
       within(blockedReasons).getByRole('link', { name: '再連絡する →' }).getAttribute('href'),
     ).toBe('/communications/requests?status=sent&patient_id=patient_1');
@@ -2007,8 +2009,10 @@ describe('CardWorkspace', () => {
     render(<CardWorkspace patientId="patient_1" />);
 
     const blockedReasons = getVisibleTestId('blocked-reasons-panel');
+    expect(within(blockedReasons).getByText('返信待ち — 再確認できます')).toBeTruthy();
+    expect(within(blockedReasons).queryByText('主治医からの返信待ち')).toBeNull();
     expect(
-      within(blockedReasons).getByRole('link', { name: '再連絡する →' }).getAttribute('href'),
+      within(blockedReasons).getByRole('link', { name: '状況を見る →' }).getAttribute('href'),
     ).toBe('/communications/requests?status=sent&patient_id=patient_1');
   });
 

@@ -1,6 +1,5 @@
 import { format, formatDistanceToNowStrict, isSameDay, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import {
   PROCESS_STEPS_9,
@@ -12,6 +11,11 @@ import {
 } from '@/lib/prescription/cycle-workspace';
 import type { VisitBriefUnresolvedItem } from '@/types/visit-brief';
 import type { CaseRiskCockpitResponse, CaseRiskNextAction } from '@/types/case-risk-cockpit';
+import {
+  getWorkflowExceptionStatusText,
+  resolveBlockedReasonActionHref,
+  resolveBlockedReasonPresentation,
+} from '@/lib/workflow/blocked-reason-projection';
 import type { PatientOverview, PatientWorkspace } from './patient-detail.types';
 
 type CommandCenterPatient = Pick<PatientOverview, 'id' | 'lab_summary' | 'visit_brief'>;
@@ -86,26 +90,6 @@ type BuildPatientCommandCenterModelInput = {
 
 type CaseRiskCockpitForCommand = Pick<CaseRiskCockpitResponse, 'overall' | 'next_actions'>;
 
-/** 止まっている理由: WorkflowException type → カテゴリ色チップ(患者/事務/医療機関) */
-const EXCEPTION_CATEGORY_LABELS: Record<string, string> = {
-  no_show: '患者',
-  hospitalized: '患者',
-  refused_receipt: '患者',
-  discontinued_collection_unconfirmed: '患者',
-  family_consent_pending: '患者',
-  awaiting_reply: '医療機関',
-  prescription_structuring_block: '事務',
-  outpatient_injection_eligibility_block: '事務',
-  delivery_target_confirmation: '事務',
-  report_failed: '事務',
-};
-
-/** 止まっている理由: type 別の個別アクション(06_card 右レール「再連絡する→」等) */
-const EXCEPTION_ACTIONS: Record<string, { label: string; href: string }> = {
-  family_consent_pending: { label: '再連絡する', href: '/communications/requests' },
-  delivery_target_confirmation: { label: '状況を見る', href: '/admin/contact-profiles' },
-};
-
 const UNRESOLVED_CATEGORY_LABELS: Record<VisitBriefUnresolvedItem['source_type'], string> = {
   task: '事務',
   issue: '患者',
@@ -126,17 +110,6 @@ function formatAgeLabel(value: string | null | undefined): string | undefined {
   const date = parseISO(value);
   if (Number.isNaN(date.getTime())) return undefined;
   return formatDistanceToNowStrict(date, { locale: ja });
-}
-
-function resolveExceptionAction(exceptionType: string, patientId: string) {
-  const action = EXCEPTION_ACTIONS[exceptionType];
-  if (exceptionType === 'family_consent_pending' || exceptionType === 'awaiting_reply') {
-    return {
-      label: action?.label ?? '再連絡する',
-      href: buildCommunicationRequestsHref({ status: 'sent', patientId }),
-    };
-  }
-  return action ?? { label: '状況を見る', href: '/workflow' };
 }
 
 function caseRiskStatusLabel(status: CaseRiskCockpitResponse['overall']['status']) {
@@ -211,15 +184,15 @@ export function buildPatientCommandCenterModel({
   const unresolved = patient.visit_brief?.unresolved_items ?? [];
   const blockedReasons: PatientCommandBlockedReason[] = [
     ...workspace.open_exceptions.map((exception) => {
-      const action = resolveExceptionAction(exception.exception_type, patient.id);
+      const presentation = resolveBlockedReasonPresentation(exception.exception_type);
       return {
         id: exception.id,
-        label: exception.description,
+        label: getWorkflowExceptionStatusText(exception.exception_type),
         severity: exception.severity,
-        categoryLabel: EXCEPTION_CATEGORY_LABELS[exception.exception_type] ?? '事務',
+        categoryLabel: presentation.category,
         ageLabel: formatAgeLabel(exception.created_at),
-        actionLabel: `${action.label} →`,
-        actionHref: action.href,
+        actionLabel: presentation.actionLabel,
+        actionHref: resolveBlockedReasonActionHref(exception.exception_type, patient.id),
       };
     }),
     ...unresolved.map((item, index) => ({

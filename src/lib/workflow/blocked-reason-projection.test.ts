@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { buildBlockedReasons } from './blocked-reason-projection';
+import {
+  buildBlockedReasons,
+  getWorkflowExceptionStatusText,
+  resolveBlockedReasonPresentation,
+} from './blocked-reason-projection';
 
 describe('buildBlockedReasons', () => {
   const now = new Date('2026-06-12T09:00:00.000Z');
@@ -86,5 +90,19 @@ describe('buildBlockedReasons', () => {
     );
 
     expect(reason.action_href).toBe('/patients');
+  });
+
+  it('centralizes patient board and command-center workflow exception labels without raw descriptions', () => {
+    expect(getWorkflowExceptionStatusText('prescription_structuring_block')).toBe(
+      '処方構造化の確認中 — 詳細確認が必要です',
+    );
+    expect(getWorkflowExceptionStatusText('unknown-raw-090-RAW-PHI')).toBe(
+      '確認事項があります — 詳細確認が必要です',
+    );
+    expect(resolveBlockedReasonPresentation('prescription_structuring_block')).toMatchObject({
+      category: '医療機関',
+      actionLabel: '状況を見る →',
+      actionHref: '/prescriptions',
+    });
   });
 });

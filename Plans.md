@@ -964,6 +964,16 @@ FE 仕上げ（低優先）:
   残: PatientBoard 派生ロジックとの adapter 統合、timeline 抜粋を
   Command Center block に含めること、payload budget / browser smoke。
 
+- `UX-CMD-001 / PERF-BFF-001` partial（2026-07-06）: 患者一覧 board route で既に使っていた
+  `src/lib/workflow/blocked-reason-projection.ts` を患者詳細 Command Center と
+  `patient-board-card-model.ts` の workflow exception status text に接続した。Command Center は
+  `WorkflowException.description` をそのまま blocker label として出さず、PatientBoard と同じ
+  controlled text / category / action href を使う。`family_consent_pending` / `awaiting_reply` は
+  patient-scoped communication request へ遷移し、未知 exception は PHI を含まない fallback 文言にする。
+  残: PatientBoard の attention/status_tone/status_text/current_step 判定を `src/lib/patient/*` の
+  pure selector へさらに抽出し、Command Center 側の process 補助状態へ段階接続すること、
+  payload budget / browser smoke。
+
 - `UX-CMD-001 / RISK-CORE-2` partial（2026-07-06）: 患者詳細 Command tab に Case Risk Cockpit の
   task-backed next action を読み込ませ、dedicated waiver route へ理由必須で接続した。
   `next_actions.task_id` がない通常 action は免除対象にせず、Case Risk Cockpit 取得失敗と免除失敗は

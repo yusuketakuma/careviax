@@ -17,6 +17,7 @@ import { isVisitCarryItemsStatusBlockingReady } from '@/server/services/visit-pr
 import { buildPatientFoundationSummary } from '@/server/services/patient-detail-foundation';
 import { japanDateKey } from '@/lib/utils/date-boundary';
 import { timeDateToString } from '@/lib/visits/time-of-day';
+import { getWorkflowExceptionStatusText } from '@/lib/workflow/blocked-reason-projection';
 import type {
   PatientAttentionKey,
   PatientBoardCard,
@@ -78,17 +79,6 @@ const TOKYO_TIME_FORMATTER = new Intl.DateTimeFormat('en-GB', {
   minute: '2-digit',
   hour12: false,
 });
-
-const WORKFLOW_EXCEPTION_STATUS_TEXT: Record<string, string> = {
-  family_consent_pending: '家族同意待ち — 確認が必要です',
-  delivery_target_confirmation: '配送先確認中 — 確認が必要です',
-  prescription_structuring_block: '処方構造化の確認中 — 詳細確認が必要です',
-  outpatient_injection_eligibility_block: '外来注適格性の確認中 — 詳細確認が必要です',
-  dispense_audit_rejected: '調剤監査差戻し — 再確認が必要です',
-  set_audit_rejected: 'セット監査差戻し — 再確認が必要です',
-  audit_blocker: '監査ブロッカー — 詳細確認が必要です',
-  awaiting_reply: '返信待ち — 再確認できます',
-};
 
 export type PatientBoardQueryRow = {
   id: string;
@@ -216,10 +206,6 @@ function formatTokyoTimeOfDay(value: Date): string {
   const minute = parts.find((part) => part.type === 'minute')?.value;
   if (!hour || !minute) return '—';
   return `${hour}:${minute}`;
-}
-
-function buildWorkflowExceptionStatusText(exceptionType: string): string {
-  return WORKFLOW_EXCEPTION_STATUS_TEXT[exceptionType] ?? '確認事項があります — 詳細確認が必要です';
 }
 
 /** allergy_info(Json)が「アレルギーあり」を表すか。空配列/空文字/None 表記は除外。 */
@@ -402,7 +388,7 @@ export function derivePatientBoardCard(
       : STEP_LINKS.report;
   } else if (openException) {
     attention = 'checking';
-    statusText = buildWorkflowExceptionStatusText(openException.exception_type);
+    statusText = getWorkflowExceptionStatusText(openException.exception_type);
     tone = 'caution';
   } else {
     attention = 'steady';

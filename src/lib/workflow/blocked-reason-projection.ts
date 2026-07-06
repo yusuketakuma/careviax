@@ -86,12 +86,46 @@ const EXCEPTION_PRESENTATION_FALLBACK: BlockedReasonPresentation = {
   actionHref: '/workflow',
 };
 
+const WORKFLOW_EXCEPTION_STATUS_TEXT: Record<string, string> = {
+  family_consent_pending: '家族同意待ち — 確認が必要です',
+  delivery_target_confirmation: '配送先確認中 — 確認が必要です',
+  prescription_structuring_block: '処方構造化の確認中 — 詳細確認が必要です',
+  outpatient_injection_eligibility_block: '外来注適格性の確認中 — 詳細確認が必要です',
+  dispense_audit_rejected: '調剤監査差戻し — 再確認が必要です',
+  set_audit_rejected: 'セット監査差戻し — 再確認が必要です',
+  audit_blocker: '監査ブロッカー — 詳細確認が必要です',
+  awaiting_reply: '返信待ち — 再確認できます',
+};
+
+const WORKFLOW_EXCEPTION_STATUS_FALLBACK = '確認事項があります — 詳細確認が必要です';
+
 /**
  * exception_type を表示用 presentation(カテゴリ/アクション)へ解決する。
  * 未知のタイプはフォールバック(事務 / 状況を見る → / /workflow)を返す。
  */
 export function resolveBlockedReasonPresentation(exceptionType: string): BlockedReasonPresentation {
   return EXCEPTION_PRESENTATIONS[exceptionType] ?? EXCEPTION_PRESENTATION_FALLBACK;
+}
+
+export function resolveBlockedReasonActionHref(
+  exceptionType: string,
+  patientId?: string | null,
+): string {
+  const presentation = resolveBlockedReasonPresentation(exceptionType);
+  if (exceptionType === 'family_consent_pending' || exceptionType === 'awaiting_reply') {
+    return buildCommunicationRequestsHref({
+      status: 'sent',
+      patientId: patientId ?? null,
+    });
+  }
+  if (presentation.actionHref === '/patients' && patientId) {
+    return buildPatientHref(patientId);
+  }
+  return presentation.actionHref;
+}
+
+export function getWorkflowExceptionStatusText(exceptionType: string): string {
+  return WORKFLOW_EXCEPTION_STATUS_TEXT[exceptionType] ?? WORKFLOW_EXCEPTION_STATUS_FALLBACK;
 }
 
 /** buildBlockedReasons が要求する open WorkflowException の最小形。 */
@@ -125,16 +159,10 @@ export function buildBlockedReasons(exceptions: BlockedReasonSource[], now: Date
   const nowMs = now.getTime();
   return exceptions.map((exception) => {
     const presentation = resolveBlockedReasonPresentation(exception.exception_type);
-    const actionHref =
-      exception.exception_type === 'family_consent_pending' ||
-      exception.exception_type === 'awaiting_reply'
-        ? buildCommunicationRequestsHref({
-            status: 'sent',
-            patientId: exception.patient_id ?? null,
-          })
-        : presentation.actionHref === '/patients' && exception.patient_id
-          ? buildPatientHref(exception.patient_id)
-          : presentation.actionHref;
+    const actionHref = resolveBlockedReasonActionHref(
+      exception.exception_type,
+      exception.patient_id,
+    );
     return {
       id: exception.id,
       label: exception.description,

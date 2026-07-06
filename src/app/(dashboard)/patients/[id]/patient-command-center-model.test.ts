@@ -125,9 +125,10 @@ describe('buildPatientCommandCenterModel', () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: 'exception_1',
+          label: '返信待ち — 再確認できます',
           categoryLabel: '医療機関',
           severity: 'warning',
-          actionLabel: '再連絡する →',
+          actionLabel: '状況を見る →',
           actionHref: '/communications/requests?status=sent&patient_id=patient_1',
         }),
         expect.objectContaining({
@@ -138,6 +139,7 @@ describe('buildPatientCommandCenterModel', () => {
         }),
       ]),
     );
+    expect(JSON.stringify(model.blockedReasons)).not.toContain('医療機関からの返信待ち');
     expect(model.evidence).toEqual([
       expect.objectContaining({
         id: 'prescription-image',
@@ -256,11 +258,13 @@ describe('buildPatientCommandCenterModel', () => {
     expect(model.processLabel).toBeNull();
     expect(model.nextAction).toBeUndefined();
     expect(model.blockedReasons[0]).toMatchObject({
+      label: '確認事項があります — 詳細確認が必要です',
       categoryLabel: '事務',
       actionLabel: '状況を見る →',
       actionHref: '/workflow',
       ageLabel: undefined,
     });
+    expect(JSON.stringify(model.blockedReasons)).not.toContain('未分類の停止理由');
     expect(model.evidence).toEqual([
       expect.objectContaining({ id: 'medication-notebook' }),
       expect.objectContaining({ id: 'lab-trend', meta: undefined }),
