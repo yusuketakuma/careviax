@@ -1132,6 +1132,7 @@ notification:
 > `cc:PARTIAL 2026-07-07`: ユーザー確認により、タイムラインの主導線は中間の rendered detail shell ではなく、処方詳細・訪問詳細・文書詳細など正本画面への直接 deep link とする。カード上では処方・訪問・文書登録があった事実だけを表示し、検索 haystack でも薬剤名、訪問本文、文書名、添付ファイル名を使わない。`/api/patients/:id/timeline/:eventId` は将来の safe resolver / event detail API として維持するが、現行 UI の primary CTA は `event.href` を使う。
 > `scope clarification 2026-07-07`: 処方・訪問・文書登録は、timeline 上で「その出来事があったこと」と「正本へ移動するリンク」が分かればよい。カード内で処方内容、訪問内容、文書内容を再表示しない。処方は処方詳細、訪問は訪問記録/訪問準備、文書は文書詳細/共有・文書タブへ直接 deep link する。
 > `final scope lock 2026-07-07`: ユーザー確認により、処方・訪問・文書登録は「発生した事実を時系列で確認できること」と「詳細を正本画面で開けること」を完了条件に固定する。Patient Movement Timeline は Google Maps のタイムラインに近い map-less vertical rail の索引 UI とし、処方内容・訪問内容・文書本文の閲覧画面にはしない。実装では `PatientMovementTimelineEvent.href` を primary CTA にし、処方/訪問/文書 event は必ず相対 deep link を持つ。相対 deep link が作れない場合は詳細本文を出さず、患者の動きタブへの fallback と不足実装タスクとして扱う。
+> `latest scope lock 2026-07-07`: 「処方内容・訪問内容・文書登録をタイムラインに表示する」の意味を、**処方・訪問・文書登録があったことを確認できる marker を表示する**に固定する。処方内容、訪問内容、文書本文は timeline card に表示しない。詳細確認は必ず処方詳細、訪問記録/訪問準備、共有・文書/文書詳細/報告詳細/FileAsset detail への deep link で行う。
 > `cc:PARTIAL 2026-07-07`: 正式な `InboundCommunicationEvent` / `InboundCommunicationSignal` DB migration 前の接続として、既存 `PatientMcsMessage` と `PartnerVisitRecord` を timeline source に追加した。MCSは `inbound_mcs`、協力薬局の提出/確認済み訪問記録は `interprofessional_note` として表示する。どちらも発生確認と deep link だけを出し、MCS `body` / `raw_payload` / `source_url`、協力薬局 `record_content` / `attachments` は select しない。
 > `cc:PARTIAL 2026-07-07`: 既存 `Task` のうち患者/ケースへ直接紐づく運用タスクを `task_created` / `task_resolved` として timeline source に追加した。タスク title/description/metadata は自由記載やPHIを含み得るため select せず、登録済み task type label、status、priority、期限/SLA と `/tasks` の related entity 絞り込み deep link だけを表示する。
 > `cc:PARTIAL 2026-07-07`: 既存 `CommunicationEvent` の受信 `phone` / `fax` / `email` を、正式 inbound DB 追加前の bridge として `inbound_phone` / `inbound_fax` / `inbound_email` に正規化した。タイムラインは「電話/FAX/メール連絡を受信」の発生確認と `/conferences?patient_id=...` deep link のみに留め、`subject`、`counterpart_name`、`counterpart_contact`、`content`、`attachments` は select しない。
@@ -1347,6 +1348,72 @@ timelineから直接開けること:
 timelineに持ち込まないこと:
   処方内容、薬剤明細、用法用量、訪問本文、SOAP本文、文書本文、添付ファイル名、OCR全文。
 ```
+
+**処方・訪問・文書 marker 実装計画（追加確認 2026-07-07）**:
+
+```text
+目的:
+  Patient Movement Timeline で、処方・訪問・文書登録が「あったこと」を日付順に確認できるようにする。
+  詳細は timeline 内に複製せず、各正本画面への deep link で確認する。
+
+処方 marker:
+  対象:
+    prescription_intake
+    medication_cycle / prescription cycle
+    inquiry
+    medication change review
+  表示:
+    「処方受付あり」「処方登録あり」「処方変更あり」「疑義照会あり」
+    発生時刻、controlled status、確認待ち/注意 badge、正本 href。
+  禁止:
+    薬剤名、処方明細、用法用量、日数、処方全文、医師名自由記載、処方箋file id。
+  deep link:
+    /prescriptions/:id
+    /patients/:patientId#patient-medication
+    /audit?task=:taskId
+
+訪問 marker:
+  対象:
+    visit_schedule
+    visit_record
+    partner_visit_record
+    visit preparation / visit mode
+  表示:
+    「訪問予定あり」「訪問記録あり」「訪問完了」「協力薬局記録あり」
+    訪問日/記録時刻、controlled status、報告待ち/未完了 badge、正本 href。
+  禁止:
+    SOAP本文、観察内容、残薬詳細、副作用詳細、訪問メモ、音声/添付名、位置情報。
+  deep link:
+    /visits/:scheduleId/record
+    /visits/:recordId
+    /schedules?focus=:scheduleId
+
+文書 marker:
+  対象:
+    first_visit_document
+    management_plan
+    care_report
+    delivery_record
+    generated PDF / document export
+    file_asset attachment event
+  表示:
+    「文書登録あり」「初回訪問文書あり」「報告書作成あり」「文書送付あり」
+    controlled document type、登録/更新時刻、scan/retention/shareability status、正本 href。
+  禁止:
+    文書本文、PDF本文、OCR全文、文書URL、添付ファイル名、storage key、signed URL。
+  deep link:
+    /patients/:patientId#patient-documents
+    /reports/:reportId
+    /reports/:reportId#delivery-records
+    FileAsset detail route if permissioned and implemented.
+```
+
+実装時の判定:
+
+- source adapter が相対 deep link を作れる場合だけ marker を出す。
+- 相対 deep link が作れない source は、本文抜粋で補わない。`partial_failures` または follow-up task として扱う。
+- timeline card / search haystack / summary strip に処方内容・訪問内容・文書本文を入れない。
+- Unit test は marker の存在、相対 href、raw detail の非露出を同時に固定する。
 
 **source adapter 実装ガード**:
 

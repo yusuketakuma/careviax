@@ -41,7 +41,33 @@
 
 ## 直近の land（本日・要点）
 
-- codex: MOV-001 Patient Movement Timeline risk/stock task source classification（commit pending）。
+- codex: MOV-001 prescription/visit/document marker planning clarification（commit pending）。
+  - current task:
+    ユーザー確認に合わせ、Patient Movement Timeline の「処方・訪問・文書登録を表示する」を、
+    内容表示ではなく「処方・訪問・文書登録があったことを marker として時系列確認し、詳細は
+    正本画面への deep link で開く」計画へ再固定する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-detail-timeline-registry.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `MOV-001` に `latest scope lock 2026-07-07` と「処方・訪問・文書 marker 実装計画」を追記。
+    処方 marker、訪問 marker、文書 marker の対象 source、timeline card に出す controlled 情報、
+    出さない raw/detail 情報、正本 deep link の候補、相対 deep link が作れない場合の扱いを明文化した。
+    直前の未コミットコード差分は今回の計画-only 指示と別件だったため破棄し、コード差分は残していない。
+  - validation:
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md` passed.
+    `git diff --check -- Plans.md ops/refactor/STATE.md` passed.
+  - remaining:
+    Scoped commit/push。
+  - next action:
+    Scoped commit/push.
+
+- codex: MOV-001 Patient Movement Timeline risk/stock task source classification（commit 4dc1f4bdf）。
   - current task:
     正式 `RiskFinding` / `MedicationStockEvent` source 追加前の bridge として、既存 `Task`
     source から患者/ケース紐づきの risk・薬剤安全・MedicationStock task を Patient Movement
@@ -86,7 +112,7 @@
     正式 `InboundCommunicationSignal` / `MedicationStockEvent` / safety finding source の追加、
     review API/UI、Schedule/Report linkage、Playwright mobile smoke。
   - next action:
-    Scoped commit/push.
+    Landed and pushed to `origin/main`.
 
 - codex: MOV-001 Patient Movement Timeline final scope lock（commit 6943dfa95）。
   - current task:
