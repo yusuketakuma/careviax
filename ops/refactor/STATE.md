@@ -6480,3 +6480,48 @@
 - remaining:
   Broader `Plans.md` objective remains open. `UX-TBL-001 / DEV-PHI-001` の残りは approved export registry、
   real consumer の screen-level PHI export snapshot、bulk action button 側の選択範囲文言テスト。
+
+## 2026-07-06 Tasks bulk selection scope wording slice
+
+- codex: `UX-TBL-001 / DEV-PHI-001` tasks bulk action scope wording implemented.
+  DataTable の selection summary だけでなく、実 consumer の bulk action button 側にも scope を出すため、
+  tasks 画面の一括完了 button を `表示中から選択したN件を完了` へ変更した。`aria-describedby` で
+  `現在表示中の読込済み行から選択したタスク` であることも説明し、screen-level test で固定した。
+- design / imagegen:
+  既存 button label と sr-only 説明の scope wording 修正で、新規レイアウト再構築を伴わないため
+  `imagegen` / `gpt-image-2` の新規生成は省略した。
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `src/app/(dashboard)/tasks/tasks-content.tsx`,
+  `src/app/(dashboard)/tasks/tasks-content.test.tsx`,
+  `src/components/ui/data-table.tsx`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- files changed:
+  `Plans.md`,
+  `src/app/(dashboard)/tasks/tasks-content.tsx`,
+  `src/app/(dashboard)/tasks/tasks-content.test.tsx`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  bulk action button が選択対象を単に `選択したN件` とだけ表現し、現在表示中/読込済み selection scope を
+  action 側で読み落とす UX-TBL risk を低減した。
+- security / PHI reviewed:
+  task id payload と bulk completion API は変更なし。文言と aria description のみで PHI/secret は扱わない。
+- performance issues reviewed:
+  sr-only description と button label の追加のみ。DB query、network call、payload、render loop は変更なし。
+- validation:
+  `pnpm exec vitest run src/app/(dashboard)/tasks/tasks-content.test.tsx --reporter=dot --testTimeout=30000`
+  green (1 file / 21 tests);
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  green;
+  `pnpm lint`
+  green with existing warnings in `src/lib/platform/break-glass.test.ts` (`_tx`, `_input` unused);
+  `pnpm format:check`
+  green;
+  `git diff --check`
+  green.
+- remaining:
+  Broader `Plans.md` objective remains open. `UX-TBL-001 / DEV-PHI-001` の残りは approved export registry、
+  real consumer の PHI export snapshot、他 bulk action consumer の scope wording sweep。
