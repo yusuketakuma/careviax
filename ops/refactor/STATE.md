@@ -41,6 +41,44 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Oracle/GPT-5.5 Pro GitHub access instruction tightened.
+  - current task:
+    ユーザー指示により、Oracle/GPT-5.5 Pro 相談時は target repository の GitHub context
+    を prompt に含めるだけでなく、GPT-5.5 Pro に提供した GitHub repository / PR / issue URL
+    へアクセスするよう明示するルールへ強化した。GitHub にアクセスできない場合は GPT-5.5 Pro
+    にその旨を明示させる。これは Oracle 自体の使用方法変更なので、`steipete/oracle`
+    upstream GitHub を再確認してから `AGENTS.md` と `.agents/skills/oracle-consult/SKILL.md`
+    を更新した。
+  - upstream GitHub checked:
+    `https://github.com/steipete/oracle`,
+    `https://github.com/steipete/oracle/blob/main/skills/oracle/SKILL.md`,
+    `https://github.com/steipete/oracle/blob/main/docs/browser-mode.md`,
+    `https://github.com/steipete/oracle/blob/main/CHANGELOG.md`.
+    Upstream still documents Oracle as prompt+selected-files context bundling,
+    Browser mode with `gpt-5.5-pro`, minimal files, `--dry-run` / `--files-report`,
+    manual-login profile reuse, stored sessions, duplicate-run avoidance, and reattach/restart behavior.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `AGENTS.md`,
+    `.agents/skills/oracle-consult/SKILL.md`,
+    `ops/refactor/STATE.md`,
+    Oracle upstream README / bundled skill / browser-mode docs / CHANGELOG.
+  - files changed:
+    `AGENTS.md`,
+    `.agents/skills/oracle-consult/SKILL.md`,
+    `ops/refactor/STATE.md`.
+  - validation:
+    `python3 /Users/yusuke/.codex/skills/.system/skill-creator/scripts/quick_validate.py .agents/skills/oracle-consult`
+    passed.
+    `pnpm exec prettier --check AGENTS.md .agents/skills/oracle-consult/SKILL.md ops/refactor/STATE.md`
+    passed.
+    `git diff --check -- AGENTS.md .agents/skills/oracle-consult/SKILL.md ops/refactor/STATE.md`
+    passed.
+  - remaining work:
+    Commit and push this Oracle policy-only slice.
+  - next action:
+    Continue the planned `NTF-PUSH-001 / FE-PUSH-001` slice after this policy update is landed.
+
 - codex: NTF-STREAM-001 Notification stream payload normalizer implemented.
   - current task:
     `Plans.md` の `NTF-STREAM-001` を実装。`/api/notifications/stream` の SSE payload を、

@@ -130,10 +130,13 @@ PR/issue URL or state in the prompt. If GitHub or `gh` is unavailable, say so in
 the prompt and final notes. Do not claim GitHub-current context was reviewed
 when it was not.
 
-The prompt must tell GPT-5.5 Pro to consider the GitHub context alongside the
-attached local files. GitHub access is mandatory for Oracle/GPT-5.5 Pro consults
-as repository context, but never use it to send secrets, raw PHI, private logs,
-or production data.
+The prompt must tell GPT-5.5 Pro to access the provided GitHub
+repository/PR/issue URLs when its browser or web access allows it, then consider
+that GitHub context alongside the attached local files. If GPT-5.5 Pro cannot
+access the provided GitHub URLs, the prompt must ask it to say so explicitly.
+GitHub access is mandatory for Oracle/GPT-5.5 Pro consults as repository
+context, but never use it to send secrets, raw PHI, private logs, or production
+data.
 
 This is separate from upstream verification: every consult needs target-repo
 GitHub context, but only Oracle operating-instruction changes require
@@ -175,6 +178,9 @@ Prepare a high-signal prompt. Do not ask vague questions. Include:
 9. Constraints and non-goals
 10. GitHub context: repository URL, branch, commit, dirty/clean state, PR/issue state if relevant
 11. The decision needed from GPT-5.5 Pro
+
+Explicitly ask GPT-5.5 Pro to access the provided GitHub URLs when possible and
+to report whether GitHub access succeeded.
 
 ## Standard Command
 
@@ -225,7 +231,10 @@ Files attached:
 <list>
 
 GitHub context:
-<repository URL, branch, current commit, dirty/clean state, PR/issue URL or state if relevant, and any upstream/current GitHub context GPT-5.5 Pro must consider>
+<repository URL, branch, current commit, dirty/clean state, PR/issue URL or state if relevant, and any upstream/current GitHub context GPT-5.5 Pro must access and consider>
+
+GitHub access instruction:
+Please access the provided GitHub repository/PR/issue URLs when your browser or web access allows it. If you cannot access GitHub, state that explicitly before giving the recommendation.
 
 Options considered:
 A. <option>

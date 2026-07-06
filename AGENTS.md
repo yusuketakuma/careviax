@@ -80,6 +80,9 @@ GitHub context requirement for every Oracle/GPT-5.5 Pro consult:
   when available through `gh` or GitHub web.
 - Include that context in the Oracle prompt. At minimum include repository URL,
   branch, current commit, dirty/clean state, and relevant PR/issue URL or state.
+- The Oracle prompt must explicitly instruct GPT-5.5 Pro to access the provided
+  GitHub repository/PR/issue URLs when its browser or web access allows it, and
+  to state clearly if those GitHub URLs are inaccessible.
 - If GitHub or `gh` is unavailable, state that clearly in the prompt and final
   notes. Do not claim GitHub-current context was reviewed when it was not.
 - Keep this distinct from the Oracle upstream verification requirement above:
@@ -115,7 +118,8 @@ Before consulting Oracle, prepare a high-signal prompt with the goal, current st
 exact blocker or uncertainty, files inspected, files changed, commands run, exact errors
 or logs, options considered, constraints, GitHub repository/branch/commit/PR context,
 and the decision needed from GPT-5.5 Pro. Oracle prompts must explicitly ask GPT-5.5
-Pro to consider the GitHub context rather than only the attached local files.
+Pro to access and consider the provided GitHub URLs/context rather than only the
+attached local files, and to report if GitHub access was unavailable.
 
 Never send secrets, `.env` files, private keys, access tokens, raw patient data, raw
 medical records, production credentials, or unredacted PHI/PII to Oracle. Use the
