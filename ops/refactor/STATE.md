@@ -41,7 +41,54 @@
 
 ## 直近の land（本日・要点）
 
-- codex: RX-002/INB-001 MedicationStock staging risk adapter（commit pending）。
+- codex: RX-002 MedicationStock task registry entries（commit pending）。
+  - current task:
+    Medication Stock Ledger / inbound medication stock signal から作る OperationalTask の
+    module-prefixed task type を `TaskTypeRegistry` に登録し、DB/API 実装前に作成 gate と
+    action presentation を固定する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/lib/tasks/task-registry.ts`,
+    `src/lib/tasks/task-registry.test.ts`,
+    `src/server/services/risk-task-bridge.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/lib/tasks/task-registry.ts`,
+    `src/lib/tasks/task-registry.test.ts`.
+  - implementation:
+    `pharmacy.medication_stock_shortage_expected`,
+    `pharmacy.medication_stock_usage_unknown`,
+    `pharmacy.medication_stock_equivalence_review_required`,
+    `pharmacy.medication_stock_unlinked_prescription_supply`,
+    `pharmacy.medication_stock_external_observation_review_required`
+    を registry に登録。`patient` 関連 task のみ `/patients/:id#medication-stock-events`
+    へ直接遷移し、`inbound_medication_stock_signal` など source/signal id 由来の値は
+    URL に載せず task type queue へフォールバックする。
+    spec review の指摘を受け、5種類すべての task type について module/defaultPriority/
+    allowed related entity/action labels/patient href/non-patient fallback を table-driven test で固定。
+  - validation:
+    `pnpm vitest run src/lib/tasks/task-registry.test.ts --reporter=dot --testTimeout=30000`
+    passed: 1 file / 5 tests.
+    `pnpm vitest run src/lib/tasks/task-registry.test.ts src/lib/tasks/operational-task-presentation.test.ts src/server/services/risk-task-bridge.test.ts --reporter=dot --testTimeout=30000`
+    passed: 3 files / 56 tests.
+    `pnpm exec eslint src/lib/tasks/task-registry.ts src/lib/tasks/task-registry.test.ts`
+    passed.
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/lib/tasks/task-registry.ts src/lib/tasks/task-registry.test.ts`
+    passed.
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/lib/tasks/task-registry.ts src/lib/tasks/task-registry.test.ts`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+    `pnpm boundaries:check` passed: 0 new violations, 7 allowlisted debt imports across 6 files.
+  - remaining:
+    RX-002 remains partial for ledger DB/API/UI、accepted signal persistence、actual task upsert from
+    RiskFinding/MedicationStock events、VisitBrief/Schedule/Report/External Share linkage.
+  - next action:
+    Scoped commit/push, then continue with task generation or formal provider integration.
+
+- codex: RX-002/INB-001 MedicationStock staging risk adapter（commit 26a030b60）。
   - current task:
     DB migration / API 実装前に、INB medication stock signal の staging result を
     PHI-free な `RiskFinding` へ変換する pure adapter を追加する。

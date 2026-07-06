@@ -87,6 +87,19 @@ function buildScheduleRelatedTaskHref(task: TaskLike): string {
   return buildRelatedTaskQueueHref(task.task_type, task);
 }
 
+function buildMedicationStockTaskPresentation(
+  task: TaskLike,
+  labels: Pick<TaskActionPresentation, 'actionLabel' | 'queueLabel'>,
+): TaskActionPresentation {
+  return {
+    actionHref:
+      task.related_entity_type === 'patient' && task.related_entity_id
+        ? buildPatientHref(task.related_entity_id, '#medication-stock-events')
+        : buildTasksHref({ status: '', taskType: task.task_type }),
+    ...labels,
+  };
+}
+
 const ACTIVE_FINDING_ABSENT_WITH_ENTITY = {
   strategy: 'active_finding_absent',
   requires_related_entity: true,
@@ -726,6 +739,71 @@ const TASK_TYPE_DEFINITION_SEEDS = [
       actionLabel: '残薬を確認',
       queueLabel: '残薬調整',
     }),
+  }),
+  pharmacyTask('pharmacy.medication_stock_shortage_expected', {
+    label: '残数不足見込み',
+    description: '外用薬・頓服薬の不足見込みを確認する。',
+    defaultPriority: 'urgent',
+    allowedRelatedEntityTypes: [
+      'patient',
+      'medication_stock_item',
+      'medication_stock_event',
+      'inbound_medication_stock_signal',
+    ],
+    actionBuilder: (task) =>
+      buildMedicationStockTaskPresentation(task, {
+        actionLabel: '残数不足を確認',
+        queueLabel: '残数不足見込み',
+      }),
+  }),
+  pharmacyTask('pharmacy.medication_stock_usage_unknown', {
+    label: '使用頻度未確認',
+    description: '外用薬・頓服薬の使用頻度不明を確認する。',
+    defaultPriority: 'high',
+    allowedRelatedEntityTypes: ['patient', 'medication_stock_item'],
+    actionBuilder: (task) =>
+      buildMedicationStockTaskPresentation(task, {
+        actionLabel: '使用頻度を確認',
+        queueLabel: '使用頻度未確認',
+      }),
+  }),
+  pharmacyTask('pharmacy.medication_stock_equivalence_review_required', {
+    label: '薬剤名寄せ確認',
+    description: '外用薬・頓服薬の薬剤マスタ照合または名寄せ確認を行う。',
+    defaultPriority: 'high',
+    allowedRelatedEntityTypes: [
+      'patient',
+      'medication_stock_item',
+      'canonical_medication_group',
+      'inbound_medication_stock_signal',
+    ],
+    actionBuilder: (task) =>
+      buildMedicationStockTaskPresentation(task, {
+        actionLabel: '薬剤名寄せを確認',
+        queueLabel: '薬剤名寄せ確認',
+      }),
+  }),
+  pharmacyTask('pharmacy.medication_stock_unlinked_prescription_supply', {
+    label: '処方供給未紐づけ',
+    description: '処方供給量を外用薬・頓服薬残数台帳へ紐づける。',
+    defaultPriority: 'high',
+    allowedRelatedEntityTypes: ['patient', 'prescription_line', 'prescription_intake'],
+    actionBuilder: (task) =>
+      buildMedicationStockTaskPresentation(task, {
+        actionLabel: '処方供給を確認',
+        queueLabel: '処方供給未紐づけ',
+      }),
+  }),
+  pharmacyTask('pharmacy.medication_stock_external_observation_review_required', {
+    label: '他職種残数報告',
+    description: '他職種・患者家族・協力薬局由来の外用薬・頓服薬残数報告を薬剤師が確認する。',
+    defaultPriority: 'high',
+    allowedRelatedEntityTypes: ['patient', 'inbound_medication_stock_signal'],
+    actionBuilder: (task) =>
+      buildMedicationStockTaskPresentation(task, {
+        actionLabel: '残数報告を確認',
+        queueLabel: '他職種残数報告',
+      }),
   }),
   coreTask('core.visit_carry_item_review', {
     legacyTaskTypes: ['visit_carry_item_review'],
