@@ -41,6 +41,31 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOV-001 marker-only acceptance lock（pending commit）。
+  - current task:
+    ユーザー確認に合わせ、Patient Movement Timeline の処方・訪問・文書登録表示を
+    「発生 marker を時系列で確認し、詳細は正本 deep link で開く」受入条件としてさらに固定する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-detail-timeline-registry.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `Plans.md` の MOV-001 に `acceptance lock 2026-07-07` を追加。
+    処方・訪問・文書登録は timeline 上では「処方があった」「訪問があった」「文書登録があった」
+    marker のみを表示し、処方内容・訪問内容・文書本文は再掲しない。各 marker は正本画面への
+    直接 deep link を必須にする。
+  - validation:
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md` passed.
+    `git diff --check -- Plans.md ops/refactor/STATE.md` passed.
+  - remaining:
+    scoped commit、push。
+  - next action:
+    Commit and push this plan-only scope to `origin/main`.
+
 - codex: INB-001 inbound communication Case Risk provider bridge（commit c0428271b）。
   - current task:
     `CommunicationEvent` の既存 inbound phone/FAX/email を、Case Risk Cockpit の正式 provider 経由で
