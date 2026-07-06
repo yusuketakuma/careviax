@@ -41,7 +41,33 @@
 
 ## 直近の land（本日・要点）
 
-- codex: FE-SHELL-001 AppShell heavy globals dynamic import partial（commit pending）。
+- codex: MOV-001 Patient Movement Timeline final implementation scope lock（commit pending）。
+  - current task:
+    ユーザー確認に合わせ、処方・訪問・文書登録 event は timeline 上では発生 marker と正本
+    deep link のみを表示する計画へ固定する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `MOV-001` に `final implementation lock 2026-07-07` を追記。処方・訪問・文書登録 event の
+    完了条件を「いつ・どの種別の出来事が発生したか」と「どの正本画面で詳細確認するか」が
+    分かることに限定した。処方内容、訪問内容、文書内容は timeline payload / card / search
+    haystack に追加しない。deep link がない source は内容を代替表示せず、正本 href 追加を
+    不足タスクとして扱う。
+  - validation:
+    documentation-only slice.
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md` passed.
+    `git diff --check -- Plans.md ops/refactor/STATE.md` passed.
+  - remaining:
+    commit、push。
+  - next action:
+    Validate and land the Plans scope lock.
+
+- codex: FE-SHELL-001 AppShell heavy globals dynamic import partial（commit 89ac9737e, pushed）。
   - current task:
     AppShell の常時 static import / mount される heavy global UI を top-level `next/dynamic` へ移し、
     open/viewport/PWA 条件に応じて lazy mount する。
@@ -87,10 +113,10 @@
     `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`
     passed.
   - remaining:
-    commit、push。Bundle analyzer / route metrics での初期 JS 実測と
-    SessionTimeoutModal の event-gated mount 可否検証は残。
+    Bundle analyzer / route metrics での初期 JS 実測と SessionTimeoutModal の event-gated mount
+    可否検証は残。
   - next action:
-    Finish validation and land the partial AppShell lazy import slice.
+    Continue with the next Plans slice after MOV-001 scope lock is landed.
 
 - codex: FE-REPORT-001 Reports realtime query migration evidence sync（commit 6ad38ed82, pushed）。
   - current task:
