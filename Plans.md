@@ -1133,6 +1133,8 @@ notification:
 > `scope clarification 2026-07-07`: 処方・訪問・文書登録は、timeline 上で「その出来事があったこと」と「正本へ移動するリンク」が分かればよい。カード内で処方内容、訪問内容、文書内容を再表示しない。処方は処方詳細、訪問は訪問記録/訪問準備、文書は文書詳細/共有・文書タブへ直接 deep link する。
 > `final scope lock 2026-07-07`: ユーザー確認により、処方・訪問・文書登録は「発生した事実を時系列で確認できること」と「詳細を正本画面で開けること」を完了条件に固定する。Patient Movement Timeline は Google Maps のタイムラインに近い map-less vertical rail の索引 UI とし、処方内容・訪問内容・文書本文の閲覧画面にはしない。実装では `PatientMovementTimelineEvent.href` を primary CTA にし、処方/訪問/文書 event は必ず相対 deep link を持つ。相対 deep link が作れない場合は詳細本文を出さず、患者の動きタブへの fallback と不足実装タスクとして扱う。
 > `latest scope lock 2026-07-07`: 「処方内容・訪問内容・文書登録をタイムラインに表示する」の意味を、**処方・訪問・文書登録があったことを確認できる marker を表示する**に固定する。処方内容、訪問内容、文書本文は timeline card に表示しない。詳細確認は必ず処方詳細、訪問記録/訪問準備、共有・文書/文書詳細/報告詳細/FileAsset detail への deep link で行う。
+> `code-scan scope lock 2026-07-07`: 現行コードでは `src/server/services/patient-movement-timeline-presenter.ts` が `prescription` / `visit` / `document` category を `GENERIC_DETAIL_SUMMARIES` に丸め、`event.href` を相対 deep link として正規化している。`patient-detail-timeline-registry.ts` も `visitRecord`、`prescriptionIntake`、`dispenseResult`、`inquiryRecord`、`firstVisitDocument` は明細・本文を select せず、発生時刻、controlled status、正本 href だけを返す方向に寄っている。したがって MOV-001 の追加実装は「処方内容・訪問内容・文書本文を timeline に載せる」方向へ戻さず、既存 presenter の marker-only 方針を強化する。
+> `latest user lock 2026-07-07`: 処方・訪問・文書登録について、timeline で確認できればよいのは **処方があったこと、訪問があったこと、文書登録があったこと** だけ。詳細確認は deep link 先の正本画面で行う。実装・テスト・レビューでは、この3種を「内容表示」ではなく「発生 marker + 正本 deep link」の完成条件として扱う。
 > `cc:PARTIAL 2026-07-07`: 正式な `InboundCommunicationEvent` / `InboundCommunicationSignal` DB migration 前の接続として、既存 `PatientMcsMessage` と `PartnerVisitRecord` を timeline source に追加した。MCSは `inbound_mcs`、協力薬局の提出/確認済み訪問記録は `interprofessional_note` として表示する。どちらも発生確認と deep link だけを出し、MCS `body` / `raw_payload` / `source_url`、協力薬局 `record_content` / `attachments` は select しない。
 > `cc:PARTIAL 2026-07-07`: 既存 `Task` のうち患者/ケースへ直接紐づく運用タスクを `task_created` / `task_resolved` として timeline source に追加した。タスク title/description/metadata は自由記載やPHIを含み得るため select せず、登録済み task type label、status、priority、期限/SLA と `/tasks` の related entity 絞り込み deep link だけを表示する。
 > `cc:PARTIAL 2026-07-07`: 既存 `CommunicationEvent` の受信 `phone` / `fax` / `email` を、正式 inbound DB 追加前の bridge として `inbound_phone` / `inbound_fax` / `inbound_email` に正規化した。タイムラインは「電話/FAX/メール連絡を受信」の発生確認と `/conferences?patient_id=...` deep link のみに留め、`subject`、`counterpart_name`、`counterpart_contact`、`content`、`attachments` は select しない。
@@ -1424,6 +1426,58 @@ timelineに持ち込まないこと:
 - `PatientMovementTimelineEvent.summary` は controlled sentence に固定し、DB自由記載を転記しない。
 - `href` は相対パスのみ。外部URL、S3 URL、signed URL、storage URL は破棄し、正本画面または患者の動き fallback へ丸める。
 - Unit test は「処方/訪問/文書の raw detail が movement event JSON に含まれないこと」と「href が正本画面へ相対 deep link されること」を固定する。
+
+**処方・訪問・文書 marker の実装チェックリスト（2026-07-07 追加）**:
+
+```text
+Prescription marker:
+  OK:
+    event_type: prescription_event / prescription_intake / inquiry / dispense_result
+    category: prescription
+    title: 処方受付を登録 / 処方変更あり / 疑義照会あり / 調剤を記録
+    summary: controlled sentence only
+    href: /prescriptions/:id or existing prescription workflow route
+  NG:
+    medication line names
+    dosage / days / quantity
+    prescription OCR text
+    prescription file id / storage key
+
+Visit marker:
+  OK:
+    event_type: visit_event / visit_schedule / visit_record
+    category: visit
+    title: 訪問予定を登録 / 訪問記録を登録 / 訪問完了
+    summary: controlled sentence only
+    href: /visits/:recordId, /visits/:scheduleId/record, or schedule focus route
+  NG:
+    SOAP text
+    observation note
+    residual medication detail
+    voice / attachment name
+    geolocation
+
+Document marker:
+  OK:
+    event_type: document_registered / care_report / delivery_record / management_plan / first_visit_document
+    category: document
+    title: 文書登録あり / 報告書を作成 / 文書状態を更新 / 報告書を送付
+    summary: controlled sentence only
+    href: /reports/:id, patient documents hash, or permissioned document detail
+  NG:
+    document body
+    PDF text
+    OCR text
+    attachment filename
+    external URL / signed URL / storage key
+```
+
+実装者向け注意:
+
+- `patient-movement-timeline-presenter.ts` の `GENERIC_DETAIL_SUMMARIES` は削らない。処方・訪問・文書 category はこの controlled summary を通す。
+- `patient-detail-timeline-registry.ts` の source adapter に詳細本文を select して timeline 表示を改善する方向は禁止。表示改善はラベル、status badge、relative href、日付 grouping、rail UI に限定する。
+- deep link が未整備の source は本文を出して埋め合わせない。まず正本画面の相対 href builder を追加する。
+- tests は `PatientMovementTimelineEvent` JSON に raw detail が混入しないことを snapshot / negative assertion で固定する。
 
 発生確認カードの表示制約:
 

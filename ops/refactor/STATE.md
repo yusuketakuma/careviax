@@ -41,6 +41,33 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOV-001 Patient Movement Timeline marker/deep-link scope plan（commit 39398066e）。
+  - current task:
+    ユーザー指示に合わせ、Patient Movement Timeline の処方・訪問・文書登録表示を
+    「発生 marker + 正本画面 deep link」に固定する計画追記。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-movement-timeline-presenter.ts`,
+    `src/types/patient-movement-timeline.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `Plans.md` の MOV-001 に code-scan scope lock と latest user lock を追加し、
+    現行 presenter の `GENERIC_DETAIL_SUMMARIES` と registry の source adapter 方針に沿って、
+    処方・訪問・文書は内容表示ではなく marker-only 表示に固定した。処方/訪問/文書 marker の
+    OK/NG payload、相対 deep link、禁止 select、negative assertion 方針も追加した。
+  - validation:
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md` passed.
+    `git diff --check -- Plans.md ops/refactor/STATE.md` passed.
+  - remaining:
+    なし。
+  - next action:
+    Landed and push pending.
+
 - codex: INB-001 inbound communication report action rail evidence（commit 97ba345bf）。
   - current task:
     他職種受信情報を報告書へ自動挿入せず、Report workspace の右レール evidence に
