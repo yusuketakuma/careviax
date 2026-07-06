@@ -2,13 +2,15 @@ import { format, formatDistanceToNowStrict, isSameDay, parseISO } from 'date-fns
 import { ja } from 'date-fns/locale';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import {
-  PROCESS_STEPS_9,
   type CycleWorkspaceAction,
   type ProcessStepKey,
   getCycleWorkspaceAction,
-  getProcessStepIndex,
   getProcessStepKeyForStatus,
 } from '@/lib/prescription/cycle-workspace';
+import {
+  buildPatientWorkflowProcessLabel,
+  getPatientWorkflowStepLabel,
+} from '@/lib/patient/patient-workflow-state';
 import type { VisitBriefUnresolvedItem } from '@/types/visit-brief';
 import type { CaseRiskCockpitResponse, CaseRiskNextAction } from '@/types/case-risk-cockpit';
 import {
@@ -154,8 +156,7 @@ export function buildPatientCommandCenterModel({
   caseRiskCockpit,
 }: BuildPatientCommandCenterModelInput): PatientCommandCenterModel {
   const currentStep = getProcessStepKeyForStatus(workspace.overall_status);
-  const currentStepLabel =
-    currentStep != null ? (PROCESS_STEPS_9[getProcessStepIndex(currentStep)]?.label ?? null) : null;
+  const currentStepLabel = getPatientWorkflowStepLabel(currentStep);
   const cycleAction = getCycleWorkspaceAction(workspace.overall_status, {
     patientId: workspace.action_context.patient_id ?? patientId,
     prescriptionIntakeId:
@@ -164,11 +165,7 @@ export function buildPatientCommandCenterModel({
     visitRecordId: workspace.action_context.visit_record_id,
     reportId: workspace.action_context.report_id,
   });
-  const processLabel = currentStepLabel
-    ? `工程: ${currentStepLabel}(いまここ)`
-    : cycleAction
-      ? `工程: ${cycleAction.statusLabel}`
-      : null;
+  const processLabel = buildPatientWorkflowProcessLabel({ currentStep, cycleAction });
 
   const deadlineTask = workspace.today_tasks.find((task) => task.due_time != null) ?? null;
   const nextAction = cycleAction

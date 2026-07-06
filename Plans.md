@@ -970,8 +970,13 @@ FE 仕上げ（低優先）:
   `WorkflowException.description` をそのまま blocker label として出さず、PatientBoard と同じ
   controlled text / category / action href を使う。`family_consent_pending` / `awaiting_reply` は
   patient-scoped communication request へ遷移し、未知 exception は PHI を含まない fallback 文言にする。
-  残: PatientBoard の attention/status_tone/status_text/current_step 判定を `src/lib/patient/*` の
-  pure selector へさらに抽出し、Command Center 側の process 補助状態へ段階接続すること、
+  追加 partial として、PatientBoard の `attention` / `status_tone` / `status_text` / `current_step`
+  判定を `src/lib/patient/patient-workflow-state.ts` の pure selector へ抽出し、Board は DB row から
+  最小 input を組み立てるだけにした。Command Center は同じ helper の
+  `getPatientWorkflowStepLabel` / `buildPatientWorkflowProcessLabel` を使い、工程ラベルと
+  process label の語彙を共有する。患者詳細側で重い board data fetch は追加せず、action routing /
+  blockers / evidence は既存 contract を維持する。
+  残: selector を Command Center の補助状態（reply wait / visit today 等）へさらに広げるかの検討、
   payload budget / browser smoke。
 
 - `UX-CMD-001 / RISK-CORE-2` partial（2026-07-06）: 患者詳細 Command tab に Case Risk Cockpit の

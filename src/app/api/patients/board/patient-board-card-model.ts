@@ -1,8 +1,5 @@
 import { formatUtcDateKey } from '@/lib/date-key';
-import {
-  getProcessStepKeyForStatus,
-  type ProcessStepKey,
-} from '@/lib/prescription/cycle-workspace';
+import { getProcessStepKeyForStatus } from '@/lib/prescription/cycle-workspace';
 import {
   buildCareTeamReliabilitySummary,
   buildPatientContactReadiness,
@@ -11,18 +8,15 @@ import {
 import { careLevelLabels } from '@/lib/patient/home-visit-intake';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { sortPatientSafetyTags } from '@/lib/patient/safety-tags';
-import { buildReportHref } from '@/lib/reports/navigation';
-import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
+import { derivePatientWorkflowState } from '@/lib/patient/patient-workflow-state';
 import { isVisitCarryItemsStatusBlockingReady } from '@/server/services/visit-preparation-readiness';
 import { buildPatientFoundationSummary } from '@/server/services/patient-detail-foundation';
 import { japanDateKey } from '@/lib/utils/date-boundary';
 import { timeDateToString } from '@/lib/visits/time-of-day';
-import { getWorkflowExceptionStatusText } from '@/lib/workflow/blocked-reason-projection';
 import type {
   PatientAttentionKey,
   PatientBoardCard,
   PatientFoundationIssueKey,
-  PatientStatusTone,
 } from '@/types/patient-board';
 
 /** 「対応が必要な順」のソート優先度。 */
@@ -46,39 +40,6 @@ const FOUNDATION_STATUS_PRIORITY: Record<
   needs_confirmation: 1,
   ready: 2,
 };
-
-/** 現在工程 → 工程ショートカット(「→ 監査へ」等)。 */
-const STEP_LINKS: Record<ProcessStepKey, { label: string; href: string }> = {
-  intake: { label: '取込へ', href: '/prescriptions' },
-  entry: { label: '入力へ', href: '/prescriptions' },
-  decision: { label: 'カードへ', href: '' },
-  dispense: { label: '調剤へ', href: '/dispense' },
-  audit: { label: '監査へ', href: '/audit' },
-  set: { label: 'セットへ', href: '/set' },
-  visit: { label: '訪問へ', href: '/visits' },
-  report: { label: '報告・共有へ', href: '/reports' },
-  billing: { label: '算定チェックへ', href: '/billing' },
-};
-
-/** 順調(steady)時の状態自然文。 */
-const STEADY_STATUS_TEXT: Record<ProcessStepKey, string> = {
-  intake: '処方の取込待ち',
-  entry: '処方の入力中',
-  decision: '処方内容の判断中',
-  dispense: '調剤中(通常レーン)',
-  audit: '調剤監査の順番待ち',
-  set: 'セット作成中(通常レーン)',
-  visit: '訪問準備が整っています',
-  report: '報告書 作成待ち',
-  billing: '報告済み — 算定チェック待ち',
-};
-
-const TOKYO_TIME_FORMATTER = new Intl.DateTimeFormat('en-GB', {
-  timeZone: 'Asia/Tokyo',
-  hour: '2-digit',
-  minute: '2-digit',
-  hour12: false,
-});
 
 export type PatientBoardQueryRow = {
   id: string;
@@ -180,10 +141,6 @@ export type PatientBoardFoundationIssueFilter =
 
 type NextVisitSchedule = PatientBoardQueryRow['cases'][number]['visit_schedules'][number] | null;
 
-function daysBetween(from: Date, to: Date): number {
-  return Math.max(0, Math.floor((to.getTime() - from.getTime()) / (24 * 60 * 60_000)));
-}
-
 function parseDateKeyParts(dateKey: string): { year: number; month: number; day: number } {
   const [year, month, day] = dateKey.split('-').map(Number);
   if (!year || !month || !day) throw new RangeError(`Invalid date key: ${dateKey}`);
@@ -198,14 +155,6 @@ function calculateAge(birthDate: Date, now: Date): number {
     age -= 1;
   }
   return Math.max(0, age);
-}
-
-function formatTokyoTimeOfDay(value: Date): string {
-  const parts = TOKYO_TIME_FORMATTER.formatToParts(value);
-  const hour = parts.find((part) => part.type === 'hour')?.value;
-  const minute = parts.find((part) => part.type === 'minute')?.value;
-  if (!hour || !minute) return '—';
-  return `${hour}:${minute}`;
 }
 
 /** allergy_info(Json)が「アレルギーあり」を表すか。空配列/空文字/None 表記は除外。 */
@@ -314,93 +263,30 @@ export function derivePatientBoardCard(
 
   const currentStep = cycle ? getProcessStepKeyForStatus(cycle.overall_status) : null;
 
-  let attention: PatientAttentionKey;
-  let statusText: string;
-  let tone: PatientStatusTone;
-  let link = currentStep ? STEP_LINKS[currentStep] : null;
-  let nextVisitLabel: string | null = null;
-
-  if (hospitalized) {
-    attention = 'paused';
-    statusText = '入院中 — 退院時共同指導の対象';
-    tone = 'neutral';
-    link = STEP_LINKS.billing;
-    nextVisitLabel = '退院連絡待ち';
-  } else if (careCase && ['referral_received', 'assessment'].includes(careCase.status)) {
-    attention = 'acceptance';
-    statusText = '受入の返答待ち — 訪問枠を調整中';
-    tone = 'caution';
-    link = {
-      label: 'スケジュールへ',
-      href: nextSchedule ? buildScheduleFocusHref(nextSchedule.id) : '/schedules',
-    };
-    if (!nextSchedule) nextVisitLabel = '未定(調整中)';
-  } else if (!careCase || careCase.status === 'on_hold' || cycle?.overall_status === 'on_hold') {
-    attention = 'paused';
-    statusText = '休止中 — 再開の判断待ち';
-    tone = 'neutral';
-    link = null;
-  } else if (auditWaiting && (hasNarcotic || auditTask?.due_date != null)) {
-    attention = 'urgent_now';
-    const dueLabel = auditTask?.due_date ? ` 期限${formatTokyoTimeOfDay(auditTask.due_date)}` : '';
-    statusText = hasNarcotic
-      ? `麻薬監査${dueLabel} — 持参薬が未確定`
-      : `調剤監査${dueLabel} — 完了で次工程が動きます`;
-    tone = 'critical';
-    link = STEP_LINKS.audit;
-  } else if (cycle?.overall_status === 'inquiry_resolved') {
-    attention = 'wait_release';
-    const resolvedAt = latestInquiry?.resolved_at;
-    statusText = resolvedAt
-      ? `照会回答が届きました(${formatTokyoTimeOfDay(resolvedAt)}) — 調剤を再開できます`
-      : '照会回答が届きました — 調剤を再開できます';
-    tone = 'positive';
-    link = STEP_LINKS.dispense;
-  } else if (visitToday) {
-    attention = 'visit_today';
-    statusText = visitPreparationReady
-      ? '準備完了 — パケット・ルート・セット✓'
-      : '本日訪問 — 出発前チェックを確認';
-    tone = 'info';
-    link = {
-      ...STEP_LINKS.visit,
-      href: nextSchedule ? buildScheduleFocusHref(nextSchedule.id) : STEP_LINKS.visit.href,
-    };
-  } else if (cycle?.overall_status === 'inquiry_pending') {
-    attention = 'external_wait';
-    const waitingDays = latestInquiry ? daysBetween(latestInquiry.inquired_at, now) : 0;
-    statusText =
-      waitingDays > 0
-        ? `医師回答待ち ${waitingDays}日 — 再照会を検討`
-        : '医師回答待ち — 本日照会済み';
-    tone = 'external';
-    link = null;
-  } else if (cycle && ['awaiting_reply', 'report_failed'].includes(cycle.exception_status ?? '')) {
-    attention = 'reply_wait';
-    const waitingDays = daysBetween(cycle.updated_at, now);
-    statusText =
-      waitingDays > 0
-        ? `報告先の返信待ち ${waitingDays}日 — 再送できます`
-        : '報告先の返信待ち — 再送できます';
-    tone = 'external';
-    link = pendingReport
-      ? { ...STEP_LINKS.report, href: buildReportHref(pendingReport.id) }
-      : STEP_LINKS.report;
-  } else if (openException) {
-    attention = 'checking';
-    statusText = getWorkflowExceptionStatusText(openException.exception_type);
-    tone = 'caution';
-  } else {
-    attention = 'steady';
-    statusText = currentStep ? STEADY_STATUS_TEXT[currentStep] : '進行中の処方サイクルはありません';
-    tone = 'neutral';
-  }
+  const workflowState = derivePatientWorkflowState({
+    patientId: patient.id,
+    hasCareCase: careCase != null,
+    careCaseStatus: careCase?.status ?? null,
+    currentStep,
+    cycleOverallStatus: cycle?.overall_status ?? null,
+    cycleExceptionStatus: cycle?.exception_status ?? null,
+    cycleUpdatedAt: cycle?.updated_at ?? null,
+    hospitalized,
+    auditWaiting,
+    hasNarcotic,
+    auditDueDate: auditTask?.due_date ?? null,
+    inquiryResolvedAt: latestInquiry?.resolved_at ?? null,
+    inquiryInquiredAt: latestInquiry?.inquired_at ?? null,
+    visitToday,
+    visitPreparationReady,
+    nextScheduleId: nextSchedule?.id ?? null,
+    pendingReportId: pendingReport?.id ?? null,
+    openExceptionType: openException?.exception_type ?? null,
+    now,
+  });
 
   const patientHref = buildPatientHref(patient.id);
-  if (nextSchedule && link?.href === STEP_LINKS.visit.href) {
-    link = { ...link, href: buildScheduleFocusHref(nextSchedule.id) };
-  }
-  const resolvedLink = link ?? { label: 'カードへ', href: patientHref };
+  const resolvedLink = workflowState.link ?? { label: 'カードへ', href: patientHref };
   const linkHref = resolvedLink.href.length > 0 ? resolvedLink.href : patientHref;
 
   const batchPatientIds = nextSchedule?.facility_batch?.patient_ids;
@@ -456,16 +342,16 @@ export function derivePatientBoardCard(
     age: calculateAge(patient.birth_date, now),
     residence_kind: residenceKind,
     residence_label: residenceLabel,
-    attention,
+    attention: workflowState.attention,
     safety_tags: safetyTags,
     next_visit_date: nextSchedule ? formatUtcDateKey(nextSchedule.scheduled_date) : null,
     next_visit_time: nextSchedule?.time_window_start
       ? (timeDateToString(nextSchedule.time_window_start) ?? null)
       : null,
-    next_visit_label: nextSchedule ? null : nextVisitLabel,
-    current_step: attention === 'paused' || attention === 'acceptance' ? null : currentStep,
-    status_text: statusText,
-    status_tone: tone,
+    next_visit_label: nextSchedule ? null : workflowState.nextVisitLabel,
+    current_step: workflowState.currentStep,
+    status_text: workflowState.statusText,
+    status_tone: workflowState.statusTone,
     operation_summary: operationSummary,
     foundation_summary: foundationSummary,
     foundation_issue_keys: foundationIssueKeys,
