@@ -41,6 +41,41 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Plans backend modular monolith spec detail sync.
+  - current task:
+    ユーザー提示の「PH-OS バックエンド・モジュール化 + 技術的負債解消 実装仕様書」を、既存
+    `Plans.md` の `バックエンド Modular Monolith / Module Registry / Provider Contract` 節へ
+    追記した。既に `MOD-ARCH-001` / `MOD-COLLAB-001` / `MOD-RISK-001` / `MOD-TASK-001` は
+    実装済みとしてPlansに反映されているため、今回は重複する新節を作らず、未反映だった
+    provider contract baseline、Strangler実装ルール、DB/API crosswalk、各MOD PR必須チェック、
+    PR説明テンプレート、追加CI gate候補を同節へ統合した。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `git log --oneline -5`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - bugs / risks reduced:
+    module registry を新しい業務SSOTとして誤用しないこと、既存 `RiskFinding` / `TaskTypeRegistry` /
+    `DomainEventOutbox` / DTO / RLS/API contract と整合させることを明文化した。各MOD PRで
+    `DEBT-*` を1つ以上削減し、allowlist expected debtを増やさず、provider未登録・unknown type・
+    adapter exception・権限外entity・PHI maskingを acceptance に含める運用へ寄せた。
+    DB migration は今回実行せず、`CareCase.service_line`、discipline、`Task.module`、
+    `CrossTenantAccessGrant`、`SupportSession`、coverage、`DomainEventOutbox` は既存
+    `TENANT-*` / `DB-EVENT-001` / `DATA-RET-001A` へ接続するmigration planとして整理した。
+  - validation:
+    `git diff --check -- Plans.md` passed.
+    `pnpm prettier --write Plans.md` applied formatting.
+    `git diff --check -- Plans.md && pnpm prettier --check Plans.md` passed.
+  - remaining work:
+    計画追記のみ。次の実装sliceは `MOD-PATIENT-001`（Patient Workspace panel adapters）または
+    `MOD-VISIT-001`（Visit Brief contributor split）で、既存薬局UI/API互換を focused tests で
+    固定しながら direct import debt を削る。
+  - next action:
+    scoped docs commit/push 後、live state を確認して `MOD-PATIENT-001` の影響範囲を読む。
+
 - codex: MOD-TASK-001 Task registry module-prefix ratchet.
   - current task:
     `Plans.md` の `MOD-TASK-001` に沿って、既存 `src/lib/tasks/task-registry.ts` を

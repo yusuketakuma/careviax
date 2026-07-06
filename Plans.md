@@ -1058,6 +1058,29 @@ forbidden:
 | DEBT-REPORT-001   | `report-templates` が薬局ラベル/薬剤文脈へ癒着                       | report core は delivery/masking/approval/attachment policy、pharmacy は薬剤管理報告 renderer を担当する。 |
 | DEBT-BILLING-001  | `visit-schedule-billing-preview` が薬局処方分類に依存                | schedule/billing は provider参照にし、薬局処方分類は pharmacy billing adapter に閉じる。                  |
 
+**module port contract baseline**:
+
+| contract                                      | owner / SSOT                         | 用途                                                                                                         | fail policy / 注意点                                                                                                                   |
+| --------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `CollaborationEntityAccessProvider`           | `src/core/collaboration/registry.ts` | comment / presence / room access の entity 判定を core と pharmacy へ分離する。                              | unknown entity / provider exception は fail-closed。room name と既存 entity type 文字列は互換維持。                                    |
+| `RiskFindingProvider`                         | `src/core/risk/provider-registry.ts` | Case Risk Cockpit の finding collection を core provider と pharmacy provider に分ける。                     | `RiskFinding` contract、dedupe、task bridge、severity semantics は既存 `CORE-*` をSSOTにし、registry側で再定義しない。                 |
+| `TaskTypeDefinition`                          | `src/lib/tasks/task-registry.ts`     | task type の module owner、legacy alias、related entity、default priority、action href を一元化する。        | 新規 task type は module prefix 必須。legacy prefixなし値は読み取り/作成互換を段階維持し、DB backfill は別sliceで扱う。                |
+| `PatientWorkspacePanelProvider`               | `MOD-PATIENT-001` で追加予定         | 患者詳細の common workspace と pharmacy prescription / dispensing / set / medication panel を分離する。      | 既存患者詳細の情報量とtab/Command Center UXを壊さない。非active tab の重い mutation hook 初期化削減は `FE-PAT-001` と整合させる。      |
+| `VisitBriefContributor`                       | `MOD-VISIT-001` で追加予定           | 訪問ブリーフを common brief と pharmacy medication / deadline / residual / dispensing contributor に分ける。 | batch性能を落とさない。contributor failure は該当sectionのfail-softか、患者安全上必要な blocking risk として明示する。                 |
+| `ReportTemplateProvider`                      | `MOD-REPORT-001` で追加予定          | report core から薬剤管理報告書、トレーシングレポート、服薬情報提供書など pharmacy renderer を分離する。      | masking profile、delivery gate、attachment policy、audit は `REP-*` / `FILE-*` / `SEC-*` と重複定義しない。                            |
+| `ShareScopeDefinition`                        | `MOD-SHARE-001` で追加予定           | external share scope を core/pharmacy/future module ごとに定義し、permission と outputRisk を持たせる。      | unknown scope は拒否。public response に stored-only boundary、storage key、original filename、raw metadata を出さない。               |
+| `ScheduleContributor` / `BillingRuleProvider` | `MOD-BILLING-001` で設計予定         | schedule / billing preview が pharmacy prescription classification を直接 import しないための seam。         | adapter未登録時は自動確定せず manual review risk/task へ倒す。請求・算定の既存 validation layers は `BIL-*` をSSOTにする。             |
+| `DomainEventOutbox` module metadata           | `DB-EVENT-001`                       | module event type、aggregate refs、minimal payload、pii_class、retry/dead-letter を将来 module と紐づける。  | mutation内は outbox insert まで。realtime / notification / webhook / task sync は worker 側へ寄せ、payload にPHI/free textを入れない。 |
+
+**Strangler implementation rule**:
+
+1. 新しい registry / provider contract を pure module として追加する。
+2. 既存 pharmacy 実装を adapter として登録する。
+3. 呼び出し元を registry 経由へ切り替える。
+4. 既存 direct import を削る。
+5. `tools/module-boundary-allowlist.json` の expected debt を減らす、または少なくとも増やさない。
+6. 既存 API / UI 出力の互換性を focused test で固定する。
+
 | ID              | 優先度 | 既存レーン / 関連負債                                                     | タスク                                  | 実装単位                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | 受入条件 / validation                                                                                                                                                                                                                                                                                                                                                               |
 | --------------- | ------ | ------------------------------------------------------------------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | MOD-ARCH-001    | P0     | `CORE-ROUTE-001`, `API-DTO-001`, `DB-TENANT-001`                          | Backend module taxonomy / boundary ADR  | `cc:DONE 2026-07-06` `src/core/module-registry/index.ts`、`src/modules/pharmacy/index.ts`、`src/modules/active-modules.ts` を追加し、`PhosModuleId` / metadata-only `PhosModuleMetadata` / `activeModules=[pharmacyModule]` を定義。`docs/architecture/module-boundary.md` / `module-registry.md` に依存方向、禁止import、strangler手順、PR debt rule を記録した。                                                                                                                                   | 挙動変更なし。registry は `ownedModels`、`routePrefixes`、`publicServices`、既存 `riskDomainsRef`、`taskRegistryRef`、`emittedEventsRef`、`tenantScope`、`phiBoundary` への参照だけを持つ。core は feature module を import しない。unit/type/lint/boundary check green。                                                                                                           |
@@ -1073,6 +1096,73 @@ forbidden:
 | MOD-IO-001      | P1     | `VS-AUTO-9`, `INT-WEBHOOK-001`, `NTF-001`, `SEC-001`                      | External IO adapter contract            | routing/S3/SES/Cognito/MCS/webhook/notification など外部I/O adapter の共通 contract を定義する。timeout、retry/idempotency、tenant context、PHI-free diagnostics、raw provider error redaction、correlation id、no-store/audit linkage を adapter class ごとに固定する。                                                                                                                                                                                                                             | 外部 provider failure が patient name/address/drug/free text/raw provider error/token/storage key を log/response/audit に出さない。AWS関連 adapter 実装時はAWS公式reference確認ルールに従う。                                                                                                                                                                                      |
 | MOD-DATA-001    | P1     | `TENANT-001`, `TENANT-002`, `TENANT-003`, `DB-EVENT-001`, `DATA-RET-001A` | Module data/API crosswalk               | module -> Prisma model / DTO presenter / route prefix / outbox event / audit action / RLS policy / retention policy の対応表を作る。`CareCase.service_line`、visit/report `discipline`、`Task.module`、coverage/support session/outbox は migration plan として既存DB/APIレーンへ接続する。                                                                                                                                                                                                          | Prisma model public response直出し、org_id/RLS未確認、outbox payload PHI混入、module不明 task/report/share scope を module review で検出できる。計画追加だけではDB変更を適用しない。                                                                                                                                                                                                |
 | MOD-CI-001      | P1     | `API-DTO-001`, `DB-TENANT-001`, `DEV-PHI-001`, `PLAN-REV-001`             | Module/debt ratchet CI gates            | `module-boundary:check`、`api-response-shape:check`、`dto-direct-prisma-return:check`、`task-type-registry:check`、`risk-adapter-cross-reference:test`、`collaboration-adapter-contract:test` を追加する。既存 `boundaries:check` と `rls-policy-contract` の役割を整理する。                                                                                                                                                                                                                        | 各MOD PRは「module境界化 + DEBT削減 + DTO/presenter明確化 + 境界テスト + 回帰テスト」を含む。薬局E2E/主要API回帰を維持。allowlist expectedCount が原則増えない。                                                                                                                                                                                                                    |
+
+**DB / API crosswalk（migrationは個別承認sliceに分離）**:
+
+| candidate field / table                           | 接続先タスク                                        | 初期値 / 現在の扱い                                                                                         | 受入条件                                                                                                                       |
+| ------------------------------------------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `CareCase.service_line`                           | `MOD-DATA-001`, `TENANT-001`, `DB-TENANT-001`       | 既存caseは `pharmacy_home_care` として扱う。`home_medical` / `home_nursing` / `shared_home_care` は予約値。 | service line がないことで現行薬局機能を壊さない。将来 module route / panel / report / billing のscope判定に使える。            |
+| visit / report `discipline`                       | `MOD-VISIT-001`, `MOD-REPORT-001`, `TENANT-003`     | 既存訪問・報告は `pharmacist` として扱う。`physician` / `nurse` は予約値。                                  | 訪問診療・訪問看護を今は実装しないが、将来 discipline 別 contributor / template / assignment を追加できる。                    |
+| `Task.module`                                     | `MOD-TASK-001`, `API-LIST-001`, `DB-JSON-001`       | 既存 `task_type` は legacy alias を維持。canonical storage / backfill は別slice。                           | 新規 task は module-prefixed type を registry で検証し、legacy task は読み取り互換を維持する。                                 |
+| `ReportTemplate.module` / `CareReport.discipline` | `MOD-REPORT-001`, `REP-001`, `SEC-001`              | 既存 report は pharmacy / pharmacist として扱う。                                                           | report core が pharmacy label を importしない。recipient/masking/approval/audit は既存 report/file/security レーンと整合する。 |
+| `CrossTenantAccessGrant`                          | `TENANT-001`, `TENANT-003`, `RLS-USER-001`          | フリーランス薬剤師・外部協力者の期間/scope付き横断許可として設計する。                                      | grantee、target org/patient/case、scope、purpose、start/expiry、approval/revocation が audit と permission check に残る。      |
+| `SupportSession`                                  | `TENANT-002`, `AUD-001`, `SEC-EVENT-001`            | PH-OS運営者の support / break-glass mode として設計する。                                                   | target org/case/patient、reason、started/ended、approved_by、support_session_id が全閲覧/操作auditに残る。                     |
+| `CoverageAssignment` / `CoverageHandoff`          | `TENANT-003`, `UX-CMD-001`, `VISIT-UX-004`          | 主担当/副担当/backup/on_call/reviewer と休暇代替handoffを case 単位で扱う。                                 | Command Center と Mobile Visit Mode が「誰が次に何をするか」を assignment / handoff から説明できる。                           |
+| `DomainEventOutbox`                               | `DB-EVENT-001`, `INT-WEBHOOK-002`, `NTF-STREAM-001` | module/event/aggregate/minimal payload/pii_class/retry/dead-letter を持つ durable outbox として設計する。   | process終了でも通知/Webhook/Realtime/Task sync が消えず、保存payloadに患者名・住所・薬剤名・free text を含まない。             |
+
+**各 MOD PR の必須チェック**:
+
+- module化対象の provider / registry / adapter を追加または既存呼び出しへ接続する。
+- 対応する `DEBT-*` を1つ以上削減し、削減できない場合は次sliceで削減する理由を `ops/refactor/STATE.md` に残す。
+- `tools/module-boundary-allowlist.json` の expected debt を減らす、または増やさない。増やす場合は architecture review 必須。
+- API response は presenter / DTO を通し、Prisma model を直接 `success()` へ渡さない。
+- 既存薬局機能の focused regression test を追加または更新する。
+- provider 未登録、unknown type、adapter exception、権限外 entity、PHI masking を acceptance に含める。
+- `Plans.md` と `ops/refactor/STATE.md` に validation evidence を残す。
+
+**PR説明テンプレート**:
+
+```md
+## 目的
+
+## 対応する技術的負債
+
+- DEBT-...
+
+## 変更内容
+
+## 削減した依存
+
+- before:
+- after:
+
+## allowlist
+
+- expectedCount:
+- actualCount:
+
+## DTO / presenter / PHI境界
+
+## テスト
+
+- unit:
+- integration:
+- e2e / browser:
+- boundary:
+
+## リスク
+
+## ロールバック方法
+```
+
+**追加CI gate候補**:
+
+- `module-boundary:check`: `boundaries:check` の module graph / allowlist reason / expectedCount ratchet 版。
+- `api-response-shape:check`: public API envelope / error shape / request_id / list meta の標準形を検査。
+- `dto-direct-prisma-return:check`: route/usecase が Prisma record を直接 public response に返す箇所を検出。
+- `task-type-registry:check`: module prefixなし新規 task type と registry未登録 task type を拒否。
+- `risk-provider-contract:test`: provider order、domain coverage、unknown/failure policy、PHI-safe finding detail を検査。
+- `collaboration-provider-contract:test`: unknown entity fail-closed、provider exception fail-closed、room name互換、assignment/org predicate を検査。
 
 **推奨 PR / slice 分割**:
 
