@@ -171,9 +171,9 @@ describe('OfflineSyncContent', () => {
     expect(screen.queryByText('未同期のデータはありません。すべて同期済みです。')).toBeNull();
     expect(screen.getByText('読込失敗')).toBeTruthy();
     expect(screen.getAllByText('—')).not.toHaveLength(0);
-    expect(screen.getByRole('button', { name: 'すべて再試行' }).hasAttribute('disabled')).toBe(
-      true,
-    );
+    expect(
+      screen.getByRole('button', { name: '未同期キューをすべて再試行' }).hasAttribute('disabled'),
+    ).toBe(true);
     expect(
       screen.getByText('未同期データを読み込めないため、再読み込みしてください。'),
     ).toBeTruthy();

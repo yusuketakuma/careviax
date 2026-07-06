@@ -1058,7 +1058,9 @@ FE 仕上げ（低優先）:
   追加 partial として、通常請求候補画面の読込済みCSV snapshot を実画面テストに追加し、画面には患者名が
   表示されても client CSV には患者名、患者ID、候補IDが出ないことを固定した。請求先列の client export は
   `患者請求先` / `施設請求先` などの種別ラベルへ丸める。
-  残: 他 bulk action consumer の選択範囲文言 sweep。
+  追加 partial として、通知ベルの全既読 action を「未読通知をすべて既読」、offline sync の retry-all を
+  「未同期キューをすべて再試行」へ変更し、対象範囲を component test で固定した。
+  残: high-risk bulk action consumer（調剤/セット workbench など）の文言/確認 dialog sweep。
 
 **追加実装順序**:
 

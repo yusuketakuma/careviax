@@ -499,7 +499,7 @@ export function OfflineSyncContent() {
             disabled={retryAllMutation.isPending || Boolean(visibleRetryAllDisabledReason)}
             onClick={() => retryAllMutation.mutate()}
           >
-            {retryAllMutation.isPending ? '送信中...' : 'すべて再試行'}
+            {retryAllMutation.isPending ? '送信中...' : '未同期キューをすべて再試行'}
           </Button>
           {visibleRetryAllDisabledReason ? (
             <p

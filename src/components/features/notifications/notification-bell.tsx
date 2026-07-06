@@ -300,7 +300,7 @@ export function NotificationBell() {
                   onClick={() => void markAllRead()}
                   disabled={unreadCount === 0}
                 >
-                  全て既読
+                  未読通知をすべて既読
                 </Button>
               </div>
             </div>

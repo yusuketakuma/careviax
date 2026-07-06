@@ -145,6 +145,24 @@ describe('NotificationBell fetch contracts', () => {
     expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
   });
 
+  it('marks all unread notifications read with a scoped action label', async () => {
+    const fetchMock = createFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<NotificationBell />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '未読通知をすべて既読' }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith('/api/notifications', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-test-json-org-id': 'org_1' },
+        body: JSON.stringify({ ids: ['notification_1'] }),
+      }),
+    );
+    expect(screen.queryByRole('button', { name: '全て既読' })).toBeNull();
+  });
+
   it('keeps notification refresh failures silent without reading failed response bodies', async () => {
     const textMock = vi.fn(async () => 'patient:山田太郎 medication:ワルファリン');
     const fetchMock = vi.fn(
