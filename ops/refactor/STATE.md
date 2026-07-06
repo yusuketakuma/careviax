@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: MOV-001 inbound schedule task generic movement regression test（commit pending）。
+- codex: MOV-001 inbound schedule task generic movement regression test（commit 59d15ced2）。
   - current task:
     INB-001 の訪問調整 task は Schedule Day Board に作業導線を寄せ、Patient Movement Timeline では
     safety/medication_stock signal に誤分類せず generic operational task として扱う設計をテストで固定する。
@@ -64,9 +64,9 @@
     `pnpm exec prettier --check src/server/services/patient-detail.test.ts` passed.
     `git diff --check -- src/server/services/patient-detail.test.ts` passed.
   - remaining:
-    Scoped commit/push。
+    なし。
   - next action:
-    Scoped commit/push.
+    Landed and pushed to `origin/main`.
 
 - codex: INB-001 inbound schedule request day-board linkage（commit 4c80c9929）。
   - current task:
