@@ -12,16 +12,42 @@ execution before applying or reporting completion.
 
 ## Escalation Rules
 
-Do not consult Oracle for formatting, typos, simple imports, obvious local type
-errors, trivial docs/comments/tests, or missing product requirements that only
-the user can decide.
+Do not treat "ask Oracle when stuck" as the rule. The rule is narrower:
+use Oracle only when a wrong technical decision is costly, uncertainty remains
+after serious local work, the same failure repeats, a design branch has high
+downstream cost, or normal tests cannot prove the main risk. Consult Oracle
+before asking the user when the question is technical and fits these triggers;
+ask the user directly when the missing answer is a product, workflow, priority,
+or business decision.
 
-Consult Oracle after two serious local repair attempts if the same
-test/type/lint/build failure remains, the root cause is unclear, local
-reproduction is impossible, the patch scope keeps expanding, or edits are
-becoming speculative.
+## Decision Levels
 
-Consult Oracle before implementing or finalizing work involving:
+### Level 0: Do not consult
+
+Proceed locally without Oracle for:
+
+- formatting, typos, import order, or mechanical lint fixes
+- obvious TypeScript errors scoped to one or two files
+- trivial comments, test names, or README edits
+- straightforward CRUD that follows an existing local pattern
+- failures where the log already identifies the root cause
+- missing product requirements that only the user can decide
+
+### Level 1: Consult after two serious attempts
+
+Stop patching blindly and consult Oracle after two serious local repair
+attempts when:
+
+- the same test/type/lint/build failure remains
+- the root cause is still unclear after reading the stack trace and relevant code
+- multiple implementation paths remain plausible and the choice has material cost
+- CI/runtime fails but local reproduction is not possible
+- state-management, cache, build, dependency, or integration behavior keeps expanding
+- Codex is making speculative edits instead of proving the root cause
+
+### Level 2: Consult before implementation or finalization
+
+Consult Oracle before implementing or finalizing high-risk work involving:
 
 - authentication or authorization
 - tenant isolation, RLS, middleware, request context, platform/support mode, or cross-tenant grants
@@ -31,6 +57,8 @@ Consult Oracle before implementing or finalizing work involving:
 - billing, payments, claims, audit logs, secrets, credentials, encryption, signing, sessions, cookies, CORS, or CSRF
 - public API compatibility, queues, cron, retries, idempotency, transactions, locking, concurrency, caching, or invalidation
 - broad refactors, subsystem rewrites, or changes spanning many modules
+
+### Level 3: Consult before declaring completion
 
 Consult Oracle before declaring completion when the blast radius is broad, data
 integrity or tenant/permission boundaries changed, tests cannot cover the main
@@ -102,6 +130,11 @@ PR/issue URL or state in the prompt. If GitHub or `gh` is unavailable, say so in
 the prompt and final notes. Do not claim GitHub-current context was reviewed
 when it was not.
 
+The prompt must tell GPT-5.5 Pro to consider the GitHub context alongside the
+attached local files. GitHub access is mandatory for Oracle/GPT-5.5 Pro consults
+as repository context, but never use it to send secrets, raw PHI, private logs,
+or production data.
+
 This is separate from upstream verification: every consult needs target-repo
 GitHub context, but only Oracle operating-instruction changes require
 `steipete/oracle` upstream verification.
@@ -127,6 +160,22 @@ Before the first Oracle run in a session, run:
 npx -y @steipete/oracle --help
 ```
 
+## Before Consulting Oracle
+
+Prepare a high-signal prompt. Do not ask vague questions. Include:
+
+1. Goal
+2. Current implementation state
+3. Exact blocker or uncertainty
+4. Files inspected
+5. Files changed
+6. Commands run
+7. Exact errors, logs, or runtime behavior
+8. Options considered
+9. Constraints and non-goals
+10. GitHub context: repository URL, branch, commit, dirty/clean state, PR/issue state if relevant
+11. The decision needed from GPT-5.5 Pro
+
 ## Standard Command
 
 ```bash
@@ -138,6 +187,7 @@ npx -y @steipete/oracle \
   --browser-auto-reattach-timeout 60s \
   --model gpt-5.5-pro \
   --browser-thinking-time heavy \
+  --heartbeat 30 \
   --slug "<short-readable-slug>" \
   -p "<consultation prompt>" \
   --file "<minimal relevant files>"

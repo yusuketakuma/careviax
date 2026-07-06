@@ -41,6 +41,61 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Oracle/GPT-5.5 Pro escalation skill refined with decision levels.
+  - current task:
+    ユーザー指示により、Oracle/GPT-5.5 Pro を「詰まったら聞く」ではなく、
+    高リスク・高不確実性・反復失敗・設計分岐・検証不能時の senior second-opinion
+    として使う基準へ再整理した。`.agents/skills/oracle-consult/SKILL.md` に
+    Level 0（相談禁止）、Level 1（2回の真面目な修正後に相談）、Level 2（実装前/最終化前に相談）、
+    Level 3（完了宣言前レビュー）を明文化し、相談前チェックリストと `--heartbeat 30`
+    付き標準コマンドを追加した。GPT-5.5 Pro 相談時は target repo の GitHub context
+    （remote URL、branch、commit、dirty/clean state、関連 PR/issue があればその状態）
+    を prompt に含め、GPT-5.5 Pro に attached local files とあわせて GitHub context を
+    考慮させることを必須化した。
+  - GitHub / upstream context checked:
+    target repo `https://github.com/yusuketakuma/careviax`, branch `main`,
+    current commit `971e98819c0cbdab720f53a3716f85cddc4882f7`, dirty state clean before edits,
+    default branch `main`.
+    Oracle upstream GitHub was rechecked on 2026-07-06:
+    `https://github.com/steipete/oracle`,
+    `https://github.com/steipete/oracle/blob/main/skills/oracle/SKILL.md`,
+    `https://github.com/steipete/oracle/blob/main/docs/browser-mode.md`,
+    `https://github.com/steipete/oracle/blob/main/CHANGELOG.md`.
+    Upstream still documents Oracle as prompt+selected-files advisory context bundling,
+    Browser mode with `gpt-5.5-pro`, minimal file sets, `--dry-run` / `--files-report`,
+    and reattach/restart behavior. Local CLI help was checked and reported Oracle CLI v0.15.1.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `git remote -v`,
+    `git rev-parse --abbrev-ref HEAD`,
+    `git rev-parse HEAD`,
+    `gh repo view --json nameWithOwner,url,defaultBranchRef`,
+    `AGENTS.md`,
+    `.agents/skills/oracle-consult/SKILL.md`,
+    `.agents/skills/oracle-consult/agents/openai.yaml`,
+    `ops/refactor/STATE.md`,
+    Oracle upstream README / bundled skill / browser-mode docs / CHANGELOG.
+  - files changed:
+    `.agents/skills/oracle-consult/SKILL.md`,
+    `ops/refactor/STATE.md`.
+  - security / privacy:
+    Oracle/GPT-5.5 Pro prompts must include GitHub context, but the data minimization rule remains:
+    no secrets, `.env`, credentials, private keys, tokens, raw patient data, raw medical records,
+    production dumps, unredacted PHI/PII, or unnecessary private logs. GitHub access is metadata-first
+    and must not be used to leak PHI or secrets.
+  - validation:
+    `python3 /Users/yusuke/.codex/skills/.system/skill-creator/scripts/quick_validate.py .agents/skills/oracle-consult`
+    passed.
+    `pnpm exec prettier --check .agents/skills/oracle-consult/SKILL.md`
+    passed.
+  - remaining work:
+    Run final diff checks for this docs/skill slice, commit it if clean, then resume the active
+    `NTF-STREAM-001` implementation after collecting the already-running Oracle session
+    `careviax-ntf-stream-normalizer`.
+  - next action:
+    Validate diff cleanliness and render/reattach the running Oracle consultation rather than starting
+    a duplicate run.
+
 - codex: DSP-QUEUE-PAGE-001 DispenseWorkbench patient queue pagination implemented.
   - current task:
     `Plans.md` の `DSP-QUEUE-PAGE-001` を実装。`/api/dispense-workbench/patients`
