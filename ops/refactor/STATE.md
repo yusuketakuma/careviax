@@ -41,6 +41,88 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Realtime / Web Push PHI boundary hardening and DB/API contract backlog task化。
+  - implementation commit: `0075cbc0f` (`Harden realtime and push payload boundaries`)
+  - current task:
+    ユーザー追加のフロントエンド共通基盤改善と、リリース前 DB/API 契約改善を再スキャンして
+    `Plans.md` に実装しやすい backlog として追記。あわせて最優先の frontend counterpart
+    `FE-RT-001 / FE-RT-002 / FE-PUSH-001` を partial 実装し、Realtime invalidation の既定値、
+    SSE client payload normalizer、Service Worker push redaction backstop を締めた。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/lib/realtime/events.ts`,
+    `src/lib/realtime/events.test.ts`,
+    `src/lib/realtime/shared-event-stream.ts`,
+    `src/lib/hooks/use-realtime-invalidation.ts`,
+    `src/lib/hooks/use-realtime-invalidation.test.tsx`,
+    `src/lib/hooks/use-realtime-query.ts`,
+    `src/lib/hooks/use-realtime-query.test.tsx`,
+    `src/lib/notifications/os-bridge-redaction.ts`,
+    `src/lib/notifications/os-bridge-redaction.test.ts`,
+    `src/app/sw.ts`,
+    `src/app/api/patients/board/route.ts`,
+    `src/app/api/prescription-intakes/route.ts`,
+    `src/lib/api/response.ts`,
+    `src/lib/api/response-schemas.ts`,
+    `prisma/schema/visit.prisma`,
+    `prisma/schema/core-task.prisma`,
+    `prisma/schema/admin.prisma`,
+    `src/tools/rls-policy-contract.test.ts`,
+    `src/tools/rls-known-gaps.ts`,
+    `src/server/services/file-storage.ts`.
+  - files changed:
+    `Plans.md`,
+    `src/lib/realtime/events.ts`,
+    `src/lib/realtime/events.test.ts`,
+    `src/lib/realtime/shared-event-stream.ts`,
+    `src/lib/hooks/use-realtime-invalidation.ts`,
+    `src/lib/hooks/use-realtime-invalidation.test.tsx`,
+    `src/lib/hooks/use-realtime-query.ts`,
+    `src/lib/hooks/use-realtime-query.test.tsx`,
+    `src/lib/notifications/os-bridge-redaction.ts`,
+    `src/lib/notifications/os-bridge-redaction.test.ts`,
+    `src/app/sw.ts`.
+  - bugs / security risks reduced:
+    `useRealtimeInvalidation` の既定 `invalidateOn=[]` が全 event invalidate として働く構造をやめ、
+    全 event 再取得は `invalidateOn: 'all'` 明示時だけにした。invalidations は 150ms debounce でまとめる。
+    `normalizeRealtimeEventPayload()` は event type registry + safe scalar allowlist にし、
+    `patient_name`、住所、電話、薬剤名、`raw_message`、`metadata`、`provider_error`、`storage_key`、
+    `signed_url`、deep link を top-level / nested payload から落とす。`display_name` は presence update
+    専用許可に限定し、その他 event では落とす。unknown event は PHI-free `workflow_refresh` へ丸める。
+    Service Worker の push handler は raw `title/body/link` を信用せず、OS 通知へは固定 title、
+    種別別の汎用 body、`/notifications` のみを渡す。
+  - performance issues improved:
+    realtime event burst 時の query invalidation を 1 回へまとめ、明示的な invalidate policy がない画面は
+    SSE 接続/再取得を開始しない。workflow_refresh 乱発で dashboard/patient/report/schedule/task などが
+    一斉 refetch する既定値を廃止した。
+  - Plans / DB/API backlog:
+    `Plans.md` に「リリース前 DB/API 契約バックログ」を追加し、コード再スキャン結果に基づいて
+    `API-CONTRACT-001`、`API-CONTRACT-002`、`API-CONTRACT-003`、`API-LIST-001`、`API-IDEMP-001`、
+    `API-STATE-001`、`DB-TENANT-001`、`DB-EVENT-001`、`INT-WEBHOOK-002`、`FILE-LIFE-001`、
+    `DATA-RET-001A`、`API-ACTION-001`、`API-DTO-001`、`DB-SEARCH-001`、`DB-JSON-001` を
+    既存レーンへ接続した。互換性不要の前提で、legacy envelope/action shape は最新 contract へ上書きする方針。
+  - design / imagegen:
+    今回は視覚 UI レイアウト変更ではなく Realtime/Push/DB/API contract と `Plans.md` 追記のため、
+    `imagegen` / `gpt-image-2` の新規生成は不要。患者詳細画面など UI 配置実装時は、既存方針どおり
+    `gpt-image-2` で非 PHI mockup を再構築してから実装する。
+  - validation commands:
+    `pnpm exec vitest run src/lib/realtime/events.test.ts src/lib/realtime/shared-event-stream.test.ts src/lib/hooks/use-realtime-invalidation.test.tsx src/lib/hooks/use-realtime-query.test.tsx src/lib/notifications/os-bridge-redaction.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm format:check`;
+    `git diff --check -- Plans.md src/app/sw.ts src/lib/hooks/use-realtime-invalidation.test.tsx src/lib/hooks/use-realtime-invalidation.ts src/lib/hooks/use-realtime-query.test.tsx src/lib/hooks/use-realtime-query.ts src/lib/notifications/os-bridge-redaction.test.ts src/lib/notifications/os-bridge-redaction.ts src/lib/realtime/events.test.ts src/lib/realtime/events.ts src/lib/realtime/shared-event-stream.ts`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`;
+    `pnpm lint`.
+  - validation results:
+    focused vitest green（5 files / 30 tests）; `pnpm format:check` green; `git diff --check` green;
+    high-memory typecheck green; typecheck:no-unused green; `pnpm lint` green with existing unrelated warnings only in
+    `src/lib/platform/break-glass.test.ts` (`_tx`, `_input`)。
+  - remaining work:
+    server-side `NTF-STREAM-001` の SSE user-channel/DB polling normalizer、Web Push 送信側 snapshot、
+    `FE-REPORT-001` report workspace realtime migration、`FE-OFFLINE-001` browser storage PHI audit、
+    DB/API backlog の最初の実装 slice（`API-CONTRACT-001` + `API-CONTRACT-003` + `API-CONTRACT-002`）が残る。
+
 - codex: Operational Task Health Board dedicated filters completed（implementation commit `ffb445c0f`）。
   - current task:
     `Plans.md` の `TASK-001` 残作業「Health Board 専用の risk_domain / team scope filter UI」に対応。
