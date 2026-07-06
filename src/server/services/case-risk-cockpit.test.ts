@@ -14,6 +14,7 @@ function buildDb() {
     notification: { findMany: vi.fn() },
     residence: { findMany: vi.fn() },
     patientMcsLink: { findMany: vi.fn() },
+    communicationEvent: { findMany: vi.fn() },
     patientShareCase: { findMany: vi.fn() },
     task: { findMany: vi.fn() },
     billingEvidence: { findMany: vi.fn() },
@@ -76,6 +77,7 @@ describe('getCaseRiskCockpit', () => {
     expect(db.notification.findMany).not.toHaveBeenCalled();
     expect(db.residence.findMany).not.toHaveBeenCalled();
     expect(db.patientMcsLink.findMany).not.toHaveBeenCalled();
+    expect(db.communicationEvent.findMany).not.toHaveBeenCalled();
     expect(db.patientShareCase.findMany).not.toHaveBeenCalled();
     expect(db.task.findMany).not.toHaveBeenCalled();
     expect(db.billingEvidence.findMany).not.toHaveBeenCalled();
@@ -164,6 +166,17 @@ describe('getCaseRiskCockpit', () => {
         updated_at: new Date('2026-07-05T03:00:00.000Z'),
         last_sync_error: 'MCS raw provider error 患者 太郎',
         mcs_project_url: 'https://www.medical-care.net/projects/medical/123',
+      },
+    ]);
+    db.communicationEvent.findMany.mockResolvedValue([
+      {
+        occurred_at: new Date('2026-07-05T03:30:00.000Z'),
+        id: 'communication_event/1?x=1',
+        subject: '患者 太郎 湿布が少ない',
+        content: '湿布 残り4枚 090-1234-5678 storage_key=secret',
+        counterpart_name: '訪問看護師 佐藤',
+        counterpart_contact: '090-1234-5678',
+        attachments: [{ storage_key: 's3://bucket/secret' }],
       },
     ]);
     db.patientShareCase.findMany.mockResolvedValue([
@@ -280,7 +293,7 @@ describe('getCaseRiskCockpit', () => {
       status: 'blocked',
       blocking_count: 3,
       urgent_count: 6,
-      warning_count: 5,
+      warning_count: 6,
     });
 
     const findings = result?.sections.flatMap((section) => section.findings) ?? [];
@@ -295,6 +308,7 @@ describe('getCaseRiskCockpit', () => {
         'notification:notification/1',
         'residence_geocode:residence/1:zero_coordinates',
         'patient_mcs_sync:mcs_link/1',
+        'inbound_interprofessional:pending',
         'patient_share_output_scope_review:share/1',
         'dispense_task:dispense/1',
         'report_delivery_failed:report_1',
@@ -315,6 +329,10 @@ describe('getCaseRiskCockpit', () => {
     expect(JSON.stringify(result)).not.toContain('東京都千代田区1-1-1');
     expect(JSON.stringify(result)).not.toContain('MCS raw provider error');
     expect(JSON.stringify(result)).not.toContain('medical-care.net');
+    expect(JSON.stringify(result)).not.toContain('communication_event');
+    expect(JSON.stringify(result)).not.toContain('湿布');
+    expect(JSON.stringify(result)).not.toContain('090-1234-5678');
+    expect(JSON.stringify(result)).not.toContain('storage_key');
     expect(JSON.stringify(result)).not.toContain('外部共有 raw scope');
     expect(JSON.stringify(result)).not.toContain('連携薬局 raw name');
     expect(JSON.stringify(result)).not.toContain('file_secret_1');
@@ -427,6 +445,25 @@ describe('getCaseRiskCockpit', () => {
         },
       }),
     );
+    expect(db.communicationEvent.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          patient_id: patientId,
+          direction: { in: ['inbound', 'incoming'] },
+          channel: { in: ['phone', 'fax', 'email'] },
+          AND: [
+            { OR: [{ case_id: 'case_1' }, { case_id: null }] },
+            { event_type: { not: 'patient_self_report' } },
+          ],
+        },
+        orderBy: [{ occurred_at: 'desc' }],
+        take: 1,
+        select: {
+          occurred_at: true,
+        },
+      }),
+    );
     expect(db.patientShareCase.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -485,6 +522,7 @@ describe('getCaseRiskCockpit', () => {
     db.notification.findMany.mockResolvedValue([]);
     db.residence.findMany.mockResolvedValue([]);
     db.patientMcsLink.findMany.mockResolvedValue([]);
+    db.communicationEvent.findMany.mockResolvedValue([]);
     db.patientShareCase.findMany.mockResolvedValue([]);
     db.task.findMany.mockResolvedValue([
       {

@@ -80,6 +80,11 @@ export type PatientMcsLinkRiskRow = {
   updated_at: Date;
 };
 
+export type InboundInterprofessionalCommunicationRiskSummary = {
+  has_inbound_communication: boolean;
+  latest_occurred_at: Date | null;
+};
+
 export type PatientShareCaseRiskRow = {
   id: string;
   status: string;
@@ -132,6 +137,7 @@ export type CaseRiskProviderInput = {
   notifications: NotificationRiskRow[];
   residences: ResidenceRiskRow[];
   patientMcsLinks: PatientMcsLinkRiskRow[];
+  inboundInterprofessionalCommunication: InboundInterprofessionalCommunicationRiskSummary;
   patientShareCases: PatientShareCaseRiskRow[];
   tasks: TaskRow[];
   visitRecordIds: Set<string>;

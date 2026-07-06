@@ -17,6 +17,7 @@ import type {
   FirstVisitDocumentRow,
   ManagementPlanRow,
   NotificationRiskRow,
+  InboundInterprofessionalCommunicationRiskSummary,
   PatientMcsLinkRiskRow,
   PatientShareCaseRiskRow,
   PrescriptionLineRiskRow,
@@ -51,6 +52,7 @@ type CaseRiskCockpitDbReader = {
   notification: FindManyDelegate<NotificationRiskRow>;
   residence: FindManyDelegate<ResidenceRiskRow>;
   patientMcsLink: FindManyDelegate<PatientMcsLinkRiskRow>;
+  communicationEvent: FindManyDelegate<{ occurred_at: Date }>;
   patientShareCase: FindManyDelegate<PatientShareCaseRiskRow>;
   task: FindManyDelegate<TaskRow>;
   billingEvidence: FindManyDelegate<BillingEvidenceRow>;
@@ -180,6 +182,7 @@ export async function getCaseRiskCockpit(
     notifications,
     residences,
     patientMcsLinks,
+    inboundCommunicationEvents,
     patientShareCases,
     tasks,
   ] = await Promise.all([
@@ -372,6 +375,23 @@ export async function getCaseRiskCockpit(
         updated_at: true,
       },
     }),
+    db.communicationEvent.findMany({
+      where: {
+        org_id: args.orgId,
+        patient_id: careCase.patient_id,
+        direction: { in: ['inbound', 'incoming'] },
+        channel: { in: ['phone', 'fax', 'email'] },
+        AND: [
+          { OR: [{ case_id: careCase.id }, { case_id: null }] },
+          { event_type: { not: 'patient_self_report' } },
+        ],
+      },
+      orderBy: [{ occurred_at: 'desc' }],
+      take: 1,
+      select: {
+        occurred_at: true,
+      },
+    }),
     db.patientShareCase.findMany({
       where: {
         org_id: args.orgId,
@@ -435,8 +455,15 @@ export async function getCaseRiskCockpit(
   const selectedNotifications = notifications as NotificationRiskRow[];
   const selectedResidences = residences as ResidenceRiskRow[];
   const selectedPatientMcsLinks = patientMcsLinks as PatientMcsLinkRiskRow[];
+  const selectedInboundCommunicationEvents = inboundCommunicationEvents as Array<{
+    occurred_at: Date;
+  }>;
   const selectedPatientShareCases = patientShareCases as PatientShareCaseRiskRow[];
   const selectedTasks = tasks as TaskRow[];
+  const inboundInterprofessionalCommunication: InboundInterprofessionalCommunicationRiskSummary = {
+    has_inbound_communication: selectedInboundCommunicationEvents.length > 0,
+    latest_occurred_at: selectedInboundCommunicationEvents[0]?.occurred_at ?? null,
+  };
 
   const visitRecordIds = selectedSchedules
     .map((schedule) => schedule.visit_record?.id)
@@ -491,6 +518,7 @@ export async function getCaseRiskCockpit(
     notifications: selectedNotifications,
     residences: selectedResidences,
     patientMcsLinks: selectedPatientMcsLinks,
+    inboundInterprofessionalCommunication,
     patientShareCases: selectedPatientShareCases,
     tasks: scopedTasks,
     visitRecordIds: scopedVisitRecordIds,

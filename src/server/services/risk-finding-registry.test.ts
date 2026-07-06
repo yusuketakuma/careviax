@@ -4,6 +4,7 @@ import {
   adaptCareReportToRiskFinding,
   adaptConsentPlanLifecycleToRiskFindings,
   adaptDispenseTaskToRiskFinding,
+  adaptInboundInterprofessionalCommunicationToRiskFinding,
   adaptNotificationToRiskFinding,
   adaptOperationalTaskToRiskFinding,
   adaptPatientMcsIntegrationToRiskFinding,
@@ -508,6 +509,48 @@ describe('risk-finding-registry adapters', () => {
     expect(success).toBeNull();
     expect(JSON.stringify([failed, transient])).not.toContain('medical-care.net');
     expect(JSON.stringify([failed, transient])).not.toContain('provider error');
+  });
+
+  it('maps inbound interprofessional communication as one aggregate without exposing event details', () => {
+    const finding = adaptInboundInterprofessionalCommunicationToRiskFinding(
+      {
+        has_inbound_communication: true,
+        latest_occurred_at: '2026-07-06T00:00:00.000Z',
+        id: 'communication_event/1?x=1',
+        subject: '患者 山田花子の湿布が少ない',
+        content: '湿布 残り4枚 090-1234-5678 storage_key=secret',
+        counterpart_name: '訪問看護師 佐藤',
+        counterpart_contact: '090-1234-5678',
+        attachments: [{ storage_key: 's3://bucket/secret' }],
+        raw_provider_error: 'provider raw error',
+      } as never,
+      { patientId: 'patient/1?x=1', caseId: 'case_1' },
+    );
+    const empty = adaptInboundInterprofessionalCommunicationToRiskFinding(
+      { has_inbound_communication: false, latest_occurred_at: null },
+      { patientId: 'patient/1?x=1', caseId: 'case_1' },
+    );
+
+    expect(finding).toMatchObject({
+      key: 'inbound_interprofessional:pending',
+      domain: 'integration',
+      severity: 'warning',
+      title: '他職種からの受信情報の確認が必要です',
+      related_entity_type: 'inbound_interprofessional_communication',
+      related_entity_id: null,
+      due_at: null,
+      action_href: '/workflow?focus=communication',
+      action_label: '受信情報を確認',
+      source: 'external',
+    });
+    expect(empty).toBeNull();
+    expect(JSON.stringify(finding)).not.toContain('communication_event');
+    expect(JSON.stringify(finding)).not.toContain('山田花子');
+    expect(JSON.stringify(finding)).not.toContain('湿布');
+    expect(JSON.stringify(finding)).not.toContain('090-1234-5678');
+    expect(JSON.stringify(finding)).not.toContain('storage_key');
+    expect(JSON.stringify(finding)).not.toContain('provider raw error');
+    expect(riskFindingToTaskDedupeKey(finding!)).not.toContain('communication_event');
   });
 
   it('maps active patient share privacy risks without exposing share scope or consent details', () => {

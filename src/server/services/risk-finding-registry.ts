@@ -117,6 +117,11 @@ export type PatientMcsIntegrationRiskInput = {
   updated_at?: Date | string | null;
 };
 
+export type InboundInterprofessionalCommunicationRiskInput = {
+  has_inbound_communication: boolean;
+  latest_occurred_at?: Date | string | null;
+};
+
 export type PatientSharePrivacyRiskInput = {
   id: string;
   status: string;
@@ -700,6 +705,29 @@ export function adaptPatientMcsIntegrationToRiskFinding(
       ? `/patients/${encodeURIComponent(context.patientId)}/mcs`
       : '/patients',
     action_label: 'MCS連携を確認',
+  });
+}
+
+export function adaptInboundInterprofessionalCommunicationToRiskFinding(
+  input: InboundInterprofessionalCommunicationRiskInput,
+  context: RiskFindingAdapterContext = {},
+): RiskFinding | null {
+  if (!input.has_inbound_communication) return null;
+
+  return createRiskFinding({
+    key: 'inbound_interprofessional:pending',
+    domain: 'integration',
+    severity: 'warning',
+    title: '他職種からの受信情報の確認が必要です',
+    detail: '他職種からの受信情報があります。内容は連絡ワークフローで確認してください。',
+    patient_id: context.patientId ?? null,
+    case_id: context.caseId ?? null,
+    related_entity_type: 'inbound_interprofessional_communication',
+    related_entity_id: null,
+    due_at: null,
+    action_href: '/workflow?focus=communication',
+    action_label: '受信情報を確認',
+    source: 'external',
   });
 }
 

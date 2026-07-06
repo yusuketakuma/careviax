@@ -41,6 +41,70 @@
 
 ## 直近の land（本日・要点）
 
+- codex: INB-001 inbound communication Case Risk provider bridge（未コミット）。
+  - current task:
+    `CommunicationEvent` の既存 inbound phone/FAX/email を、Case Risk Cockpit の正式 provider 経由で
+    PHI-minimized な aggregate warning として表示する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `git log --oneline -8`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `AGENTS.md`,
+    `.agents/skills/oracle-consult/SKILL.md`,
+    `src/core/risk/provider-registry.ts`,
+    `src/server/risk/case-risk-provider-types.ts`,
+    `src/server/risk/core-case-risk-providers.ts`,
+    `src/server/risk/active-case-risk-registry.ts`,
+    `src/server/risk/active-case-risk-registry.test.ts`,
+    `src/server/services/risk-finding-registry.ts`,
+    `src/server/services/risk-finding-registry.test.ts`,
+    `src/server/services/case-risk-cockpit.ts`,
+    `src/server/services/case-risk-cockpit.test.ts`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `prisma/schema/communication.prisma`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/risk/case-risk-provider-types.ts`,
+    `src/server/risk/core-case-risk-providers.ts`,
+    `src/server/risk/active-case-risk-registry.test.ts`,
+    `src/server/services/risk-finding-registry.ts`,
+    `src/server/services/risk-finding-registry.test.ts`,
+    `src/server/services/case-risk-cockpit.ts`,
+    `src/server/services/case-risk-cockpit.test.ts`.
+  - oracle:
+    Oracle/GPT-5.5 Pro consulted with GitHub context
+    `https://github.com/yusuketakuma/careviax`, branch `main`, commit
+    `0d6fcd346c4e3c2bceb5cb1ba3edffc77b70541d`, clean tree. Verdict was
+    Conditional Go: implement option A' only as an aggregate controlled warning, avoid event ids and raw PHI,
+    query after authorized case load, keep provider DB-free, and test query select/output boundaries.
+  - implementation:
+    Added `core.inbound_interprofessional` provider in the integration domain. `getCaseRiskCockpit`
+    now reads existing `CommunicationEvent` inbound/incoming phone/FAX/email after the scoped `careCase`
+    has been found, with `patient_id`, `case_id current OR null`, and `event_type != patient_self_report`.
+    The query selects only `occurred_at`, `take: 1`; it does not select event id, subject, content,
+    counterpart, contact, attachments, medication names, phone numbers, storage keys, or external URLs.
+    The adapter returns one controlled `inbound_interprofessional:pending` finding with
+    `/workflow?focus=communication`, `related_entity_id: null`, and no due timestamp.
+  - validation:
+    `pnpm vitest run src/server/services/risk-finding-registry.test.ts src/server/risk/active-case-risk-registry.test.ts src/server/services/case-risk-cockpit.test.ts --reporter=dot --testTimeout=30000`
+    passed: 3 files / 22 tests.
+    `pnpm exec prettier --check src/server/risk/case-risk-provider-types.ts src/server/risk/core-case-risk-providers.ts src/server/risk/active-case-risk-registry.test.ts src/server/services/risk-finding-registry.ts src/server/services/risk-finding-registry.test.ts src/server/services/case-risk-cockpit.ts src/server/services/case-risk-cockpit.test.ts`
+    passed.
+    `pnpm exec eslint src/server/risk/case-risk-provider-types.ts src/server/risk/core-case-risk-providers.ts src/server/risk/active-case-risk-registry.test.ts src/server/services/risk-finding-registry.ts src/server/services/risk-finding-registry.test.ts src/server/services/case-risk-cockpit.ts src/server/services/case-risk-cockpit.test.ts`
+    passed.
+    `git diff --check -- src/server/risk/case-risk-provider-types.ts src/server/risk/core-case-risk-providers.ts src/server/risk/active-case-risk-registry.test.ts src/server/services/risk-finding-registry.ts src/server/services/risk-finding-registry.test.ts src/server/services/case-risk-cockpit.ts src/server/services/case-risk-cockpit.test.ts`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+    `pnpm typecheck:no-unused` failed with Node heap OOM at the default heap limit; rerun as
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed.
+  - remaining:
+    scoped commit / push。
+  - next action:
+    Run final formatting/diff checks including `Plans.md` and `ops/refactor/STATE.md`, then commit and push.
+
 - codex: MOV-001 Patient Movement Timeline marker/deep-link scope plan（commit 687169786）。
   - current task:
     ユーザー指示に合わせ、Patient Movement Timeline の処方・訪問・文書登録表示を

@@ -12,6 +12,7 @@ describe('activeCaseRiskFindingProviderRegistry', () => {
       'core.notification',
       'core.data_quality',
       'core.integration',
+      'core.inbound_interprofessional',
       'core.privacy_security',
       'core.task_sla',
       'pharmacy.billing_evidence',
@@ -26,6 +27,12 @@ describe('activeCaseRiskFindingProviderRegistry', () => {
     expect(activeCaseRiskFindingProviderRegistry.get('core.privacy_security')).toMatchObject({
       module: 'core',
       domains: ['privacy_security'],
+    });
+    expect(
+      activeCaseRiskFindingProviderRegistry.get('core.inbound_interprofessional'),
+    ).toMatchObject({
+      module: 'core',
+      domains: ['integration'],
     });
     expect(activeCaseRiskFindingProviderRegistry.get('missing.provider')).toBeNull();
   });
