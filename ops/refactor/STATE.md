@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: MOV-001 external share / conference / billing marker minimization（未コミット）。
+- codex: MOV-001 external share / conference / billing marker minimization（commit 8e7eed4af, pushed）。
   - current task:
     Patient Movement Timeline の残り source から自由記載・人物名・算定詳細を外し、
     発生 marker + 正本 deep link の索引UI契約をさらに広げる。
@@ -77,7 +77,7 @@
   - remaining:
     Formal inbound DB/API/review UI and MedicationStock Ledger source remain.
   - next action:
-    Scoped commit/push, then record landed commit hash.
+    Continue remaining MOV-001 sources only when they can stay marker-only + canonical deep link.
 
 - codex: MOV-001 Self report timeline minimization（commit 7378b650d, pushed）。
   - current task:
