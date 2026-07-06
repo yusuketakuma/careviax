@@ -17,6 +17,7 @@ describe('perf-smoke parseArgs', () => {
     expect(args.requests).toBe(40);
     expect(args.concurrency).toBe(4);
     expect(args.targetMs).toBe(500);
+    expect(args.p99TargetMs).toBe(1000);
     expect(args.requestTimeoutMs).toBe(10_000);
   });
 
@@ -29,6 +30,8 @@ describe('perf-smoke parseArgs', () => {
         '12.8',
         '--target-ms',
         '250.9',
+        '--p99-target-ms',
+        '950.9',
         '--request-timeout-ms',
         '120001',
         '--method',
@@ -49,6 +52,7 @@ describe('perf-smoke parseArgs', () => {
       requests: 10_000,
       concurrency: 12,
       targetMs: 250,
+      p99TargetMs: 950,
       requestTimeoutMs: 120_000,
       method: 'POST',
       paths: ['/api/patients'],
@@ -148,6 +152,8 @@ describe('perf-smoke parseArgs', () => {
       response_payload_sample_count: 1,
       p95_response_payload_bytes: 2,
       response_payload_budget_status: 'unconfigured',
+      p95_target_met: true,
+      p99_target_met: true,
       target_met: true,
     });
 
@@ -182,8 +188,32 @@ describe('perf-smoke parseArgs', () => {
       response_payload_budget_status: 'over_budget',
       response_payload_budget_met: false,
       response_payload_budget_over_count: 2,
+      p99_target_met: true,
       target_met: false,
     });
+  });
+
+  it('fails the release gate when p99 exceeds its configured target', async () => {
+    const nowSpy = vi
+      .spyOn(performance, 'now')
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(100)
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(1500);
+    const args = parseArgs(
+      ['--requests', '2', '--concurrency', '1', '--target-ms', '2000', '--p99-target-ms', '1000'],
+      {},
+    );
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response('{}', { status: 200 }));
+
+    await expect(runPerfSmoke(args, fetchImpl)).resolves.toMatchObject({
+      p95_ms: 1500,
+      p99_ms: 1500,
+      p95_target_met: true,
+      p99_target_met: false,
+      target_met: false,
+    });
+    expect(nowSpy).toHaveBeenCalled();
   });
 
   it('falls back to response body byte length when content-length is absent', async () => {

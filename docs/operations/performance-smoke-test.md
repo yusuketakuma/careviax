@@ -3,12 +3,12 @@
 ## 目的
 
 - `3-4: パフォーマンス最適化（P95<500ms）` の事前計測をローカル/検証環境で再現可能にする
-- 実運用前に対象 API の P50 / P95 / エラー率を記録する
+- 実運用前に対象 API の P50 / P95 / P99 / エラー率を記録する
 
 ## 実行コマンド
 
 ```bash
-corepack pnpm perf:smoke --base-url http://127.0.0.1:3000 --path /api/health --requests 80 --concurrency 8 --target-ms 500
+corepack pnpm perf:smoke --base-url http://127.0.0.1:3000 --path /api/health --requests 80 --concurrency 8 --target-ms 500 --p99-target-ms 1000
 ```
 
 認証付きルートを測る場合:
@@ -34,15 +34,16 @@ corepack pnpm perf:smoke \
   --body-file artifacts/perf/billing-preview-batch.json \
   --requests 40 \
   --concurrency 4 \
-  --target-ms 500
+  --target-ms 500 \
+  --p99-target-ms 1000
 ```
 
 `--body` で直接 JSON 文字列を渡すこともできます。body を指定し、`content-type` header が未指定の場合は `application/json` が自動設定されます。
 
 ## 出力
 
-- JSON で `average_ms`, `p50_ms`, `p95_ms`, `max_ms`, `error_count`, `body_bytes`,
-  `response_payload_sample_count`, `p95_response_payload_bytes`,
+- JSON で `average_ms`, `p50_ms`, `p95_ms`, `p99_ms`, `max_ms`, `error_count`, `body_bytes`,
+  `p95_target_met`, `p99_target_met`, `response_payload_sample_count`, `p95_response_payload_bytes`,
   `response_payload_budget_status`, `response_payload_budget_bytes`, `target_met` を出力
 - `body_bytes` は request body size。応答 payload は `Content-Length` があればそれを使い、
   なければ response body の byte length を測る。本文は出力しない
@@ -53,5 +54,7 @@ corepack pnpm perf:smoke \
 
 - pilot 前は主要 API を 3 回以上計測し、最悪値を `Plans.md` または運用記録へ転記する
 - `p95_ms > 500` のルートはボトルネック調査対象とする
+- `p99_ms > 1000` のルートは tail latency 調査対象とする。環境別に変える場合は
+  `PERF_P99_TARGET_MS` または `--p99-target-ms` を使う
 - critical BFF は `Plans.md` の route payload budget registry と同じ normalized route/family で記録する。
   query string、hash、患者ID、org ID、検索語は budget key に含めない

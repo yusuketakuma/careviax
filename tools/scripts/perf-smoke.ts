@@ -13,6 +13,7 @@ type Args = {
   requests: number;
   concurrency: number;
   targetMs: number;
+  p99TargetMs: number;
   requestTimeoutMs: number;
   method: string;
   paths: string[];
@@ -25,6 +26,7 @@ export type PerfSmokeResult = {
   requests: number;
   concurrency: number;
   target_ms: number;
+  p99_target_ms: number;
   request_timeout_ms: number;
   method: string;
   paths: string[];
@@ -42,9 +44,12 @@ export type PerfSmokeResult = {
   average_ms: number;
   p50_ms: number;
   p95_ms: number;
+  p99_ms: number;
   max_ms: number;
   error_count: number;
   timeout_count: number;
+  p95_target_met: boolean;
+  p99_target_met: boolean;
   target_met: boolean;
 };
 
@@ -80,6 +85,11 @@ export function parseArgs(
       MAX_CONCURRENCY,
     ),
     targetMs: normalizePositiveInteger(env.PERF_TARGET_MS, DEFAULT_TARGET_MS, MAX_TARGET_MS),
+    p99TargetMs: normalizePositiveInteger(
+      env.PERF_P99_TARGET_MS,
+      DEFAULT_TARGET_MS * 2,
+      MAX_TARGET_MS,
+    ),
     requestTimeoutMs: normalizePositiveInteger(
       env.PERF_REQUEST_TIMEOUT_MS,
       DEFAULT_REQUEST_TIMEOUT_MS,
@@ -104,6 +114,9 @@ export function parseArgs(
     }
     if (value === '--target-ms' && next) {
       args.targetMs = normalizePositiveInteger(next, DEFAULT_TARGET_MS, MAX_TARGET_MS);
+    }
+    if (value === '--p99-target-ms' && next) {
+      args.p99TargetMs = normalizePositiveInteger(next, DEFAULT_TARGET_MS * 2, MAX_TARGET_MS);
     }
     if (value === '--request-timeout-ms' && next) {
       args.requestTimeoutMs = normalizePositiveInteger(
@@ -265,6 +278,7 @@ export async function runPerfSmoke(
 
   const p50 = percentile(durations, 0.5);
   const p95 = percentile(durations, 0.95);
+  const p99 = percentile(durations, 0.99);
   const max = durations.length > 0 ? Math.max(...durations) : 0;
   const p50ResponsePayload =
     responsePayloadBytes.length > 0 ? percentile(responsePayloadBytes, 0.5) : null;
@@ -298,12 +312,15 @@ export async function runPerfSmoke(
     durations.length > 0
       ? Math.round(durations.reduce((sum, value) => sum + value, 0) / durations.length)
       : 0;
+  const p95TargetMet = p95 <= args.targetMs;
+  const p99TargetMet = p99 <= args.p99TargetMs;
 
   return {
     base_url: args.baseUrl,
     requests: args.requests,
     concurrency: args.concurrency,
     target_ms: args.targetMs,
+    p99_target_ms: args.p99TargetMs,
     request_timeout_ms: args.requestTimeoutMs,
     method: args.method,
     paths: args.paths,
@@ -321,10 +338,14 @@ export async function runPerfSmoke(
     average_ms: average,
     p50_ms: p50,
     p95_ms: p95,
+    p99_ms: p99,
     max_ms: max,
     error_count: errorCount,
     timeout_count: timeoutCount,
-    target_met: p95 <= args.targetMs && errorCount === 0 && responsePayloadBudgetMet !== false,
+    p95_target_met: p95TargetMet,
+    p99_target_met: p99TargetMet,
+    target_met:
+      p95TargetMet && p99TargetMet && errorCount === 0 && responsePayloadBudgetMet !== false,
   };
 }
 

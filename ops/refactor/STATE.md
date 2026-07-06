@@ -11412,3 +11412,38 @@
   `PERF-RTE-001A` still needs deploy readiness / EventBridge schedule / release gate /
   CloudWatch alarm connection so current-process snapshots are not treated as the only production
   performance source.
+
+## 2026-07-07 PERF-RTE perf-smoke p99 gate
+
+- codex:
+  Added p99 tail-latency gating to `tools/scripts/perf-smoke.ts`. The smoke result now reports
+  `p99_ms`, `p99_target_ms`, `p95_target_met`, and `p99_target_met`; `target_met` fails when p95,
+  p99, response errors, or configured payload budgets fail.
+- files inspected:
+  `tools/scripts/perf-smoke.ts`,
+  `tools/scripts/perf-smoke.test.ts`,
+  `docs/operations/performance-smoke-test.md`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- files changed:
+  `tools/scripts/perf-smoke.ts`,
+  `tools/scripts/perf-smoke.test.ts`,
+  `docs/operations/performance-smoke-test.md`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  Release performance smoke no longer treats p95 as the only latency gate. Tail-latency regression
+  can be caught with `PERF_P99_TARGET_MS` / `--p99-target-ms` while preserving the existing payload
+  budget failure semantics.
+- validation:
+  `pnpm exec vitest run tools/scripts/perf-smoke.test.ts --reporter=dot --testTimeout=30000`
+  green (1 file / 11 tests);
+  `pnpm exec eslint tools/scripts/perf-smoke.ts tools/scripts/perf-smoke.test.ts` green;
+  `pnpm exec prettier --check Plans.md ops/refactor/STATE.md tools/scripts/perf-smoke.ts tools/scripts/perf-smoke.test.ts docs/operations/performance-smoke-test.md`
+  green after formatting `Plans.md` and the test file;
+  `git diff --check -- Plans.md ops/refactor/STATE.md tools/scripts/perf-smoke.ts tools/scripts/perf-smoke.test.ts docs/operations/performance-smoke-test.md`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green.
+- remaining:
+  `PERF-RTE-001A` still needs deploy readiness / EventBridge schedule / CloudWatch alarm
+  connection.
