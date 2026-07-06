@@ -1,28 +1,51 @@
+import { RISK_DOMAIN_ORDER, type RiskDomain, type RiskFinding } from '@/lib/risk/risk-finding';
+import { RISK_TASK_REGISTRY, getRiskTaskRegistryEntry } from '@/lib/tasks/task-registry';
+import { readJsonObject } from '@/lib/db/json';
+import type { MemberRole, Prisma } from '@prisma/client';
 import {
   riskFindingToOperationalTaskInput,
   shouldCreateOperationalTaskForRisk,
   upsertOperationalTaskForRisk,
 } from './risk-task-bridge';
-import { RISK_TASK_REGISTRY } from '@/lib/tasks/task-registry';
 import { getCaseRiskCockpit, type CaseRiskCockpitDb } from '@/server/services/case-risk-cockpit';
-import type { MemberRole } from '@prisma/client';
-import type { RiskFinding } from '@/lib/risk/risk-finding';
 
 type RiskTaskSyncTx = Parameters<typeof upsertOperationalTaskForRisk>[0];
 type RiskTaskCloseTx = RiskTaskSyncTx & {
   task: RiskTaskSyncTx['task'] & {
     findMany(args: unknown): Promise<OpenRiskTaskRow[]>;
   };
+  residence?: {
+    findFirst(args: unknown): Promise<ResidenceResolveRow | null>;
+  };
+  patientMcsLink?: {
+    findFirst(args: unknown): Promise<PatientMcsLinkResolveRow | null>;
+  };
 };
 
 type OpenRiskTaskRow = {
   id: string;
   display_id: string | null;
+  task_type: string;
   dedupe_key: string | null;
+  related_entity_type: string | null;
+  related_entity_id: string | null;
+  metadata: Prisma.JsonValue | null;
+};
+
+type ResidenceResolveRow = {
+  lat: number | null;
+  lng: number | null;
+  geocode_status: string | null;
+  geocode_accuracy: string | null;
+};
+
+type PatientMcsLinkResolveRow = {
+  last_sync_status: string | null;
 };
 
 const MANAGED_RISK_TASK_TYPES = Object.values(RISK_TASK_REGISTRY).map((entry) => entry.task_type);
 const RISK_TASK_METADATA_SCOPE = { path: ['source'], equals: 'risk_finding' } as const;
+const COORDINATE_SAME_VALUE_TOLERANCE = 0.000001;
 
 function caseRiskTaskOwnershipWhere(args: { orgId: string; caseId: string }) {
   return {
@@ -186,13 +209,24 @@ export async function resolveStaleOperationalTasksForCaseRisk(
     select: {
       id: true,
       display_id: true,
+      task_type: true,
       dedupe_key: true,
+      related_entity_type: true,
+      related_entity_id: true,
+      metadata: true,
     },
   });
 
-  const staleTasks = openRiskTasks.filter(
-    (task) => task.dedupe_key && !args.activeDedupeKeys.has(task.dedupe_key),
-  );
+  const staleTasks: OpenRiskTaskRow[] = [];
+  for (const task of openRiskTasks) {
+    if (
+      await canResolveStaleRiskTaskByRegistry(tx, task, args.activeDedupeKeys, {
+        orgId: args.orgId,
+      })
+    ) {
+      staleTasks.push(task);
+    }
+  }
   if (staleTasks.length === 0) {
     return { resolved_stale_task_count: 0, resolved_stale_tasks: [] as RiskTaskSyncTaskRef[] };
   }
@@ -229,4 +263,116 @@ export async function resolveStaleOperationalTasksForCaseRisk(
     resolved_stale_task_count: resolvedTasks.length,
     resolved_stale_tasks: resolvedTasks,
   };
+}
+
+export async function canResolveStaleRiskTaskByRegistry(
+  tx: Pick<RiskTaskCloseTx, 'residence' | 'patientMcsLink'>,
+  task: OpenRiskTaskRow,
+  activeDedupeKeys: ReadonlySet<string>,
+  options: { orgId?: string } = {},
+) {
+  if (!task.dedupe_key?.startsWith('risk:')) return false;
+  if (activeDedupeKeys.has(task.dedupe_key)) return false;
+
+  const metadata = readJsonObject(task.metadata);
+  if (!metadata || metadata.source !== 'risk_finding') return false;
+
+  const domain = readRiskDomain(metadata.risk_domain);
+  if (!domain) return false;
+
+  const entry = getRiskTaskRegistryEntry(domain);
+  if (entry.task_type !== task.task_type) return false;
+  if (entry.resolve_condition.strategy !== 'active_finding_absent') return false;
+
+  if (!readNonBlankString(metadata.risk_key)) return false;
+  if (!readNonBlankString(metadata.case_id)) return false;
+
+  if (!entry.resolve_condition.requires_related_entity) return true;
+
+  const metadataEntityType = readNonBlankString(metadata.related_entity_type);
+  const metadataEntityId = readNonBlankString(metadata.related_entity_id);
+  if (!metadataEntityType || !metadataEntityId) return false;
+  if (!task.related_entity_type || !task.related_entity_id) return false;
+  if (metadataEntityType !== task.related_entity_type) return false;
+  if (metadataEntityId !== task.related_entity_id) return false;
+
+  return await canResolveByDomainPredicate(tx, {
+    predicate: entry.resolve_condition.predicate,
+    task,
+    metadata,
+    orgId: options.orgId,
+  });
+}
+
+async function canResolveByDomainPredicate(
+  tx: Pick<RiskTaskCloseTx, 'residence' | 'patientMcsLink'>,
+  args: {
+    predicate: ReturnType<typeof getRiskTaskRegistryEntry>['resolve_condition']['predicate'];
+    task: OpenRiskTaskRow;
+    metadata: Record<string, unknown>;
+    orgId?: string;
+  },
+) {
+  if (!args.predicate) return true;
+  if (!args.orgId || !args.task.related_entity_id) return false;
+
+  const patientId = readNonBlankString(args.metadata.patient_id);
+
+  if (args.predicate === 'patient_mcs_sync_success') {
+    if (!tx.patientMcsLink || args.task.related_entity_type !== 'patient_mcs_link') return false;
+    const link = await tx.patientMcsLink.findFirst({
+      where: {
+        org_id: args.orgId,
+        id: args.task.related_entity_id,
+        ...(patientId ? { patient_id: patientId } : {}),
+      },
+      select: {
+        last_sync_status: true,
+      },
+    });
+    return link?.last_sync_status === 'success';
+  }
+
+  if (args.predicate === 'residence_geocode_valid') {
+    if (!tx.residence || args.task.related_entity_type !== 'residence') return false;
+    const residence = await tx.residence.findFirst({
+      where: {
+        org_id: args.orgId,
+        id: args.task.related_entity_id,
+        ...(patientId ? { patient_id: patientId } : {}),
+      },
+      select: {
+        lat: true,
+        lng: true,
+        geocode_status: true,
+        geocode_accuracy: true,
+      },
+    });
+    return Boolean(residence && isResidenceGeocodeResolved(residence));
+  }
+
+  return false;
+}
+
+function isResidenceGeocodeResolved(residence: ResidenceResolveRow) {
+  const lat = residence.lat;
+  const lng = residence.lng;
+  if (lat == null || lng == null) return false;
+  if (lat === 0 && lng === 0) return false;
+  if (Math.abs(lat - lng) <= COORDINATE_SAME_VALUE_TOLERANCE) return false;
+  if (residence.geocode_status === 'failed' || residence.geocode_status === 'review_required') {
+    return false;
+  }
+  if (residence.geocode_accuracy === 'low') return false;
+  return true;
+}
+
+function readRiskDomain(value: unknown): RiskDomain | null {
+  return typeof value === 'string' && RISK_DOMAIN_ORDER.includes(value as RiskDomain)
+    ? (value as RiskDomain)
+    : null;
+}
+
+function readNonBlankString(value: unknown) {
+  return typeof value === 'string' && value.trim().length > 0 ? value : null;
 }

@@ -1,6 +1,15 @@
 import { RISK_DOMAIN_LABELS, type RiskDomain } from '@/lib/risk/risk-finding';
 import type { TaskPriority } from '@/server/services/operational-tasks';
 
+export type RiskTaskResolveStrategy = 'active_finding_absent' | 'manual_or_waiver_only';
+export type RiskTaskResolvePredicate = 'patient_mcs_sync_success' | 'residence_geocode_valid';
+
+export type RiskTaskResolveCondition = {
+  strategy: RiskTaskResolveStrategy;
+  requires_related_entity: boolean;
+  predicate?: RiskTaskResolvePredicate;
+};
+
 export type RiskTaskRegistryEntry = {
   owner_domain: RiskDomain;
   task_type: string;
@@ -9,7 +18,18 @@ export type RiskTaskRegistryEntry = {
   patient_safety: boolean;
   billing_close: boolean;
   related_entity_type: string;
+  resolve_condition: RiskTaskResolveCondition;
 };
+
+const ACTIVE_FINDING_ABSENT_WITH_ENTITY = {
+  strategy: 'active_finding_absent',
+  requires_related_entity: true,
+} as const satisfies RiskTaskResolveCondition;
+
+const ACTIVE_FINDING_ABSENT_CASE_LEVEL = {
+  strategy: 'active_finding_absent',
+  requires_related_entity: false,
+} as const satisfies RiskTaskResolveCondition;
 
 export const RISK_TASK_REGISTRY = {
   patient_foundation: {
@@ -20,6 +40,7 @@ export const RISK_TASK_REGISTRY = {
     patient_safety: true,
     billing_close: false,
     related_entity_type: 'patient_foundation',
+    resolve_condition: ACTIVE_FINDING_ABSENT_CASE_LEVEL,
   },
   consent_plan: {
     owner_domain: 'consent_plan',
@@ -29,6 +50,7 @@ export const RISK_TASK_REGISTRY = {
     patient_safety: true,
     billing_close: true,
     related_entity_type: 'consent_plan',
+    resolve_condition: ACTIVE_FINDING_ABSENT_CASE_LEVEL,
   },
   medication: {
     owner_domain: 'medication',
@@ -38,6 +60,7 @@ export const RISK_TASK_REGISTRY = {
     patient_safety: true,
     billing_close: false,
     related_entity_type: 'medication',
+    resolve_condition: ACTIVE_FINDING_ABSENT_WITH_ENTITY,
   },
   dispensing: {
     owner_domain: 'dispensing',
@@ -47,6 +70,7 @@ export const RISK_TASK_REGISTRY = {
     patient_safety: true,
     billing_close: false,
     related_entity_type: 'dispensing',
+    resolve_condition: ACTIVE_FINDING_ABSENT_WITH_ENTITY,
   },
   visit_preparation: {
     owner_domain: 'visit_preparation',
@@ -56,6 +80,7 @@ export const RISK_TASK_REGISTRY = {
     patient_safety: true,
     billing_close: false,
     related_entity_type: 'visit_preparation',
+    resolve_condition: ACTIVE_FINDING_ABSENT_WITH_ENTITY,
   },
   visit_record: {
     owner_domain: 'visit_record',
@@ -65,6 +90,7 @@ export const RISK_TASK_REGISTRY = {
     patient_safety: true,
     billing_close: true,
     related_entity_type: 'visit_record',
+    resolve_condition: ACTIVE_FINDING_ABSENT_WITH_ENTITY,
   },
   report_delivery: {
     owner_domain: 'report_delivery',
@@ -74,6 +100,7 @@ export const RISK_TASK_REGISTRY = {
     patient_safety: false,
     billing_close: true,
     related_entity_type: 'care_report',
+    resolve_condition: ACTIVE_FINDING_ABSENT_WITH_ENTITY,
   },
   billing: {
     owner_domain: 'billing',
@@ -83,6 +110,7 @@ export const RISK_TASK_REGISTRY = {
     patient_safety: false,
     billing_close: true,
     related_entity_type: 'billing_evidence',
+    resolve_condition: ACTIVE_FINDING_ABSENT_WITH_ENTITY,
   },
   task_sla: {
     owner_domain: 'task_sla',
@@ -92,6 +120,10 @@ export const RISK_TASK_REGISTRY = {
     patient_safety: false,
     billing_close: false,
     related_entity_type: 'task',
+    resolve_condition: {
+      strategy: 'manual_or_waiver_only',
+      requires_related_entity: true,
+    },
   },
   notification: {
     owner_domain: 'notification',
@@ -101,6 +133,7 @@ export const RISK_TASK_REGISTRY = {
     patient_safety: false,
     billing_close: false,
     related_entity_type: 'notification',
+    resolve_condition: ACTIVE_FINDING_ABSENT_WITH_ENTITY,
   },
   privacy_security: {
     owner_domain: 'privacy_security',
@@ -110,6 +143,7 @@ export const RISK_TASK_REGISTRY = {
     patient_safety: false,
     billing_close: false,
     related_entity_type: 'privacy_security',
+    resolve_condition: ACTIVE_FINDING_ABSENT_WITH_ENTITY,
   },
   integration: {
     owner_domain: 'integration',
@@ -119,6 +153,10 @@ export const RISK_TASK_REGISTRY = {
     patient_safety: false,
     billing_close: false,
     related_entity_type: 'integration',
+    resolve_condition: {
+      ...ACTIVE_FINDING_ABSENT_WITH_ENTITY,
+      predicate: 'patient_mcs_sync_success',
+    },
   },
   data_quality: {
     owner_domain: 'data_quality',
@@ -128,6 +166,10 @@ export const RISK_TASK_REGISTRY = {
     patient_safety: false,
     billing_close: false,
     related_entity_type: 'data_quality',
+    resolve_condition: {
+      ...ACTIVE_FINDING_ABSENT_WITH_ENTITY,
+      predicate: 'residence_geocode_valid',
+    },
   },
 } as const satisfies Record<RiskDomain, RiskTaskRegistryEntry>;
 
