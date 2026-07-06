@@ -41,6 +41,453 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOV-001 Patient Movement Timeline map-less rail UI slice（未コミット）。
+  - current task:
+    患者詳細 `movement` タブのタイムラインを、上部地図なしの Google Maps 風 vertical rail UI に寄せた。
+    タイムラインは処方・訪問・文書登録の発生確認と deep link CTA に絞り、詳細本文は出さない。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `docs/ui-ux-design-guidelines.md`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md`,
+    `src/app/(dashboard)/patients/[id]/patient-activity-timeline.tsx`,
+    `src/app/(dashboard)/patients/[id]/patient-activity-timeline.test.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+    `src/server/services/patient-movement-timeline-presenter.ts`,
+    `Plans.md`.
+  - design reference:
+    Used the imagegen built-in path with a non-PHI `gpt-image-2`-oriented prompt. Generated reference:
+    `/Users/yusuke/.codex/generated_images/019f2c7e-d969-7882-bd11-432a10abb930/ig_06dd9af84cea72a5016a4bcf1c7dac81919b9b9626e50e041f.png`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/patients/[id]/patient-activity-timeline.tsx`,
+    `src/app/(dashboard)/patients/[id]/patient-activity-timeline.test.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`.
+  - implementation:
+    Added a compact movement summary strip, updated copy from "患者アクションタイムライン" to
+    "患者の動き", changed date groups into a rail layout with time column, icon node, event card,
+    status badges, and outline deep-link CTA. Prescription/visit/document categories now render
+    safe occurrence-only summaries in the UI and hide metadata so raw visit/SOAP/prescription/document
+    excerpts do not appear even if older timeline rows are passed in.
+  - security / PHI reviewed:
+    UI tests now assert that visit detail text, prescription drug/quantity text, and document body-like
+    summaries are not rendered on the timeline. Detail remains reachable through each event's relative
+    href/deep-link button.
+  - validation:
+    `pnpm vitest run 'src/app/(dashboard)/patients/[id]/patient-activity-timeline.test.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' src/server/services/patient-movement-timeline-presenter.test.ts --reporter=dot --testTimeout=30000`
+    passed: 3 files / 105 tests.
+    `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/patient-activity-timeline.tsx' 'src/app/(dashboard)/patients/[id]/patient-activity-timeline.test.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx'`
+    passed.
+    `pnpm exec prettier --check 'src/app/(dashboard)/patients/[id]/patient-activity-timeline.tsx' 'src/app/(dashboard)/patients/[id]/patient-activity-timeline.test.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx'`
+    passed after scoped Prettier write on `patient-activity-timeline.tsx`.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+    `pnpm boundaries:check` passed: 0 new violations, 7 allowlisted debt imports across 6 files.
+    `git diff --check -- Plans.md ops/refactor/STATE.md 'src/app/(dashboard)/patients/[id]/patient-activity-timeline.tsx' 'src/app/(dashboard)/patients/[id]/patient-activity-timeline.test.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx'`
+    passed.
+  - remaining:
+    `MOV-001` remains partial. Dedicated `PatientMovementTimeline` component split/rename,
+    rendered event detail shell, raw-text reauthorization UI, INB source integration,
+    MedicationStock source integration, and Playwright mobile smoke remain.
+  - next action:
+    Add the rendered event detail shell or continue with INB/MedicationStock source integration
+    once persistence exists.
+
+- codex: MOV-001 Patient Movement Timeline scope clarification（未コミット）。
+  - current task:
+    ユーザー指示に合わせ、Patient Movement Timeline の要件を「処方・訪問・文書登録は
+    発生確認のみ、詳細は deep link 先で確認」に明確化した。今回は Plans.md の計画追記のみで、
+    UI/route 実装は変更していない。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `docs/ui-ux-design-guidelines.md`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-movement-timeline-presenter.ts`,
+    `src/types/patient-movement-timeline.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `MOV-001` の目的、map-less timeline rail の例、Google Maps 風UIの注意点、カード表示粒度、
+    deep link 方針に、処方内容・訪問内容・文書本文をタイムライン上へ出さず、処方登録/訪問記録/
+    文書登録が「起きたこと」だけを marker として示す方針を追加した。
+  - security / PHI reviewed:
+    計画上も処方薬剤明細、SOAP本文、観察内容、文書本文、PDF本文、添付ファイル名、
+    storage key を一覧カードに出さないことを明記した。詳細は正本画面または event detail resolver
+    の destination 経由で再認可・監査後に確認する。
+  - validation:
+    `git diff --check -- Plans.md ops/refactor/STATE.md` passed.
+  - remaining:
+    `MOV-001` remains partial. Map-less vertical rail UI、INB/MedicationStock source
+    integration は未実装。Rendered event detail shell は現行 UI 主導線から外し、
+    処方・訪問・文書の正本詳細 deep link を primary CTA とする。
+  - next action:
+    差分チェック後、次の実装 slice では視覚的変更になるため non-PHI の gpt-image-2 reference を
+    作ってから PatientMovementTimeline rail UI を実装する。
+
+- codex: MOV-001 movement timeline event detail resolver slice（未コミット）。
+  - current task:
+    Patient Movement Timeline の deep link 詳細入口として
+    `/api/patients/:id/timeline/:eventId` を追加した。resolver は表示済み
+    `movement_events` の safe event と destination を返し、raw text は返さない。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `src/app/api/patients/[id]/timeline/route.ts`,
+    `src/app/api/patients/[id]/timeline/route.test.ts`,
+    `src/server/services/patient-detail.ts`,
+    `src/server/services/patient-movement-timeline-presenter.ts`,
+    `src/types/patient-movement-timeline.ts`,
+    `Plans.md`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/types/patient-movement-timeline.ts`,
+    `src/server/services/patient-detail.ts`,
+    `src/app/api/patients/[id]/timeline/[eventId]/route.ts`,
+    `src/app/api/patients/[id]/timeline/[eventId]/route.test.ts`.
+  - implementation:
+    Added `PatientMovementTimelineEventDetail` type and
+    `getPatientMovementTimelineEventDetail`. The service reuses the RLS-scoped timeline read,
+    finds the requested `movement_events` item by exact event id, and returns `event`,
+    `destination`, and `raw_text: { included: false }`. The route uses `withAuthContext`,
+    `withSensitiveNoStore`, route param normalization, org-scoped runner injection, and best-effort
+    PHI read audit.
+  - security / PHI reviewed:
+    The resolver does not expose raw MCS/phone text, SOAP body, document body, attachment filename,
+    storage key, signed URL, or provider raw payload. It only returns the already-safe movement DTO
+    plus the destination href/label. Raw content must still be fetched from the destination screen
+    after its own authorization and audit path.
+  - validation:
+    `pnpm vitest run 'src/app/api/patients/[id]/timeline/[eventId]/route.test.ts' 'src/app/api/patients/[id]/timeline/route.test.ts' src/server/services/patient-movement-timeline-presenter.test.ts src/server/services/patient-detail.test.ts --reporter=dot --testTimeout=30000`
+    passed: 4 files / 81 tests.
+    `pnpm exec eslint 'src/app/api/patients/[id]/timeline/[eventId]/route.ts' 'src/app/api/patients/[id]/timeline/[eventId]/route.test.ts' src/types/patient-movement-timeline.ts src/server/services/patient-detail.ts src/server/services/patient-movement-timeline-presenter.ts src/server/services/patient-movement-timeline-presenter.test.ts 'src/app/(dashboard)/patients/[id]/patient-activity-timeline.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.tsx'`
+    passed.
+    `pnpm boundaries:check` passed: 0 new violations, 7 allowlisted debt imports across 6 files.
+    `pnpm typecheck` without heap override failed with Node OOM during `tsc --noEmit`.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+  - remaining:
+    `MOV-001` remains partial. The resolver currently returns safe detail metadata only; a rendered
+    detail shell / redirect UI and raw-text reauthorization screen are future work. Map-less rail UI
+    and INB/MedicationStock source integration also remain.
+  - next action:
+    Build the visual `PatientMovementTimeline` map-less rail UI using a non-PHI gpt-image-2 reference,
+    or add INB source integration once `InboundCommunicationEvent` persistence exists.
+
+- codex: MOV-001 occurrence-only direct deep link alignment（未コミット）。
+  - current task:
+    ユーザー確認に合わせて、Patient Movement Timeline は処方・訪問・文書登録が
+    「あったこと」だけを表示し、詳細確認は正本詳細画面への direct deep link に委譲する方針へ戻した。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/patients/[id]/patient-activity-timeline.tsx`,
+    `src/app/(dashboard)/patients/[id]/patient-activity-timeline.test.tsx`,
+    `src/server/services/patient-movement-timeline-presenter.ts`,
+    `src/server/services/patient-movement-timeline-presenter.test.ts`,
+    `src/types/patient-movement-timeline.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/patients/[id]/patient-activity-timeline.tsx`,
+    `src/app/(dashboard)/patients/[id]/patient-activity-timeline.test.tsx`,
+    `src/server/services/patient-movement-timeline-presenter.ts`,
+    `src/server/services/patient-movement-timeline-presenter.test.ts`,
+    `src/types/patient-movement-timeline.ts`.
+  - implementation:
+    Removed the unused `event_detail_href` UI path and deleted the untracked rendered
+    `/patients/:id/timeline/:eventId` page files. Timeline cards now use `event.href` directly,
+    while occurrence-only prescription/visit/document cards still show safe generic summaries.
+    Search haystack also uses the safe summary and strips metadata for occurrence-only categories,
+    so drug names, visit bodies, document names, and attachment names cannot make hidden raw
+    content searchable from the timeline.
+  - security / PHI reviewed:
+    The movement UI remains an event index. Prescription details, visit details, document bodies,
+    raw MCS/phone text, attachment names, storage keys, and signed URLs are not rendered or searched
+    in the timeline. Details are opened only through the original destination screens, which keep
+    their own authorization and audit boundaries.
+  - validation:
+    `pnpm vitest run src/server/services/patient-movement-timeline-presenter.test.ts 'src/app/(dashboard)/patients/[id]/patient-activity-timeline.test.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' 'src/app/api/patients/[id]/timeline/[eventId]/route.test.ts' --reporter=dot --testTimeout=30000`
+    passed: 4 files / 109 tests.
+    `pnpm exec eslint src/types/patient-movement-timeline.ts src/server/services/patient-movement-timeline-presenter.ts src/server/services/patient-movement-timeline-presenter.test.ts 'src/app/(dashboard)/patients/[id]/patient-activity-timeline.tsx' 'src/app/(dashboard)/patients/[id]/patient-activity-timeline.test.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' 'src/app/api/patients/[id]/timeline/[eventId]/route.test.ts'`
+    passed.
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/types/patient-movement-timeline.ts src/server/services/patient-movement-timeline-presenter.ts src/server/services/patient-movement-timeline-presenter.test.ts 'src/app/(dashboard)/patients/[id]/patient-activity-timeline.tsx' 'src/app/(dashboard)/patients/[id]/patient-activity-timeline.test.tsx'`
+    passed after formatting `Plans.md`.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+    `pnpm boundaries:check` passed: 0 new violations, 7 allowlisted debt imports across 6 files.
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/types/patient-movement-timeline.ts src/server/services/patient-movement-timeline-presenter.ts src/server/services/patient-movement-timeline-presenter.test.ts 'src/app/(dashboard)/patients/[id]/patient-activity-timeline.tsx' 'src/app/(dashboard)/patients/[id]/patient-activity-timeline.test.tsx'`
+    passed.
+  - remaining:
+    `MOV-001` remains partial for INB/MedicationStock source integration.
+  - next action:
+    Finish validation for the direct deep link slice, then continue with INB/MedicationStock timeline
+    source planning or implementation.
+
+- codex: MOV-001 movement_events DTO / presenter slice（未コミット）。
+  - current task:
+    Patient Movement Timeline の「処方・訪問・文書登録は発生確認だけ、詳細は deep link」
+    という契約をコード側に固定した。既存 `/api/patients/:id/timeline` は互換の
+    `timeline_events` を維持しつつ additive に `movement_events` を返す。
+    `movement` タブは `movement_events` を優先して表示する。
+  - files inspected:
+    `docs/ui-ux-design-guidelines.md`,
+    `node_modules/next/dist/docs/03-architecture/accessibility.md`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail.ts`,
+    `src/app/(dashboard)/patients/[id]/patient-activity-timeline.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    related tests.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/types/patient-movement-timeline.ts`,
+    `src/server/services/patient-movement-timeline-presenter.ts`,
+    `src/server/services/patient-movement-timeline-presenter.test.ts`,
+    `src/server/services/patient-detail.ts`,
+    `src/app/(dashboard)/patients/[id]/patient-detail.types.ts`,
+    `src/app/(dashboard)/patients/[id]/patient-activity-timeline.tsx`,
+    `src/app/(dashboard)/patients/[id]/patient-activity-timeline.test.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`.
+  - implementation:
+    Added shared `PatientMovementTimelineEvent` / category / severity types and
+    `buildPatientMovementTimelineEvents`. The presenter maps prescription and visit events to
+    occurrence-only summaries, maps document registration/state changes to occurrence-only summaries,
+    strips metadata for prescription/visit/document cards, and rejects non-relative hrefs by falling
+    back to `#patient-movement`. `PatientActivityTimeline` now accepts the expanded movement event
+    taxonomy and category filter set, while `CardWorkspace` uses `movement_events` for the
+    `movement` tab and falls back to `timeline_events` when older responses lack the field.
+  - security / PHI reviewed:
+    Presenter tests verify that prescription drug names, quantities, visit/SOAP body text,
+    document body text, attachment/file names, and external storage URLs do not appear in
+    movement list DTOs. Raw detail remains behind destination screens.
+  - validation:
+    `pnpm vitest run src/server/services/patient-movement-timeline-presenter.test.ts 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-activity-timeline.test.tsx' --reporter=dot --testTimeout=30000`
+    passed: 3 files / 105 tests.
+    `pnpm vitest run src/server/services/patient-detail.test.ts 'src/app/api/patients/[id]/timeline/route.test.ts' --reporter=dot --testTimeout=30000`
+    passed: 2 files / 76 tests.
+    `pnpm exec eslint src/types/patient-movement-timeline.ts src/server/services/patient-movement-timeline-presenter.ts src/server/services/patient-movement-timeline-presenter.test.ts src/server/services/patient-detail.ts 'src/app/(dashboard)/patients/[id]/patient-detail.types.ts' 'src/app/(dashboard)/patients/[id]/patient-activity-timeline.tsx' 'src/app/(dashboard)/patients/[id]/patient-activity-timeline.test.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx'`
+    passed.
+    `pnpm typecheck` passed.
+    `pnpm boundaries:check` passed: 0 new violations, 7 allowlisted debt imports across 6 files.
+  - remaining:
+    `MOV-001` remains partial. Map-less Google Maps-like vertical rail UI, inbound source
+    integration, MedicationStock source integration, and task/safety source integration remain
+    future slices. A safe event detail resolver has since been added in the newer entry above; a
+    rendered detail shell / raw-text reauthorization screen remains future work. This slice still did
+    not use imagegen/gpt-image-2 because it added a DTO / presenter contract and reused the existing
+    UI rather than introducing a new visual design.
+  - next action:
+    Implement the `PatientMovementTimeline` map-less rail UI with gpt-image-2 reference, or add
+    the rendered event detail shell for `/patients/:id/timeline/:eventId`.
+
+- codex: MOV-001 Patient Movement Timeline Phase 1 tab split（未コミット）。
+  - current task:
+    ユーザー指示に従い、Patient Movement Timeline は処方内容・訪問内容・文書本文を
+    タイムライン上で詳述せず、処方・訪問・文書登録が「発生したこと」を確認し、
+    詳細は deep link 先で確認する計画へ整合させた。Phase 1 として患者詳細に
+    `movement` タブ「患者の動き」を追加し、既存 `PatientActivityTimeline` を
+    `history` から移動。`history` は変更履歴・構造化ケアへ整理した。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `docs/ui-ux-design-guidelines.md`,
+    `node_modules/next/dist/docs/03-architecture/accessibility.md`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+    `src/app/(dashboard)/patients/[id]/patient-activity-timeline.tsx`,
+    `src/app/(dashboard)/patients/[id]/patient-activity-timeline.test.tsx`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`.
+  - implementation:
+    Added `PatientDetailTab = 'movement'`, `PATIENT_DETAIL_TABS` entry for
+    「患者の動き」, and hash mappings for `#patient-movement`, `#patient-timeline`,
+    `#inbound-communications`, `#inbound-signals`, and `#medication-stock-events`.
+    The Command Center excerpt now links to `#patient-movement`; the full timeline query is enabled
+    for `command` or `movement`, not `history`. `history` no longer renders the activity timeline.
+  - security / PHI reviewed:
+    This slice does not add new data sources, API routes, raw text display, document body display, or
+    external sharing. `Plans.md` keeps the follow-up contract explicit: prescription lines, SOAP/body
+    text, document bodies, MCS/phone raw text, attachment names, storage keys, and signed URLs must
+    not appear in timeline list DTOs.
+  - validation:
+    `pnpm vitest run 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' --reporter=dot --testTimeout=30000`
+    passed: 1 file / 93 tests.
+    `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx'`
+    passed.
+    `pnpm exec prettier --check 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx'`
+    passed after scoped formatting.
+    `git diff --check -- 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx'`
+    passed.
+    `pnpm typecheck` passed.
+    `pnpm boundaries:check` passed: 0 new violations, 7 allowlisted debt imports across 6 files.
+  - remaining:
+    `MOV-001` remains partial. The Google Maps-like map-less vertical rail UI and
+    INB/MedicationStock timeline sources are not implemented. The shared
+    `PatientMovementTimelineEvent` DTO, prescription/visit/document registration occurrence
+    presenter, and safe event resolver have since been added in newer entries above.
+    Imagegen/gpt-image-2 was not used because this slice only rehosted existing UI and did not
+    perform a visual redesign.
+  - next action:
+    Add the common movement timeline DTO/presenter and source tests so prescription, visit, and
+    document registration cards show occurrence/status/deep link only while keeping detailed clinical
+    content behind the destination screen.
+
+- codex: INB-001 / RX-002 pure domain first slice + MOV-001 plan refinement（未コミット）。
+  - current task:
+    active goal continuation として、既存 dirty tree を確認し、`Plans.md` の
+    `INB-001` / `RX-002` / `MOV-001` と整合する小スライスを進めた。
+    `MOV-001` はユーザー指示に従い、Patient Movement Timeline 上では
+    処方・訪問・文書登録の「発生」を確認し、詳細は deep link 先で確認する方針へ修正。
+    `INB-001` は DB migration なしの pure domain として、inbound source classification、
+    PHI-like raw key detection、public summary、rule-based signal extraction、
+    review decision gate を追加。`RX-002` は medication stock の pure domain として、
+    YJ/HOT と GS1/GTIN/JAN を分けた名寄せ、PRN/topical/scheduled stockout forecast、
+    他職種/MCS/協力薬局由来の残数観測 staging を追加した。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `ops/refactor/STATE.md`,
+    `.codex/ralph-state.md`,
+    `Plans.md`,
+    `src/core/share/scope-registry.ts`,
+    `src/server/services/external-access.ts`,
+    `src/server/services/external-access.test.ts`,
+    `src/server/services/external-access-scope-registry.ts`,
+    `src/core/interprofessional/inbound/domain/inbound-communication.ts`,
+    `src/core/interprofessional/inbound/domain/inbound-signal-classifier.ts`,
+    `src/modules/pharmacy/medication-stock/domain/external-observation.ts`,
+    `src/modules/pharmacy/medication-stock/domain/medication-equivalence.ts`,
+    `src/modules/pharmacy/medication-stock/domain/stockout-forecast.ts`,
+    corresponding unit tests.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/core/interprofessional/inbound/domain/inbound-communication.ts`,
+    `src/core/interprofessional/inbound/domain/inbound-communication.test.ts`,
+    `src/core/interprofessional/inbound/domain/inbound-signal-classifier.ts`,
+    `src/core/interprofessional/inbound/domain/inbound-signal-classifier.test.ts`,
+    `src/modules/pharmacy/medication-stock/domain/external-observation.ts`,
+    `src/modules/pharmacy/medication-stock/domain/external-observation.test.ts`,
+    `src/modules/pharmacy/medication-stock/domain/medication-equivalence.ts`,
+    `src/modules/pharmacy/medication-stock/domain/medication-equivalence.test.ts`,
+    `src/modules/pharmacy/medication-stock/domain/stockout-forecast.ts`,
+    `src/modules/pharmacy/medication-stock/domain/stockout-forecast.test.ts`.
+    Existing dirty `MOD-SHARE-001` files were validated but not newly authored in this continuation:
+    `src/core/share/scope-registry.ts`,
+    `src/core/share/scope-registry.test.ts`,
+    `src/server/services/external-access-scope-registry.ts`,
+    `src/server/services/external-access.ts`,
+    `src/server/services/external-access.test.ts`.
+  - bugs / risks reduced:
+    Inbound raw text / raw provider payload / contact-like keys are detected before public summary or
+    signal extraction. Public inbound summary exposes only controlled metadata and raw text length, not
+    sender names, contacts, body, source URL, or message text. Signal extraction now distinguishes
+    `observed_quantity`（残りN）from `usage_delta`（N使用）and emits `refill_request` separately
+    from generic low-stock text. Auto-apply remains gated behind patient/case linkage,
+    stock-item linkage, trusted source, and explicit allowAutoApply.
+    Medication stock domain keeps external observations staged for pharmacist review and never writes
+    directly to the ledger from MCS/communication/partner records. YJ/drug master matches are clinical
+    identity evidence; GS1/GTIN/JAN package matches are package evidence only and cannot auto-link
+    clinical equivalence by themselves.
+  - security / PHI reviewed:
+    No DB migration, route, notification, external send, or live data mutation was introduced.
+    New DTO-style helpers intentionally omit raw text, patient names, contacts, source URLs,
+    source record IDs, storage keys, signed URLs, SOAP/body/content/message fields, and raw payloads.
+    `MOV-001` plan now explicitly avoids displaying prescription line details, SOAP/visit body,
+    document body, MCS body, phone memo, or attachment filenames on the timeline list.
+  - validation:
+    `pnpm vitest run src/core/share/scope-registry.test.ts src/server/services/external-access.test.ts src/core/interprofessional/inbound/domain/inbound-communication.test.ts src/core/interprofessional/inbound/domain/inbound-signal-classifier.test.ts src/modules/pharmacy/medication-stock/domain/external-observation.test.ts src/modules/pharmacy/medication-stock/domain/medication-equivalence.test.ts src/modules/pharmacy/medication-stock/domain/stockout-forecast.test.ts --reporter=dot --testTimeout=30000`
+    passed: 7 files / 84 tests.
+    `pnpm exec eslint ...touched domain/share/external-access files` passed.
+    `pnpm exec prettier --check ...touched files` passed after scoped `prettier --write`.
+    `git diff --check -- ...touched files` passed.
+    `pnpm typecheck` passed.
+    `pnpm boundaries:check` passed: 0 new violations, 7 allowlisted debt imports across 6 files.
+  - remaining:
+    `INB-001` remains partial: DB schema, API, review UI, CommunicationQueue integration,
+    and MedicationStock/Risk/Task/VisitBrief/Schedule/Report connection are not implemented.
+    `RX-002` remains partial: ledger DB/API/UI, `ResidualMedication` migration, prescription supply
+    application, stock snapshot, risk/task/brief/schedule/report/share integration remain.
+    At the time of this older entry, `MOV-001` had not yet advanced beyond planning. It has since
+    advanced to Phase 1 partial in the newer entry above: patient detail `movement` tab exists and
+    the existing timeline moved out of `history`. Worktree is validated but not committed in this
+    continuation because no current explicit commit request was given in this turn.
+  - next action:
+    If continuing implementation, the next low-risk slice is either:
+    (1) connect INB pure domain to a DB-free presenter/API contract test, or
+    (2) continue MOV-001 with a common movement timeline DTO/presenter and occurrence-only
+    prescription/visit/document registration source tests.
+
+- codex: MOD-SHARE-001 External Share Scope registry first slice.
+  - current task:
+    `Plans.md` の `MOD-SHARE-001` first slice として、外部共有 scope metadata を
+    `src/core/share/scope-registry.ts` と
+    `src/server/services/external-access-scope-registry.ts` に集約した。
+    既存 supported scope（`allergy_info` / `medication_list` / `visit_schedule` /
+    `care_reports`）の payload と public response は維持し、planned scope
+    （`attachments` / `patient_summary` / `prescription_summary` / `residual_medications`）
+    は registry 上は known だが write-time unsupported として拒否する。
+    既存互換の `self_report_history` は legacy-known unsupported として残した。
+  - Oracle / GPT-5.5 Pro:
+    `mod-share-registry-review-lite` session で GitHub context
+    (`https://github.com/yusuketakuma/careviax`, `main`,
+    `890d3092c961c13d13079b6c9dc8cfe7ede36d9d`, clean) と最小添付
+    `external-access.ts` / `external-access.test.ts` / `permission-matrix.ts` を渡して相談。
+    判定は conditional GO。採用方針は Option B（planned scope は metadata-known but
+    unsupported、payload builder は既存4scopeのみ、PatientShareCase/Consent は別slice）。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `.agents/skills/oracle-consult/SKILL.md`,
+    `Plans.md`,
+    `src/core/module-registry/index.ts`,
+    `src/core/report/template-registry.ts`,
+    `src/core/risk/provider-registry.ts`,
+    `src/core/collaboration/registry.ts`,
+    `src/lib/auth/permissions.ts`,
+    `src/lib/auth/permission-matrix.ts`,
+    `src/server/services/external-access.ts`,
+    `src/server/services/external-access.test.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/core/share/scope-registry.ts`,
+    `src/core/share/scope-registry.test.ts`,
+    `src/server/services/external-access-scope-registry.ts`,
+    `src/server/services/external-access.ts`,
+    `src/server/services/external-access.test.ts`.
+  - bugs / risks reduced:
+    external access scope の module / permission / outputRisk / boundary metadata を1箇所に集約し、
+    `external-access.ts` 内の hardcoded permission map と scope groups を削減した。
+    未実装 planned scope は unknown ではなく registry-known として計画上管理しつつ、発行時は
+    `unsupported_scope_keys` で fail-closed。public scope では unsupported と stored-only
+    `allowed_case_ids` / `allowed_report_ids` を削除する。
+  - security / PHI reviewed:
+    `attachments` は実 payload 化せず、`storage_key` / `original_filename` / `raw_metadata`
+    など raw file/metadata key が stored scope に混入した場合も unknown key として拒否する
+    regression test を追加した。unsupported-only grant は patient lookup 前に `null` で閉じる。
+    external access payload builder に添付/患者サマリー/処方サマリー/残薬の新規 select や DTO 出力は
+    追加していない。
+  - validation:
+    `pnpm vitest run src/core/share/scope-registry.test.ts src/server/services/external-access.test.ts`
+    passed: 2 files / 42 tests.
+    `pnpm typecheck` passed.
+    `pnpm lint` passed with existing warnings only:
+    `src/lib/platform/break-glass.test.ts` unused `_tx` / `_input`.
+    `pnpm boundaries:check` passed: 0 new violations, 7 allowlisted debt imports across 6 files.
+    `git diff --check` passed.
+  - remaining:
+    `MOD-SHARE-001` is partial. `attachments`, `patient_summary`,
+    `prescription_summary`, `residual_medications` remain unsupported until file presenter,
+    masking profile, external-share audit snapshot, DTO minimization, and boundary-specific
+    tests exist. PatientShareCase/Consent scope normalization remains a separate future slice.
+
 - codex: README top-level system overview polish.
   - current task:
     ユーザー指示により、README の一般的な構成要素を web 調査し、現行コードの route / package
@@ -9339,3 +9786,109 @@
 - remaining:
   Commit/push this export boundary slice. Broader PHI export snapshot coverage and admin-wide
   DataTable policy audit remain open.
+
+## 2026-07-06 Plans Medication Stock Ledger expansion
+
+- codex: expanded `Plans.md` with the `P0/P1: 外用薬・頓服薬残数管理 Medication Stock Ledger`
+  implementation plan as an `RX-002` detail, not a duplicate backlog. The plan aligns the new ledger
+  with `VS-AUTO-8`, `MED-002`, `DB-JSON-001`, `MOD-VISIT-001`, `MOD-SHARE-001`, RiskFinding,
+  OperationalTask, VisitBrief, Schedule, Report, and External Share lanes.
+- files inspected:
+  `Plans.md`,
+  `prisma/schema/drug.prisma`,
+  `prisma/schema/medication.prisma`,
+  `prisma/schema/communication.prisma`,
+  `prisma/schema/patient.prisma`,
+  `prisma/schema/pharmacy-partnership.prisma`,
+  `src/lib/validations/visit-record.ts`,
+  `src/server/services/visit-record-derived-data.ts`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  The plan now makes `ResidualMedication` a migration-era visit-record-derived compatibility layer and
+  defines Medication Stock Ledger as the future append-only source of truth. It also prevents
+  medication-stock logic from leaking into common core by placing it under
+  `src/modules/pharmacy/medication-stock` and connecting through module providers/registries.
+- security / PHI reviewed:
+  The plan treats multi-professional/MCS/communication/partner-visit stock information as staging
+  observations. Raw source text is not copied into public ledger DTOs; pharmacist review is required
+  before creating stock events. SSE/notifications use controlled wording only.
+- data / master integration:
+  The plan uses existing `DrugMaster.yj_code`, `hot_code`, `jan_code`, and `DrugPackage.gtin` /
+  `jan_code` / package quantity. User wording `GSI` is normalized to GS1/GTIN/JAN in the plan.
+  YJ/HOT/ingredient/strength/form drive medication equivalence candidates; GS1/GTIN/JAN drives
+  package identity, scan matching, and supply quantity conversion, not clinical equivalence by itself.
+- external references checked:
+  NICE SC1 recommendations for medicines reconciliation and PRN/variable dose medicines;
+  RxNorm overview for ingredient/strength/dose-form/brand/package concept modeling;
+  PMDA translated guidance for prescription drug package identification code labeling.
+- validation:
+  `git diff --check -- Plans.md` green;
+  `pnpm exec prettier --check Plans.md` reported existing Markdown style issues for the large plan
+  file, so no whole-file formatter rewrite was applied to avoid unrelated churn.
+- remaining:
+  No code implementation was performed for this request. Future implementation should start with
+  Phase 0 inventory/ADR, then module skeleton and DB migration dry-run before any write-path dual
+  write.
+
+## 2026-07-06 Inbound interprofessional communication plan + medication-stock domain slice
+
+- codex: added `INB-001` to `Plans.md` and inserted a dedicated
+  `P0/P1: 他職種から薬局への情報受信・処理基盤 Inbound Interprofessional Communication Module`
+  section. The plan makes inbound multi-professional information the primary module and demotes
+  Medication Stock Ledger to one downstream consumer of accepted `InboundCommunicationSignal`
+  records.
+- files inspected:
+  `Plans.md`,
+  `prisma/schema/communication.prisma`,
+  `prisma/schema/patient.prisma`,
+  `prisma/schema/pharmacy-partnership.prisma`,
+  `src/server/services/communication-queue.ts`,
+  `src/modules/pharmacy/medication-stock/domain/external-observation.ts`,
+  `git status --short --untracked-files=all`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/modules/pharmacy/medication-stock/domain/medication-equivalence.ts`,
+  `src/modules/pharmacy/medication-stock/domain/stockout-forecast.ts`,
+  plus new medication-stock domain/test files already staged in the working tree:
+  `src/modules/pharmacy/medication-stock/domain/medication-equivalence.test.ts`,
+  `src/modules/pharmacy/medication-stock/domain/stockout-forecast.test.ts`,
+  `src/modules/pharmacy/medication-stock/domain/external-observation.ts`,
+  `src/modules/pharmacy/medication-stock/domain/external-observation.test.ts`.
+- bugs / risks reduced:
+  The plan now separates outbound pharmacy-to-professional workflows from inbound
+  professional-to-pharmacy workflows. It explicitly prevents MCS/phone/FAX/email raw text from being
+  used directly by medication stock, schedule, report, task, notification, audit, or external-share
+  code. It also fixes the domain TypeScript parse issue in the candidate ranking return type and
+  tightens PRN stockout forecast narrowing.
+- security / PHI reviewed:
+  MCS official service page was checked as an external reference for multi-professional
+  communication, timeline posting, patient/family invitation, and security positioning. PH-OS treats
+  MCS as an external source only; raw MCS body/source URL/raw payload stay behind inbound raw-text
+  permission and never appear in public DTOs, notification payloads, audit changes, or stock ledger
+  responses.
+- implementation decision:
+  Oracle/GPT-5.5 Pro session `medication-stock-domain-review` advised a pure domain-first slice:
+  no Prisma imports, no API routes, no DB migration, no public module export, and no direct
+  dual-write. Implemented helpers keep clinical identity evidence (DrugMaster/YJ/HOT/ingredient)
+  separate from package identity evidence (GTIN/JAN/package quantity), keep PRN/topical forecasts
+  uncertainty-aware, and stage external observations for pharmacist review.
+- validation:
+  `pnpm exec vitest run src/modules/pharmacy/medication-stock/domain/medication-equivalence.test.ts src/modules/pharmacy/medication-stock/domain/stockout-forecast.test.ts src/modules/pharmacy/medication-stock/domain/external-observation.test.ts --reporter=dot --testTimeout=30000`
+  green (3 files / 26 tests);
+  `pnpm exec eslint src/modules/pharmacy/medication-stock/domain/medication-equivalence.ts src/modules/pharmacy/medication-stock/domain/medication-equivalence.test.ts src/modules/pharmacy/medication-stock/domain/stockout-forecast.ts src/modules/pharmacy/medication-stock/domain/stockout-forecast.test.ts src/modules/pharmacy/medication-stock/domain/external-observation.ts src/modules/pharmacy/medication-stock/domain/external-observation.test.ts`
+  green;
+  `pnpm exec prettier --check src/modules/pharmacy/medication-stock/domain/medication-equivalence.ts src/modules/pharmacy/medication-stock/domain/medication-equivalence.test.ts src/modules/pharmacy/medication-stock/domain/stockout-forecast.ts src/modules/pharmacy/medication-stock/domain/stockout-forecast.test.ts src/modules/pharmacy/medication-stock/domain/external-observation.ts src/modules/pharmacy/medication-stock/domain/external-observation.test.ts`
+  green;
+  `git diff --check -- Plans.md ops/refactor/STATE.md src/modules/pharmacy/medication-stock/domain/medication-equivalence.ts src/modules/pharmacy/medication-stock/domain/medication-equivalence.test.ts src/modules/pharmacy/medication-stock/domain/stockout-forecast.ts src/modules/pharmacy/medication-stock/domain/stockout-forecast.test.ts src/modules/pharmacy/medication-stock/domain/external-observation.ts src/modules/pharmacy/medication-stock/domain/external-observation.test.ts`
+  green;
+  `pnpm typecheck` green.
+- validation note:
+  `pnpm exec prettier --check Plans.md` still reports Markdown style issues for the large existing
+  plan file. Whole-file formatting was intentionally not applied to avoid unrelated churn.
+- remaining:
+  `INB-001` implementation remains planned. Next safe implementation slice is pure inbound domain
+  classification/tests, then additive schema/migration dry-run only after review. Medication Stock DB
+  schema, API, VisitRecord adapter, and inbound signal adapter remain future slices.

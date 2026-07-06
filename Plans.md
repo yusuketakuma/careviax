@@ -802,29 +802,31 @@ FE 仕上げ（低優先）:
 
 #### RISK-P0. 最優先実装バックログ `cc:TODO`
 
-| ID       | 領域           | タスク                                          | 主な対象                                                                                                    | 受入条件                                                                                                                                                                                                                                                                                                      |
-| -------- | -------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CORE-001 | 横断基盤       | Risk Finding Registry                           | `src/lib/risk/risk-finding.ts`, `risk-finding-registry.ts`                                                  | `cc:PARTIAL` shared contract、rollup/sort/dedupe helper、billing/visit-ready/patient-foundation-item/task adapter と PHI-minimized regression tests を追加。残: domain adapter 拡張と CORE-002 bridge 接続。                                                                                                  |
-| CORE-002 | 横断基盤       | Risk Finding -> Operational Task Bridge         | `risk-task-bridge.ts`, `operational-tasks.ts`, `task-registry.ts`                                           | `cc:DONE` active blocking/urgent finding を PHI-minimized dedupe task input へ変換し、case-scoped waiver route / audit / resolution note / Task Health の孤児 audit と `/tasks` UI 接続まで追加。全 domain の registry resolve condition、manual-only `task_sla`、MCS/住所座標の DB-backed predicate を追加。 |
-| CORE-003 | 横断基盤       | Case Risk Cockpit contract                      | `src/types/case-risk-cockpit.ts`, `app/api/cases/[id]/risk-cockpit/route.ts`                                | `cc:PARTIAL` 初期 contract / read-only API / service / route tests を追加。残: shared registry 接続、medication/dispensing/notification/privacy/integration/data_quality adapter、患者/ケース詳細 UI 接続。                                                                                                   |
-| RX-001   | 薬剤変更       | Medication Change Review Gate                   | `medication-change-review.ts`, `visit-preparation-readiness.ts`, `today-preparation`, patient board         | 追加/削除/増量/減量/用法/剤形変更を分類し、high-risk は薬剤師確認完了まで ready/contact/confirm 不可。確認者・日時・判断結果・理由を audit。                                                                                                                                                                  |
-| RX-002   | 残薬/頓服/外用 | PRN / topical Stock Risk service                | `medication-stock-risk.ts`, `visit-records`, `visit-record.ts`, patient board                               | 残量、使用ペース、鮮度、推定切れ日を算出し、urgent/unknown/stale は risk/task 化。通常薬 deadline は直接上書きしない。                                                                                                                                                                                        |
-| PAT-001  | 患者基盤       | Case Risk Cockpit 初期実装                      | `patient-detail-foundation.ts`, `management-plans.ts`, `billing-evidence`, `visit-preparation-readiness.ts` | 同意、計画、連絡先、保険、検査値、薬剤、残薬、訪問準備、報告、請求、task を患者/ケース単位で統合。                                                                                                                                                                                                            |
-| DSP-001  | 調剤/監査      | Dispensing SLA Board                            | `dispense-tasks/route.ts`, `patient-board`, `app/api/dispense-tasks/sla-board/route.ts`                     | 調剤中、監査待ち、セット中、保留、緊急、期限超過を一覧化し、麻薬/冷所/一包化/訪問当日を上位表示。                                                                                                                                                                                                             |
-| BIL-001  | 請求           | Billing Close Work Queue                        | `billing-evidence/core.ts`, `app/api/billing/close-board/route.ts`, billing UI                              | `unreviewed` / `blocked` / `confirmed` / `excluded` / `exported` を患者/訪問/根拠単位で処理。除外/確認は理由と reviewer 必須。                                                                                                                                                                                |
-| BIL-002  | 請求           | Billing blocker task bridge                     | `billing-evidence/core.ts`, `risk-task-bridge.ts`                                                           | 同意なし、計画なし、報告未送付、認定/公費/QR保険レビュー等を dedupe task 化し、再評価で解消。                                                                                                                                                                                                                 |
-| REC-001  | 訪問記録       | Visit Record Quality Gate                       | `visit-record-quality.ts`, `visit-record.ts`, `visit-records/route.ts`                                      | outcome 別に服薬状況、残薬、副作用、薬剤変更説明、次回方針、連携事項を検査。warning は acknowledgement、block は保存不可。                                                                                                                                                                                    |
-| REP-001  | 報告/共有      | Report Delivery Policy                          | `care-reports/route.ts`, `care-report-output-policy.ts`, `report-masking-profile.ts`, `billing-evidence`    | physician/care_manager/facility/nurse/family/internal 別に出力項目・権限・送付完了判定を分け、失敗は task 化。                                                                                                                                                                                                |
-| TASK-001 | task/SLA       | Operational Task Health Board                   | `operational-tasks.ts`, `task-registry.ts`, `app/api/tasks/health-board/route.ts`, `app/(dashboard)/tasks`  | `cc:DONE` API/service と `/tasks` UI 接続は、期限超過、SLA超過、担当未割当、患者安全、請求締め、報告遅延、孤児 risk task を no-store / PHI-minimized に集計・表示。Health Board 専用の `scope` / `risk_domain` filter UI、desktop/mobile browser smoke、`task_type + risk_domain` 競合回避テストまで完了。    |
-| SEC-001  | PII/監査       | PII Policy Matrix / endpoint audit              | `src/lib/privacy/pii-policy.ts`, `tools/scripts/pii-endpoint-audit.ts`, `permission-matrix.ts`              | field class と role/output profile を定義し、list API/audit/外部通知/PDF/CSV/添付の PHI 漏洩候補を検出。                                                                                                                                                                                                      |
-| SEC-002  | PII/監査       | AuditLog changes allowlist/minifier registry    | `audit-entry.ts`, `audit-logs/redaction.ts`, audit export/admin APIs                                        | patient/prescription/report/billing/notification/file actions ごとに許可 `changes` field を宣言し、未知の nested string / raw diagnostics / provider error / token / storage key は export/admin response で要約または drop。                                                                                 |
-| FILE-000 | 添付           | Presigned upload/complete response minimization | `app/api/files/presigned-upload/route.ts`, `files/complete`, `file-storage.ts`                              | `/api/files/*` success/error は no-store。upload response は storage key/objectKey/patient/report/visit id を返さず、必要最小の upload URL/header/expires/opaque file id にする。                                                                                                                             |
-| EXP-001  | 出力           | Bulk export audit/job minimization              | `pdf-bulk-export.ts`, admin jobs API, export audit                                                          | 薬歴/患者 bulk export の AuditLog は patient_count、hash snapshot、job/file id、status のみ。job output/error/admin response に raw patient id array や per-patient raw error を出さない。                                                                                                                    |
-| EXP-002  | 出力           | Export Surface Matrix                           | patients/prescriptions/billing/communication/audit/file/PDF exports                                         | permission、org/RLS/case assignment、no-store、CSV formula neutralization、非PHI filename、fail-closed audit、row limit/truncation を surface ごとに固定。                                                                                                                                                    |
-| NTF-001  | 通知           | Notification Delivery Health Board              | `notifications.ts`, `app/api/notifications/health-board/route.ts`, notification rules UI                    | rule 未設定、送信先0、外部通知失敗、urgent 未達を一覧化し task 化できる。                                                                                                                                                                                                                                     |
-| ONB-001  | 同意/計画      | Renewal Board                                   | `management-plans.ts`, `operational-tasks.ts`, `app/api/onboarding/renewal-board/route.ts`                  | 同意期限・管理計画見直し期限が近い/超過した患者を抽出し、更新 task を生成/解決。                                                                                                                                                                                                                              |
-| PERM-001 | 権限           | Permission Coverage Test                        | `permission-matrix.ts`, route tests                                                                         | patient/report/billing/visit-record/audit/export/attachment の主要 API で role forbidden tests を追加。                                                                                                                                                                                                       |
-| QA-001   | 品質保証       | 横断リスク regression pack                      | vitest suites, API tests, targeted Playwright                                                               | 薬剤変更、残薬、患者基盤、請求 blocker、記録品質、報告送付、通知 redaction、task SLA、PII redaction を固定。                                                                                                                                                                                                  |
+| ID       | 領域           | タスク                                          | 主な対象                                                                                                    | 受入条件                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| -------- | -------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CORE-001 | 横断基盤       | Risk Finding Registry                           | `src/lib/risk/risk-finding.ts`, `risk-finding-registry.ts`                                                  | `cc:PARTIAL` shared contract、rollup/sort/dedupe helper、billing/visit-ready/patient-foundation-item/task adapter と PHI-minimized regression tests を追加。残: domain adapter 拡張と CORE-002 bridge 接続。                                                                                                                                                                                                                                                                                            |
+| CORE-002 | 横断基盤       | Risk Finding -> Operational Task Bridge         | `risk-task-bridge.ts`, `operational-tasks.ts`, `task-registry.ts`                                           | `cc:DONE` active blocking/urgent finding を PHI-minimized dedupe task input へ変換し、case-scoped waiver route / audit / resolution note / Task Health の孤児 audit と `/tasks` UI 接続まで追加。全 domain の registry resolve condition、manual-only `task_sla`、MCS/住所座標の DB-backed predicate を追加。                                                                                                                                                                                           |
+| CORE-003 | 横断基盤       | Case Risk Cockpit contract                      | `src/types/case-risk-cockpit.ts`, `app/api/cases/[id]/risk-cockpit/route.ts`                                | `cc:PARTIAL` 初期 contract / read-only API / service / route tests を追加。残: shared registry 接続、medication/dispensing/notification/privacy/integration/data_quality adapter、患者/ケース詳細 UI 接続。                                                                                                                                                                                                                                                                                             |
+| RX-001   | 薬剤変更       | Medication Change Review Gate                   | `medication-change-review.ts`, `visit-preparation-readiness.ts`, `today-preparation`, patient board         | 追加/削除/増量/減量/用法/剤形変更を分類し、high-risk は薬剤師確認完了まで ready/contact/confirm 不可。確認者・日時・判断結果・理由を audit。                                                                                                                                                                                                                                                                                                                                                            |
+| RX-002   | 残薬/頓服/外用 | PRN / topical Stock Risk service                | `medication-stock-risk.ts`, `visit-records`, `visit-record.ts`, patient board                               | `cc:PARTIAL 2026-07-07` pure domain first slice として `medication-equivalence`、`stockout-forecast`、`external-observation` を追加。YJ/HOT と GS1/GTIN/JAN を区別し、外部由来残数情報は薬剤師レビュー staging に留める。残: DB/API/UI、ledger正本化、Risk/Task/VisitBrief/Schedule接続。                                                                                                                                                                                                               |
+| PAT-001  | 患者基盤       | Case Risk Cockpit 初期実装                      | `patient-detail-foundation.ts`, `management-plans.ts`, `billing-evidence`, `visit-preparation-readiness.ts` | 同意、計画、連絡先、保険、検査値、薬剤、残薬、訪問準備、報告、請求、task を患者/ケース単位で統合。                                                                                                                                                                                                                                                                                                                                                                                                      |
+| DSP-001  | 調剤/監査      | Dispensing SLA Board                            | `dispense-tasks/route.ts`, `patient-board`, `app/api/dispense-tasks/sla-board/route.ts`                     | 調剤中、監査待ち、セット中、保留、緊急、期限超過を一覧化し、麻薬/冷所/一包化/訪問当日を上位表示。                                                                                                                                                                                                                                                                                                                                                                                                       |
+| BIL-001  | 請求           | Billing Close Work Queue                        | `billing-evidence/core.ts`, `app/api/billing/close-board/route.ts`, billing UI                              | `unreviewed` / `blocked` / `confirmed` / `excluded` / `exported` を患者/訪問/根拠単位で処理。除外/確認は理由と reviewer 必須。                                                                                                                                                                                                                                                                                                                                                                          |
+| BIL-002  | 請求           | Billing blocker task bridge                     | `billing-evidence/core.ts`, `risk-task-bridge.ts`                                                           | 同意なし、計画なし、報告未送付、認定/公費/QR保険レビュー等を dedupe task 化し、再評価で解消。                                                                                                                                                                                                                                                                                                                                                                                                           |
+| REC-001  | 訪問記録       | Visit Record Quality Gate                       | `visit-record-quality.ts`, `visit-record.ts`, `visit-records/route.ts`                                      | outcome 別に服薬状況、残薬、副作用、薬剤変更説明、次回方針、連携事項を検査。warning は acknowledgement、block は保存不可。                                                                                                                                                                                                                                                                                                                                                                              |
+| REP-001  | 報告/共有      | Report Delivery Policy                          | `care-reports/route.ts`, `care-report-output-policy.ts`, `report-masking-profile.ts`, `billing-evidence`    | physician/care_manager/facility/nurse/family/internal 別に出力項目・権限・送付完了判定を分け、失敗は task 化。                                                                                                                                                                                                                                                                                                                                                                                          |
+| INB-001  | 他職種受信     | Inbound Interprofessional Communication Module  | `CommunicationEvent`, `PatientMcsMessage`, `PartnerVisitRecord`, `communication-queue`, medication-stock    | `cc:PARTIAL 2026-07-07` pure domain first slice として source classification、public summary、raw PHI key detection、signal extractor、review decision を追加。残: DB正本、API/queue/UI、MedicationStock/Risk/Task/VisitBrief/Schedule/Report接続。raw text は通知・監査・共有に直接出さない。                                                                                                                                                                                                          |
+| MOV-001  | 患者詳細/UI    | Patient Movement Timeline                       | `card-workspace.tsx`, `PatientActivityTimeline`, `patient-detail-timeline-*`, INB/MedicationStock sources   | `cc:PARTIAL 2026-07-07` 患者詳細に新規 `movement` タブ「患者の動き」を追加し、既存 timeline を `history` から移動。`movement_events` と `PatientMovementTimelineEvent` presenter を追加し、処方・訪問・文書は発生確認 + 正本詳細への相対 deep link のみに正規化。`/api/patients/:id/timeline/:eventId` safe resolver は raw_text を返さず destination を返すが、UI主導線は中間シェルではなく正本詳細へ直接遷移。map-less vertical rail UI と summary strip を追加。残: INB/MedicationStock source追加。 |
+| TASK-001 | task/SLA       | Operational Task Health Board                   | `operational-tasks.ts`, `task-registry.ts`, `app/api/tasks/health-board/route.ts`, `app/(dashboard)/tasks`  | `cc:DONE` API/service と `/tasks` UI 接続は、期限超過、SLA超過、担当未割当、患者安全、請求締め、報告遅延、孤児 risk task を no-store / PHI-minimized に集計・表示。Health Board 専用の `scope` / `risk_domain` filter UI、desktop/mobile browser smoke、`task_type + risk_domain` 競合回避テストまで完了。                                                                                                                                                                                              |
+| SEC-001  | PII/監査       | PII Policy Matrix / endpoint audit              | `src/lib/privacy/pii-policy.ts`, `tools/scripts/pii-endpoint-audit.ts`, `permission-matrix.ts`              | field class と role/output profile を定義し、list API/audit/外部通知/PDF/CSV/添付の PHI 漏洩候補を検出。                                                                                                                                                                                                                                                                                                                                                                                                |
+| SEC-002  | PII/監査       | AuditLog changes allowlist/minifier registry    | `audit-entry.ts`, `audit-logs/redaction.ts`, audit export/admin APIs                                        | patient/prescription/report/billing/notification/file actions ごとに許可 `changes` field を宣言し、未知の nested string / raw diagnostics / provider error / token / storage key は export/admin response で要約または drop。                                                                                                                                                                                                                                                                           |
+| FILE-000 | 添付           | Presigned upload/complete response minimization | `app/api/files/presigned-upload/route.ts`, `files/complete`, `file-storage.ts`                              | `/api/files/*` success/error は no-store。upload response は storage key/objectKey/patient/report/visit id を返さず、必要最小の upload URL/header/expires/opaque file id にする。                                                                                                                                                                                                                                                                                                                       |
+| EXP-001  | 出力           | Bulk export audit/job minimization              | `pdf-bulk-export.ts`, admin jobs API, export audit                                                          | 薬歴/患者 bulk export の AuditLog は patient_count、hash snapshot、job/file id、status のみ。job output/error/admin response に raw patient id array や per-patient raw error を出さない。                                                                                                                                                                                                                                                                                                              |
+| EXP-002  | 出力           | Export Surface Matrix                           | patients/prescriptions/billing/communication/audit/file/PDF exports                                         | permission、org/RLS/case assignment、no-store、CSV formula neutralization、非PHI filename、fail-closed audit、row limit/truncation を surface ごとに固定。                                                                                                                                                                                                                                                                                                                                              |
+| NTF-001  | 通知           | Notification Delivery Health Board              | `notifications.ts`, `app/api/notifications/health-board/route.ts`, notification rules UI                    | rule 未設定、送信先0、外部通知失敗、urgent 未達を一覧化し task 化できる。                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ONB-001  | 同意/計画      | Renewal Board                                   | `management-plans.ts`, `operational-tasks.ts`, `app/api/onboarding/renewal-board/route.ts`                  | 同意期限・管理計画見直し期限が近い/超過した患者を抽出し、更新 task を生成/解決。                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| PERM-001 | 権限           | Permission Coverage Test                        | `permission-matrix.ts`, route tests                                                                         | patient/report/billing/visit-record/audit/export/attachment の主要 API で role forbidden tests を追加。                                                                                                                                                                                                                                                                                                                                                                                                 |
+| QA-001   | 品質保証       | 横断リスク regression pack                      | vitest suites, API tests, targeted Playwright                                                               | 薬剤変更、残薬、患者基盤、請求 blocker、記録品質、報告送付、通知 redaction、task SLA、PII redaction を固定。                                                                                                                                                                                                                                                                                                                                                                                            |
 
 #### RISK-P1/P2. 次フェーズ不足領域 `cc:TODO`
 
@@ -850,6 +852,926 @@ FE 仕上げ（低優先）:
 | REP-002        | P1     | 報告/共有  | External document-delivery wording gate     | 外部 email/FAX/MCS 本文に患者名、臨床本文、薬剤/free text、内部IDを出さず、短期 shared link の expiry/revoke/resend idempotency を固定。                                                                                                        |
 | UX-001         | P1     | UI/A11y    | Risk UI Accessibility Pass                  | severity が色だけに依存せず、キーボード/読み上げ/モバイルで処理できる。                                                                                                                                                                         |
 | OPS-001        | P1     | 復旧       | Business Recovery Drill                     | backup 復旧後に visit/report/billing/task/attachment link の整合 audit を実行。                                                                                                                                                                 |
+
+#### P0/P1: 他職種から薬局への情報受信・処理基盤 Inbound Interprofessional Communication Module `cc:PARTIAL`
+
+> 2026-07-06 追加。これは `INB-001` として、既存の薬局→他職種 outbound（報告書、外部共有、delivery record、tracing report）とは逆方向の **他職種→薬局 inbound** を正本化するタスク。Medication Stock Ledger はこの inbound signal の活用先の 1 つであり、主役ではない。現行コードでは `CommunicationEvent.direction` は `inbound/outbound` を表現でき、`PatientMcsMessage` は MCS 投稿本文/投稿者/職種/所属/source URL/raw payload を持ち、`PartnerVisitRecord.record_content` は協力薬局や共有ケース由来の訪問記録を保持できる。`communication-queue.ts` は self report、架電 follow-up、communication request、delivery backlog、external share、care/tracing report timeline を統合する reader を持つため、UI 表示は既存 queue に接続しつつ、受信情報の正本は新しい `InboundCommunicationEvent` / `InboundCommunicationSignal` に分離する。
+>
+> `cc:PARTIAL 2026-07-07`: DB migration なしの pure domain first slice として、`src/core/interprofessional/inbound/domain/inbound-communication.ts` と `inbound-signal-classifier.ts` を追加。source classification、public summary、raw PHI-like key detection、残りN/使用N/補充/副作用/スケジュール/緊急の rule-based signal extraction、auto-apply gate decision を unit test で固定した。残: `InboundCommunicationEvent` / `InboundCommunicationSignal` のDB正本、API、review UI、CommunicationQueue接続、MedicationStock/Risk/Task/VisitBrief/Schedule/Report連動。
+
+外部参照:
+
+- MedicalCareStation (MCS) は医療介護向けの多職種連携コミュニケーションツールで、電話/FAX等の連絡負荷削減、時系列投稿、症状写真/動画/資料共有、患者・家族招待、医療情報システム安全管理ガイドライン準拠を掲げる。PH-OS では MCS を「外部 source の 1 つ」として扱い、MCS raw text や URL をそのまま下流業務データに混入させない。
+
+**情報方向の責務分離**:
+
+```text
+outbound:
+  薬局 → 他職種
+  報告書 / トレーシングレポート / 外部共有 / delivery record / shared link
+
+inbound:
+  他職種 → 薬局
+  MCS投稿 / 電話 / FAX / メール / 施設メモ / 家族・患者申告 / 協力薬局記録 / 手入力
+```
+
+**モジュール配置**:
+
+```text
+src/core/interprofessional/inbound/
+  domain/
+    inbound-communication-event.ts
+    inbound-communication-signal.ts
+    inbound-communication-source.ts
+    inbound-signal-classifier.ts
+  application/
+    record-inbound-communication.ts
+    extract-inbound-signals.ts
+    review-inbound-signal.ts
+    link-inbound-signal-to-workflow.ts
+    create-inbound-communication-task.ts
+  infrastructure/
+    inbound-communication-repository.ts
+    mcs-source-adapter.ts
+    communication-event-source-adapter.ts
+    partner-visit-record-source-adapter.ts
+    phone-source-adapter.ts
+    fax-source-adapter.ts
+    email-source-adapter.ts
+  presenters/
+    inbound-communication-presenter.ts
+    inbound-signal-review-presenter.ts
+    patient-inbound-timeline-presenter.ts
+
+src/modules/pharmacy/medication-stock/
+  application/
+    apply-inbound-stock-signal.ts
+    medication-stock-signal-adapter.ts
+```
+
+依存方向:
+
+```text
+Inbound interprofessional module:
+  raw source を受信し、Event と Signal を作る。
+  MedicationStock / Schedule / Report を直接更新しない。
+
+MedicationStock / Risk / Task / VisitBrief / Schedule / Report:
+  InboundCommunicationSignal を参照し、権限・レビュー・idempotency を通して反映する。
+```
+
+**既存コードとの整合**:
+
+| 現行実装                                                               | 確認できた状態                                                                                                                                   | inbound module での扱い                                                                                                                                 |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `prisma/schema/communication.prisma::CommunicationEvent`               | `channel`、`direction`、`counterpart_name/contact`、`subject`、`content`、`attachments`、`occurred_at` を持つ。                                  | 既存手入力・電話/FAX/メール系の互換 source。新規正本は `InboundCommunicationEvent` へ寄せ、既存 row は adapter で読み替える。                           |
+| `CommunicationRequest` / `CommunicationResponse`                       | 薬局から相手へ依頼し、返信内容を受ける構造がある。                                                                                               | outbound request の response は inbound source として候補化できる。ただし raw response content は signal に直接使わず extractor 経由にする。            |
+| `PatientMcsMessage`                                                    | MCS 投稿の author、role、organization、body、source_url、raw_payload を保持する。                                                                | `source_channel=mcs` の source。`body` / `raw_payload` / `source_url` は raw PHI 扱いで、public DTO / notification / audit changes には出さない。       |
+| `PatientMcsLink` / MCS integration finding                             | MCS 同期状態は `RiskFinding` integration domain に接続済み。                                                                                     | 同期失敗リスクと inbound signal review は別タスクにする。同期成功しても signal は薬剤師レビューを通す。                                                 |
+| `PartnerVisitRecord`                                                   | 協力薬局/共有ケース由来の `record_content`、attachments、confirmed status を持つ。                                                               | confirmed record のみ inbound source adapter で候補化。draft/submitted/returned は自動候補化しない。                                                    |
+| `communication-queue.ts`                                               | `CommunicationQueueItem` / `CommunicationTimelineItem` / `CommunicationDraftSuggestion` があり、患者詳細や workflow dashboard へ統合表示できる。 | 正本にはしない。`queue_type=inbound_communication` 等を追加し、未処理 signal / review task の entrypoint として表示する。                               |
+| `src/modules/pharmacy/medication-stock/domain/external-observation.ts` | 他職種・MCS・communication_event・partner_visit_record 由来の残数観測を直接 ledger に書かず staging する純粋 domain helper。                     | Phase 0/1 の短期 shim。中長期は generic `InboundCommunicationSignal(signal_domain='medication_stock')` に置き換え、MedicationStock adapter が取り込む。 |
+
+**DB設計案（migrationは別slice）**:
+
+| table                            | 目的                                                                                            | 主な field                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| -------------------------------- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `InboundCommunicationEvent`      | 他職種から薬局へ届いた情報の正本。原文・発信者・経路・日時・添付・患者/ケース紐づけを保持する。 | `org_id`, `patient_id nullable`, `case_id nullable`, `source_channel`, `source_system`, `external_thread_id`, `external_message_id`, `external_url`, `direction='inbound'`, `sender_name`, `sender_role`, `sender_organization_name`, `sender_contact`, `event_type`, `received_at`, `occurred_at`, `raw_text`, `normalized_summary`, `attachment_count`, `has_medication_stock_signal`, `has_patient_safety_signal`, `has_schedule_signal`, `has_report_signal`, `confidence`, `processing_status`, `reviewed_by`, `reviewed_at`, `created_by` |
+| `InboundCommunicationSignal`     | 原文から抽出した薬局業務上の意味。残数、使用量、副作用疑い、補充希望、訪問希望、処方意図など。  | `org_id`, `patient_id`, `case_id`, `inbound_event_id`, `signal_domain`, `signal_type`, `extracted_text`, `extracted_medication_name`, `extracted_quantity`, `extracted_unit`, `extracted_occurred_at`, `structured_payload`, `source_confidence`, `review_status`, `action_status`, `reviewed_by`, `reviewed_at`, `rejection_reason`                                                                                                                                                                                                            |
+| `InboundCommunicationAttachment` | MCS画像、薬剤写真、FAX画像、資料などを FileAsset へ接続する。                                   | `org_id`, `inbound_event_id`, `signal_id nullable`, `file_asset_id`, `attachment_type`                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `InboundSourceMapping`           | MCS thread / 電話相手 / FAX番号 / 外部 room と PH-OS 患者/ケースの対応関係。                    | `org_id`, `patient_id`, `case_id`, `source_system`, `external_patient_label`, `external_thread_id`, `external_room_id`, `external_contact_name`, `external_contact_role`, `external_organization_name`, `mapping_status`, `confidence`, `created_by`, `reviewed_by`, `reviewed_at`                                                                                                                                                                                                                                                              |
+
+**Signal分類**:
+
+```text
+signal_domain:
+  medication_stock
+  medication_safety
+  adherence
+  symptom
+  schedule
+  report
+  care_coordination
+  urgent
+  other
+
+signal_type:
+  observed_quantity
+  usage_delta
+  usage_frequency
+  low_stock_text
+  out_of_stock_text
+  refill_request
+  side_effect_suspected
+  medication_not_taken
+  medication_overuse
+  medication_lost
+  storage_issue
+  schedule_change_request
+  visit_request
+  urgent_review_required
+  unknown
+```
+
+**残数管理との接続**:
+
+```text
+InboundCommunicationEvent
+  ↓ extract / classify
+InboundCommunicationSignal
+  ↓ pharmacist review / idempotency / permission
+MedicationStockSignalAdapter
+  ↓
+MedicationStockEvent
+  ↓
+MedicationStockSnapshot
+  ↓
+RiskFinding / OperationalTask / VisitBrief / Schedule / Report候補
+```
+
+処理区分:
+
+| action        | 条件                                                                                                  | 注意                                                                            |
+| ------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `auto_apply`  | patient_id、stock_item_id、数量、単位、signal type、source trust、idempotency、薬局設定がすべて確定。 | 初期 rollout では原則 off。適用しても audit と source link は必須。             |
+| `proposed`    | 薬剤名は近いが規格不明、同一成分候補が複数、単位が曖昧、自然文抽出 confidence が低い、情報源未確認。  | 薬剤師レビュー後に MedicationStockEvent へ昇格。                                |
+| `record_only` | 「少ない」「なくなりそう」等の曖昧表現、数量不明、薬剤不明だが申し送りとして有用。                    | Risk/Task/VisitBrief には「確認項目」として出せる。                             |
+| `reject`      | 患者違い、薬剤違い、重複、誤情報、処理済み。                                                          | raw text を audit changes に保存せず、reason code と note present/length のみ。 |
+
+「差し引き」と「観測」を必ず分ける:
+
+```text
+湿布は残り4枚です
+  => signal_type=observed_quantity
+  => observed_quantity=4
+
+湿布を昨日2枚使いました
+  => signal_type=usage_delta
+  => quantity_delta=-2
+
+「残り4枚」を -4 として差し引かない。
+「2枚使った」を 残り2枚 として扱わない。
+```
+
+**MCS / 電話 / FAX / メールの段階導入**:
+
+| phase   | 内容                                                                                                                                                   | 実装メモ                                                                                                              |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| Phase 1 | MCS API 連携を前提にせず、MCS投稿本文の貼り付け、投稿日時、投稿者、職種、所属、MCSスレッドURL、スクリーンショット添付、残薬/使用状況 checkbox で開始。 | raw text は `InboundCommunicationEvent.raw_text` に閉じ、summary/signal DTO は controlled fields のみ。               |
+| Phase 1 | 電話メモを `InboundCommunicationEvent(source_channel='phone')` として登録。                                                                            | 発信/着信、相手、職種/関係、電話番号、所属、日時、要件、残数/使用量/補充/副作用/スケジュール checkbox、次アクション。 |
+| Phase 2 | FAX/メール/施設メモを source adapter 化。                                                                                                              | 添付は `FileAsset` scan / retention / access audit を通す。                                                           |
+| Phase 5 | MCS API/export/webhook、thread mapping、自動取込を調査。                                                                                               | 連携仕様は公式/契約/許諾を確認してから実装。raw provider payload 永続化は最小化。                                     |
+
+**自動抽出**:
+
+Phase 1 は AI ではなく rule-based + 手動補助。
+
+```text
+検出語:
+  残りN / あとN / N枚 / N錠 / N包 / N本
+  使いました / 使用しました / 貼りました / 塗りました
+  なくなりました / 足りません / 少ない / 補充
+  処方してほしい / 増えています / よく使っています
+```
+
+AI を使う場合も `AI抽出 -> proposed -> 薬剤師確認 -> accepted -> 反映` の順にし、自動反映しない。
+
+**UI/UX**:
+
+| 画面                     | 要件                                                                                                                                           |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| 患者詳細 Command Center  | 未処理の他職種情報、薬剤師確認待ち、残数報告あり、安全シグナルありを next action として表示。                                                  |
+| 患者詳細 連絡・共有      | `他職種受信` / `受信連携` timeline を配置し、MCS/電話/FAX/メールを source badge で表示。                                                       |
+| 患者詳細 薬剤・訪問      | MedicationStockPanel に「他職種からの残数報告」queue を表示。未確認候補、自動反映済み、数量不明、名寄せ確認待ちを分ける。                      |
+| InboundSignalReviewPanel | 3カラム: 左=原文/添付/投稿者/日時、中央=抽出候補/薬剤名/数量/単位/confidence、右=反映先/既存stock item/新規stock item/記録のみ/却下/タスク化。 |
+| VisitBrief               | 直近の他職種受信を優先順で表示。例: 看護師「湿布残り4枚」、ケアマネ「痛み止め使用増加」、家族「軟膏が少ない」。                                |
+
+UI 実装時は PH-OS UI/UX SSOT に従い、必要な redesign では `gpt-image-2` で非PHI mockup を再構築してから実装する。
+
+**既存機能との接続**:
+
+| 接続先             | 実装方針                                                                                                                                                                                                                                                                                           |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CommunicationQueue | `queue_type`: `inbound_communication`, `inbound_medication_stock_signal`, `inbound_safety_signal`, `inbound_schedule_request`, `inbound_review_required` を追加。正本は `InboundCommunicationEvent`。                                                                                              |
+| RiskFinding        | `inboundInterprofessionalRiskProvider` を追加。未処理情報、残数不足報告、副作用疑い、薬剤名未紐づけ、数量不明の補充希望、MCS患者安全シグナル、電話連絡確認事項を controlled finding として返す。                                                                                                   |
+| OperationalTask    | `core.inbound_communication_review_required`, `pharmacy.inbound_medication_stock_signal_review_required`, `pharmacy.inbound_low_stock_unquantified_report`, `pharmacy.inbound_medication_safety_review_required`, `pharmacy.inbound_schedule_request_review_required` を TaskTypeRegistry に登録。 |
+| MedicationStock    | `signal_domain='medication_stock'` の accepted signal だけを adapter で取り込む。inbound module から stock module を直接 import しない。                                                                                                                                                           |
+| Schedule           | 不足報告、補充希望、副作用疑い、服薬困難、訪問希望を候補理由・薬剤師確認 gate・患者連絡時確認事項に出す。自動確定しない。                                                                                                                                                                          |
+| Report             | 自動挿入しない。薬剤師が「報告書に含める / 申し送りのみ / 内部記録のみ」を選択。                                                                                                                                                                                                                   |
+| External Share     | scope: `inbound_communication_summary`, `inbound_communication_detail`, `inbound_communication_raw_text`。raw_text は明示許可、理由、監査ログ必須。                                                                                                                                                |
+
+**API案**:
+
+| method/path                                                  | 用途                                                                                                                            |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/patients/:id/inbound-communications`              | 他職種受信情報の手入力登録。                                                                                                    |
+| `POST /api/patients/:id/inbound-communications/phone`        | 電話情報の登録。内部的には `InboundCommunicationEvent`。                                                                        |
+| `POST /api/patients/:id/inbound-communications/mcs`          | MCS情報の貼り付け/手入力登録。API連携は後続。                                                                                   |
+| `GET /api/inbound-communication-signals?status=needs_review` | 受信シグナル review queue。list envelope は `API-LIST-001` に合わせる。                                                         |
+| `PATCH /api/inbound-communication-signals/:id`               | `accept`, `apply_to_medication_stock`, `create_new_stock_item`, `record_only`, `reject`, `create_task`, `link_to_visit_brief`。 |
+
+**権限 / 監査 / 通知**:
+
+```text
+permissions:
+  canCreateInboundCommunication
+  canViewInboundCommunication
+  canViewInboundRawText
+  canReviewInboundSignal
+  canApplyInboundSignalToMedicationStock
+  canShareInboundCommunication
+
+audit:
+  MCS情報登録 / 電話情報登録 / raw_text閲覧 / signal抽出 / signal review /
+  残数台帳反映 / task化 / 報告書反映 / 共有 / 却下 / 補正
+
+audit changes:
+  raw_text全文は保存しない。
+  raw_text_length, source_channel, signal_type, review_action, target_entity_id,
+  reason_present, reason_length, reason_redacted のみ。
+
+notification:
+  OS通知には患者名・薬剤名・本文を出さない。
+  「他職種からの確認事項があります」の controlled wording で /notifications へ誘導。
+```
+
+**Phased PR plan**:
+
+| phase   | 内容                                                                                                                        | validation                                                                                            |
+| ------- | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Phase 0 | 既存 `CommunicationEvent` / `PatientMcsMessage` / `PartnerVisitRecord` / `communication-queue` の source inventory と ADR。 | schema/code inventory、raw PHI surface list、Plans cross-reference。                                  |
+| Phase 1 | pure domain: source classification、signal classifier、raw/public presenter、差し引き vs 観測判定。DB migration なし。      | unit tests: 残り4枚=observed_quantity、2枚使用=usage_delta、少ない=low_stock_text、raw PHI key drop。 |
+| Phase 2 | DB schema: `InboundCommunicationEvent`, `InboundCommunicationSignal`, attachment/mapping。                                  | migration precondition、RLS/org_id/index、DTO snapshot、raw_text permission tests。                   |
+| Phase 3 | API + CommunicationQueue: 手入力/MCS貼付/電話登録、review queue、queue item 接続。                                          | API tests、forbidden tests、no-store、false-empty separation。                                        |
+| Phase 4 | MedicationStock adapter: accepted stock signal を MedicationStockEvent へ反映。                                             | integration: MCS投稿 -> Signal -> review -> StockEvent -> Risk/Task。                                 |
+| Phase 5 | Risk/Task/VisitBrief/Schedule/Report/Share 接続。                                                                           | cockpit/task/brief/schedule/report masking/share scope tests。                                        |
+| Phase 6 | MCS API/export/webhook 調査と自動取込。                                                                                     | 公式仕様/契約確認、provider payload minimization、retry/idempotency tests。                           |
+
+**受入基準**:
+
+- 他職種から薬局への情報を患者/ケースに紐づけて記録できる。
+- MCS投稿、電話情報、FAX/メール/施設メモを PH-OS 上に登録できる。
+- 原文と要約・signal を分けて保存できる。
+- 残数、使用量、補充希望、副作用疑い、服薬困難、訪問希望などの signal を作れる。
+- Signal は薬剤師レビューでき、`accepted` / `record_only` / `rejected` / `superseded` を持つ。
+- 残数報告は MedicationStock に反映できるが、inbound module は MedicationStock を直接更新しない。
+- 「残り4枚」と「2枚使った」を区別できる。
+- 曖昧な情報は記録のみ、またはレビュー待ちにできる。
+- 他職種情報は RiskFinding、OperationalTask、VisitBrief、Schedule、Report 候補へ連動できる。
+- raw_text は外部共有、監査ログ、通知、SSE、OS push に直接出ない。
+- 既存の薬局→他職種 outbound と、今回の他職種→薬局 inbound が責務分離されている。
+
+#### P0/P1: 患者の動きタイムライン Patient Movement Timeline（MOV-001） `cc:PARTIAL`
+
+> 2026-07-07 追加。これは `INB-001` と Medication Stock Ledger の表示面を患者詳細へ統合する UI/BFF タスク。現行コードでは患者詳細 `PatientDetailTab` は `command/foundation/medication/sharing/billing/history` の6タブで、`history` タブに `PatientActivityTimeline`、変更履歴、構造化ケア情報が同居している。`PatientActivityTimeline` と `patient-detail-timeline-registry.ts` には source adapter / href / action_label の土台があるため、破棄せず新規 `movement` タブ「患者の動き」へ発展させる。
+> `cc:PARTIAL 2026-07-07`: Phase 1 として `PatientDetailTab` に `movement` を追加し、既存 `PatientActivityTimeline` を `history` から「患者の動き」へ移動した。`history` は変更履歴・構造化ケアへ整理し、Command Center の抜粋リンクは `#patient-movement` へ変更。`#patient-movement` / `#patient-timeline` / `#inbound-communications` / `#inbound-signals` / `#medication-stock-events` は `movement` に解決する。続く小スライスで `PatientMovementTimelineEvent` 型と server presenter を追加し、既存 `/api/patients/:id/timeline` は additive に `movement_events` を返す。`movement` タブは `movement_events` を優先して表示し、処方・訪問・文書登録は発生確認文と相対 deep link に正規化する。さらに `/api/patients/:id/timeline/:eventId` を追加し、表示済み movement event の safe detail と destination を返す。resolver は raw_text を返さず、raw 表示は遷移先で再認可する前提を固定した。今回は既存UIの責務分離と契約追加であり、視覚的な全面再設計ではないため imagegen/gpt-image-2 は使っていない。残タスクは map-less vertical rail UI、INB/MedicationStock source連携。
+> `scope clarification 2026-07-07`: タイムライン上で処方内容、訪問内容、文書本文を読ませる必要はない。処方・訪問・文書登録は「発生したこと」が確認できれば十分で、詳細確認は deep link 先の正本画面へ委譲する。Patient Movement Timeline は詳細ビューではなく、患者に起きた出来事の索引・導線である。
+> `cc:PARTIAL 2026-07-07`: 非PHIの `gpt-image-2` 向け design reference（保存先: `/Users/yusuke/.codex/generated_images/019f2c7e-d969-7882-bd11-432a10abb930/ig_06dd9af84cea72a5016a4bcf1c7dac81919b9b9626e50e041f.png`）を作成し、上部地図なしの map-less vertical rail UI、summary strip、発生確認カードへ既存 `PatientActivityTimeline` を寄せた。処方・訪問・文書カテゴリは UI 側でも safe summary に固定し、薬剤明細、SOAP本文、訪問内容、文書本文、添付ファイル名、storage key をカード上に出さない。
+> `cc:PARTIAL 2026-07-07`: ユーザー確認により、タイムラインの主導線は中間の rendered detail shell ではなく、処方詳細・訪問詳細・文書詳細など正本画面への直接 deep link とする。カード上では処方・訪問・文書登録があった事実だけを表示し、検索 haystack でも薬剤名、訪問本文、文書名、添付ファイル名を使わない。`/api/patients/:id/timeline/:eventId` は将来の safe resolver / event detail API として維持するが、現行 UI の primary CTA は `event.href` を使う。
+
+**重要なUI方針**:
+
+```text
+採用する:
+  Google Maps タイムラインのような、日付ごとの縦軸、時刻、地点カード風イベント、連続した患者の動き。
+
+採用しない:
+  上部の地図部分。
+  地図、ピン配置、移動経路マップ、位置情報可視化はこのタスクでは作らない。
+```
+
+目的:
+
+- 患者詳細画面に新規タブ **患者の動き** を追加する。
+- 薬局内イベントだけでなく、他職種受信、MCS、電話、残数/使用量signal、残数台帳反映、安全signal、task、処方、訪問、文書登録、調剤、報告、共有、請求の発生を時系列で追えるようにする。
+- 処方、訪問、文書登録はタイムライン上では発生確認に留め、内容・本文・明細は正本画面への deep link で確認する。
+- 各イベントは詳細画面またはイベント詳細 drawer へ deep link できる。
+- `history` タブは変更履歴、構造化ケア、監査寄り情報に整理する。
+- 一覧では raw text を出さず、詳細表示時に再認可と監査ログを通す。
+
+**現行コードとの整合**:
+
+| 現行実装                                               | 状態                                                                                                                   | MOV-001での扱い                                                                                                                                                            |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/app/(dashboard)/patients/[id]/card-workspace.tsx` | `PatientDetailTab` は6タブ。`history` に timeline / field revision / structured care が混在。                          | `movement` を追加し、timeline を `history` から移動。`history` は管理・構造化履歴に寄せる。                                                                                |
+| `PatientActivityTimeline`                              | 訪問、処方、調剤、文書、共有連絡など薬局側対応が中心。カテゴリは `visit/prescription/billing/document/communication`。 | 互換維持しつつ `PatientMovementTimeline` へ拡張。最初は既存 timeline を移動し、後続PRで inbound/stock/task/safety を追加。                                                 |
+| `patient-detail-timeline-registry.ts`                  | `SourceAdapter` が `fetch` / `toEvents` を持つ。                                                                       | 既存 registry を使い、`inboundCommunicationEventsSource` / `inboundCommunicationSignalsSource` / `medicationStockEventsSource` 等を段階追加。                              |
+| `/api/patients/[id]/timeline`                          | limit 指定で timeline を返す既存 route。                                                                               | 既存 route は維持し additive に `movement_events` を返す。`/api/patients/:id/timeline/:eventId` は safe resolver として残すが、UI の主導線は正本詳細の `href` へ直接遷移。 |
+| `CommandTimelineExcerptPanel`                          | command タブに timeline excerpt を出す。                                                                               | 抜粋は `movement` の重要イベント上位に寄せ、リンク先を `#patient-movement` へ変更。                                                                                        |
+
+**タブ構成**:
+
+```ts
+type PatientDetailTab =
+  | 'command'
+  | 'foundation'
+  | 'medication'
+  | 'movement'
+  | 'sharing'
+  | 'billing'
+  | 'history';
+```
+
+表示順:
+
+```text
+Command
+正本・在宅運用
+薬剤・訪問
+患者の動き
+共有・文書
+請求・会議
+履歴・構造化
+```
+
+hash deep link:
+
+```ts
+PATIENT_DETAIL_HASH_TABS:
+  'patient-movement' -> 'movement'
+  'patient-timeline' -> 'movement'
+  'inbound-communications' -> 'movement'
+  'inbound-signals' -> 'movement'
+  'medication-stock-events' -> 'movement'
+```
+
+**画面レイアウト**:
+
+```text
+患者の動きタブ
+  ├─ compact summary strip
+  │   ├─ 未処理の他職種情報
+  │   ├─ 薬剤師確認待ち
+  │   ├─ 残数/使用量signal
+  │   ├─ 安全signal
+  │   └─ 直近イベント日
+  │
+  ├─ filter/search bar
+  │   ├─ すべて
+  │   ├─ 訪問
+  │   ├─ 処方・調剤
+  │   ├─ 他職種受信
+  │   ├─ 残数・薬剤
+  │   ├─ 安全
+  │   ├─ 報告・共有
+  │   ├─ 請求
+  │   └─ タスク
+  │
+  ├─ map-less timeline rail
+  │   ├─ 今日
+  │   │   ├─ 09:00 処方登録あり card
+  │   │   ├─ 10:32 MCS 残数報告 card
+  │   │   ├─ 13:30 訪問記録あり card
+  │   │   ├─ 14:10 電話 スケジュール相談 card
+  │   │   ├─ 14:15 残数台帳反映 card
+  │   │   └─ 16:20 文書登録あり card
+  │   ├─ 昨日
+  │   └─ yyyy年M月d日
+  │
+  └─ side/bottom action rail
+      ├─ 未処理受信
+      ├─ 残数反映待ち
+      ├─ 次に見るべきイベント
+      └─ MCS/電話/手入力の登録導線
+```
+
+Google Maps 風にするポイント:
+
+- 日付見出しを強くし、1日単位で患者の動きが追える。
+- 左に細い timeline rail、中央に event card、右に action / metadata を置く。
+- event card は「地点カード」風に、source、actor、発生種別、status、deep link CTA を一目で読める密度にする。
+- summary strip は地図ではなく当日の未処理件数と安全signalを表示する。
+- mobile は rail + card の1列にし、上部 summary は横スクロール chip にする。
+- 処方・訪問・文書のカードは詳細本文のプレビューではなく、正本画面へ移動するための marker として扱う。
+
+**カードに表示する内容の粒度**:
+
+Patient Movement Timeline は、患者に起きたイベントの「存在」を素早く確認するための画面であり、処方内容・訪問記録本文・文書本文をカード上で詳述しない。詳細は必ず deep link 先で確認する。
+
+| category            | event                                                        | timeline card に出す内容                                                                                                                                | detail link                                              |
+| ------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `prescription`      | 処方取込 / 処方登録 / 処方変更                               | 「処方あり」「処方変更あり」などの発生種別、発生日/受付時刻、status、注意badge、確認待ち有無。薬剤名、用量、日数、処方明細は出さない。                  | 処方受付詳細、処方サイクル、薬剤変更レビュー、疑義照会。 |
+| `visit`             | 訪問予定 / 訪問記録 / 訪問完了                               | 「訪問予定」「訪問記録あり」「訪問完了」などの発生種別、訪問日/記録時刻、outcome/status、未完了/報告待ちbadge。SOAP本文、観察内容、記録本文は出さない。 | 訪問記録、訪問準備、報告書下書き。                       |
+| `document`          | 文書登録 / 初回訪問文書 / 管理計画 / 同意 / 報告書PDF / 添付 | 「文書登録あり」、文書種別、登録日時、登録者/登録元の最小表示、scan/retention/shareability の状態badge。文書本文、PDF本文、添付ファイル名は出さない。   | 文書詳細、文書一覧、共有設定、FileAsset detail。         |
+| `medication_stock`  | 残数報告 / 残数台帳反映 / 名寄せ確認                         | 残数関連イベントの発生、レビュー状態、不足risk/確認待ちbadge。薬剤明細や数量は必要最小限に留める。                                                      | 残数管理、stock event detail、signal review。            |
+| `interprofessional` | MCS / 電話 / FAX / メール / 施設メモ                         | source、送信者職種、未処理/確認待ち、安全signal、残数signal、schedule request の有無。raw text は出さない。                                             | inbound event detail、signal review。                    |
+
+発生確認カードの表示制約:
+
+- 一覧カードは「何があったか」「いつ起きたか」「未処理か」「どこで詳細確認するか」に限定する。
+- 処方薬剤明細、SOAP本文、訪問記録本文、MCS本文、電話メモ、文書本文、添付ファイル名、storage key は一覧カードに出さない。
+- 薬剤名や数量などの詳細は、患者詳細内であっても原則 detail link 先で確認する。
+- `raw_available=true` の場合も、詳細 route で再認可してから表示する。
+- 文書登録イベントは「登録された事実」と「業務で使える状態」を分ける。scan 未完了、retention 未設定、共有不可は badge で明示する。
+- 発生確認カードは、処方・訪問・文書の正本内容を再構成しない。正本の抜粋を作るほど、タイムラインと詳細画面の不整合、PHI露出、 stale 表示が起きやすくなるため。
+
+**イベント種別**:
+
+```ts
+type PatientMovementEventType =
+  | ExistingTimelineEventType
+  | 'prescription_event'
+  | 'visit_event'
+  | 'document_registered'
+  | 'inbound_communication'
+  | 'inbound_mcs'
+  | 'inbound_phone'
+  | 'inbound_fax'
+  | 'inbound_email'
+  | 'inbound_medication_stock_signal'
+  | 'medication_stock_event'
+  | 'medication_stock_snapshot'
+  | 'medication_equivalence_review'
+  | 'interprofessional_note'
+  | 'care_team_update'
+  | 'safety_signal'
+  | 'task_created'
+  | 'task_resolved'
+  | 'support_session';
+```
+
+カテゴリ:
+
+```ts
+type PatientMovementCategory =
+  | 'visit'
+  | 'prescription'
+  | 'medication_stock'
+  | 'interprofessional'
+  | 'communication'
+  | 'document'
+  | 'billing'
+  | 'task'
+  | 'safety'
+  | 'system';
+```
+
+**DTO案**:
+
+```ts
+type PatientMovementTimelineEvent = {
+  id: string;
+  event_type: PatientMovementEventType;
+  category: PatientMovementCategory;
+  occurred_at: string;
+  recorded_at?: string | null;
+  title: string;
+  summary: string | null;
+  href: string;
+  action_label: string;
+  status: string | null;
+  status_label: string | null;
+  actor_name: string | null;
+  actor_role: string | null;
+  source_channel: string | null;
+  source_label: string | null;
+  related_entity_type: string | null;
+  related_entity_id: string | null;
+  severity: 'blocking' | 'urgent' | 'warning' | 'info' | 'normal';
+  badges: Array<{
+    label: string;
+    tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger';
+  }>;
+  metadata: string[];
+  privacy_level: 'summary' | 'detail' | 'raw_phi';
+  raw_available: boolean;
+};
+```
+
+DTO制約:
+
+- `href` は相対パスのみ。
+- 一覧DTOに `raw_text` / provider raw payload / storage key / signed URL を含めない。
+- `privacy_level='raw_phi'` の詳細は一覧では summary のみ。
+- raw 表示は detail resolver 側で権限確認、理由、監査ログを通す。
+
+**Deep link 方針**:
+
+```text
+visit_schedule
+  -> /visits/:scheduleId/record または /schedules?focus=:scheduleId
+
+visit_record
+  -> /visits/:recordId
+
+prescription_intake
+  -> /prescriptions/:intakeId
+
+dispense_result
+  -> /dispense?task=:taskId または /audit?task=:taskId
+
+care_report
+  -> /reports/:reportId
+
+delivery_record
+  -> /reports/:reportId#delivery-records
+
+document_registered
+  -> /patients/:patientId/timeline/document_registered:eventId
+  -> detail resolver が正本文書画面または文書一覧 destination を返す
+
+billing_candidate
+  -> /billing?candidate=:candidateId
+
+inbound_communication / inbound_mcs / inbound_phone
+  -> /patients/:patientId/timeline/inbound_communication:eventId
+  -> detail shell 内で raw_text 再認可
+
+inbound_medication_stock_signal
+  -> /patients/:patientId/timeline/inbound_signal:signalId
+
+medication_stock_event
+  -> /patients/:patientId/medication-stock?event=:eventId
+
+task_created / task_resolved
+  -> /tasks/:taskId
+
+safety_signal
+  -> /patients/:patientId/risk?finding=:findingKey
+```
+
+**API方針**:
+
+初期PR:
+
+```text
+GET /api/patients/:id/timeline?limit=40
+```
+
+を維持し、既存イベントを `movement` タブで表示する。
+
+後続PR:
+
+```text
+GET /api/patients/:id/movement-timeline?limit=40&category=all&cursor=
+GET /api/patients/:id/movement-timeline/:eventId
+```
+
+Response:
+
+```ts
+{
+  data: {
+    patient_id: string;
+    timeline_events: PatientMovementTimelineEvent[];
+    summary: {
+      total_count: number;
+      inbound_unprocessed_count: number;
+      medication_stock_signal_count: number;
+      safety_signal_count: number;
+      latest_event_at: string | null;
+    };
+    partial_failures: Array<{
+      source: string;
+      message: string;
+    }>;
+  };
+  meta: {
+    generated_at: string;
+    limit: number;
+    next_cursor: string | null;
+  };
+}
+```
+
+**Source追加計画**:
+
+既存 `TIMELINE_SOURCES` を維持し、段階的に追加する。
+
+```text
+existing:
+  visitSchedules
+  visitRecords
+  visitRecordEvents
+  careReports
+  communicationEvents
+  selfReports
+  externalShares
+  inquiryRecords
+  prescriptionIntakes
+  prescriptionEvents
+  dispenseResults
+  billingCandidates
+  managementPlans
+  firstVisitDocuments
+  documentRegistrationEvents
+  conferenceNotes
+
+new:
+  inboundCommunicationEvents
+  inboundCommunicationSignals
+  medicationStockEvents
+  medicationStockEquivalenceReviews
+  operationalTaskEvents
+  riskFindingEvents
+  supportSessionEvents
+```
+
+部分失敗:
+
+- source単位で fail-soft。
+- MCS系だけ失敗しても訪問/処方履歴は表示する。
+- MedicationStock系だけ失敗しても他職種受信は表示する。
+- `partial_failures` に source 名と PHI-free message を返す。
+
+**UIアクセシビリティ**:
+
+- 日付グループは見出しとしてマークアップする。
+- 色だけで種別を伝えず、icon + label + badge を併用する。
+- `action_label` は「詳細」ではなく「残数報告を確認」「電話メモを開く」など具体化する。
+- キーボードでフィルタ切替、検索、event CTA に移動できる。
+- 検索結果件数は `aria-live` で通知する。
+- mobile の touch target は 44px 以上。
+- raw_text 表示は明示ボタンにし、初期表示しない。
+
+**技術的負債解消**:
+
+1. `history` タブの責務整理
+   - timeline は `movement` へ移動。
+   - `history` は `PatientFieldRevisionTimeline` と `PatientStructuredCarePanel` へ寄せる。
+
+2. timeline event type の共通化
+   - `PatientActivityTimeline` 内のローカル型を段階的に `src/types/patient-movement-timeline.ts` へ移す。
+
+3. source registry の拡張性維持
+   - `SourceAdapter` を使い、inbound / stock / task / safety を source として追加する。
+
+4. communication deep link の改善
+   - 汎用 communication 表示だけでなく、event id ごとの detail shell に飛べるようにする。
+
+5. self_report / communication / inbound の混在解消
+   - `self_report`: 患者/家族の自己申告。
+   - `communication`: 一般連絡。
+   - `inbound_communication`: 他職種から薬局への業務情報。
+   - `inbound_signal`: 抽出された業務シグナル。
+
+**Phased PR plan**:
+
+| phase   | 内容                                                                                                                                                               | validation                                                                                                      |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| Phase 0 | `MOV-001` contract と既存 timeline/source inventory。                                                                                                              | code inventory、Plans cross-reference。                                                                         |
+| Phase 1 | `cc:PARTIAL 2026-07-07` `movement` タブ追加。既存 `PatientActivityTimeline` を `history` から `movement` へ移動。上部地図なし。                                    | card-workspace tests、hash mapping tests、timeline fetch limit tests。                                          |
+| Phase 2 | `cc:PARTIAL 2026-07-07` 既存 `PatientActivityTimeline` を Google Maps 風の map-less vertical rail、summary strip、発生確認カードへ更新。上部地図は作らない。       | UI tests、a11y checks、mobile smoke。残: 専用 `PatientMovementTimeline` rename/split、Playwright mobile smoke。 |
+| Phase 3 | `cc:PARTIAL 2026-07-07` 共通 `PatientMovementTimelineEvent` 型と presenter を追加。処方/訪問/文書登録の発生確認 payload と deep link contract を定義。             | presenter unit、UI priority test、href relative tests、raw content omission tests。                             |
+| Phase 4 | `INB-001` source 追加: inbound event/signal を表示。                                                                                                               | MCS/電話 event tests、raw_text omission tests。                                                                 |
+| Phase 5 | MedicationStock source 追加: stock event、equivalence review、shortage finding を表示。                                                                            | stock integration tests、risk/task link tests。                                                                 |
+| Phase 6 | `cc:PARTIAL 2026-07-07` event detail resolver 追加。resolver は safe event / destination / raw_text included=false を返す。raw_text 再認可UIとdetail shellは後続。 | route authz tests、raw omission tests。                                                                         |
+| Phase 7 | summary/action rail、検索、表示密度、mobile 最適化。                                                                                                               | Playwright browser smoke、interaction budget。                                                                  |
+
+**テスト**:
+
+Unit:
+
+- inbound event が `interprofessional` category の timeline event へ変換される。
+- MCS は `source_channel=mcs`、電話は `source_channel=phone` で表示される。
+- 処方 event は「処方あり/処方変更あり」の発生種別、日時、status、detail href を持つ。
+- 訪問 event は「訪問予定/訪問記録あり/訪問完了」の発生種別、日時、status、detail href を持つ。
+- 文書登録 event は「文書登録あり」の発生種別、文書種別、日時、status、detail href を持つ。
+- 残数signalは `medication_stock` category になる。
+- urgent safety signal は `safety` category になる。
+- `href` が相対パス以外なら拒否される。
+- `raw_text`、raw payload、storage key、signed URL が一覧DTOに出ない。
+- 処方薬剤明細、SOAP本文、訪問記録本文、MCS本文、電話メモ全文、文書本文、添付ファイル名は一覧DTOに出ない。
+
+API:
+
+- 患者 movement timeline を取得できる。
+- `limit` / `cursor` / `category` filter が効く。
+- source partial failure でも表示可能なイベントを返す。
+- 他テナント患者は不可。
+- raw detail は権限不足時に不可。
+
+UI:
+
+- 患者詳細に「患者の動き」タブが表示される。
+- `history` から患者アクションタイムラインが外れ、`movement` で表示される。
+- hash `#patient-movement` / `#patient-timeline` で movement タブが開く。
+- 訪問、処方・調剤、他職種受信、残数・薬剤、安全、報告・共有、請求、task で filter できる。
+- 処方カードでは処方登録/変更があったことを確認でき、CTAから処方詳細へ遷移できる。
+- 訪問カードでは訪問予定/記録/完了があったことを確認でき、CTAから訪問詳細へ遷移できる。
+- 文書登録カードでは文書登録があったことを確認でき、CTAから文書詳細へ遷移できる。
+- 検索できる。
+- event card のCTAから detail へ遷移できる。
+- mobile で map-less vertical timeline が崩れない。
+
+Integration:
+
+```text
+MCS情報登録
+  -> InboundCommunicationEvent
+  -> movement timeline表示
+  -> detail shellで権限確認後 raw_text表示
+
+MCS残数報告
+  -> InboundCommunicationSignal
+  -> MedicationStockEvent
+  -> movement timelineに「受信」「レビュー」「反映」を表示
+
+電話でスケジュール相談
+  -> InboundCommunicationEvent
+  -> OperationalTask
+  -> movement timelineに「電話」「task作成」を表示
+```
+
+**受入基準**:
+
+- 患者詳細に新規タブ「患者の動き」がある。
+- 上部地図は存在しない。
+- Google Maps タイムライン風の、日付別・時刻別・縦軸カードUIで患者の動きが追える（map-less rail UI は部分実装済み）。
+- 既存の患者アクションタイムラインは `history` ではなく `movement` で見られる。
+- `history` は変更履歴・構造化ケアの役割に整理される。
+- 訪問、処方、調剤、報告、請求、共有、連絡、他職種受信、MCS、電話、残数報告、残数反映、安全signal、task が時系列で見られる。
+- 処方イベントでは処方登録/変更があったことを確認でき、詳細は deep link 先で確認できる。
+- 訪問イベントでは訪問予定/記録/完了があったことを確認でき、詳細は deep link 先で確認できる。
+- 文書イベントでは文書登録があったことを確認でき、詳細は deep link 先で確認できる。
+- 各イベントには deep link がある。
+- deep link は相対パスで、該当詳細画面または event detail shell に遷移する。
+- MCS/電話の raw_text は一覧に出さず、詳細で権限確認後に表示する。
+- raw_text 閲覧は監査ログに残る。
+- 種別フィルタ、検索、表示密度切替がある。
+- Command Center には movement の直近重要イベント抜粋が出る。
+
+#### P0/P1: 外用薬・頓服薬残数管理 Medication Stock Ledger（RX-002詳細化） `cc:PARTIAL`
+
+> 2026-07-06 追加。これは `RX-002` / `VS-AUTO-8` / `MED-002` / `DB-JSON-001` / `MOD-VISIT-001` / `MOD-SHARE-001` の詳細化であり、別系統の重複タスクではない。現行コードでは `ResidualMedication` は `VisitRecord` に紐づく派生データで、`replaceVisitRecordResidualMedications()` は visit record 保存時に既存残薬行を削除して再作成する。新機能では、訪問記録入力を残しつつ、患者保有薬剤の正本を append-only な Medication Stock Ledger へ移す。ただし他職種由来情報の正本は `INB-001` の `InboundCommunicationEvent` / `InboundCommunicationSignal` とし、Medication Stock Ledger は `accepted` な残数・使用量 signal の活用先として接続する。
+>
+> `cc:PARTIAL 2026-07-07`: DB migration なしの pure domain first slice として、`src/modules/pharmacy/medication-stock/domain/medication-equivalence.ts`、`stockout-forecast.ts`、`external-observation.ts` を追加。YJ/HOT と GS1/GTIN/JAN を分けた名寄せ confidence、PRN/topical/scheduled の stockout forecast、他職種/MCS/協力薬局由来の残数観測 staging を unit test で固定した。残: ledger DB/API/UI、既存 `ResidualMedication` からの移行、処方供給連動、Risk/Task/VisitBrief/Schedule/Report/External Share 接続。
+
+外部参照:
+
+- NICE SC1 medicines guidance: medication reconciliation では薬剤名、規格、剤形、用量、頻度、投与経路、適応、変更内容、PRN薬の最終使用日時などを引き継ぐべき情報として扱い、PRN/可変用量薬は使用条件、期待効果、最大量、必要量、使用頻度と効果確認まで確認する。
+- RxNorm overview: ingredient、strength、dose form、brand/generic、package、source code を概念グラフとして扱う考え方を参照する。ただし日本では RxNorm そのものではなく、`DrugMaster.yj_code` / `hot_code` / 一般名 / 成分 / 規格 / 剤形 / メーカー / `DrugPackage.gtin` / `jan_code` に置き換える。
+- PMDA/MHLW prescription drug container code guidance: 医療用医薬品の包装単位に product code、expiry、lot、quantity を表示する考え方を参照し、PH-OS では `DrugPackage.gtin` / `jan_code` を包装・供給量・スキャン照合に使う。
+
+**現行コードとの整合**:
+
+| 現行実装                                                          | 確認できた状態                                                                                               | 新 ledger での扱い                                                                                                                                                |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `prisma/schema/medication.prisma::ResidualMedication`             | `visit_record_id`、`drug_master_id`、`drug_name`、`remaining_quantity`、`excess_days` を持つ訪問記録派生行。 | 当面は互換表示用に維持し、`MedicationStockEvent(source_entity_type='visit_record')` へ backfill / dual write する。最終的な正本は ledger。                        |
+| `src/lib/validations/visit-record.ts`                             | `residual_medications[]` は薬剤名、drug_master_id、drug_code、処方量、1日量、残数を受ける。                  | 訪問記録フォームの入力 UI は維持し、保存時に stock observation event を作る。既存 field は移行期間の input adapter。                                              |
+| `src/server/services/visit-record-derived-data.ts`                | 既存残薬行を削除して再作成し、`remaining_quantity / prescribed_daily_dose` で `excess_days` を算出。         | event ledger では削除/上書きしない。誤入力は `correction` event、観測値は `visit_observation` event として履歴化する。                                            |
+| `prisma/schema/drug.prisma::DrugMaster`                           | `yj_code @unique`、`hot_code`、`jan_code`、`generic_name`、`dosage_form`、`manufacturer` を持つ。            | 医薬品マスター連動の第一候補。YJ/HOT/一般名/規格/剤形/メーカーで臨床上の名寄せ候補を作る。                                                                        |
+| `prisma/schema/drug.prisma::DrugPackage`                          | `gtin @unique`、`jan_code`、`package_quantity`、`package_quantity_unit`、`package_level` を持つ。            | ユーザー表現の `GSI` は実装上 `GS1/GTIN/JAN` として扱う。包装スキャン、供給量換算、外箱/調剤包装単位の特定に使う。臨床的同一性はこれ単独で判定しない。            |
+| `src/lib/dispensing/outside-med-classification.ts`                | 院外薬/外用/頓服の分類が存在。                                                                               | `source_type=other_institution`、`medication_category=prn/topical/external/other` の初期分類に利用する。                                                          |
+| `PatientMcsMessage` / `CommunicationEvent` / `PartnerVisitRecord` | MCS、連絡イベント、協力薬局訪問記録に他職種・外部連携由来の文章/記録が入る。                                 | `ExternalMedicationStockObservation` の staging source として扱い、薬剤師レビュー後に `MedicationStockEvent` へ昇格する。raw本文は ledger public DTO へ出さない。 |
+
+**モジュール配置**:
+
+```text
+src/modules/pharmacy/medication-stock/
+  domain/
+    medication-stock-ledger.ts
+    medication-stock-events.ts
+    medication-equivalence.ts
+    stockout-forecast.ts
+    usage-rate.ts
+    external-observation.ts
+  application/
+    record-stock-observation.ts
+    apply-prescription-supply.ts
+    ingest-external-stock-observation.ts
+    reconcile-patient-medication-stock.ts
+    generate-stock-risk-findings.ts
+    create-stock-tasks.ts
+  infrastructure/
+    medication-stock-repository.ts
+    prescription-stock-adapter.ts
+    drug-master-equivalence-repository.ts
+    external-observation-source-adapter.ts
+  presenters/
+    patient-stock-panel-presenter.ts
+    visit-record-stock-presenter.ts
+    stock-risk-presenter.ts
+    external-observation-presenter.ts
+  ui/
+    MedicationStockPanel.tsx
+    MedicationStockObservationForm.tsx
+    MedicationStockTimeline.tsx
+    MedicationStockRiskBadges.tsx
+    MedicationEquivalenceSelector.tsx
+    ExternalStockObservationReviewQueue.tsx
+```
+
+common-core は `modules/pharmacy/medication-stock` を直接 import しない。接続は `RiskFindingProvider`、`VisitBriefContributor`、`TaskTypeRegistry`、`ShareScopeDefinition`、将来の `PatientWorkspacePanelProvider` 経由にする。
+
+**DB設計案（migrationは別slice）**:
+
+| table                                | 目的                                                                                                   | 主な field                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PatientMedicationStockItem`         | 患者が保有する薬剤単位の正本。処方由来、初回残薬、他院処方、OTC、手入力、不明薬を含む。                | `org_id`, `patient_id`, `case_id`, `canonical_medication_group_id`, `drug_master_id`, `source_type`, `display_name`, `normalized_name`, `ingredient_name`, `strength`, `dosage_form`, `route`, `unit`, `medication_category`, `default_usage_amount_per_day`, `max_usage_amount_per_day`, `indication_text`, `usage_instruction_text`, `managing_party`, `active`, `archived_at` |
+| `MedicationStockEvent`               | 残数変動・観測の append-only 台帳。削除ではなく補正 event で訂正する。                                 | `org_id`, `patient_id`, `case_id`, `stock_item_id`, `event_type`, `event_date`, `quantity_delta`, `observed_quantity`, `unit`, `source_entity_type`, `source_entity_id`, `usage_frequency_amount`, `usage_frequency_period`, `last_used_at`, `effect_note`, `reason_note`, `recorded_by`, `recorded_at`, `review_state`                                                          |
+| `MedicationStockSnapshot`            | 患者詳細/訪問準備/リスク判定用の再構築可能な集計。                                                     | `current_quantity`, `last_observed_quantity`, `last_observed_at`, `last_supply_at`, `estimated_daily_usage`, `usage_confidence`, `estimated_stockout_date`, `days_until_stockout`, `next_prescription_expected_date`, `next_visit_scheduled_date`, `stock_risk_level`, `risk_reason_code`                                                                                        |
+| `CanonicalMedicationGroup`           | 在宅管理上の同一管理単位。RxNorm 的な ingredient/strength/form/route の概念を日本マスタで実現する。    | `org_id nullable`, `group_type`, `ingredient_name`, `normalized_ingredient_key`, `strength`, `dosage_form`, `route`, `yj_code_prefix`, `hot_group_key`, `created_by`                                                                                                                                                                                                             |
+| `MedicationEquivalentAlias`          | YJ/HOT/GS1/GTIN/JAN/一般名/ブランド名/メーカー名の別名と confidence を保持する。                       | `canonical_group_id`, `drug_master_id`, `alias_name`, `manufacturer_name`, `yj_code`, `hot_code`, `gtin`, `jan_code`, `medication_code`, `confidence`, `approved_by`, `approved_at`                                                                                                                                                                                              |
+| `ExternalMedicationStockObservation` | 他職種・協力薬局・MCS・連絡イベント由来の残薬情報を staging する。薬剤師確認前は ledger 正本にしない。 | `org_id`, `patient_id`, `case_id`, `source_entity_type`, `source_entity_id`, `source_author_role`, `source_organization`, `observed_at`, `extracted_medication_name`, `extracted_quantity`, `extracted_unit`, `extracted_usage_frequency_text`, `extracted_last_used_at`, `confidence`, `review_state`, `reviewed_by`, `reviewed_at`, `applied_stock_event_id`                   |
+
+`ExternalMedicationStockObservation` の raw本文は保存/表示最小化する。MCS本文や連絡本文から抽出した場合も、ledger DTO には抽出済みの controlled fields と source reference のみ返し、raw `body/content/record_content` は source screen の権限内で再確認する。
+
+**医薬品マスター / YJ / GS1(=GTIN/JAN) 連動**:
+
+名寄せ・照合は一段階で決めない。confidence と薬剤師レビューを前提にする。
+
+| level | matching axis                                                | 用途                                                                                   | 自動統合                                           |
+| ----- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| 1     | `drug_master_id`                                             | 既存処方行・訪問記録入力からの完全照合。                                               | 可                                                 |
+| 2     | `DrugMaster.yj_code`                                         | 日本の医薬品マスター上の製品/規格/剤形寄りの照合。処方明細と患者保有薬剤の主キー候補。 | 原則可。ただし規格違い/剤形違い/配合剤は別 item。  |
+| 3     | `DrugMaster.hot_code` / `receipt_code`                       | レセコン/流通/請求系データとの補助照合。                                               | 条件付き                                           |
+| 4     | `DrugPackage.gtin` / `jan_code` / package level / quantity   | GS1/GTIN/JAN。包装スキャン、外箱/調剤包装単位、供給量換算、画像/バーコード入力の照合。 | 薬剤同一性ではなく供給量・包装単位照合として使用。 |
+| 5     | `generic_name` + ingredient + strength + dosage_form + route | 一般名/同一成分/同一規格/同一剤形の候補提示。                                          | 低 confidence。薬剤師確認必須。                    |
+| 6     | manual equivalence                                           | 在宅管理上、別名称を同一残数管理対象にまとめる。                                       | 薬剤師確認・理由・audit 必須。                     |
+
+注意:
+
+- ユーザー表現の `GSIコード` は、実装・DB上は `GS1 product code / GTIN / JAN` として扱う。命名は `gs1_gtin` か既存 `gtin` / `jan_code` に寄せる。
+- YJ は「同一成分」そのものよりも製品・規格・剤形を含む照合に強い。別メーカー同一成分をまとめるには、YJだけでなく一般名、成分、規格、剤形、HOT、手動承認を併用する。
+- GS1/GTIN/JAN は包装単位を特定できるが、臨床的な同一性や代替可否を単独では決めない。`DrugPackage.package_quantity` と `unit` 変換に使う。
+- 同一成分でも規格違い、配合剤、剤形違い、外用量が面積依存する薬は自動統合しない。
+
+**他職種情報の活用**:
+
+他職種から送られてくる残薬・使用頻度・効果・副作用・保管場所の情報を、以下の source から staging する。
+
+| source            | 既存モデル/画面                               | 取り込み例                                                   | ledger 反映                                                                                                                                                                            |
+| ----------------- | --------------------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MCS               | `PatientMcsMessage`, `PatientMcsSummary`      | 訪看/ケアマネ/医師からの「湿布残り少ない」「頓服使用増」等。 | `ExternalMedicationStockObservation(source_entity_type='patient_mcs_message')` として抽出し、薬剤師確認後 `MedicationStockEvent(event_type='other_professional_observation')` へ昇格。 |
+| 連絡イベント      | `CommunicationEvent`, `CommunicationResponse` | 電話/FAX/メール/施設連絡での残数報告、補充依頼。             | `communication_event` / `communication_response` source として staging。counterpart_name/contact は ledger DTO に出さない。                                                            |
+| 協力薬局/委託訪問 | `PartnerVisitRecord`                          | 協力訪問記録の残薬欄、写真、申し送り。                       | `partner_visit_record` source として staging。confirmed record のみ自動候補化し、draft/returned は取り込まない。                                                                       |
+| 報告書/申し送り   | `CareReport`, structured handoff              | 医師/訪看/施設への報告・返信から残数確認依頼が戻る。         | report delivery/update source として候補化し、重複 dedupe。                                                                                                                            |
+| 患者/家族自己申告 | self report / patient portal 相当             | 患者家族からの残薬・使用頻度申告。                           | confidence low として薬剤師確認必須。                                                                                                                                                  |
+
+staging rule:
+
+- source ごとに extractor を作るが、free text を ledger 正本に直接入れない。
+- 自動抽出は `review_state='pending_pharmacist_review'` とし、`confidence`、抽出根拠、source link、推奨 stock item を返す。
+- 薬剤師が確認すると `MedicationStockEvent` を作成し、`ExternalMedicationStockObservation.applied_stock_event_id` を埋める。
+- 同じ source entity / stock item / observed_at / quantity は idempotency key で重複作成しない。
+- 既存 `NTF-STREAM-001` / `SEC-001` に従い、通知やSSEには患者名・薬剤名・free text を出さず「残数情報の確認候補があります」の controlled wording にする。
+
+**残数計算 / stockout forecast**:
+
+```text
+現在推定残数 =
+  直近 observed_quantity
+  + 直近観測以降の prescription_supply / transfer_in
+  - 直近観測以降の disposal / transfer_out
+  - 推定使用量
+```
+
+- `actual_observed_quantity` と `estimated_quantity` を分ける。
+- PRN/外用は使用量ブレが大きいため `usage_confidence=high/medium/low/unknown` を必ず持つ。
+- 使用頻度不明、単位換算不能、外用量が面積依存、他職種申告のみで未確認の場合は stockout date を `unknown` にする。
+- `estimated_stockout_date` が次回処方/次回訪問より前なら `shortage_expected`、数日以内または既に不足なら `urgent`。
+
+**Risk / Task / VisitBrief / Schedule / Report / Share 連動**:
+
+| 接続先              | 実装方針                                                                                                                                                                                                                                                                                                              |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| RiskFinding         | `pharmacyMedicationStockRiskProvider` を追加。`medication_stock_shortage_expected`、`urgent_shortage`、`usage_unknown`、`observation_stale`、`equivalence_review_required`、`unlinked_prescription_supply`、`external_observation_review_required` を返す。                                                           |
+| OperationalTask     | `pharmacy.medication_stock_shortage_expected`、`pharmacy.medication_stock_usage_unknown`、`pharmacy.medication_stock_equivalence_review_required`、`pharmacy.medication_stock_unlinked_prescription_supply`、`pharmacy.medication_stock_external_observation_review_required` を `MOD-TASK-001` registry に登録する。 |
+| VisitBrief          | `MOD-VISIT-001` contributor として、不足見込み、前回未確認、使用頻度不明、名寄せ確認待ち、他院/OTC、他職種観測レビュー待ちを優先順で表示する。                                                                                                                                                                        |
+| Schedule            | `VS-AUTO-8` は ledger snapshot を参照し、次回訪問前に不足する外用/頓服/他院薬を前倒し理由・薬剤師確認 gate にする。scheduling 側へ残数ロジックを重複実装しない。                                                                                                                                                      |
+| Visit Record        | 既存 `residual_medications` 入力を `MedicationStockEvent` へ接続。残数・使用頻度・最終使用日・未確認理由・効果/使用理由を section-level watch / autosave 対象にする。                                                                                                                                                 |
+| Prescription Intake | 処方登録後に `prescription_supply` event を作る。`DrugMaster` / `DrugPackage` / YJ / HOT / GS1-GTIN / JAN で照合し、単位換算不明は `unlinked_prescription_supply` task。                                                                                                                                              |
+| Patient Detail      | `薬剤・訪問` タブに `残数管理` panel を追加し、Command Center に blocking finding / next action を出す。UI実装時は `gpt-image-2` で非PHI mock design を再構築してから実装する。                                                                                                                                       |
+| Report/Handoff      | 残数全量を自動出力しない。薬剤師が「報告書に含める / 申し送りのみ / 内部記録のみ」を選ぶ。                                                                                                                                                                                                                            |
+| External Share      | `medication_stock_summary` / `medication_stock_detail` / `medication_stock_events` scope を `MOD-SHARE-001` 後続に追加する。default は summary のみ。detail/events は consent / permission / audit / masking profile 必須。                                                                                           |
+
+**API案**:
+
+| method/path                                                    | 用途                                                                                     |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `GET /api/patients/:id/medication-stock`                       | 患者別 stock summary / items / risk を取得。list envelope は `API-LIST-001` に合わせる。 |
+| `POST /api/patients/:id/medication-stock/items`                | 処方にない薬、初回残薬、他院薬、OTC、不明薬を追加。                                      |
+| `POST /api/patients/:id/medication-stock/items/:itemId/events` | 訪問時観測、廃棄、補正、使用頻度更新を追加。                                             |
+| `GET /api/patients/:id/medication-stock/external-observations` | 他職種/MCS/連絡/協力薬局由来の staging queue を取得。                                    |
+| `POST /api/medication-stock/external-observations/:id/review`  | 薬剤師が staging 情報を適用/却下/保留する。                                              |
+| `POST /api/prescription-intakes/:id/apply-medication-stock`    | 処方登録後の供給イベント適用。通常は内部 service、自動再実行は idempotent。              |
+| `POST /api/medication-stock/equivalence/review`                | 同一成分/別メーカー/一般名/ブランド名の統合・分離レビュー。                              |
+
+**Phased PR plan**:
+
+| phase   | 内容                                                                                                                                                               | validation                                                                                       |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| Phase 0 | 既存残薬/stock/DrugMaster/DrugPackage/他職種sourceの棚卸し ADR。`ResidualMedication` から ledger への移行方針を固定。                                              | schema/code inventory、migration impact note、Plans cross-reference。                            |
+| Phase 1 | `modules/pharmacy/medication-stock` domain/application skeleton、計算ロジック、YJ/HOT/GS1 matching helper、unit conversion helper。DB migration はまだ適用しない。 | unit tests for equivalence/confidence/unit conversion/stockout.                                  |
+| Phase 2 | DB schema / backfill dry-run。`PatientMedicationStockItem`、`MedicationStockEvent`、`MedicationStockSnapshot`、`ExternalMedicationStockObservation` を追加。       | migration precondition、RLS/org_id/index tests、backfill dry-run report。                        |
+| Phase 3 | VisitRecord adapter。既存 residual input から `visit_observation` event を作り、snapshot 再計算。                                                                  | visit-record API tests、idempotency、legacy response compatibility。                             |
+| Phase 4 | Prescription supply adapter。YJ/HOT/GS1/DrugPackage 連動、単位換算、unlinked supply task。                                                                         | prescription intake integration tests、DrugMaster/DrugPackage matching tests。                   |
+| Phase 5 | External observation staging。他職種/MCS/連絡/協力薬局由来の残薬情報を review queue 化。                                                                           | PHI-minimized DTO snapshot、review apply/reject tests、source idempotency tests。                |
+| Phase 6 | Patient Detail / Visit Record UI。残数管理 panel、訪問中入力、未確認理由、名寄せ確認、mobile CTA。                                                                 | `gpt-image-2` mock design、component tests、mobile E2E、a11y.                                    |
+| Phase 7 | Risk/Task/VisitBrief/Schedule/Report/Share 連動。                                                                                                                  | Case Risk Cockpit tests、Task bridge tests、VisitBrief tests、report masking/share scope tests。 |
+
+**受入基準**:
+
+- 患者詳細で外用薬・頓服薬・処方外薬・他院薬・OTC の残数を一覧できる。
+- 訪問ごとに残数、使用頻度、最終使用日、効果/使用理由、未確認理由を記録できる。
+- 処方登録後に該当 stock item へ供給イベントが自動追加される。
+- YJ/HOT/GS1(=GTIN/JAN)/一般名/規格/剤形/メーカーを使って医薬品マスターと照合できる。
+- GS1/GTIN/JAN は包装・数量換算に使い、臨床的同一性は薬剤師レビュー付きで判断する。
+- 他職種から送られてくる残薬情報を staging queue に取り込み、薬剤師確認後に ledger event として活用できる。
+- 次回処方/次回訪問までに不足する見込みなら RiskFinding と OperationalTask に連動する。
+- 外部共有では medication stock scope、consent、permission、audit、masking profile を必ず通る。
+- 既存 `ResidualMedication` は移行期間中も互換維持し、最終的な正本は Medication Stock Ledger へ統一する。
 
 #### 横断基盤・運用・外部境界 追加バックログ（2026-07-06 再レビュー反映） `cc:TODO`
 
@@ -1091,7 +2013,7 @@ forbidden:
 | MOD-PATIENT-001 | P1     | `DEBT-PATIENT-001`, `UX-CMD-001`, `FE-PAT-001`, `API-DTO-001`             | Patient Workspace panel adapters        | `cc:PARTIAL 2026-07-06` `src/core/patient/workspace-panel.ts` と `src/server/patient-workspace/active-panel-registry.ts` を追加し、既存 `buildPatientWorkspace` の実装本体を `src/modules/pharmacy/patient-workspace/workspace-read-model.ts` の `pharmacy.current_medication_cycle` provider へ移した。`src/server/services/patient-detail-workspace.ts` は active registry を呼ぶ facade に縮小し、処方サイクル/服薬差分/処方ナビ/処方取込ペア direct import を削除した。                                                                                       | 既存患者詳細 `workspace` read model とUI/API互換を維持。`patient-detail-workspace.ts` の allowlist entry を削除し、boundary debt は 12 imports / 8 files。残: `getPatientOverview` response に `panels[]` DTOを追加する後続slice、common header/basic/case/consent/assignment/task/risk/recent activity との明示分離、non-active tab/client island のさらなるlazy化。                                                                                                                                            |
 | MOD-VISIT-001   | P1     | `DEBT-VISIT-001`, `DEBT-DEADLINE-001`, `VISIT-SYNC-001`, `FE-VISIT-001`   | Visit Brief contributor split           | `cc:PARTIAL 2026-07-06` first slice として `src/modules/pharmacy/visit/brief-presentation.ts` を追加し、処方差分、JAHIS補足record detail、調剤/セット/院外薬 evidence 表示を pharmacy module 側へ移した。`src/server/services/visit-brief.ts` は公開entrypoint `@/modules/pharmacy` の関数を呼ぶ形にし、`dispensing/set-methods`、`dispensing/outside-med-classification`、`pharmacy/jahis-supplemental-records-view`、`prescription/medication-diff` direct import を削除した。                                                                                  | 既存訪問準備/visit brief表示互換を維持。`visit-brief.ts` の allowlist entry を削除し、boundary debt は 8 imports / 7 files。残: `src/core/visit/visit-brief-core.ts` と contributor registry の追加、patient/address/consent/contact/task/recent visits/collaboration/emergency contacts と pharmacy prescription/deadline/residual/dispensing/JAHIS section の明示分離、adapter failure policy。                                                                                                                |
 | MOD-REPORT-001  | P1     | `DEBT-REPORT-001`, `REP-001`, `API-DTO-001`, `DATA-RET-001A`              | Report Template module adapters         | `cc:PARTIAL 2026-07-06` first slice として `src/core/report/template-registry.ts`、`src/modules/pharmacy/reports/report-template-providers.ts`、`src/server/report/active-template-registry.ts` を追加し、既存 report template builders を `src/modules/pharmacy/reports/report-templates.ts` へ移動した。`report-generator` は active registry 経由で draft content を生成し、core/server は pharmacy template builder を直接 import しない。provider metadata には target role / `canSendCareReport` / masking profile / audit surface / printable を持たせた。 | 既存報告書作成結果は provider parity test で維持。template provider unknown/duplicate/failure は fail-closed。不正な non-object template output は空レポートとして保存せず、DB write 前に例外化する。`report-templates.ts` の boundary allowlist を削除し、boundary debt は 7 imports / 6 files へ減少。残: 送付前 gate / masking profile 実 enforcement / delivery audit minimization / ReportTemplate.module・CareReport.discipline のDB migration plan は既存 `REP-*` / `SEC-*` / `MOD-DATA-001` として後続。 |
-| MOD-SHARE-001   | P1     | `SEC-001`, `FILE-LIFE-001`, `EXP-002`, `TENANT-001`                       | External Share Scope registry           | `ShareScopeDefinition{ key, module, label, description, requiredPermission, requiresCaseBoundary, requiresReportBoundary?, outputRisk }` を追加する。core scope は visit_schedule / care_reports / attachments / patient_summary、pharmacy scope は medication_list / allergy_info / prescription_summary / residual_medications。                                                                                                                                                                                                                                | unknown scope は拒否。scope定義はregistryに集約。moduleごとにpermissionとoutputRiskを持つ。public responseにstored-only boundary、storage key、original filename、raw metadataを出さない。                                                                                                                                                                                                                                                                                                                       |
+| MOD-SHARE-001   | P1     | `SEC-001`, `FILE-LIFE-001`, `EXP-002`, `TENANT-001`                       | External Share Scope registry           | `cc:PARTIAL 2026-07-06` first slice として `src/core/share/scope-registry.ts` と `src/server/services/external-access-scope-registry.ts` を追加し、external access scope metadata を registry 化した。core scope は `visit_schedule` / `care_reports` / `attachments` / `patient_summary`、pharmacy scope は `medication_list` / `allergy_info` / `prescription_summary` / `residual_medications` を定義。既存互換の `self_report_history` は legacy-known unsupported として残した。                                                                             | unknown scope は引き続き拒否。planned だが未実装の `attachments` / `patient_summary` / `prescription_summary` / `residual_medications` は known だが write-time unsupported として拒否し、public scope/payload から strip する。既存 supported scope の出力順・payload・case/report boundary は維持。残: 添付/患者サマリー/処方サマリー/残薬を実 payload 化する前に file presenter、masking profile、audit snapshot、stored-only boundary 露出防止テストを追加する。                                             |
 | MOD-BILLING-001 | P1/P2  | `DEBT-BILLING-001`, `BIL-001`, `BIL-002`, `API-STATE-001`                 | Schedule/Billing contributor seam       | `visit-schedule-billing-preview` と billing evidence の薬局分類参照を棚卸しし、`ScheduleContributor` / `BillingRuleProvider` の seam を追加する。最初は pharmacy adapter のみで既存 preview/result を返し、core schedule は billing preview source を直接知らない。                                                                                                                                                                                                                                                                                               | schedule preview と billing candidate が既存と一致。core schedule/billing に prescription-specific importを増やさない。adapter未登録なら自動確定せず manual review risk/taskへ倒す。                                                                                                                                                                                                                                                                                                                             |
 | MOD-IO-001      | P1     | `VS-AUTO-9`, `INT-WEBHOOK-001`, `NTF-001`, `SEC-001`                      | External IO adapter contract            | routing/S3/SES/Cognito/MCS/webhook/notification など外部I/O adapter の共通 contract を定義する。timeout、retry/idempotency、tenant context、PHI-free diagnostics、raw provider error redaction、correlation id、no-store/audit linkage を adapter class ごとに固定する。                                                                                                                                                                                                                                                                                          | 外部 provider failure が patient name/address/drug/free text/raw provider error/token/storage key を log/response/audit に出さない。AWS関連 adapter 実装時はAWS公式reference確認ルールに従う。                                                                                                                                                                                                                                                                                                                   |
 | MOD-DATA-001    | P1     | `TENANT-001`, `TENANT-002`, `TENANT-003`, `DB-EVENT-001`, `DATA-RET-001A` | Module data/API crosswalk               | module -> Prisma model / DTO presenter / route prefix / outbox event / audit action / RLS policy / retention policy の対応表を作る。`CareCase.service_line`、visit/report `discipline`、`Task.module`、coverage/support session/outbox は migration plan として既存DB/APIレーンへ接続する。                                                                                                                                                                                                                                                                       | Prisma model public response直出し、org_id/RLS未確認、outbox payload PHI混入、module不明 task/report/share scope を module review で検出できる。計画追加だけではDB変更を適用しない。                                                                                                                                                                                                                                                                                                                             |
