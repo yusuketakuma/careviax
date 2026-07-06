@@ -40,6 +40,7 @@ import {
   type BulkCompleteTasksResponse,
 } from '@/lib/tasks/bulk-completion-contract';
 import { summarizeBulkCompleteTaskFailures } from '@/lib/tasks/bulk-completion-messages';
+import { buildTasksHealthBoardApiPath } from '@/lib/tasks/api-paths';
 import { StateBadge } from '@/components/ui/state-badge';
 import {
   PRIORITY_ROLE,
@@ -53,6 +54,7 @@ import type {
   TasksStatusFilter,
 } from '@/lib/dashboard/home-link-builders';
 import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
+import { TaskHealthBoardPanel, taskHealthBoardEnvelopeSchema } from './task-health-board-panel';
 
 // --- Types ---
 
@@ -254,6 +256,12 @@ export function TasksContent({
     assignedToMe,
     currentUserId,
   ]);
+  const healthBoardScope = assignedToMe ? 'mine' : 'role_default';
+  const healthBoardApiPath = buildTasksHealthBoardApiPath({
+    scope: healthBoardScope,
+    limit: 500,
+    task_type: taskTypeFilter || null,
+  });
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['tasks', orgId, queryParams],
@@ -270,6 +278,26 @@ export function TasksContent({
   });
 
   const tasks = data?.data ?? [];
+
+  const {
+    data: healthBoardData,
+    isLoading: isHealthBoardLoading,
+    isError: isHealthBoardError,
+    refetch: refetchHealthBoard,
+  } = useQuery({
+    queryKey: ['tasks-health-board', orgId, healthBoardApiPath],
+    queryFn: async () => {
+      const res = await fetch(healthBoardApiPath, {
+        headers: buildOrgHeaders(orgId),
+      });
+      const payload = await readApiJson(res, {
+        fallbackMessage: 'タスクヘルスボードの取得に失敗しました',
+        schema: taskHealthBoardEnvelopeSchema,
+      });
+      return payload.data;
+    },
+    enabled: !!orgId,
+  });
 
   const {
     data: staffWorkloadData,
@@ -339,6 +367,7 @@ export function TasksContent({
       setRequestDescription('');
       setRequestDueDate('');
       void queryClient.invalidateQueries({ queryKey: ['tasks', orgId] });
+      void queryClient.invalidateQueries({ queryKey: ['tasks-health-board', orgId] });
       void queryClient.invalidateQueries({ queryKey: ['staff-workload', orgId] });
     },
     onError: (error) => {
@@ -374,6 +403,7 @@ export function TasksContent({
       }
       setSelectedTasks([]);
       void queryClient.invalidateQueries({ queryKey: ['tasks', orgId] });
+      void queryClient.invalidateQueries({ queryKey: ['tasks-health-board', orgId] });
     },
     onError: () => {
       toast.error('タスクの一括完了に失敗しました');
@@ -502,9 +532,16 @@ export function TasksContent({
           <AlertDescription className="text-tag-info">{contextSummary}</AlertDescription>
         </Alert>
       ) : null}
+      <TaskHealthBoardPanel
+        board={healthBoardData}
+        isLoading={isHealthBoardLoading}
+        isError={isHealthBoardError}
+        onRetry={() => void refetchHealthBoard()}
+      />
+
       <PageSection
         title="今すぐ処理"
-        description="未完了タスクの量、期限超過、緊急・高優先度を先に確認します。"
+        description="現在ロード済みのタスク一覧を基準に、表示中の処理量と優先度を確認します。"
         tone="subtle"
         actions={
           <>

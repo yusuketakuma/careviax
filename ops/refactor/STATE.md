@@ -40,6 +40,80 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Operational Task Health Board UI connected to `/tasks`（commit `dd9099854`）。
+  - current task:
+    `Plans.md` の `TASK-001` 残作業「Task Health Board UI 接続 / browser smoke」に対応。
+    既存 `GET /api/tasks/health-board` を `/tasks` へ接続し、Health Board は「現在ロード済み行」ではなく
+    「スキャン対象」の集計として明示した。表示は `summary` / `scan` / `risk_domain_groups` /
+    `attention` / `orphan_audit` に限定し、task title / description / metadata / dedupe_key /
+    risk finding detail は UI に出さない。
+  - subagent:
+    `code_mapper`（`Mapper the 23rd` / `019f3511-03f7-7601-b193-13c13e7f6faa`）を read-only で投入。
+    `/tasks` の最小接続点は `TasksContent` と `src/lib/tasks/api-paths.ts`、Health Board は独立 panel に
+    切り出すべきこと、false-empty / truncation / PHI / 44px / filter collision の UI risk を確認した。
+  - design / imagegen:
+    UI slice のため `/Users/yusuke/.codex/skills/.system/imagegen/SKILL.md` と
+    `docs/ui-ux-design-guidelines.md` を確認し、`gpt-image-2` 方針の非 PHI preview mockup を生成:
+    `/Users/yusuke/.codex/generated_images/019f2c7e-d969-7882-bd11-432a10abb930/ig_04f5b5390c263bb4016a4b075bb3788191b4d856ccf08d0e6e.png`。
+    prompt は safe task id（例: `T-1024`）と抽象ラベルのみで、実在患者名、住所、電話、処方本文、
+    報告書本文、保険情報、外部共有 URL、secret は含めていない。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `AGENTS.md`,
+    `docs/ui-ux-design-guidelines.md`,
+    `/Users/yusuke/.codex/skills/.system/imagegen/SKILL.md`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md`,
+    `src/app/(dashboard)/tasks/tasks-content.tsx`,
+    `src/app/(dashboard)/tasks/tasks-content.test.tsx`,
+    `src/lib/tasks/api-paths.ts`,
+    `src/lib/tasks/api-paths.test.ts`,
+    `src/server/services/operational-task-health.ts`,
+    `src/app/api/tasks/health-board/route.ts`,
+    `src/components/ui/button-variants.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/tasks/task-health-board-panel.tsx`,
+    `src/app/(dashboard)/tasks/tasks-content.tsx`,
+    `src/app/(dashboard)/tasks/tasks-content.test.tsx`,
+    `src/lib/tasks/api-paths.ts`,
+    `src/lib/tasks/api-paths.test.ts`.
+  - bugs / risks reduced:
+    `/api/tasks` のロード済み行だけを「今すぐ処理」集計に使うと、SLA超過、患者安全、孤児 risk task、
+    stale risk task が一覧 filter/pagination の外で見落とされる可能性があった。Health Board panel を
+    上段に追加し、`scan.truncated` は warning alert、取得失敗は `ErrorState` + 専用 retry とし、
+    empty と failure を混同しないようにした。既存 task list の表示件数は「現在ロード済み」の説明へ変更。
+  - security / PHI reviewed:
+    Health Board UI は API の PHI-minimized refs だけを消費する。要注意サンプルは
+    `display_id` / `task_type` / `priority` / `due_at` / `action_href` のみで、患者名、薬剤名、
+    task title、自由記載、metadata、dedupe key、risk detail は表示しない。fetch は `buildOrgHeaders(orgId)`
+    を使い、既存 auth/org 境界を維持。
+  - performance / UX reviewed:
+    `/tasks` に追加 query を1本足すだけで polling は追加しない。API path helper で空 query の trailing `?`
+    を防ぎ、`task_type` filter は Health Board 側にも渡す。desktop/mobile browser smoke で
+    Health Board 表示、6指標、スキャン根拠、44px action target、横スクロールなしを確認。
+  - validation commands:
+    `pnpm exec vitest run src/lib/tasks/api-paths.test.ts 'src/app/(dashboard)/tasks/tasks-content.test.tsx' src/server/services/operational-task-health.test.ts src/app/api/tasks/health-board/route.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec vitest run 'src/app/(dashboard)/tasks/tasks-content.test.tsx' --reporter=dot --testTimeout=30000`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`;
+    `pnpm lint`;
+    `pnpm format:check`;
+    `git diff --check`;
+    `pnpm dev:e2e:local` + Playwright MCP `/tasks` desktop 1280x900 / mobile 390x844 DOM smoke.
+  - validation results:
+    focused vitest green（4 files / 35 tests）; post-44px fix component vitest green（1 file / 18 tests）;
+    high-memory typecheck green; typecheck:no-unused green; `pnpm lint` green with existing unrelated warnings only in
+    `src/lib/platform/break-glass.test.ts` (`_tx`, `_input`); `pnpm format:check` green; `git diff --check` green.
+    Browser smoke: authenticated `/tasks` reached, Health Board found, 6 metrics present, scan basis present,
+    desktop/mobile `bodyOverflowX=false`, min action height 44px.
+  - remaining work:
+    Broader `Plans.md` objective remains open。`TASK-001` 残: Health Board 専用の risk_domain / team scope
+    filter UI。`RISK-CORE-2` 残: domain 別 durable resolve predicate。次候補は Health Board filter UI か
+    `PERF-X-001` critical BFF instrumentation。
+
 - codex: Operational Task Health Board API / orphan risk task audit implemented。
   - implementation commit: `6a29ce66a` (`Add operational task health board`)
   - current task:

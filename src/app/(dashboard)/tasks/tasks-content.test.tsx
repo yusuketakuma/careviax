@@ -118,6 +118,102 @@ type CreateRequestMutationOptions = {
   onError: (error: unknown) => void;
 };
 
+function taskHealthBoardFixture() {
+  return {
+    generated_at: '2026-04-10T09:30:00.000Z',
+    scope: 'role_default',
+    scan: {
+      statuses: ['pending', 'in_progress'],
+      limit: 500,
+      scanned_count: 500,
+      truncated: true,
+    },
+    summary: {
+      open_count: 500,
+      overdue_count: 32,
+      sla_overdue_count: 8,
+      unassigned_count: 21,
+      patient_safety_count: 5,
+      billing_close_count: 3,
+      report_delay_count: 4,
+      risk_task_count: 16,
+      stale_risk_task_count: 2,
+      orphan_risk_task_count: 1,
+    },
+    task_type_groups: [
+      {
+        key: 'visit_preparation',
+        label: 'visit_preparation',
+        count: 12,
+        urgent_count: 2,
+        high_count: 4,
+      },
+    ],
+    risk_domain_groups: [
+      { key: 'medication', label: '薬剤', count: 7, urgent_count: 1, high_count: 2 },
+      { key: 'billing', label: '請求', count: 3, urgent_count: 0, high_count: 1 },
+    ],
+    orphan_audit: {
+      checked_count: 16,
+      orphan_count: 1,
+      reasons: [{ reason: 'missing_risk_key', count: 1 }],
+      tasks: [
+        {
+          task_id: 'task_orphan',
+          display_id: 'T-5001',
+          task_type: 'risk_resolution_medication',
+          priority: 'high',
+          due_at: null,
+          action_href: '/tasks?status=open&task_type=risk_resolution_medication',
+        },
+      ],
+    },
+    attention: {
+      overdue_tasks: [
+        {
+          task_id: 'task_due',
+          display_id: 'T-1024',
+          task_type: 'visit_preparation',
+          priority: 'high',
+          due_at: '2026-04-10T08:00:00.000Z',
+          action_href: '/tasks?status=open&task_type=visit_preparation',
+        },
+      ],
+      sla_overdue_tasks: [
+        {
+          task_id: 'task_sla',
+          display_id: 'T-2048',
+          task_type: 'conference_action_item',
+          priority: 'urgent',
+          due_at: '2026-04-10T07:30:00.000Z',
+          action_href: '/tasks?status=open&task_type=conference_action_item',
+        },
+      ],
+      unassigned_tasks: [
+        {
+          task_id: 'task_unassigned',
+          display_id: 'T-3096',
+          task_type: 'report_delivery_followup',
+          priority: 'normal',
+          due_at: null,
+          action_href: '/tasks?status=open&task_type=report_delivery_followup',
+        },
+      ],
+      stale_risk_tasks: [],
+    },
+  };
+}
+
+function taskHealthBoardQueryResult(overrides: Record<string, unknown> = {}) {
+  return {
+    data: taskHealthBoardFixture(),
+    isLoading: false,
+    isError: false,
+    refetch: vi.fn(),
+    ...overrides,
+  };
+}
+
 function getCreateRequestMutationOptions() {
   const options = useMutationMock.mock.calls[0]?.[0] as CreateRequestMutationOptions | undefined;
   expect(options).toBeTruthy();
@@ -153,6 +249,9 @@ describe('TasksContent', () => {
       isPending: false,
     });
     useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      if (options.queryKey?.[0] === 'tasks-health-board') {
+        return taskHealthBoardQueryResult();
+      }
       if (options.queryKey?.[0] === 'staff-workload') {
         return {
           data: {
@@ -249,6 +348,11 @@ describe('TasksContent', () => {
         queryKey: ['tasks', 'org_1', 'status=pending&assigned_to=user_1'],
       }),
     );
+    expect(useQueryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queryKey: ['tasks-health-board', 'org_1', '/api/tasks/health-board?scope=mine&limit=500'],
+      }),
+    );
     expect(screen.getByTestId('staff-workload-board')).toBeTruthy();
     expect(screen.getByText('佐藤 薬剤師')).toBeTruthy();
     expect(screen.getByText('訪問: 山田 花子')).toBeTruthy();
@@ -270,9 +374,101 @@ describe('TasksContent', () => {
     expect(screen.getByTestId('tasks-table').textContent).toContain('訪問準備');
   });
 
+  it('shows the operational task health board without exposing task descriptions or metadata', () => {
+    render(<TasksContent />);
+
+    const healthBoardSection = screen
+      .getByRole('heading', { name: 'オペレーショナル タスクヘルスボード' })
+      .closest('section');
+    expect(healthBoardSection).toBeTruthy();
+    const healthBoard = within(healthBoardSection as HTMLElement);
+
+    expect(
+      healthBoard.getByText('先頭500件で集計 / 未読込あり。件数はスキャン範囲内の下限です。'),
+    ).toBeTruthy();
+    expect(healthBoard.getAllByText('SLA超過').length).toBeGreaterThanOrEqual(1);
+    expect(healthBoard.getByText('患者安全')).toBeTruthy();
+    expect(healthBoard.getByTestId('task-health-metric-SLA超過').textContent).toContain('8');
+    expect(healthBoard.getByTestId('task-health-metric-孤児リスク').textContent).toContain('1');
+    expect(healthBoard.getByText('薬剤')).toBeTruthy();
+    expect(healthBoard.getByText('T-2048')).toBeTruthy();
+    expect(healthBoard.getByText('PHIを含まない参照だけ表示')).toBeTruthy();
+    expect(healthBoard.queryByText('metadata')).toBeNull();
+    expect(healthBoard.queryByText('dedupe')).toBeNull();
+  });
+
+  it('uses an explicit health-board retry instead of a false-empty panel when health fetch fails', () => {
+    const refetchHealthBoard = vi.fn();
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      if (options.queryKey?.[0] === 'tasks-health-board') {
+        return taskHealthBoardQueryResult({
+          data: undefined,
+          isError: true,
+          refetch: refetchHealthBoard,
+        });
+      }
+      if (options.queryKey?.[0] === 'staff-workload') {
+        return { data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() };
+      }
+      return { data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() };
+    });
+
+    render(<TasksContent />);
+
+    const healthBoardSection = screen
+      .getByRole('heading', { name: 'オペレーショナル タスクヘルスボード' })
+      .closest('section');
+    expect(healthBoardSection).toBeTruthy();
+    const healthBoard = within(healthBoardSection as HTMLElement);
+    expect(
+      healthBoard.getByText(
+        'タスクヘルスボードを取得できませんでした。表示済み一覧の0件とは扱わず、再読み込みしてください。',
+      ),
+    ).toBeTruthy();
+    expect(healthBoard.queryByText('スキャン対象に未処理タスクはありません。')).toBeNull();
+
+    fireEvent.click(healthBoard.getByRole('button', { name: 'ヘルス再読み込み' }));
+    expect(refetchHealthBoard).toHaveBeenCalledTimes(1);
+  });
+
+  it('loads the task health board through the org header helper and API path helper', async () => {
+    const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
+    vi.mocked(buildOrgHeaders).mockReturnValueOnce(sentinelHeaders);
+    const healthPayload = { data: taskHealthBoardFixture() };
+    const fetchMock = stubJsonFetch(healthPayload);
+    let healthBoardQueryFn: (() => Promise<unknown>) | undefined;
+    useQueryMock.mockImplementation(
+      (options: { queryKey?: unknown[]; queryFn?: () => unknown }) => {
+        if (options.queryKey?.[0] === 'tasks-health-board') {
+          healthBoardQueryFn = options.queryFn as (() => Promise<unknown>) | undefined;
+          return taskHealthBoardQueryResult();
+        }
+        if (options.queryKey?.[0] === 'staff-workload') {
+          return { data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() };
+        }
+        return { data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() };
+      },
+    );
+
+    render(<TasksContent initialTaskType="conference_action_item" />);
+
+    expect(healthBoardQueryFn).toBeTruthy();
+    await expect(healthBoardQueryFn?.()).resolves.toEqual(healthPayload.data);
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/tasks/health-board?scope=role_default&limit=500&task_type=conference_action_item',
+      {
+        headers: sentinelHeaders,
+      },
+    );
+    expect(buildOrgHeaders).toHaveBeenCalledWith('org_1');
+  });
+
   it('shows ErrorState (not a false-empty list) with retry when the tasks query fails', () => {
     const refetch = vi.fn();
     useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      if (options.queryKey?.[0] === 'tasks-health-board') {
+        return taskHealthBoardQueryResult();
+      }
       if (options.queryKey?.[0] === 'staff-workload') {
         return { data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() };
       }
@@ -292,6 +488,9 @@ describe('TasksContent', () => {
 
   it('counts urgent tasks in the immediate priority summary', () => {
     useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      if (options.queryKey?.[0] === 'tasks-health-board') {
+        return taskHealthBoardQueryResult();
+      }
       if (options.queryKey?.[0] === 'staff-workload') {
         return { data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() };
       }
@@ -365,6 +564,9 @@ describe('TasksContent', () => {
   it('shows a retry instead of a false-empty staff workload board when that query fails', () => {
     const refetchStaffWorkload = vi.fn();
     useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      if (options.queryKey?.[0] === 'tasks-health-board') {
+        return taskHealthBoardQueryResult();
+      }
       if (options.queryKey?.[0] === 'staff-workload') {
         // スタッフ別業務量の取得失敗 → 「依頼可能なスタッフがいない」かのような false-empty を出さない。
         return {
@@ -388,6 +590,9 @@ describe('TasksContent', () => {
 
   it('shows a named skeleton instead of a plain loading text for staff workload', () => {
     useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      if (options.queryKey?.[0] === 'tasks-health-board') {
+        return taskHealthBoardQueryResult();
+      }
       if (options.queryKey?.[0] === 'staff-workload') {
         return {
           data: undefined,
@@ -415,6 +620,9 @@ describe('TasksContent', () => {
     let staffWorkloadQueryFn: (() => Promise<unknown>) | undefined;
     useQueryMock.mockImplementation(
       (options: { queryKey?: unknown[]; queryFn?: () => unknown }) => {
+        if (options.queryKey?.[0] === 'tasks-health-board') {
+          return taskHealthBoardQueryResult();
+        }
         if (options.queryKey?.[0] === 'staff-workload') {
           staffWorkloadQueryFn = options.queryFn as (() => Promise<unknown>) | undefined;
         }
@@ -631,6 +839,9 @@ describe('TasksContent', () => {
       }),
     );
     useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      if (options.queryKey?.[0] === 'tasks-health-board') {
+        return taskHealthBoardQueryResult();
+      }
       if (options.queryKey?.[0] === 'staff-workload') {
         return { data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() };
       }
@@ -714,6 +925,9 @@ describe('TasksContent', () => {
 
   it('does not expose bulk inline completion when only dedicated workflow tasks are selected', () => {
     useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      if (options.queryKey?.[0] === 'tasks-health-board') {
+        return taskHealthBoardQueryResult();
+      }
       if (options.queryKey?.[0] === 'staff-workload') {
         return { data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() };
       }
@@ -840,6 +1054,9 @@ describe('TasksContent', () => {
       created_at: '2026-04-10T08:00:00.000Z',
     }));
     useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      if (options.queryKey?.[0] === 'tasks-health-board') {
+        return taskHealthBoardQueryResult();
+      }
       if (options.queryKey?.[0] === 'staff-workload') {
         return { data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() };
       }
