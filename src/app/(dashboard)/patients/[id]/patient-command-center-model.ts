@@ -11,6 +11,7 @@ import {
   getProcessStepKeyForStatus,
 } from '@/lib/prescription/cycle-workspace';
 import type { VisitBriefUnresolvedItem } from '@/types/visit-brief';
+import type { CaseRiskCockpitResponse, CaseRiskNextAction } from '@/types/case-risk-cockpit';
 import type { PatientOverview, PatientWorkspace } from './patient-detail.types';
 
 type CommandCenterPatient = Pick<PatientOverview, 'id' | 'lab_summary' | 'visit_brief'>;
@@ -38,6 +39,23 @@ export type PatientCommandEvidenceItem = {
   href: string;
 };
 
+export type PatientCommandCaseRiskSummary = {
+  status: CaseRiskCockpitResponse['overall']['status'];
+  statusLabel: string;
+  blockingCount: number;
+  urgentCount: number;
+  warningCount: number;
+};
+
+export type PatientCommandCaseRiskAction = {
+  id: string;
+  taskId: string | null;
+  label: string;
+  priority: CaseRiskNextAction['priority'];
+  dueAt: string | null;
+  actionHref: string;
+};
+
 export type PatientCommandCenterModel = {
   currentStep: ProcessStepKey | null;
   currentStepLabel: string | null;
@@ -46,13 +64,18 @@ export type PatientCommandCenterModel = {
   nextAction?: PatientCommandNextAction;
   blockedReasons: PatientCommandBlockedReason[];
   evidence: PatientCommandEvidenceItem[];
+  caseRiskSummary: PatientCommandCaseRiskSummary | null;
+  caseRiskActions: PatientCommandCaseRiskAction[];
 };
 
 type BuildPatientCommandCenterModelInput = {
   patient: CommandCenterPatient;
   patientId: string;
   workspace: PatientWorkspace;
+  caseRiskCockpit?: CaseRiskCockpitForCommand | null;
 };
+
+type CaseRiskCockpitForCommand = Pick<CaseRiskCockpitResponse, 'overall' | 'next_actions'>;
 
 /** 止まっている理由: WorkflowException type → カテゴリ色チップ(患者/事務/医療機関) */
 const EXCEPTION_CATEGORY_LABELS: Record<string, string> = {
@@ -107,10 +130,46 @@ function resolveExceptionAction(exceptionType: string, patientId: string) {
   return action ?? { label: '状況を見る', href: '/workflow' };
 }
 
+function caseRiskStatusLabel(status: CaseRiskCockpitResponse['overall']['status']) {
+  if (status === 'blocked') return '停止中';
+  if (status === 'attention') return '要確認';
+  return '準備完了';
+}
+
+export function buildCaseRiskCommandPanelModel(
+  caseRiskCockpit?: CaseRiskCockpitForCommand | null,
+): Pick<PatientCommandCenterModel, 'caseRiskSummary' | 'caseRiskActions'> {
+  if (!caseRiskCockpit) {
+    return {
+      caseRiskSummary: null,
+      caseRiskActions: [],
+    };
+  }
+
+  return {
+    caseRiskSummary: {
+      status: caseRiskCockpit.overall.status,
+      statusLabel: caseRiskStatusLabel(caseRiskCockpit.overall.status),
+      blockingCount: caseRiskCockpit.overall.blocking_count,
+      urgentCount: caseRiskCockpit.overall.urgent_count,
+      warningCount: caseRiskCockpit.overall.warning_count,
+    },
+    caseRiskActions: caseRiskCockpit.next_actions.slice(0, 4).map((action, index) => ({
+      id: action.task_id ?? `${action.priority}:${index}:${action.action_href}`,
+      taskId: action.task_id ?? null,
+      label: action.label,
+      priority: action.priority,
+      dueAt: action.due_at,
+      actionHref: action.action_href,
+    })),
+  };
+}
+
 export function buildPatientCommandCenterModel({
   patient,
   patientId,
   workspace,
+  caseRiskCockpit,
 }: BuildPatientCommandCenterModelInput): PatientCommandCenterModel {
   const currentStep = getProcessStepKeyForStatus(workspace.overall_status);
   const currentStepLabel =
@@ -214,5 +273,6 @@ export function buildPatientCommandCenterModel({
     nextAction,
     blockedReasons,
     evidence,
+    ...buildCaseRiskCommandPanelModel(caseRiskCockpit),
   };
 }

@@ -961,7 +961,7 @@ FE 仕上げ（低優先）:
   `CardWorkspace` はモデル結果を既存 `PatientCommandCenterPanel` / `WorkspaceActionRail` へ渡すだけにし、
   詳細画面が同じ状態語彙を別計算し続ける旧挙動を上書きした。視覚レイアウト変更を伴わない
   adapter/refactor slice のため `imagegen` / `gpt-image-2` 生成は省略した。
-  残: PatientBoard 派生ロジックとの adapter 統合、Case Risk Cockpit への接続、timeline 抜粋を
+  残: PatientBoard 派生ロジックとの adapter 統合、timeline 抜粋を
   Command Center block に含めること、payload budget / browser smoke。
 
 - `UX-CMD-001 / RISK-CORE-2` partial（2026-07-06）: 患者詳細 Command tab に Case Risk Cockpit の
@@ -969,6 +969,17 @@ FE 仕上げ（低優先）:
   `next_actions.task_id` がない通常 action は免除対象にせず、Case Risk Cockpit 取得失敗と免除失敗は
   inline alert として残す。実装前に `imagegen` skill と `gpt-image-2` 方針で非 PHI mockup を生成し、
   実装では既存 `SectionCard` / `LoadingButton` / `Label` / `Textarea` と 44px target に翻訳した。
+  残: PatientBoard 派生ロジックとの adapter 統合、timeline 抜粋の Command Center block 化、
+  payload budget / browser smoke。
+
+- `UX-CMD-001 / CORE-003` partial（2026-07-06）: 患者詳細 Command Center の主表示に
+  Case Risk Cockpit `overall` / `next_actions` を接続し、task-backed action だけでなく
+  `task_id=null` の通常 action も「横断リスクの次アクション」として表示する。waiver panel は
+  引き続き task-backed action だけを対象にし、免除理由未入力の disabled state には helper を
+  `aria-describedby` で関連付けた。処方 cycle workspace がない患者でも active/latest case の
+  Risk Cockpit action を隠さず、旧「進行中のカードがありません」false-empty を廃止した。
+  Case Risk 未取得、取得中、取得失敗、対象 case なし、action なしを分離して表示する。
+  実装前の UI 方針は `imagegen` / `gpt-image-2` の非 PHI mockup と PH-OS UI/UX SSOT に沿う。
   残: PatientBoard 派生ロジックとの adapter 統合、timeline 抜粋の Command Center block 化、
   payload budget / browser smoke。
 

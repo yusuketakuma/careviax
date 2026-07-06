@@ -85,7 +85,13 @@ import type {
 } from './patient-detail.types';
 import type { CaseRiskCockpitResponse, CaseRiskNextAction } from '@/types/case-risk-cockpit';
 import type { PatientActivityTimelineProps } from './patient-activity-timeline';
-import { buildPatientCommandCenterModel, formatActivityTime } from './patient-command-center-model';
+import {
+  buildCaseRiskCommandPanelModel,
+  buildPatientCommandCenterModel,
+  formatActivityTime,
+  type PatientCommandCaseRiskAction,
+  type PatientCommandCaseRiskSummary,
+} from './patient-command-center-model';
 import {
   buildHomeOperationsItems,
   getPrimaryHomeVisitIntake,
@@ -4001,6 +4007,7 @@ function PatientCommandCenterPanel({
   blockedReasons,
   evidence,
   evidenceOpenLabel,
+  caseRisk,
   riskTaskSync,
   riskTaskResolution,
 }: {
@@ -4008,6 +4015,16 @@ function PatientCommandCenterPanel({
   blockedReasons: BlockedReason[];
   evidence: EvidenceItem[];
   evidenceOpenLabel?: string;
+  caseRisk: {
+    caseId: string | null;
+    caseLabel: string | null;
+    summary: PatientCommandCaseRiskSummary | null;
+    actions: PatientCommandCaseRiskAction[];
+    isLoading: boolean;
+    isFetching: boolean;
+    error: Error | null;
+    onRetry: () => void;
+  };
   riskTaskSync: {
     caseId: string | null;
     caseLabel: string | null;
@@ -4053,6 +4070,7 @@ function PatientCommandCenterPanel({
             </p>
           </SectionCard>
         )}
+        <CaseRiskActionsPanel {...caseRisk} />
         <BlockedReasonsPanel reasons={blockedReasons} emptyLabel="止まっている作業はありません" />
       </div>
       <div className="space-y-4">
@@ -4061,6 +4079,162 @@ function PatientCommandCenterPanel({
         <RiskTaskResolutionPanel {...riskTaskResolution} />
       </div>
     </div>
+  );
+}
+
+function CaseRiskActionsPanel({
+  caseId,
+  caseLabel,
+  summary,
+  actions,
+  isLoading,
+  isFetching,
+  error,
+  onRetry,
+}: {
+  caseId: string | null;
+  caseLabel: string | null;
+  summary: PatientCommandCaseRiskSummary | null;
+  actions: PatientCommandCaseRiskAction[];
+  isLoading: boolean;
+  isFetching: boolean;
+  error: Error | null;
+  onRetry: () => void;
+}) {
+  return (
+    <SectionCard aria-label="横断リスクの次アクション" data-testid="case-risk-actions-panel">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 space-y-1">
+          <h3 className="text-sm font-semibold text-foreground">横断リスクの次アクション</h3>
+          <p className="text-sm text-muted-foreground">
+            同意、訪問準備、報告、請求、共有などの止まっている理由をまとめます。
+          </p>
+          {caseLabel ? (
+            <p className="text-xs text-muted-foreground" data-testid="case-risk-actions-case">
+              対象: {caseLabel}
+            </p>
+          ) : null}
+        </div>
+        {summary ? (
+          <div
+            className={cn(
+              'rounded-md border px-3 py-2 text-xs font-medium',
+              summary.status === 'blocked'
+                ? 'border-state-blocked/40 bg-state-blocked/10 text-state-blocked'
+                : summary.status === 'attention'
+                  ? 'border-state-confirm/40 bg-state-confirm/10 text-state-confirm'
+                  : 'border-state-done/40 bg-state-done/10 text-state-done',
+            )}
+          >
+            {summary.statusLabel}
+          </div>
+        ) : null}
+      </div>
+
+      {!caseId ? (
+        <p className="mt-3 text-sm font-medium text-muted-foreground">対象ケースがありません。</p>
+      ) : null}
+
+      {isLoading ? (
+        <p role="status" className="mt-3 text-sm text-muted-foreground">
+          横断リスクを確認しています。
+        </p>
+      ) : null}
+
+      {error ? (
+        <div
+          role="alert"
+          className="mt-3 rounded-md border border-state-blocked/40 bg-state-blocked/10 p-3 text-sm text-state-blocked"
+        >
+          <div className="flex items-center gap-2 font-medium">
+            <TriangleAlert aria-hidden className="size-4" />
+            Case Risk Cockpit を表示できません
+          </div>
+          <p className="mt-1">{messageFromError(error, 'リスク状態の取得に失敗しました')}</p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-3 min-h-11"
+            onClick={onRetry}
+          >
+            再試行
+          </Button>
+        </div>
+      ) : null}
+
+      {caseId && !isLoading && !error && summary ? (
+        <dl className="mt-3 grid grid-cols-3 gap-2 text-xs text-muted-foreground">
+          <div className="rounded-md border border-border/60 bg-background/60 p-2">
+            <dt>停止</dt>
+            <dd className="font-semibold tabular-nums text-foreground">
+              {summary.blockingCount}件
+            </dd>
+          </div>
+          <div className="rounded-md border border-border/60 bg-background/60 p-2">
+            <dt>至急</dt>
+            <dd className="font-semibold tabular-nums text-foreground">{summary.urgentCount}件</dd>
+          </div>
+          <div className="rounded-md border border-border/60 bg-background/60 p-2">
+            <dt>確認</dt>
+            <dd className="font-semibold tabular-nums text-foreground">{summary.warningCount}件</dd>
+          </div>
+        </dl>
+      ) : null}
+
+      {caseId && !isLoading && !error && !summary ? (
+        <p className="mt-3 text-sm text-muted-foreground">
+          横断リスクをまだ取得できていません。表示されない場合は再試行してください。
+        </p>
+      ) : null}
+
+      {caseId && !isLoading && !error && summary && actions.length === 0 ? (
+        <p className="mt-3 text-sm text-muted-foreground">横断リスクの次アクションはありません。</p>
+      ) : null}
+
+      {actions.length > 0 ? (
+        <ul className="mt-3 space-y-2" role="list">
+          {actions.map((action) => (
+            <li
+              key={action.id}
+              className="rounded-lg border border-border/70 bg-background/60 p-3"
+              data-testid="case-risk-command-action"
+            >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0 space-y-1">
+                  <p className="break-words text-sm font-semibold text-foreground">
+                    {action.label}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    優先度: {formatCaseRiskPriority(action.priority)}
+                    {action.dueAt
+                      ? ` / 期限: ${formatOptionalDate(action.dueAt.slice(0, 10))}`
+                      : ''}
+                    {action.taskId ? ' / タスク化済み' : ''}
+                  </p>
+                </div>
+                <Link
+                  href={action.actionHref}
+                  className={buttonVariants({
+                    variant: action.priority === 'urgent' ? 'default' : 'outline',
+                    size: 'sm',
+                    className: 'min-h-11 shrink-0',
+                  })}
+                >
+                  対応する
+                </Link>
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {isFetching && !isLoading ? (
+        <p role="status" className="mt-3 text-xs text-muted-foreground">
+          最新の横断リスクを再確認しています。
+        </p>
+      ) : null}
+    </SectionCard>
   );
 }
 
@@ -4280,6 +4454,7 @@ function RiskTaskResolutionPanel({
               const reasonCode = reasonCodes[taskId] ?? RISK_TASK_WAIVER_REASON_OPTIONS[0].value;
               const reasonId = `risk-task-waiver-reason-${taskId}`;
               const reasonCodeId = `risk-task-waiver-reason-code-${taskId}`;
+              const reasonHelperId = `risk-task-waiver-reason-helper-${taskId}`;
               const isSubmitting = isPending && pendingTaskId === taskId;
               const isDisabled = !caseId || !reason.trim() || isPending;
 
@@ -4341,6 +4516,9 @@ function RiskTaskResolutionPanel({
                         placeholder="薬剤師確認済み、既存対応済みなど業務上の理由を入力"
                         rows={3}
                       />
+                      <p id={reasonHelperId} className="text-xs text-muted-foreground">
+                        免除理由を入力すると記録できます。
+                      </p>
                     </div>
                     <LoadingButton
                       type="button"
@@ -4349,6 +4527,7 @@ function RiskTaskResolutionPanel({
                       loading={isSubmitting}
                       loadingLabel="記録中"
                       disabled={isDisabled}
+                      aria-describedby={`${descriptionId} ${auditNoticeId} ${reasonHelperId}`}
                       onClick={() => {
                         if (!caseId) return;
                         onWaive({
@@ -5162,6 +5341,58 @@ export function CardWorkspace({
     </div>
   );
 
+  const caseRiskCommand = buildCaseRiskCommandPanelModel(caseRiskCockpit);
+  const caseRiskError =
+    caseRiskCockpitIsError && caseRiskCockpitError instanceof Error ? caseRiskCockpitError : null;
+  const taskBackedCaseRiskActions =
+    caseRiskCockpit?.next_actions.filter((action) => Boolean(action.task_id)) ?? [];
+  const pendingWaiverTaskId = waiveRiskTaskMutation.variables?.taskId ?? null;
+  const commandCaseRiskProps = {
+    caseId: commandCenterCase?.id ?? null,
+    caseLabel: commandCenterCaseLabel,
+    summary: caseRiskCommand.caseRiskSummary,
+    actions: caseRiskCommand.caseRiskActions,
+    isLoading: caseRiskCockpitLoading,
+    isFetching: caseRiskCockpitFetching,
+    error: caseRiskError,
+    onRetry: () => void refetchCaseRiskCockpit(),
+  };
+  const commandRiskTaskSyncProps = {
+    caseId: commandCenterCase?.id ?? null,
+    caseLabel: commandCenterCaseLabel,
+    disabledReason: commandCenterCase ? undefined : '対象ケースがありません。',
+    isPending: syncRiskTasksMutation.isPending,
+    result: riskTaskSyncResult,
+    error: syncRiskTasksMutation.error instanceof Error ? syncRiskTasksMutation.error : null,
+    onSync: syncRiskTasksMutation.mutate,
+  };
+  const commandRiskTaskResolutionProps = {
+    caseId: commandCenterCase?.id ?? null,
+    caseLabel: commandCenterCaseLabel,
+    actions: taskBackedCaseRiskActions,
+    isLoading: caseRiskCockpitLoading,
+    isFetching: caseRiskCockpitFetching,
+    error: caseRiskError,
+    onRetry: () => void refetchCaseRiskCockpit(),
+    isPending: waiveRiskTaskMutation.isPending,
+    pendingTaskId: pendingWaiverTaskId,
+    mutationError:
+      waiveRiskTaskMutation.error instanceof Error ? waiveRiskTaskMutation.error : null,
+    drafts: riskTaskWaiverDrafts,
+    reasonCodes: riskTaskWaiverReasonCodes,
+    onDraftChange: (taskId: string, value: string) =>
+      setRiskTaskWaiverDrafts((previous) => ({
+        ...previous,
+        [taskId]: value,
+      })),
+    onReasonCodeChange: (taskId: string, value: RiskTaskWaiverReasonCode) =>
+      setRiskTaskWaiverReasonCodes((previous) => ({
+        ...previous,
+        [taskId]: value,
+      })),
+    onWaive: waiveRiskTaskMutation.mutate,
+  };
+
   const renderHomeOperationsPanel = (
     visibleKeys: PatientHomeOperationKey[],
     panelId = 'patient-home-operations',
@@ -5250,10 +5481,13 @@ export function CardWorkspace({
           {isDetailTabMounted('command') ? (
             <TabsContent value="command" keepMounted className="space-y-4">
               <h2 className="text-lg font-bold text-foreground">Command</h2>
-              <EmptyState
-                icon={FileQuestion}
-                title="進行中のカードがありません"
-                description="処方を受け付けると、この患者の処方サイクル(取込〜算定)の作業台がここに表示されます。"
+              <PatientCommandCenterPanel
+                blockedReasons={[]}
+                evidence={[]}
+                evidenceOpenLabel="開く"
+                caseRisk={commandCaseRiskProps}
+                riskTaskSync={commandRiskTaskSyncProps}
+                riskTaskResolution={commandRiskTaskResolutionProps}
               />
             </TabsContent>
           ) : null}
@@ -5315,10 +5549,9 @@ export function CardWorkspace({
     nextAction,
     blockedReasons,
     evidence,
-  } = buildPatientCommandCenterModel({ patient, patientId, workspace });
-  const taskBackedCaseRiskActions =
-    caseRiskCockpit?.next_actions.filter((action) => Boolean(action.task_id)) ?? [];
-  const pendingWaiverTaskId = waiveRiskTaskMutation.variables?.taskId ?? null;
+    caseRiskSummary,
+    caseRiskActions,
+  } = buildPatientCommandCenterModel({ patient, patientId, workspace, caseRiskCockpit });
   return (
     <div className="space-y-4" data-testid="card-workspace">
       {headerRow}
@@ -5361,49 +5594,13 @@ export function CardWorkspace({
                   blockedReasons={blockedReasons}
                   evidence={evidence}
                   evidenceOpenLabel="開く"
-                  riskTaskSync={{
-                    caseId: commandCenterCase?.id ?? null,
-                    caseLabel: commandCenterCaseLabel,
-                    disabledReason: commandCenterCase ? undefined : '対象ケースがありません。',
-                    isPending: syncRiskTasksMutation.isPending,
-                    result: riskTaskSyncResult,
-                    error:
-                      syncRiskTasksMutation.error instanceof Error
-                        ? syncRiskTasksMutation.error
-                        : null,
-                    onSync: syncRiskTasksMutation.mutate,
+                  caseRisk={{
+                    ...commandCaseRiskProps,
+                    summary: caseRiskSummary,
+                    actions: caseRiskActions,
                   }}
-                  riskTaskResolution={{
-                    caseId: commandCenterCase?.id ?? null,
-                    caseLabel: commandCenterCaseLabel,
-                    actions: taskBackedCaseRiskActions,
-                    isLoading: caseRiskCockpitLoading,
-                    isFetching: caseRiskCockpitFetching,
-                    error:
-                      caseRiskCockpitIsError && caseRiskCockpitError instanceof Error
-                        ? caseRiskCockpitError
-                        : null,
-                    onRetry: () => void refetchCaseRiskCockpit(),
-                    isPending: waiveRiskTaskMutation.isPending,
-                    pendingTaskId: pendingWaiverTaskId,
-                    mutationError:
-                      waiveRiskTaskMutation.error instanceof Error
-                        ? waiveRiskTaskMutation.error
-                        : null,
-                    drafts: riskTaskWaiverDrafts,
-                    reasonCodes: riskTaskWaiverReasonCodes,
-                    onDraftChange: (taskId, value) =>
-                      setRiskTaskWaiverDrafts((previous) => ({
-                        ...previous,
-                        [taskId]: value,
-                      })),
-                    onReasonCodeChange: (taskId, value) =>
-                      setRiskTaskWaiverReasonCodes((previous) => ({
-                        ...previous,
-                        [taskId]: value,
-                      })),
-                    onWaive: waiveRiskTaskMutation.mutate,
-                  }}
+                  riskTaskSync={commandRiskTaskSyncProps}
+                  riskTaskResolution={commandRiskTaskResolutionProps}
                 />
                 <CardTodayPanelMemo tasks={workspace.today_tasks} />
               </TabsContent>

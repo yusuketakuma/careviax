@@ -1663,11 +1663,19 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
+    const actionsPanel = screen.getByTestId('case-risk-actions-panel');
+    expect(within(actionsPanel).getByText('同意更新タスクを確認')).toBeTruthy();
+    expect(within(actionsPanel).getByText('正本を確認')).toBeTruthy();
+    expect(within(actionsPanel).getByText('停止中')).toBeTruthy();
+    expect(within(actionsPanel).getAllByRole('link', { name: '対応する' })).toHaveLength(2);
+
     const panel = screen.getByTestId('case-risk-task-resolution-panel');
     expect(within(panel).getByText('同意更新タスクを確認')).toBeTruthy();
     expect(within(panel).queryByText('正本を確認')).toBeNull();
     const submit = within(panel).getByRole('button', { name: '免除を記録' });
     expect(submit.hasAttribute('disabled')).toBe(true);
+    expect(submit.getAttribute('aria-describedby')).toContain('risk-task-waiver-reason-helper');
+    expect(within(panel).getByText('免除理由を入力すると記録できます。')).toBeTruthy();
 
     fireEvent.change(within(panel).getByLabelText('免除理由'), {
       target: { value: '薬剤師確認済みのため今回免除' },
@@ -1730,6 +1738,10 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
+    const actionsPanel = screen.getByTestId('case-risk-actions-panel');
+    expect(within(actionsPanel).getByText('正本を確認')).toBeTruthy();
+    expect(within(actionsPanel).getByRole('link', { name: '対応する' })).toBeTruthy();
+
     const panel = screen.getByTestId('case-risk-task-resolution-panel');
     expect(within(panel).queryByTestId('case-risk-task-resolution-action')).toBeNull();
     expect(
@@ -1770,6 +1782,9 @@ describe('CardWorkspace', () => {
         'タスク化済みの未解決リスクはありません。必要な場合は上の同期を実行してください。',
       ),
     ).toBeNull();
+    const actionsPanel = screen.getByTestId('case-risk-actions-panel');
+    expect(within(actionsPanel).getByText('対象ケースがありません。')).toBeTruthy();
+    expect(within(actionsPanel).queryByText('横断リスクの次アクションはありません。')).toBeNull();
   });
 
   it('opens the matching patient detail tab for an initial section hash', async () => {
@@ -2188,13 +2203,43 @@ describe('CardWorkspace', () => {
     render(<CardWorkspace patientId="patient_1" />);
 
     expect(screen.getByRole('heading', { name: '処方カード作業台', level: 1 })).toBeTruthy();
-    expect(screen.getByText('進行中のカードがありません')).toBeTruthy();
+    expect(screen.queryByText('進行中のカードがありません')).toBeNull();
+    expect(
+      screen.getByText(
+        '進行中の処方カードがないため、正本・共有・履歴タブで患者情報を確認してください。',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByTestId('case-risk-actions-panel')).toBeTruthy();
     openFoundationTab();
     expect(screen.getByTestId('patient-profile-summary')).toBeTruthy();
     expect(screen.queryByTestId('patient-home-operations-panel')).toBeNull();
     openBillingTab();
     expect(screen.getByTestId('patient-home-operations-panel')).toBeTruthy();
     expect(screen.queryByTestId('card-prescription-section')).toBeNull();
+  });
+
+  it('does not hide Case Risk actions when no cycle workspace exists', () => {
+    mockPatientQuery(
+      null,
+      null,
+      {},
+      {
+        patientOverrides: { cases: [buildActivePatientCase()] },
+        caseRiskCockpit: buildCaseRiskCockpit(),
+      },
+    );
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    expect(screen.queryByText('進行中のカードがありません')).toBeNull();
+    const actionsPanel = screen.getByTestId('case-risk-actions-panel');
+    expect(within(actionsPanel).getByText('同意更新タスクを確認')).toBeTruthy();
+    expect(within(actionsPanel).getByText('正本を確認')).toBeTruthy();
+    expect(within(actionsPanel).getByText('停止中')).toBeTruthy();
+    expect(within(actionsPanel).getAllByRole('link', { name: '対応する' })).toHaveLength(2);
+    expect(screen.getByTestId('case-risk-task-sync-panel')).toBeTruthy();
+    expect(screen.getByTestId('case-risk-task-resolution-panel')).toBeTruthy();
+    expect(screen.queryByText('田中 一郎 raw detail')).toBeNull();
   });
 
   it('surfaces a degraded banner instead of a false all-clear when home operations fail (FEUX-3)', () => {

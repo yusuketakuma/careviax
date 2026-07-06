@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PatientOverview, PatientWorkspace } from './patient-detail.types';
-import { buildPatientCommandCenterModel, formatActivityTime } from './patient-command-center-model';
+import {
+  buildCaseRiskCommandPanelModel,
+  buildPatientCommandCenterModel,
+  formatActivityTime,
+} from './patient-command-center-model';
 
 function buildWorkspace(overrides: Partial<PatientWorkspace> = {}): PatientWorkspace {
   return {
@@ -157,6 +161,66 @@ describe('buildPatientCommandCenterModel', () => {
     ]);
   });
 
+  it('adds Case Risk Cockpit summary and task/non-task next actions without using finding text', () => {
+    const model = buildPatientCommandCenterModel({
+      patient: buildPatient(),
+      patientId: 'patient_1',
+      workspace: buildWorkspace(),
+      caseRiskCockpit: {
+        overall: {
+          status: 'blocked',
+          blocking_count: 1,
+          urgent_count: 2,
+          warning_count: 3,
+        },
+        next_actions: [
+          {
+            task_id: 'task_1',
+            label: '同意更新タスクを確認',
+            priority: 'high',
+            due_at: '2026-07-07T00:00:00.000Z',
+            action_href: '/tasks/task_1',
+          },
+          {
+            task_id: null,
+            label: '正本を確認',
+            priority: 'normal',
+            due_at: null,
+            action_href: '/patients/patient_1#patient-profile-summary',
+          },
+        ],
+      },
+    });
+
+    expect(model.caseRiskSummary).toEqual({
+      status: 'blocked',
+      statusLabel: '停止中',
+      blockingCount: 1,
+      urgentCount: 2,
+      warningCount: 3,
+    });
+    expect(model.caseRiskActions).toEqual([
+      {
+        id: 'task_1',
+        taskId: 'task_1',
+        label: '同意更新タスクを確認',
+        priority: 'high',
+        dueAt: '2026-07-07T00:00:00.000Z',
+        actionHref: '/tasks/task_1',
+      },
+      {
+        id: 'normal:1:/patients/patient_1#patient-profile-summary',
+        taskId: null,
+        label: '正本を確認',
+        priority: 'normal',
+        dueAt: null,
+        actionHref: '/patients/patient_1#patient-profile-summary',
+      },
+    ]);
+    expect(JSON.stringify(model)).not.toContain('山田花子');
+    expect(JSON.stringify(model)).not.toContain('東京都千代田区');
+  });
+
   it('falls back to safe labels for unknown workflow exceptions and unknown activity dates', () => {
     const model = buildPatientCommandCenterModel({
       patient: buildPatient({ lab_summary: [] }),
@@ -193,5 +257,12 @@ describe('buildPatientCommandCenterModel', () => {
       expect.objectContaining({ id: 'lab-trend', meta: undefined }),
     ]);
     expect(formatActivityTime('not-a-date')).toBe('not-a-date');
+  });
+
+  it('returns an empty Case Risk Command model when cockpit data is absent', () => {
+    expect(buildCaseRiskCommandPanelModel(null)).toEqual({
+      caseRiskSummary: null,
+      caseRiskActions: [],
+    });
   });
 });
