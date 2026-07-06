@@ -1531,6 +1531,13 @@ describe('CardWorkspace', () => {
     expect(screen.getByTestId('next-action-panel')).toBeTruthy();
     expect(screen.getByTestId('blocked-reasons-panel')).toBeTruthy();
     expect(screen.getByTestId('evidence-panel')).toBeTruthy();
+    const commandActivities = screen.getByTestId('command-recent-activities-panel');
+    expect(within(commandActivities).getByText('調剤 完了 — 佐藤')).toBeTruthy();
+    expect(within(commandActivities).getByText('残薬調整 → 疑義照会 回答受領')).toBeTruthy();
+    expect(within(commandActivities).getByText('定期処方 取込(やまもと内科)')).toBeTruthy();
+    expect(
+      within(commandActivities).getAllByRole('link', { name: '開く', hidden: true }),
+    ).toHaveLength(3);
   });
 
   it('syncs active case risks into operational tasks from the Command tab without exposing finding detail', async () => {

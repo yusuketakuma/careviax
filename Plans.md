@@ -983,6 +983,14 @@ FE 仕上げ（低優先）:
   残: PatientBoard 派生ロジックとの adapter 統合、timeline 抜粋の Command Center block 化、
   payload budget / browser smoke。
 
+- `UX-CMD-001 / PAT-DETAIL-PERF-002` partial（2026-07-06）: Command Center に
+  `PatientWorkspace.recent_activities` の直近3件を表示する `CommandRecentActivitiesPanel` を追加した。
+  新規 API は増やさず、overview に既に含まれる工程遷移・疑義照会・処方取込の lightweight excerpt を
+  model selector で整形し、Command tab の「次にやること」「横断リスク」「止まっている理由」と同じ
+  流れに置く。full timeline API は履歴タブの lazy loading に残し、Command では上位3件だけを表示する。
+  残: PatientBoard 派生ロジックとの adapter 統合、full timeline `?limit=5` 抜粋の Command block 化、
+  payload budget / browser smoke。
+
 - `PAT-DETAIL-PERF-001 / UX-CMD-001` partial（2026-07-06）: 患者詳細の在宅運用管理 fallback
   （home-operations BFF 取得失敗時の近似表示）を `patient-home-operations-model.ts` へ抽出した。
   `CardWorkspace` は server snapshot または fallback items を描画するだけにし、fallback の

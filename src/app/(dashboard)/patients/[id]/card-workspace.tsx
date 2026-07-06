@@ -91,6 +91,7 @@ import {
   formatActivityTime,
   type PatientCommandCaseRiskAction,
   type PatientCommandCaseRiskSummary,
+  type PatientCommandRecentActivityItem,
 } from './patient-command-center-model';
 import {
   buildHomeOperationsItems,
@@ -4006,6 +4007,7 @@ function PatientCommandCenterPanel({
   nextAction,
   blockedReasons,
   evidence,
+  recentActivities,
   evidenceOpenLabel,
   caseRisk,
   riskTaskSync,
@@ -4014,6 +4016,7 @@ function PatientCommandCenterPanel({
   nextAction?: NextActionPanelProps;
   blockedReasons: BlockedReason[];
   evidence: EvidenceItem[];
+  recentActivities: PatientCommandRecentActivityItem[];
   evidenceOpenLabel?: string;
   caseRisk: {
     caseId: string | null;
@@ -4072,6 +4075,7 @@ function PatientCommandCenterPanel({
         )}
         <CaseRiskActionsPanel {...caseRisk} />
         <BlockedReasonsPanel reasons={blockedReasons} emptyLabel="止まっている作業はありません" />
+        <CommandRecentActivitiesPanel activities={recentActivities} />
       </div>
       <div className="space-y-4">
         <EvidencePanel items={evidence} openLabel={evidenceOpenLabel} />
@@ -4079,6 +4083,50 @@ function PatientCommandCenterPanel({
         <RiskTaskResolutionPanel {...riskTaskResolution} />
       </div>
     </div>
+  );
+}
+
+function CommandRecentActivitiesPanel({
+  activities,
+}: {
+  activities: PatientCommandRecentActivityItem[];
+}) {
+  return (
+    <SectionCard aria-label="Command 直近の動き" data-testid="command-recent-activities-panel">
+      <h3 className="text-sm font-semibold text-foreground">直近の動き</h3>
+      {activities.length > 0 ? (
+        <ul className="mt-3 divide-y divide-border/60" role="list">
+          {activities.map((activity) => (
+            <li key={activity.id} className="flex items-center gap-2 py-2.5 first:pt-0 last:pb-0">
+              <span
+                className={cn(
+                  'inline-flex shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium',
+                  ACTIVITY_BADGE_CLASSES[activity.type],
+                )}
+              >
+                {ACTIVITY_TYPE_LABELS[activity.type]}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-foreground">{activity.label}</p>
+                <p className="text-xs text-muted-foreground">{activity.meta}</p>
+              </div>
+              <Link
+                href={activity.href}
+                className={buttonVariants({
+                  variant: 'outline',
+                  size: 'sm',
+                  className: 'min-h-11 shrink-0',
+                })}
+              >
+                開く
+              </Link>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-3 text-sm text-muted-foreground">直近の動きはまだありません。</p>
+      )}
+    </SectionCard>
   );
 }
 
@@ -5484,6 +5532,7 @@ export function CardWorkspace({
               <PatientCommandCenterPanel
                 blockedReasons={[]}
                 evidence={[]}
+                recentActivities={[]}
                 evidenceOpenLabel="開く"
                 caseRisk={commandCaseRiskProps}
                 riskTaskSync={commandRiskTaskSyncProps}
@@ -5549,6 +5598,7 @@ export function CardWorkspace({
     nextAction,
     blockedReasons,
     evidence,
+    recentActivities,
     caseRiskSummary,
     caseRiskActions,
   } = buildPatientCommandCenterModel({ patient, patientId, workspace, caseRiskCockpit });
@@ -5593,6 +5643,7 @@ export function CardWorkspace({
                   nextAction={nextAction}
                   blockedReasons={blockedReasons}
                   evidence={evidence}
+                  recentActivities={recentActivities}
                   evidenceOpenLabel="開く"
                   caseRisk={{
                     ...commandCaseRiskProps,

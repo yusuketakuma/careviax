@@ -39,6 +39,14 @@ export type PatientCommandEvidenceItem = {
   href: string;
 };
 
+export type PatientCommandRecentActivityItem = {
+  id: string;
+  type: PatientWorkspace['recent_activities'][number]['type'];
+  label: string;
+  meta: string;
+  href: string;
+};
+
 export type PatientCommandCaseRiskSummary = {
   status: CaseRiskCockpitResponse['overall']['status'];
   statusLabel: string;
@@ -64,6 +72,7 @@ export type PatientCommandCenterModel = {
   nextAction?: PatientCommandNextAction;
   blockedReasons: PatientCommandBlockedReason[];
   evidence: PatientCommandEvidenceItem[];
+  recentActivities: PatientCommandRecentActivityItem[];
   caseRiskSummary: PatientCommandCaseRiskSummary | null;
   caseRiskActions: PatientCommandCaseRiskAction[];
 };
@@ -264,6 +273,15 @@ export function buildPatientCommandCenterModel({
       href: buildPatientHref(patientId, '#patient-profile-summary'),
     },
   ];
+  const recentActivities: PatientCommandRecentActivityItem[] = workspace.recent_activities
+    .slice(0, 3)
+    .map((activity) => ({
+      id: activity.id,
+      type: activity.type,
+      label: activity.actor ? `${activity.label} — ${activity.actor}` : activity.label,
+      meta: formatActivityTime(activity.at),
+      href: activity.href,
+    }));
 
   return {
     currentStep,
@@ -273,6 +291,7 @@ export function buildPatientCommandCenterModel({
     nextAction,
     blockedReasons,
     evidence,
+    recentActivities,
     ...buildCaseRiskCommandPanelModel(caseRiskCockpit),
   };
 }

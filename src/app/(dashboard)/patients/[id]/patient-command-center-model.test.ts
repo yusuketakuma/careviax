@@ -159,6 +159,15 @@ describe('buildPatientCommandCenterModel', () => {
         href: '/patients/patient_1#patient-profile-summary',
       }),
     ]);
+    expect(model.recentActivities).toEqual([
+      {
+        id: 'inquiry_1',
+        type: 'inquiry',
+        label: '疑義照会 回答受領',
+        meta: '09:30',
+        href: '/communications/requests?status=responded&patient_id=patient_1',
+      },
+    ]);
   });
 
   it('adds Case Risk Cockpit summary and task/non-task next actions without using finding text', () => {
