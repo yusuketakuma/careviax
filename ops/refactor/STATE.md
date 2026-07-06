@@ -6586,3 +6586,63 @@
 - remaining:
   Broader `Plans.md` objective remains open. 残りは real consumer の PHI export snapshot、他 bulk action
   consumer の scope wording sweep、route 側 export audit metadata と registry surface id の突合。
+
+## 2026-07-06 Export route surface id audit metadata slice
+
+- codex: `UX-TBL-001 / DEV-PHI-001` export route surface id audit metadata implemented.
+  `billing-candidates/export` と `communication-requests/export` の `recordDataExportAudit` metadata に
+  `export_surface_id` を追加し、UI registry surface と route 側 audit 証跡を突合できるようにした。
+- implementation:
+  billing は `csv -> billing_candidates_csv`、`claims-xml -> billing_candidates_claims_xml`。
+  communication requests は `external -> communication_requests_external_csv`、
+  `internal -> communication_requests_internal_csv`。`export-audit-sanitizer` は
+  `export_surface_id` と 16桁 hash snapshot を安全な metadata として許可しつつ、日本語 request_type のような
+  free-text filter は audit から落とす。
+- design / imagegen:
+  API/audit metadata と sanitizer/test の変更で視覚レイアウト変更を伴わないため、
+  `imagegen` / `gpt-image-2` の新規生成は省略した。
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/lib/audit/server-export-registry.ts`,
+  `src/lib/audit/export-audit-sanitizer.ts`,
+  `src/server/services/export-audit.test.ts`,
+  `src/app/api/communication-requests/export/route.ts`,
+  `src/app/api/communication-requests/export/route.test.ts`,
+  `src/app/api/billing-candidates/export/route.ts`,
+  `src/app/api/billing-candidates/export/route.test.ts`.
+- files changed:
+  `Plans.md`,
+  `src/lib/audit/server-export-registry.ts`,
+  `src/lib/audit/export-audit-sanitizer.ts`,
+  `src/server/services/export-audit.test.ts`,
+  `src/app/api/communication-requests/export/route.ts`,
+  `src/app/api/communication-requests/export/route.test.ts`,
+  `src/app/api/billing-candidates/export/route.ts`,
+  `src/app/api/billing-candidates/export/route.test.ts`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  UI の approved export surface と route の audit metadata が別々の語彙で drift する risk を低減した。
+  audit response/export で後から `export_surface_id` を確認できる。
+- security / PHI reviewed:
+  `export_surface_id` は lower-code の固定 registry key のみ。patient id は hash/aggregate のみを許可し、
+  日本語 request_type や patient/contact/free-text は audit filters から除外する。
+- performance issues reviewed:
+  metadata literal 追加と sanitizer branch のみ。DB query、export payload、row limit、network call は変更なし。
+- validation:
+  `pnpm exec vitest run src/server/services/export-audit.test.ts src/app/api/communication-requests/export/route.test.ts src/app/api/billing-candidates/export/route.test.ts src/lib/audit/server-export-registry.test.ts src/components/ui/data-table.test.tsx --reporter=dot --testTimeout=30000`
+  green (5 files / 107 tests);
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  green;
+  `pnpm lint`
+  green with existing warnings in `src/lib/platform/break-glass.test.ts` (`_tx`, `_input` unused);
+  `pnpm format:check`
+  green;
+  `git diff --check`
+  green.
+- remaining:
+  Broader `Plans.md` objective remains open. 残りは real consumer の screen-level PHI export snapshot、
+  他 bulk action consumer の scope wording sweep。
