@@ -14,17 +14,6 @@
       "targets": ["@/lib/prescription/cycle-workspace", "@/lib/prescriptions/navigation"]
     },
     {
-      "path": "src/server/services/patient-detail-workspace.ts",
-      "expectedCount": 4,
-      "reason": "患者詳細ワークスペースが処方サイクル/服薬差分/処方ナビ/処方取込ペア (prescription-intake-pair) を集約している既存負債。患者ハブが薬局固有の処方ワークフローを直接束ねている。",
-      "targets": [
-        "@/lib/prescription/cycle-workspace",
-        "@/lib/prescription/medication-diff",
-        "@/lib/prescriptions/navigation",
-        "@/server/services/prescription-intake-pair"
-      ]
-    },
-    {
       "path": "src/server/services/patient-share-policy.ts",
       "expectedCount": 1,
       "reason": "患者共有ポリシーが薬局間連携 (pharmacy-partnerships) を参照している既存負債。共有可否判定が薬局提携情報に依存している。",

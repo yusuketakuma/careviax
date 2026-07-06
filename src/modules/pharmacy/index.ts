@@ -1,6 +1,12 @@
 import { definePhosModule } from '@/core/module-registry';
 
 export { createPharmacyCollaborationAccessProviders } from './collaboration/access-providers';
+export {
+  createPharmacyPatientWorkspacePanelProviders,
+  type BuildPharmacyPatientWorkspaceArgs,
+  type PharmacyPatientWorkspaceProviderInput,
+  type PharmacyPatientWorkspaceReadModel,
+} from './patient-workspace/workspace-read-model';
 export { createPharmacyCaseRiskProviders } from './risk/case-risk-providers';
 
 export const pharmacyModule = definePhosModule({

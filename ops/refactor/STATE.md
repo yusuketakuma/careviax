@@ -41,6 +41,62 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOD-PATIENT-001 Patient Workspace panel provider seam.
+  - current task:
+    `Plans.md` の `MOD-PATIENT-001` に沿って、患者詳細 workspace の first slice を実装した。
+    既存 API/UI の `workspace` read model は維持しつつ、薬局固有の処方サイクル/服薬差分/処方ナビ/
+    処方取込ペア集約を `src/modules/pharmacy/patient-workspace/workspace-read-model.ts` へ移動し、
+    `pharmacy.current_medication_cycle` provider として登録した。`src/server/services/patient-detail-workspace.ts`
+    は active registry を呼ぶ薄い facade にし、pharmacy-specific direct import をなくした。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-detail-workspace.ts`,
+    `src/server/services/patient-detail-workspace.test.ts`,
+    `src/server/services/patient-detail.ts`,
+    `src/modules/pharmacy/index.ts`,
+    `src/core/module-registry/index.ts`,
+    `src/core/risk/provider-registry.ts`,
+    `src/server/risk/active-case-risk-registry.ts`,
+    `tools/scripts/check-module-boundaries.mjs`,
+    `tools/module-boundary-allowlist.json`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/core/patient/workspace-panel.ts`,
+    `src/core/patient/workspace-panel.test.ts`,
+    `src/server/patient-workspace/active-panel-registry.ts`,
+    `src/server/services/patient-detail-workspace.ts`,
+    `src/modules/pharmacy/index.ts`,
+    `src/modules/pharmacy/patient-workspace/workspace-read-model.ts`,
+    `tools/module-boundary-allowlist.json`.
+  - bugs / risks reduced:
+    患者詳細の common facade が `cycle-workspace`、`medication-diff`、`prescriptions/navigation`、
+    `prescription-intake-pair` を直接 import していた `DEBT-PATIENT-001` を削減した。
+    既存 read model は pharmacy module 側へ移し、provider重複は core registry で検出する。
+    `tools/module-boundary-allowlist.json` から `patient-detail-workspace.ts` entry を削除し、
+    boundary debt は 12 imports / 8 files へ減少した。
+  - validation:
+    `pnpm vitest run src/server/services/patient-detail-workspace.test.ts --reporter=dot --testTimeout=30000`
+    passed: 1 file / 5 tests.
+    `pnpm vitest run src/core/patient/workspace-panel.test.ts src/server/services/patient-detail-workspace.test.ts --reporter=dot --testTimeout=30000`
+    passed: 2 files / 7 tests.
+    `pnpm eslint src/core/patient/workspace-panel.ts src/core/patient/workspace-panel.test.ts src/server/services/patient-detail-workspace.ts src/server/patient-workspace/active-panel-registry.ts src/modules/pharmacy/index.ts src/modules/pharmacy/patient-workspace/workspace-read-model.ts src/server/services/patient-detail-workspace.test.ts`
+    passed.
+    `pnpm boundaries:check` passed: 0 new violations, 12 allowlisted debt imports across 8 files.
+    `pnpm typecheck` passed.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed.
+    `pnpm prettier --write ...` applied formatting.
+  - remaining work:
+    `MOD-PATIENT-001` is partial. The next patient workspace slice should add explicit `panels[]`
+    DTO/presenter output for module/panel_id/status/next_actions, split common header/basic/case/consent/
+    assignment/task/risk/recent activity from pharmacy panel data, and keep patient detail tab/island lazy
+    loading aligned with `FE-PAT-001`. No DB migration, deploy, external send, or production mutation was run.
+  - next action:
+    Re-run final diff/format checks, commit/push this provider seam, then continue with `MOD-VISIT-001`
+    or the next `MOD-PATIENT-001` panels[] DTO slice.
+
 - codex: Plans backend modular monolith spec detail sync.
   - current task:
     ユーザー提示の「PH-OS バックエンド・モジュール化 + 技術的負債解消 実装仕様書」を、既存
