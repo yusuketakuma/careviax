@@ -18,11 +18,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { ErrorState } from '@/components/ui/error-state';
 import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { SkeletonRows } from '@/components/ui/loading';
+import { SegmentError, SegmentLoading } from '@/components/ui/segment-state';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
@@ -327,26 +326,13 @@ export default function ServiceAreasPage() {
                   )}
                 />
                 {sitesQuery.isError ? (
-                  <p
-                    role="status"
-                    aria-live="polite"
-                    className="flex flex-wrap items-center gap-x-2 text-sm text-destructive"
-                  >
-                    <span>
-                      {sitesQuery.error instanceof Error
-                        ? sitesQuery.error.message
-                        : '拠点一覧の取得に失敗しました'}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="link"
-                      size="sm"
-                      className="h-auto p-0 text-sm"
-                      onClick={() => void sitesQuery.refetch()}
-                    >
-                      再試行
-                    </Button>
-                  </p>
+                  <SegmentError
+                    title="拠点一覧を取得できませんでした"
+                    cause="訪問エリアに紐づける拠点を取得できませんでした。"
+                    nextAction="再試行して、登録先の拠点を選び直してください。"
+                    onRetry={() => void sitesQuery.refetch()}
+                    retryLabel="再試行"
+                  />
                 ) : null}
               </div>
 
@@ -446,25 +432,23 @@ export default function ServiceAreasPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {areasQuery.isError ? (
-              <ErrorState
-                variant="server"
-                size="inline"
+              <SegmentError
                 title="訪問エリアを取得できませんでした"
-                description={
-                  areasQuery.error instanceof Error
-                    ? areasQuery.error.message
-                    : '訪問エリアの取得に失敗しました'
-                }
+                cause="訪問エリアの取得に失敗しました。"
+                nextAction="再試行して、登録済みエリアと件数を確認してください。"
                 onRetry={() => void areasQuery.refetch()}
-                live="polite"
+                retryLabel="再試行"
               />
             ) : areasQuery.isPending ? (
               // isPending (not isLoading) so an unresolved orgId — which disables the query
               // (enabled: !!orgId) and leaves it pending-but-not-fetching — also shows loading
               // rather than the empty-state.
-              <div role="status" aria-label="訪問エリアを読み込み中" aria-live="polite">
-                <SkeletonRows rows={3} cols={3} status={false} />
-              </div>
+              <SegmentLoading
+                label="訪問エリアを読み込み中"
+                description="登録済みエリアと拠点の紐づけを確認しています。"
+                rows={3}
+                cols={3}
+              />
             ) : serviceAreas.length === 0 ? (
               <p className="text-sm text-muted-foreground">まだ訪問エリアはありません。</p>
             ) : (

@@ -591,7 +591,13 @@ describe('ServiceAreasPage', () => {
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
         if (url === '/api/pharmacy-sites') {
-          return new Response(JSON.stringify({ message: 'boom' }), { status: 500 });
+          return new Response(
+            JSON.stringify({
+              message:
+                'GET /api/pharmacy-sites?patient=田中一郎&storage_key=s3://phi-bucket/raw&token=secret',
+            }),
+            { status: 500 },
+          );
         }
         if (url === '/api/service-areas' && !init?.method) {
           return new Response(JSON.stringify({ data: [] }), { status: 200 });
@@ -602,7 +608,13 @@ describe('ServiceAreasPage', () => {
     renderPage();
 
     const retry = await screen.findByRole('button', { name: '再試行' });
-    expect(screen.getByText('boom')).toBeTruthy();
+    expect(screen.getByText('拠点一覧を取得できませんでした')).toBeTruthy();
+    expect(screen.getByText(/訪問エリアに紐づける拠点を取得できませんでした。/)).toBeTruthy();
+    expect(screen.getByText(/再試行して、登録先の拠点を選び直してください。/)).toBeTruthy();
+    expect(screen.queryByText(/田中一郎/)).toBeNull();
+    expect(screen.queryByText(/storage_key/)).toBeNull();
+    expect(screen.queryByText(/token/)).toBeNull();
+    expect(screen.queryByText(/\/api\/pharmacy-sites/)).toBeNull();
 
     fireEvent.click(retry);
     await waitFor(() => {
@@ -626,7 +638,13 @@ describe('ServiceAreasPage', () => {
           });
         }
         if (url === '/api/service-areas' && !init?.method) {
-          return new Response(JSON.stringify({ message: 'boom' }), { status: 500 });
+          return new Response(
+            JSON.stringify({
+              message:
+                'GET /api/service-areas?patient=田中一郎&storage_key=s3://phi-bucket/raw&provider_error=stack',
+            }),
+            { status: 500 },
+          );
         }
         return new Response(JSON.stringify({ data: [] }), { status: 200 });
       }),
@@ -634,7 +652,13 @@ describe('ServiceAreasPage', () => {
     renderPage();
 
     expect(await screen.findByText('訪問エリアを取得できませんでした')).toBeTruthy();
+    expect(screen.getByText(/訪問エリアの取得に失敗しました。/)).toBeTruthy();
+    expect(screen.getByText(/再試行して、登録済みエリアと件数を確認してください。/)).toBeTruthy();
     expect(screen.queryByText('まだ訪問エリアはありません。')).toBeNull();
+    expect(screen.queryByText(/田中一郎/)).toBeNull();
+    expect(screen.queryByText(/storage_key/)).toBeNull();
+    expect(screen.queryByText(/provider_error/)).toBeNull();
+    expect(screen.queryByText(/\/api\/service-areas/)).toBeNull();
 
     fireEvent.click(await screen.findByRole('button', { name: '再試行' }));
     await waitFor(() => {

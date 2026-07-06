@@ -41,6 +41,43 @@
 
 ## 直近の land（本日・要点）
 
+- codex: FE-ERR-001 admin service-areas segment hardening（pending commit）。
+  - current task:
+    `/admin/service-areas` の拠点一覧 / 訪問エリア一覧取得失敗と pending/loading を shared segment state に寄せ、
+    拠点 selector の silent-empty と訪問エリアの false-empty、raw query error message 表示を防ぐ。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `docs/ui-ux-design-guidelines.md`,
+    `src/components/ui/segment-state.tsx`,
+    `src/app/(dashboard)/admin/service-areas/page.tsx`,
+    `src/app/(dashboard)/admin/service-areas/page.test.tsx`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/admin/service-areas/page.tsx`,
+    `src/app/(dashboard)/admin/service-areas/page.test.tsx`.
+  - implementation:
+    拠点一覧と訪問エリア一覧の取得失敗を `SegmentError` へ、訪問エリア pending/loading を
+    `SegmentLoading` へ移行した。失敗時は固定文言と retry のみを表示し、
+    `sitesQuery.error.message` / `areasQuery.error.message` を UI に出さない。
+  - bugs found:
+    拠点一覧と訪問エリア一覧の取得失敗時に raw backend message を画面へ表示していた。
+  - security risks reduced:
+    拠点/訪問エリア取得失敗時に patient name、storage key、token、provider error、API route 等が
+    UI に出る面を追加テストで固定した。
+  - performance issues improved:
+    なし。表示状態の正確性と fail-soft の修正。
+  - validation:
+    `pnpm exec vitest run 'src/app/(dashboard)/admin/service-areas/page.test.tsx' src/components/ui/segment-state.test.tsx --reporter=dot --testTimeout=30000` → pass（2 files / 23 tests）。
+    `pnpm exec eslint 'src/app/(dashboard)/admin/service-areas/page.tsx' 'src/app/(dashboard)/admin/service-areas/page.test.tsx'` → pass。
+  - remaining:
+    FE-ERR-001 は drug-master detail sheet など admin screen 群への段階展開が残る。
+    Formal `InboundCommunicationEvent` / `InboundCommunicationSignal` DB/API/review UI and MedicationStock Ledger source remain.
+  - next action:
+    prettier / diff check、scoped commit/push。
+
 - codex: FE-ERR-001 admin packaging-methods segment hardening（pending commit）。
   - current task:
     `/admin/packaging-methods` の配薬方法マスター取得失敗と pending/loading を shared segment state に寄せ、
