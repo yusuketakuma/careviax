@@ -41,7 +41,60 @@
 
 ## 直近の land（本日・要点）
 
-- codex: MOV-001 Patient Movement Timeline final implementation scope lock（commit pending）。
+- codex: FE-ERR-001 Segment boundary shared state components（commit pending）。
+  - current task:
+    partial BFF / section failure を画面全体の失敗や false-empty にしないための shared segment
+    state wrapper を追加し、最初の利用箇所を reports workspace に接続する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `docs/ui-ux-design-guidelines.md`,
+    `src/components/ui/error-state.tsx`,
+    `src/components/ui/empty-state.tsx`,
+    `src/components/ui/state-elements.tsx`,
+    `src/components/ui/loading.tsx`,
+    `src/app/(dashboard)/reports/report-share-workspace.tsx`,
+    `src/app/(dashboard)/reports/report-share-workspace.test.tsx`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/components/ui/segment-state.tsx`,
+    `src/components/ui/segment-state.test.tsx`,
+    `src/app/(dashboard)/reports/report-share-workspace.tsx`.
+  - implementation:
+    `SegmentLoading`、`SegmentError`、`SegmentStaleBanner`、`SegmentRetryButton`、
+    `SegmentEmptyButNotError` を追加。既存 `ErrorState` / `EmptyState` / `SkeletonRows` を
+    再利用する薄い wrapper とし、`request_id` / `route` / `generated_at` / `retry_count`
+    metadata を必要時だけ表示できるようにした。`route` は query/hash と ID-like segment を
+    丸め、患者IDや debug query を表示しない。最初の実利用として `/reports` workspace の
+    全体取得失敗表示を `SegmentError` へ移行した。
+  - bugs found:
+    初回テストで `patient_123` のような短い prefixed id が route sanitization から漏れることを検出。
+    ID-like segment pattern を修正し、unit test で固定した。
+  - security risks reduced:
+    partial failure metadata の `route` 表示から query/hash と ID-like path segment を除去し、
+    error/segment UI に識別子や debug query が出にくい既定値を追加した。
+  - validation:
+    `pnpm exec vitest run src/components/ui/segment-state.test.tsx --reporter=dot --testTimeout=30000`
+    initially failed on route sanitization, then passed: 1 file / 6 tests.
+    `pnpm exec vitest run src/components/ui/segment-state.test.tsx 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' --reporter=dot --testTimeout=30000`
+    passed: 2 files / 31 tests.
+    `pnpm exec eslint src/components/ui/segment-state.tsx src/components/ui/segment-state.test.tsx 'src/app/(dashboard)/reports/report-share-workspace.tsx'`
+    passed.
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/components/ui/segment-state.tsx src/components/ui/segment-state.test.tsx 'src/app/(dashboard)/reports/report-share-workspace.tsx'`
+    passed after formatting `Plans.md` and `src/components/ui/segment-state.test.tsx`.
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/components/ui/segment-state.tsx src/components/ui/segment-state.test.tsx 'src/app/(dashboard)/reports/report-share-workspace.tsx'`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`
+    passed.
+  - remaining:
+    commit、push。Dashboard segments / patient detail tabs / visits / schedule / task/admin への展開は
+    後続。
+  - next action:
+    Land the FE-ERR-001 partial slice and continue with the next Plans item.
+
+- codex: MOV-001 Patient Movement Timeline final implementation scope lock（commit d3a9ba1dc, pushed）。
   - current task:
     ユーザー確認に合わせ、処方・訪問・文書登録 event は timeline 上では発生 marker と正本
     deep link のみを表示する計画へ固定する。
@@ -63,7 +116,7 @@
     `pnpm exec prettier --check Plans.md ops/refactor/STATE.md` passed.
     `git diff --check -- Plans.md ops/refactor/STATE.md` passed.
   - remaining:
-    commit、push。
+    none for this documentation scope lock.
   - next action:
     Validate and land the Plans scope lock.
 

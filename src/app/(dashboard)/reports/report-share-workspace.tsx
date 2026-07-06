@@ -7,8 +7,8 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { DataTable, type DataTableColumnMeta } from '@/components/ui/data-table';
-import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
+import { SegmentError } from '@/components/ui/segment-state';
 import { GuardedWorkspaceActionRail } from '@/components/features/workspace/action-rail';
 import { MainWorkflowCompactNav } from '@/components/features/workflow/main-workflow-route';
 import { readApiJson } from '@/lib/api/client-json';
@@ -722,10 +722,10 @@ export function ReportShareWorkspace() {
           <WorkspaceSkeleton />
         ) : workspaceQuery.isError || !data ? (
           <div className="rounded-lg border border-border/70 bg-card p-4">
-            <ErrorState
-              variant="server"
+            <SegmentError
               title="報告・共有を表示できません"
-              description="当日報告ワークスペースの集計取得に失敗しました。再試行してください。"
+              cause="当日報告ワークスペースの集計取得に失敗しました。"
+              nextAction="再読み込みして、下書き作成や送付前確認の状態を取り直してください。"
               detail={
                 workspaceQuery.error instanceof Error ? workspaceQuery.error.message : undefined
               }
