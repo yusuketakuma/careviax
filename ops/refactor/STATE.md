@@ -7151,3 +7151,56 @@
 - remaining:
   Broader `Plans.md` objective remains open. 次は `VISIT-SYNC-001`、`PAT-BOARD-PAGE-001`、
   `DSP-QUEUE-PAGE-001`、`PERF-RTE-001A` を優先する。
+
+## 2026-07-06 Frontend foundation backlog update
+
+- codex: user-requested `Plans.md` expansion for frontend common-base improvements after live code rescan.
+  AppShell heavy globals、Realtime invalidation / payload normalizer、DataTable export/filter policy、
+  patient detail island split、visit record form split、reports realtime migration、clinical localStorage cleanup、
+  mobile contextual CTA、navigation active-state tests、SW push redaction backstop、browser storage PHI audit、
+  segment boundary pattern、admin frontend policy audit、interaction budget を、既存 task lane と整合する
+  implementation-ready backlog として追加した。
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `docs/ui-ux-design-guidelines.md`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/components/layout/app-shell.tsx`,
+  `src/lib/hooks/use-realtime-invalidation.ts`,
+  `src/lib/hooks/use-realtime-query.ts`,
+  `src/lib/realtime/events.ts`,
+  `src/components/ui/data-table.tsx`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+  `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`,
+  `src/app/(dashboard)/reports/report-share-workspace.tsx`,
+  `src/components/features/dispense-workbench/dispensing-workbench.store.ts`,
+  `src/app/sw.ts`,
+  `src/components/layout/mobile-nav.tsx`,
+  `src/components/layout/navigation-config.ts`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  Realtime の broad invalidation、client payload の permissive normalizer、SW push の raw title/body/link、
+  DataTable client CSV、旧 clinical localStorage、巨大 patient/visit client component、report fixed polling を
+  個別 TODO ではなく既存レーンに接続した実装タスクへ落とし込んだ。
+- security / PHI reviewed:
+  `FE-RT-002`、`FE-PUSH-001`、`FE-STORAGE-001`、`FE-TBL-001`、`FE-OFFLINE-001` は、患者名、住所、電話、
+  薬剤名、free text、metadata、provider error、storage key、signed URL が frontend state、OS通知、
+  client export、browser storage に残らないことを snapshot/browser test の acceptance に含めた。
+- performance issues reviewed:
+  `FE-RT-001` は realtime burst の過剰 refetch、`FE-SHELL-001` は AppShell 初期 bundle、
+  `FE-TBL-002` は DataTable 入力ごとの filter/sort、`FE-PAT-001` / `FE-VISIT-001` は heavy client island、
+  `FE-REPORT-001` は fixed polling、`FE-BUDGET-001` は interaction budget を対象にした。
+- design / imagegen:
+  計画文書追記のみで UI 画面配置・視覚再構築を伴わないため、`imagegen` / `gpt-image-2` の新規生成は省略した。
+  `Plans.md` には、UI 配置や画面再構築を伴う実装 slice では `docs/ui-ux-design-guidelines.md` 確認後に
+  非 PHI の `gpt-image-2` 参照案を作ることを受入条件へ含めた。
+- validation:
+  `pnpm format:check`
+  green;
+  `git diff --check -- Plans.md ops/refactor/STATE.md`
+  green.
+- remaining:
+  docs-only commit/push する。次の実装優先は `FE-RT-001` + `FE-RT-002` + `FE-PUSH-001`、
+  または既存 P0 の `VISIT-SYNC-001`。
