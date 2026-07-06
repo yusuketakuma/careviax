@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: INB-001 inbound communication report action rail evidence（未コミット）。
+- codex: INB-001 inbound communication report action rail evidence（commit 97ba345bf）。
   - current task:
     他職種受信情報を報告書へ自動挿入せず、Report workspace の右レール evidence に
     PHI-free な件数と workflow 連絡キュー導線だけを接続する。
@@ -77,7 +77,7 @@
   - remaining:
     なし。DB正本、API/review UI、正式 provider 統合は INB-001 の後続。
   - next action:
-    Land and push this slice, then record commit hash.
+    Landed and pushed to `origin/main`.
 
 - codex: INB-001 inbound communication workflow dashboard aggregate（commit 20adefb14）。
   - current task:
