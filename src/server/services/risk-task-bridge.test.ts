@@ -30,11 +30,44 @@ function finding(overrides: Partial<RiskFinding> = {}): RiskFinding {
   });
 }
 
+function medicationStockFinding(
+  overrides: {
+    riskCode?: string;
+    severity?: RiskFinding['severity'];
+    title?: string;
+    detail?: string;
+  } = {},
+): RiskFinding {
+  const riskCode = overrides.riskCode ?? 'medication_stock_urgent_shortage';
+  return createRiskFinding({
+    key: `medication_stock:${riskCode}:h1234567890abcdef`,
+    domain: 'medication',
+    severity: overrides.severity ?? 'urgent',
+    title: overrides.title ?? '患者 山田花子 湿布 raw title',
+    detail: overrides.detail ?? 'MCS本文 湿布は残り4枚です raw detail',
+    patient_id: 'patient_1',
+    case_id: 'case_1',
+    related_entity_type: 'inbound_medication_stock_signal',
+    related_entity_id: null,
+    action_href: '/patients/patient_1#medication-stock-events',
+    action_label: '残数報告を確認',
+    source: 'external',
+  });
+}
+
 describe('risk-task-bridge', () => {
   it('taskifies only active blocking or urgent findings', () => {
     expect(shouldCreateOperationalTaskForRisk(finding({ severity: 'blocking' }))).toBe(true);
     expect(shouldCreateOperationalTaskForRisk(finding({ severity: 'urgent' }))).toBe(true);
     expect(shouldCreateOperationalTaskForRisk(finding({ severity: 'warning' }))).toBe(false);
+    expect(
+      shouldCreateOperationalTaskForRisk(
+        medicationStockFinding({
+          riskCode: 'medication_stock_external_observation_review_required',
+          severity: 'warning',
+        }),
+      ),
+    ).toBe(true);
     expect(shouldCreateOperationalTaskForRisk(finding({ severity: 'info' }))).toBe(false);
     expect(
       shouldCreateOperationalTaskForRisk(
@@ -95,6 +128,84 @@ describe('risk-task-bridge', () => {
     expect(JSON.stringify(input)).not.toContain('東京都千代田区1-1-1');
     expect(JSON.stringify(input)).not.toContain('090-1234-5678');
     expect(JSON.stringify(input)).not.toContain('アムロジピン');
+  });
+
+  it('taskifies medication stock findings into dedicated pharmacy task types', () => {
+    const cases = [
+      {
+        riskCode: 'medication_stock_urgent_shortage',
+        taskType: 'pharmacy.medication_stock_shortage_expected',
+        title: '残数不足見込み',
+        description: '外用薬・頓服薬の不足見込みを確認する。',
+      },
+      {
+        riskCode: 'medication_stock_usage_report_review_required',
+        taskType: 'pharmacy.medication_stock_usage_unknown',
+        title: '使用頻度未確認',
+        description: '外用薬・頓服薬の使用頻度不明を確認する。',
+      },
+      {
+        riskCode: 'medication_stock_equivalence_review_required',
+        taskType: 'pharmacy.medication_stock_equivalence_review_required',
+        title: '薬剤名寄せ確認',
+        description: '外用薬・頓服薬の薬剤マスタ照合または名寄せ確認を行う。',
+      },
+      {
+        riskCode: 'medication_stock_external_observation_review_required',
+        taskType: 'pharmacy.medication_stock_external_observation_review_required',
+        title: '他職種残数報告',
+        description: '他職種・患者家族・協力薬局由来の外用薬・頓服薬残数報告を薬剤師が確認する。',
+      },
+    ] as const;
+
+    for (const testCase of cases) {
+      const input = riskFindingToOperationalTaskInput({
+        orgId: 'org_1',
+        finding: medicationStockFinding({
+          riskCode: testCase.riskCode,
+          severity: testCase.riskCode === 'medication_stock_urgent_shortage' ? 'urgent' : 'warning',
+          title: '患者 山田花子 湿布 raw title',
+          detail: 'MCS本文 湿布は残り4枚です raw detail',
+        }),
+      });
+
+      expect(input).toMatchObject({
+        taskType: testCase.taskType,
+        title: testCase.title,
+        description: testCase.description,
+        relatedEntityType: 'patient',
+        relatedEntityId: 'patient_1',
+      });
+      expect(input?.dedupeKey).toBe(
+        `risk:medication:medication_stock%3A${testCase.riskCode}%3Ah1234567890abcdef:case:case_1`,
+      );
+
+      const serialized = JSON.stringify(input);
+      expect(serialized).not.toContain('山田花子');
+      expect(serialized).not.toContain('湿布は残り4枚');
+      expect(serialized).not.toContain('raw title');
+      expect(serialized).not.toContain('raw detail');
+      expect(serialized).not.toContain('inbound_signal_1');
+    }
+  });
+
+  it('resolves medication stock tasks with the same dedicated task identity', () => {
+    const stockFinding = medicationStockFinding();
+
+    expect(
+      riskFindingToResolveOperationalTaskInput({
+        orgId: 'org_1',
+        finding: stockFinding,
+      }),
+    ).toMatchObject({
+      orgId: 'org_1',
+      taskType: 'pharmacy.medication_stock_shortage_expected',
+      dedupeKey:
+        'risk:medication:medication_stock%3Amedication_stock_urgent_shortage%3Ah1234567890abcdef:case:case_1',
+      relatedEntityType: 'patient',
+      relatedEntityId: 'patient_1',
+      status: 'completed',
+    });
   });
 
   it('drops invalid due dates instead of passing invalid Date objects', () => {

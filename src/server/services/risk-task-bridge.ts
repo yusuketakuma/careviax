@@ -3,6 +3,7 @@ import { buildRiskDedupeKey, isRiskFindingActive, type RiskFinding } from '@/lib
 import {
   buildRiskTaskDescription,
   buildRiskTaskTitle,
+  getTaskTypeDefinition,
   getRiskTaskRegistryEntry,
   type TaskPriority,
 } from '@/lib/tasks/task-registry';
@@ -45,7 +46,9 @@ export function shouldCreateOperationalTaskForRisk(finding: RiskFinding) {
   return (
     finding.domain !== 'task_sla' &&
     isRiskFindingActive(finding) &&
-    (finding.severity === 'blocking' || finding.severity === 'urgent')
+    (finding.severity === 'blocking' ||
+      finding.severity === 'urgent' ||
+      isMedicationStockTaskableFinding(finding))
   );
 }
 
@@ -60,27 +63,21 @@ export function riskFindingToOperationalTaskInput(
 ): UpsertOperationalTaskInput | null {
   if (!shouldCreateOperationalTaskForRisk(input.finding)) return null;
 
-  const entry = getRiskTaskRegistryEntry(input.finding.domain);
-  const relatedEntityType = input.finding.related_entity_type ?? entry.related_entity_type;
-  const relatedEntityId =
-    input.finding.related_entity_id ??
-    input.finding.case_id ??
-    input.finding.patient_id ??
-    input.finding.key;
+  const target = resolveRiskTaskTarget(input.finding);
 
   return {
     orgId: input.orgId,
-    taskType: entry.task_type,
-    title: buildRiskTaskTitle(input.finding.domain),
-    description: buildRiskTaskDescription(input.finding.domain),
+    taskType: target.taskType,
+    title: target.title,
+    description: target.description,
     priority: riskSeverityToTaskPriority(input.finding),
     assignedTo: input.finding.assigned_to ?? null,
     dueDate: parseRiskDueAt(input.finding.due_at),
     slaDueAt: parseRiskDueAt(input.finding.due_at),
     dedupeKey: buildRiskDedupeKey(input.finding),
-    relatedEntityType,
-    relatedEntityId,
-    metadata: buildRiskTaskMetadata(input.finding, entry),
+    relatedEntityType: target.relatedEntityType,
+    relatedEntityId: target.relatedEntityId,
+    metadata: buildRiskTaskMetadata(input.finding, target.entry),
     status: 'pending',
   };
 }
@@ -103,18 +100,14 @@ export async function upsertOperationalTaskForRisk(
 export function riskFindingToResolveOperationalTaskInput(
   input: ResolveRiskTaskInput,
 ): ResolveOperationalTaskInput {
-  const entry = getRiskTaskRegistryEntry(input.finding.domain);
+  const target = resolveRiskTaskTarget(input.finding);
   return {
     orgId: input.orgId,
     taskId: input.taskId,
     dedupeKey: buildRiskDedupeKey(input.finding),
-    taskType: entry.task_type,
-    relatedEntityType: input.finding.related_entity_type ?? entry.related_entity_type,
-    relatedEntityId:
-      input.finding.related_entity_id ??
-      input.finding.case_id ??
-      input.finding.patient_id ??
-      input.finding.key,
+    taskType: target.taskType,
+    relatedEntityType: target.relatedEntityType,
+    relatedEntityId: target.relatedEntityId,
     status: input.status ?? 'completed',
   };
 }
@@ -243,4 +236,64 @@ function buildRiskTaskMetadata(
     billing_close: entry.billing_close,
     stale_threshold_days: entry.stale_threshold_days,
   };
+}
+
+type RiskTaskTarget = {
+  taskType: string;
+  title: string;
+  description: string;
+  relatedEntityType: string;
+  relatedEntityId: string;
+  entry: ReturnType<typeof getRiskTaskRegistryEntry>;
+};
+
+function resolveRiskTaskTarget(finding: RiskFinding): RiskTaskTarget {
+  const entry = getRiskTaskRegistryEntry(finding.domain);
+  const medicationStockTaskType = resolveMedicationStockRiskTaskType(finding);
+  const medicationStockDefinition = medicationStockTaskType
+    ? getTaskTypeDefinition(medicationStockTaskType)
+    : null;
+
+  if (medicationStockDefinition && finding.patient_id) {
+    return {
+      taskType: medicationStockDefinition.taskType,
+      title: medicationStockDefinition.label,
+      description: medicationStockDefinition.description,
+      relatedEntityType: 'patient',
+      relatedEntityId: finding.patient_id,
+      entry,
+    };
+  }
+
+  return {
+    taskType: entry.task_type,
+    title: buildRiskTaskTitle(finding.domain),
+    description: buildRiskTaskDescription(finding.domain),
+    relatedEntityType: finding.related_entity_type ?? entry.related_entity_type,
+    relatedEntityId:
+      finding.related_entity_id ?? finding.case_id ?? finding.patient_id ?? finding.key,
+    entry,
+  };
+}
+
+function resolveMedicationStockRiskTaskType(finding: RiskFinding) {
+  if (finding.domain !== 'medication') return null;
+
+  const code = /^medication_stock:([^:]+):/.exec(finding.key)?.[1] ?? null;
+  switch (code) {
+    case 'medication_stock_urgent_shortage':
+      return 'pharmacy.medication_stock_shortage_expected';
+    case 'medication_stock_usage_report_review_required':
+      return 'pharmacy.medication_stock_usage_unknown';
+    case 'medication_stock_equivalence_review_required':
+      return 'pharmacy.medication_stock_equivalence_review_required';
+    case 'medication_stock_external_observation_review_required':
+      return 'pharmacy.medication_stock_external_observation_review_required';
+    default:
+      return null;
+  }
+}
+
+function isMedicationStockTaskableFinding(finding: RiskFinding) {
+  return resolveMedicationStockRiskTaskType(finding) !== null && Boolean(finding.patient_id);
 }

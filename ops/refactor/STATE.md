@@ -41,7 +41,57 @@
 
 ## 直近の land（本日・要点）
 
-- codex: RX-002 MedicationStock task registry entries（commit pending）。
+- codex: RX-002 MedicationStock RiskFinding -> dedicated task bridge（commit pending）。
+  - current task:
+    Medication Stock の controlled `RiskFinding` が generic `risk_medication` ではなく、
+    直前に登録した専用 `pharmacy.medication_stock_*` task type へ task 化されるよう
+    `risk-task-bridge` の pure mapping を接続する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/lib/risk/risk-finding.ts`,
+    `src/lib/tasks/task-registry.ts`,
+    `src/server/services/risk-task-bridge.ts`,
+    `src/server/services/risk-task-bridge.test.ts`,
+    `src/modules/pharmacy/medication-stock/application/medication-stock-risk-adapter.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/risk-task-bridge.ts`,
+    `src/server/services/risk-task-bridge.test.ts`.
+  - implementation:
+    `medication_stock:medication_stock_urgent_shortage:*` を
+    `pharmacy.medication_stock_shortage_expected` へ、
+    `medication_stock:medication_stock_usage_report_review_required:*` を
+    `pharmacy.medication_stock_usage_unknown` へ、
+    `medication_stock:medication_stock_equivalence_review_required:*` を
+    `pharmacy.medication_stock_equivalence_review_required` へ、
+    `medication_stock:medication_stock_external_observation_review_required:*` を
+    `pharmacy.medication_stock_external_observation_review_required` へ mapping。
+    medication stock の薬剤師確認 finding は warning でも task 化対象にし、それ以外の
+    generic warning は従来どおり task 化しない。task の related entity は patient に寄せ、
+    inbound signal/source id を task URL や related id に載せない。
+  - validation:
+    `pnpm vitest run src/server/services/risk-task-bridge.test.ts src/lib/tasks/task-registry.test.ts --reporter=dot --testTimeout=30000`
+    passed: 2 files / 18 tests.
+    `pnpm vitest run src/core/interprofessional/inbound/domain/inbound-communication.test.ts src/core/interprofessional/inbound/domain/inbound-signal-classifier.test.ts src/modules/pharmacy/medication-stock/domain/external-observation.test.ts src/modules/pharmacy/medication-stock/domain/stockout-forecast.test.ts src/modules/pharmacy/medication-stock/domain/medication-equivalence.test.ts src/modules/pharmacy/medication-stock/application/medication-stock-signal-adapter.test.ts src/modules/pharmacy/medication-stock/application/medication-stock-risk-adapter.test.ts src/lib/tasks/task-registry.test.ts src/server/services/risk-task-bridge.test.ts --reporter=dot --testTimeout=30000`
+    passed: 9 files / 78 tests.
+    `pnpm exec eslint src/server/services/risk-task-bridge.ts src/server/services/risk-task-bridge.test.ts src/lib/tasks/task-registry.ts src/lib/tasks/task-registry.test.ts`
+    passed.
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/server/services/risk-task-bridge.ts src/server/services/risk-task-bridge.test.ts`
+    passed.
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/server/services/risk-task-bridge.ts src/server/services/risk-task-bridge.test.ts`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+    `pnpm boundaries:check` passed: 0 new violations, 7 allowlisted debt imports across 6 files.
+  - remaining:
+    RX-002 remains partial for ledger DB/API/UI、accepted signal persistence、actual persistence source
+    wiring、VisitBrief/Schedule/Report/External Share linkage、formal RiskFindingProvider integration.
+  - next action:
+    Scoped commit/push, then continue with persistence source wiring or formal provider integration.
+
+- codex: RX-002 MedicationStock task registry entries（commit 3e7b764eb）。
   - current task:
     Medication Stock Ledger / inbound medication stock signal から作る OperationalTask の
     module-prefixed task type を `TaskTypeRegistry` に登録し、DB/API 実装前に作成 gate と
