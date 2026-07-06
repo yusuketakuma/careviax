@@ -2322,6 +2322,51 @@ describe('getPatientTimelineData', () => {
     ]) {
       expect(serializedEvents).not.toContain(`/prescriptions/${rawPrescriptionId}`);
     }
+    expect(serializedEvents).not.toContain('山田医師');
+    expect(serializedEvents).not.toContain('山田内科');
+    expect(serializedEvents).not.toContain('テスト薬');
+    expect(serializedEvents).not.toContain('14錠');
+    expect(serializedEvents).not.toContain('用量確認');
+    expect(serializedEvents).not.toContain('用量を確認しました');
+    expect(db.visitRecord.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.not.objectContaining({
+          cancellation_reason: true,
+          postpone_reason: true,
+          revisit_reason: true,
+        }),
+      }),
+    );
+    expect(db.prescriptionIntake.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.not.objectContaining({
+          prescriber_name: true,
+          prescriber_institution: true,
+          original_collected_by: true,
+          lines: expect.anything(),
+        }),
+      }),
+    );
+    expect(db.dispenseResult.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.not.objectContaining({
+          actual_drug_name: true,
+          actual_quantity: true,
+          actual_unit: true,
+          carry_type: true,
+        }),
+      }),
+    );
+    expect(db.inquiryRecord.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.not.objectContaining({
+          reason: true,
+          inquiry_to_physician: true,
+          inquiry_content: true,
+          change_detail: true,
+        }),
+      }),
+    );
   });
 
   it.each(['.', '..'])('rejects exact dot-segment timeline report id %s', async (reportId) => {
@@ -3217,7 +3262,7 @@ describe('getPatientTimelineData', () => {
           category: 'prescription',
           title: '処方せん原本管理を更新',
           summary:
-            '照合 差異あり / 保管 電子保管 / 電子処方箋 取得済み / 引換番号 EP-12345 / 調剤結果 登録済み',
+            '処方せん原本または処方関連文書の操作履歴が記録されました。内容は処方詳細で確認してください。',
           href: '/prescriptions/intake_1',
           action_label: '処方受付を開く',
           status_label: '原本管理',
@@ -3225,6 +3270,7 @@ describe('getPatientTimelineData', () => {
         }),
       ]),
     );
+    expect(JSON.stringify(result?.timeline_events ?? [])).not.toContain('EP-12345');
   });
 
   it('adds prescription original document retention audits to the patient operation timeline', async () => {
@@ -3290,7 +3336,8 @@ describe('getPatientTimelineData', () => {
           event_type: 'operation_history',
           category: 'prescription',
           title: '処方せん画像/PDFを保存',
-          summary: 'ファイル 11111111-1111-4111-8111-111111111111 / 保存先 PH-OSファイル',
+          summary:
+            '処方せん原本または処方関連文書の操作履歴が記録されました。内容は処方詳細で確認してください。',
           href: '/prescriptions/intake_1',
           action_label: '処方受付を開く',
           status: 'prescription_original_document_saved',
@@ -3298,6 +3345,9 @@ describe('getPatientTimelineData', () => {
           actor_name: '佐藤 薬剤師',
         }),
       ]),
+    );
+    expect(JSON.stringify(result?.timeline_events ?? [])).not.toContain(
+      '11111111-1111-4111-8111-111111111111',
     );
     expect(auditLogFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({

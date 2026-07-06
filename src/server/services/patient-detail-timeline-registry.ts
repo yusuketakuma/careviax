@@ -7,10 +7,6 @@ import {
   SCHEDULE_STATUS_LABELS,
   VISIT_OUTCOME_LABELS,
 } from '@/lib/constants/status-labels';
-import {
-  getInquiryPresentationBadges,
-  getInquiryPrimaryDetail,
-} from '@/lib/inquiries/presentation';
 import { CYCLE_STATUS_LABELS } from '@/lib/prescription/cycle-workspace';
 import { buildTasksHref } from '@/lib/dashboard/home-link-builders';
 import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';
@@ -26,7 +22,6 @@ import {
 } from '@/server/services/patient-detail-scope';
 import { buildPatientTimelineConferenceNoteWhere } from '@/server/services/patient-detail-timeline-query';
 import {
-  CARRY_TYPE_LABELS,
   MANAGEMENT_PLAN_STATUS_LABELS,
   PRESCRIPTION_SOURCE_LABELS,
   SELF_REPORT_STATUS_LABELS,
@@ -247,9 +242,6 @@ export const visitRecordsSource = defineTimelineSource<'visitRecords', VisitReco
             visit_date: true,
             outcome_status: true,
             next_visit_suggestion_date: true,
-            cancellation_reason: true,
-            postpone_reason: true,
-            revisit_reason: true,
             created_at: true,
           },
         }),
@@ -261,12 +253,7 @@ export const visitRecordsSource = defineTimelineSource<'visitRecords', VisitReco
       category: 'visit',
       occurred_at: item.visit_date ?? item.created_at,
       title: '訪問記録を登録',
-      summary:
-        compactTimelineValues([
-          item.revisit_reason,
-          item.postpone_reason,
-          item.cancellation_reason,
-        ]).join(' / ') || null,
+      summary: '訪問記録が登録されました。内容は訪問記録で確認してください。',
       href: buildVisitHref(item.id),
       action_label: '訪問記録を開く',
       status: item.outcome_status,
@@ -812,13 +799,7 @@ export const inquiryRecordsSource = defineTimelineSource<'inquiryRecords', Inqui
           take: 8,
           select: {
             id: true,
-            reason: true,
-            inquiry_to_physician: true,
-            inquiry_content: true,
             result: true,
-            proposal_origin: true,
-            residual_adjustment: true,
-            change_detail: true,
             inquired_at: true,
             resolved_at: true,
             created_at: true,
@@ -848,15 +829,7 @@ export const inquiryRecordsSource = defineTimelineSource<'inquiryRecords', Inqui
         category: 'prescription',
         occurred_at: item.resolved_at ?? item.inquired_at ?? item.created_at,
         title: `疑義照会 ${inquiryStatus}`,
-        summary:
-          compactTimelineValues([
-            item.reason,
-            item.inquiry_to_physician,
-            getInquiryPrimaryDetail({
-              inquiryContent: item.inquiry_content,
-              changeDetail: item.change_detail,
-            }),
-          ]).join(' / ') || null,
+        summary: '疑義照会が記録されました。内容は処方詳細で確認してください。',
         href: item.line?.intake?.id ? buildPrescriptionHref(item.line.intake.id) : '/workflow',
         action_label: item.line?.intake?.id ? '処方受付を開く' : 'ワークフローを開く',
         status: item.result ?? 'pending',
@@ -864,11 +837,6 @@ export const inquiryRecordsSource = defineTimelineSource<'inquiryRecords', Inqui
         actor_name: null,
         metadata: compactTimelineValues([
           item.inquired_at ? `照会 ${formatTimelineDate(item.inquired_at)}` : null,
-          ...getInquiryPresentationBadges({
-            proposalOrigin:
-              item.proposal_origin === 'pre_issuance' ? 'pre_issuance' : 'post_inquiry',
-            residualAdjustment: item.residual_adjustment,
-          }),
         ]),
       };
     }),
@@ -898,19 +866,10 @@ export const prescriptionIntakesSource = defineTimelineSource<
             id: true,
             source_type: true,
             prescribed_date: true,
-            prescriber_name: true,
-            prescriber_institution: true,
-            original_collected_by: true,
             created_at: true,
             cycle: {
               select: {
                 overall_status: true,
-              },
-            },
-            lines: {
-              take: 3,
-              select: {
-                id: true,
               },
             },
           },
@@ -925,7 +884,6 @@ export const prescriptionIntakesSource = defineTimelineSource<
       summary:
         compactTimelineValues([
           PRESCRIPTION_SOURCE_LABELS[item.source_type] ?? item.source_type,
-          item.prescriber_name ?? item.prescriber_institution,
           formatTimelineDate(item.prescribed_date)
             ? `処方日 ${formatTimelineDate(item.prescribed_date)}`
             : null,
@@ -934,10 +892,8 @@ export const prescriptionIntakesSource = defineTimelineSource<
       action_label: '処方受付を開く',
       status: item.cycle.overall_status,
       status_label: CYCLE_STATUS_LABELS[item.cycle.overall_status] ?? item.cycle.overall_status,
-      actor_name: item.original_collected_by ?? null,
-      metadata: compactTimelineValues([
-        item.lines.length > 0 ? `${item.lines.length}剤まで表示` : null,
-      ]),
+      actor_name: null,
+      metadata: [],
     })),
 });
 
@@ -967,10 +923,6 @@ export const dispenseResultsSource = defineTimelineSource<
           take: 12,
           select: {
             id: true,
-            actual_drug_name: true,
-            actual_quantity: true,
-            actual_unit: true,
-            carry_type: true,
             dispensed_by: true,
             dispensed_at: true,
             task: {
@@ -1001,12 +953,7 @@ export const dispenseResultsSource = defineTimelineSource<
       category: 'prescription',
       occurred_at: item.dispensed_at,
       title: '調剤を記録',
-      summary:
-        compactTimelineValues([
-          item.actual_drug_name,
-          `${item.actual_quantity}${item.actual_unit ?? ''}`,
-          CARRY_TYPE_LABELS[item.carry_type] ?? item.carry_type,
-        ]).join(' / ') || null,
+      summary: '調剤結果が記録されました。内容は処方詳細で確認してください。',
       href: buildPrescriptionHref(item.line.intake.id),
       action_label: '処方記録を開く',
       status: item.task.cycle?.overall_status ?? 'dispensed',

@@ -41,7 +41,52 @@
 
 ## 直近の land（本日・要点）
 
-- codex: MOV-001 first visit document timeline hardening（作業中）。
+- codex: MOV-001 visit/prescription occurrence-only timeline hardening（作業中）。
+  - current task:
+    ユーザー方針「処方・訪問・文書登録があったことが timeline で確認できればよい。
+    詳細は deep link で確認する」を、旧 `timeline_events` payload の処方・訪問 source にも適用する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail.test.ts`,
+    `src/server/services/patient-movement-timeline-presenter.test.ts`,
+    `Plans.md`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail.test.ts`.
+  - implementation:
+    `visitRecord` source から訪問理由/延期理由/中止理由を外し、controlled summary + `/visits/:id`
+    deep link に統一。`inquiryRecord` source から reason / physician / inquiry body / change detail
+    を外し、疑義照会があった事実だけを出す。`prescriptionIntake` source から処方医名/医療機関/
+    回収者/行数を外し、`dispenseResult` source から薬剤名/数量/単位/持参区分を外した。
+    `prescription_intake` の `operation_history` summary も、交換番号や file id を出さず controlled
+    summary + 処方詳細 deep link に統一した。
+  - security / PHI reviewed:
+    タイムライン一覧と検索 payload に、処方医名、薬剤名、数量、疑義照会本文、訪問理由、
+    電子処方箋引換番号、処方文書 file id が出ない regression test を追加。
+  - validation:
+    `pnpm vitest run src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.test.ts --reporter=dot --testTimeout=30000`
+    passed: 2 files / 76 tests.
+    `pnpm exec eslint src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts`
+    passed.
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts`
+    passed.
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+    `pnpm boundaries:check` passed: 0 new violations, 7 allowlisted debt imports across 6 files.
+  - remaining:
+    `MOV-001` remains partial for formal `InboundCommunicationSignal`, formal MedicationStock Ledger
+    source, safety finding source, and mobile Playwright smoke.
+  - next action:
+    Scoped commit/push する。
+
+- codex: MOV-001 first visit document timeline hardening（commit 31f9e1849）。
   - current task:
     ユーザー方針「処方・訪問・文書登録があったことが timeline で確認できればよい。
     詳細は deep link で確認する」に合わせ、初回訪問文書 source を発生確認 + 文書タブ

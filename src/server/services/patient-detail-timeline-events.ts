@@ -126,9 +126,6 @@ export type VisitRecordTimelineSource = {
   visit_date: Date | null;
   outcome_status: string;
   next_visit_suggestion_date: Date | null;
-  cancellation_reason: string | null;
-  postpone_reason: string | null;
-  revisit_reason: string | null;
   created_at: Date;
 };
 
@@ -233,13 +230,7 @@ export type ExternalShareTimelineSource = {
 
 export type InquiryTimelineSource = {
   id: string;
-  reason: string | null;
-  inquiry_to_physician: string | null;
-  inquiry_content: string | null;
   result: string | null;
-  proposal_origin: string | null;
-  residual_adjustment: boolean | null;
-  change_detail: string | null;
   inquired_at: Date | null;
   resolved_at: Date | null;
   created_at: Date;
@@ -250,20 +241,12 @@ export type PrescriptionIntakeTimelineSource = {
   id: string;
   source_type: string;
   prescribed_date: Date | null;
-  prescriber_name: string | null;
-  prescriber_institution: string | null;
-  original_collected_by: string | null;
   created_at: Date;
   cycle: { overall_status: string };
-  lines: Array<{ id: string }>;
 };
 
 export type DispenseResultTimelineSource = {
   id: string;
-  actual_drug_name: string | null;
-  actual_quantity: number;
-  actual_unit: string | null;
-  carry_type: string;
   dispensed_by: string;
   dispensed_at: Date;
   task: { cycle: { overall_status: string } | null };
@@ -606,6 +589,9 @@ function buildOperationHistorySummary(item: OperationHistoryTimelineSource) {
   const changes = isRecord(item.changes) ? item.changes : {};
   if (item.target_type === 'first_visit_document') {
     return '初回訪問文書の操作履歴が記録されました。内容は共有・文書で確認してください。';
+  }
+  if (item.target_type === 'prescription_intake') {
+    return '処方せん原本または処方関連文書の操作履歴が記録されました。内容は処方詳細で確認してください。';
   }
   const documentAction = isRecord(changes.document_action) ? changes.document_action : {};
   const collection = isRecord(changes.collection) ? changes.collection : {};
