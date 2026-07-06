@@ -1154,9 +1154,8 @@ export function DashboardCockpit({ focusRole = 'common' }: { focusRole?: Dashboa
               </div>
             </div>
             {/*
-             * 右レールはデザイン 01 の 3 点セット(次にやること / 止まっている理由 / 根拠・記録)のみ。
-             * 「チームの会話」: 直近コメントを横断取得するフィード API が無いため
-             * (/api/comments は entity 単位の取得のみ)、第一版ではセクション自体を省略。
+             * 右レールはデザイン 01 の 3 点セットに、横断コメント feed を
+             * TeamConversationPanel として fail-soft に追加する。
              */}
             {detailsReady ? (
               <WorkspaceActionRail

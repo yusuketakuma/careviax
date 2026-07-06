@@ -41,6 +41,38 @@
 
 ## 直近の land（本日・要点）
 
+- codex: DASH-CLEAN-001 dashboard stale comment cleanup.
+  - current task:
+    `DashboardCockpit` の右レールには `TeamConversationPanel` が実装済みだが、近傍コメントに
+    「チームの会話は省略」と残っていたため、現行の fail-soft 横断コメント feed 説明へ更新した。
+    実装挙動は変更していない。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`.
+  - files changed:
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - validation:
+    `pnpm exec vitest run 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx' --reporter=dot --testTimeout=30000`
+    passed: 1 file / 18 tests.
+    `pnpm exec eslint 'src/app/(dashboard)/dashboard/dashboard-cockpit.tsx' 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx'`
+    passed.
+    `pnpm exec prettier --check 'src/app/(dashboard)/dashboard/dashboard-cockpit.tsx' ops/refactor/STATE.md`
+    passed.
+    `pnpm exec prettier --check 'src/app/(dashboard)/dashboard/dashboard-cockpit.tsx' Plans.md ops/refactor/STATE.md`
+    did not pass because existing `Plans.md` table/document formatting is not Prettier-conforming; avoided whole-file
+    rewrite churn for this comment-only slice.
+    `git diff --check -- 'src/app/(dashboard)/dashboard/dashboard-cockpit.tsx' Plans.md ops/refactor/STATE.md`
+    passed.
+  - remaining work:
+    Broader `Plans.md` objective remains open. Dashboard comment cleanup itself has no known remaining work.
+  - next action:
+    Scoped commit this cleanup slice.
+
 - codex: RX-REG-FACET-001 prescription intake source facet aggregation.
   - current task:
     `Plans.md` の `RX-REG-FACET-001` から、処方受付一覧の facet count 多発を小さく削減した。
