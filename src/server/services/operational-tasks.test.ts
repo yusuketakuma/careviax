@@ -200,6 +200,20 @@ describe('upsertOperationalTask', () => {
     expect(call.data.status).toBe('completed');
     expect(call.data.completed_at).toBeInstanceOf(Date);
   });
+
+  it('rejects unregistered task types before writing', async () => {
+    await expect(
+      upsertOperationalTask(tx, {
+        orgId: 'org-1',
+        taskType: 'unknown_task_type',
+        title: 'Unknown task',
+      }),
+    ).rejects.toThrow('Unregistered operational task_type: unknown_task_type');
+
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
+    expect(taskCreateMock).not.toHaveBeenCalled();
+    expect(taskUpsertMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('resolveOperationalTasks', () => {

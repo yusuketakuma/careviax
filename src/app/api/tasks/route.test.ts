@@ -875,6 +875,26 @@ describe('/api/tasks', () => {
     expect(taskCreateMock).not.toHaveBeenCalled();
   });
 
+  it('rejects unregistered task types before resolving assignment scope', async () => {
+    const response = await POST(
+      createRequest('http://localhost/api/tasks', {
+        task_type: 'unknown_task_type',
+        title: '未登録種別',
+      }),
+    );
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '未登録のタスク種別です',
+    });
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
+    expect(taskCreateMock).not.toHaveBeenCalled();
+  });
+
   it('rejects malformed JSON create payloads before resolving assignment scope', async () => {
     const response = await POST(createMalformedJsonRequest('http://localhost/api/tasks'));
     if (!response) throw new Error('response is undefined');

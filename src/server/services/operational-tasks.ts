@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { describeOperationalTask as describeOperationalTaskShared } from '@/lib/tasks/operational-task-presentation';
 import { allocateDisplayId } from '@/lib/db/display-id';
+import { assertRegisteredOperationalTaskType, type TaskPriority } from '@/lib/tasks/task-registry';
 
 type Tx = {
   task: {
@@ -27,7 +28,6 @@ type TaskDisplayIdReader = {
   };
 };
 
-export type TaskPriority = 'urgent' | 'high' | 'normal' | 'low';
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
 
 export type UpsertOperationalTaskInput = {
@@ -121,6 +121,7 @@ async function ensureTaskDisplayId(
 
 export async function upsertOperationalTask(tx: Tx, input: UpsertOperationalTaskInput) {
   const nextStatus = input.status ?? 'pending';
+  const taskType = assertRegisteredOperationalTaskType(input.taskType);
 
   if (input.dedupeKey) {
     const task = (await tx.task.upsert({
@@ -132,7 +133,7 @@ export async function upsertOperationalTask(tx: Tx, input: UpsertOperationalTask
       },
       create: {
         org_id: input.orgId,
-        task_type: input.taskType,
+        task_type: taskType,
         title: input.title,
         description: input.description ?? null,
         priority: input.priority ?? 'normal',
@@ -147,7 +148,7 @@ export async function upsertOperationalTask(tx: Tx, input: UpsertOperationalTask
         ...(nextStatus === 'completed' ? { completed_at: new Date() } : {}),
       },
       update: {
-        task_type: input.taskType,
+        task_type: taskType,
         title: input.title,
         description: input.description ?? null,
         priority: input.priority ?? 'normal',
@@ -177,7 +178,7 @@ export async function upsertOperationalTask(tx: Tx, input: UpsertOperationalTask
     data: {
       org_id: input.orgId,
       display_id: displayId,
-      task_type: input.taskType,
+      task_type: taskType,
       title: input.title,
       description: input.description ?? null,
       priority: input.priority ?? 'normal',

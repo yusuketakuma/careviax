@@ -2,12 +2,6 @@
   "description": "共通コア (訪問/患者/ケア/報告/タスク/監査/通知/ファイル/連絡/会議/協働 のワークフロー基盤) が薬局固有ドメイン (処方/調剤/薬剤マスタ/PCA/セット/薬/QR/薬局) を import している既存負債の台帳。tools/scripts/check-module-boundaries.mjs が ratchet の起点として使う。各エントリはファイル単位で、expectedCount = そのファイル内の境界跨ぎ import 行数。負債の増減時は expectedCount を更新すること。新規ファイルの境界跨ぎ import は原則ここに追加せず、依存方向を反転させるか共有型を薬局非依存の場所へ切り出すこと。targets は該当 import 先の記録 (informational)。",
   "entries": [
     {
-      "path": "src/lib/tasks/operational-task-presentation.ts",
-      "expectedCount": 1,
-      "reason": "運用タスク表示が処方サイクルへのナビゲーション補助 (prescriptions/navigation) を参照している既存負債。将来はタスク側から薬局固有 URL 生成を切り離す。",
-      "targets": ["@/lib/prescriptions/navigation"]
-    },
-    {
       "path": "src/server/services/patient-detail-timeline-events.ts",
       "expectedCount": 1,
       "reason": "患者詳細タイムラインが処方ナビゲーション (prescriptions/navigation) を参照している既存負債。イベント整形が薬局固有リンク生成に依存している。",

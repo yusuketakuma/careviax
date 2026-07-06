@@ -13,6 +13,7 @@ import { internalError, success, validationError } from '@/lib/api/response';
 import { readStrictOptionalSearchParam } from '@/lib/api/search-params';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { canCompleteTaskInline } from '@/lib/tasks/inline-completion';
+import { isRegisteredTaskType } from '@/lib/tasks/task-registry';
 import { createTaskSchema, taskPriorityValues, taskStatusValues } from '@/lib/validations/task';
 import {
   type DashboardAssignmentScope,
@@ -393,6 +394,11 @@ async function authenticatedPOST(req: NextRequest) {
   const parsed = createTaskSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+  }
+  if (!isRegisteredTaskType(parsed.data.task_type)) {
+    return validationError('未登録のタスク種別です', {
+      task_type: ['未登録のタスク種別です'],
+    });
   }
   const assignmentScope = await resolveDashboardAssignmentScope({
     db: prisma,

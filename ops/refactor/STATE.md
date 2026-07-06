@@ -41,6 +41,67 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOD-TASK-001 Task registry module-prefix ratchet.
+  - current task:
+    `Plans.md` の `MOD-TASK-001` に沿って、既存 `src/lib/tasks/task-registry.ts` を
+    TaskTypeRegistry のSSOTへ拡張した。DB migration は行わず、既存DBにある prefixなし
+    `task_type` は legacy alias として互換維持しつつ、canonical task type は
+    `core.*` / `pharmacy.*` の module prefix 付きで定義した。bounded subagent review は
+    thread limit により起動できなかったため、既存 `MOD-COLLAB-001` / `MOD-RISK-001` pattern、
+    `Plans.md` acceptance、focused tests で local review した。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `src/lib/tasks/task-registry.ts`,
+    `src/lib/tasks/operational-task-presentation.ts`,
+    `src/lib/tasks/operational-task-presentation.test.ts`,
+    `src/server/services/operational-tasks.ts`,
+    `src/server/services/operational-tasks.test.ts`,
+    `src/server/services/risk-task-bridge.ts`,
+    `src/app/api/tasks/route.ts`,
+    `src/app/api/tasks/route.test.ts`,
+    `src/lib/validations/task.ts`,
+    `tools/module-boundary-allowlist.json`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/lib/tasks/task-registry.ts`,
+    `src/lib/tasks/task-registry.test.ts`,
+    `src/lib/tasks/operational-task-presentation.ts`,
+    `src/server/services/operational-tasks.ts`,
+    `src/server/services/operational-tasks.test.ts`,
+    `src/server/services/risk-task-bridge.ts`,
+    `src/app/api/tasks/route.ts`,
+    `src/app/api/tasks/route.test.ts`,
+    `tools/module-boundary-allowlist.json`.
+  - bugs / risks reduced:
+    task type / action href / pharmacy URL generation が `operational-task-presentation.ts` の巨大 switch に
+    hardcode されていた負債を、module owner と legacy alias を持つ registry definition へ移した。
+    `/api/tasks` POST と `upsertOperationalTask` は registry外 `task_type` を作成前に拒否する。
+    legacy task type は読み取り/作成互換を維持し、canonical module-prefixed type も registryで解決できる。
+    `risk-task-bridge` は `TaskPriority` type を registry 側SSOTから参照する。`task-registry.ts` は
+    `prescriptions/navigation` を importせず、同じ `/prescriptions/:id` URL contract をローカル encoderで
+    維持したため、`operational-task-presentation.ts` の allowlist debt を削除できた。
+  - validation:
+    `pnpm vitest run src/lib/tasks/task-registry.test.ts src/lib/tasks/operational-task-presentation.test.ts src/server/services/operational-tasks.test.ts src/app/api/tasks/route.test.ts`
+    passed: 4 files / 112 tests.
+    `pnpm eslint src/lib/tasks/task-registry.ts src/lib/tasks/task-registry.test.ts src/lib/tasks/operational-task-presentation.ts src/lib/tasks/operational-task-presentation.test.ts src/server/services/operational-tasks.ts src/server/services/operational-tasks.test.ts src/server/services/risk-task-bridge.ts src/app/api/tasks/route.ts src/app/api/tasks/route.test.ts`
+    passed.
+    `pnpm prettier --write ...` applied formatting to touched files.
+    `pnpm prettier --check src/lib/tasks/task-registry.ts src/lib/tasks/task-registry.test.ts src/lib/tasks/operational-task-presentation.ts src/lib/tasks/operational-task-presentation.test.ts src/server/services/operational-tasks.ts src/server/services/operational-tasks.test.ts src/server/services/risk-task-bridge.ts src/app/api/tasks/route.ts src/app/api/tasks/route.test.ts tools/module-boundary-allowlist.json Plans.md ops/refactor/STATE.md`
+    passed.
+    `pnpm boundaries:check` passed: 0 new violations, 16 allowlisted debt imports across 9 files.
+    `pnpm typecheck` passed.
+    `pnpm typecheck:no-unused` failed once with Node heap OOM at default heap, then
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed.
+  - remaining work:
+    `MOD-TASK-001` first slice is complete without DB migration. Later slices should add a migration/backfill plan
+    for canonical storage (`Task.module` / prefixed `task_type`), task-type registry check tooling, and a richer
+    unknown-task audit surface for existing read paths. No deploy, production data mutation, or migration was run.
+  - next action:
+    Re-run format/checks after ledger update, commit/push this task-registry slice, then continue with
+    `MOD-PATIENT-001` or another high-value module debt after live-state verification.
+
 - codex: MOD-RISK-001 RiskFinding provider registry.
   - current task:
     `Plans.md` の `MOD-RISK-001` に沿って、Case Risk Cockpit の risk finding collect sequence を

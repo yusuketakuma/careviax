@@ -4,13 +4,13 @@ import {
   buildRiskTaskDescription,
   buildRiskTaskTitle,
   getRiskTaskRegistryEntry,
+  type TaskPriority,
 } from '@/lib/tasks/task-registry';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import {
   resolveOperationalTasks,
   upsertOperationalTask,
   type ResolveOperationalTaskInput,
-  type TaskPriority,
   type UpsertOperationalTaskInput,
 } from '@/server/services/operational-tasks';
 
