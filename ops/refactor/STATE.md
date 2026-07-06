@@ -41,7 +41,43 @@
 
 ## 直近の land（本日・要点）
 
-- codex: Plans.md implemented-task cleanup pass 2（pending commit）。
+- codex: FE-ERR-001 admin drug-master detail sheet segment hardening（pending commit）。
+  - current task:
+    `/admin/drug-masters` の医薬品詳細 sheet 内の detail / 採用品設定 / 採用後発薬候補 /
+    推奨後発品 / 同一成分グループ / 採用品変更履歴の loading/error を shared segment state に寄せ、
+    raw query error message と false-empty 表示を防ぐ。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/admin/drug-masters/drug-master-detail-sheet.tsx`,
+    `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`,
+    `src/components/ui/segment-state.tsx`.
+  - files changed:
+    `src/app/(dashboard)/admin/drug-masters/drug-master-detail-sheet.tsx`,
+    `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    sheet 内の `SkeletonRows` / `ErrorState` を `SegmentLoading` / `SegmentError` へ移行した。
+    detail query の `Error.message` 直出しを削除し、採用品設定、採用後発薬候補、推奨後発品、
+    同一成分グループ、採用品変更履歴は固定文言 + retry のみにした。
+  - bugs found:
+    医薬品詳細取得失敗時に backend `Error.message` をそのまま表示し得た。
+  - security risks reduced:
+    drug-master detail sheet の失敗表示に patient name、storage_key、token、provider_error、API route が
+    出ないことを focused tests で固定した。
+  - performance issues improved:
+    なし。loading/error state の正確性と fail-soft の修正。
+  - validation:
+    `pnpm exec vitest run 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' src/components/ui/segment-state.test.tsx --reporter=dot --testTimeout=30000` → pass（2 files / 103 tests）。
+    `pnpm exec eslint 'src/app/(dashboard)/admin/drug-masters/drug-master-detail-sheet.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'` → pass。
+  - remaining:
+    FE-ERR-001 は admin screen 群への段階展開が残る。
+    Formal `InboundCommunicationEvent` / `InboundCommunicationSignal` DB/API/review UI and MedicationStock Ledger source remain.
+  - next action:
+    prettier / diff check、scoped commit/push。
+
+- codex: Plans.md implemented-task cleanup pass 2（commit `e7b390e68`, pushed to `main`）。
   - current task:
     `Plans.md` 内の実装済みサブタスク履歴を削除し、未完の親タスクは残作業だけに整理する。
   - files inspected:
@@ -71,7 +107,7 @@
     historical prerequisite notes and external gate context はタスク行ではないため保持。
     `src/app/(dashboard)/admin/drug-masters/*` の既存 dirty は未触及。
   - next action:
-    scoped commit/push。
+    done。
 
 - codex: FE-ERR-001 admin service-areas segment hardening（pending commit）。
   - current task:

@@ -176,7 +176,15 @@ vi.mock('@tanstack/react-query', () => ({
         refetch = vi.fn();
         refetchSpies.set(failedKey, refetch);
       }
-      return { data: staleQueryDataByKey.get(failedKey), isLoading: false, isError: true, refetch };
+      return {
+        data: staleQueryDataByKey.get(failedKey),
+        isLoading: false,
+        isError: true,
+        error: new Error(
+          `GET /api/${failedKey}?patient=田中一郎&storage_key=s3://phi-bucket/raw&token=secret&provider_error=stack`,
+        ),
+        refetch,
+      };
     }
     if (loadingKey) {
       return { data: undefined, isLoading: true, isError: false, refetch: vi.fn() };
@@ -2999,6 +3007,19 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
     refetchSpies.clear();
   });
 
+  function expectUnsafeBackendDetailNotRendered() {
+    for (const unsafeText of [
+      '田中一郎',
+      'storage_key',
+      's3://phi-bucket/raw',
+      'token=secret',
+      'provider_error',
+      'GET /api/',
+    ]) {
+      expect(screen.queryByText((content) => content.includes(unsafeText))).toBeNull();
+    }
+  }
+
   it('keeps API messages from failed core read queries', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -3281,6 +3302,17 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
     expect(screen.queryByText('医薬品詳細の取得に失敗しました')).toBeNull();
   });
 
+  it('shows a sanitized drug detail error instead of the raw backend error detail', () => {
+    queuePendingFormularyRequest();
+    queryErrorKeys.add('drug-master-detail');
+
+    render(<DrugMasterContent variant="formulary" />);
+    fireEvent.click(screen.getByText('採用追加'));
+
+    expect(screen.getByText('医薬品詳細を取得できませんでした')).toBeTruthy();
+    expectUnsafeBackendDetailNotRendered();
+  });
+
   it('uses an announced skeleton while the stock config panel loads', () => {
     queuePendingFormularyRequest();
     detailDataMock.current = buildGenericDetail();
@@ -3407,6 +3439,7 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
 
     expect(screen.getByText('推奨後発品を読み込めませんでした')).toBeTruthy();
     expect(screen.getByText('同一成分グループを読み込めませんでした')).toBeTruthy();
+    expectUnsafeBackendDetailNotRendered();
 
     screen.getAllByRole('button', { name: '再読み込み' }).forEach((button) => {
       fireEvent.click(button);
@@ -3424,6 +3457,7 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
     fireEvent.click(screen.getByText('採用追加'));
 
     expect(screen.getByText('採用品設定を読み込めませんでした')).toBeTruthy();
+    expectUnsafeBackendDetailNotRendered();
     expect(screen.queryByText('未登録')).toBeNull();
     expect(screen.queryByText('この薬を採用品として登録できます。')).toBeNull();
     expect(screen.queryByRole('button', { name: '採用品に登録' })).toBeNull();
@@ -3442,6 +3476,7 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
     fireEvent.click(screen.getByText('採用追加'));
 
     expect(screen.getByText('採用品変更履歴を読み込めませんでした')).toBeTruthy();
+    expectUnsafeBackendDetailNotRendered();
     expect(screen.queryByText('この薬剤の採用品変更履歴はまだありません。')).toBeNull();
 
     fireEvent.click(screen.getAllByRole('button', { name: '再読み込み' })[0]);
@@ -3469,6 +3504,7 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
     fireEvent.click(screen.getByText('採用追加'));
 
     expect(screen.getByText('採用後発薬候補を読み込めませんでした')).toBeTruthy();
+    expectUnsafeBackendDetailNotRendered();
 
     fireEvent.click(screen.getAllByRole('button', { name: '再読み込み' })[0]);
     expect(refetchSpies.get('preferred-generic-candidates')).toHaveBeenCalled();

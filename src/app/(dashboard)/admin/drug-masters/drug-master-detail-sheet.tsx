@@ -3,10 +3,9 @@
 import { type RefObject } from 'react';
 import { CheckCircle2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { LoadingButton } from '@/components/ui/loading-button';
-import { SkeletonRows } from '@/components/ui/loading';
+import { SegmentError, SegmentLoading } from '@/components/ui/segment-state';
 import { PageSection } from '@/components/layout/page-section';
 import {
   Select,
@@ -193,15 +192,18 @@ export function DrugMasterDetailSheet({
 
         <div className="space-y-6 p-4">
           {detailQuery.isLoading ? (
-            <div role="status" aria-label="医薬品詳細を読み込み中" aria-live="polite">
-              <SkeletonRows rows={4} cols={2} status={false} />
-            </div>
+            <SegmentLoading
+              label="医薬品詳細を読み込み中"
+              description="選択した医薬品の添付文書要約と相互作用を確認しています。"
+              rows={4}
+              cols={2}
+            />
           ) : detailQuery.isError ? (
-            <p className="text-sm text-state-blocked">
-              {detailQuery.error instanceof Error
-                ? detailQuery.error.message
-                : '医薬品詳細の取得に失敗しました'}
-            </p>
+            <SegmentError
+              title="医薬品詳細を取得できませんでした"
+              cause="選択した医薬品の詳細を取得できませんでした。"
+              nextAction="再読み込みして、添付文書要約と相互作用を確認してください。"
+            />
           ) : detailQuery.data ? (
             // 親の narrowing（detailQuery.data）を IIFE 引数として束縛し、非 optional な
             // drugDetail を closure（onClick/mutate）内でも維持する（typecheck 保存）。
@@ -216,16 +218,17 @@ export function DrugMasterDetailSheet({
                       先に対象拠点を選択してください。
                     </p>
                   ) : stockConfigQuery.isLoading ? (
-                    <div role="status" aria-label="採用品設定を読み込み中" aria-live="polite">
-                      <SkeletonRows rows={3} cols={3} status={false} />
-                    </div>
+                    <SegmentLoading
+                      label="採用品設定を読み込み中"
+                      description="採用品状態、在庫下限、採用後発薬を確認しています。"
+                      rows={3}
+                      cols={3}
+                    />
                   ) : stockConfigQuery.isError ? (
-                    <ErrorState
-                      variant="server"
-                      size="inline"
-                      headingLevel={3}
+                    <SegmentError
                       title="採用品設定を読み込めませんでした"
-                      description="採用品状態、在庫下限、採用後発薬を表示できていません。未登録ではなく取得エラーです。再読み込みしてください。"
+                      cause="採用品状態、在庫下限、採用後発薬を表示できていません。"
+                      nextAction="未登録ではなく取得エラーです。再読み込みしてください。"
                       onRetry={() => void stockConfigQuery.refetch()}
                       retryLabel="再読み込み"
                       className="px-4 py-6"
@@ -350,24 +353,20 @@ export function DrugMasterDetailSheet({
                             </SelectContent>
                           </Select>
                           {preferredGenericCandidatesQuery.isError ? (
-                            <ErrorState
-                              variant="server"
-                              size="inline"
-                              headingLevel={3}
+                            <SegmentError
                               title="採用後発薬候補を読み込めませんでした"
-                              description="採用後発薬の候補を表示できていません。候補なしではなく取得エラーです。再読み込みしてください。"
+                              cause="採用後発薬の候補を表示できていません。"
+                              nextAction="候補なしではなく取得エラーです。再読み込みしてください。"
                               onRetry={() => void preferredGenericCandidatesQuery.refetch()}
                               retryLabel="再読み込み"
                               className="px-4 py-6"
                             />
                           ) : null}
                           {genericRecommendationsQuery.isError ? (
-                            <ErrorState
-                              variant="server"
-                              size="inline"
-                              headingLevel={3}
+                            <SegmentError
                               title="推奨後発品を読み込めませんでした"
-                              description="推奨候補を表示できていません。候補なしではなく取得エラーです。再読み込みしてください。"
+                              cause="推奨候補を表示できていません。"
+                              nextAction="候補なしではなく取得エラーです。再読み込みしてください。"
                               onRetry={() => void genericRecommendationsQuery.refetch()}
                               retryLabel="再読み込み"
                               className="px-4 py-6"
@@ -628,14 +627,13 @@ export function DrugMasterDetailSheet({
                     description="同一一般名の薬剤、後発品、採用済み数、薬価帯を比較します。"
                   >
                     {ingredientGroupQuery.isError ? (
-                      <ErrorState
-                        variant="server"
-                        size="inline"
-                        headingLevel={3}
+                      <SegmentError
                         title="同一成分グループを読み込めませんでした"
-                        description="同一一般名の比較データを表示できていません。未設定ではなく取得エラーです。再読み込みしてください。"
+                        cause="同一一般名の比較データを表示できていません。"
+                        nextAction="未設定ではなく取得エラーです。再読み込みしてください。"
                         onRetry={() => void ingredientGroupQuery.refetch()}
                         retryLabel="再読み込み"
+                        className="px-4 py-6"
                       />
                     ) : ingredientGroup && ingredientGroup.summary ? (
                       <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
@@ -710,16 +708,17 @@ export function DrugMasterDetailSheet({
                       対象拠点を選択すると採用品の変更履歴を確認できます。
                     </p>
                   ) : stockHistoryQuery.isLoading ? (
-                    <div role="status" aria-label="採用品履歴を読み込み中" aria-live="polite">
-                      <SkeletonRows rows={3} cols={3} status={false} />
-                    </div>
+                    <SegmentLoading
+                      label="採用品履歴を読み込み中"
+                      description="採用品変更、CSV反映、承認操作の履歴を確認しています。"
+                      rows={3}
+                      cols={3}
+                    />
                   ) : stockHistoryQuery.isError ? (
-                    <ErrorState
-                      variant="server"
-                      size="inline"
-                      headingLevel={3}
+                    <SegmentError
                       title="採用品変更履歴を読み込めませんでした"
-                      description="採用品変更履歴を表示できていません。履歴なしではなく取得エラーです。再読み込みしてください。"
+                      cause="採用品変更履歴を表示できていません。"
+                      nextAction="履歴なしではなく取得エラーです。再読み込みしてください。"
                       onRetry={() => void stockHistoryQuery.refetch()}
                       retryLabel="再読み込み"
                       className="px-4 py-6"
