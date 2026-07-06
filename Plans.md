@@ -1053,6 +1053,8 @@ FE 仕上げ（低優先）:
   日本語 request_type などの自由記述は audit filters へ残さない。
   追加 partial として、訪問候補の一括承認/却下 button と確認 dialog を
   「表示中から選択したN件の訪問候補」へ変更し、表示中 selection scope を screen-level test で固定した。
+  追加 partial として、報告書詳細の共有先一括送付 button を「選択した共有先N件へ一括送付」へ変更し、
+  共有先 selection scope を screen-level test で固定した。
   残: real consumer の screen-level PHI export snapshot、他 bulk action consumer の選択範囲文言 sweep。
 
 **追加実装順序**:

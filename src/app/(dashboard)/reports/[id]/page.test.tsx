@@ -682,7 +682,7 @@ describe('ReportDetailPage send safety dialog', () => {
     expect(screen.getByText('共有先')).toBeTruthy();
     expect(screen.getByText('報告内容')).toBeTruthy();
     expect(screen.getByText('送付前チェック')).toBeTruthy();
-    const submitButton = screen.getByRole('button', { name: '一括送付（1件）' });
+    const submitButton = screen.getByRole('button', { name: '選択した共有先1件へ一括送付' });
     expect(
       screen
         .getByText('未確認: 薬剤師確認済み、宛先が設定済み、添付資料あり、患者情報の出しすぎなし')
@@ -692,7 +692,9 @@ describe('ReportDetailPage send safety dialog', () => {
 
     fireEvent.click(screen.getByRole('checkbox', { name: /鈴木 医師 を共有先に含める/ }));
 
-    const unselectedSubmitButton = screen.getByRole('button', { name: '一括送付（0件）' });
+    const unselectedSubmitButton = screen.getByRole('button', {
+      name: '選択した共有先0件へ一括送付',
+    });
     expect(screen.getByText('共有先を1件以上選択してください').getAttribute('role')).toBe('alert');
     expect(unselectedSubmitButton.getAttribute('aria-describedby')).toContain(
       'report-composer-recipient-error',
@@ -1709,7 +1711,7 @@ describe('ReportDetailPage send safety dialog', () => {
     const composer = screen.getByTestId('report-composer');
     expect(within(composer).getByText('他職種候補を読み込めませんでした')).toBeTruthy();
     expect(within(composer).queryByText('送付可能な共有先候補がありません。')).toBeNull();
-    expect(within(composer).getByText('一括送付（1件）')).toBeTruthy();
+    expect(within(composer).getByText('選択した共有先1件へ一括送付')).toBeTruthy();
     fireEvent.click(within(composer).getByRole('button', { name: '候補を再読み込み' }));
     expect(refetch).toHaveBeenCalledTimes(1);
   });
@@ -1784,6 +1786,6 @@ describe('ReportDetailPage send safety dialog', () => {
     expect((createButton as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(createButton);
 
-    expect(screen.getByText('一括送付（2件）')).toBeTruthy();
+    expect(screen.getByText('選択した共有先2件へ一括送付')).toBeTruthy();
   });
 });

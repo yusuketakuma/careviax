@@ -1371,7 +1371,7 @@ export default function ReportDetailPage() {
                     <Send className="mr-1.5 size-3.5" aria-hidden="true" />
                     {bulkSendMutation.isPending
                       ? '送付中...'
-                      : `一括送付（${selectedShareTargets.length}件）`}
+                      : `選択した共有先${selectedShareTargets.length}件へ一括送付`}
                   </Button>
                 </section>
               </div>
