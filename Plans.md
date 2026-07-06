@@ -1032,6 +1032,14 @@ FE 仕上げ（低優先）:
   残: Case Risk Cockpit への接続、patient_ids batch detail endpoint、chip/foundation facet count endpoint、
   route payload budget / browser smoke。
 
+- `UX-TBL-001 / DEV-PHI-001` partial（2026-07-06）: shared `DataTable` の
+  `enablePagination + hasMore` 併用時に、読込済み cursor 行を「全N件中」と表示する false-all
+  リスクを解消した。`hasMore=true` では pagination summary を「読込済みN件中 ... 未読込行あり」
+  に切り替え、load-more が残る状態を単体テストで固定する。新規レイアウト再構築ではなく
+  既存 component の scope wording contract 修正のため `imagegen` / `gpt-image-2` 生成は省略。
+  残: `serverExportEndpoint` を raw string ではなく audit/masking registry backed descriptor へ寄せること、
+  real consumer の screen-level PHI export snapshot、bulk action button 側の選択範囲文言テスト。
+
 **追加実装順序**:
 
 1. `UX-CMD-001` + `PERF-BFF-001`: Command Center は重い詳細BFFになりやすいため、最初から summary/detail batch 分割を前提に設計する。

@@ -879,8 +879,9 @@ export function DataTable<TData>({
           data-testid="data-table-pagination"
         >
           <p className="text-xs text-muted-foreground" data-testid="data-table-pagination-summary">
-            全{fullRows.length}件中 {currentPageStart}〜{currentPageEnd}件を表示（
-            {currentPageNumber}/{currentPageCount}ページ）
+            {hasMore ? '読込済み' : '全'}
+            {fullRows.length}件中 {currentPageStart}〜{currentPageEnd}件を表示（
+            {currentPageNumber}/{currentPageCount}ページ{hasMore ? '、未読込行あり' : ''}）
           </p>
           <div className="flex items-center gap-2">
             <Button

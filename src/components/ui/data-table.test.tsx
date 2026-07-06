@@ -666,6 +666,30 @@ describe('DataTable', () => {
     );
   });
 
+  it('does not call loaded cursor rows the full total when pagination and load-more are combined', () => {
+    const manyRows: RowData[] = Array.from({ length: 250 }, (_, index) => ({
+      id: `row-${index}`,
+      name: `患者 ${index.toString().padStart(3, '0')}`,
+    }));
+
+    render(
+      <DataTable
+        columns={columns}
+        data={manyRows}
+        enablePagination
+        pageSize={100}
+        hasMore
+        onLoadMore={vi.fn()}
+      />,
+    );
+
+    const summary = screen.getByTestId('data-table-pagination-summary');
+    expect(summary.textContent).toContain('読込済み250件中');
+    expect(summary.textContent).toContain('未読込行あり');
+    expect(summary.textContent).not.toContain('全250件中');
+    expect(screen.getByRole('button', { name: 'さらに表示' })).toBeTruthy();
+  });
+
   it('uses a table-specific load-more loading label instead of generic loading copy', () => {
     render(
       <DataTable
