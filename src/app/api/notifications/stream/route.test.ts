@@ -128,6 +128,10 @@ describe('/api/notifications/stream', () => {
     const response = (await GET(streamRequest(controller.signal)))!;
 
     expect(response.headers.get('Content-Type')).toBe('text/event-stream');
+    expect(response.headers.get('Cache-Control')).toContain('no-store');
+    expect(response.headers.get('Cache-Control')).toContain('no-cache');
+    expect(response.headers.get('Cache-Control')).toContain('no-transform');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     const reader = response.body?.getReader();
     if (!reader) throw new Error('reader is required');
     const firstChunk = await reader.read();
@@ -159,6 +163,7 @@ describe('/api/notifications/stream', () => {
     const response = (await GET(streamRequest(new AbortController().signal)))!;
 
     expect(response.status).toBe(429);
+    expect(response.headers.get('Cache-Control')).toContain('no-store');
     await expect(response.json()).resolves.toMatchObject({
       code: 'SSE_CONNECTION_LIMIT',
     });
@@ -315,7 +320,7 @@ describe('/api/notifications/stream', () => {
     await flushAsyncWork();
   });
 
-  it('keeps user-channel notification payloads intact', async () => {
+  it('normalizes user-channel notification payloads before streaming', async () => {
     const { controller, reader } = await openStreamForTest();
     const userListener = subscribeToChannelMock.mock.calls.find(
       ([channel]) => channel === 'user:user_1',
@@ -325,19 +330,53 @@ describe('/api/notifications/stream', () => {
     userListener([
       {
         id: 'notification_1',
-        type: 'visit',
+        type: 'business',
+        title: '患者対応',
         message: '訪問予定が更新されました',
+        link: '/notifications?tab=unread',
+        created_at: '2026-04-01T00:00:00.000Z',
+        is_read: false,
+        patient_name: '山田花子',
+        address: '東京都千代田区丸の内1-1-1',
+        phone: '090-1234-5678',
+        drug_name: 'モルヒネ硫酸塩徐放錠10mg',
+        raw_message: '患者 山田花子 090-1234-5678',
+        metadata: { token: 'raw-token-secret' },
+        provider_error: 'storage_key=org_1/patients/patient_1/reports/report_1.pdf',
+        token: 'raw-token-secret',
+        storage_key: 'org_1/patients/patient_1/reports/report_1.pdf',
+        signed_url: 'https://s3.example.test/file?X-Amz-Signature=secret',
+      },
+    ]);
+
+    const payload = await readSseData(reader);
+    expect(payload).toEqual([
+      {
+        id: 'notification_1',
+        type: 'business',
+        title: '患者対応',
+        message: '訪問予定が更新されました',
+        link: '/notifications?tab=unread',
         created_at: '2026-04-01T00:00:00.000Z',
         is_read: false,
       },
     ]);
-
-    await expect(readSseData(reader)).resolves.toEqual([
-      expect.objectContaining({
-        id: 'notification_1',
-        message: '訪問予定が更新されました',
-      }),
-    ]);
+    const serialized = JSON.stringify(payload);
+    for (const forbidden of [
+      '山田花子',
+      '東京都千代田区',
+      '090-1234-5678',
+      '硫酸塩徐放錠',
+      'raw_message',
+      'metadata',
+      'provider_error',
+      'raw-token-secret',
+      'storage_key',
+      'signed_url',
+      'X-Amz-Signature',
+    ]) {
+      expect(serialized).not.toContain(forbidden);
+    }
 
     controller.abort();
     await flushAsyncWork();
@@ -473,6 +512,15 @@ describe('/api/notifications/stream', () => {
             lte: expect.any(Date),
           }),
         }),
+        select: {
+          id: true,
+          type: true,
+          title: true,
+          message: true,
+          link: true,
+          is_read: true,
+          created_at: true,
+        },
         orderBy: { created_at: 'desc' },
         take: 10,
       }),
@@ -482,6 +530,87 @@ describe('/api/notifications/stream', () => {
     expect(firstCall?.where.created_at.lte.getTime()).toBeGreaterThan(
       firstCall?.where.created_at.gt.getTime(),
     );
+
+    controller.abort();
+    await vi.runOnlyPendingTimersAsync();
+  });
+
+  it('normalizes DB safety poll notifications before streaming', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-01T00:00:00.000Z'));
+    subscribeToChannelMock.mockRejectedValue(new Error('realtime unavailable'));
+    notificationFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'notification_db_1',
+        type: 'urgent',
+        title: '患者対応',
+        message: '訪問前確認があります',
+        link: '/notifications',
+        is_read: false,
+        created_at: new Date('2026-04-01T00:00:04.000Z'),
+        patient_name: '山田花子',
+        address: '東京都千代田区丸の内1-1-1',
+        phone: '090-1234-5678',
+        drug_name: 'モルヒネ硫酸塩徐放錠10mg',
+        raw_message: '患者 山田花子 090-1234-5678',
+        metadata: { token: 'raw-token-secret' },
+        provider_error: 'storage_key=org_1/patients/patient_1/reports/report_1.pdf',
+        token: 'raw-token-secret',
+        storage_key: 'org_1/patients/patient_1/reports/report_1.pdf',
+        signed_url: 'https://s3.example.test/file?X-Amz-Signature=secret',
+      },
+    ]);
+
+    const controller = new AbortController();
+    const response = (await GET(streamRequest(controller.signal)))!;
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('reader is required');
+    await reader.read();
+
+    vi.setSystemTime(new Date('2026-04-01T00:00:05.000Z'));
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(notificationFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: {
+          id: true,
+          type: true,
+          title: true,
+          message: true,
+          link: true,
+          is_read: true,
+          created_at: true,
+        },
+      }),
+    );
+    const payload = await readSseData(reader);
+    expect(payload).toEqual([
+      {
+        id: 'notification_db_1',
+        type: 'urgent',
+        title: '患者対応',
+        message: '訪問前確認があります',
+        link: '/notifications',
+        is_read: false,
+        created_at: '2026-04-01T00:00:04.000Z',
+      },
+    ]);
+    const serialized = JSON.stringify(payload);
+    for (const forbidden of [
+      '山田花子',
+      '東京都千代田区',
+      '090-1234-5678',
+      '硫酸塩徐放錠',
+      'raw_message',
+      'metadata',
+      'provider_error',
+      'raw-token-secret',
+      'storage_key',
+      'signed_url',
+      'X-Amz-Signature',
+    ]) {
+      expect(serialized).not.toContain(forbidden);
+    }
 
     controller.abort();
     await vi.runOnlyPendingTimersAsync();

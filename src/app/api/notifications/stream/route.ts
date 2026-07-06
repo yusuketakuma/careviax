@@ -5,6 +5,7 @@ import { logger } from '@/lib/utils/logger';
 import { acquireSseConnection, releaseSseConnection } from '@/lib/api/rate-limit';
 import { getRealtimeAdapter } from '@/server/adapters/realtime';
 import { sanitizeOrgRealtimeEvent } from '@/server/services/org-realtime';
+import { normalizeNotificationStreamPayload } from '@/lib/notifications/stream-payload';
 import {
   buildCollaborationRoomName,
   canAccessCollaborationEntity,
@@ -21,6 +22,11 @@ const POLL_INTERVAL_MS = 5_000;
 const SUBSCRIBED_SAFETY_POLL_INTERVAL_MS = 60_000;
 const MAX_STREAM_DURATION_MS = 5 * 60_000;
 const MAX_PRESENCE_STREAM_ROOMS = 8;
+const SENSITIVE_JSON_HEADERS = {
+  'Content-Type': 'application/json',
+  'Cache-Control': 'no-store, no-cache, no-transform',
+  Pragma: 'no-cache',
+};
 
 type AuthContext = Extract<Awaited<ReturnType<typeof requireAuthContext>>, { ctx: unknown }>['ctx'];
 
@@ -33,7 +39,7 @@ type PresenceStreamTarget = {
 function jsonError(status: number, code: string, message: string) {
   return new Response(JSON.stringify({ code, message }), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: SENSITIVE_JSON_HEADERS,
   });
 }
 
@@ -152,7 +158,7 @@ export async function GET(req: NextRequest) {
   if (!sseResult.allowed) {
     return new Response(
       JSON.stringify({ code: 'SSE_CONNECTION_LIMIT', message: '同時接続数の上限に達しました' }),
-      { status: 429, headers: { 'Content-Type': 'application/json' } },
+      { status: 429, headers: SENSITIVE_JSON_HEADERS },
     );
   }
 
@@ -172,7 +178,10 @@ export async function GET(req: NextRequest) {
       const orgChannel = `org:${orgId}`;
       const userChannel = `user:${userId}`;
       const orgListener = (data: unknown) => sendEvent(sanitizeOrgRealtimeEvent(data));
-      const userListener = (data: unknown) => sendEvent(data);
+      const userListener = (data: unknown) => {
+        const notifications = normalizeNotificationStreamPayload(data);
+        if (notifications.length > 0) sendEvent(notifications);
+      };
       const presenceChannelListeners = presenceTargets.map((target) => ({
         channel: target.channel,
         listener: (data: unknown) => {
@@ -289,6 +298,15 @@ export async function GET(req: NextRequest) {
                 lte: windowEnd,
               },
             },
+            select: {
+              id: true,
+              type: true,
+              title: true,
+              message: true,
+              link: true,
+              is_read: true,
+              created_at: true,
+            },
             orderBy: { created_at: 'desc' },
             take: 10,
           });
@@ -303,8 +321,9 @@ export async function GET(req: NextRequest) {
             consecutivePollFailures = 0;
           }
 
-          if (notifications.length > 0) {
-            sendEvent(notifications);
+          const streamNotifications = normalizeNotificationStreamPayload(notifications);
+          if (streamNotifications.length > 0) {
+            sendEvent(streamNotifications);
           }
         } catch (error) {
           // ストリームは生かしたまま、無音障害を観測可能にする。
@@ -340,7 +359,8 @@ export async function GET(req: NextRequest) {
   return new Response(stream, {
     headers: {
       'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache, no-transform',
+      'Cache-Control': 'no-store, no-cache, no-transform',
+      Pragma: 'no-cache',
       Connection: 'keep-alive',
     },
   });

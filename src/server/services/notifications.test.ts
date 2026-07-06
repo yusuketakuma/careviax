@@ -126,6 +126,11 @@ describe('dispatchNotificationEvent', () => {
       id: 'notification_1',
       created_at: new Date('2026-06-17T00:00:00.000Z'),
       is_read: false,
+      metadata: { token: 'raw-token-secret' },
+      provider_error: 'storage_key=org_1/patients/patient_1/reports/report_1.pdf',
+      token: 'raw-token-secret',
+      storage_key: 'org_1/patients/patient_1/reports/report_1.pdf',
+      signed_url: 'https://s3.example.test/file?X-Amz-Signature=secret',
       ...data,
     }));
 
@@ -163,6 +168,17 @@ describe('dispatchNotificationEvent', () => {
     expect(JSON.stringify(broadcastStatusUpdateMock.mock.calls[0]?.[1])).not.toContain(
       'dedupe_key',
     );
+    const broadcastPayload = JSON.stringify(broadcastStatusUpdateMock.mock.calls[0]?.[1]);
+    for (const forbidden of [
+      'metadata',
+      'provider_error',
+      'raw-token-secret',
+      'storage_key',
+      'signed_url',
+      'X-Amz-Signature',
+    ]) {
+      expect(broadcastPayload).not.toContain(forbidden);
+    }
   });
 
   it('logs a safe warning when realtime broadcast fails without rejecting persisted notifications', async () => {

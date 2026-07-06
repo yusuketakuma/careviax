@@ -5,6 +5,7 @@ import { readJsonObject } from '@/lib/db/json';
 import { mapWithConcurrency, normalizeConcurrencyLimit } from '@/lib/utils/concurrency';
 import { logger } from '@/lib/utils/logger';
 import { OS_BRIDGE_LANDING_URL } from '@/lib/notifications/os-bridge-redaction';
+import { normalizeNotificationStreamItem } from '@/lib/notifications/stream-payload';
 import { getRealtimeAdapter } from '@/server/adapters/realtime';
 import { LineNotificationAdapter } from '@/server/adapters/line';
 import { SmsNotificationAdapter } from '@/server/adapters/sms';
@@ -116,22 +117,11 @@ function buildNotificationUserChannel(userId: string) {
 }
 
 function toNotificationStreamItem(notification: PersistedNotification) {
-  const createdAt =
-    notification.created_at instanceof Date
-      ? notification.created_at.toISOString()
-      : typeof notification.created_at === 'string'
-        ? notification.created_at
-        : new Date().toISOString();
-
-  return {
-    id: notification.id,
-    type: notification.type,
-    title: notification.title,
-    message: notification.message,
-    link: notification.link,
+  return normalizeNotificationStreamItem({
+    ...notification,
     is_read: notification.is_read ?? false,
-    created_at: createdAt,
-  };
+    created_at: notification.created_at ?? new Date(),
+  });
 }
 
 export function buildExternalNotificationContent() {
@@ -149,10 +139,13 @@ async function broadcastPersistedNotifications(notifications: PersistedNotificat
     await mapWithConcurrency(
       notifications,
       resolveNotificationDeliveryConcurrency(),
-      async (notification) =>
-        adapter.broadcastStatusUpdate(buildNotificationUserChannel(notification.user_id), [
-          toNotificationStreamItem(notification),
-        ] as unknown as Record<string, unknown>),
+      async (notification) => {
+        const streamItem = toNotificationStreamItem(notification);
+        if (!streamItem) return null;
+        return adapter.broadcastStatusUpdate(buildNotificationUserChannel(notification.user_id), [
+          streamItem,
+        ] as unknown as Record<string, unknown>);
+      },
     );
   } catch (cause) {
     logger.warn(

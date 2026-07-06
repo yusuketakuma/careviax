@@ -41,6 +41,75 @@
 
 ## 直近の land（本日・要点）
 
+- codex: NTF-STREAM-001 Notification stream payload normalizer implemented.
+  - current task:
+    `Plans.md` の `NTF-STREAM-001` を実装。`/api/notifications/stream` の SSE payload を、
+    realtime user-channel と DB safety poll の両方で `normalizeNotificationStreamPayload()`
+    に通すよう変更した。DB safety poll は Prisma full row 取得をやめ、stream contract に必要な
+    `id/type/title/message/link/is_read/created_at` のみ `select` する。通知serviceの
+    realtime broadcast も shared `normalizeNotificationStreamItem()` を使い、publisher 側と
+    route 境界の二層防御にした。SSE/JSON error headers は sensitive route として
+    `no-store, no-cache, no-transform` + `Pragma: no-cache` に揃えた。
+  - Oracle / GPT-5.5 Pro:
+    Oracle session `careviax-ntf-stream-normalizer` completed on 2026-07-06
+    (`gpt-5.5-pro`, browser mode). Advice accepted: use strengthened A' design
+    (shared normalizer + route boundary enforcement + service-side defense-in-depth),
+    do not leave raw `sendEvent(data)`, add DB poll `select`, keep authenticated
+    in-app `title/message` semantics, restrict `link` to app-relative paths, add
+    no-store, and lock hostile payload behavior with tests. Oracle also confirmed
+    `visit` is not a valid NotificationType; the old route test was stale.
+  - GitHub context checked:
+    target repo `https://github.com/yusuketakuma/careviax`, branch `main`,
+    pre-implementation commit `48f2327a40f9227a1389293c0457bc92420de221`,
+    dirty state clean after the Oracle-policy push.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `prisma/schema/admin.prisma`,
+    `src/lib/notifications/stream-payload.ts`,
+    `src/lib/notifications/stream-payload.test.ts`,
+    `src/app/api/notifications/stream/route.ts`,
+    `src/app/api/notifications/stream/route.test.ts`,
+    `src/server/services/notifications.ts`,
+    `src/server/services/notifications.test.ts`,
+    Oracle transcript `careviax-ntf-stream-normalizer`.
+  - files changed:
+    `src/lib/notifications/stream-payload.ts`,
+    `src/lib/notifications/stream-payload.test.ts`,
+    `src/app/api/notifications/stream/route.ts`,
+    `src/app/api/notifications/stream/route.test.ts`,
+    `src/server/services/notifications.ts`,
+    `src/server/services/notifications.test.ts`,
+    `ops/refactor/STATE.md`.
+  - bugs / security / privacy fixed:
+    The user realtime channel no longer forwards arbitrary payload objects to the browser.
+    DB safety poll no longer fetches or streams full Notification rows, so `metadata`,
+    `dedupe_key`, `display_id`, `updated_at`, and future raw/provider fields are not
+    part of the stream boundary. The shared stream normalizer drops unknown keys,
+    rejects unsafe absolute/protocol-relative/javascript links, accepts Prisma `Date`
+    and emits ISO timestamps, and keeps only the stream allowlist. Tests cover hostile
+    `patient_name`, address, phone, drug name, raw message, metadata/provider error,
+    token, storage key, signed URL, and stale `visit` type payloads.
+  - validation:
+    `pnpm exec vitest run src/lib/notifications/stream-payload.test.ts src/app/api/notifications/stream/route.test.ts src/server/services/notifications.test.ts --reporter=dot --testTimeout=30000`
+    passed: 3 files / 39 tests.
+    `pnpm exec eslint src/lib/notifications/stream-payload.ts src/lib/notifications/stream-payload.test.ts src/app/api/notifications/stream/route.ts src/app/api/notifications/stream/route.test.ts src/server/services/notifications.ts src/server/services/notifications.test.ts`
+    passed.
+    `pnpm exec prettier --check src/lib/notifications/stream-payload.ts src/lib/notifications/stream-payload.test.ts src/app/api/notifications/stream/route.ts src/app/api/notifications/stream/route.test.ts src/server/services/notifications.ts src/server/services/notifications.test.ts`
+    passed after formatting `src/lib/notifications/stream-payload.test.ts`.
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck --pretty false`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+    passed.
+  - remaining work:
+    Privacy review identified a related but separate boundary: `/api/notifications` list responses
+    can still benefit from a dedicated NotificationList DTO / presenter audit so normal list APIs
+    do not drift into raw Prisma row exposure. This was kept out of NTF-STREAM-001 to avoid mixing
+    SSE stream contract hardening with broader notification list/API DTO work.
+  - next action:
+    Run final diff checks, scoped commit, push, then continue with the next high-priority Plans item.
+
 - codex: Oracle/GPT-5.5 Pro escalation skill refined with decision levels.
   - current task:
     ユーザー指示により、Oracle/GPT-5.5 Pro を「詰まったら聞く」ではなく、
