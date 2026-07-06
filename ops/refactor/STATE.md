@@ -41,7 +41,40 @@
 
 ## 直近の land（本日・要点）
 
-- codex: MOV-001 operation-history marker normalization（pending commit）。
+- codex: MOV-001 UI document marker raw-search guard（pending commit）。
+  - current task:
+    Patient Movement Timeline の UI 側で、文書 marker の本文・OCR・添付ファイル名が
+    カード表示や検索 haystack に入らないことを回帰テストで固定する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx`,
+    `src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx`.
+  - implementation:
+    document marker の `summary` / `metadata` に文書本文、OCR全文、添付ファイル名が混入した
+    入力を与えても、UIカードに表示されず、検索 query にも一致しないことをテスト化した。
+    これにより処方・訪問・文書カテゴリの表示改善は controlled label / badge / relative href /
+    日付rail に限定し、本文再掲へ戻らないことを UI レイヤでも固定した。
+  - validation:
+    `pnpm vitest run 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx' --reporter=dot --testTimeout=30000`
+    passed: 1 file / 11 tests.
+    `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx'`
+    passed.
+    `pnpm exec prettier --check 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx'`
+    passed.
+    `git diff --check -- 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx'`
+    passed.
+  - remaining:
+    Markdown validation、scoped commit、push。
+  - next action:
+    Validate `Plans.md` / `ops/refactor/STATE.md`, commit and push to `origin/main`.
+
+- codex: MOV-001 operation-history marker normalization（commit 4e44c6865, pushed）。
   - current task:
     Patient Movement Timeline で処方原本保存や文書PDF出力などの `operation_history` 由来イベントも、
     category が処方/訪問/文書なら発生 marker として扱い、内容表示ではなく正本 deep link へ誘導する。
@@ -83,9 +116,9 @@
     passed.
     `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
   - remaining:
-    scoped commit、push。
+    なし。
   - next action:
-    Commit and push to `origin/main`.
+    Landed and pushed to `origin/main`.
 
 - codex: MOV-001 marker-only acceptance lock（commit e845fb6ba, pushed）。
   - current task:

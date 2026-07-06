@@ -260,6 +260,34 @@ describe('PatientMovementTimeline', () => {
     });
   });
 
+  it('does not render or search document body and attachment filenames for document markers', async () => {
+    render(
+      <PatientMovementTimeline
+        timelineEvents={[
+          {
+            ...timelineEvents[1],
+            summary: '重要事項説明本文 / patient-yamada-plan.pdf',
+            metadata: ['patient-yamada-plan.pdf', 'OCR全文あり'],
+          },
+        ]}
+        selfReports={[]}
+      />,
+    );
+
+    expect(screen.getAllByText('管理計画書を承認').length).toBeGreaterThan(0);
+    expect(screen.queryByText('重要事項説明本文')).toBeNull();
+    expect(screen.queryByText('patient-yamada-plan.pdf')).toBeNull();
+    expect(screen.queryByText('OCR全文あり')).toBeNull();
+
+    fireEvent.change(screen.getByLabelText('タイムライン検索'), {
+      target: { value: 'patient-yamada-plan.pdf' },
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText('管理計画書を承認')).toBeNull();
+    });
+  });
+
   it('renders self report events in the main communication timeline', () => {
     render(
       <PatientMovementTimeline
