@@ -4,7 +4,7 @@ import { isMemberRole } from '@/lib/auth/member-roles';
 import { readJsonObject } from '@/lib/db/json';
 import { mapWithConcurrency, normalizeConcurrencyLimit } from '@/lib/utils/concurrency';
 import { logger } from '@/lib/utils/logger';
-import { OS_BRIDGE_LANDING_URL } from '@/lib/notifications/os-bridge-redaction';
+import { redactNotificationForOsBridge } from '@/lib/notifications/os-bridge-redaction';
 import { normalizeNotificationStreamItem } from '@/lib/notifications/stream-payload';
 import { getRealtimeAdapter } from '@/server/adapters/realtime';
 import { LineNotificationAdapter } from '@/server/adapters/line';
@@ -365,7 +365,6 @@ export async function dispatchNotificationEvent(tx: Tx, input: DispatchNotificat
 
   // Web Push — send to all subscriptions for in-app notification recipients
   if (getWebPushEnabled() && targetUserIds.length > 0) {
-    const externalNotification = buildExternalNotificationContent();
     const pushSubscriptions = await tx.pushSubscription.findMany({
       where: { org_id: input.orgId, user_id: { in: targetUserIds } },
       select: { endpoint: true, p256dh: true, auth: true },
@@ -375,10 +374,12 @@ export async function dispatchNotificationEvent(tx: Tx, input: DispatchNotificat
     // 患者ディープリンク(例 /patients/<patient_id>/...)を渡さない。raw な link は
     // 患者 ID を含み PHI に相当するため、クライアント OS ブリッジと同じ汎用ランディング
     // (/notifications) のみを送り、詳細はアプリ内で開かせる。
+    const redacted = redactNotificationForOsBridge({ type: input.type });
     const pushPayload = JSON.stringify({
-      title: externalNotification.title,
-      body: externalNotification.message,
-      link: OS_BRIDGE_LANDING_URL,
+      type: redacted.type,
+      title: redacted.title,
+      body: redacted.body,
+      link: redacted.url,
     });
 
     scheduleNotificationDeliveries(

@@ -8359,3 +8359,70 @@
 - remaining:
   docs-only commit/push する。次の実装優先は `FE-RT-001` + `FE-RT-002` + `FE-PUSH-001`、
   または既存 P0 の `VISIT-SYNC-001`。
+
+## 2026-07-06 OS notification / Web Push boundary hardening
+
+- codex: implemented `FE-PUSH-001` / `NTF-PUSH-001` boundary tightening after Oracle final review.
+  The previous WIP still registered `public/browser-notifications-sw.js` at root scope, which could
+  replace the main Serwist service worker. The helper now reuses an existing root registration only,
+  falls back to direct Notification API when no registration exists, and never registers a second
+  root-scope notification worker.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `/tmp/careviax-web-push-final-review.md`,
+  `.dockerignore`,
+  `src/lib/notifications/os-bridge-redaction.ts`,
+  `src/lib/browser-notifications.ts`,
+  `src/app/sw.ts`,
+  `public/browser-notifications-sw.js`,
+  `src/components/features/notifications/notification-bell.tsx`,
+  `src/server/services/notifications.ts`,
+  related notification/SW tests.
+- files changed:
+  `.dockerignore`,
+  `public/browser-notifications-sw.js`,
+  `src/app/sw.ts`,
+  `src/app/sw.test.ts`,
+  `src/components/features/notifications/notification-bell.fetch.test.tsx`,
+  `src/components/features/notifications/notification-bell.tsx`,
+  `src/lib/browser-notifications.ts`,
+  `src/lib/browser-notifications.test.ts`,
+  `src/lib/notifications/browser-notifications-sw-static.test.ts`,
+  `src/lib/notifications/os-bridge-redaction.ts`,
+  `src/lib/notifications/os-bridge-redaction.test.ts`,
+  `src/server/services/notifications.ts`,
+  `src/server/services/notifications.test.ts`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  Removed root-scope `navigator.serviceWorker.register('/browser-notifications-sw.js', { scope: '/' })`
+  from the browser notification helper. OS notification `type` is now allowlisted to
+  `urgent | business | reminder | system`, unknown future types are normalized to `system`, and OS
+  notification tags use type-scoped constants instead of raw notification ids.
+- security / PHI reviewed:
+  OS notification, Web Push, and legacy notification-click paths now discard raw title, message, link,
+  patient IDs, provider errors, metadata, storage keys, signed URLs, and raw future notification types.
+  In-app notification details are unchanged; only OS/browser push boundaries are minimized.
+- performance / stability reviewed:
+  Avoids registering a second root-scope service worker and therefore avoids destabilizing the
+  existing Serwist cache/push lifecycle. `.dockerignore` now excludes generated Serwist artifacts
+  (`public/sw.js`, source maps, worker chunks) from container context.
+- validation:
+  `pnpm exec vitest run src/app/sw.test.ts src/lib/notifications/os-bridge-redaction.test.ts src/lib/browser-notifications.test.ts src/lib/notifications/browser-notifications-sw-static.test.ts src/server/services/notifications.test.ts src/components/features/notifications/notification-bell.fetch.test.tsx --reporter=dot --testTimeout=30000`
+  green (6 files / 41 tests);
+  `pnpm exec eslint public/browser-notifications-sw.js src/app/sw.test.ts src/components/features/notifications/notification-bell.fetch.test.tsx src/components/features/notifications/notification-bell.tsx src/lib/browser-notifications.ts src/lib/browser-notifications.test.ts src/lib/notifications/browser-notifications-sw-static.test.ts src/lib/notifications/os-bridge-redaction.ts src/lib/notifications/os-bridge-redaction.test.ts src/server/services/notifications.ts src/server/services/notifications.test.ts`
+  green;
+  `pnpm exec prettier --check public/browser-notifications-sw.js src/app/sw.test.ts src/components/features/notifications/notification-bell.fetch.test.tsx src/components/features/notifications/notification-bell.tsx src/lib/browser-notifications.ts src/lib/browser-notifications.test.ts src/lib/notifications/browser-notifications-sw-static.test.ts src/lib/notifications/os-bridge-redaction.ts src/lib/notifications/os-bridge-redaction.test.ts src/server/services/notifications.ts src/server/services/notifications.test.ts`
+  green;
+  `git diff --check -- .dockerignore public/browser-notifications-sw.js src/app/sw.test.ts src/components/features/notifications/notification-bell.fetch.test.tsx src/components/features/notifications/notification-bell.tsx src/lib/browser-notifications.ts src/lib/browser-notifications.test.ts src/lib/notifications/browser-notifications-sw-static.test.ts src/lib/notifications/os-bridge-redaction.ts src/lib/notifications/os-bridge-redaction.test.ts src/server/services/notifications.ts src/server/services/notifications.test.ts ops/refactor/STATE.md`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck --pretty false`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  green;
+  `pnpm build`
+  green;
+  generated `public/sw.js` push/click snippet check
+  green (`hasPush`, `hasClick`, generic title, `/notifications` constant, no `data.url` click usage).
+- remaining:
+  Commit/push this notification boundary slice. Broader backlog remains: `FE-RT-001` / `FE-RT-002`,
+  `VISIT-SYNC-001`, `PAT-BOARD-PAGE-001`, `DSP-QUEUE-PAGE-001`, and production performance metrics.

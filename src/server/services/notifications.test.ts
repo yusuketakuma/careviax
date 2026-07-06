@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { NotificationType } from '@prisma/client';
 import { buildExternalNotificationContent, dispatchNotificationEvent } from './notifications';
 
 const {
@@ -699,17 +700,20 @@ describe('dispatchNotificationEvent', () => {
       );
       expect(sendWebPushMock).toHaveBeenCalledTimes(1);
       const pushBody = JSON.parse(sendWebPushMock.mock.calls[0]?.[1] as string) as {
+        type: string;
         title: string;
         body: string;
         link: string | null;
       };
       // OS/プッシュ層へは患者ディープリンク(患者 ID = PHI)を渡さず、汎用ランディング
-      // /notifications のみを送る。title/body も種別非依存の汎用文言。
+      // /notifications のみを送る。title/body も種別ベースの汎用文言。
       expect(pushBody).toEqual({
-        title: 'PH-OS通知',
-        body: 'アプリで詳細を確認してください',
+        type: 'urgent',
+        title: 'PH-OS 通知',
+        body: '新しい緊急通知があります',
         link: '/notifications',
       });
+      expect(Object.keys(pushBody).sort()).toEqual(['body', 'link', 'title', 'type']);
       const payloadJson = JSON.stringify(pushBody);
       expect(payloadJson).not.toContain('田中');
       expect(payloadJson).not.toContain('一郎');
@@ -717,6 +721,97 @@ describe('dispatchNotificationEvent', () => {
       expect(payloadJson).not.toContain('肺がん');
       // 患者 ID を含む生ディープリンクがプッシュ基盤へ漏れないことを明示的に検証する。
       expect(payloadJson).not.toContain('patient_1');
+      expect(payloadJson).not.toContain('/patients/');
+      expect(payloadJson).not.toContain('metadata');
+      expect(payloadJson).not.toContain('provider_error');
+      expect(payloadJson).not.toContain('token=secret');
+    } finally {
+      if (originalPublicKey === undefined) {
+        delete process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+      } else {
+        process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY = originalPublicKey;
+      }
+      if (originalPrivateKey === undefined) {
+        delete process.env.VAPID_PRIVATE_KEY;
+      } else {
+        process.env.VAPID_PRIVATE_KEY = originalPrivateKey;
+      }
+      if (originalSubject === undefined) {
+        delete process.env.VAPID_SUBJECT;
+      } else {
+        process.env.VAPID_SUBJECT = originalSubject;
+      }
+      vi.resetModules();
+    }
+  });
+
+  it('normalizes unsafe future notification types before Web Push dispatch', async () => {
+    const originalPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+    const originalPrivateKey = process.env.VAPID_PRIVATE_KEY;
+    const originalSubject = process.env.VAPID_SUBJECT;
+    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY = 'public-key';
+    process.env.VAPID_PRIVATE_KEY = 'private-key';
+    process.env.VAPID_SUBJECT = 'mailto:test@example.com';
+    vi.useFakeTimers();
+    vi.resetModules();
+    sendWebPushMock.mockReset();
+    setVapidDetailsMock.mockReset();
+    const { dispatchNotificationEvent: dispatchWithPush } = await import('./notifications');
+    const {
+      tx,
+      notificationRuleFindMany,
+      membershipFindMany,
+      notificationCreate,
+      pushSubscriptionFindMany,
+    } = createTx();
+
+    notificationRuleFindMany.mockResolvedValue([]);
+    membershipFindMany.mockResolvedValue([]);
+    notificationCreate.mockImplementation(async ({ data }) => ({
+      id: 'notification_1',
+      created_at: new Date('2026-06-17T00:00:00.000Z'),
+      is_read: false,
+      ...data,
+    }));
+    pushSubscriptionFindMany.mockResolvedValue([
+      {
+        endpoint: 'https://push.example.test/subscription',
+        p256dh: 'p256dh-key',
+        auth: 'auth-secret',
+      },
+    ]);
+
+    try {
+      await dispatchWithPush(tx, {
+        orgId: 'org_1',
+        eventType: 'patient_self_report_followup_due',
+        type: 'patient_specific_future_type' as NotificationType,
+        title: '田中 一郎さんの麻薬管理確認',
+        message: 'モルヒネ残薬と肺がん疼痛について確認してください',
+        link: '/patients/patient_1',
+        explicitUserIds: ['user_1'],
+      });
+
+      await runScheduledDeliveries();
+
+      expect(sendWebPushMock).toHaveBeenCalledTimes(1);
+      const pushBody = JSON.parse(sendWebPushMock.mock.calls[0]?.[1] as string) as {
+        type: string;
+        title: string;
+        body: string;
+        link: string | null;
+      };
+      expect(pushBody).toEqual({
+        type: 'system',
+        title: 'PH-OS 通知',
+        body: '新しいシステム通知があります',
+        link: '/notifications',
+      });
+      const payloadJson = JSON.stringify(pushBody);
+      expect(payloadJson).not.toContain('patient_specific_future_type');
+      expect(payloadJson).not.toContain('田中');
+      expect(payloadJson).not.toContain('一郎');
+      expect(payloadJson).not.toContain('モルヒネ');
       expect(payloadJson).not.toContain('/patients/');
     } finally {
       if (originalPublicKey === undefined) {

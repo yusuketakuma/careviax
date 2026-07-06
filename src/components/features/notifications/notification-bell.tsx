@@ -22,7 +22,6 @@ import {
   showBrowserNotification,
 } from '@/lib/browser-notifications';
 import { NOTIFICATIONS_API_PATH, buildNotificationsApiPath } from '@/lib/notifications/api-paths';
-import { redactNotificationForOsBridge } from '@/lib/notifications/os-bridge-redaction';
 import { normalizeNotificationStreamPayload } from '@/lib/notifications/stream-payload';
 import { subscribeSharedRealtimeStream } from '@/lib/realtime/shared-event-stream';
 
@@ -121,14 +120,10 @@ export function NotificationBell() {
 
     for (const item of items) {
       // OS 通知ブリッジ(端末のロック画面 / 通知センター)へは PHI を渡さない。
-      // raw な title/message/link は破棄し、種別ベースの汎用文言のみを渡す。
-      // 詳細はアプリ内(通知センター)で開く。in-app 表示は従来どおり。
-      const redacted = redactNotificationForOsBridge(item);
+      // raw title/message/link は helper 境界で破棄し、詳細はアプリ内で開く。
       await showBrowserNotification({
-        title: redacted.title,
-        body: redacted.body,
         tag: item.id,
-        url: redacted.url,
+        type: item.type,
       });
     }
   }, []);

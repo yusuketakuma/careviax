@@ -21,9 +21,6 @@ const OS_BRIDGE_BODY_BY_TYPE: Record<string, string> = {
   system: '新しいシステム通知があります',
 };
 
-/** 未知の種別に対する汎用本文。 */
-const OS_BRIDGE_BODY_FALLBACK = '新しい通知があります';
-
 /**
  * OS 通知クリック時に開くアプリ内ランディング。
  * 患者 ID などの識別子を含むディープリンクは渡さず、通知センターへ誘導し
@@ -34,17 +31,37 @@ const OS_BRIDGE_BODY_FALLBACK = '新しい通知があります';
  */
 export const OS_BRIDGE_LANDING_URL = '/notifications';
 
+export type OsBridgeNotificationType = 'urgent' | 'business' | 'reminder' | 'system';
+
+const OS_BRIDGE_NOTIFICATION_TYPES = new Set<OsBridgeNotificationType>([
+  'urgent',
+  'business',
+  'reminder',
+  'system',
+]);
+
 export type OsBridgeRedactedNotification = {
+  type: OsBridgeNotificationType;
   title: string;
   body: string;
   url: string;
+  tag: string;
 };
+
+export function normalizeOsBridgeNotificationType(value: unknown): OsBridgeNotificationType {
+  if (typeof value !== 'string') return 'system';
+  if (!OS_BRIDGE_NOTIFICATION_TYPES.has(value as OsBridgeNotificationType)) return 'system';
+  return value as OsBridgeNotificationType;
+}
+
+export function getOsBridgeNotificationTag(type: OsBridgeNotificationType) {
+  return `ph-os-${type}-notification`;
+}
 
 function readPushPayloadType(payload: unknown) {
   if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return 'system';
   const object = payload as Record<string, unknown>;
-  const type = object.type ?? object.notification_type;
-  return typeof type === 'string' ? type : 'system';
+  return object.type ?? object.notification_type;
 }
 
 /**
@@ -53,12 +70,15 @@ function readPushPayloadType(payload: unknown) {
  * 汎用ランディング URL のみを返す。
  */
 export function redactNotificationForOsBridge(notification: {
-  type: string;
+  type: unknown;
 }): OsBridgeRedactedNotification {
+  const type = normalizeOsBridgeNotificationType(notification.type);
   return {
+    type,
     title: OS_BRIDGE_TITLE,
-    body: OS_BRIDGE_BODY_BY_TYPE[notification.type] ?? OS_BRIDGE_BODY_FALLBACK,
+    body: OS_BRIDGE_BODY_BY_TYPE[type],
     url: OS_BRIDGE_LANDING_URL,
+    tag: getOsBridgeNotificationTag(type),
   };
 }
 

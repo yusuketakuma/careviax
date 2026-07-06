@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { AnchorHTMLAttributes, ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
@@ -9,7 +9,10 @@ import { jsonResponse } from '@/test/fetch-test-utils';
 const {
   buildOrgHeadersMock,
   buildOrgJsonHeadersMock,
+  getBrowserNotificationPreferenceMock,
+  isBrowserNotificationSupportedMock,
   setNotificationDrawerOpenMock,
+  showBrowserNotificationMock,
   subscribeSharedRealtimeStreamMock,
   uiState,
 } = vi.hoisted(() => ({
@@ -18,7 +21,10 @@ const {
     'Content-Type': 'application/json',
     'x-test-json-org-id': orgId,
   })),
+  getBrowserNotificationPreferenceMock: vi.fn(() => false),
+  isBrowserNotificationSupportedMock: vi.fn(() => false),
   setNotificationDrawerOpenMock: vi.fn(),
+  showBrowserNotificationMock: vi.fn(),
   subscribeSharedRealtimeStreamMock: vi.fn(() => vi.fn()),
   uiState: {
     notificationDrawerOpen: true,
@@ -42,9 +48,9 @@ vi.mock('@/lib/api/org-headers', () => ({
 }));
 
 vi.mock('@/lib/browser-notifications', () => ({
-  getBrowserNotificationPreference: () => false,
-  isBrowserNotificationSupported: () => false,
-  showBrowserNotification: vi.fn(),
+  getBrowserNotificationPreference: getBrowserNotificationPreferenceMock,
+  isBrowserNotificationSupported: isBrowserNotificationSupportedMock,
+  showBrowserNotification: showBrowserNotificationMock,
 }));
 
 vi.mock('@/lib/realtime/shared-event-stream', () => ({
@@ -101,6 +107,8 @@ function createFetchMock() {
 describe('NotificationBell fetch contracts', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    getBrowserNotificationPreferenceMock.mockReturnValue(false);
+    isBrowserNotificationSupportedMock.mockReturnValue(false);
     uiState.notificationDrawerOpen = true;
   });
 
@@ -258,5 +266,59 @@ describe('NotificationBell fetch contracts', () => {
 
     consoleErrorSpy.mockRestore();
     consoleWarnSpy.mockRestore();
+  });
+
+  it('hidden-tab OS 通知では raw title/message/link を helper へ渡さない', async () => {
+    getBrowserNotificationPreferenceMock.mockReturnValue(true);
+    isBrowserNotificationSupportedMock.mockReturnValue(true);
+    uiState.notificationDrawerOpen = false;
+    Object.defineProperty(document, 'visibilityState', {
+      value: 'hidden',
+      configurable: true,
+    });
+    vi.stubGlobal(
+      'Notification',
+      class Notification {
+        static permission = 'granted';
+      },
+    );
+    const phiNotification = {
+      id: 'notification_phi_1',
+      type: 'urgent',
+      title: '山田 太郎さんの疑義照会',
+      message: 'ワルファリン用量を確認してください',
+      link: '/patients/patient_1/prescriptions/rx_1',
+      created_at: '2026-07-06T00:00:00.000Z',
+      is_read: false,
+    };
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({ data: { unreadCount: 0 } })));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<NotificationBell />);
+
+    await waitFor(() => expect(subscribeSharedRealtimeStreamMock).toHaveBeenCalledOnce());
+    const subscribeCalls = subscribeSharedRealtimeStreamMock.mock.calls as unknown as Array<
+      [{ onEvent?: (event: unknown) => void }]
+    >;
+    const subscription = subscribeCalls[0]?.[0];
+
+    act(() => {
+      subscription?.onEvent?.([phiNotification]);
+    });
+
+    await waitFor(() =>
+      expect(showBrowserNotificationMock).toHaveBeenCalledWith({
+        tag: 'notification_phi_1',
+        type: 'urgent',
+      }),
+    );
+
+    const serialized = JSON.stringify(showBrowserNotificationMock.mock.calls);
+    expect(serialized).not.toContain('山田');
+    expect(serialized).not.toContain('太郎');
+    expect(serialized).not.toContain('ワルファリン');
+    expect(serialized).not.toContain('patient_1');
+    expect(serialized).not.toContain('/patients/');
+    expect(serialized).not.toContain('/prescriptions/');
   });
 });

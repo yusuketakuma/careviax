@@ -94,6 +94,7 @@ self.addEventListener('push', (event) => {
       body: redacted.body,
       icon: '/icons/icon-192x192.png',
       badge: '/icons/icon-72x72.png',
+      tag: redacted.tag,
       data: { url: redacted.url },
     }),
   );
