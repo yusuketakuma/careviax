@@ -6742,3 +6742,51 @@
 - remaining:
   Broader `Plans.md` objective remains open. 残りは real consumer の screen-level PHI export snapshot と、
   remaining bulk action consumer の scope wording sweep。
+
+## 2026-07-06 Billing candidates loaded CSV PHI snapshot slice
+
+- codex: `DEV-PHI-001` real consumer screen-level PHI export snapshot implemented.
+  通常請求候補画面の `DataTable` 読込済みCSVで、画面上の請求先には患者名を表示しつつ、client CSV では
+  請求先列を `患者請求先` / `施設請求先` / 種別ラベルへ丸めるようにした。実画面テストで
+  `山田 太郎`、`patient_1`、`candidate_target` が読込済みCSVに入らないことを固定した。
+- design / imagegen:
+  UI 表示は変えず、client CSV の exportValue と snapshot test のみを変更。視覚再構築や配置変更を
+  伴わないため `imagegen` / `gpt-image-2` の新規生成は省略した。
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `docs/ui-ux-design-guidelines.md`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/components/ui/data-table.tsx`,
+  `src/components/ui/data-table.test.tsx`,
+  `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`,
+  `src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`,
+  `src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx`.
+- bugs / risks reduced:
+  公式サーバーCSVではなく画面の「読込済みCSV出力」から、患者名や patient/candidate stable id が
+  誤って snapshot として持ち出される risk を低減した。
+- security / PHI reviewed:
+  client CSV の請求先列は患者名/患者IDを出さず、種別ラベルに丸める。画面表示、サーバーCSV、API payload、
+  audit metadata は変更しない。
+- performance issues reviewed:
+  row export 時の small switch helper のみ。DB query、network call、payload、official export route は変更なし。
+- validation:
+  `pnpm exec vitest run src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx --reporter=dot --testTimeout=30000`
+  green (1 file / 10 tests);
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  green;
+  `pnpm lint`
+  green with existing warnings in `src/lib/platform/break-glass.test.ts` (`_tx`, `_input` unused);
+  `pnpm format:check`
+  green;
+  `git diff --check -- Plans.md ops/refactor/STATE.md src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx`
+  green.
+- remaining:
+  Broader `Plans.md` objective remains open. 残りは他 bulk action consumer の scope wording sweep と、
+  broader Command Center / BFF split / risk registry integration tasks。
