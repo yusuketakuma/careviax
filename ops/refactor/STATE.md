@@ -40,6 +40,69 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Case Risk Cockpit task sync Command UI slice（ready to commit）。
+  - current task:
+    `Plans.md` の `RISK-CORE-2 / CORE-002` 残作業「domain/job/UI から
+    `POST /api/cases/[id]/risk-cockpit/tasks` を呼ぶ導線」の UI 側最小スライスとして、患者詳細
+    Command タブに「未解決リスクをタスクへ同期」パネルを追加した。active case（なければ latest case）を対象に
+    明示 POST し、結果は作成/更新・解決・対象外の件数だけ表示する。
+  - subagent:
+    `code_mapper`（`Surface the 22nd` / `019f34b9-95dd-7173-a976-f4b96df79955`）を read-only で起動。
+    `card-workspace.tsx` の Command タブへの小パネル追加、active/latest case 選択、`encodePathSegment`、
+    `buildOrgJsonHeaders`、toast + inline result、disabled reason、件数だけの PHI-minimized 表示、UI tests を
+    推奨。実装後に close 済み。
+  - design / imagegen:
+    UI slice のため `imagegen` skill と PH-OS UI/UX SSOT を確認し、`gpt-image-2` 方針の非 PHI mockup を生成:
+    `/Users/yusuke/.codex/generated_images/019f2c7e-d969-7882-bd11-432a10abb930/`。prompt は safe display id
+    のみを使い、実在患者名、住所、電話、処方本文、報告本文、保険情報、外部共有 URL、secret は含めていない。
+    生成案は参照に留め、実装は既存 `SectionCard` / `LoadingButton` / `EvidencePanel` の PH-OS 構造へ翻訳した。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `/Users/yusuke/.codex/skills/.system/imagegen/SKILL.md`,
+    `docs/ui-ux-design-guidelines.md`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+    `src/app/(dashboard)/patients/[id]/patient-command-center-model.ts`,
+    `src/app/(dashboard)/patients/[id]/patient-detail.types.ts`,
+    `src/app/api/cases/[id]/risk-cockpit/tasks/route.ts`,
+    `src/app/api/cases/[id]/risk-cockpit/tasks/route.test.ts`,
+    `src/types/case-risk-cockpit.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`.
+  - bugs / risks reduced:
+    前 slice では backend POST は存在したが UI から到達できず、blocking/urgent risk を operational task へ
+    昇格する導線が片翼だった。Command タブ内に action beside evidence の同期パネルを追加し、ケースなしでは
+    disabled reason を出して POST しない。
+  - security / PHI reviewed:
+    UI は `upserted_task_count` / `resolved_stale_task_count` / `skipped_finding_count` の件数だけ表示。
+    `upserted_tasks` / `resolved_stale_tasks` の id/display_id、finding title/detail、dedupe key、metadata body は
+    表示しない。POST path は `encodePathSegment(caseId)`、headers は `buildOrgJsonHeaders(orgId)`。
+  - accessibility reviewed:
+    button は `LoadingButton` + `min-h-11`、pending は `role=status`、error は `role=alert`、disabled reason は
+    `aria-describedby` で接続。成功 toast だけに依存せず、パネル内に同期済み件数を残す。
+  - performance issues improved:
+    新規 GET は追加せず、ユーザー明示操作時だけ POST。成功後は `patient-overview` / `tasks` /
+    `case-risk-cockpit` query を invalidate する。
+  - validation commands:
+    `pnpm exec prettier --write src/app/(dashboard)/patients/[id]/card-workspace.tsx src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`;
+    `pnpm exec vitest run src/app/(dashboard)/patients/[id]/card-workspace.test.tsx --reporter=dot --testTimeout=30000`;
+    `git diff --check`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`;
+    `pnpm lint`.
+  - validation results:
+    focused UI vitest green（1 file / 81 tests）; `git diff --check` green; high-memory typecheck green;
+    typecheck:no-unused green; `pnpm lint` green with existing unrelated warnings in
+    `src/lib/platform/break-glass.test.ts` (`_tx`, `_input` unused warnings only).
+  - remaining work:
+    Broader `Plans.md` objective remains open。残: batch/job sync、waiver/override audit、Task Health Board 連携、
+    Case Risk Cockpit full UI/API contract expansion。
+
 - codex: Case Risk Cockpit stale risk task closure slice（ready to commit）。
   - current task:
     `Plans.md` の `RISK-CORE-2 / CORE-002` 受入条件「blocker が解消されたら既存 task が閉じる」に向け、

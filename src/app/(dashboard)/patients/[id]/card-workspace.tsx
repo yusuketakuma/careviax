@@ -116,6 +116,21 @@ type PatientIdPanelProps = {
   patientId: string;
 };
 
+type CaseRiskTaskSyncUiResult = {
+  generated_at: string;
+  case_id: string;
+  patient_id: string;
+  overall_status: string;
+  taskable_finding_count: number;
+  skipped_finding_count: number;
+  upserted_task_count: number;
+  resolved_stale_task_count: number;
+};
+
+function buildCaseRiskTaskSyncPath(caseId: string) {
+  return `/api/cases/${encodePathSegment(caseId)}/risk-cockpit/tasks`;
+}
+
 function PatientDetailPanelLoading({ label }: { label: string }) {
   return (
     <div
@@ -3941,11 +3956,21 @@ function PatientCommandCenterPanel({
   blockedReasons,
   evidence,
   evidenceOpenLabel,
+  riskTaskSync,
 }: {
   nextAction?: NextActionPanelProps;
   blockedReasons: BlockedReason[];
   evidence: EvidenceItem[];
   evidenceOpenLabel?: string;
+  riskTaskSync: {
+    caseId: string | null;
+    caseLabel: string | null;
+    disabledReason?: string;
+    isPending: boolean;
+    result: CaseRiskTaskSyncUiResult | null;
+    error: Error | null;
+    onSync: (caseId: string) => void;
+  };
 }) {
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(20rem,0.8fr)]">
@@ -3962,8 +3987,116 @@ function PatientCommandCenterPanel({
         )}
         <BlockedReasonsPanel reasons={blockedReasons} emptyLabel="止まっている作業はありません" />
       </div>
-      <EvidencePanel items={evidence} openLabel={evidenceOpenLabel} />
+      <div className="space-y-4">
+        <EvidencePanel items={evidence} openLabel={evidenceOpenLabel} />
+        <RiskTaskSyncPanel {...riskTaskSync} />
+      </div>
     </div>
+  );
+}
+
+function RiskTaskSyncPanel({
+  caseId,
+  caseLabel,
+  disabledReason,
+  isPending,
+  result,
+  error,
+  onSync,
+}: {
+  caseId: string | null;
+  caseLabel: string | null;
+  disabledReason?: string;
+  isPending: boolean;
+  result: CaseRiskTaskSyncUiResult | null;
+  error: Error | null;
+  onSync: (caseId: string) => void;
+}) {
+  const descriptionId = 'case-risk-task-sync-description';
+  const disabledReasonId = 'case-risk-task-sync-disabled-reason';
+  const isDisabled = !caseId || Boolean(disabledReason);
+
+  return (
+    <SectionCard aria-label="リスクタスク同期" data-testid="case-risk-task-sync-panel">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 space-y-1">
+          <h3 className="text-sm font-semibold text-foreground">未解決リスクをタスクへ同期</h3>
+          <p id={descriptionId} className="text-sm text-muted-foreground">
+            Case Risk Cockpit の blocking / urgent だけを運用タスクへ反映します。
+          </p>
+          {caseLabel ? (
+            <p className="text-xs text-muted-foreground" data-testid="case-risk-task-sync-case">
+              対象: {caseLabel}
+            </p>
+          ) : null}
+        </div>
+        <LoadingButton
+          type="button"
+          variant="outline"
+          className="min-h-11 shrink-0"
+          loading={isPending}
+          loadingLabel="同期中"
+          disabled={isDisabled}
+          aria-describedby={`${descriptionId}${disabledReason ? ` ${disabledReasonId}` : ''}`}
+          onClick={() => {
+            if (caseId) onSync(caseId);
+          }}
+        >
+          同期する
+        </LoadingButton>
+      </div>
+      {disabledReason ? (
+        <p id={disabledReasonId} className="mt-3 text-sm font-medium text-muted-foreground">
+          {disabledReason}
+        </p>
+      ) : null}
+      {isPending ? (
+        <p role="status" className="mt-3 text-sm text-muted-foreground">
+          リスク状態を確認し、必要なタスクだけを更新しています。
+        </p>
+      ) : null}
+      {result ? (
+        <div
+          role="status"
+          data-testid="case-risk-task-sync-result"
+          className="mt-3 grid gap-2 rounded-lg border border-border/60 bg-background/60 p-3 text-sm"
+        >
+          <div className="flex items-center gap-2 font-medium text-foreground">
+            <CheckCircle2 aria-hidden className="size-4 text-state-done" />
+            同期済み
+          </div>
+          <dl className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
+            <div>
+              <dt>作成/更新</dt>
+              <dd className="font-semibold tabular-nums text-foreground">
+                {result.upserted_task_count}件
+              </dd>
+            </div>
+            <div>
+              <dt>解決</dt>
+              <dd className="font-semibold tabular-nums text-foreground">
+                {result.resolved_stale_task_count}件
+              </dd>
+            </div>
+            <div>
+              <dt>対象外</dt>
+              <dd className="font-semibold tabular-nums text-foreground">
+                {result.skipped_finding_count}件
+              </dd>
+            </div>
+          </dl>
+        </div>
+      ) : null}
+      {error ? (
+        <p
+          role="alert"
+          className="mt-3 flex items-center gap-2 text-sm font-medium text-state-blocked"
+        >
+          <TriangleAlert aria-hidden className="size-4" />
+          {messageFromError(error, 'リスクタスク同期に失敗しました')}
+        </p>
+      ) : null}
+    </SectionCard>
   );
 }
 
@@ -4013,6 +4146,9 @@ export function CardWorkspace({
       : PATIENT_TIMELINE_INITIAL_LIMIT;
   const [mountedDetailTabs, setMountedDetailTabs] = useState<ReadonlySet<PatientDetailTab>>(
     () => new Set<PatientDetailTab>([resolveInitialPatientDetailTab()]),
+  );
+  const [riskTaskSyncResult, setRiskTaskSyncResult] = useState<CaseRiskTaskSyncUiResult | null>(
+    null,
   );
 
   const activateDetailTab = (tab: PatientDetailTab) => {
@@ -4438,6 +4574,30 @@ export function CardWorkspace({
     },
   });
 
+  const syncRiskTasksMutation = useMutation({
+    mutationFn: async (caseId: string) => {
+      const response = await fetch(buildCaseRiskTaskSyncPath(caseId), {
+        method: 'POST',
+        headers: buildOrgJsonHeaders(orgId),
+      });
+      return readApiJson<CaseRiskTaskSyncUiResult>(response, 'リスクタスク同期に失敗しました');
+    },
+    onSuccess: async (result) => {
+      setRiskTaskSyncResult(result);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['patient-overview', patientId, orgId] }),
+        queryClient.invalidateQueries({ queryKey: ['tasks'] }),
+        queryClient.invalidateQueries({ queryKey: ['case-risk-cockpit', result.case_id, orgId] }),
+      ]);
+      toast.success(
+        `未解決リスクをタスクへ同期しました（作成/更新 ${result.upserted_task_count}件 / 解決 ${result.resolved_stale_task_count}件）`,
+      );
+    },
+    onError: (error: Error) => {
+      toast.error(messageFromError(error, 'リスクタスク同期に失敗しました'));
+    },
+  });
+
   if (!orgId || isLoading) return <PatientCardWorkspaceLoadingState />;
   if (!patient) {
     // 取得失敗(error)を「患者が見つかりません」(=不在)に潰さない。
@@ -4525,6 +4685,11 @@ export function CardWorkspace({
         b.created_at.localeCompare(a.created_at) ||
         b.id.localeCompare(a.id),
     )[0] ?? null;
+  const commandCenterCase =
+    patient.cases.find((careCase) => careCase.status === 'active') ?? headerLatestCase;
+  const commandCenterCaseLabel = commandCenterCase
+    ? formatPatientShareCaseOption(commandCenterCase)
+    : null;
   const headerInterventionStartDate = headerLatestCase?.start_date ?? null;
   const headerVisit = buildVisitScheduleLabel(patient);
   const headerLastVisitLabel = headerVisit.latest !== '未設定' ? headerVisit.latest : null;
@@ -4830,6 +4995,18 @@ export function CardWorkspace({
                   blockedReasons={blockedReasons}
                   evidence={evidence}
                   evidenceOpenLabel="開く"
+                  riskTaskSync={{
+                    caseId: commandCenterCase?.id ?? null,
+                    caseLabel: commandCenterCaseLabel,
+                    disabledReason: commandCenterCase ? undefined : '対象ケースがありません。',
+                    isPending: syncRiskTasksMutation.isPending,
+                    result: riskTaskSyncResult,
+                    error:
+                      syncRiskTasksMutation.error instanceof Error
+                        ? syncRiskTasksMutation.error
+                        : null,
+                    onSync: syncRiskTasksMutation.mutate,
+                  }}
                 />
                 <CardTodayPanelMemo tasks={workspace.today_tasks} />
               </TabsContent>

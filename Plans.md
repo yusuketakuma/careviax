@@ -652,8 +652,12 @@ FE 仕上げ（低優先）:
     現在の taskable finding dedupe に含まれない stale task を guarded update で `completed` に閉じる。
     同期は active dedupe を保持し、null dedupe / 別 case / non-risk task / 未知 risk task / race で更新
     できなかった task は閉じたものとして返さない。
+  - 2026-07-06 追加 partial: 患者詳細 Command タブに `POST /api/cases/[id]/risk-cockpit/tasks`
+    の明示 UI 導線を追加。active case（なければ latest case）に対して件数だけで同期結果を表示し、
+    `upserted_tasks` / `resolved_stale_tasks` の id/display_id、finding title/detail、dedupe key は
+    UI に出さない。ケースなしでは disabled reason を表示し POST しない。
 - 残:
-  - domain/job/UI から `POST /api/cases/[id]/risk-cockpit/tasks` を呼ぶ導線と batch sync。
+  - batch/job sync。
   - waiver/override 時の理由必須 audit と resolution note。
   - domain 別 resolve predicate、孤児 task audit、Task Health Board 連携。
 

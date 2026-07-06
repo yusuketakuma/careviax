@@ -305,7 +305,8 @@ function mockPatientQuery(
       | 'billingProfile'
       | 'conference'
       | 'mcsCheckLog'
-      | 'patientShareCase',
+      | 'patientShareCase'
+      | 'riskTaskSync',
       boolean
     >
   > = {},
@@ -359,6 +360,7 @@ function mockPatientQuery(
     timelineRefetch?: ReturnType<typeof vi.fn>;
     patientOverviewLoading?: boolean;
     executePatientShareCaseMutation?: boolean;
+    executeRiskTaskSyncMutation?: boolean;
   } = {},
 ) {
   const faxMutate = vi.fn();
@@ -369,6 +371,7 @@ function mockPatientQuery(
   const conferenceMutate = vi.fn();
   const mcsCheckLogMutate = vi.fn();
   const patientShareCaseMutate = vi.fn();
+  const riskTaskSyncMutate = vi.fn();
   const invalidateQueries = vi.fn();
   useOrgIdMock.mockReturnValue('org_1');
   useRouterMock.mockReturnValue({ push: vi.fn(), replace: vi.fn() });
@@ -416,6 +419,12 @@ function mockPatientQuery(
     },
     patientShareCaseMutationResult,
   ];
+  const riskTaskSyncMutationResult = {
+    mutate: riskTaskSyncMutate,
+    isPending: Boolean(pending.riskTaskSync),
+    variables: pending.riskTaskSync ? 'case_1' : null,
+    error: null,
+  };
   let mutationCallIndex = 0;
   const pickMutationResult = (mutationOptions?: {
     mutationFn?: (input: unknown) => Promise<unknown>;
@@ -429,6 +438,9 @@ function mockPatientQuery(
     if (onErrorText.includes('支払設定の保存に失敗しました')) return mutationResults[4];
     if (onErrorText.includes('会議要点の保存に失敗しました')) return mutationResults[5];
     if (onErrorText.includes('MCS確認ログの保存に失敗しました')) return mutationResults[6];
+    if (onErrorText.includes('リスクタスク同期に失敗しました')) {
+      return riskTaskSyncMutationResult;
+    }
 
     const result = mutationResults[mutationCallIndex % mutationResults.length];
     mutationCallIndex += 1;
@@ -437,9 +449,10 @@ function mockPatientQuery(
   useMutationMock.mockImplementation(
     (mutationOptions?: {
       mutationFn?: (input: unknown) => Promise<unknown>;
-      onSuccess?: () => Promise<void> | void;
+      onSuccess?: (result?: unknown) => Promise<void> | void;
       onError?: (error: Error) => void;
     }) => {
+      const onErrorText = String(mutationOptions?.onError ?? '');
       if (String(mutationOptions?.mutationFn).includes('/api/patient-share-cases')) {
         if (!options.executePatientShareCaseMutation) {
           return patientShareCaseMutationResult;
@@ -457,6 +470,35 @@ function mockPatientQuery(
           },
           isPending: Boolean(pending.patientShareCase),
           variables: null,
+        };
+      }
+      if (onErrorText.includes('リスクタスク同期に失敗しました')) {
+        if (!options.executeRiskTaskSyncMutation) {
+          return riskTaskSyncMutationResult;
+        }
+
+        return {
+          mutate: async (input: string) => {
+            riskTaskSyncMutate(input);
+            try {
+              await mutationOptions?.mutationFn?.(input);
+              await mutationOptions?.onSuccess?.({
+                generated_at: '2026-07-06T00:00:00.000Z',
+                case_id: input,
+                patient_id: 'patient_1',
+                overall_status: 'blocked',
+                taskable_finding_count: 2,
+                skipped_finding_count: 3,
+                upserted_task_count: 2,
+                resolved_stale_task_count: 1,
+              });
+            } catch (error) {
+              mutationOptions?.onError?.(error as Error);
+            }
+          },
+          isPending: Boolean(pending.riskTaskSync),
+          variables: pending.riskTaskSync ? 'case_1' : null,
+          error: null,
         };
       }
       return pickMutationResult(mutationOptions);
@@ -868,6 +910,7 @@ function mockPatientQuery(
     conferenceMutate,
     mcsCheckLogMutate,
     patientShareCaseMutate,
+    riskTaskSyncMutate,
     invalidateQueries,
   };
 }
@@ -1392,6 +1435,85 @@ describe('CardWorkspace', () => {
     expect(screen.getByTestId('next-action-panel')).toBeTruthy();
     expect(screen.getByTestId('blocked-reasons-panel')).toBeTruthy();
     expect(screen.getByTestId('evidence-panel')).toBeTruthy();
+  });
+
+  it('syncs active case risks into operational tasks from the Command tab without exposing finding detail', async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            generated_at: '2026-07-06T00:00:00.000Z',
+            case_id: 'case_1',
+            patient_id: 'patient_1',
+            overall_status: 'blocked',
+            taskable_finding_count: 2,
+            skipped_finding_count: 3,
+            upserted_task_count: 2,
+            resolved_stale_task_count: 1,
+            upserted_tasks: [{ id: 'task_1', display_id: 'tsk0000000001' }],
+            resolved_stale_tasks: [{ id: 'task_9', display_id: 'tsk0000000009' }],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const { invalidateQueries } = mockPatientQuery(
+      buildWorkspace(),
+      null,
+      {},
+      {
+        patientOverrides: { cases: [buildActivePatientCase()] },
+        executeRiskTaskSyncMutation: true,
+      },
+    );
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    const panel = screen.getByTestId('case-risk-task-sync-panel');
+    expect(within(panel).getByText('対象: ケース cc0000000001 / 稼働中')).toBeTruthy();
+    fireEvent.click(within(panel).getByRole('button', { name: '同期する' }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith('/api/cases/case_1/risk-cockpit/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-org-id': 'org_1' },
+      }),
+    );
+    await waitFor(() => expect(within(panel).getByText('同期済み')).toBeTruthy());
+    expect(within(panel).getByText('2件')).toBeTruthy();
+    expect(within(panel).getByText('1件')).toBeTruthy();
+    expect(within(panel).getByText('3件')).toBeTruthy();
+    expect(JSON.stringify(panel.textContent)).not.toContain('task_1');
+    expect(JSON.stringify(panel.textContent)).not.toContain('tsk0000000001');
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['patient-overview', 'patient_1', 'org_1'],
+    });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['tasks'] });
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['case-risk-cockpit', 'case_1', 'org_1'],
+    });
+    expect(toast.success).toHaveBeenCalledWith(
+      '未解決リスクをタスクへ同期しました（作成/更新 2件 / 解決 1件）',
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it('disables risk task sync when the patient has no case', () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    mockPatientQuery(buildWorkspace(), null, {}, { patientOverrides: { cases: [] } });
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    const panel = screen.getByTestId('case-risk-task-sync-panel');
+    const button = within(panel).getByRole('button', { name: '同期する' });
+    expect(button.hasAttribute('disabled')).toBe(true);
+    expect(within(panel).getByText('対象ケースがありません。')).toBeTruthy();
+    fireEvent.click(button);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    vi.unstubAllGlobals();
   });
 
   it('opens the matching patient detail tab for an initial section hash', async () => {
