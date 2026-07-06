@@ -273,7 +273,9 @@ describe('AuditLogsContent', () => {
     ).toBeTruthy();
     expect(filterTitle.closest('summary')?.className).toContain('min-h-[44px]');
     expect(screen.getByRole('button', { name: 'JSON出力' }).className).toContain('sm:min-h-[44px]');
-    expect(screen.getByRole('button', { name: 'CSV出力' }).className).toContain('sm:min-h-[44px]');
+    expect(screen.getByRole('button', { name: '検索条件全件CSV出力' }).className).toContain(
+      'sm:min-h-[44px]',
+    );
     expect(screen.getByPlaceholderText('ユーザーIDで検索').className).toContain('sm:min-h-[44px]');
     expect(screen.getByPlaceholderText('確認者IDで検索').className).toContain('sm:min-h-[44px]');
     expect(document.getElementById('risk-tier-filter')?.className).toContain('sm:min-h-[44px]');
@@ -532,11 +534,50 @@ describe('AuditLogsContent', () => {
     renderContent();
     await screen.findByText('ログがありません');
 
-    fireEvent.click(screen.getByRole('button', { name: 'CSV出力' }));
+    fireEvent.click(screen.getByRole('button', { name: '検索条件全件CSV出力' }));
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith('監査ログのエクスポートに失敗しました');
     });
+  });
+
+  it('routes CSV export through the approved full-scope audit log export surface', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith('/api/audit-logs/export?')) {
+        return new Response('id,action\nlog_1,export', {
+          status: 200,
+          headers: {
+            'content-type': 'text/csv',
+            'content-disposition': 'attachment; filename="audit-logs.csv"',
+          },
+        });
+      }
+      if (url.startsWith('/api/audit-logs?')) {
+        return new Response(JSON.stringify({ data: [], summary: makeAuditLogSummary(0, 0) }), {
+          status: 200,
+        });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderContent();
+    await screen.findByText('ログがありません');
+
+    const csvButton = screen.getByRole('button', { name: '検索条件全件CSV出力' });
+    expect(screen.queryByRole('button', { name: 'CSV出力' })).toBeNull();
+    fireEvent.click(csvButton);
+
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith('監査ログをCSV形式で出力しました');
+    });
+    const exportCall = fetchMock.mock.calls.find(([input]) =>
+      String(input).startsWith('/api/audit-logs/export?'),
+    );
+    expect(exportCall).toBeDefined();
+    const params = searchParamsFromUrl(String(exportCall?.[0]));
+    expect(params.get('format')).toBe('csv');
   });
 
   it('uses the audit export fallback toast when the thrown error has an empty message', async () => {

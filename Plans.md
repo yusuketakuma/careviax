@@ -1066,7 +1066,11 @@ FE 仕上げ（低優先）:
   追加 partial として、調剤完了・監査承認・麻薬監査承認・セット監査承認の不可逆 confirm
   description に、`現在表示中の薬剤行` / `調剤済み薬剤行` / `表示中セル` と取消不可を明示し、
   `buildPrimaryConfirm` unit test で固定した。
-  残: server-side 全件操作 UI の registry 化と、他画面の destructive/bulk confirm 文言 sweep。
+  追加 partial として、監査ログ画面の手書き CSV export UI を `audit_logs_csv` approved
+  server export surface に接続し、button label を「検索条件全件CSV出力」に変更した。CSV export は
+  registry descriptor validation を通ってから `/api/audit-logs/export?format=csv` を呼ぶ。
+  残: drug master / formulary など他手書き CSV export UI の registry 化と、他画面の destructive/bulk
+  confirm 文言 sweep。
 
 **追加実装順序**:
 

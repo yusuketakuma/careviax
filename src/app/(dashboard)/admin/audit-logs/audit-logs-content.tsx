@@ -49,6 +49,10 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { messageFromError } from '@/lib/utils/error-message';
 import type { AuditLogListRow, AuditLogsResponse } from '@/types/api/audit-logs';
 import type { AuditLogReviewReasonCode } from '@/lib/audit-logs/review';
+import {
+  buildApprovedServerExportDescriptor,
+  getApprovedServerExportDescriptorProblem,
+} from '@/lib/audit/server-export-registry';
 
 // --- Helpers ---
 
@@ -102,6 +106,15 @@ function reviewBadgeClass(reviewState: AuditLogListRow['review_state']): string 
 
 // 一覧の表示上限(新しい順)。これに到達したら全件誤認を避ける注記を出す。
 const RESULT_LIMIT = 100;
+
+function buildAuditLogExportEndpoint(
+  queryParams: URLSearchParams,
+  format: 'csv' | 'json',
+): `/api/${string}` {
+  const exportParams = new URLSearchParams(queryParams);
+  exportParams.set('format', format);
+  return `/api/audit-logs/export?${exportParams.toString()}`;
+}
 
 // --- Main ---
 
@@ -367,9 +380,15 @@ export function AuditLogsContent() {
 
   async function handleExport(format: 'csv' | 'json') {
     try {
-      const exportParams = new URLSearchParams(queryParams);
-      exportParams.set('format', format);
-      const response = await fetch(`/api/audit-logs/export?${exportParams.toString()}`, {
+      const exportEndpoint = buildAuditLogExportEndpoint(queryParams, format);
+      if (format === 'csv') {
+        const descriptor = buildApprovedServerExportDescriptor('audit_logs_csv', exportEndpoint, {
+          label: '検索条件全件CSV出力',
+        });
+        const descriptorProblem = getApprovedServerExportDescriptorProblem(descriptor);
+        if (descriptorProblem) throw new Error(descriptorProblem);
+      }
+      const response = await fetch(exportEndpoint, {
         headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) {
@@ -423,7 +442,7 @@ export function AuditLogsContent() {
               onClick={() => void handleExport('csv')}
             >
               <Download className="mr-1.5 size-3.5" aria-hidden="true" />
-              CSV出力
+              検索条件全件CSV出力
             </Button>
           </ActionRail>
         }
