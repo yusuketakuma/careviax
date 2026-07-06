@@ -41,6 +41,59 @@
 
 ## 直近の land（本日・要点）
 
+- codex: INB-001 CommunicationQueue inbound bridge（commit pending）。
+  - current task:
+    正式 `InboundCommunicationEvent` / `InboundCommunicationSignal` DB migration 前に、既存
+    `CommunicationEvent(direction='inbound', channel in phone/fax/email)` を
+    `CommunicationQueue` の summary-only item として接続する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `prisma/schema/communication.prisma`,
+    `src/server/services/communication-queue.ts`,
+    `src/server/services/communication-queue.test.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail-communications.ts`,
+    `src/server/services/workflow-dashboard-queries.ts`,
+    `src/app/(dashboard)/workflow/workflow-dashboard.types.ts`,
+    `src/app/(dashboard)/patients/[id]/patient-detail.types.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/communication-queue.ts`,
+    `src/server/services/communication-queue.test.ts`.
+  - implementation:
+    `CommunicationQueueReader` に `communicationEvent.findMany` を追加し、受信 phone/FAX/email
+    を `queue_type='inbound_communication'` / `status='needs_review'` として queue item 化した。
+    item は controlled title/summary、channel、patient_name、occurred_at、患者 collaboration
+    deep link のみを返す。`patient_self_report` は既存 self report 導線と重複するため除外。
+  - security / PHI reviewed:
+    `CommunicationEvent` の `subject` / `content` / `counterpart_name` /
+    `counterpart_contact` / `attachments` / `display_id` / source URL / storage key は select しない。
+    privacy reviewer 指摘に従い、未使用の `case_id` / `event_type` / `direction` も select から外し、
+    患者名は title に重複させず `patient_name` に分離した。
+  - validation:
+    `pnpm vitest run src/server/services/communication-queue.test.ts --reporter=dot --testTimeout=30000`
+    passed: 1 file / 17 tests.
+    `pnpm vitest run src/server/services/communication-queue.test.ts src/server/services/patient-detail-communications.test.ts src/server/services/visit-brief.test.ts --reporter=dot --testTimeout=30000`
+    passed: 3 files / 26 tests.
+    `pnpm exec eslint src/server/services/communication-queue.ts src/server/services/communication-queue.test.ts`
+    passed.
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/server/services/communication-queue.ts src/server/services/communication-queue.test.ts`
+    passed.
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/server/services/communication-queue.ts src/server/services/communication-queue.test.ts`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`
+    passed.
+    `pnpm boundaries:check`
+    passed: 0 new violations, 7 allowlisted debt imports across 6 files.
+  - remaining:
+    `INB-001` remains partial for dedicated DB正本、registration API、review UI、formal signal queue、MedicationStock/Risk/Task/
+    VisitBrief/Schedule/Report linkage.
+  - next action:
+    Scoped commit/push, then continue with formal inbound signal queue or MedicationStock adapter.
+
 - codex: MOV-001 visit/prescription occurrence-only timeline hardening（commit 1c943327a）。
   - current task:
     ユーザー方針「処方・訪問・文書登録があったことが timeline で確認できればよい。

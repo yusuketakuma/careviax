@@ -59,6 +59,16 @@ export type CommunicationQueueReader = {
       }>
     >;
   };
+  communicationEvent?: {
+    findMany(args: unknown): Promise<
+      Array<{
+        id: string;
+        patient_id: string | null;
+        channel: string;
+        occurred_at: Date;
+      }>
+    >;
+  };
   deliveryRecord?: {
     findMany(args: unknown): Promise<
       Array<{
@@ -150,7 +160,13 @@ function normalizeCommunicationQueueLimit(value: number | undefined) {
 
 export type CommunicationQueueItem = {
   id: string;
-  queue_type: 'self_report' | 'callback' | 'request' | 'delivery' | 'external_share';
+  queue_type:
+    | 'self_report'
+    | 'callback'
+    | 'request'
+    | 'delivery'
+    | 'external_share'
+    | 'inbound_communication';
   title: string;
   summary: string;
   channel: string;
@@ -224,6 +240,14 @@ type TimelineSeed = {
   action_href: string;
   action_label: string;
 };
+
+const INBOUND_COMMUNICATION_CHANNEL_LABELS: Record<string, string> = {
+  phone: '電話',
+  fax: 'FAX',
+  email: 'メール',
+};
+
+const INBOUND_COMMUNICATION_QUEUE_CHANNELS = Object.keys(INBOUND_COMMUNICATION_CHANNEL_LABELS);
 
 function priorityRank(priority: QueuePriority) {
   switch (priority) {
@@ -565,6 +589,7 @@ export async function listCommunicationQueue(
     selfReports,
     callbackLogs,
     openRequests,
+    inboundCommunicationEvents,
     deliveryRecords,
     externalShares,
     careReports,
@@ -658,6 +683,26 @@ export async function listCommunicationQueue(
         requested_at: true,
       },
     }) ?? Promise.resolve([]),
+    reader.communicationEvent?.findMany({
+      where: {
+        org_id: args.orgId,
+        ...patientScope,
+        ...(caseScope ? { AND: [caseScope] } : {}),
+        event_type: { not: 'patient_self_report' },
+        direction: 'inbound',
+        channel: {
+          in: INBOUND_COMMUNICATION_QUEUE_CHANNELS,
+        },
+      },
+      orderBy: [{ occurred_at: 'desc' }, { id: 'asc' }],
+      take: limit,
+      select: {
+        id: true,
+        patient_id: true,
+        channel: true,
+        occurred_at: true,
+      },
+    }) ?? Promise.resolve([]),
     reader.deliveryRecord?.findMany({
       where: {
         org_id: args.orgId,
@@ -746,6 +791,9 @@ export async function listCommunicationQueue(
         ...selfReports.map((item) => item.patient_id),
         ...callbackLogs.map((item) => item.patient_id),
         ...openRequests
+          .map((item) => item.patient_id)
+          .filter((value): value is string => Boolean(value)),
+        ...inboundCommunicationEvents
           .map((item) => item.patient_id)
           .filter((value): value is string => Boolean(value)),
         ...deliveryRecords
@@ -841,6 +889,26 @@ export async function listCommunicationQueue(
       }),
       action_label: '依頼を確認',
     })),
+    ...inboundCommunicationEvents.map((event) => {
+      const channelLabel = INBOUND_COMMUNICATION_CHANNEL_LABELS[event.channel] ?? '受信連絡';
+      const patientName = event.patient_id ? (patientNameById.get(event.patient_id) ?? null) : null;
+      return {
+        id: `inbound_communication:${event.id}`,
+        queue_type: 'inbound_communication' as const,
+        title: `${channelLabel}連絡を受信`,
+        summary: '他職種または関係者からの受信情報があります。内容は連絡履歴で確認してください。',
+        channel: event.channel,
+        status: 'needs_review',
+        priority: 'high' as const,
+        patient_id: event.patient_id,
+        patient_name: patientName,
+        due_at: event.occurred_at.toISOString(),
+        action_href: event.patient_id
+          ? buildPatientHref(event.patient_id, '/collaboration')
+          : '/communications/requests',
+        action_label: '受信情報を確認',
+      };
+    }),
     ...actionableDeliveries.map((record) => ({
       id: `delivery:${record.id}`,
       queue_type: 'delivery' as const,

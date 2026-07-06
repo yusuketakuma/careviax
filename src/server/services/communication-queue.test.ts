@@ -4,6 +4,7 @@ const {
   selfReportFindManyMock,
   contactLogFindManyMock,
   communicationRequestFindManyMock,
+  communicationEventFindManyMock,
   deliveryRecordFindManyMock,
   externalAccessGrantFindManyMock,
   careReportFindManyMock,
@@ -15,6 +16,7 @@ const {
   selfReportFindManyMock: vi.fn(),
   contactLogFindManyMock: vi.fn(),
   communicationRequestFindManyMock: vi.fn(),
+  communicationEventFindManyMock: vi.fn(),
   deliveryRecordFindManyMock: vi.fn(),
   externalAccessGrantFindManyMock: vi.fn(),
   careReportFindManyMock: vi.fn(),
@@ -39,6 +41,7 @@ function makeDb() {
     patientSelfReport: { findMany: selfReportFindManyMock },
     visitScheduleContactLog: { findMany: contactLogFindManyMock },
     communicationRequest: { findMany: communicationRequestFindManyMock },
+    communicationEvent: { findMany: communicationEventFindManyMock },
     deliveryRecord: { findMany: deliveryRecordFindManyMock },
     externalAccessGrant: { findMany: externalAccessGrantFindManyMock },
     careReport: { findMany: careReportFindManyMock },
@@ -55,6 +58,7 @@ function emptyDbMocks() {
   selfReportFindManyMock.mockResolvedValue([]);
   contactLogFindManyMock.mockResolvedValue([]);
   communicationRequestFindManyMock.mockResolvedValue([]);
+  communicationEventFindManyMock.mockResolvedValue([]);
   deliveryRecordFindManyMock.mockResolvedValue([]);
   externalAccessGrantFindManyMock.mockResolvedValue([]);
   careReportFindManyMock.mockResolvedValue([]);
@@ -190,6 +194,80 @@ describe('listCommunicationQueue', () => {
     ]);
   });
 
+  it('includes inbound communication events as summary-only queue items', async () => {
+    emptyDbMocks();
+    const patientId = 'patient/1?x=y#frag';
+    communicationEventFindManyMock.mockResolvedValue([
+      {
+        id: 'event/1?x=y#frag',
+        patient_id: patientId,
+        case_id: 'case-1',
+        event_type: 'medication_stock_report',
+        channel: 'phone',
+        direction: 'inbound',
+        occurred_at: new Date('2026-04-02T10:00:00Z'),
+        subject: '湿布の残りが少ない',
+        content: '湿布は残り4枚です',
+        counterpart_name: '訪問看護師A',
+        counterpart_contact: '090-0000-0000',
+        attachments: [{ name: 'photo.jpg', storage_key: 'secret-key' }],
+      },
+    ]);
+    patientFindManyMock.mockResolvedValue([{ id: patientId, name: '佐藤花子' }]);
+
+    const result = await listCommunicationQueue(makeDb(), {
+      orgId: 'org-1',
+      patientId,
+      caseIds: ['case-1'],
+    });
+
+    expect(communicationEventFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org-1',
+          patient_id: patientId,
+          event_type: { not: 'patient_self_report' },
+          direction: 'inbound',
+          channel: { in: ['phone', 'fax', 'email'] },
+          AND: [{ OR: [{ case_id: null }, { case_id: { in: ['case-1'] } }] }],
+        }),
+        select: {
+          id: true,
+          patient_id: true,
+          channel: true,
+          occurred_at: true,
+        },
+      }),
+    );
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        id: 'inbound_communication:event/1?x=y#frag',
+        queue_type: 'inbound_communication',
+        title: '電話連絡を受信',
+        summary: '他職種または関係者からの受信情報があります。内容は連絡履歴で確認してください。',
+        channel: 'phone',
+        status: 'needs_review',
+        priority: 'high',
+        patient_id: patientId,
+        patient_name: '佐藤花子',
+        action_href: `/patients/${encodeURIComponent(patientId)}/collaboration`,
+        action_label: '受信情報を確認',
+      }),
+    ]);
+    expect(result.summary.pending_count).toBe(1);
+
+    const serialized = JSON.stringify(result.items);
+    expect(serialized).not.toContain('case-1');
+    expect(serialized).not.toContain('medication_stock_report');
+    expect(serialized).not.toContain('"direction"');
+    expect(serialized).not.toContain('湿布の残りが少ない');
+    expect(serialized).not.toContain('湿布は残り4枚です');
+    expect(serialized).not.toContain('訪問看護師A');
+    expect(serialized).not.toContain('090-0000-0000');
+    expect(serialized).not.toContain('photo.jpg');
+    expect(serialized).not.toContain('secret-key');
+  });
+
   it('links tracing report timeline entries to related communication requests', async () => {
     emptyDbMocks();
     tracingReportFindManyMock.mockResolvedValue([
@@ -315,6 +393,16 @@ describe('listCommunicationQueue', () => {
         }),
       }),
     );
+    expect(communicationEventFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          patient_id: 'p-1',
+          AND: [caseScope],
+          direction: 'inbound',
+          event_type: { not: 'patient_self_report' },
+        }),
+      }),
+    );
     expect(contactLogFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -391,6 +479,16 @@ describe('listCommunicationQueue', () => {
         where: expect.objectContaining({
           ...patientScope,
           AND: [caseScope],
+        }),
+      }),
+    );
+    expect(communicationEventFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          ...patientScope,
+          AND: [caseScope],
+          direction: 'inbound',
+          event_type: { not: 'patient_self_report' },
         }),
       }),
     );
@@ -537,6 +635,9 @@ describe('listCommunicationQueue', () => {
       expect.objectContaining({ take: 8 }),
     );
     expect(communicationRequestFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 8 }),
+    );
+    expect(communicationEventFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({ take: 8 }),
     );
   });
