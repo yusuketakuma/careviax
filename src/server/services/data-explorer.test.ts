@@ -108,6 +108,22 @@ describe('data explorer service hardening', () => {
       ],
       visibleField: 'name',
     },
+    {
+      tableName: 'FileAsset',
+      row: {
+        id: 'file_1',
+        org_id: 'org_1',
+        purpose: 'prescription',
+        status: 'uploaded',
+        original_name: '患者 山田太郎 090-1234-5678 アムロジピン.pdf',
+        storage_key: 'prescriptions/org_1/patient_1/file_1-secret.pdf',
+        etag: 'etag-secret',
+        metadata: { provider_error: 'raw storageKey=prescriptions/org_1/patient_1/file_1' },
+        size_bytes: 12345,
+      },
+      deniedFields: ['original_name', 'storage_key', 'etag', 'metadata'],
+      visibleField: 'purpose',
+    },
   ])(
     'omits denied $tableName fields from read columns, row payloads, and SQL projection',
     async ({ tableName, row, deniedFields, visibleField }) => {

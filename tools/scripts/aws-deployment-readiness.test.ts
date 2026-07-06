@@ -15,6 +15,18 @@ function baseInput(overrides: Partial<ReadinessInput> = {}): ReadinessInput {
       nextConfig: "const nextConfig = { output: 'standalone' };",
       costScenarios: true,
       operationsDoc: true,
+      s3BucketPolicy: true,
+      s3BucketPolicyText:
+        '/prescriptions/* /consent-documents/* /visit-photos/* /reports/* /set-audits/* /contract-documents/* /bulk-exports/*',
+      s3ObjectLockPolicy: true,
+      s3KmsKeyPolicy: true,
+      fileApiBoundaryTests: [
+        'src/app/api/__tests__/api-conventions-static.test.ts',
+        'src/app/api/files/presigned-upload/route.test.ts',
+        'src/app/api/files/complete/route.test.ts',
+        'src/app/api/files/[id]/presigned-download/route.test.ts',
+        'src/app/api/files/[id]/download/route.test.ts',
+      ],
       standaloneServer: true,
       standaloneEnvFiles: [],
     },
@@ -36,7 +48,7 @@ describe('evaluateReadiness', () => {
   it('passes local AWS deployment prerequisites when artifacts and env are present', () => {
     const report = evaluateReadiness(baseInput(), new Date('2026-06-17T00:00:00.000Z'));
 
-    expect(report.summary).toEqual({ pass: 12, warn: 0, fail: 0, skip: 1 });
+    expect(report.summary).toEqual({ pass: 14, warn: 0, fail: 0, skip: 1 });
     expect(report.checks.find((check) => check.name === 'aws-credentials')?.status).toBe('skip');
   });
 
@@ -85,6 +97,29 @@ describe('evaluateReadiness', () => {
       'fail',
     );
     expect(report.checks.find((check) => check.name === 'aws-credentials')?.status).toBe('fail');
+  });
+
+  it('fails when S3 PHI policy artifacts or file API boundary tests are absent', () => {
+    const report = evaluateReadiness(
+      baseInput({
+        files: {
+          ...baseInput().files,
+          s3BucketPolicy: false,
+          s3BucketPolicyText: '/prescriptions/* /visit-photos/* /reports/* /bulk-exports/*',
+          fileApiBoundaryTests: [
+            'src/app/api/__tests__/api-conventions-static.test.ts',
+            'src/app/api/files/complete/route.test.ts',
+          ],
+        },
+      }),
+    );
+
+    expect(report.checks.find((check) => check.name === 's3-phi-policy-artifacts')?.status).toBe(
+      'fail',
+    );
+    expect(
+      report.checks.find((check) => check.name === 'file-api-public-dto-boundary')?.status,
+    ).toBe('fail');
   });
 
   it('fails when standalone output contains copied environment files', () => {

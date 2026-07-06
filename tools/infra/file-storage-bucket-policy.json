@@ -6,10 +6,7 @@
       "effect": "Deny",
       "principal": "*",
       "actions": ["s3:*"],
-      "resources": [
-        "arn:aws:s3:::${S3_BUCKET_NAME}",
-        "arn:aws:s3:::${S3_BUCKET_NAME}/*"
-      ],
+      "resources": ["arn:aws:s3:::${S3_BUCKET_NAME}", "arn:aws:s3:::${S3_BUCKET_NAME}/*"],
       "condition": {
         "Bool": {
           "aws:SecureTransport": "false"
@@ -23,8 +20,11 @@
       "actions": ["s3:PutObject"],
       "resources": [
         "arn:aws:s3:::${S3_BUCKET_NAME}/prescriptions/*",
+        "arn:aws:s3:::${S3_BUCKET_NAME}/consent-documents/*",
         "arn:aws:s3:::${S3_BUCKET_NAME}/visit-photos/*",
         "arn:aws:s3:::${S3_BUCKET_NAME}/reports/*",
+        "arn:aws:s3:::${S3_BUCKET_NAME}/set-audits/*",
+        "arn:aws:s3:::${S3_BUCKET_NAME}/contract-documents/*",
         "arn:aws:s3:::${S3_BUCKET_NAME}/bulk-exports/*"
       ],
       "condition": {
@@ -40,8 +40,11 @@
       "actions": ["s3:PutObject"],
       "resources": [
         "arn:aws:s3:::${S3_BUCKET_NAME}/prescriptions/*",
+        "arn:aws:s3:::${S3_BUCKET_NAME}/consent-documents/*",
         "arn:aws:s3:::${S3_BUCKET_NAME}/visit-photos/*",
         "arn:aws:s3:::${S3_BUCKET_NAME}/reports/*",
+        "arn:aws:s3:::${S3_BUCKET_NAME}/set-audits/*",
+        "arn:aws:s3:::${S3_BUCKET_NAME}/contract-documents/*",
         "arn:aws:s3:::${S3_BUCKET_NAME}/bulk-exports/*"
       ],
       "condition": {
@@ -57,8 +60,11 @@
       "actions": ["s3:PutObject"],
       "resources": [
         "arn:aws:s3:::${S3_BUCKET_NAME}/prescriptions/*",
+        "arn:aws:s3:::${S3_BUCKET_NAME}/consent-documents/*",
         "arn:aws:s3:::${S3_BUCKET_NAME}/visit-photos/*",
         "arn:aws:s3:::${S3_BUCKET_NAME}/reports/*",
+        "arn:aws:s3:::${S3_BUCKET_NAME}/set-audits/*",
+        "arn:aws:s3:::${S3_BUCKET_NAME}/contract-documents/*",
         "arn:aws:s3:::${S3_BUCKET_NAME}/bulk-exports/*"
       ],
       "condition": {
@@ -79,17 +85,16 @@
       "actions": ["s3:PutObject", "s3:PutObjectAcl"],
       "resources": [
         "arn:aws:s3:::${S3_BUCKET_NAME}/prescriptions/*",
+        "arn:aws:s3:::${S3_BUCKET_NAME}/consent-documents/*",
         "arn:aws:s3:::${S3_BUCKET_NAME}/visit-photos/*",
         "arn:aws:s3:::${S3_BUCKET_NAME}/reports/*",
+        "arn:aws:s3:::${S3_BUCKET_NAME}/set-audits/*",
+        "arn:aws:s3:::${S3_BUCKET_NAME}/contract-documents/*",
         "arn:aws:s3:::${S3_BUCKET_NAME}/bulk-exports/*"
       ],
       "condition": {
         "StringEqualsIfExists": {
-          "s3:x-amz-acl": [
-            "public-read",
-            "public-read-write",
-            "authenticated-read"
-          ]
+          "s3:x-amz-acl": ["public-read", "public-read-write", "authenticated-read"]
         }
       }
     }

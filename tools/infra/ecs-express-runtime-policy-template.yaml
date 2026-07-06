@@ -103,8 +103,11 @@ Resources:
               - s3:GetObjectTagging
             Resource:
               - !Sub 'arn:${AWS::Partition}:s3:::${EvidenceBucketName}/prescriptions/*'
+              - !Sub 'arn:${AWS::Partition}:s3:::${EvidenceBucketName}/consent-documents/*'
               - !Sub 'arn:${AWS::Partition}:s3:::${EvidenceBucketName}/visit-photos/*'
               - !Sub 'arn:${AWS::Partition}:s3:::${EvidenceBucketName}/reports/*'
+              - !Sub 'arn:${AWS::Partition}:s3:::${EvidenceBucketName}/set-audits/*'
+              - !Sub 'arn:${AWS::Partition}:s3:::${EvidenceBucketName}/contract-documents/*'
               - !Sub 'arn:${AWS::Partition}:s3:::${EvidenceBucketName}/bulk-exports/*'
           - Sid: UseEvidenceKmsForS3Only
             Effect: Allow

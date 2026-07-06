@@ -41,6 +41,90 @@
 
 ## 直近の land（本日・要点）
 
+- codex: S3-PHI-001 file/S3 PHI boundary gate implemented.
+  - current task:
+    `Plans.md` の `S3-PHI-001` を実装。S3 bucket policy / ECS runtime policy / validator /
+    deployment readiness を、`file-storage.ts` が生成する全PHI-adjacent prefix
+    (`prescriptions`, `consent-documents`, `visit-photos`, `reports`, `set-audits`,
+    `contract-documents`, `bulk-exports`) に揃えた。さらに admin Data Explorer の
+    `FileAsset` public DTO から `storage_key` / `original_name` / `etag` / `metadata` を除外し、
+    file API no-store / DTO minimization の静的 gate を追加した。
+  - AWS official references checked (2026-07-06):
+    AWS S3 bucket policy examples
+    `https://docs.aws.amazon.com/AmazonS3/latest/userguide/example-bucket-policies.html`,
+    AWS S3 condition keys / bucket policy keys
+    `https://docs.aws.amazon.com/AmazonS3/latest/userguide/amazon-s3-policy-keys.html`,
+    AWS S3 server-side encryption
+    `https://docs.aws.amazon.com/AmazonS3/latest/userguide/UsingServerSideEncryption.html`,
+    AWS CloudFormation `AWS::S3::BucketPolicy`
+    `https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-s3-bucketpolicy.html`.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `tools/scripts/aws-deployment-readiness.ts`,
+    `tools/scripts/aws-deployment-readiness.test.ts`,
+    `tools/scripts/aws-ecs-express-runtime-policy-validate.ts`,
+    `tools/scripts/aws-ecs-express-runtime-policy-validate.test.ts`,
+    `tools/infra/file-storage-bucket-policy.json`,
+    `tools/infra/ecs-express-runtime-policy-template.yaml`,
+    `tools/infra/prescription-object-lock.json`,
+    `tools/infra/s3-kms-key-policy.json`,
+    `src/server/services/file-storage.ts`,
+    `src/server/services/data-explorer.ts`,
+    `src/server/services/data-explorer.test.ts`,
+    `src/app/api/__tests__/api-conventions-static.test.ts`,
+    `src/app/api/files/presigned-upload/route.ts`,
+    `src/app/api/files/presigned-upload/route.test.ts`,
+    `src/app/api/files/complete/route.ts`,
+    `src/app/api/files/complete/route.test.ts`,
+    `src/app/api/files/[id]/presigned-download/route.ts`,
+    `src/app/api/files/[id]/presigned-download/route.test.ts`,
+    `src/app/api/files/[id]/download/route.ts`,
+    `src/app/api/files/[id]/download/route.test.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `tools/scripts/aws-deployment-readiness.ts`,
+    `tools/scripts/aws-deployment-readiness.test.ts`,
+    `tools/scripts/aws-ecs-express-runtime-policy-validate.ts`,
+    `tools/scripts/aws-ecs-express-runtime-policy-validate.test.ts`,
+    `tools/infra/file-storage-bucket-policy.json`,
+    `tools/infra/ecs-express-runtime-policy-template.yaml`,
+    `src/server/services/data-explorer.ts`,
+    `src/server/services/data-explorer.test.ts`,
+    `src/app/api/__tests__/api-conventions-static.test.ts`.
+  - subagent / review:
+    `privacy_compliance_reviewer` (`019f35f9-655c-7a31-8c80-60bb0b1fb3f6`) returned
+    `CHANGES_REQUESTED`; incorporated high findings for missing S3/IAM prefixes and
+    `FileAsset.storage_key/original_name` exposure. Medium residuals remain for communication
+    event attachment filename persistence and browser-visible signed S3 URLs.
+  - validation:
+    `pnpm exec vitest run src/server/services/data-explorer.test.ts src/app/api/__tests__/api-conventions-static.test.ts tools/scripts/aws-deployment-readiness.test.ts tools/scripts/aws-ecs-express-runtime-policy-validate.test.ts --reporter=dot --testTimeout=30000`
+    passed: 4 files / 46 tests.
+    `pnpm exec vitest run src/app/api/files/presigned-upload/route.test.ts src/app/api/files/complete/route.test.ts 'src/app/api/files/[id]/presigned-download/route.test.ts' 'src/app/api/files/[id]/download/route.test.ts' --reporter=dot --testTimeout=30000`
+    passed: 4 files / 54 tests.
+    Combined rerun passed: 8 files / 100 tests.
+    `pnpm exec eslint tools/scripts/aws-deployment-readiness.ts tools/scripts/aws-deployment-readiness.test.ts tools/scripts/aws-ecs-express-runtime-policy-validate.ts tools/scripts/aws-ecs-express-runtime-policy-validate.test.ts src/server/services/data-explorer.ts src/server/services/data-explorer.test.ts src/app/api/__tests__/api-conventions-static.test.ts`
+    passed.
+    `pnpm format:check` passed after formatting touched files.
+    `git diff --check -- <owned paths>` passed.
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck` passed.
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false` passed.
+    `pnpm aws:deploy:readiness -- --json` passed with fail=0; warning remains for local Docker missing,
+    missing `.next/standalone/server.js`, and unset production env (expected local no-live-AWS state).
+    New `s3-phi-policy-artifacts` and `file-api-public-dto-boundary` checks passed.
+    `pnpm aws:ecs-express:runtime-policy:validate -- --json` passed with fail=0 / skip=1
+    (`aws-validate-template` live AWS check skipped).
+  - remaining work:
+    Follow-up candidates: `COMM-FILE-001` stop persisting/returning FileAsset original_name as
+    communication attachment `file_name`; `FILE-DOWNLOAD-001` deprecate browser-visible JSON
+    signed URLs or move UI to same-origin download endpoint; live AWS Block Public Access /
+    versioning / Object Lock / KMS / CloudTrail data event verification remains an operational gate.
+  - next action:
+    scoped commit/push for the S3-PHI-001 slice, then continue with `COMM-FILE-001` or
+    `FILE-DOWNLOAD-001`.
+
 - codex: AWS-LS-001 Lightsail pilot readiness gate implemented.
   - implementation commit: `a4e506b54` (`Add AWS pilot readiness gate`)
   - current task:

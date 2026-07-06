@@ -161,6 +161,7 @@ const NON_EDITABLE_MODEL_FIELDS: Record<string, ReadonlySet<string>> = {
   ]),
 };
 const DENIED_MODEL_FIELDS: Record<string, ReadonlySet<string>> = {
+  FileAsset: new Set(['storage_key', 'original_name', 'etag', 'metadata']),
   WebhookRegistration: new Set(['url']),
   WebhookDelivery: new Set(['payload', 'url']),
 };

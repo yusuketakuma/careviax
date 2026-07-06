@@ -3,6 +3,19 @@ import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const apiRoot = join(process.cwd(), 'src', 'app', 'api');
+const sensitiveFileApiRoutes = [
+  'src/app/api/files/presigned-upload/route.ts',
+  'src/app/api/files/complete/route.ts',
+  'src/app/api/files/[id]/presigned-download/route.ts',
+  'src/app/api/files/[id]/download/route.ts',
+] as const;
+
+const sensitiveFileApiRouteTests = [
+  'src/app/api/files/presigned-upload/route.test.ts',
+  'src/app/api/files/complete/route.test.ts',
+  'src/app/api/files/[id]/presigned-download/route.test.ts',
+  'src/app/api/files/[id]/download/route.test.ts',
+] as const;
 
 function collectRouteFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
@@ -34,5 +47,45 @@ describe('API route conventions', () => {
       .map(relativeRoutePath);
 
     expect(rawAuditLogRoutes).toEqual([]);
+  });
+
+  it('keeps sensitive file API routes behind no-store response wrappers', () => {
+    const routesMissingNoStore = sensitiveFileApiRoutes.filter((filePath) => {
+      const source = readFileSync(join(process.cwd(), filePath), 'utf8');
+      return !source.includes('withSensitiveNoStore');
+    });
+
+    expect(routesMissingNoStore).toEqual([]);
+  });
+
+  it('keeps file API public DTO and PHI leakage regression tests in place', () => {
+    const testsMissingNoStoreAssertions = sensitiveFileApiRouteTests.filter((filePath) => {
+      const source = readFileSync(join(process.cwd(), filePath), 'utf8');
+      return !source.includes('expectSensitiveNoStore');
+    });
+    const completeTest = readFileSync(
+      join(process.cwd(), 'src/app/api/files/complete/route.test.ts'),
+      'utf8',
+    );
+    const presignedUploadTest = readFileSync(
+      join(process.cwd(), 'src/app/api/files/presigned-upload/route.test.ts'),
+      'utf8',
+    );
+    const presignedDownloadTest = readFileSync(
+      join(process.cwd(), 'src/app/api/files/[id]/presigned-download/route.test.ts'),
+      'utf8',
+    );
+    const downloadTest = readFileSync(
+      join(process.cwd(), 'src/app/api/files/[id]/download/route.test.ts'),
+      'utf8',
+    );
+
+    expect(testsMissingNoStoreAssertions).toEqual([]);
+    expect(completeTest).toContain("not.toHaveProperty('originalName')");
+    expect(completeTest).toContain("not.toContain('storageKey')");
+    expect(presignedUploadTest).toContain("not.toContain('objectKey')");
+    expect(presignedUploadTest).toContain("not.toContain('storageKey')");
+    expect(presignedDownloadTest).toContain("not.toContain('downloadUrl')");
+    expect(downloadTest).toContain("not.toContain('downloadUrl')");
   });
 });

@@ -29,6 +29,11 @@ export type ReadinessInput = {
     nextConfig: string | null;
     costScenarios: boolean;
     operationsDoc: boolean;
+    s3BucketPolicy: boolean;
+    s3BucketPolicyText: string | null;
+    s3ObjectLockPolicy: boolean;
+    s3KmsKeyPolicy: boolean;
+    fileApiBoundaryTests: string[];
     standaloneServer: boolean;
     standaloneEnvFiles: string[];
   };
@@ -51,6 +56,16 @@ type CliArgs = {
   strict: boolean;
   json: boolean;
 };
+
+const PHI_FILE_PREFIXES = [
+  'prescriptions',
+  'consent-documents',
+  'visit-photos',
+  'reports',
+  'set-audits',
+  'contract-documents',
+  'bulk-exports',
+] as const;
 
 function readArgs(argv: string[]): CliArgs {
   const args: CliArgs = {
@@ -212,6 +227,59 @@ export function evaluateReadiness(input: ReadinessInput, now = new Date()): Read
       ? 'AWS low-cost operations doc is present.'
       : 'AWS low-cost operations doc is missing.',
   );
+  const missingS3PhiArtifacts = [
+    ['tools/infra/file-storage-bucket-policy.json', input.files.s3BucketPolicy],
+    ['tools/infra/prescription-object-lock.json', input.files.s3ObjectLockPolicy],
+    ['tools/infra/s3-kms-key-policy.json', input.files.s3KmsKeyPolicy],
+  ]
+    .filter(([, present]) => !present)
+    .map(([filePath]) => filePath);
+  const missingS3PolicyPrefixes = input.files.s3BucketPolicyText
+    ? PHI_FILE_PREFIXES.filter(
+        (prefix) => !input.files.s3BucketPolicyText?.includes(`/${prefix}/*`),
+      )
+    : [...PHI_FILE_PREFIXES];
+  add(
+    checks,
+    missingS3PhiArtifacts.length === 0 && missingS3PolicyPrefixes.length === 0 ? 'pass' : 'fail',
+    's3-phi-policy-artifacts',
+    missingS3PhiArtifacts.length === 0 && missingS3PolicyPrefixes.length === 0
+      ? 'S3 PHI bucket policy, Object Lock, and KMS policy artifacts cover all file-storage prefixes.'
+      : [
+          missingS3PhiArtifacts.length > 0
+            ? `missing artifact(s): ${missingS3PhiArtifacts.join(', ')}`
+            : null,
+          missingS3PolicyPrefixes.length > 0
+            ? `missing bucket policy prefix(es): ${missingS3PolicyPrefixes.join(', ')}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join('; '),
+    missingS3PhiArtifacts.length === 0 && missingS3PolicyPrefixes.length === 0
+      ? undefined
+      : 'Add S3 public access block/TLS/KMS policy and Object Lock artifacts before handling production PHI.',
+  );
+  const requiredFileApiBoundaryTests = [
+    'src/app/api/__tests__/api-conventions-static.test.ts',
+    'src/app/api/files/presigned-upload/route.test.ts',
+    'src/app/api/files/complete/route.test.ts',
+    'src/app/api/files/[id]/presigned-download/route.test.ts',
+    'src/app/api/files/[id]/download/route.test.ts',
+  ];
+  const missingFileApiBoundaryTests = requiredFileApiBoundaryTests.filter(
+    (filePath) => !input.files.fileApiBoundaryTests.includes(filePath),
+  );
+  add(
+    checks,
+    missingFileApiBoundaryTests.length === 0 ? 'pass' : 'fail',
+    'file-api-public-dto-boundary',
+    missingFileApiBoundaryTests.length === 0
+      ? 'File API no-store and public DTO minimization regression tests are present.'
+      : `Missing file API boundary test(s): ${missingFileApiBoundaryTests.join(', ')}`,
+    missingFileApiBoundaryTests.length === 0
+      ? undefined
+      : 'Add regression tests proving file APIs do not expose original names, storage keys, entity ids, or PHI in public responses.',
+  );
 
   const requiredEnv = [
     'AWS_REGION',
@@ -291,6 +359,10 @@ function listStandaloneEnvFiles() {
   return readdirSync(directory).filter((name) => name === '.env' || name.startsWith('.env.'));
 }
 
+function existingFiles(filePaths: string[]) {
+  return filePaths.filter((filePath) => existsSync(filePath));
+}
+
 function runLiveAwsCheck(): ReadinessInput['liveAws'] {
   try {
     execFileSync('aws', ['sts', 'get-caller-identity', '--output', 'json'], {
@@ -343,6 +415,17 @@ function collectInput(args: CliArgs): ReadinessInput {
       nextConfig: readTextIfExists('next.config.ts'),
       costScenarios: existsSync('tools/aws-cost-minimal-scenarios.json'),
       operationsDoc: existsSync('docs/operations/aws-cost-minimal-deployment.md'),
+      s3BucketPolicy: existsSync('tools/infra/file-storage-bucket-policy.json'),
+      s3BucketPolicyText: readTextIfExists('tools/infra/file-storage-bucket-policy.json'),
+      s3ObjectLockPolicy: existsSync('tools/infra/prescription-object-lock.json'),
+      s3KmsKeyPolicy: existsSync('tools/infra/s3-kms-key-policy.json'),
+      fileApiBoundaryTests: existingFiles([
+        'src/app/api/__tests__/api-conventions-static.test.ts',
+        'src/app/api/files/presigned-upload/route.test.ts',
+        'src/app/api/files/complete/route.test.ts',
+        'src/app/api/files/[id]/presigned-download/route.test.ts',
+        'src/app/api/files/[id]/download/route.test.ts',
+      ]),
       standaloneServer: existsSync('.next/standalone/server.js'),
       standaloneEnvFiles: listStandaloneEnvFiles(),
     },

@@ -60,4 +60,18 @@ describe('validateEcsExpressRuntimePolicyTemplate', () => {
 
     expect(report.checks.find((check) => check.name === 's3-prefix-scope')?.status).toBe('fail');
   });
+
+  it('fails when a file-storage prefix is missing from the S3 runtime scope', () => {
+    const template = readFileSync(templatePath, 'utf8').replace(
+      "\n              - !Sub 'arn:${AWS::Partition}:s3:::${EvidenceBucketName}/consent-documents/*'",
+      '',
+    );
+
+    const report = validateEcsExpressRuntimePolicyTemplate({
+      templatePath,
+      templateText: template,
+    });
+
+    expect(report.checks.find((check) => check.name === 's3-prefix-scope')?.status).toBe('fail');
+  });
 });
