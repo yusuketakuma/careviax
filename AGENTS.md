@@ -11,6 +11,8 @@ For any AWS-related implementation, consult the relevant AWS official documentat
 
 For high-risk implementation or unclear failures, consult Oracle/GPT-5.5 Pro as an advisory safety gate before proceeding. Use the project `.oracle/config.json` defaults and keep machine-local browser paths, remote tokens, API keys, cookies, and secrets in `~/.oracle/config.json`, environment variables, or explicit CLI flags only.
 
+When consulting Oracle/GPT-5.5 Pro, GitHub access is mandatory, but GitHub context must be metadata-first and PHI/secret-scanned before it is shared. Before the consultation, inspect the current GitHub repository/branch/PR context with `git remote -v`, `git rev-parse HEAD`, and `gh` or `git` as appropriate, then include only the repository URL, branch, commit SHA, sanitized PR number/title, and PHI/secret-free diff summary by default. Instruct GPT-5.5 Pro to review the relevant safe GitHub state as part of its answer. Do not send or invite Oracle to inspect PR/issue bodies, comments, screenshots, CI logs, artifacts, attachments, or raw diffs unless they have been explicitly checked and proven free of PHI, PII, secrets, tokens, patient identifiers, and production credentials. If Oracle cannot directly access a private GitHub resource, or if direct GitHub review would expose unsafe artifacts, do not skip the gate: provide a PHI/secret-free summary of the GitHub state and the minimal relevant local files instead, and record the access limitation in `ops/refactor/STATE.md`.
+
 Mandatory Oracle consultation triggers:
 
 - authentication, authorization, tenant isolation, platform/support-mode access, or cross-tenant grants;
@@ -32,7 +34,7 @@ npx -y @steipete/oracle \
   --browser-auto-reattach-timeout 60s \
   --browser-thinking-time heavy \
   --heartbeat 30 \
-  -p "<focused PH-OS consultation prompt>" \
+  -p "<focused PH-OS consultation prompt, including GitHub repo/branch/commit/PR context and an instruction to inspect GitHub>" \
   --file "<minimal relevant files>"
 ```
 

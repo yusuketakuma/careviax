@@ -65,6 +65,7 @@ async function waitForAsyncAssertion(assertion: () => void) {
 
 describe('sync-engine PHI persistence', () => {
   beforeEach(() => {
+    vi.unstubAllGlobals();
     vi.clearAllMocks();
     cryptoMocks.encryptOfflinePayloadRequired.mockImplementation(
       async (_value: string, context: string) => `encv1:${context}:sealed`,
@@ -382,6 +383,56 @@ describe('sync-engine PHI persistence', () => {
     });
   });
 
+  it('does not consume retries while the browser is offline', async () => {
+    vi.stubGlobal('window', { navigator: { onLine: false } });
+
+    await expect(processSyncQueue({ orgId: 'org-1', endpoints: {} })).resolves.toEqual({
+      synced: 0,
+      failed: 0,
+    });
+
+    expect(dbMocks.where).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(dbMocks.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects legacy plaintext sync payloads without sending PHI to the server', async () => {
+    dbMocks.toArray.mockResolvedValue([
+      {
+        id: 14,
+        entityType: 'visit_record',
+        payload: JSON.stringify({
+          schedule_id: 'schedule-plain',
+          soap_subjective: '患者名 山田太郎 眠気あり',
+        }),
+        scope_id: 'schedule-plain',
+        createdAt: new Date('2026-04-01T00:00:00.000Z'),
+        retryCount: 0,
+      },
+    ]);
+    cryptoMocks.decryptOfflinePayload.mockResolvedValue(null);
+
+    await expect(processSyncQueue({ orgId: 'org-1', endpoints: {} })).resolves.toEqual({
+      synced: 0,
+      failed: 1,
+    });
+
+    expect(fetch).not.toHaveBeenCalled();
+    expect(dbMocks.update).toHaveBeenCalledWith(14, {
+      payload: 'encv1:sync queue legacy plaintext tombstone:sealed',
+      retryCount: 3,
+      lastError: 'Legacy plaintext sync payload discarded',
+      conflict_state: undefined,
+      conflict_payload: undefined,
+    });
+    expect(JSON.stringify(dbMocks.update.mock.calls)).not.toContain('山田太郎');
+    const tombstoneCall = cryptoMocks.encryptOfflinePayloadRequired.mock.calls.find(
+      ([, context]) => context === 'sync queue legacy plaintext tombstone',
+    );
+    expect(tombstoneCall).toBeDefined();
+    expect(tombstoneCall?.[0]).not.toContain('山田太郎');
+  });
+
   it('marks non-object decrypted sync payloads failed without sending them to the server', async () => {
     dbMocks.toArray.mockResolvedValue([
       {
@@ -669,7 +720,7 @@ describe('sync-engine PHI persistence', () => {
 
     await expect(processSyncQueue({ orgId: 'org-1', endpoints: {} })).resolves.toEqual({
       synced: 0,
-      failed: 1,
+      failed: 0,
     });
 
     expect(fetch).not.toHaveBeenCalled();
@@ -712,7 +763,7 @@ describe('sync-engine PHI persistence', () => {
 
     await expect(processSyncQueue({ orgId: 'org-1', endpoints: {} })).resolves.toEqual({
       synced: 0,
-      failed: 1,
+      failed: 0,
     });
 
     expect(fetch).not.toHaveBeenCalled();

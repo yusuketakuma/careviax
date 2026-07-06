@@ -6,6 +6,23 @@ import { useOfflineStore } from '@/lib/stores/offline-store';
 import { processSyncQueue } from '@/lib/stores/sync-engine';
 import { syncEvidenceDrafts } from '@/lib/offline/evidence-drafts';
 
+function isAllClearDrainResult(value: unknown): value is { failed: number; skipped?: number } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'failed' in value &&
+    typeof (value as { failed?: unknown }).failed === 'number' &&
+    (value as { failed: number }).failed === 0 &&
+    (!('skipped' in value) ||
+      (typeof (value as { skipped?: unknown }).skipped === 'number' &&
+        (value as { skipped: number }).skipped === 0))
+  );
+}
+
+function isBrowserOnline() {
+  return typeof window === 'undefined' || window.navigator.onLine;
+}
+
 /**
  * アプリ全域のオフライン同期ライフサイクル。従来 record / offline-sync ページに閉じていた
  * bootstrap と自動同期をグローバル化する（null レンダリングの lifecycle bridge）。
@@ -24,6 +41,7 @@ import { syncEvidenceDrafts } from '@/lib/offline/evidence-drafts';
 export function OfflineSyncBridge() {
   const orgId = useOrgId();
   const refreshSyncState = useOfflineStore((state) => state.refreshSyncState);
+  const markSynced = useOfflineStore((state) => state.markSynced);
 
   useEffect(() => {
     if (!orgId || typeof window === 'undefined') return;
@@ -37,23 +55,31 @@ export function OfflineSyncBridge() {
     const config = { orgId, endpoints: {} };
 
     const refreshState = () => {
-      void refreshSyncState().catch((error) => {
-        console.warn('[offline-sync] state refresh failed', error);
+      void refreshSyncState().catch(() => {
+        console.warn('[offline-sync] state refresh failed');
       });
     };
 
     // 訪問記録キューと証跡ドラフトを両方ドレインし、両者が確定したら実状態を再取得する。
     const drain = () => {
-      const queueDone = processSyncQueue(config).catch((error) => {
-        console.warn('[offline-sync] queue drain failed', error);
+      const queueDone = processSyncQueue(config).catch(() => {
+        console.warn('[offline-sync] queue drain failed');
         return null;
       });
-      const evidenceDone = syncEvidenceDrafts({ orgId }).catch((error) => {
-        console.warn('[offline-sync] evidence drain failed', error);
+      const evidenceDone = syncEvidenceDrafts({ orgId }).catch(() => {
+        console.warn('[offline-sync] evidence drain failed');
         return null;
       });
-      void Promise.allSettled([queueDone, evidenceDone]).then(() => {
-        if (!cancelled) refreshState();
+      void Promise.all([queueDone, evidenceDone]).then(([queueResult, evidenceResult]) => {
+        if (cancelled) return;
+        if (
+          isBrowserOnline() &&
+          isAllClearDrainResult(queueResult) &&
+          isAllClearDrainResult(evidenceResult)
+        ) {
+          markSynced();
+        }
+        refreshState();
       });
     };
 
@@ -68,7 +94,7 @@ export function OfflineSyncBridge() {
       cancelled = true;
       window.removeEventListener('online', handleOnline);
     };
-  }, [orgId, refreshSyncState]);
+  }, [markSynced, orgId, refreshSyncState]);
 
   return null;
 }

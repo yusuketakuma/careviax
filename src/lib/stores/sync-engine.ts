@@ -43,6 +43,11 @@ export type SyncQueueItemSummary = Omit<OfflineSyncQueue, 'payload' | 'conflict_
   conflict: VisitRecordConflictSnapshot | null;
 };
 
+type SyncPayloadReadResult =
+  | { status: 'valid'; object: Record<string, unknown>; body: string }
+  | { status: 'legacy_plaintext' }
+  | { status: 'invalid' };
+
 function readString(value: unknown) {
   return typeof value === 'string' ? value : null;
 }
@@ -178,12 +183,16 @@ function readExistingRecordFromConflictResponse(
   return normalizeConflictServer(details.existing_record);
 }
 
-async function readSyncPayload(payload: string | null | undefined) {
-  const raw = (await decryptOfflinePayload(payload)) ?? payload;
-  if (!raw) return null;
+async function readSyncPayload(payload: string | null | undefined): Promise<SyncPayloadReadResult> {
+  const raw = await decryptOfflinePayload(payload);
+  if (!raw) {
+    return readJsonObject(parseJsonOrNull(payload))
+      ? { status: 'legacy_plaintext' }
+      : { status: 'invalid' };
+  }
   const parsed = parseJsonOrNull(raw);
   const object = readJsonObject(parsed);
-  return object ? { object, body: JSON.stringify(object) } : null;
+  return object ? { status: 'valid', object, body: JSON.stringify(object) } : { status: 'invalid' };
 }
 
 async function readSyncConflictPayload(payload: string | null | undefined) {
@@ -212,6 +221,20 @@ function resolveSyncEndpoints(config: SyncConfig) {
 
 function safeSyncErrorMessage(): string {
   return GENERIC_SYNC_ERROR_MESSAGE;
+}
+
+function isBrowserOffline() {
+  return typeof window !== 'undefined' && window.navigator?.onLine === false;
+}
+
+async function buildLegacyPlaintextPayloadTombstone() {
+  return encryptOfflinePayloadRequired(
+    JSON.stringify({
+      discarded_reason: 'legacy_plaintext_sync_payload',
+      discarded_at: new Date().toISOString(),
+    }),
+    'sync queue legacy plaintext tombstone',
+  );
 }
 
 function resolveSyncScopeId(
@@ -263,7 +286,18 @@ async function processSyncQueueOnce(config: SyncConfig): Promise<{
       }
 
       const payload = await readSyncPayload(item.payload);
-      if (!payload) {
+      if (payload.status === 'legacy_plaintext') {
+        await offlineDb.syncQueue.update(item.id!, {
+          payload: await buildLegacyPlaintextPayloadTombstone(),
+          retryCount: MAX_RETRIES,
+          lastError: 'Legacy plaintext sync payload discarded',
+          conflict_state: undefined,
+          conflict_payload: undefined,
+        });
+        failed++;
+        continue;
+      }
+      if (payload.status === 'invalid') {
         await offlineDb.syncQueue.update(item.id!, {
           retryCount: item.retryCount + 1,
           lastError: 'Invalid sync payload',
@@ -276,7 +310,6 @@ async function processSyncQueueOnce(config: SyncConfig): Promise<{
 
       const preflight = await verifyQueueItemCurrent(item);
       if (preflight.status === 'stale') {
-        failed++;
         continue;
       }
       if (preflight.status === 'missing') {
@@ -293,8 +326,6 @@ async function processSyncQueueOnce(config: SyncConfig): Promise<{
         const completion = await deleteSyncedQueueItem(item);
         if (completion.status === 'deleted') {
           synced++;
-        } else if (completion.status === 'stale') {
-          failed++;
         }
       } else if (res.status === 409) {
         const server = readExistingRecordFromConflictResponse(await readJsonResponseBody(res));
@@ -394,6 +425,8 @@ export async function processSyncQueue(config: SyncConfig): Promise<{
   synced: number;
   failed: number;
 }> {
+  if (isBrowserOffline()) return { synced: 0, failed: 0 };
+
   const key = syncConfigKey(config);
   const activeRun = activeSyncQueueRuns.get(key);
   if (activeRun) return activeRun;
@@ -465,11 +498,14 @@ export async function getPendingSyncCount(): Promise<number> {
 export async function listSyncQueueItems(): Promise<SyncQueueItemSummary[]> {
   const items = await offlineDb.syncQueue.orderBy('createdAt').reverse().toArray();
   return Promise.all(
-    items.map(async (item) => ({
-      ...item,
-      payload: (await readSyncPayload(item.payload))?.object ?? {},
-      conflict: await readSyncConflictPayload(item.conflict_payload),
-    })),
+    items.map(async (item) => {
+      const payload = await readSyncPayload(item.payload);
+      return {
+        ...item,
+        payload: payload.status === 'valid' ? payload.object : {},
+        conflict: await readSyncConflictPayload(item.conflict_payload),
+      };
+    }),
   );
 }
 
@@ -550,7 +586,8 @@ export async function overwriteVisitRecordConflict(
     return { ok: false, message: '訪問記録以外の競合は上書きできません' };
   }
 
-  const payload = (await readSyncPayload(item.payload))?.object ?? null;
+  const payloadResult = await readSyncPayload(item.payload);
+  const payload = payloadResult.status === 'valid' ? payloadResult.object : null;
   const conflict = await readSyncConflictPayload(item.conflict_payload);
   if (!payload || !conflict?.server) {
     return { ok: false, message: '競合情報が不足しています' };

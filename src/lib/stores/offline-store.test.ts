@@ -55,7 +55,7 @@ describe('offline store sync refresh', () => {
     expect(useOfflineStore.getState().syncConflicts).toEqual([]);
   });
 
-  it('updates the synced timestamp during online count refreshes', async () => {
+  it('does not update the synced timestamp during count refreshes', async () => {
     useOfflineStore.setState({
       lastSyncRefreshAt: '2026-06-18T08:00:00.000Z',
       lastSyncedAt: '2026-06-18T08:00:00.000Z',
@@ -67,7 +67,7 @@ describe('offline store sync refresh', () => {
     const state = useOfflineStore.getState();
     expect(state.pendingSyncCount).toBe(2);
     expect(state.lastSyncRefreshAt).not.toBe('2026-06-18T08:00:00.000Z');
-    expect(state.lastSyncedAt).toBe(state.lastSyncRefreshAt);
+    expect(state.lastSyncedAt).toBe('2026-06-18T08:00:00.000Z');
   });
 
   it('keeps the previous synced timestamp during offline count refreshes', async () => {
@@ -84,6 +84,17 @@ describe('offline store sync refresh', () => {
     expect(state.pendingSyncCount).toBe(4);
     expect(state.lastSyncRefreshAt).not.toBe('2026-06-18T08:00:00.000Z');
     expect(state.lastSyncedAt).toBe('2026-06-18T08:00:00.000Z');
+  });
+
+  it('updates the synced timestamp only through markSynced', () => {
+    useOfflineStore.setState({
+      lastSyncRefreshAt: '2026-06-18T08:00:00.000Z',
+      lastSyncedAt: '2026-06-18T08:00:00.000Z',
+    });
+
+    useOfflineStore.getState().markSynced(new Date('2026-06-18T09:30:00.000Z'));
+
+    expect(useOfflineStore.getState().lastSyncedAt).toBe('2026-06-18T09:30:00.000Z');
   });
 
   it('preserves existing sync state when count refresh fails', async () => {

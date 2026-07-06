@@ -41,6 +41,85 @@
 
 ## 直近の land（本日・要点）
 
+- codex: VISIT-SYNC-001 autosave/sync hardening partial + Oracle GitHub access rule.
+  - current task:
+    `Plans.md` の `VISIT-SYNC-001` を部分実装。訪問記録フォームの 30秒 autosave を
+    5秒 debounce に短縮し、訪問開始/終了ボタンはクリック直後に local draft を保存する。
+    sync count refresh は初期確認、online/visible 復帰、pendingSyncCount>0 かつ表示中の
+    interval に限定し、未同期0件や hidden tab で固定 5秒 polling を持たない。
+    `sync-engine` は browser offline 中に retry を消費せず、legacy plaintext sync payload
+    fallback を削除して encrypted tombstone に置換し、stale queue item を failed として数えない。
+    `offline-store` は count/state refresh で `lastSyncedAt` を進めず、`OfflineSyncBridge` は
+    browser online かつ queue/evidence drain が all-clear の場合だけ `markSynced` する。
+    併せてユーザー指示により、Oracle/GPT-5.5 Pro 相談時は GitHub repository/branch/commit/
+    PR context を確認し、Oracle prompt に GitHub 確認指示を含めることを `AGENTS.md` に
+    必須ルールとして追記した。後続 privacy review に基づき、GitHub context は metadata-first
+    かつ PHI/secret scan 済みの safe summary に限定するよう追記を締めた。
+  - Oracle / GPT-5.5 Pro:
+    `oracle session ph-os-careviax-visit-sync --render` confirmed completed consultation
+    (`gpt-5.5-pro`, browser mode, 2026-07-06). Oracle recommended pairing the autosave
+    change with offline retry guard, plaintext payload fallback removal, stale skip semantics,
+    and `lastSyncedAt` semantics. The new GitHub-access requirement was added after this
+    consultation and applies to subsequent Oracle consultations.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `oracle status --hours 72`,
+    `oracle session ph-os-careviax-visit-sync --render`,
+    `Plans.md`,
+    `AGENTS.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`,
+    `src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx`,
+    `src/lib/stores/sync-engine.ts`,
+    `src/lib/stores/sync-engine.test.ts`,
+    `src/lib/stores/offline-store.ts`,
+    `src/lib/stores/offline-store.test.ts`,
+    `src/components/providers/offline-sync-bridge.tsx`,
+    `src/components/providers/offline-sync-bridge.test.tsx`.
+  - files changed:
+    `AGENTS.md`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`,
+    `src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx`,
+    `src/lib/stores/sync-engine.ts`,
+    `src/lib/stores/sync-engine.test.ts`,
+    `src/lib/stores/offline-store.ts`,
+    `src/lib/stores/offline-store.test.ts`,
+    `src/components/providers/offline-sync-bridge.tsx`,
+    `src/components/providers/offline-sync-bridge.test.tsx`.
+  - validation:
+    `pnpm exec vitest run src/lib/stores/sync-engine.test.ts src/lib/stores/offline-store.test.ts --reporter=dot --testTimeout=30000`
+    passed: 2 files / 31 tests.
+    `pnpm exec vitest run 'src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx' --reporter=dot --testTimeout=30000`
+    passed: 1 file / 26 tests.
+    `pnpm exec vitest run 'src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx' src/lib/stores/sync-engine.test.ts src/lib/stores/offline-store.test.ts src/components/providers/offline-sync-bridge.test.tsx --reporter=dot --testTimeout=30000`
+    passed: 4 files / 67 tests.
+    `pnpm exec eslint 'src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx' 'src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx' src/components/providers/offline-sync-bridge.tsx src/components/providers/offline-sync-bridge.test.tsx src/lib/stores/sync-engine.ts src/lib/stores/sync-engine.test.ts src/lib/stores/offline-store.ts src/lib/stores/offline-store.test.ts`
+    passed.
+    `git diff --check -- <owned VISIT-SYNC / AGENTS / Plans / STATE paths>` passed.
+    `pnpm exec prettier --check AGENTS.md Plans.md ops/refactor/STATE.md 'src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx' 'src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx' src/components/providers/offline-sync-bridge.tsx src/components/providers/offline-sync-bridge.test.tsx src/lib/stores/sync-engine.ts src/lib/stores/sync-engine.test.ts src/lib/stores/offline-store.ts src/lib/stores/offline-store.test.ts`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck` passed.
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false` passed.
+  - bugs/security/performance fixed in this slice:
+    Draft autosave delay reduced from 30s to 5s and explicit visit start/end actions force an
+    immediate local draft save. Untouched empty drafts no longer autosave on hydration/hidden
+    transition. Manual/Cmd+S saves cancel pending autosave timers. Sync polling no longer runs
+    constantly when pending count is zero or the tab is hidden. Raw sync/draft error messages are
+    not surfaced to console/toast. Legacy plaintext sync queue payloads are discarded into an
+    encrypted tombstone rather than retained. `lastSyncedAt` is not advanced by count refresh or
+    offline/skipped drains.
+  - remaining work:
+    `VISIT-SYNC-001` remains partial: step transition immediate save, residual medication /
+    attachment-add immediate save, save-completion-triggered sync/backoff, explicit
+    saving/terminal/synced/conflict UI state matrix, and mobile E2E remain. Future Oracle
+    consultations must include GitHub context per the updated `AGENTS.md` rule.
+  - next action:
+    Scoped commit/push this VISIT-SYNC / Oracle-rule slice, then continue with the next
+    highest-priority `Plans.md` item (`PAT-BOARD-PAGE-001`, `DSP-QUEUE-PAGE-001`, or
+    remaining `VISIT-SYNC-001` UI/mobile follow-up).
+
 - codex: Oracle / GPT-5.5 Pro consultation rule recorded.
   - current task:
     高リスク実装・判断不能・2回失敗時に Oracle Browser mode 経由で GPT-5.5 Pro へ

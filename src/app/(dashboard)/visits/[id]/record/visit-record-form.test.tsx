@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { type PropsWithChildren } from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { createQueryClientWrapper } from '@/test/query-client-test-utils';
@@ -22,6 +22,7 @@ const {
   useNetworkOnlineMock,
   refreshSyncCountMock,
   refreshSyncStateMock,
+  offlineStoreState,
   listEvidenceDraftSummariesForScheduleMock,
   toastErrorMock,
   toastSuccessMock,
@@ -41,6 +42,10 @@ const {
   useNetworkOnlineMock: vi.fn(),
   refreshSyncCountMock: vi.fn(),
   refreshSyncStateMock: vi.fn(),
+  offlineStoreState: {
+    isOffline: false,
+    pendingSyncCount: 0,
+  },
   listEvidenceDraftSummariesForScheduleMock: vi.fn(),
   toastErrorMock: vi.fn(),
   toastSuccessMock: vi.fn(),
@@ -110,8 +115,8 @@ vi.mock('@/lib/hooks/use-unsaved-changes-guard', () => ({
 vi.mock('@/lib/stores/offline-store', () => ({
   useOfflineStore: (selector: (state: unknown) => unknown) =>
     selector({
-      isOffline: false,
-      pendingSyncCount: 0,
+      isOffline: offlineStoreState.isOffline,
+      pendingSyncCount: offlineStoreState.pendingSyncCount,
       syncOnlineStatus: syncOnlineStatusMock,
       refreshSyncCount: refreshSyncCountMock,
       refreshSyncState: refreshSyncStateMock,
@@ -237,6 +242,8 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
     useNetworkOnlineMock.mockReturnValue(true);
     refreshSyncStateMock.mockResolvedValue(undefined);
     refreshSyncCountMock.mockResolvedValue(undefined);
+    offlineStoreState.isOffline = false;
+    offlineStoreState.pendingSyncCount = 0;
     listEvidenceDraftSummariesForScheduleMock.mockResolvedValue([]);
     cdsAlertPanelCalls.length = 0;
     visitRecordPostBodies.length = 0;
@@ -361,6 +368,7 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -685,20 +693,213 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
   });
 
   it('logs count refresh failures without rejecting from the polling timer', async () => {
-    refreshSyncCountMock.mockRejectedValue(new Error('IndexedDB unavailable'));
+    refreshSyncCountMock.mockRejectedValue(
+      new Error('IndexedDB unavailable patient=患者A token=secret'),
+    );
     const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
     renderVisitRecordForm();
 
     await waitFor(() => {
-      expect(consoleWarn).toHaveBeenCalledWith(
-        '[offline-sync] sync count refresh failed',
-        expect.any(Error),
-      );
+      expect(consoleWarn).toHaveBeenCalledWith('[offline-sync] sync count refresh failed');
     });
+    expect(JSON.stringify(consoleWarn.mock.calls)).not.toContain('患者A');
+    expect(JSON.stringify(consoleWarn.mock.calls)).not.toContain('token=secret');
     expect(refreshSyncStateMock).not.toHaveBeenCalled();
 
     consoleWarn.mockRestore();
+  });
+
+  it('debounces important visit draft autosave for five seconds after the latest edit', async () => {
+    renderVisitRecordForm();
+
+    await waitFor(() => {
+      expect((document.querySelector('input[name="patient_id"]') as HTMLInputElement)?.value).toBe(
+        'patient_1',
+      );
+    });
+
+    saveDraftMock.mockClear();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      fireEvent.change(screen.getByLabelText('主観情報'), {
+        target: { value: '眠気が強い' },
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4_999);
+      });
+      expect(saveDraftMock).not.toHaveBeenCalled();
+
+      fireEvent.change(screen.getByLabelText('主観情報'), {
+        target: { value: '眠気が改善' },
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4_999);
+      });
+      expect(saveDraftMock).not.toHaveBeenCalled();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+
+      expect(saveDraftMock).toHaveBeenCalledTimes(1);
+      expect(saveDraftMock.mock.calls[0]?.[0]).toMatchObject({
+        subjective: { free_text: '眠気が改善' },
+      });
+      expect(JSON.stringify(saveDraftMock.mock.calls)).not.toContain('眠気が強い');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not autosave an untouched empty draft after hydration or hidden transition', async () => {
+    const setTimeoutSpy = vi.spyOn(window, 'setTimeout');
+    renderVisitRecordForm();
+
+    await waitFor(() => {
+      expect((document.querySelector('input[name="patient_id"]') as HTMLInputElement)?.value).toBe(
+        'patient_1',
+      );
+    });
+
+    expect(setTimeoutSpy).not.toHaveBeenCalledWith(expect.any(Function), 5_000);
+    saveDraftMock.mockClear();
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value: 'hidden',
+    });
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+      await Promise.resolve();
+    });
+
+    expect(saveDraftMock).not.toHaveBeenCalled();
+    setTimeoutSpy.mockRestore();
+  });
+
+  it('cancels pending autosave after manual draft save', async () => {
+    renderVisitRecordForm();
+
+    await waitFor(() => {
+      expect((document.querySelector('input[name="patient_id"]') as HTMLInputElement)?.value).toBe(
+        'patient_1',
+      );
+    });
+
+    saveDraftMock.mockClear();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      fireEvent.change(screen.getByLabelText('主観情報'), {
+        target: { value: '手動保存前の入力' },
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4_000);
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getAllByRole('button', { name: '一時保存' })[0]!);
+        await Promise.resolve();
+      });
+      expect(saveDraftMock).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+
+      expect(saveDraftMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('cancels pending autosave after keyboard draft save', async () => {
+    renderVisitRecordForm();
+
+    await waitFor(() => {
+      expect((document.querySelector('input[name="patient_id"]') as HTMLInputElement)?.value).toBe(
+        'patient_1',
+      );
+    });
+
+    saveDraftMock.mockClear();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      fireEvent.change(screen.getByLabelText('主観情報'), {
+        target: { value: 'ショートカット保存前の入力' },
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4_000);
+      });
+
+      await act(async () => {
+        fireEvent.keyDown(window, { key: 's', metaKey: true });
+        await Promise.resolve();
+      });
+      expect(saveDraftMock).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+
+      expect(saveDraftMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not expose raw draft-save error messages in toast text', async () => {
+    saveDraftMock.mockRejectedValueOnce(new Error('patient=患者A token=secret'));
+    renderVisitRecordForm();
+
+    await waitFor(() => {
+      expect((document.querySelector('input[name="patient_id"]') as HTMLInputElement)?.value).toBe(
+        'patient_1',
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '訪問開始を記録' }));
+
+    await waitFor(() => {
+      expect(toastErrorMock).toHaveBeenCalledWith('オフライン下書きの保存に失敗しました');
+    });
+    expect(JSON.stringify(toastErrorMock.mock.calls)).not.toContain('患者A');
+    expect(JSON.stringify(toastErrorMock.mock.calls)).not.toContain('token=secret');
+  });
+
+  it('polls sync count only while pending work exists in a visible tab', async () => {
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value: 'visible',
+    });
+    const setIntervalSpy = vi
+      .spyOn(window, 'setInterval')
+      .mockImplementation(() => 123 as unknown as ReturnType<typeof setInterval>);
+    const clearIntervalSpy = vi.spyOn(window, 'clearInterval').mockImplementation(() => undefined);
+    const { rerender } = renderVisitRecordForm();
+
+    await waitFor(() => {
+      expect(refreshSyncCountMock).toHaveBeenCalled();
+    });
+
+    setIntervalSpy.mockClear();
+    offlineStoreState.pendingSyncCount = 0;
+    rerender(<VisitRecordForm id="schedule_partial" facilityVisitContext={null} />);
+    expect(setIntervalSpy).not.toHaveBeenCalledWith(expect.any(Function), 5_000);
+
+    offlineStoreState.pendingSyncCount = 2;
+    rerender(<VisitRecordForm id="schedule_partial" facilityVisitContext={null} />);
+    expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 5_000);
+
+    offlineStoreState.pendingSyncCount = 0;
+    rerender(<VisitRecordForm id="schedule_partial" facilityVisitContext={null} />);
+    expect(clearIntervalSpy).toHaveBeenCalled();
+
+    setIntervalSpy.mockRestore();
+    clearIntervalSpy.mockRestore();
   });
 
   it('announces and clears the required partial carry-item acknowledgement error', async () => {
@@ -903,6 +1104,43 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
       expect(visitRecordPostBodies[0]).toMatchObject({
         visit_started_at: '2026-04-09T02:30:00.000Z',
         visit_ended_at: '2026-04-09T03:05:00.000Z',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('saves a local draft immediately after explicit visit start and end actions', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-04-09T02:30:00.000Z'));
+    try {
+      renderVisitRecordForm();
+
+      await waitFor(() => {
+        expect(
+          (document.querySelector('input[name="patient_id"]') as HTMLInputElement)?.value,
+        ).toBe('patient_1');
+      });
+
+      saveDraftMock.mockClear();
+      fireEvent.click(screen.getByRole('button', { name: '訪問開始を記録' }));
+
+      await waitFor(() => {
+        expect(saveDraftMock).toHaveBeenCalledTimes(1);
+      });
+      expect(saveDraftMock.mock.calls[0]?.[2]).toMatchObject({
+        visitStartedAt: '2026-04-09T02:30:00.000Z',
+      });
+
+      vi.setSystemTime(new Date('2026-04-09T03:05:00.000Z'));
+      fireEvent.click(screen.getByRole('button', { name: '訪問終了を記録' }));
+
+      await waitFor(() => {
+        expect(saveDraftMock).toHaveBeenCalledTimes(2);
+      });
+      expect(saveDraftMock.mock.calls[1]?.[2]).toMatchObject({
+        visitStartedAt: '2026-04-09T02:30:00.000Z',
+        visitEndedAt: '2026-04-09T03:05:00.000Z',
       });
     } finally {
       vi.useRealTimers();

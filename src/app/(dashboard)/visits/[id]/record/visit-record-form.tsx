@@ -163,6 +163,8 @@ type ScheduleDetail = {
 };
 
 const VISIT_RECORD_ALERT_TYPES = new Set(['renal_dose', 'pim_elderly', 'high_risk']);
+const VISIT_DRAFT_AUTOSAVE_DELAY_MS = 5_000;
+const VISIT_SYNC_COUNT_POLL_MS = 5_000;
 
 export async function fetchVisitRecordCdsAlerts(
   cycleId: string,
@@ -479,6 +481,26 @@ function buildDraftMetadata(values: FormValues, visitGeoLog: VisitGeoLog | null)
   };
 }
 
+function hasMeaningfulVisitDraft(values: FormValues, visitGeoLog: VisitGeoLog | null) {
+  return Boolean(
+    values.visit_started_at ||
+    values.visit_ended_at ||
+    values.soap_subjective?.trim() ||
+    values.soap_objective?.trim() ||
+    values.soap_assessment?.trim() ||
+    values.soap_plan?.trim() ||
+    values.receipt_person_name?.trim() ||
+    values.receipt_person_relation?.trim() ||
+    values.next_visit_suggestion_date?.trim() ||
+    values.cancellation_reason?.trim() ||
+    values.postpone_reason?.trim() ||
+    values.revisit_reason?.trim() ||
+    (values.residual_medications?.length ?? 0) > 0 ||
+    visitGeoLog?.start ||
+    visitGeoLog?.end,
+  );
+}
+
 function formatVisitBillingAmount(value: number | null | undefined) {
   return formatYen(value, '未記録');
 }
@@ -566,6 +588,9 @@ export function VisitRecordForm({
   const [locationCaptureState, setLocationCaptureState] = useState<
     'idle' | 'capturing-start' | 'capturing-end'
   >('idle');
+  const [isDocumentVisible, setIsDocumentVisible] = useState(() =>
+    typeof document === 'undefined' ? true : document.visibilityState === 'visible',
+  );
   // ⑤ 反映導線: 訪問中に確認した患者情報を患者詳細(正本)へ反映する任意セクションの状態
   const [reflectToPatientDetail, setReflectToPatientDetail] = useState(false);
   const [reflectCareLevel, setReflectCareLevel] = useState('');
@@ -689,7 +714,7 @@ export function VisitRecordForm({
       return;
     }
 
-    toast.error(messageFromError(error, 'オフライン下書きの保存に失敗しました'));
+    toast.error('オフライン下書きの保存に失敗しました');
   }, []);
 
   const form = useForm<FormValues>({
@@ -754,6 +779,7 @@ export function VisitRecordForm({
   const allowNavigation = useUnsavedChangesGuard({
     enabled: form.formState.isDirty,
   });
+  const isFormDirty = form.formState.isDirty;
   useEffect(() => {
     if (!requiresCarryItemWarningAcknowledgement && carryItemAcknowledgementError) {
       form.clearErrors('carry_item_warning_acknowledged');
@@ -764,36 +790,115 @@ export function VisitRecordForm({
     syncOnlineStatus();
   }, [isNetworkOnline, syncOnlineStatus]);
 
-  const refreshSyncCountSafely = useCallback(() => {
-    void refreshSyncCount().catch((error) => {
+  const refreshSyncCountSafely = useCallback(async () => {
+    try {
+      await refreshSyncCount();
+      syncCountRefreshFailureNotifiedRef.current = false;
+    } catch {
       if (syncCountRefreshFailureNotifiedRef.current) return;
       syncCountRefreshFailureNotifiedRef.current = true;
-      console.warn('[offline-sync] sync count refresh failed', error);
-    });
+      console.warn('[offline-sync] sync count refresh failed');
+    }
   }, [refreshSyncCount]);
+
+  const clearAutosaveTimer = useCallback(() => {
+    if (!autosaveTimerRef.current) return;
+    clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = null;
+  }, []);
+
+  const saveDraftSnapshot = useCallback(
+    async (
+      values: FormValues,
+      geoLog: VisitGeoLog | null,
+      previousReuse?: VisitPreviousStructuredReuse | null,
+    ) => {
+      await saveDraft(
+        buildStructuredSoap(values, previousReuse),
+        0,
+        buildDraftMetadata(values, geoLog),
+      );
+      draftSaveFailureNotifiedRef.current = false;
+    },
+    [saveDraft],
+  );
+
+  const flushDraftSnapshot = useCallback(
+    (
+      values: FormValues = form.getValues() as FormValues,
+      geoLog: VisitGeoLog | null = visitGeoLog,
+      options?: {
+        force?: boolean;
+        previousReuse?: VisitPreviousStructuredReuse | null;
+        onSaved?: () => void;
+      },
+    ) => {
+      clearAutosaveTimer();
+      if (!options?.force && !isFormDirty && !hasMeaningfulVisitDraft(values, geoLog)) return;
+      void saveDraftSnapshot(values, geoLog, options?.previousReuse)
+        .then(() => {
+          options?.onSaved?.();
+        })
+        .catch(notifyDraftSaveFailure);
+    },
+    [clearAutosaveTimer, form, isFormDirty, notifyDraftSaveFailure, saveDraftSnapshot, visitGeoLog],
+  );
 
   useEffect(() => {
     if (!orgId || typeof window === 'undefined') return;
 
-    const teardown = setupAutoSync({
+    const syncConfig = {
       orgId,
       endpoints: {
         visit_record: '/api/visit-records',
       },
+    };
+    const teardown = setupAutoSync({
+      ...syncConfig,
     });
     const initialTimer = window.setTimeout(() => {
-      refreshSyncCountSafely();
+      void refreshSyncCountSafely();
     }, 0);
-    const timer = window.setInterval(() => {
-      refreshSyncCountSafely();
-    }, 5000);
+    const handleOnline = () => {
+      syncOnlineStatus();
+      void refreshSyncCountSafely();
+    };
+    window.addEventListener('online', handleOnline);
 
     return () => {
       teardown();
       window.clearTimeout(initialTimer);
-      window.clearInterval(timer);
+      window.removeEventListener('online', handleOnline);
     };
-  }, [orgId, refreshSyncCountSafely]);
+  }, [orgId, refreshSyncCountSafely, syncOnlineStatus]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const handleVisibilityChange = () => {
+      const visible = document.visibilityState === 'visible';
+      setIsDocumentVisible(visible);
+      if (!visible) {
+        if (schedule?.patient_id && draftHydrated) {
+          flushDraftSnapshot();
+        }
+        return;
+      }
+      void refreshSyncCountSafely();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [draftHydrated, flushDraftSnapshot, refreshSyncCountSafely, schedule?.patient_id]);
+
+  useEffect(() => {
+    if (!orgId || typeof window === 'undefined') return;
+    if (!isDocumentVisible || pendingSyncCount <= 0) return;
+
+    const timer = window.setInterval(() => {
+      void refreshSyncCountSafely();
+    }, VISIT_SYNC_COUNT_POLL_MS);
+
+    return () => window.clearInterval(timer);
+  }, [isDocumentVisible, orgId, pendingSyncCount, refreshSyncCountSafely]);
 
   useEffect(() => {
     if (!schedule?.patient_id) return;
@@ -850,31 +955,23 @@ export function VisitRecordForm({
 
   useEffect(() => {
     if (!schedule?.patient_id || !draftHydrated) return;
-    if (autosaveTimerRef.current) {
-      clearTimeout(autosaveTimerRef.current);
-    }
+    clearAutosaveTimer();
+    if (!isFormDirty && !hasMeaningfulVisitDraft(watchedValues, visitGeoLog)) return;
 
     autosaveTimerRef.current = setTimeout(() => {
-      void saveDraft(
-        buildStructuredSoap(watchedValues),
-        0,
-        buildDraftMetadata(watchedValues, visitGeoLog),
-      )
-        .then(() => {
-          draftSaveFailureNotifiedRef.current = false;
-        })
-        .catch(notifyDraftSaveFailure);
-    }, 30_000);
+      autosaveTimerRef.current = null;
+      void saveDraftSnapshot(watchedValues, visitGeoLog).catch(notifyDraftSaveFailure);
+    }, VISIT_DRAFT_AUTOSAVE_DELAY_MS);
 
     return () => {
-      if (autosaveTimerRef.current) {
-        clearTimeout(autosaveTimerRef.current);
-      }
+      clearAutosaveTimer();
     };
   }, [
+    clearAutosaveTimer,
     draftHydrated,
+    isFormDirty,
     notifyDraftSaveFailure,
-    saveDraft,
+    saveDraftSnapshot,
     schedule?.patient_id,
     visitGeoLog,
     watchedValues,
@@ -992,14 +1089,21 @@ export function VisitRecordForm({
 
   async function handleVisitStartClick() {
     const fallbackStartedAt = new Date().toISOString();
+    clearAutosaveTimer();
     if (locationTrackingEnabled) {
       const point = await captureLocationPhase('start', {
         successMessage: '訪問開始を記録しました',
       });
-      form.setValue('visit_started_at', point?.captured_at ?? fallbackStartedAt, {
+      const startedAt = point?.captured_at ?? fallbackStartedAt;
+      form.setValue('visit_started_at', startedAt, {
         shouldDirty: true,
         shouldValidate: true,
       });
+      flushDraftSnapshot(
+        { ...(form.getValues() as FormValues), visit_started_at: startedAt },
+        visitGeoLog,
+        { force: true },
+      );
       return;
     }
 
@@ -1007,6 +1111,14 @@ export function VisitRecordForm({
       shouldDirty: true,
       shouldValidate: true,
     });
+    flushDraftSnapshot(
+      {
+        ...(form.getValues() as FormValues),
+        visit_started_at: fallbackStartedAt,
+      },
+      visitGeoLog,
+      { force: true },
+    );
     toast.success('訪問開始を記録しました');
   }
 
@@ -1022,14 +1134,21 @@ export function VisitRecordForm({
     }
 
     const fallbackEndedAt = new Date().toISOString();
+    clearAutosaveTimer();
     if (locationTrackingEnabled) {
       const point = await captureLocationPhase('end', {
         successMessage: '訪問終了を記録しました',
       });
-      form.setValue('visit_ended_at', point?.captured_at ?? fallbackEndedAt, {
+      const endedAt = point?.captured_at ?? fallbackEndedAt;
+      form.setValue('visit_ended_at', endedAt, {
         shouldDirty: true,
         shouldValidate: true,
       });
+      flushDraftSnapshot(
+        { ...(form.getValues() as FormValues), visit_ended_at: endedAt },
+        visitGeoLog,
+        { force: true },
+      );
       return;
     }
 
@@ -1037,6 +1156,14 @@ export function VisitRecordForm({
       shouldDirty: true,
       shouldValidate: true,
     });
+    flushDraftSnapshot(
+      {
+        ...(form.getValues() as FormValues),
+        visit_ended_at: fallbackEndedAt,
+      },
+      visitGeoLog,
+      { force: true },
+    );
     toast.success('訪問終了を記録しました');
   }
 
@@ -1460,13 +1587,12 @@ export function VisitRecordForm({
       visitGeoLog: geoLog,
       previousVisitStructuredReuse: previousReuse,
     } = shortcutStateRef.current;
-    void saveDraft(buildStructuredSoap(vals, previousReuse), 0, buildDraftMetadata(vals, geoLog))
-      .then(() => {
-        draftSaveFailureNotifiedRef.current = false;
-        toast.info('下書きを保存しました');
-      })
-      .catch(notifyDraftSaveFailure);
-  }, [notifyDraftSaveFailure, saveDraft]);
+    flushDraftSnapshot(vals, geoLog, {
+      force: true,
+      previousReuse,
+      onSaved: () => toast.info('下書きを保存しました'),
+    });
+  }, [flushDraftSnapshot]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1479,16 +1605,11 @@ export function VisitRecordForm({
       } = shortcutStateRef.current;
       if (e.key === 's') {
         e.preventDefault();
-        void saveDraft(
-          buildStructuredSoap(vals, previousReuse),
-          0,
-          buildDraftMetadata(vals, geoLog),
-        )
-          .then(() => {
-            draftSaveFailureNotifiedRef.current = false;
-            toast.info('下書きを保存しました');
-          })
-          .catch(notifyDraftSaveFailure);
+        flushDraftSnapshot(vals, geoLog, {
+          force: true,
+          previousReuse,
+          onSaved: () => toast.info('下書きを保存しました'),
+        });
       } else if (e.key === 'Enter') {
         e.preventDefault();
         void form.handleSubmit(submit, scrollToErrorSummary)();
@@ -1496,7 +1617,7 @@ export function VisitRecordForm({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [form, notifyDraftSaveFailure, saveDraft, scrollToErrorSummary]);
+  }, [flushDraftSnapshot, form, scrollToErrorSummary]);
 
   function handleVisitRecordFormSubmit(event: FormEvent<HTMLFormElement>) {
     void form.handleSubmit(onSubmit, scrollToErrorSummary)(event);

@@ -14,8 +14,8 @@ interface OfflineState {
   lastSyncRefreshAt: string | null;
   /**
    * 最終同期時刻(ヘッダーの「同期済み HH:MM」表示用)。
-   * クライアント初期化時に現在時刻をセットし、processSyncQueue 完了後の
-   * refreshSyncState(オンライン時のみ)で更新される。
+   * クライアント初期化時に現在時刻をセットし、同期処理の成功後に markSynced で更新する。
+   * count/state refresh は確認時刻だけを更新し、同期成功とは扱わない。
    */
   lastSyncedAt: string | null;
   syncOnlineStatus: () => void;
@@ -42,23 +42,19 @@ export const useOfflineStore = create<OfflineState>((set) => ({
   refreshSyncCount: async () => {
     const count = await getPendingSyncCount();
     const now = new Date().toISOString();
-    const isOnline = typeof window === 'undefined' || window.navigator.onLine;
-    set((state) => ({
+    set({
       pendingSyncCount: count,
       lastSyncRefreshAt: now,
-      lastSyncedAt: isOnline ? now : state.lastSyncedAt,
-    }));
+    });
   },
   refreshSyncState: async () => {
     const [count, items] = await Promise.all([getPendingSyncCount(), listSyncQueueItems()]);
     const now = new Date().toISOString();
-    const isOnline = typeof window === 'undefined' || window.navigator.onLine;
-    set((state) => ({
+    set({
       pendingSyncCount: count,
       pendingQueue: items,
       syncConflicts: items.filter((item) => item.conflict_state === 'server_conflict'),
       lastSyncRefreshAt: now,
-      lastSyncedAt: isOnline ? now : state.lastSyncedAt,
-    }));
+    });
   },
 }));
