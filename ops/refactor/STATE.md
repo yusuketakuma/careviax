@@ -41,6 +41,58 @@
 
 ## 直近の land（本日・要点）
 
+- codex: README system overview refresh.
+  - current task:
+    ユーザー指示により、GitHub README の一般的な役割を公式 GitHub Docs で確認し、現行コードと
+    既存 architecture / operations docs を読み直したうえで `README.md` を全文刷新した。
+    README は、PH-OS Pharmacy が薬局在宅ケア向けの業務・連携プラットフォームであること、
+    患者/ケース、処方、調剤、訪問、報告、算定、タスク、通知、監査をつなぐシステムであること、
+    active module が現在 `pharmacy` のみであること、起動/検証/セキュリティ/AWS docs の入口を
+    1ページで把握できる構成にした。
+  - external references:
+    GitHub Docs `About the repository README file`（README は project usefulness / usage /
+    getting started / help / maintainers を伝える入口）と `Basic writing and formatting syntax`
+    （heading hierarchy / generated outline / relative links）を確認した。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `README.md`,
+    `package.json`,
+    `next.config.ts`,
+    `src/app/(dashboard)/**/page.tsx`,
+    `src/app/api/**/route.ts`,
+    `src/core/module-registry/index.ts`,
+    `src/core/module-registry/module-ids.json`,
+    `src/modules/active-modules.ts`,
+    `src/modules/pharmacy/index.ts`,
+    `docs/README.md`,
+    `docs/architecture/README.md`,
+    `docs/architecture/module-boundary.md`,
+    `docs/architecture/aws-phos-deployment-stages.md`,
+    `docs/api-conventions.md`,
+    `Plans.md`.
+  - files changed:
+    `README.md`,
+    `ops/refactor/STATE.md`.
+  - bugs / risks reduced:
+    旧READMEは repository layout と command list 中心で、PH-OS が何の業務システムか、薬局機能の
+    現在scope、主要画面、医療情報境界、AWS/運用docs の入口が分かりにくかった。新READMEでは
+    visitor / engineer / operator が最初に読む system overview として、コード上確認できた範囲に
+    絞って説明した。将来 home-medical / home-nursing は予約拡張点であり、現在の active scope は
+    pharmacy のみと明示して過大表現を避けた。
+  - security / PHI reviewed:
+    README 内に secret、実患者データ、環境変数値、production credential は記載していない。
+    PHI/PII、file download、external share、notification、audit、tenant/org_id、RLS/no-store の
+    注意点を開発者向け境界として追加した。
+  - performance issues improved:
+    実行コード変更なし。validation command と perf/readiness gate の入口を整理し、重い gate は
+    必要時に選ぶ前提を明示した。
+  - validation:
+    `pnpm exec prettier --check README.md` green.
+    `git diff --check README.md` green.
+  - remaining:
+    README 更新のみのため build/typecheck は未実行。今後スクリーンショットや公開向け資料を載せる場合は、
+    PHIを含まない demo data と UI/UX SSOT に沿った画像生成/検証が必要。
+
 - codex: MOD-VISIT-001 Visit Brief pharmacy presentation extraction.
   - current task:
     `Plans.md` の `MOD-VISIT-001` first slice として、訪問ブリーフ内の薬局固有 presentation
