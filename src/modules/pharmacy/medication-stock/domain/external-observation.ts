@@ -5,6 +5,7 @@ export type ExternalStockObservationSourceType =
   | 'mcs'
   | 'communication_event'
   | 'partner_visit_record'
+  | 'patient_or_family_report'
   | 'pharmacist_visit_record'
   | 'manual_pharmacist_review'
   | 'unknown';
@@ -39,6 +40,7 @@ export type ExternalStockObservationInput = {
   readonly observationKind: StockObservationKind;
   readonly medication?: MedicationMatchInput | null;
   readonly observedQuantity?: StockQuantity | null;
+  readonly usageQuantity?: StockQuantity | null;
 };
 
 export type ObservationSourceClassification = {
@@ -57,6 +59,7 @@ export type PublicExternalStockObservationSummary = {
   readonly observationKind: StockObservationKind;
   readonly hasMedicationIdentity: boolean;
   readonly hasObservedQuantity: boolean;
+  readonly hasUsageQuantity: boolean;
   readonly occurredAtDateKey?: DateKey;
 };
 
@@ -125,6 +128,12 @@ export function classifyExternalObservationSource(
         requiresPharmacistReview: true,
         directLedgerWriteAllowed: false,
       };
+    case 'patient_or_family_report':
+      return {
+        sourceGroup: 'patient_or_family_reported',
+        requiresPharmacistReview: true,
+        directLedgerWriteAllowed: false,
+      };
     case 'pharmacist_visit_record':
     case 'manual_pharmacist_review':
       return {
@@ -165,6 +174,7 @@ export function toPublicExternalStockObservationSummary(
     observationKind: input.observationKind,
     hasMedicationIdentity: hasMedicationIdentity(input),
     hasObservedQuantity: input.observedQuantity != null,
+    hasUsageQuantity: input.usageQuantity != null,
     occurredAtDateKey: input.source.occurredAtDateKey,
   };
 }
@@ -172,7 +182,10 @@ export function toPublicExternalStockObservationSummary(
 function resolveLedgerWritePolicy(
   classification: ObservationSourceClassification,
 ): StagedExternalStockObservationDecision['ledgerWritePolicy'] {
-  if (classification.sourceGroup === 'external_multi_professional') {
+  if (
+    classification.sourceGroup === 'external_multi_professional' ||
+    classification.sourceGroup === 'patient_or_family_reported'
+  ) {
     return 'never_direct_from_external';
   }
   if (classification.sourceGroup === 'pharmacy_owned') {
@@ -184,6 +197,7 @@ function resolveLedgerWritePolicy(
 function resolveReviewPriority(input: ExternalStockObservationInput) {
   if (input.observationKind === 'no_stock_observed') return 'high';
   if (input.observedQuantity?.value === 0) return 'high';
+  if (input.observationKind === 'patient_held_stock') return 'medium';
   if (input.observedQuantity || hasMedicationIdentity(input)) return 'medium';
   return 'low';
 }
@@ -209,7 +223,8 @@ export function stageExternalStockObservationForReview(
   if (
     input.observationKind === 'unknown' &&
     !publicSummary.hasMedicationIdentity &&
-    !publicSummary.hasObservedQuantity
+    !publicSummary.hasObservedQuantity &&
+    !publicSummary.hasUsageQuantity
   ) {
     return {
       action: 'ignore_non_stock_observation',

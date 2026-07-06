@@ -65,6 +65,7 @@ describe('external stock observation domain', () => {
       observationKind: 'prn_usage_report',
       hasMedicationIdentity: true,
       hasObservedQuantity: true,
+      hasUsageQuantity: false,
       occurredAtDateKey: '2026-07-06',
     });
     expect(summary).not.toHaveProperty('sourceRecordId');
@@ -128,6 +129,20 @@ describe('external stock observation domain', () => {
     expect(decision.publicSummary).toMatchObject({
       hasMedicationIdentity: true,
       hasObservedQuantity: true,
+      hasUsageQuantity: false,
+    });
+  });
+
+  it('keeps patient and family reports separate from professional observations', () => {
+    expect(
+      classifyExternalObservationSource({
+        sourceType: 'patient_or_family_report',
+        observedByRole: 'patient_or_family',
+      }),
+    ).toEqual({
+      sourceGroup: 'patient_or_family_reported',
+      requiresPharmacistReview: true,
+      directLedgerWriteAllowed: false,
     });
   });
 });

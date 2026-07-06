@@ -41,7 +41,62 @@
 
 ## 直近の land（本日・要点）
 
-- codex: INB-001 CommunicationQueue inbound bridge（commit pending）。
+- codex: RX-002/INB-001 MedicationStock inbound signal adapter（commit pending）。
+  - current task:
+    DB migration / API 実装前に、INB-001 の pure `InboundSignalCandidate` を RX-002
+    Medication Stock external observation staging へ接続する adapter を追加する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/core/interprofessional/inbound/domain/inbound-communication.ts`,
+    `src/core/interprofessional/inbound/domain/inbound-signal-classifier.ts`,
+    `src/modules/pharmacy/medication-stock/domain/external-observation.ts`,
+    `src/modules/pharmacy/medication-stock/domain/external-observation.test.ts`,
+    `src/modules/pharmacy/medication-stock/domain/medication-equivalence.ts`,
+    `src/modules/pharmacy/medication-stock/domain/stockout-forecast.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/modules/pharmacy/medication-stock/application/medication-stock-signal-adapter.ts`,
+    `src/modules/pharmacy/medication-stock/application/medication-stock-signal-adapter.test.ts`,
+    `src/modules/pharmacy/medication-stock/domain/external-observation.ts`,
+    `src/modules/pharmacy/medication-stock/domain/external-observation.test.ts`.
+  - implementation:
+    `modules/pharmacy/medication-stock/application/medication-stock-signal-adapter.ts` を追加。
+    `InboundSignalCandidate(signalDomain='medication_stock')` だけを `ExternalStockObservationInput`
+    / staging decision へ変換し、core inbound から pharmacy module への逆 import は作らない。
+    `observed_quantity` は `observedQuantity`、`usage_delta` は `usageQuantity` に分離し、
+    low-stock/refill/no-stock は pharmacist review staging に留める。将来 persistence 用の deterministic
+    staging key も追加。
+  - safety / privacy reviewed:
+    spec_guardian は DB-free / no-ledger-write / pharmacy-side adapter なら Plans 整合と判定。
+    medical_safety_reviewer の指摘により、使用量と残量の同一 field 混在、患者/家族申告の専門職扱い、
+    low-stock 低優先度、薬剤 identity 不確実性、unsafe payload reject propagation を修正。
+    adapter は Prisma/DB/service を import せず、raw text / source body / patient name / contact / source URL
+    を public summary に載せない。
+  - validation:
+    `pnpm vitest run src/modules/pharmacy/medication-stock/application/medication-stock-signal-adapter.test.ts --reporter=dot --testTimeout=30000`
+    passed: 1 file / 8 tests.
+    `pnpm vitest run src/core/interprofessional/inbound/domain/inbound-communication.test.ts src/core/interprofessional/inbound/domain/inbound-signal-classifier.test.ts src/modules/pharmacy/medication-stock/domain/external-observation.test.ts src/modules/pharmacy/medication-stock/domain/stockout-forecast.test.ts src/modules/pharmacy/medication-stock/domain/medication-equivalence.test.ts src/modules/pharmacy/medication-stock/application/medication-stock-signal-adapter.test.ts --reporter=dot --testTimeout=30000`
+    passed: 6 files / 51 tests.
+    `pnpm exec eslint src/modules/pharmacy/medication-stock/application/medication-stock-signal-adapter.ts src/modules/pharmacy/medication-stock/application/medication-stock-signal-adapter.test.ts src/modules/pharmacy/medication-stock/domain/external-observation.ts src/modules/pharmacy/medication-stock/domain/external-observation.test.ts`
+    passed.
+    `pnpm exec prettier --check src/modules/pharmacy/medication-stock/application/medication-stock-signal-adapter.ts src/modules/pharmacy/medication-stock/application/medication-stock-signal-adapter.test.ts src/modules/pharmacy/medication-stock/domain/external-observation.ts src/modules/pharmacy/medication-stock/domain/external-observation.test.ts`
+    passed.
+    `git diff --check -- src/modules/pharmacy/medication-stock/application/medication-stock-signal-adapter.ts src/modules/pharmacy/medication-stock/application/medication-stock-signal-adapter.test.ts src/modules/pharmacy/medication-stock/domain/external-observation.ts src/modules/pharmacy/medication-stock/domain/external-observation.test.ts`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`
+    passed.
+    `pnpm boundaries:check`
+    passed: 0 new violations, 7 allowlisted debt imports across 6 files.
+  - remaining:
+    RX-002/INB-001 remain partial for durable DB正本、registration/review API、review UI、accepted signal
+    persistence、Risk/Task/VisitBrief/Schedule/Report linkage.
+  - next action:
+    Scoped commit/push, then continue with formal inbound review API or MedicationStock ledger persistence.
+
+- codex: INB-001 CommunicationQueue inbound bridge（commit 4ed97c1de）。
   - current task:
     正式 `InboundCommunicationEvent` / `InboundCommunicationSignal` DB migration 前に、既存
     `CommunicationEvent(direction='inbound', channel in phone/fax/email)` を
