@@ -1156,6 +1156,7 @@ notification:
 > `cc:PARTIAL 2026-07-07`: `patientMcsMessagesSource` / `partnerVisitRecordsSource` も inbound marker-only 契約へ寄せた。MCS は投稿者名、投稿者職種、所属、投稿時刻ラベルを select せず、協力薬局訪問記録は協力薬局名、薬剤師名を select しない。timeline は MCS投稿受信・協力薬局訪問記録受信/確認の発生事実、返信/リアクション件数または訪問日、正本 deep link のみに限定し、`privacy_level` は summary とする。
 > `cc:PARTIAL 2026-07-07`: 処方・訪問・文書系 marker の担当者名も timeline 契約から外した。`visitSchedulesSource` / `visitRecordsSource` / `careReportsSource` / `dispenseResultsSource` / `managementPlansSource` は担当者IDを select せず、actor name lookup を行わない。`firstVisitDocumentsSource` と処方・訪問・文書カテゴリの `operation_history` も `actor_name=null` に固定し、患者の動きは「誰が」ではなく「何が起きたか」と正本 deep link だけを返す。
 > `scope lock 2026-07-07`: 最新ユーザー確認により、処方・訪問・文書登録は timeline 上で「処方があった」「訪問があった」「文書登録があった」ことを確認できればよい。処方内容、訪問内容、文書本文、添付名、OCR全文、薬剤明細、位置情報は Patient Movement Timeline に表示しない。各 marker は必ず `event.href` による正本画面への直接 deep link を持ち、詳細確認は処方詳細、訪問記録/訪問準備、共有・文書/文書詳細/報告詳細/FileAsset detail で行う。deep link が未整備の source は本文抜粋で補わず、正本 href 実装を不足タスクとして扱う。
+> `cc:PARTIAL 2026-07-07`: legacy `timeline_events` の `operation_history` でも、category が `prescription` / `visit` / `document` の marker は `metadata=[]` に固定した。`target_type` / `target_id` は href 生成と正本解決だけに使い、timeline card、search haystack、movement payload、legacy metadata には出さない。billing / communication など対象外カテゴリの metadata は既存互換のまま維持する。
 
 **重要なUI方針**:
 

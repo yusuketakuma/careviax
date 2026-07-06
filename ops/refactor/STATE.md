@@ -41,6 +41,39 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOV-001 operation history target metadata minimization（未コミット）。
+  - current task:
+    legacy `timeline_events` の `operation_history` でも、処方・訪問・文書 marker から
+    `target_type` / `target_id` metadata を外し、発生事実 + 正本 deep link だけへ寄せる。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `git log --oneline -8`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail.test.ts`,
+    `src/server/services/patient-movement-timeline-presenter.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail.test.ts`.
+  - implementation:
+    `buildOperationHistoryEvents()` で category が `prescription` / `visit` / `document` の場合、
+    `metadata=[]` に固定した。`target_type` / `target_id` は href 生成にのみ使い、billing /
+    communication など対象外 category の metadata は維持した。
+  - security risks reduced:
+    処方・訪問・文書 marker の legacy timeline payload / 検索候補に、raw target type/id が流れる面を縮小した。
+  - validation:
+    `pnpm exec vitest run src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.test.ts 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx' --reporter=dot --testTimeout=30000` → pass（3 files / 91 tests）。
+    `pnpm exec eslint src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.ts src/server/services/patient-movement-timeline-presenter.test.ts 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx'` → pass。
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail.test.ts` → pass。
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail.test.ts` → pass。
+  - remaining:
+    Formal `InboundCommunicationEvent` / `InboundCommunicationSignal` DB/API/review UI and MedicationStock Ledger source remain.
+  - next action:
+    scoped commit/push 後に commit hash を記録する。
+
 - codex: MOV-001 prescription / visit / document actor minimization（commit 4ff1ec46d, pushed）。
   - current task:
     Patient Movement Timeline の処方・訪問・文書 marker から担当者名 lookup と actor_name を外し、

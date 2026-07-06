@@ -2890,10 +2890,7 @@ describe('getPatientTimelineData', () => {
     expect(eventsById.get('billing_candidate:candidate_1')?.href).toBe(
       `/billing/candidates?billing_month=2026-04-01&${encodedPatientQuery}`,
     );
-    expect(eventsById.get('operation_history:audit_patient_export_1')?.metadata).toEqual([
-      'medication_history',
-      rawPatientId,
-    ]);
+    expect(eventsById.get('operation_history:audit_patient_export_1')?.metadata).toEqual([]);
     expect(patientFindFirstMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -3180,7 +3177,7 @@ describe('getPatientTimelineData', () => {
           status: 'export',
           status_label: '服薬カレンダー',
           actor_name: null,
-          metadata: ['medication_calendar', 'patient_1'],
+          metadata: [],
         }),
       ]),
     );
@@ -3454,6 +3451,7 @@ describe('getPatientTimelineData', () => {
           action_label: '処方受付を開く',
           status_label: '原本管理',
           actor_name: null,
+          metadata: [],
         }),
       ]),
     );
@@ -3530,6 +3528,7 @@ describe('getPatientTimelineData', () => {
           status: 'prescription_original_document_saved',
           status_label: '画像保存',
           actor_name: null,
+          metadata: [],
         }),
       ]),
     );
@@ -4713,7 +4712,7 @@ describe('getPatientTimelineData', () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: 'operation_history:audit_legacy_export',
-          metadata: ['medication_history', 'patient_1'],
+          metadata: [],
         }),
       ]),
     );

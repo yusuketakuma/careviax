@@ -725,6 +725,8 @@ export function buildOperationHistoryEvents(
     const category = getOperationHistoryCategory(item);
     const shouldHideActorName =
       category === 'prescription' || category === 'visit' || category === 'document';
+    const shouldHideTargetMetadata =
+      category === 'prescription' || category === 'visit' || category === 'document';
 
     return {
       id: `operation_history:${item.id}`,
@@ -758,7 +760,9 @@ export function buildOperationHistoryEvents(
       status: item.action,
       status_label: meta.statusLabel,
       actor_name: shouldHideActorName ? null : (actorNameMap.get(item.actor_id) ?? null),
-      metadata: compactTimelineValues([item.target_type, item.target_id]),
+      metadata: shouldHideTargetMetadata
+        ? []
+        : compactTimelineValues([item.target_type, item.target_id]),
     };
   });
 }
