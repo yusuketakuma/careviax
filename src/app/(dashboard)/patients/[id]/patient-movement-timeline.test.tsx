@@ -3,7 +3,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
-import { PatientActivityTimeline } from './patient-activity-timeline';
+import { PatientMovementTimeline } from './patient-movement-timeline';
 
 setupDomTestEnv();
 
@@ -126,9 +126,9 @@ const conferenceTimelineEvent = {
   metadata: ['フォロー期限 2026/04/04'],
 };
 
-describe('PatientActivityTimeline', () => {
+describe('PatientMovementTimeline', () => {
   it('groups actions by day and renders patient-originated updates separately', () => {
-    render(<PatientActivityTimeline timelineEvents={timelineEvents} selfReports={selfReports} />);
+    render(<PatientMovementTimeline timelineEvents={timelineEvents} selfReports={selfReports} />);
 
     for (const heading of ['患者の動き', 'タイムライン要約', '患者からの更新']) {
       expect(screen.getByRole('heading', { level: 2, name: heading }).tagName).toBe('H2');
@@ -169,7 +169,7 @@ describe('PatientActivityTimeline', () => {
   });
 
   it('styles categories and event types with chart series tokens, not bespoke palette colors', () => {
-    render(<PatientActivityTimeline timelineEvents={timelineEvents} selfReports={selfReports} />);
+    render(<PatientMovementTimeline timelineEvents={timelineEvents} selfReports={selfReports} />);
 
     // Category filter chip resolves to a --chart-* series utility once active.
     const visitButton = screen.getByRole('button', { name: /訪問/ });
@@ -184,7 +184,7 @@ describe('PatientActivityTimeline', () => {
   });
 
   it('styles home-operation focus badges with chart series tokens', () => {
-    render(<PatientActivityTimeline timelineEvents={[mcsTimelineEvent]} selfReports={[]} />);
+    render(<PatientMovementTimeline timelineEvents={[mcsTimelineEvent]} selfReports={[]} />);
 
     const focusBadge = screen.getByText('MCS');
     expect(focusBadge.className).toContain('chart-4');
@@ -193,7 +193,7 @@ describe('PatientActivityTimeline', () => {
 
   it('shows a recent-activity (not full history) completeness note', () => {
     render(
-      <PatientActivityTimeline
+      <PatientMovementTimeline
         timelineEvents={timelineEvents}
         selfReports={selfReports}
         isPartial
@@ -205,7 +205,7 @@ describe('PatientActivityTimeline', () => {
   });
 
   it('filters the timeline by category', () => {
-    render(<PatientActivityTimeline timelineEvents={timelineEvents} selfReports={selfReports} />);
+    render(<PatientMovementTimeline timelineEvents={timelineEvents} selfReports={selfReports} />);
 
     fireEvent.click(screen.getByRole('button', { name: /訪問/ }));
 
@@ -215,7 +215,7 @@ describe('PatientActivityTimeline', () => {
   });
 
   it('filters billing and collection events separately from documents', () => {
-    render(<PatientActivityTimeline timelineEvents={timelineEvents} selfReports={selfReports} />);
+    render(<PatientMovementTimeline timelineEvents={timelineEvents} selfReports={selfReports} />);
 
     fireEvent.click(screen.getByRole('button', { name: /請求・集金/ }));
 
@@ -225,7 +225,7 @@ describe('PatientActivityTimeline', () => {
   });
 
   it('filters the timeline by search query', async () => {
-    render(<PatientActivityTimeline timelineEvents={timelineEvents} selfReports={selfReports} />);
+    render(<PatientMovementTimeline timelineEvents={timelineEvents} selfReports={selfReports} />);
 
     fireEvent.change(screen.getByLabelText('タイムライン検索'), {
       target: { value: '計画書' },
@@ -239,7 +239,7 @@ describe('PatientActivityTimeline', () => {
   });
 
   it('does not match occurrence-only prescription and visit raw summaries in search', async () => {
-    render(<PatientActivityTimeline timelineEvents={timelineEvents} selfReports={selfReports} />);
+    render(<PatientMovementTimeline timelineEvents={timelineEvents} selfReports={selfReports} />);
 
     fireEvent.change(screen.getByLabelText('タイムライン検索'), {
       target: { value: 'アムロジピン' },
@@ -262,7 +262,7 @@ describe('PatientActivityTimeline', () => {
 
   it('renders self report events in the main communication timeline', () => {
     render(
-      <PatientActivityTimeline
+      <PatientMovementTimeline
         timelineEvents={[selfReportTimelineEvent, ...timelineEvents]}
         selfReports={[]}
       />,
@@ -287,7 +287,7 @@ describe('PatientActivityTimeline', () => {
 
   it('marks MCS and conference history inside the communication category', async () => {
     render(
-      <PatientActivityTimeline
+      <PatientMovementTimeline
         timelineEvents={[mcsTimelineEvent, conferenceTimelineEvent, ...timelineEvents]}
         selfReports={[]}
       />,

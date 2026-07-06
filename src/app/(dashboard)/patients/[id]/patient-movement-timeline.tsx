@@ -68,7 +68,7 @@ type TimelineGroup = {
   items: TimelineEvent[];
 };
 
-export type PatientActivityTimelineProps = {
+export type PatientMovementTimelineProps = {
   timelineEvents: TimelineEvent[];
   selfReports: SelfReport[];
   isPartial?: boolean;
@@ -564,7 +564,7 @@ function TimelineEntry({ event, isLast }: { event: TimelineEvent; isLast: boolea
   );
 }
 
-export function PatientActivityTimeline({
+export function PatientMovementTimeline({
   timelineEvents,
   selfReports,
   isPartial = false,
@@ -572,7 +572,7 @@ export function PatientActivityTimeline({
   isLoadingFull = false,
   partialFailures = [],
   onLoadFull,
-}: PatientActivityTimelineProps) {
+}: PatientMovementTimelineProps) {
   const [category, setCategory] = useState<TimelineCategory>('all');
   const [query, setQuery] = useState('');
   const deferredQuery = useDeferredValue(query.trim().toLowerCase());

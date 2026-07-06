@@ -41,6 +41,52 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOV-001 PatientMovementTimeline component rename slice（未コミット）。
+  - current task:
+    患者詳細 `movement` タブの client component を旧 `PatientActivityTimeline` から
+    `PatientMovementTimeline` へ改名し、ファイル名も `patient-movement-timeline.tsx` に揃えた。
+    既存の map-less rail UI と発生確認カードは維持し、後続の inbound / MedicationStock / safety
+    source を載せる患者の動き専用 component として責務名を明確化した。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `docs/ui-ux-design-guidelines.md`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md`,
+    `Plans.md`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/patient-activity-timeline.tsx`,
+    `src/app/(dashboard)/patients/[id]/patient-activity-timeline.test.tsx`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx`,
+    `src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx`.
+  - implementation:
+    Renamed the component export, props type, test file, and dynamic import to
+    `PatientMovementTimeline`. The loading label now says `患者の動きを読み込み中`.
+    No visual redesign was introduced; imagegen was skipped because this is a naming/responsibility
+    refactor of an already implemented UI.
+  - security / PHI reviewed:
+    No new data fields are rendered. Existing occurrence-only summary behavior and PHI omission tests
+    remain the contract.
+  - validation:
+    `pnpm vitest run 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' src/server/services/patient-movement-timeline-presenter.test.ts --reporter=dot --testTimeout=30000`
+    passed: 3 files / 106 tests.
+    `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx' 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx'`
+    passed.
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx' 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx'`
+    passed after scoped Prettier write on `Plans.md`.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+    `pnpm boundaries:check` passed: 0 new violations, 7 allowlisted debt imports across 6 files.
+    `git diff --check -- Plans.md ops/refactor/STATE.md 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx' 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx'`
+    passed.
+  - remaining:
+    `MOV-001` remains partial for formal `InboundCommunicationSignal`, MedicationStock, and safety
+    source integration plus mobile Playwright smoke.
+  - next action:
+    Commit/push this component rename slice, then continue with a formal inbound signal or
+    MedicationStock source slice.
+
 - codex: MOV-001 existing CommunicationEvent inbound bridge slice（未コミット）。
   - current task:
     Patient Movement Timeline で既存 `CommunicationEvent` の受信 `phone` / `fax` / `email` を

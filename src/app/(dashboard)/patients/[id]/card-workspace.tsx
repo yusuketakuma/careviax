@@ -86,7 +86,7 @@ import type {
   PatientWorkspaceTodayTask,
 } from './patient-detail.types';
 import type { CaseRiskCockpitResponse, CaseRiskNextAction } from '@/types/case-risk-cockpit';
-import type { PatientActivityTimelineProps } from './patient-activity-timeline';
+import type { PatientMovementTimelineProps } from './patient-movement-timeline';
 import {
   buildCaseRiskCommandPanelModel,
   buildPatientCommandCenterModel,
@@ -234,10 +234,10 @@ const PatientStructuredCarePanel = dynamic<PatientIdPanelProps>(
   },
 );
 
-const PatientActivityTimelinePanel = dynamic<PatientActivityTimelineProps>(
-  () => import('./patient-activity-timeline').then((mod) => mod.PatientActivityTimeline),
+const PatientMovementTimelinePanel = dynamic<PatientMovementTimelineProps>(
+  () => import('./patient-movement-timeline').then((mod) => mod.PatientMovementTimeline),
   {
-    loading: () => <PatientDetailPanelLoading label="患者アクションタイムラインを読み込み中" />,
+    loading: () => <PatientDetailPanelLoading label="患者の動きを読み込み中" />,
   },
 );
 
@@ -5358,7 +5358,7 @@ export function CardWorkspace({
     }
 
     return (
-      <PatientActivityTimelinePanel
+      <PatientMovementTimelinePanel
         timelineEvents={
           mode === 'movement'
             ? (timelineSnapshot?.movement_events ?? timelineSnapshot?.timeline_events ?? [])
