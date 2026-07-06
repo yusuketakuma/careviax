@@ -11088,6 +11088,48 @@
 - remaining:
   Final docs/code formatting and diff checks are green; commit and push this navigation test slice.
 
+## 2026-07-07 Patient/dispense pagination plan sync
+
+- codex: reconciled `Plans.md` with already-landed `PAT-BOARD-PAGE-001` and
+  `DSP-QUEUE-PAGE-001` implementation evidence.
+  Current code shows `/api/patients/board` has signed `limit/cursor`, filter-bound cursors,
+  `meta.has_more`, `next_cursor`, `total_count`, `count_basis`, `filters_applied`, and full-basis
+  facets. Dispense workbench patients has signed cursor pagination with `phase`, `q`, `limit`,
+  `cursor`, `include_set_plan`, phase facets, and page-row-only representative task/set plan hydrate.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/api/patients/board/route.ts`,
+  `src/app/api/patients/board/route.test.ts`,
+  `src/app/(dashboard)/patients/patients-board.tsx`,
+  `src/app/(dashboard)/patients/patients-board.test.tsx`,
+  `src/server/services/dispense-workbench-patients.ts`,
+  `src/server/services/dispense-workbench-patients.test.ts`,
+  `src/app/api/dispense-workbench/patients/route.ts`,
+  `src/app/api/dispense-workbench/patients/route.test.ts`,
+  `src/components/features/dispense-workbench/dispensing-workbench.adapter.ts`,
+  `src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts`,
+  `src/components/features/dispense-workbench/dispensing-workbench.tsx`,
+  `src/components/features/dispense-workbench/patient-list-panel.tsx`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  Removed stale plan statements that still described patient board as fixed 80/500 cap + truncation
+  and dispense queue as `MAX_CYCLES=500` one-shot fetching. The remaining work is now correctly
+  scoped to production-scale DB/index/materialized summary optimization rather than API contract
+  implementation.
+- validation:
+  `pnpm exec vitest run src/app/api/patients/board/route.test.ts 'src/app/(dashboard)/patients/patients-board.test.tsx' src/app/api/dispense-workbench/patients/route.test.ts src/server/services/dispense-workbench-patients.test.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts --reporter=dot --testTimeout=30000`
+  green (5 files / 110 tests);
+  `pnpm exec prettier --check Plans.md ops/refactor/STATE.md`
+  green;
+  `git diff --check -- Plans.md ops/refactor/STATE.md`
+  green.
+- remaining:
+  Commit and push this docs/state sync.
+
 ## 2026-07-06 DataTable client export policy tightening
 
 - codex: implemented `FE-TBL-001` minimal frontend export boundary hardening. `DataTable` client CSV
