@@ -102,6 +102,52 @@ function cycle(overrides: {
   };
 }
 
+function expectDefaultMeta(
+  body: unknown,
+  overrides: Partial<{
+    returned_count: number;
+    has_more: boolean;
+    next_cursor: string | null;
+    total_count: number;
+    phase: string | null;
+    q_present: boolean;
+  }> = {},
+) {
+  expect(body).toMatchObject({
+    meta: {
+      generated_at: expect.any(String),
+      limit: 50,
+      returned_count: overrides.returned_count ?? expect.any(Number),
+      has_more: overrides.has_more ?? expect.any(Boolean),
+      next_cursor: overrides.next_cursor ?? null,
+      total_count: overrides.total_count ?? expect.any(Number),
+      count_basis: {
+        rows: 'authorized_latest_cycle_per_patient',
+        total_count: 'authorized_phase_search_exact',
+        phase_counts: 'authorized_phase_search_exact',
+        set_split: 'latest_set_plan_set_batch_exact',
+      },
+      filters_applied: {
+        phase: overrides.phase ?? null,
+        q_present: overrides.q_present ?? false,
+        sort: 'name_kana',
+        order: 'asc',
+        include_set_plan: false,
+      },
+      facets: {
+        total: expect.any(Number),
+        phase_counts: {
+          dispense: expect.any(Number),
+          audit: expect.any(Number),
+          set: expect.any(Number),
+          'set-audit': expect.any(Number),
+        },
+        other: expect.any(Number),
+      },
+    },
+  });
+}
+
 describe('GET /api/dispense-workbench/patients', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -132,24 +178,24 @@ describe('GET /api/dispense-workbench/patients', () => {
 
     expect(response.status).toBe(200);
     expectNoStore(response);
-    await expect(response.json()).resolves.toEqual({
-      data: [
-        {
-          patient_id: 'patient_1',
-          cycle_id: 'cycle_1',
-          name: '山田 太郎',
-          name_kana: 'ヤマダ タロウ',
-          overall_status: 'audit_pending',
-          badge: 'in_progress',
-          start_date: '2026-04-01',
-          registered_date: '2026-03-20',
-          latest_set_plan_id: null,
-          latest_set_plan_cycle_id: null,
-          representative_task_id: null,
-          representative_task_status: null,
-        },
-      ],
-    });
+    const body = await response.json();
+    expect(body.data).toEqual([
+      {
+        patient_id: 'patient_1',
+        cycle_id: 'cycle_1',
+        name: '山田 太郎',
+        name_kana: 'ヤマダ タロウ',
+        overall_status: 'audit_pending',
+        badge: 'in_progress',
+        start_date: '2026-04-01',
+        registered_date: '2026-03-20',
+        latest_set_plan_id: null,
+        latest_set_plan_cycle_id: null,
+        representative_task_id: null,
+        representative_task_status: null,
+      },
+    ]);
+    expectDefaultMeta(body, { returned_count: 1, has_more: false, total_count: 1 });
     expect(setPlanFindManyMock).not.toHaveBeenCalled();
     expect(dispenseTaskFindManyMock).not.toHaveBeenCalled();
   });
@@ -169,32 +215,73 @@ describe('GET /api/dispense-workbench/patients', () => {
     );
   });
 
-  it('filters by the dispense phase status set (ready_to_dispense + dispensing)', async () => {
-    medicationCycleFindManyMock.mockResolvedValue([]);
+  it('filters dispense phase after choosing each patient latest cycle', async () => {
+    medicationCycleFindManyMock.mockResolvedValue([
+      cycle({
+        id: 'cycle_new_reported',
+        patient_id: 'patient_1',
+        overall_status: 'reported',
+        patientCreatedAt: new Date('2026-03-20T09:00:00.000Z'),
+      }),
+      cycle({
+        id: 'cycle_old_dispense',
+        patient_id: 'patient_1',
+        overall_status: 'dispensing',
+        patientCreatedAt: new Date('2026-03-20T09:00:00.000Z'),
+      }),
+      cycle({
+        id: 'cycle_dispense',
+        patient_id: 'patient_2',
+        overall_status: 'ready_to_dispense',
+        patientCreatedAt: new Date('2026-03-20T09:00:00.000Z'),
+      }),
+    ]);
 
-    await GET(createRequest('?phase=dispense'), { params: Promise.resolve({}) });
+    const response = await GET(createRequest('?phase=dispense'), { params: Promise.resolve({}) });
+    const body = await response.json();
 
+    expect(body.data.map((row: { patient_id: string }) => row.patient_id)).toEqual(['patient_2']);
+    expectDefaultMeta(body, {
+      returned_count: 1,
+      has_more: false,
+      total_count: 1,
+      phase: 'dispense',
+    });
     expect(medicationCycleFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          overall_status: { in: ['ready_to_dispense', 'dispensing'] },
+          overall_status: { notIn: ['cancelled'] },
         }),
       }),
     );
   });
 
-  it('filters by the audit phase status set (dispensed + audit_pending)', async () => {
-    medicationCycleFindManyMock.mockResolvedValue([]);
-
-    await GET(createRequest('?phase=audit'), { params: Promise.resolve({}) });
-
-    expect(medicationCycleFindManyMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          overall_status: { in: ['dispensed', 'audit_pending'] },
-        }),
+  it('filters by audit phase after latest-cycle selection', async () => {
+    medicationCycleFindManyMock.mockResolvedValue([
+      cycle({
+        id: 'cycle_audit',
+        patient_id: 'patient_1',
+        overall_status: 'audit_pending',
+        patientCreatedAt: new Date('2026-03-20T09:00:00.000Z'),
       }),
-    );
+      cycle({
+        id: 'cycle_dispense',
+        patient_id: 'patient_2',
+        overall_status: 'dispensing',
+        patientCreatedAt: new Date('2026-03-20T09:00:00.000Z'),
+      }),
+    ]);
+
+    const response = await GET(createRequest('?phase=audit'), { params: Promise.resolve({}) });
+    const body = await response.json();
+
+    expect(body.data.map((row: { patient_id: string }) => row.patient_id)).toEqual(['patient_1']);
+    expectDefaultMeta(body, {
+      returned_count: 1,
+      has_more: false,
+      total_count: 1,
+      phase: 'audit',
+    });
   });
 
   it('hydrates a representative dispense task for phase=dispense in one batch query', async () => {
@@ -263,14 +350,14 @@ describe('GET /api/dispense-workbench/patients', () => {
     });
   });
 
-  it('uses the shared audited+setting base for set and set-audit (split happens on SetBatch)', async () => {
+  it('does not narrow the DB query before the set/set-audit SetBatch split', async () => {
     medicationCycleFindManyMock.mockResolvedValue([]);
 
     await GET(createRequest('?phase=set-audit'), { params: Promise.resolve({}) });
 
     expect(medicationCycleFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ overall_status: { in: ['audited', 'setting'] } }),
+        where: expect.objectContaining({ overall_status: { notIn: ['cancelled'] } }),
       }),
     );
   });
@@ -354,8 +441,8 @@ describe('GET /api/dispense-workbench/patients', () => {
     const setAudit = await GET(createRequest('?phase=set-audit'), { params: Promise.resolve({}) });
     const setPhase = await GET(createRequest('?phase=set'), { params: Promise.resolve({}) });
 
-    await expect(setAudit.json()).resolves.toEqual({ data: [] });
-    await expect(setPhase.json()).resolves.toEqual({ data: [] });
+    await expect(setAudit.json()).resolves.toMatchObject({ data: [] });
+    await expect(setPhase.json()).resolves.toMatchObject({ data: [] });
   });
 
   it('set-audit keeps a fully set plan with an NG cell (rework pending, not complete)', async () => {
@@ -381,7 +468,7 @@ describe('GET /api/dispense-workbench/patients', () => {
     const auditBody = (await setAudit.json()) as { data: { patient_id: string }[] };
 
     expect(auditBody.data.map((row) => row.patient_id)).toEqual(['patient_ng']);
-    await expect(setPhase.json()).resolves.toEqual({ data: [] });
+    await expect(setPhase.json()).resolves.toMatchObject({ data: [] });
   });
 
   it('rejects an unknown phase value', async () => {
@@ -522,6 +609,154 @@ describe('GET /api/dispense-workbench/patients', () => {
       'p_a',
       'p_b',
     ]);
+  });
+
+  it('paginates with an opaque cursor and hydrates representative tasks for page rows only', async () => {
+    medicationCycleFindManyMock.mockResolvedValue([
+      cycle({
+        id: 'cycle_a',
+        patient_id: 'patient_a',
+        overall_status: 'dispensing',
+        patientCreatedAt: new Date('2026-01-01T00:00:00.000Z'),
+        nameKana: 'アア',
+      }),
+      cycle({
+        id: 'cycle_b',
+        patient_id: 'patient_b',
+        overall_status: 'dispensing',
+        patientCreatedAt: new Date('2026-01-01T00:00:00.000Z'),
+        nameKana: 'イイ',
+      }),
+    ]);
+    dispenseTaskFindManyMock.mockResolvedValue([
+      { id: 'task_page', cycle_id: 'cycle_a', status: 'in_progress' },
+    ]);
+
+    const firstResponse = await GET(createRequest('?phase=dispense&limit=1'), {
+      params: Promise.resolve({}),
+    });
+    const firstBody = await firstResponse.json();
+
+    expect(firstBody.data.map((row: { patient_id: string }) => row.patient_id)).toEqual([
+      'patient_a',
+    ]);
+    expect(firstBody.meta).toMatchObject({
+      limit: 1,
+      returned_count: 1,
+      has_more: true,
+      next_cursor: expect.any(String),
+      total_count: 2,
+    });
+    expect(firstBody.meta.next_cursor).not.toContain('patient_a');
+    expect(firstBody.meta.next_cursor).not.toContain('cycle_a');
+    expect(dispenseTaskFindManyMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ cycle_id: { in: ['cycle_a'] } }),
+      }),
+    );
+
+    dispenseTaskFindManyMock.mockClear();
+    dispenseTaskFindManyMock.mockResolvedValue([
+      { id: 'task_second_page', cycle_id: 'cycle_b', status: 'in_progress' },
+    ]);
+    const secondResponse = await GET(
+      createRequest(
+        `?phase=dispense&limit=1&cursor=${encodeURIComponent(firstBody.meta.next_cursor)}`,
+      ),
+      { params: Promise.resolve({}) },
+    );
+    const secondBody = await secondResponse.json();
+
+    expect(secondBody.data.map((row: { patient_id: string }) => row.patient_id)).toEqual([
+      'patient_b',
+    ]);
+    expect(secondBody.meta).toMatchObject({
+      limit: 1,
+      returned_count: 1,
+      has_more: false,
+      next_cursor: null,
+      total_count: 2,
+    });
+    expect(dispenseTaskFindManyMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ cycle_id: { in: ['cycle_b'] } }),
+      }),
+    );
+  });
+
+  it('rejects a cursor when filters change between pages', async () => {
+    medicationCycleFindManyMock.mockResolvedValue([
+      cycle({
+        id: 'cycle_a',
+        patient_id: 'patient_a',
+        overall_status: 'dispensing',
+        patientCreatedAt: new Date('2026-01-01T00:00:00.000Z'),
+        nameKana: 'アア',
+      }),
+      cycle({
+        id: 'cycle_b',
+        patient_id: 'patient_b',
+        overall_status: 'dispensing',
+        patientCreatedAt: new Date('2026-01-01T00:00:00.000Z'),
+        nameKana: 'イイ',
+      }),
+    ]);
+    const firstResponse = await GET(createRequest('?phase=dispense&limit=1'), {
+      params: Promise.resolve({}),
+    });
+    const firstBody = await firstResponse.json();
+    medicationCycleFindManyMock.mockClear();
+
+    const mismatchResponse = await GET(
+      createRequest(
+        `?phase=audit&limit=1&cursor=${encodeURIComponent(firstBody.meta.next_cursor)}`,
+      ),
+      { params: Promise.resolve({}) },
+    );
+
+    expect(mismatchResponse.status).toBe(400);
+    expectNoStore(mismatchResponse);
+    expect(medicationCycleFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects tampered cursor payloads before querying', async () => {
+    const response = await GET(createRequest('?phase=dispense&cursor=abc.def'), {
+      params: Promise.resolve({}),
+    });
+
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    expect(medicationCycleFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('does not echo q in response metadata or cursor payload', async () => {
+    medicationCycleFindManyMock.mockResolvedValue([
+      cycle({
+        id: 'cycle_a',
+        patient_id: 'patient_a',
+        overall_status: 'dispensing',
+        patientCreatedAt: new Date('2026-01-01T00:00:00.000Z'),
+        name: '山田 太郎',
+        nameKana: 'ヤマダ タロウ',
+      }),
+      cycle({
+        id: 'cycle_b',
+        patient_id: 'patient_b',
+        overall_status: 'dispensing',
+        patientCreatedAt: new Date('2026-01-01T00:00:00.000Z'),
+        name: '佐藤 花子',
+        nameKana: 'サトウ ハナコ',
+      }),
+    ]);
+
+    const response = await GET(createRequest('?phase=dispense&q=secret-token&limit=1'), {
+      params: Promise.resolve({}),
+    });
+    const body = await response.json();
+
+    expect(body.meta.filters_applied).toMatchObject({ q_present: true });
+    expect(JSON.stringify({ meta: body.meta })).not.toContain('secret-token');
+    expect(body.meta.next_cursor).not.toContain('secret-token');
   });
 
   it('rejects invalid sort with 400', async () => {

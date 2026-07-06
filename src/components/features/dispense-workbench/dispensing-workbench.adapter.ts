@@ -14,7 +14,7 @@
  *   実データ画面で seed/mock 患者を操作可能にしない。
  * - 工程フィルタ: 患者リスト fetch に `?phase=` を付与し、当該工程の「待ち＋作業中」患者のみを
  *   左一覧へ返す（BFF 側 SSOT = PHASE_CYCLE_STATUSES）。内部 Phase（setp/seta）→ URL 表記
- *   （set/set-audit）の写像は PHASE_TO_API_PARAM。set-audit は SetBatch 集計実装まで空ゲート。
+ *   （set/set-audit）の写像は PHASE_TO_API_PARAM。set/set-audit は BFF 側の SetBatch 集計で分割する。
  */
 
 import { buildPatients } from './dispensing-workbench.seed';
@@ -83,7 +83,7 @@ export function isRealDataEnabled(): boolean {
 /**
  * 内部 Phase（dispense/audit/setp/seta）を API 境界の URL 表記（dispense/audit/set/set-audit）へ
  * 写像する。患者リスト BFF（/api/dispense-workbench/patients?phase=）の工程フィルタに使用。
- * set-audit は SetBatch 集計実装まで BFF 側で空集合ゲート（PHASE_CYCLE_STATUSES）。
+ * set/set-audit は BFF 側で SetBatch 集計後に分割する。
  */
 const PHASE_TO_API_PARAM: Record<Phase, DispenseWorkbenchPhase> = {
   dispense: 'dispense',
@@ -96,10 +96,19 @@ const PHASE_TO_API_PARAM: Record<Phase, DispenseWorkbenchPhase> = {
  * 患者リスト BFF（/api/dispense-workbench/patients）の querystring を組み立てる。
  * 先頭 `?` 込みで返し、パラメータが無ければ空文字（後方互換: phase 省略時は従来 URL）。
  */
-function buildPatientsQuery(options: { includeSetPlan?: boolean; phase?: Phase }): string {
+type WorkbenchPatientsQueryOptions = {
+  includeSetPlan?: boolean;
+  phase?: Phase;
+  limit?: number;
+  cursor?: string | null;
+};
+
+function buildPatientsQuery(options: WorkbenchPatientsQueryOptions): string {
   const params = new URLSearchParams();
   if (options.includeSetPlan) params.set('include_set_plan', '1');
   if (options.phase) params.set('phase', PHASE_TO_API_PARAM[options.phase]);
+  if (options.limit != null) params.set('limit', String(options.limit));
+  if (options.cursor) params.set('cursor', options.cursor);
   const query = params.toString();
   return query ? `?${query}` : '';
 }
@@ -167,22 +176,23 @@ export async function loadPatientsAsync(
 }
 
 export async function loadWorkbenchPatientRowsAsync(
-  options: { includeSetPlan?: boolean; phase?: Phase } & WorkbenchFetchScope = {},
+  options: WorkbenchPatientsQueryOptions & WorkbenchFetchScope = {},
 ): Promise<{
   patients: SeedPatient[];
   rows: DispenseWorkbenchPatientRow[];
+  meta: DispenseWorkbenchPatientsResponse['meta'] | null;
   /** fetch が成功したか。false=取得失敗（障害と「0件」を区別するための信号。空状態の honest 表示に使う）。 */
   ok: boolean;
 }> {
-  if (USE_MOCK) return { patients: buildPatients(), rows: [], ok: true };
+  if (USE_MOCK) return { patients: buildPatients(), rows: [], meta: null, ok: true };
   const path = `/api/dispense-workbench/patients${buildPatientsQuery(options)}`;
   const body = await fetchJson<DispenseWorkbenchPatientsResponse>(path, options);
   // body=null は非2xx/例外＝取得失敗。配列だが空は「取得成功・0件」で区別する。
-  if (!body) return { patients: [], rows: [], ok: false };
+  if (!body?.meta) return { patients: [], rows: [], meta: null, ok: false };
   if (!Array.isArray(body.data) || body.data.length === 0) {
-    return { patients: [], rows: [], ok: true };
+    return { patients: [], rows: [], meta: body.meta, ok: true };
   }
-  return { patients: patientsFromApi(body.data), rows: body.data, ok: true };
+  return { patients: patientsFromApi(body.data), rows: body.data, meta: body.meta, ok: true };
 }
 
 type DispenseWorkbenchPatientRow = DispenseWorkbenchPatientsResponse['data'][number];
@@ -340,7 +350,7 @@ export async function loadSetCalendarForPatientAsync(
   | null
 > {
   if (USE_MOCK) return null;
-  // set/seta の左一覧も工程フィルタ。seta（set-audit）は BFF 側で空ゲート → 取得 0 件で fail-closed。
+  // set/seta の左一覧も工程フィルタ。BFF が SetBatch 集計後に set と set-audit を分割する。
   const listBody = await fetchJson<DispenseWorkbenchPatientsResponse>(
     `/api/dispense-workbench/patients${buildPatientsQuery({ includeSetPlan: true, phase })}`,
     scope,

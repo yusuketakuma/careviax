@@ -28,6 +28,9 @@ function createDb() {
     setBatch: {
       findMany: vi.fn(),
     },
+    dispenseTask: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
   };
 }
 
@@ -38,18 +41,31 @@ describe('listDispenseWorkbenchPatients', () => {
     try {
       const db = createDb();
 
-      const rows = await listDispenseWorkbenchPatients(db as never, 'org_1', {
-        userId: 'user_1',
-        role: 'admin',
-      });
+      const response = await listDispenseWorkbenchPatients(
+        db as never,
+        'org_1',
+        {
+          userId: 'user_1',
+          role: 'admin',
+        },
+        { cursorSecret: 'test-secret', now: new Date('2026-07-06T00:00:00.000Z') },
+      );
 
-      expect(rows).toEqual([
+      expect(response.data).toEqual([
         expect.objectContaining({
           patient_id: 'patient_1',
           start_date: '2026-06-12',
           registered_date: '2026-06-12',
         }),
       ]);
+      expect(response.meta).toMatchObject({
+        generated_at: '2026-07-06T00:00:00.000Z',
+        limit: 50,
+        returned_count: 1,
+        has_more: false,
+        next_cursor: null,
+        total_count: 1,
+      });
       expect(db.medicationCycle.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({ org_id: 'org_1' }),

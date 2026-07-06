@@ -23,6 +23,10 @@ interface PatientListPanelProps {
   view: WorkbenchView;
   /** ルートから注入される工程。連携規約に従い受け取る（本パネルの表示には不使用）。 */
   phase: Phase;
+  totalCount?: number | null;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
 }
 
 /**
@@ -58,19 +62,28 @@ function PatientListSkeleton() {
   );
 }
 
-export function PatientListPanel({ view }: PatientListPanelProps) {
+export function PatientListPanel({
+  view,
+  totalCount = null,
+  hasMore = false,
+  loadingMore = false,
+  onLoadMore,
+}: PatientListPanelProps) {
   const setPatient = useWorkbenchStore((s) => s.setPatient);
   const setSort = useWorkbenchStore((s) => s.setSort);
   const retryLoad = useWorkbenchStore((s) => s.retryLoad);
+  const loadedCount = Number(view.patientCount);
+  const countLabel =
+    totalCount != null && Number.isFinite(loadedCount) && totalCount !== loadedCount
+      ? `${view.patientCount}/${totalCount}名`
+      : `${view.patientCount}名`;
 
   return (
     <div className={styles.leftPane}>
       {/* ヘッダ（24px・青グラデ）*/}
       <div className={styles.paneHeader}>
         <span>処方登録患者</span>
-        <span style={{ fontSize: '10.5px', opacity: 0.85, fontWeight: 400 }}>
-          {view.patientCount}名
-        </span>
+        <span style={{ fontSize: '10.5px', opacity: 0.85, fontWeight: 400 }}>{countLabel}</span>
       </div>
 
       {/* 並び替え */}
@@ -135,71 +148,95 @@ export function PatientListPanel({ view }: PatientListPanelProps) {
             />
           </div>
         ) : (
-          view.patients.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              data-testid="dispense-queue-row"
-              onClick={() => setPatient(p.id)}
-              aria-current={p.selected ? 'true' : undefined}
-              className={styles.patientRow}
-              style={{
-                width: '100%',
-                textAlign: 'left',
-                font: 'inherit',
-                borderLeft: `3px solid ${p.barColor}`,
-                background: p.bg,
-              }}
-            >
-              <div className={styles.patientAvatar} style={{ background: p.avatarBg }}>
-                {p.initial}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div
+          <>
+            {view.patients.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                data-testid="dispense-queue-row"
+                onClick={() => setPatient(p.id)}
+                aria-current={p.selected ? 'true' : undefined}
+                className={styles.patientRow}
+                style={{
+                  width: '100%',
+                  textAlign: 'left',
+                  font: 'inherit',
+                  borderLeft: `3px solid ${p.barColor}`,
+                  background: p.bg,
+                }}
+              >
+                <div className={styles.patientAvatar} style={{ background: p.avatarBg }}>
+                  {p.initial}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: '13px',
+                      fontWeight: 700,
+                      color: 'var(--wb-ink)',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {p.name}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: '10px',
+                      color: 'var(--wb-ink-muted)',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    開始 {p.startLabel} ・ 登録 {p.registLabel}
+                  </div>
+                </div>
+                <div style={{ flex: 'none', textAlign: 'right' }}>
+                  <div style={{ fontSize: '11px', color: 'var(--wb-ink-muted)', fontWeight: 700 }}>
+                    {p.age}
+                  </div>
+                  <div
+                    style={{
+                      display: 'inline-block',
+                      fontSize: '9px',
+                      fontWeight: 700,
+                      color: '#fff',
+                      background: p.statusColor,
+                      borderRadius: '3px',
+                      padding: '1px 4px',
+                      marginTop: '1px',
+                    }}
+                  >
+                    {p.statusLabel}
+                  </div>
+                </div>
+              </button>
+            ))}
+            {hasMore ? (
+              <div style={{ padding: '8px' }}>
+                <button
+                  type="button"
+                  onClick={onLoadMore}
+                  disabled={loadingMore}
                   style={{
-                    fontSize: '13px',
-                    fontWeight: 700,
+                    width: '100%',
+                    minHeight: '34px',
+                    cursor: loadingMore ? 'wait' : 'pointer',
+                    border: '1px solid var(--wb-line)',
+                    borderRadius: '4px',
+                    background: 'var(--wb-surface-muted)',
                     color: 'var(--wb-ink)',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                  }}
-                >
-                  {p.name}
-                </div>
-                <div
-                  style={{
-                    fontSize: '10px',
-                    color: 'var(--wb-ink-muted)',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                  }}
-                >
-                  開始 {p.startLabel} ・ 登録 {p.registLabel}
-                </div>
-              </div>
-              <div style={{ flex: 'none', textAlign: 'right' }}>
-                <div style={{ fontSize: '11px', color: 'var(--wb-ink-muted)', fontWeight: 700 }}>
-                  {p.age}
-                </div>
-                <div
-                  style={{
-                    display: 'inline-block',
-                    fontSize: '9px',
+                    fontSize: '12px',
                     fontWeight: 700,
-                    color: '#fff',
-                    background: p.statusColor,
-                    borderRadius: '3px',
-                    padding: '1px 4px',
-                    marginTop: '1px',
                   }}
                 >
-                  {p.statusLabel}
-                </div>
+                  {loadingMore ? '読み込み中' : 'さらに読み込む'}
+                </button>
               </div>
-            </button>
-          ))
+            ) : null}
+          </>
         )}
       </div>
 

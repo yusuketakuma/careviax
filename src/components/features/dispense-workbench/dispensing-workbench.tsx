@@ -237,6 +237,7 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
   const setLoadError = useWorkbenchStore((s) => s.setLoadError);
   const retryNonce = useWorkbenchStore((s) => s.retryNonce);
   const selId = useWorkbenchStore((s) => s.selId);
+  const patients = useWorkbenchStore((s) => s.patients);
   const planId = useWorkbenchStore((s) => s.writeContext.planId);
   // 接続状態は HeaderSyncStatus と同一の useNetworkOnline（新規リアルタイム購読を増やさない）。
   const online = useNetworkOnline();
@@ -249,9 +250,56 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
   // force セットバッチ再生成（破壊的）の確認待ち descriptor。boolean フラグではなく
   // 患者/計画/版アンカーを捕捉し、確認中の文脈ドリフトで別計画を破壊しない（round-4 S1）。
   const [pendingForceRegen, setPendingForceRegen] = useState<PendingForceRegen | null>(null);
+  const [queuePage, setQueuePage] = useState<{
+    totalCount: number | null;
+    hasMore: boolean;
+    nextCursor: string | null;
+  }>({ totalCount: null, hasMore: false, nextCursor: null });
+  const [loadingMorePatients, setLoadingMorePatients] = useState(false);
   // 二重確定ラッチ。React state 更新前の double Enter/click で commit が二度発火するのを防ぐ（#5）。
   // 新たな confirm 要求（descriptor 設定）ごとに false へリセットする。
   const commitLatchRef = useRef(false);
+
+  const handleLoadMorePatients = useCallback(() => {
+    if (!isRealDataEnabled()) return;
+    if (!orgId) return;
+    if (phase !== 'dispense' && phase !== 'audit') return;
+    if (!queuePage.hasMore || !queuePage.nextCursor || loadingMorePatients) return;
+    setLoadingMorePatients(true);
+    void (async () => {
+      const result = await loadWorkbenchPatientRowsAsync({
+        phase,
+        orgId,
+        cursor: queuePage.nextCursor,
+      });
+      setLoadingMorePatients(false);
+      if (!result.ok) {
+        setLoadError(true);
+        return;
+      }
+      if (result.meta) {
+        setQueuePage({
+          totalCount: result.meta.total_count,
+          hasMore: result.meta.has_more,
+          nextCursor: result.meta.next_cursor,
+        });
+      }
+      if (result.patients.length === 0) return;
+      const mergedById = new Map(patients.map((patient) => [patient.id, patient]));
+      for (const patient of result.patients) mergedById.set(patient.id, patient);
+      hydrate({ patients: Array.from(mergedById.values()), selId });
+    })();
+  }, [
+    hydrate,
+    loadingMorePatients,
+    orgId,
+    patients,
+    phase,
+    queuePage.hasMore,
+    queuePage.nextCursor,
+    selId,
+    setLoadError,
+  ]);
 
   // confirm 要求時にラッチを解除してから descriptor を立てる（次の確定を 1 回だけ通す）。
   // React Compiler 採用のため手動 useCallback は付けない（自動メモ化に委ねる / useRef は可）。
@@ -307,8 +355,13 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
     if (phase !== 'dispense' && phase !== 'audit') return; // set/seta は別 effect
     let cancelled = false;
     void (async () => {
-      const { patients, rows, ok } = await loadWorkbenchPatientRowsAsync({ phase, orgId });
+      const { patients, rows, meta, ok } = await loadWorkbenchPatientRowsAsync({ phase, orgId });
       if (cancelled) return;
+      setQueuePage({
+        totalCount: meta?.total_count ?? null,
+        hasMore: meta?.has_more ?? false,
+        nextCursor: meta?.next_cursor ?? null,
+      });
       if (patients.length === 0) {
         // 取得失敗(!ok)はエラー状態、取得成功・0件は空状態として区別する。
         setLoadError(!ok);
@@ -550,7 +603,14 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
       {/* ===== BODY（3 ペイン）===== */}
       <div className={styles.body}>
         {/* 左ペイン */}
-        <PatientListPanel view={view} phase={phase} />
+        <PatientListPanel
+          view={view}
+          phase={phase}
+          totalCount={queuePage.totalCount}
+          hasMore={queuePage.hasMore}
+          loadingMore={loadingMorePatients}
+          onLoadMore={handleLoadMorePatients}
+        />
 
         {/* 中央ペイン */}
         <div className={styles.centerPane}>

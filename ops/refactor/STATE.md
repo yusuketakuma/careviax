@@ -41,6 +41,79 @@
 
 ## 直近の land（本日・要点）
 
+- codex: DSP-QUEUE-PAGE-001 DispenseWorkbench patient queue pagination implemented.
+  - current task:
+    `Plans.md` の `DSP-QUEUE-PAGE-001` を実装。`/api/dispense-workbench/patients`
+    を固定 500 cycle 一括取得前提から、signed cursor + `limit` + `phase` + `q`
+    - `include_set_plan` の page contract に変更した。工程判定は Oracle/GPT-5.5 Pro
+      の事前レビューに従い、`MedicationCycle` を直接 phase filter せず、org/access/q
+      filter → 患者ごとの最新 cycle 抽出 → set/set-audit の SetBatch 分類 → phase filter
+      → sort → cursor page → page rows のみ代表 task/SetPlan hydrate の順序にした。
+      レスポンスは `{ data, meta }` とし、`meta` に `has_more`, `next_cursor`,
+      `total_count`, `count_basis`, `filters_applied`, `facets` を返す。
+  - GitHub / Oracle context:
+    target repo `https://github.com/yusuketakuma/careviax`, branch `main`,
+    pre-slice commit `838f813d61573cca6d5a2149484b7a73f222a754`, dirty state clean.
+    Oracle session `careviax-dsp-queue-page-min` completed. Advice accepted:
+    page over authorized latest-cycle-per-patient derived rows, never page raw
+    `MedicationCycle` before latest-per-patient, do not DB-filter phase before
+    set/set-audit split, make cursor PHI-free/HMAC-signed/filter-bound/scope-bound,
+    reject tamper/filter mismatch/stale cursors, hydrate representative tasks for
+    page rows only, and add cursor/facet/page-only tests.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/api/dispense-workbench/patients/route.ts`,
+    `src/app/api/dispense-workbench/patients/route.test.ts`,
+    `src/server/services/dispense-workbench-patients.ts`,
+    `src/server/services/dispense-workbench-patients.test.ts`,
+    `src/lib/dispensing/dispense-workbench-shared.ts`,
+    `src/components/features/dispense-workbench/dispensing-workbench.adapter.ts`,
+    `src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts`,
+    `src/components/features/dispense-workbench/dispensing-workbench.tsx`,
+    `src/components/features/dispense-workbench/patient-list-panel.tsx`.
+  - files changed:
+    `src/app/api/dispense-workbench/patients/route.ts`,
+    `src/app/api/dispense-workbench/patients/route.test.ts`,
+    `src/server/services/dispense-workbench-patients.ts`,
+    `src/server/services/dispense-workbench-patients.test.ts`,
+    `src/lib/dispensing/dispense-workbench-shared.ts`,
+    `src/components/features/dispense-workbench/dispensing-workbench.adapter.ts`,
+    `src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts`,
+    `src/components/features/dispense-workbench/dispensing-workbench.tsx`,
+    `src/components/features/dispense-workbench/patient-list-panel.tsx`,
+    `ops/refactor/STATE.md`.
+  - bugs / security / performance reduced:
+    Left-pane queue can now load additional pages without exposing raw cursor identifiers.
+    Cursor payloads are HMAC signed, bind org/user/role/scope/filter/sort/limit,
+    expire, and do not include raw patient/cycle/task ids or raw q text. Tampered
+    and filter-mismatched cursors fail before DB access. Representative dispense
+    task hydration is limited to the current page rows instead of refetching per
+    selected patient. Phase facets and total count are computed from the authorized
+    latest-cycle-per-patient basis, not the loaded page.
+  - validation:
+    `pnpm exec vitest run src/app/api/dispense-workbench/patients/route.test.ts src/server/services/dispense-workbench-patients.test.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts --reporter=dot --testTimeout=30000`
+    passed: 3 files / 53 tests.
+    `pnpm exec eslint src/app/api/dispense-workbench/patients/route.ts src/app/api/dispense-workbench/patients/route.test.ts src/server/services/dispense-workbench-patients.ts src/server/services/dispense-workbench-patients.test.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts src/components/features/dispense-workbench/dispensing-workbench.tsx src/components/features/dispense-workbench/patient-list-panel.tsx src/lib/dispensing/dispense-workbench-shared.ts`
+    passed.
+    `pnpm exec prettier --check src/app/api/dispense-workbench/patients/route.ts src/app/api/dispense-workbench/patients/route.test.ts src/server/services/dispense-workbench-patients.ts src/server/services/dispense-workbench-patients.test.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts src/components/features/dispense-workbench/dispensing-workbench.tsx src/components/features/dispense-workbench/patient-list-panel.tsx src/lib/dispensing/dispense-workbench-shared.ts`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck --pretty false`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+    passed.
+    `git diff --check`
+    passed.
+  - remaining work:
+    This slice stabilizes the API/UI contract but still derives the queue basis
+    in service memory because latest-cycle-per-patient and set/set-audit phase
+    classification cross multiple workflow tables. A later DB performance slice
+    should add query/index/materialized summary support for very large queues.
+  - next action:
+    scoped commit and push this implementation slice, then continue with the next
+    highest-priority Plans item.
+
 - codex: Oracle/GPT-5.5 Pro GitHub-context requirement clarified.
   - current task:
     ユーザー指示により、Oracle/GPT-5.5 Pro 相談基準を再整理した。全 Oracle 相談では

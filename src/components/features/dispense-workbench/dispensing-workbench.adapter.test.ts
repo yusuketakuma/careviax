@@ -119,6 +119,39 @@ function emptyCell() {
   };
 }
 
+function patientListBody(data: unknown[] = [], overrides: Record<string, unknown> = {}) {
+  return {
+    data,
+    meta: {
+      generated_at: '2026-07-06T00:00:00.000Z',
+      limit: 50,
+      returned_count: data.length,
+      has_more: false,
+      next_cursor: null,
+      total_count: data.length,
+      count_basis: {
+        rows: 'authorized_latest_cycle_per_patient',
+        total_count: 'authorized_phase_search_exact',
+        phase_counts: 'authorized_phase_search_exact',
+        set_split: 'latest_set_plan_set_batch_exact',
+      },
+      filters_applied: {
+        phase: null,
+        q_present: false,
+        sort: 'name_kana',
+        order: 'asc',
+        include_set_plan: false,
+      },
+      facets: {
+        total: data.length,
+        phase_counts: { dispense: data.length, audit: 0, set: 0, 'set-audit': 0 },
+        other: 0,
+      },
+      ...overrides,
+    },
+  };
+}
+
 describe('dispensing-workbench.adapter set calendar real-data resolution', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -140,7 +173,7 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
 
   it('returns an empty patient list instead of seed fallback when the real-data patient API is empty', async () => {
     process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
-    const fetchMock = vi.fn(async () => jsonResponse({ data: [] }));
+    const fetchMock = vi.fn(async () => jsonResponse(patientListBody()));
     vi.stubGlobal('fetch', fetchMock);
 
     const { loadPatientsAsync } = await import('./dispensing-workbench.adapter');
@@ -256,8 +289,8 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
     const fetchMock = vi.fn<typeof fetch>(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/dispense-workbench/patients?include_set_plan=1') {
-        return jsonResponse({
-          data: [
+        return jsonResponse(
+          patientListBody([
             {
               patient_id: 'patient_1',
               cycle_id: 'cycle_latest_without_plan',
@@ -270,8 +303,8 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
               latest_set_plan_id: 'plan_1',
               latest_set_plan_cycle_id: 'cycle_1',
             },
-          ],
-        });
+          ]),
+        );
       }
       if (url === '/api/set-plans/plan_1/calendar') {
         return jsonResponse(calendarBody());
@@ -320,8 +353,8 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
     const fetchMock = vi.fn<typeof fetch>(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/dispense-workbench/patients?include_set_plan=1') {
-        return jsonResponse({
-          data: [
+        return jsonResponse(
+          patientListBody([
             {
               patient_id: 'patient_without_plan',
               cycle_id: 'cycle_without_plan',
@@ -346,8 +379,8 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
               latest_set_plan_id: 'plan_1',
               latest_set_plan_cycle_id: 'cycle_1',
             },
-          ],
-        });
+          ]),
+        );
       }
       if (url === '/api/set-plans/plan_1/calendar') {
         return jsonResponse(calendarBody());
@@ -380,8 +413,8 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
     const fetchMock = vi.fn<typeof fetch>(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/dispense-workbench/patients?include_set_plan=1') {
-        return jsonResponse({
-          data: [
+        return jsonResponse(
+          patientListBody([
             {
               patient_id: 'patient_without_plan',
               cycle_id: 'cycle_without_plan',
@@ -406,8 +439,8 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
               latest_set_plan_id: 'plan_1',
               latest_set_plan_cycle_id: 'cycle_1',
             },
-          ],
-        });
+          ]),
+        );
       }
       if (url === '/api/set-plans/plan_1/calendar') {
         return jsonResponse(calendarBody());
@@ -449,8 +482,8 @@ describe('dispensing-workbench.adapter real-data default + phase filtering', () 
     // フラグ未設定でも実 API を読む（mock seed に戻らない）。
     delete process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA;
     const fetchMock = vi.fn(async () =>
-      jsonResponse({
-        data: [
+      jsonResponse(
+        patientListBody([
           {
             patient_id: 'patient_1',
             cycle_id: 'cycle_1',
@@ -463,8 +496,8 @@ describe('dispensing-workbench.adapter real-data default + phase filtering', () 
             latest_set_plan_id: null,
             latest_set_plan_cycle_id: null,
           },
-        ],
-      }),
+        ]),
+      ),
     );
     vi.stubGlobal('fetch', fetchMock);
 
@@ -478,7 +511,7 @@ describe('dispensing-workbench.adapter real-data default + phase filtering', () 
 
   it("retains a mock opt-out seam when the flag is 'mock' (rollback path)", async () => {
     process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = 'mock';
-    const fetchMock = vi.fn(async () => jsonResponse({ data: [] }));
+    const fetchMock = vi.fn(async () => jsonResponse(patientListBody()));
     vi.stubGlobal('fetch', fetchMock);
 
     const { isRealDataEnabled, loadPatientsAsync } = await import('./dispensing-workbench.adapter');
@@ -492,7 +525,7 @@ describe('dispensing-workbench.adapter real-data default + phase filtering', () 
 
   it('appends ?phase= to the patients query for the audit phase', async () => {
     process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
-    const fetchMock = vi.fn(async () => jsonResponse({ data: [] }));
+    const fetchMock = vi.fn(async () => jsonResponse(patientListBody()));
     vi.stubGlobal('fetch', fetchMock);
 
     const { loadPatientsAsync } = await import('./dispensing-workbench.adapter');
@@ -509,8 +542,8 @@ describe('dispensing-workbench.adapter real-data default + phase filtering', () 
     const fetchMock = vi.fn<typeof fetch>(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/dispense-workbench/patients?include_set_plan=1&phase=set') {
-        return jsonResponse({
-          data: [
+        return jsonResponse(
+          patientListBody([
             {
               patient_id: 'patient_1',
               cycle_id: 'cycle_latest_without_plan',
@@ -523,8 +556,8 @@ describe('dispensing-workbench.adapter real-data default + phase filtering', () 
               latest_set_plan_id: 'plan_1',
               latest_set_plan_cycle_id: 'cycle_1',
             },
-          ],
-        });
+          ]),
+        );
       }
       if (url === '/api/set-plans/plan_1/calendar') {
         return jsonResponse(calendarBody());
@@ -556,8 +589,8 @@ describe('dispensing-workbench.adapter real-data default + phase filtering', () 
     const fetchMock = vi.fn<typeof fetch>(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/dispense-workbench/patients?phase=dispense') {
-        return jsonResponse({
-          data: [
+        return jsonResponse(
+          patientListBody([
             {
               patient_id: 'patient_1',
               cycle_id: 'cycle_1',
@@ -572,8 +605,8 @@ describe('dispensing-workbench.adapter real-data default + phase filtering', () 
               representative_task_id: 'task_1',
               representative_task_status: 'in_progress',
             },
-          ],
-        });
+          ]),
+        );
       }
       if (url === '/api/dispense-tasks/task_1/workbench') {
         return jsonResponse(workbenchBody());
@@ -603,7 +636,7 @@ describe('dispensing-workbench.adapter real-data default + phase filtering', () 
   it('maps the seta phase to set-audit and fails closed on the empty gate', async () => {
     // set-audit は BFF で空集合ゲート → 0 件 → empty（seed カレンダーへ戻さない）。
     process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
-    const fetchMock = vi.fn(async () => jsonResponse({ data: [] }));
+    const fetchMock = vi.fn(async () => jsonResponse(patientListBody()));
     vi.stubGlobal('fetch', fetchMock);
 
     const { loadSetCalendarForPatientAsync } = await import('./dispensing-workbench.adapter');
@@ -625,7 +658,7 @@ describe('dispensing-workbench.adapter real-data default + phase filtering', () 
     const { loadWorkbenchPatientRowsAsync } = await import('./dispensing-workbench.adapter');
     const result = await loadWorkbenchPatientRowsAsync({ phase: 'dispense' });
 
-    expect(result).toEqual({ patients: [], rows: [], ok: false });
+    expect(result).toEqual({ patients: [], rows: [], meta: null, ok: false });
   });
 
   it('reports ok=false when the patients fetch succeeds with malformed JSON', async () => {
@@ -636,18 +669,19 @@ describe('dispensing-workbench.adapter real-data default + phase filtering', () 
     const { loadWorkbenchPatientRowsAsync } = await import('./dispensing-workbench.adapter');
     const result = await loadWorkbenchPatientRowsAsync({ phase: 'dispense' });
 
-    expect(result).toEqual({ patients: [], rows: [], ok: false });
+    expect(result).toEqual({ patients: [], rows: [], meta: null, ok: false });
   });
 
   it('reports ok=true on a successful but empty patients fetch (0 件は空状態)', async () => {
     process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
-    const fetchMock = vi.fn(async () => jsonResponse({ data: [] }));
+    const fetchMock = vi.fn(async () => jsonResponse(patientListBody()));
     vi.stubGlobal('fetch', fetchMock);
 
     const { loadWorkbenchPatientRowsAsync } = await import('./dispensing-workbench.adapter');
     const result = await loadWorkbenchPatientRowsAsync({ phase: 'dispense' });
 
-    expect(result).toEqual({ patients: [], rows: [], ok: true });
+    expect(result).toMatchObject({ patients: [], rows: [], ok: true });
+    expect(result.meta).toMatchObject({ returned_count: 0, has_more: false, next_cursor: null });
   });
 });
 

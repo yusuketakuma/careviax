@@ -263,6 +263,36 @@ export type DispenseWorkbenchPatientRow = {
 
 export type DispenseWorkbenchPatientsResponse = {
   data: DispenseWorkbenchPatientRow[];
+  meta: DispenseWorkbenchPatientsMeta;
+};
+
+export type DispenseWorkbenchPatientsCountBasis = {
+  rows: 'authorized_latest_cycle_per_patient';
+  total_count: 'authorized_phase_search_exact';
+  phase_counts: 'authorized_phase_search_exact';
+  set_split: 'latest_set_plan_set_batch_exact';
+};
+
+export type DispenseWorkbenchPatientsMeta = {
+  generated_at: string;
+  limit: number;
+  returned_count: number;
+  has_more: boolean;
+  next_cursor: string | null;
+  total_count: number;
+  count_basis: DispenseWorkbenchPatientsCountBasis;
+  filters_applied: {
+    phase: DispenseWorkbenchPhase | null;
+    q_present: boolean;
+    sort: 'start_date' | 'registered_date' | 'name_kana';
+    order: 'asc' | 'desc';
+    include_set_plan: boolean;
+  };
+  facets: {
+    total: number;
+    phase_counts: Record<DispenseWorkbenchPhase, number>;
+    other: number;
+  };
 };
 
 /**
