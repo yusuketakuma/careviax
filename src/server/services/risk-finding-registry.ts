@@ -30,6 +30,17 @@ export type RiskFindingAdapterContext = {
   dueAt?: string | null;
 };
 
+function buildPatientConferencesHref(args: { patientId?: string | null; caseId?: string | null }) {
+  if (!args.patientId) return '/workflow?focus=communication';
+
+  const params: Array<[string, string]> = [['patient_id', args.patientId]];
+  if (args.caseId) {
+    params.push(['case_id', args.caseId]);
+  }
+  params.push(['focus', 'notes'], ['context', 'case_risk']);
+  return `/conferences?${new URLSearchParams(params).toString()}`;
+}
+
 export type OperationalTaskRiskInput = {
   id: string;
   task_type: string;
@@ -719,13 +730,16 @@ export function adaptInboundInterprofessionalCommunicationToRiskFinding(
     domain: 'integration',
     severity: 'warning',
     title: '他職種からの受信情報の確認が必要です',
-    detail: '他職種からの受信情報があります。内容は連絡ワークフローで確認してください。',
+    detail: '他職種からの受信情報があります。内容は患者の連絡履歴で確認してください。',
     patient_id: context.patientId ?? null,
     case_id: context.caseId ?? null,
     related_entity_type: 'inbound_interprofessional_communication',
     related_entity_id: null,
     due_at: null,
-    action_href: '/workflow?focus=communication',
+    action_href: buildPatientConferencesHref({
+      patientId: context.patientId,
+      caseId: context.caseId,
+    }),
     action_label: '受信情報を確認',
     source: 'external',
   });

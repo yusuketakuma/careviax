@@ -41,6 +41,48 @@
 
 ## 直近の land（本日・要点）
 
+- codex: INB-001 Case Risk inbound communication scoped action（commit pending）。
+  - current task:
+    Case Risk Cockpit の他職種受信 aggregate finding が広い workflow action に逃げないよう、
+    患者/ケース context がある場合は患者連絡履歴へ deep link する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/risk-finding-registry.ts`,
+    `src/server/services/risk-finding-registry.test.ts`,
+    `src/server/services/case-risk-cockpit.test.ts`,
+    `src/server/services/patient-home-operations.ts`,
+    `src/server/services/patient-detail-timeline-events.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/risk-finding-registry.ts`,
+    `src/server/services/risk-finding-registry.test.ts`.
+  - implementation:
+    `adaptInboundInterprofessionalCommunicationToRiskFinding()` の action href を、patient context
+    がある場合は `/conferences?patient_id=...&case_id=...&focus=notes&context=case_risk` へ変更した。
+    patient context がない場合のみ `/workflow?focus=communication` fallback を維持する。
+    finding は引き続き aggregate 1件で、event id / subject / content / counterpart / phone /
+    medication name / storage key を出さない。
+  - security risks reduced:
+    他職種受信確認の導線を全体 workflow から患者/ケース scoped 連絡履歴へ狭めた。raw inbound
+    text や external identifiers は action href・finding detail・dedupe key に出していない。
+  - validation:
+    `pnpm exec vitest run src/server/services/risk-finding-registry.test.ts src/server/services/case-risk-cockpit.test.ts --reporter=dot --testTimeout=30000`
+    passed: 2 files / 20 tests.
+    `pnpm exec eslint src/server/services/risk-finding-registry.ts src/server/services/risk-finding-registry.test.ts src/server/services/case-risk-cockpit.test.ts`
+    passed.
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/server/services/risk-finding-registry.ts src/server/services/risk-finding-registry.test.ts src/server/services/case-risk-cockpit.test.ts`
+    passed.
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/server/services/risk-finding-registry.ts src/server/services/risk-finding-registry.test.ts src/server/services/case-risk-cockpit.test.ts`
+    passed.
+  - remaining:
+    commit and push this scoped slice. Formal `InboundCommunicationEvent` / `InboundCommunicationSignal`
+    DB正本、API/review UI、正式 signal source は後続。
+  - next action:
+    Commit and push the scoped INB-001 action hardening.
+
 - codex: MOV-001 Inquiry marker fallback deep link hardening（commit 8ad53d392, pushed）。
   - current task:
     Patient Movement Timeline の処方系 marker で、正本 deep link が広すぎる fallback に逃げないようにする。

@@ -539,7 +539,8 @@ describe('risk-finding-registry adapters', () => {
       related_entity_type: 'inbound_interprofessional_communication',
       related_entity_id: null,
       due_at: null,
-      action_href: '/workflow?focus=communication',
+      action_href:
+        '/conferences?patient_id=patient%2F1%3Fx%3D1&case_id=case_1&focus=notes&context=case_risk',
       action_label: '受信情報を確認',
       source: 'external',
     });
@@ -551,6 +552,13 @@ describe('risk-finding-registry adapters', () => {
     expect(JSON.stringify(finding)).not.toContain('storage_key');
     expect(JSON.stringify(finding)).not.toContain('provider raw error');
     expect(riskFindingToTaskDedupeKey(finding!)).not.toContain('communication_event');
+
+    expect(
+      adaptInboundInterprofessionalCommunicationToRiskFinding({
+        has_inbound_communication: true,
+        latest_occurred_at: '2026-07-06T00:00:00.000Z',
+      })?.action_href,
+    ).toBe('/workflow?focus=communication');
   });
 
   it('maps active patient share privacy risks without exposing share scope or consent details', () => {
