@@ -54,6 +54,10 @@ import { LoadingButton } from '@/components/ui/loading-button';
 import { Skeleton, SkeletonRows } from '@/components/ui/loading';
 import { quotedCsvRow } from '@/lib/csv/safe-csv';
 import { cn } from '@/lib/utils';
+import {
+  getApprovedServerExportDescriptorProblem,
+  type ApprovedServerExportDescriptor,
+} from '@/lib/audit/server-export-registry';
 
 export type DataTableColumnMeta<TData> = {
   label?: string;
@@ -79,14 +83,7 @@ type DataTableToolbarOptions = {
   }>;
 };
 
-export type DataTableServerExportDescriptor = {
-  endpoint: `/api/${string}`;
-  auditEvent: string;
-  maskingProfile: string;
-  description: string;
-  label?: string;
-  disabledReason?: string;
-};
+export type DataTableServerExportDescriptor = ApprovedServerExportDescriptor;
 
 type DataTableRowInteractionMode = 'button' | 'selectable-listbox';
 
@@ -151,21 +148,6 @@ function normalizeServerExportEndpoint(endpoint: string | undefined) {
   if (!trimmed.startsWith('/api/')) return null;
   if (/[\r\n\t]/.test(trimmed)) return null;
   return trimmed;
-}
-
-function getServerExportDescriptorProblem(descriptor: DataTableServerExportDescriptor | undefined) {
-  if (!descriptor) return undefined;
-  if (!normalizeServerExportEndpoint(descriptor.endpoint)) {
-    return '全件出力のURLが安全な同一アプリ内APIパスではありません';
-  }
-  if (
-    !descriptor.auditEvent.trim() ||
-    !descriptor.maskingProfile.trim() ||
-    !descriptor.description.trim()
-  ) {
-    return '全件出力の監査・マスキング情報が未設定です';
-  }
-  return undefined;
 }
 
 const TOOLBAR_ACTION_BUTTON_CLASSNAME = 'min-h-[44px] !min-h-[44px]';
@@ -403,7 +385,9 @@ export function DataTable<TData>({
         ? '出力できる行がありません'
         : undefined;
   const hasUnloadedRows = Boolean(hasMore);
-  const serverExportDescriptorProblem = getServerExportDescriptorProblem(toolbar?.serverExport);
+  const serverExportDescriptorProblem = getApprovedServerExportDescriptorProblem(
+    toolbar?.serverExport,
+  );
   const serverExportEndpoint =
     serverExportDescriptorProblem === undefined
       ? normalizeServerExportEndpoint(toolbar?.serverExport?.endpoint)

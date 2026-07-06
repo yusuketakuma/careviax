@@ -1043,8 +1043,12 @@ FE 仕上げ（低優先）:
   fail-closed にし、「監査・マスキング済み」と表示できる最低限の contract を UI 型で要求する。
   さらに `tasks` の一括完了 button を「表示中から選択したN件を完了」へ変更し、sr-only の
   scope 説明で現在表示中の読込済み行から選択した対象であることを screen-level test で固定した。
-  残: approved export registry への接続、real consumer の screen-level PHI export snapshot、
-  他 bulk action consumer の選択範囲文言 sweep。
+  追加 partial として `serverExport` descriptor を `src/lib/audit/server-export-registry.ts` の
+  approved surface registry に接続し、surface id と endpoint prefix / audit event / masking profile /
+  description が一致しない全件出力は fail-closed にした。DataTable は registry builder 由来の descriptor
+  を使い、任意 same-origin path に「監査・マスキング済み」文言を出せない。
+  残: real consumer の screen-level PHI export snapshot、他 bulk action consumer の選択範囲文言 sweep、
+  route 側 export audit metadata と registry surface id の突合。
 
 **追加実装順序**:
 

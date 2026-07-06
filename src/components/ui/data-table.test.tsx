@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { ColumnDef } from '@tanstack/react-table';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildApprovedServerExportDescriptor } from '@/lib/audit/server-export-registry';
 import { DataTable } from './data-table';
 
 setupDomTestEnv();
@@ -444,12 +445,10 @@ describe('DataTable', () => {
         onLoadMore={vi.fn()}
         toolbar={{
           enableExport: true,
-          serverExport: {
-            endpoint: '/api/reports/export?scope=all',
-            auditEvent: 'care_report_csv_export',
-            maskingProfile: 'care_report_csv_minimal',
-            description: '監査ログを残し、PHI最小化済みの検索条件全件を出力します。',
-          },
+          serverExport: buildApprovedServerExportDescriptor(
+            'communication_requests_external_csv',
+            '/api/communication-requests/export?profile=external',
+          ),
         }}
       />,
     );
@@ -457,10 +456,12 @@ describe('DataTable', () => {
     const loadedExportButton = screen.getByRole('button', { name: '読込済みCSV出力' });
     const serverExportLink = screen.getByRole('link', { name: '検索条件全件CSV出力' });
     const serverExportDescription = screen.getByText(
-      '監査ログを残し、PHI最小化済みの検索条件全件を出力します。',
+      '監査ログを残し、外部共有向けに PHI を抑制した検索条件全件を出力します。',
     );
 
-    expect(serverExportLink.getAttribute('href')).toBe('/api/reports/export?scope=all');
+    expect(serverExportLink.getAttribute('href')).toBe(
+      '/api/communication-requests/export?profile=external',
+    );
     expect(serverExportLink.getAttribute('aria-describedby')).toBe(serverExportDescription.id);
     expect(serverExportLink.className).toContain('min-h-[44px]');
     expect(serverExportLink.className).toContain('!min-h-[44px]');
@@ -476,10 +477,11 @@ describe('DataTable', () => {
         data={[{ id: 'loaded-1', name: '読込済み患者' }]}
         toolbar={{
           serverExport: {
+            surfaceId: 'communication_requests_external_csv',
             endpoint: 'https://evil.example/export.csv' as '/api/reports/export',
-            auditEvent: 'care_report_csv_export',
-            maskingProfile: 'care_report_csv_minimal',
-            description: '監査ログを残し、PHI最小化済みの検索条件全件を出力します。',
+            auditEvent: 'communication_requests_export',
+            maskingProfile: 'communication_requests_external_redacted_csv',
+            description: '監査ログを残し、外部共有向けに PHI を抑制した検索条件全件を出力します。',
           },
         }}
       />,
@@ -495,24 +497,49 @@ describe('DataTable', () => {
     expect(screen.queryByRole('link', { name: '検索条件全件CSV出力' })).toBeNull();
   });
 
-  it('fails closed when server-side full export lacks audit or masking metadata', () => {
+  it('fails closed when server-side full export metadata is not approved for its surface', () => {
     render(
       <DataTable
         columns={columns}
         data={[{ id: 'loaded-1', name: '読込済み患者' }]}
         toolbar={{
           serverExport: {
-            endpoint: '/api/reports/export?scope=all',
-            auditEvent: '',
-            maskingProfile: '',
-            description: '',
+            ...buildApprovedServerExportDescriptor(
+              'communication_requests_external_csv',
+              '/api/communication-requests/export?profile=external',
+            ),
+            maskingProfile: 'unsafe_raw_profile',
           },
         }}
       />,
     );
 
     const serverExportButton = screen.getByRole('button', { name: '検索条件全件CSV出力' });
-    const disabledReason = screen.getByText('全件出力の監査・マスキング情報が未設定です');
+    const disabledReason = screen.getByText(
+      '全件出力の監査・マスキング情報が承認済み surface と一致しません',
+    );
+
+    expect((serverExportButton as HTMLButtonElement).disabled).toBe(true);
+    expect(serverExportButton.getAttribute('aria-describedby')).toBe(disabledReason.id);
+    expect(screen.queryByRole('link', { name: '検索条件全件CSV出力' })).toBeNull();
+  });
+
+  it('fails closed when server-side full export endpoint does not match the approved surface', () => {
+    render(
+      <DataTable
+        columns={columns}
+        data={[{ id: 'loaded-1', name: '読込済み患者' }]}
+        toolbar={{
+          serverExport: buildApprovedServerExportDescriptor(
+            'communication_requests_external_csv',
+            '/api/billing-candidates/export?format=csv',
+          ),
+        }}
+      />,
+    );
+
+    const serverExportButton = screen.getByRole('button', { name: '検索条件全件CSV出力' });
+    const disabledReason = screen.getByText('全件出力のURLが承認済み surface と一致しません');
 
     expect((serverExportButton as HTMLButtonElement).disabled).toBe(true);
     expect(serverExportButton.getAttribute('aria-describedby')).toBe(disabledReason.id);
