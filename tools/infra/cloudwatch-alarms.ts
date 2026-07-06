@@ -365,6 +365,34 @@ export function buildAlarms(topicArn: string): PutMetricAlarmCommandInput[] {
       Threshold: 5,
       ComparisonOperator: 'GreaterThanThreshold',
     },
+    {
+      ...common,
+      AlarmName: 'ph-os-route-p99-latency-high',
+      AlarmDescription:
+        'Application route p99 latency exceeded the production tail-latency baseline.',
+      Namespace: 'PH-OS/Application',
+      MetricName: 'OverallP99LatencyMs',
+      Dimensions: [{ Name: 'OrgScope', Value: 'aggregate' }],
+      Statistic: 'Maximum',
+      Period: 300,
+      EvaluationPeriods: 3,
+      DatapointsToAlarm: 2,
+      Threshold: 1000,
+      ComparisonOperator: 'GreaterThanThreshold',
+    },
+    {
+      ...common,
+      AlarmName: 'ph-os-payload-budget-over-routes',
+      AlarmDescription: 'One or more critical application routes exceeded the payload budget.',
+      Namespace: 'PH-OS/Application',
+      MetricName: 'PayloadBudgetOverRoutes',
+      Dimensions: [{ Name: 'OrgScope', Value: 'aggregate' }],
+      Statistic: 'Maximum',
+      Period: 300,
+      EvaluationPeriods: 1,
+      Threshold: 0,
+      ComparisonOperator: 'GreaterThanThreshold',
+    },
   ];
 }
 

@@ -403,6 +403,7 @@ export async function flushPerformanceMetricsToCloudWatch(options?: {
     ...runtimeDimensions,
   ];
   const summaryDimensions = [{ Name: 'OrgScope', Value: 'aggregate' }, ...runtimeDimensions];
+  const stableSummaryDimensions = [{ Name: 'OrgScope', Value: 'aggregate' }];
   const datums = snapshot.routes.flatMap((route) => [
     {
       MetricName: 'RouteP50LatencyMs',
@@ -465,6 +466,13 @@ export async function flushPerformanceMetricsToCloudWatch(options?: {
       Dimensions: summaryDimensions,
     },
     {
+      MetricName: 'OverallP99LatencyMs',
+      Value: snapshot.summary.overall_p99_ms,
+      Unit: StandardUnit.Milliseconds,
+      Timestamp: timestamp,
+      Dimensions: stableSummaryDimensions,
+    },
+    {
       MetricName: 'SlowRequestRate',
       Value: snapshot.summary.slow_request_rate,
       Unit: StandardUnit.Percent,
@@ -477,6 +485,13 @@ export async function flushPerformanceMetricsToCloudWatch(options?: {
       Unit: StandardUnit.Count,
       Timestamp: timestamp,
       Dimensions: summaryDimensions,
+    },
+    {
+      MetricName: 'PayloadBudgetOverRoutes',
+      Value: snapshot.summary.routes_over_payload_budget,
+      Unit: StandardUnit.Count,
+      Timestamp: timestamp,
+      Dimensions: stableSummaryDimensions,
     },
   );
 

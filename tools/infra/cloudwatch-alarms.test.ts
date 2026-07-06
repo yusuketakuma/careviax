@@ -214,6 +214,23 @@ describe('cloudwatch alarms infra script', () => {
           Namespace: 'PH-OS/Application',
           MetricName: 'HealthStatusDown',
         }),
+        expect.objectContaining({
+          AlarmName: 'ph-os-route-p99-latency-high',
+          Namespace: 'PH-OS/Application',
+          MetricName: 'OverallP99LatencyMs',
+          Dimensions: [{ Name: 'OrgScope', Value: 'aggregate' }],
+          DatapointsToAlarm: 2,
+          EvaluationPeriods: 3,
+          Threshold: 1000,
+        }),
+        expect.objectContaining({
+          AlarmName: 'ph-os-payload-budget-over-routes',
+          Namespace: 'PH-OS/Application',
+          MetricName: 'PayloadBudgetOverRoutes',
+          Dimensions: [{ Name: 'OrgScope', Value: 'aggregate' }],
+          EvaluationPeriods: 1,
+          Threshold: 0,
+        }),
       ]),
     );
   });

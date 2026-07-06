@@ -27,6 +27,35 @@
       "alarmDescription": "Triggered when ALB returns repeated 5xx responses."
     },
     {
+      "name": "ph-os-route-p99-latency-high",
+      "metric": "OverallP99LatencyMs",
+      "namespace": "PH-OS/Application",
+      "comparisonOperator": "GreaterThanThreshold",
+      "threshold": 1000,
+      "evaluationPeriods": 3,
+      "datapointsToAlarm": 2,
+      "periodSeconds": 300,
+      "statistic": "Maximum",
+      "dimensions": {
+        "OrgScope": "aggregate"
+      },
+      "alarmDescription": "Application route p99 latency exceeded the production tail-latency baseline."
+    },
+    {
+      "name": "ph-os-payload-budget-over-routes",
+      "metric": "PayloadBudgetOverRoutes",
+      "namespace": "PH-OS/Application",
+      "comparisonOperator": "GreaterThanThreshold",
+      "threshold": 0,
+      "evaluationPeriods": 1,
+      "periodSeconds": 300,
+      "statistic": "Maximum",
+      "dimensions": {
+        "OrgScope": "aggregate"
+      },
+      "alarmDescription": "One or more critical application routes exceeded the payload budget."
+    },
+    {
       "name": "ph-os-action-latency-high",
       "metric": "ActionLatencyMs",
       "namespace": "PHOS/Backend",

@@ -369,6 +369,18 @@ describe('performance metrics', () => {
         }),
       ]),
     );
+    expect(metricData).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          MetricName: 'OverallP99LatencyMs',
+          Dimensions: [{ Name: 'OrgScope', Value: 'aggregate' }],
+        }),
+        expect.objectContaining({
+          MetricName: 'PayloadBudgetOverRoutes',
+          Dimensions: [{ Name: 'OrgScope', Value: 'aggregate' }],
+        }),
+      ]),
+    );
     expect(JSON.stringify(metricData)).not.toContain('org_');
   });
 });

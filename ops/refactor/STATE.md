@@ -11447,3 +11447,54 @@
 - remaining:
   `PERF-RTE-001A` still needs deploy readiness / EventBridge schedule / CloudWatch alarm
   connection.
+
+## 2026-07-07 PERF-RTE CloudWatch p99 alarms
+
+- codex:
+  Added production alarm baseline coverage for route p99 latency and payload budget overruns.
+  `flushPerformanceMetricsToCloudWatch()` now emits stable summary datums for `OverallP99LatencyMs`
+  and `PayloadBudgetOverRoutes` with only `OrgScope=aggregate` so static CloudWatch alarms can match
+  them, while still emitting deploy/env/instance dimensions for operational slicing.
+- files inspected:
+  `src/lib/utils/performance.ts`,
+  `src/lib/utils/performance.test.ts`,
+  `tools/infra/cloudwatch-alarms.ts`,
+  `tools/infra/cloudwatch-alarms.test.ts`,
+  `tools/infra/cloudwatch-alarms.json`,
+  `src/phos/infra/pr15-final-no-go-gate.test.ts`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  AWS official CloudWatch `PutMetricAlarm` and alarm evaluation references.
+- files changed:
+  `src/lib/utils/performance.ts`,
+  `src/lib/utils/performance.test.ts`,
+  `tools/infra/cloudwatch-alarms.ts`,
+  `tools/infra/cloudwatch-alarms.test.ts`,
+  `tools/infra/cloudwatch-alarms.json`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  p99 and payload budget metrics are no longer only visible in admin/current-process views or
+  ad-hoc smoke output. The alarm baseline can notify on sustained p99 latency and critical route
+  payload budget overruns without requiring raw route payloads, org ids, query strings, patient ids,
+  or dynamic deploy dimensions in the alarm key.
+- AWS official reference checked:
+  CloudWatch `PutMetricAlarm` creates/updates alarms against a metric, and CloudWatch alarm
+  evaluation uses `DatapointsToAlarm` as M out of `EvaluationPeriods` N. This slice uses 2 out of 3
+  datapoints for p99 latency and a single breaching datapoint for payload budget overrun.
+- validation:
+  `pnpm exec vitest run src/lib/utils/performance.test.ts tools/infra/cloudwatch-alarms.test.ts src/phos/infra/pr15-final-no-go-gate.test.ts --reporter=dot --testTimeout=30000`
+  green (3 files / 56 tests);
+  `pnpm exec eslint src/lib/utils/performance.ts src/lib/utils/performance.test.ts tools/infra/cloudwatch-alarms.ts tools/infra/cloudwatch-alarms.test.ts`
+  green;
+  `pnpm exec prettier --check src/lib/utils/performance.ts src/lib/utils/performance.test.ts tools/infra/cloudwatch-alarms.ts tools/infra/cloudwatch-alarms.test.ts tools/infra/cloudwatch-alarms.json`
+  green, then final
+  `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/lib/utils/performance.ts src/lib/utils/performance.test.ts tools/infra/cloudwatch-alarms.ts tools/infra/cloudwatch-alarms.test.ts tools/infra/cloudwatch-alarms.json`
+  green after formatting `Plans.md`;
+  `git diff --check -- src/lib/utils/performance.ts src/lib/utils/performance.test.ts tools/infra/cloudwatch-alarms.ts tools/infra/cloudwatch-alarms.test.ts tools/infra/cloudwatch-alarms.json`
+  green, then final
+  `git diff --check -- Plans.md ops/refactor/STATE.md src/lib/utils/performance.ts src/lib/utils/performance.test.ts tools/infra/cloudwatch-alarms.ts tools/infra/cloudwatch-alarms.test.ts tools/infra/cloudwatch-alarms.json`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green.
+- remaining:
+  `PERF-RTE-001A` still needs deploy readiness / EventBridge schedule connection.
