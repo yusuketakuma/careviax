@@ -41,6 +41,53 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Login screen UI/UX simplified.
+  - current task:
+    ユーザー指示により、ログイン画面を抜本的に見直した。医療向けログイン画面の外部事例
+    （NHS login / MyChart / Mayo Clinic / athenahealth の公開ログイン・ポータル情報）と
+    `docs/ui-ux-design-guidelines.md` を確認し、`imagegen`（gpt-image-2 指定の非 PHI prompt）
+    で参照案を作ったうえで、`src/app/(auth)/login/page.tsx` を単一フォーム中心の低ノイズ UI
+    に変更した。Cognito / NextAuth の signIn、challenge 分岐、callbackUrl の既存処理は変更せず、
+    2カラム説明パネル・手順カード・補足カードを削り、メール/パスワード、ログイン、パスワード再設定、
+    共有端末注意、規約リンクへ絞った。
+  - WIP preservation:
+    直前の `NTF-PUSH-001 / FE-PUSH-001` 未完了差分はログイン画面作業と混ぜないため、
+    `stash@{0}: wip/ntf-push-os-boundary-before-login-redesign` に退避した。
+  - external UI references checked:
+    NHS login design guidance / MyChart login examples / Mayo Clinic patient portal login /
+    athenahealth patient portal entry. 共通観点として、login entry は user mental model に合わせて
+    主要認証手段を前面に置き、復旧導線を近接させ、長い説明を抑える方針を採用した。
+  - imagegen:
+    gpt-image-2 指定 prompt で、PHI/secret を含まない PH-OS healthcare SaaS login reference
+    image を生成。保存先は `/Users/yusuke/.codex/generated_images/019f2c7e-d969-7882-bd11-432a10abb930/`。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `docs/ui-ux-design-guidelines.md`,
+    `src/app/(auth)/layout.tsx`,
+    `src/app/(auth)/login/page.tsx`,
+    `src/app/(auth)/first-login/page.tsx`,
+    `src/app/(auth)/mfa/page.tsx`,
+    `src/lib/auth/config.ts`,
+    `src/lib/auth/browser-auth-state.ts`.
+  - files changed:
+    `src/app/(auth)/login/page.tsx`.
+  - UX / accessibility / security notes:
+    主要操作とリンクは 44px 以上を維持。モバイル幅 390px で横スクロールなし。PHI は表示せず、
+    認証失敗文言は既存の汎用文言を維持。ログイン機能・MFA/初回パスワード変更の分岐は既存のまま。
+  - validation:
+    `pnpm exec eslint 'src/app/(auth)/login/page.tsx'` passed.
+    `pnpm exec prettier --check 'src/app/(auth)/login/page.tsx'` passed after formatting.
+    `git diff --check -- 'src/app/(auth)/login/page.tsx'` passed.
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck --pretty false` passed.
+    Playwright manual check on `http://localhost:3012/login`: desktop 1440x900 screenshot,
+    mobile 390x844 screenshot, DOM measurement confirmed no horizontal overflow and all inputs/buttons/links
+    were at least 44px high.
+  - remaining work:
+    Commit and push the login UI slice. Then resume the stashed `NTF-PUSH-001 / FE-PUSH-001`
+    notification boundary slice.
+  - next action:
+    Run final status/diff checks, scoped commit, push.
+
 - codex: Oracle/GPT-5.5 Pro GitHub access instruction tightened.
   - current task:
     ユーザー指示により、Oracle/GPT-5.5 Pro 相談時は target repository の GitHub context
