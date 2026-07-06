@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: INB-001 Case Risk inbound communication scoped action（commit pending）。
+- codex: INB-001 Case Risk inbound communication scoped action（commit 4ba2b63e9, pushed）。
   - current task:
     Case Risk Cockpit の他職種受信 aggregate finding が広い workflow action に逃げないよう、
     患者/ケース context がある場合は患者連絡履歴へ deep link する。
@@ -78,10 +78,10 @@
     `git diff --check -- Plans.md ops/refactor/STATE.md src/server/services/risk-finding-registry.ts src/server/services/risk-finding-registry.test.ts src/server/services/case-risk-cockpit.test.ts`
     passed.
   - remaining:
-    commit and push this scoped slice. Formal `InboundCommunicationEvent` / `InboundCommunicationSignal`
-    DB正本、API/review UI、正式 signal source は後続。
+    Formal `InboundCommunicationEvent` / `InboundCommunicationSignal` DB正本、API/review UI、
+    正式 signal source は後続。
   - next action:
-    Commit and push the scoped INB-001 action hardening.
+    Continue with the next Plans item.
 
 - codex: MOV-001 Inquiry marker fallback deep link hardening（commit 8ad53d392, pushed）。
   - current task:
