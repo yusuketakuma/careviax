@@ -41,6 +41,71 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOD-ARCH-001 / MOD-BOUND-001 backend module registry foundation.
+  - current task:
+    ユーザー提示の「PH-OS バックエンド・モジュール化 + 技術的負債解消 実装仕様書」を
+    `Plans.md` にタスク化して追記した。最初の挿入案は Risk/Task/Event registry の既存SSOTを
+    再定義して見える余地があったため、subagent review の指摘に合わせて、`リリース前 DB/API 契約`
+    節の直後・`AWS / テナント横断運用` 節の直前に配置し直した。Module Registry は新しい業務SSOT
+    ではなく、既存 `RiskFinding` / `TaskTypeRegistry` / `DomainEventOutbox` / RLS / DTO contract への
+    architecture index と static gate として明記した。続けて `MOD-ARCH-001` / `MOD-BOUND-001` の
+    最小実装として metadata-only module registry、active pharmacy module composition root、
+    architecture docs、module graph boundary gate 拡張、fixture regression tests を追加した。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `package.json`,
+    `tools/scripts/check-module-boundaries.mjs`,
+    `tools/module-boundary-allowlist.json`,
+    `src/lib/tasks/task-registry.ts`,
+    `src/lib/risk/risk-finding.ts`,
+    `src/server/services/collaboration-access.ts`,
+    `src/server/services/risk-finding-registry.ts`,
+    `src/server/services/patient-detail-workspace.ts`,
+    `src/server/services/visit-brief.ts`,
+    `src/server/services/report-templates.ts`,
+    `src/server/services/case-risk-cockpit.ts`,
+    `docs/architecture/README.md`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/core/module-registry/index.ts`,
+    `src/core/module-registry/index.test.ts`,
+    `src/core/module-registry/module-ids.json`,
+    `src/modules/pharmacy/index.ts`,
+    `src/modules/active-modules.ts`,
+    `tools/scripts/check-module-boundaries.mjs`,
+    `tools/scripts/check-module-boundaries.test.ts`,
+    `docs/architecture/README.md`,
+    `docs/architecture/module-boundary.md`,
+    `docs/architecture/module-registry.md`.
+  - bugs / risks reduced:
+    将来の module registry 実装が既存 Risk/Task/Event/tenant/DTO registry と二重SSOTに
+    ならないよう、非ゴールとSSOT整理を追記した。`provider` の語を external IO adapter、
+    module port adapter、React provider へ分ける方針も記録した。`src/core` から feature module への
+    import、feature module 間の sibling import、feature module から `active-modules` composition root への
+    逆 import、`src/app/api` から feature module internal file への import を boundary check で検出できる。
+    feature module id/dir は `src/core/module-registry/module-ids.json` を正本にし、checker と TS registry の
+    二重 module-list drift を防いだ。
+  - validation:
+    `pnpm boundaries:check` passed: 0 new violations, 18 allowlisted debt imports across 11 files.
+    `pnpm exec vitest run tools/scripts/check-module-boundaries.test.ts src/core/module-registry/index.test.ts --reporter=dot --testTimeout=30000`
+    passed: 2 files / 7 tests.
+    `pnpm exec eslint src/core/module-registry/index.ts src/core/module-registry/index.test.ts src/modules/pharmacy/index.ts src/modules/active-modules.ts tools/scripts/check-module-boundaries.mjs tools/scripts/check-module-boundaries.test.ts`
+    passed.
+    `pnpm exec prettier --check src/core/module-registry/index.ts src/core/module-registry/index.test.ts src/core/module-registry/module-ids.json src/modules/pharmacy/index.ts src/modules/active-modules.ts tools/scripts/check-module-boundaries.mjs tools/scripts/check-module-boundaries.test.ts docs/architecture/README.md docs/architecture/module-boundary.md docs/architecture/module-registry.md`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck --pretty false` passed.
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false` passed.
+  - remaining work:
+    `MOD-ARCH-001` は完了。`MOD-BOUND-001` は public entrypoint / composition root / sibling import
+    gate まで完了したが、owner metadata、allowlist reason schema、expectedCount ratchet report の
+    詳細化は残る。DB migration、production data backfill、deploy、external sends は別承認。
+  - next action:
+    Scoped commit this coherent module-boundary foundation slice, then continue with `MOD-COLLAB-001` or the
+    current highest-value `Plans.md` implementation candidate after live-state verification.
+
 - codex: DASH-CLEAN-001 dashboard stale comment cleanup.
   - current task:
     `DashboardCockpit` の右レールには `TeamConversationPanel` が実装済みだが、近傍コメントに

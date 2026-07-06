@@ -1,5 +1,7 @@
 #!/usr/bin/env node
-// モジュール境界チェック (W0-3): 共通コア → 薬局固有 の import 方向違反を検出する ratchet ガード。
+// モジュール境界チェック (W0-3 / MOD-BOUND-001):
+//   1. 共通コア → 薬局固有 の import 方向違反を検出する ratchet ガード。
+//   2. backend module graph (`src/core`, `src/modules/*`) の禁止依存を検出する。
 //
 // 目的 (水平展開の柵):
 //   共通コア (訪問/患者/ケア/報告/タスク/監査/通知/ファイル/連絡/会議/協働 のワークフロー基盤) は、
@@ -34,12 +36,26 @@ import path from 'node:path';
 
 const REPO_ROOT = process.cwd();
 const ALLOWLIST_PATH = 'tools/module-boundary-allowlist.json';
-const SCAN_ROOTS = ['src/server/services', 'src/lib'];
+const MODULE_IDS_PATH = 'src/core/module-registry/module-ids.json';
+const SCAN_ROOTS = ['src/server/services', 'src/lib', 'src/core', 'src/modules', 'src/app/api'];
 const TARGET_EXTENSIONS = new Set(['.ts', '.tsx']);
 const SKIPPED_SUFFIXES = ['.test.ts', '.test.tsx', '.spec.ts', '.spec.tsx', '.stories.tsx'];
 
 const SERVICES_ROOT = 'src/server/services/';
 const LIB_ROOT = 'src/lib/';
+const CORE_ROOT = 'src/core/';
+const MODULES_ROOT = 'src/modules/';
+const APP_API_ROOT = 'src/app/api/';
+const MODULE_COMPOSITION_ROOTS = new Set(['src/modules/active-modules.ts']);
+const moduleIds = JSON.parse(readFileSync(path.join(REPO_ROOT, MODULE_IDS_PATH), 'utf8'));
+const FEATURE_MODULE_DIRS = new Set(
+  moduleIds.featureModules.map((moduleMeta) => {
+    if (!moduleMeta || typeof moduleMeta.dir !== 'string' || !moduleMeta.dir) {
+      throw new Error(`${MODULE_IDS_PATH} contains an invalid feature module dir`);
+    }
+    return moduleMeta.dir;
+  }),
+);
 
 // 共通コアとして扱う src/server/services 直下の basename 先頭トークン。
 const CORE_SERVICE_PREFIXES = new Set([
@@ -113,6 +129,69 @@ function isPharmacyTarget(rel) {
     return isPharmacySegment(top);
   }
   return false;
+}
+
+function featureModuleDir(rel) {
+  if (!rel.startsWith(MODULES_ROOT)) return null;
+  const top = rel.slice(MODULES_ROOT.length).split('/')[0];
+  return FEATURE_MODULE_DIRS.has(top) ? top : null;
+}
+
+function isModulePublicEntrypoint(targetRel) {
+  if (targetRel === 'src/modules/active-modules' || targetRel === 'src/modules/active-modules.ts') {
+    return true;
+  }
+
+  const featureDir = featureModuleDir(targetRel);
+  if (!featureDir) return false;
+
+  return (
+    targetRel === `${MODULES_ROOT}${featureDir}` ||
+    targetRel === `${MODULES_ROOT}${featureDir}/index` ||
+    targetRel === `${MODULES_ROOT}${featureDir}/index.ts`
+  );
+}
+
+function moduleGraphViolation(fromRel, targetRel) {
+  if (fromRel.startsWith(CORE_ROOT) && targetRel.startsWith(MODULES_ROOT)) {
+    return 'core must not import feature modules';
+  }
+
+  if (
+    fromRel.startsWith(APP_API_ROOT) &&
+    targetRel.startsWith(MODULES_ROOT) &&
+    !isModulePublicEntrypoint(targetRel)
+  ) {
+    return 'app/api must import feature modules through public entrypoints';
+  }
+
+  if (!fromRel.startsWith(MODULES_ROOT) || !targetRel.startsWith(MODULES_ROOT)) {
+    return null;
+  }
+
+  if (MODULE_COMPOSITION_ROOTS.has(fromRel)) {
+    return null;
+  }
+
+  const fromModule = featureModuleDir(fromRel);
+  const targetModule = featureModuleDir(targetRel);
+  if (fromModule && MODULE_COMPOSITION_ROOTS.has(`${targetRel}.ts`)) {
+    return 'feature modules must not import module composition roots';
+  }
+
+  if (fromModule && targetRel === 'src/modules/active-modules') {
+    return 'feature modules must not import module composition roots';
+  }
+
+  if (!fromModule || !targetModule) {
+    return null;
+  }
+
+  if (fromModule !== targetModule) {
+    return 'feature modules must not import sibling feature modules';
+  }
+
+  return null;
 }
 
 // import/export ... from '...'、および dynamic import('...') を拾う。
@@ -190,9 +269,17 @@ function walkFiles(root) {
 function findViolations() {
   const violations = [];
   const coreFiles = [];
+  const moduleGraphFiles = [];
   for (const root of SCAN_ROOTS) {
     for (const file of walkFiles(root)) {
       if (isCoreFile(file)) coreFiles.push(file);
+      if (
+        file.startsWith(CORE_ROOT) ||
+        file.startsWith(MODULES_ROOT) ||
+        file.startsWith(APP_API_ROOT)
+      ) {
+        moduleGraphFiles.push(file);
+      }
     }
   }
   for (const file of coreFiles) {
@@ -205,7 +292,28 @@ function findViolations() {
       const target = resolveSpecifier(spec, file);
       if (target && isPharmacyTarget(target)) {
         const line = lineOf(content, match.index);
-        violations.push({ path: file, line, spec });
+        violations.push({
+          path: file,
+          line,
+          spec,
+          reason: 'common-core imports pharmacy-specific code',
+        });
+      }
+    }
+  }
+  for (const file of moduleGraphFiles) {
+    const content = readFileSync(path.join(REPO_ROOT, file), 'utf8');
+    IMPORT_PATTERN.lastIndex = 0;
+    let match;
+    while ((match = IMPORT_PATTERN.exec(content)) !== null) {
+      const spec = match[1] ?? match[2];
+      if (!spec) continue;
+      const target = resolveSpecifier(spec, file);
+      if (!target) continue;
+      const reason = moduleGraphViolation(file, target);
+      if (reason) {
+        const line = lineOf(content, match.index);
+        violations.push({ path: file, line, spec, reason });
       }
     }
   }
@@ -232,7 +340,7 @@ if (newViolations.length > 0 || staleEntries.length > 0) {
   if (newViolations.length > 0) {
     console.error('\nCommon-core -> pharmacy-specific imports (not allowed):');
     for (const item of newViolations) {
-      console.error(`- ${item.path}:${item.line}  (imports ${item.spec})`);
+      console.error(`- ${item.path}:${item.line}  (imports ${item.spec}; ${item.reason})`);
     }
   }
   if (staleEntries.length > 0) {

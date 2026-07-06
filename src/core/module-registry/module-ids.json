@@ -1,0 +1,20 @@
+{
+  "featureModules": [
+    {
+      "id": "pharmacy",
+      "dir": "pharmacy"
+    },
+    {
+      "id": "home_medical",
+      "dir": "home-medical"
+    },
+    {
+      "id": "home_nursing",
+      "dir": "home-nursing"
+    },
+    {
+      "id": "network_ops",
+      "dir": "network-ops"
+    }
+  ]
+}
