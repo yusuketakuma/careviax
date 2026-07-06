@@ -309,27 +309,27 @@ async function buildPrescriptionIntakeFacets(args: {
         }),
       ]),
     ),
-    Promise.all(
-      PRESCRIPTION_SOURCE_TYPES.map(async (sourceType) => [
-        sourceType,
-        await prisma.prescriptionIntake.count({
-          where: {
-            ...buildPrescriptionIntakeListWhere({
-              orgId: args.orgId,
-              assignmentWhere: args.assignmentWhere,
-              filters: args.filters,
-              omitSourceType: true,
-            }),
-            source_type: sourceType,
-          },
-        }),
-      ]),
-    ),
+    prisma.prescriptionIntake.groupBy({
+      by: ['source_type'],
+      where: buildPrescriptionIntakeListWhere({
+        orgId: args.orgId,
+        assignmentWhere: args.assignmentWhere,
+        filters: args.filters,
+        omitSourceType: true,
+      }),
+      _count: { _all: true },
+    }),
   ]);
+  const sourceCounts = Object.fromEntries(
+    PRESCRIPTION_SOURCE_TYPES.map((sourceType) => [sourceType, 0]),
+  );
+  for (const entry of sourceEntries) {
+    sourceCounts[entry.source_type] = entry._count._all;
+  }
 
   return {
     status: Object.fromEntries(statusEntries),
-    source_type: Object.fromEntries(sourceEntries),
+    source_type: sourceCounts,
   };
 }
 

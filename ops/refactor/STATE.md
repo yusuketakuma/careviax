@@ -41,6 +41,59 @@
 
 ## 直近の land（本日・要点）
 
+- codex: RX-REG-FACET-001 prescription intake source facet aggregation.
+  - current task:
+    `Plans.md` の `RX-REG-FACET-001` から、処方受付一覧の facet count 多発を小さく削減した。
+    `source_type` は `PrescriptionIntake` 自体の列なので、source ごとの個別 `count()` を廃止し、
+    `PrescriptionIntake.groupBy({ by: ['source_type'] })` 1本で検索条件全体の counts を返す。
+    response shape は既存の top-level `facets.status` / `facets.source_type` を維持し、loaded page window
+    から totals を作らない既存契約も維持した。
+  - scope decision:
+    `status` facet は関連 `MedicationCycle.overall_status` であり、1 cycle に複数 intake があり得るため
+    `MedicationCycle.groupBy` では intake 件数と一致しない。Prisma where を raw SQL へ安全に写像する
+    範囲は大きいので、今回 slice では `source_type` groupBy のみ実装し、status facet の raw aggregate
+    / denormalized status contract は別 slice に残した。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/api/prescription-intakes/route.ts`,
+    `src/app/api/prescription-intakes/route.test.ts`,
+    `src/lib/prescription/intake-filters.ts`,
+    `prisma/schema/prescription.prisma`,
+    `src/server/services/prescription-access.ts`.
+  - files changed:
+    `src/app/api/prescription-intakes/route.ts`,
+    `src/app/api/prescription-intakes/route.test.ts`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - performance improved:
+    `facets=1` 時の source facet は source type 数ぶんの `count()` fan-out ではなく1回の `groupBy` で集計する。
+    active `source_type` filter は groupBy where から外し、facet count が「現在ロード済みページ」ではなく
+    検索条件全体の source 分布になることを route test で固定した。
+  - security / PHI notes:
+    response field は増やしていない。groupBy は `source_type` と `_count` のみを返し、患者名、住所、電話、
+    薬剤名、処方本文、raw provider payload、storage key は扱わない。
+  - validation:
+    `pnpm exec vitest run src/app/api/prescription-intakes/route.test.ts --reporter=dot --testTimeout=30000`
+    passed: 1 file / 81 tests.
+    `pnpm exec eslint src/app/api/prescription-intakes/route.ts src/app/api/prescription-intakes/route.test.ts`
+    passed.
+    `pnpm exec prettier --check src/app/api/prescription-intakes/route.ts src/app/api/prescription-intakes/route.test.ts`
+    passed.
+    `git diff --check -- src/app/api/prescription-intakes/route.ts src/app/api/prescription-intakes/route.test.ts Plans.md ops/refactor/STATE.md`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck --pretty false` passed.
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false` passed.
+  - remaining work:
+    Broader `Plans.md` objective remains open. `RX-REG-FACET-001` 残: status facet の raw aggregate SQL
+    または denormalized intake status contract、facets route p95/payload/query-count instrumentation。
+    `API-LIST-001` で prescription-intakes の top-level `hasMore/nextCursor/totalCount/facets` を
+    standard `data + meta` envelope へ寄せる作業も別 slice。
+  - next action:
+    Scoped commit this slice, then continue with `RX-REG-FACET-001` status facet aggregate or another P0/P1
+    unfinished item from `Plans.md`.
+
 - codex: VISIT-SYNC-001 immediate draft flush + sync retry backoff continuation.
   - current task:
     `Plans.md` の `VISIT-SYNC-001` 残タスクから、訪問記録モバイル現場での入力喪失リスクを

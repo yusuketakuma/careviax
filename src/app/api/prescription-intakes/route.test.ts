@@ -18,6 +18,7 @@ const {
   withOrgContextMock,
   prescriptionIntakeFindManyMock,
   prescriptionIntakeCountMock,
+  prescriptionIntakeGroupByMock,
   drugMasterFindManyMock,
   medicationProfileFindManyMock,
   medicationProfileCreateManyMock,
@@ -50,6 +51,7 @@ const {
   withOrgContextMock: vi.fn(),
   prescriptionIntakeFindManyMock: vi.fn(),
   prescriptionIntakeCountMock: vi.fn().mockResolvedValue(2),
+  prescriptionIntakeGroupByMock: vi.fn().mockResolvedValue([]),
   drugMasterFindManyMock: vi.fn().mockResolvedValue([]),
   medicationProfileFindManyMock: vi.fn().mockResolvedValue([]),
   medicationProfileCreateManyMock: vi.fn().mockResolvedValue({ count: 0 }),
@@ -102,6 +104,7 @@ vi.mock('@/lib/db/client', () => ({
     prescriptionIntake: {
       findMany: prescriptionIntakeFindManyMock,
       count: prescriptionIntakeCountMock,
+      groupBy: prescriptionIntakeGroupByMock,
       findFirst: vi.fn().mockResolvedValue(null),
     },
     drugMaster: {
@@ -2846,6 +2849,7 @@ describe('/api/prescription-intakes GET', () => {
     vi.clearAllMocks();
     enforceFeatureRateLimitMock.mockResolvedValue(null);
     prescriptionIntakeCountMock.mockResolvedValue(2);
+    prescriptionIntakeGroupByMock.mockResolvedValue([]);
     prescriptionIntakeFindManyMock.mockResolvedValue([
       {
         id: 'intake_2',
@@ -3160,6 +3164,10 @@ describe('/api/prescription-intakes GET', () => {
 
   it('returns optional facet counts without treating the loaded page window as totals', async () => {
     prescriptionIntakeCountMock.mockResolvedValue(7);
+    prescriptionIntakeGroupByMock.mockResolvedValue([
+      { source_type: 'paper', _count: { _all: 11 } },
+      { source_type: 'fax', _count: { _all: 3 } },
+    ]);
 
     const response = await GET(
       createGetRequest(
@@ -3180,8 +3188,12 @@ describe('/api/prescription-intakes GET', () => {
           inquiry_pending: 7,
         },
         source_type: {
-          paper: 7,
-          fax: 7,
+          paper: 11,
+          fax: 3,
+          e_prescription: 0,
+          facility_batch: 0,
+          refill: 0,
+          qr_scan: 0,
         },
       },
     });
@@ -3199,17 +3211,19 @@ describe('/api/prescription-intakes GET', () => {
       }),
     );
 
-    const sourceFacetCall = prescriptionIntakeCountMock.mock.calls.find(
-      ([args]) => args.where?.source_type === 'fax',
-    )?.[0];
-    expect(sourceFacetCall).toEqual(
+    expect(prescriptionIntakeGroupByMock).toHaveBeenCalledTimes(1);
+    expect(prescriptionIntakeGroupByMock).toHaveBeenCalledWith(
       expect.objectContaining({
+        by: ['source_type'],
+        _count: { _all: true },
         where: expect.objectContaining({
           org_id: 'org_1',
-          source_type: 'fax',
           cycle: { overall_status: 'ready_to_dispense' },
         }),
       }),
+    );
+    expect(prescriptionIntakeGroupByMock.mock.calls[0]?.[0].where).not.toHaveProperty(
+      'source_type',
     );
   });
 
