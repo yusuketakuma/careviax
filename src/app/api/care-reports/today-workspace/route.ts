@@ -17,7 +17,7 @@ import { dateKeySchema } from '@/lib/validations/date-key';
 import { familyNameOf } from '@/lib/utils/person-name';
 import { sanitizeDeliveryFailureReason } from '@/lib/reports/delivery-failure-reasons';
 import { buildReportHref, buildReportSendHref } from '@/lib/reports/navigation';
-import { buildExternalHref } from '@/lib/dashboard/home-link-builders';
+import { buildExternalHref, buildWorkflowHref } from '@/lib/dashboard/home-link-builders';
 import { readReportBillingContext, readReportSourceProvenance } from '@/lib/reports/report-content';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import {
@@ -25,6 +25,7 @@ import {
   resolveCommunicationEntityLink,
 } from '@/lib/communications/navigation';
 import { buildVisitFacilityPacketHref, buildVisitRecordHref } from '@/lib/visits/navigation';
+import { listCommunicationQueue } from '@/server/services/communication-queue';
 import {
   BILLING_VALIDATION_LAYER_KEYS,
   readBillingValidationLayers,
@@ -540,6 +541,7 @@ function buildReportWorkspaceActionRail(args: {
   waitingReplies: ReportWaitingReply[];
   templateCount: number;
   monthlyDeliveryCount: number;
+  inboundCommunicationCount: number;
 }): ReportWorkspaceActionRail {
   const firstOpenIssue =
     args.openIssues.find((issue) => issue.severity === 'critical') ?? args.openIssues[0] ?? null;
@@ -599,6 +601,16 @@ function buildReportWorkspaceActionRail(args: {
         meta: 'ポータル連携',
         href: buildExternalHref({ focus: 'shares' }),
       },
+      ...(args.inboundCommunicationCount > 0
+        ? [
+            {
+              id: 'inbound-communications',
+              label: '他職種受信',
+              meta: `${args.inboundCommunicationCount}件確認待ち`,
+              href: buildWorkflowHref({ focus: 'communication' }),
+            },
+          ]
+        : []),
     ],
   };
 }
@@ -728,6 +740,10 @@ const authenticatedGET = withAuthContext(
         const templateCountPromise = tx.template.count({
           where: { org_id: ctx.orgId, template_type: 'care_report' },
         });
+        const communicationQueuePromise = listCommunicationQueue(tx, {
+          orgId: ctx.orgId,
+          limit: 1,
+        });
         const monthlyDeliveryCountPromise = tx.deliveryRecord.count({
           where: {
             org_id: ctx.orgId,
@@ -829,6 +845,7 @@ const authenticatedGET = withAuthContext(
           recentReports,
           recentReportCount,
           templateCount,
+          communicationQueue,
           monthlyDeliveryCount,
         ] = await Promise.all([
           scheduleContextPromise,
@@ -841,6 +858,7 @@ const authenticatedGET = withAuthContext(
           recentReportsPromise,
           recentReportCountPromise,
           templateCountPromise,
+          communicationQueuePromise,
           monthlyDeliveryCountPromise,
         ]);
 
@@ -1178,6 +1196,7 @@ const authenticatedGET = withAuthContext(
             waitingReplies,
             templateCount,
             monthlyDeliveryCount,
+            inboundCommunicationCount: communicationQueue.summary.inbound_communications,
           }),
         };
 

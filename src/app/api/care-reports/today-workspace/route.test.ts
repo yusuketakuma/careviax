@@ -48,6 +48,7 @@ type TxOverrides = {
   waitingDeliveryCount?: number;
   requests?: unknown[];
   waitingRequestCount?: number;
+  communicationEvents?: unknown[];
   responses?: unknown[];
   resolvedResponseCount?: number;
   patients?: unknown[];
@@ -92,6 +93,9 @@ function mockTx(overrides: TxOverrides = {}) {
       count: vi
         .fn()
         .mockResolvedValue(overrides.waitingRequestCount ?? (overrides.requests ?? []).length),
+    },
+    communicationEvent: {
+      findMany: vi.fn().mockResolvedValue(overrides.communicationEvents ?? []),
     },
     communicationResponse: {
       findMany: vi.fn().mockResolvedValue(overrides.responses ?? []),
@@ -220,6 +224,44 @@ describe('/api/care-reports/today-workspace', () => {
         }),
       }),
     );
+  });
+
+  it('adds inbound communication evidence to the action rail without exposing raw content', async () => {
+    mockTx({
+      communicationEvents: [
+        {
+          id: 'event_1',
+          patient_id: 'patient_1',
+          channel: 'phone',
+          occurred_at: new Date('2026-06-11T09:00:00.000Z'),
+          subject: '湿布の残りが少ない',
+          content: '湿布は残り4枚です',
+          counterpart_name: '訪問看護師A',
+          counterpart_contact: '090-0000-0000',
+          attachments: [{ storage_key: 'secret-storage-key' }],
+        },
+      ],
+    });
+    const req = createRequest('http://localhost/api/care-reports/today-workspace');
+
+    const res = await GET(req, { params: Promise.resolve({}) });
+    const json = await res!.json();
+
+    expect(json.data.action_rail.evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'inbound-communications',
+          label: '他職種受信',
+          meta: '1件確認待ち',
+          href: '/workflow?focus=communication',
+        }),
+      ]),
+    );
+    const responseText = JSON.stringify(json.data.action_rail);
+    expect(responseText).not.toContain('湿布');
+    expect(responseText).not.toContain('訪問看護師A');
+    expect(responseText).not.toContain('090-0000-0000');
+    expect(responseText).not.toContain('secret-storage-key');
   });
 
   it('uses Japan business date and instant ranges when date is omitted under UTC runtime', async () => {

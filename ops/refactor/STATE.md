@@ -41,6 +41,44 @@
 
 ## 直近の land（本日・要点）
 
+- codex: INB-001 inbound communication report action rail evidence（未コミット）。
+  - current task:
+    他職種受信情報を報告書へ自動挿入せず、Report workspace の右レール evidence に
+    PHI-free な件数と workflow 連絡キュー導線だけを接続する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/api/care-reports/today-workspace/route.ts`,
+    `src/app/api/care-reports/today-workspace/route.test.ts`,
+    `src/types/reports-today-workspace.ts`,
+    `src/app/(dashboard)/reports/report-share-workspace.helpers.ts`,
+    `src/app/(dashboard)/reports/report-share-workspace.tsx`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/api/care-reports/today-workspace/route.ts`,
+    `src/app/api/care-reports/today-workspace/route.test.ts`.
+  - implementation:
+    `today-workspace` BFF が `listCommunicationQueue(tx, { limit: 1 })` を読み、
+    `action_rail.evidence` に `inbound-communications` を追加する。表示は
+    `他職種受信` / `N件確認待ち` / `/workflow?focus=communication` のみ。
+    受信 subject/content、相手名、電話番号、添付 storage key は report workspace へ出さない。
+  - validation:
+    `pnpm vitest run src/app/api/care-reports/today-workspace/route.test.ts --reporter=dot --testTimeout=30000`
+    passed: 1 file / 30 tests.
+    `pnpm exec eslint src/app/api/care-reports/today-workspace/route.ts src/app/api/care-reports/today-workspace/route.test.ts`
+    passed.
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/app/api/care-reports/today-workspace/route.ts src/app/api/care-reports/today-workspace/route.test.ts`
+    passed after formatting `Plans.md`.
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/app/api/care-reports/today-workspace/route.ts src/app/api/care-reports/today-workspace/route.test.ts`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+  - remaining:
+    なし。DB正本、API/review UI、正式 provider 統合は INB-001 の後続。
+  - next action:
+    Land and push this slice, then record commit hash.
+
 - codex: INB-001 inbound communication workflow dashboard aggregate（commit 20adefb14）。
   - current task:
     他職種からの inbound phone/FAX/email が CommunicationQueue には出ているが、workflow dashboard では
