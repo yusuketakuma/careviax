@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: FE-ERR-001 Segment boundary shared state components（commit pending）。
+- codex: FE-ERR-001 Segment boundary shared state components（commit 24ce5481b, pushed）。
   - current task:
     partial BFF / section failure を画面全体の失敗や false-empty にしないための shared segment
     state wrapper を追加し、最初の利用箇所を reports workspace に接続する。
@@ -89,10 +89,9 @@
     `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`
     passed.
   - remaining:
-    commit、push。Dashboard segments / patient detail tabs / visits / schedule / task/admin への展開は
-    後続。
+    Dashboard segments / patient detail tabs / visits / schedule / task/admin への展開は後続。
   - next action:
-    Land the FE-ERR-001 partial slice and continue with the next Plans item.
+    Continue with the next Plans item.
 
 - codex: MOV-001 Patient Movement Timeline final implementation scope lock（commit d3a9ba1dc, pushed）。
   - current task:
