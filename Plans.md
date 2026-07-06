@@ -1145,6 +1145,7 @@ notification:
 > `cc:PARTIAL 2026-07-07`: `PatientMovementTimelineEvent` presenter が category=`prescription` / `visit` / `document` の `operation_history` も、それぞれ `prescription_event` / `visit_event` / `document_registered` marker に正規化するよう変更。処方原本保存や文書PDF出力などの監査由来イベントも、timeline では内容表示ではなく発生 marker + 正本 deep link として扱う。unit test で薬剤名、処方番号、ファイル名、文書本文が movement payload に混入しないことを固定した。
 > `cc:PARTIAL 2026-07-07`: UI回帰テストで、document marker の `summary` / `metadata` に文書本文、OCR全文、添付ファイル名が混入しても、カード表示と検索 haystack に使われないことを固定した。処方・訪問・文書の表示改善は、本文再掲ではなく controlled label、badge、relative href、日付railに限定する。
 > `cc:PARTIAL 2026-07-07`: 最新ユーザー指示を受け、UI回帰テストに処方・訪問・文書 marker の primary CTA が正本 `event.href` を直接使うこと、`/patients/:id/timeline/:eventId` の event detail shell へ逃がさないこと、SOAP本文、訪問添付名、位置情報、処方内容、薬剤明細、文書本文、OCR全文、storage key、file id が card 表示に混入しないことを追加で固定した。これにより「処方・訪問・文書登録があったことだけを確認し、詳細は deep link 先で見る」方針を UI test で守る。
+> `cc:PARTIAL 2026-07-07`: `inquiryRecord` の処方受付 `intake_id` がない場合の timeline href を広すぎる `/workflow` fallback から患者詳細の薬剤・訪問セクション `#card-prescription-section` へ変更。疑義照会 marker は本文や処方明細を代替表示せず、正本に最も近い患者内 medication context へ相対 deep link する。
 
 **重要なUI方針**:
 

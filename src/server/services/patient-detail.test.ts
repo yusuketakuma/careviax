@@ -2294,7 +2294,9 @@ describe('getPatientTimelineData', () => {
     expect(eventsById.get(`inquiry:${rawInquiryId}`)?.href).toBe(
       `/prescriptions/${encodeURIComponent(rawInquiryIntakeId)}`,
     );
-    expect(eventsById.get(`inquiry:${rawInquiryWithoutIntakeId}`)?.href).toBe('/workflow');
+    expect(eventsById.get(`inquiry:${rawInquiryWithoutIntakeId}`)?.href).toBe(
+      '/patients/patient_1#card-prescription-section',
+    );
     expect(eventsById.get(`operation_history:${rawAuditId}`)?.href).toBe(
       `/prescriptions/${encodeURIComponent(rawAuditPrescriptionId)}`,
     );

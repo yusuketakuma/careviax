@@ -64,6 +64,7 @@ export type TimelineEvent = {
 /** Precomputed per-patient href builders shared by source adapters + op_history. */
 export type TimelineHrefBundle = {
   patientDetailHref: string;
+  patientMedicationHref: string;
   patientDocumentsHref: string;
   patientManagementPlanHref: string;
   patientMcsHref: string;
@@ -96,6 +97,7 @@ export function buildPatientConferencesHref(patientId: string) {
 export function buildTimelineHrefBundle(patientId: string): TimelineHrefBundle {
   return {
     patientDetailHref: buildPatientHref(patientId),
+    patientMedicationHref: buildPatientHref(patientId, '#card-prescription-section'),
     patientDocumentsHref: buildPatientHref(patientId, '#patient-documents'),
     patientManagementPlanHref: buildPatientHref(patientId, '/management-plan'),
     patientMcsHref: buildPatientHref(patientId, '/mcs'),

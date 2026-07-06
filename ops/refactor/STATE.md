@@ -41,6 +41,50 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOV-001 Inquiry marker fallback deep link hardening（commit pending）。
+  - current task:
+    Patient Movement Timeline の処方系 marker で、正本 deep link が広すぎる fallback に逃げないようにする。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail.test.ts`,
+    `src/server/services/patient-movement-timeline-presenter.test.ts`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail.test.ts`.
+  - implementation:
+    `TimelineHrefBundle` に `patientMedicationHref` を追加し、`inquiryRecord` が処方受付
+    `intake_id` を持たない場合の href を `/workflow` から
+    `/patients/:id#card-prescription-section` へ変更した。疑義照会 marker は本文や処方明細を
+    代替表示せず、患者詳細の薬剤・訪問 context へ相対 deep link する。
+  - bugs found:
+    `inquiryRecord` の no-intake fallback が広すぎる `/workflow` に向いていた。修正中に
+    `toEvents(rows, ctx)` の projection 引数を一部 source で外してしまい、focused test が
+    `hrefs is not defined` で失敗したため、`hrefs` を使う source だけ第2引数を受ける形へ戻した。
+  - security risks reduced:
+    deep link 未整備を timeline 本文プレビューで補う圧力を下げ、処方系 marker を患者内の
+    medication context へ限定した。処方本文・薬剤明細・自由記載は追加 select していない。
+  - validation:
+    `pnpm exec vitest run src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.test.ts --reporter=dot --testTimeout=30000`
+    passed after fixing projection context: 2 files / 77 tests.
+    `pnpm exec eslint src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.test.ts`
+    passed.
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.test.ts`
+    passed after formatting `src/server/services/patient-detail-timeline-registry.ts`.
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.test.ts`
+    passed.
+  - remaining:
+    commit and push this scoped slice. Formal INB signal / MedicationStock Ledger source work remains.
+  - next action:
+    Commit and push the scoped MOV-001 fallback hardening.
+
 - codex: FILE-000 file API minimization evidence sync（commit 8a47033ad, pushed）。
   - current task:
     Plans 上で未完了扱いだった `FILE-000` が現行コードでは実装済みかを確認し、file API の

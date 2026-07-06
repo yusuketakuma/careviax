@@ -851,7 +851,7 @@ export const inquiryRecordsSource = defineTimelineSource<'inquiryRecords', Inqui
             },
           },
         }),
-  toEvents: (rows) =>
+  toEvents: (rows, { hrefs }) =>
     rows.map((item) => {
       const inquiryStatus =
         item.result === 'changed'
@@ -867,8 +867,10 @@ export const inquiryRecordsSource = defineTimelineSource<'inquiryRecords', Inqui
         occurred_at: item.resolved_at ?? item.inquired_at ?? item.created_at,
         title: `疑義照会 ${inquiryStatus}`,
         summary: '疑義照会が記録されました。内容は処方詳細で確認してください。',
-        href: item.line?.intake?.id ? buildPrescriptionHref(item.line.intake.id) : '/workflow',
-        action_label: item.line?.intake?.id ? '処方受付を開く' : 'ワークフローを開く',
+        href: item.line?.intake?.id
+          ? buildPrescriptionHref(item.line.intake.id)
+          : hrefs.patientMedicationHref,
+        action_label: item.line?.intake?.id ? '処方受付を開く' : '薬剤・訪問を開く',
         status: item.result ?? 'pending',
         status_label: inquiryStatus,
         actor_name: null,
