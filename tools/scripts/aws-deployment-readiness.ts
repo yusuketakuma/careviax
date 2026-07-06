@@ -34,6 +34,8 @@ export type ReadinessInput = {
     s3ObjectLockPolicy: boolean;
     s3KmsKeyPolicy: boolean;
     fileApiBoundaryTests: string[];
+    eventBridgeSchedules: boolean;
+    eventBridgeSchedulesText: string | null;
     standaloneServer: boolean;
     standaloneEnvFiles: string[];
   };
@@ -66,6 +68,13 @@ const PHI_FILE_PREFIXES = [
   'contract-documents',
   'bulk-exports',
 ] as const;
+
+const FLUSH_METRICS_SCHEDULE_NAME = 'ph-os-flush-metrics';
+const FLUSH_METRICS_TARGET_URL = '${APP_URL}/api/jobs/flush-metrics';
+const FLUSH_METRICS_TARGET_METHOD = 'POST';
+const FLUSH_METRICS_SCHEDULE_EXPRESSION = 'cron(0/5 * * * ? *)';
+const FLUSH_METRICS_SCHEDULE_TIMEZONE = 'UTC';
+const FLUSH_METRICS_API_KEY_PLACEHOLDER = '${JOB_API_KEY}';
 
 function readArgs(argv: string[]): CliArgs {
   const args: CliArgs = {
@@ -119,6 +128,96 @@ function isSet(value: string | undefined): boolean {
 
 function hasAuthSecret(env: Record<string, string | undefined>): boolean {
   return isSet(env.NEXTAUTH_SECRET) || isSet(env.AUTH_SECRET);
+}
+
+function parseJsonObject(text: string | null): Record<string, unknown> | null {
+  if (!text) return null;
+  try {
+    const parsed = JSON.parse(text);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function getRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function evaluateFlushMetricsSchedule(text: string | null): {
+  ok: boolean;
+  message: string;
+  evidence: string[];
+  remediation?: string;
+} {
+  const parsed = parseJsonObject(text);
+  const schedules = Array.isArray(parsed?.schedules) ? parsed.schedules : [];
+  const schedule = schedules
+    .map(getRecord)
+    .find((item) => item?.name === FLUSH_METRICS_SCHEDULE_NAME);
+  if (!schedule) {
+    return {
+      ok: false,
+      message: `${FLUSH_METRICS_SCHEDULE_NAME} is missing from tools/infra/eventbridge-schedules.json.`,
+      evidence: [],
+      remediation:
+        'Add an enabled EventBridge schedule that POSTs to /api/jobs/flush-metrics every 5 minutes with JOB_API_KEY authentication.',
+    };
+  }
+
+  const target = getRecord(schedule.target);
+  const headers = getRecord(target?.headers);
+  const retryPolicy = getRecord(schedule.retryPolicy);
+  const issues: string[] = [];
+  if (schedule.state !== 'ENABLED') issues.push('state is not ENABLED');
+  if (schedule.scheduleExpression !== FLUSH_METRICS_SCHEDULE_EXPRESSION) {
+    issues.push(`scheduleExpression is not ${FLUSH_METRICS_SCHEDULE_EXPRESSION}`);
+  }
+  if (schedule.scheduleExpressionTimezone !== FLUSH_METRICS_SCHEDULE_TIMEZONE) {
+    issues.push(`scheduleExpressionTimezone is not ${FLUSH_METRICS_SCHEDULE_TIMEZONE}`);
+  }
+  if (target?.type !== 'HTTP') issues.push('target.type is not HTTP');
+  if (target?.method !== FLUSH_METRICS_TARGET_METHOD) issues.push('target.method is not POST');
+  if (target?.url !== FLUSH_METRICS_TARGET_URL) {
+    issues.push(`target.url is not ${FLUSH_METRICS_TARGET_URL}`);
+  }
+  if (headers?.['x-api-key'] !== FLUSH_METRICS_API_KEY_PLACEHOLDER) {
+    issues.push('target x-api-key header is not JOB_API_KEY placeholder');
+  }
+  if (retryPolicy?.maximumRetryAttempts !== 1) {
+    issues.push('retryPolicy.maximumRetryAttempts is not 1');
+  }
+  if (retryPolicy?.maximumEventAgeInSeconds !== 1800) {
+    issues.push('retryPolicy.maximumEventAgeInSeconds is not 1800');
+  }
+
+  const evidence = [
+    'tools/infra/eventbridge-schedules.json',
+    `schedule:${FLUSH_METRICS_SCHEDULE_NAME}`,
+    `expression:${String(schedule.scheduleExpression)}`,
+    `target:${FLUSH_METRICS_TARGET_METHOD} /api/jobs/flush-metrics`,
+  ];
+
+  if (issues.length > 0) {
+    return {
+      ok: false,
+      message: `Flush metrics EventBridge schedule is misconfigured: ${issues.join('; ')}.`,
+      evidence,
+      remediation:
+        'Align ph-os-flush-metrics with the 5-minute EventBridge Scheduler contract for /api/jobs/flush-metrics.',
+    };
+  }
+
+  return {
+    ok: true,
+    message:
+      'Flush metrics EventBridge schedule is enabled and targets /api/jobs/flush-metrics every 5 minutes.',
+    evidence,
+  };
 }
 
 export function evaluateReadiness(input: ReadinessInput, now = new Date()): ReadinessReport {
@@ -280,6 +379,17 @@ export function evaluateReadiness(input: ReadinessInput, now = new Date()): Read
       ? undefined
       : 'Add regression tests proving file APIs do not expose original names, storage keys, entity ids, or PHI in public responses.',
   );
+  const flushMetricsSchedule = evaluateFlushMetricsSchedule(input.files.eventBridgeSchedulesText);
+  add(
+    checks,
+    input.files.eventBridgeSchedules && flushMetricsSchedule.ok ? 'pass' : 'fail',
+    'eventbridge-flush-metrics-schedule',
+    flushMetricsSchedule.message,
+    input.files.eventBridgeSchedules && flushMetricsSchedule.ok
+      ? undefined
+      : (flushMetricsSchedule.remediation ??
+          'Add tools/infra/eventbridge-schedules.json with ph-os-flush-metrics.'),
+  );
 
   const requiredEnv = [
     'AWS_REGION',
@@ -426,6 +536,8 @@ function collectInput(args: CliArgs): ReadinessInput {
         'src/app/api/files/[id]/presigned-download/route.test.ts',
         'src/app/api/files/[id]/download/route.test.ts',
       ]),
+      eventBridgeSchedules: existsSync('tools/infra/eventbridge-schedules.json'),
+      eventBridgeSchedulesText: readTextIfExists('tools/infra/eventbridge-schedules.json'),
       standaloneServer: existsSync('.next/standalone/server.js'),
       standaloneEnvFiles: listStandaloneEnvFiles(),
     },

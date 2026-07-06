@@ -11498,3 +11498,48 @@
   `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green.
 - remaining:
   `PERF-RTE-001A` still needs deploy readiness / EventBridge schedule connection.
+
+## 2026-07-07 PERF-RTE EventBridge readiness gate
+
+- codex:
+  Connected the existing `/api/jobs/flush-metrics` job to AWS deployment readiness by validating
+  the `ph-os-flush-metrics` EventBridge schedule artifact. The readiness gate now fails if the
+  schedule is missing, disabled, not every 5 minutes, not targeting `POST /api/jobs/flush-metrics`,
+  missing the `JOB_API_KEY` placeholder header, or using a looser retry policy.
+- files inspected:
+  `tools/infra/eventbridge-schedules.json`,
+  `tools/scripts/check-eventbridge-schedule-drift.mjs`,
+  `tools/scripts/check-eventbridge-schedule-drift.test.ts`,
+  `tools/scripts/aws-deployment-readiness.ts`,
+  `tools/scripts/aws-deployment-readiness.test.ts`,
+  `src/server/services/flush-metrics-job.ts`,
+  `src/app/api/jobs/flush-metrics/route.ts`,
+  `src/app/api/jobs/flush-metrics/route.test.ts`,
+  `src/server/services/pilot-readiness.ts`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  AWS official EventBridge Scheduler `CreateSchedule`, target, and execution-role references.
+- files changed:
+  `tools/scripts/aws-deployment-readiness.ts`,
+  `tools/scripts/aws-deployment-readiness.test.ts`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  `ph-os-flush-metrics` was present in the EventBridge schedule artifact, but deploy readiness only
+  checked artifact existence. A missing or drifted schedule could leave CloudWatch p95/p99 and
+  payload-budget metrics stuck in current-process memory without blocking deployment. The readiness
+  check now verifies the concrete schedule contract without exposing concrete app URLs or job API
+  secret values.
+- AWS official reference checked:
+  EventBridge Scheduler supports recurring `rate` / `cron` schedules via `CreateSchedule`, schedule
+  targets are templated or universal targets, and Scheduler needs an execution role with permission
+  to invoke the selected target API. This slice keeps the repo artifact on the existing HTTP job
+  target contract and validates the local schedule shape before live AWS drift checks.
+- validation:
+  `pnpm exec vitest run tools/scripts/aws-deployment-readiness.test.ts tools/scripts/check-eventbridge-schedule-drift.test.ts src/app/api/jobs/flush-metrics/route.test.ts --reporter=dot --testTimeout=30000`
+  green (3 files / 12 tests);
+  `pnpm exec eslint tools/scripts/aws-deployment-readiness.ts tools/scripts/aws-deployment-readiness.test.ts`
+  green.
+- remaining:
+  `PERF-RTE-001A` still needs the live AWS drift check (`eventbridge-schedules:check --aws`) wired
+  into the actual deploy gate once deployment credentials and schedule group access are available.

@@ -27,6 +27,30 @@ function baseInput(overrides: Partial<ReadinessInput> = {}): ReadinessInput {
         'src/app/api/files/[id]/presigned-download/route.test.ts',
         'src/app/api/files/[id]/download/route.test.ts',
       ],
+      eventBridgeSchedules: true,
+      eventBridgeSchedulesText: JSON.stringify({
+        schedules: [
+          {
+            name: 'ph-os-flush-metrics',
+            state: 'ENABLED',
+            scheduleExpression: 'cron(0/5 * * * ? *)',
+            scheduleExpressionTimezone: 'UTC',
+            target: {
+              type: 'HTTP',
+              method: 'POST',
+              url: '${APP_URL}/api/jobs/flush-metrics',
+              headers: {
+                'x-api-key': '${JOB_API_KEY}',
+                'Content-Type': 'application/json',
+              },
+            },
+            retryPolicy: {
+              maximumRetryAttempts: 1,
+              maximumEventAgeInSeconds: 1800,
+            },
+          },
+        ],
+      }),
       standaloneServer: true,
       standaloneEnvFiles: [],
     },
@@ -48,8 +72,13 @@ describe('evaluateReadiness', () => {
   it('passes local AWS deployment prerequisites when artifacts and env are present', () => {
     const report = evaluateReadiness(baseInput(), new Date('2026-06-17T00:00:00.000Z'));
 
-    expect(report.summary).toEqual({ pass: 14, warn: 0, fail: 0, skip: 1 });
+    expect(report.summary).toEqual({ pass: 15, warn: 0, fail: 0, skip: 1 });
     expect(report.checks.find((check) => check.name === 'aws-credentials')?.status).toBe('skip');
+    expect(
+      report.checks.find((check) => check.name === 'eventbridge-flush-metrics-schedule'),
+    ).toMatchObject({
+      status: 'pass',
+    });
   });
 
   it('warns when Docker and production env are missing but does not fail by default', () => {
@@ -135,5 +164,44 @@ describe('evaluateReadiness', () => {
     expect(
       report.checks.find((check) => check.name === 'next-standalone-secret-files')?.status,
     ).toBe('fail');
+  });
+
+  it('fails when the flush metrics EventBridge schedule is missing or misconfigured', () => {
+    const report = evaluateReadiness(
+      baseInput({
+        files: {
+          ...baseInput().files,
+          eventBridgeSchedulesText: JSON.stringify({
+            schedules: [
+              {
+                name: 'ph-os-flush-metrics',
+                state: 'DISABLED',
+                scheduleExpression: 'cron(0/10 * * * ? *)',
+                scheduleExpressionTimezone: 'UTC',
+                target: {
+                  type: 'HTTP',
+                  method: 'POST',
+                  url: '${APP_URL}/api/jobs/flush-metrics',
+                  headers: {
+                    'x-api-key': '${JOB_API_KEY}',
+                  },
+                },
+                retryPolicy: {
+                  maximumRetryAttempts: 1,
+                  maximumEventAgeInSeconds: 1800,
+                },
+              },
+            ],
+          }),
+        },
+      }),
+    );
+
+    expect(
+      report.checks.find((check) => check.name === 'eventbridge-flush-metrics-schedule'),
+    ).toMatchObject({
+      status: 'fail',
+      message: expect.stringContaining('state is not ENABLED'),
+    });
   });
 });
