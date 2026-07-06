@@ -41,6 +41,44 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOV-001 First visit document audit label hardening（未コミット）。
+  - current task:
+    初回訪問文書の audit-derived marker が `document_action` 内の template/reason/note や未知ラベルを
+    movement payload に出さないよう、helper と projection を marker-only に寄せる。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail.test.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail.test.ts`.
+  - implementation:
+    `readFirstVisitDocumentAction()` から未使用の `template_name`, `template_version`,
+    `storage_location`, `reason`, `note` 読み取りを削除し、未知の `document_type` は「初回訪問文書」、
+    未知 action は status=`updated` / label=`更新` に丸めた。
+  - security risks reduced:
+    AuditLog changes に含まれる患者名入りテンプレート名、保管場所、理由、メモ、未知 action/type が
+    Patient Movement Timeline に漏れる面を縮小した。
+  - validation:
+    `pnpm exec vitest run src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.test.ts 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx' --reporter=dot --testTimeout=30000`
+    passed: 3 files / 91 tests.
+    `pnpm exec eslint src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.ts 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx'`
+    passed.
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.ts 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx'`
+    passed.
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.ts 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx'`
+    passed.
+  - remaining:
+    Formal inbound DB/API/review UI and MedicationStock Ledger source remain.
+  - next action:
+    Commit/push this scoped slice.
+
 - codex: MOV-001 Care report delivery marker hardening（commit f1945c9c3, pushed）。
   - current task:
     Patient Movement Timeline の文書 marker-only 契約に合わせ、報告書送付/受領 marker から送付先名を

@@ -3283,6 +3283,85 @@ describe('getPatientTimelineData', () => {
     );
   });
 
+  it('normalizes unknown first visit document audit labels before projecting movement markers', async () => {
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      firstVisitDocument: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'doc_unsafe',
+            delivered_at: null,
+            created_at: new Date('2026-04-01T09:00:00.000Z'),
+          },
+        ]),
+      },
+      auditLog: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'audit_doc_unsafe',
+            action: 'first_visit_document.generated',
+            target_type: 'first_visit_document',
+            target_id: 'doc_unsafe',
+            actor_id: 'user_1',
+            changes: {
+              document_action: {
+                action: 'patient_named_custom_action',
+                document_type: 'patient_named_custom_document',
+                template_name: '患者名入りテンプレート',
+                template_version: 'patient-v1',
+                storage_location: 'patient_home_private_box',
+                reason: '患者名入り理由',
+                note: '患者名入りメモ',
+              },
+            },
+            created_at: new Date('2026-04-02T10:00:00.000Z'),
+          },
+        ]),
+      },
+      user: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'user_1', name: '佐藤 薬剤師' }]),
+      },
+    });
+
+    const result = await getPatientTimelineData(runnerFor(db), {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+    });
+
+    expect(result?.timeline_events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'first_visit_document:doc_unsafe',
+          event_type: 'first_visit_document',
+          category: 'document',
+          title: '初回訪問文書を更新',
+          status: 'updated',
+          status_label: '更新',
+          href: '/patients/patient_1#patient-documents',
+        }),
+      ]),
+    );
+    const serialized = JSON.stringify(result?.movement_events ?? []);
+    for (const forbidden of [
+      'patient_named_custom_action',
+      'patient_named_custom_document',
+      '患者名入りテンプレート',
+      'patient-v1',
+      'patient_home_private_box',
+      '患者名入り理由',
+      '患者名入りメモ',
+    ]) {
+      expect(serialized).not.toContain(forbidden);
+    }
+  });
+
   it('renders operation history summaries with pharmacy workflow labels', async () => {
     const db = buildDb({
       patient: {

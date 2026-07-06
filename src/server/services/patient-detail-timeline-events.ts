@@ -422,14 +422,6 @@ const FIRST_VISIT_DOCUMENT_TYPE_LABELS: Record<string, string> = {
   other: 'その他',
 };
 
-const FIRST_VISIT_DOCUMENT_STORAGE_LABELS: Record<string, string> = {
-  store: '店舗',
-  headquarters: '本部',
-  patient_home_copy_only: '患者宅控えのみ',
-  electronic: '電子保管',
-  unknown: '未確認',
-};
-
 const BILLING_COLLECTION_STATUS_LABELS: Record<string, string> = {
   unbilled: '未請求',
   billed: '請求済',
@@ -543,21 +535,12 @@ function readFirstVisitDocumentAction(item: OperationHistoryTimelineSource) {
   const action =
     readString(documentAction.action) ?? item.action.replace('first_visit_document.', '');
   const documentType = readString(documentAction.document_type);
-  const storageLocation = readString(documentAction.storage_location);
 
   return {
     action,
-    documentType,
     documentTypeLabel: documentType
-      ? (FIRST_VISIT_DOCUMENT_TYPE_LABELS[documentType] ?? documentType)
+      ? (FIRST_VISIT_DOCUMENT_TYPE_LABELS[documentType] ?? '初回訪問文書')
       : '初回訪問文書',
-    templateName: readString(documentAction.template_name),
-    templateVersion: readString(documentAction.template_version),
-    storageLabel: storageLocation
-      ? (FIRST_VISIT_DOCUMENT_STORAGE_LABELS[storageLocation] ?? storageLocation)
-      : null,
-    reason: readString(documentAction.reason),
-    note: readString(documentAction.note),
     actorId: item.actor_id,
     occurredAt: item.created_at,
   };

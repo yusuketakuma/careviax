@@ -1098,8 +1098,13 @@ export const firstVisitDocumentsSource = defineTimelineSource<
     rows.map((item) => {
       const isDelivered = Boolean(item.delivered_at);
       const latestAction = firstVisitDocumentActions.get(item.id) ?? null;
+      const knownAction = latestAction
+        ? FIRST_VISIT_DOCUMENT_ACTION_VERBS[latestAction.action]
+          ? latestAction.action
+          : 'updated'
+        : null;
       const actionVerb = latestAction
-        ? (FIRST_VISIT_DOCUMENT_ACTION_VERBS[latestAction.action] ?? latestAction.action)
+        ? (FIRST_VISIT_DOCUMENT_ACTION_VERBS[latestAction.action] ?? '更新')
         : isDelivered
           ? '交付'
           : '作成';
@@ -1115,9 +1120,9 @@ export const firstVisitDocumentsSource = defineTimelineSource<
           : '初回訪問文書が登録されました。内容は共有・文書で確認してください。',
         href: hrefs.patientDocumentsHref,
         action_label: '文書状態を開く',
-        status: latestAction?.action ?? (isDelivered ? 'delivered' : 'created'),
+        status: knownAction ?? (isDelivered ? 'delivered' : 'created'),
         status_label: latestAction
-          ? (FIRST_VISIT_DOCUMENT_ACTION_VERBS[latestAction.action] ?? latestAction.action)
+          ? (FIRST_VISIT_DOCUMENT_ACTION_VERBS[latestAction.action] ?? '更新')
           : isDelivered
             ? '交付済み'
             : '作成済み',
