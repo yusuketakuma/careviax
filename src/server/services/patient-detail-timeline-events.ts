@@ -154,8 +154,6 @@ export type CommunicationTimelineSource = {
   event_type: string;
   channel: string;
   direction: string;
-  subject: string | null;
-  counterpart_name: string | null;
   occurred_at: Date;
 };
 

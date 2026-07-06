@@ -131,6 +131,11 @@ const TASK_PRIORITY_LABELS: Record<string, string> = {
   normal: '通常',
   low: '低',
 };
+const INBOUND_COMMUNICATION_EVENT_TYPE_BY_CHANNEL: Record<string, string> = {
+  phone: 'inbound_phone',
+  fax: 'inbound_fax',
+  email: 'inbound_email',
+};
 
 const FIRST_VISIT_DOCUMENT_ACTION_VERBS: Record<string, string> = {
   generated: '作成',
@@ -145,6 +150,11 @@ function getCommunicationDirectionLabel(direction: string) {
   if (direction === 'inbound' || direction === 'incoming') return '受信';
   if (direction === 'outbound' || direction === 'outgoing') return '発信';
   return direction;
+}
+
+function getInboundCommunicationEventType(item: CommunicationTimelineSource) {
+  if (getCommunicationDirectionLabel(item.direction) !== '受信') return null;
+  return INBOUND_COMMUNICATION_EVENT_TYPE_BY_CHANNEL[item.channel] ?? null;
 }
 
 // --- visitSchedules ---------------------------------------------------------
@@ -367,8 +377,6 @@ export const communicationEventsSource = defineTimelineSource<
         event_type: true,
         channel: true,
         direction: true,
-        subject: true,
-        counterpart_name: true,
         occurred_at: true,
       },
     }),
@@ -377,25 +385,28 @@ export const communicationEventsSource = defineTimelineSource<
       .filter((item) => item.event_type !== 'patient_self_report')
       .map((item) => {
         const directionLabel = getCommunicationDirectionLabel(item.direction);
+        const channelLabel = CHANNEL_LABELS[item.channel] ?? item.channel;
+        const inboundEventType = getInboundCommunicationEventType(item);
 
         return {
           id: `communication:${item.id}`,
-          event_type: 'communication',
-          category: 'communication',
+          event_type: inboundEventType ?? 'communication',
+          category: inboundEventType ? 'interprofessional' : 'communication',
           occurred_at: item.occurred_at,
-          title: directionLabel === '受信' ? '連絡を受信' : '連絡を発信',
-          summary:
-            compactTimelineValues([
-              CHANNEL_LABELS[item.channel] ?? item.channel,
-              item.counterpart_name,
-              item.subject ?? item.event_type,
-            ]).join(' / ') || null,
+          title: inboundEventType
+            ? `${channelLabel}連絡を受信`
+            : directionLabel === '受信'
+              ? '連絡を受信'
+              : '連絡を発信',
+          summary: inboundEventType
+            ? '他職種からの受信情報がありました。内容は連絡履歴で確認してください。'
+            : '連絡履歴が更新されました。内容は連絡履歴で確認してください。',
           href: hrefs.patientConferencesHref,
           action_label: '連絡履歴を開く',
           status: item.direction,
           status_label: directionLabel,
           actor_name: null,
-          metadata: [],
+          metadata: compactTimelineValues([channelLabel]),
         };
       }),
 });

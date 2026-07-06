@@ -3797,8 +3797,6 @@ describe('getPatientTimelineData', () => {
         event_type: 'patient_self_report',
         channel: 'phone',
         direction: 'inbound',
-        subject: '夕方にふらつきあり',
-        counterpart_name: '山田花子',
         occurred_at: new Date('2026-04-03T09:01:00.000Z'),
       },
       {
@@ -3806,9 +3804,21 @@ describe('getPatientTimelineData', () => {
         event_type: 'family_call',
         channel: 'phone',
         direction: 'inbound',
-        subject: '服薬時間を相談',
-        counterpart_name: '長女',
         occurred_at: new Date('2026-04-03T10:00:00.000Z'),
+      },
+      {
+        id: 'comm_care_manager_fax',
+        event_type: 'care_update',
+        channel: 'fax',
+        direction: 'inbound',
+        occurred_at: new Date('2026-04-03T11:00:00.000Z'),
+      },
+      {
+        id: 'comm_facility_email',
+        event_type: 'care_update',
+        channel: 'email',
+        direction: 'inbound',
+        occurred_at: new Date('2026-04-03T12:00:00.000Z'),
       },
     ]);
     const db = buildDb({
@@ -3870,9 +3880,28 @@ describe('getPatientTimelineData', () => {
         }),
         expect.objectContaining({
           id: 'communication:comm_family_call',
-          event_type: 'communication',
-          title: '連絡を受信',
+          event_type: 'inbound_phone',
+          category: 'interprofessional',
+          title: '電話連絡を受信',
+          summary: '他職種からの受信情報がありました。内容は連絡履歴で確認してください。',
           status_label: '受信',
+          metadata: ['電話'],
+        }),
+        expect.objectContaining({
+          id: 'communication:comm_care_manager_fax',
+          event_type: 'inbound_fax',
+          category: 'interprofessional',
+          title: 'FAX連絡を受信',
+          summary: '他職種からの受信情報がありました。内容は連絡履歴で確認してください。',
+          metadata: ['FAX'],
+        }),
+        expect.objectContaining({
+          id: 'communication:comm_facility_email',
+          event_type: 'inbound_email',
+          category: 'interprofessional',
+          title: 'メール連絡を受信',
+          summary: '他職種からの受信情報がありました。内容は連絡履歴で確認してください。',
+          metadata: ['メール'],
         }),
       ]),
     );
@@ -3881,12 +3910,21 @@ describe('getPatientTimelineData', () => {
         where: expect.objectContaining({
           event_type: { not: 'patient_self_report' },
         }),
+        select: expect.not.objectContaining({
+          subject: true,
+          counterpart_name: true,
+          counterpart_contact: true,
+          content: true,
+          attachments: true,
+        }),
         take: 8,
       }),
     );
     expect(result?.timeline_events.map((item) => item.id)).not.toContain(
       'communication:comm_self_report',
     );
+    expect(JSON.stringify(result?.movement_events)).not.toContain('服薬時間を相談');
+    expect(JSON.stringify(result?.movement_events)).not.toContain('長女');
   });
 
   it('adds MCS and partner visit records to movement timeline without selecting raw message bodies', async () => {

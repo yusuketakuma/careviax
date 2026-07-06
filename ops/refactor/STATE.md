@@ -41,6 +41,57 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOV-001 existing CommunicationEvent inbound bridge slice（未コミット）。
+  - current task:
+    Patient Movement Timeline で既存 `CommunicationEvent` の受信 `phone` / `fax` / `email` を
+    `inbound_phone` / `inbound_fax` / `inbound_email` として扱うようにした。
+    タイムラインでは「電話/FAX/メール連絡を受信」の発生確認だけを表示し、詳細は既存の
+    `/conferences?patient_id=...` deep link へ委譲する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-movement-timeline-presenter.ts`,
+    `src/types/patient-movement-timeline.ts`,
+    `src/server/services/patient-detail.test.ts`,
+    `src/lib/constants/status-labels.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail.test.ts`.
+  - implementation:
+    Removed `subject` and `counterpart_name` from the communication timeline source shape/select.
+    Inbound phone/FAX/email rows now emit interprofessional movement event types with controlled
+    summary-only copy and channel metadata. Other communication rows also use controlled summary copy
+    rather than rendering free-text subject/counterpart data.
+  - security / PHI reviewed:
+    Timeline source no longer selects `subject`, `counterpart_name`, `counterpart_contact`, `content`,
+    or `attachments` for communication events. Regression tests assert the old free-text examples do
+    not appear in `movement_events`.
+  - validation:
+    `pnpm vitest run src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.test.ts --reporter=dot --testTimeout=30000`
+    passed: 2 files / 75 tests.
+    `pnpm exec eslint src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts`
+    passed.
+    `pnpm exec prettier --check Plans.md src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts`
+    passed after scoped Prettier write on `Plans.md`.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+    `pnpm boundaries:check` passed: 0 new violations, 7 allowlisted debt imports across 6 files.
+    `git diff --check -- Plans.md src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts`
+    passed.
+  - remaining:
+    `MOV-001` remains partial for formal `InboundCommunicationSignal`, MedicationStock, and safety
+    source integration plus dedicated component split/rename and mobile Playwright smoke.
+    `INB-001` remains partial for DB正本、API/queue/UI、MedicationStock/Risk/Task/VisitBrief/Schedule/Report
+    接続。
+  - next action:
+    Continue with a low-migration source slice if available, otherwise select the formal inbound
+    persistence/review queue planning/implementation slice.
+
 - codex: MOV-001 operational task timeline source slice（未コミット）。
   - current task:
     Patient Movement Timeline に既存 `Task` の患者/ケース紐づき運用タスクを追加した。
