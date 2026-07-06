@@ -43,9 +43,21 @@ import {
 
 const SEED_PATIENTS = buildPatients();
 const REAL_DATA_ENABLED = isRealDataEnabled();
+export const DISPENSING_WORKBENCH_STORAGE_KEY = 'chouzai-workbench';
 const INITIAL_PATIENTS = REAL_DATA_ENABLED ? [] : SEED_PATIENTS;
 const INITIAL_MODEL = REAL_DATA_ENABLED ? {} : buildModel(SEED_PATIENTS);
 const INITIAL_SEL_ID = REAL_DATA_ENABLED ? '' : '0001';
+
+function clearLegacyClinicalWorkbenchStorage() {
+  if (!REAL_DATA_ENABLED || typeof globalThis.localStorage === 'undefined') return;
+  try {
+    globalThis.localStorage.removeItem(DISPENSING_WORKBENCH_STORAGE_KEY);
+  } catch {
+    // Storage can be unavailable in private browsing or hardened test/runtime environments.
+  }
+}
+
+clearLegacyClinicalWorkbenchStorage();
 
 export interface WorkbenchState {
   // ---- state（設計プロト L546-548）----
@@ -603,7 +615,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
       },
     }),
     {
-      name: 'chouzai-workbench',
+      name: DISPENSING_WORKBENCH_STORAGE_KEY,
       storage: createJSONStorage(() => localStorage),
       // phase は保持しない。target/holdModal/compareOpen は揮発 UI 状態のため除外。
       // 実データ時は clinical state を plaintext localStorage に残さない。

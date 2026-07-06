@@ -127,6 +127,7 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
       model: {},
       setCells: {},
     });
+    expect(window.localStorage.getItem('chouzai-workbench')).toBeNull();
   });
 
   it('clears patient-scoped auxiliary calendar state when real calendar state is rehydrated without a matching plan', async () => {

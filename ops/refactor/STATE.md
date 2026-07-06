@@ -8481,3 +8481,48 @@
 - remaining:
   Commit/push this report realtime slice. Next candidates: `VISIT-SYNC-001` remaining immediate-save
   paths, `FE-STORAGE-001`, `FE-TBL-001`, or production performance metrics.
+
+## 2026-07-06 Clinical localStorage cleanup
+
+- codex: implemented `FE-STORAGE-001` minimal cleanup for the DispensingWorkbench store.
+  In real-data mode, the store now removes the legacy plaintext `chouzai-workbench` localStorage key
+  during module initialization before Zustand persist can hydrate it. Mock mode behavior remains
+  unchanged.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/components/features/dispense-workbench/dispensing-workbench.store.ts`,
+  `src/components/features/dispense-workbench/use-workbench-write-handlers.rollback.test.tsx`,
+  `src/components/features/dispense-workbench/dispensing-workbench.adapter.ts`,
+  `src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts`.
+- files changed:
+  `src/components/features/dispense-workbench/dispensing-workbench.store.ts`,
+  `src/components/features/dispense-workbench/use-workbench-write-handlers.rollback.test.tsx`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  Previously, real-data mode ignored persisted clinical state via `partialize` / `merge`, but a
+  legacy browser key could remain on the device. The old key is now removed when real-data mode is
+  active, reducing stale patient/drug/address leakage risk from prior mock or old workbench sessions.
+- security / PHI reviewed:
+  No new storage surface. Cleanup is fail-soft for unavailable localStorage and does not log stored
+  values. Test fixes that `chouzai-workbench` is absent after real-data store import.
+- performance issues improved:
+  Removes stale localStorage read/merge residue for real-data mode; no runtime API or query changes.
+- design / imagegen:
+  No UI/visual placement change; `gpt-image-2` generation skipped.
+- validation:
+  `pnpm exec vitest run src/components/features/dispense-workbench/use-workbench-write-handlers.rollback.test.tsx src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts --reporter=dot --testTimeout=30000`
+  green (2 files / 110 tests);
+  `pnpm exec eslint src/components/features/dispense-workbench/dispensing-workbench.store.ts src/components/features/dispense-workbench/use-workbench-write-handlers.rollback.test.tsx`
+  green;
+  `pnpm exec prettier --check src/components/features/dispense-workbench/dispensing-workbench.store.ts src/components/features/dispense-workbench/use-workbench-write-handlers.rollback.test.tsx`
+  green;
+  `git diff --check -- src/components/features/dispense-workbench/dispensing-workbench.store.ts src/components/features/dispense-workbench/use-workbench-write-handlers.rollback.test.tsx ops/refactor/STATE.md`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck --pretty false`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  green.
+- remaining:
+  Commit/push this storage slice. Broader `FE-OFFLINE-001` browser storage PHI audit remains open.
