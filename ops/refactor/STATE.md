@@ -40,7 +40,8 @@
 
 ## 直近の land（本日・要点）
 
-- codex: Operational Task Health Board API / orphan risk task audit implemented（ready to commit）。
+- codex: Operational Task Health Board API / orphan risk task audit implemented。
+  - implementation commit: `6a29ce66a` (`Add operational task health board`)
   - current task:
     `Plans.md` の `TASK-001 / RISK-CORE-2` 残作業「孤児 task audit、Task Health Board 連携」に対応。
     `GET /api/tasks/health-board` と `src/server/services/operational-task-health.ts` を追加し、open task の
