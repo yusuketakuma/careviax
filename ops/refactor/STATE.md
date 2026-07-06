@@ -41,7 +41,36 @@
 
 ## 直近の land（本日・要点）
 
-- codex: FE-ERR-001 admin UAT segment hardening（pending commit）。
+- codex: Plans.md implemented-task cleanup。
+  - current task:
+    `Plans.md` 内の実装済みタスクを削除し、現行の未完 TODO / PARTIAL を読みやすくする。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `- [x]` タスクとその配下、`cc:DONE` の表行/箇条書き、完了済み Wave/Phase の空セクション、
+    実装済み partials の長い履歴ブロックを削除した。残タスクは外部前提条件、Wave 3 以降、
+    `cc:TODO` / `cc:PARTIAL` の各バックログへ集約した。
+  - bugs found:
+    なし。計画台帳の整理。
+  - security risks reduced:
+    なし。完了済み履歴の圧縮により、未完の PHI / audit / export / notification 境界タスクが見つけやすくなった。
+  - performance issues improved:
+    なし。
+  - validation:
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md` → pass。
+    `git diff --check -- Plans.md ops/refactor/STATE.md` → pass。
+    completed-task marker scan (`- [x]`, `cc:DONE`, `cc:完了`) → no matches。
+  - remaining:
+    `Plans.md` はまだ大きいため、次の整理では重複する横断バックログの統合と archive 分離を検討する。
+  - next action:
+    scoped commit/push。
+
+- codex: FE-ERR-001 admin UAT segment hardening（dab6b6cd6 pushed to main）。
   - current task:
     `/admin/uat` の launch dossier / summary / org audit / saved feedback / collaborator 取得失敗を
     shared segment state に寄せ、raw query error message を UI に出さない。
@@ -76,7 +105,7 @@
     FE-ERR-001 は packaging-methods / service-areas / drug-master detail sheet など admin screen 群への段階展開が残る。
     Formal `InboundCommunicationEvent` / `InboundCommunicationSignal` DB/API/review UI and MedicationStock Ledger source remain.
   - next action:
-    Plans/STATE format/diff check、scoped commit/push。
+    packaging-methods / service-areas / drug-master detail sheet など admin screen 群への段階展開。
 
 - codex: FE-ERR-001 admin settings segment hardening（pending commit）。
   - current task:
