@@ -11050,8 +11050,10 @@
   green;
   `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
   green.
+- landed:
+  `88aca9582 Clear clinical workbench storage in real data mode`.
 - remaining:
-  Commit/push this storage slice. Broader `FE-OFFLINE-001` browser storage PHI audit remains open.
+  Broader `FE-OFFLINE-001` browser storage PHI audit remains open.
 
 ## 2026-07-06 DataTable client export policy tightening
 
