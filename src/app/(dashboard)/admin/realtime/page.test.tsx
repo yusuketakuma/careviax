@@ -323,44 +323,63 @@ describe('RealtimePage', () => {
     expect(setQueryData).not.toHaveBeenCalled();
   });
 
-  it('shows ErrorState (not a false-empty) with retry when the notifications query fails', () => {
+  it('shows SegmentError (not a false-empty) with retry when the notifications query fails', () => {
     const refetch = vi.fn();
+    const unsafeError = new Error(
+      'GET /api/notifications?patient=田中一郎&storage_key=s3://phi-bucket/raw&token=secret',
+    );
     useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
       const [scope] = queryKey;
       if (scope === 'admin-realtime-workflow') {
         return { data: WORKFLOW_DATA, connected: true };
       }
-      // 通知取得が失敗 → 空状態ではなく ErrorState + 再読み込み。
-      return { data: undefined, isError: true, refetch, connected: false };
+      // 通知取得が失敗 → 空状態ではなく SegmentError + 再読み込み。
+      return { data: undefined, isError: true, error: unsafeError, refetch, connected: false };
     });
 
     render(<RealtimePage />);
 
-    expect(screen.getByText('サーバーエラーが発生しました')).toBeTruthy();
+    expect(screen.getByText('最新通知を取得できませんでした')).toBeTruthy();
+    expect(screen.getByText(/未読通知の最新状態を取得できませんでした。/)).toBeTruthy();
+    expect(
+      screen.getByText(/再読み込みして、至急通知が残っていないか確認してください。/),
+    ).toBeTruthy();
     // false-empty（「未読通知はありません」）を出していないこと。
     expect(screen.queryByText('未読通知はありません')).toBeNull();
+    expect(screen.queryByText(/田中一郎/)).toBeNull();
+    expect(screen.queryByText(/storage_key/)).toBeNull();
+    expect(screen.queryByText(/token/)).toBeNull();
+    expect(screen.queryByText(/\/api\/notifications/)).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
     expect(refetch).toHaveBeenCalledTimes(1);
   });
 
-  it('shows ErrorState (not a false-empty) with retry when the workflow query fails', () => {
+  it('shows SegmentError (not a false-empty) with retry when the workflow query fails', () => {
     const refetch = vi.fn();
+    const unsafeError = new Error(
+      'GET /api/dashboard/workflow?patient=田中一郎&storage_key=s3://phi-bucket/raw&provider_error=stack',
+    );
     useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
       const [scope] = queryKey;
       if (scope === 'admin-realtime-notifications') {
         return { data: NOTIFICATIONS_DATA, connected: true };
       }
-      // ワークフロー取得が失敗 → ワークベンチは空状態ではなく ErrorState + 再読み込み。
-      return { data: undefined, isError: true, refetch, connected: false };
+      // ワークフロー取得が失敗 → ワークベンチは空状態ではなく SegmentError + 再読み込み。
+      return { data: undefined, isError: true, error: unsafeError, refetch, connected: false };
     });
 
     render(<RealtimePage />);
 
-    // ワークフロー失敗は KPI グリッドとワークベンチの両方を ErrorState 化する。
-    expect(screen.getAllByText('サーバーエラーが発生しました').length).toBeGreaterThanOrEqual(1);
+    // ワークフロー失敗は KPI グリッドとワークベンチの両方を SegmentError 化する。
+    expect(screen.getByText('ルート・例外KPIを取得できませんでした')).toBeTruthy();
+    expect(screen.getByText('ライブワークベンチを取得できませんでした')).toBeTruthy();
     // false-empty（「未処理項目はありません」）と KPI の false-zero を出していないこと。
     expect(screen.queryByText('未処理項目はありません')).toBeNull();
+    expect(screen.queryByText(/田中一郎/)).toBeNull();
+    expect(screen.queryByText(/storage_key/)).toBeNull();
+    expect(screen.queryByText(/provider_error/)).toBeNull();
+    expect(screen.queryByText(/\/api\/dashboard\/workflow/)).toBeNull();
 
     const retryButtons = screen.getAllByRole('button', { name: '再読み込み' });
     fireEvent.click(retryButtons[retryButtons.length - 1]);

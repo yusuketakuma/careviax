@@ -41,6 +41,45 @@
 
 ## 直近の land（本日・要点）
 
+- codex: FE-ERR-001 admin realtime segment hardening（pending commit）。
+  - current task:
+    `/admin/realtime` の workflow KPI / live workbench / notifications 取得失敗と読み込みを
+    shared segment state に寄せ、false-empty と raw query error message を表示しない。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `docs/ui-ux-design-guidelines.md`,
+    `src/components/ui/segment-state.tsx`,
+    `src/components/ui/error-state.tsx`,
+    `src/app/(dashboard)/admin/realtime/page.tsx`,
+    `src/app/(dashboard)/admin/realtime/page.test.tsx`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/admin/realtime/page.tsx`,
+    `src/app/(dashboard)/admin/realtime/page.test.tsx`.
+  - implementation:
+    `ErrorState` / `SkeletonRows` のローカル直呼びを `SegmentError` / `SegmentLoading` に移行した。
+    workflow KPI、live workbench、notifications の取得失敗は固定文言と retry のみを表示し、
+    loading は領域固有の `role=status` / `aria-label` を維持する。
+  - bugs found:
+    realtime admin 画面は false-empty / false-zero 対策済みだったが、shared segment pattern ではなく、
+    raw query error を将来 detail として通しやすいローカル ErrorState 直呼びが残っていた。
+  - security risks reduced:
+    workflow / notifications の失敗時に patient name、storage key、token、provider error、API route 等が
+    UI に出る面を追加テストで固定した。
+  - performance issues improved:
+    なし。表示状態の正確性と fail-soft の修正。
+  - validation:
+    `pnpm exec vitest run 'src/app/(dashboard)/admin/realtime/page.test.tsx' src/components/ui/segment-state.test.tsx --reporter=dot --testTimeout=30000` → pass（2 files / 19 tests）。
+    `pnpm exec eslint 'src/app/(dashboard)/admin/realtime/page.tsx' 'src/app/(dashboard)/admin/realtime/page.test.tsx'` → pass。
+  - remaining:
+    FE-ERR-001 は packaging-methods / service-areas / drug-master detail sheet など admin screen 群への段階展開が残る。
+    Formal `InboundCommunicationEvent` / `InboundCommunicationSignal` DB/API/review UI and MedicationStock Ledger source remain.
+  - next action:
+    prettier / diff check、scoped commit/push。
+
 - codex: Plans.md implemented-task cleanup。
   - current task:
     `Plans.md` 内の実装済みタスクを削除し、現行の未完 TODO / PARTIAL を読みやすくする。

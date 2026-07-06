@@ -11,8 +11,7 @@ import { getAdminRealtimeShortcutLinks } from '@/components/features/admin/admin
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ErrorState } from '@/components/ui/error-state';
-import { SkeletonRows } from '@/components/ui/loading';
+import { SegmentError, SegmentLoading } from '@/components/ui/segment-state';
 import { StateBadge } from '@/components/ui/state-badge';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
@@ -139,7 +138,7 @@ export default function RealtimePage() {
   );
   // 上部「今すぐ見る運用シグナル」の workflow 由来 KPI も、下部「ルート・例外 KPI」(line 222) と
   // 同様に取得失敗を 0 (false-zero) 表示しない。0 表示だと承認待ち/未処理例外が「なし」に化けて
-  // 偽 all-clear になるため、取得失敗時は '—' + 取得失敗表示にする(再読み込みは直下の ErrorState)。
+  // 偽 all-clear になるため、取得失敗時は '—' + 取得失敗表示にする(再読み込みは直下の SegmentError)。
   const workflowUnavailable = workflowQuery.isError;
 
   const routeHealth = [
@@ -231,10 +230,11 @@ export default function RealtimePage() {
       </section>
 
       {workflowQuery.isError ? (
-        // ワークフロー取得失敗時は KPI を 0 (false-zero) 表示せず、再読み込み導線つきの ErrorState を出す。
-        <ErrorState
-          variant="server"
-          size="inline"
+        // ワークフロー取得失敗時は KPI を 0 (false-zero) 表示せず、再読み込み導線つきの SegmentError を出す。
+        <SegmentError
+          title="ルート・例外KPIを取得できませんでした"
+          cause="リアルタイム用の運用指標を取得できませんでした。"
+          nextAction="再読み込みして、確定ロックや例外件数を確認してください。"
           onRetry={() => void workflowQuery.refetch()}
           retryLabel="再読み込み"
         />
@@ -285,14 +285,18 @@ export default function RealtimePage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {workflowQuery.isLoading ? (
-              <div role="status" aria-label="ワークベンチを読み込み中" aria-live="polite">
-                <SkeletonRows rows={3} cols={3} status={false} />
-              </div>
+              <SegmentLoading
+                label="ワークベンチを読み込み中"
+                description="未処理の運用項目を確認しています。"
+                rows={3}
+                cols={3}
+              />
             ) : workflowQuery.isError ? (
-              // 取得失敗時は空状態（false-empty）にせず、再読み込み導線つきの ErrorState を出す。
-              <ErrorState
-                variant="server"
-                size="inline"
+              // 取得失敗時は空状態（false-empty）にせず、再読み込み導線つきの SegmentError を出す。
+              <SegmentError
+                title="ライブワークベンチを取得できませんでした"
+                cause="未処理の運用項目を取得できませんでした。"
+                nextAction="再読み込みして、至急対応が残っていないか確認してください。"
                 onRetry={() => void workflowQuery.refetch()}
                 retryLabel="再読み込み"
               />
@@ -360,14 +364,18 @@ export default function RealtimePage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {notificationsQuery.isLoading ? (
-              <div role="status" aria-label="通知を読み込み中" aria-live="polite">
-                <SkeletonRows rows={3} cols={2} status={false} />
-              </div>
+              <SegmentLoading
+                label="通知を読み込み中"
+                description="未読通知の最新状態を確認しています。"
+                rows={3}
+                cols={2}
+              />
             ) : notificationsQuery.isError ? (
-              // 取得失敗時は空状態（false-empty）にせず、再読み込み導線つきの ErrorState を出す。
-              <ErrorState
-                variant="server"
-                size="inline"
+              // 取得失敗時は空状態（false-empty）にせず、再読み込み導線つきの SegmentError を出す。
+              <SegmentError
+                title="最新通知を取得できませんでした"
+                cause="未読通知の最新状態を取得できませんでした。"
+                nextAction="再読み込みして、至急通知が残っていないか確認してください。"
                 onRetry={() => void notificationsQuery.refetch()}
                 retryLabel="再読み込み"
               />
