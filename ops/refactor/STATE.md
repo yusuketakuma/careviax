@@ -6646,3 +6646,50 @@
 - remaining:
   Broader `Plans.md` objective remains open. 残りは real consumer の screen-level PHI export snapshot、
   他 bulk action consumer の scope wording sweep。
+
+## 2026-07-06 Schedule proposal bulk scope wording slice
+
+- codex: `UX-TBL-001` schedule proposal bulk selection scope wording implemented.
+  訪問候補の一括承認/却下 button と確認 dialog を `選択中N件` から
+  `表示中から選択したN件の訪問候補` へ変更し、DataTable/Tasks と同じく「全件」ではなく
+  現在表示中の selection scope であることを screen-level test に固定した。
+- design / imagegen:
+  `docs/ui-ux-design-guidelines.md` の `gpt-image-2` 方針は確認済み。今回の変更は既存 button/dialog の
+  scope wording contract 修正で、新規の視覚再構築や配置変更を伴わないため `imagegen` / `gpt-image-2`
+  の新規生成は省略した。
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `docs/ui-ux-design-guidelines.md`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx`,
+  `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx`,
+  `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx`.
+- bugs / risks reduced:
+  訪問候補の一括操作で、ユーザーが「検索条件全件」または「未読込候補を含む全件」を対象にしたと誤解する
+  risk を低減した。button と確認 dialog の accessible name が同じ selection scope を伝える。
+- security / PHI reviewed:
+  文言と test expectation のみ。患者名、住所、電話、処方本文、保険情報、外部共有 URL、secret は追加しない。
+  既存の確認 dialog は safe identifier と薬剤判断サマリーに限定する方針を維持。
+- performance issues reviewed:
+  render string のみ。DB query、network call、payload、selection algorithm、bulk mutation 並列数は変更なし。
+- validation:
+  `pnpm exec vitest run src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx --reporter=dot --testTimeout=30000`
+  green (1 file / 40 tests) before and after formatting;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  green;
+  `pnpm lint`
+  green with existing warnings in `src/lib/platform/break-glass.test.ts` (`_tx`, `_input` unused);
+  `pnpm format:check`
+  green after formatting `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx`;
+  `git diff --check -- Plans.md ops/refactor/STATE.md src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx`
+  green.
+- remaining:
+  Broader `Plans.md` objective remains open. 残りは real consumer の screen-level PHI export snapshot と、
+  schedule proposals / tasks 以外の bulk action consumer の scope wording sweep。
