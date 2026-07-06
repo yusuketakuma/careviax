@@ -41,6 +41,33 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOV-001 Patient Movement Timeline scope lock追記（plan-only）。
+  - current task:
+    最新ユーザー指示に合わせ、Patient Movement Timeline の処方・訪問・文書登録 marker の完成条件を
+    Plans.md に追記する。実装は行わない。
+  - files inspected:
+    `git status -sb --untracked-files=all`,
+    `git log --oneline origin/main..HEAD`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    MOV-001 に `final user acceptance 2026-07-07` を追加し、処方・訪問・文書登録は
+    「発生 marker + 正本 deep link」に限定することを再固定した。
+  - security risks reduced:
+    timeline の分かりやすさ改善で処方内容、訪問本文、文書本文、添付名、薬剤名、数量、SOAP、
+    OCR全文を再掲しない方針を明示し、PHI/薬剤情報の不要な二重露出を抑える。
+  - validation:
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md` → pass。
+    `git diff --check -- Plans.md ops/refactor/STATE.md` → pass。
+  - remaining:
+    MOV-001 の正式 `InboundCommunicationEvent` / MedicationStock Ledger / safety finding source 追加は残る。
+    FE-ERR-001 は admin screen 群への段階展開が残る。
+  - next action:
+    scoped commit/push。
+
 - codex: FE-ERR-001 admin alert-rules signal tuning segment hardening（pending commit）。
   - current task:
     admin alert-rules の「気になる処方の表示設定」取得失敗/読み込みを shared segment pattern に寄せ、
