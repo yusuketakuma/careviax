@@ -260,7 +260,7 @@ const allowedMetadataKeysByTarget = new Map<string, Set<string>>([
       'exported_patient_id_hashes_truncated',
     ]),
   ],
-  ['pharmacy_drug_stock', new Set(['source'])],
+  ['pharmacy_drug_stock', new Set(['source', 'export_surface_id'])],
   ['care_report', new Set(['surface', 'output_profile', 'report_updated_at'])],
   ['tracing_report', new Set(['surface', 'output_profile'])],
   ['visit_record', new Set(['surface', 'output_profile'])],

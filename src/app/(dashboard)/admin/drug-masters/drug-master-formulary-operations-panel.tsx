@@ -1336,7 +1336,7 @@ export function FormularyOperationsPanel({
             className="gap-1"
           >
             <Download className="size-3.5" aria-hidden="true" />
-            CSV出力
+            対象拠点全件CSV出力
           </LoadingButton>
           <LoadingButton
             type="button"

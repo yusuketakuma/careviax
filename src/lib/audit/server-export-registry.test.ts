@@ -44,4 +44,26 @@ describe('server export registry', () => {
       '全件出力の監査・マスキング情報が承認済み surface と一致しません',
     );
   });
+
+  it('builds approved descriptors for pharmacy drug stock CSV export purposes', () => {
+    const operationsDescriptor = buildApprovedServerExportDescriptor(
+      'pharmacy_drug_stocks_operations_csv',
+      '/api/pharmacy-drug-stocks/export?site_id=site-1&purpose=operations',
+    );
+    const pharmacistReviewDescriptor = buildApprovedServerExportDescriptor(
+      'pharmacy_drug_stocks_pharmacist_review_csv',
+      '/api/pharmacy-drug-stocks/export?site_id=site-1&purpose=pharmacist_review',
+    );
+
+    expect(operationsDescriptor).toMatchObject({
+      auditEvent: 'pharmacy_drug_stocks_export',
+      maskingProfile: 'pharmacy_drug_stocks_operations_csv',
+    });
+    expect(pharmacistReviewDescriptor).toMatchObject({
+      auditEvent: 'pharmacy_drug_stocks_export',
+      maskingProfile: 'pharmacy_drug_stocks_pharmacist_review_csv',
+    });
+    expect(getApprovedServerExportDescriptorProblem(operationsDescriptor)).toBeUndefined();
+    expect(getApprovedServerExportDescriptorProblem(pharmacistReviewDescriptor)).toBeUndefined();
+  });
 });

@@ -29,6 +29,30 @@ export const APPROVED_SERVER_EXPORT_SURFACES = {
     maskingProfile: 'communication_requests_internal_csv',
     description: '監査ログを残し、内部権限向けの検索条件全件を出力します。',
   },
+  pharmacy_drug_stocks_operations_csv: {
+    endpointPrefix: '/api/pharmacy-drug-stocks/export',
+    auditEvent: 'pharmacy_drug_stocks_export',
+    maskingProfile: 'pharmacy_drug_stocks_operations_csv',
+    description: '監査ログを残し、採用薬の運用台帳CSVを対象拠点全件で出力します。',
+  },
+  pharmacy_drug_stocks_audit_csv: {
+    endpointPrefix: '/api/pharmacy-drug-stocks/export',
+    auditEvent: 'pharmacy_drug_stocks_export',
+    maskingProfile: 'pharmacy_drug_stocks_audit_csv',
+    description: '監査ログを残し、採用薬の監査CSVを対象拠点全件で出力します。',
+  },
+  pharmacy_drug_stocks_posting_csv: {
+    endpointPrefix: '/api/pharmacy-drug-stocks/export',
+    auditEvent: 'pharmacy_drug_stocks_export',
+    maskingProfile: 'pharmacy_drug_stocks_posting_csv',
+    description: '監査ログを残し、採用薬の掲示用CSVを対象拠点全件で出力します。',
+  },
+  pharmacy_drug_stocks_pharmacist_review_csv: {
+    endpointPrefix: '/api/pharmacy-drug-stocks/export',
+    auditEvent: 'pharmacy_drug_stocks_export',
+    maskingProfile: 'pharmacy_drug_stocks_pharmacist_review_csv',
+    description: '監査ログを残し、採用薬の薬剤師レビューCSVを対象拠点全件で出力します。',
+  },
 } as const;
 
 export type ApprovedServerExportSurfaceId = keyof typeof APPROVED_SERVER_EXPORT_SURFACES;

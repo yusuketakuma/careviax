@@ -13,6 +13,11 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { messageFromError } from '@/lib/utils/error-message';
+import {
+  buildApprovedServerExportDescriptor,
+  getApprovedServerExportDescriptorProblem,
+  type ApprovedServerExportSurfaceId,
+} from '@/lib/audit/server-export-registry';
 import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import {
   getAdminDrugMasterShortcutLinks,
@@ -130,6 +135,21 @@ import type {
 // parseReorderPointInput は既存テスト（drug-master-content.test.tsx）が本モジュールから
 // import しているため、公開 API 互換のため再エクスポートする（本体でも利用）。
 export { parseReorderPointInput };
+
+const FORMULARY_EXPORT_SURFACE_BY_PURPOSE = {
+  operations: 'pharmacy_drug_stocks_operations_csv',
+  audit: 'pharmacy_drug_stocks_audit_csv',
+  posting: 'pharmacy_drug_stocks_posting_csv',
+  pharmacist_review: 'pharmacy_drug_stocks_pharmacist_review_csv',
+} as const satisfies Record<FormularyExportPurpose, ApprovedServerExportSurfaceId>;
+
+function toApiPath(path: string): `/api/${string}` {
+  const trimmed = path.trim();
+  if (!trimmed.startsWith('/api/') || trimmed.startsWith('//') || /[\r\n\t]/.test(trimmed)) {
+    throw new Error('採用薬CSVの出力URLが安全なアプリ内APIパスではありません');
+  }
+  return trimmed as `/api/${string}`;
+}
 
 function DrugMasterOperationalContent({
   variant = 'master',
@@ -1167,7 +1187,15 @@ function DrugMasterOperationalContent({
         site_id: effectiveSelectedSiteId,
         purpose: exportPurpose,
       });
-      const res = await fetch(buildPharmacyDrugStockExportApiPath(params), {
+      const endpoint = toApiPath(buildPharmacyDrugStockExportApiPath(params));
+      const descriptor = buildApprovedServerExportDescriptor(
+        FORMULARY_EXPORT_SURFACE_BY_PURPOSE[exportPurpose],
+        endpoint,
+        { label: '対象拠点全件CSV出力' },
+      );
+      const descriptorProblem = getApprovedServerExportDescriptorProblem(descriptor);
+      if (descriptorProblem) throw new Error(descriptorProblem);
+      const res = await fetch(endpoint, {
         headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) {

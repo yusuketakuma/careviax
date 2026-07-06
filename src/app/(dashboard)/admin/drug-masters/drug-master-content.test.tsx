@@ -1127,7 +1127,7 @@ describe('DrugMasterContent', () => {
     expect(screen.getByRole('button', { name: /一括登録/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /CSVテンプレート/ })).toBeTruthy();
     expect(screen.getByLabelText('CSV出力用途')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /CSV出力/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /対象拠点全件CSV出力/ })).toBeTruthy();
   });
 
   it('shows approve and reject actions for pending formulary requests', () => {
@@ -2551,9 +2551,9 @@ describe('DrugMasterContent filter select migration (slice4b)', () => {
       target: { value: 'audit' },
     });
 
-    // Click CSV出力 to capture the export mutation options, then execute the REAL mutationFn
+    // Click 対象拠点全件CSV出力 to capture the export mutation options, then execute the REAL mutationFn
     // against a stubbed fetch so the production purpose stamping runs (not DOM-only).
-    fireEvent.click(screen.getByRole('button', { name: /CSV出力/ }));
+    fireEvent.click(screen.getByRole('button', { name: /対象拠点全件CSV出力/ }));
 
     const options = lastMutationOptions.current;
     expect(options?.mutationFn).toBeTruthy();
@@ -2580,7 +2580,7 @@ describe('DrugMasterContent filter select migration (slice4b)', () => {
   it('preserves JSON error messages for CSV blob endpoints without parsing success blobs as JSON', async () => {
     render(<DrugMasterContent variant="formulary" />);
 
-    fireEvent.click(screen.getByRole('button', { name: /CSV出力/ }));
+    fireEvent.click(screen.getByRole('button', { name: /対象拠点全件CSV出力/ }));
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => jsonResponse({ message: '採用薬CSVは管理者のみ出力できます' }, 403)),

@@ -8,11 +8,22 @@ import { prisma } from '@/lib/db/client';
 import { formatDateKey, formatNullableDateKey } from '@/lib/date-key';
 import { quotedCsvCell as safeCsvCell } from '@/lib/csv/safe-csv';
 import { recordDataExportAudit } from '@/server/services/export-audit';
+import type { ApprovedServerExportSurfaceId } from '@/lib/audit/server-export-registry';
 
 const exportQuerySchema = z.object({
   site_id: z.string().trim().min(1, 'site_id は必須です'),
   purpose: z.enum(['operations', 'audit', 'posting', 'pharmacist_review']).default('operations'),
 });
+
+const EXPORT_SURFACE_BY_PURPOSE = {
+  operations: 'pharmacy_drug_stocks_operations_csv',
+  audit: 'pharmacy_drug_stocks_audit_csv',
+  posting: 'pharmacy_drug_stocks_posting_csv',
+  pharmacist_review: 'pharmacy_drug_stocks_pharmacist_review_csv',
+} as const satisfies Record<
+  z.infer<typeof exportQuerySchema>['purpose'],
+  ApprovedServerExportSurfaceId
+>;
 
 function formatDate(value: Date | null | undefined): string | null {
   return formatNullableDateKey(value);
@@ -135,6 +146,7 @@ export const GET = withAuthContext(
         },
         metadata: {
           source: 'pharmacy_drug_stocks_export',
+          export_surface_id: EXPORT_SURFACE_BY_PURPOSE[parsed.data.purpose],
         },
         ipAddress: authCtx.ipAddress,
         userAgent: authCtx.userAgent,

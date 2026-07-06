@@ -1069,8 +1069,12 @@ FE 仕上げ（低優先）:
   追加 partial として、監査ログ画面の手書き CSV export UI を `audit_logs_csv` approved
   server export surface に接続し、button label を「検索条件全件CSV出力」に変更した。CSV export は
   registry descriptor validation を通ってから `/api/audit-logs/export?format=csv` を呼ぶ。
-  残: drug master / formulary など他手書き CSV export UI の registry 化と、他画面の destructive/bulk
-  confirm 文言 sweep。
+  追加 partial として、採用薬/formulary の手書き CSV export UI を purpose 別 approved server export
+  surface（operations / audit / posting / pharmacist_review）に接続し、route audit metadata に
+  `export_surface_id` を追加した。button label は「対象拠点全件CSV出力」に変更し、UI descriptor、
+  route audit、sanitizer の surface id を突合できるようにした。
+  残: `files/complete` response minimization、他画面の destructive/bulk confirm 文言 sweep、
+  server export surface 未接続画面の追加棚卸し。
 
 **追加実装順序**:
 
