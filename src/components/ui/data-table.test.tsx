@@ -444,7 +444,12 @@ describe('DataTable', () => {
         onLoadMore={vi.fn()}
         toolbar={{
           enableExport: true,
-          serverExportEndpoint: '/api/reports/export?scope=all',
+          serverExport: {
+            endpoint: '/api/reports/export?scope=all',
+            auditEvent: 'care_report_csv_export',
+            maskingProfile: 'care_report_csv_minimal',
+            description: '監査ログを残し、PHI最小化済みの検索条件全件を出力します。',
+          },
         }}
       />,
     );
@@ -452,7 +457,7 @@ describe('DataTable', () => {
     const loadedExportButton = screen.getByRole('button', { name: '読込済みCSV出力' });
     const serverExportLink = screen.getByRole('link', { name: '検索条件全件CSV出力' });
     const serverExportDescription = screen.getByText(
-      'サーバー側で監査・マスキング済みの検索条件全件を出力します。',
+      '監査ログを残し、PHI最小化済みの検索条件全件を出力します。',
     );
 
     expect(serverExportLink.getAttribute('href')).toBe('/api/reports/export?scope=all');
@@ -470,13 +475,44 @@ describe('DataTable', () => {
         columns={columns}
         data={[{ id: 'loaded-1', name: '読込済み患者' }]}
         toolbar={{
-          serverExportEndpoint: 'https://evil.example/export.csv',
+          serverExport: {
+            endpoint: 'https://evil.example/export.csv' as '/api/reports/export',
+            auditEvent: 'care_report_csv_export',
+            maskingProfile: 'care_report_csv_minimal',
+            description: '監査ログを残し、PHI最小化済みの検索条件全件を出力します。',
+          },
         }}
       />,
     );
 
     const serverExportButton = screen.getByRole('button', { name: '検索条件全件CSV出力' });
-    const disabledReason = screen.getByText('全件出力のURLが安全な同一アプリ内パスではありません');
+    const disabledReason = screen.getByText(
+      '全件出力のURLが安全な同一アプリ内APIパスではありません',
+    );
+
+    expect((serverExportButton as HTMLButtonElement).disabled).toBe(true);
+    expect(serverExportButton.getAttribute('aria-describedby')).toBe(disabledReason.id);
+    expect(screen.queryByRole('link', { name: '検索条件全件CSV出力' })).toBeNull();
+  });
+
+  it('fails closed when server-side full export lacks audit or masking metadata', () => {
+    render(
+      <DataTable
+        columns={columns}
+        data={[{ id: 'loaded-1', name: '読込済み患者' }]}
+        toolbar={{
+          serverExport: {
+            endpoint: '/api/reports/export?scope=all',
+            auditEvent: '',
+            maskingProfile: '',
+            description: '',
+          },
+        }}
+      />,
+    );
+
+    const serverExportButton = screen.getByRole('button', { name: '検索条件全件CSV出力' });
+    const disabledReason = screen.getByText('全件出力の監査・マスキング情報が未設定です');
 
     expect((serverExportButton as HTMLButtonElement).disabled).toBe(true);
     expect(serverExportButton.getAttribute('aria-describedby')).toBe(disabledReason.id);

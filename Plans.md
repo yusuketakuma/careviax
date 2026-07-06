@@ -1037,8 +1037,12 @@ FE 仕上げ（低優先）:
   リスクを解消した。`hasMore=true` では pagination summary を「読込済みN件中 ... 未読込行あり」
   に切り替え、load-more が残る状態を単体テストで固定する。新規レイアウト再構築ではなく
   既存 component の scope wording contract 修正のため `imagegen` / `gpt-image-2` 生成は省略。
-  残: `serverExportEndpoint` を raw string ではなく audit/masking registry backed descriptor へ寄せること、
-  real consumer の screen-level PHI export snapshot、bulk action button 側の選択範囲文言テスト。
+  追加 partial として、全件出力を `serverExportEndpoint` raw string から
+  `serverExport` descriptor（`endpoint` / `auditEvent` / `maskingProfile` / `description`）へ置換した。
+  shared DataTable は `/api/` 以外の endpoint、監査 event 欠落、masking profile 欠落、説明文欠落を
+  fail-closed にし、「監査・マスキング済み」と表示できる最低限の contract を UI 型で要求する。
+  残: approved export registry への接続、real consumer の screen-level PHI export snapshot、
+  bulk action button 側の選択範囲文言テスト。
 
 **追加実装順序**:
 

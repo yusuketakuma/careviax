@@ -68,10 +68,7 @@ type DataTableToolbarOptions = {
   globalFilterPlaceholder?: string;
   enableColumnVisibility?: boolean;
   enableExport?: boolean;
-  serverExportEndpoint?: string;
-  serverExportLabel?: string;
-  serverExportDescription?: string;
-  serverExportDisabledReason?: string;
+  serverExport?: DataTableServerExportDescriptor;
   enablePrint?: boolean;
   disableActionsWhenInvalid?: boolean;
   exportFileName?: string;
@@ -80,6 +77,15 @@ type DataTableToolbarOptions = {
     label: string;
     placeholder?: string;
   }>;
+};
+
+export type DataTableServerExportDescriptor = {
+  endpoint: `/api/${string}`;
+  auditEvent: string;
+  maskingProfile: string;
+  description: string;
+  label?: string;
+  disabledReason?: string;
 };
 
 type DataTableRowInteractionMode = 'button' | 'selectable-listbox';
@@ -142,8 +148,24 @@ function normalizeServerExportEndpoint(endpoint: string | undefined) {
   const trimmed = endpoint?.trim();
   if (!trimmed) return null;
   if (!trimmed.startsWith('/') || trimmed.startsWith('//')) return null;
+  if (!trimmed.startsWith('/api/')) return null;
   if (/[\r\n\t]/.test(trimmed)) return null;
   return trimmed;
+}
+
+function getServerExportDescriptorProblem(descriptor: DataTableServerExportDescriptor | undefined) {
+  if (!descriptor) return undefined;
+  if (!normalizeServerExportEndpoint(descriptor.endpoint)) {
+    return '全件出力のURLが安全な同一アプリ内APIパスではありません';
+  }
+  if (
+    !descriptor.auditEvent.trim() ||
+    !descriptor.maskingProfile.trim() ||
+    !descriptor.description.trim()
+  ) {
+    return '全件出力の監査・マスキング情報が未設定です';
+  }
+  return undefined;
 }
 
 const TOOLBAR_ACTION_BUTTON_CLASSNAME = 'min-h-[44px] !min-h-[44px]';
@@ -381,12 +403,16 @@ export function DataTable<TData>({
         ? '出力できる行がありません'
         : undefined;
   const hasUnloadedRows = Boolean(hasMore);
-  const serverExportEndpoint = normalizeServerExportEndpoint(toolbar?.serverExportEndpoint);
-  const hasServerExport = Boolean(toolbar?.serverExportEndpoint);
-  const serverExportBlockReason = toolbar?.serverExportDisabledReason
-    ? toolbar.serverExportDisabledReason
-    : toolbar?.serverExportEndpoint && !serverExportEndpoint
-      ? '全件出力のURLが安全な同一アプリ内パスではありません'
+  const serverExportDescriptorProblem = getServerExportDescriptorProblem(toolbar?.serverExport);
+  const serverExportEndpoint =
+    serverExportDescriptorProblem === undefined
+      ? normalizeServerExportEndpoint(toolbar?.serverExport?.endpoint)
+      : null;
+  const hasServerExport = Boolean(toolbar?.serverExport);
+  const serverExportBlockReason = toolbar?.serverExport?.disabledReason
+    ? toolbar.serverExport.disabledReason
+    : serverExportDescriptorProblem
+      ? serverExportDescriptorProblem
       : errorMessage
         ? '取得エラー中は全件出力できません'
         : isLoading
@@ -405,9 +431,9 @@ export function DataTable<TData>({
   const serverExportAriaDescription = serverExportDisabledReason
     ? serverExportDisabledReasonId
     : serverExportDescriptionId;
-  const serverExportLabel = toolbar?.serverExportLabel ?? '検索条件全件CSV出力';
+  const serverExportLabel = toolbar?.serverExport?.label ?? '検索条件全件CSV出力';
   const serverExportDescription =
-    toolbar?.serverExportDescription ??
+    toolbar?.serverExport?.description ??
     'サーバー側で監査・マスキング済みの検索条件全件を出力します。';
   const displayedEmptyMessage = errorMessage
     ? '取得エラーのため一覧を表示できません'
