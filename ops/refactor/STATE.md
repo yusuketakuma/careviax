@@ -6949,3 +6949,56 @@
 - remaining:
   Broader `Plans.md` objective remains open. 残りは server-side 全件操作 UI registry、
   他画面の destructive/bulk confirm 文言 sweep、Command Center / BFF split / risk registry integration tasks。
+
+## 2026-07-06 Audit log full export registry slice
+
+- codex: `UX-TBL-001 / DEV-PHI-001` server-side full export registry connection implemented.
+  監査ログ画面の手書き CSV export UI を `audit_logs_csv` approved server export surface に接続した。
+  CSV button label は `検索条件全件CSV出力` に変更し、`buildApprovedServerExportDescriptor` +
+  `getApprovedServerExportDescriptorProblem` を通ってから `/api/audit-logs/export?format=csv` を呼ぶ。
+  JSON export は registry surface 未定義のため今回の scope 外とし、既存挙動を維持した。
+- design / imagegen:
+  export contract / button label slice で視覚再構築や配置変更を伴わないため、`imagegen` / `gpt-image-2`
+  の新規生成は省略した。PH-OS UI/UX SSOT の full-scope export wording / audit-near-action 方針に沿う。
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/lib/audit/server-export-registry.ts`,
+  `src/lib/audit/server-export-registry.test.ts`,
+  `src/components/ui/data-table.tsx`,
+  `src/components/ui/data-table.test.tsx`,
+  `src/app/(dashboard)/admin/audit-logs/audit-logs-content.tsx`,
+  `src/app/(dashboard)/admin/audit-logs/audit-logs-content.test.tsx`,
+  `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`,
+  `src/app/(dashboard)/admin/drug-masters/drug-master-formulary-operations-panel.tsx`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/(dashboard)/admin/audit-logs/audit-logs-content.tsx`,
+  `src/app/(dashboard)/admin/audit-logs/audit-logs-content.test.tsx`.
+- bugs / risks reduced:
+  手書き CSV export UI が approved surface registry を迂回していた gap を縮小した。監査ログ CSV は
+  UI 上も検索条件全件であることを明示し、承認済み endpoint/audit/masking descriptor から外れた場合は
+  fetch 前に fail-closed する。
+- security / PHI reviewed:
+  新規 PHI field は追加しない。CSV route の既存 redaction/audit payload を維持し、UI 側は
+  `audit_logs_csv` の masking profile description と endpoint prefix に突合する。
+- performance issues reviewed:
+  クリック時の small descriptor validation のみ。list query、export route、payload、DB query は変更なし。
+- validation:
+  `pnpm exec vitest run 'src/app/(dashboard)/admin/audit-logs/audit-logs-content.test.tsx' src/lib/audit/server-export-registry.test.ts --reporter=dot --testTimeout=30000`
+  green (2 files / 18 tests);
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  green;
+  `pnpm lint`
+  green with existing warnings in `src/lib/platform/break-glass.test.ts` (`_tx`, `_input` unused);
+  `pnpm format:check`
+  green;
+  `git diff --check -- Plans.md 'src/app/(dashboard)/admin/audit-logs/audit-logs-content.tsx' 'src/app/(dashboard)/admin/audit-logs/audit-logs-content.test.tsx'`
+  green.
+- remaining:
+  Broader `Plans.md` objective remains open. 残りは drug master / formulary 等の手書き CSV export UI registry 化、
+  他画面の destructive/bulk confirm wording sweep、Command Center / BFF split / risk registry integration tasks。
