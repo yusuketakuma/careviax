@@ -1,32 +1,23 @@
+import { Building2 } from 'lucide-react';
+
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-dvh flex flex-col items-center justify-center bg-muted px-4 py-8">
-      <div className="mb-8 text-center">
-        <div className="mb-3 flex justify-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary">
-            <svg
-              className="h-7 w-7 text-primary-foreground"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-              aria-hidden="true"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
-              />
-            </svg>
+    <main className="flex min-h-dvh flex-col items-center justify-center bg-background px-4 py-6 text-foreground sm:px-6">
+      <div className="w-full max-w-2xl">
+        <div className="mb-5 flex items-center justify-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <Building2 className="h-5 w-5" aria-hidden="true" />
+          </div>
+          <div className="text-left">
+            <h1 className="text-lg font-semibold leading-tight text-foreground">PH-OS</h1>
+            <p className="text-xs text-muted-foreground">在宅薬局オペレーション</p>
           </div>
         </div>
-        <h1 className="text-xl font-semibold text-foreground">PH-OS</h1>
-        <p className="mt-1 text-sm text-muted-foreground">在宅薬局オペレーション</p>
+        <div className="flex w-full justify-center">{children}</div>
+        <p className="mt-5 text-center text-xs leading-5 text-muted-foreground">
+          3省2ガイドライン準拠 / ISMAP準拠 AWS基盤
+        </p>
       </div>
-      {children}
-      <p className="mt-6 text-center text-xs text-muted-foreground">
-        3省2ガイドライン準拠 / ISMAP準拠 AWS基盤
-      </p>
-    </div>
+    </main>
   );
 }

@@ -9,6 +9,7 @@ import {
 
 const PENDING_BROWSER_SNAPSHOT = '__PHOS_PENDING_BROWSER_SNAPSHOT__';
 const DEFAULT_CALLBACK_URL = '/dashboard';
+const CALLBACK_URL_BASE = 'https://ph-os.local';
 
 type CognitoChallengeType = CognitoChallengePayload['type'];
 
@@ -45,9 +46,26 @@ function getStoredChallengeSnapshot() {
   return window.sessionStorage.getItem(COGNITO_CHALLENGE_STORAGE_KEY) ?? '';
 }
 
+export function sanitizeLocalCallbackUrl(
+  rawCallbackUrl: string | null,
+  fallback = DEFAULT_CALLBACK_URL,
+) {
+  if (!rawCallbackUrl || !rawCallbackUrl.startsWith('/') || rawCallbackUrl.includes('\\')) {
+    return fallback;
+  }
+
+  try {
+    const parsed = new URL(rawCallbackUrl, CALLBACK_URL_BASE);
+    if (parsed.origin !== CALLBACK_URL_BASE) return fallback;
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return fallback;
+  }
+}
+
 function safeCallbackUrlFromSearch(search: string, fallback = DEFAULT_CALLBACK_URL) {
   const rawCallbackUrl = new URLSearchParams(search).get('callbackUrl') ?? fallback;
-  return rawCallbackUrl.startsWith('/') ? rawCallbackUrl : fallback;
+  return sanitizeLocalCallbackUrl(rawCallbackUrl, fallback);
 }
 
 export function useSafeCallbackUrl(fallback = DEFAULT_CALLBACK_URL) {

@@ -44,49 +44,74 @@
 - codex: Login screen UI/UX simplified.
   - current task:
     ユーザー指示により、ログイン画面を抜本的に見直した。医療向けログイン画面の外部事例
-    （NHS login / MyChart / Mayo Clinic / athenahealth の公開ログイン・ポータル情報）と
-    `docs/ui-ux-design-guidelines.md` を確認し、`imagegen`（gpt-image-2 指定の非 PHI prompt）
-    で参照案を作ったうえで、`src/app/(auth)/login/page.tsx` を単一フォーム中心の低ノイズ UI
-    に変更した。Cognito / NextAuth の signIn、challenge 分岐、callbackUrl の既存処理は変更せず、
-    2カラム説明パネル・手順カード・補足カードを削り、メール/パスワード、ログイン、パスワード再設定、
-    共有端末注意、規約リンクへ絞った。
+    （NHS login / MyChart / athenahealth / Kaiser Permanente の公開ログイン・ポータル情報）と
+    `docs/ui-ux-design-guidelines.md`、Next.js accessibility docs を確認し、`imagegen`（gpt-image-2
+    指定の非 PHI prompt）で参照案を作ったうえで、`src/app/(auth)/login/page.tsx` と
+    `src/app/(auth)/layout.tsx` を低ノイズな単一フォーム中心 UI に変更した。Cognito / NextAuth の
+    signIn、challenge 分岐、callbackUrl の既存処理は変更せず、メール/パスワード、ログイン、
+    パスワード再設定、共有端末注意、規約リンクへ絞った。パスワード表示切替を追加し、メール入力は
+    password manager 向けに `autocomplete="username"` へ寄せた。Oracle 指摘により、既存の
+    `callbackUrl.startsWith('/')` 判定を共有 `sanitizeLocalCallbackUrl()` へ置換し、
+    `//evil.example` やバックスラッシュ系 callback を `/dashboard` に丸める防御を追加した。
   - WIP preservation:
-    直前の `NTF-PUSH-001 / FE-PUSH-001` 未完了差分はログイン画面作業と混ぜないため、
-    `stash@{0}: wip/ntf-push-os-boundary-before-login-redesign` に退避した。
+    直前から残っている `NTF-PUSH-001 / FE-PUSH-001` 未完了差分はログイン画面作業と混ぜず、
+    対象 path のみ変更・検証した。
   - external UI references checked:
-    NHS login design guidance / MyChart login examples / Mayo Clinic patient portal login /
-    athenahealth patient portal entry. 共通観点として、login entry は user mental model に合わせて
+    NHS login design guidance / MyChart login examples / athenahealth patient portal entry /
+    Kaiser Permanente secure sign-on. 共通観点として、login entry は user mental model に合わせて
     主要認証手段を前面に置き、復旧導線を近接させ、長い説明を抑える方針を採用した。
   - imagegen:
     gpt-image-2 指定 prompt で、PHI/secret を含まない PH-OS healthcare SaaS login reference
-    image を生成。保存先は `/Users/yusuke/.codex/generated_images/019f2c7e-d969-7882-bd11-432a10abb930/`。
+    image を生成。保存先は
+    `/Users/yusuke/.codex/generated_images/019f2c7e-d969-7882-bd11-432a10abb930/ig_035b8d56dc1309a0016a4b808726388191a03cfa38269bfad1.png`。
+  - Oracle / GPT-5.5 Pro:
+    認証画面に触れるため Oracle consult を実行した。大きい file set の session
+    `careviax-login-ui-review` は ChatGPT 側が `Something went wrong` を返したため、small file set
+    の `careviax-login-ui-review-small` を再実行した。同 session は UI 簡素化自体は Go としつつ、
+    `callbackUrl` sanitizer の `//evil.example` 漏れを No-Go blocker として指摘。指摘を採用し、
+    `sanitizeLocalCallbackUrl()` と回帰テストを追加した。
   - files inspected:
-    `git status --short --branch --untracked-files=all`,
+    `git status --short --untracked-files=all`,
     `docs/ui-ux-design-guidelines.md`,
+    `node_modules/next/dist/docs/03-architecture/accessibility.md`,
     `src/app/(auth)/layout.tsx`,
     `src/app/(auth)/login/page.tsx`,
     `src/app/(auth)/first-login/page.tsx`,
     `src/app/(auth)/mfa/page.tsx`,
     `src/lib/auth/config.ts`,
-    `src/lib/auth/browser-auth-state.ts`.
+    `src/lib/auth/browser-auth-state.ts`,
+    `src/server/services/cognito-auth.ts`,
+    `package.json`.
   - files changed:
-    `src/app/(auth)/login/page.tsx`.
+    `src/app/(auth)/layout.tsx`,
+    `src/app/(auth)/login/page.tsx`,
+    `src/app/(auth)/login/page.test.tsx`,
+    `src/lib/auth/browser-auth-state.ts`,
+    `src/lib/auth/browser-auth-state.test.tsx`,
+    `ops/refactor/STATE.md`.
   - UX / accessibility / security notes:
     主要操作とリンクは 44px 以上を維持。モバイル幅 390px で横スクロールなし。PHI は表示せず、
     認証失敗文言は既存の汎用文言を維持。ログイン機能・MFA/初回パスワード変更の分岐は既存のまま。
+    challenge 下流の `/first-login` / `/mfa` も `useSafeCallbackUrl()` 経由で同じ sanitizer を使う。
   - validation:
-    `pnpm exec eslint 'src/app/(auth)/login/page.tsx'` passed.
-    `pnpm exec prettier --check 'src/app/(auth)/login/page.tsx'` passed after formatting.
-    `git diff --check -- 'src/app/(auth)/login/page.tsx'` passed.
+    `pnpm exec vitest run 'src/app/(auth)/login/page.test.tsx' src/lib/auth/browser-auth-state.test.tsx --reporter=dot --testTimeout=30000`
+    passed: 2 files / 12 tests.
+    `pnpm exec eslint 'src/app/(auth)/layout.tsx' 'src/app/(auth)/login/page.tsx' 'src/app/(auth)/login/page.test.tsx' src/lib/auth/browser-auth-state.ts src/lib/auth/browser-auth-state.test.tsx`
+    passed.
+    `pnpm exec prettier --check 'src/app/(auth)/layout.tsx' 'src/app/(auth)/login/page.tsx' 'src/app/(auth)/login/page.test.tsx' src/lib/auth/browser-auth-state.ts src/lib/auth/browser-auth-state.test.tsx`
+    passed.
+    `git diff --check -- 'src/app/(auth)/layout.tsx' 'src/app/(auth)/login/page.tsx' 'src/app/(auth)/login/page.test.tsx' src/lib/auth/browser-auth-state.ts src/lib/auth/browser-auth-state.test.tsx ops/refactor/STATE.md`
+    passed.
     `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck --pretty false` passed.
-    Playwright manual check on `http://localhost:3012/login`: desktop 1440x900 screenshot,
-    mobile 390x844 screenshot, DOM measurement confirmed no horizontal overflow and all inputs/buttons/links
-    were at least 44px high.
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false` passed.
+    `pnpm build` passed after the sanitizer patch.
+    Playwright screenshot check on `http://localhost:3012/login`: desktop 1440x1000
+    (`/tmp/careviax-login-desktop.png`) and mobile 390x844 (`/tmp/careviax-login-mobile.png`) captured and
+    visually inspected; no overlap or horizontal overflow observed.
   - remaining work:
-    Commit and push the login UI slice. Then resume the stashed `NTF-PUSH-001 / FE-PUSH-001`
-    notification boundary slice.
+    No known blocker for the login UI slice. Existing notification-boundary dirty work remains unrelated.
   - next action:
-    Run final status/diff checks, scoped commit, push.
+    If a commit is requested, stage only the login/auth-state/STATE paths and keep notification-boundary WIP separate.
 
 - codex: Oracle/GPT-5.5 Pro GitHub access instruction tightened.
   - current task:

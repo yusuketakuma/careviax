@@ -6,7 +6,11 @@ import {
   COGNITO_CHALLENGE_STORAGE_KEY,
   type CognitoChallengePayload,
 } from '@/lib/auth/cognito-challenge';
-import { useSafeCallbackUrl, useStoredCognitoChallenge } from './browser-auth-state';
+import {
+  sanitizeLocalCallbackUrl,
+  useSafeCallbackUrl,
+  useStoredCognitoChallenge,
+} from './browser-auth-state';
 
 const challengeLabels = {
   missing: 'missing',
@@ -50,6 +54,15 @@ describe('useSafeCallbackUrl', () => {
     const { result } = renderHook(() => useSafeCallbackUrl());
 
     expect(result.current).toBe('/dashboard');
+  });
+
+  it.each([
+    ['https://evil.example/phish', '/dashboard'],
+    ['//evil.example/phish', '/dashboard'],
+    ['/\\evil.example/phish', '/dashboard'],
+    ['/dashboard?tab=today#top', '/dashboard?tab=today#top'],
+  ])('sanitizes callback URL %s', (rawCallbackUrl, expected) => {
+    expect(sanitizeLocalCallbackUrl(rawCallbackUrl)).toBe(expected);
   });
 });
 
