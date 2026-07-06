@@ -940,7 +940,9 @@ describe('ScheduleProposalsContent', () => {
     render(<ScheduleProposalsContent />);
 
     fireEvent.click(screen.getByRole('checkbox', { name: /表示中の候補をすべて選択/ }));
-    expect(screen.getByRole('button', { name: '選択中2件の訪問候補を一括承認' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: '表示中から選択した2件の訪問候補を一括承認' }),
+    ).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText('ケース/患者検索'), { target: { value: '佐藤' } });
     const firstResult = await screen.findByRole('button', {
@@ -1706,16 +1708,18 @@ describe('ScheduleProposalsContent', () => {
 
     fireEvent.click(screen.getByRole('checkbox', { name: /表示中の候補をすべて選択/ }));
 
-    expect(screen.getByRole('button', { name: '選択中2件の訪問候補を一括却下' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: '表示中から選択した2件の訪問候補を一括却下' }),
+    ).toBeTruthy();
     const approveButton = screen.getByRole('button', {
-      name: '選択中2件の訪問候補を一括承認',
+      name: '表示中から選択した2件の訪問候補を一括承認',
     });
     expect((approveButton as HTMLButtonElement).disabled).toBe(false);
 
     fireEvent.click(approveButton);
     expect(fetchMock).not.toHaveBeenCalled();
     let approveDialog = screen.getByRole('alertdialog', {
-      name: '選択中2件の訪問候補を一括承認しますか',
+      name: '表示中から選択した2件の訪問候補を一括承認しますか',
     });
     expect(within(approveDialog).getByText(/承認後は患者連絡待ちへ進みます/)).toBeTruthy();
     expect(within(approveDialog).getByText('山田花子')).toBeTruthy();
@@ -1731,7 +1735,7 @@ describe('ScheduleProposalsContent', () => {
 
     fireEvent.click(approveButton);
     approveDialog = screen.getByRole('alertdialog', {
-      name: '選択中2件の訪問候補を一括承認しますか',
+      name: '表示中から選択した2件の訪問候補を一括承認しますか',
     });
     fireEvent.click(within(approveDialog).getByRole('button', { name: '2件を一括承認' }));
 
@@ -1788,10 +1792,12 @@ describe('ScheduleProposalsContent', () => {
     render(<ScheduleProposalsContent />);
 
     fireEvent.click(screen.getByRole('checkbox', { name: /表示中の候補をすべて選択/ }));
-    fireEvent.click(screen.getByRole('button', { name: '選択中7件の訪問候補を一括承認' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: '表示中から選択した7件の訪問候補を一括承認' }),
+    );
 
     const approveDialog = screen.getByRole('alertdialog', {
-      name: '選択中7件の訪問候補を一括承認しますか',
+      name: '表示中から選択した7件の訪問候補を一括承認しますか',
     });
     const targetList = within(approveDialog).getByRole('list', {
       name: '一括操作の対象候補',
@@ -1852,11 +1858,11 @@ describe('ScheduleProposalsContent', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: /表示中の候補をすべて選択/ }));
     fireEvent.click(
       screen.getByRole('button', {
-        name: '選択中3件の訪問候補を一括承認',
+        name: '表示中から選択した3件の訪問候補を一括承認',
       }),
     );
     const approveDialog = screen.getByRole('alertdialog', {
-      name: '選択中3件の訪問候補を一括承認しますか',
+      name: '表示中から選択した3件の訪問候補を一括承認しますか',
     });
     fireEvent.click(within(approveDialog).getByRole('button', { name: '3件を一括承認' }));
 
@@ -1914,7 +1920,9 @@ describe('ScheduleProposalsContent', () => {
         })
         .getAttribute('aria-checked'),
     ).toBe('false');
-    expect(screen.getByRole('button', { name: '選択中1件の訪問候補を一括承認' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: '表示中から選択した1件の訪問候補を一括承認' }),
+    ).toBeTruthy();
 
     fireEvent.click(
       screen.getByRole('checkbox', {
@@ -1980,11 +1988,11 @@ describe('ScheduleProposalsContent', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: /表示中の候補をすべて選択/ }));
     fireEvent.click(
       screen.getByRole('button', {
-        name: '選択中2件の訪問候補を一括承認',
+        name: '表示中から選択した2件の訪問候補を一括承認',
       }),
     );
     const approveDialog = screen.getByRole('alertdialog', {
-      name: '選択中2件の訪問候補を一括承認しますか',
+      name: '表示中から選択した2件の訪問候補を一括承認しますか',
     });
     fireEvent.click(within(approveDialog).getByRole('button', { name: '2件を一括承認' }));
 
@@ -2067,13 +2075,13 @@ describe('ScheduleProposalsContent', () => {
 
     fireEvent.click(screen.getByRole('checkbox', { name: /表示中の候補をすべて選択/ }));
     const rejectButton = screen.getByRole('button', {
-      name: '選択中2件の訪問候補を一括却下',
+      name: '表示中から選択した2件の訪問候補を一括却下',
     });
 
     fireEvent.click(rejectButton);
     expect(fetchMock).not.toHaveBeenCalled();
     const rejectDialog = screen.getByRole('alertdialog', {
-      name: '選択中2件の訪問候補を一括却下しますか',
+      name: '表示中から選択した2件の訪問候補を一括却下しますか',
     });
     expect(within(rejectDialog).getByText(/却下すると選択候補から外れます/)).toBeTruthy();
     expect(within(rejectDialog).getByText('山田花子')).toBeTruthy();
@@ -2203,11 +2211,11 @@ describe('ScheduleProposalsContent', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: /表示中の候補をすべて選択/ }));
     fireEvent.click(
       screen.getByRole('button', {
-        name: '選択中2件の訪問候補を一括却下',
+        name: '表示中から選択した2件の訪問候補を一括却下',
       }),
     );
     const rejectDialog = screen.getByRole('alertdialog', {
-      name: '選択中2件の訪問候補を一括却下しますか',
+      name: '表示中から選択した2件の訪問候補を一括却下しますか',
     });
     fireEvent.change(within(rejectDialog).getByLabelText('却下理由'), {
       target: { value: '患者都合で訪問候補を見直し' },
@@ -2284,11 +2292,11 @@ describe('ScheduleProposalsContent', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: /表示中の候補をすべて選択/ }));
     fireEvent.click(
       screen.getByRole('button', {
-        name: '選択中2件の訪問候補を一括承認',
+        name: '表示中から選択した2件の訪問候補を一括承認',
       }),
     );
     const approveDialog = screen.getByRole('alertdialog', {
-      name: '選択中2件の訪問候補を一括承認しますか',
+      name: '表示中から選択した2件の訪問候補を一括承認しますか',
     });
     fireEvent.click(within(approveDialog).getByRole('button', { name: '2件を一括承認' }));
 
@@ -2352,11 +2360,11 @@ describe('ScheduleProposalsContent', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: /表示中の候補をすべて選択/ }));
     fireEvent.click(
       screen.getByRole('button', {
-        name: '選択中2件の訪問候補を一括承認',
+        name: '表示中から選択した2件の訪問候補を一括承認',
       }),
     );
     const approveDialog = screen.getByRole('alertdialog', {
-      name: '選択中2件の訪問候補を一括承認しますか',
+      name: '表示中から選択した2件の訪問候補を一括承認しますか',
     });
     fireEvent.click(within(approveDialog).getByRole('button', { name: '2件を一括承認' }));
 

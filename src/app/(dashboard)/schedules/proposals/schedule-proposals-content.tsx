@@ -1603,8 +1603,8 @@ export function ScheduleProposalsContent({
       : '患者確認済みの候補を訪問予定として確定します。';
   const bulkConfirmTitle =
     bulkConfirmAction === 'approve'
-      ? `選択中${bulkConfirmEligibleCount}件の訪問候補を一括承認しますか`
-      : `選択中${bulkConfirmEligibleCount}件の訪問候補を一括却下しますか`;
+      ? `表示中から選択した${bulkConfirmEligibleCount}件の訪問候補を一括承認しますか`
+      : `表示中から選択した${bulkConfirmEligibleCount}件の訪問候補を一括却下しますか`;
   const bulkConfirmDescription =
     bulkConfirmAction === 'approve'
       ? '承認後は患者連絡待ちへ進みます。日時確定ではありません。対象患者、候補日、担当、社用車を確認してください。'
@@ -1617,11 +1617,11 @@ export function ScheduleProposalsContent({
       : '日付指定なし';
   const bulkRejectButtonLabel =
     bulkRejectEligibleCount > 0
-      ? `選択中${bulkRejectEligibleCount}件の訪問候補を一括却下`
+      ? `表示中から選択した${bulkRejectEligibleCount}件の訪問候補を一括却下`
       : '却下できる訪問候補を選択して一括却下';
   const bulkApproveButtonLabel =
     bulkApproveEligibleCount > 0
-      ? `選択中${bulkApproveEligibleCount}件の訪問候補を一括承認`
+      ? `表示中から選択した${bulkApproveEligibleCount}件の訪問候補を一括承認`
       : '承認できる訪問候補を選択して一括承認';
   const bulkRejectDisabledReason = bulkActionMutation.isPending
     ? '一括操作の実行が完了するまで操作できません。'
