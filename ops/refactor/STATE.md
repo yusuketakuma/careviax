@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: NTF-STREAM-001 SSE-safe notification stream policy（current commit, pending push）。
+- codex: NTF-STREAM-001 SSE-safe notification stream policy（commit 9c1512c30, pushed）。
   - current task:
     Notification stream payload normalizer を field-safe から content-safe へ進め、SSE user-channel、
     DB safety poll、realtime broadcast で患者名・薬剤名・free text・raw deep link を流さない。
@@ -100,9 +100,9 @@
     passed.
     `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
   - remaining:
-    push。
+    なし。
   - next action:
-    Push current commit to `origin/main`.
+    Continue from the next high-value `Plans.md` P0/P1 slice.
 
 - codex: MOV-001 UI document marker raw-search guard（commit d5a29cef4, pushed）。
   - current task:
