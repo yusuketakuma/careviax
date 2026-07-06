@@ -3170,17 +3170,20 @@ describe('getPatientTimelineData', () => {
           id: 'operation_history:audit_patient_export_1',
           event_type: 'operation_history',
           category: 'document',
-          title: '服薬カレンダーPDFを出力',
-          summary: 'PDF / 1件 / 対象月 2026-06',
+          title: '文書を出力',
+          summary: '出力の操作履歴が記録されました。内容は正本画面で確認してください。',
           href: '/patients/patient_1',
           action_label: '患者詳細を開く',
           status: 'export',
-          status_label: '服薬カレンダー',
+          status_label: '出力',
           actor_name: null,
           metadata: [],
         }),
       ]),
     );
+    const serializedTimeline = JSON.stringify(result?.timeline_events ?? []);
+    expect(serializedTimeline).not.toContain('服薬カレンダー');
+    expect(serializedTimeline).not.toContain('対象月');
     expect(auditLogFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -4714,6 +4717,9 @@ describe('getPatientTimelineData', () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: 'operation_history:audit_legacy_export',
+          title: '文書を出力',
+          summary: '出力の操作履歴が記録されました。内容は正本画面で確認してください。',
+          status_label: '出力',
           metadata: [],
         }),
       ]),

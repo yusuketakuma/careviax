@@ -1158,6 +1158,7 @@ notification:
 > `scope lock 2026-07-07`: 最新ユーザー確認により、処方・訪問・文書登録は timeline 上で「処方があった」「訪問があった」「文書登録があった」ことを確認できればよい。処方内容、訪問内容、文書本文、添付名、OCR全文、薬剤明細、位置情報は Patient Movement Timeline に表示しない。各 marker は必ず `event.href` による正本画面への直接 deep link を持ち、詳細確認は処方詳細、訪問記録/訪問準備、共有・文書/文書詳細/報告詳細/FileAsset detail で行う。deep link が未整備の source は本文抜粋で補わず、正本 href 実装を不足タスクとして扱う。
 > `cc:PARTIAL 2026-07-07`: legacy `timeline_events` の `operation_history` でも、category が `prescription` / `visit` / `document` の marker は `metadata=[]` に固定した。`target_type` / `target_id` は href 生成と正本解決だけに使い、timeline card、search haystack、movement payload、legacy metadata には出さない。billing / communication など対象外カテゴリの metadata は既存互換のまま維持する。
 > `cc:PARTIAL 2026-07-07`: `firstVisitDocumentsSource` は audit changes の `document_type` を文書名として表示しない。初回訪問文書 marker は `初回訪問文書を作成/更新/交付` の generic title、controlled status、共有・文書タブ deep link、`metadata=[]` に限定し、重要事項説明書/契約書などの文書種別ラベルは正本画面で確認する。
+> `cc:PARTIAL 2026-07-07`: 患者単位 export の `operation_history` も marker-only 契約へ寄せた。`medication_history` / `medication_calendar` / `visit_record_list` / `prescription_history` は、timeline では薬歴PDF・服薬カレンダー・訪問記録PDF・処方履歴CSVなどの文書種別名や filter 条件を表示せず、`文書を出力` / `訪問関連文書を出力` / `処方関連文書を出力`、controlled summary、正本 deep link、`metadata=[]` のみにする。billing export は請求業務カテゴリとして既存ラベルを維持する。
 
 **重要なUI方針**:
 

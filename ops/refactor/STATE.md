@@ -41,6 +41,40 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOV-001 patient export operation marker minimization（未コミット）。
+  - current task:
+    患者単位 export の `operation_history` が薬歴PDF/服薬カレンダー/訪問記録PDF/処方履歴CSV
+    などの文書種別や filter 条件を timeline に出す経路を外し、処方・訪問・文書 marker-only 契約へ寄せる。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `git log --oneline -8`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail.test.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail.test.ts`.
+  - implementation:
+    `getOperationHistoryLabel()` は export action の場合、billing は既存ラベルを維持し、
+    prescription / visit / document category は generic title と `statusLabel='出力'` を返す。
+    `buildOperationHistorySummary()` は prescription / visit / document export の format/count/month/filter summary を返さず、
+    controlled summary に固定した。
+  - security risks reduced:
+    薬歴/服薬カレンダー/訪問記録/処方履歴 export の種別名や filter 条件が patient movement payload /
+    検索候補に流れる面を縮小した。
+  - validation:
+    `pnpm exec vitest run src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.test.ts 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx' --reporter=dot --testTimeout=30000` → pass（3 files / 91 tests）。
+    `pnpm exec eslint src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.ts src/server/services/patient-movement-timeline-presenter.test.ts 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx'` → pass。
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail.test.ts` → pass。
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail.test.ts` → pass。
+  - remaining:
+    Formal `InboundCommunicationEvent` / `InboundCommunicationSignal` DB/API/review UI and MedicationStock Ledger source remain.
+  - next action:
+    scoped commit/push 後に commit hash を記録する。
+
 - codex: MOV-001 first visit document marker label minimization（commit e3a0bbc4d, pushed）。
   - current task:
     `firstVisitDocumentsSource` が初回訪問文書の種別ラベルを timeline title / metadata に出す経路を外し、

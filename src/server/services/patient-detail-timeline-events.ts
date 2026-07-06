@@ -382,13 +382,6 @@ const BILLING_EXPORT_LABELS: Record<string, { title: string; statusLabel: string
   billing_invoice: { title: '請求書PDFを出力', statusLabel: '請求書PDF' },
 };
 
-const PATIENT_EXPORT_LABELS: Record<string, { title: string; statusLabel: string }> = {
-  medication_history: { title: '薬歴PDFを出力', statusLabel: '薬歴PDF' },
-  medication_calendar: { title: '服薬カレンダーPDFを出力', statusLabel: '服薬カレンダー' },
-  visit_record_list: { title: '訪問記録PDFを出力', statusLabel: '訪問記録PDF' },
-  prescription_history: { title: '処方履歴CSVを出力', statusLabel: '処方履歴CSV' },
-};
-
 const BILLING_COLLECTION_STATUS_LABELS: Record<string, string> = {
   unbilled: '未請求',
   billed: '請求済',
@@ -529,13 +522,22 @@ export function latestFirstVisitDocumentActionByDocumentId(
   return byDocumentId;
 }
 
-function buildOperationHistorySummary(item: OperationHistoryTimelineSource) {
+function buildOperationHistorySummary(
+  item: OperationHistoryTimelineSource,
+  category = getOperationHistoryCategory(item),
+) {
   const changes = isRecord(item.changes) ? item.changes : {};
   if (item.target_type === 'first_visit_document') {
     return '初回訪問文書の操作履歴が記録されました。内容は共有・文書で確認してください。';
   }
   if (item.target_type === 'prescription_intake') {
     return '処方せん原本または処方関連文書の操作履歴が記録されました。内容は処方詳細で確認してください。';
+  }
+  if (
+    item.action === 'export' &&
+    (category === 'prescription' || category === 'visit' || category === 'document')
+  ) {
+    return '出力の操作履歴が記録されました。内容は正本画面で確認してください。';
   }
   const collection = isRecord(changes.collection) ? changes.collection : {};
   const conferenceNote = isRecord(changes.conference_note) ? changes.conference_note : {};
@@ -678,11 +680,13 @@ function getOperationHistoryCategory(item: OperationHistoryTimelineSource) {
   return 'document';
 }
 
-function getOperationHistoryLabel(item: OperationHistoryTimelineSource) {
+function getOperationHistoryLabel(item: OperationHistoryTimelineSource, category: string) {
   if (item.action === 'export') {
-    return (
-      BILLING_EXPORT_LABELS[item.target_type] ?? PATIENT_EXPORT_LABELS[item.target_type] ?? null
-    );
+    if (category === 'billing') return BILLING_EXPORT_LABELS[item.target_type] ?? null;
+    if (category === 'prescription') return { title: '処方関連文書を出力', statusLabel: '出力' };
+    if (category === 'visit') return { title: '訪問関連文書を出力', statusLabel: '出力' };
+    if (category === 'document') return { title: '文書を出力', statusLabel: '出力' };
+    return null;
   }
   return OPERATION_ACTION_LABELS[item.action] ?? null;
 }
@@ -700,7 +704,8 @@ export function buildOperationHistoryEvents(
 ): TimelineEvent[] {
   const { actorNameMap, hrefs } = ctx;
   return operationHistory.map((item) => {
-    const meta = getOperationHistoryLabel(item) ?? {
+    const category = getOperationHistoryCategory(item);
+    const meta = getOperationHistoryLabel(item, category) ?? {
       title: '患者操作履歴を記録',
       statusLabel: item.action,
     };
@@ -709,7 +714,6 @@ export function buildOperationHistoryEvents(
     const isMcs = item.action.startsWith('patient_mcs_');
     const isConference = item.action.startsWith('conference_note.');
     const isFirstVisitDocument = item.target_type === 'first_visit_document';
-    const category = getOperationHistoryCategory(item);
     const shouldHideActorName =
       category === 'prescription' || category === 'visit' || category === 'document';
     const shouldHideTargetMetadata =
@@ -721,7 +725,7 @@ export function buildOperationHistoryEvents(
       category,
       occurred_at: item.created_at,
       title: meta.title,
-      summary: buildOperationHistorySummary(item),
+      summary: buildOperationHistorySummary(item, category),
       href: isBilling
         ? hrefs.patientBillingCandidatesHref
         : isPrescription
