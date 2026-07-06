@@ -41,7 +41,60 @@
 
 ## 直近の land（本日・要点）
 
-- codex: MOV-001 Patient Movement Timeline scope lock（commit pending）。
+- codex: RX-002/INB-001 MedicationStock staging risk adapter（commit pending）。
+  - current task:
+    DB migration / API 実装前に、INB medication stock signal の staging result を
+    PHI-free な `RiskFinding` へ変換する pure adapter を追加する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/lib/risk/risk-finding.ts`,
+    `src/core/risk/provider-registry.ts`,
+    `src/modules/pharmacy/risk/case-risk-providers.ts`,
+    `src/server/services/risk-finding-registry.ts`,
+    `src/modules/pharmacy/medication-stock/application/medication-stock-signal-adapter.ts`,
+    `src/modules/pharmacy/medication-stock/domain/external-observation.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/modules/pharmacy/medication-stock/application/medication-stock-risk-adapter.ts`,
+    `src/modules/pharmacy/medication-stock/application/medication-stock-risk-adapter.test.ts`.
+  - implementation:
+    `medication-stock-risk-adapter.ts` を追加し、`stage_for_pharmacist_review` のみを
+    `RiskFinding` へ変換する。`no_stock_observed` は urgent shortage、`prn_usage_report`
+    は使用量報告、その他は残数報告として controlled title/detail に正規化し、
+    medication identity warning がある場合は名寄せ確認 finding を追加する。medical safety review
+    の指摘により、残り0 / reviewPriority high も urgent shortage として扱い、名寄せ文言は
+    残数に限定しない `外用・頓服報告` 表現へ変更。薬局内観測と外部/患者家族/不明 source の
+    wording と `RiskFinding.source` も分けた。
+    `ignore_non_stock_signal` / `reject_unsafe_payload` は risk finding を作らない。
+  - safety / privacy:
+    finding には薬剤名、数量、MCS本文、source record id、GTIN/JAN、raw payload を入れない。
+    privacy review の指摘により、caller-supplied `actionHref` / `relatedEntityId` / `riskKeySeed`
+    は adapter context から削除。action href は患者の medication-stock anchor のみを生成し、
+    related_entity_id は正式 signal id が安全に設計されるまで null にする。risk key suffix は
+    adapter 内部で source/quantity 等を SHA-256 hash 化し、raw value は出力しない。
+  - validation:
+    `pnpm vitest run src/modules/pharmacy/medication-stock/application/medication-stock-risk-adapter.test.ts --reporter=dot --testTimeout=30000`
+    passed: 1 file / 9 tests.
+    `pnpm vitest run src/core/interprofessional/inbound/domain/inbound-communication.test.ts src/core/interprofessional/inbound/domain/inbound-signal-classifier.test.ts src/modules/pharmacy/medication-stock/domain/external-observation.test.ts src/modules/pharmacy/medication-stock/domain/stockout-forecast.test.ts src/modules/pharmacy/medication-stock/domain/medication-equivalence.test.ts src/modules/pharmacy/medication-stock/application/medication-stock-signal-adapter.test.ts src/modules/pharmacy/medication-stock/application/medication-stock-risk-adapter.test.ts --reporter=dot --testTimeout=30000`
+    passed: 7 files / 60 tests.
+    `pnpm exec eslint src/modules/pharmacy/medication-stock/application/medication-stock-risk-adapter.ts src/modules/pharmacy/medication-stock/application/medication-stock-risk-adapter.test.ts`
+    passed.
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/modules/pharmacy/medication-stock/application/medication-stock-risk-adapter.ts src/modules/pharmacy/medication-stock/application/medication-stock-risk-adapter.test.ts`
+    passed.
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/modules/pharmacy/medication-stock/application/medication-stock-risk-adapter.ts src/modules/pharmacy/medication-stock/application/medication-stock-risk-adapter.test.ts`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+    `pnpm boundaries:check` passed: 0 new violations, 7 allowlisted debt imports across 6 files.
+  - remaining:
+    RX-002/INB-001 remain partial for durable DB正本、registration/review API、review UI、
+    accepted signal persistence、formal RiskFindingProvider integration、Task/VisitBrief/Schedule/Report linkage.
+  - next action:
+    Scoped commit/push, then continue with formal RiskFindingProvider integration or Task/VisitBrief linkage.
+
+- codex: MOV-001 Patient Movement Timeline scope lock（commit 1fa5ab08d）。
   - current task:
     ユーザー方針「処方・訪問・文書登録があったことが timeline で確認できればよい。
     詳細は deep link で確認する」を `Plans.md` の MOV-001 に最終スコープ固定として追記する。
@@ -59,8 +112,8 @@
     提供する索引画面であることを明文化した。処方内容、薬剤明細、訪問本文、SOAP本文、
     文書本文、添付ファイル名、storage key、signed URL は timeline に表示しない。
   - validation:
-    `pnpm exec prettier --check Plans.md` passed.
-    `git diff --check -- Plans.md` passed.
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md` passed.
+    `git diff --check -- Plans.md ops/refactor/STATE.md` passed.
   - remaining:
     MOV-001 remains partial for formal InboundCommunicationSignal, formal MedicationStock Ledger,
     safety source integration, and mobile Playwright smoke.
