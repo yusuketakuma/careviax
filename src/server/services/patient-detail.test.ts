@@ -2198,7 +2198,7 @@ describe('getPatientTimelineData', () => {
           action_label: '計画書を開く',
           status: 'approved',
           status_label: '承認済み',
-          actor_name: '薬剤師B',
+          actor_name: null,
         }),
       ]),
     );
@@ -3179,7 +3179,7 @@ describe('getPatientTimelineData', () => {
           action_label: '患者詳細を開く',
           status: 'export',
           status_label: '服薬カレンダー',
-          actor_name: '鈴木 事務',
+          actor_name: null,
           metadata: ['medication_calendar', 'patient_1'],
         }),
       ]),
@@ -3274,7 +3274,7 @@ describe('getPatientTimelineData', () => {
           action_label: '文書状態を開く',
           status: 'generated',
           status_label: '作成',
-          actor_name: '佐藤 薬剤師',
+          actor_name: null,
           metadata: ['重要事項説明書'],
         }),
       ]),
@@ -3453,7 +3453,7 @@ describe('getPatientTimelineData', () => {
           href: '/prescriptions/intake_1',
           action_label: '処方受付を開く',
           status_label: '原本管理',
-          actor_name: '佐藤 薬剤師',
+          actor_name: null,
         }),
       ]),
     );
@@ -3529,7 +3529,7 @@ describe('getPatientTimelineData', () => {
           action_label: '処方受付を開く',
           status: 'prescription_original_document_saved',
           status_label: '画像保存',
-          actor_name: '佐藤 薬剤師',
+          actor_name: null,
         }),
       ]),
     );
@@ -5139,7 +5139,7 @@ describe('getPatientTimelineData', () => {
     }
   });
 
-  it('fails soft when actor-name resolution rejects: events render with actor_name null and the failure is surfaced', async () => {
+  it('fails soft when operation actor-name resolution rejects: events render with actor_name null and the failure is surfaced', async () => {
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const db = buildDb({
       patient: {
@@ -5173,7 +5173,7 @@ describe('getPatientTimelineData', () => {
           },
         ]),
       },
-      // both batchResolveNames calls resolve actor ids via user.findMany; reject it
+      // operation history still resolves actor ids via user.findMany; reject it
       user: {
         findMany: vi.fn().mockRejectedValue(new Error('user lookup failed')),
       },
@@ -5196,19 +5196,15 @@ describe('getPatientTimelineData', () => {
       // events still render with actor_name null (no whole-panel 500 from name lookup)
       expect(careReportEvent?.actor_name).toBeNull();
       expect(operationHistoryEvent?.actor_name).toBeNull();
-      // both source-actor and operation-actor failures surfaced under DISTINCT keys
+      // source marker actors are no longer resolved; only operation-actor failure is surfaced.
       expect(result?.partial_failures).toEqual([
-        {
-          source: 'actor_names',
-          message: '一部のタイムライン情報を取得できませんでした',
-        },
         {
           source: 'operation_actor_names',
           message: '一部のタイムライン情報を取得できませんでした',
         },
       ]);
       // redaction proof
-      expectPatientTimelineFailureLog(consoleErrorSpy, 'actor_names');
+      expectPatientTimelineFailureLog(consoleErrorSpy, 'operation_actor_names');
       expect(JSON.stringify(consoleErrorSpy.mock.calls)).not.toContain('user lookup failed');
     } finally {
       consoleErrorSpy.mockRestore();

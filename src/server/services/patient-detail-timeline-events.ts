@@ -114,7 +114,6 @@ export type VisitScheduleTimelineSource = {
   scheduled_date: Date | null;
   schedule_status: string;
   priority: string | null;
-  pharmacist_id: string;
   confirmed_at: Date | null;
   route_order: number | null;
   created_at: Date;
@@ -124,7 +123,6 @@ export type VisitScheduleTimelineSource = {
 
 export type VisitRecordTimelineSource = {
   id: string;
-  pharmacist_id: string;
   visit_date: Date | null;
   outcome_status: string;
   next_visit_suggestion_date: Date | null;
@@ -135,7 +133,6 @@ export type CareReportTimelineSource = {
   id: string;
   report_type: string;
   status: string;
-  created_by: string;
   created_at: Date;
   delivery_records: Array<{
     id: string;
@@ -236,7 +233,6 @@ export type PrescriptionIntakeTimelineSource = {
 
 export type DispenseResultTimelineSource = {
   id: string;
-  dispensed_by: string;
   dispensed_at: Date;
   task: { cycle: { overall_status: string } | null };
   line: { intake: { id: string } };
@@ -245,10 +241,7 @@ export type DispenseResultTimelineSource = {
 export type ManagementPlanTimelineSource = {
   id: string;
   status: string;
-  created_by: string;
-  approved_by: string | null;
   approved_at: Date | null;
-  reviewed_by: string | null;
   reviewed_at: Date | null;
   created_at: Date;
 };
@@ -729,11 +722,14 @@ export function buildOperationHistoryEvents(
     const isMcs = item.action.startsWith('patient_mcs_');
     const isConference = item.action.startsWith('conference_note.');
     const isFirstVisitDocument = item.target_type === 'first_visit_document';
+    const category = getOperationHistoryCategory(item);
+    const shouldHideActorName =
+      category === 'prescription' || category === 'visit' || category === 'document';
 
     return {
       id: `operation_history:${item.id}`,
       event_type: 'operation_history',
-      category: getOperationHistoryCategory(item),
+      category,
       occurred_at: item.created_at,
       title: meta.title,
       summary: buildOperationHistorySummary(item),
@@ -761,7 +757,7 @@ export function buildOperationHistoryEvents(
                 : '患者詳細を開く',
       status: item.action,
       status_label: meta.statusLabel,
-      actor_name: actorNameMap.get(item.actor_id) ?? null,
+      actor_name: shouldHideActorName ? null : (actorNameMap.get(item.actor_id) ?? null),
       metadata: compactTimelineValues([item.target_type, item.target_id]),
     };
   });

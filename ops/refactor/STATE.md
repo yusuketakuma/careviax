@@ -41,6 +41,39 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOV-001 prescription / visit / document actor minimization（未コミット）。
+  - current task:
+    Patient Movement Timeline の処方・訪問・文書 marker から担当者名 lookup と actor_name を外し、
+    「何が起きたか + 正本 deep link」だけを返す契約にさらに寄せる。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail.test.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail.test.ts`.
+  - implementation:
+    `visitSchedulesSource` / `visitRecordsSource` / `careReportsSource` / `dispenseResultsSource` / `managementPlansSource` は担当者IDを select せず、source actor name lookup を不要化した。
+    `firstVisitDocumentsSource` は latest audit action の actor を表示せず、文書状態の発生 marker と文書タブ deep link のみにした。
+    `operation_history` は category が prescription / visit / document の場合だけ actor_name を null にし、billing / communication など既存の非対象カテゴリは維持した。
+  - security risks reduced:
+    薬剤師名・事務担当者名が処方・訪問・文書 marker の payload / 検索 haystack に流れる面を縮小した。
+  - validation:
+    `pnpm exec vitest run src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.test.ts 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx' --reporter=dot --testTimeout=30000` → pass（3 files / 91 tests）。
+    `pnpm exec eslint src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.ts src/server/services/patient-movement-timeline-presenter.test.ts 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx'` → pass。
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts` → pass after formatting `patient-detail-timeline-registry.ts`。
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts` → pass。
+  - remaining:
+    Formal `InboundCommunicationEvent` / `InboundCommunicationSignal` DB/API/review UI and MedicationStock Ledger source remain.
+  - next action:
+    Scoped commit/push, then record landed commit hash.
+
 - codex: MOV-001 MCS / partner visit marker minimization（commit 5e049d30f, pushed）。
   - current task:
     Patient Movement Timeline の inbound bridge source から投稿者名・所属名・協力薬局名・薬剤師名を外し、

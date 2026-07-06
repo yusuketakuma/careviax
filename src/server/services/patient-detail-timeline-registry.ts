@@ -198,7 +198,6 @@ export const visitSchedulesSource = defineTimelineSource<
             scheduled_date: true,
             schedule_status: true,
             priority: true,
-            pharmacist_id: true,
             confirmed_at: true,
             route_order: true,
             created_at: true,
@@ -211,8 +210,7 @@ export const visitSchedulesSource = defineTimelineSource<
             },
           },
         }),
-  collectActorIds: (item) => [item.pharmacist_id],
-  toEvents: (rows, { actorNameMap }) =>
+  toEvents: (rows) =>
     rows.map((item) => ({
       id: `visit_schedule:${item.id}`,
       event_type: 'visit_schedule',
@@ -233,7 +231,7 @@ export const visitSchedulesSource = defineTimelineSource<
       action_label: item.visit_record ? '訪問記録を開く' : '訪問記録を入力',
       status: item.schedule_status,
       status_label: SCHEDULE_STATUS_LABELS[item.schedule_status] ?? item.schedule_status,
-      actor_name: actorNameMap.get(item.pharmacist_id) ?? null,
+      actor_name: null,
       metadata: compactTimelineValues([
         item.priority ? `優先度 ${PRIORITY_LABELS[item.priority] ?? item.priority}` : null,
         item.route_order ? `ルート順 ${item.route_order}` : null,
@@ -259,15 +257,13 @@ export const visitRecordsSource = defineTimelineSource<'visitRecords', VisitReco
           select: {
             id: true,
             schedule_id: true,
-            pharmacist_id: true,
             visit_date: true,
             outcome_status: true,
             next_visit_suggestion_date: true,
             created_at: true,
           },
         }),
-  collectActorIds: (item) => [item.pharmacist_id],
-  toEvents: (rows, { actorNameMap }) =>
+  toEvents: (rows) =>
     rows.map((item) => ({
       id: `visit_record:${item.id}`,
       event_type: 'visit_record',
@@ -279,7 +275,7 @@ export const visitRecordsSource = defineTimelineSource<'visitRecords', VisitReco
       action_label: '訪問記録を開く',
       status: item.outcome_status,
       status_label: VISIT_OUTCOME_LABELS[item.outcome_status] ?? item.outcome_status,
-      actor_name: actorNameMap.get(item.pharmacist_id) ?? null,
+      actor_name: null,
       metadata: compactTimelineValues([
         item.next_visit_suggestion_date
           ? `次回提案 ${formatTimelineDate(item.next_visit_suggestion_date)}`
@@ -305,7 +301,6 @@ export const careReportsSource = defineTimelineSource<'careReports', CareReportT
         id: true,
         report_type: true,
         status: true,
-        created_by: true,
         created_at: true,
         delivery_records: {
           orderBy: [{ created_at: 'desc' }],
@@ -321,8 +316,7 @@ export const careReportsSource = defineTimelineSource<'careReports', CareReportT
         },
       },
     }),
-  collectActorIds: (item) => [item.created_by],
-  toEvents: (rows, { actorNameMap }) =>
+  toEvents: (rows) =>
     rows.flatMap((item) => [
       {
         id: `care_report:${item.id}`,
@@ -339,7 +333,7 @@ export const careReportsSource = defineTimelineSource<'careReports', CareReportT
         action_label: '報告書を開く',
         status: item.status,
         status_label: REPORT_STATUS_CONFIG[item.status]?.label ?? item.status,
-        actor_name: actorNameMap.get(item.created_by) ?? null,
+        actor_name: null,
         metadata: [],
       },
       ...item.delivery_records.map((delivery) => ({
@@ -357,7 +351,7 @@ export const careReportsSource = defineTimelineSource<'careReports', CareReportT
         action_label: '送付元報告書を開く',
         status: delivery.status,
         status_label: REPORT_STATUS_CONFIG[delivery.status]?.label ?? delivery.status,
-        actor_name: actorNameMap.get(item.created_by) ?? null,
+        actor_name: null,
         metadata: [],
       })),
     ]),
@@ -953,7 +947,6 @@ export const dispenseResultsSource = defineTimelineSource<
           take: 12,
           select: {
             id: true,
-            dispensed_by: true,
             dispensed_at: true,
             task: {
               select: {
@@ -975,8 +968,7 @@ export const dispenseResultsSource = defineTimelineSource<
             },
           },
         }),
-  collectActorIds: (item) => [item.dispensed_by],
-  toEvents: (rows, { actorNameMap }) =>
+  toEvents: (rows) =>
     rows.map((item) => ({
       id: `dispense_result:${item.id}`,
       event_type: 'dispense_result',
@@ -988,7 +980,7 @@ export const dispenseResultsSource = defineTimelineSource<
       action_label: '処方記録を開く',
       status: item.task.cycle?.overall_status ?? 'dispensed',
       status_label: CYCLE_STATUS_LABELS[item.task.cycle?.overall_status ?? 'dispensed'] ?? '調剤済',
-      actor_name: actorNameMap.get(item.dispensed_by) ?? null,
+      actor_name: null,
       metadata: [],
     })),
 });
@@ -1015,18 +1007,13 @@ export const managementPlansSource = defineTimelineSource<
           select: {
             id: true,
             status: true,
-            created_by: true,
-            approved_by: true,
             approved_at: true,
-            reviewed_by: true,
             reviewed_at: true,
             created_at: true,
           },
         }),
-  collectActorIds: (item) => [item.created_by, item.approved_by, item.reviewed_by],
-  toEvents: (rows, { actorNameMap, hrefs }) =>
+  toEvents: (rows, { hrefs }) =>
     rows.map((item) => {
-      const actorId = item.approved_by ?? item.reviewed_by ?? item.created_by;
       const occurredAt = item.approved_at ?? item.reviewed_at ?? item.created_at;
 
       return {
@@ -1040,7 +1027,7 @@ export const managementPlansSource = defineTimelineSource<
         action_label: '計画書を開く',
         status: item.status,
         status_label: MANAGEMENT_PLAN_STATUS_LABELS[item.status] ?? item.status,
-        actor_name: actorNameMap.get(actorId) ?? null,
+        actor_name: null,
         metadata: [],
       };
     }),
@@ -1070,7 +1057,7 @@ export const firstVisitDocumentsSource = defineTimelineSource<
             created_at: true,
           },
         }),
-  toEvents: (rows, { firstVisitDocumentActions, actorNameMap, hrefs }) =>
+  toEvents: (rows, { firstVisitDocumentActions, hrefs }) =>
     rows.map((item) => {
       const isDelivered = Boolean(item.delivered_at);
       const latestAction = firstVisitDocumentActions.get(item.id) ?? null;
@@ -1102,7 +1089,7 @@ export const firstVisitDocumentsSource = defineTimelineSource<
           : isDelivered
             ? '交付済み'
             : '作成済み',
-        actor_name: latestAction ? (actorNameMap.get(latestAction.actorId) ?? null) : null,
+        actor_name: null,
         metadata: compactTimelineValues([latestAction?.documentTypeLabel ?? null]),
       };
     }),
