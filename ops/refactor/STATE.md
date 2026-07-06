@@ -41,6 +41,38 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOV-001 occurrence-only timeline planning clarification（未コミット）。
+  - current task:
+    ユーザー方針「処方・訪問・文書登録があったことが timeline で確認できればよい。
+    詳細は deep link で確認する」を `Plans.md` に反映した。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx`,
+    `src/server/services/patient-movement-timeline-presenter.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `MOV-001` の優先度表と詳細セクションに、処方・訪問・文書の strict contract を追記。
+    timeline card は発生確認、status、controlled metadata、正本画面への相対 deep link に限定し、
+    薬剤明細、訪問本文、文書本文、添付ファイル名、storage key、signed URL、OCR全文は
+    card/search/index payload に出さない方針を固定した。
+  - security / PHI reviewed:
+    ドキュメントのみ。実装方針として PHI/free text の timeline 一覧露出を避け、詳細画面で再認可する
+    方針を明文化した。
+  - validation:
+    `pnpm exec prettier --check Plans.md` passed.
+    `git diff --check -- Plans.md` passed.
+  - remaining:
+    `MOV-001` は formal `InboundCommunicationSignal`、MedicationStock、safety source 追加と
+    mobile Playwright smoke が残る。
+  - next action:
+    この doc-only slice を scoped commit/push し、次は MedicationStock residual bridge または
+    formal inbound signal source の実装候補へ戻る。
+
 - codex: MOV-001 PatientMovementTimeline component rename slice（未コミット）。
   - current task:
     患者詳細 `movement` タブの client component を旧 `PatientActivityTimeline` から
