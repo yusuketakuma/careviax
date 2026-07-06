@@ -31,6 +31,8 @@ describe('LoginPage', () => {
     render(<LoginPage />);
 
     expect(screen.getByRole('heading', { name: 'ログイン' })).toBeTruthy();
+    expect(screen.getByText('職員ログイン')).toBeTruthy();
+    expect(screen.getByText('MFA / 監査ログ / セッション保護')).toBeTruthy();
     expect(screen.getByLabelText('メールアドレス').getAttribute('autocomplete')).toBe('username');
     expect(screen.getByLabelText('パスワード').getAttribute('autocomplete')).toBe(
       'current-password',
@@ -40,7 +42,7 @@ describe('LoginPage', () => {
       '/password/reset',
     );
     expect(
-      screen.getByText('共有端末では、ログイン後に画面を離れる前に必ずログアウトしてください。'),
+      screen.getByText('共有端末では、画面を離れる前に必ずログアウトしてください。'),
     ).toBeTruthy();
   });
 

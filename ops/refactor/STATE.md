@@ -41,6 +41,63 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Login screen minimal UI follow-up.
+  - current task:
+    ユーザー指示により、ログイン画面を再確認し、医療向けサービスの公開ログイン/ポータル情報
+    （NHS login/Anima、MyChart/MyChart Central、athenahealth、Doxy.me）と
+    `docs/ui-ux-design-guidelines.md`、Next.js App Router の Client Components / forms docs、
+    既存 Cognito/NextAuth 実装を確認した。`imagegen`（gpt-image-2 指定の非 PHI prompt）で
+    参照案を作成し、既存 `AuthLayout` の PH-OS ブランド表示は残したまま、ログインカードを
+    header/body 分割と職員アカウント pill から、中央1カラムの「職員ログイン」「ログイン」
+    「MFA / 監査ログ / セッション保護」+ 2入力 + 復旧導線 + 共有端末注意へ簡素化した。
+  - WIP preservation:
+    既存の訪問記録 autosave/sync WIP 差分には触れず、ログイン画面の owned path のみ変更した。
+  - imagegen:
+    `/Users/yusuke/.codex/generated_images/019f2c7e-d969-7882-bd11-432a10abb930/ig_0590374c0736726e016a4b92fb06dc8191a50b6f155c30b287.png`
+    を参照。prompt は架空/抽象ラベルのみで PHI/secret なし。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `docs/ui-ux-design-guidelines.md`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md`,
+    `node_modules/next/dist/docs/01-app/02-guides/forms.md`,
+    `src/app/(auth)/login/page.tsx`,
+    `src/app/(auth)/login/page.test.tsx`,
+    `src/app/(auth)/layout.tsx`,
+    `src/app/(auth)/mfa/page.tsx`,
+    `src/app/(auth)/first-login/page.tsx`,
+    `src/lib/auth/config.ts`,
+    `package.json`.
+  - files changed:
+    `src/app/(auth)/login/page.tsx`,
+    `src/app/(auth)/login/page.test.tsx`,
+    `ops/refactor/STATE.md`.
+  - UX / accessibility / security notes:
+    既存の `signIn('credentials')`、Cognito challenge decoding、MFA/初回パスワード遷移、
+    lockout 遷移、callbackUrl sanitizer、汎用エラー文言、パスワード表示切替、44px 以上の
+    入力/ボタン/リンクを維持。画面上に患者名、薬剤名、住所、電話、secret、provider diagnostics は
+    出していない。デスクトップ/モバイルとも horizontal overflow なし。
+  - validation:
+    `pnpm exec vitest run 'src/app/(auth)/login/page.test.tsx' --reporter=dot --testTimeout=30000`
+    passed: 1 file / 4 tests.
+    `pnpm exec eslint 'src/app/(auth)/login/page.tsx' 'src/app/(auth)/login/page.test.tsx'`
+    passed.
+    `pnpm exec prettier --check 'src/app/(auth)/login/page.tsx' 'src/app/(auth)/login/page.test.tsx'`
+    passed after formatting the changed files.
+    `pnpm colors:check` passed.
+    `git diff --check -- 'src/app/(auth)/login/page.tsx' 'src/app/(auth)/login/page.test.tsx'`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck --pretty false` passed.
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false` passed.
+    `pnpm build` passed.
+    Playwright screenshots on existing `http://localhost:3012/login` captured desktop
+    `/tmp/phos-login-desktop.png` and mobile `/tmp/phos-login-mobile.png`; visually inspected.
+  - remaining work:
+    No known blocker for this login follow-up. Existing visit-record autosave/sync dirty work remains unrelated and
+    should be committed separately if continued.
+  - next action:
+    Stage only `src/app/(auth)/login/page.tsx`, `src/app/(auth)/login/page.test.tsx`, and
+    `ops/refactor/STATE.md` if committing this slice.
+
 - codex: Login screen UI/UX simplified.
   - current task:
     ユーザー指示により、ログイン画面を抜本的に見直した。医療向けログイン画面の外部事例

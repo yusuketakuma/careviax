@@ -112,27 +112,23 @@ function LoginForm() {
   return (
     <section
       aria-labelledby="login-entry-title"
-      className="w-full max-w-md overflow-hidden rounded-lg border border-border/80 bg-card text-card-foreground shadow-sm"
+      className="w-full max-w-[29rem] rounded-lg border border-border/80 bg-card px-5 py-6 text-card-foreground shadow-sm sm:px-8 sm:py-8"
     >
-      <div className="border-b border-border/70 px-5 py-5 sm:px-6">
-        <div className="space-y-2">
-          <div className="inline-flex min-h-9 items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 text-xs font-semibold text-primary">
-            <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
-            職員アカウント
-          </div>
-          <h2
-            id="login-entry-title"
-            className="text-2xl font-semibold leading-tight tracking-normal text-foreground"
-          >
-            ログイン
-          </h2>
-          <p className="text-sm leading-6 text-muted-foreground">
-            メールアドレスとパスワードで本人確認します。
-          </p>
-        </div>
+      <div className="space-y-2 text-center">
+        <p className="text-xs font-semibold text-primary">職員ログイン</p>
+        <h2
+          id="login-entry-title"
+          className="text-2xl font-semibold leading-tight tracking-normal text-foreground"
+        >
+          ログイン
+        </h2>
+        <p className="text-sm leading-6 text-muted-foreground">
+          メールアドレスとパスワードで本人確認します。
+        </p>
+        <p className="text-xs leading-5 text-muted-foreground">MFA / 監査ログ / セッション保護</p>
       </div>
 
-      <div className="p-5 sm:p-6">
+      <div className="mt-6">
         {notice && (
           <Alert className="mb-4 border-tag-info/30 bg-tag-info/10 text-tag-info">
             <ShieldCheck className="h-4 w-4 text-tag-info" />
@@ -225,10 +221,10 @@ function LoginForm() {
           </Button>
         </form>
 
-        <div className="mt-5 border-t border-border/70 pt-4">
+        <div className="mt-5 rounded-md border border-border/70 bg-muted/30 px-3 py-3">
           <p className="flex items-start gap-2 text-sm leading-6 text-muted-foreground">
             <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-tag-info" aria-hidden="true" />
-            共有端末では、ログイン後に画面を離れる前に必ずログアウトしてください。
+            共有端末では、画面を離れる前に必ずログアウトしてください。
           </p>
         </div>
 
