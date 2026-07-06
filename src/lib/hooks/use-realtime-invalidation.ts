@@ -5,7 +5,14 @@ import { useQueryClient, type QueryKey } from '@tanstack/react-query';
 import { useRealtimeEvents } from './use-realtime-events';
 import type { RealtimePresenceTarget } from '@/lib/realtime/shared-event-stream';
 
-export type RealtimeInvalidationPolicy = readonly string[] | 'all' | false;
+export type RealtimeInvalidationRule =
+  | string
+  | {
+      type: string;
+      source?: string | readonly string[];
+    };
+
+export type RealtimeInvalidationPolicy = readonly RealtimeInvalidationRule[] | 'all' | false;
 
 interface UseRealtimeInvalidationOptions {
   queryKey: QueryKey;
@@ -22,6 +29,26 @@ function readRealtimeEventType(event: unknown) {
   return typeof event === 'object' && event !== null && 'type' in event
     ? (event as { type: string }).type
     : undefined;
+}
+
+function readRealtimeEventSource(event: unknown) {
+  return typeof event === 'object' && event !== null && 'source' in event
+    ? (event as { source: unknown }).source
+    : undefined;
+}
+
+function matchesInvalidationRule(event: unknown, rule: RealtimeInvalidationRule): boolean {
+  const eventType = readRealtimeEventType(event);
+  if (!eventType) return false;
+  if (typeof rule === 'string') return eventType === rule;
+  if (eventType !== rule.type) return false;
+  if (rule.source === undefined) return true;
+
+  const eventSource = readRealtimeEventSource(event);
+  if (typeof eventSource !== 'string') return false;
+  return Array.isArray(rule.source)
+    ? rule.source.includes(eventSource)
+    : rule.source === eventSource;
 }
 
 export function useRealtimeInvalidation({
@@ -98,8 +125,10 @@ export function useRealtimeInvalidation({
         return;
       }
 
-      const eventType = readRealtimeEventType(event);
-      if (shouldInvalidateQuery && eventType && realtimeInvalidateOn.includes(eventType)) {
+      if (
+        shouldInvalidateQuery &&
+        realtimeInvalidateOn.some((rule) => matchesInvalidationRule(event, rule))
+      ) {
         scheduleInvalidate();
       }
       onRealtimeEvent?.(event);

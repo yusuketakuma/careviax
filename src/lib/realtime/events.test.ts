@@ -111,6 +111,41 @@ describe('realtime event payload parser', () => {
     expect(serialized).not.toContain('/patients/');
   });
 
+  it('uses event-type-specific allowlists instead of sharing all safe-looking ids', () => {
+    expect(
+      normalizeRealtimeEventPayload({
+        type: 'notification',
+        id: 'notification_1',
+        notification_type: 'system',
+        case_id: 'case_should_not_leak',
+        cycle_id: 'cycle_should_not_leak',
+        entity_id: 'entity_should_not_leak',
+        source: 'notification_service',
+      }),
+    ).toEqual({
+      type: 'notification',
+      id: 'notification_1',
+      notification_type: 'system',
+      source: 'notification_service',
+    });
+
+    expect(
+      normalizeRealtimeEventPayload({
+        type: 'workflow_refresh',
+        case_id: 'case_1',
+        task_id: 'task_1',
+        notification_id: 'notification_should_not_leak',
+        entity_id: 'entity_should_not_leak',
+        source: 'tasks',
+      }),
+    ).toEqual({
+      type: 'workflow_refresh',
+      case_id: 'case_1',
+      task_id: 'task_1',
+      source: 'tasks',
+    });
+  });
+
   it('maps unknown event types to a safe workflow refresh event', () => {
     expect(
       normalizeRealtimeEventPayload({

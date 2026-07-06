@@ -19,33 +19,53 @@ const KNOWN_REALTIME_EVENT_TYPES = new Set([
   'workflow_refresh',
 ]);
 
-const SAFE_EVENT_FIELDS = new Set([
-  'active_field',
-  'case_id',
-  'created_at',
-  'cycle_id',
-  'entity_id',
-  'entity_type',
-  'event_type',
-  'from',
-  'from_status',
-  'id',
-  'is_read',
-  'notification_id',
-  'notification_type',
-  'proposal_id',
-  'report_id',
-  'schedule_id',
-  'source',
-  'status',
-  'task_id',
-  'to',
-  'to_status',
-  'updated_at',
-  'user_id',
+const SAFE_EVENT_FIELDS_BY_TYPE = new Map<string, ReadonlySet<string>>([
+  ['care_report_update', new Set(['report_id', 'case_id', 'source', 'status', 'updated_at'])],
+  ['comment_refresh', new Set(['entity_id', 'entity_type', 'case_id', 'source', 'updated_at'])],
+  [
+    'cycle_transition',
+    new Set([
+      'case_id',
+      'cycle_id',
+      'event_type',
+      'from',
+      'from_status',
+      'source',
+      'to',
+      'to_status',
+      'updated_at',
+    ]),
+  ],
+  [
+    'notification',
+    new Set(['id', 'is_read', 'notification_id', 'notification_type', 'source', 'updated_at']),
+  ],
+  [
+    'notification_created',
+    new Set(['id', 'is_read', 'notification_id', 'notification_type', 'source', 'created_at']),
+  ],
+  [
+    'presence_update',
+    new Set([
+      'active_field',
+      'display_name',
+      'entity_id',
+      'entity_type',
+      'source',
+      'updated_at',
+      'user_id',
+    ]),
+  ],
+  ['prescription_intake_created', new Set(['id', 'case_id', 'source', 'status', 'created_at'])],
+  ['qr_draft_confirmed', new Set(['id', 'source', 'status', 'updated_at'])],
+  ['qr_draft_created', new Set(['id', 'source', 'status', 'created_at'])],
+  ['report_delivery_update', new Set(['report_id', 'source', 'status', 'updated_at'])],
+  [
+    'visit_schedule_proposals_confirm',
+    new Set(['proposal_id', 'schedule_id', 'source', 'status', 'updated_at']),
+  ],
+  ['workflow_refresh', new Set(['case_id', 'cycle_id', 'source', 'task_id', 'updated_at'])],
 ]);
-
-const SAFE_EVENT_FIELDS_BY_TYPE = new Map([['presence_update', new Set(['display_name'])]]);
 
 const SAFE_SOURCE_PATTERN = /^[a-z0-9_.:-]{1,80}$/i;
 
@@ -58,10 +78,10 @@ function readSafeSource(value: unknown): string | null {
 }
 
 function copySafeFields(source: Record<string, unknown>, target: RealtimeEventPayload) {
-  const eventSpecificFields = SAFE_EVENT_FIELDS_BY_TYPE.get(target.type);
+  const eventSpecificFields = SAFE_EVENT_FIELDS_BY_TYPE.get(target.type) ?? new Set<string>();
   for (const [key, value] of Object.entries(source)) {
     if (key === 'type') continue;
-    if (!SAFE_EVENT_FIELDS.has(key) && !eventSpecificFields?.has(key)) continue;
+    if (!eventSpecificFields.has(key)) continue;
     if (!isSafeScalar(value)) continue;
     if (key === 'source') {
       const safeSource = readSafeSource(value);

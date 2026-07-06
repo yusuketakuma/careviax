@@ -11543,3 +11543,44 @@
 - remaining:
   `PERF-RTE-001A` still needs the live AWS drift check (`eventbridge-schedules:check --aws`) wired
   into the actual deploy gate once deployment credentials and schedule group access are available.
+
+## 2026-07-07 FE realtime invalidation and payload allowlist
+
+- codex:
+  Tightened the shared realtime client boundary. `normalizeRealtimeEventPayload()` now uses
+  event-type-specific field allowlists instead of a broad global safe-field set, and
+  `useRealtimeInvalidation()` accepts source-scoped invalidation rules such as
+  `{ type: 'workflow_refresh', source: ['dashboard', 'reports'] }` while preserving the existing
+  string-array and explicit `all` contracts.
+- files inspected:
+  `src/lib/realtime/events.ts`,
+  `src/lib/realtime/events.test.ts`,
+  `src/lib/hooks/use-realtime-invalidation.ts`,
+  `src/lib/hooks/use-realtime-invalidation.test.tsx`,
+  `src/lib/hooks/use-realtime-query.ts`,
+  `src/lib/hooks/use-realtime-query.test.tsx`,
+  `src/lib/realtime/shared-event-stream.ts`,
+  `src/lib/realtime/shared-event-stream.test.ts`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- files changed:
+  `src/lib/realtime/events.ts`,
+  `src/lib/realtime/events.test.ts`,
+  `src/lib/hooks/use-realtime-invalidation.ts`,
+  `src/lib/hooks/use-realtime-invalidation.test.tsx`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  Realtime payloads no longer share all safe-looking ids across event types, reducing accidental
+  propagation of unrelated identifiers into React state. Realtime invalidation can now be narrowed
+  by event source without custom predicates, reducing broad refetch pressure during workflow event
+  bursts.
+- validation:
+  `pnpm exec vitest run src/lib/realtime/events.test.ts src/lib/hooks/use-realtime-invalidation.test.tsx src/lib/hooks/use-realtime-query.test.tsx src/lib/realtime/shared-event-stream.test.ts --reporter=dot --testTimeout=30000`
+  green (4 files / 26 tests);
+  `pnpm exec eslint src/lib/realtime/events.ts src/lib/realtime/events.test.ts src/lib/hooks/use-realtime-invalidation.ts src/lib/hooks/use-realtime-invalidation.test.tsx src/lib/hooks/use-realtime-query.ts src/lib/hooks/use-realtime-query.test.tsx`
+  green.
+- remaining:
+  `FE-RT-001` still needs major screen callers gradually moved from broad event-type arrays to
+  reviewed source-scoped rules where useful. The current slice provides the shared contract and
+  regression tests.

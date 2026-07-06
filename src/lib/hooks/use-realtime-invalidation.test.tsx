@@ -114,6 +114,26 @@ describe('useRealtimeInvalidation', () => {
     expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ['workflow'] });
   });
 
+  it('can scope invalidation by event source', () => {
+    vi.useFakeTimers();
+    renderHook(() =>
+      useRealtimeInvalidation({
+        queryKey: ['dashboard-summary'],
+        invalidateOn: [{ type: 'workflow_refresh', source: ['dashboard', 'reports'] }],
+      }),
+    );
+
+    const realtimeOptions = useRealtimeEventsMock.mock.calls[0]?.[0];
+    act(() => {
+      realtimeOptions.onEvent({ type: 'workflow_refresh', source: 'patients_board' });
+      realtimeOptions.onEvent({ type: 'workflow_refresh', source: 'dashboard' });
+      vi.advanceTimersByTime(150);
+    });
+
+    expect(invalidateQueriesMock).toHaveBeenCalledTimes(1);
+    expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ['dashboard-summary'] });
+  });
+
   it('can receive realtime events without invalidating the query', () => {
     const onRealtimeEvent = vi.fn();
 
