@@ -10912,6 +10912,47 @@
   Commit/push this notification boundary slice. Broader backlog remains: `FE-RT-001` / `FE-RT-002`,
   `VISIT-SYNC-001`, `PAT-BOARD-PAGE-001`, `DSP-QUEUE-PAGE-001`, and production performance metrics.
 
+## 2026-07-07 Web Push backlog state sync
+
+- codex: reconciled `Plans.md` with the already-landed `NTF-PUSH-001` / `FE-PUSH-001` implementation.
+  Current code shows the Service Worker push handler uses `redactPushPayloadForOsBridge()` and the
+  notification click handler opens only `/notifications`. Server-side Web Push dispatch uses
+  `redactNotificationForOsBridge()` and sends only `{ type, title, body, link: '/notifications' }`,
+  while persisted in-app notifications keep their authenticated in-app details.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/sw.ts`,
+  `src/app/sw.test.ts`,
+  `src/lib/notifications/os-bridge-redaction.ts`,
+  `src/lib/notifications/os-bridge-redaction.test.ts`,
+  `src/lib/notifications/browser-notifications-sw-static.test.ts`,
+  `src/server/services/notifications.ts`,
+  `src/server/services/notifications.test.ts`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- security / PHI reviewed:
+  The Web Push / OS notification boundary discards raw `title`, `body`, `link`, patient identifiers,
+  report/visit IDs, metadata, provider errors, tokens, storage keys, signed URLs, patient names, and
+  drug/free text before the OS layer. Deep links are reopened through `/notifications` and are
+  re-authorized inside the app.
+- bugs / risks reduced:
+  Removed stale `Plans.md` statements that still described `src/app/sw.ts` as trusting raw push
+  `title/body/link` and still listed the server Web Push payload snapshot as remaining work.
+- validation:
+  `pnpm vitest run src/app/sw.test.ts src/lib/notifications/os-bridge-redaction.test.ts src/lib/notifications/browser-notifications-sw-static.test.ts src/server/services/notifications.test.ts --reporter=dot --testTimeout=30000`
+  green (4 files / 31 tests);
+  `pnpm exec prettier --check Plans.md ops/refactor/STATE.md`
+  green;
+  `git diff --check -- Plans.md ops/refactor/STATE.md`
+  green.
+- remaining:
+  Commit and push this docs/state sync. Broader backlog remains open: `VISIT-SYNC-001`,
+  `PAT-BOARD-PAGE-001`, `DSP-QUEUE-PAGE-001`, `PERF-RTE-001A`, `FE-STORAGE-001`, and
+  `MOB-CACHE-001`.
+
 ## 2026-07-06 Reports realtime workspace migration
 
 - codex: implemented `FE-REPORT-001` as the next FE-RT follow-up slice.
