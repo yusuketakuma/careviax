@@ -1010,8 +1010,17 @@ describe('TasksContent', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'テスト用に2件選択' }));
     expect(screen.getByText('選択中 2件')).toBeTruthy();
+    const bulkCompleteButton = screen.getByRole('button', {
+      name: '表示中から選択した2件を完了',
+    });
+    expect(
+      screen.getByText('一括完了の対象は現在表示中の読込済み行から選択したタスクです。'),
+    ).toBeTruthy();
+    expect(bulkCompleteButton.getAttribute('aria-describedby')).toBe(
+      'tasks-bulk-complete-scope-description',
+    );
 
-    fireEvent.click(screen.getByRole('button', { name: /選択した2件を完了/ }));
+    fireEvent.click(bulkCompleteButton);
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith('タスクの一括完了に失敗しました');

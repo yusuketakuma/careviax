@@ -1041,8 +1041,10 @@ FE 仕上げ（低優先）:
   `serverExport` descriptor（`endpoint` / `auditEvent` / `maskingProfile` / `description`）へ置換した。
   shared DataTable は `/api/` 以外の endpoint、監査 event 欠落、masking profile 欠落、説明文欠落を
   fail-closed にし、「監査・マスキング済み」と表示できる最低限の contract を UI 型で要求する。
+  さらに `tasks` の一括完了 button を「表示中から選択したN件を完了」へ変更し、sr-only の
+  scope 説明で現在表示中の読込済み行から選択した対象であることを screen-level test で固定した。
   残: approved export registry への接続、real consumer の screen-level PHI export snapshot、
-  bulk action button 側の選択範囲文言テスト。
+  他 bulk action consumer の選択範囲文言 sweep。
 
 **追加実装順序**:
 

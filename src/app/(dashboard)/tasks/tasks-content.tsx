@@ -61,6 +61,8 @@ import {
   type TaskHealthBoard,
 } from './task-health-board-panel';
 
+const TASK_BULK_COMPLETE_SCOPE_DESCRIPTION_ID = 'tasks-bulk-complete-scope-description';
+
 // --- Types ---
 
 type Task = {
@@ -896,14 +898,20 @@ export function TasksContent({
                 size="sm"
                 onClick={() => bulkCompleteMutation.mutate(completableTasks.map((t) => t.id))}
                 disabled={bulkCompleteMutation.isPending}
+                aria-describedby={TASK_BULK_COMPLETE_SCOPE_DESCRIPTION_ID}
               >
                 <CheckSquare className="mr-1.5 size-3.5" aria-hidden="true" />
-                選択した{completableTasks.length}件を完了
+                表示中から選択した{completableTasks.length}件を完了
               </Button>
             </ActionRail>
           ) : null
         }
       >
+        {selectedTasks.length > 0 ? (
+          <p id={TASK_BULK_COMPLETE_SCOPE_DESCRIPTION_ID} className="sr-only">
+            一括完了の対象は現在表示中の読込済み行から選択したタスクです。
+          </p>
+        ) : null}
         <FilterSummaryBar
           items={[
             { label: '表示件数', value: `${tasks.length}件` },
