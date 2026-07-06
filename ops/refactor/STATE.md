@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: MOV-001 Management plan document marker hardening（未コミット）。
+- codex: MOV-001 Management plan document marker hardening（commit 622f40443, pushed）。
   - current task:
     Patient Movement Timeline の「処方・訪問・文書登録は発生 marker + 正本 deep link のみ」
     という最新ユーザー方針に合わせ、管理計画書 source から文書詳細に近い自由記載/日付詳細の
@@ -80,7 +80,7 @@
   - remaining:
     Formal inbound DB/API/review UI and MedicationStock Ledger source remain.
   - next action:
-    Commit/push this scoped slice.
+    Continue with the next Plans item.
 
 - codex: MOV-001 Inbound task movement classification（commit 42ed967c1, pushed）。
   - current task:
