@@ -9,20 +9,58 @@ When a UI/UX change requires visual reconstruction or a design reference, use `i
 
 For any AWS-related implementation, consult the relevant AWS official documentation or API reference before editing code, IaC, runtime env, IAM/S3/RDS/ECS/DynamoDB/SES/Cognito/CloudWatch/Route 53/ACM/Secrets Manager/EventBridge configuration, or operational scripts. Record the official reference name, URL, and confirmation date in the implementation notes, PR description, `ops/refactor/STATE.md`, or the relevant docs. If AWS official guidance conflicts with repository planning docs, prefer the official guidance and update `Plans.md` with the delta before implementation.
 
-For high-risk implementation or unclear failures, consult Oracle/GPT-5.5 Pro as an advisory safety gate before proceeding. Use the project `.oracle/config.json` defaults and keep machine-local browser paths, remote tokens, API keys, cookies, and secrets in `~/.oracle/config.json`, environment variables, or explicit CLI flags only.
+For high-risk implementation, repeated failure, or unclear technical decisions, consult
+Oracle/GPT-5.5 Pro as an advisory safety gate. Oracle is a senior second-opinion path,
+not a normal search/completion tool and not a product owner. Use the project
+`.oracle/config.json` defaults and keep machine-local browser paths, remote tokens,
+API keys, cookies, and secrets in `~/.oracle/config.json`, environment variables, or
+explicit CLI flags only.
 
-When consulting Oracle/GPT-5.5 Pro, GitHub access is mandatory, but GitHub context must be metadata-first and PHI/secret-scanned before it is shared. Before the consultation, inspect the current GitHub repository/branch/PR context with `git remote -v`, `git rev-parse HEAD`, and `gh` or `git` as appropriate, then include only the repository URL, branch, commit SHA, sanitized PR number/title, and PHI/secret-free diff summary by default. Instruct GPT-5.5 Pro to review the relevant safe GitHub state as part of its answer. Do not send or invite Oracle to inspect PR/issue bodies, comments, screenshots, CI logs, artifacts, attachments, or raw diffs unless they have been explicitly checked and proven free of PHI, PII, secrets, tokens, patient identifiers, and production credentials. If Oracle cannot directly access a private GitHub resource, or if direct GitHub review would expose unsafe artifacts, do not skip the gate: provide a PHI/secret-free summary of the GitHub state and the minimal relevant local files instead, and record the access limitation in `ops/refactor/STATE.md`.
+Use `.agents/skills/oracle-consult/SKILL.md` for the full escalation policy. In short:
 
-Mandatory Oracle consultation triggers:
+- Do not use Oracle for formatting, typos, simple imports, obvious local type errors,
+  trivial docs/comments/tests, or missing product decisions that only the user can make.
+- Consult Oracle after two serious local repair attempts if the same test/type/lint/build
+  failure remains, the root cause is unclear, local reproduction is impossible, or the
+  patch is becoming speculative.
+- Consult Oracle before implementing or finalizing work involving authentication,
+  authorization, tenant isolation, PHI/PII/medical/pharmacy/patient data, DB schema or
+  migrations, production data import/export/backfill/deletion, billing/payment, audit
+  logs, secrets, encryption/signing/sessions/cookies, CORS/CSRF/RLS/middleware,
+  public API compatibility, queues/cron/retry/idempotency, transactions/concurrency,
+  caching/invalidation, broad refactors, or subsystem rewrites.
+- Consult Oracle before declaring completion for high-blast-radius or high-risk changes
+  when tests are weak, E2E/runtime verification is unavailable, or Codex is relying on
+  an unverified assumption.
 
-- authentication, authorization, tenant isolation, platform/support-mode access, or cross-tenant grants;
-- database schema, Prisma migrations, RLS policies, idempotency/OCC constraints, retention/legal-hold schema, or destructive data workflows;
-- audit logs, PHI/PII handling, medical information, billing/claims logic, exports/imports, files/attachments, Web Push/SSE/Webhook payload boundaries, secrets, production runtime, deploy/IaC, or API contract changes;
-- broad refactors with cross-cutting blast radius;
-- two failed implementation attempts, unclear test failures, ambiguous production-risk errors, or hidden coupling across frontend/backend/DB/auth;
-- final review for high-risk diffs before commit when the changed surface includes the above areas.
+Oracle Consult Score:
 
-Default command shape:
+`Impact + Uncertainty + Irreversibility + Blast Radius + Verification Gap + Repetition Penalty`
+
+Each item is 0 to 3. 0-4 means do not consult; 5-7 means continue locally; 8-10 means
+consult after two failed attempts; 11-13 means consult unless the fix is clearly local;
+14+ means consult before proceeding. Regardless of score, immediately consult Oracle
+for auth, authorization, tenant isolation, PHI/PII, DB migration, production data,
+billing, audit logs, secrets, or destructive operations.
+
+Oracle upstream verification requirement:
+
+When modifying Oracle usage rules, Oracle command flags, Browser mode behavior,
+GPT-5.5 Pro model selection, MCP integration, session handling, or Codex/Oracle skill
+instructions, first inspect the upstream GitHub repository and relevant current docs:
+
+- `https://github.com/steipete/oracle`
+- `https://github.com/steipete/oracle/blob/main/skills/oracle/SKILL.md`
+- `https://github.com/steipete/oracle/blob/main/docs/browser-mode.md`
+- `https://github.com/steipete/oracle/blob/main/CHANGELOG.md`
+
+Use upstream behavior as the source of truth for Oracle-specific mechanics. If GitHub
+is unavailable, state that upstream verification could not be completed and avoid
+confident claims about current Oracle behavior. This upstream check is required only
+when changing Oracle itself or its operating instructions, not for every implementation
+consultation.
+
+Default Oracle command shape:
 
 ```bash
 npx -y @steipete/oracle \
@@ -34,7 +72,8 @@ npx -y @steipete/oracle \
   --browser-auto-reattach-timeout 60s \
   --browser-thinking-time heavy \
   --heartbeat 30 \
-  -p "<focused PH-OS consultation prompt, including GitHub repo/branch/commit/PR context and an instruction to inspect GitHub>" \
+  --slug "<short-readable-slug>" \
+  -p "<focused PH-OS consultation prompt>" \
   --file "<minimal relevant files>"
 ```
 
@@ -46,7 +85,17 @@ npx -y @steipete/oracle --dry-run summary --files-report \
   --file "<minimal relevant files>"
 ```
 
-Never send secrets, `.env` files, private keys, access tokens, raw patient data, raw medical records, production credentials, or unredacted PHI/PII to Oracle. Use the smallest file set that contains the truth, prefer redacted fixtures, and treat Oracle output as advisory until verified by code inspection, tests, typecheck, lint, and local execution. If Oracle detaches or times out, do not start duplicate consultations; inspect `oracle status --hours 72`, `oracle session <id> --render`, or `oracle restart <id>`.
+Before consulting Oracle, prepare a high-signal prompt with the goal, current state,
+exact blocker or uncertainty, files inspected, files changed, commands run, exact errors
+or logs, options considered, constraints, and the decision needed from GPT-5.5 Pro.
+
+Never send secrets, `.env` files, private keys, access tokens, raw patient data, raw
+medical records, production credentials, or unredacted PHI/PII to Oracle. Use the
+smallest file set that contains the truth, prefer redacted fixtures, and treat Oracle
+output as advisory until verified by code inspection, tests, typecheck, lint, and local
+execution. If Oracle detaches or times out, do not start duplicate consultations;
+inspect `oracle status --hours 72`, `oracle session <id> --render`, or
+`oracle restart <id>`.
 
 Runtime model, approval, sandbox, service tier, MCP, and custom-agent registration belong in the user-level `~/.codex/config.toml`. This repository file defines PH-OS-specific working rules and should not be treated as the effective runtime configuration layer.
 

@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Oracle Consult'
+  short_description: 'Escalate high-risk or stuck work to Oracle GPT-5.5 Pro safely.'
+  default_prompt: 'Use Oracle only for high-risk technical review, repeated failure, or final review, with minimal PHI-safe context.'

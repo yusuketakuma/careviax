@@ -41,6 +41,54 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Oracle escalation policy narrowed and project skill added.
+  - current task:
+    ユーザー指示により、Oracle/GPT-5.5 Pro 相談基準を「相談時は常に GitHub access
+    mandatory」から、「高リスク・高不確実性・2回失敗・最終高リスクレビュー時のみ使う
+    senior second-opinion」に変更した。GitHub 上流確認は、Oracle usage rules / flags /
+    Browser mode / GPT-5.5 Pro model selection / MCP / session handling / Codex-Oracle skill
+    instructions を変更する時だけ必須とし、通常の実装相談では最小ファイルセットと
+    PHI/secret-free prompt を優先する。あわせて `.agents/skills/oracle-consult/SKILL.md`
+    を追加し、発火条件、score、data minimization、command template、prompt template、
+    reattach policy を skill 化した。
+  - official upstream references checked (2026-07-06):
+    `https://github.com/steipete/oracle`,
+    `https://github.com/steipete/oracle/blob/main/skills/oracle/SKILL.md`,
+    `https://github.com/steipete/oracle/blob/main/docs/browser-mode.md`,
+    `https://github.com/steipete/oracle/blob/main/CHANGELOG.md`.
+    Upstream確認では、Oracle が prompt/files を束ねる相談CLIであること、Browser mode が
+    `--browser-auto-reattach-*` を持つこと、公式 skill が fewest files / dry-run /
+    reattach-not-rerun / secret redaction を推奨していること、CHANGELOG で GPT-5.5 Pro /
+    Browser mode 周辺が継続更新されていることを確認した。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `AGENTS.md`,
+    `ops/refactor/STATE.md`,
+    `.agents/skills/*/SKILL.md`,
+    `/Users/yusuke/.codex/skills/.system/skill-creator/SKILL.md`,
+    Oracle upstream README / bundled skill / browser-mode docs / CHANGELOG.
+  - files changed:
+    `AGENTS.md`,
+    `.agents/skills/oracle-consult/SKILL.md`,
+    `.agents/skills/oracle-consult/agents/openai.yaml`,
+    `ops/refactor/STATE.md`.
+  - validation:
+    `python3 /Users/yusuke/.codex/skills/.system/skill-creator/scripts/quick_validate.py .agents/skills/oracle-consult`
+    passed.
+    `pnpm exec prettier --check AGENTS.md ops/refactor/STATE.md .agents/skills/oracle-consult/SKILL.md .agents/skills/oracle-consult/agents/openai.yaml`
+    passed.
+    `git diff --check -- AGENTS.md .agents/skills/oracle-consult/SKILL.md .agents/skills/oracle-consult/agents/openai.yaml ops/refactor/STATE.md`
+    passed.
+    `oracle status --hours 72` showed `ph-os-careviax-high-risk` running, then the existing
+    foreground session completed without duplicate re-run. The PAT-BOARD-PAGE-001 consult
+    recommended signed PHI-free cursor payloads, server-side card_filter/sort, exact
+    non-page-derived counts, and cursor tamper/filter mismatch tests for the subsequent
+    implementation slice.
+  - remaining work:
+    Scoped commit and push this policy/docs slice.
+  - next action:
+    Commit/push this policy/docs slice before resuming `PAT-BOARD-PAGE-001`.
+
 - codex: VISIT-SYNC-001 autosave/sync hardening partial + Oracle GitHub access rule.
   - current task:
     `Plans.md` の `VISIT-SYNC-001` を部分実装。訪問記録フォームの 30秒 autosave を
@@ -113,8 +161,10 @@
   - remaining work:
     `VISIT-SYNC-001` remains partial: step transition immediate save, residual medication /
     attachment-add immediate save, save-completion-triggered sync/backoff, explicit
-    saving/terminal/synced/conflict UI state matrix, and mobile E2E remain. Future Oracle
-    consultations must include GitHub context per the updated `AGENTS.md` rule.
+    saving/terminal/synced/conflict UI state matrix, and mobile E2E remain. The older
+    "GitHub context for every Oracle consultation" rule in this entry is superseded by the
+    later narrowed Oracle escalation policy: GitHub upstream verification is required only
+    when changing Oracle operating instructions.
   - next action:
     Implementation/docs commit created as `4c129c27c` (`Harden visit record autosave sync`).
     Push `main`, then continue with the next highest-priority `Plans.md` item
