@@ -41,6 +41,41 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Plans.md implemented-task cleanup pass 3（pending commit）。
+  - current task:
+    `Plans.md` 内の実装済みタスク、partial履歴、古い進捗メモを削除し、未完の実装単位だけに整理する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/api/visit-schedules/generate/route.ts`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/core/interprofessional/inbound/domain/inbound-signal-classifier.ts`,
+    `src/modules/pharmacy/medication-stock/application/medication-stock-signal-adapter.ts`,
+    `src/server/services/visit-schedule-overload-rebalancer.ts`,
+    `src/server/services/road-routing.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `visit-schedules/generate` の direct confirmed 作成停止、Patient Movement Timeline のタブ/型/基本deep link、
+    inbound signal classifier、MedicationStock short-term adapter、Risk/Task registry の実装済み履歴をタスクから削除した。
+    W3/VS-AUTO/RISK/INB/MOV/RX/旧Phase 0-1 の完了済み進捗メモを残作業だけに圧縮した。
+  - bugs found:
+    なし。計画台帳の整理。
+  - security risks reduced:
+    raw text / PHI / storage key / provider error の未完境界が Plans 上で見つけやすくなった。
+  - performance issues improved:
+    なし。
+  - validation:
+    `rg -n 'cc:PARTIAL|\\[~\\]|partial:|実装済み|完了済み|改善済み|解消済み|ローカル実装完了|コード側完了|技術 prerequisite|中核消化|追加済み|改名済み|commit \`[0-9a-f]|pushed|landed|DONE|done' Plans.md`→ no matches。`pnpm exec prettier --write Plans.md` → pass。
+  - remaining:
+    `Plans.md` は引き続き大きい。今後の実装後は、該当行を残タスク化せず削除する運用を継続する。
+  - next action:
+    prettier check / diff check、scoped commit/push。
+
 - codex: FE-ERR-001 document delivery rule segment hardening（pending commit）。
   - current task:
     `/admin/document-templates` の文書送達ルール一覧取得失敗を raw backend detail なしの shared segment state に寄せる。
