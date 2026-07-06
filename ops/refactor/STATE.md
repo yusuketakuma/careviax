@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: FE-ERR-001 Dashboard segment state migration（commit pending）。
+- codex: FE-ERR-001 Dashboard segment state migration（commit 46314c2c6, pushed）。
   - current task:
     前回追加した shared segment state wrapper を dashboard cockpit の summary/details/team/comments
     segment に展開し、BFF segment 失敗時の fail-soft 表示を共通化する。
@@ -79,7 +79,7 @@
   - remaining:
     commit、push。患者詳細 tabs、訪問準備、スケジュール、task/admin への展開は後続。
   - next action:
-    Run final validation and land the dashboard segment migration.
+    Continue with the next Plans item.
 
 - codex: FE-ERR-001 Segment boundary shared state components（commit 24ce5481b, pushed）。
   - current task:
