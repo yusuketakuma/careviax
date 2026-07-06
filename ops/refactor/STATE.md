@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: MOV-001 First visit document audit label hardening（未コミット）。
+- codex: MOV-001 First visit document audit label hardening（commit 191ea5a00, pushed）。
   - current task:
     初回訪問文書の audit-derived marker が `document_action` 内の template/reason/note や未知ラベルを
     movement payload に出さないよう、helper と projection を marker-only に寄せる。
@@ -77,7 +77,7 @@
   - remaining:
     Formal inbound DB/API/review UI and MedicationStock Ledger source remain.
   - next action:
-    Commit/push this scoped slice.
+    Continue with the next Plans item.
 
 - codex: MOV-001 Care report delivery marker hardening（commit f1945c9c3, pushed）。
   - current task:
