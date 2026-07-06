@@ -29,8 +29,21 @@ describe('pilot-launch-dossier', () => {
           facility_batching: 'phase2_candidate',
           medication_set_workflow: 'phase2_candidate',
           phase2_entry: 'blocked',
+          pilot_phi_entry: 'blocked',
         },
-        recommendations: ['施設患者が未確認です。FacilityVisitBatch と自動ルート最適化は Phase 2 移行候補として扱ってください。'],
+        aws_pilot_summary: {
+          mode: 'local_static_no_live_aws',
+          overall_status: 'blocked',
+          phi_input_status: 'blocked',
+          required_for_phi_count: 9,
+          ready_count: 6,
+          warning_count: 1,
+          blocked_count: 3,
+          checks: [],
+        },
+        recommendations: [
+          '施設患者が未確認です。FacilityVisitBatch と自動ルート最適化は Phase 2 移行候補として扱ってください。',
+        ],
       },
       orgAudit: {
         generated_at: '2026-03-31T00:00:00.000Z',
@@ -64,7 +77,9 @@ describe('pilot-launch-dossier', () => {
             },
           ],
         },
-        recommendations: ['1 件の患者住所が既存拠点の 16km 圏外です。対象店舗か訪問体制を見直してください。'],
+        recommendations: [
+          '1 件の患者住所が既存拠点の 16km 圏外です。対象店舗か訪問体制を見直してください。',
+        ],
       },
       uatSummary: {
         generated_at: '2026-03-31T00:00:00.000Z',
@@ -88,7 +103,9 @@ describe('pilot-launch-dossier', () => {
           },
         ],
         checklist_coverage: [],
-        recommendations: ['critical/high の blocker が 1 件あります。Phase 2 開始前に action_items の解消を優先してください。'],
+        recommendations: [
+          'critical/high の blocker が 1 件あります。Phase 2 開始前に action_items の解消を優先してください。',
+        ],
       },
       externalReadiness: {
         pmda: {
@@ -125,13 +142,13 @@ describe('pilot-launch-dossier', () => {
     });
 
     expect(dossier.recommendations).toContain(
-      'PMDA メディナビ登録または配布 URL 設定が未完了です。PMDA importer の本番疎通前提を満たしてください。'
+      'PMDA メディナビ登録または配布 URL 設定が未完了です。PMDA importer の本番疎通前提を満たしてください。',
     );
     expect(dossier.recommendations).toContain(
-      'live backup drill の前提が不足しています。AWS 権限と必須環境変数を揃えてから実地試験に進んでください。'
+      'live backup drill の前提が不足しています。AWS 権限と必須環境変数を揃えてから実地試験に進んでください。',
     );
     expect(dossier.recommendations).toContain(
-      'ISMS 審査機関の見積比較が未着手です。vendor comparison template を埋めて予算判断を始めてください。'
+      'ISMS 審査機関の見積比較が未着手です。vendor comparison template を埋めて予算判断を始めてください。',
     );
   });
 
@@ -161,6 +178,17 @@ describe('pilot-launch-dossier', () => {
           facility_batching: 'ready',
           medication_set_workflow: 'ready',
           phase2_entry: 'ready',
+          pilot_phi_entry: 'local_ready_requires_live_confirmation',
+        },
+        aws_pilot_summary: {
+          mode: 'local_static_no_live_aws',
+          overall_status: 'ready',
+          phi_input_status: 'local_ready_requires_live_confirmation',
+          required_for_phi_count: 9,
+          ready_count: 9,
+          warning_count: 1,
+          blocked_count: 0,
+          checks: [],
         },
         recommendations: [],
       },
@@ -247,7 +275,7 @@ describe('pilot-launch-dossier', () => {
     });
 
     expect(dossier.recommendations).toContain(
-      'バックアップ復旧試験は机上訓練のみです。Phase 2 判定前に live drill を 1 回記録してください。'
+      'バックアップ復旧試験は机上訓練のみです。Phase 2 判定前に live drill を 1 回記録してください。',
     );
   });
 
@@ -278,6 +306,17 @@ describe('pilot-launch-dossier', () => {
           facility_batching: 'ready',
           medication_set_workflow: 'ready',
           phase2_entry: 'ready',
+          pilot_phi_entry: 'local_ready_requires_live_confirmation',
+        },
+        aws_pilot_summary: {
+          mode: 'local_static_no_live_aws',
+          overall_status: 'ready',
+          phi_input_status: 'local_ready_requires_live_confirmation',
+          required_for_phi_count: 9,
+          ready_count: 9,
+          warning_count: 1,
+          blocked_count: 0,
+          checks: [],
         },
         recommendations: [],
       },

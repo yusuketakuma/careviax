@@ -21,6 +21,20 @@ async function main() {
 - set_pilot_cases: ${snapshot.case_summary.set_pilot_case_count}
 - uat_blockers: ${snapshot.uat_summary.blocker_count}
 - phase2_entry: ${snapshot.decisions.phase2_entry}
+- pilot_phi_entry: ${snapshot.decisions.pilot_phi_entry}
+- aws_pilot_mode: ${snapshot.aws_pilot_summary.mode}
+- aws_pilot_status: ${snapshot.aws_pilot_summary.overall_status}
+- aws_phi_input_status: ${snapshot.aws_pilot_summary.phi_input_status}
+- aws_pilot_blocked_checks: ${snapshot.aws_pilot_summary.blocked_count}
+- aws_pilot_warning_checks: ${snapshot.aws_pilot_summary.warning_count}
+
+## AWS Pilot Checks
+${snapshot.aws_pilot_summary.checks
+  .map(
+    (item) =>
+      `- [${item.status}] ${item.id}: ${item.message}${item.remediation ? ` (${item.remediation})` : ''}`,
+  )
+  .join('\n')}
 
 ## Recommendations
 ${snapshot.recommendations.map((item) => `- ${item}`).join('\n')}

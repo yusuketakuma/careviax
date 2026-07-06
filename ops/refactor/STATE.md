@@ -41,6 +41,93 @@
 
 ## 直近の land（本日・要点）
 
+- codex: AWS-LS-001 Lightsail pilot readiness gate implemented.
+  - current task:
+    `Plans.md` の `AWS-LS-001` を実装。`pilot-readiness` に local/static no-live-AWS の
+    `aws_pilot_summary` と `pilot_phi_entry` gate を追加し、Lightsail pilot / S3 PHI policy /
+    Cognito+SES / DynamoDB rate limit / CloudWatch+EventBridge / RLS+no-store contract /
+    backup live drill をPHI投入前の local readiness signals として集約した。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/pilot-readiness.ts`,
+    `src/server/services/pilot-readiness.test.ts`,
+    `src/app/api/admin/pilot-readiness/route.ts`,
+    `src/app/api/admin/pilot-readiness/route.test.ts`,
+    `tools/scripts/pilot-readiness-report.ts`,
+    `src/lib/operations/external-readiness.ts`,
+    `src/lib/api/sensitive-response.ts`,
+    `src/lib/api/response.ts`,
+    `docs/architecture/aws-phos-deployment-stages.md`,
+    `docs/operations/aws-cost-minimal-deployment.md`,
+    `docs/operations/rate-limit-production-runbook.md`,
+    `tools/infra/file-storage-bucket-policy.json`,
+    `tools/infra/prescription-object-lock.json`,
+    `tools/infra/s3-kms-key-policy.json`,
+    `tools/infra/rate-limit-dynamodb.json`,
+    `tools/infra/cloudwatch-alarms.json`,
+    `tools/infra/eventbridge-schedules.json`,
+    `prisma/migrations/20260706033000_add_audit_log_review_state/migration.sql`,
+    `prisma/schema/admin.prisma`,
+    `prisma/rls-policies.sql`,
+    `src/tools/rls-policy-contract.test.ts`,
+    `src/tools/rls-known-gaps.ts`,
+    `src/tools/rls-gap-ledger.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/pilot-readiness.ts`,
+    `src/server/services/pilot-readiness.test.ts`,
+    `src/app/api/admin/pilot-readiness/route.ts`,
+    `src/app/api/admin/pilot-readiness/route.test.ts`,
+    `src/server/services/pilot-launch-dossier.test.ts`,
+    `tools/scripts/pilot-readiness-report.ts`,
+    `prisma/rls-policies.sql`,
+    `docs/security/rls-gap-ledger.md`.
+  - subagent / review:
+    `implementation_planner` (`019f35ed-8819-7640-838f-70707e4f5483`) を read-only planning に投入。
+    live AWS call を入れず local/static evidence に限定すること、no-store route header を追加すること、
+    PHI投入状態を false-ready にしないことを推奨。実装では `mode=local_static_no_live_aws` と
+    `phi_input_status=local_ready_requires_live_confirmation` を明示し、実AWS疎通は別gateとして残した。
+  - bugs found:
+    既存 `/api/admin/pilot-readiness` は case/UAT readiness のみで、PHI投入前のAWS/Lightsail/S3/DDB/backup
+    前提を返していなかった。UAT feedback を含む管理GETにも no-store header が付いていなかった。
+    追加検証で `AuditLogReview` が migration では RLS 済みだが `prisma/rls-policies.sql` に未反映の
+    SSOT drift として検出された。
+  - security risks reduced:
+    readiness evidence は env value / secret / URL / storage key を返さず、`env:KEY` と local artifact path
+    のみを返す。`RATE_LIMIT_STORE=dynamodb` と DDB table/region、backup live drill、S3 Object Lock/KMS
+    artifacts、RLS/no-store contract が欠ける場合は `pilot_phi_entry=blocked` になる。
+    route は `withSensitiveNoStore(success(...))` に変更した。`AuditLogReview` は既存 migration と同じ
+    `app_enforced_org_id()` policy を RLS SSOT へ同期し、RLS gap ledger を再生成した。
+  - performance issues found:
+    なし。readiness builder は local filesystem/env summary のみで、AWS SDK・DB以外の外部I/O・live AWS callを追加していない。
+  - validation commands:
+    `pnpm exec vitest run src/server/services/pilot-readiness.test.ts src/app/api/admin/pilot-readiness/route.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint src/server/services/pilot-readiness.ts src/server/services/pilot-readiness.test.ts src/app/api/admin/pilot-readiness/route.ts src/app/api/admin/pilot-readiness/route.test.ts tools/scripts/pilot-readiness-report.ts`;
+    `pnpm exec prettier --write Plans.md ops/refactor/STATE.md src/server/services/pilot-readiness.ts src/server/services/pilot-readiness.test.ts src/app/api/admin/pilot-readiness/route.ts src/app/api/admin/pilot-readiness/route.test.ts tools/scripts/pilot-readiness-report.ts`;
+    `UPDATE_RLS_LEDGER=1 pnpm exec vitest run src/tools/rls-policy-contract.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec vitest run src/server/services/pilot-readiness.test.ts src/app/api/admin/pilot-readiness/route.test.ts tools/scripts/aws-lightsail-pilot-plan.test.ts tools/scripts/aws-lightsail-runtime-env-validate.test.ts tools/scripts/aws-deployment-readiness.test.ts tools/scripts/verify-rate-limit-dynamodb.test.ts tools/infra/cloudwatch-alarms.test.ts src/tools/rls-policy-contract.test.ts src/lib/db/rls.test.ts --reporter=dot --testTimeout=30000`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`;
+    `pnpm exec vitest run src/server/services/pilot-readiness.test.ts src/app/api/admin/pilot-readiness/route.test.ts src/server/services/pilot-launch-dossier.test.ts tools/scripts/aws-lightsail-pilot-plan.test.ts tools/scripts/aws-lightsail-runtime-env-validate.test.ts tools/scripts/aws-deployment-readiness.test.ts tools/scripts/verify-rate-limit-dynamodb.test.ts tools/infra/cloudwatch-alarms.test.ts src/tools/rls-policy-contract.test.ts src/lib/db/rls.test.ts --reporter=dot --testTimeout=30000`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`;
+    `pnpm format:check`;
+    `pnpm lint`;
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/server/services/pilot-readiness.ts src/server/services/pilot-readiness.test.ts src/app/api/admin/pilot-readiness/route.ts src/app/api/admin/pilot-readiness/route.test.ts tools/scripts/pilot-readiness-report.ts prisma/rls-policies.sql docs/security/rls-gap-ledger.md`.
+  - validation results:
+    focused vitest green (2 files / 7 tests); targeted eslint green. RLS contract regeneration/test green
+    (1 file / 19 tests). AWS/readiness/RLS regression green (9 files / 53 passed / 1 skipped), then dossier
+    fixture included regression green (10 files / 56 passed / 1 skipped). `pnpm typecheck`,
+    `pnpm typecheck:no-unused`, `pnpm format:check`, `pnpm lint`, and diff-check green. `pnpm lint` reported
+    existing warnings only in `src/lib/platform/break-glass.test.ts` for `_tx` / `_input`.
+  - remaining work:
+    実AWS/DynamoDB/S3/CloudWatch/Cognito/SES の live verification は未実施で、`rate-limit:ddb:verify`、
+    `aws:deploy:readiness -- --live-aws`、backup live drill 実地記録、`S3-PHI-001` deploy gate、
+    `OPS-AWS-001` alarm application が残る。`AWS-ECS-001` / `IAM-001` / `OPS-MIGRATE-001` も未着手。
+  - next action:
+    scoped commit/push 後に `S3-PHI-001` または `OPS-RATE-001` の実装sliceへ進む。
+
 - codex: AWS-ARCH-001 deployment stages ADR implemented.
   - current task:
     `Plans.md` の `AWS-ARCH-001` を実装。低コスト実証、ECS/Fargate 本番最小、拡張構成、
