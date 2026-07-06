@@ -41,6 +41,64 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOD-RISK-001 RiskFinding provider registry.
+  - current task:
+    `Plans.md` の `MOD-RISK-001` に沿って、Case Risk Cockpit の risk finding collect sequence を
+    provider registry 経由に寄せた。DB query と `RiskFinding` DTO semantics は変更せず、取得済み rows
+    を provider registry に渡す Strangler-style の最小スライスにした。Oracle consult は
+    `mod-risk-provider-review` で開始したが Chrome disconnect + Node `setTypeOfService EINVAL` により
+    回答未取得。重複実行は避け、既存コード・Plans・直前 `MOD-COLLAB-001` pattern から local design を
+    確定した。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `git remote -v`,
+    `gh repo view`,
+    `src/server/services/risk-finding-registry.ts`,
+    `src/server/services/risk-finding-registry.test.ts`,
+    `src/server/services/case-risk-cockpit.ts`,
+    `src/server/services/case-risk-cockpit.test.ts`,
+    `src/lib/risk/risk-finding.ts`,
+    `src/core/module-registry/index.ts`,
+    `src/modules/pharmacy/index.ts`,
+    `Plans.md`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/core/risk/provider-registry.ts`,
+    `src/core/risk/provider-registry.test.ts`,
+    `src/server/risk/case-risk-provider-types.ts`,
+    `src/server/risk/core-case-risk-providers.ts`,
+    `src/server/risk/active-case-risk-registry.ts`,
+    `src/server/risk/active-case-risk-registry.test.ts`,
+    `src/modules/pharmacy/index.ts`,
+    `src/modules/pharmacy/risk/case-risk-providers.ts`,
+    `src/server/services/case-risk-cockpit.ts`.
+  - bugs / risks reduced:
+    `case-risk-cockpit.ts` から domain-specific adapter import と push helper 群を削除し、core risk
+    provider（consent/report/notification/data_quality/integration/privacy/task）と pharmacy risk
+    provider（visit_preparation/dispensing/medication_reconciliation/billing）へ分離した。DB取得、
+    PHI-minimized adapter文言、section/order/count/action_href semantics は既存 `risk-finding-registry`
+    と `src/lib/risk/risk-finding.ts` をSSOTとして維持する。active provider order test で従来の collect
+    sequence を固定し、次の home_medical/home_nursing provider 追加時に common service を直接膨らませる
+    リスクを下げた。
+  - validation:
+    `pnpm exec vitest run src/core/risk/provider-registry.test.ts src/server/risk/active-case-risk-registry.test.ts src/server/services/case-risk-cockpit.test.ts src/server/services/risk-finding-registry.test.ts --reporter=dot --testTimeout=30000`
+    passed: 4 files / 23 tests.
+    `pnpm exec eslint src/core/risk/provider-registry.ts src/core/risk/provider-registry.test.ts src/server/risk/case-risk-provider-types.ts src/server/risk/core-case-risk-providers.ts src/server/risk/active-case-risk-registry.ts src/server/risk/active-case-risk-registry.test.ts src/modules/pharmacy/index.ts src/modules/pharmacy/risk/case-risk-providers.ts src/server/services/case-risk-cockpit.ts`
+    passed.
+    `pnpm exec prettier --check src/core/risk/provider-registry.ts src/core/risk/provider-registry.test.ts src/server/risk/case-risk-provider-types.ts src/server/risk/core-case-risk-providers.ts src/server/risk/active-case-risk-registry.ts src/server/risk/active-case-risk-registry.test.ts src/modules/pharmacy/index.ts src/modules/pharmacy/risk/case-risk-providers.ts src/server/services/case-risk-cockpit.ts`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck --pretty false` passed.
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false` passed.
+    `pnpm boundaries:check` passed: 0 new violations, 17 allowlisted debt imports across 10 files.
+  - remaining work:
+    `MOD-RISK-001` first slice is complete for Case Risk Cockpit collection. Physical relocation of pure adapter
+    functions out of `risk-finding-registry.ts`, provider enable/disable flags, and cross-reference tooling remain
+    later slices. No DB migration, deploy, external send, or production mutation was performed.
+  - next action:
+    Scoped commit this risk-provider slice, then continue with `MOD-TASK-001` or another high-value module debt
+    after live-state verification.
+
 - codex: MOD-COLLAB-001 collaboration access provider registry.
   - current task:
     `Plans.md` の `MOD-COLLAB-001` に沿って、`collaboration-access.ts` に残っていた

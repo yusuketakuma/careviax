@@ -1,6 +1,7 @@
 import { definePhosModule } from '@/core/module-registry';
 
 export { createPharmacyCollaborationAccessProviders } from './collaboration/access-providers';
+export { createPharmacyCaseRiskProviders } from './risk/case-risk-providers';
 
 export const pharmacyModule = definePhosModule({
   id: 'pharmacy',

@@ -8,20 +8,22 @@ import {
   statusFromRiskFindings,
   summarizeRiskFindings,
 } from '@/lib/risk/risk-finding';
-import { describeBillingEvidenceBlockers } from '@/server/services/billing-evidence/core';
-import {
-  adaptBillingEvidenceBlockerToRiskFinding,
-  adaptCareReportToRiskFinding,
-  adaptConsentPlanLifecycleToRiskFindings,
-  adaptDispenseTaskToRiskFinding,
-  adaptNotificationToRiskFinding,
-  adaptOperationalTaskToRiskFinding,
-  adaptPatientMcsIntegrationToRiskFinding,
-  adaptPatientSharePrivacyToRiskFindings,
-  adaptPrescriptionLineReconciliationToRiskFinding,
-  adaptResidenceGeocodeToRiskFinding,
-  adaptUpcomingVisitPreparationToRiskFindings,
-} from '@/server/services/risk-finding-registry';
+import { activeCaseRiskFindingProviderRegistry } from '@/server/risk/active-case-risk-registry';
+import type {
+  BillingEvidenceRow,
+  CareReportRow,
+  ConsentRow,
+  DispenseTaskRow,
+  FirstVisitDocumentRow,
+  ManagementPlanRow,
+  NotificationRiskRow,
+  PatientMcsLinkRiskRow,
+  PatientShareCaseRiskRow,
+  PrescriptionLineRiskRow,
+  ResidenceRiskRow,
+  TaskRow,
+  VisitScheduleRow,
+} from '@/server/risk/case-risk-provider-types';
 import type {
   CaseRiskCockpitResponse,
   CaseRiskCockpitSection,
@@ -68,123 +70,6 @@ type CaseRiskCaseRow = {
     display_id: string | null;
     name: string;
   };
-};
-
-type ConsentRow = {
-  id: string;
-  expiry_date: Date | null;
-};
-
-type ManagementPlanRow = {
-  id: string;
-  next_review_date: Date | null;
-};
-
-type FirstVisitDocumentRow = {
-  id: string;
-  delivered_at: Date | null;
-};
-
-type VisitScheduleRow = {
-  id: string;
-  display_id: string | null;
-  schedule_status: string;
-  scheduled_date: Date;
-  carry_items_status: string | null;
-  preparation: {
-    id: string;
-    medication_changes_reviewed: boolean;
-    carry_items_confirmed: boolean;
-    previous_issues_reviewed: boolean;
-    route_confirmed: boolean;
-    offline_synced: boolean;
-  } | null;
-  visit_record: {
-    id: string;
-  } | null;
-};
-
-type CareReportRow = {
-  id: string;
-  display_id: string | null;
-  status: string;
-  updated_at: Date;
-};
-
-type DispenseTaskRow = {
-  id: string;
-  priority: string | null;
-  status: string;
-  assigned_to: string | null;
-  due_date: Date | null;
-};
-
-type PrescriptionLineRiskRow = {
-  id: string;
-  drug_master_id: string | null;
-  drug_resolution_status: string | null;
-};
-
-type NotificationRiskRow = {
-  id: string;
-  type: string;
-  event_type: string | null;
-  link: string | null;
-  created_at: Date;
-};
-
-type ResidenceRiskRow = {
-  id: string;
-  lat: number | null;
-  lng: number | null;
-  geocode_status: string | null;
-  geocode_accuracy: string | null;
-  updated_at: Date;
-};
-
-type PatientMcsLinkRiskRow = {
-  id: string;
-  last_sync_status: string | null;
-  last_sync_attempt_at: Date | null;
-  last_synced_at: Date | null;
-  updated_at: Date;
-};
-
-type PatientShareCaseRiskRow = {
-  id: string;
-  status: string;
-  share_scope: Prisma.JsonValue | null;
-  ends_at: Date | null;
-  updated_at: Date;
-  consents: Array<{
-    id: string;
-    consent_date: Date;
-    valid_until: Date | null;
-    revoked_at: Date | null;
-  }>;
-};
-
-type TaskRow = {
-  id: string;
-  task_type: string;
-  title: string;
-  priority: 'urgent' | 'high' | 'normal' | 'low';
-  status: string;
-  assigned_to: string | null;
-  due_date: Date | null;
-  sla_due_at: Date | null;
-  related_entity_type: string | null;
-  related_entity_id: string | null;
-};
-
-type BillingEvidenceRow = {
-  id: string;
-  patient_id: string | null;
-  visit_record_id: string | null;
-  claimable: boolean;
-  exclusion_reason: string | null;
-  same_month_exclusion_flags: Prisma.JsonValue | null;
-  validation_notes: Prisma.JsonValue | null;
 };
 
 type GetCaseRiskCockpitArgs = {
@@ -246,213 +131,6 @@ function buildNextActions(findings: readonly CaseRiskFinding[]): CaseRiskNextAct
       due_at: finding.due_at ?? null,
       action_href: finding.action_href,
     }));
-}
-
-function pushConsentPlanFindings(args: {
-  findings: CaseRiskFinding[];
-  patientHref: string;
-  patientId: string;
-  caseId: string;
-  consent: ConsentRow | null;
-  managementPlan: ManagementPlanRow | null;
-  firstVisitDocument: FirstVisitDocumentRow | null;
-  now: Date;
-}) {
-  args.findings.push(
-    ...adaptConsentPlanLifecycleToRiskFindings(
-      {
-        consent: args.consent,
-        managementPlan: args.managementPlan,
-        firstVisitDocument: args.firstVisitDocument,
-        now: args.now,
-      },
-      {
-        patientId: args.patientId,
-        caseId: args.caseId,
-        patientHref: args.patientHref,
-      },
-    ),
-  );
-}
-
-function pushVisitFindings(args: {
-  findings: CaseRiskFinding[];
-  patientHref: string;
-  patientId: string;
-  caseId: string;
-  schedules: VisitScheduleRow[];
-}) {
-  const schedule = args.schedules[0] ?? null;
-  args.findings.push(
-    ...adaptUpcomingVisitPreparationToRiskFindings(schedule, {
-      patientId: args.patientId,
-      caseId: args.caseId,
-      patientHref: args.patientHref,
-    }),
-  );
-}
-
-function pushReportFindings(args: {
-  findings: CaseRiskFinding[];
-  patientId: string;
-  caseId: string;
-  reports: CareReportRow[];
-}) {
-  for (const report of args.reports) {
-    const finding = adaptCareReportToRiskFinding(report, {
-      patientId: args.patientId,
-      caseId: args.caseId,
-    });
-    if (finding) args.findings.push(finding);
-  }
-}
-
-function pushDispensingFindings(args: {
-  findings: CaseRiskFinding[];
-  patientId: string;
-  caseId: string;
-  dispenseTasks: DispenseTaskRow[];
-  now: Date;
-}) {
-  for (const task of args.dispenseTasks) {
-    args.findings.push(
-      adaptDispenseTaskToRiskFinding(task, {
-        patientId: args.patientId,
-        caseId: args.caseId,
-        now: args.now,
-      }),
-    );
-  }
-}
-
-function pushMedicationFindings(args: {
-  findings: CaseRiskFinding[];
-  patientId: string;
-  caseId: string;
-  prescriptionLines: PrescriptionLineRiskRow[];
-}) {
-  for (const line of args.prescriptionLines) {
-    args.findings.push(
-      adaptPrescriptionLineReconciliationToRiskFinding(line, {
-        patientId: args.patientId,
-        caseId: args.caseId,
-      }),
-    );
-  }
-}
-
-function pushNotificationFindings(args: {
-  findings: CaseRiskFinding[];
-  patientId: string;
-  caseId: string;
-  notifications: NotificationRiskRow[];
-}) {
-  for (const notification of args.notifications) {
-    args.findings.push(
-      adaptNotificationToRiskFinding(notification, {
-        patientId: args.patientId,
-        caseId: args.caseId,
-      }),
-    );
-  }
-}
-
-function pushDataQualityFindings(args: {
-  findings: CaseRiskFinding[];
-  patientId: string;
-  caseId: string;
-  residences: ResidenceRiskRow[];
-}) {
-  for (const residence of args.residences) {
-    const finding = adaptResidenceGeocodeToRiskFinding(residence, {
-      patientId: args.patientId,
-      caseId: args.caseId,
-    });
-    if (finding) args.findings.push(finding);
-  }
-}
-
-function pushIntegrationFindings(args: {
-  findings: CaseRiskFinding[];
-  patientId: string;
-  caseId: string;
-  patientMcsLinks: PatientMcsLinkRiskRow[];
-}) {
-  for (const link of args.patientMcsLinks) {
-    const finding = adaptPatientMcsIntegrationToRiskFinding(link, {
-      patientId: args.patientId,
-      caseId: args.caseId,
-    });
-    if (finding) args.findings.push(finding);
-  }
-}
-
-function pushPrivacySecurityFindings(args: {
-  findings: CaseRiskFinding[];
-  patientId: string;
-  caseId: string;
-  patientShareCases: PatientShareCaseRiskRow[];
-  now: Date;
-}) {
-  for (const shareCase of args.patientShareCases) {
-    args.findings.push(
-      ...adaptPatientSharePrivacyToRiskFindings(shareCase, {
-        patientId: args.patientId,
-        caseId: args.caseId,
-        now: args.now,
-      }),
-    );
-  }
-}
-
-function pushTaskFindings(args: {
-  findings: CaseRiskFinding[];
-  patientId: string;
-  caseId: string;
-  tasks: TaskRow[];
-  now: Date;
-}) {
-  for (const task of args.tasks) {
-    args.findings.push(
-      adaptOperationalTaskToRiskFinding(task, {
-        patientId: args.patientId,
-        caseId: args.caseId,
-        now: args.now,
-      }),
-    );
-  }
-}
-
-function pushBillingFindings(args: {
-  findings: CaseRiskFinding[];
-  patientId: string;
-  caseId: string;
-  visitRecordIds: Set<string>;
-  billingEvidence: BillingEvidenceRow[];
-}) {
-  for (const evidence of args.billingEvidence) {
-    if (!evidence.visit_record_id || !args.visitRecordIds.has(evidence.visit_record_id)) continue;
-    if (evidence.patient_id && evidence.patient_id !== args.patientId) continue;
-
-    const blockers = describeBillingEvidenceBlockers({
-      claimable: evidence.claimable,
-      exclusionReason: evidence.exclusion_reason,
-      sameMonthExclusionFlags: evidence.same_month_exclusion_flags,
-      patientId: args.patientId,
-      visitRecordId: evidence.visit_record_id,
-    });
-
-    for (const blocker of blockers) {
-      args.findings.push(
-        adaptBillingEvidenceBlockerToRiskFinding(blocker, {
-          patientId: args.patientId,
-          caseId: args.caseId,
-          visitRecordId: evidence.visit_record_id,
-          billingEvidenceId: evidence.id,
-        }),
-      );
-    }
-  }
 }
 
 export async function getCaseRiskCockpit(
@@ -787,7 +465,6 @@ export async function getCaseRiskCockpit(
           },
         })) as BillingEvidenceRow[]);
 
-  const findings: CaseRiskFinding[] = [];
   const scopedSchedules = selectedSchedules.filter((schedule) => schedule.id);
   const scopedReports = selectedReports.filter(
     (report) => report.status === 'failed' || report.status === 'response_waiting',
@@ -799,78 +476,23 @@ export async function getCaseRiskCockpit(
   );
   const scopedVisitRecordIds = new Set(visitRecordIds);
 
-  pushConsentPlanFindings({
-    findings,
+  const findings = activeCaseRiskFindingProviderRegistry.collectAll({
     patientHref,
     patientId: careCase.patient_id,
     caseId: careCase.id,
+    now,
     consent: scopedConsent,
     managementPlan: scopedManagementPlan,
     firstVisitDocument: scopedFirstVisitDocument,
-    now,
-  });
-  pushVisitFindings({
-    findings,
-    patientHref,
-    patientId: careCase.patient_id,
-    caseId: careCase.id,
     schedules: scopedSchedules,
-  });
-  pushReportFindings({
-    findings,
-    patientId: careCase.patient_id,
-    caseId: careCase.id,
     reports: scopedReports,
-  });
-  pushDispensingFindings({
-    findings,
-    patientId: careCase.patient_id,
-    caseId: careCase.id,
     dispenseTasks: selectedDispenseTasks,
-    now,
-  });
-  pushMedicationFindings({
-    findings,
-    patientId: careCase.patient_id,
-    caseId: careCase.id,
     prescriptionLines: selectedPrescriptionLines,
-  });
-  pushNotificationFindings({
-    findings,
-    patientId: careCase.patient_id,
-    caseId: careCase.id,
     notifications: selectedNotifications,
-  });
-  pushDataQualityFindings({
-    findings,
-    patientId: careCase.patient_id,
-    caseId: careCase.id,
     residences: selectedResidences,
-  });
-  pushIntegrationFindings({
-    findings,
-    patientId: careCase.patient_id,
-    caseId: careCase.id,
     patientMcsLinks: selectedPatientMcsLinks,
-  });
-  pushPrivacySecurityFindings({
-    findings,
-    patientId: careCase.patient_id,
-    caseId: careCase.id,
     patientShareCases: selectedPatientShareCases,
-    now,
-  });
-  pushTaskFindings({
-    findings,
-    patientId: careCase.patient_id,
-    caseId: careCase.id,
     tasks: scopedTasks,
-    now,
-  });
-  pushBillingFindings({
-    findings,
-    patientId: careCase.patient_id,
-    caseId: careCase.id,
     visitRecordIds: scopedVisitRecordIds,
     billingEvidence,
   });
