@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -14,6 +14,7 @@ import { MainWorkflowCompactNav } from '@/components/features/workflow/main-work
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { generateCareReportFromVisit } from '@/lib/reports/generate-from-visit-client';
 import type { GeneratedCareReportSummary } from '@/lib/reports/generate-from-visit-contract';
@@ -630,6 +631,12 @@ function WorkspaceSkeleton() {
 }
 
 const REPORT_WORKSPACE_REFETCH_INTERVAL_MS = 60_000;
+const REPORT_WORKSPACE_INVALIDATION_EVENTS = [
+  'care_report_update',
+  'comment_refresh',
+  'report_delivery_update',
+  'workflow_refresh',
+] as const;
 
 export function ReportShareWorkspace() {
   const orgId = useOrgId();
@@ -637,11 +644,12 @@ export function ReportShareWorkspace() {
   const queryClient = useQueryClient();
   const isBootstrappingOrg = !orgId;
 
-  const workspaceQuery = useQuery({
+  const workspaceQuery = useRealtimeQuery({
     queryKey: ['care-reports', 'today-workspace', orgId],
     queryFn: () => fetchReportsTodayWorkspace(orgId),
     enabled: !isBootstrappingOrg,
-    refetchInterval: REPORT_WORKSPACE_REFETCH_INTERVAL_MS,
+    fallbackRefetchInterval: REPORT_WORKSPACE_REFETCH_INTERVAL_MS,
+    invalidateOn: [...REPORT_WORKSPACE_INVALIDATION_EVENTS],
   });
   const generateDraftMutation = useMutation({
     mutationFn: (input: DraftGenerationInput) =>

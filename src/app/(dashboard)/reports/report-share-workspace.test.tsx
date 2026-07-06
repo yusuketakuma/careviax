@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
@@ -25,12 +25,19 @@ function localIso(year: number, monthIndex: number, day: number, hour: number, m
 const WAITING_REPLY_REQUEST_HREF =
   '/communications/requests?status=sent&patient_id=p_1&request_id=req_1&related_entity_type=tracing_report&related_entity_id=tracing%2F1%3Fx%3Dy%23frag';
 
+function waitForRealtimeDebounce() {
+  return new Promise((resolve) => setTimeout(resolve, 200));
+}
+
 beforeEach(() => {
+  vi.clearAllMocks();
+  subscribeSharedRealtimeStreamMock.mockReturnValue(vi.fn());
   useUIStore.setState({ workspaceRailOpen: true });
 });
 
-const { routerPushMock } = vi.hoisted(() => ({
+const { routerPushMock, subscribeSharedRealtimeStreamMock } = vi.hoisted(() => ({
   routerPushMock: vi.fn(),
+  subscribeSharedRealtimeStreamMock: vi.fn(() => vi.fn()),
 }));
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
@@ -43,6 +50,10 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
+}));
+
+vi.mock('@/lib/realtime/shared-event-stream', () => ({
+  subscribeSharedRealtimeStream: subscribeSharedRealtimeStreamMock,
 }));
 
 // Actual-backed spy: real encode/guard output for the hostile test, plus
@@ -356,6 +367,7 @@ function renderWorkspace() {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   routerPushMock.mockClear();
 });
@@ -625,6 +637,42 @@ describe('ReportShareWorkspace', () => {
     ).toBeNull();
     expect(screen.queryByTestId('report-created-list')).toBeNull();
     expect(screen.queryByText('作成済み報告書はありません。')).toBeNull();
+  });
+
+  it('refreshes only for report-relevant realtime events', async () => {
+    const fetchMock = stubFetch();
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('report-today-drafts')).toBeTruthy();
+    });
+    fetchMock.mockClear();
+
+    const subscriptionCalls = subscribeSharedRealtimeStreamMock.mock.calls as unknown as Array<
+      [{ onEvent?: (event: unknown) => void }]
+    >;
+    const subscription = subscriptionCalls[0]?.[0];
+    expect(subscription?.onEvent).toBeTypeOf('function');
+    if (!subscription?.onEvent) {
+      throw new Error('Report workspace realtime subscription was not established');
+    }
+
+    await act(async () => {
+      subscription.onEvent?.({ type: 'notification_created', notification_id: 'notification_1' });
+      await waitForRealtimeDebounce();
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await act(async () => {
+      subscription.onEvent?.({ type: 'report_delivery_update', report_id: 'rep_1' });
+      await waitForRealtimeDebounce();
+    });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/care-reports/today-workspace', {
+        headers: { 'x-org-id': 'org_1' },
+      });
+    });
   });
 
   it('renders billing candidate open issues using their own action href', async () => {

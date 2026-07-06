@@ -8426,3 +8426,58 @@
 - remaining:
   Commit/push this notification boundary slice. Broader backlog remains: `FE-RT-001` / `FE-RT-002`,
   `VISIT-SYNC-001`, `PAT-BOARD-PAGE-001`, `DSP-QUEUE-PAGE-001`, and production performance metrics.
+
+## 2026-07-06 Reports realtime workspace migration
+
+- codex: implemented `FE-REPORT-001` as the next FE-RT follow-up slice.
+  `/reports` workspace no longer uses fixed `useQuery` polling while realtime is available. It now
+  uses `useRealtimeQuery()` with `fallbackRefetchInterval=60_000`, so polling is disabled when the
+  shared realtime stream is connected and retained only as a disconnected fallback.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `docs/ui-ux-design-guidelines.md`,
+  `src/lib/hooks/use-realtime-invalidation.ts`,
+  `src/lib/hooks/use-realtime-query.ts`,
+  `src/lib/realtime/events.ts`,
+  `src/lib/realtime/shared-event-stream.ts`,
+  `src/app/(dashboard)/reports/report-share-workspace.tsx`,
+  `src/app/(dashboard)/reports/report-share-workspace.test.tsx`.
+- files changed:
+  `src/app/(dashboard)/reports/report-share-workspace.tsx`,
+  `src/app/(dashboard)/reports/report-share-workspace.test.tsx`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  Removed unconditional 60s polling from the report workspace when realtime is connected. Invalidation
+  is now limited to report-relevant events: `care_report_update`, `comment_refresh`,
+  `report_delivery_update`, and `workflow_refresh`; unrelated notification events do not refetch the
+  report BFF.
+- security / PHI reviewed:
+  No new PHI fields or output surfaces. The change reuses the existing shared realtime stream, which
+  already normalizes client payloads through `normalizeRealtimeEventPayload()`.
+- performance issues improved:
+  Report workspace BFF no longer refetches every 60s during healthy realtime connectivity. Component
+  test fixes the regression boundary by proving `notification_created` does not refetch while
+  `report_delivery_update` does.
+- design / imagegen:
+  No visual layout or placement change; this is a data-refresh contract migration. `gpt-image-2`
+  reference generation was intentionally skipped.
+- validation:
+  `pnpm exec vitest run 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' src/lib/hooks/use-realtime-query.test.tsx src/lib/hooks/use-realtime-invalidation.test.tsx src/lib/realtime/events.test.ts --reporter=dot --testTimeout=30000`
+  green (4 files / 45 tests);
+  `pnpm exec eslint 'src/app/(dashboard)/reports/report-share-workspace.tsx' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' src/lib/hooks/use-realtime-query.ts src/lib/hooks/use-realtime-invalidation.ts src/lib/realtime/events.ts`
+  green;
+  `pnpm exec prettier --check 'src/app/(dashboard)/reports/report-share-workspace.tsx' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' src/lib/hooks/use-realtime-query.ts src/lib/hooks/use-realtime-invalidation.ts src/lib/realtime/events.ts`
+  green;
+  `git diff --check -- 'src/app/(dashboard)/reports/report-share-workspace.tsx' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' ops/refactor/STATE.md`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck --pretty false`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  green;
+  `pnpm build`
+  green.
+- remaining:
+  Commit/push this report realtime slice. Next candidates: `VISIT-SYNC-001` remaining immediate-save
+  paths, `FE-STORAGE-001`, `FE-TBL-001`, or production performance metrics.
