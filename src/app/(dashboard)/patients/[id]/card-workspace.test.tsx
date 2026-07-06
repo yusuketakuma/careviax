@@ -361,6 +361,7 @@ function mockPatientQuery(
     patientOverviewLoading?: boolean;
     executePatientShareCaseMutation?: boolean;
     executeRiskTaskSyncMutation?: boolean;
+    riskTaskSyncError?: Error;
   } = {},
 ) {
   const faxMutate = vi.fn();
@@ -423,7 +424,7 @@ function mockPatientQuery(
     mutate: riskTaskSyncMutate,
     isPending: Boolean(pending.riskTaskSync),
     variables: pending.riskTaskSync ? 'case_1' : null,
-    error: null,
+    error: options.riskTaskSyncError ?? null,
   };
   let mutationCallIndex = 0;
   const pickMutationResult = (mutationOptions?: {
@@ -498,7 +499,7 @@ function mockPatientQuery(
           },
           isPending: Boolean(pending.riskTaskSync),
           variables: pending.riskTaskSync ? 'case_1' : null,
-          error: null,
+          error: options.riskTaskSyncError ?? null,
         };
       }
       return pickMutationResult(mutationOptions);
@@ -1514,6 +1515,26 @@ describe('CardWorkspace', () => {
     expect(fetchMock).not.toHaveBeenCalled();
 
     vi.unstubAllGlobals();
+  });
+
+  it('keeps risk task sync failures visible inside the Command tab', () => {
+    mockPatientQuery(
+      buildWorkspace(),
+      null,
+      {},
+      {
+        patientOverrides: { cases: [buildActivePatientCase()] },
+        riskTaskSyncError: new Error('ケースリスクタスク同期APIからの詳細エラー'),
+      },
+    );
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    const panel = screen.getByTestId('case-risk-task-sync-panel');
+    expect(within(panel).getByRole('alert').textContent).toContain(
+      'ケースリスクタスク同期APIからの詳細エラー',
+    );
+    expect(within(panel).queryByText('同期済み')).toBeNull();
   });
 
   it('opens the matching patient detail tab for an initial section hash', async () => {

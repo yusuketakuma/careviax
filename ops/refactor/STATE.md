@@ -40,6 +40,31 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Case Risk Cockpit task sync Command UI failure-state regression（ready to commit）。
+  - current task:
+    直前の `Add case risk task sync UI` slice に対し、Command タブの risk task sync が失敗した場合に
+    toast だけで終わらず、パネル内 `role=alert` として再確認可能な失敗状態を残す regression test を追加した。
+  - design / imagegen:
+    test-only slice で視覚レイアウト変更を伴わないため、`imagegen` / `gpt-image-2` の新規生成は省略。
+    直前 UI 実装 slice の非 PHI mockup 方針を継続。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`.
+  - files changed:
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`.
+  - bugs / risks reduced:
+    risk task sync 失敗時の false-success / toast-only regression をテストで固定。`同期済み` が出ないことも確認。
+  - validation commands:
+    `pnpm exec prettier --write src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`;
+    `pnpm exec vitest run src/app/(dashboard)/patients/[id]/card-workspace.test.tsx --reporter=dot --testTimeout=30000`;
+    `git diff --check`.
+  - validation results:
+    focused UI vitest green（1 file / 82 tests）; `git diff --check` green。
+  - remaining work:
+    Broader `Plans.md` objective remains open。残: batch/job sync、waiver/override audit、Task Health Board 連携、
+    Case Risk Cockpit full UI/API contract expansion。
+
 - codex: Case Risk Cockpit task sync Command UI slice（ready to commit）。
   - current task:
     `Plans.md` の `RISK-CORE-2 / CORE-002` 残作業「domain/job/UI から
