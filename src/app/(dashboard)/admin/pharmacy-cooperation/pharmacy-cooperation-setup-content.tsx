@@ -23,9 +23,9 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DataTable } from '@/components/ui/data-table';
 import { EmptyState } from '@/components/ui/empty-state';
-import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/loading';
+import { SegmentError } from '@/components/ui/segment-state';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import {
@@ -471,22 +471,19 @@ function NativeSelect({
 function QueryError({
   isLoading,
   isError,
-  error,
   refetch,
 }: {
   isLoading: boolean;
   isError: boolean;
-  error: unknown;
   refetch: () => void;
 }) {
   if (isLoading) return <Skeleton className="h-28 rounded-lg" />;
   if (!isError) return null;
   return (
-    <ErrorState
-      variant="server"
+    <SegmentError
       title="薬局間協力設定を表示できません"
-      description="マスタ一覧の取得に失敗しました。"
-      detail={error instanceof Error ? error.message : undefined}
+      cause="マスタ一覧の取得に失敗しました。"
+      nextAction="通信状態を確認して再読み込みしてください。"
       onRetry={refetch}
     />
   );
@@ -1190,19 +1187,7 @@ export function PharmacyCooperationSetupContent() {
   if (isLoading || isError) {
     return (
       <div className="space-y-4">
-        <QueryError
-          isLoading={isLoading}
-          isError={isError}
-          error={
-            sitesQuery.error ??
-            partnersQuery.error ??
-            partnershipsQuery.error ??
-            contractsQuery.error ??
-            contractTemplatesQuery.error ??
-            contractDocumentsQuery.error
-          }
-          refetch={refetchAll}
-        />
+        <QueryError isLoading={isLoading} isError={isError} refetch={refetchAll} />
       </div>
     );
   }

@@ -381,7 +381,36 @@ describe('PharmacyCooperationSetupContent', () => {
     renderContent();
 
     expect(await screen.findByText('薬局間協力設定を表示できません')).toBeTruthy();
-    expect(screen.getByText('薬局間契約の取得に失敗しました')).toBeTruthy();
+    expect(screen.getByText(/マスタ一覧の取得に失敗しました。/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: '再読み込み' })).toBeTruthy();
+  });
+
+  it('does not expose raw backend details in the setup error state', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/pharmacy-contracts?limit=20') {
+        return new Response(
+          JSON.stringify({
+            message:
+              '患者 山田太郎 storage_key=private/org/patient.pdf provider_error token=secret',
+          }),
+          { status: 500 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    expect(await screen.findByText('薬局間協力設定を表示できません')).toBeTruthy();
+    expect(screen.getByText(/マスタ一覧の取得に失敗しました。/)).toBeTruthy();
+    const renderedText = document.body.textContent ?? '';
+    expect(renderedText).not.toContain('患者 山田太郎');
+    expect(renderedText).not.toContain('storage_key');
+    expect(renderedText).not.toContain('provider_error');
+    expect(renderedText).not.toContain('token=secret');
   });
 
   it('rejects malformed contract preview success payloads before rendering preview text', async () => {

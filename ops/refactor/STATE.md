@@ -41,7 +41,48 @@
 
 ## 直近の land（本日・要点）
 
-- codex: Plans.md implemented-task cleanup pass 3（pending commit）。
+- codex: FE-ERR-001 pharmacy cooperation setup segment hardening（pending commit）。
+  - current task:
+    `/admin/pharmacy-cooperation` の薬局間協力設定初期ロード失敗を raw backend detail なしの shared segment state に寄せる。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx`,
+    `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx`,
+    `src/components/ui/segment-state.tsx`,
+    `src/app/api/files/complete/route.ts`,
+    `src/app/api/files/complete/route.test.ts`,
+    `src/lib/realtime/events.ts`,
+    `src/lib/realtime/events.test.ts`,
+    `src/lib/hooks/use-realtime-invalidation.ts`,
+    `src/lib/hooks/use-realtime-query.ts`,
+    `src/components/ui/data-table.tsx`.
+  - files changed:
+    `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx`,
+    `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `QueryError` から各 query の `Error.message` 受け渡しを削除し、`SegmentError` の固定文言 + retry に置換した。
+    backend が patient name / storage key / provider error / token を含む失敗 payload を返しても画面へ出ない regression test を追加した。
+  - bugs found:
+    薬局間協力設定の初期ロード失敗時に backend `Error.message` を detail として表示し得た。
+  - security risks reduced:
+    pharmacy cooperation setup の失敗表示に patient name、storage_key、provider_error、token が出ないことを focused test で固定した。
+  - performance issues improved:
+    なし。fail-soft/error state の修正。
+  - validation:
+    `pnpm exec vitest run 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' src/components/ui/segment-state.test.tsx --reporter=dot --testTimeout=30000` → pass（2 files / 22 tests）。
+    `pnpm exec eslint 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx'` → pass。
+    `pnpm exec prettier --check 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx'` → pass。
+    `git diff --check -- 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx'` → pass。
+  - remaining:
+    FE-ERR-001 は admin screen 群への段階展開が残る。
+    Formal `InboundCommunicationEvent` / `InboundCommunicationSignal` DB/API/review UI and MedicationStock Ledger source remain.
+  - next action:
+    scoped commit/push。
+
+- codex: Plans.md implemented-task cleanup pass 3（commit `9ffb72835`, pushed to `main`）。
   - current task:
     `Plans.md` 内の実装済みタスク、partial履歴、古い進捗メモを削除し、未完の実装単位だけに整理する。
   - files inspected:
@@ -74,9 +115,9 @@
   - remaining:
     `Plans.md` は引き続き大きい。今後の実装後は、該当行を残タスク化せず削除する運用を継続する。
   - next action:
-    prettier check / diff check、scoped commit/push。
+    done。
 
-- codex: FE-ERR-001 document delivery rule segment hardening（pending commit）。
+- codex: FE-ERR-001 document delivery rule segment hardening（commit `c5488398c`, pushed to `main`）。
   - current task:
     `/admin/document-templates` の文書送達ルール一覧取得失敗を raw backend detail なしの shared segment state に寄せる。
   - files inspected:
@@ -107,7 +148,7 @@
     FE-ERR-001 は admin screen 群への段階展開が残る。
     Formal `InboundCommunicationEvent` / `InboundCommunicationSignal` DB/API/review UI and MedicationStock Ledger source remain.
   - next action:
-    prettier / diff check、scoped commit/push。
+    done。
 
 - codex: FE-ERR-001 admin master-hub segment hardening（commit `7ebd4bdb7`, pushed to `main`）。
   - current task:
