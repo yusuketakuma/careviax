@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { useUIStore } from '@/lib/stores/ui-store';
@@ -326,6 +326,30 @@ describe('VisitsToday', () => {
     expect(screen.getByRole('link', { name: '訪問予定を確認' })).toBeTruthy();
     expect(screen.getByText('本日の訪問予定はありません。')).toBeTruthy();
     expect(screen.getByRole('link', { name: '今日のルートを確認する' })).toBeTruthy();
+  });
+
+  it('shows a PHI-safe retryable segment error when the visit preparation board fails', () => {
+    useRealtimeQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: new Error(
+        '患者: 山田 太郎 token=secret route=/api/visits/today-preparation?patient_id=patient_1',
+      ),
+      refetch: refetchMock,
+    });
+
+    render(<VisitsToday />);
+
+    expect(screen.getByText('本日の訪問を表示できません')).toBeTruthy();
+    expect(screen.getByText(/訪問準備の集計を取得できませんでした。/)).toBeTruthy();
+    expect(document.body.textContent).not.toContain('山田 太郎');
+    expect(document.body.textContent).not.toContain('token=secret');
+    expect(document.body.textContent).not.toContain('/api/visits/today-preparation');
+    expect(screen.queryByText('本日の訪問予定はありません。')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(refetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('fetches the today-preparation board with helper org headers and a raw query key', async () => {

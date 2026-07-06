@@ -41,6 +41,51 @@
 
 ## 直近の land（本日・要点）
 
+- codex: FE-ERR-001 visits/schedules segment error hardening（pending commit）。
+  - current task:
+    `/visits` today-preparation、`/schedules` calendar、`/schedules` list board の取得失敗表示を
+    shared segment pattern に寄せ、raw `Error.message` を画面へ出さない retryable state にする。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `git log --oneline -8`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/components/ui/segment-state.tsx`,
+    `src/components/ui/error-state.tsx`,
+    `src/app/(dashboard)/visits/visits-today.tsx`,
+    `src/app/(dashboard)/visits/visits-today.test.tsx`,
+    `src/app/(dashboard)/schedules/calendar-view.tsx`,
+    `src/app/(dashboard)/schedules/calendar-view.test.tsx`,
+    `src/app/(dashboard)/schedules/schedule-team-board.tsx`,
+    `src/app/(dashboard)/schedules/schedule-team-board.test.tsx`.
+  - subagent review:
+    `code_mapper` と `frontend_reviewer` が read-only で FE-ERR-001 の次対象を確認。
+    両者とも `visits-today` と `schedule-team-board` の raw `Error.message` 表示を高優先と判定。
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/visits/visits-today.tsx`,
+    `src/app/(dashboard)/visits/visits-today.test.tsx`,
+    `src/app/(dashboard)/schedules/calendar-view.tsx`,
+    `src/app/(dashboard)/schedules/calendar-view.test.tsx`,
+    `src/app/(dashboard)/schedules/schedule-team-board.tsx`,
+    `src/app/(dashboard)/schedules/schedule-team-board.test.tsx`.
+  - implementation:
+    `visits-today` と `schedule-team-board` の main board error branch を `SegmentError` へ移行し、
+    raw `boardQuery.error.message` detail を削除した。`calendar-view` は loading を `SegmentLoading`、
+    calendar/billing preview error を `SegmentError` へ統一した。
+  - security risks reduced:
+    訪問準備・スケジュール取得失敗時に患者名、token、storage key、API route/query などが
+    operator UI へ表示される面を縮小した。取得失敗は空状態に潰さず retry 導線を維持する。
+  - validation:
+    `pnpm exec vitest run 'src/app/(dashboard)/schedules/calendar-view.test.tsx' 'src/app/(dashboard)/visits/visits-today.test.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' src/components/ui/segment-state.test.tsx --reporter=dot --testTimeout=30000` → pass（4 files / 54 tests）。
+    `pnpm exec eslint 'src/app/(dashboard)/schedules/calendar-view.tsx' 'src/app/(dashboard)/schedules/calendar-view.test.tsx' 'src/app/(dashboard)/visits/visits-today.tsx' 'src/app/(dashboard)/visits/visits-today.test.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx'` → pass。
+  - remaining:
+    FE-ERR-001 は task/admin、shared action rail への段階展開が残る。Formal
+    `InboundCommunicationEvent` / `InboundCommunicationSignal` DB/API/review UI and MedicationStock Ledger source remain.
+  - next action:
+    Run prettier/diff-check, scoped commit/push this segment hardening slice, then continue task/admin or next P0/P1 safe slice.
+
 - codex: FE-ERR-001 patient movement timeline segment state（commit a227316d5, pending push）。
   - current task:
     患者詳細の Patient Movement Timeline 取得状態を shared segment pattern に寄せ、取得失敗時に

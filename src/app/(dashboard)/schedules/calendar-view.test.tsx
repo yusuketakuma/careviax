@@ -38,11 +38,12 @@ describe('CalendarView false-empty', () => {
     vi.unstubAllGlobals();
   });
 
-  it('renders a retryable ErrorState — not an empty calendar — when the schedule fetch fails', () => {
+  it('renders a retryable segment error — not an empty calendar — when the schedule fetch fails', () => {
     realtimeQueryMock.mockReturnValue({
       data: undefined,
       isLoading: false,
       isError: true,
+      error: new Error('raw backend error includes patient=山田 太郎 storage_key=secret'),
       refetch: refetchMock,
       connected: true,
     });
@@ -50,6 +51,8 @@ describe('CalendarView false-empty', () => {
     renderCalendar();
 
     expect(screen.getByText('スケジュールを取得できませんでした')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('raw backend error');
+    expect(document.body.textContent).not.toContain('storage_key=secret');
     expect(screen.getByRole('button', { name: '再読み込み' })).toBeTruthy();
     // teeth: 取得失敗が「予定ゼロの空カレンダー」に化けない（日セルを描画しない）。
     expect(screen.queryAllByRole('button', { name: DAY_CELL_NAME })).toHaveLength(0);

@@ -5,8 +5,8 @@ import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { AlertTriangle, Check } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
-import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
+import { SegmentError } from '@/components/ui/segment-state';
 import {
   WorkspaceActionRail,
   type BlockedReason,
@@ -305,12 +305,12 @@ export function VisitsToday() {
           <BoardSkeleton />
         ) : boardQuery.isError || !data ? (
           <div className="rounded-lg border border-border/70 bg-card p-4">
-            <ErrorState
-              variant="server"
+            <SegmentError
               title="本日の訪問を表示できません"
-              description="訪問準備の集計取得に失敗しました。再試行してください。"
-              detail={boardQuery.error instanceof Error ? boardQuery.error.message : undefined}
+              cause="訪問準備の集計を取得できませんでした。"
+              nextAction="通信状態を確認して再読み込みしてください。"
               onRetry={() => void boardQuery.refetch()}
+              retryLabel="再読み込み"
             />
           </div>
         ) : (

@@ -17,8 +17,7 @@ import {
 } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
-import { ErrorState } from '@/components/ui/error-state';
-import { SkeletonRows } from '@/components/ui/loading';
+import { SegmentError, SegmentLoading } from '@/components/ui/segment-state';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -375,11 +374,10 @@ export function CalendarView() {
         // 算定プレビューの取得失敗を空表示に潰さない。失敗を黙ると請求サイクル警告
         // (hasCadenceWarning) や次回算定日マーカーが「警告なし」と誤読される false-negative。
         <div className="mb-3">
-          <ErrorState
-            variant="server"
-            size="inline"
+          <SegmentError
             title="算定プレビューを読み込めませんでした"
-            description="請求サイクルの警告や次回算定日の表示が一部欠落している可能性があります。再読み込みしてください。"
+            cause="請求サイクルの警告や次回算定日の表示が一部欠落している可能性があります。"
+            nextAction="再読み込みしてください。"
             onRetry={() => void refetchSchedulePreview()}
             retryLabel="再読み込み"
           />
@@ -399,21 +397,18 @@ export function CalendarView() {
 
         {/* Day cells */}
         {isCalendarLoading ? (
-          <div
-            className="px-4 py-12"
-            role="status"
-            aria-label="スケジュールを読み込み中"
-            aria-live="polite"
-          >
-            <SkeletonRows rows={6} cols={7} status={false} />
-          </div>
+          <SegmentLoading
+            label="スケジュールを読み込み中"
+            rows={6}
+            cols={7}
+            className="rounded-none border-0 bg-transparent px-4 py-12"
+          />
         ) : isCalendarError ? (
           <div className="px-4 py-12">
-            <ErrorState
-              variant="server"
-              size="inline"
+            <SegmentError
               title="スケジュールを取得できませんでした"
-              description="通信状態を確認し、再読み込みしてください。"
+              cause="スケジュールを取得できませんでした。"
+              nextAction="通信状態を確認し、再読み込みしてください。"
               onRetry={() => void refetch()}
               retryLabel="再読み込み"
             />

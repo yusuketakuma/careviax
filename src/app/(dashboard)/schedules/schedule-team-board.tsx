@@ -12,6 +12,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
+import { SegmentError } from '@/components/ui/segment-state';
 import { StateBadge } from '@/components/ui/state-badge';
 import { SCHEDULE_STATUS_ROLE } from '@/lib/constants/status-labels';
 import type { StatusRole } from '@/lib/constants/status-tokens';
@@ -1876,12 +1877,12 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
             <BoardSkeleton />
           ) : boardQuery.isError || !board ? (
             <div className="rounded-lg border border-border/70 bg-card p-4">
-              <ErrorState
-                variant="server"
+              <SegmentError
                 title="スケジュールを表示できません"
-                description="全員スケジュールの取得に失敗しました。再試行してください。"
-                detail={boardQuery.error instanceof Error ? boardQuery.error.message : undefined}
+                cause="全員スケジュールの取得に失敗しました。"
+                nextAction="通信状態を確認して再読み込みしてください。"
                 onRetry={() => void boardQuery.refetch()}
+                retryLabel="再読み込み"
               />
             </div>
           ) : (

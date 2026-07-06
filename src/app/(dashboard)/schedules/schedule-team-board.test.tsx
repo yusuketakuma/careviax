@@ -487,11 +487,13 @@ function buildJsonResponse(data: unknown) {
 function mockQueries({
   board = buildBoardFixture(),
   cockpit = buildCockpitFixture(),
+  boardQueryOverride,
   cockpitQueryOverride,
   onQueryConfig,
 }: {
   board?: ScheduleDayBoardResponse | null;
   cockpit?: DashboardCockpitResponse | null;
+  boardQueryOverride?: Partial<QueryMockResult>;
   cockpitQueryOverride?: Partial<QueryMockResult>;
   onQueryConfig?: (config: QueryConfig) => void;
 } = {}) {
@@ -499,7 +501,14 @@ function mockQueries({
     onQueryConfig?.(options);
     const key = options.queryKey[0];
     if (key === 'schedule-day-board') {
-      return { data: board, isLoading: false, isError: false, error: null, refetch: vi.fn() };
+      return {
+        data: board,
+        isLoading: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+        ...boardQueryOverride,
+      };
     }
     return {
       data: cockpit,
@@ -782,6 +791,33 @@ describe('ScheduleTeamBoard', () => {
     expect((fetchMock.mock.calls[1]?.[1] as RequestInit).headers).toBe(orgHeaders);
     expect(buildOrgHeadersMock).toHaveBeenNthCalledWith(1, 'org_1');
     expect(buildOrgHeadersMock).toHaveBeenNthCalledWith(2, 'org_1');
+  });
+
+  it('shows a PHI-safe retryable segment error when the schedule board fetch fails', () => {
+    const boardRefetch = vi.fn();
+    mockQueries({
+      board: null,
+      boardQueryOverride: {
+        data: undefined,
+        isError: true,
+        error: new Error(
+          '患者: 伊藤 キヨ token=secret route=/api/visit-schedules/day-board?date=2026-07-07',
+        ),
+        refetch: boardRefetch,
+      },
+    });
+
+    render(<ScheduleTeamBoard initialDate={TODAY_KEY} activeView="list" />);
+
+    expect(screen.getByText('スケジュールを表示できません')).toBeTruthy();
+    expect(screen.getByText(/全員スケジュールの取得に失敗しました。/)).toBeTruthy();
+    expect(document.body.textContent).not.toContain('伊藤 キヨ');
+    expect(document.body.textContent).not.toContain('token=secret');
+    expect(document.body.textContent).not.toContain('/api/visit-schedules/day-board');
+    expect(screen.queryByTestId('schedule-team-gantt')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(boardRefetch).toHaveBeenCalledTimes(1);
   });
 
   it('encodes dynamic PATCH ids and preserves raw mutation payloads', async () => {
