@@ -6306,3 +6306,71 @@
   Broader `Plans.md` objective remains open. 次候補は PatientBoard の
   attention/status_tone/status_text/current_step 判定を `src/lib/patient/*` の pure selector へ抽出し、
   Command Center process 補助状態へ段階接続すること、payload budget / browser smoke。
+
+## 2026-07-06 Patient workflow state selector slice
+
+- codex: `UX-CMD-001 / PERF-BFF-001` PatientBoard workflow-state selector extraction implemented.
+  PatientBoard の `attention` / `status_tone` / `status_text` / `current_step` 判定を
+  `src/lib/patient/patient-workflow-state.ts` へ抽出し、`derivePatientBoardCard` は DB row から
+  selector input を組み立てる adapter に寄せた。
+- Command Center integration:
+  患者詳細 Command Center は同じ helper の `getPatientWorkflowStepLabel` と
+  `buildPatientWorkflowProcessLabel` を使うようにし、`PROCESS_STEPS_9` / `getProcessStepIndex` の
+  直接組み合わせをやめた。重い PatientBoard fetch は追加せず、next action / blockers / evidence は
+  既存 contract を維持した。
+- subagent:
+  `Mapper the 24th` を read-only `code_mapper` として投入。PatientBoard の priority ladder と
+  Command Center の工程ラベル重複を棚卸しし、抽出対象・テスト観点・PHI/perf リスクを確認した。
+  指摘を反映し、`cycle.exception_status` と open `workflow_exception.exception_type` は selector input で
+  分離して旧 priority order を維持した。
+- design / imagegen:
+  視覚レイアウト変更を伴わない adapter/refactor slice のため、`imagegen` / `gpt-image-2` の新規生成は
+  省略。UI 配置や Command Center の補助状態表示を追加する slice では PH-OS UI/UX SSOT の
+  `gpt-image-2` 方針を適用する。
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/api/patients/board/patient-board-card-model.ts`,
+  `src/app/api/patients/board/patient-board-card-model.test.ts`,
+  `src/app/api/patients/board/route.test.ts`,
+  `src/app/(dashboard)/patients/[id]/patient-command-center-model.ts`,
+  `src/app/(dashboard)/patients/[id]/patient-command-center-model.test.ts`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+  `src/types/patient-board.ts`,
+  `src/lib/prescription/cycle-workspace.ts`.
+- files changed:
+  `Plans.md`,
+  `src/lib/patient/patient-workflow-state.ts`,
+  `src/lib/patient/patient-workflow-state.test.ts`,
+  `src/app/api/patients/board/patient-board-card-model.ts`,
+  `src/app/(dashboard)/patients/[id]/patient-command-center-model.ts`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  PatientBoard の長い priority ladder を route-adjacent adapter から切り出し、患者一覧と患者詳細で
+  工程ラベル語彙が二重実装される drift を縮小した。selector は raw workflow description を受け取らず、
+  controlled exception text だけを返す。
+- security / PHI reviewed:
+  selector input は exception type / stable ids / timestamps のみで、患者名、住所、電話、処方本文、
+  workflow description を受け取らない。schedule/report href は既存 navigation builder を通して hostile id
+  encoding を維持した。
+- performance issues reviewed:
+  追加処理は sync pure mapping のみ。PatientBoard route と Command Center に DB query、API fetch、
+  payload field を追加していない。
+- validation:
+  `pnpm exec vitest run src/lib/patient/patient-workflow-state.test.ts src/app/api/patients/board/patient-board-card-model.test.ts src/app/api/patients/board/route.test.ts src/app/(dashboard)/patients/[id]/patient-command-center-model.test.ts src/app/(dashboard)/patients/[id]/card-workspace.test.tsx --reporter=dot --testTimeout=30000`
+  green (5 files / 127 tests);
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  green;
+  `pnpm lint`
+  green with existing warnings in `src/lib/platform/break-glass.test.ts` (`_tx`, `_input` unused);
+  `pnpm format:check`
+  green;
+  `git diff --check`
+  green.
+- remaining:
+  Broader `Plans.md` objective remains open. 次候補は selector を Command Center の補助状態
+  （reply wait / visit today 等）へさらに広げるかの検討、payload budget / browser smoke、
+  または UX-TBL-001 / PERF-RTE-001 の別 lane。
