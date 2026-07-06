@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: MOV-001 Care report delivery marker hardening（未コミット）。
+- codex: MOV-001 Care report delivery marker hardening（commit f1945c9c3, pushed）。
   - current task:
     Patient Movement Timeline の文書 marker-only 契約に合わせ、報告書送付/受領 marker から送付先名を
     timeline source で読まないようにする。
@@ -77,7 +77,7 @@
   - remaining:
     Formal inbound DB/API/review UI and MedicationStock Ledger source remain.
   - next action:
-    Commit/push this scoped slice.
+    Continue with the next Plans item.
 
 - codex: MOV-001 Management plan document marker hardening（commit 622f40443, pushed）。
   - current task:
