@@ -846,10 +846,68 @@ FE 仕上げ（低優先）:
 | FAC-001  | P1     | 施設       | Facility Identity Quality Board             | facility/building/unit/address の重複・未設定・算定影響を抽出。                                                                                                                        |
 | MOB-001  | P1     | モバイル   | Offline Sync Manifest                       | `offline_synced` boolean を同期対象、生成時刻、端末、失敗理由、再送状態、競合状態へ拡張。                                                                                              |
 | MOB-002  | P1     | 位置情報   | Visit Geo Log privacy/retention             | 保存可否、精度、保持期間、表示権限、監査ログ、患者説明文を定義し不要な位置情報を保存しない。                                                                                           |
-| NTF-002  | P1     | 通知       | Notification SSE payload hardening          | user-channel payload を server-side normalize し、余剰 field / malformed / patient_name / address / token / raw_message を drop。PHI-bearing stream は private no-store/no-transform。 |
+| NTF-STREAM-001 | P0/P1  | 通知       | Notification stream payload normalizer      | SSE user-channel / DB polling の両方を shared normalizer に通し、metadata / raw_message / provider_error / token / storage key / hostile field を drop。title/message/link は notification_type 別 allowlist または controlled title へ寄せる。 |
 | REP-002  | P1     | 報告/共有  | External document-delivery wording gate     | 外部 email/FAX/MCS 本文に患者名、臨床本文、薬剤/free text、内部IDを出さず、短期 shared link の expiry/revoke/resend idempotency を固定。                                               |
 | UX-001   | P1     | UI/A11y    | Risk UI Accessibility Pass                  | severity が色だけに依存せず、キーボード/読み上げ/モバイルで処理できる。                                                                                                                |
 | OPS-001  | P1     | 復旧       | Business Recovery Drill                     | backup 復旧後に visit/report/billing/task/attachment link の整合 audit を実行。                                                                                                        |
+
+#### 横断基盤・運用・外部境界 追加バックログ（2026-07-06 再レビュー反映） `cc:TODO`
+
+> 既存の患者一覧/ダッシュボード/患者詳細/報告/処方受付/調剤ワークベンチ改善とは別枠で、PHI が外部へ出る・残る・横断される境界を優先する。SSE、Web Push、Webhook、AuditLog、Export、File は「便利な表示」より先に payload policy と snapshot test を固定する。
+
+| ID             | 優先度 | 領域              | タスク                                         | 主な対象                                                                 | 受入条件                                                                                                                                                                                                                                  |
+| -------------- | ------ | ----------------- | ---------------------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| NTF-STREAM-001 | P0/P1  | 通知/SSE          | Notification stream payload normalizer         | notification stream route、`notifications.ts`、DB polling、realtime user channel | SSE で送る通知は必ず `normalizeNotificationStreamItem()` を通す。unknown field、raw metadata、provider error、token、storage key を drop。title/message/link は notification_type 別 allowlist または controlled title 置換 option を通る。OS通知 redaction と in-app/SSE policy を文書・テストで分離し、snapshot test で患者名、住所、電話、薬剤名、free text を検出できる。 |
+| NTF-PUSH-001   | P1     | Web Push/SW       | Web Push payload hardening                     | `sw.ts`、web push sender、OS notification bridge                         | Service Worker 側でも title/body/link を安全側に正規化する。push payload に患者名、本文、patientId、reportId、visitId、deep link が来ても OS 通知には出さず、クリック先は原則 `/notifications` へ丸める。deep link はアプリ内通知センターで再認可して開く。 |
+| INT-WEBHOOK-001 | P1     | Webhook/外部連携  | Webhook dispatch outbox / payload policy       | webhook service、delivery persistence、retry job、masking profile        | in-process dispatch から durable outbox job へ移行する。保存 payload は event id、minimal entity refs、schema version に寄せ、raw JSON 永続化を避ける option を持つ。送信 payload と保存 payload の両方で患者名、住所、電話、薬剤名、free text が出ない snapshot test を追加する。 |
+| OPS-RATE-001   | P1     | 運用/readiness    | Rate limit readiness gate                      | rate limit config、deploy readiness、`/api/admin/pilot-readiness`、CloudWatch | production で `RATE_LIMIT_STORE=dynamodb` の DDB table / region / IAM / TTL / update permission を deploy 前に確認する。DDB unavailable で 503 が増えたら alert し、一時緩和手順を runbook 化する。                                           |
+| OPS-RECOVERY-001 | P1   | 復旧/BCP          | Live recovery drill                            | RDS snapshot/PITR、S3 versioning/Object Lock、audit archive、docs/compliance | 復旧専用環境へ RDS snapshot/PITR を実際に復元し、S3 文書過去版、audit archive、患者・訪問・報告・請求・添付リンク整合を確認する。RTO 4時間 / RPO 24時間の実測値、失敗点、改善策を `docs/compliance` に残す。 |
+| DATA-RET-001   | P1     | データ保持        | Retention Policy Matrix                        | Patient、CareCase、Prescription、Visit、Report、Billing、FileAsset、AuditLog、Notification、WebhookDelivery、OfflineDraft | entity ごとに保持期間、削除可否、匿名化可否、legal hold、archive 後の操作可否を定義する。FileAsset / AuditLog / Billing / CareReport は削除ではなく保持・非表示・失効の扱いを明確化し、患者アーカイブ後の write guard と export/download guard をテストする。 |
+| CORE-ROUTE-001 | P1     | Route基盤         | Route Handler Wrapper Audit                    | route catalog、`withAuthContext`、`requireAuthContext` direct routes、apiKey/public routes | route を auth type / permission / `withSensitiveNoStore` / `withRoutePerformance` / CSRF-rate-limit / audit-security event で分類する。例外的に `requireAuthContext` を直接使う route には理由コメントを残し、critical route の performance 計測漏れを script で検出する。 |
+| SEC-EVENT-001  | P1/P2  | セキュリティ運用  | Security Event Review Board                    | `security-events.ts`、AuditLog、admin dashboard                          | auth_failure、csrf_rejected、rate_limit_exceeded、unauthorized_access、org_switch を org / route / event type / user-anonymous / IP hash / trend で集計し、admin が risk tier でレビューできる。同一IP/route の異常増加と forbidden/org switch 増加を検知する。 |
+| MOB-CACHE-001  | P1/P2  | Offline/SW cache  | Offline cache PHI audit                        | Service Worker runtime caching、CacheStorage、IndexedDB offline drafts、logout | Playwright/browser harness で主要画面を開き、CacheStorage に `/api/*`、`/patients/*`、`/visits/*`、`/reports/*` が残らないことを検査する。offline draft は暗号化領域以外に残らず、logout/端末共有時の端末側 PHI 保護方針を固定する。 |
+
+実装順序メモ:
+
+1. `NTF-STREAM-001` と `NTF-PUSH-001` を先行し、通知 payload が SSE / Web Push / OS通知のどの層で redaction されるかをテストで分離する。
+2. `INT-WEBHOOK-001` は外部送信量が増える前に outbox と payload policy を固定する。raw delivery payload 永続化は consent/masking profile が明示された surface に限定する。
+3. `OPS-RATE-001` と `OPS-RECOVERY-001` は deploy/readiness gate と runbook evidence を同時に更新する。DDB 設定ミスや復旧未実施を production readiness の blocker として扱う。
+4. `DATA-RET-001` は `FILE-000` / `FILE-001` / `AUD-001` / `EXP-002` と直列に扱い、archive 後の export/download/write guard を acceptance に含める。
+5. `CORE-ROUTE-001` は `/api/files/complete` のような direct `requireAuthContext` route を棚卸しし、すぐ wrapper 化できない route は理由と補完ゲートを明記する。
+
+#### 最新 main 再レビュー残タスク（2026-07-06 コード再スキャン反映） `cc:TODO`
+
+> 目的: 前回までに改善済みの Dashboard / PatientsBoard / Patient detail / Reports / Prescription intake / DispenseWorkbench の成果を前提に、まだ高優先で残る「レスポンス最小化」「本格 pagination」「autosave/sync」「本番性能監視」「facet 集計」「古い実装コメント」を実装しやすい単位へ再分解する。既存 task と重複させず、下表の「既存レーン」へ紐づけて進める。
+
+**コード再スキャンで確認した現在地**:
+
+- `src/app/api/files/complete/route.ts`: complete response は `toPublicCompletedFile()` に集約されており、consumer は処方受付・訪問記録・患者詳細・同意書・契約書など複数画面にある。FILE-000 の最小化は route と consumer を同一 slice で更新する。
+- `src/lib/utils/performance.ts`: `PerformanceSnapshot.scope` は `current-process`。payload budget / CloudWatch flush 基盤はあるが、p99、deploy/env/instance dimension、release gate/alarm 接続が残る。
+- `src/app/api/patients/board/route.ts`: `PATIENT_FETCH_LIMIT = 80` / `PATIENT_FILTERED_FETCH_LIMIT = 500` と `truncated` が残る。server-side search / foundation prefilter は改善済みだが、cards と aggregate counts の cursor paging 分離が未完。
+- `src/server/services/dispense-workbench-patients.ts`: `MAX_CYCLES = 500` で最新 cycle を一括取得し、患者ごと初出を残す。representative task hydrate は改善済みだが、queue pagination / phase facets が未完。
+- `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`: autosave は 30秒 debounce、sync count refresh は 5秒固定 polling。online 復帰 listener はあるが、未同期0件時停止・保存直後同期・指数 backoff は未完。
+- `src/app/api/prescription-intakes/route.ts`: `buildPrescriptionIntakeFacets()` は status/source ごとに `count()` を複数回投げる。search/facets UI は改善済みだが、facet aggregation の query count 改善が残る。
+- `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`: `TeamConversationPanel` は実装済みだが、「チームの会話は省略」という旧コメントが残る。開発者混乱を避けるため cleanup する。
+
+| ID                  | 優先度 | 既存レーン                         | タスク                                      | 実装単位                                                                                                                                                    | 受入条件 / validation                                                                                                                                                                                                 |
+| ------------------- | ------ | ---------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| FILE-COMPLETE-001   | P0     | `FILE-000`, `DEV-PHI-001`          | `/api/files/complete` response minimization | `toPublicCompletedFile()` を `{ id, status, completedAt }` に縮小。`originalName` / `mimeType` / `sizeBytes` / `purpose` は complete response から除去。consumer は presign 前の local file metadata または専用 read API へ移す。 | route test に PHI filename snapshot を追加し、患者名・住所・電話・薬剤名・storage key・object key・entity id・etag・mime/size/purpose が success/error に出ないこと。処方受付/訪問記録/同意書/契約書 upload tests を更新。 |
+| PERF-RTE-001A       | P0     | `PERF-RTE-001`, `DEV-PERF-001`, `DEV-PAY-001` | Performance metrics productionization       | current-process snapshot を維持しつつ、flush job/route を deploy readiness と EventBridge schedule に接続。p99、deploy_sha、env、instance id、org_scope有無、payload budget over count を metrics dimension/field へ追加。 | `/api/admin/performance-metrics` と CloudWatch flush の tests に p99/deploy/env/instance dimension を追加。release gate は critical route の p95/p99/payload regression を fail できる。current-process だけを本番根拠にしない。 |
+| PAT-BOARD-PAGE-001  | P0/P1  | `PAT-LIST-PERF-001`, `PERF-BFF-001` | PatientsBoard cursor pagination              | `/api/patients/board` に `limit/cursor` を追加し、cards は cursor page、chip/foundation counts は全体 aggregate endpoint または same response metadata に分離。search/foundation filters は cursor でも保持。 | broad query で 80/500 上限に依存しない。`next_cursor` / `has_more` / `count_basis` / `filters_applied` を返し、UI は「さらに読み込む」を表示。foundation counts は loaded window ではなく検索条件全体の count として表示。 |
+| VISIT-SYNC-001      | P0/P1  | `UX-MOB-001`, `DEV-MOB-001`, `MOB-001` | Visit record autosave / sync hardening       | 30秒 autosave を重要 field 5秒 debounce + step transition immediate save へ変更。訪問開始/終了、残薬、添付追加は即保存。sync polling は未同期件数>0かつ画面表示中のみ、online 復帰/保存直後は即同期、失敗時は指数 backoff。 | 通信断でも draft が消えない。未同期0件では polling 停止。online 復帰で同期が走る。保存状態は「保存中 / 端末保存済 / 同期待ち / 同期済 / 競合あり」を UI test / mobile E2E で確認。raw sync error / PHI は toast/log に出ない。 |
+| DSP-QUEUE-PAGE-001  | P1     | `DSP-001`, `DSP-PERF-001`, `PERF-BFF-001` | DispenseWorkbench patient queue pagination   | `listDispenseWorkbenchPatients()` の `MAX_CYCLES=500` 一括取得を cursor page に置換。`phase` / `q` / `limit` / `cursor` を route contract に追加し、phase別 total/facet counts を返す。現在選択患者の詳細は遅延取得。 | 初期 page 50件程度で表示できる。set/set-audit も同じ pagination contract を使う。representative_task_id hydrate は page rows にだけ実行。large queue fixture で query count/payload が bounded。 |
+| RX-REG-FACET-001    | P1     | `RX-REG-UX-002`, `DEV-PERF-001`     | Prescription intake facet aggregation         | `buildPrescriptionIntakeFacets()` の status/source 個別 `count()` 多発を `groupBy` または raw aggregate SQL へ置換。search 中は facets を遅延または cached summary にできるよう contract を分離。 | `facets=1` の status/source counts が従来と一致し、query count が削減される。facet counts は loaded page ではなく検索条件全体。perf metrics に facets route p95/payload/query-count を記録。 |
+| DASH-CLEAN-001      | P2     | `DASH-COMM-001`                    | Dashboard stale comment cleanup               | `TeamConversationPanel` 実装後も残る「チームの会話は省略」コメントを更新/削除し、right rail comment feed の設計意図を現行実装に合わせる。 | 実装コメントと UI が矛盾しない。テスト不要または dashboard cockpit component test の既存 green 確認。                                                                                                      |
+| SEC-AUDIT-001A      | P1     | `SEC-002`, `UX-AUD-001`, `DEV-PHI-001` | AuditLog allowlist / minifier registry hardening | action taxonomy、risk tier、review state、audit-log-view audit を registry 化。unknown nested string、provider raw error、token、storage key を admin/export response で要約/drop する。 | hostile patient name、住所、電話、薬剤名、処方 text、token、provider raw error、storage key の redaction snapshot。high-risk audit log の risk filter と監査ログ閲覧 audit を追加。 |
+
+**推奨実装順**:
+
+1. `FILE-COMPLETE-001`: 小さく、PHI 露出面の削減効果が大きい。既存 consumer 依存も少数で、まずここを閉じる。
+2. `VISIT-SYNC-001`: モバイル現場での入力喪失リスクを減らす。autosave/sync 状態は UI/UX と PHI log 安全を同時に見る。
+3. `PAT-BOARD-PAGE-001`: server-side search 済みの上に cursor paging を重ね、truncation warning を実運用上の「さらに読み込む」へ置換する。
+4. `DSP-QUEUE-PAGE-001`: 調剤キューの `MAX_CYCLES=500` を廃止し、phase/facet と代表 task hydrate を page 単位にする。
+5. `PERF-RTE-001A`: 上記 heavy route 改修と並行して、本番 SLO/CloudWatch/release gate へ接続する。
+6. `RX-REG-FACET-001` / `DASH-CLEAN-001` / `SEC-AUDIT-001A`: P1 cleanup と横断監査を続ける。
 
 #### UX/PERF/DEV 追加バックログ（2026-07-05 UI/UX・実行速度レビュー反映） `cc:TODO`
 
@@ -1220,7 +1278,7 @@ Validation:
 | R-PR6  | BIL-001, BIL-002, INS-001                                       | 月次締め queue と billing blocker task 化。                                   | 中        |
 | R-PR7  | REP-001, FILE-001, FILE-002                                     | 報告書送付、添付、PDF/CSV/外部共有 policy。                                   | 中        |
 | R-PR8  | DSP-001, DSP-002, TASK-001                                      | 調剤/持参物/SLA と task health board。                                        | 小〜中    |
-| R-PR9  | NTF-001, NTF-002, NOT delivery ledger, REP-002                  | 通知未達・外部通知失敗・recipient 0・外部文面 minimization を監視。           | 中        |
+| R-PR9  | NTF-001, NTF-STREAM-001, NTF-PUSH-001, NOT delivery ledger, REP-002 | 通知未達・外部通知失敗・recipient 0・SSE/Web Push payload 境界・外部文面 minimization を監視。 | 中        |
 | R-PR10 | UX-001, QA-001                                                  | risk UI accessibility と横断 regression pack。                                | なし      |
 
 **直列依存**:

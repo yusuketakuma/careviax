@@ -7066,3 +7066,38 @@
   Broader `Plans.md` objective remains open. 次はユーザー指定の P0 `files/complete` response minimization。
   その後、Performance metrics 本番運用化、患者一覧 cursor pagination、訪問記録 autosave/sync、
   調剤ワークベンチ queue pagination を優先する。
+
+## 2026-07-06 Cross-boundary and latest-main backlog update
+
+- codex: user-requested `Plans.md` expansion for notification, Web Push, webhook, rate limit, recovery, retention, route wrapper, security event, offline cache boundaries, and the previous latest-main review residuals.
+  既存の UI/BFF/performance 改善とは別枠として、PHI が外へ出る・残る・横断される境界を追加バックログ化した。
+  さらに、1つ前の latest main 再レビュー内容をコード再スキャンに基づいて `FILE-COMPLETE-001`、
+  `PERF-RTE-001A`、`PAT-BOARD-PAGE-001`、`VISIT-SYNC-001`、`DSP-QUEUE-PAGE-001`、
+  `RX-REG-FACET-001`、`DASH-CLEAN-001`、`SEC-AUDIT-001A` として実装しやすい粒度へ再分解した。
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/api/files/complete/route.ts`,
+  `src/lib/utils/performance.ts`,
+  `src/app/api/patients/board/route.ts`,
+  `src/server/services/dispense-workbench-patients.ts`,
+  `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`,
+  `src/app/api/prescription-intakes/route.ts`,
+  `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  SSE notification stream、Web Push payload、Webhook delivery persistence、Rate limit DDB readiness、Live recovery drill、Retention/Legal Hold、Route handler wrapper drift、Security event review、Offline cache PHI audit を独立タスクとして追跡可能にした。
+  また、files/complete response、PerformanceSnapshot current-process、PatientsBoard 80/500 cap、
+  DispenseWorkbench 500 cycle cap、VisitRecord 30秒 autosave / 5秒 polling、PrescriptionIntake facets count 多発、
+  Dashboard stale comment を、既存レーンと対応づけて実装順序へ落とした。
+- security / PHI reviewed:
+  `NTF-STREAM-001` / `NTF-PUSH-001` / `INT-WEBHOOK-001` / `DATA-RET-001` / `MOB-CACHE-001` は、患者名、住所、電話、薬剤名、free text、provider error、token、storage key を payload / cache / persisted outbox / snapshot から落とす acceptance を持つ。
+- design / imagegen:
+  計画文書追記のみで UI 画面配置・視覚再構築を伴わないため、`imagegen` / `gpt-image-2` の新規生成は省略した。
+- validation:
+  `git diff --check -- Plans.md ops/refactor/STATE.md` passed.
+- remaining:
+  `/api/files/complete` response minimization implementation is still in-progress in the working tree and will be validated/committed separately.
