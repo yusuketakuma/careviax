@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: INB-001 inbound communication workflow dashboard aggregate（未コミット）。
+- codex: INB-001 inbound communication workflow dashboard aggregate（commit 20adefb14）。
   - current task:
     他職種からの inbound phone/FAX/email が CommunicationQueue には出ているが、workflow dashboard では
     一般の未処理連絡に埋もれるため、PHI-free な件数 summary と unified workbench aggregate として明示する。
@@ -99,7 +99,7 @@
   - remaining:
     なし。DB正本、API/review UI、Report接続、正式 provider 統合は INB-001 の後続。
   - next action:
-    Land and push this slice, then record commit hash.
+    Landed and pushed to `origin/main`.
 
 - codex: MOV-001 inbound schedule task generic movement regression test（commit 59d15ced2）。
   - current task:
