@@ -13,6 +13,7 @@ import type {
   PatientTimelineSnapshot,
   PatientWorkspace,
 } from './patient-detail.types';
+import type { CaseRiskCockpitResponse } from '@/types/case-risk-cockpit';
 import type { PatientHomeOperationsSnapshot } from '@/types/patient-home-operations';
 
 const useQueryMock = vi.hoisted(() => vi.fn());
@@ -306,7 +307,8 @@ function mockPatientQuery(
       | 'conference'
       | 'mcsCheckLog'
       | 'patientShareCase'
-      | 'riskTaskSync',
+      | 'riskTaskSync'
+      | 'riskTaskWaiver',
       boolean
     >
   > = {},
@@ -361,7 +363,11 @@ function mockPatientQuery(
     patientOverviewLoading?: boolean;
     executePatientShareCaseMutation?: boolean;
     executeRiskTaskSyncMutation?: boolean;
+    executeRiskTaskWaiverMutation?: boolean;
     riskTaskSyncError?: Error;
+    riskTaskWaiverError?: Error;
+    caseRiskCockpit?: CaseRiskCockpitResponse;
+    caseRiskCockpitError?: Error;
   } = {},
 ) {
   const faxMutate = vi.fn();
@@ -373,6 +379,7 @@ function mockPatientQuery(
   const mcsCheckLogMutate = vi.fn();
   const patientShareCaseMutate = vi.fn();
   const riskTaskSyncMutate = vi.fn();
+  const riskTaskWaiverMutate = vi.fn();
   const invalidateQueries = vi.fn();
   useOrgIdMock.mockReturnValue('org_1');
   useRouterMock.mockReturnValue({ push: vi.fn(), replace: vi.fn() });
@@ -426,6 +433,12 @@ function mockPatientQuery(
     variables: pending.riskTaskSync ? 'case_1' : null,
     error: options.riskTaskSyncError ?? null,
   };
+  const riskTaskWaiverMutationResult = {
+    mutate: riskTaskWaiverMutate,
+    isPending: Boolean(pending.riskTaskWaiver),
+    variables: pending.riskTaskWaiver ? { caseId: 'case_1', taskId: 'task_1' } : null,
+    error: options.riskTaskWaiverError ?? null,
+  };
   let mutationCallIndex = 0;
   const pickMutationResult = (mutationOptions?: {
     mutationFn?: (input: unknown) => Promise<unknown>;
@@ -441,6 +454,9 @@ function mockPatientQuery(
     if (onErrorText.includes('MCS確認ログの保存に失敗しました')) return mutationResults[6];
     if (onErrorText.includes('リスクタスク同期に失敗しました')) {
       return riskTaskSyncMutationResult;
+    }
+    if (onErrorText.includes('リスクタスク免除に失敗しました')) {
+      return riskTaskWaiverMutationResult;
     }
 
     const result = mutationResults[mutationCallIndex % mutationResults.length];
@@ -500,6 +516,39 @@ function mockPatientQuery(
           isPending: Boolean(pending.riskTaskSync),
           variables: pending.riskTaskSync ? 'case_1' : null,
           error: options.riskTaskSyncError ?? null,
+        };
+      }
+      if (onErrorText.includes('リスクタスク免除に失敗しました')) {
+        if (!options.executeRiskTaskWaiverMutation) {
+          return riskTaskWaiverMutationResult;
+        }
+
+        return {
+          mutate: async (input: {
+            caseId: string;
+            taskId: string;
+            waiverReason: string;
+            reasonCode: string;
+          }) => {
+            riskTaskWaiverMutate(input);
+            try {
+              await mutationOptions?.mutationFn?.(input);
+              await mutationOptions?.onSuccess?.({
+                task_id: input.taskId,
+                display_id: 'tsk0000000001',
+                case_id: input.caseId,
+                resolution_state: 'waived',
+                task_status: 'cancelled',
+                updated_count: 1,
+                audit_logged: true,
+              });
+            } catch (error) {
+              mutationOptions?.onError?.(error as Error);
+            }
+          },
+          isPending: Boolean(pending.riskTaskWaiver),
+          variables: pending.riskTaskWaiver ? { caseId: 'case_1', taskId: 'task_1' } : null,
+          error: options.riskTaskWaiverError ?? null,
         };
       }
       return pickMutationResult(mutationOptions);
@@ -884,6 +933,17 @@ function mockPatientQuery(
       };
     }
 
+    if (queryKey[0] === 'case-risk-cockpit') {
+      return {
+        data: options.caseRiskCockpitError ? undefined : options.caseRiskCockpit,
+        isLoading: false,
+        isFetching: false,
+        isError: Boolean(options.caseRiskCockpitError),
+        error: options.caseRiskCockpitError ?? null,
+        refetch: vi.fn(),
+      };
+    }
+
     if (queryKey[0] === 'patient-overview') {
       return {
         data:
@@ -912,6 +972,7 @@ function mockPatientQuery(
     mcsCheckLogMutate,
     patientShareCaseMutate,
     riskTaskSyncMutate,
+    riskTaskWaiverMutate,
     invalidateQueries,
   };
 }
@@ -933,6 +994,40 @@ function buildActivePatientCase(): PatientOverview['cases'][number] {
     updated_at: '2026-06-01T00:00:00.000Z',
     required_visit_support: null,
     care_team_links: [],
+  };
+}
+
+function buildCaseRiskCockpit(
+  overrides: Partial<CaseRiskCockpitResponse> = {},
+): CaseRiskCockpitResponse {
+  return {
+    generated_at: '2026-07-06T00:00:00.000Z',
+    patient: { id: 'patient_1', display_id: 'pt0000000001', name: '田中 一郎' },
+    case: { id: 'case_1', display_id: 'cc0000000001', status: 'active' },
+    overall: {
+      status: 'blocked',
+      blocking_count: 1,
+      urgent_count: 0,
+      warning_count: 0,
+    },
+    sections: [],
+    next_actions: [
+      {
+        task_id: 'task_1',
+        label: '同意更新タスクを確認',
+        priority: 'high',
+        due_at: '2026-07-07T00:00:00.000Z',
+        action_href: '/tasks/task_1',
+      },
+      {
+        task_id: null,
+        label: '正本を確認',
+        priority: 'normal',
+        due_at: null,
+        action_href: '/patients/patient_1#patient-profile-summary',
+      },
+    ],
+    ...overrides,
   };
 }
 
@@ -1535,6 +1630,146 @@ describe('CardWorkspace', () => {
       'ケースリスクタスク同期APIからの詳細エラー',
     );
     expect(within(panel).queryByText('同期済み')).toBeNull();
+  });
+
+  it('waives a task-backed case risk next action through the dedicated case-scoped route', async () => {
+    let capturedRequestInit: RequestInit | undefined;
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      capturedRequestInit = init;
+      return new Response(
+        JSON.stringify({
+          task_id: 'task_1',
+          display_id: 'tsk0000000001',
+          case_id: 'case_1',
+          resolution_state: 'waived',
+          task_status: 'cancelled',
+          updated_count: 1,
+          audit_logged: true,
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { invalidateQueries } = mockPatientQuery(
+      buildWorkspace(),
+      null,
+      {},
+      {
+        patientOverrides: { cases: [buildActivePatientCase()] },
+        caseRiskCockpit: buildCaseRiskCockpit(),
+        executeRiskTaskWaiverMutation: true,
+      },
+    );
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    const panel = screen.getByTestId('case-risk-task-resolution-panel');
+    expect(within(panel).getByText('同意更新タスクを確認')).toBeTruthy();
+    expect(within(panel).queryByText('正本を確認')).toBeNull();
+    const submit = within(panel).getByRole('button', { name: '免除を記録' });
+    expect(submit.hasAttribute('disabled')).toBe(true);
+
+    fireEvent.change(within(panel).getByLabelText('免除理由'), {
+      target: { value: '薬剤師確認済みのため今回免除' },
+    });
+    expect(submit.hasAttribute('disabled')).toBe(false);
+    fireEvent.click(submit);
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/cases/case_1/risk-cockpit/tasks/task_1/resolution',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-org-id': 'org_1' },
+          body: JSON.stringify({
+            resolution_state: 'waived',
+            waiver_reason: '薬剤師確認済みのため今回免除',
+            reason_code: 'pharmacist_reviewed',
+          }),
+        },
+      ),
+    );
+    expect(capturedRequestInit).toBeDefined();
+    const body = JSON.parse(String(capturedRequestInit?.body)) as Record<string, unknown>;
+    expect(JSON.stringify(body)).not.toContain('同意更新タスクを確認');
+    expect(JSON.stringify(body)).not.toContain('tsk0000000001');
+    expect(JSON.stringify(body)).not.toContain('田中');
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['patient-overview', 'patient_1', 'org_1'],
+    });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['tasks'] });
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['case-risk-cockpit', 'case_1', 'org_1'],
+    });
+    expect(toast.success).toHaveBeenCalledWith('リスクタスクの免除を記録しました');
+
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps risk task waiver failures visible and does not expose non-task next actions as waivable', () => {
+    mockPatientQuery(
+      buildWorkspace(),
+      null,
+      {},
+      {
+        patientOverrides: { cases: [buildActivePatientCase()] },
+        caseRiskCockpit: buildCaseRiskCockpit({
+          next_actions: [
+            {
+              task_id: null,
+              label: '正本を確認',
+              priority: 'normal',
+              due_at: null,
+              action_href: '/patients/patient_1#patient-profile-summary',
+            },
+          ],
+        }),
+        riskTaskWaiverError: new Error('免除APIからの詳細エラー'),
+      },
+    );
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    const panel = screen.getByTestId('case-risk-task-resolution-panel');
+    expect(within(panel).queryByTestId('case-risk-task-resolution-action')).toBeNull();
+    expect(
+      within(panel).getByText(
+        'タスク化済みの未解決リスクはありません。必要な場合は上の同期を実行してください。',
+      ),
+    ).toBeTruthy();
+    expect(within(panel).getByRole('alert').textContent).toContain('免除APIからの詳細エラー');
+  });
+
+  it('keeps the Case Risk Cockpit fetch failure retry target at the PH-OS 44px size', () => {
+    mockPatientQuery(
+      buildWorkspace(),
+      null,
+      {},
+      {
+        patientOverrides: { cases: [buildActivePatientCase()] },
+        caseRiskCockpitError: new Error('Case Risk Cockpit API error'),
+      },
+    );
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    const panel = screen.getByTestId('case-risk-task-resolution-panel');
+    expect(within(panel).getByRole('alert').textContent).toContain('Case Risk Cockpit API error');
+    expect(within(panel).getByRole('button', { name: '再試行' }).className).toContain('min-h-11');
+  });
+
+  it('does not mix a no-case state with an empty-risk state', () => {
+    mockPatientQuery(buildWorkspace(), null, {}, { patientOverrides: { cases: [] } });
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    const panel = screen.getByTestId('case-risk-task-resolution-panel');
+    expect(within(panel).getByText('対象ケースがありません。')).toBeTruthy();
+    expect(
+      within(panel).queryByText(
+        'タスク化済みの未解決リスクはありません。必要な場合は上の同期を実行してください。',
+      ),
+    ).toBeNull();
   });
 
   it('opens the matching patient detail tab for an initial section hash', async () => {

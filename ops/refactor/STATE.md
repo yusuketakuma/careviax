@@ -40,6 +40,80 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Case Risk Cockpit waiver flow connected to patient Command tab（ready to commit）。
+  - current task:
+    `Plans.md` の `RISK-CORE-2 / CORE-002` 残作業「UI からの dedicated waiver flow 接続」に対応。
+    患者詳細 `Command` tab で Case Risk Cockpit の task-backed `next_actions` を表示し、
+    理由分類 + 免除理由必須で
+    `POST /api/cases/[id]/risk-cockpit/tasks/[taskId]/resolution` へ送る UI を追加した。
+  - subagent:
+    `code_mapper`（`Mapper the 22nd` / `019f34e9-8dfb-7180-85b5-370e2819eea6`）を read-only で投入。
+    `CardWorkspace`、`patient-command-center-model`、Case Risk Cockpit types/service、dedicated waiver route、
+    既存 tests を棚卸しし、最小 write set を
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx` と同 test に絞る提案を受けた。
+  - design / imagegen:
+    UI slice のため `/Users/yusuke/.codex/skills/.system/imagegen/SKILL.md` と
+    `docs/ui-ux-design-guidelines.md` を確認し、`gpt-image-2` 方針の非 PHI mockup を生成:
+    `/Users/yusuke/.codex/generated_images/019f2c7e-d969-7882-bd11-432a10abb930/ig_025a5e93683b5db5016a4afc62cd74819197a862c409203cc0.png`。
+    生成画像は参照案としてのみ使用し、実装は既存 `SectionCard` / `LoadingButton` / `Label` /
+    `Textarea` / `role=alert` / 44px target へ翻訳した。prompt には実在患者名、住所、電話、
+    処方本文、保険情報、外部共有 URL、secret を入れていない。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `git log --oneline -8`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `docs/ui-ux-design-guidelines.md`,
+    `/Users/yusuke/.codex/skills/.system/imagegen/SKILL.md`,
+    `src/types/case-risk-cockpit.ts`,
+    `src/server/services/case-risk-cockpit.ts`,
+    `src/app/api/cases/[id]/risk-cockpit/route.ts`,
+    `src/app/api/cases/[id]/risk-cockpit/tasks/[taskId]/resolution/route.ts`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`.
+  - bugs / risks reduced:
+    dedicated waiver API が存在しても UI から到達できず、generic task completion を禁止した後の
+    operator flow が途切れていた問題を解消。`next_actions.task_id` がある action だけを免除対象にし、
+    task_id のない通常 action は免除 UI に出さない。Case Risk Cockpit 取得失敗は「対象なし」に潰さず、
+    mutation 失敗も inline `role=alert` と toast で残す。
+  - security / PHI reviewed:
+    UI から送るのは `resolution_state='waived'`、`waiver_reason`、controlled `reason_code` のみ。
+    finding detail、dedupe key、task display id、患者名、case metadata、audit metadata は送らない。
+    送信後の理由本文は画面へ再表示せず、success response の task/display id も panel text に出さない
+    regression を追加した。server-side authz / case/task/org validation は dedicated route に委ねる。
+  - data integrity reviewed:
+    成功時に `patient-overview` / `tasks` / `case-risk-cockpit` を invalidate し、UI 側で全 finding を
+    楽観的に解決済みにしない。active case 優先、なければ latest case の既存 Command Center case 選択を
+    helper 化し、GET cockpit / POST waiver / sync panel で同じ case を使う。
+  - implementation review:
+    `frontend_reviewer`（`UI Review the 22nd` / `019f34f5-a627-7d32-b6be-463e2f8b0b66`）は
+    `CHANGES_REQUESTED` として、Case Risk Cockpit fetch failure の retry button が 44px target を
+    下回る点、ケースなし状態で empty-risk 文言も同時表示される false-empty、古い STATE entry の
+    Markdown 崩れを指摘。`再試行` に `min-h-11` を追加し、empty-risk 文言を `caseId` がある場合だけに
+    gate し、該当 STATE 行を Prettier-safe な code span へ修正。2つの UI regression test を追加した。
+  - validation commands:
+    `pnpm exec vitest run src/app/(dashboard)/patients/[id]/card-workspace.test.tsx --reporter=dot --testTimeout=30000`;
+    `pnpm exec vitest run src/app/(dashboard)/patients/[id]/card-workspace.test.tsx src/app/api/cases/[id]/risk-cockpit/tasks/[taskId]/resolution/route.test.ts src/app/api/cases/[id]/risk-cockpit/route.test.ts --reporter=dot --testTimeout=30000`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`;
+    `pnpm lint`;
+    `pnpm format:check`;
+    `git diff --check`.
+  - validation results:
+    targeted CardWorkspace vitest green（1 file / 86 tests）; UI + route contract vitest green（3 files / 98 tests）;
+    high-memory typecheck green; typecheck:no-unused green; `pnpm format:check` green; `git diff --check`
+    green; `pnpm lint` green with existing unrelated warnings only in `src/lib/platform/break-glass.test.ts`
+    (`_tx`, `_input`)。
+  - remaining work:
+    Broader `Plans.md` objective remains open。`RISK-CORE-2` 残: domain 別 durable resolve predicate、
+    孤児 task audit、Task Health Board 連携。`UX-CMD-001` 残: PatientBoard 派生 logic との adapter 統合、
+    timeline 抜粋の Command Center block 化、payload budget / browser smoke。
+
 - codex: Case-scoped risk task waiver resolution API implemented（ready to commit）。
   - current task:
     `Plans.md` の `RISK-CORE-2 / CORE-002` 残作業「dedicated risk resolution route」に対応。
@@ -366,7 +440,7 @@
     guarded update で `completed` にする。
   - subagent:
     古い完了済み subagent を1件 close して枠を確保し、`reviewer-strict` を起動（`Sentinel the 22nd` /
-    `019f34b1-fe6c-7d53-94ed-b7381f2d6737`）。reviewer-strict は CHANGES_REQUESTED として
+    `019f34b1-fe6c-7d53-94ed-b7381f2d6737`）。reviewer-strict は `CHANGES_REQUESTED` として
     non-owned `risk_*` task closure と update race での false resolved refs を指摘。これを反映し、
     `metadata.source = risk_finding` / managed task_type / `risk:` dedupe prefix を find/update の両方へ
     入れ、`updateMany.count > 0` の行だけ `resolved_stale_tasks` に返すよう修正した。

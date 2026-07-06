@@ -83,6 +83,7 @@ import type {
   PatientWorkspacePrescriptionLine,
   PatientWorkspaceTodayTask,
 } from './patient-detail.types';
+import type { CaseRiskCockpitResponse, CaseRiskNextAction } from '@/types/case-risk-cockpit';
 import type { PatientActivityTimelineProps } from './patient-activity-timeline';
 import { buildPatientCommandCenterModel, formatActivityTime } from './patient-command-center-model';
 import {
@@ -127,8 +128,52 @@ type CaseRiskTaskSyncUiResult = {
   resolved_stale_task_count: number;
 };
 
+type CaseRiskTaskResolutionUiResult = {
+  task_id: string;
+  display_id: string | null;
+  case_id: string;
+  resolution_state: 'waived';
+  task_status: 'cancelled';
+  updated_count: number;
+  audit_logged: boolean;
+};
+
+type RiskTaskWaiverReasonCode = 'pharmacist_reviewed' | 'duplicate_or_stale' | 'not_applicable';
+
+const RISK_TASK_WAIVER_REASON_OPTIONS: Array<{
+  value: RiskTaskWaiverReasonCode;
+  label: string;
+}> = [
+  { value: 'pharmacist_reviewed', label: '薬剤師判断で免除' },
+  { value: 'duplicate_or_stale', label: '重複・古いタスク' },
+  { value: 'not_applicable', label: '今回対象外' },
+];
+
 function buildCaseRiskTaskSyncPath(caseId: string) {
   return `/api/cases/${encodePathSegment(caseId)}/risk-cockpit/tasks`;
+}
+
+function buildCaseRiskCockpitPath(caseId: string) {
+  return `/api/cases/${encodePathSegment(caseId)}/risk-cockpit`;
+}
+
+function buildCaseRiskTaskResolutionPath(caseId: string, taskId: string) {
+  return `/api/cases/${encodePathSegment(caseId)}/risk-cockpit/tasks/${encodePathSegment(taskId)}/resolution`;
+}
+
+function selectLatestPatientCase(cases: PatientOverview['cases']) {
+  return (
+    [...cases].sort(
+      (a, b) =>
+        b.updated_at.localeCompare(a.updated_at) ||
+        b.created_at.localeCompare(a.created_at) ||
+        b.id.localeCompare(a.id),
+    )[0] ?? null
+  );
+}
+
+function selectCommandCenterCase(cases: PatientOverview['cases']) {
+  return cases.find((careCase) => careCase.status === 'active') ?? selectLatestPatientCase(cases);
 }
 
 function PatientDetailPanelLoading({ label }: { label: string }) {
@@ -3957,6 +4002,7 @@ function PatientCommandCenterPanel({
   evidence,
   evidenceOpenLabel,
   riskTaskSync,
+  riskTaskResolution,
 }: {
   nextAction?: NextActionPanelProps;
   blockedReasons: BlockedReason[];
@@ -3970,6 +4016,28 @@ function PatientCommandCenterPanel({
     result: CaseRiskTaskSyncUiResult | null;
     error: Error | null;
     onSync: (caseId: string) => void;
+  };
+  riskTaskResolution: {
+    caseId: string | null;
+    caseLabel: string | null;
+    actions: CaseRiskNextAction[];
+    isLoading: boolean;
+    isFetching: boolean;
+    error: Error | null;
+    onRetry: () => void;
+    isPending: boolean;
+    pendingTaskId: string | null;
+    mutationError: Error | null;
+    drafts: Record<string, string>;
+    reasonCodes: Record<string, RiskTaskWaiverReasonCode>;
+    onDraftChange: (taskId: string, value: string) => void;
+    onReasonCodeChange: (taskId: string, value: RiskTaskWaiverReasonCode) => void;
+    onWaive: (input: {
+      caseId: string;
+      taskId: string;
+      waiverReason: string;
+      reasonCode: RiskTaskWaiverReasonCode;
+    }) => void;
   };
 }) {
   return (
@@ -3990,6 +4058,7 @@ function PatientCommandCenterPanel({
       <div className="space-y-4">
         <EvidencePanel items={evidence} openLabel={evidenceOpenLabel} />
         <RiskTaskSyncPanel {...riskTaskSync} />
+        <RiskTaskResolutionPanel {...riskTaskResolution} />
       </div>
     </div>
   );
@@ -4100,6 +4169,232 @@ function RiskTaskSyncPanel({
   );
 }
 
+function RiskTaskResolutionPanel({
+  caseId,
+  caseLabel,
+  actions,
+  isLoading,
+  isFetching,
+  error,
+  onRetry,
+  isPending,
+  pendingTaskId,
+  mutationError,
+  drafts,
+  reasonCodes,
+  onDraftChange,
+  onReasonCodeChange,
+  onWaive,
+}: {
+  caseId: string | null;
+  caseLabel: string | null;
+  actions: CaseRiskNextAction[];
+  isLoading: boolean;
+  isFetching: boolean;
+  error: Error | null;
+  onRetry: () => void;
+  isPending: boolean;
+  pendingTaskId: string | null;
+  mutationError: Error | null;
+  drafts: Record<string, string>;
+  reasonCodes: Record<string, RiskTaskWaiverReasonCode>;
+  onDraftChange: (taskId: string, value: string) => void;
+  onReasonCodeChange: (taskId: string, value: RiskTaskWaiverReasonCode) => void;
+  onWaive: (input: {
+    caseId: string;
+    taskId: string;
+    waiverReason: string;
+    reasonCode: RiskTaskWaiverReasonCode;
+  }) => void;
+}) {
+  const descriptionId = 'case-risk-task-resolution-description';
+  const auditNoticeId = 'case-risk-task-resolution-audit-notice';
+  const taskActions = actions.filter((action) => Boolean(action.task_id));
+
+  return (
+    <SectionCard aria-label="リスクタスク免除" data-testid="case-risk-task-resolution-panel">
+      <div className="space-y-1">
+        <h3 className="text-sm font-semibold text-foreground">リスクタスクの免除</h3>
+        <p id={descriptionId} className="text-sm text-muted-foreground">
+          タスク化済みの未解決リスクだけを、理由必須で専用フローから免除します。
+        </p>
+        {caseLabel ? (
+          <p className="text-xs text-muted-foreground" data-testid="case-risk-task-resolution-case">
+            対象: {caseLabel}
+          </p>
+        ) : null}
+      </div>
+
+      {!caseId ? (
+        <p className="mt-3 text-sm font-medium text-muted-foreground">対象ケースがありません。</p>
+      ) : null}
+
+      {isLoading ? (
+        <p role="status" className="mt-3 text-sm text-muted-foreground">
+          リスクタスクを確認しています。
+        </p>
+      ) : null}
+
+      {error ? (
+        <div
+          role="alert"
+          className="mt-3 rounded-md border border-state-blocked/40 bg-state-blocked/10 p-3 text-sm text-state-blocked"
+        >
+          <div className="flex items-center gap-2 font-medium">
+            <TriangleAlert aria-hidden className="size-4" />
+            Case Risk Cockpit を表示できません
+          </div>
+          <p className="mt-1">{messageFromError(error, 'リスク状態の取得に失敗しました')}</p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-3 min-h-11"
+            onClick={onRetry}
+          >
+            再試行
+          </Button>
+        </div>
+      ) : null}
+
+      {caseId && !isLoading && !error && taskActions.length === 0 ? (
+        <p className="mt-3 text-sm text-muted-foreground">
+          タスク化済みの未解決リスクはありません。必要な場合は上の同期を実行してください。
+        </p>
+      ) : null}
+
+      {taskActions.length > 0 ? (
+        <div className="mt-3 space-y-3">
+          <p id={auditNoticeId} className="text-xs font-medium text-muted-foreground">
+            免除理由は監査ログへ記録されます。理由本文は送信後に画面へ再表示しません。
+          </p>
+          {isFetching ? (
+            <p role="status" className="text-xs text-muted-foreground">
+              最新のリスク状態を再確認しています。
+            </p>
+          ) : null}
+          <ul className="space-y-3" role="list">
+            {taskActions.map((action) => {
+              const taskId = action.task_id!;
+              const reason = drafts[taskId] ?? '';
+              const reasonCode = reasonCodes[taskId] ?? RISK_TASK_WAIVER_REASON_OPTIONS[0].value;
+              const reasonId = `risk-task-waiver-reason-${taskId}`;
+              const reasonCodeId = `risk-task-waiver-reason-code-${taskId}`;
+              const isSubmitting = isPending && pendingTaskId === taskId;
+              const isDisabled = !caseId || !reason.trim() || isPending;
+
+              return (
+                <li
+                  key={taskId}
+                  className="rounded-lg border border-border/70 bg-background/60 p-3"
+                  data-testid="case-risk-task-resolution-action"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0 space-y-1">
+                      <p className="text-sm font-semibold text-foreground">{action.label}</p>
+                      <p className="text-xs text-muted-foreground">
+                        優先度: {formatCaseRiskPriority(action.priority)}
+                        {action.due_at
+                          ? ` / 期限: ${formatOptionalDate(action.due_at.slice(0, 10))}`
+                          : ''}
+                      </p>
+                    </div>
+                    <Link
+                      href={action.action_href}
+                      className={buttonVariants({
+                        variant: 'ghost',
+                        size: 'sm',
+                        className: 'min-h-11 shrink-0',
+                      })}
+                    >
+                      根拠へ
+                    </Link>
+                  </div>
+                  <div className="mt-3 grid gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor={reasonCodeId}>理由分類</Label>
+                      <select
+                        id={reasonCodeId}
+                        className="min-h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        value={reasonCode}
+                        onChange={(event) =>
+                          onReasonCodeChange(
+                            taskId,
+                            event.currentTarget.value as RiskTaskWaiverReasonCode,
+                          )
+                        }
+                      >
+                        {RISK_TASK_WAIVER_REASON_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor={reasonId}>免除理由</Label>
+                      <Textarea
+                        id={reasonId}
+                        value={reason}
+                        onChange={(event) => onDraftChange(taskId, event.currentTarget.value)}
+                        aria-describedby={`${descriptionId} ${auditNoticeId}`}
+                        placeholder="薬剤師確認済み、既存対応済みなど業務上の理由を入力"
+                        rows={3}
+                      />
+                    </div>
+                    <LoadingButton
+                      type="button"
+                      variant="outline"
+                      className="min-h-11 justify-self-start"
+                      loading={isSubmitting}
+                      loadingLabel="記録中"
+                      disabled={isDisabled}
+                      onClick={() => {
+                        if (!caseId) return;
+                        onWaive({
+                          caseId,
+                          taskId,
+                          waiverReason: reason,
+                          reasonCode,
+                        });
+                      }}
+                    >
+                      免除を記録
+                    </LoadingButton>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : null}
+
+      {mutationError ? (
+        <p
+          role="alert"
+          className="mt-3 flex items-center gap-2 text-sm font-medium text-state-blocked"
+        >
+          <TriangleAlert aria-hidden className="size-4" />
+          {messageFromError(mutationError, 'リスクタスク免除に失敗しました')}
+        </p>
+      ) : null}
+    </SectionCard>
+  );
+}
+
+function formatCaseRiskPriority(priority: CaseRiskNextAction['priority']) {
+  switch (priority) {
+    case 'urgent':
+      return '至急';
+    case 'high':
+      return '高';
+    case 'low':
+      return '低';
+    default:
+      return '通常';
+  }
+}
+
 // 患者カードは最頻アクセス画面で、presence heartbeat や 17 本のクエリ/ミューテーション更新の
 // たびに本体が再レンダリングされる。これらのパネルは props がすべてクエリ data / 安定参照
 // (react-query の data・mutate、idle時 null の primitive) のため、React.memo で無関係な
@@ -4150,6 +4445,10 @@ export function CardWorkspace({
   const [riskTaskSyncResult, setRiskTaskSyncResult] = useState<CaseRiskTaskSyncUiResult | null>(
     null,
   );
+  const [riskTaskWaiverDrafts, setRiskTaskWaiverDrafts] = useState<Record<string, string>>({});
+  const [riskTaskWaiverReasonCodes, setRiskTaskWaiverReasonCodes] = useState<
+    Record<string, RiskTaskWaiverReasonCode>
+  >({});
 
   const activateDetailTab = (tab: PatientDetailTab) => {
     setMountedDetailTabs((previous) =>
@@ -4229,6 +4528,33 @@ export function CardWorkspace({
       return res.json();
     },
     enabled: Boolean(orgId && patient),
+  });
+
+  const commandCenterLatestCaseForQuery = patient ? selectLatestPatientCase(patient.cases) : null;
+  const commandCenterCaseForQuery = patient ? selectCommandCenterCase(patient.cases) : null;
+  const {
+    data: caseRiskCockpit,
+    isLoading: caseRiskCockpitLoading,
+    isFetching: caseRiskCockpitFetching,
+    isError: caseRiskCockpitIsError,
+    error: caseRiskCockpitError,
+    refetch: refetchCaseRiskCockpit,
+  } = useQuery<CaseRiskCockpitResponse>({
+    queryKey: ['case-risk-cockpit', commandCenterCaseForQuery?.id ?? null, orgId],
+    queryFn: async () => {
+      if (!commandCenterCaseForQuery?.id) {
+        throw new Error('対象ケースがありません');
+      }
+      const response = await fetch(buildCaseRiskCockpitPath(commandCenterCaseForQuery.id), {
+        headers: buildOrgHeaders(orgId),
+      });
+      return readApiJson<CaseRiskCockpitResponse>(
+        response,
+        'Case Risk Cockpit の取得に失敗しました',
+      );
+    },
+    enabled: Boolean(orgId && commandCenterCaseForQuery?.id && isDetailTabMounted('command')),
+    staleTime: 30_000,
   });
 
   const {
@@ -4598,6 +4924,50 @@ export function CardWorkspace({
     },
   });
 
+  const waiveRiskTaskMutation = useMutation({
+    mutationFn: async (input: {
+      caseId: string;
+      taskId: string;
+      waiverReason: string;
+      reasonCode: RiskTaskWaiverReasonCode;
+    }) => {
+      const response = await fetch(buildCaseRiskTaskResolutionPath(input.caseId, input.taskId), {
+        method: 'POST',
+        headers: buildOrgJsonHeaders(orgId),
+        body: JSON.stringify({
+          resolution_state: 'waived',
+          waiver_reason: input.waiverReason,
+          reason_code: input.reasonCode,
+        }),
+      });
+      return readApiJson<CaseRiskTaskResolutionUiResult>(
+        response,
+        'リスクタスク免除に失敗しました',
+      );
+    },
+    onSuccess: async (result) => {
+      setRiskTaskWaiverDrafts((previous) => {
+        const next = { ...previous };
+        delete next[result.task_id];
+        return next;
+      });
+      setRiskTaskWaiverReasonCodes((previous) => {
+        const next = { ...previous };
+        delete next[result.task_id];
+        return next;
+      });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['patient-overview', patientId, orgId] }),
+        queryClient.invalidateQueries({ queryKey: ['tasks'] }),
+        queryClient.invalidateQueries({ queryKey: ['case-risk-cockpit', result.case_id, orgId] }),
+      ]);
+      toast.success('リスクタスクの免除を記録しました');
+    },
+    onError: (error: Error) => {
+      toast.error(messageFromError(error, 'リスクタスク免除に失敗しました'));
+    },
+  });
+
   if (!orgId || isLoading) return <PatientCardWorkspaceLoadingState />;
   if (!patient) {
     // 取得失敗(error)を「患者が見つかりません」(=不在)に潰さない。
@@ -4678,15 +5048,8 @@ export function CardWorkspace({
   const headerPrimaryDiagnosis = headerPrimaryCondition?.name ?? null;
   // backend getPatientHeaderSummary と同じ tie-break(updated_at → created_at → id, いずれも desc)で
   // latest ケースを選ぶ。これにより担当4名(header-summary 由来)と介入開始日が同一ケースを指す。
-  const headerLatestCase =
-    [...patient.cases].sort(
-      (a, b) =>
-        b.updated_at.localeCompare(a.updated_at) ||
-        b.created_at.localeCompare(a.created_at) ||
-        b.id.localeCompare(a.id),
-    )[0] ?? null;
-  const commandCenterCase =
-    patient.cases.find((careCase) => careCase.status === 'active') ?? headerLatestCase;
+  const headerLatestCase = commandCenterLatestCaseForQuery;
+  const commandCenterCase = commandCenterCaseForQuery;
   const commandCenterCaseLabel = commandCenterCase
     ? formatPatientShareCaseOption(commandCenterCase)
     : null;
@@ -4953,6 +5316,9 @@ export function CardWorkspace({
     blockedReasons,
     evidence,
   } = buildPatientCommandCenterModel({ patient, patientId, workspace });
+  const taskBackedCaseRiskActions =
+    caseRiskCockpit?.next_actions.filter((action) => Boolean(action.task_id)) ?? [];
+  const pendingWaiverTaskId = waiveRiskTaskMutation.variables?.taskId ?? null;
   return (
     <div className="space-y-4" data-testid="card-workspace">
       {headerRow}
@@ -5006,6 +5372,37 @@ export function CardWorkspace({
                         ? syncRiskTasksMutation.error
                         : null,
                     onSync: syncRiskTasksMutation.mutate,
+                  }}
+                  riskTaskResolution={{
+                    caseId: commandCenterCase?.id ?? null,
+                    caseLabel: commandCenterCaseLabel,
+                    actions: taskBackedCaseRiskActions,
+                    isLoading: caseRiskCockpitLoading,
+                    isFetching: caseRiskCockpitFetching,
+                    error:
+                      caseRiskCockpitIsError && caseRiskCockpitError instanceof Error
+                        ? caseRiskCockpitError
+                        : null,
+                    onRetry: () => void refetchCaseRiskCockpit(),
+                    isPending: waiveRiskTaskMutation.isPending,
+                    pendingTaskId: pendingWaiverTaskId,
+                    mutationError:
+                      waiveRiskTaskMutation.error instanceof Error
+                        ? waiveRiskTaskMutation.error
+                        : null,
+                    drafts: riskTaskWaiverDrafts,
+                    reasonCodes: riskTaskWaiverReasonCodes,
+                    onDraftChange: (taskId, value) =>
+                      setRiskTaskWaiverDrafts((previous) => ({
+                        ...previous,
+                        [taskId]: value,
+                      })),
+                    onReasonCodeChange: (taskId, value) =>
+                      setRiskTaskWaiverReasonCodes((previous) => ({
+                        ...previous,
+                        [taskId]: value,
+                      })),
+                    onWaive: waiveRiskTaskMutation.mutate,
                   }}
                 />
                 <CardTodayPanelMemo tasks={workspace.today_tasks} />

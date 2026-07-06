@@ -676,8 +676,16 @@ FE 仕上げ（低優先）:
     で照合する。`taskId` と dedupe identity の両方で guarded update し、response は task/display/case/count と
     `audit_logged=true` のみに抑える。`resolved` は domain 別 durable predicate が入るまで client assertion では
     受け付けず、明示的な免除は理由必須 audit + redacted resolution metadata へ通す。
+  - 2026-07-06 追加 partial: 患者詳細 Command tab から dedicated waiver flow を接続。
+    `Case Risk Cockpit` の `next_actions[].task_id` がある action だけを「リスクタスクの免除」パネルに出し、
+    理由分類 + 免除理由必須で
+    `POST /api/cases/[id]/risk-cockpit/tasks/[taskId]/resolution` へ送る。UI は finding detail、
+    task display id、dedupe key、患者名、理由本文の送信後再表示を行わず、成功時は
+    `patient-overview` / `tasks` / `case-risk-cockpit` を invalidate する。取得失敗と mutation 失敗は
+    `role="alert"` で false-empty にしない。視覚判断が入るため `imagegen` skill と `gpt-image-2`
+    方針の非 PHI mockup を生成し、PH-OS の高密度・理由必須・監査導線へ翻訳した。
 - 残:
-  - UI からの dedicated waiver flow 接続、domain 別 resolve predicate、孤児 task audit、Task Health Board 連携。
+  - domain 別 resolve predicate、孤児 task audit、Task Health Board 連携。
 
 #### RISK-CORE-3. Case Risk Cockpit API contract `cc:PARTIAL`
 
@@ -927,6 +935,14 @@ FE 仕上げ（低優先）:
   adapter/refactor slice のため `imagegen` / `gpt-image-2` 生成は省略した。
   残: PatientBoard 派生ロジックとの adapter 統合、Case Risk Cockpit への接続、timeline 抜粋を
   Command Center block に含めること、payload budget / browser smoke。
+
+- `UX-CMD-001 / RISK-CORE-2` partial（2026-07-06）: 患者詳細 Command tab に Case Risk Cockpit の
+  task-backed next action を読み込ませ、dedicated waiver route へ理由必須で接続した。
+  `next_actions.task_id` がない通常 action は免除対象にせず、Case Risk Cockpit 取得失敗と免除失敗は
+  inline alert として残す。実装前に `imagegen` skill と `gpt-image-2` 方針で非 PHI mockup を生成し、
+  実装では既存 `SectionCard` / `LoadingButton` / `Label` / `Textarea` と 44px target に翻訳した。
+  残: PatientBoard 派生ロジックとの adapter 統合、timeline 抜粋の Command Center block 化、
+  payload budget / browser smoke。
 
 - `PAT-DETAIL-PERF-001 / UX-CMD-001` partial（2026-07-06）: 患者詳細の在宅運用管理 fallback
   （home-operations BFF 取得失敗時の近似表示）を `patient-home-operations-model.ts` へ抽出した。
