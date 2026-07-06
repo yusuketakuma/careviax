@@ -21,6 +21,7 @@ type RiskTaskAuditContext = Parameters<typeof createAuditLogEntry>[1];
 export type RiskTaskBridgeInput = {
   orgId: string;
   finding: RiskFinding;
+  taskId?: string | null;
 };
 
 export type ResolveRiskTaskInput = RiskTaskBridgeInput & {
@@ -105,6 +106,7 @@ export function riskFindingToResolveOperationalTaskInput(
   const entry = getRiskTaskRegistryEntry(input.finding.domain);
   return {
     orgId: input.orgId,
+    taskId: input.taskId,
     dedupeKey: buildRiskDedupeKey(input.finding),
     taskType: entry.task_type,
     relatedEntityType: input.finding.related_entity_type ?? entry.related_entity_type,
@@ -138,7 +140,11 @@ export function riskFindingToWaiveOperationalTaskInput(
     throw new Error('Risk task waiver requires auditLogId');
   }
   return {
-    ...riskFindingToResolveOperationalTaskInput({ orgId: input.orgId, finding: input.finding }),
+    ...riskFindingToResolveOperationalTaskInput({
+      orgId: input.orgId,
+      taskId: input.taskId,
+      finding: input.finding,
+    }),
     status: 'cancelled',
     resolution: {
       state: 'waived',
@@ -198,6 +204,7 @@ export async function waiveOperationalTaskForRiskWithAudit(
 
   const resolved = await waiveOperationalTaskForRisk(tx, {
     orgId: input.orgId,
+    taskId: input.taskId,
     finding: input.finding,
     actorUserId: input.ctx.userId,
     waiverReason: input.waiverReason,

@@ -40,6 +40,79 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Case-scoped risk task waiver resolution API implemented（ready to commit）。
+  - current task:
+    `Plans.md` の `RISK-CORE-2 / CORE-002` 残作業「dedicated risk resolution route」に対応。
+    `POST /api/cases/[id]/risk-cockpit/tasks/[taskId]/resolution` を追加し、generic task PATCH/bulk で
+    禁止した risk task の明示 waiver を、case-scoped / reason-required / audit-required flow で処理する。
+  - subagent:
+    `api_contract_reviewer`（`Envelope the 22nd` / `019f34da-a8f3-71a2-b560-86b13a5e7392`）を
+    read-only で投入。レビューは APPROVE。推奨に従い、当初の task ID 直下 route 案を破棄し、
+    `cases/[id]/risk-cockpit/tasks/[taskId]/resolution` へ切替。client から identity/audit/dedupe/finding
+    details を受けない、no-store、minimal response、case metadata check、waiver-only の contract にした。
+  - design / imagegen:
+    backend service/API/test slice で視覚レイアウト変更を伴わないため、`imagegen` / `gpt-image-2` の
+    新規生成は省略。UI waiver flow を Command Center 等へ配置する slice では PH-OS UI/UX SSOT と
+    `model: gpt-image-2` 方針を適用し、非 PHI mockup を先に作る。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `git log --oneline -8`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `src/app/api/cases/[id]/risk-cockpit/tasks/route.ts`,
+    `src/app/api/cases/[id]/risk-cockpit/tasks/route.test.ts`,
+    `src/app/api/tasks/[id]/route.ts`,
+    `src/app/api/tasks/[id]/route.test.ts`,
+    `src/app/api/tasks/bulk/route.ts`,
+    `src/server/services/risk-task-bridge.ts`,
+    `src/server/services/risk-task-bridge.test.ts`,
+    `src/server/services/operational-tasks.ts`,
+    `src/lib/risk/risk-finding.ts`,
+    `src/lib/tasks/task-registry.ts`,
+    `src/lib/tasks/inline-completion.ts`,
+    `src/lib/auth/permission-matrix.ts`,
+    `src/lib/auth/context.ts`,
+    `src/lib/api/request-body.ts`,
+    `src/lib/api/response.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/risk-task-bridge.ts`,
+    `src/server/services/risk-task-resolution.ts`,
+    `src/server/services/risk-task-resolution.test.ts`,
+    `src/app/api/cases/[id]/risk-cockpit/tasks/[taskId]/resolution/route.ts`,
+    `src/app/api/cases/[id]/risk-cockpit/tasks/[taskId]/resolution/route.test.ts`.
+  - bugs / risks reduced:
+    risk task の generic completion/cancellation 禁止後に残っていた「安全な専用解決 API なし」の穴を解消。
+    route は `canAuditDispense` を要求し、case/task/org を確認し、service 側でも task metadata
+    `source=risk_finding` / `case_id` / registry task_type を照合する。`resolved` は domain 別 predicate
+    が入るまで client assertion で受け付けず、明示的な免除は `waived` のみ。
+  - security / PHI reviewed:
+    request body は `resolution_state='waived'`、`waiver_reason`、bounded `reason_code` のみ。
+    client supplied org/patient/case/dedupe/audit/finding title/detail/action label は受けない。response は
+    task_id/display_id/case_id/status/count/audit_logged のみで、dedupe key、metadata、waiver reason、
+    finding title/detail、患者名・住所・電話・薬剤名を返さない。unexpected error response/log も raw message を出さない。
+  - data integrity reviewed:
+    `waiveRiskOperationalTaskById` は task ID と dedupe identity の両方で `resolveOperationalTasks` を
+    guarded update し、task metadata の case_id が route case と一致しない場合は更新しない。audit 作成後に
+    update count が 1 でない場合は conflict として扱い、transaction rollback 前提の false waiver を防ぐ。
+  - validation commands:
+    `pnpm exec prettier --write src/server/services/risk-task-bridge.ts src/server/services/risk-task-resolution.ts src/server/services/risk-task-resolution.test.ts src/app/api/cases/[id]/risk-cockpit/tasks/[taskId]/resolution/route.ts src/app/api/cases/[id]/risk-cockpit/tasks/[taskId]/resolution/route.test.ts`;
+    `pnpm exec vitest run src/server/services/risk-task-resolution.test.ts src/app/api/cases/[id]/risk-cockpit/tasks/[taskId]/resolution/route.test.ts src/server/services/risk-task-bridge.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec vitest run src/app/api/tasks/[id]/route.test.ts src/app/api/tasks/bulk/route.test.ts src/app/api/cases/[id]/risk-cockpit/tasks/[taskId]/resolution/route.test.ts src/server/services/risk-task-resolution.test.ts src/server/services/risk-task-bridge.test.ts --reporter=dot --testTimeout=30000`;
+    `git diff --check`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`;
+    `pnpm lint`.
+  - validation results:
+    focused vitest green（3 files / 23 tests, then 5 files / 46 tests）; `git diff --check` green;
+    high-memory typecheck green; typecheck:no-unused green; `pnpm lint` green with existing unrelated warnings in
+    `src/lib/platform/break-glass.test.ts` (`_tx`, `_input` only).
+  - remaining work:
+    Broader `Plans.md` objective remains open。`RISK-CORE-2` 残: UI からの dedicated waiver flow 接続、
+    domain 別 durable resolve predicate、孤児 task audit、Task Health Board 連携。
+
 - codex: Risk task waiver audit and dedicated completion guard implemented（ready to commit）。
   - current task:
     `Plans.md` の `RISK-CORE-2 / CORE-002` 残作業「waiver/override 時の理由必須 audit と
