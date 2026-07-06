@@ -84,6 +84,7 @@ function buildDb<T extends Record<string, unknown> = Record<string, never>>(over
     communicationEvent: { findMany: vi.fn().mockResolvedValue([]) },
     patientMcsMessage: { findMany: vi.fn().mockResolvedValue([]) },
     partnerVisitRecord: { findMany: vi.fn().mockResolvedValue([]) },
+    residualMedication: { findMany: vi.fn().mockResolvedValue([]) },
     patientSelfReport: { findMany: vi.fn().mockResolvedValue([]) },
     externalAccessGrant: { findMany: vi.fn().mockResolvedValue([]) },
     inquiryRecord: { findMany: vi.fn().mockResolvedValue([]) },
@@ -4132,6 +4133,132 @@ describe('getPatientTimelineData', () => {
     const serialized = JSON.stringify(result?.movement_events);
     expect(serialized).not.toContain('患者名入りタスク本文');
     expect(serialized).not.toContain('description');
+  });
+
+  it('adds visit-derived residual medication events without selecting drug details or quantities', async () => {
+    const visitRecordFindManyMock = vi.fn().mockResolvedValue([
+      {
+        id: 'visit_record_1',
+        pharmacist_id: 'pharmacist_1',
+        visit_date: new Date('2026-04-05T01:00:00.000Z'),
+        outcome_status: 'completed',
+        next_visit_suggestion_date: null,
+        cancellation_reason: null,
+        postpone_reason: null,
+        revisit_reason: null,
+        created_at: new Date('2026-04-05T01:30:00.000Z'),
+      },
+      {
+        id: 'visit_record_2',
+        pharmacist_id: 'pharmacist_1',
+        visit_date: new Date('2026-04-01T01:00:00.000Z'),
+        outcome_status: 'completed',
+        next_visit_suggestion_date: null,
+        cancellation_reason: null,
+        postpone_reason: null,
+        revisit_reason: null,
+        created_at: new Date('2026-04-01T01:30:00.000Z'),
+      },
+    ]);
+    const residualMedicationFindManyMock = vi.fn().mockResolvedValue([
+      {
+        id: 'residual_1',
+        visit_record_id: 'visit_record_1',
+        is_reduction_target: true,
+        is_prohibited_reduction: false,
+        created_at: new Date('2026-04-05T01:35:00.000Z'),
+        drug_name: '患者に見せるべきではない薬剤名',
+        remaining_quantity: 12,
+      },
+      {
+        id: 'residual_2',
+        visit_record_id: 'visit_record_1',
+        is_reduction_target: false,
+        is_prohibited_reduction: false,
+        created_at: new Date('2026-04-05T01:34:00.000Z'),
+        drug_name: '別の薬剤名',
+        remaining_quantity: 6,
+      },
+      {
+        id: 'residual_3',
+        visit_record_id: 'visit_record_2',
+        is_reduction_target: false,
+        is_prohibited_reduction: true,
+        created_at: new Date('2026-04-01T01:35:00.000Z'),
+        drug_name: '麻薬名',
+        remaining_quantity: 1,
+      },
+    ]);
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      visitRecord: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        findMany: visitRecordFindManyMock,
+      },
+      residualMedication: {
+        findMany: residualMedicationFindManyMock,
+      },
+    });
+
+    const result = await getPatientTimelineData(runnerFor(db), {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+    });
+
+    expect(residualMedicationFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          visit_record_id: { in: ['visit_record_1', 'visit_record_2'] },
+        },
+        select: expect.not.objectContaining({
+          drug_name: true,
+          remaining_quantity: true,
+          prescribed_quantity: true,
+          remaining_days: true,
+          excess_days: true,
+        }),
+      }),
+    );
+
+    expect(result?.movement_events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'residual_medication:visit_record_1',
+          event_type: 'medication_stock_event',
+          category: 'medication_stock',
+          title: '残薬確認を記録',
+          summary: '訪問記録に残薬確認が記録されました。内容は訪問記録で確認してください。',
+          href: '/visits/visit_record_1',
+          action_label: '訪問記録を開く',
+          status: 'reduction_target',
+          status_label: '減数検討',
+          privacy_level: 'summary',
+          metadata: ['残薬記録 2件', '完了'],
+        }),
+        expect.objectContaining({
+          id: 'residual_medication:visit_record_2',
+          event_type: 'medication_stock_event',
+          status: 'prohibited_reduction',
+          status_label: '減数不可',
+          href: '/visits/visit_record_2',
+          metadata: ['残薬記録 1件', '完了'],
+        }),
+      ]),
+    );
+
+    const serialized = JSON.stringify(result?.movement_events);
+    expect(serialized).not.toContain('患者に見せるべきではない薬剤名');
+    expect(serialized).not.toContain('別の薬剤名');
+    expect(serialized).not.toContain('麻薬名');
+    expect(serialized).not.toContain('remaining_quantity');
   });
 
   it('bounds first-visit document timeline reads and keeps legacy audit filters visible', async () => {

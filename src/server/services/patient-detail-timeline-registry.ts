@@ -33,6 +33,7 @@ import {
   VISIT_TYPE_LABELS,
   type PartnerVisitRecordTimelineSource,
   type OperationalTaskTimelineSource,
+  type ResidualMedicationTimelineSource,
   type PatientMcsMessageTimelineSource,
   type BillingCandidateTimelineSource,
   type CareReportTimelineSource,
@@ -74,6 +75,7 @@ export type PatientTimelineRegistryDb = {
   patientSelfReport: Pick<Prisma.TransactionClient['patientSelfReport'], 'findMany'>;
   patientMcsMessage: Pick<Prisma.TransactionClient['patientMcsMessage'], 'findMany'>;
   partnerVisitRecord: Pick<Prisma.TransactionClient['partnerVisitRecord'], 'findMany'>;
+  residualMedication: Pick<Prisma.TransactionClient['residualMedication'], 'findMany'>;
   task: Pick<Prisma.TransactionClient['task'], 'findMany'>;
   prescriptionIntake: Pick<Prisma.TransactionClient['prescriptionIntake'], 'findMany'>;
   visitRecord: Pick<Prisma.TransactionClient['visitRecord'], 'findMany'>;
@@ -592,6 +594,107 @@ export const operationalTasksSource = defineTimelineSource<
         metadata: compactTimelineValues([item.related_entity_type]),
       };
     }),
+});
+
+// --- residualMedications ----------------------------------------------------
+export const residualMedicationsSource = defineTimelineSource<
+  'residualMedications',
+  ResidualMedicationTimelineSource
+>({
+  key: 'residualMedications',
+  emptyFallback: EMPTY,
+  fetch: async ({ db, orgId, patientId, caseIds }) => {
+    if (caseIds.length === 0) return [];
+
+    const visitRecords = await db.visitRecord.findMany({
+      where: {
+        org_id: orgId,
+        patient_id: patientId,
+        ...buildVisitRecordCaseScope(caseIds),
+      },
+      orderBy: [{ visit_date: 'desc' }, { created_at: 'desc' }],
+      take: 12,
+      select: {
+        id: true,
+        visit_date: true,
+        outcome_status: true,
+        created_at: true,
+      },
+    });
+    const visitRecordById = new Map(visitRecords.map((record) => [record.id, record]));
+    const visitRecordIds = Array.from(visitRecordById.keys());
+    if (visitRecordIds.length === 0) return [];
+
+    const residuals = await db.residualMedication.findMany({
+      where: {
+        org_id: orgId,
+        visit_record_id: { in: visitRecordIds },
+      },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      take: 50,
+      select: {
+        id: true,
+        visit_record_id: true,
+        is_reduction_target: true,
+        is_prohibited_reduction: true,
+        created_at: true,
+      },
+    });
+
+    return residuals.flatMap((item) => {
+      const visitRecord = visitRecordById.get(item.visit_record_id);
+      if (!visitRecord) return [];
+      return [
+        {
+          ...item,
+          visit_record: visitRecord,
+        },
+      ];
+    });
+  },
+  toEvents: (rows) => {
+    const byVisitRecord = new Map<string, ResidualMedicationTimelineSource[]>();
+    for (const item of rows) {
+      const group = byVisitRecord.get(item.visit_record_id) ?? [];
+      group.push(item);
+      byVisitRecord.set(item.visit_record_id, group);
+    }
+
+    return Array.from(byVisitRecord.entries()).map(([visitRecordId, items]) => {
+      const representative = items[0];
+      const hasProhibitedReduction = items.some((item) => item.is_prohibited_reduction);
+      const hasReductionTarget = items.some((item) => item.is_reduction_target);
+      const status = hasProhibitedReduction
+        ? 'prohibited_reduction'
+        : hasReductionTarget
+          ? 'reduction_target'
+          : 'recorded';
+      const statusLabel = hasProhibitedReduction
+        ? '減数不可'
+        : hasReductionTarget
+          ? '減数検討'
+          : '記録済み';
+
+      return {
+        id: `residual_medication:${visitRecordId}`,
+        event_type: 'medication_stock_event',
+        category: 'medication_stock',
+        occurred_at: representative.visit_record.visit_date ?? representative.created_at,
+        title: '残薬確認を記録',
+        summary: '訪問記録に残薬確認が記録されました。内容は訪問記録で確認してください。',
+        href: buildVisitHref(representative.visit_record.id),
+        action_label: '訪問記録を開く',
+        status,
+        status_label: statusLabel,
+        actor_name: null,
+        metadata: compactTimelineValues([
+          `残薬記録 ${items.length}件`,
+          VISIT_OUTCOME_LABELS[representative.visit_record.outcome_status] ??
+            representative.visit_record.outcome_status,
+        ]),
+      };
+    });
+  },
 });
 
 // --- selfReports ------------------------------------------------------------
@@ -1173,6 +1276,7 @@ export const TIMELINE_SOURCES = [
   patientMcsMessagesSource,
   partnerVisitRecordsSource,
   operationalTasksSource,
+  residualMedicationsSource,
   selfReportsSource,
   externalSharesSource,
   inquiryRecordsSource,

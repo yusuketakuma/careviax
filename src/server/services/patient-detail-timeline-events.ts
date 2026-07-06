@@ -196,6 +196,20 @@ export type OperationalTaskTimelineSource = {
   updated_at: Date;
 };
 
+export type ResidualMedicationTimelineSource = {
+  id: string;
+  visit_record_id: string;
+  is_reduction_target: boolean;
+  is_prohibited_reduction: boolean;
+  created_at: Date;
+  visit_record: {
+    id: string;
+    visit_date: Date;
+    outcome_status: string;
+    created_at: Date;
+  };
+};
+
 export type SelfReportTimelineSource = {
   id: string;
   subject: string | null;
@@ -320,6 +334,7 @@ export type BuildPatientTimelineEventsInput = {
   patientMcsMessages: readonly PatientMcsMessageTimelineSource[];
   partnerVisitRecords: readonly PartnerVisitRecordTimelineSource[];
   operationalTasks: readonly OperationalTaskTimelineSource[];
+  residualMedications: readonly ResidualMedicationTimelineSource[];
   selfReports: readonly SelfReportTimelineSource[];
   externalShares: readonly ExternalShareTimelineSource[];
   inquiryRecords: readonly InquiryTimelineSource[];
@@ -823,6 +838,7 @@ export function buildPatientTimelineEvents(
     patientMcsMessages,
     partnerVisitRecords,
     operationalTasks,
+    residualMedications,
     selfReports,
     externalShares,
     inquiryRecords,
@@ -848,6 +864,7 @@ export function buildPatientTimelineEvents(
     patientMcsMessages,
     partnerVisitRecords,
     operationalTasks,
+    residualMedications,
     selfReports,
     externalShares,
     inquiryRecords,

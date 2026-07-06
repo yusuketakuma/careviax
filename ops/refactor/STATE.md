@@ -41,6 +41,55 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOV-001 residual medication movement timeline bridge（未コミット）。
+  - current task:
+    Patient Movement Timeline に、正式 MedicationStock Ledger 前の bridge として既存
+    `ResidualMedication` を `medication_stock_event` source へ接続した。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `prisma/schema/medication.prisma`,
+    `prisma/schema/visit.prisma`,
+    `src/lib/visits/navigation.ts`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-movement-timeline-presenter.ts`,
+    `src/server/services/patient-detail.test.ts`,
+    `src/app/api/patients/[id]/route.ts`,
+    `Plans.md`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/api/patients/[id]/route.ts`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail.test.ts`.
+  - implementation:
+    Added `residualMedicationsSource` to `TIMELINE_SOURCES`. Because Prisma schema has no
+    `ResidualMedication -> VisitRecord` relation, the source first reads scoped `VisitRecord` ids via
+    existing patient/case guard, then reads `ResidualMedication` rows by `visit_record_id`. Rows are
+    grouped by visit record and emitted as one `medication_stock_event` per visit record with
+    `/visits/:visitRecordId` deep link.
+  - security / PHI reviewed:
+    Residual source selects only id, visit_record_id, reduction flags, and timestamps. It does not select
+    `drug_name`, `drug_code`, prescribed/remaining quantity, remaining days, excess days, drug master, or
+    free text. Timeline summary is controlled copy and the payload links to the visit record for details.
+  - validation:
+    `pnpm vitest run src/server/services/patient-detail.test.ts src/server/services/patient-movement-timeline-presenter.test.ts --reporter=dot --testTimeout=30000`
+    passed: 2 files / 76 tests.
+    `pnpm exec eslint 'src/app/api/patients/[id]/route.ts' src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts`
+    passed.
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md 'src/app/api/patients/[id]/route.ts' src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts`
+    passed.
+    `git diff --check -- Plans.md ops/refactor/STATE.md 'src/app/api/patients/[id]/route.ts' src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts`
+    passed.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+    `pnpm boundaries:check` passed: 0 new violations, 7 allowlisted debt imports across 6 files.
+  - remaining:
+    `MOV-001` remains partial for formal `InboundCommunicationSignal`, formal MedicationStock Ledger
+    source, safety finding source, and mobile Playwright smoke.
+  - next action:
+    Commit/push this bridge slice, then continue with formal inbound signal or safety source integration.
+
 - codex: MOV-001 occurrence-only timeline planning clarification（未コミット）。
   - current task:
     ユーザー方針「処方・訪問・文書登録があったことが timeline で確認できればよい。

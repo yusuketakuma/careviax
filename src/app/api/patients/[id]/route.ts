@@ -1563,6 +1563,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
     patientMcsMessages: [],
     partnerVisitRecords: [],
     operationalTasks: [],
+    residualMedications: [],
     selfReports,
     externalShares,
     inquiryRecords,
