@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: MOV-001 prescription / visit / document actor minimization（未コミット）。
+- codex: MOV-001 prescription / visit / document actor minimization（commit 4ff1ec46d, pushed）。
   - current task:
     Patient Movement Timeline の処方・訪問・文書 marker から担当者名 lookup と actor_name を外し、
     「何が起きたか + 正本 deep link」だけを返す契約にさらに寄せる。
@@ -72,7 +72,7 @@
   - remaining:
     Formal `InboundCommunicationEvent` / `InboundCommunicationSignal` DB/API/review UI and MedicationStock Ledger source remain.
   - next action:
-    Scoped commit/push, then record landed commit hash.
+    Continue remaining MOV-001 sources only when they can stay marker-only + canonical deep link.
 
 - codex: MOV-001 MCS / partner visit marker minimization（commit 5e049d30f, pushed）。
   - current task:
