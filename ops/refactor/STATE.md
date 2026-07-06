@@ -40,6 +40,98 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Operational Task Health Board API / orphan risk task audit implemented（ready to commit）。
+  - current task:
+    `Plans.md` の `TASK-001 / RISK-CORE-2` 残作業「孤児 task audit、Task Health Board 連携」に対応。
+    `GET /api/tasks/health-board` と `src/server/services/operational-task-health.ts` を追加し、open task の
+    期限超過、SLA 超過、担当未割当、patient_safety、billing_close、report_delivery、risk task stale、
+    孤児 risk task を集計できる backend foundation を作った。
+  - subagent:
+    `code_mapper`（`Locator the 22nd` / `019f34fd-993a-7b92-a98c-d805f863c904`）を read-only で投入。
+    既存 `/api/tasks` が metadata / dedupe を返さない list/create route であること、Health Board は別 route が
+    最小安全境界であること、`canVisit` / `withSensitiveNoStore` / `resolveDashboardAssignmentScope` /
+    `buildDashboardTaskAssignmentWhere` を使うべきことを確認した。
+    `api_contract_reviewer`（`Contract the 23rd` / `019f3505-3e69-7a80-9074-86a8843179d3`）は
+    `CHANGES_REQUESTED` として、managed risk task_type 以外の risk-like orphan 漏れ、domain entity に
+    紐づく未割当 risk task が assignment scope から漏れる点、`canVisit` / `canViewDashboard` の contract
+    明文化不足を指摘。対応として risk-like predicate（managed task_type / `metadata.source='risk_finding'` /
+    `dedupe_key startsWith risk:` / valid `risk_domain`）を audit 対象にし、Health Board 専用の
+    risk metadata ownership（`case_id` / `patient_id`）を assignment where に足し、`canVisit` を route
+    test で明示した。さらに `risk_domain` filter は registry task_type だけでなく metadata `risk_domain` も
+    拾うようにし、legacy/wrong task_type の orphan drift を filter 時にも落とさない。
+  - design / imagegen:
+    backend service/API/test slice で視覚レイアウト変更を伴わないため、`imagegen` / `gpt-image-2` の新規生成は
+    省略。Task Health Board の UI dashboard / filter / browser smoke を実装する slice では
+    `docs/ui-ux-design-guidelines.md` と `gpt-image-2` 方針に従い、非 PHI mockup を作る。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `git log --oneline -6`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `prisma/schema/core-task.prisma`,
+    `src/app/api/tasks/route.ts`,
+    `src/app/api/tasks/route.test.ts`,
+    `src/app/api/cases/[id]/risk-cockpit/route.ts`,
+    `src/app/api/cases/[id]/risk-cockpit/tasks/route.ts`,
+    `src/server/services/operational-tasks.ts`,
+    `src/server/services/risk-task-bridge.ts`,
+    `src/server/services/risk-task-resolution.ts`,
+    `src/server/services/case-risk-task-sync.ts`,
+    `src/server/services/dashboard-assignment-scope.ts`,
+    `src/lib/tasks/task-registry.ts`,
+    `src/lib/risk/risk-finding.ts`,
+    `src/lib/db/json.ts`,
+    `src/lib/auth/permission-matrix.ts`,
+    `src/lib/auth/context.ts`,
+    `src/lib/auth/visit-schedule-access.ts`,
+    `src/lib/api/sensitive-response.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/operational-task-health.ts`,
+    `src/server/services/operational-task-health.test.ts`,
+    `src/app/api/tasks/health-board/route.ts`,
+    `src/app/api/tasks/health-board/route.test.ts`.
+  - bugs / risks reduced:
+    Risk Finding task bridge の task が生成/waive/sync できても、横断的に「どの task が滞留・孤児化しているか」
+    を見る API がなかった問題を解消。managed risk task_type が壊れた legacy/drift row でも
+    `metadata.source` / `dedupe_key` / `risk_domain` から risk-like task として orphan audit に入る。
+    Health Board は title / description / metadata / dedupe_key /
+    risk finding detail を返さず、件数、domain/task_type group、task id/display_id/task_type/priority/due_at/
+    action href の sample refs に限定する。孤児 audit は read-only で、auto-close は既存
+    `syncCaseRiskCockpitOperationalTasks` の guarded same-case stale close に任せる。
+  - security / PHI reviewed:
+    route は `requireAuthContext({ permission: 'canVisit' })` と `withSensitiveNoStore` を使用。
+    assignment scope は `resolveDashboardAssignmentScope` / `buildDashboardTaskAssignmentWhere` を再利用し、
+    role_default / mine / team の既存境界に揃えたうえで、Health Board に限り risk metadata の
+    `case_id` / `patient_id` ownership を OR 追加する。これにより `billing_evidence` / `care_report` 等の
+    domain entity に紐づく未割当 risk task も担当 case/patient の範囲で集計され、非 risk task の可視性は
+    広げない。unexpected error は raw error を返さず fixed `INTERNAL_ERROR` envelope にし、logger も
+    route/method/code のみ。
+  - performance reviewed:
+    DB migration なし、open task を `limit + 1` で bounded scan（既定 500、最大 1000）し、`truncated` を返す。
+    初期 foundation として task table だけを読む。将来 UI 側で payload budget / browser smoke を追加し、
+    件数が増える場合は DB-side aggregate / materialized metrics へ進める。
+  - validation commands:
+    `pnpm exec vitest run src/server/services/operational-task-health.test.ts src/app/api/tasks/health-board/route.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec vitest run src/app/api/tasks/route.test.ts 'src/app/api/tasks/[id]/route.test.ts' src/app/api/tasks/bulk/route.test.ts src/server/services/case-risk-task-sync.test.ts src/server/services/risk-task-bridge.test.ts src/server/services/risk-task-resolution.test.ts src/server/services/operational-task-health.test.ts src/app/api/tasks/health-board/route.test.ts --reporter=dot --testTimeout=30000`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`;
+    `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`;
+    `pnpm lint`;
+    `pnpm format:check`;
+    `git diff --check`.
+  - validation results:
+    new service/API vitest green（2 files / 9 tests）; task/risk regression vitest green（8 files / 97 tests）;
+    high-memory typecheck green; typecheck:no-unused green; `pnpm format:check` green after targeted Prettier;
+    `git diff --check` green; `pnpm lint` green with existing unrelated warnings only in
+    `src/lib/platform/break-glass.test.ts` (`_tx`, `_input`)。
+  - remaining work:
+    Broader `Plans.md` objective remains open。`RISK-CORE-2` 残: domain 別 durable resolve predicate。
+    `TASK-001` 残: Task Health Board UI 接続、担当/工程 filter UI、browser smoke。`UX-CMD-001` 残:
+    PatientBoard 派生 logic との adapter 統合、timeline 抜粋の Command Center block 化、payload budget /
+    browser smoke。
+
 - codex: Case Risk Cockpit waiver flow connected to patient Command tab（ready to commit）。
   - current task:
     `Plans.md` の `RISK-CORE-2 / CORE-002` 残作業「UI からの dedicated waiver flow 接続」に対応。
