@@ -13523,3 +13523,40 @@
 - remaining:
   Continue `FE-RT-001` source-scoped migration on dashboard, patients board, schedule, reports, and
   handoff after this slice lands.
+
+## 2026-07-07 Reports workspace dedicated realtime events
+
+- codex:
+  Continued `FE-RT-001` for reports. `ReportShareWorkspace` now ignores broad `workflow_refresh`
+  and refreshes from dedicated report events only: `care_report_update`, `comment_refresh`, and
+  `report_delivery_update`. Its existing `useRealtimeQuery` fallback polling remains available for
+  disconnected streams and is no longer treated as a fixed polling-only gap in `Plans.md`.
+- files inspected:
+  `Plans.md`,
+  `src/app/(dashboard)/reports/report-share-workspace.tsx`,
+  `src/app/(dashboard)/reports/report-share-workspace.test.tsx`,
+  `src/lib/hooks/use-realtime-query.ts`,
+  `src/lib/hooks/use-realtime-invalidation.ts`,
+  `src/lib/realtime/shared-event-stream.ts`,
+  `src/server/services/org-realtime.ts`.
+- files changed:
+  `src/app/(dashboard)/reports/report-share-workspace.tsx`,
+  `src/app/(dashboard)/reports/report-share-workspace.test.tsx`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  Unrelated workflow updates such as schedule or dashboard refresh events no longer refetch
+  `/api/care-reports/today-workspace`. Report workspace still refreshes for report delivery,
+  report update, and comment events, and falls back to interval polling when realtime is not
+  connected.
+- validation:
+  `pnpm exec vitest run 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' src/lib/hooks/use-realtime-query.test.tsx src/lib/hooks/use-realtime-invalidation.test.tsx --reporter=dot --testTimeout=30000`
+  green (3 files / 40 tests);
+  `pnpm exec eslint 'src/app/(dashboard)/reports/report-share-workspace.tsx' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx'`
+  green;
+  `pnpm exec prettier --check 'src/app/(dashboard)/reports/report-share-workspace.tsx' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' Plans.md ops/refactor/STATE.md`
+  green;
+  `git diff --check -- 'src/app/(dashboard)/reports/report-share-workspace.tsx' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' Plans.md ops/refactor/STATE.md`
+  green.
+- remaining:
+  Continue source-scoped migration on dashboard, patients board, schedule, and handoff.

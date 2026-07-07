@@ -635,7 +635,6 @@ const REPORT_WORKSPACE_INVALIDATION_EVENTS = [
   'care_report_update',
   'comment_refresh',
   'report_delivery_update',
-  'workflow_refresh',
 ] as const;
 
 export function ReportShareWorkspace() {

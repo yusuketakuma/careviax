@@ -676,6 +676,12 @@ describe('ReportShareWorkspace', () => {
     expect(fetchMock).not.toHaveBeenCalled();
 
     await act(async () => {
+      subscription.onEvent?.({ type: 'workflow_refresh', source: 'visit_schedules_update' });
+      await waitForRealtimeDebounce();
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await act(async () => {
       subscription.onEvent?.({ type: 'report_delivery_update', report_id: 'rep_1' });
       await waitForRealtimeDebounce();
     });
