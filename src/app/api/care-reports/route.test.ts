@@ -245,6 +245,8 @@ describe('/api/care-reports GET', () => {
         $queryRaw: txQueryRawMock,
         careReport: {
           create: careReportCreateMock,
+          findFirst: careReportFindFirstMock,
+          findMany: careReportFindManyMock,
         },
         careCase: {
           findFirst: careCaseFindFirstMock,
@@ -252,6 +254,7 @@ describe('/api/care-reports GET', () => {
         },
         patient: {
           findFirst: patientFindFirstMock,
+          findMany: patientFindManyMock,
         },
         visitRecord: {
           findFirst: visitRecordFindFirstMock,
@@ -302,6 +305,31 @@ describe('/api/care-reports GET', () => {
         id: true,
         name: true,
         name_kana: true,
+      },
+    });
+  });
+
+  it('returns a page-basis empty delivery summary when regular q has no patient matches', async () => {
+    patientFindManyMock.mockResolvedValueOnce([]);
+
+    const response = await getCareReports(
+      createAuthenticatedRequest('http://localhost/api/care-reports?q=存在しない患者'),
+    );
+
+    expect(response.status).toBe(200);
+    expect(careReportFindManyMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      data: [],
+      hasMore: false,
+      deliverySummary: {
+        basis: 'page',
+        delivery_records_basis: 'loaded_latest_per_report',
+        delivery_records_per_report_limit: 10,
+        failed_delivery_count_basis: 'loaded_delivery_records',
+        by_status_basis: 'latest_delivery_record_per_report',
+        pending_delivery_count: 0,
+        failed_delivery_count: 0,
+        by_status: {},
       },
     });
   });
@@ -402,6 +430,7 @@ describe('/api/care-reports GET', () => {
           },
           delivery_records: {
             some: expect.objectContaining({
+              org_id: 'org_1',
               status: 'response_waiting',
               sent_at: {
                 gte: new Date('2026-03-27T15:00:00.000Z'),
@@ -463,6 +492,7 @@ describe('/api/care-reports GET', () => {
     expect(where.created_at).not.toHaveProperty('lte');
     expect(where.delivery_records).toEqual({
       some: {
+        org_id: 'org_1',
         sent_at: {
           lt: new Date('2026-03-29T15:00:00.000Z'),
         },
@@ -738,9 +768,7 @@ describe('/api/care-reports GET', () => {
       created_at: new Date('2026-03-28T08:00:00.000Z'),
       delivery_records: [],
     };
-    careReportFindManyMock
-      .mockResolvedValueOnce([firstPageRow, overflowRow])
-      .mockResolvedValueOnce([firstPageRow, overflowRow]);
+    careReportFindManyMock.mockResolvedValueOnce([firstPageRow, overflowRow]);
 
     const response = await getCareReports(
       createAuthenticatedRequest('http://localhost/api/care-reports?limit=1&cursor=report_cursor'),
@@ -748,6 +776,17 @@ describe('/api/care-reports GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(withOrgContextMock).toHaveBeenCalledWith(
+      'org_1',
+      expect.any(Function),
+      expect.objectContaining({
+        requestContext: expect.objectContaining({
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'pharmacist',
+        }),
+      }),
+    );
     expect(careReportFindFirstMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -777,38 +816,15 @@ describe('/api/care-reports GET', () => {
       }),
     });
     expect(listCall.select).not.toHaveProperty('content');
+    expect(listCall.select.delivery_records).toMatchObject({
+      where: { org_id: 'org_1' },
+      take: 10,
+    });
     const summaryCall = careReportFindManyMock.mock.calls[1]?.[0];
     expect(summaryCall).toBeUndefined();
-    expect(deliveryRecordCountMock).toHaveBeenCalledWith({
-      where: {
-        report: { is: expect.objectContaining({ org_id: 'org_1' }) },
-        status: 'failed',
-      },
-    });
-    expect(deliveryRecordGroupByMock).toHaveBeenCalledWith({
-      by: ['report_id'],
-      where: {
-        report: { is: expect.objectContaining({ org_id: 'org_1' }) },
-      },
-      _max: { created_at: true },
-    });
-    expect(deliveryRecordFindManyMock).toHaveBeenCalledWith({
-      where: {
-        OR: [
-          {
-            report_id: 'report_1',
-            created_at: new Date('2026-03-28T10:30:00.000Z'),
-          },
-        ],
-      },
-      select: {
-        id: true,
-        report_id: true,
-        status: true,
-        created_at: true,
-      },
-      orderBy: [{ report_id: 'asc' }, { created_at: 'desc' }, { id: 'desc' }],
-    });
+    expect(deliveryRecordCountMock).not.toHaveBeenCalled();
+    expect(deliveryRecordGroupByMock).not.toHaveBeenCalled();
+    expect(deliveryRecordFindManyMock).not.toHaveBeenCalled();
 
     const payload = await response.json();
     expect(payload).toMatchObject({
@@ -816,6 +832,11 @@ describe('/api/care-reports GET', () => {
       hasMore: true,
       nextCursor: 'report_page_1',
       deliverySummary: {
+        basis: 'page',
+        delivery_records_basis: 'loaded_latest_per_report',
+        delivery_records_per_report_limit: 10,
+        failed_delivery_count_basis: 'loaded_delivery_records',
+        by_status_basis: 'latest_delivery_record_per_report',
         pending_delivery_count: 1,
       },
     });
@@ -838,7 +859,7 @@ describe('/api/care-reports GET', () => {
     expect(careReportFindManyMock).not.toHaveBeenCalled();
   });
 
-  it('summarizes regular list delivery state without rereading full report rows', async () => {
+  it('summarizes regular list delivery state from page rows without DeliveryRecord aggregate fan-out (PERF-DB-006C)', async () => {
     careReportFindManyMock.mockResolvedValueOnce([
       {
         id: 'report_page_1',
@@ -853,32 +874,22 @@ describe('/api/care-reports GET', () => {
         created_by: 'user_1',
         created_at: new Date('2026-03-28T09:00:00.000Z'),
         updated_at: new Date('2026-03-28T09:15:00.000Z'),
-        delivery_records: [],
-      },
-    ]);
-    deliveryRecordCountMock.mockResolvedValueOnce(2);
-    deliveryRecordGroupByMock.mockResolvedValueOnce([
-      {
-        report_id: 'report_page_1',
-        _max: { created_at: new Date('2026-03-28T10:30:00.000Z') },
-      },
-      {
-        report_id: 'report_page_2',
-        _max: { created_at: new Date('2026-03-28T11:30:00.000Z') },
-      },
-    ]);
-    deliveryRecordFindManyMock.mockResolvedValueOnce([
-      {
-        id: 'delivery_latest_1',
-        report_id: 'report_page_1',
-        status: 'response_waiting',
-        created_at: new Date('2026-03-28T10:30:00.000Z'),
-      },
-      {
-        id: 'delivery_latest_2',
-        report_id: 'report_page_2',
-        status: 'sent',
-        created_at: new Date('2026-03-28T11:30:00.000Z'),
+        delivery_records: [
+          {
+            id: 'delivery_latest_1',
+            channel: 'fax',
+            recipient_name: '在宅主治医',
+            status: 'response_waiting',
+            sent_at: new Date('2026-03-28T11:00:00.000Z'),
+          },
+          {
+            id: 'delivery_failed_1',
+            channel: 'fax',
+            recipient_name: '在宅主治医',
+            status: 'failed',
+            sent_at: null,
+          },
+        ],
       },
     ]);
 
@@ -887,19 +898,25 @@ describe('/api/care-reports GET', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expect(careReportFindManyMock).toHaveBeenCalledTimes(1);
-    expect(deliveryRecordCountMock).toHaveBeenCalledWith({
-      where: {
-        report: { is: expect.objectContaining({ org_id: 'org_1' }) },
-        status: 'failed',
-      },
+    const listCall = careReportFindManyMock.mock.calls[0]?.[0];
+    expect(listCall.select.delivery_records).toMatchObject({
+      where: { org_id: 'org_1' },
+      take: 10,
     });
+    expect(deliveryRecordCountMock).not.toHaveBeenCalled();
+    expect(deliveryRecordGroupByMock).not.toHaveBeenCalled();
+    expect(deliveryRecordFindManyMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       deliverySummary: {
+        basis: 'page',
+        delivery_records_basis: 'loaded_latest_per_report',
+        delivery_records_per_report_limit: 10,
+        failed_delivery_count_basis: 'loaded_delivery_records',
+        by_status_basis: 'latest_delivery_record_per_report',
         pending_delivery_count: 1,
-        failed_delivery_count: 2,
+        failed_delivery_count: 1,
         by_status: {
           response_waiting: 1,
-          sent: 1,
         },
       },
     });
@@ -916,6 +933,11 @@ describe('/api/care-reports GET', () => {
       data: [],
       hasMore: false,
       deliverySummary: {
+        basis: 'bounded_keyword_scan_result',
+        delivery_records_basis: 'loaded_latest_per_report',
+        delivery_records_per_report_limit: 10,
+        failed_delivery_count_basis: 'loaded_delivery_records',
+        by_status_basis: 'latest_delivery_record_per_report',
         pending_delivery_count: 0,
         failed_delivery_count: 0,
         by_status: {},
@@ -995,6 +1017,13 @@ describe('/api/care-reports GET', () => {
         keyword_scan_limit: 500,
         keyword_scan_truncated: true,
         result_window_truncated: true,
+      },
+      deliverySummary: {
+        basis: 'bounded_keyword_scan_result',
+        delivery_records_basis: 'loaded_latest_per_report',
+        delivery_records_per_report_limit: 10,
+        failed_delivery_count_basis: 'loaded_delivery_records',
+        by_status_basis: 'latest_delivery_record_per_report',
       },
     });
     expect(body).not.toHaveProperty('nextCursor');

@@ -58,6 +58,8 @@ const createCareReportSchema = z.object({
   template_id: optionalTrimmedStringSchema,
 });
 
+const CARE_REPORT_DELIVERY_RECORDS_PER_REPORT_LIMIT = 10;
+
 const careReportBaseSelect = {
   id: true,
   org_id: true,
@@ -80,7 +82,7 @@ const careReportBaseSelect = {
       sent_at: true,
     },
     orderBy: { created_at: 'desc' },
-    take: 10,
+    take: CARE_REPORT_DELIVERY_RECORDS_PER_REPORT_LIMIT,
   },
 } satisfies Prisma.CareReportSelect;
 
@@ -100,6 +102,19 @@ type CareReportBillingContextDb = Pick<Prisma.TransactionClient, 'billingEvidenc
 type CareReportCreateResult =
   | { kind: 'validation_error'; response: Response }
   | { kind: 'created'; report: CareReport };
+
+function buildCareReportListSelect(args: {
+  orgId: string;
+  includeContent: boolean;
+}): Prisma.CareReportSelect {
+  return {
+    ...(args.includeContent ? careReportContentSelect : careReportBaseSelect),
+    delivery_records: {
+      ...careReportBaseSelect.delivery_records,
+      where: { org_id: args.orgId },
+    },
+  };
+}
 
 const careReportListOrderBy = [
   { created_at: 'desc' },
@@ -284,7 +299,9 @@ function buildDeliverySummary(
     delivery_records: Array<{
       status: ReportStatus | string;
     }>;
+    failed_delivery_count?: number;
   }>,
+  basis: 'page' | 'bounded_keyword_scan_result' = 'page',
 ) {
   return reports.reduce(
     (summary, report) => {
@@ -296,101 +313,22 @@ function buildDeliverySummary(
           summary.pending_delivery_count += 1;
         }
       }
-      summary.failed_delivery_count += report.delivery_records.filter(
-        (record) => record.status === 'failed',
-      ).length;
+      summary.failed_delivery_count +=
+        report.failed_delivery_count ??
+        report.delivery_records.filter((record) => record.status === 'failed').length;
       return summary;
     },
     {
+      basis,
+      delivery_records_basis: 'loaded_latest_per_report' as const,
+      delivery_records_per_report_limit: CARE_REPORT_DELIVERY_RECORDS_PER_REPORT_LIMIT,
+      failed_delivery_count_basis: 'loaded_delivery_records' as const,
+      by_status_basis: 'latest_delivery_record_per_report' as const,
       pending_delivery_count: 0,
       failed_delivery_count: 0,
       by_status: {} as Record<string, number>,
     },
   );
-}
-
-const DELIVERY_SUMMARY_LATEST_CHUNK_SIZE = 500;
-
-function chunkArray<T>(items: T[], chunkSize: number) {
-  const chunks: T[][] = [];
-  for (let index = 0; index < items.length; index += chunkSize) {
-    chunks.push(items.slice(index, index + chunkSize));
-  }
-  return chunks;
-}
-
-async function buildDeliverySummaryForWhere(where: Prisma.CareReportWhereInput) {
-  const deliveryWhere = {
-    report: {
-      is: where,
-    },
-  } satisfies Prisma.DeliveryRecordWhereInput;
-
-  const [failedDeliveryCount, latestGroups] = await Promise.all([
-    prisma.deliveryRecord.count({
-      where: {
-        ...deliveryWhere,
-        status: 'failed',
-      },
-    }),
-    prisma.deliveryRecord.groupBy({
-      by: ['report_id'],
-      where: deliveryWhere,
-      _max: {
-        created_at: true,
-      },
-    }),
-  ]);
-
-  const latestConditions = latestGroups.flatMap((group) =>
-    group._max.created_at
-      ? [
-          {
-            report_id: group.report_id,
-            created_at: group._max.created_at,
-          },
-        ]
-      : [],
-  );
-
-  const latestRows = (
-    await Promise.all(
-      chunkArray(latestConditions, DELIVERY_SUMMARY_LATEST_CHUNK_SIZE).map((conditions) =>
-        prisma.deliveryRecord.findMany({
-          where: {
-            OR: conditions,
-          },
-          select: {
-            id: true,
-            report_id: true,
-            status: true,
-            created_at: true,
-          },
-          orderBy: [{ report_id: 'asc' }, { created_at: 'desc' }, { id: 'desc' }],
-        }),
-      ),
-    )
-  ).flat();
-
-  const latestStatusByReport = new Map<string, ReportStatus | string>();
-  for (const row of latestRows) {
-    if (!latestStatusByReport.has(row.report_id)) {
-      latestStatusByReport.set(row.report_id, row.status);
-    }
-  }
-
-  const byStatus: Record<string, number> = {};
-  let pendingDeliveryCount = 0;
-  for (const status of latestStatusByReport.values()) {
-    byStatus[status] = (byStatus[status] ?? 0) + 1;
-    if (status === 'response_waiting') pendingDeliveryCount += 1;
-  }
-
-  return {
-    pending_delivery_count: pendingDeliveryCount,
-    failed_delivery_count: failedDeliveryCount,
-    by_status: byStatus,
-  };
 }
 
 function isCareReportVisitTypeUniqueConflict(error: unknown) {
@@ -619,153 +557,226 @@ async function authenticatedGET(req: NextRequest) {
         ? paletteLimit.value
         : DEFAULT_CARE_REPORT_PALETTE_LIMIT;
 
-    const paletteMatchingPatients =
-      query && view === 'palette'
-        ? await prisma.patient.findMany({
-            where: {
-              org_id: ctx.orgId,
-              OR: [
-                { name: { contains: query, mode: 'insensitive' } },
-                { name_kana: { contains: query, mode: 'insensitive' } },
-              ],
-            },
+    return withOrgContext(
+      ctx.orgId,
+      async (db) => {
+        const paletteMatchingPatients =
+          query && view === 'palette'
+            ? await db.patient.findMany({
+                where: {
+                  org_id: ctx.orgId,
+                  OR: [
+                    { name: { contains: query, mode: 'insensitive' } },
+                    { name_kana: { contains: query, mode: 'insensitive' } },
+                  ],
+                },
+                select: {
+                  id: true,
+                  name: true,
+                },
+                take: resolvedPaletteLimit + 1,
+              })
+            : [];
+
+        const matchingPatientSearchArgs: Prisma.PatientFindManyArgs | null =
+          query && view !== 'palette'
+            ? {
+                where: {
+                  org_id: ctx.orgId,
+                  ...(patientId ? { id: patientId } : {}),
+                  OR: [
+                    { name: { contains: query, mode: 'insensitive' } },
+                    { name_kana: { contains: query, mode: 'insensitive' } },
+                  ],
+                },
+                select: {
+                  id: true,
+                },
+                take: patientId ? 1 : CARE_REPORT_PATIENT_SEARCH_CANDIDATE_LIMIT + 1,
+                ...(patientId ? {} : { orderBy: careReportPatientSearchOrderBy }),
+              }
+            : null;
+        const matchingPatients = matchingPatientSearchArgs
+          ? await db.patient.findMany(matchingPatientSearchArgs)
+          : [];
+
+        const matchedPatientIds =
+          view === 'palette'
+            ? paletteMatchingPatients.map((patient) => patient.id)
+            : matchingPatients
+                .slice(0, CARE_REPORT_PATIENT_SEARCH_CANDIDATE_LIMIT)
+                .map((patient) => patient.id);
+        if (query && matchedPatientIds.length === 0 && !keyword) {
+          if (view === 'palette') {
+            return withSensitiveNoStore(
+              success({
+                data: [],
+                hasMore: false,
+              }),
+            );
+          }
+
+          return withSensitiveNoStore(
+            success({
+              data: [],
+              hasMore: false,
+              nextCursor: undefined,
+              deliverySummary: buildDeliverySummary([]),
+            }),
+          );
+        }
+
+        const accessScope = await getCareReportAccessScope(db, ctx.orgId, ctx);
+        const accessWhere = buildCareReportAccessWhere(accessScope);
+        // 明示的な patient_id(患者詳細コンテキスト)と q(氏名/カナ検索)の両方が指定された場合、
+        // 素朴なオブジェクトスプレッドでは後勝ちで patient_id が matchedPatientIds に
+        // 上書きされ、同名別患者の報告書が混入する(F88)。明示 patient_id を優先しつつ
+        // 検索結果集合との積(intersection)を取り、明示患者が検索にヒットしない場合は
+        // 空集合(patient_id in [])に閉じて他患者の報告書を返さない。
+        const patientIdWhere: Prisma.CareReportWhereInput = patientId
+          ? query
+            ? matchedPatientIds.includes(patientId)
+              ? { patient_id: patientId }
+              : { patient_id: { in: [] } }
+            : { patient_id: patientId }
+          : query
+            ? { patient_id: { in: matchedPatientIds } }
+            : {};
+        const where: Prisma.CareReportWhereInput = {
+          org_id: ctx.orgId,
+          ...patientIdWhere,
+          ...(visitRecordId ? { visit_record_id: visitRecordId } : {}),
+          ...(status ? { status } : {}),
+          ...(reportType ? { report_type: reportType } : {}),
+          ...(dateFrom || dateTo
+            ? {
+                created_at: {
+                  ...(dateFrom ? { gte: japanDayInstantRangeFromDateKey(dateFrom).gte } : {}),
+                  ...(dateTo ? { lt: japanDayInstantRangeFromDateKey(dateTo).lt } : {}),
+                },
+              }
+            : {}),
+          ...(deliveryStatus || recipient || sentAtRange
+            ? {
+                delivery_records: {
+                  some: {
+                    org_id: ctx.orgId,
+                    ...(deliveryStatus ? { status: deliveryStatus } : {}),
+                    ...(sentAtRange
+                      ? {
+                          sent_at: sentAtRange,
+                        }
+                      : {}),
+                    ...(recipient
+                      ? {
+                          recipient_name: {
+                            contains: recipient,
+                            mode: 'insensitive' as const,
+                          },
+                        }
+                      : {}),
+                  },
+                },
+              }
+            : {}),
+          ...(accessWhere ? { AND: [accessWhere] } : {}),
+        };
+
+        if (view === 'palette') {
+          const reports = await db.careReport.findMany({
+            where,
+            orderBy: careReportListOrderBy,
             select: {
               id: true,
-              name: true,
+              patient_id: true,
+              report_type: true,
+              status: true,
+              created_at: true,
             },
             take: resolvedPaletteLimit + 1,
-          })
-        : [];
+          });
+          const page = buildCursorPage(reports, resolvedPaletteLimit, (report) => report.id);
+          const dataRows = page.data;
+          const patientIds = Array.from(new Set(dataRows.map((report) => report.patient_id)));
+          const patientRows =
+            paletteMatchingPatients.length > 0 && !patientId
+              ? paletteMatchingPatients.filter((patient) => patientIds.includes(patient.id))
+              : patientIds.length === 0
+                ? []
+                : await db.patient.findMany({
+                    where: {
+                      org_id: ctx.orgId,
+                      id: { in: patientIds },
+                    },
+                    select: {
+                      id: true,
+                      name: true,
+                    },
+                  });
+          const patientNameById = new Map(patientRows.map((patient) => [patient.id, patient.name]));
 
-    const matchingPatientSearchArgs: Prisma.PatientFindManyArgs | null =
-      query && view !== 'palette'
-        ? {
-            where: {
-              org_id: ctx.orgId,
-              ...(patientId ? { id: patientId } : {}),
-              OR: [
-                { name: { contains: query, mode: 'insensitive' } },
-                { name_kana: { contains: query, mode: 'insensitive' } },
-              ],
-            },
-            select: {
-              id: true,
-            },
-            take: patientId ? 1 : CARE_REPORT_PATIENT_SEARCH_CANDIDATE_LIMIT + 1,
-            ...(patientId ? {} : { orderBy: careReportPatientSearchOrderBy }),
-          }
-        : null;
-    const matchingPatients = matchingPatientSearchArgs
-      ? await prisma.patient.findMany(matchingPatientSearchArgs)
-      : [];
+          return withSensitiveNoStore(
+            success({
+              data: dataRows.map((report) => ({
+                id: report.id,
+                report_type: report.report_type,
+                status: report.status,
+                created_at: report.created_at,
+                patient_id: report.patient_id,
+                patient: patientNameById.has(report.patient_id)
+                  ? { name: patientNameById.get(report.patient_id)! }
+                  : null,
+              })),
+              hasMore: page.hasMore,
+            }),
+          );
+        }
 
-    const matchedPatientIds =
-      view === 'palette'
-        ? paletteMatchingPatients.map((patient) => patient.id)
-        : matchingPatients
-            .slice(0, CARE_REPORT_PATIENT_SEARCH_CANDIDATE_LIMIT)
-            .map((patient) => patient.id);
-    if (query && matchedPatientIds.length === 0 && !keyword) {
-      if (view === 'palette') {
-        return withSensitiveNoStore(
-          success({
-            data: [],
-            hasMore: false,
+        const canUseDbPagination = !keyword;
+        const shouldReadContent = Boolean((includeContent && canOutputReport) || keyword);
+        const cursorReport =
+          canUseDbPagination && cursor
+            ? await db.careReport.findFirst({
+                where: { ...where, id: cursor },
+                select: { id: true, created_at: true },
+              })
+            : null;
+        if (canUseDbPagination && cursor && !cursorReport) {
+          return withSensitiveNoStore(
+            validationError('ページカーソルが不正です', {
+              cursor: ['カーソルが見つかりません'],
+            }),
+          );
+        }
+        const listWhere = cursorReport
+          ? appendCareReportWhereAnd(where, buildCareReportCursorWhere(cursorReport))
+          : where;
+
+        const reports = (await db.careReport.findMany({
+          where: listWhere,
+          orderBy: careReportListOrderBy,
+          select: buildCareReportListSelect({
+            orgId: ctx.orgId,
+            includeContent: shouldReadContent,
           }),
+          ...(canUseDbPagination
+            ? { take: limit + 1 }
+            : { take: CARE_REPORT_KEYWORD_SCAN_READ_LIMIT }),
+        })) as CareReportListRow[];
+        const keywordScanTruncated = Boolean(
+          keyword && reports.length > CARE_REPORT_KEYWORD_SCAN_LIMIT,
         );
-      }
+        const reportsForProcessing = keyword
+          ? reports.slice(0, CARE_REPORT_KEYWORD_SCAN_LIMIT)
+          : reports;
 
-      return withSensitiveNoStore(
-        success({
-          data: [],
-          hasMore: false,
-          nextCursor: undefined,
-          deliverySummary: {
-            pending_delivery_count: 0,
-            failed_delivery_count: 0,
-            by_status: {},
-          },
-        }),
-      );
-    }
-
-    const accessScope = await getCareReportAccessScope(prisma, ctx.orgId, ctx);
-    const accessWhere = buildCareReportAccessWhere(accessScope);
-    // 明示的な patient_id(患者詳細コンテキスト)と q(氏名/カナ検索)の両方が指定された場合、
-    // 素朴なオブジェクトスプレッドでは後勝ちで patient_id が matchedPatientIds に
-    // 上書きされ、同名別患者の報告書が混入する(F88)。明示 patient_id を優先しつつ
-    // 検索結果集合との積(intersection)を取り、明示患者が検索にヒットしない場合は
-    // 空集合(patient_id in [])に閉じて他患者の報告書を返さない。
-    const patientIdWhere: Prisma.CareReportWhereInput = patientId
-      ? query
-        ? matchedPatientIds.includes(patientId)
-          ? { patient_id: patientId }
-          : { patient_id: { in: [] } }
-        : { patient_id: patientId }
-      : query
-        ? { patient_id: { in: matchedPatientIds } }
-        : {};
-    const where: Prisma.CareReportWhereInput = {
-      org_id: ctx.orgId,
-      ...patientIdWhere,
-      ...(visitRecordId ? { visit_record_id: visitRecordId } : {}),
-      ...(status ? { status } : {}),
-      ...(reportType ? { report_type: reportType } : {}),
-      ...(dateFrom || dateTo
-        ? {
-            created_at: {
-              ...(dateFrom ? { gte: japanDayInstantRangeFromDateKey(dateFrom).gte } : {}),
-              ...(dateTo ? { lt: japanDayInstantRangeFromDateKey(dateTo).lt } : {}),
-            },
-          }
-        : {}),
-      ...(deliveryStatus || recipient || sentAtRange
-        ? {
-            delivery_records: {
-              some: {
-                ...(deliveryStatus ? { status: deliveryStatus } : {}),
-                ...(sentAtRange
-                  ? {
-                      sent_at: sentAtRange,
-                    }
-                  : {}),
-                ...(recipient
-                  ? {
-                      recipient_name: {
-                        contains: recipient,
-                        mode: 'insensitive' as const,
-                      },
-                    }
-                  : {}),
-              },
-            },
-          }
-        : {}),
-      ...(accessWhere ? { AND: [accessWhere] } : {}),
-    };
-
-    if (view === 'palette') {
-      const reports = await prisma.careReport.findMany({
-        where,
-        orderBy: careReportListOrderBy,
-        select: {
-          id: true,
-          patient_id: true,
-          report_type: true,
-          status: true,
-          created_at: true,
-        },
-        take: resolvedPaletteLimit + 1,
-      });
-      const page = buildCursorPage(reports, resolvedPaletteLimit, (report) => report.id);
-      const dataRows = page.data;
-      const patientIds = Array.from(new Set(dataRows.map((report) => report.patient_id)));
-      const patientRows =
-        paletteMatchingPatients.length > 0 && !patientId
-          ? paletteMatchingPatients.filter((patient) => patientIds.includes(patient.id))
-          : patientIds.length === 0
+        const patientIds = Array.from(
+          new Set(reportsForProcessing.map((report) => report.patient_id)),
+        );
+        const patientRows =
+          patientIds.length === 0
             ? []
-            : await prisma.patient.findMany({
+            : await db.patient.findMany({
                 where: {
                   org_id: ctx.orgId,
                   id: { in: patientIds },
@@ -773,159 +784,101 @@ async function authenticatedGET(req: NextRequest) {
                 select: {
                   id: true,
                   name: true,
+                  name_kana: true,
                 },
               });
-      const patientNameById = new Map(patientRows.map((patient) => [patient.id, patient.name]));
+        const patientNameById = new Map(patientRows.map((patient) => [patient.id, patient.name]));
 
-      return withSensitiveNoStore(
-        success({
-          data: dataRows.map((report) => ({
+        const enrichedData = reportsForProcessing.map((report) => {
+          const reportContent = readSelectedReportContent(report, shouldReadContent);
+          const billingContext = reportContent
+            ? readJsonObject(readJsonObject(reportContent)?.billing_context)
+            : null;
+          const latestDelivery = report.delivery_records[0] ?? null;
+          const pendingDeliveryCount = report.delivery_records.filter(
+            (record) => record.status === 'response_waiting',
+          ).length;
+          const failedDeliveryCount = report.delivery_records.filter(
+            (record) => record.status === 'failed',
+          ).length;
+
+          return {
             id: report.id,
+            org_id: report.org_id,
+            patient_id: report.patient_id,
+            case_id: report.case_id,
+            visit_record_id: report.visit_record_id,
             report_type: report.report_type,
             status: report.status,
+            template_id: report.template_id,
+            pdf_url: canOutputReport ? report.pdf_url : null,
+            created_by: report.created_by,
             created_at: report.created_at,
-            patient_id: report.patient_id,
-            patient: patientNameById.has(report.patient_id)
-              ? { name: patientNameById.get(report.patient_id)! }
-              : null,
-          })),
-          hasMore: page.hasMore,
-        }),
-      );
-    }
+            updated_at: report.updated_at,
+            ...(includeContent && canOutputReport && reportContent !== null
+              ? { content_summary: buildCareReportContentSummary(reportContent) }
+              : {}),
+            delivery_records: report.delivery_records,
+            _searchable_report_text: reportContent ? readSearchableReportText(reportContent) : '',
+            patient_name: patientNameById.get(report.patient_id) ?? null,
+            latest_delivery_status: latestDelivery?.status ?? null,
+            latest_delivery_sent_at: latestDelivery?.sent_at ?? null,
+            latest_delivery_recipient_name: latestDelivery?.recipient_name ?? null,
+            failed_delivery_count: failedDeliveryCount,
+            pending_delivery_count: pendingDeliveryCount,
+            effective_revision_code: readJsonObjectString(
+              billingContext,
+              'effective_revision_code',
+            ),
+            site_config_status: readJsonObjectString(billingContext, 'site_config_status'),
+          };
+        });
 
-    const canUseDbPagination = !keyword;
-    const shouldReadContent = Boolean((includeContent && canOutputReport) || keyword);
-    const cursorReport =
-      canUseDbPagination && cursor
-        ? await prisma.careReport.findFirst({
-            where: { ...where, id: cursor },
-            select: { id: true, created_at: true },
-          })
-        : null;
-    if (canUseDbPagination && cursor && !cursorReport) {
-      return withSensitiveNoStore(
-        validationError('ページカーソルが不正です', {
-          cursor: ['カーソルが見つかりません'],
-        }),
-      );
-    }
-    const listWhere = cursorReport
-      ? appendCareReportWhereAnd(where, buildCareReportCursorWhere(cursorReport))
-      : where;
+        const filteredData = enrichedData.filter((report) => {
+          if (keyword) {
+            if (!report._searchable_report_text.includes(keyword.toLowerCase())) {
+              return false;
+            }
+          }
+          return true;
+        });
 
-    const reports = (await prisma.careReport.findMany({
-      where: listWhere,
-      orderBy: careReportListOrderBy,
-      select: shouldReadContent ? careReportContentSelect : careReportBaseSelect,
-      ...(canUseDbPagination ? { take: limit + 1 } : { take: CARE_REPORT_KEYWORD_SCAN_READ_LIMIT }),
-    })) as CareReportListRow[];
-    const keywordScanTruncated = Boolean(
-      keyword && reports.length > CARE_REPORT_KEYWORD_SCAN_LIMIT,
-    );
-    const reportsForProcessing = keyword
-      ? reports.slice(0, CARE_REPORT_KEYWORD_SCAN_LIMIT)
-      : reports;
+        const paginated = canUseDbPagination
+          ? filteredData
+          : filteredData.slice(
+              cursor
+                ? Math.max(filteredData.findIndex((report) => report.id === cursor) + 1, 0)
+                : 0,
+            );
+        const page = buildCursorPage(paginated, limit, (report) => report.id);
+        const keywordSearchMetadata = keyword
+          ? {
+              count_basis: 'bounded_keyword_scan' as const,
+              keyword_scan_limit: CARE_REPORT_KEYWORD_SCAN_LIMIT,
+              keyword_scan_truncated: keywordScanTruncated,
+              result_window_truncated: filteredData.length > limit,
+            }
+          : null;
+        const data = page.data.map((report) => {
+          const { _searchable_report_text: searchableReportText, ...reportForResponse } = report;
+          void searchableReportText;
+          return reportForResponse;
+        });
+        const deliverySummary = canUseDbPagination
+          ? buildDeliverySummary(page.data)
+          : buildDeliverySummary(filteredData, 'bounded_keyword_scan_result');
 
-    const patientIds = Array.from(new Set(reportsForProcessing.map((report) => report.patient_id)));
-    const patientRows =
-      patientIds.length === 0
-        ? []
-        : await prisma.patient.findMany({
-            where: {
-              org_id: ctx.orgId,
-              id: { in: patientIds },
-            },
-            select: {
-              id: true,
-              name: true,
-              name_kana: true,
-            },
-          });
-    const patientNameById = new Map(patientRows.map((patient) => [patient.id, patient.name]));
-
-    const enrichedData = reportsForProcessing.map((report) => {
-      const reportContent = readSelectedReportContent(report, shouldReadContent);
-      const billingContext = reportContent
-        ? readJsonObject(readJsonObject(reportContent)?.billing_context)
-        : null;
-      const latestDelivery = report.delivery_records[0] ?? null;
-      const pendingDeliveryCount = report.delivery_records.filter(
-        (record) => record.status === 'response_waiting',
-      ).length;
-      const failedDeliveryCount = report.delivery_records.filter(
-        (record) => record.status === 'failed',
-      ).length;
-
-      return {
-        id: report.id,
-        org_id: report.org_id,
-        patient_id: report.patient_id,
-        case_id: report.case_id,
-        visit_record_id: report.visit_record_id,
-        report_type: report.report_type,
-        status: report.status,
-        template_id: report.template_id,
-        pdf_url: canOutputReport ? report.pdf_url : null,
-        created_by: report.created_by,
-        created_at: report.created_at,
-        updated_at: report.updated_at,
-        ...(includeContent && canOutputReport && reportContent !== null
-          ? { content_summary: buildCareReportContentSummary(reportContent) }
-          : {}),
-        delivery_records: report.delivery_records,
-        _searchable_report_text: reportContent ? readSearchableReportText(reportContent) : '',
-        patient_name: patientNameById.get(report.patient_id) ?? null,
-        latest_delivery_status: latestDelivery?.status ?? null,
-        latest_delivery_sent_at: latestDelivery?.sent_at ?? null,
-        latest_delivery_recipient_name: latestDelivery?.recipient_name ?? null,
-        failed_delivery_count: failedDeliveryCount,
-        pending_delivery_count: pendingDeliveryCount,
-        effective_revision_code: readJsonObjectString(billingContext, 'effective_revision_code'),
-        site_config_status: readJsonObjectString(billingContext, 'site_config_status'),
-      };
-    });
-
-    const filteredData = enrichedData.filter((report) => {
-      if (keyword) {
-        if (!report._searchable_report_text.includes(keyword.toLowerCase())) {
-          return false;
-        }
-      }
-      return true;
-    });
-
-    const paginated = canUseDbPagination
-      ? filteredData
-      : filteredData.slice(
-          cursor ? Math.max(filteredData.findIndex((report) => report.id === cursor) + 1, 0) : 0,
+        return withSensitiveNoStore(
+          success({
+            data,
+            hasMore: canUseDbPagination ? page.hasMore : false,
+            ...(canUseDbPagination && page.nextCursor ? { nextCursor: page.nextCursor } : {}),
+            deliverySummary,
+            ...(keywordSearchMetadata ? { search: keywordSearchMetadata } : {}),
+          }),
         );
-    const page = buildCursorPage(paginated, limit, (report) => report.id);
-    const keywordSearchMetadata = keyword
-      ? {
-          count_basis: 'bounded_keyword_scan' as const,
-          keyword_scan_limit: CARE_REPORT_KEYWORD_SCAN_LIMIT,
-          keyword_scan_truncated: keywordScanTruncated,
-          result_window_truncated: filteredData.length > limit,
-        }
-      : null;
-    const data = page.data.map((report) => {
-      const { _searchable_report_text: searchableReportText, ...reportForResponse } = report;
-      void searchableReportText;
-      return reportForResponse;
-    });
-    const deliverySummary = canUseDbPagination
-      ? await buildDeliverySummaryForWhere(where)
-      : buildDeliverySummary(filteredData);
-
-    return withSensitiveNoStore(
-      success({
-        data,
-        hasMore: canUseDbPagination ? page.hasMore : false,
-        ...(canUseDbPagination && page.nextCursor ? { nextCursor: page.nextCursor } : {}),
-        deliverySummary,
-        ...(keywordSearchMetadata ? { search: keywordSearchMetadata } : {}),
-      }),
+      },
+      { requestContext: ctx },
     );
   });
 }
