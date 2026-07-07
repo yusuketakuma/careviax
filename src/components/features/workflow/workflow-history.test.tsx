@@ -48,7 +48,10 @@ describe('workflow history widgets', () => {
     expect(useRealtimeQueryMock).toHaveBeenCalledWith(
       expect.objectContaining({
         queryKey: ['cycle-transition-logs', 'cycle_1', 'org_1'],
-        invalidateOn: ['cycle_transition', 'workflow_refresh'],
+        invalidateOn: [
+          'cycle_transition',
+          { type: 'workflow_refresh', source: 'medication_cycles_transition' },
+        ],
       }),
     );
   });

@@ -355,9 +355,19 @@ describe('VisitsToday', () => {
   it('fetches the today-preparation board with helper org headers and a raw query key', async () => {
     const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
     vi.mocked(buildOrgHeaders).mockReturnValue(sentinelHeaders);
-    let captured: { queryKey: unknown[]; queryFn: () => Promise<unknown> } | undefined;
+    let captured:
+      | {
+          queryKey: unknown[];
+          queryFn: () => Promise<unknown>;
+          invalidateOn?: readonly unknown[];
+        }
+      | undefined;
     useRealtimeQueryMock.mockImplementation(
-      (config: { queryKey: unknown[]; queryFn: () => Promise<unknown> }) => {
+      (config: {
+        queryKey: unknown[];
+        queryFn: () => Promise<unknown>;
+        invalidateOn?: readonly unknown[];
+      }) => {
         captured = config;
         return {
           data: buildFixture(),
@@ -380,6 +390,19 @@ describe('VisitsToday', () => {
 
       if (!captured) throw new Error('useRealtimeQuery config was not captured');
       expect(captured.queryKey).toEqual(['visits', 'today-preparation', 'org_1']);
+      expect(captured.invalidateOn).not.toContain('workflow_refresh');
+      expect(captured.invalidateOn).toEqual([
+        'cycle_transition',
+        expect.objectContaining({
+          type: 'workflow_refresh',
+          source: expect.arrayContaining([
+            'medication_cycles_transition',
+            'visit_preparations_update',
+            'visit_schedules_update',
+            'visit_schedule_proposals_confirm',
+          ]),
+        }),
+      ]);
       const result = await captured.queryFn();
 
       // the queryFn must unwrap the { data } envelope and return the board itself.

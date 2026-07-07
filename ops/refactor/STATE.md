@@ -13841,3 +13841,42 @@
   green.
 - remaining:
   Continue source-scoped migration on dashboard and schedule proposals/day-board.
+
+## 2026-07-07 FE-RT-001 visits/workflow-history completion
+
+- codex:
+  Completed the remaining `FE-RT-001` app/component migration and cleaned implemented work out of
+  `Plans.md`. `VisitsToday` now uses the shared workflow dashboard invalidation policy, and workflow
+  history widgets now listen only to `cycle_transition` plus the medication-cycle workflow source.
+- files inspected:
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/(dashboard)/visits/visits-today.tsx`,
+  `src/app/(dashboard)/visits/visits-today.test.tsx`,
+  `src/components/features/workflow/cycle-transition-query.ts`,
+  `src/components/features/workflow/workflow-history.test.tsx`,
+  `src/lib/realtime/workflow-invalidation-policy.ts`,
+  `src/lib/hooks/use-realtime-query.ts`,
+  `src/lib/hooks/use-realtime-invalidation.ts`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/(dashboard)/visits/visits-today.tsx`,
+  `src/app/(dashboard)/visits/visits-today.test.tsx`,
+  `src/components/features/workflow/cycle-transition-query.ts`,
+  `src/components/features/workflow/workflow-history.test.tsx`.
+- bugs / risks reduced:
+  `VisitsToday` and workflow history no longer subscribe to bare broad `workflow_refresh` events.
+  The remaining bare `workflow_refresh` matches are hook-level tests that intentionally cover default
+  realtime semantics, not app/component subscriptions.
+- performance improved:
+  Completed source-scoped invalidation for the FE-RT-001 user-facing surfaces, reducing unnecessary
+  heavy BFF refetches during workflow event bursts.
+- validation:
+  `pnpm exec vitest run 'src/app/(dashboard)/visits/visits-today.test.tsx' src/components/features/workflow/workflow-history.test.tsx src/lib/hooks/use-realtime-invalidation.test.tsx src/lib/hooks/use-realtime-query.test.tsx --reporter=dot --testTimeout=30000`
+  green (4 files / 25 tests);
+  `pnpm exec eslint 'src/app/(dashboard)/visits/visits-today.tsx' 'src/app/(dashboard)/visits/visits-today.test.tsx' src/components/features/workflow/cycle-transition-query.ts src/components/features/workflow/workflow-history.test.tsx`
+  green.
+- remaining:
+  `FE-RT-001` is complete for app/component code and has been removed from `Plans.md`. Continue with
+  the remaining frontend backlog items now listed under the frontend common foundation section.

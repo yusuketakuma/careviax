@@ -18,6 +18,7 @@ import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { readApiJson } from '@/lib/api/client-json';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
+import { WORKFLOW_DASHBOARD_INVALIDATION_EVENTS } from '@/lib/realtime/workflow-invalidation-policy';
 import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
 import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
 import { buildDailyOpsBlockedReasons } from '@/lib/workspace/daily-ops-rail';
@@ -225,7 +226,7 @@ export function VisitsToday() {
     queryFn: () => fetchVisitPreparationBoard(orgId),
     staleTime: 30_000,
     enabled: !isBootstrappingOrg,
-    invalidateOn: ['cycle_transition', 'workflow_refresh'],
+    invalidateOn: WORKFLOW_DASHBOARD_INVALIDATION_EVENTS,
   });
 
   const now = new Date();

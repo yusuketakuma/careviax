@@ -31,7 +31,7 @@ export const WORKFLOW_STATUS_LABELS: Record<string, string> = {
 
 export const WORKFLOW_HISTORY_INVALIDATION_EVENTS = [
   'cycle_transition',
-  'workflow_refresh',
+  { type: 'workflow_refresh', source: 'medication_cycles_transition' },
 ] as const;
 
 export async function fetchCycleTransitionLogs(args: { cycleId: string; orgId: string }) {
