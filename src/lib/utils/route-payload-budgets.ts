@@ -26,6 +26,42 @@ export const CRITICAL_ROUTE_PAYLOAD_BUDGETS: PayloadBudgetDefinition[] = [
   },
   {
     method: 'GET',
+    route: '/api/dashboard/cockpit/details',
+    family: 'dashboard-details',
+    budget_bytes: 300 * KIB,
+  },
+  {
+    method: 'GET',
+    route: '/api/dashboard/cockpit/team',
+    family: 'dashboard-team',
+    budget_bytes: 120 * KIB,
+  },
+  {
+    method: 'GET',
+    route: '/api/dashboard/cockpit/comments',
+    family: 'dashboard-comments',
+    budget_bytes: 80 * KIB,
+  },
+  {
+    method: 'GET',
+    route: '/api/dashboard/cockpit/inbound',
+    family: 'dashboard-inbound',
+    budget_bytes: 160 * KIB,
+  },
+  {
+    method: 'GET',
+    route: '/api/dashboard/cockpit/stock-risks',
+    family: 'dashboard-stock-risks',
+    budget_bytes: 160 * KIB,
+  },
+  {
+    method: 'GET',
+    route: '/api/dashboard/cockpit/report-billing',
+    family: 'dashboard-report-billing',
+    budget_bytes: 160 * KIB,
+  },
+  {
+    method: 'GET',
     route: '/api/patients/board',
     family: 'patients-board',
     budget_bytes: 300 * KIB,

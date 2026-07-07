@@ -259,6 +259,67 @@ describe('performance metrics', () => {
     expect(JSON.stringify(snapshot)).not.toContain('%E7%9C%A0%E6%B0%97');
   });
 
+  it('marks dashboard segment payload budgets after stripping query strings', () => {
+    recordRoutePerformance({
+      route: '/api/dashboard/cockpit/details?scope=team',
+      method: 'GET',
+      status: 200,
+      durationMs: 120,
+      payloadBytes: 301 * 1024,
+    });
+    recordRoutePerformance({
+      route: '/api/dashboard/cockpit/inbound?scope=mine',
+      method: 'GET',
+      status: 200,
+      durationMs: 80,
+      payloadBytes: 42 * 1024,
+    });
+    recordRoutePerformance({
+      route: '/api/dashboard/cockpit/comments?scope=team',
+      method: 'GET',
+      status: 200,
+      durationMs: 60,
+      payloadBytes: 81 * 1024,
+    });
+
+    const snapshot = getPerformanceSnapshot({ topRoutes: 10 });
+
+    expect(snapshot.summary.payload_budgeted_routes).toBe(3);
+    expect(snapshot.summary.routes_over_payload_budget).toBe(2);
+    expect(snapshot.routes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          route: '/api/dashboard/cockpit/details',
+          critical_route: true,
+          critical_route_family: 'dashboard-details',
+          payload_budget_bytes: 300 * 1024,
+          payload_budget_status: 'over_budget',
+          payload_budget_met: false,
+          payload_budget_over_count: 1,
+        }),
+        expect.objectContaining({
+          route: '/api/dashboard/cockpit/inbound',
+          critical_route: true,
+          critical_route_family: 'dashboard-inbound',
+          payload_budget_bytes: 160 * 1024,
+          payload_budget_status: 'within_budget',
+          payload_budget_met: true,
+          payload_budget_over_count: 0,
+        }),
+        expect.objectContaining({
+          route: '/api/dashboard/cockpit/comments',
+          critical_route: true,
+          critical_route_family: 'dashboard-comments',
+          payload_budget_bytes: 80 * 1024,
+          payload_budget_status: 'over_budget',
+          payload_budget_met: false,
+          payload_budget_over_count: 1,
+        }),
+      ]),
+    );
+    expect(JSON.stringify(snapshot)).not.toContain('scope=');
+  });
+
   it('drops query strings and hash fragments before route bucketing', () => {
     recordRoutePerformance({
       route: '/api/patients/board?search=patient-name&org_id=org_1#section',

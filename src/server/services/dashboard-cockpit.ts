@@ -4,7 +4,7 @@ import { requireAuthContext, type AuthContext } from '@/lib/auth/context';
 import { hasPermission } from '@/lib/auth/permissions';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { COCKPIT_CACHE_TTL_MS } from '@/lib/constants/workflow';
-import { success, validationError } from '@/lib/api/response';
+import { successWithMeasuredJsonPayload, validationError } from '@/lib/api/response';
 import { contactMethodLabel } from '@/lib/contact-profile-options';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
@@ -3743,6 +3743,6 @@ export async function dashboardCockpitSegmentResponse(
       requestedScope: scopeQuery.scope,
       part,
     });
-    return success({ data });
+    return successWithMeasuredJsonPayload({ data });
   });
 }

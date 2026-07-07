@@ -4,7 +4,7 @@ import type { PackagingInstructionTag, Prisma } from '@prisma/client';
 import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import { getAuthSecret } from '@/lib/auth/secret';
-import { internalError, success, validationError } from '@/lib/api/response';
+import { internalError, successWithMeasuredJsonPayload, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { boundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
@@ -43,16 +43,6 @@ const DEFAULT_PATIENT_BOARD_PAGE_LIMIT = 60;
 const MAX_PATIENT_BOARD_PAGE_LIMIT = 100;
 const PATIENT_BOARD_CURSOR_TTL_MS = 10 * 60 * 1000;
 const BLOCKED_REASONS_LIMIT = 2;
-const jsonPayloadEncoder = new TextEncoder();
-
-function successWithMeasuredJsonPayload<T>(data: T, status = 200) {
-  const response = success(data, status);
-  response.headers.set(
-    'Content-Length',
-    String(jsonPayloadEncoder.encode(JSON.stringify(data)).length),
-  );
-  return response;
-}
 
 const boardQuerySchema = z.object({
   scope: z.enum(['mine', 'all']).optional(),

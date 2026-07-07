@@ -41,6 +41,73 @@
 
 ## 直近の land（本日・要点）
 
+- codex: PAYLOAD-BUDGET-001A dashboard segment measured payload budgets。
+  - current task:
+    `PAYLOAD-BUDGET-001A` として、dashboard cockpit segment routes を payload-budgeted にし、
+    `withRoutePerformance` が `Content-Length` から payload bytes を計測できるようにする。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `AGENTS.md`,
+    `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`,
+    `src/lib/api/response.ts`,
+    `src/lib/utils/performance.ts`,
+    `src/lib/utils/performance.test.ts`,
+    `src/lib/utils/route-payload-budgets.ts`,
+    `src/server/services/dashboard-cockpit.ts`,
+    `src/app/api/dashboard/cockpit/*/route.ts`,
+    `src/app/api/dashboard/cockpit/route.test.ts`,
+    `src/app/api/patients/board/route.ts`,
+    `src/app/api/care-reports/route.ts`,
+    `.agent-loop/GBRAIN_SCHEMA.md`,
+    gbrain search/get results for prior payload-budget work.
+  - files changed:
+    `src/lib/api/response.ts`,
+    `src/lib/utils/route-payload-budgets.ts`,
+    `src/lib/utils/performance.test.ts`,
+    `src/server/services/dashboard-cockpit.ts`,
+    `src/app/api/dashboard/cockpit/route.test.ts`,
+    `src/app/api/patients/board/route.ts`,
+    `src/app/api/care-reports/route.ts`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Added shared `successWithMeasuredJsonPayload()` in `src/lib/api/response.ts` and migrated the
+    existing patient board / care-report local helpers to it. `dashboardCockpitSegmentResponse()`
+    now returns measured JSON for all cockpit parts without changing DTO contents. Registered
+    budgets for `GET /api/dashboard/cockpit/details`, `team`, `comments`, `inbound`,
+    `stock-risks`, and `report-billing` in the critical route payload-budget registry.
+  - bugs found:
+    Dashboard summary had a route payload budget, but the rest of the dashboard segments were not
+    registered. Also, dashboard segment JSON responses did not emit `Content-Length`, so
+    `withRoutePerformance` would classify payloads as unmeasured even after adding registry rows.
+  - security risks reduced:
+    No auth/authorization or response redaction behavior changed. The change preserves authorized
+    operational dashboard PHI display while making segment size observable.
+  - performance issues improved:
+    Dashboard details/inbound/stock/report-billing/comments/team segments can now be tracked for
+    payload-budget regressions. Duplicate local measured-success helpers were consolidated to one
+    shared helper to keep future payload-budgeted routes consistent.
+  - gbrain:
+    Planned memory slug:
+    `projects/careviax/reviews/2026-07-08/dashboard-segment-payload-budget`.
+  - validation commands:
+    `pnpm exec vitest run src/lib/utils/performance.test.ts src/app/api/dashboard/cockpit/route.test.ts src/app/api/patients/board/route.test.ts src/app/api/care-reports/route.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec prettier --check src/lib/api/response.ts src/app/api/patients/board/route.ts src/app/api/care-reports/route.ts src/server/services/dashboard-cockpit.ts src/lib/utils/route-payload-budgets.ts src/app/api/dashboard/cockpit/route.test.ts src/lib/utils/performance.test.ts`;
+    `pnpm exec eslint src/lib/api/response.ts src/app/api/patients/board/route.ts src/app/api/care-reports/route.ts src/server/services/dashboard-cockpit.ts src/lib/utils/route-payload-budgets.ts src/app/api/dashboard/cockpit/route.test.ts src/lib/utils/performance.test.ts`;
+    `git diff --check -- src/lib/api/response.ts src/app/api/patients/board/route.ts src/app/api/care-reports/route.ts src/server/services/dashboard-cockpit.ts src/lib/utils/route-payload-budgets.ts src/app/api/dashboard/cockpit/route.test.ts src/lib/utils/performance.test.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Focused Vitest passed `157`; Prettier check passed; ESLint passed; diff whitespace check
+    passed; full typecheck passed.
+  - remaining:
+    `PAYLOAD-BUDGET-001B/C/D`, `PERF-DB-006D` SELECT-only EXPLAIN-backed index backlog,
+    movement/inbound/medication-stock API payload budgets, dashboard drilldowns, and AWS backup
+    design/implementation remain.
+  - next action:
+    Commit explicit owned paths, push, write the gbrain memory with the final commit hash, then
+    continue to the next implementation-ready performance slice unless the user redirects.
+
 - codex: Plans.md active backlog refinement。
   - current task:
     `Plans.md` 内の既存計画を現行 main と照合し、実装済み / 一部実装済み / 未実装 /

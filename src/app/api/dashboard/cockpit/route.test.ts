@@ -160,6 +160,12 @@ function createRequest(search = '', path = '/api/dashboard/cockpit') {
   });
 }
 
+function expectMeasuredJsonContentLength(response: Response, body: unknown) {
+  expect(response.headers.get('content-length')).toBe(
+    String(new TextEncoder().encode(JSON.stringify(body)).length),
+  );
+}
+
 function buildAuditTask(args: {
   id: string;
   priority?: string;
@@ -505,6 +511,7 @@ describe('/api/dashboard/cockpit', () => {
     expectSensitiveNoStore(response);
     expect(withRoutePerformanceMock).toHaveBeenCalledTimes(1);
     const json = await response.json();
+    expectMeasuredJsonContentLength(response, json);
 
     expect(json.data).toMatchObject({
       audit_pending_count: 2,

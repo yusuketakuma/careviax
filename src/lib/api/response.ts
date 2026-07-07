@@ -19,6 +19,17 @@ export function success<T>(data: T, status = 200) {
   return NextResponse.json(data, { status });
 }
 
+const jsonPayloadEncoder = new TextEncoder();
+
+export function successWithMeasuredJsonPayload<T>(data: T, status = 200) {
+  const response = success(data, status);
+  response.headers.set(
+    'Content-Length',
+    String(jsonPayloadEncoder.encode(JSON.stringify(data)).length),
+  );
+  return response;
+}
+
 export function error(code: string, message: string, status: number, details?: unknown) {
   return NextResponse.json({ code, message, details } satisfies ApiError, { status });
 }

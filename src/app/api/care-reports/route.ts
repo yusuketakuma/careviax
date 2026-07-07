@@ -4,7 +4,14 @@ import { requireAuthContext, type AuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { conflict, forbidden, internalError, success, validationError } from '@/lib/api/response';
+import {
+  conflict,
+  forbidden,
+  internalError,
+  success,
+  successWithMeasuredJsonPayload,
+  validationError,
+} from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import {
   buildCursorPage,
@@ -59,16 +66,6 @@ const createCareReportSchema = z.object({
 });
 
 const CARE_REPORT_DELIVERY_RECORDS_PER_REPORT_LIMIT = 10;
-const jsonPayloadEncoder = new TextEncoder();
-
-function successWithMeasuredJsonPayload<T>(data: T, status = 200) {
-  const response = success(data, status);
-  response.headers.set(
-    'Content-Length',
-    String(jsonPayloadEncoder.encode(JSON.stringify(data)).length),
-  );
-  return response;
-}
 
 const careReportBaseSelect = {
   id: true,
