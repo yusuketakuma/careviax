@@ -132,6 +132,7 @@ describe('/api/communications/inbound', () => {
         orgId: 'org_1',
         limit: 10,
         queueTypes: ['inbound_communication'],
+        sourceScope: 'requested',
       },
     );
     expect(payload.meta).toMatchObject({ count_basis: 'visible_window', limit: 10 });

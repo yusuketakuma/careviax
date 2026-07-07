@@ -191,6 +191,7 @@ type ListCommunicationQueueArgs = {
   caseIds?: string[];
   limit?: number;
   queueTypes?: readonly CommunicationQueueType[];
+  sourceScope?: 'all' | 'requested';
 };
 const DEFAULT_COMMUNICATION_QUEUE_LIMIT = 8;
 
@@ -689,6 +690,17 @@ export async function listCommunicationQueue(
   const now = new Date();
   const shareWindow = addDays(now, 7);
   const limit = normalizeCommunicationQueueLimit(args.limit);
+  const queueTypeFilter = args.queueTypes ? new Set(args.queueTypes) : null;
+  const useRequestedSourcesOnly = args.sourceScope === 'requested' && queueTypeFilter != null;
+  const shouldFetchQueueType = (queueType: CommunicationQueueType) =>
+    !useRequestedSourcesOnly || queueTypeFilter.has(queueType);
+  const shouldFetchTimelineSources = !useRequestedSourcesOnly;
+  const shouldFetchSelfReports = shouldFetchQueueType('self_report');
+  const shouldFetchCallbacks = shouldFetchQueueType('callback');
+  const shouldFetchRequests = shouldFetchQueueType('request');
+  const shouldFetchInboundCommunications = shouldFetchQueueType('inbound_communication');
+  const shouldFetchDeliveries = shouldFetchQueueType('delivery') || shouldFetchTimelineSources;
+  const shouldFetchExternalShares = shouldFetchQueueType('external_share');
   const patientScope =
     args.patientId !== undefined
       ? { patient_id: args.patientId }
@@ -745,189 +757,197 @@ export async function listCommunicationQueue(
     tracingReports,
     emergencyDrafts,
   ] = await Promise.all([
-    reader.patientSelfReport?.findMany({
-      where: {
-        org_id: args.orgId,
-        ...patientScope,
-        status: {
-          in: ['submitted', 'triaged', 'converted_to_task'],
-        },
-      },
-      orderBy: [{ requested_callback: 'desc' }, { created_at: 'asc' }],
-      take: limit,
-      select: {
-        id: true,
-        patient_id: true,
-        subject: true,
-        category: true,
-        requested_callback: true,
-        preferred_contact_time: true,
-        reported_by_name: true,
-        status: true,
-        created_at: true,
-      },
-    }) ?? Promise.resolve([]),
-    // VisitScheduleContactLog.case_id is non-null. When the caller passed an
-    // explicit empty caseIds list (i.e. the user has access to no cases),
-    // skip the query — `case_id: { in: [] }` would silently return zero rows
-    // anyway, but the intent is clearer with an explicit fast-path.
-    args.caseIds !== undefined && args.caseIds.length === 0
-      ? Promise.resolve([])
-      : (reader.visitScheduleContactLog?.findMany({
+    shouldFetchSelfReports
+      ? (reader.patientSelfReport?.findMany({
           where: {
             org_id: args.orgId,
             ...patientScope,
-            // Outer fast-path already returned for empty caseIds; here caseIds is
-            // either undefined (no filter) or has at least one element.
-            ...(args.caseIds ? { case_id: { in: args.caseIds } } : {}),
-            OR: [
-              {
-                callback_due_at: {
-                  not: null,
-                },
-              },
-              {
-                outcome: {
-                  in: ['attempted', 'unreachable'],
-                },
-              },
-            ],
+            status: {
+              in: ['submitted', 'triaged', 'converted_to_task'],
+            },
           },
-          orderBy: [{ callback_due_at: 'asc' }, { called_at: 'desc' }],
+          orderBy: [{ requested_callback: 'desc' }, { created_at: 'asc' }],
           take: limit,
           select: {
             id: true,
             patient_id: true,
-            schedule_id: true,
-            outcome: true,
-            contact_name: true,
-            contact_phone: true,
-            note: true,
-            callback_due_at: true,
-            called_at: true,
+            subject: true,
+            category: true,
+            requested_callback: true,
+            preferred_contact_time: true,
+            reported_by_name: true,
+            status: true,
+            created_at: true,
           },
-        }) ?? Promise.resolve([])),
-    reader.communicationRequest?.findMany({
-      where: {
-        org_id: args.orgId,
-        ...patientScope,
-        ...(caseScope ? { AND: [caseScope] } : {}),
-        status: {
-          in: ['draft', 'sent', 'received', 'in_progress', 'responded', 'escalated', 'closed'],
-        },
-      },
-      orderBy: [{ due_date: 'asc' }, { requested_at: 'desc' }],
-      take: limit,
-      select: {
-        id: true,
-        patient_id: true,
-        request_type: true,
-        subject: true,
-        content: true,
-        template_key: true,
-        related_entity_type: true,
-        related_entity_id: true,
-        status: true,
-        due_date: true,
-        requested_at: true,
-      },
-    }) ?? Promise.resolve([]),
-    reader.inboundCommunicationEvent?.findMany({
-      where: {
-        org_id: args.orgId,
-        ...patientScope,
-        ...(caseScope ? { AND: [caseScope] } : {}),
-        source_channel: {
-          in: INBOUND_COMMUNICATION_QUEUE_CHANNELS,
-        },
-      },
-      orderBy: [{ received_at: 'desc' }, { id: 'asc' }],
-      take: limit,
-      select: {
-        id: true,
-        patient_id: true,
-        source_channel: true,
-        received_at: true,
-      },
-    }) ?? Promise.resolve([]),
-    reader.deliveryRecord?.findMany({
-      where: {
-        org_id: args.orgId,
-        status: {
-          in: ['draft', 'failed', 'response_waiting', 'sent', 'confirmed'],
-        },
-        ...(args.patientId || args.patientIds !== undefined || caseScope
-          ? {
-              report: {
-                ...patientScope,
-                ...(caseScope ? { AND: [caseScope] } : {}),
+        }) ?? Promise.resolve([]))
+      : Promise.resolve([]),
+    shouldFetchCallbacks
+      ? args.caseIds !== undefined && args.caseIds.length === 0
+        ? Promise.resolve([])
+        : (reader.visitScheduleContactLog?.findMany({
+            where: {
+              org_id: args.orgId,
+              ...patientScope,
+              ...(args.caseIds ? { case_id: { in: args.caseIds } } : {}),
+              OR: [
+                {
+                  callback_due_at: {
+                    not: null,
+                  },
+                },
+                {
+                  outcome: {
+                    in: ['attempted', 'unreachable'],
+                  },
+                },
+              ],
+            },
+            orderBy: [{ callback_due_at: 'asc' }, { called_at: 'desc' }],
+            take: limit,
+            select: {
+              id: true,
+              patient_id: true,
+              schedule_id: true,
+              outcome: true,
+              contact_name: true,
+              contact_phone: true,
+              note: true,
+              callback_due_at: true,
+              called_at: true,
+            },
+          }) ?? Promise.resolve([]))
+      : Promise.resolve([]),
+    shouldFetchRequests || shouldFetchTimelineSources
+      ? (reader.communicationRequest?.findMany({
+          where: {
+            org_id: args.orgId,
+            ...patientScope,
+            ...(caseScope ? { AND: [caseScope] } : {}),
+            status: {
+              in: ['draft', 'sent', 'received', 'in_progress', 'responded', 'escalated', 'closed'],
+            },
+          },
+          orderBy: [{ due_date: 'asc' }, { requested_at: 'desc' }],
+          take: limit,
+          select: {
+            id: true,
+            patient_id: true,
+            request_type: true,
+            subject: true,
+            content: true,
+            template_key: true,
+            related_entity_type: true,
+            related_entity_id: true,
+            status: true,
+            due_date: true,
+            requested_at: true,
+          },
+        }) ?? Promise.resolve([]))
+      : Promise.resolve([]),
+    shouldFetchInboundCommunications
+      ? (reader.inboundCommunicationEvent?.findMany({
+          where: {
+            org_id: args.orgId,
+            ...patientScope,
+            ...(caseScope ? { AND: [caseScope] } : {}),
+            source_channel: {
+              in: INBOUND_COMMUNICATION_QUEUE_CHANNELS,
+            },
+          },
+          orderBy: [{ received_at: 'desc' }, { id: 'asc' }],
+          take: limit,
+          select: {
+            id: true,
+            patient_id: true,
+            source_channel: true,
+            received_at: true,
+          },
+        }) ?? Promise.resolve([]))
+      : Promise.resolve([]),
+    shouldFetchDeliveries
+      ? (reader.deliveryRecord?.findMany({
+          where: {
+            org_id: args.orgId,
+            status: {
+              in: ['draft', 'failed', 'response_waiting', 'sent', 'confirmed'],
+            },
+            ...(args.patientId || args.patientIds !== undefined || caseScope
+              ? {
+                  report: {
+                    ...patientScope,
+                    ...(caseScope ? { AND: [caseScope] } : {}),
+                  },
+                }
+              : {}),
+          },
+          orderBy: [{ updated_at: 'desc' }],
+          take: limit,
+          select: {
+            id: true,
+            channel: true,
+            recipient_name: true,
+            status: true,
+            failure_reason: true,
+            sent_at: true,
+            confirmed_at: true,
+            updated_at: true,
+            report: {
+              select: {
+                id: true,
+                patient_id: true,
+                report_type: true,
               },
-            }
-          : {}),
-      },
-      orderBy: [{ updated_at: 'desc' }],
-      take: limit,
-      select: {
-        id: true,
-        channel: true,
-        recipient_name: true,
-        status: true,
-        failure_reason: true,
-        sent_at: true,
-        confirmed_at: true,
-        updated_at: true,
-        report: {
+            },
+          },
+        }) ?? Promise.resolve([]))
+      : Promise.resolve([]),
+    shouldFetchExternalShares ? listVisibleExternalShares() : Promise.resolve([]),
+    shouldFetchTimelineSources
+      ? (reader.careReport?.findMany({
+          where: {
+            org_id: args.orgId,
+            ...patientScope,
+            ...(caseScope ? { AND: [caseScope] } : {}),
+            status: {
+              in: ['sent', 'failed', 'response_waiting', 'confirmed'],
+            },
+          },
+          orderBy: [{ updated_at: 'desc' }],
+          take: limit,
           select: {
             id: true,
             patient_id: true,
             report_type: true,
+            status: true,
+            created_at: true,
+            updated_at: true,
           },
-        },
-      },
-    }) ?? Promise.resolve([]),
-    listVisibleExternalShares(),
-    reader.careReport?.findMany({
-      where: {
-        org_id: args.orgId,
-        ...patientScope,
-        ...(caseScope ? { AND: [caseScope] } : {}),
-        status: {
-          in: ['sent', 'failed', 'response_waiting', 'confirmed'],
-        },
-      },
-      orderBy: [{ updated_at: 'desc' }],
-      take: limit,
-      select: {
-        id: true,
-        patient_id: true,
-        report_type: true,
-        status: true,
-        created_at: true,
-        updated_at: true,
-      },
-    }) ?? Promise.resolve([]),
-    reader.tracingReport?.findMany({
-      where: {
-        org_id: args.orgId,
-        ...patientScope,
-        ...(caseScope ? { AND: [caseScope] } : {}),
-        status: {
-          in: ['sent', 'received', 'acknowledged'],
-        },
-      },
-      orderBy: [{ updated_at: 'desc' }],
-      take: limit,
-      select: {
-        id: true,
-        patient_id: true,
-        status: true,
-        sent_to_physician: true,
-        sent_at: true,
-        acknowledged_at: true,
-        updated_at: true,
-      },
-    }) ?? Promise.resolve([]),
-    buildEmergencyDrafts(reader, args),
+        }) ?? Promise.resolve([]))
+      : Promise.resolve([]),
+    shouldFetchTimelineSources
+      ? (reader.tracingReport?.findMany({
+          where: {
+            org_id: args.orgId,
+            ...patientScope,
+            ...(caseScope ? { AND: [caseScope] } : {}),
+            status: {
+              in: ['sent', 'received', 'acknowledged'],
+            },
+          },
+          orderBy: [{ updated_at: 'desc' }],
+          take: limit,
+          select: {
+            id: true,
+            patient_id: true,
+            status: true,
+            sent_to_physician: true,
+            sent_at: true,
+            acknowledged_at: true,
+            updated_at: true,
+          },
+        }) ?? Promise.resolve([]))
+      : Promise.resolve([]),
+    shouldFetchTimelineSources ? buildEmergencyDrafts(reader, args) : Promise.resolve([]),
   ]);
 
   const visibleExternalShares = externalShares;
@@ -1033,7 +1053,6 @@ export async function listCommunicationQueue(
     ['draft', 'failed', 'response_waiting'].includes(record.status),
   );
 
-  const queueTypeFilter = args.queueTypes ? new Set(args.queueTypes) : null;
   const allItems: CommunicationQueueItem[] = [
     ...selfReports.map((report) => ({
       id: `self_report:${report.id}`,

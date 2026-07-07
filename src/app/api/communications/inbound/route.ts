@@ -96,6 +96,7 @@ const authenticatedGET = withAuthContext(
       orgId: ctx.orgId,
       limit: limitResult.value,
       queueTypes: ['inbound_communication'],
+      sourceScope: 'requested',
     });
 
     const channel = channelResult.value as InboundChannel | null;

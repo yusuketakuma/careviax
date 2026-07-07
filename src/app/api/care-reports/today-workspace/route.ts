@@ -25,7 +25,6 @@ import {
   resolveCommunicationEntityLink,
 } from '@/lib/communications/navigation';
 import { buildVisitFacilityPacketHref, buildVisitRecordHref } from '@/lib/visits/navigation';
-import { listCommunicationQueue } from '@/server/services/communication-queue';
 import {
   BILLING_VALIDATION_LAYER_KEYS,
   readBillingValidationLayers,
@@ -66,6 +65,29 @@ const OPEN_ISSUE_SEVERITY_RANK: Record<ReportOpenIssue['severity'], number> = {
   warning: 1,
   info: 2,
 };
+const REPORT_WORKSPACE_INBOUND_CHANNELS = ['phone', 'fax', 'email', 'mcs'] as const;
+
+type ReportWorkspaceInboundCountReader = {
+  inboundCommunicationEvent?: {
+    count(args: unknown): Promise<number>;
+  };
+};
+
+function countReportWorkspaceInboundCommunications(
+  db: ReportWorkspaceInboundCountReader,
+  args: { orgId: string },
+) {
+  return (
+    db.inboundCommunicationEvent?.count({
+      where: {
+        org_id: args.orgId,
+        source_channel: {
+          in: [...REPORT_WORKSPACE_INBOUND_CHANNELS],
+        },
+      },
+    }) ?? Promise.resolve(0)
+  );
+}
 
 function buildWorkspaceCount(args: {
   totalCount: number;
@@ -740,9 +762,8 @@ const authenticatedGET = withAuthContext(
         const templateCountPromise = tx.template.count({
           where: { org_id: ctx.orgId, template_type: 'care_report' },
         });
-        const communicationQueuePromise = listCommunicationQueue(tx, {
+        const inboundCommunicationCountPromise = countReportWorkspaceInboundCommunications(tx, {
           orgId: ctx.orgId,
-          limit: 1,
         });
         const monthlyDeliveryCountPromise = tx.deliveryRecord.count({
           where: {
@@ -845,7 +866,7 @@ const authenticatedGET = withAuthContext(
           recentReports,
           recentReportCount,
           templateCount,
-          communicationQueue,
+          inboundCommunicationCount,
           monthlyDeliveryCount,
         ] = await Promise.all([
           scheduleContextPromise,
@@ -858,7 +879,7 @@ const authenticatedGET = withAuthContext(
           recentReportsPromise,
           recentReportCountPromise,
           templateCountPromise,
-          communicationQueuePromise,
+          inboundCommunicationCountPromise,
           monthlyDeliveryCountPromise,
         ]);
 
@@ -1196,7 +1217,7 @@ const authenticatedGET = withAuthContext(
             waitingReplies,
             templateCount,
             monthlyDeliveryCount,
-            inboundCommunicationCount: communicationQueue.summary.inbound_communications,
+            inboundCommunicationCount,
           }),
         };
 

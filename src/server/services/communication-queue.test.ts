@@ -358,6 +358,74 @@ describe('listCommunicationQueue', () => {
     expect(serialized).not.toContain('secret-key');
   });
 
+  it('fetches only requested inbound sources for inbound-only inbox reads', async () => {
+    emptyDbMocks();
+    inboundCommunicationEventFindManyMock.mockResolvedValue([
+      {
+        id: 'event_1',
+        patient_id: 'patient_1',
+        source_channel: 'phone',
+        received_at: new Date('2026-04-02T10:00:00Z'),
+      },
+    ]);
+    inboundCommunicationSignalFindManyMock.mockResolvedValue([
+      {
+        id: 'signal_1',
+        inbound_event_id: 'event_1',
+        review_status: 'needs_review',
+        action_status: 'not_linked',
+      },
+    ]);
+    taskFindManyMock.mockResolvedValue([
+      {
+        id: 'task_1',
+        task_type: 'pharmacy.inbound_medication_stock_signal_review_required',
+        status: 'pending',
+        priority: 'urgent',
+        dedupe_key: 'inbound:signal_1:pharmacy.inbound_medication_stock_signal_review_required',
+      },
+    ]);
+    patientFindManyMock.mockResolvedValue([{ id: 'patient_1', name: '佐藤花子' }]);
+
+    const result = await listCommunicationQueue(makeDb(), {
+      orgId: 'org-1',
+      queueTypes: ['inbound_communication'],
+      sourceScope: 'requested',
+    });
+
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        id: 'inbound_communication:event_1',
+        queue_type: 'inbound_communication',
+      }),
+    ]);
+    expect(result.summary).toEqual(
+      expect.objectContaining({
+        inbound_communications: 1,
+        self_reports: 0,
+        callback_followups: 0,
+        open_requests: 0,
+        delivery_backlog: 0,
+        expiring_external_shares: 0,
+      }),
+    );
+    expect(result.timeline).toEqual([]);
+    expect(result.emergency_drafts).toEqual([]);
+    expect(inboundCommunicationEventFindManyMock).toHaveBeenCalledTimes(1);
+    expect(inboundCommunicationSignalFindManyMock).toHaveBeenCalledTimes(1);
+    expect(taskFindManyMock).toHaveBeenCalledTimes(1);
+    expect(patientFindManyMock).toHaveBeenCalledTimes(1);
+    expect(selfReportFindManyMock).not.toHaveBeenCalled();
+    expect(contactLogFindManyMock).not.toHaveBeenCalled();
+    expect(communicationRequestFindManyMock).not.toHaveBeenCalled();
+    expect(deliveryRecordFindManyMock).not.toHaveBeenCalled();
+    expect(externalAccessGrantFindManyMock).not.toHaveBeenCalled();
+    expect(careReportFindManyMock).not.toHaveBeenCalled();
+    expect(tracingReportFindManyMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(medicationIssueFindManyMock).not.toHaveBeenCalled();
+  });
+
   it('marks inbound communication events as task-created from formal signal task dedupe keys', async () => {
     emptyDbMocks();
     inboundCommunicationEventFindManyMock.mockResolvedValue([

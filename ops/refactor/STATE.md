@@ -41,7 +41,72 @@
 
 ## 直近の land（本日・要点）
 
-- codex: Plans.md status registry expansion / implemented-vs-remaining cleanup（pending commit）。
+- codex: PERF-DB-003/004 inbound queue source gating + report workspace direct inbound count（pushed to `main`）。
+  - current task:
+    Plans registry の推奨順に従い、バックエンド read path の DB 読み出し速度改善を実装する。
+    対象は inbound-only communication inbox と report workspace action rail の他職種受信 evidence。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/communication-queue.ts`,
+    `src/server/services/communication-queue.test.ts`,
+    `src/app/api/communications/inbound/route.ts`,
+    `src/app/api/communications/inbound/route.test.ts`,
+    `src/app/api/care-reports/today-workspace/route.ts`,
+    `src/app/api/care-reports/today-workspace/route.test.ts`,
+    and `gbrain search "careviax communication queue inbound performance source gating dashboard medication stock report workspace"`.
+  - files changed:
+    `src/server/services/communication-queue.ts`,
+    `src/server/services/communication-queue.test.ts`,
+    `src/app/api/communications/inbound/route.ts`,
+    `src/app/api/communications/inbound/route.test.ts`,
+    `src/app/api/care-reports/today-workspace/route.ts`,
+    `src/app/api/care-reports/today-workspace/route.test.ts`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `careviax/performance-finding/inbound-queue-source-gating-2026-07-08.md`.
+  - implementation:
+    Added `sourceScope: 'requested'` to `listCommunicationQueue()` while keeping default `sourceScope` as all-source compatible behavior.
+    `/api/communications/inbound` now passes `queueTypes: ['inbound_communication']` plus `sourceScope: 'requested'`,
+    so the inbound inbox fetches only inbound events, inbound signals, related task state, and patient names.
+    It no longer reads self reports, callback logs, communication requests, delivery records, external shares,
+    care reports, tracing reports, emergency draft patient lookup, or medication issues for inbound-only reads.
+    Replaced the report workspace action rail's `listCommunicationQueue(limit: 1)` call with a direct
+    `InboundCommunicationEvent.count` helper scoped by org and inbound source channel.
+    Wrote gbrain memory `careviax/performance-finding/inbound-queue-source-gating-2026-07-08`.
+  - bugs found:
+    The report workspace previously treated a visible-window queue call (`limit: 1`) as evidence count for inbound communications.
+    That mixed queue presentation semantics with count semantics and pulled unrelated queue sources.
+  - security risks reduced:
+    The report workspace inbound evidence now reads only countable metadata (`org_id`, `source_channel`) and does not materialize raw inbound body,
+    counterpart contact, attachments, delivery details, or patient self-report content.
+    Existing summary/list PHI omission behavior remains covered by tests.
+  - performance issues improved:
+    Avoided unrelated DB read fan-out for inbound-only queue requests.
+    Avoided full communication queue construction for report workspace when only inbound evidence count is needed.
+    No schema migration or blind index was added.
+  - validation commands:
+    `pnpm vitest run src/server/services/communication-queue.test.ts`;
+    `pnpm vitest run src/app/api/communications/inbound/route.test.ts`;
+    `pnpm vitest run src/app/api/care-reports/today-workspace/route.test.ts`;
+    `pnpm vitest run src/server/services/communication-queue.test.ts src/app/api/communications/inbound/route.test.ts`;
+    `pnpm exec eslint src/server/services/communication-queue.ts src/server/services/communication-queue.test.ts src/app/api/communications/inbound/route.ts src/app/api/communications/inbound/route.test.ts src/app/api/care-reports/today-workspace/route.ts src/app/api/care-reports/today-workspace/route.test.ts`;
+    `pnpm exec prettier --write src/server/services/communication-queue.ts src/server/services/communication-queue.test.ts src/app/api/communications/inbound/route.ts src/app/api/communications/inbound/route.test.ts src/app/api/care-reports/today-workspace/route.ts src/app/api/care-reports/today-workspace/route.test.ts`;
+    `git diff --check -- src/server/services/communication-queue.ts src/server/services/communication-queue.test.ts src/app/api/communications/inbound/route.ts src/app/api/communications/inbound/route.test.ts src/app/api/care-reports/today-workspace/route.ts src/app/api/care-reports/today-workspace/route.test.ts`;
+    `pnpm typecheck`.
+  - validation results:
+    Focused communication queue tests passed `24` tests before report route changes and `31` combined tests after source gating.
+    Inbound route tests passed `7` tests.
+    Today workspace route tests passed `30` tests.
+    Scoped ESLint, Prettier, diff-check, and full typecheck passed.
+  - remaining:
+    `PERF-DB-002` dashboard medication stock signal count consolidation is now the next DB read-speed task.
+    `PERF-DB-005/006/007` remain open for patient detail, care-report search, and movement timeline source reads.
+  - next action:
+    Commit and push this DB read-speed slice, then continue with `PERF-DB-002`.
+
+- codex: Plans.md status registry expansion / implemented-vs-remaining cleanup（commit `509c12323`, pushed to `main`）。
   - current task:
     `Plans.md` 内の既存タスクを最新 main の実装状態に合わせて整理し、実装済み・一部実装済み・未実装・human gate に分類する。未実装は次PRに切れる粒度へ拡充し、コード読解から見つかった派生タスクを追記する。
   - files inspected:

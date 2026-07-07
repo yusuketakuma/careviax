@@ -48,7 +48,7 @@ type TxOverrides = {
   waitingDeliveryCount?: number;
   requests?: unknown[];
   waitingRequestCount?: number;
-  communicationEvents?: unknown[];
+  inboundCommunicationCount?: number;
   responses?: unknown[];
   resolvedResponseCount?: number;
   patients?: unknown[];
@@ -94,8 +94,8 @@ function mockTx(overrides: TxOverrides = {}) {
         .fn()
         .mockResolvedValue(overrides.waitingRequestCount ?? (overrides.requests ?? []).length),
     },
-    communicationEvent: {
-      findMany: vi.fn().mockResolvedValue(overrides.communicationEvents ?? []),
+    inboundCommunicationEvent: {
+      count: vi.fn().mockResolvedValue(overrides.inboundCommunicationCount ?? 0),
     },
     communicationResponse: {
       findMany: vi.fn().mockResolvedValue(overrides.responses ?? []),
@@ -227,20 +227,8 @@ describe('/api/care-reports/today-workspace', () => {
   });
 
   it('adds inbound communication evidence to the action rail without exposing raw content', async () => {
-    mockTx({
-      communicationEvents: [
-        {
-          id: 'event_1',
-          patient_id: 'patient_1',
-          channel: 'phone',
-          occurred_at: new Date('2026-06-11T09:00:00.000Z'),
-          subject: '湿布の残りが少ない',
-          content: '湿布は残り4枚です',
-          counterpart_name: '訪問看護師A',
-          counterpart_contact: '090-0000-0000',
-          attachments: [{ storage_key: 'secret-storage-key' }],
-        },
-      ],
+    const tx = mockTx({
+      inboundCommunicationCount: 1,
     });
     const req = createRequest('http://localhost/api/care-reports/today-workspace');
 
@@ -257,6 +245,14 @@ describe('/api/care-reports/today-workspace', () => {
         }),
       ]),
     );
+    expect(tx.inboundCommunicationEvent.count).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        source_channel: {
+          in: ['phone', 'fax', 'email', 'mcs'],
+        },
+      },
+    });
     const responseText = JSON.stringify(json.data.action_rail);
     expect(responseText).not.toContain('湿布');
     expect(responseText).not.toContain('訪問看護師A');
