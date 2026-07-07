@@ -61,6 +61,9 @@ jobs:
       - name: Module boundary check
         run: pnpm boundaries:check
 
+      - name: API response shape check
+        run: pnpm api-response-shape:check
+
       - name: DTO direct Prisma return check
         run: pnpm dto-direct-prisma-return:check
 

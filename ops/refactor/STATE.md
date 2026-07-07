@@ -14603,3 +14603,48 @@
   Continue deleting completed tasks from `Plans.md` only after current code confirms they are
   implemented. Remaining active items include API envelope/request_id/error-code work, RLS contract
   expansion, DTO allowlist burn-down, and presenter migration.
+
+## 2026-07-07 MOD-CI-001 API response shape ratchet
+
+- codex:
+  Added `api-response-shape:check` as a CI ratchet for `API-CONTRACT-001` / `MOD-CI-001`. The check
+  flags route-level `success()` payloads that are not wrapped as `{ data, meta? }` and route-local
+  legacy error JSON shapes. Existing route debt is captured in an allowlist so future work can burn
+  it down without adding new non-envelope responses.
+- files inspected:
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/lib/api/response.ts`,
+  `.github/workflows/ci.yml`,
+  `package.json`,
+  `tools/scripts/check-dto-direct-prisma-return.mjs`,
+  `tools/scripts/check-dto-direct-prisma-return.test.ts`.
+- files changed:
+  `.github/workflows/ci.yml`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `package.json`,
+  `tools/api-response-shape-allowlist.json`,
+  `tools/scripts/check-api-response-shape.mjs`,
+  `tools/scripts/check-api-response-shape.test.ts`.
+- bugs / risks reduced:
+  New API routes can no longer add legacy non-envelope success payloads or route-local legacy error
+  JSON without either migrating to the standard envelope or explicitly changing the ratchet
+  allowlist. `Plans.md` now treats the gate as implemented and tracks only API envelope migration,
+  request_id/error-code unification, and allowlist burn-down.
+- performance improved:
+  None; CI/static contract gate only.
+- validation:
+  `pnpm api-response-shape:check` green (243 allowlisted violations, 0 new violations);
+  `pnpm exec vitest run tools/scripts/check-api-response-shape.test.ts --reporter=dot --testTimeout=30000`
+  green (1 file / 6 tests);
+  `pnpm exec eslint tools/scripts/check-api-response-shape.mjs tools/scripts/check-api-response-shape.test.ts`
+  green;
+  `pnpm exec prettier --check tools/scripts/check-api-response-shape.mjs tools/scripts/check-api-response-shape.test.ts tools/api-response-shape-allowlist.json package.json .github/workflows/ci.yml Plans.md ops/refactor/STATE.md`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green;
+  `git diff --check` green.
+- remaining:
+  RLS contract expansion remains the only unimplemented `MOD-CI-001` gate. API response migration
+  still needs `src/lib/api/response.ts` envelope changes, request_id propagation, error code
+  registry, route test updates, and allowlist expectedCount reductions.

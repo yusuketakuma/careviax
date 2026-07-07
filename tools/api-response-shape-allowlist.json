@@ -1,0 +1,1484 @@
+{
+  "entries": [
+    {
+      "path": "src/app/api/admin/data-explorer/[table]/[id]/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/admin/data-explorer/[table]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/admin/data-explorer/models/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/admin/escalation-rules/[id]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/admin/escalation-rules/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/admin/external-professionals/[id]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/admin/facilities/[id]/patients/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/admin/facilities/[id]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/admin/facilities/[id]/units/[unitId]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/admin/facility-standards/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/admin/master-hub/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/admin/organizations/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/admin/pharmacist-credentials/[id]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/admin/pharmacist-credentials/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/auth/password/reset/confirm/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/billing-candidates/close/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/billing-candidates/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/billing-evidence/check/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/billing-rules/[id]/route.ts",
+      "expectedCount": 3,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/billing-rules/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/business-holidays/[id]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/business-holidays/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/care-reports/[id]/print-audit/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/care-reports/[id]/send/route.ts",
+      "expectedCount": 7,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/care-reports/generate-from-visit/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/care-reports/today-workspace/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/cases/[id]/risk-cockpit/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/cases/[id]/risk-cockpit/tasks/[taskId]/resolution/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/cases/[id]/risk-cockpit/tasks/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/cases/[id]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/cases/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/cds/check/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/comments/[id]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/comments/recent/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/comments/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/communication-events/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/communication-requests/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/community-activities/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/conference-notes/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/consent-records/[id]/revoke/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/consent-records/[id]/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/consent-records/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/dashboard/dispensing-stats/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/dashboard/medication-deadlines/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/dashboard/monthly-stats/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/dashboard/overdue/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/dashboard/workflow/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/dispense-audits/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/dispense-results/[id]/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/dispense-results/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/dispense-tasks/[id]/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/dispense-tasks/[id]/verify-barcode/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/dispense-tasks/[id]/workbench/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/dispense-tasks/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/document-delivery-rules/[id]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/document-delivery-rules/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/drug-alert-rules/[id]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/drug-alert-rules/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/drug-master-imports/status/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/drug-masters/[id]/generic-recommendations/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/drug-masters/[id]/ingredient-group/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/drug-masters/[id]/package-insert/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/drug-masters/[id]/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/drug-masters/batch/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/facility-visit-batches/[id]/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/facility-visit-batches/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/facility-visit-batches/visit-days/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/first-visit-documents/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/handoff-board/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/inquiry-records/[id]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/interventions/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/jobs/[jobType]/route.ts",
+      "expectedCount": 4,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/me/logout-all/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/me/mfa/verify/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/me/org/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/medication-cycles/[id]/history/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/medication-cycles/[id]/transition/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/medication-cycles/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/medication-profiles/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/nav-badges/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/notification-rules/[id]/route.ts",
+      "expectedCount": 3,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/notification-rules/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/notifications/route.ts",
+      "expectedCount": 3,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/packaging-methods/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/partner-pharmacies/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/partner-visit-records/[id]/physician-report-draft/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/partner-visit-records/[id]/review/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/partner-visit-records/[id]/submit/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/partner-visit-records/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/patient-share-cases/[id]/activate/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/patient-share-cases/[id]/consents/[consentId]/revoke/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/patient-share-cases/[id]/consents/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/patient-share-cases/[id]/correction-requests/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/patient-share-cases/[id]/patient-link/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/patient-share-cases/[id]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/patient-share-cases/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/patients/[id]/archive/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/patients/[id]/communications/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/patients/[id]/documents/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/patients/[id]/field-revisions/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/patients/[id]/header-summary/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/patients/[id]/home-operations/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/patients/[id]/insurance/[insuranceId]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/patients/[id]/labs/[labId]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/patients/[id]/labs/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/patients/[id]/overview/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/patients/[id]/prescriptions/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/patients/[id]/readiness/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/patients/[id]/restore/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/patients/[id]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/patients/[id]/structured-care/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/patients/[id]/timeline/[eventId]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/patients/[id]/timeline/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/patients/[id]/visits/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/patients/[id]/workflow-preview/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/patients/board/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/patients/check-duplicate/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/patients/medications/bulk-export/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/patients/route.ts",
+      "expectedCount": 4,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/pharmacist-shift-templates/[id]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/pharmacist-shifts/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/pharmacists/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/pharmacy-contracts/[id]/documents/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/pharmacy-contracts/[id]/versions/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/pharmacy-contracts/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/pharmacy-cooperation-message-threads/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/pharmacy-drug-stock-requests/[id]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/pharmacy-drug-stock-templates/[id]/apply/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/pharmacy-drug-stocks/bulk/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/pharmacy-drug-stocks/copy/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/pharmacy-drug-stocks/history/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/pharmacy-drug-stocks/impact/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/pharmacy-drug-stocks/review/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/pharmacy-drug-stocks/safety-follow-up/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/pharmacy-drug-stocks/usage-mismatch/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/pharmacy-invoices/[id]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/pharmacy-invoices/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/pharmacy-partnerships/[id]/activate/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/pharmacy-partnerships/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/pharmacy-sites/[id]/insurance-configs/[configId]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/pharmacy-visit-requests/[id]/decision/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/pharmacy-visit-requests/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/platform/break-glass/[id]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/platform/break-glass/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/platform/tenants/[orgId]/audit/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/platform/tenants/[orgId]/data/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/platform/tenants/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/prescription-intakes/[id]/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/prescription-intakes/facility-batch/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/prescription-intakes/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/presence/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/push-subscription/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/qr-scan-drafts/[id]/confirm/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/qr-scan-drafts/[id]/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/qr-scan-drafts/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/residual-medications/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/saved-views/[id]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/service-areas/[id]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/service-areas/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/set-audits/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/settings/operational-policy/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/tasks/bulk/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/templates/[id]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/templates/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/visit-billing-candidates/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/visit-billing-candidates/summary/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/visit-brief-feedback/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/visit-preparations/brief-batch/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/visit-records/[id]/handoff/extract/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/visit-records/[id]/handoff/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/visit-records/[id]/handoff/supervision-confirm/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/visit-records/[id]/handoff/supervision-request/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/visit-records/[id]/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/visit-records/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/visit-routes/reorder/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/visit-routes/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/visit-schedule-proposals/billing-preview-batch/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/visit-schedule-proposals/billing-preview/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/visit-schedule-proposals/reorder/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/visit-schedules/[id]/reopen/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/visit-schedules/[id]/route.ts",
+      "expectedCount": 4,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/visit-schedules/reorder/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/visit-schedules/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/visit-vehicle-resources/route.ts",
+      "expectedCount": 1,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    },
+    {
+      "path": "src/app/api/workflow-exceptions/[id]/route.ts",
+      "expectedCount": 2,
+      "owner": "API-CONTRACT-001",
+      "debtId": "API-RESPONSE-SHAPE-001",
+      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
+      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
+    }
+  ]
+}
