@@ -21,6 +21,7 @@ const {
   visitScheduleFindManyMock,
   visitScheduleCountMock,
   workflowExceptionFindManyMock,
+  taskFindManyMock,
   taskCountMock,
   careCaseFindManyMock,
   membershipFindManyMock,
@@ -58,6 +59,7 @@ const {
   visitScheduleFindManyMock: vi.fn(),
   visitScheduleCountMock: vi.fn(),
   workflowExceptionFindManyMock: vi.fn(),
+  taskFindManyMock: vi.fn(),
   taskCountMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
   membershipFindManyMock: vi.fn(),
@@ -98,7 +100,7 @@ vi.mock('@/lib/db/client', () => ({
     $queryRaw: queryRawMock,
     visitSchedule: { findMany: visitScheduleFindManyMock, count: visitScheduleCountMock },
     workflowException: { findMany: workflowExceptionFindManyMock },
-    task: { count: taskCountMock },
+    task: { findMany: taskFindManyMock, count: taskCountMock },
     careCase: { findMany: careCaseFindManyMock },
     membership: { findMany: membershipFindManyMock },
     pharmacistShift: { findMany: pharmacistShiftFindManyMock },
@@ -272,6 +274,7 @@ describe('/api/dashboard/cockpit', () => {
         created_at: new Date(2026, 5, 12, 9, 12),
       },
     ]);
+    taskFindManyMock.mockResolvedValue([]);
     taskCountMock.mockResolvedValue(2);
     careCaseFindManyMock.mockResolvedValue([]);
     membershipFindManyMock.mockResolvedValue([
@@ -631,6 +634,76 @@ describe('/api/dashboard/cockpit', () => {
       expect.objectContaining({ carryover_count: 2 }),
       15_000,
     );
+  });
+
+  it('adds generic operational tasks to the unified urgent queue without duplicating inbound task sources', async () => {
+    taskFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'op_task_1',
+        display_id: 'TASK-001',
+        task_type: 'patient_self_report_followup',
+        title: '患者自己申告の確認',
+        description: '疼痛増悪の自己申告を確認する',
+        status: 'pending',
+        priority: 'urgent',
+        assigned_to: 'user_1',
+        due_date: new Date('2026-06-12T01:30:00.000Z'),
+        sla_due_at: null,
+        related_entity_type: 'patient',
+        related_entity_id: 'patient_task',
+        created_at: new Date('2026-06-12T00:05:00.000Z'),
+        updated_at: new Date('2026-06-12T00:10:00.000Z'),
+      },
+    ]);
+    patientFindManyMock.mockResolvedValue([{ id: 'patient_task', name: '患者 タスク' }]);
+
+    const response = (await GETDetails(createRequest('', '/api/dashboard/cockpit/details'), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const json = await response.json();
+    const taskItem = json.data.urgent_items.find(
+      (item: { id: string }) => item.id === 'task:op_task_1',
+    );
+    expect(taskItem).toMatchObject({
+      source: 'task',
+      source_id: 'op_task_1',
+      patient_id: 'patient_task',
+      patient_name: '患者 タスク',
+      title: '患者自己申告の確認',
+      summary: '疼痛増悪の自己申告を確認する',
+      due_at: new Date('2026-06-12T01:30:00.000Z').toISOString(),
+      waiting_since: new Date('2026-06-12T00:05:00.000Z').toISOString(),
+      action_href: '/patients/patient_task/collaboration',
+      action_label: '自己申告を確認',
+    });
+    expect(taskItem.badges).toEqual(
+      expect.arrayContaining([
+        { label: '緊急', tone: 'danger' },
+        { label: '未着手', tone: 'neutral' },
+      ]),
+    );
+    expect(json.data.urgent_total_count).toBe(5);
+
+    const taskQuery = taskFindManyMock.mock.calls.at(-1)?.[0];
+    expect(taskQuery?.where).toMatchObject({
+      org_id: 'org_1',
+      status: { in: ['pending', 'in_progress'] },
+      task_type: {
+        notIn: expect.arrayContaining([
+          'core.inbound_communication_review_required',
+          'pharmacy.inbound_medication_stock_signal_review_required',
+          'pharmacy.inbound_low_stock_unquantified_report',
+          'pharmacy.inbound_medication_safety_review_required',
+          'pharmacy.inbound_schedule_request_review_required',
+        ]),
+      },
+    });
+    expect(taskQuery?.take).toBe(13);
+    // Generic task source avoids an exact count query unless the limit+1 sentinel overflows.
+    expect(taskCountMock).toHaveBeenCalledTimes(1);
   });
 
   it('adds overdue callback follow-ups to the unified urgent queue', async () => {

@@ -17556,3 +17556,61 @@
 - next action:
   Push the implementation and ledger commits, then continue the backend-focused
   Plans.md objective from the next P0/P1 slice.
+
+## 2026-07-07 Dashboard generic task urgent source
+
+- current task:
+  Continue `DASH-P0-001 Unified Urgent Queue` by adding the remaining generic
+  OperationalTask source to the dashboard details urgent queue.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/server/services/dashboard-cockpit.ts`,
+  `src/types/dashboard-cockpit.ts`,
+  `src/server/services/dashboard-assignment-scope.ts`,
+  `src/lib/tasks/task-registry.ts`,
+  `src/lib/tasks/operational-task-presentation.ts`,
+  `src/lib/dashboard/home-link-builders.ts`,
+  `src/app/api/dashboard/cockpit/route.test.ts`,
+  and `gbrain search "DASH-P0-001 Unified Urgent Queue task source dashboard careviax"`.
+- files changed:
+  `src/server/services/dashboard-cockpit.ts`,
+  `src/app/api/dashboard/cockpit/route.test.ts`,
+  `ops/refactor/STATE.md`.
+- implementation:
+  Added a generic task urgent reader for the details segment. It surfaces open
+  urgent/high-priority or due-within-24-hours OperationalTasks that are not
+  already represented by the dedicated inbound urgent source. It reuses
+  `describeOperationalTask()` and task registry labels for links, queue labels,
+  and actions; resolves patient names for patient/case related tasks; and keeps
+  the source scoped through `buildDashboardTaskAssignmentWhere()`.
+- bugs found:
+  The unified urgent queue still had no generic `task` source, so important
+  high-priority operational tasks outside audit/inbound/stock/visit/report/
+  callback/billing could be absent from "今すぐ対応".
+- security risks reduced:
+  No auth/authz or route contract was weakened. The new query is org-scoped,
+  assignment-scoped, excludes dedicated inbound task types to avoid duplicate
+  source disclosure, and returns only already-authenticated dashboard data.
+- performance issues improved:
+  The generic task source fetches `limit + 1` rows and only runs an exact count
+  when the sentinel overflows, avoiding an extra count query for the common
+  empty/small case.
+- validation commands:
+  `pnpm exec vitest run src/app/api/dashboard/cockpit/route.test.ts --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint src/server/services/dashboard-cockpit.ts src/app/api/dashboard/cockpit/route.test.ts`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `git diff --check`.
+- validation results:
+  Dashboard cockpit route tests passed (1 file / 37 tests). Scoped ESLint
+  passed. Full typecheck passed. Diff check passed.
+- gbrain:
+  `careviax/implementation-decision/dashboard-generic-task-urgent-source-2026-07-07`.
+- remaining work:
+  Source-specific drilldown and role-focus ordering for the unified urgent
+  queue remain open. Production-like DB profiling is still needed after the
+  dashboard urgent queue sources settle.
+- next action:
+  Save the implementation decision to gbrain, commit and push this slice, then
+  continue with the next backend Plans.md task.

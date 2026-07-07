@@ -16,6 +16,9 @@ import { formatPrescriptionCardNumber } from '@/lib/prescription/rx-number';
 import { buildReportHref, buildReportSendHref } from '@/lib/reports/navigation';
 import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
 import { buildSetPlanHref } from '@/lib/set/navigation';
+import { buildTasksHref } from '@/lib/dashboard/home-link-builders';
+import { describeOperationalTask } from '@/lib/tasks/operational-task-presentation';
+import { getTaskTypeDefinition } from '@/lib/tasks/task-registry';
 import { canViewAllDashboardWork } from '@/lib/auth/visit-schedule-access';
 import { buildVisitHref, buildVisitRecordHref } from '@/lib/visits/navigation';
 import { applyTimeDateToDate, timeDateToString } from '@/lib/visits/time-of-day';
@@ -74,7 +77,16 @@ const CALLBACK_URGENT_FETCH_LIMIT = 12;
 const REPORT_URGENT_FETCH_LIMIT = 12;
 const BILLING_URGENT_FETCH_LIMIT = 12;
 const VISIT_PREPARATION_URGENT_FETCH_LIMIT = 12;
+const TASK_URGENT_RESPONSE_LIMIT = 12;
+const TASK_URGENT_DUE_LOOKAHEAD_MS = 24 * 60 * 60_000;
 const REPORT_BILLING_ITEM_RESPONSE_LIMIT = 10;
+const DASHBOARD_DEDICATED_URGENT_TASK_TYPES = [
+  'core.inbound_communication_review_required',
+  'pharmacy.inbound_medication_stock_signal_review_required',
+  'pharmacy.inbound_low_stock_unquantified_report',
+  'pharmacy.inbound_medication_safety_review_required',
+  'pharmacy.inbound_schedule_request_review_required',
+] as const;
 
 type DashboardScopeQuery =
   | { ok: true; scope: DashboardCockpitScope | null }
@@ -200,6 +212,28 @@ type DashboardBillingUrgentResult = {
 };
 
 type DashboardMedicationStockUrgentResult = {
+  items: DashboardUrgentItem[];
+  totalCount: number;
+};
+
+type DashboardGenericUrgentTask = {
+  id: string;
+  display_id: string | null;
+  task_type: string;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  assigned_to: string | null;
+  due_date: Date | null;
+  sla_due_at: Date | null;
+  related_entity_type: string | null;
+  related_entity_id: string | null;
+  created_at: Date;
+  updated_at: Date;
+};
+
+type DashboardTaskUrgentResult = {
   items: DashboardUrgentItem[];
   totalCount: number;
 };
@@ -955,6 +989,137 @@ function buildVisitPreparationUrgentItem(args: {
   };
 }
 
+function buildDashboardTaskUrgentWhere(args: {
+  orgId: string;
+  assignmentScope: DashboardAssignmentScope;
+  now: Date;
+}): Prisma.TaskWhereInput {
+  const dueThreshold = new Date(args.now.getTime() + TASK_URGENT_DUE_LOOKAHEAD_MS);
+  const assignmentWhere = buildDashboardTaskAssignmentWhere(args.assignmentScope);
+  const and: Prisma.TaskWhereInput[] = [
+    {
+      OR: [
+        { priority: { in: ['urgent', 'high'] } },
+        { due_date: { lte: dueThreshold } },
+        { sla_due_at: { lte: dueThreshold } },
+      ],
+    },
+  ];
+  if (Object.keys(assignmentWhere).length > 0) {
+    and.push(assignmentWhere);
+  }
+
+  return {
+    org_id: args.orgId,
+    status: { in: ['pending', 'in_progress'] },
+    task_type: { notIn: [...DASHBOARD_DEDICATED_URGENT_TASK_TYPES] },
+    AND: and,
+  };
+}
+
+function formatDashboardTaskPriorityLabel(priority: string) {
+  switch (priority) {
+    case 'urgent':
+      return '緊急';
+    case 'high':
+      return '高';
+    case 'normal':
+      return '通常';
+    case 'low':
+      return '低';
+    default:
+      return priority;
+  }
+}
+
+function formatDashboardTaskStatusLabel(status: string) {
+  switch (status) {
+    case 'pending':
+      return '未着手';
+    case 'in_progress':
+      return '対応中';
+    case 'completed':
+      return '完了';
+    case 'cancelled':
+      return '取消';
+    default:
+      return status;
+  }
+}
+
+function dashboardTaskPriorityTone(
+  priority: string,
+): DashboardUrgentItem['badges'][number]['tone'] {
+  if (priority === 'urgent') return 'danger';
+  if (priority === 'high') return 'warning';
+  if (priority === 'normal') return 'info';
+  return 'neutral';
+}
+
+function buildDashboardTaskActionHref(task: DashboardGenericUrgentTask) {
+  const presentation = describeOperationalTask(task);
+  if (presentation.actionHref && presentation.actionHref !== '/workflow') {
+    return presentation.actionHref;
+  }
+  return buildTasksHref({
+    status: '',
+    taskType: task.task_type,
+    relatedEntityType: task.related_entity_type ?? undefined,
+    relatedEntityId: task.related_entity_id ?? undefined,
+    context: 'dashboard_home',
+  });
+}
+
+function resolveDashboardTaskSeverity(args: {
+  task: DashboardGenericUrgentTask;
+  now: Date;
+}): DashboardUrgentItem['severity'] {
+  const dueAt = args.task.sla_due_at ?? args.task.due_date;
+  if (dueAt && dueAt <= args.now) return 'urgent';
+  if (args.task.priority === 'urgent') return 'urgent';
+  return 'warning';
+}
+
+function buildTaskUrgentItem(args: {
+  task: DashboardGenericUrgentTask;
+  patientId: string | null;
+  patientName: string | null;
+  now: Date;
+}): DashboardUrgentItem {
+  const definition = getTaskTypeDefinition(args.task.task_type);
+  const taskLabel = definition?.label ?? args.task.task_type;
+  const presentation = describeOperationalTask(args.task);
+  const dueAt = args.task.sla_due_at ?? args.task.due_date;
+  const summary =
+    args.task.description?.replace(/\s+/g, ' ').trim() ||
+    `${taskLabel} の対応が必要です。タスク一覧で状況を確認してください。`;
+
+  return {
+    id: `task:${args.task.id}`,
+    source: 'task',
+    source_id: args.task.id,
+    source_label: presentation.queueLabel,
+    reference_label: args.task.display_id ?? taskLabel,
+    severity: resolveDashboardTaskSeverity({ task: args.task, now: args.now }),
+    patient_id: args.patientId,
+    patient_name: args.patientName,
+    title: args.task.title,
+    summary,
+    due_at: dueAt?.toISOString() ?? null,
+    waiting_since: args.task.created_at.toISOString(),
+    badges: [
+      { label: taskLabel, tone: 'info' },
+      {
+        label: formatDashboardTaskPriorityLabel(args.task.priority),
+        tone: dashboardTaskPriorityTone(args.task.priority),
+      },
+      { label: formatDashboardTaskStatusLabel(args.task.status), tone: 'neutral' },
+    ],
+    action_href: buildDashboardTaskActionHref(args.task),
+    action_label: presentation.actionLabel,
+  };
+}
+
 function buildDashboardUrgentItems(args: {
   auditItems: CockpitAuditQueueItem[];
   inboundItems?: CockpitInboundItem[];
@@ -963,6 +1128,7 @@ function buildDashboardUrgentItems(args: {
   callbackItems?: DashboardUrgentItem[];
   reportItems?: DashboardUrgentItem[];
   billingItems?: DashboardUrgentItem[];
+  taskItems?: DashboardUrgentItem[];
   blockedReasons?: CockpitBlockedReason[];
   now: Date;
 }) {
@@ -976,6 +1142,7 @@ function buildDashboardUrgentItems(args: {
     ...(args.callbackItems ?? []),
     ...(args.reportItems ?? []),
     ...(args.billingItems ?? []),
+    ...(args.taskItems ?? []),
     ...(args.blockedReasons ?? []).map((reason) => buildBlockedReasonUrgentItem(reason, args.now)),
   ].sort(compareDashboardUrgentItems);
 }
@@ -2597,6 +2764,111 @@ async function readDashboardVisitPreparationUrgents(args: {
   );
 }
 
+async function resolveDashboardTaskPatients(args: {
+  orgId: string;
+  tasks: DashboardGenericUrgentTask[];
+}) {
+  const directPatientIds = new Set<string>();
+  const caseIds = new Set<string>();
+  for (const task of args.tasks) {
+    if (task.related_entity_type === 'patient' && task.related_entity_id) {
+      directPatientIds.add(task.related_entity_id);
+    }
+    if (task.related_entity_type === 'case' && task.related_entity_id) {
+      caseIds.add(task.related_entity_id);
+    }
+  }
+
+  const [patients, careCases] = await Promise.all([
+    directPatientIds.size > 0
+      ? prisma.patient.findMany({
+          where: { org_id: args.orgId, id: { in: Array.from(directPatientIds) } },
+          select: { id: true, name: true },
+        })
+      : [],
+    caseIds.size > 0
+      ? prisma.careCase.findMany({
+          where: { org_id: args.orgId, id: { in: Array.from(caseIds) } },
+          select: {
+            id: true,
+            patient_id: true,
+            patient: { select: { name: true } },
+          },
+        })
+      : [],
+  ]);
+
+  const patientNameById = new Map(patients.map((patient) => [patient.id, patient.name]));
+  const casePatientById = new Map(
+    careCases.map((careCase) => [
+      careCase.id,
+      { patientId: careCase.patient_id, patientName: careCase.patient.name },
+    ]),
+  );
+
+  return { patientNameById, casePatientById };
+}
+
+async function readDashboardTaskUrgents(args: {
+  ctx: AuthContext;
+  scopeContext: DashboardCockpitScopeContext;
+}): Promise<DashboardTaskUrgentResult> {
+  const where = buildDashboardTaskUrgentWhere({
+    orgId: args.ctx.orgId,
+    assignmentScope: args.scopeContext.assignmentScope,
+    now: args.scopeContext.now,
+  });
+  const rows = await prisma.task.findMany({
+    where,
+    orderBy: [{ sla_due_at: 'asc' }, { due_date: 'asc' }, { created_at: 'asc' }, { id: 'asc' }],
+    take: TASK_URGENT_RESPONSE_LIMIT + 1,
+    select: {
+      id: true,
+      display_id: true,
+      task_type: true,
+      title: true,
+      description: true,
+      status: true,
+      priority: true,
+      assigned_to: true,
+      due_date: true,
+      sla_due_at: true,
+      related_entity_type: true,
+      related_entity_id: true,
+      created_at: true,
+      updated_at: true,
+    },
+  });
+  const visibleRows = rows.slice(0, TASK_URGENT_RESPONSE_LIMIT);
+  const totalCount =
+    rows.length > TASK_URGENT_RESPONSE_LIMIT ? await prisma.task.count({ where }) : rows.length;
+  const { patientNameById, casePatientById } = await resolveDashboardTaskPatients({
+    orgId: args.ctx.orgId,
+    tasks: visibleRows,
+  });
+
+  return {
+    totalCount,
+    items: visibleRows.map((task) => {
+      const directPatientId =
+        task.related_entity_type === 'patient' ? task.related_entity_id : null;
+      const casePatient =
+        task.related_entity_type === 'case' && task.related_entity_id
+          ? (casePatientById.get(task.related_entity_id) ?? null)
+          : null;
+      const patientId = directPatientId ?? casePatient?.patientId ?? null;
+      return buildTaskUrgentItem({
+        task,
+        patientId,
+        patientName: directPatientId
+          ? (patientNameById.get(directPatientId) ?? null)
+          : (casePatient?.patientName ?? null),
+        now: args.scopeContext.now,
+      });
+    }),
+  };
+}
+
 async function readDashboardReportBilling(args: {
   ctx: AuthContext;
   scopeContext: DashboardCockpitScopeContext;
@@ -2882,6 +3154,7 @@ async function buildCockpitDetails(
     callbackUrgents,
     reportUrgents,
     billingUrgents,
+    taskUrgents,
     todaySchedules,
     openExceptions,
     carryoverCount,
@@ -2893,6 +3166,7 @@ async function buildCockpitDetails(
     readDashboardCallbackUrgents({ ctx, scopeContext }),
     readDashboardReportDeliveryUrgents({ ctx, scopeContext }),
     readDashboardBillingUrgents({ ctx, scopeContext }),
+    readDashboardTaskUrgents({ ctx, scopeContext }),
     readTodayVisits({
       orgId: ctx.orgId,
       assignmentScope: scopeContext.assignmentScope,
@@ -2945,6 +3219,7 @@ async function buildCockpitDetails(
     callbackItems: callbackUrgents.items,
     reportItems: reportUrgents.items,
     billingItems: billingUrgents.items,
+    taskItems: taskUrgents.items,
     blockedReasons,
     now: scopeContext.now,
   });
@@ -2956,6 +3231,7 @@ async function buildCockpitDetails(
     callbackUrgents.totalCount +
     reportUrgents.totalCount +
     billingUrgents.totalCount +
+    taskUrgents.totalCount +
     blockedReasons.length;
   return {
     ...scopeContext.metadata,
