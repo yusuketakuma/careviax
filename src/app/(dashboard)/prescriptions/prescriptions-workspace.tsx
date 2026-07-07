@@ -31,8 +31,8 @@ type FilterOption = { value: FilterKey; label: string };
 
 const PRESCRIPTION_INTAKE_PAGE_SIZE = 50;
 const REALTIME_INVALIDATE_EVENTS = [
-  'workflow_refresh',
-  'cycle_transition',
+  { type: 'workflow_refresh', source: 'prescription_intakes_create' },
+  { type: 'cycle_transition', source: 'medication_cycles_transition' },
   'qr_draft_confirmed',
 ] as const;
 

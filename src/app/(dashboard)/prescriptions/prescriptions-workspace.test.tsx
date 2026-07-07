@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { AnchorHTMLAttributes } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
@@ -371,30 +371,64 @@ describe('PrescriptionsWorkspace', () => {
     expect(screen.queryByRole('button', { name: '読み込み中...' })).toBeNull();
   });
 
-  it('keeps realtime invalidation without interval polling', () => {
-    render(<PrescriptionsWorkspace />);
+  it('keeps source-scoped realtime invalidation without interval polling', () => {
+    vi.useFakeTimers();
 
-    const realtimeOptions = latestRealtimeOptions();
-    expect(realtimeOptions.enabled).toBe(true);
+    try {
+      render(<PrescriptionsWorkspace />);
 
-    realtimeOptions.onEvent({ type: 'workflow_refresh' });
-    expect(invalidateQueriesMock).toHaveBeenCalledWith({
-      queryKey: ['prescription-intakes', 'org_1'],
-    });
+      const realtimeOptions = latestRealtimeOptions();
+      expect(realtimeOptions.enabled).toBe(true);
 
-    invalidateQueriesMock.mockClear();
+      realtimeOptions.onEvent({ type: 'workflow_refresh' });
+      expect(invalidateQueriesMock).not.toHaveBeenCalled();
 
-    realtimeOptions.onEvent({ type: 'qr_draft_created' });
-    expect(invalidateQueriesMock).not.toHaveBeenCalled();
+      realtimeOptions.onEvent({ type: 'workflow_refresh', source: 'dashboard' });
+      expect(invalidateQueriesMock).not.toHaveBeenCalled();
 
-    realtimeOptions.onEvent({ type: 'qr_draft_confirmed' });
-    expect(invalidateQueriesMock).toHaveBeenCalledWith({
-      queryKey: ['prescription-intakes', 'org_1'],
-    });
+      realtimeOptions.onEvent({ type: 'workflow_refresh', source: 'prescription_intakes_create' });
+      act(() => {
+        vi.advanceTimersByTime(150);
+      });
+      expect(invalidateQueriesMock).toHaveBeenCalledWith({
+        queryKey: ['prescription-intakes', 'org_1'],
+      });
 
-    invalidateQueriesMock.mockClear();
-    realtimeOptions.onEvent({ type: 'prescription_intake_created' });
-    expect(invalidateQueriesMock).not.toHaveBeenCalled();
+      invalidateQueriesMock.mockClear();
+      realtimeOptions.onEvent({ type: 'cycle_transition' });
+      expect(invalidateQueriesMock).not.toHaveBeenCalled();
+
+      realtimeOptions.onEvent({ type: 'cycle_transition', source: 'visit_schedules_update' });
+      expect(invalidateQueriesMock).not.toHaveBeenCalled();
+
+      realtimeOptions.onEvent({ type: 'cycle_transition', source: 'medication_cycles_transition' });
+      act(() => {
+        vi.advanceTimersByTime(150);
+      });
+      expect(invalidateQueriesMock).toHaveBeenCalledWith({
+        queryKey: ['prescription-intakes', 'org_1'],
+      });
+
+      invalidateQueriesMock.mockClear();
+
+      realtimeOptions.onEvent({ type: 'qr_draft_created' });
+      expect(invalidateQueriesMock).not.toHaveBeenCalled();
+
+      realtimeOptions.onEvent({ type: 'qr_draft_confirmed' });
+      act(() => {
+        vi.advanceTimersByTime(150);
+      });
+      expect(invalidateQueriesMock).toHaveBeenCalledWith({
+        queryKey: ['prescription-intakes', 'org_1'],
+      });
+
+      invalidateQueriesMock.mockClear();
+      realtimeOptions.onEvent({ type: 'prescription_intake_created' });
+      expect(invalidateQueriesMock).not.toHaveBeenCalled();
+    } finally {
+      vi.runOnlyPendingTimers();
+      vi.useRealTimers();
+    }
   });
 
   it('disables the intake query and realtime invalidation until org is available', () => {

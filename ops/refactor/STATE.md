@@ -13485,3 +13485,41 @@
   `git diff --check -- Plans.md ops/refactor/STATE.md` green.
 - remaining:
   Continue pruning stale implemented items from `Plans.md` as follow-up code scans prove them.
+
+## 2026-07-07 Prescriptions workspace source-scoped realtime
+
+- codex:
+  Continued `FE-RT-001` by narrowing `/prescriptions` workspace realtime invalidation. The
+  prescription intake list now invalidates for `workflow_refresh` only when
+  `source='prescription_intakes_create'`, for `cycle_transition` only when
+  `source='medication_cycles_transition'`, and still listens to `qr_draft_confirmed`.
+- files inspected:
+  `Plans.md`,
+  `src/app/(dashboard)/prescriptions/prescriptions-workspace.tsx`,
+  `src/app/(dashboard)/prescriptions/prescriptions-workspace.test.tsx`,
+  `src/app/api/prescription-intakes/route.ts`,
+  `src/app/api/medication-cycles/[id]/transition/route.ts`,
+  `src/lib/hooks/use-realtime-invalidation.ts`,
+  `src/lib/hooks/use-realtime-query.ts`,
+  `src/server/services/workflow-dashboard-cache.ts`.
+- files changed:
+  `src/app/(dashboard)/prescriptions/prescriptions-workspace.tsx`,
+  `src/app/(dashboard)/prescriptions/prescriptions-workspace.test.tsx`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  Reduced unnecessary `/api/prescription-intakes` refetches from unrelated `workflow_refresh` or
+  `cycle_transition` events while preserving refreshes for prescription intake creation, medication
+  cycle transitions, and QR draft confirmation.
+- validation:
+  `pnpm exec vitest run 'src/app/(dashboard)/prescriptions/prescriptions-workspace.test.tsx' src/lib/hooks/use-realtime-invalidation.test.tsx src/lib/hooks/use-realtime-query.test.tsx --reporter=dot --testTimeout=30000`
+  green (3 files / 27 tests);
+  `pnpm exec eslint 'src/app/(dashboard)/prescriptions/prescriptions-workspace.tsx' 'src/app/(dashboard)/prescriptions/prescriptions-workspace.test.tsx'`
+  green;
+  `pnpm exec prettier --check 'src/app/(dashboard)/prescriptions/prescriptions-workspace.tsx' 'src/app/(dashboard)/prescriptions/prescriptions-workspace.test.tsx' Plans.md ops/refactor/STATE.md`
+  green;
+  `git diff --check -- 'src/app/(dashboard)/prescriptions/prescriptions-workspace.tsx' 'src/app/(dashboard)/prescriptions/prescriptions-workspace.test.tsx' Plans.md ops/refactor/STATE.md`
+  green.
+- remaining:
+  Continue `FE-RT-001` source-scoped migration on dashboard, patients board, schedule, reports, and
+  handoff after this slice lands.
