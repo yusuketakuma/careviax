@@ -41,6 +41,62 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Plans.md status registry expansion / implemented-vs-remaining cleanup（pending commit）。
+  - current task:
+    `Plans.md` 内の既存タスクを最新 main の実装状態に合わせて整理し、実装済み・一部実装済み・未実装・human gate に分類する。未実装は次PRに切れる粒度へ拡充し、コード読解から見つかった派生タスクを追記する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `git log --oneline -80`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/dashboard-cockpit.ts`,
+    `src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.ts`,
+    `src/modules/pharmacy/medication-stock/**`,
+    `src/app/api/dashboard/cockpit/**`,
+    `src/app/api/communications/inbound/**`,
+    `src/app/api/patients/[id]/timeline/**`,
+    `src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx`,
+    `src/types/patient-movement-timeline.ts`,
+    `docs/compliance/access-control-policy.md`,
+    `src/lib/auth/permission-matrix.ts`,
+    and read-only subagent findings from `db_steward` and `performance-auditor`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Strengthened the top-level 2026-07-08 Plan Status Registry into the active entrypoint for the plan.
+    Added a track-level status index for `DASH-OPS`, `INB-001`, `RX-002`, `MOV-001`,
+    `OPS-RECOVERY-002`, `PERM-DOC-001`, module boundary, risk, `VS-AUTO`,
+    `UI-REDESIGN-001`, `PERF-DB-001`, and tenant/support tracks.
+    Marked dashboard summary/detail optimization, segment invalidation, dashboard urgent major sources,
+    dashboard stock/report-billing APIs, inbound schema/API/task/risk bridges, medication-stock schema/API/apply,
+    movement timeline foundation, AWS backup monitor hardening, and access-control policy as implemented or partially implemented.
+    Rewrote the active backlog table so remaining tasks include dependencies, acceptance, and validation evidence.
+    Updated the Medication Stock Ledger section so DB/schema/RLS/index/domain/summary/apply phases are not re-tasked as missing work.
+  - derived tasks added:
+    `PERF-DB-002` dashboard medication-stock signal count consolidation;
+    `PERF-DB-003` inbound-only communication queue source gating;
+    `PERF-DB-004` report workspace inbound evidence direct count/exists helper;
+    `PERF-DB-005` legacy patient detail full read bounded scoped read;
+    `PERF-DB-006` care-report bounded search and EXPLAIN-backed index backlog;
+    `PERF-DB-007` movement timeline caller-limit-aware source reads;
+    `PLANS-HYGIENE-002`, `ROUTE-LINK-001`, and `PAYLOAD-BUDGET-001`.
+  - bugs found:
+    `Plans.md` still described Medication Stock Ledger DB/schema/API as future work even though current code has schema, RLS/index, domain helper, summary API, and inbound signal apply. Fixed the plan language to prevent duplicate implementation.
+  - security risks reduced:
+    Kept dashboard and frontend guidance aligned with the SSOT decision that authenticated operational screens may show permissioned PHI/medical details, while summary/list DTOs, notifications, audit diffs, server logs, exports, public URLs, and Oracle/GPT prompts must not inherit raw operational content.
+  - performance issues improved:
+    No runtime code changed. Planning now prioritizes two no-migration read-speed improvements from code inspection: `listCommunicationQueue()` source gating for inbound-only calls and direct inbound count/exists helper for report workspace evidence. Additional EXPLAIN-gated index/migration candidates are separated from immediate code-only work.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md`;
+    `git diff --check -- Plans.md`.
+  - validation results:
+    Prettier completed with no changes needed after patching. Diff check passed.
+  - remaining:
+    This was a documentation/planning slice only. The first implementation follow-up should be `PERF-DB-003`, then `PERF-DB-004`, then `PERF-DB-002`. `PLANS-HYGIENE-002` remains to archive/reference-link old long prompt blocks out of the active plan.
+  - next action:
+    Commit and push this Plans/STATE cleanup slice, then implement `PERF-DB-003`.
+
 - codex: OPS-RECOVERY-002 AWS Backup assurance health hardening（commit `3ccc8b8e2`, pushed to `main`）。
   - current task:
     DBバックアップ/復旧のAWS対応として、既存 AWS Backup recovery point monitor を
