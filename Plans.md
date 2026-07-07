@@ -724,17 +724,7 @@ notification:
 
 #### P0/P1: 患者の動きタイムライン Patient Movement Timeline（MOV-001） `cc:TODO`
 
-> 2026-07-07 整理。`movement` タブ、`PatientMovementTimeline`、共通 `PatientMovementTimelineEvent` 型、`/api/patients/:id/timeline/:eventId` resolver、処方/訪問/文書/MCS/電話/協力薬局/タスク系 marker の土台は実装済みのため、実装済みフェーズと重複した詳細仕様は削除した。MOV-001 の残作業は、正式な Inbound / MedicationStock / safety source と raw_text 再認可 UI、Google Maps タイムライン風の最終UX仕上げに限定する。
-
-**実装済みとして Plans から削除した範囲**:
-
-- 患者詳細 `movement` タブ、hash alias、Command excerpt からの導線。
-- `PatientMovementTimeline` の lazy load と `history` タブからの責務分離。
-- `src/types/patient-movement-timeline.ts` への共通型分離。
-- `patient-movement-timeline-presenter` による controlled summary / category / href / raw detail omission。
-- `/api/patients/[id]/timeline/[eventId]` の safe resolver。
-- 既存 `SourceAdapter` を使った処方、訪問、文書、報告、共有、MCS、電話、協力薬局、task の marker 化。
-- 処方内容、訪問本文、文書本文、添付名、storage key、signed URL を timeline JSON / card / search haystack に出さない regression 方針。
+> 2026-07-07 整理。MOV-001 は残作業だけを管理する。対象は、正式な Inbound / MedicationStock / safety source、raw_text 再認可 UI、Google Maps タイムライン風（上部地図なし）の最終UX仕上げに限定する。
 
 **残スコープ**:
 
@@ -1055,19 +1045,14 @@ staging rule:
 
 **コード再スキャンで確認した現在地**:
 
-- `src/components/layout/app-shell.tsx`: `CommandPalette`、`ShortcutHelpModal`、`InstallPrompt`、`SessionTimeoutModal`、`MobileOrientationGuard` は dynamic import 化済み。`CommandPalette` は `paletteOpen` 時のみ mount され、最小シェルでは閉じる。残る実測は `FE-BUDGET-001` / `FE-BUD-001` で扱う。
-- `src/lib/hooks/use-realtime-invalidation.ts` / `src/lib/hooks/use-realtime-query.ts`: default は `invalidateOn=false`、全 event invalidate は `invalidateOn='all'` の明示制御、source rule、150ms debounce まで実装済み。残は主要画面ごとの source taxonomy / invalidation rule の継続棚卸し。
-- `src/lib/realtime/events.ts` / `src/lib/realtime/shared-event-stream.ts`: single event は event type 別 allowlist、unknown event は safe `workflow_refresh`、通知 array payload は shared stream 境界で `sse-safe` 正規化済み。残タスクではなく、今後の event type 追加時に allowlist test を必須にする。
-- `src/components/ui/data-table.tsx`: global filter / column filter debounce は実装済み。残は PHI 画面での client CSV export policy、server export 強制、export scope / masking / audit の統一。
 - `src/app/(dashboard)/patients/[id]/card-workspace.tsx`: dynamic import と tabs は入っているが、`CardWorkspace` 本体は約 5,800 行の client component で、複数 query/mutation、Command Center、在宅運用、請求、共有、履歴、DataTable を同居させている。非 active tab にも hooks が残りやすい。
 - `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`: `useWatch({ control: form.control })` の全体 watch、音声/添付/CDS/report readiness/location/offline を同一巨大 form に含む。残は section-level watch / lazy mount / step transition immediate save。
 - `src/app/(dashboard)/reports/report-share-workspace.tsx`: `useQuery` + `REPORT_WORKSPACE_REFETCH_INTERVAL_MS` の固定 polling が残る。realtime connected 時は無駄な polling を止められる。
-- `src/app/sw.ts`: CacheStorage policy は API/認証済み navigation を network-only にし、push event は `redactPushPayloadForOsBridge()` 経由で固定 title、type 別汎用 body、`/notifications` のみを OS 通知へ渡す。click handler も notification data URL を信用せず `/notifications` を開く。
 - `src/components/layout/mobile-nav.tsx` / `src/components/layout/navigation-config.ts`: mobile bottom nav はホーム/スケジュール/訪問/患者+メニューに絞られている。工程別の下部 contextual CTA は未実装。active state は `activePrefixes` / `excludePrefixes` / `excludeExact` で細かく制御され、matrix test の拡張余地がある。
 
 | ID             | 優先度 | 既存レーン                                                     | タスク                                        | 実装単位                                                                                                                                                                                                                                                                                                        | 受入条件 / validation                                                                                                                                                                                                     |
 | -------------- | ------ | -------------------------------------------------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| FE-RT-001      | P0/P1  | `PERF-BFF-001`, `PERF-X-001`, `FE-BUD-001`                     | Realtime invalidation policy                  | 処方受付 triage/cockpit query は `workflow_refresh` を `prescription_intakes_create` source に限定済み。残: dashboard、patients board、schedule、reports、handoff など主要画面の source rule への段階移行と source taxonomy 整理。                                                                              | 主要画面で invalidate 対象 event が明示される。`workflow_refresh` 乱発で heavy BFF が一斉 refetch しない。                                                                                                                |
+| FE-RT-001      | P0/P1  | `PERF-BFF-001`, `PERF-X-001`, `FE-BUD-001`                     | Realtime invalidation policy                  | 残: dashboard、patients board、schedule、reports、handoff など主要画面の source rule への段階移行と source taxonomy 整理。                                                                                                                                                                                      | 主要画面で invalidate 対象 event が明示される。`workflow_refresh` 乱発で heavy BFF が一斉 refetch しない。                                                                                                                |
 | FE-PAT-001     | P1     | `PAT-DETAIL-PERF-001`, `UX-CMD-001`, `FE-BUD-001`              | Patient detail island split                   | `CardWorkspaceShell`、`CommandTab`、`FoundationTab`、`MedicationVisitTab`、`SharingDocumentsTab`、`BillingConferenceTab`、`HistoryStructuredTab` に分割する。active tab だけ query/mutation hooks と heavy panels を lazy initialize。                                                                          | 患者詳細初期表示では Command tab の最小 island だけ hydrate。非 active tab の mutation hooks が初期化されない。tab 切替時に必要 island を lazy load。bundle analyzer / route metrics で初期 JS と hydration time を確認。 |
 | FE-VISIT-001   | P0/P1  | `VISIT-SYNC-001`, `UX-MOB-001`, `DEV-MOB-001`, `MOB-001`       | Visit record form split / section-level watch | `VisitRecordShell`、`VisitTimingSection`、`MedicationAdherenceSection`、`ResidualMedicationSection`、`SideEffectSection`、`SoapSection`、`AttachmentsSection`、`ReportReadinessSection`、`LocationSection`、`OfflineSyncBar` へ分割する。`useWatch` は section 単位にし、autosave は差分/section 単位に寄せる。 | keystroke lag が出ない。訪問開始/終了、残薬、添付追加は即保存。5秒 debounce autosave と step transition 即保存。未同期/保存中/端末保存済/同期済/競合ありを下部固定バーで表示。mobile E2E と offline draft tests を追加。  |
 | FE-MOB-001     | P1     | `UX-MOB-001`, `DSP-UX-002`, `UX-CMD-001`                       | Mobile contextual bottom action               | bottom nav 4項目+メニューは維持し、画面ごとに contextual CTA を下部に出す。処方受付=新規受付/QR下書き、調剤/監査=現在患者の次操作、報告=下書き/送付確認、患者詳細=Command/訪問/報告。                                                                                                                           | 主要作業へ 1 tap で進める。訪問記録 immersive shell の下部固定バーと衝突しない。44px target、focus order、safe-area、screen reader label を mobile tests で確認。UI実装時は `gpt-image-2` 参照案を作る。                  |
@@ -1078,9 +1063,9 @@ staging rule:
 
 **推奨 PR / slice 分割**:
 
-1. `FE-RT-001`: Realtime の event source rule を主要画面へ段階展開し、無駄 refetch を抑える。client payload allowlist / notification array redaction は実装済みのため、新規 event type 追加時は allowlist test を必須にする。
+1. `FE-RT-001`: Realtime の event source rule を主要画面へ段階展開し、無駄 refetch を抑える。
 2. `FE-VISIT-001` + `VISIT-SYNC-001`: 訪問記録の autosave/sync hardening と render split は同じ mobile field-loss リスクとして実装する。
-3. `FE-PAT-001`: 患者詳細 tab 化済みの成果を island split へ進め、Command Center 以外の heavy tab を初期 hydrate しない。
+3. `FE-PAT-001`: 患者詳細をさらに island split へ進め、Command Center 以外の heavy tab を初期 hydrate しない。
 4. `FE-ERR-001` + `FE-ADMIN-001`: admin screen 群の loading/error/export/destructive action policy を shared pattern へ展開する。
 5. `FE-MOB-001` + `FE-OFFLINE-001` + `FE-BUDGET-001`: mobile CTA、storage PHI audit、interaction budget を UI state matrix と性能計測に接続する。
 

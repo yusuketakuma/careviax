@@ -13451,3 +13451,37 @@
   `MOV-001` still needs formal INB signal / MedicationStock Ledger / safety finding sources and
   any missing canonical href builders for sources that cannot currently produce direct relative
   deep links.
+
+## 2026-07-07 Plans implemented-task pruning
+
+- codex:
+  Cleaned `Plans.md` so completed planning notes do not remain as active task content. Removed the
+  MOV-001 "implemented and removed" bullet block from the plan itself, narrowed the MOV-001 intro to
+  only active residual work, and removed FE common-foundation bullets for AppShell lazy globals,
+  shared realtime defaults, realtime payload allowlists, DataTable debounce, and SW push redaction
+  from the active frontend backlog context.
+- files inspected:
+  `Plans.md`,
+  `src/components/layout/app-shell.tsx`,
+  `src/app/sw.ts`,
+  `src/lib/hooks/use-realtime-invalidation.ts`,
+  `src/lib/hooks/use-realtime-query.ts`,
+  `src/lib/realtime/events.ts`,
+  `src/lib/realtime/shared-event-stream.ts`,
+  `src/components/ui/data-table.tsx`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+  `src/app/api/patients/[id]/timeline/[eventId]/route.ts`,
+  `src/server/services/patient-movement-timeline-presenter.ts`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  Reduced plan drift by keeping implementation-ready backlog sections focused on remaining work
+  rather than completed slices. This makes follow-up task selection less likely to re-open AppShell,
+  realtime payload hardening, DataTable debounce, SW push redaction, or already-landed patient
+  movement foundations.
+- validation:
+  `pnpm exec prettier --check Plans.md ops/refactor/STATE.md` green;
+  `git diff --check -- Plans.md ops/refactor/STATE.md` green.
+- remaining:
+  Continue pruning stale implemented items from `Plans.md` as follow-up code scans prove them.
