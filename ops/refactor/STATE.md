@@ -41,6 +41,42 @@
 
 ## 直近の land（本日・要点）
 
+- codex: FE-RT-001 prescription intake source-scoped invalidation（commit `59d6ca264`, pending push）。
+  - current task:
+    処方受付 triage 画面の `workflow_refresh` invalidation を全source対象から `prescription_intakes_create` source のみに絞り、無関係な workflow event で処方受付BFFと右レールcockpitを再取得しないようにする。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/prescriptions/intake/intake-triage-content.tsx`,
+    `src/app/(dashboard)/prescriptions/intake/intake-triage-content.test.tsx`,
+    `src/app/api/prescription-intakes/route.ts`,
+    `src/lib/hooks/use-realtime-invalidation.ts`,
+    `src/lib/hooks/use-realtime-query.ts`.
+  - files changed:
+    `src/app/(dashboard)/prescriptions/intake/intake-triage-content.tsx`,
+    `src/app/(dashboard)/prescriptions/intake/intake-triage-content.test.tsx`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `PRESCRIPTION_INTAKE_REALTIME_INVALIDATION_EVENTS` を追加し、`cycle_transition` は維持しつつ `workflow_refresh` は `{ type: 'workflow_refresh', source: 'prescription_intakes_create' }` に限定した。
+    triage query と cockpit query の両方で同じ source-scoped policy を使うようにした。
+    既存 query contract test に `invalidateOn` の期待を追加し、再び broad `workflow_refresh` に戻らないようにした。
+    `Plans.md` の `FE-RT-001` 行に、処方受付 triage/cockpit query は対応済みで残りは主要画面の段階展開であることを記録した。
+  - bugs found:
+    処方受付画面は `workflow_refresh` をsource指定なしで購読しており、処方受付以外のworkflow mutationでも取込BFFと右レールcockpitを再取得し得た。
+  - security risks reduced:
+    なし。PHI payload boundary は前回 `FE-RT-002` で対応済み。本sliceはrefetch範囲の制限。
+  - performance issues improved:
+    unrelated `workflow_refresh` burst 時の処方受付 triage/cockpit 再取得を抑制する小さい性能改善。
+  - validation:
+    `pnpm exec vitest run 'src/app/(dashboard)/prescriptions/intake/intake-triage-content.test.tsx' src/lib/hooks/use-realtime-invalidation.test.tsx src/lib/hooks/use-realtime-query.test.tsx --reporter=dot --testTimeout=30000` → pass。
+    `pnpm exec eslint 'src/app/(dashboard)/prescriptions/intake/intake-triage-content.tsx' 'src/app/(dashboard)/prescriptions/intake/intake-triage-content.test.tsx'` → pass。
+    `pnpm exec prettier --check 'src/app/(dashboard)/prescriptions/intake/intake-triage-content.tsx' 'src/app/(dashboard)/prescriptions/intake/intake-triage-content.test.tsx'` → pass after formatting.
+    `git diff --check -- 'src/app/(dashboard)/prescriptions/intake/intake-triage-content.tsx' 'src/app/(dashboard)/prescriptions/intake/intake-triage-content.test.tsx'` → pass。
+  - remaining work:
+    scoped commit 済み。amend 後に push。
+
 - codex: Plans.md implemented task cleanup（commit `dedc994f4`, pushed to `main`）。
   - current task:
     `Plans.md` 内の実装済みタスクを削除し、残タスクだけが実装バックログとして読めるように整理する。

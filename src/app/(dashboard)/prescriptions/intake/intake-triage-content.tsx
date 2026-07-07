@@ -300,6 +300,12 @@ function TriageSkeleton() {
   );
 }
 
+const PRESCRIPTION_INTAKE_WORKFLOW_SOURCE = 'prescription_intakes_create';
+const PRESCRIPTION_INTAKE_REALTIME_INVALIDATION_EVENTS = [
+  'cycle_transition',
+  { type: 'workflow_refresh', source: PRESCRIPTION_INTAKE_WORKFLOW_SOURCE },
+] as const;
+
 export function IntakeTriageContent() {
   const orgId = useOrgId();
   const [laneFilter, setLaneFilter] = useState<LaneFilter>('fax');
@@ -310,14 +316,14 @@ export function IntakeTriageContent() {
     queryFn: () => fetchIntakeTriage(orgId),
     staleTime: 30_000,
     enabled: !isBootstrappingOrg,
-    invalidateOn: ['cycle_transition', 'workflow_refresh'],
+    invalidateOn: PRESCRIPTION_INTAKE_REALTIME_INVALIDATION_EVENTS,
   });
   const cockpitQuery = useRealtimeQuery({
     queryKey: ['dashboard', 'cockpit', orgId],
     queryFn: () => fetchCockpit(orgId),
     staleTime: 30_000,
     enabled: !isBootstrappingOrg,
-    invalidateOn: ['cycle_transition', 'workflow_refresh'],
+    invalidateOn: PRESCRIPTION_INTAKE_REALTIME_INVALIDATION_EVENTS,
   });
 
   const now = new Date();

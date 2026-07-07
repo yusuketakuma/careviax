@@ -283,9 +283,17 @@ describe('IntakeTriageContent', () => {
 
   it('fetches triage and cockpit queries with org headers and the shared JSON reader contract', async () => {
     const fetchMock = stubJsonFetch({ data: buildTriageFixture() });
-    const captured: Array<{ queryKey: unknown[]; queryFn: () => Promise<unknown> }> = [];
+    const captured: Array<{
+      queryKey: unknown[];
+      queryFn: () => Promise<unknown>;
+      invalidateOn: unknown;
+    }> = [];
     useRealtimeQueryMock.mockImplementation(
-      (options: { queryKey: unknown[]; queryFn: () => Promise<unknown> }) => {
+      (options: {
+        queryKey: unknown[];
+        queryFn: () => Promise<unknown>;
+        invalidateOn: unknown;
+      }) => {
         captured.push(options);
         return {
           data: options.queryKey[0] === 'dashboard' ? buildCockpitFixture() : buildTriageFixture(),
@@ -303,6 +311,10 @@ describe('IntakeTriageContent', () => {
       expect(captured.map((config) => config.queryKey)).toEqual([
         ['prescription-intakes', 'triage', 'org_1'],
         ['dashboard', 'cockpit', 'org_1'],
+      ]);
+      expect(captured.map((config) => config.invalidateOn)).toEqual([
+        ['cycle_transition', { type: 'workflow_refresh', source: 'prescription_intakes_create' }],
+        ['cycle_transition', { type: 'workflow_refresh', source: 'prescription_intakes_create' }],
       ]);
 
       await expect(captured[0]?.queryFn()).resolves.toStrictEqual(buildTriageFixture());
