@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: RX-REG-FACET-001 route query-count observability（pending commit）。
+- codex: RX-REG-FACET-001 route query-count observability（628c634a5）。
   - current task:
     prescription intake `facets=1` の DB query count を route performance に接続し、admin performance 画面で確認できるようにする。
   - files inspected:
@@ -87,7 +87,7 @@
     `pnpm typecheck` → fail（Node heap 4GB OOM、exit 134）。
     `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` → pass。
   - remaining work:
-    `Plans.md` / `ops/refactor/STATE.md` の diff check 後に scoped commit / push。
+    commit hash 記録を push。
 
 - codex: Plans.md implemented-task cleanup follow-up（22240c1d0 / pushed）。
   - current task:
