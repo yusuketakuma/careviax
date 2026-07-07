@@ -25,12 +25,14 @@ pnpm aws:rds-backup:template:validate
 pnpm aws:rds-backup:template:validate -- --live-aws --strict
 ```
 
-AWS Backup recovery point の運用監視は admin `/api/health` の詳細チェックで確認する。`checks.backups.awsBackupRecoveryPoint` と `checks.backups.rdsSnapshot` の両方が stale/error でないことを復旧前提条件にする。
+AWS Backup / RDS backup assurance の運用監視は admin `/api/health` の詳細チェックで確認する。`checks.backups.awsBackupVault`、`checks.backups.awsBackupRecoveryPoint`、`checks.backups.rdsInstanceBackupConfiguration`、`checks.backups.rdsSnapshot` が stale/error でないことを復旧前提条件にする。
 
 ```text
 AWS_BACKUP_VAULT_NAME=ph-os-prod-rds-backup-vault
 AWS_BACKUP_RDS_RESOURCE_ARN=arn:aws:rds:ap-northeast-1:<account-id>:db:ph-os-prod
 AWS_BACKUP_RECOVERY_POINT_MAX_AGE_HOURS=26
+RDS_DB_INSTANCE_ID=ph-os-prod
+RDS_BACKUP_MIN_RETENTION_DAYS=7
 ```
 
 ### 前提条件

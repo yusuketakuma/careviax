@@ -102,6 +102,69 @@ describe('/api/health GET', () => {
     });
   });
 
+  it('sanitizes backup monitor details before returning admin health payloads', async () => {
+    getAuthContextMock.mockResolvedValue({
+      userId: 'user_1',
+      orgId: 'org_1',
+      role: 'admin',
+    });
+    queryRawMock.mockResolvedValue([{ '?column?': 1 }]);
+    runBackupMonitorChecksMock.mockResolvedValue({
+      overall: 'warning',
+      checks: {
+        awsBackupVault: {
+          status: 'warning',
+          message: 'provider returned arn:aws:backup:ap-northeast-1:111122223333:backup-vault:x',
+          details: {
+            backupVaultName: 'ph-os-prod-rds-backup-vault',
+            BackupVaultArn: 'arn:aws:backup:ap-northeast-1:111122223333:backup-vault:x',
+            EncryptionKeyArn: 'arn:aws:kms:ap-northeast-1:111122223333:key/kms-secret',
+            vaultState: 'AVAILABLE',
+            nested: {
+              endpoint: 'ph-os-prod.cluster-secret.ap-northeast-1.rds.amazonaws.com',
+              VpcSecurityGroups: [{ VpcSecurityGroupId: 'sg-secret' }],
+              rawError: 'token=secret db_password=value',
+            },
+          },
+        },
+        rdsInstanceBackupConfiguration: {
+          status: 'warning',
+          details: {
+            status: 'available',
+            DBInstanceArn: 'arn:aws:rds:ap-northeast-1:111122223333:db:ph-os-prod',
+            DbiResourceId: 'db-resource-secret',
+            storageEncrypted: true,
+            subnets: ['subnet-secret'],
+          },
+        },
+      },
+    });
+
+    const response = await GET(healthRequest());
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+
+    expect(payload.checks.backups.details.awsBackupVault.details).toMatchObject({
+      backupVaultName: 'ph-os-prod-rds-backup-vault',
+      vaultState: 'AVAILABLE',
+    });
+    expect(payload.checks.backups.details.rdsInstanceBackupConfiguration.details).toMatchObject({
+      status: 'available',
+      storageEncrypted: true,
+    });
+
+    const serialized = JSON.stringify(payload);
+    expect(serialized).not.toContain('arn:aws:');
+    expect(serialized).not.toContain('111122223333');
+    expect(serialized).not.toContain('cluster-secret');
+    expect(serialized).not.toContain('sg-secret');
+    expect(serialized).not.toContain('subnet-secret');
+    expect(serialized).not.toContain('db-resource-secret');
+    expect(serialized).not.toContain('kms-secret');
+    expect(serialized).not.toContain('token=secret');
+    expect(serialized).not.toContain('db_password=value');
+  });
+
   it('returns down for authenticated admins when the database check fails', async () => {
     getAuthContextMock.mockResolvedValue({
       userId: 'user_1',

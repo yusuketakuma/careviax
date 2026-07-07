@@ -41,6 +41,95 @@
 
 ## 直近の land（本日・要点）
 
+- codex: OPS-RECOVERY-002 AWS Backup assurance health hardening（pending commit）。
+  - current task:
+    DBバックアップ/復旧のAWS対応として、既存 AWS Backup recovery point monitor を
+    read-only assurance monitor へ拡張し、admin `/api/health` で復旧可能性の設定不備に
+    気づけるようにする。runtime restore API は作らず、復元は runbook/live drill に残す。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `docs/backup-recovery-drill.md`,
+    `docs/compliance/backup-recovery-drill.md`,
+    `docs/compliance/rds-configuration.md`,
+    `docs/env-catalog.md`,
+    `src/server/services/backup-monitor.ts`,
+    `src/server/services/backup-monitor.test.ts`,
+    `src/app/api/health/route.ts`,
+    `src/app/api/health/route.test.ts`,
+    `tools/scripts/aws-rds-backup-template-validate.ts`,
+    `tools/scripts/aws-rds-backup-template-validate.test.ts`,
+    official AWS docs for `DescribeBackupVault`, `ListRecoveryPointsByBackupVault`, and
+    `DescribeDBInstances`.
+  - files changed:
+    `Plans.md`,
+    `docs/backup-recovery-drill.md`,
+    `docs/compliance/backup-recovery-drill.md`,
+    `docs/compliance/rds-configuration.md`,
+    `docs/env-catalog.md`,
+    `src/server/services/backup-monitor.ts`,
+    `src/server/services/backup-monitor.test.ts`,
+    `src/app/api/health/route.ts`,
+    `src/app/api/health/route.test.ts`,
+    `tools/scripts/aws-rds-backup-template-validate.ts`,
+    `tools/scripts/aws-rds-backup-template-validate.test.ts`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Added `checkAwsBackupVault()` using `DescribeBackupVault` and
+    `checkRdsInstanceBackupConfiguration()` using `DescribeDBInstances`.
+    `runBackupMonitorChecks()` now returns `awsBackupVault`,
+    `awsBackupRecoveryPoint`, `rdsInstanceBackupConfiguration`, `rdsSnapshot`,
+    `s3Versioning`, `auditArchive`, and `cognitoAdvancedSecurity`.
+    RDS instance monitoring requires `RDS_DB_INSTANCE_ID` instead of falling back to
+    ARN. The returned details are limited to safe operational fields such as vault
+    state, recovery point count, backup retention days, latest restorable time,
+    deletion protection, storage encryption, public accessibility, Multi-AZ, and
+    backup window.
+  - bugs found:
+    Initial widened AWS client response unions would fail typecheck on
+    `RecoveryPoints` / `DBSnapshots`; fixed with command-specific response casts.
+    `/api/health` previously passed backup monitor details through wholesale for
+    admin users; fixed with backup details sanitization before response serialization.
+  - security risks reduced:
+    Backup health/log/route tests now assert that AWS account ids, raw ARNs, RDS
+    endpoints, KMS key ARNs, security groups, subnets, raw provider errors, tokens,
+    and passwords are not exposed. The AWS template validator now fails if app
+    runtime infrastructure contains restore/delete/secret-write/pass-role actions
+    including `backup:StartRestoreJob`, `backup:DeleteRecoveryPoint`,
+    `backup:UpdateRecoveryPointLifecycle`, `rds:RestoreDBInstanceToPointInTime`,
+    `rds:ModifyDBInstance`, `rds:DeleteDBInstance`,
+    `rds:DeleteDBInstanceAutomatedBackup`, `secretsmanager:PutSecretValue`, or
+    `iam:PassRole`.
+  - performance issues improved:
+    No DB query performance change in this slice. Health backup checks remain
+    admin-only and are skipped for public liveness so public `/api/health` stays
+    cheap.
+  - gbrain memory:
+    `phos-aws-backup-assurance-health-hardening`.
+  - validation commands:
+    `pnpm exec vitest run src/server/services/backup-monitor.test.ts src/app/api/health/route.test.ts tools/scripts/aws-rds-backup-template-validate.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint src/server/services/backup-monitor.ts src/server/services/backup-monitor.test.ts src/app/api/health/route.ts src/app/api/health/route.test.ts tools/scripts/aws-rds-backup-template-validate.ts tools/scripts/aws-rds-backup-template-validate.test.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm aws:rds-backup:template:validate -- --json`;
+    `pnpm backup:drill:check`;
+    `pnpm exec prettier --check Plans.md docs/backup-recovery-drill.md docs/compliance/backup-recovery-drill.md docs/compliance/rds-configuration.md docs/env-catalog.md src/server/services/backup-monitor.ts src/server/services/backup-monitor.test.ts src/app/api/health/route.ts src/app/api/health/route.test.ts tools/scripts/aws-rds-backup-template-validate.ts tools/scripts/aws-rds-backup-template-validate.test.ts`;
+    `git diff --check`.
+  - validation results:
+    Focused Vitest passed (3 files / 30 tests). ESLint passed. Full typecheck
+    passed. AWS Backup template validator passed with 12 pass / 0 fail / 1 live
+    AWS skip. Backup drill check passed as a preflight and correctly reports
+    `ready_for_live_drill: false` because `DATABASE_URL` / `AWS_REGION` are not
+    set and no live drill has been recorded. Prettier check and diff check passed.
+  - remaining:
+    Run `pnpm aws:rds-backup:template:validate -- --live-aws --strict` with a
+    production-equivalent role, verify admin `/api/health` against real AWS
+    Backup/RDS, and record an actual live recovery drill under
+    `docs/compliance/backup-recovery-drill.md`.
+  - next action:
+    Commit and push this AWS backup assurance slice, then resume `PERF-DB-001`
+    read-path performance inventory.
+
 - codex: Plans.md implementation status registry / backlog expansion（pending commit）。
   - current task:
     既存 `Plans.md` 内の実装済み / 一部実装済み / 未実装を最新 main のコードとコミット履歴に照らして整理し、

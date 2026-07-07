@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  checkAwsBackupVault,
   checkAwsBackupRecoveryPoint,
   checkAuditLogArchivePolicy,
   checkCognitoAdvancedSecurity,
+  checkRdsInstanceBackupConfiguration,
   checkRdsSnapshot,
   checkS3Versioning,
   runBackupMonitorChecks,
@@ -11,9 +13,11 @@ import {
 const {
   backupClientMock,
   backupSendMock,
+  describeBackupVaultCommandMock,
   listRecoveryPointsByBackupVaultCommandMock,
   rdsClientMock,
   rdsSendMock,
+  describeDbInstancesCommandMock,
   describeDbSnapshotsCommandMock,
   s3ClientMock,
   s3SendMock,
@@ -24,9 +28,11 @@ const {
 } = vi.hoisted(() => ({
   backupClientMock: vi.fn(),
   backupSendMock: vi.fn(),
+  describeBackupVaultCommandMock: vi.fn(),
   listRecoveryPointsByBackupVaultCommandMock: vi.fn(),
   rdsClientMock: vi.fn(),
   rdsSendMock: vi.fn(),
+  describeDbInstancesCommandMock: vi.fn(),
   describeDbSnapshotsCommandMock: vi.fn(),
   s3ClientMock: vi.fn(),
   s3SendMock: vi.fn(),
@@ -42,6 +48,11 @@ vi.mock('@aws-sdk/client-backup', () => ({
 
     constructor(config: unknown) {
       backupClientMock(config);
+    }
+  },
+  DescribeBackupVaultCommand: class DescribeBackupVaultCommand {
+    constructor(input: unknown) {
+      describeBackupVaultCommandMock(input);
     }
   },
   ListRecoveryPointsByBackupVaultCommand: class ListRecoveryPointsByBackupVaultCommand {
@@ -64,6 +75,11 @@ vi.mock('@aws-sdk/client-rds', () => ({
       describeDbSnapshotsCommandMock(input);
     }
   },
+  DescribeDBInstancesCommand: class DescribeDBInstancesCommand {
+    constructor(input: unknown) {
+      describeDbInstancesCommandMock(input);
+    }
+  },
 }));
 
 function mockRdsSdk() {
@@ -78,6 +94,11 @@ function mockRdsSdk() {
     DescribeDBSnapshotsCommand: class DescribeDBSnapshotsCommand {
       constructor(input: unknown) {
         describeDbSnapshotsCommandMock(input);
+      }
+    },
+    DescribeDBInstancesCommand: class DescribeDBInstancesCommand {
+      constructor(input: unknown) {
+        describeDbInstancesCommandMock(input);
       }
     },
   }));
@@ -124,6 +145,7 @@ describe('backup-monitor', () => {
     process.env = { ...originalEnv };
     delete process.env.RDS_DB_INSTANCE_ID;
     delete process.env.RDS_DB_INSTANCE_ARN;
+    delete process.env.RDS_BACKUP_MIN_RETENTION_DAYS;
     delete process.env.AWS_BACKUP_VAULT_NAME;
     delete process.env.AWS_BACKUP_RDS_RESOURCE_ARN;
     delete process.env.AWS_BACKUP_RECOVERY_POINT_MAX_AGE_HOURS;
@@ -133,6 +155,12 @@ describe('backup-monitor', () => {
     delete process.env.AWS_REGION;
     delete process.env.S3_BUCKET_REGION;
     backupSendMock.mockResolvedValue({
+      BackupVaultName: 'ph-os-prod-rds-backup-vault',
+      VaultState: 'AVAILABLE',
+      VaultType: 'BACKUP_VAULT',
+      Locked: false,
+      NumberOfRecoveryPoints: 1,
+      EncryptionKeyType: 'CUSTOMER_MANAGED_KMS_KEY',
       RecoveryPoints: [
         {
           RecoveryPointArn: 'arn:aws:backup:ap-northeast-1:111122223333:recovery-point:rp-1',
@@ -143,6 +171,20 @@ describe('backup-monitor', () => {
       ],
     });
     rdsSendMock.mockResolvedValue({
+      DBInstances: [
+        {
+          DBInstanceStatus: 'available',
+          Engine: 'postgres',
+          BackupRetentionPeriod: 7,
+          LatestRestorableTime: new Date(),
+          DeletionProtection: true,
+          StorageEncrypted: true,
+          PubliclyAccessible: false,
+          MultiAZ: true,
+          CopyTagsToSnapshot: true,
+          PreferredBackupWindow: '17:00-17:30',
+        },
+      ],
       DBSnapshots: [
         {
           DBSnapshotIdentifier: 'snapshot_1',
@@ -163,6 +205,72 @@ describe('backup-monitor', () => {
   afterEach(() => {
     process.env = { ...originalEnv };
     vi.restoreAllMocks();
+  });
+
+  it('skips the AWS Backup vault check until the vault is configured', async () => {
+    await expect(checkAwsBackupVault()).resolves.toMatchObject({
+      status: 'skipped',
+      message: 'AWS_BACKUP_VAULT_NAME not configured',
+    });
+  });
+
+  it('checks AWS Backup vault metadata without exposing vault or KMS ARNs', async () => {
+    process.env.AWS_BACKUP_VAULT_NAME = 'ph-os-prod-rds-backup-vault';
+    backupSendMock.mockResolvedValueOnce({
+      BackupVaultName: 'ph-os-prod-rds-backup-vault',
+      BackupVaultArn: 'arn:aws:backup:ap-northeast-1:111122223333:backup-vault:ph-os-prod',
+      VaultState: 'AVAILABLE',
+      VaultType: 'BACKUP_VAULT',
+      Locked: true,
+      NumberOfRecoveryPoints: 3,
+      EncryptionKeyType: 'CUSTOMER_MANAGED_KMS_KEY',
+      EncryptionKeyArn: 'arn:aws:kms:ap-northeast-1:111122223333:key/kms-secret',
+      MinRetentionDays: 7,
+      MaxRetentionDays: 35,
+    });
+
+    const result = await checkAwsBackupVault();
+
+    expect(result).toMatchObject({
+      status: 'ok',
+      details: {
+        backupVaultName: 'ph-os-prod-rds-backup-vault',
+        vaultState: 'AVAILABLE',
+        locked: true,
+        numberOfRecoveryPoints: 3,
+        encryptionKeyType: 'CUSTOMER_MANAGED_KMS_KEY',
+      },
+    });
+    expect(describeBackupVaultCommandMock).toHaveBeenCalledWith({
+      BackupVaultName: 'ph-os-prod-rds-backup-vault',
+    });
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain('111122223333');
+    expect(serialized).not.toContain('backup-vault:');
+    expect(serialized).not.toContain('key/kms-secret');
+  });
+
+  it('warns when AWS Backup vault metadata indicates an unavailable or empty vault', async () => {
+    process.env.AWS_BACKUP_VAULT_NAME = 'ph-os-prod-rds-backup-vault';
+    backupSendMock.mockResolvedValueOnce({
+      VaultState: 'CREATE_FAILED',
+      NumberOfRecoveryPoints: 5,
+    });
+
+    await expect(checkAwsBackupVault()).resolves.toMatchObject({
+      status: 'warning',
+      message: 'AWS Backup vault state is CREATE_FAILED',
+    });
+
+    backupSendMock.mockResolvedValueOnce({
+      VaultState: 'AVAILABLE',
+      NumberOfRecoveryPoints: 0,
+    });
+
+    await expect(checkAwsBackupVault()).resolves.toMatchObject({
+      status: 'warning',
+      message: 'AWS Backup vault has no recovery points',
+    });
   });
 
   it('skips the AWS Backup recovery point check until vault and RDS resource ARN are configured', async () => {
@@ -246,6 +354,103 @@ describe('backup-monitor', () => {
     });
   });
 
+  it('skips the RDS instance backup configuration check until DB instance id is configured', async () => {
+    await expect(checkRdsInstanceBackupConfiguration()).resolves.toMatchObject({
+      status: 'skipped',
+      message: 'RDS_DB_INSTANCE_ID not configured',
+    });
+
+    process.env.RDS_DB_INSTANCE_ARN = 'arn:aws:rds:ap-northeast-1:111122223333:db:ph-os-prod';
+    await expect(checkRdsInstanceBackupConfiguration()).resolves.toMatchObject({
+      status: 'skipped',
+      message: 'RDS_DB_INSTANCE_ID not configured',
+    });
+  });
+
+  it('checks RDS instance backup configuration without exposing endpoint or ARN fields', async () => {
+    process.env.RDS_DB_INSTANCE_ID = 'ph-os-prod';
+    rdsSendMock.mockResolvedValueOnce({
+      DBInstances: [
+        {
+          DBInstanceArn: 'arn:aws:rds:ap-northeast-1:111122223333:db:ph-os-prod',
+          DBInstanceStatus: 'available',
+          DbiResourceId: 'db-resource-secret',
+          Engine: 'postgres',
+          Endpoint: {
+            Address: 'ph-os-prod.cluster-secret.ap-northeast-1.rds.amazonaws.com',
+          },
+          BackupRetentionPeriod: 7,
+          LatestRestorableTime: new Date(),
+          DeletionProtection: true,
+          StorageEncrypted: true,
+          KmsKeyId: 'arn:aws:kms:ap-northeast-1:111122223333:key/kms-secret',
+          PubliclyAccessible: false,
+          MultiAZ: true,
+          CopyTagsToSnapshot: true,
+          PreferredBackupWindow: '17:00-17:30',
+          VpcSecurityGroups: [{ VpcSecurityGroupId: 'sg-secret' }],
+          DBSubnetGroup: { DBSubnetGroupName: 'subnet-secret' },
+        },
+      ],
+    });
+
+    const result = await checkRdsInstanceBackupConfiguration();
+
+    expect(result).toMatchObject({
+      status: 'ok',
+      details: {
+        status: 'available',
+        engine: 'postgres',
+        backupRetentionDays: 7,
+        deletionProtection: true,
+        storageEncrypted: true,
+        publiclyAccessible: false,
+        multiAz: true,
+        copyTagsToSnapshot: true,
+      },
+    });
+    expect(describeDbInstancesCommandMock).toHaveBeenCalledWith({
+      DBInstanceIdentifier: 'ph-os-prod',
+    });
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain('111122223333');
+    expect(serialized).not.toContain('cluster-secret');
+    expect(serialized).not.toContain('db-resource-secret');
+    expect(serialized).not.toContain('kms-secret');
+    expect(serialized).not.toContain('sg-secret');
+    expect(serialized).not.toContain('subnet-secret');
+  });
+
+  it('warns when RDS backup settings are unsafe or below the required retention floor', async () => {
+    process.env.RDS_DB_INSTANCE_ID = 'ph-os-prod';
+    process.env.RDS_BACKUP_MIN_RETENTION_DAYS = '7';
+    rdsSendMock.mockResolvedValueOnce({
+      DBInstances: [
+        {
+          DBInstanceStatus: 'modifying',
+          Engine: 'postgres',
+          BackupRetentionPeriod: 0,
+          DeletionProtection: false,
+          StorageEncrypted: false,
+          PubliclyAccessible: true,
+        },
+      ],
+    });
+
+    await expect(checkRdsInstanceBackupConfiguration()).resolves.toMatchObject({
+      status: 'warning',
+      message: expect.stringContaining('backup_retention_days=0'),
+      details: {
+        status: 'modifying',
+        backupRetentionDays: 0,
+        latestRestorableTime: null,
+        deletionProtection: false,
+        storageEncrypted: false,
+        publiclyAccessible: true,
+      },
+    });
+  });
+
   it('skips the RDS snapshot check when the DB instance is not configured', async () => {
     await expect(checkRdsSnapshot()).resolves.toMatchObject({
       status: 'skipped',
@@ -312,9 +517,21 @@ describe('backup-monitor', () => {
       'arn:aws:rds:ap-northeast-1:111122223333:db:ph-os-prod';
 
     backupSendMock.mockRejectedValueOnce(rawFailure);
+    await expect(checkAwsBackupVault({ logger })).resolves.toMatchObject({
+      status: 'error',
+      message: 'AWS Backup vault check failed',
+    });
+
+    backupSendMock.mockRejectedValueOnce(rawFailure);
     await expect(checkAwsBackupRecoveryPoint({ logger })).resolves.toMatchObject({
       status: 'error',
       message: 'AWS Backup recovery point check failed',
+    });
+
+    rdsSendMock.mockRejectedValueOnce(rawFailure);
+    await expect(checkRdsInstanceBackupConfiguration({ logger })).resolves.toMatchObject({
+      status: 'error',
+      message: 'RDS instance backup configuration check failed',
     });
 
     rdsSendMock.mockRejectedValueOnce(rawFailure);
@@ -341,7 +558,7 @@ describe('backup-monitor', () => {
       message: 'Cognito Advanced Security check failed',
     });
 
-    expect(logger.error).toHaveBeenCalledTimes(5);
+    expect(logger.error).toHaveBeenCalledTimes(7);
     for (const [, loggedError] of logger.error.mock.calls) {
       expect(loggedError).toBeInstanceOf(Error);
       expect(String(loggedError)).not.toContain('token=secret');
@@ -365,9 +582,21 @@ describe('backup-monitor', () => {
       'arn:aws:rds:ap-northeast-1:111122223333:db:ph-os-prod';
 
     backupSendMock.mockRejectedValueOnce(rawFailure);
+    await expect(checkAwsBackupVault()).resolves.toMatchObject({
+      status: 'error',
+      message: 'AWS Backup vault check failed',
+    });
+
+    backupSendMock.mockRejectedValueOnce(rawFailure);
     await expect(checkAwsBackupRecoveryPoint()).resolves.toMatchObject({
       status: 'error',
       message: 'AWS Backup recovery point check failed',
+    });
+
+    rdsSendMock.mockRejectedValueOnce(rawFailure);
+    await expect(checkRdsInstanceBackupConfiguration()).resolves.toMatchObject({
+      status: 'error',
+      message: 'RDS instance backup configuration check failed',
     });
 
     rdsSendMock.mockRejectedValueOnce(rawFailure);
@@ -394,12 +623,14 @@ describe('backup-monitor', () => {
       message: 'Cognito Advanced Security check failed',
     });
 
-    expect(consoleErrorMock).toHaveBeenCalledTimes(5);
+    expect(consoleErrorMock).toHaveBeenCalledTimes(7);
     const entries = consoleErrorMock.mock.calls.map(([line]) => {
       return JSON.parse(String(line)) as Record<string, unknown>;
     });
     expect(entries.map((entry) => entry.operation)).toEqual([
+      'aws_backup_vault_check',
       'aws_backup_recovery_point_check',
+      'rds_instance_backup_configuration_check',
       'rds_snapshot_check',
       's3_versioning_check',
       'audit_archive_lifecycle_check',
@@ -471,8 +702,10 @@ describe('backup-monitor', () => {
     await expect(runBackupMonitorChecks()).resolves.toMatchObject({
       overall: 'ok',
       checks: {
+        awsBackupVault: { status: 'skipped' },
         rdsSnapshot: { status: 'skipped' },
         awsBackupRecoveryPoint: { status: 'skipped' },
+        rdsInstanceBackupConfiguration: { status: 'skipped' },
         s3Versioning: { status: 'skipped' },
         auditArchive: { status: 'skipped' },
         cognitoAdvancedSecurity: { status: 'skipped' },

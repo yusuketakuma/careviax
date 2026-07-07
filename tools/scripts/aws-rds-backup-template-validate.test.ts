@@ -43,7 +43,7 @@ describe('validateRdsBackupTemplate', () => {
   });
 
   it('fails if a template grants destructive restore/delete permissions', () => {
-    const template = `${readFileSync(templatePath, 'utf8')}\n# backup:StartRestoreJob\n# rds:DeleteDBInstance\n`;
+    const template = `${readFileSync(templatePath, 'utf8')}\n# backup:StartRestoreJob\n# backup:UpdateRecoveryPointLifecycle\n# rds:RestoreDBInstanceToPointInTime\n# rds:ModifyDBInstance\n# rds:DeleteDBInstance\n# iam:PassRole\n# secretsmanager:PutSecretValue\n`;
 
     const report = validateRdsBackupTemplate({
       templatePath,

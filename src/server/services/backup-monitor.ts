@@ -21,7 +21,9 @@ type BackupMonitorOptions = {
 };
 
 type BackupMonitorOperation =
+  | 'aws_backup_vault_check'
   | 'aws_backup_recovery_point_check'
+  | 'rds_instance_backup_configuration_check'
   | 'rds_snapshot_check'
   | 's3_versioning_check'
   | 'audit_archive_lifecycle_check'
@@ -43,12 +45,30 @@ type RdsSnapshotsResponse = {
   }>;
 };
 
+type RdsDbInstancesResponse = {
+  DBInstances?: Array<{
+    DBInstanceStatus?: string;
+    Engine?: string;
+    BackupRetentionPeriod?: number;
+    LatestRestorableTime?: Date;
+    DeletionProtection?: boolean;
+    StorageEncrypted?: boolean;
+    PubliclyAccessible?: boolean;
+    MultiAZ?: boolean;
+    CopyTagsToSnapshot?: boolean;
+    PreferredBackupWindow?: string;
+  }>;
+};
+
 type RdsModule = {
-  RDSClient: new (config: AwsClientConfig) => AwsClient<RdsSnapshotsResponse>;
+  RDSClient: new (
+    config: AwsClientConfig,
+  ) => AwsClient<RdsSnapshotsResponse | RdsDbInstancesResponse>;
   DescribeDBSnapshotsCommand: new (input: {
     DBInstanceIdentifier: string;
     SnapshotType: string;
   }) => unknown;
+  DescribeDBInstancesCommand: new (input: { DBInstanceIdentifier: string }) => unknown;
 };
 
 type BackupRecoveryPointsResponse = {
@@ -60,8 +80,22 @@ type BackupRecoveryPointsResponse = {
   }>;
 };
 
+type BackupVaultResponse = {
+  BackupVaultName?: string;
+  VaultState?: string;
+  VaultType?: string;
+  Locked?: boolean;
+  NumberOfRecoveryPoints?: number;
+  EncryptionKeyType?: string;
+  MinRetentionDays?: number;
+  MaxRetentionDays?: number;
+};
+
 type BackupModule = {
-  BackupClient: new (config: AwsClientConfig) => AwsClient<BackupRecoveryPointsResponse>;
+  BackupClient: new (
+    config: AwsClientConfig,
+  ) => AwsClient<BackupRecoveryPointsResponse | BackupVaultResponse>;
+  DescribeBackupVaultCommand: new (input: { BackupVaultName: string }) => unknown;
   ListRecoveryPointsByBackupVaultCommand: new (input: {
     BackupVaultName: string;
     ByResourceArn: string;
@@ -105,15 +139,21 @@ let cachedRdsModule: Promise<RdsModule> | null = null;
 let cachedBackupModule: Promise<BackupModule> | null = null;
 let cachedS3Module: Promise<S3Module> | null = null;
 let cachedCognitoModule: Promise<CognitoModule> | null = null;
-const rdsClients = new Map<string, AwsClient<RdsSnapshotsResponse>>();
-const backupClients = new Map<string, AwsClient<BackupRecoveryPointsResponse>>();
+const rdsClients = new Map<string, AwsClient<RdsSnapshotsResponse | RdsDbInstancesResponse>>();
+const backupClients = new Map<
+  string,
+  AwsClient<BackupRecoveryPointsResponse | BackupVaultResponse>
+>();
 const s3Clients = new Map<string, AwsClient<S3VersioningResponse | S3LifecycleResponse>>();
 const cognitoClients = new Map<string, AwsClient<CognitoResponse>>();
 const BACKUP_MODULE_LOAD_FAILED_MESSAGE =
   'Unable to load @aws-sdk/client-backup for AWS Backup monitoring';
+const AWS_BACKUP_VAULT_CHECK_FAILED_MESSAGE = 'AWS Backup vault check failed';
 const AWS_BACKUP_RECOVERY_POINT_CHECK_FAILED_MESSAGE = 'AWS Backup recovery point check failed';
 const RDS_MODULE_LOAD_FAILED_MESSAGE =
   'Unable to load @aws-sdk/client-rds for RDS backup monitoring';
+const RDS_INSTANCE_BACKUP_CONFIGURATION_CHECK_FAILED_MESSAGE =
+  'RDS instance backup configuration check failed';
 const RDS_SNAPSHOT_CHECK_FAILED_MESSAGE = 'RDS snapshot check failed';
 const S3_VERSIONING_CHECK_FAILED_MESSAGE = 'S3 versioning check failed';
 const AUDIT_ARCHIVE_CHECK_FAILED_MESSAGE = 'Audit archive lifecycle check failed';
@@ -237,6 +277,74 @@ function readPositiveNumberEnv(name: string, fallback: number) {
 }
 
 /**
+ * Check that the configured AWS Backup vault exists and exposes safe metadata
+ * for operator readiness. The response intentionally omits vault/KMS ARNs.
+ */
+export async function checkAwsBackupVault(
+  options: BackupMonitorOptions = {},
+): Promise<BackupCheckResult> {
+  const region = process.env.AWS_REGION ?? 'ap-northeast-1';
+  const backupVaultName = process.env.AWS_BACKUP_VAULT_NAME;
+
+  if (!backupVaultName) {
+    return { status: 'skipped', message: 'AWS_BACKUP_VAULT_NAME not configured' };
+  }
+
+  try {
+    const { DescribeBackupVaultCommand } = await loadBackupModule();
+    const client = await getBackupClient(region);
+    const response = (await client.send(
+      new DescribeBackupVaultCommand({ BackupVaultName: backupVaultName }),
+    )) as BackupVaultResponse;
+
+    const details = {
+      backupVaultName,
+      vaultState: response.VaultState ?? null,
+      vaultType: response.VaultType ?? null,
+      locked: response.Locked ?? false,
+      numberOfRecoveryPoints: response.NumberOfRecoveryPoints ?? null,
+      encryptionKeyType: response.EncryptionKeyType ?? null,
+      minRetentionDays: response.MinRetentionDays ?? null,
+      maxRetentionDays: response.MaxRetentionDays ?? null,
+    };
+
+    if (response.VaultState && response.VaultState !== 'AVAILABLE') {
+      return {
+        status: 'warning',
+        message: `AWS Backup vault state is ${response.VaultState}`,
+        details,
+      };
+    }
+
+    if ((response.NumberOfRecoveryPoints ?? 0) <= 0) {
+      return {
+        status: 'warning',
+        message: 'AWS Backup vault has no recovery points',
+        details,
+      };
+    }
+
+    return {
+      status: 'ok',
+      message: 'AWS Backup vault is available',
+      details,
+    };
+  } catch (err) {
+    const message = getSafeBackupMonitorMessage(err, AWS_BACKUP_VAULT_CHECK_FAILED_MESSAGE);
+    logBackupMonitorError(
+      options,
+      '[backup-monitor] AWS Backup vault check failed:',
+      new Error(message),
+      'aws_backup_vault_check',
+    );
+    return {
+      status: 'error',
+      message,
+    };
+  }
+}
+
+/**
  * Check that AWS Backup has a recent completed RDS recovery point in the
  * configured backup vault. This complements the native RDS automated snapshot
  * probe and verifies the AWS Backup control plane used for recovery drills.
@@ -260,14 +368,14 @@ export async function checkAwsBackupRecoveryPoint(
   try {
     const { ListRecoveryPointsByBackupVaultCommand } = await loadBackupModule();
     const client = await getBackupClient(region);
-    const response = await client.send(
+    const response = (await client.send(
       new ListRecoveryPointsByBackupVaultCommand({
         BackupVaultName: backupVaultName,
         ByResourceArn: protectedResourceArn,
         ByResourceType: 'RDS',
         MaxResults: 25,
       }),
-    );
+    )) as BackupRecoveryPointsResponse;
 
     const completedRecoveryPoints = (response.RecoveryPoints ?? [])
       .filter((point) => point.Status === 'COMPLETED' && point.CreationDate)
@@ -328,6 +436,98 @@ export async function checkAwsBackupRecoveryPoint(
 }
 
 /**
+ * Check RDS instance-level backup readiness without returning DB ARNs, endpoint
+ * addresses, subnet ids, security group ids, or other infrastructure secrets.
+ */
+export async function checkRdsInstanceBackupConfiguration(
+  options: BackupMonitorOptions = {},
+): Promise<BackupCheckResult> {
+  const region = process.env.AWS_REGION ?? 'ap-northeast-1';
+  const dbInstanceIdentifier = process.env.RDS_DB_INSTANCE_ID;
+
+  if (!dbInstanceIdentifier) {
+    return { status: 'skipped', message: 'RDS_DB_INSTANCE_ID not configured' };
+  }
+
+  try {
+    const { DescribeDBInstancesCommand } = await loadRdsModule();
+    const client = await getRdsClient(region);
+    const response = (await client.send(
+      new DescribeDBInstancesCommand({ DBInstanceIdentifier: dbInstanceIdentifier }),
+    )) as RdsDbInstancesResponse;
+    const instance = response.DBInstances?.[0];
+
+    if (!instance) {
+      return { status: 'warning', message: 'RDS DB instance was not returned' };
+    }
+
+    const minRetentionDays = readPositiveNumberEnv('RDS_BACKUP_MIN_RETENTION_DAYS', 1);
+    const backupRetentionDays = instance.BackupRetentionPeriod ?? 0;
+    const details = {
+      status: instance.DBInstanceStatus ?? null,
+      engine: instance.Engine ?? null,
+      backupRetentionDays,
+      latestRestorableTime: instance.LatestRestorableTime?.toISOString() ?? null,
+      deletionProtection: instance.DeletionProtection ?? false,
+      storageEncrypted: instance.StorageEncrypted ?? false,
+      publiclyAccessible: instance.PubliclyAccessible ?? null,
+      multiAz: instance.MultiAZ ?? null,
+      copyTagsToSnapshot: instance.CopyTagsToSnapshot ?? null,
+      preferredBackupWindow: instance.PreferredBackupWindow ?? null,
+    };
+
+    const warnings: string[] = [];
+    if (instance.DBInstanceStatus && instance.DBInstanceStatus !== 'available') {
+      warnings.push(`status=${instance.DBInstanceStatus}`);
+    }
+    if (backupRetentionDays < minRetentionDays) {
+      warnings.push(`backup_retention_days=${backupRetentionDays}`);
+    }
+    if (!instance.LatestRestorableTime) {
+      warnings.push('latest_restorable_time_missing');
+    }
+    if (instance.StorageEncrypted !== true) {
+      warnings.push('storage_not_encrypted');
+    }
+    if (instance.DeletionProtection !== true) {
+      warnings.push('deletion_protection_disabled');
+    }
+    if (instance.PubliclyAccessible === true) {
+      warnings.push('publicly_accessible');
+    }
+
+    if (warnings.length > 0) {
+      return {
+        status: 'warning',
+        message: `RDS backup configuration needs review: ${warnings.join(', ')}`,
+        details,
+      };
+    }
+
+    return {
+      status: 'ok',
+      message: 'RDS backup configuration is enabled',
+      details,
+    };
+  } catch (err) {
+    const message = getSafeBackupMonitorMessage(
+      err,
+      RDS_INSTANCE_BACKUP_CONFIGURATION_CHECK_FAILED_MESSAGE,
+    );
+    logBackupMonitorError(
+      options,
+      '[backup-monitor] RDS instance backup configuration check failed:',
+      new Error(message),
+      'rds_instance_backup_configuration_check',
+    );
+    return {
+      status: 'error',
+      message,
+    };
+  }
+}
+
+/**
  * Check latest RDS automated snapshot age.
  * Returns warning if the latest snapshot is older than 26 hours (allowing buffer over 24h cycle).
  */
@@ -345,12 +545,12 @@ export async function checkRdsSnapshot(
     const rdsModule = await loadRdsModule();
     const client = await getRdsClient(region);
 
-    const response = await client.send(
+    const response = (await client.send(
       new rdsModule.DescribeDBSnapshotsCommand({
         DBInstanceIdentifier: dbInstanceId,
         SnapshotType: 'automated',
       }),
-    );
+    )) as RdsSnapshotsResponse;
 
     const snapshots = response.DBSnapshots ?? [];
     if (snapshots.length === 0) {
@@ -587,17 +787,28 @@ export async function runBackupMonitorChecks(options: BackupMonitorOptions = {})
   overall: 'ok' | 'warning' | 'error';
   checks: Record<string, BackupCheckResult>;
 }> {
-  const [awsBackupRecoveryPoint, rdsSnapshot, s3Versioning, auditArchive, cognitoAdvancedSecurity] =
-    await Promise.all([
-      checkAwsBackupRecoveryPoint(options),
-      checkRdsSnapshot(options),
-      checkS3Versioning(options),
-      checkAuditLogArchivePolicy(options),
-      checkCognitoAdvancedSecurity(options),
-    ]);
+  const [
+    awsBackupVault,
+    awsBackupRecoveryPoint,
+    rdsInstanceBackupConfiguration,
+    rdsSnapshot,
+    s3Versioning,
+    auditArchive,
+    cognitoAdvancedSecurity,
+  ] = await Promise.all([
+    checkAwsBackupVault(options),
+    checkAwsBackupRecoveryPoint(options),
+    checkRdsInstanceBackupConfiguration(options),
+    checkRdsSnapshot(options),
+    checkS3Versioning(options),
+    checkAuditLogArchivePolicy(options),
+    checkCognitoAdvancedSecurity(options),
+  ]);
 
   const checks: Record<string, BackupCheckResult> = {
+    awsBackupVault,
     awsBackupRecoveryPoint,
+    rdsInstanceBackupConfiguration,
     rdsSnapshot,
     s3Versioning,
     auditArchive,

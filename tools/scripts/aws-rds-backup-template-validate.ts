@@ -254,8 +254,13 @@ function validateTemplateText(
     !hasAny(template, [
       'backup:StartRestoreJob',
       'backup:DeleteRecoveryPoint',
+      'backup:UpdateRecoveryPointLifecycle',
       'rds:DeleteDBInstance',
+      'rds:DeleteDBInstanceAutomatedBackup',
+      'rds:ModifyDBInstance',
+      'rds:RestoreDBInstanceToPointInTime',
       'secretsmanager:PutSecretValue',
+      'iam:PassRole',
       'rds:DeleteDBCluster',
     ])
       ? 'pass'

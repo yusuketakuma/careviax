@@ -2,7 +2,7 @@
 
 Generated on 2026-06-12 from current source references to `process.env.*` under `src`, `tools`, `prisma`, and root TypeScript config files. Test files and generated build output are excluded.
 
-Current key count: 138. The earlier refactor note recorded 118 keys; the live repository now references 138.
+Current key count: 139. The earlier refactor note recorded 118 keys; the live repository now references 139.
 
 `src/lib/env/assert-env.ts` enforces the production safety subset from `src/instrumentation.ts` during the Node.js runtime startup path.
 
@@ -113,6 +113,7 @@ Current key count: 138. The earlier refactor note recorded 118 keys; the live re
 | `RATE_LIMIT_STORE`                           | optional             |                                                                 |
 | `RDS_DB_INSTANCE_ARN`                        | infra optional       |                                                                 |
 | `RDS_DB_INSTANCE_ID`                         | infra optional       |                                                                 |
+| `RDS_BACKUP_MIN_RETENTION_DAYS`              | infra optional       | Minimum RDS backup retention days for `/api/health` assurance.  |
 | `REDIS_URL`                                  | optional             |                                                                 |
 | `ROUTING_API_BASE_URL`                       | optional             |                                                                 |
 | `ROUTING_API_PROFILE`                        | optional             |                                                                 |
