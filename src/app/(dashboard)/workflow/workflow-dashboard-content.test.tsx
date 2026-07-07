@@ -171,9 +171,19 @@ describe('WorkflowDashboardContent', () => {
 
   it('fetches workflow dashboard data with org headers and the shared JSON reader contract', async () => {
     const fetchMock = stubJsonFetch({ data: buildWorkflowData() });
-    let captured: { queryKey: unknown[]; queryFn: () => Promise<unknown> } | undefined;
+    let captured:
+      | {
+          queryKey: unknown[];
+          queryFn: () => Promise<unknown>;
+          invalidateOn?: readonly unknown[];
+        }
+      | undefined;
     useRealtimeQueryMock.mockImplementation(
-      (config: { queryKey: unknown[]; queryFn: () => Promise<unknown> }) => {
+      (config: {
+        queryKey: unknown[];
+        queryFn: () => Promise<unknown>;
+        invalidateOn?: readonly unknown[];
+      }) => {
         captured = config;
         return {
           data: { data: buildWorkflowData() },
@@ -189,6 +199,19 @@ describe('WorkflowDashboardContent', () => {
 
       if (!captured) throw new Error('query config was not captured');
       expect(captured.queryKey).toEqual(['dashboard-workflow', 'org_1']);
+      expect(captured.invalidateOn).not.toContain('workflow_refresh');
+      expect(captured.invalidateOn).toEqual([
+        'cycle_transition',
+        expect.objectContaining({
+          type: 'workflow_refresh',
+          source: expect.arrayContaining([
+            'medication_cycles_transition',
+            'prescription_intakes_create',
+            'visit_schedules_update',
+            'set_batches_update',
+          ]),
+        }),
+      ]);
 
       await expect(captured.queryFn()).resolves.toStrictEqual({ data: buildWorkflowData() });
       expect(fetchMock).toHaveBeenCalledTimes(1);

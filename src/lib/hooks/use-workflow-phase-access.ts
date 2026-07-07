@@ -3,6 +3,7 @@
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
+import { WORKFLOW_DASHBOARD_INVALIDATION_EVENTS } from '@/lib/realtime/workflow-invalidation-policy';
 import { readApiJson } from '@/lib/api/client-json';
 import { readJsonObject } from '@/lib/db/json';
 import type { WorkflowDashboardResponse } from '@/types/api/workflow-dashboard';
@@ -386,7 +387,7 @@ export function useWorkflowPhaseAccess() {
     queryFn: () => fetchWorkflowDashboardPhaseAccess(orgId),
     enabled: Boolean(orgId),
     staleTime: 30_000,
-    invalidateOn: ['cycle_transition', 'workflow_refresh'],
+    invalidateOn: WORKFLOW_DASHBOARD_INVALIDATION_EVENTS,
   });
 
   return {

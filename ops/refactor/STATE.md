@@ -41,6 +41,47 @@
 
 ## 直近の land（本日・要点）
 
+- codex: FE-RT-001 workflow dashboard source-scoped invalidation（pending commit）。
+  - current task:
+    `/workflow` dashboard と `useWorkflowPhaseAccess` の `dashboard-workflow` query を
+    broad `workflow_refresh` から source-scoped policy へ移行する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/workflow/workflow-dashboard-content.tsx`,
+    `src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx`,
+    `src/lib/hooks/use-workflow-phase-access.ts`,
+    `src/lib/hooks/use-workflow-phase-access.test.ts`,
+    `src/server/services/org-realtime.ts`.
+  - files changed:
+    `src/lib/realtime/workflow-invalidation-policy.ts`,
+    `src/app/(dashboard)/workflow/workflow-dashboard-content.tsx`,
+    `src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx`,
+    `src/lib/hooks/use-workflow-phase-access.ts`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    client-safe な `WORKFLOW_DASHBOARD_INVALIDATION_SOURCES` /
+    `WORKFLOW_DASHBOARD_INVALIDATION_EVENTS` を追加し、workflow dashboard 本体と phase access hook の
+    `invalidateOn` を source-scoped に変更した。
+    query contract test に bare `workflow_refresh` へ戻らない assertion を追加した。
+  - bugs found:
+    `dashboard-workflow` query は source 指定なしの `workflow_refresh` を購読しており、
+    source 不明や補助画面向けイベントでも workflow dashboard を再取得し得た。
+  - security risks reduced:
+    なし。本sliceはPHI payload boundaryではなく refetch policy の絞り込み。
+  - performance issues improved:
+    workflow dashboard / phase access の無関係 realtime event による再取得を抑制する。
+  - validation:
+    `pnpm exec vitest run 'src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx' src/lib/hooks/use-workflow-phase-access.test.ts src/lib/hooks/use-realtime-invalidation.test.tsx src/lib/hooks/use-realtime-query.test.tsx --reporter=dot --testTimeout=30000`
+    → pass（4 files / 31 tests）。
+    `pnpm exec eslint 'src/app/(dashboard)/workflow/workflow-dashboard-content.tsx' 'src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx' src/lib/hooks/use-workflow-phase-access.ts src/lib/realtime/workflow-invalidation-policy.ts`
+    → pass。
+  - remaining work:
+    Prettier/diff check 後に scoped commit / push。FE-RT-001 の残りは admin/realtime と
+    admin/performance の補助画面 taxonomy。
+
 - codex: FE-RT-001 dashboard cockpit source-scoped invalidation（pending commit）。
   - current task:
     `/dashboard` の summary/details/team/comments segment query の `workflow_refresh`

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
+import { WORKFLOW_DASHBOARD_INVALIDATION_EVENTS } from '@/lib/realtime/workflow-invalidation-policy';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { readApiJson } from '@/lib/api/client-json';
@@ -74,7 +75,7 @@ export function WorkflowDashboardContent({
     },
     enabled: !!orgId,
     fallbackRefetchInterval: 60_000,
-    invalidateOn: ['cycle_transition', 'workflow_refresh'],
+    invalidateOn: WORKFLOW_DASHBOARD_INVALIDATION_EVENTS,
   });
 
   const workflow = data?.data;
