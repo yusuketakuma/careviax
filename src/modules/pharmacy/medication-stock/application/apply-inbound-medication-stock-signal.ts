@@ -3,7 +3,6 @@ import { createHash } from 'node:crypto';
 import { Prisma, type MemberRole } from '@prisma/client';
 
 import { allocateDisplayId } from '@/lib/db/display-id';
-import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
 import { buildInboundCommunicationEventAssignmentWhere } from '@/server/services/communication-request-access';
 import {
   buildAssignedCareCaseWhere,
@@ -28,6 +27,24 @@ export type ApplyMedicationStockObservationInput =
       kind: 'no_stock_observed';
       unit: string;
       eventAt?: Date;
+    }
+  | {
+      kind: 'usage_delta';
+      usedQuantity: number;
+      unit: string;
+      eventAt?: Date;
+    }
+  | {
+      kind: 'usage_frequency';
+      usageQuantity: number;
+      usagePeriodDays: number;
+      unit: string;
+      eventAt?: Date;
+    }
+  | {
+      kind: 'low_stock_text' | 'refill_request';
+      unit: string;
+      eventAt?: Date;
     };
 
 export type ApplyInboundMedicationStockSignalArgs = {
@@ -47,7 +64,7 @@ export type ApplyInboundMedicationStockSignalSuccess = {
     inbound_event_id: string;
     stock_item_id: string;
     stock_event_id: string;
-    external_observation_id: string;
+    external_observation_id: string | null;
     review_status: 'accepted';
     action_status: 'linked_to_stock_event';
     snapshot: {
@@ -119,6 +136,8 @@ type StockEventRow = {
   quantity_kind: string;
   quantity_delta: Prisma.Decimal | number | string | null;
   observed_quantity: Prisma.Decimal | number | string | null;
+  usage_quantity: Prisma.Decimal | number | string | null;
+  usage_period_days: number | null;
   unit: string;
 };
 
@@ -155,6 +174,37 @@ function buildIdempotencyKeyHash(args: {
   )}`;
 }
 
+function buildObservationFingerprint(input: ApplyMedicationStockObservationInput) {
+  const base = {
+    kind: input.kind,
+    unit: normalizeUnit(input.unit),
+    event_at: input.eventAt?.toISOString() ?? null,
+  };
+
+  switch (input.kind) {
+    case 'observed_absolute':
+      return {
+        ...base,
+        quantity: input.quantity,
+      };
+    case 'no_stock_observed':
+    case 'low_stock_text':
+    case 'refill_request':
+      return base;
+    case 'usage_delta':
+      return {
+        ...base,
+        used_quantity: input.usedQuantity,
+      };
+    case 'usage_frequency':
+      return {
+        ...base,
+        usage_quantity: input.usageQuantity,
+        usage_period_days: input.usagePeriodDays,
+      };
+  }
+}
+
 function buildRequestFingerprint(args: {
   signalId: string;
   targetStockItemId: string;
@@ -164,12 +214,7 @@ function buildRequestFingerprint(args: {
     stableStringify({
       signal_id: args.signalId,
       target_stock_item_id: args.targetStockItemId,
-      observation: {
-        kind: args.observation.kind,
-        quantity: args.observation.kind === 'observed_absolute' ? args.observation.quantity : 0,
-        unit: normalizeUnit(args.observation.unit),
-        event_at: args.observation.eventAt?.toISOString() ?? null,
-      },
+      observation: buildObservationFingerprint(args.observation),
     }),
   )}`;
 }
@@ -196,29 +241,133 @@ function isMedicationStockApplyRole(role: MemberRole) {
   return APPLY_STOCK_ROLES.has(role);
 }
 
+function validateObservationInput(input: ApplyMedicationStockObservationInput) {
+  switch (input.kind) {
+    case 'observed_absolute':
+      return Number.isFinite(input.quantity) && input.quantity >= 0
+        ? null
+        : '残数は0以上で指定してください';
+    case 'usage_delta':
+      return Number.isFinite(input.usedQuantity) && input.usedQuantity > 0
+        ? null
+        : '使用量は0より大きい値で指定してください';
+    case 'usage_frequency':
+      if (!Number.isFinite(input.usageQuantity) || input.usageQuantity <= 0) {
+        return '使用量は0より大きい値で指定してください';
+      }
+      if (
+        !Number.isInteger(input.usagePeriodDays) ||
+        input.usagePeriodDays < 1 ||
+        input.usagePeriodDays > 366
+      ) {
+        return '使用期間日数が不正です';
+      }
+      return null;
+    case 'no_stock_observed':
+    case 'low_stock_text':
+    case 'refill_request':
+      return null;
+  }
+}
+
 function isSupportedSignalForObservation(
   signal: SignalRow,
   observation: ApplyMedicationStockObservationInput,
 ) {
   if (signal.signal_domain !== 'medication_stock') return false;
-  if (observation.kind === 'observed_absolute') return signal.signal_type === 'observed_quantity';
-  return signal.signal_type === 'out_of_stock_text';
+
+  switch (observation.kind) {
+    case 'observed_absolute':
+      return signal.signal_type === 'observed_quantity';
+    case 'no_stock_observed':
+      return signal.signal_type === 'out_of_stock_text';
+    case 'usage_delta':
+      return signal.signal_type === 'usage_delta';
+    case 'usage_frequency':
+      return signal.signal_type === 'usage_frequency';
+    case 'low_stock_text':
+      return signal.signal_type === 'low_stock_text';
+    case 'refill_request':
+      return signal.signal_type === 'refill_request';
+  }
 }
 
 function observationQuantity(input: ApplyMedicationStockObservationInput) {
   return input.kind === 'observed_absolute' ? input.quantity : 0;
 }
 
-function observationKind(input: ApplyMedicationStockObservationInput) {
+function externalObservationKind(
+  input: Extract<
+    ApplyMedicationStockObservationInput,
+    { kind: 'observed_absolute' | 'no_stock_observed' }
+  >,
+) {
   return input.kind === 'observed_absolute' ? 'remaining_quantity' : 'no_stock_observed';
 }
 
-function eventType(input: ApplyMedicationStockObservationInput) {
-  return input.kind === 'observed_absolute' ? 'external_observation_apply' : 'no_stock_observed';
+function shouldCreateExternalObservation(input: ApplyMedicationStockObservationInput) {
+  return input.kind === 'observed_absolute' || input.kind === 'no_stock_observed';
 }
 
-function usagePatternForStockItem(item: StockItemRow): MedicationUsePattern {
-  const dailyQuantity = decimalToNumber(item.default_usage_amount_per_day);
+function buildStockEventFields(input: ApplyMedicationStockObservationInput) {
+  switch (input.kind) {
+    case 'observed_absolute':
+      return {
+        event_type: 'external_observation_apply' as const,
+        quantity_kind: 'observed_absolute' as const,
+        quantity_delta: null,
+        observed_quantity: new Prisma.Decimal(input.quantity),
+        usage_quantity: null,
+        usage_period_days: null,
+      };
+    case 'no_stock_observed':
+      return {
+        event_type: 'no_stock_observed' as const,
+        quantity_kind: 'observed_absolute' as const,
+        quantity_delta: null,
+        observed_quantity: new Prisma.Decimal(0),
+        usage_quantity: null,
+        usage_period_days: null,
+      };
+    case 'usage_delta':
+      return {
+        event_type: 'patient_report' as const,
+        quantity_kind: 'delta' as const,
+        quantity_delta: new Prisma.Decimal(-input.usedQuantity),
+        observed_quantity: null,
+        usage_quantity: null,
+        usage_period_days: null,
+      };
+    case 'usage_frequency':
+      return {
+        event_type: 'usage_frequency_update' as const,
+        quantity_kind: 'usage_rate' as const,
+        quantity_delta: null,
+        observed_quantity: null,
+        usage_quantity: new Prisma.Decimal(input.usageQuantity),
+        usage_period_days: input.usagePeriodDays,
+      };
+    case 'low_stock_text':
+    case 'refill_request':
+      return {
+        event_type: 'patient_report' as const,
+        quantity_kind: 'no_quantity' as const,
+        quantity_delta: null,
+        observed_quantity: null,
+        usage_quantity: null,
+        usage_period_days: null,
+      };
+  }
+}
+
+function usagePatternForStockItem(
+  item: StockItemRow,
+  dailyUsageOverride?: number | null,
+): MedicationUsePattern {
+  const dailyQuantity =
+    dailyUsageOverride != null
+      ? dailyUsageOverride
+      : decimalToNumber(item.default_usage_amount_per_day);
   if (dailyQuantity == null || dailyQuantity <= 0) return { kind: 'unknown' };
 
   const quantity: StockQuantity = {
@@ -261,11 +410,13 @@ function foldStockEvents(events: StockEventRow[]) {
   let lastObservedQuantity: number | null = null;
   let lastObservedAt: Date | null = null;
   let lastEventId: string | null = null;
+  let latestDailyUsage: number | null = null;
 
   for (const event of events) {
     lastEventId = event.id;
     const observed = decimalToNumber(event.observed_quantity);
     const delta = decimalToNumber(event.quantity_delta);
+    const usageQuantity = decimalToNumber(event.usage_quantity);
 
     if (event.quantity_kind === 'observed_absolute' && observed != null) {
       currentQuantity = observed;
@@ -275,7 +426,17 @@ function foldStockEvents(events: StockEventRow[]) {
     }
 
     if (event.quantity_kind === 'delta' && currentQuantity != null && delta != null) {
-      currentQuantity += delta;
+      currentQuantity = Math.max(0, currentQuantity + delta);
+      continue;
+    }
+
+    if (
+      event.quantity_kind === 'usage_rate' &&
+      usageQuantity != null &&
+      event.usage_period_days != null &&
+      event.usage_period_days > 0
+    ) {
+      latestDailyUsage = usageQuantity / event.usage_period_days;
     }
   }
 
@@ -284,6 +445,7 @@ function foldStockEvents(events: StockEventRow[]) {
     lastObservedQuantity,
     lastObservedAt,
     lastEventId,
+    latestDailyUsage,
   };
 }
 
@@ -307,6 +469,8 @@ async function recalculateStockSnapshot(args: {
       quantity_kind: true,
       quantity_delta: true,
       observed_quantity: true,
+      usage_quantity: true,
+      usage_period_days: true,
       unit: true,
     },
   })) as StockEventRow[];
@@ -322,9 +486,11 @@ async function recalculateStockSnapshot(args: {
   const forecast = forecastMedicationStockout({
     asOfDateKey: toDateKey(args.asOf),
     remainingQuantity,
-    usePattern: usagePatternForStockItem(args.stockItem),
+    usePattern: usagePatternForStockItem(args.stockItem, folded.latestDailyUsage),
     bufferDays: RISK_BUFFER_DAYS,
   });
+  const estimatedDailyUsage =
+    folded.latestDailyUsage ?? decimalToNumber(args.stockItem.default_usage_amount_per_day);
 
   const daysUntilStockout =
     forecast.kind === 'point_estimate'
@@ -367,11 +533,8 @@ async function recalculateStockSnapshot(args: {
       last_observed_at: folded.lastObservedAt,
       last_event_id: folded.lastEventId ?? args.eventId,
       estimated_daily_usage:
-        decimalToNumber(args.stockItem.default_usage_amount_per_day) == null
-          ? null
-          : new Prisma.Decimal(decimalToNumber(args.stockItem.default_usage_amount_per_day) ?? 0),
-      usage_confidence:
-        decimalToNumber(args.stockItem.default_usage_amount_per_day) == null ? 'unknown' : 'medium',
+        estimatedDailyUsage == null ? null : new Prisma.Decimal(estimatedDailyUsage),
+      usage_confidence: estimatedDailyUsage == null ? 'unknown' : 'medium',
       estimated_stockout_date: estimatedStockoutDate,
       days_until_stockout: daysUntilStockout,
       stock_risk_level: mapForecastRisk(forecast.risk),
@@ -390,11 +553,8 @@ async function recalculateStockSnapshot(args: {
       last_observed_at: folded.lastObservedAt,
       last_event_id: folded.lastEventId ?? args.eventId,
       estimated_daily_usage:
-        decimalToNumber(args.stockItem.default_usage_amount_per_day) == null
-          ? null
-          : new Prisma.Decimal(decimalToNumber(args.stockItem.default_usage_amount_per_day) ?? 0),
-      usage_confidence:
-        decimalToNumber(args.stockItem.default_usage_amount_per_day) == null ? 'unknown' : 'medium',
+        estimatedDailyUsage == null ? null : new Prisma.Decimal(estimatedDailyUsage),
+      usage_confidence: estimatedDailyUsage == null ? 'unknown' : 'medium',
       estimated_stockout_date: estimatedStockoutDate,
       days_until_stockout: daysUntilStockout,
       stock_risk_level: mapForecastRisk(forecast.risk),
@@ -496,7 +656,7 @@ async function returnExistingApplication(args: {
       inbound_event_id: args.signal.inbound_event_id,
       stock_item_id: args.stockItemId,
       stock_event_id: args.event.id,
-      external_observation_id: args.event.external_observation_id ?? '',
+      external_observation_id: args.event.external_observation_id,
       review_status: 'accepted',
       action_status: 'linked_to_stock_event',
       snapshot: {
@@ -516,6 +676,10 @@ export async function applyInboundSignalToMedicationStock(
 ): Promise<ApplyInboundMedicationStockSignalResult> {
   if (!isMedicationStockApplyRole(args.role)) {
     return { kind: 'forbidden', message: '残数台帳への反映権限がありません' };
+  }
+  const validationMessage = validateObservationInput(args.observation);
+  if (validationMessage) {
+    return { kind: 'validation_error', message: validationMessage };
   }
 
   const assignmentWhere = await buildInboundCommunicationEventAssignmentWhere({
@@ -700,114 +864,112 @@ export async function applyInboundSignalToMedicationStock(
     return { kind: 'conflict', message: 'シグナルが他の操作で更新されています' };
   }
 
-  const quantity = observationQuantity(args.observation);
-  const externalObservationDisplayId = await allocateDisplayId(
-    db as Prisma.TransactionClient,
-    'ExternalMedicationStockObservation',
-    args.orgId,
-  );
+  const stockEventFields = buildStockEventFields(args.observation);
+  const externalObservation =
+    shouldCreateExternalObservation(args.observation) &&
+    (args.observation.kind === 'observed_absolute' || args.observation.kind === 'no_stock_observed')
+      ? await db.externalMedicationStockObservation.create({
+          data: {
+            org_id: args.orgId,
+            display_id: await allocateDisplayId(
+              db as Prisma.TransactionClient,
+              'ExternalMedicationStockObservation',
+              args.orgId,
+            ),
+            patient_id: patientId,
+            case_id: stockItem.case_id ?? signalCaseId ?? null,
+            inbound_signal_id: signal.id,
+            source_entity_type: 'inbound_signal',
+            source_entity_id: signal.id,
+            source_author_role: signal.inbound_event.sender_role,
+            observed_at: eventAt,
+            observation_kind: externalObservationKind(args.observation),
+            matched_stock_item_id: stockItem.id,
+            extracted_medication_name: signal.extracted_medication_name,
+            extracted_quantity: new Prisma.Decimal(observationQuantity(args.observation)),
+            extracted_unit: stockItem.unit as never,
+            source_confidence: signal.source_confidence as never,
+            review_state: 'applied',
+            reviewed_by: args.userId,
+            reviewed_at: now,
+            idempotency_key_hash: idempotencyKeyHash,
+            request_fingerprint_hash: requestFingerprintHash,
+          },
+          select: { id: true },
+        })
+      : null;
+
   const stockEventDisplayId = await allocateDisplayId(
     db as Prisma.TransactionClient,
     'MedicationStockEvent',
     args.orgId,
   );
 
-  try {
-    const externalObservation = await db.externalMedicationStockObservation.create({
-      data: {
-        org_id: args.orgId,
-        display_id: externalObservationDisplayId,
-        patient_id: patientId,
-        case_id: stockItem.case_id ?? signalCaseId ?? null,
-        inbound_signal_id: signal.id,
-        source_entity_type: 'inbound_signal',
-        source_entity_id: signal.id,
-        source_author_role: signal.inbound_event.sender_role,
-        observed_at: eventAt,
-        observation_kind: observationKind(args.observation),
-        matched_stock_item_id: stockItem.id,
-        extracted_medication_name: signal.extracted_medication_name,
-        extracted_quantity: new Prisma.Decimal(quantity),
-        extracted_unit: stockItem.unit as never,
-        source_confidence: signal.source_confidence as never,
-        review_state: 'applied',
-        reviewed_by: args.userId,
-        reviewed_at: now,
-        idempotency_key_hash: idempotencyKeyHash,
-        request_fingerprint_hash: requestFingerprintHash,
-      },
-      select: { id: true },
-    });
+  const stockEvent = await db.medicationStockEvent.create({
+    data: {
+      org_id: args.orgId,
+      display_id: stockEventDisplayId,
+      patient_id: patientId,
+      case_id: stockItem.case_id ?? signalCaseId ?? null,
+      stock_item_id: stockItem.id,
+      event_type: stockEventFields.event_type,
+      event_at: eventAt,
+      recorded_at: now,
+      recorded_by: args.userId,
+      quantity_kind: stockEventFields.quantity_kind,
+      quantity_delta: stockEventFields.quantity_delta,
+      observed_quantity: stockEventFields.observed_quantity,
+      usage_quantity: stockEventFields.usage_quantity,
+      usage_period_days: stockEventFields.usage_period_days,
+      unit: stockItem.unit as never,
+      source_entity_type: 'inbound_signal',
+      source_entity_id: signal.id,
+      source_signal_id: signal.id,
+      external_observation_id: externalObservation?.id ?? null,
+      idempotency_key_hash: idempotencyKeyHash,
+      request_fingerprint_hash: requestFingerprintHash,
+    },
+    select: {
+      id: true,
+    },
+  });
 
-    const stockEvent = await db.medicationStockEvent.create({
-      data: {
-        org_id: args.orgId,
-        display_id: stockEventDisplayId,
-        patient_id: patientId,
-        case_id: stockItem.case_id ?? signalCaseId ?? null,
-        stock_item_id: stockItem.id,
-        event_type: eventType(args.observation),
-        event_at: eventAt,
-        recorded_at: now,
-        recorded_by: args.userId,
-        quantity_kind: 'observed_absolute',
-        quantity_delta: null,
-        observed_quantity: new Prisma.Decimal(quantity),
-        usage_quantity: null,
-        usage_period_days: null,
-        unit: stockItem.unit as never,
-        source_entity_type: 'inbound_signal',
-        source_entity_id: signal.id,
-        source_signal_id: signal.id,
-        external_observation_id: externalObservation.id,
-        idempotency_key_hash: idempotencyKeyHash,
-        request_fingerprint_hash: requestFingerprintHash,
-      },
-      select: {
-        id: true,
-      },
-    });
-
+  if (externalObservation) {
     await db.externalMedicationStockObservation.update({
       where: { id: externalObservation.id },
       data: {
         applied_stock_event_id: stockEvent.id,
       },
     });
-
-    const snapshot = await recalculateStockSnapshot({
-      db,
-      orgId: args.orgId,
-      stockItem,
-      eventId: stockEvent.id,
-      asOf: now,
-    });
-    const taskClosureCount = await closeOpenReviewTasks({
-      db,
-      orgId: args.orgId,
-      signalId: signal.id,
-      now,
-    });
-
-    return {
-      kind: 'applied',
-      data: {
-        signal_id: signal.id,
-        inbound_event_id: signal.inbound_event_id,
-        stock_item_id: stockItem.id,
-        stock_event_id: stockEvent.id,
-        external_observation_id: externalObservation.id,
-        review_status: 'accepted',
-        action_status: 'linked_to_stock_event',
-        snapshot,
-        review_task_closure_count: taskClosureCount,
-        idempotent_replay: false,
-      },
-    };
-  } catch (error) {
-    if (isPrismaUniqueConstraintError(error)) {
-      return { kind: 'conflict', message: '同じ残数反映が既に処理されています' };
-    }
-    throw error;
   }
+
+  const snapshot = await recalculateStockSnapshot({
+    db,
+    orgId: args.orgId,
+    stockItem,
+    eventId: stockEvent.id,
+    asOf: now,
+  });
+  const taskClosureCount = await closeOpenReviewTasks({
+    db,
+    orgId: args.orgId,
+    signalId: signal.id,
+    now,
+  });
+
+  return {
+    kind: 'applied',
+    data: {
+      signal_id: signal.id,
+      inbound_event_id: signal.inbound_event_id,
+      stock_item_id: stockItem.id,
+      stock_event_id: stockEvent.id,
+      external_observation_id: externalObservation?.id ?? null,
+      review_status: 'accepted',
+      action_status: 'linked_to_stock_event',
+      snapshot,
+      review_task_closure_count: taskClosureCount,
+      idempotent_replay: false,
+    },
+  };
 }

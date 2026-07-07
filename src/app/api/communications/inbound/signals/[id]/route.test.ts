@@ -381,6 +381,108 @@ describe('/api/communications/inbound/signals/[id]', () => {
     expect(applyInboundSignalToMedicationStockMock).not.toHaveBeenCalled();
   });
 
+  it('maps usage_delta apply payloads to positive-use service input', async () => {
+    const response = await PATCH(
+      new NextRequest('http://localhost/api/communications/inbound/signals/signal_1', {
+        method: 'PATCH',
+        headers: {
+          'content-type': 'application/json',
+          'idempotency-key': 'apply-usage-delta',
+        },
+        body: JSON.stringify({
+          action: 'apply_to_medication_stock',
+          target_stock_item_id: 'stock_item_1',
+          observation: {
+            kind: 'usage_delta',
+            used_quantity: 2,
+            unit: 'tablet',
+            event_at: '2026-07-07T07:20:00.000Z',
+          },
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    expect(applyInboundSignalToMedicationStockMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        idempotencyKey: 'apply-usage-delta',
+        observation: {
+          kind: 'usage_delta',
+          usedQuantity: 2,
+          unit: 'tablet',
+          eventAt: new Date('2026-07-07T07:20:00.000Z'),
+        },
+      }),
+    );
+  });
+
+  it('rejects non-positive usage delta values before the service call', async () => {
+    const response = await PATCH(
+      new NextRequest('http://localhost/api/communications/inbound/signals/signal_1', {
+        method: 'PATCH',
+        headers: {
+          'content-type': 'application/json',
+          'idempotency-key': 'apply-usage-delta',
+        },
+        body: JSON.stringify({
+          action: 'apply_to_medication_stock',
+          target_stock_item_id: 'stock_item_1',
+          observation: {
+            kind: 'usage_delta',
+            used_quantity: 0,
+            unit: 'tablet',
+          },
+        }),
+      }),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    expect(payload.code).toBe('VALIDATION_ERROR');
+    expect(applyInboundSignalToMedicationStockMock).not.toHaveBeenCalled();
+  });
+
+  it('maps usage_frequency apply payloads to usage-rate service input', async () => {
+    const response = await PATCH(
+      new NextRequest('http://localhost/api/communications/inbound/signals/signal_1', {
+        method: 'PATCH',
+        headers: {
+          'content-type': 'application/json',
+          'idempotency-key': 'apply-usage-frequency',
+        },
+        body: JSON.stringify({
+          action: 'apply_to_medication_stock',
+          target_stock_item_id: 'stock_item_1',
+          observation: {
+            kind: 'usage_frequency',
+            usage_quantity: 2,
+            usage_period_days: 4,
+            unit: 'tablet',
+          },
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    expect(applyInboundSignalToMedicationStockMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        idempotencyKey: 'apply-usage-frequency',
+        observation: {
+          kind: 'usage_frequency',
+          usageQuantity: 2,
+          usagePeriodDays: 4,
+          unit: 'tablet',
+          eventAt: undefined,
+        },
+      }),
+    );
+  });
+
   it('maps medication stock apply conflicts to no-store 409 responses', async () => {
     applyInboundSignalToMedicationStockMock.mockResolvedValueOnce({
       kind: 'conflict',
@@ -413,6 +515,37 @@ describe('/api/communications/inbound/signals/[id]', () => {
       message: '同じ冪等キーで異なる反映内容が指定されています',
     });
     expect(JSON.stringify(payload)).not.toContain('apply-signal-conflict');
+  });
+
+  it('maps medication stock unique conflicts to no-store 409 responses', async () => {
+    applyInboundSignalToMedicationStockMock.mockRejectedValueOnce({ code: 'P2002' });
+
+    const response = await PATCH(
+      new NextRequest('http://localhost/api/communications/inbound/signals/signal_1', {
+        method: 'PATCH',
+        headers: {
+          'content-type': 'application/json',
+          'idempotency-key': 'apply-signal-unique-conflict',
+        },
+        body: JSON.stringify({
+          action: 'apply_to_medication_stock',
+          target_stock_item_id: 'stock_item_1',
+          observation: {
+            kind: 'refill_request',
+            unit: 'sheet',
+          },
+        }),
+      }),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(409);
+    expectNoStore(response);
+    expect(payload).toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '同じ残数反映が既に処理されています。再読み込みしてください',
+    });
+    expect(JSON.stringify(payload)).not.toContain('apply-signal-unique-conflict');
   });
 
   it('returns a no-store internal error without leaking raw details', async () => {

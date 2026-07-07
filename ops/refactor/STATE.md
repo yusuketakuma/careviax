@@ -17813,3 +17813,88 @@
 - next action:
   Commit and push this slice, then continue with the next backend Plans.md task
   or the MedicationStock write/apply lifecycle after another Oracle review.
+
+## 2026-07-08 Medication stock inbound apply contract expansion
+
+- current task:
+  Expand the backend-only inbound medication-stock apply lifecycle so accepted
+  `usage_delta`, `usage_frequency`, `low_stock_text`, and `refill_request`
+  signals can be linked to the Medication Stock Ledger without corrupting
+  observed quantity semantics.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `ops/refactor/STATE.md`,
+  `Plans.md`,
+  `prisma/schema/medication.prisma`,
+  `prisma/schema/communication.prisma`,
+  `prisma/migrations/20260707090000_add_medication_stock_ledger/migration.sql`,
+  `src/modules/pharmacy/medication-stock/application/apply-inbound-medication-stock-signal.ts`,
+  `src/modules/pharmacy/medication-stock/application/apply-inbound-medication-stock-signal.test.ts`,
+  `src/modules/pharmacy/medication-stock/application/medication-stock-signal-adapter.ts`,
+  `src/core/interprofessional/inbound/domain/inbound-signal-classifier.ts`,
+  `src/app/api/communications/inbound/signals/[id]/route.ts`,
+  `src/app/api/communications/inbound/signals/[id]/route.test.ts`,
+  `gbrain search "careviax medication stock apply inbound signal linked_to_stock_event snapshot recalculation"`,
+  Oracle session `stock-write-lifecycle-review`,
+  and Oracle session `medication-stock-apply-contract-github`.
+- Oracle / GPT-5.5 Pro review:
+  Two attachment-heavy Oracle attempts failed due Chrome disconnect / upload
+  timeout, so the final successful run used GitHub-only context and direct file
+  paths. Oracle advised a conditional GO: `usage_delta` should be a positive
+  used quantity at the API boundary and a negative `delta` ledger event server
+  side; `usage_frequency` should be a `usage_rate` event that affects forecast
+  usage but not current quantity; `low_stock_text` and `refill_request` should
+  only append `no_quantity` evidence and must not set observed quantity to zero
+  or auto-escalate snapshot risk.
+- files changed:
+  `src/modules/pharmacy/medication-stock/application/apply-inbound-medication-stock-signal.ts`,
+  `src/modules/pharmacy/medication-stock/application/apply-inbound-medication-stock-signal.test.ts`,
+  `src/app/api/communications/inbound/signals/[id]/route.ts`,
+  `src/app/api/communications/inbound/signals/[id]/route.test.ts`,
+  `ops/refactor/STATE.md`.
+- implementation:
+  Extended the apply service input and route schema with `usage_delta`,
+  `usage_frequency`, `low_stock_text`, and `refill_request`. The service now
+  matches each observation kind to the exact inbound signal type, includes all
+  effect fields in the request fingerprint, writes append-only `delta`,
+  `usage_rate`, or `no_quantity` events as appropriate, and only creates
+  `ExternalMedicationStockObservation` rows for true observed/no-stock
+  observations. Snapshot recalculation now folds `usage_rate` events into
+  `estimated_daily_usage`, uses negative deltas only after an observed baseline,
+  and clamps derived current quantity at zero.
+- bugs found:
+  The existing service always created `observed_absolute` stock events and
+  external observation rows, which would have made text/refill or usage signals
+  unsafe to add without refactoring. Snapshot recalculation also ignored
+  `usage_rate` events even though the schema already supported them.
+- security risks reduced:
+  The public response remains no-store and excludes inbound raw text,
+  sender/contact data, MCS/external URLs, attachment/storage keys, free-text
+  reasons, raw idempotency keys, and medication names. The service-level role,
+  assignment, patient/case, unit, accepted-status, and action-status checks are
+  preserved for all newly supported signal kinds.
+- performance issues improved:
+  Kept recalculation scoped to the affected stock item and reused the existing
+  bounded event fold. No broad patient/case reprocessing, migration, production
+  data operation, or external call was added.
+- validation commands:
+  `pnpm exec vitest run src/modules/pharmacy/medication-stock/application/apply-inbound-medication-stock-signal.test.ts 'src/app/api/communications/inbound/signals/[id]/route.test.ts' --reporter=dot --testTimeout=30000`;
+  `pnpm prisma validate`;
+  `pnpm exec eslint src/modules/pharmacy/medication-stock/application/apply-inbound-medication-stock-signal.ts src/modules/pharmacy/medication-stock/application/apply-inbound-medication-stock-signal.test.ts 'src/app/api/communications/inbound/signals/[id]/route.ts' 'src/app/api/communications/inbound/signals/[id]/route.test.ts'`;
+  `pnpm exec prettier --check src/modules/pharmacy/medication-stock/application/apply-inbound-medication-stock-signal.ts src/modules/pharmacy/medication-stock/application/apply-inbound-medication-stock-signal.test.ts 'src/app/api/communications/inbound/signals/[id]/route.ts' 'src/app/api/communications/inbound/signals/[id]/route.test.ts'`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `git diff --check`.
+- validation results:
+  Focused apply service + route tests passed (2 files / 23 tests). Prisma
+  schema validation passed. Scoped ESLint passed. Prettier check passed after
+  formatting. Full typecheck passed. Diff check passed.
+- gbrain:
+  `careviax/implementation-decision/medication-stock-inbound-apply-contract-2026-07-08`.
+- remaining work:
+  Add manual/visit/prescription stock event endpoints, prescription supply
+  application, visit observation integration, correction/supersede lifecycle,
+  MedicationStock downstream RiskFinding/VisitBrief/Schedule/Report links, and
+  UI review flows for the new apply kinds.
+- next action:
+  Write gbrain decision memory, commit and push this slice, then continue with
+  the next backend Plans.md task.

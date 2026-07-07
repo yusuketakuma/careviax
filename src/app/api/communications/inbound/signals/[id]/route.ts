@@ -48,6 +48,15 @@ const eventAtSchema = z
   .string()
   .datetime({ offset: true, message: 'event_at はISO日時で指定してください' })
   .optional();
+const positiveQuantitySchema = z
+  .number()
+  .finite()
+  .positive('数量は0より大きい値で指定してください');
+const usagePeriodDaysSchema = z
+  .number()
+  .int()
+  .min(1, '使用期間日数は1日以上で指定してください')
+  .max(366, '使用期間日数が大きすぎます');
 
 const acceptSignalSchema = z.object({
   action: z.literal('accept'),
@@ -73,6 +82,29 @@ const applyMedicationStockSignalSchema = z.object({
     }),
     z.object({
       kind: z.literal('no_stock_observed'),
+      unit: medicationStockUnitSchema,
+      event_at: eventAtSchema,
+    }),
+    z.object({
+      kind: z.literal('usage_delta'),
+      used_quantity: positiveQuantitySchema,
+      unit: medicationStockUnitSchema,
+      event_at: eventAtSchema,
+    }),
+    z.object({
+      kind: z.literal('usage_frequency'),
+      usage_quantity: positiveQuantitySchema,
+      usage_period_days: usagePeriodDaysSchema,
+      unit: medicationStockUnitSchema,
+      event_at: eventAtSchema,
+    }),
+    z.object({
+      kind: z.literal('low_stock_text'),
+      unit: medicationStockUnitSchema,
+      event_at: eventAtSchema,
+    }),
+    z.object({
+      kind: z.literal('refill_request'),
       unit: medicationStockUnitSchema,
       event_at: eventAtSchema,
     }),
@@ -144,6 +176,55 @@ function parseEventAt(value?: string) {
   if (!value) return undefined;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function mapApplyObservation(
+  input: z.infer<typeof applyMedicationStockSignalSchema>['observation'],
+) {
+  const eventAt = parseEventAt(input.event_at);
+
+  switch (input.kind) {
+    case 'observed_absolute':
+      return {
+        kind: 'observed_absolute' as const,
+        quantity: input.quantity,
+        unit: input.unit,
+        eventAt,
+      };
+    case 'no_stock_observed':
+      return {
+        kind: 'no_stock_observed' as const,
+        unit: input.unit,
+        eventAt,
+      };
+    case 'usage_delta':
+      return {
+        kind: 'usage_delta' as const,
+        usedQuantity: input.used_quantity,
+        unit: input.unit,
+        eventAt,
+      };
+    case 'usage_frequency':
+      return {
+        kind: 'usage_frequency' as const,
+        usageQuantity: input.usage_quantity,
+        usagePeriodDays: input.usage_period_days,
+        unit: input.unit,
+        eventAt,
+      };
+    case 'low_stock_text':
+      return {
+        kind: 'low_stock_text' as const,
+        unit: input.unit,
+        eventAt,
+      };
+    case 'refill_request':
+      return {
+        kind: 'refill_request' as const,
+        unit: input.unit,
+        eventAt,
+      };
+  }
 }
 
 function resolveApplyIdempotencyKey(req: Request, payloadKey?: string) {
@@ -221,19 +302,7 @@ const authenticatedPATCH = withAuthContext(
             signalId,
             targetStockItemId: applyPayload.target_stock_item_id,
             idempotencyKey: idempotencyKey.key,
-            observation:
-              applyPayload.observation.kind === 'observed_absolute'
-                ? {
-                    kind: 'observed_absolute',
-                    quantity: applyPayload.observation.quantity,
-                    unit: applyPayload.observation.unit,
-                    eventAt: parseEventAt(applyPayload.observation.event_at),
-                  }
-                : {
-                    kind: 'no_stock_observed',
-                    unit: applyPayload.observation.unit,
-                    eventAt: parseEventAt(applyPayload.observation.event_at),
-                  },
+            observation: mapApplyObservation(applyPayload.observation),
           }),
         {
           requestContext: ctx,
@@ -361,6 +430,11 @@ export const PATCH: typeof authenticatedPATCH = async (req, routeContext) => {
     if (isPrismaErrorCode(err, 'P2034')) {
       return withSensitiveNoStore(
         conflict('残数反映が同時に更新されました。再読み込みしてください'),
+      );
+    }
+    if (isPrismaErrorCode(err, 'P2002')) {
+      return withSensitiveNoStore(
+        conflict('同じ残数反映が既に処理されています。再読み込みしてください'),
       );
     }
     logger.error(

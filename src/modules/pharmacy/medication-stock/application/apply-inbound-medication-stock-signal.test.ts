@@ -152,6 +152,7 @@ describe('applyInboundSignalToMedicationStock', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-07-07T07:30:00.000Z'));
     vi.clearAllMocks();
+    allocateDisplayIdMock.mockReset();
   });
 
   afterEach(() => {
@@ -287,7 +288,7 @@ describe('applyInboundSignalToMedicationStock', () => {
     expect(db.inboundCommunicationSignal.findFirst).not.toHaveBeenCalled();
   });
 
-  it('rejects accepted text-only stock signals in the first slice', async () => {
+  it('rejects mismatched signal and observation kinds before writing stock events', async () => {
     const db = createDb();
     setupHappyPath(db);
     db.inboundCommunicationSignal.findFirst.mockResolvedValueOnce({
@@ -314,6 +315,298 @@ describe('applyInboundSignalToMedicationStock', () => {
 
     expect(result).toMatchObject({ kind: 'invalid_state' });
     expect(db.medicationStockEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('applies usage delta signals as negative delta events without external observation rows', async () => {
+    const db = createDb();
+    db.inboundCommunicationSignal.findFirst.mockResolvedValue({
+      ...mockAcceptedSignal(),
+      signal_type: 'usage_delta',
+    });
+    db.patient.findFirst.mockResolvedValue({
+      id: 'patient_1',
+      cases: [{ id: 'case_1' }],
+    });
+    db.patientMedicationStockItem.findFirst.mockResolvedValue({
+      id: 'stock_item_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      unit: 'tablet',
+      default_usage_amount_per_day: '1',
+      medication_category: 'prn',
+    });
+    db.medicationStockEvent.findFirst.mockResolvedValue(null);
+    db.inboundCommunicationSignal.updateMany.mockResolvedValue({ count: 1 });
+    db.medicationStockEvent.create.mockResolvedValue({ id: 'stock_event_usage_delta' });
+    db.medicationStockEvent.findMany.mockResolvedValue([
+      {
+        id: 'stock_event_observed',
+        event_at: new Date('2026-07-06T07:20:00.000Z'),
+        created_at: new Date('2026-07-06T07:20:10.000Z'),
+        quantity_kind: 'observed_absolute',
+        quantity_delta: null,
+        observed_quantity: '10',
+        usage_quantity: null,
+        usage_period_days: null,
+        unit: 'tablet',
+      },
+      {
+        id: 'stock_event_usage_delta',
+        event_at: new Date('2026-07-07T07:20:00.000Z'),
+        created_at: new Date('2026-07-07T07:20:10.000Z'),
+        quantity_kind: 'delta',
+        quantity_delta: '-2',
+        observed_quantity: null,
+        usage_quantity: null,
+        usage_period_days: null,
+        unit: 'tablet',
+      },
+    ]);
+    db.medicationStockSnapshot.upsert.mockResolvedValue({
+      current_quantity: '8',
+      stock_risk_level: 'ok',
+      calculated_at: new Date('2026-07-07T07:30:00.000Z'),
+    });
+    db.task.updateMany.mockResolvedValue({ count: 1 });
+    allocateDisplayIdMock
+      .mockResolvedValueOnce('msev0000000002')
+      .mockResolvedValueOnce('mss0000000002');
+
+    const result = await applyInboundSignalToMedicationStock(
+      db as unknown as ApplyInboundMedicationStockSignalDb,
+      {
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+        signalId: 'signal_1',
+        targetStockItemId: 'stock_item_1',
+        idempotencyKey: 'apply-usage-delta',
+        observation: {
+          kind: 'usage_delta',
+          usedQuantity: 2,
+          unit: 'tablet',
+          eventAt: new Date('2026-07-07T07:20:00.000Z'),
+        },
+      },
+    );
+
+    expect(result).toMatchObject({
+      kind: 'applied',
+      data: {
+        stock_event_id: 'stock_event_usage_delta',
+        external_observation_id: null,
+        snapshot: {
+          current_quantity: 8,
+          stock_risk_level: 'ok',
+        },
+      },
+    });
+    expect(db.externalMedicationStockObservation.create).not.toHaveBeenCalled();
+    const createData = db.medicationStockEvent.create.mock.calls[0]?.[0].data;
+    expect(createData).toMatchObject({
+      display_id: 'msev0000000002',
+      event_type: 'patient_report',
+      quantity_kind: 'delta',
+      observed_quantity: null,
+      usage_quantity: null,
+      usage_period_days: null,
+      external_observation_id: null,
+    });
+    expect(createData?.quantity_delta?.toString()).toBe('-2');
+    expect(JSON.stringify(result)).not.toContain('apply-usage-delta');
+  });
+
+  it('applies usage frequency signals as usage-rate events used by snapshot recalculation', async () => {
+    const db = createDb();
+    db.inboundCommunicationSignal.findFirst.mockResolvedValue({
+      ...mockAcceptedSignal(),
+      signal_type: 'usage_frequency',
+    });
+    db.patient.findFirst.mockResolvedValue({
+      id: 'patient_1',
+      cases: [{ id: 'case_1' }],
+    });
+    db.patientMedicationStockItem.findFirst.mockResolvedValue({
+      id: 'stock_item_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      unit: 'tablet',
+      default_usage_amount_per_day: null,
+      medication_category: 'prn',
+    });
+    db.medicationStockEvent.findFirst.mockResolvedValue(null);
+    db.inboundCommunicationSignal.updateMany.mockResolvedValue({ count: 1 });
+    db.medicationStockEvent.create.mockResolvedValue({ id: 'stock_event_usage_frequency' });
+    db.medicationStockEvent.findMany.mockResolvedValue([
+      {
+        id: 'stock_event_observed',
+        event_at: new Date('2026-07-06T07:20:00.000Z'),
+        created_at: new Date('2026-07-06T07:20:10.000Z'),
+        quantity_kind: 'observed_absolute',
+        quantity_delta: null,
+        observed_quantity: '12',
+        usage_quantity: null,
+        usage_period_days: null,
+        unit: 'tablet',
+      },
+      {
+        id: 'stock_event_usage_frequency',
+        event_at: new Date('2026-07-07T07:20:00.000Z'),
+        created_at: new Date('2026-07-07T07:20:10.000Z'),
+        quantity_kind: 'usage_rate',
+        quantity_delta: null,
+        observed_quantity: null,
+        usage_quantity: '2',
+        usage_period_days: 4,
+        unit: 'tablet',
+      },
+    ]);
+    db.medicationStockSnapshot.upsert.mockResolvedValue({
+      current_quantity: '12',
+      stock_risk_level: 'ok',
+      calculated_at: new Date('2026-07-07T07:30:00.000Z'),
+    });
+    db.task.updateMany.mockResolvedValue({ count: 1 });
+    allocateDisplayIdMock
+      .mockResolvedValueOnce('msev0000000003')
+      .mockResolvedValueOnce('mss0000000003');
+
+    const result = await applyInboundSignalToMedicationStock(
+      db as unknown as ApplyInboundMedicationStockSignalDb,
+      {
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+        signalId: 'signal_1',
+        targetStockItemId: 'stock_item_1',
+        idempotencyKey: 'apply-usage-frequency',
+        observation: {
+          kind: 'usage_frequency',
+          usageQuantity: 2,
+          usagePeriodDays: 4,
+          unit: 'tablet',
+          eventAt: new Date('2026-07-07T07:20:00.000Z'),
+        },
+      },
+    );
+
+    expect(result).toMatchObject({
+      kind: 'applied',
+      data: {
+        stock_event_id: 'stock_event_usage_frequency',
+        external_observation_id: null,
+      },
+    });
+    expect(db.externalMedicationStockObservation.create).not.toHaveBeenCalled();
+    const createData = db.medicationStockEvent.create.mock.calls[0]?.[0].data;
+    expect(createData).toMatchObject({
+      event_type: 'usage_frequency_update',
+      quantity_kind: 'usage_rate',
+      quantity_delta: null,
+      observed_quantity: null,
+      usage_period_days: 4,
+    });
+    expect(createData?.usage_quantity?.toString()).toBe('2');
+    const snapshotCreate = db.medicationStockSnapshot.upsert.mock.calls[0]?.[0].create;
+    expect(snapshotCreate?.estimated_daily_usage?.toString()).toBe('0.5');
+    expect(snapshotCreate?.usage_confidence).toBe('medium');
+  });
+
+  it('records low-stock text as no-quantity ledger evidence without changing quantity', async () => {
+    const db = createDb();
+    db.inboundCommunicationSignal.findFirst.mockResolvedValue({
+      ...mockAcceptedSignal(),
+      signal_type: 'low_stock_text',
+    });
+    db.patient.findFirst.mockResolvedValue({
+      id: 'patient_1',
+      cases: [{ id: 'case_1' }],
+    });
+    db.patientMedicationStockItem.findFirst.mockResolvedValue({
+      id: 'stock_item_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      unit: 'sheet',
+      default_usage_amount_per_day: '1',
+      medication_category: 'topical',
+    });
+    db.medicationStockEvent.findFirst.mockResolvedValue(null);
+    db.inboundCommunicationSignal.updateMany.mockResolvedValue({ count: 1 });
+    db.medicationStockEvent.create.mockResolvedValue({ id: 'stock_event_low_stock_text' });
+    db.medicationStockEvent.findMany.mockResolvedValue([
+      {
+        id: 'stock_event_observed',
+        event_at: new Date('2026-07-06T07:20:00.000Z'),
+        created_at: new Date('2026-07-06T07:20:10.000Z'),
+        quantity_kind: 'observed_absolute',
+        quantity_delta: null,
+        observed_quantity: '5',
+        usage_quantity: null,
+        usage_period_days: null,
+        unit: 'sheet',
+      },
+      {
+        id: 'stock_event_low_stock_text',
+        event_at: new Date('2026-07-07T07:20:00.000Z'),
+        created_at: new Date('2026-07-07T07:20:10.000Z'),
+        quantity_kind: 'no_quantity',
+        quantity_delta: null,
+        observed_quantity: null,
+        usage_quantity: null,
+        usage_period_days: null,
+        unit: 'sheet',
+      },
+    ]);
+    db.medicationStockSnapshot.upsert.mockResolvedValue({
+      current_quantity: '5',
+      stock_risk_level: 'watch',
+      calculated_at: new Date('2026-07-07T07:30:00.000Z'),
+    });
+    db.task.updateMany.mockResolvedValue({ count: 1 });
+    allocateDisplayIdMock
+      .mockResolvedValueOnce('msev0000000004')
+      .mockResolvedValueOnce('mss0000000004');
+
+    const result = await applyInboundSignalToMedicationStock(
+      db as unknown as ApplyInboundMedicationStockSignalDb,
+      {
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+        signalId: 'signal_1',
+        targetStockItemId: 'stock_item_1',
+        idempotencyKey: 'apply-low-stock-text',
+        observation: {
+          kind: 'low_stock_text',
+          unit: 'sheet',
+          eventAt: new Date('2026-07-07T07:20:00.000Z'),
+        },
+      },
+    );
+
+    expect(result).toMatchObject({
+      kind: 'applied',
+      data: {
+        stock_event_id: 'stock_event_low_stock_text',
+        external_observation_id: null,
+        snapshot: {
+          current_quantity: 5,
+        },
+      },
+    });
+    expect(db.externalMedicationStockObservation.create).not.toHaveBeenCalled();
+    expect(db.medicationStockEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          event_type: 'patient_report',
+          quantity_kind: 'no_quantity',
+          quantity_delta: null,
+          observed_quantity: null,
+          usage_quantity: null,
+          usage_period_days: null,
+        }),
+      }),
+    );
   });
 
   it('rejects unit mismatch before linking the signal', async () => {
