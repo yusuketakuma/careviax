@@ -17499,3 +17499,58 @@
   Run final diff checks, commit and push the AWS backup/recovery monitor slice,
   then continue with the next backend task only after confirming the worktree is
   clean.
+
+## 2026-07-07 Dashboard audit queue DB read reduction
+
+- current task:
+  Improve DB read speed for dashboard audit queue reads after confirming the
+  earlier lightweight summary builder was already implemented.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/server/services/dashboard-cockpit.ts`,
+  `src/app/api/dashboard/cockpit/route.test.ts`,
+  and `gbrain search "dashboard query duplication backup recovery medication stock urgent inbound signal careviax"`.
+- files changed:
+  `src/server/services/dashboard-cockpit.ts`,
+  `src/app/api/dashboard/cockpit/route.test.ts`,
+  `ops/refactor/STATE.md`.
+- implementation:
+  Reworked `readAuditQueue()` so it first asks PostgreSQL for the exact pending
+  audit task ids using the same latest-audit lateral filter as the aggregate
+  count. The detailed Prisma relation read now runs only for those pending task
+  ids instead of reading up to 30 completed dispense tasks and then dropping
+  latest-approved tasks in application code. The raw query returns
+  `COUNT(*) OVER()` so total count remains exact without a second count query.
+- bugs found:
+  The previous full/details audit queue reader could fetch approved dispense
+  tasks and their patient/prescription-line relations before discarding them in
+  JavaScript. This wasted DB reads and could shrink the visible queue if many
+  fetched rows were already approved.
+- security risks reduced:
+  No authorization, scope, PHI projection, response fields, route contract, or
+  cache key behavior changed. The detailed query still keeps org and assignment
+  scope filters as defense in depth.
+- performance issues improved:
+  Avoids unnecessary patient and prescription-line relation reads for tasks that
+  are not actually pending audit. Keeps one raw pending-id query plus one
+  narrowed detail query, with the same fetch limit and exact total count.
+- validation commands:
+  `pnpm exec prettier --write src/server/services/dashboard-cockpit.ts src/app/api/dashboard/cockpit/route.test.ts`;
+  `pnpm exec vitest run src/app/api/dashboard/cockpit/route.test.ts --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint src/server/services/dashboard-cockpit.ts src/app/api/dashboard/cockpit/route.test.ts`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `git diff --check`.
+- validation results:
+  Dashboard cockpit route tests passed (1 file / 36 tests). Scoped ESLint
+  passed. Full typecheck passed. Diff check passed.
+- gbrain:
+  `careviax/performance-finding/dashboard-audit-queue-prefilter-2026-07-07`.
+- remaining work:
+  A real DB `EXPLAIN ANALYZE` on production-like data is still needed to
+  quantify p95 impact and decide whether an additional composite index on
+  `DispenseAudit(task_id, org_id, audited_at, created_at, id)` is justified.
+- next action:
+  Write a gbrain note for the dashboard audit queue read pattern, then commit
+  and push this focused DB-read optimization slice.

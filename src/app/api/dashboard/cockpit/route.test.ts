@@ -209,10 +209,15 @@ describe('/api/dashboard/cockpit', () => {
     ]);
     queryRawMock.mockResolvedValue([
       {
+        task_id: 'task_plain',
         count: BigInt(2),
         total_count: BigInt(2),
         narcotic_count: BigInt(1),
         earliest_due_at: new Date(2026, 5, 12, 11, 0),
+      },
+      {
+        task_id: 'task_narcotic',
+        total_count: BigInt(2),
       },
     ]);
     dispenseTaskFindManyMock.mockResolvedValue([
@@ -365,6 +370,8 @@ describe('/api/dashboard/cockpit', () => {
       'task_narcotic',
       'task_plain',
     ]);
+    const auditQuery = dispenseTaskFindManyMock.mock.calls.at(-1)?.[0];
+    expect(auditQuery?.where?.id).toEqual({ in: ['task_plain', 'task_narcotic'] });
     expect(json.data.audit_queue[0]).toMatchObject({
       patient_name: '田中 一郎',
       has_narcotic: true,
@@ -422,7 +429,12 @@ describe('/api/dashboard/cockpit', () => {
   });
 
   it('keeps the visible audit queue capped while reporting the exact total count', async () => {
-    queryRawMock.mockResolvedValueOnce([{ count: BigInt(37) }]);
+    queryRawMock.mockResolvedValueOnce(
+      Array.from({ length: 8 }, (_, index) => ({
+        task_id: `task_${index}`,
+        total_count: BigInt(37),
+      })),
+    );
     dispenseTaskFindManyMock.mockResolvedValue(
       Array.from({ length: 8 }, (_, index) =>
         buildAuditTask({

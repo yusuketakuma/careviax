@@ -119,14 +119,15 @@ type AuditTaskLine = {
   dispensing_method: string | null;
 };
 
-type AuditQueueCountRow = {
-  count: bigint | number | string | null;
-};
-
 type AuditQueueSummaryRow = {
   total_count: bigint | number | string | null;
   narcotic_count: bigint | number | string | null;
   earliest_due_at: Date | string | null;
+};
+
+type AuditQueuePendingTaskRow = {
+  task_id: string;
+  total_count: bigint | number | string | null;
 };
 
 type DashboardAuditQueueSummary = {
@@ -979,7 +980,7 @@ function buildDashboardUrgentItems(args: {
   ].sort(compareDashboardUrgentItems);
 }
 
-function readCount(value: AuditQueueCountRow['count'] | undefined): number {
+function readCount(value: bigint | number | string | null | undefined): number {
   if (typeof value === 'bigint') return Number(value);
   const count = Number(value ?? 0);
   return Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
@@ -989,15 +990,20 @@ function buildSegmentCacheKey(baseKey: string, part: DashboardCockpitPart) {
   return part === 'full' ? baseKey : `${baseKey}:${part}`;
 }
 
-async function countAuditQueueItems(args: { orgId: string; caseIds?: string[] }) {
-  if (args.caseIds && args.caseIds.length === 0) return 0;
+async function readPendingAuditQueueTaskRows(args: {
+  orgId: string;
+  caseIds?: string[];
+}): Promise<AuditQueuePendingTaskRow[]> {
+  if (args.caseIds && args.caseIds.length === 0) return [];
 
   const caseScope = args.caseIds
     ? Prisma.sql`AND cycle."case_id" IN (${Prisma.join(args.caseIds)})`
     : Prisma.empty;
 
-  const rows = await prisma.$queryRaw<AuditQueueCountRow[]>(Prisma.sql`
-    SELECT COUNT(*)::bigint AS count
+  return prisma.$queryRaw<AuditQueuePendingTaskRow[]>(Prisma.sql`
+    SELECT
+      task."id" AS task_id,
+      COUNT(*) OVER()::bigint AS total_count
     FROM "DispenseTask" task
     INNER JOIN "MedicationCycle" cycle
       ON cycle."id" = task."cycle_id"
@@ -1014,9 +1020,16 @@ async function countAuditQueueItems(args: { orgId: string; caseIds?: string[] })
       AND task."status" = 'completed'
       ${caseScope}
       AND (latest_audit."result" IS NULL OR latest_audit."result"::text = 'hold')
+    ORDER BY
+      CASE task."priority"
+        WHEN 'emergency' THEN 0
+        WHEN 'urgent' THEN 1
+        ELSE 2
+      END ASC,
+      task."due_date" ASC NULLS LAST,
+      task."updated_at" ASC
+    LIMIT ${AUDIT_QUEUE_FETCH_LIMIT}
   `);
-
-  return readCount(rows[0]?.count);
 }
 
 async function readAuditQueueSummary(args: {
@@ -1167,66 +1180,72 @@ async function readAuditQueue(args: {
   orgId: string;
   assignmentScope: DashboardAssignmentScope;
 }): Promise<{ all: CockpitAuditQueueItem[]; totalCount: number }> {
-  const [auditTasks, totalCount] = await Promise.all([
-    prisma.dispenseTask.findMany({
-      where: {
-        org_id: args.orgId,
-        status: 'completed',
-        ...(args.assignmentScope.caseIds
-          ? { cycle: { case_id: { in: args.assignmentScope.caseIds } } }
-          : {}),
+  const pendingRows = await readPendingAuditQueueTaskRows({
+    orgId: args.orgId,
+    caseIds: args.assignmentScope.caseIds,
+  });
+  const pendingTaskIds = pendingRows
+    .map((row) => row.task_id)
+    .filter((taskId): taskId is string => typeof taskId === 'string' && taskId.length > 0);
+  const totalCount = readCount(pendingRows[0]?.total_count);
+
+  if (pendingTaskIds.length === 0) {
+    return { all: [], totalCount };
+  }
+
+  const pendingTaskIdSet = new Set(pendingTaskIds);
+  const auditTasks = await prisma.dispenseTask.findMany({
+    where: {
+      org_id: args.orgId,
+      id: { in: pendingTaskIds },
+      status: 'completed',
+      ...(args.assignmentScope.caseIds
+        ? { cycle: { case_id: { in: args.assignmentScope.caseIds } } }
+        : {}),
+    },
+    orderBy: [{ priority: 'asc' }, { due_date: 'asc' }, { updated_at: 'asc' }],
+    take: AUDIT_QUEUE_FETCH_LIMIT,
+    select: {
+      id: true,
+      priority: true,
+      due_date: true,
+      updated_at: true,
+      audits: {
+        orderBy: [{ audited_at: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
+        take: 1,
+        select: { result: true },
       },
-      orderBy: [{ priority: 'asc' }, { due_date: 'asc' }, { updated_at: 'asc' }],
-      take: AUDIT_QUEUE_FETCH_LIMIT,
-      select: {
-        id: true,
-        priority: true,
-        due_date: true,
-        updated_at: true,
-        audits: {
-          orderBy: [{ audited_at: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
-          take: 1,
-          select: { result: true },
-        },
-        cycle: {
-          select: {
-            id: true,
-            case_: {
-              select: {
-                patient: { select: { name: true } },
-              },
+      cycle: {
+        select: {
+          id: true,
+          case_: {
+            select: {
+              patient: { select: { name: true } },
             },
-            prescription_intakes: {
-              orderBy: { created_at: 'desc' },
-              take: 1,
-              select: {
-                id: true,
-                prescribed_date: true,
-                lines: {
-                  select: {
-                    packaging_instruction_tags: true,
-                    packaging_instructions: true,
-                    notes: true,
-                    dispensing_method: true,
-                  },
+          },
+          prescription_intakes: {
+            orderBy: { created_at: 'desc' },
+            take: 1,
+            select: {
+              id: true,
+              prescribed_date: true,
+              lines: {
+                select: {
+                  packaging_instruction_tags: true,
+                  packaging_instructions: true,
+                  notes: true,
+                  dispensing_method: true,
                 },
               },
             },
           },
         },
       },
-    }),
-    countAuditQueueItems({
-      orgId: args.orgId,
-      caseIds: args.assignmentScope.caseIds,
-    }),
-  ]);
+    },
+  });
 
   const all = auditTasks
-    .filter((task) => {
-      const latestAudit = task.audits[0] ?? null;
-      return latestAudit == null || latestAudit.result === 'hold';
-    })
+    .filter((task) => pendingTaskIdSet.has(task.id))
     .map((task) => {
       const intake = task.cycle.prescription_intakes[0] ?? null;
       const handlingTags = collectHandlingTags(intake?.lines ?? []);
