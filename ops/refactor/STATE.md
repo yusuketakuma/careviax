@@ -41,6 +41,54 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOD-CI-001 operational task type registry gate（pending commit）。
+  - current task:
+    `MOD-CI-001` の残 gate として、未登録 `task_type` と module prefix なし新規 task type を
+    CIで検出する `task-types:check` を実装する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `package.json`,
+    `.github/workflows/ci.yml`,
+    `src/lib/tasks/task-registry.ts`,
+    `src/server/services/operational-tasks.ts`,
+    `src/app/api/tasks/route.ts`,
+    `tools/scripts/check-module-boundaries.mjs`,
+    `tools/scripts/check-module-boundaries.test.ts`,
+    task_type literal search results.
+  - files changed:
+    `tools/scripts/check-task-type-registry.mjs`,
+    `tools/scripts/check-task-type-registry.test.ts`,
+    `src/lib/tasks/task-registry.ts`,
+    `package.json`,
+    `.github/workflows/ci.yml`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `tools/scripts/check-task-type-registry.mjs` を追加し、
+    `src/lib/tasks/task-registry.ts` の canonical task type、legacy task type、risk task type を正本として読むようにした。
+    production code の `src/app/api`、`src/server`、`src/lib` に出る `taskType` / `task_type` literal が登録済みか検査し、
+    module prefix なしの literal は `legacyTaskTypes` として明示されている場合だけ許可する。
+    `pnpm task-types:check` を package script と GitHub Actions CI に接続した。
+    既存生成箇所の `visit_followup` は `core.visit_followup` の legacy task type として registry に追加した。
+  - bugs found:
+    `visit-records` の次回訪問フォロー task は `upsertOperationalTask` 経由で runtime registry check を受けるが、
+    `visit_followup` が registry に未登録で、該当経路実行時に task 作成が失敗する状態だった。
+    また、未登録 task type literal をCIで早期検出する gate がなかった。
+  - security risks reduced:
+    auth/DB/API contract変更なし。タスク種別の uncontrolled string 増殖を抑え、将来の task presenter / PHI-safe action href /
+    dedupe policy / module owner の欠落をCIで検出できるようにした。
+  - performance issues improved:
+    実行時性能変更なし。checker はCI/ローカル静的検査のみ。
+  - validation:
+    `pnpm task-types:check` → pass（81 task literals、144 registered task types）。
+    `pnpm exec vitest run tools/scripts/check-task-type-registry.test.ts src/lib/tasks/operational-task-presentation.test.ts src/server/services/operational-tasks.test.ts --reporter=dot --testTimeout=30000` → pass（66 tests）。
+    `pnpm exec eslint tools/scripts/check-task-type-registry.mjs tools/scripts/check-task-type-registry.test.ts src/lib/tasks/task-registry.ts` → pass。
+    `pnpm exec prettier --check tools/scripts/check-task-type-registry.mjs tools/scripts/check-task-type-registry.test.ts src/lib/tasks/task-registry.ts package.json .github/workflows/ci.yml Plans.md ops/refactor/STATE.md` → pass after targeted prettier write。
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` → pass。
+  - remaining work:
+    `MOD-CI-001` の残りは `api-response-shape:check`、`dto-direct-prisma-return:check`、`rls-policy-contract` との役割整理。
+
 - codex: Plans.md implemented-task cleanup for module backlog（docs-only, pending commit）。
   - current task:
     `Plans.md` 内を整理し、実装済みタスクが未完 backlog として残らないように削除・圧縮する。

@@ -61,6 +61,9 @@ jobs:
       - name: Module boundary check
         run: pnpm boundaries:check
 
+      - name: Operational task type registry check
+        run: pnpm task-types:check
+
       - name: EventBridge schedule definition check
         run: pnpm eventbridge-schedules:check
 

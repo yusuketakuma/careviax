@@ -614,6 +614,21 @@ const TASK_TYPE_DEFINITION_SEEDS = [
       queueLabel: '保存期限',
     }),
   }),
+  coreTask('core.visit_followup', {
+    legacyTaskTypes: ['visit_followup'],
+    label: '次回訪問',
+    description: '訪問記録後の次回訪問候補または患者連絡確認。',
+    defaultPriority: 'high',
+    allowedRelatedEntityTypes: ['visit_record', 'visit_schedule', 'visit_schedule_proposal'],
+    actionBuilder: (task) => ({
+      actionHref:
+        task.related_entity_type === 'visit_record' && task.related_entity_id
+          ? buildVisitHref(task.related_entity_id)
+          : buildRelatedTaskQueueHref(task.task_type, task),
+      actionLabel: '次回訪問を確認',
+      queueLabel: '次回訪問',
+    }),
+  }),
   pharmacyTask('pharmacy.prescription_original_retention', {
     legacyTaskTypes: ['prescription_original_retention'],
     label: '原本保存',

@@ -1058,7 +1058,7 @@ module registry / collaboration / risk provider / task type registry / report te
 | MOD-SHARE-001   | P1     | `SEC-001`, `FILE-LIFE-001`, `EXP-002`, `TENANT-001`                       | External Share payload enforcement | attachments / patient_summary / prescription_summary / residual_medications payload 接続前に file presenter、masking profile、audit snapshot、stored-only boundary 露出防止テストを追加する。                                                                                               | unknown scope は拒否。planned だが未実装の scope は known unsupported として拒否し、public scope/payload から strip する。                                                                     |
 | MOD-IO-001      | P1     | `VS-AUTO-9`, `INT-WEBHOOK-001`, `NTF-001`, `SEC-001`                      | External IO adapter contract       | routing/S3/SES/Cognito/MCS/webhook/notification など外部I/O adapter の共通 contract を定義する。timeout、retry/idempotency、tenant context、PHI-free diagnostics、raw provider error redaction、correlation id、no-store/audit linkage を adapter class ごとに固定する。                    | 外部 provider failure が patient name/address/drug/free text/raw provider error/token/storage key を log/response/audit に出さない。AWS関連 adapter 実装時はAWS公式reference確認ルールに従う。 |
 | MOD-DATA-001    | P1     | `TENANT-001`, `TENANT-002`, `TENANT-003`, `DB-EVENT-001`, `DATA-RET-001A` | Module data/API crosswalk          | module -> Prisma model / DTO presenter / route prefix / outbox event / audit action / RLS policy / retention policy の対応表を作る。`CareCase.service_line`、visit/report `discipline`、`Task.module`、coverage/support session/outbox は migration plan として既存DB/APIレーンへ接続する。 | Prisma model public response直出し、org_id/RLS未確認、outbox payload PHI混入、module不明 task/report/share scope を module review で検出できる。計画追加だけではDB変更を適用しない。           |
-| MOD-CI-001      | P1     | `API-DTO-001`, `DB-TENANT-001`, `DEV-PHI-001`, `PLAN-REV-001`             | Remaining debt-ratchet CI gates    | 残: `api-response-shape:check`、`dto-direct-prisma-return:check`、`task-type-registry:check`、`rls-policy-contract` との役割整理。                                                                                                                                                          | 各MOD PRは「module境界化 + DEBT削減 + DTO/presenter明確化 + 境界テスト + 回帰テスト」を含む。薬局E2E/主要API回帰を維持し、module-boundary allowlist は0を維持する。                            |
+| MOD-CI-001      | P1     | `API-DTO-001`, `DB-TENANT-001`, `DEV-PHI-001`, `PLAN-REV-001`             | Remaining debt-ratchet CI gates    | 残: `api-response-shape:check`、`dto-direct-prisma-return:check`、`rls-policy-contract` との役割整理。`task-types:check` は CI 接続済み。                                                                                                                                                   | 各MOD PRは「module境界化 + DEBT削減 + DTO/presenter明確化 + 境界テスト + 回帰テスト」を含む。薬局E2E/主要API回帰を維持し、module-boundary allowlist と task type registry gate を維持する。    |
 
 **DB / API crosswalk（migrationは個別承認sliceに分離）**:
 
@@ -1122,7 +1122,6 @@ module registry / collaboration / risk provider / task type registry / report te
 
 - `api-response-shape:check`: public API envelope / error shape / request_id / list meta の標準形を検査。
 - `dto-direct-prisma-return:check`: route/usecase が Prisma record を直接 public response に返す箇所を検出。
-- `task-type-registry:check`: module prefixなし新規 task type と registry未登録 task type を拒否。
 
 **推奨 PR / slice 分割**:
 
@@ -1131,7 +1130,7 @@ module registry / collaboration / risk provider / task type registry / report te
 3. `MOD-REPORT-001` + `MOD-SHARE-001`: 出力/masking/audit境界を固定する。
 4. `MOD-IO-001`: 外部I/O adapter contract を整え、AWS/通知/Webhook/経路計算の raw error / PHI 境界を揃える。
 5. `MOD-DATA-001` + 既存 `TENANT-*` / `DB-EVENT-001`: service_line / discipline / coverage / support session / outbox を migration plan へ接続する。
-6. `MOD-CI-001`: API response / DTO / task type / RLS contract の残 gate をCIへ接続する。
+6. `MOD-CI-001`: API response / DTO / RLS contract の残 gate をCIへ接続する。
 
 **残完了条件**:
 
