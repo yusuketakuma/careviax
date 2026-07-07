@@ -93,6 +93,7 @@
     "api-response-shape:check": "node tools/scripts/check-api-response-shape.mjs",
     "dto-direct-prisma-return:check": "node tools/scripts/check-dto-direct-prisma-return.mjs",
     "task-types:check": "node tools/scripts/check-task-type-registry.mjs",
+    "rls-policy-contract:check": "vitest run src/tools/rls-policy-contract.test.ts --reporter=dot --testTimeout=30000",
     "eventbridge-schedules:check": "node tools/scripts/check-eventbridge-schedule-drift.mjs",
     "hooks:install": "git config core.hooksPath tools/git-hooks"
   },

@@ -70,6 +70,9 @@ jobs:
       - name: Operational task type registry check
         run: pnpm task-types:check
 
+      - name: RLS policy contract check
+        run: pnpm rls-policy-contract:check
+
       - name: EventBridge schedule definition check
         run: pnpm eventbridge-schedules:check
 

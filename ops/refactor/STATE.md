@@ -41,6 +41,54 @@
 
 ## 直近の land（本日・要点）
 
+- codex: DB-TENANT-001 RLS static contract expansion（committed）。
+  - current task:
+    `DB-TENANT-001` の小スライスとして、既存 RLS contract を nullable `org_id` と
+    tenant table の `org_id` を含まない unique 制約まで拡張し、CI gate に接続する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `src/tools/rls-policy-contract.test.ts`,
+    `src/tools/rls-known-gaps.ts`,
+    `src/tools/rls-contract-scan.ts`,
+    `package.json`,
+    `.github/workflows/ci.yml`,
+    `Plans.md`,
+    `prisma/schema/*.prisma` の nullable `org_id` / unique 制約候補。
+  - files changed:
+    `src/tools/rls-contract-scan.ts`,
+    `src/tools/rls-known-gaps.ts`,
+    `src/tools/rls-policy-contract.test.ts`,
+    `package.json`,
+    `.github/workflows/ci.yml`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `scanRlsContract()` が tenant model の nullable `org_id` と、tenant table 上の
+    `org_id` を含まない field/compound unique 制約を返すよう拡張した。
+    既存ギャップは `RLS_NULLABLE_ORG_ID_GAPS` と
+    `RLS_TENANT_UNIQUE_WITHOUT_ORG_GAPS` に reason/plannedAction 付きで固定した。
+    contract test に新規ギャップ検出と stale allowlist 検出を追加し、
+    `pnpm rls-policy-contract:check` を package script と GitHub Actions CI に接続した。
+    `Plans.md` は gate 新設済み guardrail と、残る allowlist burn-down を分離する形に整理した。
+  - bugs found:
+    既存 RLS contract は RLS ENABLE/FORCE/policy の被覆を検査していたが、
+    nullable `org_id` と tenant unique without `org_id` は同じ gate で検出していなかった。
+  - security risks reduced:
+    新規 tenant table が nullable `org_id` や org 境界を表さない unique 制約を追加した場合にCIで検出できる。
+    public token / identity / site scoped / patient child / clinical child など既存例外は理由付きで可視化され、
+    以後は expectedCount burn-down 対象になる。
+  - performance issues improved:
+    実行時性能変更なし。静的検査/CI guardrail のみ。
+  - validation:
+    `pnpm exec prettier --write src/tools/rls-contract-scan.ts src/tools/rls-known-gaps.ts src/tools/rls-policy-contract.test.ts package.json .github/workflows/ci.yml Plans.md ops/refactor/STATE.md` → pass。
+    `pnpm exec eslint src/tools/rls-contract-scan.ts src/tools/rls-known-gaps.ts src/tools/rls-policy-contract.test.ts` → pass。
+    `pnpm rls-policy-contract:check` → pass（24 tests）。
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` → pass。
+    `git diff --check -- src/tools/rls-contract-scan.ts src/tools/rls-known-gaps.ts src/tools/rls-policy-contract.test.ts package.json .github/workflows/ci.yml Plans.md ops/refactor/STATE.md` → pass。
+  - remaining work:
+    実体移行としては nullable `org_id` の table 分離/NOT NULL 化、tenant unique への `org_id` 追加、
+    `User` global identity + Membership 設計、public token/external id lookup の再認可 snapshot が残る。
+
 - codex: Plans.md implemented-task cleanup for CI/module backlog（docs-only, pending commit）。
   - current task:
     `Plans.md` 内の実装済みタスクを未完 backlog から削除し、残作業を既存レーンへ集約する。

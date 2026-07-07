@@ -3,10 +3,14 @@ import { describe, expect, it } from 'vitest';
 
 import { scanRlsContract } from './rls-contract-scan';
 import {
+  KNOWN_NULLABLE_ORG_ID_TABLES,
   RLS_MISSING_GAPS,
+  RLS_NULLABLE_ORG_ID_GAPS,
   RLS_SSOT_DRIFT_GAPS,
+  RLS_TENANT_UNIQUE_WITHOUT_ORG_GAPS,
   KNOWN_MISSING_TABLES,
   KNOWN_SSOT_DRIFT_TABLES,
+  KNOWN_TENANT_UNIQUE_WITHOUT_ORG_CONSTRAINTS,
 } from './rls-known-gaps';
 import { renderRlsGapLedger, LEDGER_PATH } from './rls-gap-ledger';
 
@@ -28,6 +32,12 @@ function withoutIntentionalRlsExclusions(scan: typeof rawScan): typeof rawScan {
     ...scan,
     tenantTables: scan.tenantTables.filter((t) => !INTENTIONAL_RLS_EXCLUSION_TABLES.has(t)),
     coverage,
+    nullableTenantColumns: scan.nullableTenantColumns.filter(
+      (t) => !INTENTIONAL_RLS_EXCLUSION_TABLES.has(t),
+    ),
+    tenantUniquesWithoutOrg: scan.tenantUniquesWithoutOrg.filter(
+      (issue) => !INTENTIONAL_RLS_EXCLUSION_TABLES.has(issue.table),
+    ),
     missing: scan.missing.filter((t) => !INTENTIONAL_RLS_EXCLUSION_TABLES.has(t)),
     partial: scan.partial.filter((t) => !INTENTIONAL_RLS_EXCLUSION_TABLES.has(t)),
     ssotDrift: scan.ssotDrift.filter((t) => !INTENTIONAL_RLS_EXCLUSION_TABLES.has(t)),
@@ -36,6 +46,8 @@ function withoutIntentionalRlsExclusions(scan: typeof rawScan): typeof rawScan {
 }
 
 const scan = withoutIntentionalRlsExclusions(rawScan);
+const uniqueIssueId = (issue: { readonly table: string; readonly constraint: string }) =>
+  `${issue.table}:${issue.constraint}`;
 
 describe('RLS contract — machine-derived tenant coverage', () => {
   it('derives a non-trivial tenant-table set from prisma/schema (guards a broken parser)', () => {
@@ -93,6 +105,60 @@ describe('RLS contract — machine-derived tenant coverage', () => {
   it('every known-gap table is still a tenant model with an org_id column (guards renames/removals)', () => {
     const tenant = new Set(scan.tenantTables);
     for (const g of [...RLS_MISSING_GAPS, ...RLS_SSOT_DRIFT_GAPS]) {
+      expect(
+        tenant.has(g.table),
+        `known-gap の ${g.table} が org_id 列を持つテナントモデルとして存在しません（rename/削除? 台帳を更新してください）`,
+      ).toBe(true);
+    }
+  });
+
+  it('RATCHET: every nullable org_id tenant table is an acknowledged known gap', () => {
+    const unexpected = scan.nullableTenantColumns.filter(
+      (t) => !KNOWN_NULLABLE_ORG_ID_TABLES.has(t),
+    );
+    expect(
+      unexpected,
+      `org_id nullable のテナントテーブルが増えました。org_id NOT NULL/RLS 設計へ直すか、理由・対応予定つきで ` +
+        `RLS_NULLABLE_ORG_ID_GAPS に追記してください: ${unexpected.join(', ')}`,
+    ).toEqual([]);
+  });
+
+  it('RATCHET: no stale nullable org_id known-gap entry', () => {
+    const stale = [...KNOWN_NULLABLE_ORG_ID_TABLES]
+      .filter((table) => !scan.nullableTenantColumns.includes(table))
+      .sort();
+    expect(
+      stale,
+      `以下は org_id nullable ではなくなりました。RLS_NULLABLE_ORG_ID_GAPS から削除してください: ${stale.join(', ')}`,
+    ).toEqual([]);
+  });
+
+  it('RATCHET: every tenant unique without org_id is an acknowledged known gap', () => {
+    const unexpected = scan.tenantUniquesWithoutOrg
+      .filter((issue) => !KNOWN_TENANT_UNIQUE_WITHOUT_ORG_CONSTRAINTS.has(uniqueIssueId(issue)))
+      .map(uniqueIssueId);
+    expect(
+      unexpected,
+      `org_id を含まない tenant unique 制約が増えました。org_id を含む DB 制約へ直すか、理由・対応予定つきで ` +
+        `RLS_TENANT_UNIQUE_WITHOUT_ORG_GAPS に追記してください: ${unexpected.join(', ')}`,
+    ).toEqual([]);
+  });
+
+  it('RATCHET: no stale tenant unique without org_id known-gap entry', () => {
+    const current = new Set(scan.tenantUniquesWithoutOrg.map(uniqueIssueId));
+    const stale = [...KNOWN_TENANT_UNIQUE_WITHOUT_ORG_CONSTRAINTS]
+      .filter((issueId) => !current.has(issueId))
+      .sort();
+    expect(
+      stale,
+      `以下の tenant unique 制約ギャップは解消/変更されました。` +
+        `RLS_TENANT_UNIQUE_WITHOUT_ORG_GAPS から削除または更新してください: ${stale.join(', ')}`,
+    ).toEqual([]);
+  });
+
+  it('every nullable/unique known gap is still attached to a tenant model', () => {
+    const tenant = new Set(scan.tenantTables);
+    for (const g of [...RLS_NULLABLE_ORG_ID_GAPS, ...RLS_TENANT_UNIQUE_WITHOUT_ORG_GAPS]) {
       expect(
         tenant.has(g.table),
         `known-gap の ${g.table} が org_id 列を持つテナントモデルとして存在しません（rename/削除? 台帳を更新してください）`,
