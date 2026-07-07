@@ -41,6 +41,67 @@
 
 ## 直近の land（本日・要点）
 
+- codex: PERF-DB-005 patient detail root scoped read + timeline fan-out removal（commit `5fdea246e`, push pending）。
+  - current task:
+    Plans registry の DB read-speed 改善順に従い、legacy `GET /api/patients/[id]`
+    の患者詳細 root read を bounded/slice 方針へ寄せる第一段を実装する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    local Next.js route handler docs under `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`,
+    `src/app/api/patients/[id]/route.ts`,
+    `src/app/api/patients/[id]/route.test.ts`,
+    `src/app/api/patients/[id]/detail-slices.test.ts`,
+    `src/app/api/patients/[id]/timeline/route.test.ts`,
+    `src/server/services/patient-detail.ts`,
+    `src/server/services/patient-detail-billing-refs.ts`,
+    `src/server/services/patient-detail-scope.ts`,
+    and read-only subagent reports for patient detail fan-out / RLS / test gaps.
+  - files changed:
+    `src/app/api/patients/[id]/route.ts`,
+    `src/app/api/patients/[id]/route.test.ts`,
+    `ops/refactor/STATE.md`,
+    `careviax/performance-finding/patient-detail-root-scoped-read-2026-07-08.md`.
+  - implementation:
+    Root patient detail GET now wraps its read work in `withOrgContext(ctx.orgId, ..., { requestContext: ctx })`
+    and passes the scoped transaction client into local/helper/service reads.
+    Removed root GET reads that only fed legacy `timeline_events`: communication events, inquiry records,
+    prescription intakes, dispense results, management plans, conference notes, operation audit history,
+    and actor-name resolution. The compatibility key remains as `timeline_events: []`, with real timeline
+    data owned by `/api/patients/[id]/timeline`.
+    Added `take: 8` to the root first-visit document read.
+  - bugs found:
+    Root GET previously read PHI-heavy patient detail data through global Prisma instead of the DB RLS request
+    context seam, and route tests pinned root timeline fan-out as expected behavior.
+  - security risks reduced:
+    Patient detail root reads now execute with request/org context available to DB RLS/audit machinery.
+    Removed timeline-only PHI materialization from root GET, including raw-ish operation history sources.
+  - performance issues improved:
+    Root patient detail no longer runs the timeline-only query fan-out for communication events, inquiries,
+    prescriptions, dispensing, management plans, conference notes, audit logs, or actor lookup. First-visit
+    document reads are bounded.
+  - validation commands:
+    `pnpm exec vitest run 'src/app/api/patients/[id]/route.test.ts' --reporter=dot --testTimeout=30000`;
+    `pnpm exec vitest run 'src/app/api/patients/[id]/route.test.ts' 'src/app/api/patients/[id]/detail-slices.test.ts' 'src/app/api/patients/[id]/timeline/route.test.ts' --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint 'src/app/api/patients/[id]/route.ts' 'src/app/api/patients/[id]/route.test.ts'`;
+    `pnpm exec prettier --check 'src/app/api/patients/[id]/route.ts' 'src/app/api/patients/[id]/route.test.ts'`;
+    `git diff --check -- 'src/app/api/patients/[id]/route.ts' 'src/app/api/patients/[id]/route.test.ts'`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Focused route test passed `36` tests.
+    Combined patient route/detail-slice/timeline route tests passed `97` tests across `3` files.
+    Scoped ESLint, Prettier check, diff-check, and full typecheck passed.
+  - gbrain:
+    Wrote `careviax/performance-finding/patient-detail-root-scoped-read-2026-07-08`.
+  - remaining:
+    Follow-up `PERF-DB-005` work remains for replacing broad patient master `include` in root/overview base
+    readers with bounded `select` + per-relation `take`, and for adding tests that fail on broad relation
+    includes.
+  - next action:
+    Commit ledger/gbrain write-through, push the code+ledger commits, then continue DB read-speed backlog
+    with the bounded patient master select follow-up or the next ranked DB task.
+
 - codex: PERF-DB-002 dashboard medication-stock signal window aggregate reader（commit `e207c779a`, pushed to `main`; ledger sync `5ca3e3922`）。
   - current task:
     Plans registry の DB read-speed 改善順に従い、`/api/dashboard/cockpit/stock-risks`
