@@ -296,7 +296,14 @@ function queryConfigFor(
   scope: 'mine' | 'team' = 'mine',
 ) {
   return useRealtimeQueryMock.mock.calls
-    .map((call) => call[0] as { queryKey: unknown[]; queryFn: () => Promise<unknown> })
+    .map(
+      (call) =>
+        call[0] as {
+          queryKey: unknown[];
+          queryFn: () => Promise<unknown>;
+          invalidateOn?: readonly unknown[];
+        },
+    )
     .find((config) => config.queryKey[2] === segment && config.queryKey[4] === scope);
 }
 
@@ -360,6 +367,23 @@ describe('DashboardCockpit', () => {
       'org_1',
       'mine',
     ]);
+    for (const config of [mineSummaryConfig, mineDetailsConfig, mineTeamConfig]) {
+      expect(config?.invalidateOn).not.toContain('workflow_refresh');
+      expect(config?.invalidateOn).toEqual([
+        'cycle_transition',
+        expect.objectContaining({
+          type: 'workflow_refresh',
+          source: expect.arrayContaining([
+            'medication_cycles_transition',
+            'prescription_intakes_create',
+            'visit_schedules_update',
+            'visit_schedule_proposals_create',
+            'set_batches_update',
+          ]),
+        }),
+      ]);
+    }
+    expect(mineCommentsConfig?.invalidateOn).toEqual(['comment_refresh']);
 
     await mineSummaryConfig?.queryFn();
     await mineDetailsConfig?.queryFn();

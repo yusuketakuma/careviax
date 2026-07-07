@@ -145,6 +145,53 @@ const FOCUS_ROLE_HINT: Record<DashboardFocusRole, string> = {
   common: '共通フォーカス: 要対応を優先',
 };
 
+const DASHBOARD_COCKPIT_WORKFLOW_SOURCES = [
+  'schedule_conflict_resolution',
+  'cycle_holds_create',
+  'cycle_holds_resolve',
+  'dispense_audits',
+  'dispense_results',
+  'dispense_results_rework',
+  'dispense_tasks_update',
+  'facility_visit_batch_delete',
+  'facility_visit_batch_reorder',
+  'facility_visit_batches_upsert',
+  'facility_visit_days_upsert',
+  'inquiry_records_update',
+  'medication_cycles_transition',
+  'medication_issues_update',
+  'prescription_intakes_create',
+  'set_audits',
+  'set_batches_create',
+  'set_batches_delete',
+  'set_batches_generate',
+  'set_batches_update',
+  'set_plans',
+  'set_plans_update',
+  'visit_schedule_proposals_approve',
+  'visit_schedule_proposals_confirm',
+  'visit_schedule_proposals_contact_attempt',
+  'visit_schedule_proposals_create',
+  'visit_schedule_proposals_reject',
+  'visit_schedule_proposals_reorder',
+  'visit_preparations_update',
+  'visit_routes_mixed_reorder',
+  'visit_schedule_conflict_reconfirmation',
+  'visit_schedules_create',
+  'visit_schedules_delete',
+  'visit_schedules_generate',
+  'visit_schedules_reopen',
+  'visit_schedules_reorder',
+  'visit_schedules_reschedule_approve',
+  'visit_schedules_reschedule_request',
+  'visit_schedules_update',
+] as const;
+
+const DASHBOARD_COCKPIT_REALTIME_EVENTS = [
+  'cycle_transition',
+  { type: 'workflow_refresh', source: DASHBOARD_COCKPIT_WORKFLOW_SOURCES },
+] as const;
+
 // ---------------------------------------------------------------------------
 // 条件バナー
 // ---------------------------------------------------------------------------
@@ -946,7 +993,7 @@ export function DashboardCockpit({ focusRole = 'common' }: { focusRole?: Dashboa
     queryFn: () => fetchDashboardCockpitSummary(orgId, viewScope),
     staleTime: COCKPIT_FRESHNESS_WINDOW_MS,
     enabled: !isBootstrappingOrg,
-    invalidateOn: ['cycle_transition', 'workflow_refresh'],
+    invalidateOn: DASHBOARD_COCKPIT_REALTIME_EVENTS,
   });
   const summary = summaryQuery.data ?? null;
   const segmentQueriesEnabled = !isBootstrappingOrg && summary != null;
@@ -955,21 +1002,21 @@ export function DashboardCockpit({ focusRole = 'common' }: { focusRole?: Dashboa
     queryFn: () => fetchDashboardCockpitDetails(orgId, viewScope),
     staleTime: COCKPIT_FRESHNESS_WINDOW_MS,
     enabled: segmentQueriesEnabled,
-    invalidateOn: ['cycle_transition', 'workflow_refresh'],
+    invalidateOn: DASHBOARD_COCKPIT_REALTIME_EVENTS,
   });
   const teamQuery = useRealtimeQuery({
     queryKey: ['dashboard', 'cockpit', 'team', orgId, viewScope],
     queryFn: () => fetchDashboardCockpitTeam(orgId, viewScope),
     staleTime: COCKPIT_FRESHNESS_WINDOW_MS,
     enabled: segmentQueriesEnabled,
-    invalidateOn: ['cycle_transition', 'workflow_refresh'],
+    invalidateOn: DASHBOARD_COCKPIT_REALTIME_EVENTS,
   });
   const commentsQuery = useRealtimeQuery({
     queryKey: ['dashboard', 'cockpit', 'comments', orgId, viewScope],
     queryFn: () => fetchDashboardCockpitComments(orgId, viewScope),
     staleTime: COCKPIT_FRESHNESS_WINDOW_MS,
     enabled: segmentQueriesEnabled,
-    invalidateOn: ['comment_refresh', 'workflow_refresh'],
+    invalidateOn: ['comment_refresh'],
   });
 
   const [now, setNow] = useState(() => new Date());

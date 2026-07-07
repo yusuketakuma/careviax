@@ -41,6 +41,45 @@
 
 ## 直近の land（本日・要点）
 
+- codex: FE-RT-001 dashboard cockpit source-scoped invalidation（pending commit）。
+  - current task:
+    `/dashboard` の summary/details/team/comments segment query の `workflow_refresh`
+    invalidation を source-scoped にし、comments segment は `comment_refresh` のみに限定する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`,
+    `src/server/services/org-realtime.ts`,
+    `src/server/services/workflow-dashboard-cache.ts`.
+  - files changed:
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `DASHBOARD_COCKPIT_WORKFLOW_SOURCES` と `DASHBOARD_COCKPIT_REALTIME_EVENTS` を追加し、
+    summary/details/team は `cycle_transition` + source-scoped `workflow_refresh` に変更した。
+    comments segment は workflow mutation ではなくコメント専用の `comment_refresh` のみで更新する。
+    test では summary/details/team が bare `workflow_refresh` を持たず、主要 workflow source 群を
+    allowlist していること、comments は `comment_refresh` のみであることを固定した。
+  - bugs found:
+    dashboard cockpit の4 segment query は broad `workflow_refresh` を購読しており、
+    source 不明または画面無関係の workflow event でも全segmentを再取得し得た。
+  - security risks reduced:
+    なし。本sliceはPHI payload boundaryではなく refetch policy の絞り込み。
+  - performance issues improved:
+    unknown/unrelated `workflow_refresh` event による dashboard cockpit segment 再取得を抑制する。
+    comments segment は workflow mutation burst から切り離した。
+  - validation:
+    `pnpm exec vitest run 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx' src/lib/hooks/use-realtime-invalidation.test.tsx src/lib/hooks/use-realtime-query.test.tsx --reporter=dot --testTimeout=30000`
+    → pass（3 files / 32 tests）。
+    `pnpm exec eslint 'src/app/(dashboard)/dashboard/dashboard-cockpit.tsx' 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx'`
+    → pass。
+  - remaining work:
+    Prettier/diff check 後に scoped commit / push。FE-RT-001 の残りは補助画面の source taxonomy 整理。
+
 - codex: FE-RT-001 schedule proposals source-scoped invalidation（pending commit）。
   - current task:
     `/schedules/proposals` の weekly optimizer / proposals dashboard / detail query の
