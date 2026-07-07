@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: Plans.md implemented task cleanup（pending commit）。
+- codex: Plans.md implemented task cleanup（commit `dedc994f4`, pushed to `main`）。
   - current task:
     `Plans.md` 内の実装済みタスクを削除し、残タスクだけが実装バックログとして読めるように整理する。
   - files inspected:
@@ -77,7 +77,7 @@
     `git diff --check -- Plans.md ops/refactor/STATE.md` → pass。
     `rg -n "FE-SHELL-001|static import|入力ごとに即|Phase 1: UIタブ分離|Phase 2: Timeline型|Phase 3: Inbound source|Phase 4: Medication Stock source|Phase 5: Deep link|PatientActivityTimeline" Plans.md` → no matches。
   - remaining work:
-    validation 後に scoped commit/push。
+    次の stale/implemented plan task cleanup または `FE-RT-001` の source taxonomy 整理へ進む。
 
 - codex: FE-RT-002 realtime client payload boundary hardening（commit `2b73ec9bc`, pushed to `main`）。
   - current task:
