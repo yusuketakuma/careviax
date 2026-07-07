@@ -41,7 +41,45 @@
 
 ## 直近の land（本日・要点）
 
-- codex: FE-ERR-001 pharmacist credentials segment hardening（pending commit）。
+- codex: Plans.md notification boundary cleanup（pending commit）。
+  - current task:
+    実装済みの notification stream / Web Push redaction タスクを `Plans.md` の未完了タスクから削除し、未完了の realtime client hardening / outbox / 通知未達監視へ依存を寄せ直す。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/lib/notifications/stream-payload.ts`,
+    `src/lib/notifications/stream-payload.test.ts`,
+    `src/app/api/notifications/stream/route.ts`,
+    `src/server/services/notifications.ts`,
+    `src/app/sw.ts`,
+    `src/app/sw.test.ts`,
+    `src/lib/notifications/os-bridge-redaction.ts`,
+    `src/lib/notifications/os-bridge-redaction.test.ts`,
+    `src/lib/browser-notifications.ts`,
+    `src/lib/browser-notifications.test.ts`,
+    `public/browser-notifications-sw.js`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `NTF-STREAM-001` / `NTF-PUSH-001` を「これから先行」するタスクとして扱う記述を削除した。
+    `FE-RT-002` は notification stream ではなく shared realtime client payload allowlist の残タスクとして再定義した。
+    `DB-EVENT-001` / `DomainEventOutbox` / risk connector の依存から実装済み notification boundary task ID を外し、`NTF-001` / delivery health へ寄せた。
+  - bugs found:
+    なし。計画台帳の stale task cleanup。
+  - security risks reduced:
+    既に実装済みの SSE / Web Push / OS notification redaction を未完了 task と誤認して重複実装するリスクを下げた。
+  - performance issues improved:
+    なし。計画整理のみ。
+  - validation:
+    `rg -n "NTF-STREAM-001|NTF-PUSH-001" Plans.md` → no matches。
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md` → pass。
+    `git diff --check -- Plans.md ops/refactor/STATE.md` → pass。
+  - remaining work:
+    scoped commit 後、次の stale/implemented plan task cleanup または `FE-RT-002` client realtime payload allowlist 実装へ進む。
+
+- codex: FE-ERR-001 pharmacist credentials segment hardening（commit `e51df69c1`, pushed to `main`）。
   - current task:
     `/admin/pharmacist-credentials` の薬剤師認定情報一覧取得失敗を shared segment state に寄せる。
   - files inspected:
