@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: OPS-RECOVERY-002 AWS Backup assurance health hardening（pending commit）。
+- codex: OPS-RECOVERY-002 AWS Backup assurance health hardening（commit `3ccc8b8e2`, pushed to `main`）。
   - current task:
     DBバックアップ/復旧のAWS対応として、既存 AWS Backup recovery point monitor を
     read-only assurance monitor へ拡張し、admin `/api/health` で復旧可能性の設定不備に
@@ -121,6 +121,7 @@
     AWS skip. Backup drill check passed as a preflight and correctly reports
     `ready_for_live_drill: false` because `DATABASE_URL` / `AWS_REGION` are not
     set and no live drill has been recorded. Prettier check and diff check passed.
+    Implementation commit `3ccc8b8e2` was pushed to `main`.
   - remaining:
     Run `pnpm aws:rds-backup:template:validate -- --live-aws --strict` with a
     production-equivalent role, verify admin `/api/health` against real AWS
