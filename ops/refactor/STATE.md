@@ -41,6 +41,44 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Plans.md implemented-task cleanup for CI/module backlog（docs-only, pending commit）。
+  - current task:
+    `Plans.md` 内の実装済みタスクを未完 backlog から削除し、残作業を既存レーンへ集約する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `package.json`,
+    `.github/workflows/ci.yml`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-movement-timeline-presenter.ts`,
+    `src/lib/tasks/task-registry.ts`,
+    `tools/scripts/check-api-response-shape.mjs`,
+    `tools/scripts/check-dto-direct-prisma-return.mjs`,
+    `tools/scripts/check-task-type-registry.mjs`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `MOD-CI-001` を未完 module backlog 表から削除し、実装済みの
+    `api-response-shape:check` / `dto-direct-prisma-return:check` / `task-types:check` /
+    module-boundary gate は既存 guardrail として扱うよう整理した。
+    残る RLS/unique/org_id coverage は `DB-TENANT-001`、response envelope は
+    `API-CONTRACT-001`、DTO返却境界は `API-DTO-001` の allowlist burn-down へ集約した。
+  - bugs found:
+    実装済み CI gate が module backlog 上で新規タスクのように読める表現が残っていた。
+  - security risks reduced:
+    コード変更なし。計画上の重複実装や、完了済み gate の再実装による誤った優先順位付けを防ぐ。
+  - performance issues improved:
+    なし。docs-only。
+  - validation:
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md` → pass。
+    `git diff --check -- Plans.md ops/refactor/STATE.md` → pass。
+    `rg -n 'MOD-CI-001|Remaining debt-ratchet CI gates|task type registry gate|module-boundary allowlist zero ratchet' Plans.md` → no matches for active backlog rows。
+  - remaining work:
+    `Plans.md` の未完タスク本体は継続。次の実装候補は `DB-TENANT-001` の RLS/unique/org_id coverage、
+    または `API-CONTRACT-001` / `API-DTO-001` の allowlist burn-down。
+
 - codex: MOD-CI-001 DTO direct Prisma return ratchet（pending commit）。
   - current task:
     `MOD-CI-001` / `API-DTO-001` の残 gate として、Prisma result を presenter/DTOなしで
