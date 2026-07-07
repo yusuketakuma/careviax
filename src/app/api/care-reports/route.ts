@@ -106,6 +106,7 @@ const careReportListOrderBy = [
   { id: 'desc' },
 ] satisfies Prisma.CareReportOrderByWithRelationInput[];
 const CARE_REPORT_KEYWORD_SCAN_LIMIT = 500;
+const CARE_REPORT_KEYWORD_SCAN_READ_LIMIT = CARE_REPORT_KEYWORD_SCAN_LIMIT + 1;
 const CARE_REPORT_PATIENT_SEARCH_CANDIDATE_LIMIT = 100;
 const DEFAULT_CARE_REPORT_PALETTE_LIMIT = 8;
 const MAX_CARE_REPORT_PALETTE_LIMIT = 50;
@@ -817,10 +818,16 @@ async function authenticatedGET(req: NextRequest) {
       where: listWhere,
       orderBy: careReportListOrderBy,
       select: shouldReadContent ? careReportContentSelect : careReportBaseSelect,
-      ...(canUseDbPagination ? { take: limit + 1 } : { take: CARE_REPORT_KEYWORD_SCAN_LIMIT }),
+      ...(canUseDbPagination ? { take: limit + 1 } : { take: CARE_REPORT_KEYWORD_SCAN_READ_LIMIT }),
     })) as CareReportListRow[];
+    const keywordScanTruncated = Boolean(
+      keyword && reports.length > CARE_REPORT_KEYWORD_SCAN_LIMIT,
+    );
+    const reportsForProcessing = keyword
+      ? reports.slice(0, CARE_REPORT_KEYWORD_SCAN_LIMIT)
+      : reports;
 
-    const patientIds = Array.from(new Set(reports.map((report) => report.patient_id)));
+    const patientIds = Array.from(new Set(reportsForProcessing.map((report) => report.patient_id)));
     const patientRows =
       patientIds.length === 0
         ? []
@@ -837,7 +844,7 @@ async function authenticatedGET(req: NextRequest) {
           });
     const patientNameById = new Map(patientRows.map((patient) => [patient.id, patient.name]));
 
-    const enrichedData = reports.map((report) => {
+    const enrichedData = reportsForProcessing.map((report) => {
       const reportContent = readSelectedReportContent(report, shouldReadContent);
       const billingContext = reportContent
         ? readJsonObject(readJsonObject(reportContent)?.billing_context)
@@ -894,6 +901,14 @@ async function authenticatedGET(req: NextRequest) {
           cursor ? Math.max(filteredData.findIndex((report) => report.id === cursor) + 1, 0) : 0,
         );
     const page = buildCursorPage(paginated, limit, (report) => report.id);
+    const keywordSearchMetadata = keyword
+      ? {
+          count_basis: 'bounded_keyword_scan' as const,
+          keyword_scan_limit: CARE_REPORT_KEYWORD_SCAN_LIMIT,
+          keyword_scan_truncated: keywordScanTruncated,
+          result_window_truncated: filteredData.length > limit,
+        }
+      : null;
     const data = page.data.map((report) => {
       const { _searchable_report_text: searchableReportText, ...reportForResponse } = report;
       void searchableReportText;
@@ -904,7 +919,13 @@ async function authenticatedGET(req: NextRequest) {
       : buildDeliverySummary(filteredData);
 
     return withSensitiveNoStore(
-      success({ data, hasMore: page.hasMore, nextCursor: page.nextCursor, deliverySummary }),
+      success({
+        data,
+        hasMore: canUseDbPagination ? page.hasMore : false,
+        ...(canUseDbPagination && page.nextCursor ? { nextCursor: page.nextCursor } : {}),
+        deliverySummary,
+        ...(keywordSearchMetadata ? { search: keywordSearchMetadata } : {}),
+      }),
     );
   });
 }

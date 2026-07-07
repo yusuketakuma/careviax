@@ -938,6 +938,68 @@ describe('/api/care-reports GET', () => {
     expect(careReportFindManyMock).not.toHaveBeenCalled();
   });
 
+  it('returns truthful bounded metadata for keyword body search without cursor pagination (PERF-DB-006B)', async () => {
+    const keywordRows = Array.from({ length: 501 }, (_, index) => ({
+      id: `report_keyword_${index + 1}`,
+      org_id: 'org_1',
+      patient_id: `patient_keyword_${index + 1}`,
+      case_id: `case_keyword_${index + 1}`,
+      visit_record_id: `visit_keyword_${index + 1}`,
+      report_type: 'physician_report',
+      status: 'response_waiting',
+      content: {
+        summary: index < 2 ? '夜間の眠気について経過観察。' : '定期報告。',
+      },
+      template_id: null,
+      pdf_url: null,
+      created_by: 'user_1',
+      created_at: new Date(`2026-03-28T09:${String(index % 60).padStart(2, '0')}:00.000Z`),
+      updated_at: new Date(`2026-03-28T09:${String(index % 60).padStart(2, '0')}:30.000Z`),
+      delivery_records: [],
+    }));
+    careReportFindManyMock.mockResolvedValueOnce(keywordRows);
+    patientFindManyMock.mockResolvedValueOnce(
+      keywordRows.slice(0, 500).map((row) => ({
+        id: row.patient_id,
+        name: `患者 ${row.patient_id}`,
+        name_kana: null,
+      })),
+    );
+
+    const response = await getCareReports(
+      createAuthenticatedRequest('http://localhost/api/care-reports?keyword=眠気&limit=1'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(careReportFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 501,
+      }),
+    );
+    expect(patientFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: {
+            in: expect.not.arrayContaining(['patient_keyword_501']),
+          },
+        }),
+      }),
+    );
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: [{ id: 'report_keyword_1' }],
+      hasMore: false,
+      search: {
+        count_basis: 'bounded_keyword_scan',
+        keyword_scan_limit: 500,
+        keyword_scan_truncated: true,
+        result_window_truncated: true,
+      },
+    });
+    expect(body).not.toHaveProperty('nextCursor');
+  });
+
   it('returns only a report content summary for list include_content requests', async () => {
     const response = await getCareReports(
       createAuthenticatedRequest('http://localhost/api/care-reports?include_content=1'),
