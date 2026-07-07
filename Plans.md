@@ -1078,13 +1078,13 @@ src/app/(dashboard)/dashboard/dashboard-summary-rail.tsx
 
 **P2 backlog / UX・性能**:
 
-| ID              | 優先度 | タスク                       | 主な対象                                                                                                                    | 受入条件                                                                                                                                                                                                                    |
-| --------------- | ------ | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| DASH-DESIGN-001 | P2     | Dashboard semantic tone 定義 | dashboard UI tokens, PH-OS UI guidelines                                                                                    | `urgent`, `warning`, `inbound`, `medication_stock`, `visit`, `document`, `billing`, `neutral` の semantic tone を定義する。色だけで意味を伝えず、icon + label + text を併用する。赤は本当に止まる/危険/期限超過に限定する。 |
-| DASH-UX-001     | P2     | Dashboard density mode       | dashboard shell/settings                                                                                                    | `標準`、`コンパクト`、`管理者` の密度を切り替える。日常利用では説明文を減らし、件数とCTAを優先できる。                                                                                                                      |
-| DASH-PERF-001   | P2     | Section memoization          | `ConditionBanner`, `UrgentNowSection`, `TodayFlowSection`, `ProcessNowSection`, `TeamCapacityCard`, `TeamConversationPanel` | section を memo 化し、必要 props だけで再描画する。`now` と query state の変更が無関係 section へ波及しない。                                                                                                               |
-| DASH-BFF-003    | P2     | Report/billing segment       | `/api/dashboard/cockpit/reports`, `/api/dashboard/cockpit/billing`                                                          | 報告書送付失敗、報告書未作成、請求締め前未処理、算定 blocker を返す。請求確定や報告送付は dashboard quick action では行わない。                                                                                             |
-| DASH-QA-001     | P2     | Dashboard visual regression  | dashboard story/test route, Playwright screenshot                                                                           | Summary Rail、Unified Urgent Queue、Today Flow、Process Tiles、Inbound Panel の主要状態を screenshot で固定する。PHIを含むfixtureは非実在データのみ使う。                                                                   |
+| ID              | 優先度 | タスク                                       | 主な対象                                                                                                                    | 受入条件                                                                                                                                                                                                                    |
+| --------------- | ------ | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| DASH-DESIGN-001 | P2     | Dashboard semantic tone 定義                 | dashboard UI tokens, PH-OS UI guidelines                                                                                    | `urgent`, `warning`, `inbound`, `medication_stock`, `visit`, `document`, `billing`, `neutral` の semantic tone を定義する。色だけで意味を伝えず、icon + label + text を併用する。赤は本当に止まる/危険/期限超過に限定する。 |
+| DASH-UX-001     | P2     | Dashboard density mode                       | dashboard shell/settings                                                                                                    | `標準`、`コンパクト`、`管理者` の密度を切り替える。日常利用では説明文を減らし、件数とCTAを優先できる。                                                                                                                      |
+| DASH-PERF-001   | P2     | Dashboard render boundary / update isolation | `ConditionBanner`, `UrgentNowSection`, `TodayFlowSection`, `ProcessNowSection`, `TeamCapacityCard`, `TeamConversationPanel` | manual `useMemo` / `useCallback` の追加を目的化せず、Clock Island、component boundary、lazy mount、stable presenter DTO、render-count smoke で `now` と query state の変更が無関係 section へ波及しないことを証明する。     |
+| DASH-BFF-003    | P2     | Report/billing segment                       | `/api/dashboard/cockpit/reports`, `/api/dashboard/cockpit/billing`                                                          | 報告書送付失敗、報告書未作成、請求締め前未処理、算定 blocker を返す。請求確定や報告送付は dashboard quick action では行わない。                                                                                             |
+| DASH-QA-001     | P2     | Dashboard visual regression                  | dashboard story/test route, Playwright screenshot                                                                           | Summary Rail、Unified Urgent Queue、Today Flow、Process Tiles、Inbound Panel の主要状態を screenshot で固定する。PHIを含むfixtureは非実在データのみ使う。                                                                   |
 
 **Dashboard quick action 安全ルール**:
 
@@ -1198,6 +1198,19 @@ buttonVariants
 >
 > このタスクは新しい業務概念を増やすためのものではなく、既存/計画済みレーンを画面体験へ接続するためのUI統合レーンである。
 > 対応する既存レーン: `DASH-OPS`、`MOV-001`、`INB-001`、`RX-002`、`VISIT-SYNC-001`、`REPORT-001`、`PATIENT-UI-020`、`DASH-DESIGN-001`。
+
+Dashboard ownership guard:
+
+```text
+DASH-OPS:
+  dashboard data contracts、urgent queue、segment API、role focus、operational prioritization を所有する。
+
+UI-REDESIGN-001:
+  DASH-OPS の contract が存在する範囲だけ、visual composition、shared layout alignment、right rail の見せ方を所有する。
+
+禁止:
+  UI-REDESIGN 側で dashboard urgent source / segment API / authorization / PHI projection を再実装しない。
+```
 
 対象画面:
 
@@ -1337,6 +1350,11 @@ gray:
   neutral, disabled, secondary, metadata
 ```
 
+この色 family は非規範の説明語である。実装時は必ず `docs/ui-ux-design-guidelines.md` の
+`--primary`、`--state-blocked`、`--state-done`、`--state-confirm`、`--state-waiting`、
+`--state-readonly`、`--tag-info`、`--tag-hazard`、neutral token へ写像する。画面ローカルな
+`bg-*-100` / raw hex / 独自 semantic color を追加しない。
+
 原則:
 
 ```text
@@ -1360,7 +1378,10 @@ gray:
   raw chat text、電話原文、添付画像、外部共有用raw、通知/OS push、監査ログchanges、export/PDF/CSV、signed URL/storage key。
 
 raw text:
-  一覧には出しすぎない。詳細画面で再認可し、閲覧は監査ログ対象。
+  summary/list/card DTO には持たせない。
+  ただし認証済み業務画面内の dedicated detail pane / drawer / detail route では、role / assignment / scope / consent / purpose により認可された raw text、添付、連絡先を表示してよい。
+  必要に応じて再認可、purpose、read audit、request_id を持たせる。
+  OS notification、SSE payload、audit diff、server log、external sharing、CSV/PDF export、public URL、Oracle/GPT prompt へ operational UI の表示内容を流用しない。
 ```
 
 **フロントエンド改善タスクの品質基準**:
@@ -1418,7 +1439,7 @@ raw text:
    - 初期表示で lazy mount する heavy panel
    - search debounce / deferred value
    - tab switch budget
-   - render memoization
+   - render boundary / update isolation
    - API payload budget
 
 8. 検証
@@ -1551,8 +1572,8 @@ Hard rules:
 - BFF/API contract 変更と visual polish を同じ PR に入れない。
 - auth/authz、RLS、no-store、audit、export、push notification、storage URL、signed URL の扱いを visual PR で緩めない。
 - client component に Prisma shape / raw backend DTO を直接渡さない。BFF presenter / adapter / view-model を境界にする。
-- list/dashboard/timeline DTO は raw text、storage key、signed URL、provider raw error、stack、external URL を持たない。
-- raw text / 添付 / 連絡先詳細は dedicated detail surface で表示する。必要に応じて再認可、purpose、read audit、request_id を持たせる。
+- summary/list/card/dashboard/timeline DTO は raw text、storage key、signed URL、provider raw error、stack、external URL を持たない。
+- raw text / 添付 / 連絡先詳細は dedicated operational detail surface で表示する。認証済み業務画面内では、role / assignment / scope / consent / purpose で認可された情報を表示してよい。必要に応じて再認可、purpose、read audit、request_id を持たせる。
 - `action_href` / deep link は相対URLのみ。外部URLや storage URL を card/action に直接入れない。
 - empty と failed fetch を同じ UI にしない。forbidden を empty に見せない。
 - mobile は 390px 幅で主要CTAが見えること。横スクロール前提は禁止。
@@ -1572,6 +1593,56 @@ Per-slice required contract:
 | Mobile/a11y       | 390px layout、right rail drawer 化、44px target、heading/landmark、keyboard path、aria-live                                           |
 | Performance       | lazy mount 対象、debounce/deferred 対象、initial payload、interaction budget、non-active tab hydration                                |
 | Verification      | focused unit/component/API tests、state fixture、mobile/a11y、PHI snapshot、exact-path lint/typecheck、必要な e2e/perf gate           |
+
+**Frontend Slice Readiness Overlay（UI-AGENT-READY-001）**:
+
+この overlay は `UI-REDESIGN-001`、`DASH-OPS`、フロントエンド共通基盤 backlog の実装エージェント用 readiness gate である。各 frontend PR は、既存の `Frontend Agent Slice Contract` に加えて、以下を満たすまで着手しない。
+
+Ready gate:
+
+```text
+- Slice type は Contract / Layout / Interaction / State-QA のいずれか 1 つだけ。
+  `Contract + Layout`、`Layout + Perf`、`Contract + Interaction` のような混合 slice は禁止し、`001A / 001B / 001C` に分割する。
+- 対象 route surface は 1 つ、または shared foundation 1 つに限定する。
+- target files / route / component / BFF/API / DTO owner を実装メモに列挙する。
+- paired_backend_task と backend_contract_status を明記する。
+  backend_contract_status は `existing` / `additive_optional` / `required_before_ui` / `ui_only` のいずれか。
+- `can_land_without_backend` を yes/no で明記する。yes の場合は追跡先を `Plans.md` task id または `.agent-loop/FEATURE_QUEUE.md` に残す。
+- `dto_owner` は `src/types/*`、presenter、adapter、view-model のいずれかを指す。画面ローカルに response 型を再定義しない。
+- UI が呼ぶ API は実在し、DTO / count / state metadata 契約が一致している。未実装 API を前提に production-like mock UI を作らない。
+- list / queue / dashboard / timeline で先頭 N 件を出す場合は、`visible_count` / `total_count` / `hidden_count` または同等 metadata を使い、`visible_count` を総件数として文言化しない。
+- required states は default / loading / empty / filtered-empty / partial / error / forbidden / stale / offline / conflict / mobile-390 から対象 slice に必要なものを選び、fixture または test 名を列挙する。
+- PHI boundary は `summary/list` / `operational detail` / `raw re-auth detail` / `notification/SSE/audit/log/export/public-url` のどれかに分類する。
+- authenticated operational detail surface では、role / assignment / scope / consent / support session / purpose で認可された患者名、薬剤名、残数、受信本文、連絡先、添付、訪問、報告、請求、task details を表示してよい。
+- summary/list/card DTO には raw text、storage key、signed URL、provider raw error、stack、external URL を入れない。
+- raw body / 添付 / 連絡先詳細を表示する場合は、dedicated detail pane / drawer / detail route とし、必要に応じて再認可、purpose、read audit、request_id を持たせる。
+- OS notification、SSE payload、audit diff、server log、external sharing、CSV/PDF export、public URL、Oracle/GPT prompt へ operational UI の表示内容を流用しない。
+- visual reconstruction を伴う slice は、非 PHI の screenshot / gpt-image-2 reference / state fixture のいずれかで before/target evidence を残す。Contract / State-QA / 軽微修正では省略可だが、`ops/refactor/STATE.md` に省略理由を残す。
+```
+
+Backend/UI coupling fields:
+
+| Field                      | Required values / rule                                                                                           |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `paired_backend_task`      | `DASH-OPS` / `MOV-001` / `INB-001` / `RX-002` / `VISIT-SYNC-001` / `REPORT-001` などの既存task id、または `none` |
+| `backend_contract_status`  | `existing` / `additive_optional` / `required_before_ui` / `ui_only`                                              |
+| `can_land_without_backend` | `yes` の場合は follow-up location 必須。`required_before_ui` の場合は `no`                                       |
+| `dto_owner`                | `src/types/*`、presenter、adapter、view-model。画面ローカル response 型は禁止                                    |
+| `count_state_contract`     | `total_count` / `visible_count` / `hidden_count` / `generated_at` / `partial_failures` の必要有無                |
+
+Done gate:
+
+```text
+- PR 本文または実装メモに Existing-code map、Slice type、Backend/UI coupling、State matrix、PHI boundary、Mobile/a11y、Performance、Verification results がある。
+- first viewport で「現在地」「対象」「状態」「次に押す操作」が分かる。
+- false-empty がない。empty / filtered-empty / failed fetch / forbidden / partial failure を分ける。
+- primary CTA は対象データ・根拠・blocker の近くにある。
+- mobile-390 で主要 CTA が見え、右 rail は drawer / sheet / bottom action に変形する。
+- 色は `docs/ui-ux-design-guidelines.md` の state role / token に従う。raw `bg-*-100` や画面ローカル色意味を追加しない。
+- React Compiler 方針に従い、manual `useMemo` / `useCallback` の追加を acceptance としない。
+  性能改善は render boundary、Clock Island、lazy hydration、stable DTO、heavy panel lazy mount、focused perf smoke で証明する。
+- focused tests、exact-path lint、prettier、typecheck が通り、対象 slice の追加 gate 結果を記録する。
+```
 
 **画面別タスクの品質改善版**:
 
@@ -1599,22 +1670,31 @@ Per-slice required contract:
 
 **Agent-ready frontend slice backlog**:
 
-| Slice ID        | Existing lane                                  | Slice type             | Scope                                                                                                                      | Data / PHI contract                                                                                                                  | Required proof                                                                                          |
-| --------------- | ---------------------------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| UI-FOUND-001    | `DASH-DESIGN-001`, `UI-SHELL-001`              | Layout                 | AppShell / Sidebar / Header / Card / Badge / WorkspaceActionRail の見た目統一。auth boundary は変更しない。                | data 変更なし。raw color 追加禁止。semantic token / icon / label を使う。                                                            | layout smoke、landmark/heading test、mobile nav parity、`colors:check`                                  |
-| DASH-UI-001     | `DASH-P0-004`, `DASH-P0-005`                   | Contract + Layout      | Clock Island と Dashboard ViewModel hook。30秒更新を freshness/clock component に閉じる。                                  | API shape 変更なし。derived values は pure helper / view-model に寄せる。                                                            | dashboard helper unit、clock-only update test、render count smoke                                       |
-| DASH-UI-002     | `DASH-P0-001`                                  | Contract               | Unified Urgent Queue source を 1 PR 1 source で追加する。`stock` / `report` / `billing` / `callback` / `task` を混ぜない。 | `DashboardUrgentItem` allowed fields を snapshot。raw text、signed URL、storage key、external URL は urgent DTO に入れない。         | presenter tests、relative href tests、role/scope tests、partial failure tests                           |
-| PAT-LIST-001A   | `PATIENT-UI-020`, `PERF-BFF-001`               | Contract               | patient board presenter / `PatientListItemViewModel` を固定する。layout変更前にDTOを安定化する。                           | list item は status、next_action、badges、summary、deep link まで。raw inbound body、attachment、free text は持たない。              | API snapshot、forbidden tests、false-empty tests、payload budget                                        |
-| PAT-LIST-001B   | `UI-PAT-LIST-001`                              | Layout                 | 患者一覧3カラム、filter chips、list/card toggle、selected patient right drawer。                                           | 既存presenterのみ使用。bulk mutation は入れない。                                                                                    | component tests、filter reset、selected patient state、390px drawer、keyboard navigation                |
-| PAT-DETAIL-001A | `FE-PAT-001`, `MOV-001`, `RX-002`, `INB-001`   | Layout + Perf          | patient detail island split。Command tab first viewport だけ初期hydrate。非active tabはlazy mount。                        | API shape 変更なし。tab内 raw/detail surface は各laneのcontractに従う。                                                              | non-active tab hook init test、tab keyboard test、payload/bundle note、patient detail smoke             |
-| MOV-UI-001      | `MOV-001`                                      | Contract + Layout      | movement timeline standalone API と map-less date card UI を分離実装する。                                                 | occurrence-only。処方明細、訪問本文、SOAP、文書本文、OCR、添付名、raw MCS/電話本文はtimeline list DTOに入れない。                    | raw omission snapshot、relative href tests、partial failure tests、mobile vertical timeline snapshot    |
-| INB-UI-001      | `INB-001`, `TASK-011`, `RISK-021`              | Interaction            | inbound tri-pane: inbox / raw-detail / structured signal action rail。review lifecycle を明示する。                        | list は controlled summary。raw body / attachment は dedicated detail surface。MedicationStock反映はreview endpoint経由。            | review state tests、task creation tests、raw/detail separation tests、audit/request_id tests            |
-| STOCK-UI-001    | `RX-002`, `MOV-001`, `VISIT-SYNC-001`          | Contract + Interaction | MedicationStock panel / observation form / external observation review queue。                                             | ledger DTO は controlled fields のみ。source raw text は表示元detailへdeep link。apply/rejectはpharmacist review + reason + audit。  | stock DTO snapshot、idempotency tests、review apply/reject tests、mobile input tests                    |
-| VISIT-UI-001    | `VISIT-SYNC-001`, `UX-MOB-001`, `FE-VISIT-001` | Layout + State-QA      | visit record mobile shell split、section-level watch、bottom action bar、offline/sync/conflict states。                    | raw sync error / PHI を toast/log/indicator に出さない。offline draft は暗号化対象のみ。                                             | section watch tests、mobile e2e、offline draft recovery、conflict UI、keystroke budget                  |
-| REPORT-UI-001   | `REPORT-020`, `INB-001`, `RX-002`              | Interaction            | report editor + evidence/AI/delivery rail。inbound/stock を候補として扱う。                                                | raw text 自動挿入禁止。normalized_summary / pharmacist-selected signal のみ report candidate。send/exportは別permission/audit gate。 | candidate insertion tests、raw auto-insert absence、delivery forbidden/error tests、export PHI snapshot |
-| SCHED-UI-001    | `VS-AUTO`, `SCHED-UX`, `RX-002`                | Layout                 | pharmacist timeline grid、legend、proposal rail。初回は proposal read-only review を優先。                                 | proposal-first維持。confirmed schedule / ready/departed/in_progress/completed を自動再配置しない。JST/timezoneを固定。               | timezone tests、overflow tests、keyboard navigation、mobile layout                                      |
-| DISP-UI-001     | `DSP-001`, `RX workflow`, `DASH-DESIGN-001`    | Layout                 | dispensing workbench stepper、prescription line table、audit right rail。                                                  | workflow mutation contract は変えない。high-risk / narcotic / audit blocker は badge + text + right rail action。                    | workbench component tests、high-risk badge tests、table mobile fallback、keyboard shortcut smoke        |
-| UI-QA-001A      | `DEV-UI-001`, `FE-BUDGET-001`, `DEV-PHI-001`   | State-QA               | major screen fixtures and screenshots。default / empty / partial-error / forbidden / mobile-390 / long-text を固定する。   | fixture は non-PHI。hostile patient name、drug name、storage key、provider error を混ぜて leakage を検査する。                       | screenshot diff、state matrix snapshots、PHI omission snapshots、a11y smoke                             |
+下表は実装 PR の単位であり、混合 slice type を持たない。依存関係上は連続して実装してよいが、stage / commit / review / validation は行単位で分ける。
+
+| Slice ID        | Existing lane                                  | Slice type  | Scope                                                                                                                      | Data / PHI contract                                                                                                          | Required proof                                                                                      |
+| --------------- | ---------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| UI-FOUND-001    | `DASH-DESIGN-001`, `UI-SHELL-001`              | Layout      | AppShell / Sidebar / Header / Card / Badge / WorkspaceActionRail の見た目統一。auth boundary は変更しない。                | data 変更なし。raw color 追加禁止。semantic token / icon / label を使う。                                                    | layout smoke、landmark/heading test、mobile nav parity、`colors:check`                              |
+| DASH-UI-001A    | `DASH-P0-005`                                  | Contract    | Dashboard ViewModel / helper boundary。派生値を pure helper / view-model に寄せる。                                        | API shape 変更なし。manual `useMemo` / `useCallback` 追加を acceptance にしない。                                            | dashboard helper unit、stable DTO snapshot、focused typecheck                                       |
+| DASH-UI-001B    | `DASH-P0-004`                                  | Layout      | Clock Island / freshness display。30秒更新を clock/freshness component に閉じる。                                          | API shape 変更なし。患者/薬剤/urgent DTO projection は変えない。                                                             | clock-only update test、render boundary smoke、dashboard component test                             |
+| DASH-UI-001C    | `DASH-P0-004`, `DASH-P0-005`, `FE-BUDGET-001`  | State-QA    | dashboard stale / partial / clock-only / mobile-390 fixture を固定する。                                                   | non-PHI fixture。hostile fixture は raw text / storage key / provider raw error を含め、DTO omission を検査する。            | state matrix snapshots、mobile-390 smoke、PHI omission snapshot                                     |
+| DASH-UI-002     | `DASH-P0-001`                                  | Contract    | Unified Urgent Queue source を 1 PR 1 source で追加する。`stock` / `report` / `billing` / `callback` / `task` を混ぜない。 | `DashboardUrgentItem` allowed fields を snapshot。raw text、signed URL、storage key、external URL は urgent DTO に入れない。 | presenter tests、relative href tests、role/scope tests、partial failure tests                       |
+| PAT-LIST-001A   | `PATIENT-UI-020`, `PERF-BFF-001`               | Contract    | patient board presenter / `PatientListItemViewModel` を固定する。layout変更前にDTOを安定化する。                           | list item は status、next_action、badges、summary、deep link まで。raw inbound body、attachment、free text は持たない。      | API snapshot、forbidden tests、false-empty tests、payload budget                                    |
+| PAT-LIST-001B   | `UI-PAT-LIST-001`                              | Layout      | 患者一覧3カラム、filter chips、list/card toggle、selected patient right drawer。                                           | 既存presenterのみ使用。bulk mutation は入れない。                                                                            | component tests、filter reset、selected patient state、390px drawer、keyboard navigation            |
+| PAT-DETAIL-001A | `FE-PAT-001`, `MOV-001`, `RX-002`, `INB-001`   | Layout      | patient detail island split。Command tab first viewport だけ初期hydrate。非active tabはlazy mount。                        | API shape 変更なし。tab内 raw/detail surface は各laneのcontractに従う。                                                      | non-active tab hook init test、tab keyboard test、patient detail smoke                              |
+| PAT-DETAIL-001B | `FE-PAT-001`, `FE-BUDGET-001`                  | State-QA    | patient detail tab loading/error/forbidden/mobile-390 と bundle/payload note を固定する。                                  | non-PHI fixture。権限内で表示すべき患者/薬剤/訪問情報を blanket redaction しない。                                           | tab state fixtures、payload/bundle note、mobile-390 screenshot                                      |
+| MOV-UI-001A     | `MOV-001`                                      | Contract    | movement timeline standalone API / DTO / source failure contract を固定する。                                              | occurrence-only。処方明細、訪問本文、SOAP、文書本文、OCR、添付名、raw MCS/電話本文はtimeline list DTOに入れない。            | raw omission snapshot、relative href tests、partial failure tests                                   |
+| MOV-UI-001B     | `MOV-001`                                      | Layout      | map-less Google Maps Timeline風 date card UI。処方・訪問・文書登録は発生事実と deep link だけ表示する。                    | 既存 DTO のみ使用。raw/detail は正本 detail route / drawer へ逃がす。                                                        | mobile vertical timeline snapshot、keyboard navigation、empty date range                            |
+| INB-UI-001      | `INB-001`, `TASK-011`, `RISK-021`              | Interaction | inbound tri-pane: inbox / raw-detail / structured signal action rail。review lifecycle を明示する。                        | list は controlled summary。raw body / attachment は dedicated detail surface。MedicationStock反映はreview endpoint経由。    | review state tests、task creation tests、raw/detail separation tests、audit/request_id tests        |
+| STOCK-UI-001A   | `RX-002`, `MOV-001`, `VISIT-SYNC-001`          | Contract    | MedicationStock panel / observation form / external observation review queue の DTO と presenter を固定する。              | ledger DTO は controlled fields のみ。source raw text は表示元detailへdeep link。                                            | stock DTO snapshot、relative href tests、role/scope tests                                           |
+| STOCK-UI-001B   | `RX-002`, `MOV-001`, `VISIT-SYNC-001`          | Interaction | stock observation apply/reject/reconcile。薬剤師 review、reason、audit、idempotency を必須にする。                         | apply/reject は pharmacist review + reason + audit。summary/list から直接確定しない。                                        | idempotency tests、review apply/reject tests、mobile input tests                                    |
+| VISIT-UI-001A   | `VISIT-SYNC-001`, `UX-MOB-001`, `FE-VISIT-001` | Layout      | visit record mobile shell split、section-level watch、bottom action bar。                                                  | raw sync error / PHI を toast/log/indicator に出さない。offline draft は暗号化対象のみ。                                     | section watch tests、mobile component smoke、bottom CTA safe-area                                   |
+| VISIT-UI-001B   | `VISIT-SYNC-001`, `DEV-MOB-001`                | State-QA    | offline / sync pending / sync failed / conflict / reload recovery state を固定する。                                       | sync error は controlled code / recovery action のみ。raw provider/log text は表示しない。                                   | mobile e2e、offline draft recovery、conflict UI、keystroke budget                                   |
+| REPORT-UI-001A  | `REPORT-020`, `INB-001`, `RX-002`              | Layout      | report list rail、editor sections、AI/evidence/delivery rail の構成を整える。                                              | existing DTO only。raw text は自動挿入しない。                                                                               | report workspace component tests、mobile-390、delivery rail state                                   |
+| REPORT-UI-001B  | `REPORT-020`, `INB-001`, `RX-002`              | Interaction | inbound/stock を候補として report に採用する導線。薬剤師が選択した summary/signal だけ挿入する。                           | normalized_summary / pharmacist-selected signal のみ report candidate。send/exportは別permission/audit gate。                | candidate insertion tests、raw auto-insert absence、delivery forbidden/error tests、export snapshot |
+| SCHED-UI-001    | `VS-AUTO`, `SCHED-UX`, `RX-002`                | Layout      | pharmacist timeline grid、legend、proposal rail。初回は proposal read-only review を優先。                                 | proposal-first維持。confirmed schedule / ready/departed/in_progress/completed を自動再配置しない。JST/timezoneを固定。       | timezone tests、overflow tests、keyboard navigation、mobile layout                                  |
+| DISP-UI-001     | `DSP-001`, `RX workflow`, `DASH-DESIGN-001`    | Layout      | dispensing workbench stepper、prescription line table、audit right rail。                                                  | workflow mutation contract は変えない。high-risk / narcotic / audit blocker は badge + text + right rail action。            | workbench component tests、high-risk badge tests、table mobile fallback、keyboard shortcut smoke    |
+| UI-QA-001A      | `DEV-UI-001`, `FE-BUDGET-001`, `DEV-PHI-001`   | State-QA    | major screen fixtures and screenshots。default / empty / partial-error / forbidden / mobile-390 / long-text を固定する。   | fixture は non-PHI。hostile patient name、drug name、storage key、provider error を混ぜて leakage を検査する。               | screenshot diff、state matrix snapshots、PHI omission snapshots、a11y smoke                         |
 
 **Required screen fixtures**:
 
@@ -1681,6 +1761,16 @@ Gate policy:
 - PHI/export/audit/push/storage を触る PR は PHI omission snapshot と audit e2e を必須にする。
 - Dashboard/list/timeline/report の DTO は hostile fixture を含め、raw text / storage key / signed URL / provider raw error が出ないことを snapshot する。
 ```
+
+Gate selection matrix:
+
+| Slice kind                     | 必須gate                                                                                                                        | 追加gate条件                                                                                                           |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Visual-only / Layout           | `prettier`、`git diff --check`、focused ESLint、component test、mobile/a11y smoke、`colors:check`                               | visual reconstruction が大きい場合は非PHI screenshot / `gpt-image-2` reference / Playwright screenshot                 |
+| Contract / Presenter / BFF API | route tests、presenter tests、response snapshot、relative href tests、forbidden/partial failure tests、payload budget           | `counted list` 変更時は `visible_count` / `hidden_count` / `generated_at` の表示消費テスト                             |
+| Interaction / Mutation         | mutation tests、confirmation/reason/audit tests、idempotency/OCC tests、forbidden/conflict/error tests                          | 請求確定、報告送付、外部共有、削除/取消などは dashboard/list quick action で確定せず詳細画面 gate を必須にする         |
+| PHI/raw/detail surface         | raw/detail access tests、read audit/request_id tests、PHI omission snapshot、notification/export/log/SSE boundary snapshot      | raw MCS/電話/添付/連絡先を出す場合は `operational detail` として再認可/purpose/read audit の証跡を要求する             |
+| Major medical route            | `medical-ui:e2e:preflight`、`medical-ui:e2e:targeted`、mobile-390、keyboard flow、false-empty/forbidden/partial failure fixture | route-level UX/auth/data 変更が大きい場合のみ `medical-ui:e2e:gate`。軽微な Contract / State-QA slice へ一律要求しない |
 
 ##### UI-REDESIGN-001A: 患者一覧
 

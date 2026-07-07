@@ -17022,3 +17022,66 @@
 - next action:
   Commit and push this validated billing urgent source slice, then continue
   with the next smallest backend source for Unified Urgent Queue.
+
+## 2026-07-07 frontend plan quality overlay
+
+- current task:
+  Improve the quality of the frontend improvement tasks in `Plans.md` after an
+  Oracle/GPT-5.5 Pro consultation, while keeping the existing plan and UI/UX
+  SSOT aligned.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `AGENTS.md`,
+  `docs/ui-ux-design-guidelines.md`,
+  `Plans.md`,
+  `package.json`,
+  `~/.agents/skills/oracle-consult/SKILL.md`,
+  `npx -y @steipete/oracle --help`,
+  `gh repo view --json nameWithOwner,url,defaultBranchRef`,
+  Oracle session `phos-frontend-plan-review-small-2`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- implementation:
+  Added `UI-AGENT-READY-001` as a frontend slice readiness overlay. The plan
+  now requires single-type slices, backend/UI coupling fields, DTO ownership,
+  count metadata, state matrices, PHI boundary classification, and explicit
+  proof before frontend PRs begin. The agent-ready frontend backlog was split
+  into Contract / Layout / Interaction / State-QA units instead of mixed
+  slices. Dashboard ownership was clarified so `DASH-OPS` owns data contracts,
+  urgent sources, segment APIs, role focus, authorization, and PHI projection,
+  while `UI-REDESIGN-001` owns visual composition after contracts exist. The
+  dashboard performance task was reframed from manual memoization to render
+  boundary and update isolation, matching the React Compiler policy. A gate
+  selection matrix was added so visual, contract, mutation, PHI/raw detail, and
+  major medical route changes get appropriate validation without over-applying
+  the heaviest e2e gate.
+- bugs found:
+  No runtime bug was changed in this docs-only slice. The plan had execution
+  risks: mixed slice labels, unclear backend/UI ownership, and ambiguous PHI
+  wording that could cause either over-redaction inside operational screens or
+  accidental raw data leakage outside dedicated detail surfaces.
+- security risks reduced:
+  The plan now distinguishes authorized operational detail display from
+  summary/list/card/dashboard/timeline DTO minimization. Patient, medication,
+  stock, inbound raw text, contact, attachment, visit, report, billing, and
+  task details may be shown inside authenticated, authorized operational detail
+  surfaces, but raw text, storage keys, signed URLs, provider errors, stacks,
+  external URLs, and operational detail contents must not leak into
+  notifications, SSE payloads, audit diffs, server logs, external sharing,
+  exports, public URLs, or Oracle/GPT prompts.
+- performance issues improved:
+  The frontend plan no longer treats manual `useMemo` / `useCallback` as an
+  acceptance criterion. It requires render boundary evidence, Clock Island
+  isolation, lazy hydration, stable DTOs, heavy-panel lazy mount, focused
+  render-count smoke tests, and payload/state gates where relevant.
+- validation commands:
+  `pnpm exec prettier --check Plans.md ops/refactor/STATE.md`;
+  `git diff --check -- Plans.md ops/refactor/STATE.md`.
+- validation results:
+  Prettier check passed. Diff whitespace check passed.
+- remaining work:
+  Broad `Plans.md` implementation remains active. This slice improves the
+  frontend execution contract but does not implement the planned UI changes.
+- next action:
+  Commit and push the `Plans.md` frontend plan quality overlay.
