@@ -41,7 +41,32 @@
 
 ## 直近の land（本日・要点）
 
-- codex: MOD-BOUND-001 billing prescription classification seam / allowlist reduction（pending commit）。
+- codex: Plans.md implemented-task pruning / stale phase cleanup（pending commit）。
+  - current task:
+    `Plans.md` 内の実装済み・重複済みタスクを削り、未完タスクだけが残るように整理する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `git log --oneline -12 -- Plans.md`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `Plans.md` 下部に残っていた旧 Phase 0 / Phase 1a / Phase 1b / Phase 5-PRE / Phase 12 の重複ロードマップを削除し、
+    外部前提・staging・backup・UAT・ISMS は上部の前提条件、Wave 3、AWS/運用バックログ側へ集約した。
+    Visit autosave、Report realtime、module registry / report template / share scope registry など完了済み前提の説明を、
+    残タスクだけが読める文言へ圧縮した。
+    `MOD-BILLING-001` は直近実装で billing seam が入ったため、module backlog から完了済みタスクとして削除し、
+    `MOD-BOUND-001` は残 allowlist 3 imports / 2 files と MOV adapter 残に絞った。
+  - validation:
+    `rg -n "\\[x\\]|cc:DONE|cc:done|DONE|完了済み|実装済み|移行済み|追加済み|対応済み|12-4|12-8|Phase 0:|Phase 1a:|Phase 1b:|Phase 12:" Plans.md` → old phase headings / completed-task markers なし（旧ID参照は上部の履歴括弧のみ）。
+    `git diff --check -- Plans.md` → pass。
+    `pnpm exec prettier --check Plans.md` → fail（既存の全体Markdown整形問題。`Plans.md` 全体への `--write` は行わず、今回差分は `git diff --check` で確認）。
+  - remaining work:
+    `Plans.md` の未完タスクは多い。次の実装候補は引き続き MOV の prescription timeline source adapter 化。
+
+- codex: MOD-BOUND-001 billing prescription classification seam / allowlist reduction（commit `d6991efab`, pushed）。
   - current task:
     `visit-schedule-billing-preview.ts` が `prescription-intake-classification.ts` を直接 import する
     `MOD-BILLING-001` の module-boundary 負債を削除する。
@@ -81,7 +106,7 @@
   - remaining work:
     残 allowlist は MOV の3 imports / 2 files。Patient Movement Timeline の prescription source adapter 化が次候補。
 
-- codex: MOD-BOUND-001 visit deadline PRN extraction / allowlist reduction（pending commit）。
+- codex: MOD-BOUND-001 visit deadline PRN extraction / allowlist reduction（commit `169c80680`, pushed）。
   - current task:
     `visit-medication-deadline.ts` が頓服判定のために dispensing outside-med classification へ依存していた
     `DEBT-DEADLINE-001` を削除し、Visit deadline core を薬局固有分類から切り離す。
@@ -125,7 +150,7 @@
   - remaining work:
     残 allowlist は MOV と BILLING。`MOD-VISIT-001` の contributor split 本体は別タスクとして残る。
 
-- codex: MOD-BOUND-001 patient-share type extraction / allowlist reduction（pending commit）。
+- codex: MOD-BOUND-001 patient-share type extraction / allowlist reduction（commit `ac369f8e6`, pushed）。
   - current task:
     `MOD-SHARE-001` の前段として、`patient-share-policy.ts` が `pharmacy-partnerships.ts` から型だけを借りる
     module-boundary 負債を削除し、allowlist count をさらに減らす。
@@ -164,7 +189,7 @@
   - remaining work:
     残 allowlist は MOV / VISIT / BILLING。`MOD-SHARE-001` 本体の payload/masking enforcement は別タスクとして残る。
 
-- codex: MOD-BOUND-001 import-source extraction / allowlist reduction（pending commit）。
+- codex: MOD-BOUND-001 import-source extraction / allowlist reduction（commit `8c7156a08`, pushed）。
   - current task:
     `Plans.md` の `MOD-BOUND-001` 残作業として、実際に module-boundary allowlist count を減らす。
     介護サービス事業所/医療機関マスタ取込が `drug-master-import/shared` へ依存していた import 基盤 helper を
