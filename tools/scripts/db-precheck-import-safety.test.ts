@@ -11,6 +11,7 @@ describe('DB-gated precheck import safety', () => {
       await expect(import('./external-access-case-boundary-audit')).resolves.toBeDefined();
       await expect(import('./verify-migration-preconditions')).resolves.toBeDefined();
       await expect(import('./verify-ph-os-audit-migration')).resolves.toBeDefined();
+      await expect(import('./backup-recovery-check')).resolves.toBeDefined();
     } finally {
       if (originalDatabaseUrl === undefined) {
         delete process.env.DATABASE_URL;

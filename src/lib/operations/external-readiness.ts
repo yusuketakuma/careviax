@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { findUnsafeRecoveryEvidenceLabels, redactRecoveryEvidenceText } from './recovery-evidence';
 
 export type ReadinessPathCheck = {
   path: string;
@@ -36,6 +37,14 @@ export type BackupDrillSummary = {
     duration: string;
     notes: string;
     mode: 'live' | 'tabletop' | 'unknown';
+    environment: string | null;
+    evidence_complete: boolean;
+    redaction_status: 'passed' | 'redacted' | 'unknown';
+    started_at: string | null;
+    completed_at: string | null;
+    rto_minutes: number | null;
+    rpo_minutes: number | null;
+    health_status: string | null;
   }>;
   live_drill_recorded: boolean;
   live_run_count: number;
@@ -101,15 +110,103 @@ function parseMarkdownTableRows(markdown: string) {
     .filter((line) => !/^\|\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(line));
 }
 
-function classifyBackupDrillMode(args: { result: string; notes: string }) {
-  const source = `${args.result} ${args.notes}`.toLowerCase();
-  if (source.includes('[mode:live]') || /(^|[\s/])(live|実地|本番相当)/.test(source)) {
+function parseStructuredEvidenceNotes(notes: string) {
+  const structuredMatch = notes.match(/^\[([^\]]+)\]/);
+  if (!structuredMatch?.[1]) {
+    return new Map<string, string>();
+  }
+  const values = new Map<string, string>();
+  for (const rawPart of structuredMatch[1].split(';')) {
+    const part = rawPart.trim();
+    if (!part) continue;
+    const [key, ...rest] = part.split('=');
+    const entry: [string, string] =
+      !rest.length && key.startsWith('mode:')
+        ? ['mode', key.slice('mode:'.length)]
+        : [key, rest.join('=')];
+    if (!values.has(entry[0])) {
+      values.set(entry[0], entry[1]);
+    }
+    if (entry[0] === 'summary') {
+      break;
+    }
+  }
+  return values;
+}
+
+function parsePositiveInteger(value: string | undefined) {
+  if (!value || !/^\d+$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function parseIsoDateTime(value: string | undefined) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString();
+}
+
+function classifyBackupDrillMode(args: { notes: string }) {
+  const structured = parseStructuredEvidenceNotes(args.notes);
+  const explicitMode = structured.get('mode')?.toLowerCase();
+  if (explicitMode === 'live') {
     return 'live' as const;
   }
-  if (source.includes('[mode:tabletop]') || /(^|[\s/])(tabletop|机上訓練|前提確認)/.test(source)) {
+  if (explicitMode === 'tabletop') {
     return 'tabletop' as const;
   }
   return 'unknown' as const;
+}
+
+function summarizeBackupDrillEvidence(args: {
+  notes: string;
+  mode: 'live' | 'tabletop' | 'unknown';
+  unsafeSourceText: string;
+}) {
+  const unsafeLabels = findUnsafeRecoveryEvidenceLabels(args.unsafeSourceText);
+  const safeNotes = redactRecoveryEvidenceText(args.notes);
+  const structured = parseStructuredEvidenceNotes(args.notes);
+  const environment = structured.get('environment') ?? null;
+  const startedAt = parseIsoDateTime(structured.get('started_at'));
+  const completedAt = parseIsoDateTime(structured.get('completed_at'));
+  const rtoMinutes = parsePositiveInteger(structured.get('rto_minutes'));
+  const rpoMinutes = parsePositiveInteger(structured.get('rpo_minutes'));
+  const healthStatus = structured.get('health')?.toLowerCase() ?? null;
+  const redactionCheck = structured.get('redaction')?.toLowerCase() ?? '';
+  const sampleCounts = structured.get('samples') ?? '';
+  const hasTicket = Boolean(structured.get('ticket'));
+  const hasApprover = Boolean(structured.get('approver'));
+  const evidenceComplete =
+    args.mode === 'live' &&
+    Boolean(environment) &&
+    hasTicket &&
+    hasApprover &&
+    startedAt !== null &&
+    completedAt !== null &&
+    rtoMinutes !== null &&
+    rpoMinutes !== null &&
+    healthStatus === 'passed' &&
+    redactionCheck === 'passed' &&
+    Boolean(sampleCounts) &&
+    unsafeLabels.length === 0;
+
+  return {
+    notes: safeNotes,
+    environment,
+    evidence_complete: evidenceComplete,
+    redaction_status:
+      unsafeLabels.length > 0
+        ? ('redacted' as const)
+        : safeNotes
+          ? ('passed' as const)
+          : ('unknown' as const),
+    started_at: startedAt,
+    completed_at: completedAt,
+    rto_minutes: rtoMinutes,
+    rpo_minutes: rpoMinutes,
+    health_status: healthStatus,
+  };
 }
 
 export function getPmdaOnboardingSummary(args?: {
@@ -182,19 +279,28 @@ export function getBackupDrillSummary(args?: {
   const recordedRuns = parseMarkdownTableRows(drillDoc)
     .map((line) => line.split('|').map((cell) => cell.trim()))
     .filter((cells) => cells.length >= 7)
-    .map((cells) => ({
-      date: cells[1] ?? '',
-      operator: cells[2] ?? '',
-      result: cells[3] ?? '',
-      duration: cells[4] ?? '',
-      notes: cells[5] ?? '',
-      mode: classifyBackupDrillMode({
-        result: cells[3] ?? '',
-        notes: cells[5] ?? '',
-      }),
-    }))
+    .map((cells) => {
+      const notes = cells[5] ?? '';
+      const mode = classifyBackupDrillMode({ notes });
+      const rawOperator = cells[2] ?? '';
+      const rawResult = cells[3] ?? '';
+      const rawDuration = cells[4] ?? '';
+      const evidence = summarizeBackupDrillEvidence({
+        notes,
+        mode,
+        unsafeSourceText: [rawOperator, rawResult, rawDuration, notes].join(' '),
+      });
+      return {
+        date: cells[1] ?? '',
+        operator: redactRecoveryEvidenceText(cells[2] ?? ''),
+        result: redactRecoveryEvidenceText(cells[3] ?? ''),
+        duration: redactRecoveryEvidenceText(cells[4] ?? ''),
+        mode,
+        ...evidence,
+      };
+    })
     .filter((row) => row.date !== '実施日' && row.date !== '未実施' && row.date.length > 0);
-  const liveRuns = recordedRuns.filter((row) => row.mode === 'live');
+  const liveRuns = recordedRuns.filter((row) => row.mode === 'live' && row.evidence_complete);
 
   return {
     files,

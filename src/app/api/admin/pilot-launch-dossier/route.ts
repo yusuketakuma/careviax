@@ -5,6 +5,7 @@ import {
   getPmdaOnboardingSummary,
 } from '@/lib/operations/external-readiness';
 import { success } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { getPilotLaunchDossier } from '@/server/services/pilot-launch-dossier';
 
 export const GET = withAuthContext(
@@ -17,7 +18,7 @@ export const GET = withAuthContext(
         isms: getIsmsReadinessSummary(),
       },
     });
-    return success({ data: dossier });
+    return withSensitiveNoStore(success({ data: dossier }));
   },
   {
     permission: 'canAdmin',

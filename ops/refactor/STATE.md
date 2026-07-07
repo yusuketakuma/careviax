@@ -41,6 +41,112 @@
 
 ## 直近の land（本日・要点）
 
+- codex: `OPS-RECOVERY-EVIDENCE-001` structured/redacted backup recovery evidence gate。
+  - current task:
+    `Plans.md` の Recovery / AWS lane から、Codex実装可能な前段 `OPS-RECOVERY-EVIDENCE-001`
+    を実装する。復旧drill evidence の `--append` を operator free text から構造化fieldへ寄せ、
+    unsafe PHI/secret/AWS raw identifier を拒否またはredactし、tabletop/free-textを live evidence
+    と誤認しないようにする。live AWS操作、restore/delete API、DB mutation、migration は実施しない。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `tools/scripts/backup-recovery-check.ts`,
+    `src/lib/operations/recovery-evidence.ts`,
+    `src/lib/operations/external-readiness.ts`,
+    `src/app/api/admin/pilot-launch-dossier/route.ts`,
+    `src/app/api/admin/pilot-readiness/route.ts`,
+    focused tests,
+    `docs/compliance/backup-recovery-drill.md`,
+    `docs/architecture/aws-phos-deployment-stages.md`,
+    `docs/backup-recovery-drill.md`,
+    `tools/scripts/README.md`.
+  - Oracle:
+    Consulted Oracle/GPT-5.5 Pro via browser mode with GitHub context
+    (`https://github.com/yusuketakuma/careviax`, branch `main`, base commit
+    `959b16f67ee8692c858ac5df17de6fa0f07c3ebc`). Oracle returned `No-Go`
+    for the pre-final patch and the blockers were accepted: live append must fail closed,
+    delimiter injection must be rejected, `health=passed` / `redaction=passed` are required,
+    unsafe detection must cover row-wide evidence and common PHI/secret/AWS identifiers,
+    and `pilot-launch-dossier` must use `withSensitiveNoStore`.
+  - files changed:
+    `Plans.md`,
+    `docs/architecture/aws-phos-deployment-stages.md`,
+    `docs/backup-recovery-drill.md`,
+    `docs/compliance/backup-recovery-drill.md`,
+    `src/app/api/admin/pilot-launch-dossier/route.ts`,
+    `src/app/api/admin/pilot-launch-dossier/route.test.ts`,
+    `src/lib/operations/external-readiness.ts`,
+    `src/lib/operations/external-readiness.test.ts`,
+    `src/lib/operations/recovery-evidence.ts`,
+    `src/server/services/pilot-launch-dossier.test.ts`,
+    `src/server/services/pilot-readiness.test.ts`,
+    `tools/scripts/README.md`,
+    `tools/scripts/backup-recovery-check.ts`,
+    `tools/scripts/backup-recovery-check.test.ts`,
+    `tools/scripts/db-precheck-import-safety.test.ts`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Exported the backup recovery CLI parser/builder/append helpers and guarded CLI side effects so
+    importing the script does not mutate docs. Added structured fields for `environment`, ticket,
+    approver, started/completed timestamps, RTO/RPO, health status, redaction check, and sample
+    counts. `--mode live --append` now fails before document mutation unless all required fields are
+    present and `health-status=passed` plus `redaction-check=passed`. Evidence values reject
+    structured delimiters and common PHI/secret/AWS raw identifiers. `external-readiness` now parses
+    structured notes with first-key-wins / terminal summary behavior, redacts unsafe text, checks
+    unsafe content across operator/result/duration/notes, and counts only complete safe live evidence.
+    `pilot-launch-dossier` now returns sensitive no-store headers. Recovery docs now point to the
+    structured append contract and mark the root runbook as reference behind the compliance SSOT.
+    `Plans.md` moved `OPS-RECOVERY-EVIDENCE-001` out of the active unimplemented queue.
+  - bugs found:
+    Sparse `--mode live --append` rows could previously be written with only result/operator/duration.
+    Old/free-text live-looking rows could be mistaken for stronger evidence than intended. `health`
+    only had a non-empty check. Structured note parsing allowed later duplicate keys after `summary`.
+    Unsafe detection was notes-only and missed common AWS key/token/S3 HTTPS/patient-id patterns.
+    `pilot-launch-dossier` lacked the no-store wrapper used by the adjacent pilot readiness route.
+  - security risks reduced:
+    Recovery evidence now rejects PHI-like patient names/IDs/addresses/phones, tokens/API keys,
+    DB credentials, AWS access keys, account IDs, ARNs, raw S3 URIs/keys/HTTPS object URLs,
+    RDS/internal endpoints, SG/subnet/VPC IDs, snapshot/recovery identifiers, and structured
+    delimiter injection before append. Admin dossier responses are no-store. No secrets, raw PHI,
+    live AWS calls, production DB mutation, restore/delete API, migration, deploy, or destructive
+    operation was performed.
+  - performance issues improved:
+    No runtime DB read-path performance change in this slice. The CLI/import guard avoids accidental
+    side effects on import and adds no new external calls, polling, background job, broad scan, or
+    unbounded loop.
+  - validation commands:
+    `npx -y @steipete/oracle --help`;
+    `npx -y @steipete/oracle --dry-run summary --files-report ...`;
+    `npx -y @steipete/oracle --engine browser --model gpt-5.5-pro ...`;
+    `npx -y @steipete/oracle session recovery-evidence-review`;
+    `pnpm exec vitest run tools/scripts/backup-recovery-check.test.ts src/lib/operations/external-readiness.test.ts tools/scripts/db-precheck-import-safety.test.ts src/server/services/pilot-readiness.test.ts src/server/services/pilot-launch-dossier.test.ts src/app/api/admin/pilot-launch-dossier/route.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint tools/scripts/backup-recovery-check.ts tools/scripts/backup-recovery-check.test.ts tools/scripts/db-precheck-import-safety.test.ts src/lib/operations/external-readiness.ts src/lib/operations/external-readiness.test.ts src/lib/operations/recovery-evidence.ts src/app/api/admin/pilot-launch-dossier/route.ts src/app/api/admin/pilot-launch-dossier/route.test.ts src/server/services/pilot-readiness.test.ts src/server/services/pilot-launch-dossier.test.ts`;
+    `pnpm exec prettier --check Plans.md docs/architecture/aws-phos-deployment-stages.md docs/backup-recovery-drill.md docs/compliance/backup-recovery-drill.md tools/scripts/README.md tools/scripts/backup-recovery-check.ts tools/scripts/backup-recovery-check.test.ts src/lib/operations/external-readiness.ts src/lib/operations/external-readiness.test.ts src/lib/operations/recovery-evidence.ts src/app/api/admin/pilot-launch-dossier/route.ts src/app/api/admin/pilot-launch-dossier/route.test.ts src/server/services/pilot-readiness.test.ts src/server/services/pilot-launch-dossier.test.ts tools/scripts/db-precheck-import-safety.test.ts`;
+    `pnpm backup:drill:check`;
+    `pnpm backup:drill:check --append --mode live --result "live drill 完了" --operator "ops" --duration "120分"`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `git diff --check -- <changed files>`.
+  - validation results:
+    Oracle CLI help and dry-run succeeded. Oracle browser session completed after reattach and the
+    accepted blockers were implemented. Focused Vitest passed `6` files / `24` tests. Scoped ESLint
+    passed. Prettier check passed. `pnpm backup:drill:check` passed and reported local
+    `DATABASE_URL` / `AWS_REGION` missing, so `ready_for_live_drill=false`. Negative sparse live
+    append failed as expected before document mutation. Full typecheck passed. Diff whitespace check
+    passed.
+  - gbrain:
+    `projects/careviax/reviews/2026-07-08/ops-recovery-evidence-001`
+    (`SecurityFinding`) に PHI-free で structured recovery evidence gate、
+    Oracle review outcome、live fail-closed、row-wide unsafe redaction、no-store dossier guard を保存する。
+  - remaining:
+    `OPS-RECOVERY-INTEGRITY-001` の SELECT-only restored DB integrity audit CLI、
+    `OPS-RECOVERY-MONITOR-003` の S3 Object Lock / strict skipped-check monitor、
+    `OPS-RECOVERY-DOC-001` の root runbook least-privilege cleanup、
+    `OPS-RECOVERY-LIVE-001` の live AWS strict validation / restore drill evidence collection
+    は未実装または human gate。大量の unrelated untracked memory/docs files はこのsliceの対象外。
+  - next action:
+    Commit/push this scoped recovery evidence slice, then continue with
+    `OPS-RECOVERY-INTEGRITY-001` or the next user-selected backend task.
+
 - codex: `Plans.md` active backlog classification and recovery/AWS derived plan cleanup。
   - current task:
     既存 `Plans.md` 内を整理し、実装済み・一部実装済み・未実装・human gate を分類する。

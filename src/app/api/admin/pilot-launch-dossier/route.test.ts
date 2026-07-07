@@ -91,6 +91,8 @@ describe('/api/admin/pilot-launch-dossier GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(getPilotLaunchDossierMock).toHaveBeenCalledWith({
       orgId: 'org_1',
       externalReadiness: {

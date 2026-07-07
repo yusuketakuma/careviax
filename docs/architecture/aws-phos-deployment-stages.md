@@ -56,7 +56,7 @@ pnpm aws:lightsail:plan -- --shell
 pnpm aws:lightsail:runtime-env:validate -- --env-file <UNTRACKED_ENV_FILE> --strict
 pnpm aws:lightsail:status -- --strict --json
 pnpm rate-limit:ddb:verify -- --table-name <RATE_LIMIT_TABLE> --region ap-northeast-1
-pnpm backup:drill:check --append --mode tabletop --result "<RESULT>" --operator "<OPERATOR>" --duration "<DURATION>" --notes "<NOTES>"
+pnpm backup:drill:check --append --mode tabletop --environment "recovery-drill" --result "<RESULT>" --operator "<OPERATOR>" --duration "<DURATION>" --ticket "<DRILL_TICKET>" --approver "<APPROVER>" --notes "<SAFE_SUMMARY>"
 ```
 
 Pilot constraints:

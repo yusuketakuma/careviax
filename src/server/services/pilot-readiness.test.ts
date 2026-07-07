@@ -56,6 +56,8 @@ function writeAwsPilotArtifacts(root: string) {
     'src/tools/rls-policy-contract.test.ts',
     'src/app/api/__tests__/api-conventions-static.test.ts',
     'docs/compliance/rds-configuration.md',
+    'tools/infra/rds-aws-backup-template.yaml',
+    'tools/scripts/aws-rds-backup-template-validate.ts',
     'tools/infra/vpc-security-groups.json',
   ].forEach((item) => writeWorkspaceFile(root, item));
   writeWorkspaceFile(
@@ -64,7 +66,7 @@ function writeAwsPilotArtifacts(root: string) {
     `
 | 実施日 | 担当 | 結果 | 所要時間 | メモ |
 |---|---|---|---|---|
-| 2026-07-06 | ops | pass [mode:live] | 2h | 本番相当RDS/S3/Cognito復旧 |
+| 2026-07-06 | ops | pass | 2h | [mode:live; environment=recovery-drill; ticket=DRILL-20260706; approver=ops-lead; started_at=2026-07-06T01:00:00.000Z; completed_at=2026-07-06T03:00:00.000Z; rto_minutes=120; rpo_minutes=30; health=passed; redaction=passed; samples=patients:10,reports:5,audit:20; summary=本番相当RDS/S3/Cognito復旧] |
 `,
   );
 }

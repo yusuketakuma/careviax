@@ -3,6 +3,11 @@
 > 3省2ガイドライン（MHLW v6.0 §8.3 / METI/MIC v1.1 §5.4）準拠
 > 訓練周期: 年2回以上（本番復旧実施後は追加で1回）
 
+> 注意: 復旧運用の現行SSOTは `docs/compliance/backup-recovery-drill.md`。
+> この文書は detailed/historical runbook として扱い、復旧証跡へ raw ARN、account id、
+> endpoint、security group/subnet/vpc id、S3 key、患者名、電話番号、token/password を貼り付けない。
+> 証跡追記は `pnpm backup:drill:check --append` の構造化フラグを使う。
+
 ---
 
 ## 1. RTO / RPO 目標値
