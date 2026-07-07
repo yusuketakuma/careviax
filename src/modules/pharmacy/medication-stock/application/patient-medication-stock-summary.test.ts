@@ -205,6 +205,12 @@ describe('getPatientMedicationStockSummary', () => {
           OR: [{ case_id: null }, { case_id: { in: ['case_1'] } }],
         },
         take: 10,
+        orderBy: [{ updated_at: 'desc' }, { id: 'asc' }],
+        select: expect.objectContaining({
+          id: true,
+          display_name: true,
+          updated_at: true,
+        }),
       }),
     );
     expect(db.medicationStockEvent.findMany).toHaveBeenCalledWith(
@@ -214,7 +220,7 @@ describe('getPatientMedicationStockSummary', () => {
           patient_id: 'patient_1',
           stock_item_id: { in: ['stock_urgent', 'stock_ok'] },
         },
-        orderBy: [{ event_at: 'desc' }, { created_at: 'desc' }],
+        orderBy: [{ event_at: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
         take: 5,
       }),
     );

@@ -628,6 +628,7 @@ describe('/api/care-reports GET', () => {
         id: true,
         name: true,
       },
+      orderBy: [{ name_kana: 'asc' }, { name: 'asc' }, { id: 'asc' }],
       take: 2,
     });
     expect(deliveryRecordCountMock).not.toHaveBeenCalled();

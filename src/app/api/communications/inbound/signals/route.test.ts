@@ -194,7 +194,7 @@ describe('/api/communications/inbound/signals', () => {
           },
         ],
       },
-      orderBy: [{ received_at: 'desc' }, { created_at: 'desc' }],
+      orderBy: [{ received_at: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
       take: 10,
       select: {
         id: true,

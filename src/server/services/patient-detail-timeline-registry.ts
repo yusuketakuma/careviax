@@ -208,7 +208,7 @@ export const visitSchedulesSource = defineTimelineSource<
             org_id: orgId,
             case_id: { in: caseIds },
           },
-          orderBy: [{ scheduled_date: 'desc' }, { time_window_start: 'desc' }],
+          orderBy: [{ scheduled_date: 'desc' }, { time_window_start: 'desc' }, { id: 'desc' }],
           take: 12,
           select: {
             id: true,
@@ -272,7 +272,7 @@ export const visitRecordsSource = defineTimelineSource<'visitRecords', VisitReco
             patient_id: patientId,
             ...buildVisitRecordCaseScope(caseIds),
           },
-          orderBy: [{ visit_date: 'desc' }, { created_at: 'desc' }],
+          orderBy: [{ visit_date: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
           take: resolveTimelineSourceTake(ctx, 12),
           select: {
             id: true,
@@ -316,7 +316,7 @@ export const careReportsSource = defineTimelineSource<'careReports', CareReportT
         patient_id: patientId,
         ...buildCareReportCaseScope(caseIds),
       },
-      orderBy: [{ created_at: 'desc' }],
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
       take: 8,
       select: {
         id: true,
@@ -324,7 +324,7 @@ export const careReportsSource = defineTimelineSource<'careReports', CareReportT
         status: true,
         created_at: true,
         delivery_records: {
-          orderBy: [{ created_at: 'desc' }],
+          orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
           take: 4,
           select: {
             id: true,
@@ -394,7 +394,7 @@ export const communicationEventsSource = defineTimelineSource<
         event_type: { not: 'patient_self_report' },
         ...buildNullableCaseScope(caseIds),
       },
-      orderBy: [{ occurred_at: 'desc' }],
+      orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
       take: resolveTimelineSourceTake(ctx, 8),
       select: {
         id: true,
@@ -450,7 +450,7 @@ export const patientMcsMessagesSource = defineTimelineSource<
         org_id: orgId,
         patient_id: patientId,
       },
-      orderBy: [{ posted_at: 'desc' }, { created_at: 'desc' }],
+      orderBy: [{ posted_at: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
       take: 8,
       select: {
         id: true,
@@ -499,7 +499,12 @@ export const partnerVisitRecordsSource = defineTimelineSource<
         },
         status: { in: ['submitted', 'confirmed'] },
       },
-      orderBy: [{ confirmed_at: 'desc' }, { submitted_at: 'desc' }, { visit_at: 'desc' }],
+      orderBy: [
+        { confirmed_at: 'desc' },
+        { submitted_at: 'desc' },
+        { visit_at: 'desc' },
+        { id: 'desc' },
+      ],
       take: 8,
       select: {
         id: true,
@@ -558,7 +563,7 @@ export const operationalTasksSource = defineTimelineSource<
             : []),
         ],
       },
-      orderBy: [{ updated_at: 'desc' }, { created_at: 'desc' }],
+      orderBy: [{ updated_at: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
       take: 12,
       select: {
         id: true,
@@ -659,7 +664,7 @@ export const residualMedicationsSource = defineTimelineSource<
         patient_id: patientId,
         ...buildVisitRecordCaseScope(caseIds),
       },
-      orderBy: [{ visit_date: 'desc' }, { created_at: 'desc' }],
+      orderBy: [{ visit_date: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
       take: 12,
       select: {
         id: true,
@@ -755,7 +760,7 @@ export const selfReportsSource = defineTimelineSource<'selfReports', SelfReportT
         org_id: orgId,
         patient_id: patientId,
       },
-      orderBy: [{ created_at: 'desc' }],
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
       take: resolveTimelineSourceTake(ctx, 8),
       select: {
         id: true,
@@ -852,7 +857,12 @@ export const inquiryRecordsSource = defineTimelineSource<'inquiryRecords', Inqui
               case_id: { in: caseIds },
             },
           },
-          orderBy: [{ resolved_at: 'desc' }, { inquired_at: 'desc' }, { created_at: 'desc' }],
+          orderBy: [
+            { resolved_at: 'desc' },
+            { inquired_at: 'desc' },
+            { created_at: 'desc' },
+            { id: 'desc' },
+          ],
           take: 8,
           select: {
             id: true,
@@ -921,7 +931,7 @@ export const prescriptionIntakesSource = defineTimelineSource<
               case_id: { in: caseIds },
             },
           },
-          orderBy: [{ created_at: 'desc' }],
+          orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
           take: 10,
           select: {
             id: true,
@@ -982,7 +992,7 @@ export const dispenseResultsSource = defineTimelineSource<
               },
             },
           },
-          orderBy: [{ dispensed_at: 'desc' }],
+          orderBy: [{ dispensed_at: 'desc' }, { id: 'desc' }],
           take: resolveTimelineSourceTake(ctx, 12),
           select: {
             id: true,
@@ -1043,7 +1053,7 @@ export const managementPlansSource = defineTimelineSource<
               in: caseIds,
             },
           },
-          orderBy: [{ updated_at: 'desc' }],
+          orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
           take: 6,
           select: {
             id: true,
@@ -1091,7 +1101,7 @@ export const firstVisitDocumentsSource = defineTimelineSource<
             patient_id: patientId,
             case_id: { in: caseIds },
           },
-          orderBy: [{ created_at: 'desc' }],
+          orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
           take: 8,
           select: {
             id: true,
@@ -1153,7 +1163,7 @@ export const conferenceNotesSource = defineTimelineSource<
           caseIds,
         }),
       },
-      orderBy: [{ conference_date: 'desc' }],
+      orderBy: [{ conference_date: 'desc' }, { id: 'desc' }],
       take: 8,
       select: {
         id: true,
@@ -1204,7 +1214,7 @@ export const billingCandidatesSource = defineTimelineSource<
               ? { id: { in: [] } }
               : { cycle_id: { in: billingRefs.cycleIds } }),
           },
-          orderBy: [{ updated_at: 'desc' }],
+          orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
           take: 8,
           select: {
             id: true,

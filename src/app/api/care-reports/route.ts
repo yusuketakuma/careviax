@@ -84,7 +84,7 @@ const careReportBaseSelect = {
       status: true,
       sent_at: true,
     },
-    orderBy: { created_at: 'desc' },
+    orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
     take: CARE_REPORT_DELIVERY_RECORDS_PER_REPORT_LIMIT,
   },
 } satisfies Prisma.CareReportSelect;
@@ -577,6 +577,7 @@ async function authenticatedGET(req: NextRequest) {
                   id: true,
                   name: true,
                 },
+                orderBy: careReportPatientSearchOrderBy,
                 take: resolvedPaletteLimit + 1,
               })
             : [];

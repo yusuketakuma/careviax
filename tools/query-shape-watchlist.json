@@ -1,0 +1,34 @@
+{
+  "entries": [
+    {
+      "path": "src/app/api/care-reports/route.ts",
+      "owner": "PERF-DB-001",
+      "reason": "Care report list/search is a critical read path with bounded search and payload budgets."
+    },
+    {
+      "path": "src/server/services/patient-overview-base-query.ts",
+      "owner": "PERF-DB-001",
+      "reason": "Patient overview base select must keep relation reads bounded and stable."
+    },
+    {
+      "path": "src/server/services/patient-detail-timeline-registry.ts",
+      "owner": "PERF-DB-001",
+      "reason": "Patient movement timeline sources must stay caller-limit-aware and stable."
+    },
+    {
+      "path": "src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.ts",
+      "owner": "PERF-DB-001",
+      "reason": "Medication stock summary is a critical bounded patient read path."
+    },
+    {
+      "path": "src/app/api/communications/inbound/route.ts",
+      "owner": "PERF-DB-001",
+      "reason": "Inbound communication inbox is a critical PHI/medical list read path."
+    },
+    {
+      "path": "src/app/api/communications/inbound/signals/route.ts",
+      "owner": "PERF-DB-001",
+      "reason": "Inbound signal list is a critical PHI/medical list read path."
+    }
+  ]
+}

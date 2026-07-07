@@ -312,7 +312,7 @@ const authenticatedGET = withAuthContext(
                 ...(assignmentWhere ? [assignmentWhere] : []),
               ],
             },
-            orderBy: [{ received_at: 'desc' }, { created_at: 'desc' }],
+            orderBy: [{ received_at: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
             take: limitResult.value,
             select: {
               id: true,

@@ -265,7 +265,7 @@ export async function getPatientMedicationStockSummary(
                   patient_id: args.patientId,
                   stock_item_id: { in: stockItemIds },
                 },
-                orderBy: [{ event_at: 'desc' }, { created_at: 'desc' }],
+                orderBy: [{ event_at: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
                 take: eventLimit,
                 select: {
                   id: true,

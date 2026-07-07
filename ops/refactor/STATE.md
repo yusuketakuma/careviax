@@ -41,6 +41,100 @@
 
 ## 直近の land（本日・要点）
 
+- codex: `QUERY-SHAPE-TEST-002` critical read path query-shape watchlist guard。
+  - current task:
+    `Plans.md` の DB速度改善残タスクから、critical read path の broad include、
+    unbounded `findMany`、unstable top-N、count/groupBy fan-out を静的に検出する
+    watchlist guard を追加する。実DBに触らず、現行の care-report、patient overview、
+    patient timeline、inbound、medication-stock summary の read path を0 allowlist debtで
+    ratchet化する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `package.json`,
+    `src/app/api/care-reports/route.ts`,
+    `src/app/api/care-reports/route.test.ts`,
+    `src/app/api/communications/inbound/route.ts`,
+    `src/app/api/communications/inbound/signals/route.ts`,
+    `src/app/api/communications/inbound/signals/route.test.ts`,
+    `src/server/services/patient-overview-base-query.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail-timeline-query.test.ts`,
+    `src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.ts`,
+    `src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.test.ts`.
+  - bounded subagents:
+    `Constraint the 35th` and `Teeth the 35th` reviewed the DB/performance testing
+    seam read-only. Both recommended a watchlist-only static ratchet rather than a
+    whole-repo Prisma linter, with fixture tests and explicit false-positive boundaries.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `package.json`,
+    `tools/query-shape-watchlist.json`,
+    `tools/query-shape-allowlist.json`,
+    `tools/scripts/check-query-shape.mjs`,
+    `tools/scripts/check-query-shape.test.ts`,
+    `src/app/api/care-reports/route.ts`,
+    `src/app/api/care-reports/route.test.ts`,
+    `src/app/api/communications/inbound/signals/route.ts`,
+    `src/app/api/communications/inbound/signals/route.test.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.ts`,
+    `src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.test.ts`.
+  - implementation:
+    Added `pnpm db:query-shape:check`, `tools/query-shape-watchlist.json`,
+    `tools/query-shape-allowlist.json`, and a Node-based checker that scans only
+    listed files. The guard detects top-level Prisma `include`, unbounded `findMany`,
+    bounded `findMany` without stable `orderBy` including an `id` tie-breaker, and
+    aggregate fan-out through missing `where` or repeated same-delegate count/groupBy.
+    Current allowlist entries are empty. Fixture tests cover allowed bounded reads,
+    id-in fan-in, allowlist ratchet behavior, and rejected broad include/unbounded/
+    unstable/aggregate cases.
+  - bugs found:
+    Several bounded timeline and signal/materialization reads ordered by timestamps
+    without an `id` tie-breaker, making cursor/top-N behavior susceptible to unstable
+    ordering when timestamps tie. The care-report palette patient search also lacked
+    an explicit stable order in one bounded path.
+  - security risks reduced:
+    No auth/authorization or PHI response semantics changed. The guard reduces future
+    accidental over-fetching through broad Prisma `include` on PHI/medical list/read
+    paths, and keeps watchlist scope explicit instead of scanning unrelated files.
+  - performance issues improved:
+    Critical read paths now have a local ratchet against unbounded reads, broad relation
+    fetches, unstable top-N queries, and repeated aggregate fan-out. Existing watched
+    paths pass with zero allowlisted debt. Stable `id` tie-breakers were added to
+    patient timeline sources, care-report nested delivery records/palette patient
+    search, inbound signal source materialization, and medication-stock event reads.
+  - validation commands:
+    `pnpm db:query-shape:check`;
+    `pnpm exec vitest run tools/scripts/check-query-shape.test.ts src/app/api/care-reports/route.test.ts src/app/api/communications/inbound/signals/route.test.ts src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.test.ts src/server/services/patient-detail-timeline-query.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint tools/scripts/check-query-shape.mjs tools/scripts/check-query-shape.test.ts src/app/api/care-reports/route.ts src/app/api/care-reports/route.test.ts src/server/services/patient-detail-timeline-registry.ts src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.ts src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.test.ts src/app/api/communications/inbound/signals/route.ts src/app/api/communications/inbound/signals/route.test.ts`;
+    `pnpm exec prettier --check tools/query-shape-watchlist.json tools/query-shape-allowlist.json tools/scripts/check-query-shape.mjs tools/scripts/check-query-shape.test.ts package.json Plans.md ops/refactor/STATE.md src/app/api/care-reports/route.ts src/app/api/care-reports/route.test.ts src/server/services/patient-detail-timeline-registry.ts src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.ts src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.test.ts src/app/api/communications/inbound/signals/route.ts src/app/api/communications/inbound/signals/route.test.ts`;
+    `git diff --check -- Plans.md ops/refactor/STATE.md package.json tools/query-shape-watchlist.json tools/query-shape-allowlist.json tools/scripts/check-query-shape.mjs tools/scripts/check-query-shape.test.ts src/app/api/care-reports/route.ts src/app/api/care-reports/route.test.ts src/server/services/patient-detail-timeline-registry.ts src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.ts src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.test.ts src/app/api/communications/inbound/signals/route.ts src/app/api/communications/inbound/signals/route.test.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Query-shape checker passed with `0` allowlisted violations and `0` new violations.
+    Focused query-shape/route/service suite passed `5` files / `91` tests. Scoped
+    ESLint passed. Prettier check passed after formatting `Plans.md` and
+    `patient-detail-timeline-registry.ts`. Diff whitespace check passed. Full
+    typecheck passed.
+  - gbrain:
+    `projects/careviax/reviews/2026-07-08/query-shape-watchlist-guard`
+    (`PerformanceFinding`) に PHI-free で watchlist-only guard、zero allowlist debt、
+    stable top-N tie-breaker、aggregate fan-out detection の再利用知見を保存する。
+  - remaining:
+    `QUERY-SHAPE-WATCHLIST-003` to expand the watchlist to patients board, reports
+    remaining detail surfaces, schedule, and visit heavy BFFs; care-report EXPLAIN
+    artifact取得 / index migration human gate; environment-specific perf-smoke
+    evidence; dashboard rail/drilldown; frontend slice contracts.
+  - commit:
+    pending scoped commit; final hash is reported in the user-facing summary after
+    commit creation.
+  - next action:
+    Run focused validations, write gbrain memory, commit this scoped slice, push, then
+    continue with dashboard rail/drilldown or frontend slice contracts unless redirected.
+
 - codex: `PAYLOAD-BUDGET-001D` critical route payload budget matrix smoke。
   - current task:
     `perf-smoke` を単一集計のpayload checkから、設定済みcritical GET routeをroute familyごとに
