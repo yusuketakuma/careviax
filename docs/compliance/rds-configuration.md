@@ -52,18 +52,33 @@ PH-OS の主データベースである Amazon RDS PostgreSQL の構成を明文
 
 RDS 自動バックアップに加え、AWS Backup で本番RDSの復旧ポイントを一元管理する。
 
-| 項目                       | 設定値                                                             |
-| -------------------------- | ------------------------------------------------------------------ |
-| IaC                        | `tools/infra/rds-aws-backup-template.yaml`                         |
-| 検証コマンド               | `pnpm aws:rds-backup:template:validate`                            |
-| Backup Vault               | CMK暗号化、`DeletionPolicy: Retain`                                |
-| Backup Plan                | RDS continuous backup / PITR + daily recovery point                |
-| Backup Selection           | `RdsDbInstanceArn` を明示指定                                      |
-| Restore Testing            | 既定OFF。実地訓練ウィンドウとコスト承認後に有効化                  |
-| Cross-region copy          | PHI locality のため既定OFF。法務・顧客・リージョン承認後のみ有効化 |
-| Vault Lock compliance mode | irreversible なため既定OFF。環境単位の明示承認後のみ有効化         |
+| 項目                       | 設定値                                                                                                                     |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| IaC                        | `tools/infra/rds-aws-backup-template.yaml`                                                                                 |
+| 検証コマンド               | `pnpm aws:rds-backup:template:validate`                                                                                    |
+| Backup Vault               | CMK暗号化、`DeletionPolicy: Retain`                                                                                        |
+| Backup Plan                | RDS continuous backup / PITR + daily recovery point                                                                        |
+| Backup Selection           | `RdsDbInstanceArn` を明示指定                                                                                              |
+| Restore Testing            | 既定OFF。実地訓練ウィンドウとコスト承認後に有効化。ONにする場合は復旧専用 DB subnet group と security group を明示指定する |
+| Cross-region copy          | PHI locality のため既定OFF。法務・顧客・リージョン承認後のみ有効化                                                         |
+| Vault Lock compliance mode | irreversible なため既定OFF。環境単位の明示承認後のみ有効化                                                                 |
 
 アプリケーション実行ロールには `backup:StartRestoreJob`、`backup:DeleteRecoveryPoint`、`rds:DeleteDBInstance`、`secretsmanager:PutSecretValue` を付与しない。復旧は運用担当者がAWS上で新DBへ復元し、検証後に変更管理で接続先を切り替える。
+
+### 3.2 AWS Backup recovery point 監視
+
+`/api/health` の admin 詳細チェックは、RDS 自動スナップショットに加えて AWS Backup vault 内の RDS recovery point 鮮度を確認する。
+
+必要な環境変数:
+
+```text
+AWS_BACKUP_VAULT_NAME
+AWS_BACKUP_RDS_RESOURCE_ARN
+# fallback: RDS_DB_INSTANCE_ARN
+AWS_BACKUP_RECOVERY_POINT_MAX_AGE_HOURS=26
+```
+
+監視ロールには `backup:ListRecoveryPointsByBackupVault` の読み取り権限のみを付与する。復旧開始・削除・Secret更新権限は付与しない。
 
 ---
 
@@ -226,7 +241,8 @@ CloudWatch アラート設定:
 - [ ] バックアップ保持期間が `35` 日であること
 - [ ] AWS Backup plan が本番RDS ARNを明示選択し、continuous backup が有効であること
 - [ ] Backup Vault / KMS key が `Retain` され、cross-region copy と Vault Lock は承認状態に合っていること
-- [ ] Restore Testing を有効化した環境では直近の復旧テストが成功していること
+- [ ] `/api/health` admin 詳細で AWS Backup recovery point と RDS automated snapshot の両方が stale でないこと
+- [ ] Restore Testing を有効化した環境では、復旧専用 subnet group / security group metadata が指定され、直近の復旧テストが成功していること
 - [ ] `rds.force_ssl = 1` であること
 - [ ] サブネットがプライベートのみであること
 - [ ] パブリックアクセス可能 = `No` であること

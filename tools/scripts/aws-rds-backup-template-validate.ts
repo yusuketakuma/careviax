@@ -219,6 +219,38 @@ function validateTemplateText(
 
   add(
     checks,
+    hasAll(template, [
+      'RestoreTestingNetworkRequired:',
+      'RestoreTestingDbSubnetGroupName:',
+      'RestoreTestingVpcSecurityGroupIdsJson:',
+      'RestoreMetadataOverrides:',
+      'dbSubnetGroupName: !Ref RestoreTestingDbSubnetGroupName',
+      'vpcSecurityGroupIds: !Ref RestoreTestingVpcSecurityGroupIdsJson',
+    ])
+      ? 'pass'
+      : 'fail',
+    'restore-testing-network-required',
+    'Restore testing requires explicit isolated DB subnet and security group metadata.',
+    'Require restore-test DB subnet group and security group overrides so AWS Backup does not infer an unsafe/default network target.',
+  );
+
+  add(
+    checks,
+    hasAll(template, [
+      "deletionProtection: 'false'",
+      "multiAz: 'false'",
+      "publiclyAccessible: 'false'",
+      'RestoreTestingDbInstanceClass:',
+    ])
+      ? 'pass'
+      : 'fail',
+    'restore-testing-safe-target-metadata',
+    'Restore testing targets a disposable, non-public, single-AZ drill DB instance.',
+    'Add restore metadata overrides that keep automated drill restores isolated, non-public, and disposable.',
+  );
+
+  add(
+    checks,
     !hasAny(template, [
       'backup:StartRestoreJob',
       'backup:DeleteRecoveryPoint',

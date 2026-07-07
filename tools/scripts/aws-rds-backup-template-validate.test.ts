@@ -11,9 +11,13 @@ describe('validateRdsBackupTemplate', () => {
       now: new Date('2026-07-07T00:00:00Z'),
     });
 
-    expect(report.summary).toEqual({ pass: 10, warn: 0, fail: 0, skip: 1 });
+    expect(report.summary).toEqual({ pass: 12, warn: 0, fail: 0, skip: 1 });
     expect(report.checks.map((check) => check.name)).toContain('continuous-pitr');
     expect(report.checks.map((check) => check.name)).toContain('restore-testing-optional');
+    expect(report.checks.map((check) => check.name)).toContain('restore-testing-network-required');
+    expect(report.checks.map((check) => check.name)).toContain(
+      'restore-testing-safe-target-metadata',
+    );
     expect(report.checks.map((check) => check.name)).toContain(
       'no-dangerous-application-permissions',
     );
@@ -48,6 +52,25 @@ describe('validateRdsBackupTemplate', () => {
 
     expect(
       report.checks.find((check) => check.name === 'no-dangerous-application-permissions')?.status,
+    ).toBe('fail');
+  });
+
+  it('fails if restore testing network metadata is not explicit', () => {
+    const template = readFileSync(templatePath, 'utf8')
+      .replace('RestoreTestingNetworkRequired:', 'RestoreTestingNetworkMissing:')
+      .replace('RestoreMetadataOverrides:', 'RestoreMetadataMissing:')
+      .replace("publiclyAccessible: 'false'", "publiclyAccessible: 'true'");
+
+    const report = validateRdsBackupTemplate({
+      templatePath,
+      templateText: template,
+    });
+
+    expect(
+      report.checks.find((check) => check.name === 'restore-testing-network-required')?.status,
+    ).toBe('fail');
+    expect(
+      report.checks.find((check) => check.name === 'restore-testing-safe-target-metadata')?.status,
     ).toBe('fail');
   });
 

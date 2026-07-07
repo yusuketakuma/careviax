@@ -17404,3 +17404,98 @@
   Commit and push this validated dashboard slice, then resume the AWS database
   backup/recovery request by checking the existing AWS Backup/RDS baseline for
   missing restore automation and runbook coverage.
+
+## 2026-07-07 AWS Backup recovery monitor and restore-test hardening
+
+- current task:
+  Add AWS-backed database backup/recovery protection so PH-OS can detect stale
+  RDS recovery points and restore into an isolated drill target during failures
+  or recovery tests.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `package.json`,
+  `tools/infra/rds-aws-backup-template.yaml`,
+  `tools/scripts/aws-rds-backup-template-validate.ts`,
+  `tools/scripts/aws-rds-backup-template-validate.test.ts`,
+  `tools/scripts/backup-recovery-check.ts`,
+  `src/server/services/backup-monitor.ts`,
+  `src/server/services/backup-monitor.test.ts`,
+  `src/app/api/health/route.ts`,
+  `src/app/api/health/route.test.ts`,
+  `docs/compliance/rds-configuration.md`,
+  `docs/compliance/backup-recovery-drill.md`,
+  `docs/backup-recovery-drill.md`,
+  `docs/env-catalog.md`,
+  AWS official docs for AWS Backup continuous RDS PITR, restore testing
+  selection/metadata, RDS backup retention, and Vault Lock.
+- files changed:
+  `package.json`,
+  `pnpm-lock.yaml`,
+  `src/server/services/backup-monitor.ts`,
+  `src/server/services/backup-monitor.test.ts`,
+  `tools/infra/rds-aws-backup-template.yaml`,
+  `tools/scripts/aws-rds-backup-template-validate.ts`,
+  `tools/scripts/aws-rds-backup-template-validate.test.ts`,
+  `docs/env-catalog.md`,
+  `docs/compliance/rds-configuration.md`,
+  `docs/compliance/backup-recovery-drill.md`,
+  `docs/backup-recovery-drill.md`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- implementation:
+  Added `@aws-sdk/client-backup` and a new admin-only backup monitor check that
+  verifies a recent completed AWS Backup RDS recovery point in the configured
+  backup vault. The check is integrated into `runBackupMonitorChecks()` as
+  `awsBackupRecoveryPoint`, complements the existing RDS automated snapshot
+  probe, and is skipped locally until `AWS_BACKUP_VAULT_NAME` plus
+  `AWS_BACKUP_RDS_RESOURCE_ARN` or `RDS_DB_INSTANCE_ARN` are configured.
+  Strengthened the RDS AWS Backup CloudFormation template so optional Restore
+  Testing requires an explicit non-public DB subnet group and security group
+  JSON metadata and restores to a disposable non-public single-AZ drill DB.
+  Updated validation scripts and runbooks accordingly.
+- oracle review:
+  Required because this touches production recovery and AWS/RDS backup
+  behavior. Dry-run succeeded. The browser session
+  `phos-aws-db-backup-monitor` failed in the Oracle CLI with
+  `setTypeOfService EINVAL` after archive, and no output artifact was written
+  to `/tmp/oracle-phos-aws-db-backup-monitor-review.md`. Proceeded with local
+  verification and AWS official documentation evidence; live AWS validation and
+  live restore drill remain explicitly unperformed.
+- bugs found:
+  The previous monitor checked native RDS automated snapshots but did not
+  verify that AWS Backup had a fresh completed RDS recovery point in the backup
+  vault. Restore Testing configuration also depended too much on inferred
+  metadata instead of forcing an isolated restore target.
+- security risks reduced:
+  Backup monitor errors are converted to fixed safe messages. Tests ensure raw
+  provider errors, account/resource ARNs, vault identifiers in failure logs,
+  token-like strings, DB passwords, and recovery point ARNs are not leaked into
+  responses/logs. Application/runtime roles are still not granted restore,
+  delete, or secret-write permissions.
+- performance issues improved:
+  AWS Backup monitoring is admin-only through `/api/health`, uses existing
+  AWS client timeout/retry configuration, limits recovery point reads to 25
+  rows, and remains skipped when not configured.
+- validation commands:
+  `pnpm exec prettier --write src/server/services/backup-monitor.ts src/server/services/backup-monitor.test.ts tools/scripts/aws-rds-backup-template-validate.ts tools/scripts/aws-rds-backup-template-validate.test.ts tools/infra/rds-aws-backup-template.yaml docs/env-catalog.md docs/compliance/rds-configuration.md docs/compliance/backup-recovery-drill.md docs/backup-recovery-drill.md`;
+  `pnpm exec vitest run src/server/services/backup-monitor.test.ts tools/scripts/aws-rds-backup-template-validate.test.ts src/app/api/health/route.test.ts --reporter=dot --testTimeout=30000`;
+  `pnpm aws:rds-backup:template:validate -- --json`;
+  `pnpm backup:drill:check`;
+  `pnpm exec eslint src/server/services/backup-monitor.ts src/server/services/backup-monitor.test.ts tools/scripts/aws-rds-backup-template-validate.ts tools/scripts/aws-rds-backup-template-validate.test.ts`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+- validation results:
+  Focused backup/health tests passed (3 files / 23 tests). Static AWS Backup
+  template validation passed (12 pass, 0 warn, 0 fail, 1 live-AWS skip).
+  Backup drill readiness script passed and correctly reported live drill not
+  ready because local `DATABASE_URL` / `AWS_REGION` are unset. Targeted ESLint
+  passed. Full typecheck passed.
+- remaining work:
+  Run `pnpm aws:rds-backup:template:validate -- --live-aws --strict` with
+  production AWS credentials, deploy/update the CloudFormation stack, configure
+  `AWS_BACKUP_VAULT_NAME` and RDS ARN env vars, verify admin `/api/health`
+  against AWS, and perform a real restore drill into the isolated recovery
+  environment before claiming live recovery readiness.
+- next action:
+  Run final diff checks, commit and push the AWS backup/recovery monitor slice,
+  then continue with the next backend task only after confirming the worktree is
+  clean.

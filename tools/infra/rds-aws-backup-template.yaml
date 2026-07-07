@@ -103,6 +103,32 @@ Parameters:
     MinValue: 1
     MaxValue: 24
     Description: Validation window for AWS Backup restore testing jobs.
+  RestoreTestingDbSubnetGroupName:
+    Type: String
+    Default: ''
+    Description: >
+      Required when EnableRestoreTesting=true. Isolated DB subnet group for
+      automated restore tests; do not use public subnets.
+  RestoreTestingVpcSecurityGroupIdsJson:
+    Type: String
+    Default: '[]'
+    Description: >
+      Required when EnableRestoreTesting=true. JSON array string of isolated
+      security group IDs, e.g. ["sg-0123456789abcdef0"].
+  RestoreTestingDbInstanceClass:
+    Type: String
+    Default: db.t4g.medium
+    AllowedPattern: '^db\\.[a-z0-9]+\\.[a-z0-9]+$'
+    Description: RDS instance class for automated restore testing.
+
+Rules:
+  RestoreTestingNetworkRequired:
+    RuleCondition: !Equals [!Ref EnableRestoreTesting, 'true']
+    Assertions:
+      - Assert: !Not [!Equals [!Ref RestoreTestingDbSubnetGroupName, '']]
+        AssertDescription: RestoreTestingDbSubnetGroupName is required when restore testing is enabled.
+      - Assert: !Not [!Equals [!Ref RestoreTestingVpcSecurityGroupIdsJson, '[]']]
+        AssertDescription: RestoreTestingVpcSecurityGroupIdsJson is required when restore testing is enabled.
 
 Conditions:
   UseCrossRegionCopy: !And
@@ -258,6 +284,13 @@ Resources:
       ProtectedResourceType: RDS
       ProtectedResourceArns:
         - !Ref RdsDbInstanceArn
+      RestoreMetadataOverrides:
+        dbSubnetGroupName: !Ref RestoreTestingDbSubnetGroupName
+        vpcSecurityGroupIds: !Ref RestoreTestingVpcSecurityGroupIdsJson
+        dbInstanceClass: !Ref RestoreTestingDbInstanceClass
+        deletionProtection: 'false'
+        multiAz: 'false'
+        publiclyAccessible: 'false'
       ValidationWindowHours: !Ref RestoreTestingValidationWindowHours
 
 Outputs:
@@ -276,3 +309,7 @@ Outputs:
   BackupServiceRoleArn:
     Description: IAM role used by AWS Backup for PH-OS RDS backups and restores.
     Value: !GetAtt RdsBackupServiceRole.Arn
+  RestoreTestingPlanName:
+    Condition: UseRestoreTesting
+    Description: AWS Backup restore testing plan name.
+    Value: !Ref RdsRestoreTestingPlan

@@ -2,7 +2,7 @@
 
 Generated on 2026-06-12 from current source references to `process.env.*` under `src`, `tools`, `prisma`, and root TypeScript config files. Test files and generated build output are excluded.
 
-Current key count: 134. The earlier refactor note recorded 118 keys; the live repository now references 134.
+Current key count: 138. The earlier refactor note recorded 118 keys; the live repository now references 138.
 
 `src/lib/env/assert-env.ts` enforces the production safety subset from `src/instrumentation.ts` during the Node.js runtime startup path.
 
@@ -23,6 +23,9 @@ Current key count: 134. The earlier refactor note recorded 118 keys; the live re
 | `AWS_ECS_CONTAINER_CREDENTIALS_RELATIVE_URI` | infra optional       |                                                                 |
 | `AWS_EXECUTION_ENV`                          | infra optional       |                                                                 |
 | `AWS_REGION`                                 | infra optional       |                                                                 |
+| `AWS_BACKUP_RECOVERY_POINT_MAX_AGE_HOURS`    | infra optional       |                                                                 |
+| `AWS_BACKUP_RDS_RESOURCE_ARN`                | infra optional       |                                                                 |
+| `AWS_BACKUP_VAULT_NAME`                      | infra optional       |                                                                 |
 | `AWS_SECRET_ACCESS_KEY`                      | secret optional      | Secret or credential-like value; manage through secret storage. |
 | `AWS_SESSION_TOKEN`                          | secret optional      | Secret or credential-like value; manage through secret storage. |
 | `BULK_EXPORT_FILE_RETENTION_HOURS`           | optional             |                                                                 |
@@ -108,6 +111,7 @@ Current key count: 134. The earlier refactor note recorded 118 keys; the live re
 | `RATE_LIMIT_DDB_TABLE_NAME`                  | infra optional       |                                                                 |
 | `RATE_LIMIT_DDB_TIMEOUT_MS`                  | infra optional       |                                                                 |
 | `RATE_LIMIT_STORE`                           | optional             |                                                                 |
+| `RDS_DB_INSTANCE_ARN`                        | infra optional       |                                                                 |
 | `RDS_DB_INSTANCE_ID`                         | infra optional       |                                                                 |
 | `REDIS_URL`                                  | optional             |                                                                 |
 | `ROUTING_API_BASE_URL`                       | optional             |                                                                 |

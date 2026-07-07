@@ -21,6 +21,7 @@ type BackupMonitorOptions = {
 };
 
 type BackupMonitorOperation =
+  | 'aws_backup_recovery_point_check'
   | 'rds_snapshot_check'
   | 's3_versioning_check'
   | 'audit_archive_lifecycle_check'
@@ -47,6 +48,25 @@ type RdsModule = {
   DescribeDBSnapshotsCommand: new (input: {
     DBInstanceIdentifier: string;
     SnapshotType: string;
+  }) => unknown;
+};
+
+type BackupRecoveryPointsResponse = {
+  RecoveryPoints?: Array<{
+    RecoveryPointArn?: string;
+    CreationDate?: Date;
+    Status?: string;
+    ResourceType?: string;
+  }>;
+};
+
+type BackupModule = {
+  BackupClient: new (config: AwsClientConfig) => AwsClient<BackupRecoveryPointsResponse>;
+  ListRecoveryPointsByBackupVaultCommand: new (input: {
+    BackupVaultName: string;
+    ByResourceArn: string;
+    ByResourceType: string;
+    MaxResults: number;
   }) => unknown;
 };
 
@@ -82,11 +102,16 @@ type CognitoModule = {
 };
 
 let cachedRdsModule: Promise<RdsModule> | null = null;
+let cachedBackupModule: Promise<BackupModule> | null = null;
 let cachedS3Module: Promise<S3Module> | null = null;
 let cachedCognitoModule: Promise<CognitoModule> | null = null;
 const rdsClients = new Map<string, AwsClient<RdsSnapshotsResponse>>();
+const backupClients = new Map<string, AwsClient<BackupRecoveryPointsResponse>>();
 const s3Clients = new Map<string, AwsClient<S3VersioningResponse | S3LifecycleResponse>>();
 const cognitoClients = new Map<string, AwsClient<CognitoResponse>>();
+const BACKUP_MODULE_LOAD_FAILED_MESSAGE =
+  'Unable to load @aws-sdk/client-backup for AWS Backup monitoring';
+const AWS_BACKUP_RECOVERY_POINT_CHECK_FAILED_MESSAGE = 'AWS Backup recovery point check failed';
 const RDS_MODULE_LOAD_FAILED_MESSAGE =
   'Unable to load @aws-sdk/client-rds for RDS backup monitoring';
 const RDS_SNAPSHOT_CHECK_FAILED_MESSAGE = 'RDS snapshot check failed';
@@ -142,6 +167,18 @@ async function loadRdsModule() {
   return cachedRdsModule;
 }
 
+async function loadBackupModule() {
+  if (!cachedBackupModule) {
+    cachedBackupModule = import('@aws-sdk/client-backup')
+      .then((module) => module as BackupModule)
+      .catch(() => {
+        cachedBackupModule = null;
+        throw new SafeBackupMonitorError(BACKUP_MODULE_LOAD_FAILED_MESSAGE);
+      });
+  }
+  return cachedBackupModule;
+}
+
 async function loadS3Module() {
   cachedS3Module ??= import('@aws-sdk/client-s3').then((module) => module as S3Module);
   return cachedS3Module;
@@ -163,6 +200,15 @@ async function getRdsClient(region: string) {
   return client;
 }
 
+async function getBackupClient(region: string) {
+  const cached = backupClients.get(region);
+  if (cached) return cached;
+  const awsModule = await loadBackupModule();
+  const client = withAwsClientTimeout(new awsModule.BackupClient({ region, ...awsClientConfig() }));
+  backupClients.set(region, client);
+  return client;
+}
+
 async function getS3Client(region: string) {
   const cached = s3Clients.get(region);
   if (cached) return cached;
@@ -181,6 +227,104 @@ async function getCognitoClient(region: string) {
   );
   cognitoClients.set(region, client);
   return client;
+}
+
+function readPositiveNumberEnv(name: string, fallback: number) {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+/**
+ * Check that AWS Backup has a recent completed RDS recovery point in the
+ * configured backup vault. This complements the native RDS automated snapshot
+ * probe and verifies the AWS Backup control plane used for recovery drills.
+ */
+export async function checkAwsBackupRecoveryPoint(
+  options: BackupMonitorOptions = {},
+): Promise<BackupCheckResult> {
+  const region = process.env.AWS_REGION ?? 'ap-northeast-1';
+  const backupVaultName = process.env.AWS_BACKUP_VAULT_NAME;
+  const protectedResourceArn =
+    process.env.AWS_BACKUP_RDS_RESOURCE_ARN ?? process.env.RDS_DB_INSTANCE_ARN;
+
+  if (!backupVaultName) {
+    return { status: 'skipped', message: 'AWS_BACKUP_VAULT_NAME not configured' };
+  }
+
+  if (!protectedResourceArn) {
+    return { status: 'skipped', message: 'AWS_BACKUP_RDS_RESOURCE_ARN not configured' };
+  }
+
+  try {
+    const { ListRecoveryPointsByBackupVaultCommand } = await loadBackupModule();
+    const client = await getBackupClient(region);
+    const response = await client.send(
+      new ListRecoveryPointsByBackupVaultCommand({
+        BackupVaultName: backupVaultName,
+        ByResourceArn: protectedResourceArn,
+        ByResourceType: 'RDS',
+        MaxResults: 25,
+      }),
+    );
+
+    const completedRecoveryPoints = (response.RecoveryPoints ?? [])
+      .filter((point) => point.Status === 'COMPLETED' && point.CreationDate)
+      .sort((a, b) => (b.CreationDate?.getTime() ?? 0) - (a.CreationDate?.getTime() ?? 0));
+
+    if (completedRecoveryPoints.length === 0) {
+      return {
+        status: 'warning',
+        message: 'No completed AWS Backup RDS recovery points found',
+        details: {
+          backupVaultName,
+        },
+      };
+    }
+
+    const latest = completedRecoveryPoints[0];
+    const ageMs = Date.now() - (latest.CreationDate?.getTime() ?? 0);
+    const ageHours = ageMs / (1000 * 60 * 60);
+    const maxAgeHours = readPositiveNumberEnv('AWS_BACKUP_RECOVERY_POINT_MAX_AGE_HOURS', 26);
+
+    if (ageHours > maxAgeHours) {
+      return {
+        status: 'warning',
+        message: `Latest AWS Backup recovery point is ${Math.round(ageHours)}h old (threshold: ${maxAgeHours}h)`,
+        details: {
+          backupVaultName,
+          createdAt: latest.CreationDate?.toISOString(),
+          resourceType: latest.ResourceType ?? 'RDS',
+        },
+      };
+    }
+
+    return {
+      status: 'ok',
+      message: `Latest AWS Backup recovery point: ${Math.round(ageHours)}h ago`,
+      details: {
+        backupVaultName,
+        createdAt: latest.CreationDate?.toISOString(),
+        resourceType: latest.ResourceType ?? 'RDS',
+      },
+    };
+  } catch (err) {
+    const message = getSafeBackupMonitorMessage(
+      err,
+      AWS_BACKUP_RECOVERY_POINT_CHECK_FAILED_MESSAGE,
+    );
+    logBackupMonitorError(
+      options,
+      '[backup-monitor] AWS Backup recovery point check failed:',
+      new Error(message),
+      'aws_backup_recovery_point_check',
+    );
+    return {
+      status: 'error',
+      message,
+    };
+  }
 }
 
 /**
@@ -443,14 +587,17 @@ export async function runBackupMonitorChecks(options: BackupMonitorOptions = {})
   overall: 'ok' | 'warning' | 'error';
   checks: Record<string, BackupCheckResult>;
 }> {
-  const [rdsSnapshot, s3Versioning, auditArchive, cognitoAdvancedSecurity] = await Promise.all([
-    checkRdsSnapshot(options),
-    checkS3Versioning(options),
-    checkAuditLogArchivePolicy(options),
-    checkCognitoAdvancedSecurity(options),
-  ]);
+  const [awsBackupRecoveryPoint, rdsSnapshot, s3Versioning, auditArchive, cognitoAdvancedSecurity] =
+    await Promise.all([
+      checkAwsBackupRecoveryPoint(options),
+      checkRdsSnapshot(options),
+      checkS3Versioning(options),
+      checkAuditLogArchivePolicy(options),
+      checkCognitoAdvancedSecurity(options),
+    ]);
 
   const checks: Record<string, BackupCheckResult> = {
+    awsBackupRecoveryPoint,
     rdsSnapshot,
     s3Versioning,
     auditArchive,

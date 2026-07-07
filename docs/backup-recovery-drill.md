@@ -25,11 +25,20 @@ pnpm aws:rds-backup:template:validate
 pnpm aws:rds-backup:template:validate -- --live-aws --strict
 ```
 
+AWS Backup recovery point の運用監視は admin `/api/health` の詳細チェックで確認する。`checks.backups.awsBackupRecoveryPoint` と `checks.backups.rdsSnapshot` の両方が stale/error でないことを復旧前提条件にする。
+
+```text
+AWS_BACKUP_VAULT_NAME=ph-os-prod-rds-backup-vault
+AWS_BACKUP_RDS_RESOURCE_ARN=arn:aws:rds:ap-northeast-1:<account-id>:db:ph-os-prod
+AWS_BACKUP_RECOVERY_POINT_MAX_AGE_HOURS=26
+```
+
 ### 前提条件
 
 - AWS マネジメントコンソールへのアクセス権（`AdministratorAccess` または `AmazonRDSFullAccess`）
 - 復旧先 VPC・サブネットグループの確認
 - 接続先を切り替えるための `DATABASE_URL` 更新手段（Secrets Manager ロールアクセス）
+- AWS Backup Restore Testing を有効化する場合は、復旧専用の非公開 DB subnet group、security group、drill 用 DB instance class を CloudFormation parameter で指定する
 
 ### 2-1. 復旧ポイントの特定
 
