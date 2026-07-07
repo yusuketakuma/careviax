@@ -1,11 +1,13 @@
 import { PatientContactStatus, Prisma, ReportStatus } from '@prisma/client';
 import type { NextRequest } from 'next/server';
 import { requireAuthContext, type AuthContext } from '@/lib/auth/context';
+import { hasPermission } from '@/lib/auth/permissions';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { COCKPIT_CACHE_TTL_MS } from '@/lib/constants/workflow';
 import { success, validationError } from '@/lib/api/response';
 import { contactMethodLabel } from '@/lib/contact-profile-options';
 import { prisma } from '@/lib/db/client';
+import { withOrgContext } from '@/lib/db/rls';
 import { formatNullableDateKey } from '@/lib/date-key';
 import { buildDispenseTaskHref } from '@/lib/dispense/navigation';
 import { extractPackagingInstructionTags } from '@/lib/dispensing/packaging';
@@ -29,6 +31,7 @@ import {
   buildWorkflowAssignmentScopeFingerprint,
 } from '@/server/services/workflow-dashboard-cache';
 import { buildBlockedReasons } from '@/lib/workflow/blocked-reason-projection';
+import { billingMonthForJapanTimestamp } from '@/server/services/billing-evidence';
 import type {
   CockpitAuditQueueItem,
   CockpitBlockedReason,
@@ -57,6 +60,7 @@ const INBOUND_FEED_FETCH_LIMIT = 40;
 const INBOUND_FEED_RESPONSE_LIMIT = 8;
 const CALLBACK_URGENT_FETCH_LIMIT = 12;
 const REPORT_URGENT_FETCH_LIMIT = 12;
+const BILLING_URGENT_FETCH_LIMIT = 12;
 
 type DashboardScopeQuery =
   | { ok: true; scope: DashboardCockpitScope | null }
@@ -152,6 +156,20 @@ type DashboardReportUrgentDelivery = {
 };
 
 type DashboardReportUrgentResult = {
+  items: DashboardUrgentItem[];
+  totalCount: number;
+};
+
+type DashboardBillingUrgentCandidate = {
+  id: string;
+  patient_id: string | null;
+  billing_month: Date;
+  billing_code: string;
+  billing_name: string;
+  updated_at: Date;
+};
+
+type DashboardBillingUrgentResult = {
   items: DashboardUrgentItem[];
   totalCount: number;
 };
@@ -499,11 +517,61 @@ function buildReportDeliveryUrgentItem(args: {
   };
 }
 
+function formatBillingMonthKey(value: Date) {
+  return value.toISOString().slice(0, 10);
+}
+
+function formatBillingMonthLabel(value: Date) {
+  return value.toISOString().slice(0, 7);
+}
+
+function buildBillingCandidateHref(candidate: DashboardBillingUrgentCandidate) {
+  const params = new URLSearchParams({
+    billing_month: formatBillingMonthKey(candidate.billing_month),
+    status: 'candidate',
+    candidate_id: candidate.id,
+  });
+  if (candidate.patient_id) {
+    params.set('patient_id', candidate.patient_id);
+  }
+  return `/billing/candidates?${params.toString()}`;
+}
+
+function buildBillingUrgentItem(args: {
+  candidate: DashboardBillingUrgentCandidate;
+  patientName: string | null;
+}): DashboardUrgentItem {
+  const monthLabel = formatBillingMonthLabel(args.candidate.billing_month);
+  const referenceLabel = `${monthLabel} / ${args.candidate.billing_code}`;
+
+  return {
+    id: `billing:${args.candidate.id}`,
+    source: 'billing',
+    source_id: args.candidate.id,
+    source_label: '算定候補',
+    reference_label: referenceLabel,
+    severity: 'warning',
+    patient_id: args.candidate.patient_id,
+    patient_name: args.patientName,
+    title: '算定候補の確認待ち',
+    summary: `${args.candidate.billing_name} の算定候補が未確認です。請求候補画面で根拠を確認してください。`,
+    due_at: null,
+    waiting_since: args.candidate.updated_at.toISOString(),
+    badges: [
+      { label: '請求候補', tone: 'warning' },
+      { label: monthLabel, tone: 'neutral' },
+    ],
+    action_href: buildBillingCandidateHref(args.candidate),
+    action_label: '算定候補へ',
+  };
+}
+
 function buildDashboardUrgentItems(args: {
   auditItems: CockpitAuditQueueItem[];
   inboundItems?: CockpitInboundItem[];
   callbackItems?: DashboardUrgentItem[];
   reportItems?: DashboardUrgentItem[];
+  billingItems?: DashboardUrgentItem[];
   blockedReasons?: CockpitBlockedReason[];
   now: Date;
 }) {
@@ -514,6 +582,7 @@ function buildDashboardUrgentItems(args: {
       .filter((item): item is DashboardUrgentItem => item != null),
     ...(args.callbackItems ?? []),
     ...(args.reportItems ?? []),
+    ...(args.billingItems ?? []),
     ...(args.blockedReasons ?? []).map((reason) => buildBlockedReasonUrgentItem(reason, args.now)),
   ].sort(compareDashboardUrgentItems);
 }
@@ -1001,6 +1070,28 @@ function buildDashboardReportDeliveryWhere(args: {
   };
 }
 
+function buildDashboardBillingCandidateWhere(args: {
+  orgId: string;
+  assignmentScope: DashboardAssignmentScope;
+  billingMonth: Date;
+}): Prisma.BillingCandidateWhereInput {
+  const hasRestrictedScope =
+    args.assignmentScope.patientIds !== undefined || args.assignmentScope.caseIds !== undefined;
+  const patientIds = args.assignmentScope.patientIds ?? [];
+
+  return {
+    org_id: args.orgId,
+    billing_domain: 'home_care',
+    billing_month: args.billingMonth,
+    status: 'candidate',
+    ...(hasRestrictedScope
+      ? patientIds.length > 0
+        ? { patient_id: { in: patientIds } }
+        : { id: { in: [] } }
+      : {}),
+  };
+}
+
 function buildInboundCommunicationHref(event: { id: string; patient_id: string | null }) {
   if (event.patient_id) return buildPatientHref(event.patient_id, '#inbound-communications');
   return `/communications/inbound?event=${encodeURIComponent(event.id)}`;
@@ -1440,6 +1531,72 @@ async function readDashboardReportDeliveryUrgents(args: {
   };
 }
 
+async function readDashboardBillingUrgents(args: {
+  ctx: AuthContext;
+  scopeContext: DashboardCockpitScopeContext;
+}): Promise<DashboardBillingUrgentResult> {
+  if (!hasPermission(args.ctx.role, 'canManageBilling')) {
+    return { items: [], totalCount: 0 };
+  }
+
+  const billingMonth = billingMonthForJapanTimestamp(args.scopeContext.now);
+  const where = buildDashboardBillingCandidateWhere({
+    orgId: args.ctx.orgId,
+    assignmentScope: args.scopeContext.assignmentScope,
+    billingMonth,
+  });
+
+  return withOrgContext(
+    args.ctx.orgId,
+    async (tx) => {
+      const [candidates, totalCount] = await Promise.all([
+        tx.billingCandidate.findMany({
+          where,
+          orderBy: [{ updated_at: 'asc' }, { id: 'asc' }],
+          take: BILLING_URGENT_FETCH_LIMIT,
+          select: {
+            id: true,
+            patient_id: true,
+            billing_month: true,
+            billing_code: true,
+            billing_name: true,
+            updated_at: true,
+          },
+        }),
+        tx.billingCandidate.count({ where }),
+      ]);
+      const patientIds = Array.from(
+        new Set(
+          candidates
+            .map((candidate) => candidate.patient_id)
+            .filter((patientId): patientId is string => Boolean(patientId)),
+        ),
+      );
+      const patients =
+        patientIds.length > 0
+          ? await tx.patient.findMany({
+              where: { org_id: args.ctx.orgId, id: { in: patientIds } },
+              select: { id: true, name: true },
+            })
+          : [];
+      const patientNameById = new Map(patients.map((patient) => [patient.id, patient.name]));
+
+      return {
+        totalCount,
+        items: candidates.map((candidate) =>
+          buildBillingUrgentItem({
+            candidate,
+            patientName: candidate.patient_id
+              ? (patientNameById.get(candidate.patient_id) ?? null)
+              : null,
+          }),
+        ),
+      };
+    },
+    { requestContext: args.ctx, maxWaitMs: 2000, timeoutMs: 3000 },
+  );
+}
+
 async function readDashboardComments(args: {
   ctx: AuthContext;
   scopeContext: DashboardCockpitScopeContext;
@@ -1553,6 +1710,7 @@ async function buildCockpitDetails(
     inbound,
     callbackUrgents,
     reportUrgents,
+    billingUrgents,
     todaySchedules,
     openExceptions,
     carryoverCount,
@@ -1561,6 +1719,7 @@ async function buildCockpitDetails(
     readDashboardInbound({ ctx, scopeContext }),
     readDashboardCallbackUrgents({ ctx, scopeContext }),
     readDashboardReportDeliveryUrgents({ ctx, scopeContext }),
+    readDashboardBillingUrgents({ ctx, scopeContext }),
     readTodayVisits({
       orgId: ctx.orgId,
       assignmentScope: scopeContext.assignmentScope,
@@ -1610,6 +1769,7 @@ async function buildCockpitDetails(
     inboundItems: inbound.inbound_items,
     callbackItems: callbackUrgents.items,
     reportItems: reportUrgents.items,
+    billingItems: billingUrgents.items,
     blockedReasons,
     now: scopeContext.now,
   });
@@ -1618,6 +1778,7 @@ async function buildCockpitDetails(
     inbound.inbound_needs_review_count +
     callbackUrgents.totalCount +
     reportUrgents.totalCount +
+    billingUrgents.totalCount +
     blockedReasons.length;
   return {
     ...scopeContext.metadata,

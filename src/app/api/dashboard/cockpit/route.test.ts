@@ -33,6 +33,9 @@ const {
   patientFindManyMock,
   serverCacheGetMock,
   serverCacheSetMock,
+  withOrgContextMock,
+  billingCandidateFindManyMock,
+  billingCandidateCountMock,
 } = vi.hoisted(() => ({
   authContextMock: { orgId: 'org_1', userId: 'user_1', role: 'admin' },
   requireAuthContextMock: vi.fn(),
@@ -64,6 +67,9 @@ const {
   patientFindManyMock: vi.fn(),
   serverCacheGetMock: vi.fn(),
   serverCacheSetMock: vi.fn(),
+  withOrgContextMock: vi.fn(),
+  billingCandidateFindManyMock: vi.fn(),
+  billingCandidateCountMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -105,6 +111,10 @@ vi.mock('@/lib/db/client', () => ({
     },
     patient: { findMany: patientFindManyMock },
   },
+}));
+
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
 }));
 
 vi.mock('@/lib/utils/logger', () => ({
@@ -263,6 +273,17 @@ describe('/api/dashboard/cockpit', () => {
     deliveryRecordFindManyMock.mockResolvedValue([]);
     deliveryRecordCountMock.mockResolvedValue(0);
     patientFindManyMock.mockResolvedValue([]);
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        billingCandidate: {
+          findMany: billingCandidateFindManyMock,
+          count: billingCandidateCountMock,
+        },
+        patient: { findMany: patientFindManyMock },
+      }),
+    );
+    billingCandidateFindManyMock.mockResolvedValue([]);
+    billingCandidateCountMock.mockResolvedValue(0);
   });
 
   afterEach(() => {
@@ -678,6 +699,144 @@ describe('/api/dashboard/cockpit', () => {
         }),
       }),
     );
+  });
+
+  it('adds current-month billing candidates to the unified urgent queue without leaking raw evidence', async () => {
+    billingCandidateCountMock.mockResolvedValue(1);
+    billingCandidateFindManyMock.mockResolvedValue([
+      {
+        id: 'candidate_blocked',
+        patient_id: 'patient_billing',
+        billing_month: new Date('2026-06-01T00:00:00.000Z'),
+        billing_code: 'MED_HOME_VISIT',
+        billing_name: '在宅患者訪問薬剤管理指導料',
+        updated_at: new Date(2026, 5, 12, 9, 10),
+        source_snapshot: {
+          validation_layers: {
+            close_review: { message: '鈴木次郎様 090-1111-2222 個別事情' },
+          },
+        },
+      },
+    ]);
+    patientFindManyMock.mockResolvedValue([{ id: 'patient_billing', name: '算定 花子' }]);
+
+    const response = (await GETDetails(createRequest('', '/api/dashboard/cockpit/details'), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const json = await response.json();
+    expect(json.data.urgent_total_count).toBe(5);
+    expect(json.data.urgent_items.map((item: { id: string }) => item.id)).toEqual([
+      'audit:task_narcotic',
+      'task:exception_1',
+      'audit:task_plain',
+      'billing:candidate_blocked',
+      'task:exception_2',
+    ]);
+    expect(json.data.urgent_items[3]).toMatchObject({
+      source: 'billing',
+      source_label: '算定候補',
+      reference_label: '2026-06 / MED_HOME_VISIT',
+      severity: 'warning',
+      patient_id: 'patient_billing',
+      patient_name: '算定 花子',
+      title: '算定候補の確認待ち',
+      summary:
+        '在宅患者訪問薬剤管理指導料 の算定候補が未確認です。請求候補画面で根拠を確認してください。',
+      due_at: null,
+      waiting_since: new Date(2026, 5, 12, 9, 10).toISOString(),
+      action_href:
+        '/billing/candidates?billing_month=2026-06-01&status=candidate&candidate_id=candidate_blocked&patient_id=patient_billing',
+      action_label: '算定候補へ',
+    });
+
+    const responseBody = JSON.stringify(json.data.urgent_items);
+    expect(responseBody).not.toContain('source_snapshot');
+    expect(responseBody).not.toContain('validation_layers');
+    expect(responseBody).not.toContain('090-1111-2222');
+    expect(responseBody).not.toContain('個別事情');
+
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: authContextMock,
+      maxWaitMs: 2000,
+      timeoutMs: 3000,
+    });
+    expect(billingCandidateFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        billing_domain: 'home_care',
+        billing_month: new Date('2026-06-01T00:00:00.000Z'),
+        status: 'candidate',
+      },
+      orderBy: [{ updated_at: 'asc' }, { id: 'asc' }],
+      take: 12,
+      select: {
+        id: true,
+        patient_id: true,
+        billing_month: true,
+        billing_code: true,
+        billing_name: true,
+        updated_at: true,
+      },
+    });
+    expect(billingCandidateCountMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        billing_domain: 'home_care',
+        billing_month: new Date('2026-06-01T00:00:00.000Z'),
+        status: 'candidate',
+      },
+    });
+  });
+
+  it('skips billing urgent reads when the dashboard viewer lacks billing permission', async () => {
+    authContextMock.role = 'clerk';
+
+    const response = (await GETDetails(createRequest('', '/api/dashboard/cockpit/details'), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const json = await response.json();
+    expect(json.data.urgent_items.map((item: { source: string }) => item.source)).not.toContain(
+      'billing',
+    );
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(billingCandidateFindManyMock).not.toHaveBeenCalled();
+    expect(billingCandidateCountMock).not.toHaveBeenCalled();
+  });
+
+  it('scopes billing urgent reads by assigned patients for non-admin billing roles', async () => {
+    authContextMock.role = 'pharmacist';
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
+
+    const response = (await GETDetails(
+      createRequest('?scope=team', '/api/dashboard/cockpit/details'),
+      {
+        params: Promise.resolve({}),
+      },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const json = await response.json();
+    expect(json.data.scope).toEqual({
+      requested: 'team',
+      applied: 'mine',
+      can_view_team: false,
+    });
+    expect(billingCandidateFindManyMock.mock.calls.at(-1)?.[0]?.where).toMatchObject({
+      org_id: 'org_1',
+      billing_domain: 'home_care',
+      status: 'candidate',
+      patient_id: { in: ['patient_1'] },
+    });
+    expect(billingCandidateCountMock.mock.calls.at(-1)?.[0]?.where).toMatchObject({
+      patient_id: { in: ['patient_1'] },
+    });
   });
 
   it('returns the team segment without audit or exception reads', async () => {

@@ -16957,3 +16957,68 @@
   Continue backend-first with a billing blocker urgent source if the existing
   billing candidate validation snapshots can be read without broad schema or
   migration changes.
+
+## 2026-07-07 DASH-P0-001 billing urgent source
+
+- current task:
+  Continue backend-first Dashboard Unified Urgent Queue expansion by adding a
+  billing candidate review source from existing billing data.
+- files inspected:
+  `src/server/services/dashboard-cockpit.ts`,
+  `src/types/dashboard-cockpit.ts`,
+  `src/app/api/dashboard/cockpit/route.test.ts`,
+  `prisma/schema/admin.prisma`,
+  `src/app/api/billing-candidates/route.ts`,
+  `src/server/services/billing-evidence/core.ts`,
+  `src/lib/auth/permission-matrix.ts`,
+  `src/lib/db/rls.ts`,
+  `src/server/services/dashboard-assignment-scope.ts`,
+  `ops/refactor/STATE.md`.
+- files changed:
+  `src/server/services/dashboard-cockpit.ts`,
+  `src/app/api/dashboard/cockpit/route.test.ts`,
+  `ops/refactor/STATE.md`.
+- implementation:
+  Added `readDashboardBillingUrgents()` over existing current-month
+  `BillingCandidate.status='candidate'` rows in the `home_care` billing
+  domain. The reader is gated by `canManageBilling`, runs inside
+  `withOrgContext()`, applies dashboard assignment scope by patient id for
+  restricted viewers, selects only narrow display fields, fetches patient names
+  separately, and converts candidates into `DashboardUrgentItem` entries with
+  `source='billing'`, month/code reference labels, relative billing candidate
+  deep links, and warning severity. Details segment now merges billing urgent
+  items with audit, inbound, callback, report, and workflow blocker items and
+  includes billing candidates in `urgent_total_count`.
+- bugs found:
+  No reported runtime bug. Focused tests confirmed that billing urgent reads
+  are skipped for roles lacking `canManageBilling` and scoped for non-admin
+  billing-capable roles.
+- security risks reduced:
+  Billing urgent reads are fail-closed by permission and RLS context. Dashboard
+  urgent items do not expose `source_snapshot`, validation layers, raw billing
+  evidence, phone numbers, or private note-like fields; users must open the
+  billing candidate detail path to inspect evidence under billing permission.
+  Oracle/GPT-5.5 Pro consultation was attempted with GitHub context, but the
+  Oracle browser run crashed with `setTypeOfService EINVAL` / chrome
+  disconnected before producing an answer, so this slice relied on local code
+  inspection, permission matrix checks, and focused tests.
+- performance issues improved:
+  No summary-segment work was added. The billing reader is bounded to 12 rows
+  plus a separate count for hidden urgent accounting, and only runs for
+  billing-authorized dashboard details requests.
+- validation commands:
+  `pnpm exec prettier --write src/server/services/dashboard-cockpit.ts src/app/api/dashboard/cockpit/route.test.ts`;
+  `pnpm exec vitest run src/app/api/dashboard/cockpit/route.test.ts 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx' --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint src/server/services/dashboard-cockpit.ts src/app/api/dashboard/cockpit/route.test.ts`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `git diff --check -- src/server/services/dashboard-cockpit.ts src/app/api/dashboard/cockpit/route.test.ts`.
+- validation results:
+  Dashboard API/UI focused tests green (2 files / 46 tests). Targeted ESLint
+  green. Full typecheck green. Diff check green.
+- remaining work:
+  `DASH-P0-001` still needs medication_stock and visit_preparation urgent
+  sources. Medication stock remains dependent on the planned ledger/BFF work;
+  visit preparation should be evaluated next for an existing-data source.
+- next action:
+  Commit and push this validated billing urgent source slice, then continue
+  with the next smallest backend source for Unified Urgent Queue.
