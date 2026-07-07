@@ -1,5 +1,5 @@
 import { addUtcDays, japanDateKey } from '@/lib/utils/date-boundary';
-import { deriveOutsideMedEvidenceKind } from '@/lib/dispensing/outside-med-classification';
+import { isPrescriptionLineAsNeededByClinicalText } from '@/lib/clinical/prescription-line-classification';
 import {
   addOperatingDays,
   nearestOperatingDay,
@@ -128,9 +128,6 @@ export type VisitDeadlinePolicy = {
   reviewReasons: VisitDeadlineReviewReason[];
 };
 
-const PRN_TEXT_PATTERN =
-  /頓服|頓用|屯服|必要時|疼痛時|発熱時|不眠時|嘔気時|便秘時|発作時|頭痛時|症状時|PRN|prn|as needed|as-needed/i;
-
 export function resolvePrescriptionLineMedicationEndDate(
   line: MedicationDeadlineLine,
 ): Date | null {
@@ -144,7 +141,7 @@ function earliestDate(values: Date[]): Date | null {
 }
 
 export function isPrescriptionLineAsNeeded(line: MedicationDeadlineLine): boolean {
-  const classifiableLine = {
+  return isPrescriptionLineAsNeededByClinicalText({
     drug_name: line.drug_name ?? '',
     dosage_form: line.dosage_form ?? null,
     frequency: line.frequency ?? '',
@@ -153,15 +150,7 @@ export function isPrescriptionLineAsNeeded(line: MedicationDeadlineLine): boolea
     packaging_instructions: line.packaging_instructions ?? null,
     notes: line.notes ?? null,
     unit: line.unit ?? null,
-  };
-  if (deriveOutsideMedEvidenceKind(classifiableLine) === 'prn') return true;
-
-  const text = [
-    classifiableLine.frequency,
-    classifiableLine.packaging_instructions ?? '',
-    classifiableLine.notes ?? '',
-  ].join(' ');
-  return PRN_TEXT_PATTERN.test(text);
+  });
 }
 
 function isExternalOrTopicalLine(line: MedicationDeadlineLine): boolean {

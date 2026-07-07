@@ -20,15 +20,6 @@
       "targets": ["@/lib/prescription/cycle-workspace", "@/lib/prescriptions/navigation"]
     },
     {
-      "path": "src/server/services/visit-medication-deadline.ts",
-      "expectedCount": 1,
-      "owner": "MOD-VISIT-001",
-      "debtId": "DEBT-DEADLINE-001",
-      "reason": "訪問服薬期限が院外処方区分 (dispensing/outside-med-classification) を参照している既存負債。期限計算が調剤区分に依存している。",
-      "plannedAction": "VisitBriefContributor / pharmacy visit adapter へ院外処方区分判定を閉じ、visit deadline core から dispensing helper 直 import を外す。",
-      "targets": ["@/lib/dispensing/outside-med-classification"]
-    },
-    {
       "path": "src/server/services/visit-schedule-billing-preview.ts",
       "expectedCount": 1,
       "owner": "MOD-BILLING-001",

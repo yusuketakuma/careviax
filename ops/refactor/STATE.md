@@ -41,6 +41,50 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOD-BOUND-001 visit deadline PRN extraction / allowlist reduction（pending commit）。
+  - current task:
+    `visit-medication-deadline.ts` が頓服判定のために dispensing outside-med classification へ依存していた
+    `DEBT-DEADLINE-001` を削除し、Visit deadline core を薬局固有分類から切り離す。
+  - files inspected:
+    `src/server/services/visit-medication-deadline.ts`,
+    `src/server/services/visit-medication-deadline.test.ts`,
+    `src/lib/dispensing/outside-med-classification.ts`,
+    `src/lib/dispensing/outside-med-classification.test.ts`,
+    `src/lib/dispensing/packaging-group.ts`,
+    `tools/module-boundary-allowlist.json`.
+  - files changed:
+    `src/lib/clinical/prescription-line-classification.ts`,
+    `src/lib/clinical/prescription-line-classification.test.ts`,
+    `src/lib/dispensing/packaging-group.ts`,
+    `src/lib/dispensing/outside-med-classification.ts`,
+    `src/server/services/visit-medication-deadline.ts`,
+    `tools/module-boundary-allowlist.json`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    固定用法slot解析とPRN/必要時テキスト判定を `src/lib/clinical/prescription-line-classification.ts` へ移した。
+    `packaging-group.ts` は `parseFrequencyToSlots` を re-export して既存呼び出し互換を維持した。
+    `outside-med-classification.ts` と `visit-medication-deadline.ts` は clinical helper を参照するようにし、
+    visit deadline から dispensing import を削除した。
+    stale になった `visit-medication-deadline.ts` allowlist entry を削除し、allowlist は 5 imports / 4 files から
+    4 imports / 3 files へ減少した。
+  - bugs found:
+    visit deadline のPRN除外ロジックが、期限計算には不要な外用/液剤/注射/冷所分類 helper 経由で
+    dispensing module へ依存していた。
+  - security risks reduced:
+    PHI/API/DB/auth 変更なし。処方明細分類の共通 helper を pure function として切り出し、薬局固有UI/監査分類への癒着を減らした。
+  - performance issues improved:
+    実行時性能変更なし。module-boundary ratchet の既存負債をさらに1件削減した。
+  - validation:
+    `pnpm boundaries:check` → pass（0 new violations、4 allowlisted debt imports / 3 files、owner report: `MOD-BILLING-001=1`, `MOV-001=3`）。
+    `pnpm exec vitest run src/lib/clinical/prescription-line-classification.test.ts src/lib/dispensing/outside-med-classification.test.ts src/lib/dispensing/packaging-group.test.ts src/server/services/visit-medication-deadline.test.ts tools/scripts/check-module-boundaries.test.ts --reporter=dot --testTimeout=30000` → pass（4 files / 39 tests）。
+    `pnpm exec eslint src/lib/clinical/prescription-line-classification.ts src/lib/clinical/prescription-line-classification.test.ts src/lib/dispensing/packaging-group.ts src/lib/dispensing/outside-med-classification.ts src/server/services/visit-medication-deadline.ts` → pass。
+    `pnpm exec prettier --check src/lib/clinical/prescription-line-classification.ts src/lib/clinical/prescription-line-classification.test.ts src/lib/dispensing/packaging-group.ts src/lib/dispensing/outside-med-classification.ts src/server/services/visit-medication-deadline.ts tools/module-boundary-allowlist.json` → pass。
+    `git diff --check -- src/lib/clinical/prescription-line-classification.ts src/lib/clinical/prescription-line-classification.test.ts src/lib/dispensing/packaging-group.ts src/lib/dispensing/outside-med-classification.ts src/server/services/visit-medication-deadline.ts tools/module-boundary-allowlist.json Plans.md` → pass。
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` → pass。
+  - remaining work:
+    残 allowlist は MOV と BILLING。`MOD-VISIT-001` の contributor split 本体は別タスクとして残る。
+
 - codex: MOD-BOUND-001 patient-share type extraction / allowlist reduction（pending commit）。
   - current task:
     `MOD-SHARE-001` の前段として、`patient-share-policy.ts` が `pharmacy-partnerships.ts` から型だけを借りる

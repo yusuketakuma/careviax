@@ -1,4 +1,4 @@
-import { parseFrequencyToSlots } from './packaging-group';
+import { parseFrequencyToSlots } from '@/lib/clinical/prescription-line-classification';
 import { type OutsideMedEvidenceKind } from './set-audit-constants';
 
 /**
