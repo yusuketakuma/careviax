@@ -41,6 +41,37 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Plans.md implemented-task pruning（scoped doc slice）。
+  - current task:
+    `Plans.md` 内の実装済み task を削り、残る未実装 task だけが次の実装候補として読めるように整理する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `.codex/ralph-state.md`,
+    `ops/refactor/STATE.md`,
+    patient movement timeline / visit record autosave / module registry 関連の現行コード scan。
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Risk/VS-AUTO 整合の完了済み調整、Patient Movement Timeline のタブ/UI/処方・訪問・文書 marker 実装済みタスク、
+    Visit record 5秒autosave・即時保存・polling停止・保存状態表示、module registry / provider baseline の完了済み部分を削除または残作業へ再整理した。
+    残タスクは INB/MedicationStock/safety source、raw_text再認可、attachment draft reload recovery、patient workspace panel boundary、report/share masking enforcement などに限定した。
+  - bugs found:
+    なし。計画整理のみ。
+  - security risks reduced:
+    実装済みのPHI-safe timeline markerやfile/provider registry baselineを未実装taskとして再度拾わないようにし、
+    残るraw_text/MedicationStock/share payload境界の実装対象を明確化した。
+  - performance issues improved:
+    実装変更なし。Plans上では visit autosave/sync の残作業を attachment recovery / mobile E2E に限定し、
+    patient movement の残作業を追加sourceとraw detailに限定した。
+  - validation:
+    `git diff --check -- Plans.md ops/refactor/STATE.md` → pass。
+    `pnpm exec prettier --check ops/refactor/STATE.md` → pass。
+    `pnpm exec prettier --check Plans.md` → fail（既存のPlans全体がPrettier非準拠のため、今回も全体自動整形はしない）。
+  - remaining work:
+    なし。scoped commit / push 後に完了。
+
 - codex: RX-REG-FACET-001 route query-count observability（628c634a5 / pushed）。
   - current task:
     prescription intake `facets=1` の DB query count を route performance に接続し、admin performance 画面で確認できるようにする。

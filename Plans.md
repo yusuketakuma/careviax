@@ -331,18 +331,9 @@ FE 仕上げ（低優先）:
 - 後段処理が前段データを暗黙変更しない。訪問記録 → 報告 → 請求 → 外部出力は一方向の依存関係にする。
 - task explosion を防ぐため、P0/P1 の新規 task は `task-registry` に owner domain、dedupe builder、resolve condition、stale threshold、patient-safety/billing flags を登録してから生成する。
 
-#### RISK-CORE-0. 既存 plan / VS-AUTO との整合固定 `cc:TODO`
-
-- [ ] `Plans.md` 上の scheduling task と risk task の責務を固定する:
-  - VS-AUTO: proposal-first、deadline、availability、overload rebalance、review field hard gate。
-  - Risk track: `RiskFinding` 表現、task bridge、case cockpit、薬剤/残薬/記録/請求/報告/通知/PII の横断 gate。
-- [ ] VS-AUTO-8 は `RX-001` / `RX-002` の service・review state を参照する計画に変更し、薬剤リスク判定を scheduling service 内へ重複実装しない。
-- [ ] `BillingEvidenceBlocker`、`VisitReadyTransitionBlockers`、`PatientFoundationItem`、`OperationalTask`、notification delivery failure を `RiskFinding` adapter 候補として棚卸しする。
-- [ ] 計画だけで DB migration を追加しない。`HR` 表記の migration は migration planner review と human approval を必須にする。
-
 #### RISK-CORE-1. 未接続 domain adapter / resolve predicate 残作業 `cc:TODO`
 
-> 2026-07-07 整理: この節は未接続 domain と domain 別 resolve predicate だけを残す。
+> 2026-07-07 整理: VS-AUTO と Risk track の責務分離、VS-AUTO-8 が `RX-001` / `RX-002` を参照する方針、migration human gate は上位方針へ反映済み。ここには未接続 domain と domain 別 resolve predicate だけを残す。
 
 - 残:
   - `visit_record`、未接続の `report_delivery`、`notification`、`privacy_security`、`integration`、`data_quality` の adapter 拡張。
@@ -680,36 +671,6 @@ notification:
 | MOV-STOCK-001 | P0/P1  | Medication Stock source            | `MedicationStockEvent`、equivalence review、shortage finding が入った後に medication stock source を追加する。                                                                                                 | 残数・使用量・名寄せ・不足イベントは発生 marker と status/badge のみ。薬剤名/数量は必要最小限または詳細先で確認する。 |
 | MOV-SAFE-001  | P1     | Formal safety finding source       | Case Risk / safety finding の formal source を追加し、urgent safety signal を movement の上位表示へ接続する。                                                                                                  | safety finding は controlled title/summary と finding deep link を持つ。free text finding detail は一覧に出さない。   |
 | MOV-RAW-001   | P1     | raw_text re-auth detail UI         | MCS/電話/FAX/メールなど raw PHI を読む detail UI を、再認可・理由・監査ログ付きで実装する。                                                                                                                    | 一覧から raw_text は見えない。raw 閲覧は permission、reason、audit、request_id を持つ。                               |
-| MOV-UX-001    | P1     | Map-less Google timeline UX finish | 上部地図なし。日付ごとの縦 rail、時刻、地点カード風 event、summary strip、filter/search、表示密度、mobile 1列表示を仕上げる。UI変更時は `docs/ui-ux-design-guidelines.md` と `gpt-image-2` 非PHI参照案を使う。 | Google Maps タイムライン風だが地図・ピン・移動経路は出さない。mobile smoke と a11y を確認する。                       |
-
-**最終スコープ固定**:
-
-```text
-Patient Movement Timeline は、処方・訪問・文書の詳細内容を読む画面ではない。
-
-タイムラインで確認できればよいこと:
-  ・処方登録/処方受付/処方変更/疑義照会があった。
-  ・訪問予定/訪問記録/訪問完了があった。
-  ・文書登録/文書更新/報告書作成/文書送付があった。
-
-タイムラインで必須にすること:
-  ・発生日時、controlled title、controlled status、badge、相対 deep link を持つ。
-  ・primary CTA は `event.href` を使い、正本画面へ直接遷移する。
-  ・処方/訪問/文書の詳細は、処方詳細、訪問記録、共有・文書タブ、報告詳細、FileAsset detail で確認する。
-
-タイムラインに戻してはいけないこと:
-  ・処方内容、薬剤明細、用法用量、処方OCR全文。
-  ・訪問本文、SOAP本文、観察内容、残薬詳細、副作用詳細、位置情報。
-  ・文書本文、PDF本文、OCR全文、添付ファイル名、storage key、signed URL。
-```
-
-**処方・訪問・文書 marker 契約**:
-
-| category       | timeline card に出す内容                                                                                                                                                              | primary CTA                                                                         |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `prescription` | 「処方受付あり」「処方登録あり」「処方変更あり」「疑義照会あり」、発生日時、controlled status、確認待ち/注意 badge。薬剤名・用量・日数・処方本文は出さない。                          | `/prescriptions/:id`、処方サイクル、薬剤変更レビュー、疑義照会。                    |
-| `visit`        | 「訪問予定あり」「訪問記録あり」「訪問完了」、訪問日/記録時刻、outcome/status、未完了/報告待ち badge。SOAP本文・観察内容・訪問メモは出さない。                                        | `/visits/:recordId`、`/visits/:scheduleId/record`、`/schedules?focus=:scheduleId`。 |
-| `document`     | 「文書登録あり」「初回訪問文書あり」「報告書作成あり」「文書送付あり」、controlled document type、登録/更新日時、scan/retention/shareability badge。本文・ファイル名・URLは出さない。 | `#patient-documents`、文書詳細、報告詳細、permissioned FileAsset detail。           |
 
 **Source adapter ガード**:
 
@@ -719,24 +680,6 @@ Patient Movement Timeline は、処方・訪問・文書の詳細内容を読む
 - deep link が未整備の source は本文を出して埋め合わせない。まず正本画面の相対 href builder を追加する。
 - safe resolver `/api/patients/:id/timeline/:eventId` は fallback / destination 解決用に残すが、処方・訪問・文書の本文を返さない。
 
-**Google Maps タイムライン風 UI 方針**:
-
-```text
-採用する:
-  日付ごとの縦軸、時刻、地点カード風イベント、連続した患者の動き。
-
-採用しない:
-  上部の地図、地図、ピン配置、移動経路マップ、位置情報可視化。
-```
-
-UI構成:
-
-- 上部は地図ではなく compact summary strip: 未処理受信、薬剤師確認待ち、残数/使用量signal、安全signal、直近イベント日。
-- filter/search: すべて、訪問、処方・調剤、他職種受信、残数・薬剤、安全、報告・共有、請求、task。
-- timeline rail: 今日、昨日、yyyy年M月d日で日付 grouping。
-- event card: source、actor role、event type、status、badge、deep link CTA。
-- mobile: rail + card の1列、summary は横スクロール chip、touch target 44px 以上。
-
 **残Phased PR plan**:
 
 | phase   | 内容                                                                            | validation                                                                       |
@@ -745,7 +688,6 @@ UI構成:
 | Phase 5 | formal safety finding source 追加。                                             | safety finding source tests、free text omission tests、severity ordering tests。 |
 | Phase 6 | 正式 `MedicationStockEvent`、equivalence review、shortage finding source 追加。 | stock integration tests、risk/task link tests、drug/quantity omission tests。    |
 | Phase 7 | raw_text 再認可 UI と必要な detail shell。                                      | route authz tests、raw omission tests、audit log tests。                         |
-| Phase 8 | summary/action rail、検索、表示密度、mobile 最適化。                            | Playwright browser smoke、a11y、interaction budget。                             |
 
 **残テスト観点**:
 
@@ -967,13 +909,13 @@ staging rule:
 **コード再スキャン後に残す実装対象**:
 
 - `src/lib/utils/performance.ts`: live AWS drift check を実deploy gateへ接続する。
-- `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`: attachment draft reload recovery を要求する場合の encrypted evidence draft contract、mobile E2E。
+- `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`: 5秒debounce autosave、step/residual/attachmentの即時保存、未同期0件でのpolling停止、online復帰時sync、保存状態表示、PHI-safe sync error は実装済み。残すのは attachment draft reload recovery を要求する場合の encrypted evidence draft contract と mobile E2E。
 - `src/app/api/prescription-intakes/route.ts`: 検索中 facets の遅延取得または cache summary 化を検討する。
 
 | ID               | 優先度 | 既存レーン                                    | タスク                                           | 実装単位                                                                                                                                                                                 | 受入条件 / validation                                                                                                                                                                                                         |
 | ---------------- | ------ | --------------------------------------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | PERF-RTE-001A    | P0     | `PERF-RTE-001`, `DEV-PERF-001`, `DEV-PAY-001` | Performance metrics productionization            | 残: live AWS drift check を実deploy gateへ接続。                                                                                                                                         | current-process だけを本番根拠にしない。deploy readiness が実AWS上の metrics flush schedule / alarm / dimension drift を検出できる。                                                                                          |
-| VISIT-SYNC-001   | P0/P1  | `UX-MOB-001`, `DEV-MOB-001`, `MOB-001`        | Visit record autosave / sync hardening           | 残: attachment draft reload recovery を要求する場合の encrypted evidence draft contract、mobile E2E。                                                                                    | 通信断でも draft が消えない。未同期0件では polling 停止。online 復帰で同期が走る。保存状態は「保存中 / 端末保存済 / 同期待ち / 同期済 / 競合あり」。raw sync error / PHI は toast/log/indicator に出ない。mobile E2E を追加。 |
+| VISIT-SYNC-001   | P0/P1  | `UX-MOB-001`, `DEV-MOB-001`, `MOB-001`        | Visit record sync residual hardening             | 残: attachment draft reload recovery を要求する場合の encrypted evidence draft contract、mobile E2E。5秒autosave、即時保存、未同期0件polling停止、online sync、保存状態表示、PHI-safe error は既存テストで維持する。                                     | 添付を含む訪問記録が通信断/再読込後も復元・再送できる。mobile viewport で訪問開始→記録保存→同期/競合表示→報告連携まで確認できる。raw sync error / PHI は toast/log/indicator に出ない。                              |
 | RX-REG-FACET-001 | P1/P2   | `RX-REG-UX-002`, `DEV-PERF-001`               | Prescription intake facet cache/delay            | 残: 検索中 facets の遅延取得または cache summary 化。                                                                                                                                   | `facets=1` の counts は検索条件全体で返す。status/source counts は従来互換。facet p95/payload/query-count は route performance で確認できる状態を維持する。                                                                    |
 | SEC-AUDIT-001A   | P1     | `SEC-002`, `UX-AUD-001`, `DEV-PHI-001`        | AuditLog allowlist / minifier registry hardening | action taxonomy、risk tier、review state、audit-log-view audit を registry 化。unknown nested string、provider raw error、token、storage key を admin/export response で要約/drop する。 | hostile patient name、住所、電話、薬剤名、処方 text、token、provider raw error、storage key の redaction snapshot。high-risk audit log の risk filter と監査ログ閲覧 audit を追加。                                           |
 
@@ -991,14 +933,14 @@ staging rule:
 **コード再スキャンで確認した現在地**:
 
 - `src/app/(dashboard)/patients/[id]/card-workspace.tsx`: dynamic import と tabs は入っているが、`CardWorkspace` 本体は約 5,800 行の client component で、複数 query/mutation、Command Center、在宅運用、請求、共有、履歴、DataTable を同居させている。非 active tab にも hooks が残りやすい。
-- `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`: `useWatch({ control: form.control })` の全体 watch、音声/添付/CDS/report readiness/location/offline を同一巨大 form に含む。残は section-level watch / lazy mount / step transition immediate save。
+- `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`: `useWatch({ control: form.control })` の全体 watch、音声/添付/CDS/report readiness/location/offline を同一巨大 form に含む。5秒autosave、step/residual/attachmentの即時保存、保存状態表示は実装済みのため、残は section-level watch / lazy mount / encrypted attachment draft recovery / mobile E2E に限定する。
 - `src/app/(dashboard)/reports/report-share-workspace.tsx`: `useRealtimeQuery` + fallback polling に移行済み。残る確認は report 専用 event の taxonomy 追加時の allowlist test。
 - `src/components/layout/mobile-nav.tsx` / `src/components/layout/navigation-config.ts`: mobile bottom nav はホーム/スケジュール/訪問/患者+メニューに絞られている。工程別の下部 contextual CTA は未実装。active state は `activePrefixes` / `excludePrefixes` / `excludeExact` で細かく制御され、matrix test の拡張余地がある。
 
 | ID             | 優先度 | 既存レーン                                                     | タスク                                        | 実装単位                                                                                                                                                                                                                                                                                                        | 受入条件 / validation                                                                                                                                                                                                     |
 | -------------- | ------ | -------------------------------------------------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | FE-PAT-001     | P1     | `PAT-DETAIL-PERF-001`, `UX-CMD-001`, `FE-BUD-001`              | Patient detail island split                   | `CardWorkspaceShell`、`CommandTab`、`FoundationTab`、`MedicationVisitTab`、`SharingDocumentsTab`、`BillingConferenceTab`、`HistoryStructuredTab` に分割する。active tab だけ query/mutation hooks と heavy panels を lazy initialize。                                                                          | 患者詳細初期表示では Command tab の最小 island だけ hydrate。非 active tab の mutation hooks が初期化されない。tab 切替時に必要 island を lazy load。bundle analyzer / route metrics で初期 JS と hydration time を確認。 |
-| FE-VISIT-001   | P0/P1  | `VISIT-SYNC-001`, `UX-MOB-001`, `DEV-MOB-001`, `MOB-001`       | Visit record form split / section-level watch | `VisitRecordShell`、`VisitTimingSection`、`MedicationAdherenceSection`、`ResidualMedicationSection`、`SideEffectSection`、`SoapSection`、`AttachmentsSection`、`ReportReadinessSection`、`LocationSection`、`OfflineSyncBar` へ分割する。`useWatch` は section 単位にし、autosave は差分/section 単位に寄せる。 | keystroke lag が出ない。訪問開始/終了、残薬、添付追加は即保存。5秒 debounce autosave と step transition 即保存。未同期/保存中/端末保存済/同期済/競合ありを下部固定バーで表示。mobile E2E と offline draft tests を追加。  |
+| FE-VISIT-001   | P0/P1  | `VISIT-SYNC-001`, `UX-MOB-001`, `DEV-MOB-001`, `MOB-001`       | Visit record form split / section-level watch | `VisitRecordShell`、`VisitTimingSection`、`MedicationAdherenceSection`、`ResidualMedicationSection`、`SideEffectSection`、`SoapSection`、`AttachmentsSection`、`ReportReadinessSection`、`LocationSection`、`OfflineSyncBar` へ分割する。`useWatch` は section 単位にし、音声/添付/CDS/report readiness/location は必要時 lazy mount へ寄せる。 | keystroke lag が出ない。既存の5秒autosave、step/residual/attachment即時保存、保存状態表示を維持する。残テストは section watch、lazy mount、encrypted attachment draft recovery、mobile E2E に限定する。 |
 | FE-MOB-001     | P1     | `UX-MOB-001`, `DSP-UX-002`, `UX-CMD-001`                       | Mobile contextual bottom action               | bottom nav 4項目+メニューは維持し、画面ごとに contextual CTA を下部に出す。処方受付=新規受付/QR下書き、調剤/監査=現在患者の次操作、報告=下書き/送付確認、患者詳細=Command/訪問/報告。                                                                                                                           | 主要作業へ 1 tap で進める。訪問記録 immersive shell の下部固定バーと衝突しない。44px target、focus order、safe-area、screen reader label を mobile tests で確認。UI実装時は `gpt-image-2` 参照案を作る。                  |
 | FE-OFFLINE-001 | P1/P2  | `MOB-CACHE-001`, `DEV-PHI-001`, `DEV-MOB-001`                  | Browser storage PHI audit                     | Playwright/browser harness で患者一覧、患者詳細、訪問記録、報告、調剤ワークベンチを開き、CacheStorage/localStorage/sessionStorage/IndexedDB を検査する。                                                                                                                                                        | CacheStorage に `/api/*`、`/patients/*`、`/visits/*`、`/reports/*` が残らない。local/sessionStorage に患者名、薬剤名、住所、free text が残らない。offline draft は暗号化対象のみ。logout 時の扱いを固定。                 |
 | FE-ERR-001     | P1     | `UX-ERR-001`, `DEV-UI-001`, `PERF-BFF-001`                     | Segment boundary pattern                      | 残: admin screen 群の未移行 segment を段階的に `SegmentLoading` / `SegmentError` / `SegmentStaleBanner` へ置換する。                                                                                                                                                                                            | 空状態と取得失敗を分離し、false-empty / false-zero に倒さない。raw backend message、patient name、storage key、token、provider error、API route/query は UI に出さない。                                                  |
@@ -1100,7 +1042,7 @@ module registry / collaboration / risk provider / task type registry / report te
 
 | contract                                      | owner / 接続先               | 残タスク                                                                                                    | fail policy / 注意点                                                                                                   |
 | --------------------------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `PatientWorkspacePanelProvider`               | `MOD-PATIENT-001`            | `getPatientOverview` response に `panels[]` DTOを追加し、common workspace と pharmacy panel adapter を接続する。 | 既存患者詳細の情報量と tab / Command Center UX を壊さない。非 active tab の lazy 化は `FE-PAT-001` と整合させる。       |
+| `PatientWorkspacePanelProvider`               | `MOD-PATIENT-001`            | provider registry は実装済み。残は `workspace` 単一 read model 互換を保ちながら、複数 panel DTO と common / pharmacy 表示境界を明示すること。 | 既存患者詳細の情報量と tab / Command Center UX を壊さない。非 active tab の lazy 化は `FE-PAT-001` と整合させる。       |
 | `VisitBriefContributor`                       | `MOD-VISIT-001`              | 訪問ブリーフを common brief と pharmacy medication / deadline / residual / dispensing contributor に分ける。     | batch性能を落とさない。contributor failure は該当sectionのfail-softか、患者安全上必要な blocking risk として明示する。 |
 | `ScheduleContributor` / `BillingRuleProvider` | `MOD-BILLING-001`            | schedule / billing preview が pharmacy prescription classification を直接 import しないための seam を追加する。 | adapter未登録時は自動確定せず manual review risk/task へ倒す。請求・算定の既存 validation layers は `BIL-*` をSSOTにする。 |
 | `DomainEventOutbox` module metadata           | `DB-EVENT-001`               | module event type、aggregate refs、minimal payload、pii_class、retry/dead-letter を将来 module と紐づける。     | mutation内は outbox insert まで。realtime / notification / webhook / task sync は worker 側へ寄せ、payload にPHI/free textを入れない。 |
@@ -1117,10 +1059,10 @@ module registry / collaboration / risk provider / task type registry / report te
 | ID              | 優先度 | 既存レーン / 関連負債                                                     | タスク                               | 実装単位                                                                                                                                                                                                                                                                                    | 受入条件 / validation                                                                                                                                                                          |
 | --------------- | ------ | ------------------------------------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | MOD-BOUND-001   | P0/P1  | `boundaries:check`, `DEV-REF-001`, `PLAN-REV-001`                         | Registry-driven module boundary gate | 残: owner、allowlist reason schema、expectedCount ratchet report の詳細化。                                                                                                                                                                                                                 | 新規 core -> pharmacy / sibling module import / API route から module internal import が fail。`src/modules/active-modules.ts` は composition root として明示許可。                            |
-| MOD-PATIENT-001 | P1     | `DEBT-PATIENT-001`, `UX-CMD-001`, `FE-PAT-001`, `API-DTO-001`             | Patient Workspace panel adapters     | 残: `getPatientOverview` response に `panels[]` DTOを追加、common header/basic/case/consent/assignment/task/risk/recent activity との明示分離、non-active tab/client island のさらなるlazy化。                                                                                              | 既存患者詳細 `workspace` read model とUI/API互換を維持。common patient service が prescription/dispensing/set を直接 import しない。                                                           |
+| MOD-PATIENT-001 | P1     | `DEBT-PATIENT-001`, `UX-CMD-001`, `FE-PAT-001`, `API-DTO-001`             | Patient Workspace panel boundary     | 残: 実装済み panel registry を使い、`getPatientOverview` の `workspace` 互換を保ったまま複数 panel DTO、common header/basic/case/consent/assignment/task/risk/recent activity、pharmacy panel の境界を明示する。non-active tab/client island のさらなるlazy化は `FE-PAT-001` と直列。 | 既存患者詳細 `workspace` read model とUI/API互換を維持。common patient service が prescription/dispensing/set を直接 import しない。                                                           |
 | MOD-VISIT-001   | P1     | `DEBT-VISIT-001`, `DEBT-DEADLINE-001`, `VISIT-SYNC-001`, `FE-VISIT-001`   | Visit Brief contributor split        | 残: `src/core/visit/visit-brief-core.ts` と contributor registry の追加、common brief と pharmacy section の明示分離、adapter failure policy。                                                                                                                                              | 既存訪問準備/visit brief表示互換を維持。visit-brief core が薬局固有 import を持たない。                                                                                                        |
-| MOD-REPORT-001  | P1     | `DEBT-REPORT-001`, `REP-001`, `API-DTO-001`, `DATA-RET-001A`              | Report delivery/masking hardening    | 残: provider registry 実装後の送付前 gate、masking profile 実 enforcement、delivery audit minimization、`ReportTemplate.module` / `CareReport.discipline` のDB migration plan。                                                                                                             | 既存報告書作成結果は provider parity test で維持。template provider unknown/duplicate/failure は fail-closed。不正な non-object template output はDB write前に例外化する。                     |
-| MOD-SHARE-001   | P1     | `SEC-001`, `FILE-LIFE-001`, `EXP-002`, `TENANT-001`                       | External Share payload enforcement   | 残: scope registry 実装後の attachments / patient_summary / prescription_summary / residual_medications payload 接続前に file presenter、masking profile、audit snapshot、stored-only boundary 露出防止テストを追加。                                                                       | unknown scope は拒否。planned だが未実装の scope は known unsupported として拒否し、public scope/payload から strip する。                                                                     |
+| MOD-REPORT-001  | P1     | `DEBT-REPORT-001`, `REP-001`, `API-DTO-001`, `DATA-RET-001A`              | Report delivery/masking hardening    | 残: 実装済み report template registry を前提に、送付前 gate、masking profile 実 enforcement、delivery audit minimization、`ReportTemplate.module` / `CareReport.discipline` のDB migration plan を詰める。                                                                                  | 既存報告書作成結果は provider parity test で維持。template provider unknown/duplicate/failure は fail-closed。不正な non-object template output はDB write前に例外化する。                     |
+| MOD-SHARE-001   | P1     | `SEC-001`, `FILE-LIFE-001`, `EXP-002`, `TENANT-001`                       | External Share payload enforcement   | 残: 実装済み share scope registry を使い、attachments / patient_summary / prescription_summary / residual_medications payload 接続前に file presenter、masking profile、audit snapshot、stored-only boundary 露出防止テストを追加。                                                        | unknown scope は拒否。planned だが未実装の scope は known unsupported として拒否し、public scope/payload から strip する。                                                                     |
 | MOD-BILLING-001 | P1/P2  | `DEBT-BILLING-001`, `BIL-001`, `BIL-002`, `API-STATE-001`                 | Schedule/Billing contributor seam    | `visit-schedule-billing-preview` と billing evidence の薬局分類参照を棚卸しし、`ScheduleContributor` / `BillingRuleProvider` の seam を追加する。最初は pharmacy adapter のみで既存 preview/result を返し、core schedule は billing preview source を直接知らない。                         | schedule preview と billing candidate が既存と一致。core schedule/billing に prescription-specific importを増やさない。adapter未登録なら自動確定せず manual review risk/taskへ倒す。           |
 | MOD-IO-001      | P1     | `VS-AUTO-9`, `INT-WEBHOOK-001`, `NTF-001`, `SEC-001`                      | External IO adapter contract         | routing/S3/SES/Cognito/MCS/webhook/notification など外部I/O adapter の共通 contract を定義する。timeout、retry/idempotency、tenant context、PHI-free diagnostics、raw provider error redaction、correlation id、no-store/audit linkage を adapter class ごとに固定する。                    | 外部 provider failure が patient name/address/drug/free text/raw provider error/token/storage key を log/response/audit に出さない。AWS関連 adapter 実装時はAWS公式reference確認ルールに従う。 |
 | MOD-DATA-001    | P1     | `TENANT-001`, `TENANT-002`, `TENANT-003`, `DB-EVENT-001`, `DATA-RET-001A` | Module data/API crosswalk            | module -> Prisma model / DTO presenter / route prefix / outbox event / audit action / RLS policy / retention policy の対応表を作る。`CareCase.service_line`、visit/report `discipline`、`Task.module`、coverage/support session/outbox は migration plan として既存DB/APIレーンへ接続する。 | Prisma model public response直出し、org_id/RLS未確認、outbox payload PHI混入、module不明 task/report/share scope を module review で検出できる。計画追加だけではDB変更を適用しない。           |
@@ -1195,10 +1137,10 @@ module registry / collaboration / risk provider / task type registry / report te
 
 **推奨 PR / slice 分割**:
 
-1. `MOD-BOUND-001`: 既存 module taxonomy / active pharmacy module を boundary gate と allowlist ratchet へ接続する。
-2. `MOD-PATIENT-001`: 患者詳細を common workspace + pharmacy panel adapter に分ける。患者詳細 tab/island split と整合。
+1. `MOD-BOUND-001`: 実装済み active pharmacy module / registry を boundary gate と allowlist ratchet へ接続する。
+2. `MOD-PATIENT-001`: 実装済み patient workspace panel registry を複数 panel DTO と common / pharmacy 表示境界へ拡張する。患者詳細 tab/island split と整合。
 3. `MOD-VISIT-001`: visit brief を common brief + pharmacy contributor に分ける。
-4. `MOD-REPORT-001` + `MOD-SHARE-001`: registry 実装後の出力/masking/audit境界を固定する。
+4. `MOD-REPORT-001` + `MOD-SHARE-001`: 実装済み report template / share scope registry を使い、出力/masking/audit境界を固定する。
 5. `MOD-BILLING-001`: schedule/billing の薬局処方分類依存を provider seam へ移す。
 6. `MOD-IO-001`: 外部I/O adapter contract を整え、AWS/通知/Webhook/経路計算の raw error / PHI 境界を揃える。
 7. `MOD-DATA-001` + 既存 `TENANT-*` / `DB-EVENT-001`: service_line / discipline / coverage / support session / outbox を migration plan へ接続する。
