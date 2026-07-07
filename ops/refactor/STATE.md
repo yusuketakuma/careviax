@@ -41,6 +41,85 @@
 
 ## 直近の land（本日・要点）
 
+- codex: PAYLOAD-BUDGET-003 care-report list/search payload boundary（commit `PENDING`）。
+  - current task:
+    Active goal の backend-only 実装ループとして、`PAYLOAD-BUDGET-003` を実装し、
+    `Plans.md` の実装済み/未実装分類を現行コードに同期する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `git diff -- Plans.md`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/api/care-reports/route.ts`,
+    `src/app/api/care-reports/route.test.ts`,
+    `src/lib/utils/route-payload-budgets.ts`,
+    `src/lib/utils/performance.ts`,
+    `src/lib/utils/performance.test.ts`,
+    `tools/scripts/perf-smoke.ts`,
+    `tools/scripts/perf-smoke.test.ts`,
+    `src/app/api/patients/board/route.ts`,
+    `.agents/skills/oracle-consult/SKILL.md`,
+    `.agent-loop/GBRAIN_SCHEMA.md`,
+    gbrain search results for care-report payload budget history.
+  - files changed:
+    `src/app/api/care-reports/route.ts`,
+    `src/app/api/care-reports/route.test.ts`,
+    `src/lib/utils/performance.test.ts`,
+    `src/lib/utils/route-payload-budgets.ts`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `projects/careviax/reviews/2026-07-08/care-report-list-payload-budget.md`.
+  - implementation:
+    Added `/api/care-reports` to the critical payload budget registry as
+    `care-reports-list-search` with a 250 KiB budget. The care-report list/search route now uses
+    a measured JSON success helper that sets `Content-Length`, so payload-budget telemetry can
+    count the route. List/search row serialization is an explicit allow-list and no longer emits
+    raw `delivery_records`, delivery recipient detail, `pdf_url`, `_searchable_report_text`,
+    hidden report content, or content-derived billing-context metadata. `include_content=1`
+    remains limited to `content_summary`.
+  - bugs found:
+    The list/search payload budget was not registered, and a payload budget would not have been
+    measured for this route because `NextResponse.json()` did not set `content-length`. The list
+    path also still selected or carried fields that should stay out of list/search payloads.
+  - security risks reduced:
+    Normal care-report list/search rows no longer expose stored report file URLs, raw child
+    delivery records, recipient names, search helper fields, hidden report provenance, or
+    content-derived billing metadata. Response tests assert that PHI-like raw content and file
+    URLs are absent from list payloads.
+  - performance issues improved:
+    The route is now included in payload-budget telemetry, and the response payload is constrained
+    to a summary/list allow-list. Prisma child select for delivery records is minimized to the
+    bounded fields needed for page-level delivery summary.
+  - Oracle / GPT-5.5 Pro:
+    Followed the Oracle consultation rule and included upstream/GitHub context. The first browser
+    run timed out while uploading attachments. The second browser run completed with GitHub access
+    confirmed and returned "Conditional Go"; accepted advice was to pair Prisma select
+    minimization with a response allow-list, add a payload budget, remove `pdf_url` and raw
+    delivery recipient detail from list rows, and add route/perf regression tests.
+  - subagents:
+    `code_mapper` mapped the performance/payload-budget files and tests. `security-auditor`
+    reviewed the implementation and found that the new budget would not be measured without a
+    `Content-Length` header; the measured success helper was added and verified.
+  - gbrain:
+    Wrote `projects/careviax/reviews/2026-07-08/care-report-list-payload-budget`.
+  - validation commands:
+    `pnpm exec vitest run src/lib/utils/performance.test.ts src/app/api/care-reports/route.test.ts tools/scripts/perf-smoke.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint src/lib/utils/route-payload-budgets.ts src/lib/utils/performance.test.ts src/app/api/care-reports/route.ts src/app/api/care-reports/route.test.ts`;
+    `pnpm exec prettier --write Plans.md`;
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md projects/careviax/reviews/2026-07-08/care-report-list-payload-budget.md src/lib/utils/route-payload-budgets.ts src/lib/utils/performance.test.ts src/app/api/care-reports/route.ts src/app/api/care-reports/route.test.ts`;
+    `git diff --check -- Plans.md ops/refactor/STATE.md projects/careviax/reviews/2026-07-08/care-report-list-payload-budget.md src/lib/utils/route-payload-budgets.ts src/lib/utils/performance.test.ts src/app/api/care-reports/route.ts src/app/api/care-reports/route.test.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Focused route/performance/perf-smoke tests passed `93`; ESLint passed; Prettier check passed;
+    diff whitespace check passed; full typecheck passed.
+  - remaining:
+    `PERF-DB-006D` SELECT-only EXPLAIN-backed index gate, generic `PAYLOAD-BUDGET-001`,
+    dashboard drilldown/summary rail, frontend contract hygiene, and long reference plan
+    compaction remain.
+  - next action:
+    Run final doc/memory formatting and whitespace checks, commit explicit owned paths, push, then
+    resume from `PERF-DB-006D` or the next payload-budgeted route family.
+
 - codex: Plans.md implementation backlog cleanup（commit `e7a3aca5b`）。
   - current task:
     `Plans.md` 内の実装済み/未実装を現行コードと既存Planに照合して分類し、未実装Planを

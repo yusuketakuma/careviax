@@ -447,11 +447,8 @@ describe('/api/care-reports GET', () => {
       data: Array<{
         patient_name: string;
         latest_delivery_status: string | null;
-        latest_delivery_recipient_name: string | null;
         failed_delivery_count: number;
         pending_delivery_count: number;
-        effective_revision_code: string | null;
-        site_config_status: string | null;
       }>;
       deliverySummary: {
         pending_delivery_count: number;
@@ -463,13 +460,15 @@ describe('/api/care-reports GET', () => {
     expect(payload.data[0]).toMatchObject({
       patient_name: '山田 太郎',
       latest_delivery_status: 'response_waiting',
-      latest_delivery_recipient_name: '在宅主治医',
       failed_delivery_count: 1,
       pending_delivery_count: 1,
-      effective_revision_code: '2026',
-      site_config_status: 'resolved',
     });
     expect(payload.data[0]).not.toHaveProperty('content');
+    expect(payload.data[0]).not.toHaveProperty('pdf_url');
+    expect(payload.data[0]).not.toHaveProperty('delivery_records');
+    expect(payload.data[0]).not.toHaveProperty('latest_delivery_recipient_name');
+    expect(payload.data[0]).not.toHaveProperty('effective_revision_code');
+    expect(payload.data[0]).not.toHaveProperty('site_config_status');
     expect(payload.deliverySummary).toMatchObject({
       pending_delivery_count: 1,
       failed_delivery_count: 1,
@@ -692,7 +691,7 @@ describe('/api/care-reports GET', () => {
     });
   });
 
-  it('redacts stored report file URLs from list rows when the caller cannot send reports', async () => {
+  it('omits stored file URLs and raw delivery details from normal list rows', async () => {
     careReportFindManyMock.mockResolvedValueOnce([
       {
         id: 'report_with_file',
@@ -702,34 +701,68 @@ describe('/api/care-reports GET', () => {
         visit_record_id: 'visit_1',
         report_type: 'physician_report',
         status: 'confirmed',
-        content: { summary: '訪問後報告' },
+        content: {
+          summary: '訪問後報告',
+          body: '東京都港区2-2-2 090-1234-5678',
+          source_provenance: {
+            visit_record_id: 'hidden_visit_record_1',
+          },
+        },
         template_id: null,
         pdf_url: '/api/files/file_1/download',
         created_by: 'user_1',
         created_at: new Date('2026-03-28T09:00:00.000Z'),
         updated_at: new Date('2026-03-28T09:15:00.000Z'),
-        delivery_records: [],
+        delivery_records: [
+          {
+            id: 'delivery_1',
+            channel: 'fax',
+            recipient_name: '在宅主治医',
+            status: 'response_waiting',
+            sent_at: new Date('2026-03-28T11:00:00.000Z'),
+          },
+        ],
       },
     ]);
 
-    const response = await getCareReports(
-      createAuthenticatedRequest('http://localhost/api/care-reports', undefined, {
-        orgId: 'org_1',
-        userId: 'clerk_1',
-        role: 'clerk',
-      }),
-    );
+    const response = await getCareReports(createAuthenticatedRequest());
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      data: [
-        {
-          id: 'report_with_file',
-          pdf_url: null,
-        },
-      ],
+    const listCall = careReportFindManyMock.mock.calls[0]?.[0];
+    expect(listCall.select).not.toHaveProperty('pdf_url');
+    expect(listCall.select.delivery_records).toMatchObject({
+      where: { org_id: 'org_1' },
+      select: {
+        status: true,
+        sent_at: true,
+      },
+      take: 10,
     });
+    expect(listCall.select.delivery_records.select).not.toHaveProperty('id');
+    expect(listCall.select.delivery_records.select).not.toHaveProperty('channel');
+    expect(listCall.select.delivery_records.select).not.toHaveProperty('recipient_name');
+
+    const body = await response.json();
+    expect(body.data[0]).toMatchObject({
+      id: 'report_with_file',
+      latest_delivery_status: 'response_waiting',
+      latest_delivery_sent_at: '2026-03-28T11:00:00.000Z',
+      pending_delivery_count: 1,
+    });
+    expect(body.data[0]).not.toHaveProperty('pdf_url');
+    expect(body.data[0]).not.toHaveProperty('delivery_records');
+    expect(body.data[0]).not.toHaveProperty('latest_delivery_recipient_name');
+    expect(body.data[0]).not.toHaveProperty('content');
+    expect(body.data[0]).not.toHaveProperty('_searchable_report_text');
+    expect(response.headers.get('content-length')).toBe(
+      String(new TextEncoder().encode(JSON.stringify(body)).length),
+    );
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('/api/files/file_1/download');
+    expect(serialized).not.toContain('在宅主治医');
+    expect(serialized).not.toContain('hidden_visit_record_1');
+    expect(serialized).not.toContain('090-1234-5678');
   });
 
   it('uses database keyset pagination for regular list pages', async () => {
@@ -816,10 +849,18 @@ describe('/api/care-reports GET', () => {
       }),
     });
     expect(listCall.select).not.toHaveProperty('content');
+    expect(listCall.select).not.toHaveProperty('pdf_url');
     expect(listCall.select.delivery_records).toMatchObject({
       where: { org_id: 'org_1' },
+      select: {
+        status: true,
+        sent_at: true,
+      },
       take: 10,
     });
+    expect(listCall.select.delivery_records.select).not.toHaveProperty('id');
+    expect(listCall.select.delivery_records.select).not.toHaveProperty('channel');
+    expect(listCall.select.delivery_records.select).not.toHaveProperty('recipient_name');
     const summaryCall = careReportFindManyMock.mock.calls[1]?.[0];
     expect(summaryCall).toBeUndefined();
     expect(deliveryRecordCountMock).not.toHaveBeenCalled();
@@ -841,6 +882,9 @@ describe('/api/care-reports GET', () => {
       },
     });
     expect(payload.data[0]).not.toHaveProperty('content');
+    expect(payload.data[0]).not.toHaveProperty('pdf_url');
+    expect(payload.data[0]).not.toHaveProperty('delivery_records');
+    expect(payload.data[0]).not.toHaveProperty('latest_delivery_recipient_name');
   });
 
   it('rejects stale regular list cursors before reading list rows', async () => {
@@ -901,8 +945,15 @@ describe('/api/care-reports GET', () => {
     const listCall = careReportFindManyMock.mock.calls[0]?.[0];
     expect(listCall.select.delivery_records).toMatchObject({
       where: { org_id: 'org_1' },
+      select: {
+        status: true,
+        sent_at: true,
+      },
       take: 10,
     });
+    expect(listCall.select.delivery_records.select).not.toHaveProperty('id');
+    expect(listCall.select.delivery_records.select).not.toHaveProperty('channel');
+    expect(listCall.select.delivery_records.select).not.toHaveProperty('recipient_name');
     expect(deliveryRecordCountMock).not.toHaveBeenCalled();
     expect(deliveryRecordGroupByMock).not.toHaveBeenCalled();
     expect(deliveryRecordFindManyMock).not.toHaveBeenCalled();
@@ -1009,6 +1060,12 @@ describe('/api/care-reports GET', () => {
       }),
     );
     const body = await response.json();
+    expect(body.data[0]).not.toHaveProperty('content');
+    expect(body.data[0]).not.toHaveProperty('content_summary');
+    expect(body.data[0]).not.toHaveProperty('_searchable_report_text');
+    expect(body.data[0]).not.toHaveProperty('pdf_url');
+    expect(body.data[0]).not.toHaveProperty('delivery_records');
+    expect(body.data[0]).not.toHaveProperty('latest_delivery_recipient_name');
     expect(body).toMatchObject({
       data: [{ id: 'report_keyword_1' }],
       hasMore: false,
@@ -1041,6 +1098,11 @@ describe('/api/care-reports GET', () => {
     });
     const payload = await response.json();
     expect(payload.data[0]).not.toHaveProperty('content');
+    expect(payload.data[0]).not.toHaveProperty('pdf_url');
+    expect(payload.data[0]).not.toHaveProperty('delivery_records');
+    expect(payload.data[0]).not.toHaveProperty('latest_delivery_recipient_name');
+    expect(payload.data[0]).not.toHaveProperty('effective_revision_code');
+    expect(payload.data[0]).not.toHaveProperty('site_config_status');
     expect(payload.data[0].content_summary).toMatchObject({
       title: null,
       summary: '服薬状況は安定。夜間の眠気について経過観察。',
@@ -1155,7 +1217,7 @@ describe('/api/care-reports GET', () => {
     },
   );
 
-  it('normalizes malformed billing context metadata while enriching reports', async () => {
+  it('does not expose content-derived billing context metadata in list rows', async () => {
     careReportFindManyMock.mockResolvedValueOnce([
       {
         id: 'report_invalid_billing_context',
@@ -1185,17 +1247,10 @@ describe('/api/care-reports GET', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
 
-    const payload = (await response.json()) as {
-      data: Array<{
-        effective_revision_code: string | null;
-        site_config_status: string | null;
-      }>;
-    };
-
-    expect(payload.data[0]).toMatchObject({
-      effective_revision_code: null,
-      site_config_status: null,
-    });
+    const payload = await response.json();
+    expect(payload.data[0]).not.toHaveProperty('effective_revision_code');
+    expect(payload.data[0]).not.toHaveProperty('site_config_status');
+    expect(payload.data[0]).toHaveProperty('content_summary');
   });
 
   it('reads org-wide reports for an org-wide role regardless of case assignment', async () => {

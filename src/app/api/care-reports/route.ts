@@ -59,6 +59,16 @@ const createCareReportSchema = z.object({
 });
 
 const CARE_REPORT_DELIVERY_RECORDS_PER_REPORT_LIMIT = 10;
+const jsonPayloadEncoder = new TextEncoder();
+
+function successWithMeasuredJsonPayload<T>(data: T, status = 200) {
+  const response = success(data, status);
+  response.headers.set(
+    'Content-Length',
+    String(jsonPayloadEncoder.encode(JSON.stringify(data)).length),
+  );
+  return response;
+}
 
 const careReportBaseSelect = {
   id: true,
@@ -69,15 +79,11 @@ const careReportBaseSelect = {
   report_type: true,
   status: true,
   template_id: true,
-  pdf_url: true,
   created_by: true,
   created_at: true,
   updated_at: true,
   delivery_records: {
     select: {
-      id: true,
-      channel: true,
-      recipient_name: true,
       status: true,
       sent_at: true,
     },
@@ -609,7 +615,7 @@ async function authenticatedGET(req: NextRequest) {
         if (query && matchedPatientIds.length === 0 && !keyword) {
           if (view === 'palette') {
             return withSensitiveNoStore(
-              success({
+              successWithMeasuredJsonPayload({
                 data: [],
                 hasMore: false,
               }),
@@ -617,7 +623,7 @@ async function authenticatedGET(req: NextRequest) {
           }
 
           return withSensitiveNoStore(
-            success({
+            successWithMeasuredJsonPayload({
               data: [],
               hasMore: false,
               nextCursor: undefined,
@@ -716,7 +722,7 @@ async function authenticatedGET(req: NextRequest) {
           const patientNameById = new Map(patientRows.map((patient) => [patient.id, patient.name]));
 
           return withSensitiveNoStore(
-            success({
+            successWithMeasuredJsonPayload({
               data: dataRows.map((report) => ({
                 id: report.id,
                 report_type: report.report_type,
@@ -791,9 +797,6 @@ async function authenticatedGET(req: NextRequest) {
 
         const enrichedData = reportsForProcessing.map((report) => {
           const reportContent = readSelectedReportContent(report, shouldReadContent);
-          const billingContext = reportContent
-            ? readJsonObject(readJsonObject(reportContent)?.billing_context)
-            : null;
           const latestDelivery = report.delivery_records[0] ?? null;
           const pendingDeliveryCount = report.delivery_records.filter(
             (record) => record.status === 'response_waiting',
@@ -801,6 +804,10 @@ async function authenticatedGET(req: NextRequest) {
           const failedDeliveryCount = report.delivery_records.filter(
             (record) => record.status === 'failed',
           ).length;
+          const contentSummary =
+            includeContent && canOutputReport && reportContent !== null
+              ? buildCareReportContentSummary(reportContent)
+              : null;
 
           return {
             id: report.id,
@@ -811,26 +818,17 @@ async function authenticatedGET(req: NextRequest) {
             report_type: report.report_type,
             status: report.status,
             template_id: report.template_id,
-            pdf_url: canOutputReport ? report.pdf_url : null,
             created_by: report.created_by,
             created_at: report.created_at,
             updated_at: report.updated_at,
-            ...(includeContent && canOutputReport && reportContent !== null
-              ? { content_summary: buildCareReportContentSummary(reportContent) }
-              : {}),
+            ...(contentSummary ? { content_summary: contentSummary } : {}),
             delivery_records: report.delivery_records,
             _searchable_report_text: reportContent ? readSearchableReportText(reportContent) : '',
             patient_name: patientNameById.get(report.patient_id) ?? null,
             latest_delivery_status: latestDelivery?.status ?? null,
             latest_delivery_sent_at: latestDelivery?.sent_at ?? null,
-            latest_delivery_recipient_name: latestDelivery?.recipient_name ?? null,
             failed_delivery_count: failedDeliveryCount,
             pending_delivery_count: pendingDeliveryCount,
-            effective_revision_code: readJsonObjectString(
-              billingContext,
-              'effective_revision_code',
-            ),
-            site_config_status: readJsonObjectString(billingContext, 'site_config_status'),
           };
         });
 
@@ -860,16 +858,32 @@ async function authenticatedGET(req: NextRequest) {
             }
           : null;
         const data = page.data.map((report) => {
-          const { _searchable_report_text: searchableReportText, ...reportForResponse } = report;
-          void searchableReportText;
-          return reportForResponse;
+          return {
+            id: report.id,
+            org_id: report.org_id,
+            patient_id: report.patient_id,
+            case_id: report.case_id,
+            visit_record_id: report.visit_record_id,
+            report_type: report.report_type,
+            status: report.status,
+            template_id: report.template_id,
+            created_by: report.created_by,
+            created_at: report.created_at,
+            updated_at: report.updated_at,
+            ...(report.content_summary ? { content_summary: report.content_summary } : {}),
+            patient_name: report.patient_name,
+            latest_delivery_status: report.latest_delivery_status,
+            latest_delivery_sent_at: report.latest_delivery_sent_at,
+            failed_delivery_count: report.failed_delivery_count,
+            pending_delivery_count: report.pending_delivery_count,
+          };
         });
         const deliverySummary = canUseDbPagination
           ? buildDeliverySummary(page.data)
           : buildDeliverySummary(filteredData, 'bounded_keyword_scan_result');
 
         return withSensitiveNoStore(
-          success({
+          successWithMeasuredJsonPayload({
             data,
             hasMore: canUseDbPagination ? page.hasMore : false,
             ...(canUseDbPagination && page.nextCursor ? { nextCursor: page.nextCursor } : {}),

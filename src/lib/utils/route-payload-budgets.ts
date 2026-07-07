@@ -44,6 +44,12 @@ export const CRITICAL_ROUTE_PAYLOAD_BUDGETS: PayloadBudgetDefinition[] = [
   },
   {
     method: 'GET',
+    route: '/api/care-reports',
+    family: 'care-reports-list-search',
+    budget_bytes: 250 * KIB,
+  },
+  {
+    method: 'GET',
     route: '/api/visits/today-preparation',
     family: 'visit-preparation',
     budget_bytes: 200 * KIB,
