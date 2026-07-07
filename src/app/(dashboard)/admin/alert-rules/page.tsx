@@ -17,10 +17,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { ErrorState } from '@/components/ui/error-state';
 import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SegmentError } from '@/components/ui/segment-state';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
@@ -336,12 +336,12 @@ export default function AlertRulesPage() {
               </p>
             ) : null}
             {rulesQuery.isError ? (
-              // 取得失敗時は空状態（false-empty）にせず、再読み込み導線つきの ErrorState を出す。
-              <ErrorState
-                variant="server"
-                size="inline"
+              // 取得失敗時は空状態（false-empty）にせず、再読み込み導線つきの SegmentError を出す。
+              <SegmentError
+                title="処方安全アラートルールを取得できませんでした"
+                cause="処方安全アラートルールの取得に失敗しました。"
+                nextAction="通信状態を確認して再読み込みしてください。"
                 onRetry={() => void rulesQuery.refetch()}
-                retryLabel="再読み込み"
               />
             ) : rules.length === 0 ? (
               <p className="text-sm text-muted-foreground">

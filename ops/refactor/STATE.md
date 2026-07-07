@@ -41,7 +41,42 @@
 
 ## 直近の land（本日・要点）
 
-- codex: FE-ERR-001 analytics segment state hardening（pending commit）。
+- codex: FE-ERR-001 alert rules segment state hardening（pending commit）。
+  - current task:
+    `/admin/alert-rules` の処方安全アラートルール一覧取得失敗を shared segment state に寄せる。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/admin/alert-rules/page.tsx`,
+    `src/app/(dashboard)/admin/alert-rules/page.test.tsx`,
+    `src/components/ui/segment-state.tsx`,
+    `src/components/ui/segment-state.test.tsx`.
+  - files changed:
+    `src/app/(dashboard)/admin/alert-rules/page.tsx`,
+    `src/app/(dashboard)/admin/alert-rules/page.test.tsx`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    rules query failure の旧 `ErrorState` 直利用を `SegmentError` の固定文言 + retry に置換した。
+    hostile backend text に patient name / storage key / provider error / token が含まれても画面へ出ない regression test を追加した。
+  - bugs found:
+    なし。既存は false-empty 回避済みだったが、admin screen の error 表現が旧 `ErrorState` 直利用だった。
+  - security risks reduced:
+    alert rules error UI に hostile backend text が出ないことを focused test で固定した。
+  - performance issues improved:
+    なし。fail-soft/error state の共有化。
+  - validation:
+    `pnpm exec vitest run 'src/app/(dashboard)/admin/alert-rules/page.test.tsx' src/components/ui/segment-state.test.tsx --reporter=dot --testTimeout=30000` → pass（2 files / 22 tests）。
+    `pnpm exec eslint 'src/app/(dashboard)/admin/alert-rules/page.tsx' 'src/app/(dashboard)/admin/alert-rules/page.test.tsx'` → pass。
+    `pnpm exec prettier --check 'src/app/(dashboard)/admin/alert-rules/page.tsx' 'src/app/(dashboard)/admin/alert-rules/page.test.tsx'` → pass。
+    `git diff --check -- 'src/app/(dashboard)/admin/alert-rules/page.tsx' 'src/app/(dashboard)/admin/alert-rules/page.test.tsx'` → pass。
+  - remaining:
+    FE-ERR-001 は admin screen 群への段階展開が残る。
+    Formal `InboundCommunicationEvent` / `InboundCommunicationSignal` DB/API/review UI and MedicationStock Ledger source remain.
+  - next action:
+    scoped commit/push。
+
+- codex: FE-ERR-001 analytics segment state hardening（commit `21f2cce35`, pushed to `main`）。
   - current task:
     `/admin/analytics` の請求分析・地域資源マップの初回取得失敗/stale refetch 失敗を shared segment state に寄せる。
   - files inspected:

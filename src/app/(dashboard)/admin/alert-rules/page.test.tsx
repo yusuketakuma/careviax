@@ -238,13 +238,24 @@ describe('AlertRulesPage', () => {
   it('shows ErrorState (not a false-empty) with retry when the rules query fails', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => new Response('boom', { status: 500 })),
+      vi.fn(
+        async () =>
+          new Response('患者 山田太郎 storage_key=private/provider_error token=secret', {
+            status: 500,
+          }),
+      ),
     );
     renderPage();
 
-    // 取得失敗 → 空状態ではなく ErrorState（サーバーエラー）+ 再読み込み。
-    expect(await screen.findByText('サーバーエラーが発生しました')).toBeTruthy();
+    // 取得失敗 → 空状態ではなく SegmentError + 再読み込み。
+    expect(await screen.findByText('処方安全アラートルールを取得できませんでした')).toBeTruthy();
+    expect(screen.getByText(/処方安全アラートルールの取得に失敗しました。/)).toBeTruthy();
     expect(screen.getByRole('button', { name: '再読み込み' })).toBeTruthy();
+    const renderedText = document.body.textContent ?? '';
+    expect(renderedText).not.toContain('患者 山田太郎');
+    expect(renderedText).not.toContain('storage_key');
+    expect(renderedText).not.toContain('provider_error');
+    expect(renderedText).not.toContain('token=secret');
     // false-empty（「まだ…ありません」）を出していないこと。
     expect(screen.queryByText('まだ処方安全アラートルールはありません。')).toBeNull();
   });
@@ -254,7 +265,7 @@ describe('AlertRulesPage', () => {
     vi.stubGlobal('fetch', fetchMock);
     renderPage();
 
-    await screen.findByText('サーバーエラーが発生しました');
+    await screen.findByText('処方安全アラートルールを取得できませんでした');
     const callsBefore = fetchMock.mock.calls.length;
     fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
     await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThan(callsBefore));
