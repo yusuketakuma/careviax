@@ -58,6 +58,14 @@ type SelfReport = {
 };
 
 type TimelineCategory = 'all' | TimelineEvent['category'];
+type TimelineDateScope = 'all' | 'today' | 'yesterday' | '7d' | '30d';
+type TimelineFocusFilter =
+  | 'all'
+  | 'unprocessed'
+  | 'review_required'
+  | 'medication_stock'
+  | 'safety'
+  | 'today';
 type HomeOperationFocus = 'documents' | 'mcs' | 'prescription' | 'billing' | 'conference';
 
 type TimelineGroup = {
@@ -369,6 +377,23 @@ const SELF_REPORT_STATUS_LABELS: Record<string, string> = {
   dismissed: '対応不要',
 };
 
+const DATE_SCOPE_LABELS: Record<TimelineDateScope, string> = {
+  all: 'すべて',
+  today: '今日',
+  yesterday: '昨日',
+  '7d': '7日',
+  '30d': '30日',
+};
+
+const FOCUS_FILTER_LABELS: Record<TimelineFocusFilter, string> = {
+  all: '全件',
+  unprocessed: '未処理',
+  review_required: '薬剤師確認待ち',
+  medication_stock: '残数関連',
+  safety: '安全関連',
+  today: '今日の動き',
+};
+
 function formatGroupLabel(value: string) {
   const date = new Date(value);
 
@@ -423,6 +448,46 @@ function safeEventSummary(event: TimelineEvent) {
   return event.summary;
 }
 
+function isUnprocessedEvent(event: TimelineEvent) {
+  const stateText = [event.status, event.status_label, event.title].filter(Boolean).join(' ');
+  if (event.category === 'safety') return true;
+  if (stateText.includes('未処理') || stateText.includes('未対応')) return true;
+  if (stateText.includes('確認待ち') || stateText.includes('要確認')) return true;
+  return (
+    event.category === 'interprofessional' &&
+    !['resolved', 'completed', 'done', 'closed', 'cancelled'].includes(event.status ?? '')
+  );
+}
+
+function isReviewRequiredEvent(event: TimelineEvent) {
+  return [event.status, event.status_label, event.title].filter(Boolean).join(' ').includes('確認');
+}
+
+function matchesDateScope(event: TimelineEvent, dateScope: TimelineDateScope) {
+  if (dateScope === 'all') return true;
+
+  const eventDate = new Date(event.occurred_at);
+  if (dateScope === 'today') return isToday(eventDate);
+  if (dateScope === 'yesterday') return isYesterday(eventDate);
+
+  const now = new Date();
+  const days = dateScope === '7d' ? 7 : 30;
+  const start = new Date(now);
+  start.setDate(now.getDate() - (days - 1));
+  start.setHours(0, 0, 0, 0);
+  return eventDate >= start && eventDate <= now;
+}
+
+function matchesFocusFilter(event: TimelineEvent, focusFilter: TimelineFocusFilter) {
+  if (focusFilter === 'all') return true;
+  if (focusFilter === 'unprocessed') return isUnprocessedEvent(event);
+  if (focusFilter === 'review_required') return isReviewRequiredEvent(event);
+  if (focusFilter === 'medication_stock') return event.category === 'medication_stock';
+  if (focusFilter === 'safety') return event.category === 'safety';
+  if (focusFilter === 'today') return isToday(new Date(event.occurred_at));
+  return true;
+}
+
 function matchesQuery(event: TimelineEvent, query: string) {
   if (!query) return true;
   const workflowFocus = getHomeOperationFocus(event);
@@ -443,6 +508,19 @@ function matchesQuery(event: TimelineEvent, query: string) {
     .toLowerCase();
 
   return haystack.includes(query);
+}
+
+function summarizeDay(events: TimelineEvent[]) {
+  return {
+    visit: events.filter((event) => event.category === 'visit').length,
+    prescription: events.filter((event) => event.category === 'prescription').length,
+    interprofessional: events.filter((event) => event.category === 'interprofessional').length,
+    medicationStock: events.filter((event) => event.category === 'medication_stock').length,
+    document: events.filter((event) => event.category === 'document').length,
+    task: events.filter((event) => event.category === 'task').length,
+    safety: events.filter((event) => event.category === 'safety').length,
+    unprocessed: events.filter(isUnprocessedEvent).length,
+  };
 }
 
 function buildGroups(events: TimelineEvent[]) {
@@ -467,7 +545,135 @@ function buildGroups(events: TimelineEvent[]) {
   return groups;
 }
 
-function TimelineEntry({ event, isLast }: { event: TimelineEvent; isLast: boolean }) {
+function DaySummary({ events }: { events: TimelineEvent[] }) {
+  const summary = summarizeDay(events);
+  const items: Array<[string, number]> = [
+    ['訪問', summary.visit],
+    ['処方・調剤', summary.prescription],
+    ['他職種受信', summary.interprofessional],
+    ['残数', summary.medicationStock],
+    ['文書', summary.document],
+    ['タスク', summary.task],
+    ['安全', summary.safety],
+  ].filter(([, count]) => Number(count) > 0);
+
+  return (
+    <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+      {items.length > 0 ? (
+        items.map(([label, count]) => (
+          <span
+            key={String(label)}
+            className="rounded-md border border-border/60 bg-background px-2 py-1"
+          >
+            {label} {count}件
+          </span>
+        ))
+      ) : (
+        <span>この日の表示対象イベントはありません。</span>
+      )}
+      {summary.unprocessed > 0 ? (
+        <span className="rounded-md border border-state-confirm/30 bg-state-confirm/10 px-2 py-1 text-state-confirm">
+          未処理 {summary.unprocessed}件
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function SelectedEventPreview({ event }: { event: TimelineEvent }) {
+  const meta = EVENT_META[event.event_type];
+  const workflowFocus = getHomeOperationFocus(event);
+  const Icon = meta.icon;
+  const summary = safeEventSummary(event);
+  const metadata = isOccurrenceOnlyCategory(event) ? [] : event.metadata.slice(0, 4);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start gap-3">
+        <div
+          className={cn(
+            'mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-md border bg-background',
+            meta.className,
+          )}
+          aria-hidden="true"
+        >
+          <Icon className="size-4" />
+        </div>
+        <div className="min-w-0 flex-1 space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="outline" className={meta.className}>
+              {meta.label}
+            </Badge>
+            <Badge variant="outline" className={CATEGORY_META[event.category].className}>
+              {CATEGORY_META[event.category].label}
+            </Badge>
+            {workflowFocus ? (
+              <Badge
+                variant="outline"
+                className={HOME_OPERATION_FOCUS_META[workflowFocus].className}
+              >
+                {HOME_OPERATION_FOCUS_META[workflowFocus].label}
+              </Badge>
+            ) : null}
+          </div>
+          <h3 className="text-sm font-semibold leading-6 text-foreground">{event.title}</h3>
+          <p className="text-xs tabular-nums text-muted-foreground">
+            {formatOccurredAtLong(event.occurred_at)}
+          </p>
+        </div>
+      </div>
+
+      {summary ? <p className="text-sm leading-6 text-muted-foreground">{summary}</p> : null}
+
+      <dl className="grid gap-2 text-sm">
+        {event.actor_name ? (
+          <div className="grid grid-cols-[5rem_minmax(0,1fr)] gap-2">
+            <dt className="text-muted-foreground">担当</dt>
+            <dd className="min-w-0 text-foreground">{event.actor_name}</dd>
+          </div>
+        ) : null}
+        {event.status_label ? (
+          <div className="grid grid-cols-[5rem_minmax(0,1fr)] gap-2">
+            <dt className="text-muted-foreground">状態</dt>
+            <dd className="min-w-0 text-foreground">{event.status_label}</dd>
+          </div>
+        ) : null}
+      </dl>
+
+      {metadata.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {metadata.map((item) => (
+            <span
+              key={`${event.id}-preview-${item}`}
+              className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground"
+            >
+              {item}
+            </span>
+          ))}
+        </div>
+      ) : null}
+
+      <Button asChild variant="outline" className="min-h-11 w-full justify-between">
+        <Link href={event.href} aria-label={`選択中イベントの詳細を開く: ${event.action_label}`}>
+          {event.action_label}
+          <ArrowUpRight className="size-3.5" aria-hidden="true" />
+        </Link>
+      </Button>
+    </div>
+  );
+}
+
+function TimelineEntry({
+  event,
+  isLast,
+  isSelected,
+  onPreview,
+}: {
+  event: TimelineEvent;
+  isLast: boolean;
+  isSelected: boolean;
+  onPreview: (eventId: string) => void;
+}) {
   const meta = EVENT_META[event.event_type];
   const workflowFocus = getHomeOperationFocus(event);
   const Icon = meta.icon;
@@ -498,7 +704,12 @@ function TimelineEntry({ event, isLast }: { event: TimelineEvent; isLast: boolea
             {!isLast ? <div className="mt-2 w-px flex-1 bg-border/70" /> : null}
           </div>
 
-          <article className="min-w-0 rounded-lg border border-border/70 bg-card px-3 py-3">
+          <article
+            className={cn(
+              'min-w-0 rounded-lg border bg-card px-3 py-3',
+              isSelected ? 'border-primary/50 ring-2 ring-primary/15' : 'border-border/70',
+            )}
+          >
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0 space-y-2">
                 <div className="flex flex-wrap gap-2">
@@ -529,12 +740,25 @@ function TimelineEntry({ event, isLast }: { event: TimelineEvent; isLast: boolea
                 </div>
               </div>
 
-              <Button asChild variant="outline" size="sm" className="min-h-10 shrink-0">
-                <Link href={event.href}>
-                  {event.action_label}
-                  <ArrowUpRight className="size-3.5" aria-hidden="true" />
-                </Link>
-              </Button>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="min-h-10"
+                  aria-label={`${event.title}の概要を表示`}
+                  aria-pressed={isSelected}
+                  onClick={() => onPreview(event.id)}
+                >
+                  概要
+                </Button>
+                <Button asChild variant="outline" size="sm" className="min-h-10">
+                  <Link href={event.href}>
+                    {event.action_label}
+                    <ArrowUpRight className="size-3.5" aria-hidden="true" />
+                  </Link>
+                </Button>
+              </div>
             </div>
 
             {metadata.length > 0 ? (
@@ -566,6 +790,11 @@ export function PatientMovementTimeline({
   onLoadFull,
 }: PatientMovementTimelineProps) {
   const [category, setCategory] = useState<TimelineCategory>('all');
+  const [dateScope, setDateScope] = useState<TimelineDateScope>('all');
+  const [focusFilter, setFocusFilter] = useState<TimelineFocusFilter>('all');
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(
+    timelineEvents[0]?.id ?? null,
+  );
   const [query, setQuery] = useState('');
   const deferredQuery = useDeferredValue(query.trim().toLowerCase());
 
@@ -573,12 +802,21 @@ export function PatientMovementTimeline({
     if (category !== 'all' && event.category !== category) {
       return false;
     }
+    if (!matchesDateScope(event, dateScope)) {
+      return false;
+    }
+    if (!matchesFocusFilter(event, focusFilter)) {
+      return false;
+    }
 
     return matchesQuery(event, deferredQuery);
   });
 
   const timelineGroups = buildGroups(filteredEvents);
-  const isFiltered = category !== 'all' || Boolean(deferredQuery);
+  const isFiltered =
+    category !== 'all' || dateScope !== 'all' || focusFilter !== 'all' || Boolean(deferredQuery);
+  const selectedEvent =
+    filteredEvents.find((event) => event.id === selectedEventId) ?? filteredEvents[0] ?? null;
   const categoryCounts = Object.fromEntries(
     (Object.keys(CATEGORY_META) as TimelineCategory[]).map((key) => [
       key,
@@ -631,6 +869,14 @@ export function PatientMovementTimeline({
       className: CHART_SERIES_CHIP[3],
     },
   ];
+  const focusFilterCounts: Record<TimelineFocusFilter, number> = {
+    all: timelineEvents.length,
+    unprocessed: timelineEvents.filter(isUnprocessedEvent).length,
+    review_required: timelineEvents.filter(isReviewRequiredEvent).length,
+    medication_stock: categoryCounts.medication_stock,
+    safety: categoryCounts.safety,
+    today: timelineEvents.filter((event) => isToday(new Date(event.occurred_at))).length,
+  };
 
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_320px]">
@@ -665,6 +911,35 @@ export function PatientMovementTimeline({
           </div>
 
           <div className="space-y-3">
+            <div className="space-y-2">
+              <Label className="text-xs">日付範囲</Label>
+              <div className="flex flex-wrap gap-2" aria-label="日付範囲フィルタ">
+                {(Object.keys(DATE_SCOPE_LABELS) as TimelineDateScope[]).map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-pressed={dateScope === key}
+                    onClick={() => setDateScope(key)}
+                    className={cn(
+                      'inline-flex min-h-10 items-center rounded-full border px-3 text-sm transition-colors',
+                      dateScope === key
+                        ? 'border-primary/40 bg-primary/10 text-foreground'
+                        : 'border-border/70 bg-background text-muted-foreground hover:bg-muted/50',
+                    )}
+                  >
+                    {DATE_SCOPE_LABELS[key]}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  disabled
+                  className="inline-flex min-h-10 items-center rounded-full border border-border/50 bg-muted/30 px-3 text-sm text-muted-foreground"
+                >
+                  日付選択
+                </button>
+              </div>
+            </div>
+
             <div className="space-y-1">
               <Label htmlFor="patient-activity-search" className="text-xs">
                 タイムライン検索
@@ -673,8 +948,41 @@ export function PatientMovementTimeline({
                 id="patient-activity-search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="例: MCS、電話、処方、訪問、文書登録"
+                placeholder="例: MCS、電話、処方、訪問、文書登録、湿布、残り4枚、ケアマネ"
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs">確認フィルタ</Label>
+              <div className="flex flex-wrap gap-2" aria-label="確認フィルタ">
+                {(Object.keys(FOCUS_FILTER_LABELS) as TimelineFocusFilter[]).map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-label={`確認フィルタ: ${FOCUS_FILTER_LABELS[key]}`}
+                    aria-pressed={focusFilter === key}
+                    onClick={() => setFocusFilter(key)}
+                    className={cn(
+                      'inline-flex min-h-10 items-center gap-2 rounded-full border px-3 text-sm transition-colors',
+                      focusFilter === key
+                        ? 'border-primary/40 bg-primary/10 text-foreground'
+                        : 'border-border/70 bg-background text-muted-foreground hover:bg-muted/50',
+                    )}
+                  >
+                    <span>{FOCUS_FILTER_LABELS[key]}</span>
+                    <span
+                      className={cn(
+                        'rounded-full px-1.5 py-0.5 text-xs',
+                        focusFilter === key
+                          ? 'bg-primary/15 text-foreground'
+                          : 'bg-muted text-muted-foreground',
+                      )}
+                    >
+                      {focusFilterCounts[key]}
+                    </span>
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="flex flex-wrap gap-2" aria-label="タイムライン種別フィルタ">
@@ -686,6 +994,7 @@ export function PatientMovementTimeline({
                   <button
                     key={key}
                     type="button"
+                    aria-label={`種別: ${meta.label}`}
                     aria-pressed={isActive}
                     onClick={() => setCategory(key)}
                     className={cn(
@@ -769,12 +1078,15 @@ export function PatientMovementTimeline({
                 key={group.key}
                 className="overflow-hidden rounded-lg border border-border/70 bg-background"
               >
-                <div className="flex items-center justify-between border-b border-border/70 bg-muted/20 px-4 py-3">
-                  <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                    <span className="size-2 rounded-full bg-primary" aria-hidden="true" />
-                    {group.label}
-                  </h3>
-                  <span className="text-xs text-muted-foreground">{group.items.length}件</span>
+                <div className="space-y-2 border-b border-border/70 bg-muted/20 px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <span className="size-2 rounded-full bg-primary" aria-hidden="true" />
+                      {group.label}
+                    </h3>
+                    <span className="text-xs text-muted-foreground">{group.items.length}件</span>
+                  </div>
+                  <DaySummary events={group.items} />
                 </div>
                 <ol>
                   {group.items.map((event, index) => (
@@ -782,6 +1094,8 @@ export function PatientMovementTimeline({
                       key={event.id}
                       event={event}
                       isLast={index === group.items.length - 1}
+                      isSelected={selectedEvent?.id === event.id}
+                      onPreview={setSelectedEventId}
                     />
                   ))}
                 </ol>
@@ -794,6 +1108,24 @@ export function PatientMovementTimeline({
       <div className="space-y-4">
         <Card className="border border-border/70">
           <CardHeader>
+            <h2 className="font-heading text-base leading-snug font-medium">選択中のイベント</h2>
+            <CardDescription>
+              一覧では原文や処方・訪問・文書本文を出さず、正本画面で確認します。
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {selectedEvent ? (
+              <SelectedEventPreview event={selectedEvent} />
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                条件に合うイベントがありません。フィルタを緩めてください。
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border border-border/70">
+          <CardHeader>
             <h2 className="font-heading text-base leading-snug font-medium">タイムライン要約</h2>
             <CardDescription>
               発生したイベントの内訳と直近の確認先を集約しています。
@@ -801,19 +1133,26 @@ export function PatientMovementTimeline({
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-2">
-              {(['visit', 'prescription', 'billing', 'document', 'communication'] as const).map(
-                (key) => (
-                  <div key={key} className="rounded-xl border border-border/70 bg-muted/10 p-3">
-                    <p className="text-xs text-muted-foreground">{CATEGORY_META[key].label}</p>
-                    <p className="mt-1 text-lg font-semibold text-foreground">
-                      {categoryCounts[key]}
-                    </p>
-                  </div>
-                ),
-              )}
+              {(
+                [
+                  'visit',
+                  'prescription',
+                  'document',
+                  'interprofessional',
+                  'medication_stock',
+                  'safety',
+                ] as const
+              ).map((key) => (
+                <div key={key} className="rounded-md border border-border/70 bg-muted/10 p-3">
+                  <p className="text-xs text-muted-foreground">{CATEGORY_META[key].label}</p>
+                  <p className="mt-1 text-lg font-semibold text-foreground">
+                    {categoryCounts[key]}
+                  </p>
+                </div>
+              ))}
             </div>
 
-            <div className="rounded-xl border border-border/70 bg-muted/10 p-3">
+            <div className="rounded-md border border-border/70 bg-muted/10 p-3">
               <p className="text-xs font-medium text-muted-foreground">在宅運用履歴</p>
               <div className="mt-3 grid gap-2">
                 {(['documents', 'mcs', 'prescription', 'billing', 'conference'] as const).map(
@@ -832,7 +1171,7 @@ export function PatientMovementTimeline({
             </div>
 
             {latestEvent ? (
-              <div className="rounded-xl border border-border/70 bg-muted/10 p-4">
+              <div className="rounded-md border border-border/70 bg-muted/10 p-4">
                 <p className="text-xs font-medium text-muted-foreground">最新アクション</p>
                 <p className="mt-2 text-sm font-medium text-foreground">{latestEvent.title}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
@@ -861,7 +1200,7 @@ export function PatientMovementTimeline({
               <p className="text-sm text-muted-foreground">患者起点の更新はありません。</p>
             ) : (
               recentSelfReports.map((item) => (
-                <div key={item.id} className="rounded-xl border border-border/70 bg-muted/10 p-3">
+                <div key={item.id} className="rounded-md border border-border/70 bg-muted/10 p-3">
                   <p className="text-sm font-medium text-foreground">自己申告あり</p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {item.category}

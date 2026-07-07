@@ -123,6 +123,21 @@ const conferenceTimelineEvent = {
   metadata: ['フォロー期限 2026/04/04'],
 };
 
+const inboundTimelineEvent = {
+  id: 'event_inbound_mcs',
+  event_type: 'inbound_mcs' as const,
+  category: 'interprofessional' as const,
+  occurred_at: '2026-04-03T08:00:00.000Z',
+  title: '訪問看護師から残数報告を受信',
+  summary: '湿布の残り枚数について確認が必要です。',
+  href: '/patients/patient_1/inbound-communications/event_inbound_mcs',
+  action_label: '受信情報を開く',
+  status: 'needs_review',
+  status_label: '確認待ち',
+  actor_name: '訪問看護師A',
+  metadata: ['MCS', '残数関連'],
+};
+
 describe('PatientMovementTimeline', () => {
   it('groups actions by day and renders patient-originated updates separately', () => {
     render(<PatientMovementTimeline timelineEvents={timelineEvents} selfReports={selfReports} />);
@@ -139,6 +154,12 @@ describe('PatientMovementTimeline', () => {
     expect(screen.getByText('在宅運用履歴')).toBeTruthy();
     expect(screen.getByText('処方・訪問')).toBeTruthy();
     expect(screen.getByText('文書登録')).toBeTruthy();
+    expect(screen.getByText('訪問 1件')).toBeTruthy();
+    expect(screen.getByText('処方・調剤 1件')).toBeTruthy();
+    expect(screen.getByText('文書 1件')).toBeTruthy();
+    for (const label of ['今日', '昨日', '7日', '30日', '日付選択']) {
+      expect(screen.getByRole('button', { name: label })).toBeTruthy();
+    }
     for (const label of [
       '契約・同意・書類',
       'MCS・外部連携',
@@ -155,28 +176,57 @@ describe('PatientMovementTimeline', () => {
     expect(screen.queryByText('服薬状況は安定しています。')).toBeNull();
     expect(screen.queryByText('アムロジピン 30錠 / 持参')).toBeNull();
     expect(screen.queryByText('訪問薬剤管理指導計画書 / 次回見直し 2026/05/01')).toBeNull();
-    expect(screen.getByRole('link', { name: /訪問記録を開く/ }).getAttribute('href')).toBe(
-      '/visits/visit_1/record',
+    expect(
+      screen
+        .getAllByRole('link', { name: /訪問記録を開く/ })
+        .some((link) => link.getAttribute('href') === '/visits/visit_1/record'),
+    ).toBe(true);
+    expect(
+      screen
+        .getAllByRole('link', { name: /処方記録を開く/ })
+        .some((link) => link.getAttribute('href') === '/prescriptions/intake_1'),
+    ).toBe(true);
+    expect(
+      screen
+        .getAllByRole('link', { name: /計画書を開く/ })
+        .some((link) => link.getAttribute('href') === '/patients/patient_1/management-plan'),
+    ).toBe(true);
+  });
+
+  it('filters unprocessed inbound events and updates the selected-event preview', () => {
+    render(
+      <PatientMovementTimeline
+        timelineEvents={[inboundTimelineEvent, ...timelineEvents]}
+        selfReports={[]}
+      />,
     );
-    expect(screen.getByRole('link', { name: /処方記録を開く/ }).getAttribute('href')).toBe(
-      '/prescriptions/intake_1',
-    );
-    expect(screen.getByRole('link', { name: /計画書を開く/ }).getAttribute('href')).toBe(
-      '/patients/patient_1/management-plan',
-    );
+
+    fireEvent.click(screen.getByRole('button', { name: '確認フィルタ: 未処理' }));
+
+    expect(screen.getAllByText('訪問看護師から残数報告を受信').length).toBeGreaterThan(0);
+    expect(screen.queryByText('訪問記録を登録')).toBeNull();
+    expect(screen.queryByText('調剤を記録')).toBeNull();
+
+    const previewButton = screen.getByRole('button', {
+      name: '訪問看護師から残数報告を受信の概要を表示',
+    });
+    fireEvent.click(previewButton);
+    expect(previewButton.getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getAllByText('MCS受信').length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('link', { name: /受信情報を開く/ }).length).toBeGreaterThan(0);
   });
 
   it('styles categories and event types with chart series tokens, not bespoke palette colors', () => {
     render(<PatientMovementTimeline timelineEvents={timelineEvents} selfReports={selfReports} />);
 
     // Category filter chip resolves to a --chart-* series utility once active.
-    const visitButton = screen.getByRole('button', { name: /訪問/ });
+    const visitButton = screen.getByRole('button', { name: '種別: 訪問' });
     fireEvent.click(visitButton);
     expect(visitButton.className).toContain('chart-1');
     expect(visitButton.className).not.toMatch(/sky-|emerald-|violet-|amber-|slate-|rose-|cyan-/);
 
     // Event-type badge uses the same chart series idiom (kind-of-event series).
-    const eventBadge = screen.getByText('訪問記録');
+    const eventBadge = screen.getAllByText('訪問記録')[0];
     expect(eventBadge.className).toContain('chart-1');
     expect(eventBadge.className).not.toMatch(/sky-|emerald-|violet-|amber-|slate-|rose-|cyan-/);
   });
@@ -184,7 +234,7 @@ describe('PatientMovementTimeline', () => {
   it('styles home-operation focus badges with chart series tokens', () => {
     render(<PatientMovementTimeline timelineEvents={[mcsTimelineEvent]} selfReports={[]} />);
 
-    const focusBadge = screen.getByText('MCS');
+    const focusBadge = screen.getAllByText('MCS')[0];
     expect(focusBadge.className).toContain('chart-4');
     expect(focusBadge.className).not.toMatch(/sky-|emerald-|violet-|amber-|slate-|rose-|cyan-/);
   });
@@ -205,7 +255,7 @@ describe('PatientMovementTimeline', () => {
   it('filters the timeline by category', () => {
     render(<PatientMovementTimeline timelineEvents={timelineEvents} selfReports={selfReports} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /訪問/ }));
+    fireEvent.click(screen.getByRole('button', { name: '種別: 訪問' }));
 
     expect(screen.getAllByText('訪問記録を登録').length).toBeGreaterThan(0);
     expect(screen.queryByText('管理計画書を承認')).toBeNull();
@@ -215,7 +265,7 @@ describe('PatientMovementTimeline', () => {
   it('filters billing and collection events separately from documents', () => {
     render(<PatientMovementTimeline timelineEvents={timelineEvents} selfReports={selfReports} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /請求・集金/ }));
+    fireEvent.click(screen.getByRole('button', { name: '種別: 請求・集金' }));
 
     expect(screen.getAllByText('算定候補を更新').length).toBeGreaterThan(0);
     expect(screen.queryByText('管理計画書を承認')).toBeNull();
@@ -320,15 +370,21 @@ describe('PatientMovementTimeline', () => {
       />,
     );
 
-    expect(screen.getByRole('link', { name: /訪問記録を開く/ }).getAttribute('href')).toBe(
-      '/visits/visit_1/record',
-    );
-    expect(screen.getByRole('link', { name: /文書を開く/ }).getAttribute('href')).toBe(
-      '/patients/patient_1#patient-documents',
-    );
-    expect(screen.getByRole('link', { name: /処方記録を開く/ }).getAttribute('href')).toBe(
-      '/prescriptions/intake_1',
-    );
+    expect(
+      screen
+        .getAllByRole('link', { name: /訪問記録を開く/ })
+        .some((link) => link.getAttribute('href') === '/visits/visit_1/record'),
+    ).toBe(true);
+    expect(
+      screen
+        .getAllByRole('link', { name: /文書を開く/ })
+        .some((link) => link.getAttribute('href') === '/patients/patient_1#patient-documents'),
+    ).toBe(true);
+    expect(
+      screen
+        .getAllByRole('link', { name: /処方記録を開く/ })
+        .some((link) => link.getAttribute('href') === '/prescriptions/intake_1'),
+    ).toBe(true);
 
     const hrefs = Array.from(document.querySelectorAll('a')).map((link) =>
       link.getAttribute('href'),
@@ -367,17 +423,19 @@ describe('PatientMovementTimeline', () => {
     );
 
     expect(screen.getAllByText('患者から自己申告を受信').length).toBeGreaterThan(0);
-    expect(screen.getByText('自己申告')).toBeTruthy();
-    expect(screen.getByText('未対応')).toBeTruthy();
+    expect(screen.getAllByText('自己申告').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('未対応').length).toBeGreaterThan(0);
     expect(screen.getAllByText(/家族A/).length).toBeGreaterThan(0);
-    expect(screen.getByText('関係 家族')).toBeTruthy();
-    expect(screen.getByText('折返し希望')).toBeTruthy();
-    expect(screen.getByText('希望時間 18時以降')).toBeTruthy();
-    expect(screen.getByRole('link', { name: /連携を確認/ }).getAttribute('href')).toBe(
-      '/patients/patient_1/collaboration',
-    );
+    expect(screen.getAllByText('関係 家族').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('折返し希望').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('希望時間 18時以降').length).toBeGreaterThan(0);
+    expect(
+      screen
+        .getAllByRole('link', { name: /連携を確認/ })
+        .some((link) => link.getAttribute('href') === '/patients/patient_1/collaboration'),
+    ).toBe(true);
 
-    fireEvent.click(screen.getByRole('button', { name: /共有・連絡/ }));
+    fireEvent.click(screen.getByRole('button', { name: '種別: 共有・連絡' }));
 
     expect(screen.getAllByText('患者から自己申告を受信').length).toBeGreaterThan(0);
     expect(screen.queryByText('訪問記録を登録')).toBeNull();

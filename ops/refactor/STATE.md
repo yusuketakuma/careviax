@@ -14904,3 +14904,53 @@
   RLS contract expansion remains the only unimplemented `MOD-CI-001` gate. API response migration
   still needs `src/lib/api/response.ts` envelope changes, request_id propagation, error code
   registry, route test updates, and allowlist expectedCount reductions.
+
+## 2026-07-07 INB-001 / MOV-UX plan integration and movement timeline polish
+
+- codex:
+  Updated `Plans.md` so the inbound interprofessional work is no longer treated as only a
+  patient-by-patient timeline concern. `INB-001` now has explicit pharmacy-wide inbox, signal
+  review, stock/task/risk/brief/report conversion, raw text separation, share scopes, and module
+  boundary follow-up tasks. While preserving the in-progress movement UI slice, also made the
+  patient movement timeline closer to the map-less Google Maps Timeline plan: date scope filters,
+  focus filters, per-day summary chips, selected-event preview, and clearer accessible names for
+  filter buttons/preview links.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `Plans.md`,
+  `docs/ui-ux-design-guidelines.md`,
+  `src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx`,
+  `src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx`,
+  `ops/refactor/STATE.md`.
+- files changed:
+  `Plans.md`,
+  `src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx`,
+  `src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  Reduced plan drift by connecting the latest inbound inbox/review queue requirements to existing
+  `INB-001`, `RX-002`, and `MOV-001` instead of duplicating task trees. Timeline UI now keeps
+  occurrence-only prescription/visit/document markers as controlled summaries while adding preview
+  affordances, and tests cover inbound review filtering plus duplicate preview/link rendering.
+- security risks reduced:
+  `Plans.md` now tracks `SECURITY-030` explicitly: inbound `raw_text` must not flow to timeline
+  cards, queue items, notifications, SSE, audit changes, report candidates, or share output without
+  re-authorization/audit. The movement timeline tests continue to assert that prescription, visit,
+  document, OCR, storage key, file name, and SOAP-like details do not render/search in occurrence
+  marker rows.
+- performance improved:
+  No backend changes. UI filtering remains client-side for the existing BFF payload, and `Plans.md`
+  keeps standalone `movement-timeline` API as the remaining heavier-load split.
+- validation:
+  `pnpm exec vitest run src/app/'(dashboard)'/patients/'[id]'/patient-movement-timeline.test.tsx --reporter=dot --testTimeout=30000`
+  green (1 file / 13 tests);
+  `pnpm exec eslint src/app/'(dashboard)'/patients/'[id]'/patient-movement-timeline.tsx src/app/'(dashboard)'/patients/'[id]'/patient-movement-timeline.test.tsx`
+  green;
+  `pnpm exec prettier --check Plans.md src/app/'(dashboard)'/patients/'[id]'/patient-movement-timeline.tsx src/app/'(dashboard)'/patients/'[id]'/patient-movement-timeline.test.tsx`
+  green;
+  `git diff --check -- Plans.md src/app/'(dashboard)'/patients/'[id]'/patient-movement-timeline.tsx src/app/'(dashboard)'/patients/'[id]'/patient-movement-timeline.test.tsx`
+  green.
+- remaining:
+  `INB-001` still needs the actual DB/API/inbox/review implementation. `MOV-001` still needs the
+  standalone movement-timeline API and formal inbound/MedicationStock/safety sources. `RX-002`
+  still needs Medication Stock Ledger DB/API/UI and migration/backfill work.
