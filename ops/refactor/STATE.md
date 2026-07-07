@@ -41,6 +41,78 @@
 
 ## 直近の land（本日・要点）
 
+- codex: `PERF-DB-006D-EXPLAIN` care-report index候補の SELECT-only EXPLAIN capture tooling。
+  - current task:
+    DB読出しスピード改善の安全な次段として、`/api/care-reports` の index候補を blind migration ではなく
+    SELECT-only `EXPLAIN (FORMAT JSON)` 証跡へ分離する。DDL/DML、migration適用、live `ANALYZE`、
+    本番DB mutation は行わない。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `.codex/ralph-state.md`,
+    `.agent-loop/GBRAIN_SCHEMA.md`,
+    `src/app/api/care-reports/route.ts`,
+    `prisma/schema/communication.prisma`,
+    `tools/scripts/db-precheck-cli-conventions.test.ts`,
+    `tools/scripts/README.md`,
+    `package.json`.
+  - subagent:
+    `test_architect` confirmed validation should cover SQL verb guard, artifact redaction,
+    DB-gated CLI convention registration, help-before-DB, and no live DB requirement.
+    `db_steward` confirmed route-matching candidates should follow current `created_at DESC, id DESC`
+    ordering and keep index migration in a separate human-gated lane.
+  - files changed:
+    `tools/scripts/explain-care-report-index-candidates.ts`,
+    `tools/scripts/explain-care-report-index-candidates.test.ts`,
+    `tools/scripts/db-precheck-cli-conventions.test.ts`,
+    `tools/scripts/README.md`,
+    `package.json`,
+    `Plans.md`,
+    `projects/careviax/reviews/2026-07-08/care-report-index-explain-tooling.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Added `pnpm db:explain-care-report-index-candidates -- --org-id <org_id>` as a DB-gated
+    diagnostic script. The tool builds representative care-report read shapes for default list,
+    patient list, bounded patient search, status filter, cursor page, keyword bounded scan,
+    delivery relation filter, per-report delivery records, patient hydration, and assigned scope.
+    It enforces `EXPLAIN (FORMAT JSON) SELECT` only, rejects multi-statement SQL and DDL/DML/ANALYZE,
+    sets tenant RLS context in a rollback-only transaction, and can emit PHI-safe JSON/Markdown
+    artifacts under `projects/careviax/reviews` or `artifacts`. `Plans.md` now marks
+    `PERF-DB-006D-EXPLAIN` implemented and leaves `PERF-DB-006D-INDEX` as human-gated.
+  - bugs found:
+    The plan still listed `updated_at` / non-tenant-leading delivery index candidates even though
+    current `/api/care-reports` GET ordering is `created_at DESC, id DESC`. The active plan and tool
+    candidate list now match current route evidence.
+  - security risks reduced:
+    Prevents accidental blind index migration from being treated as the next performance step.
+    The script does not print SQL parameter values, raw SQL, PHI, secrets, `.env`, or provider raw
+    errors in artifacts. It runs inside an explicit transaction and always rolls back.
+  - performance issues improved:
+    No live DB index was added. The next performance decision can now be based on repeatable,
+    redacted EXPLAIN evidence across the actual care-report read shapes.
+  - gbrain:
+    Wrote `projects/careviax/reviews/2026-07-08/care-report-index-explain-tooling`
+    as a `PerformanceFinding` for the SELECT-only EXPLAIN-before-index pattern.
+  - validation commands:
+    `pnpm exec vitest run tools/scripts/explain-care-report-index-candidates.test.ts tools/scripts/db-precheck-cli-conventions.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm db:explain-care-report-index-candidates -- --help`;
+    `pnpm exec eslint tools/scripts/explain-care-report-index-candidates.ts tools/scripts/explain-care-report-index-candidates.test.ts tools/scripts/db-precheck-cli-conventions.test.ts`;
+    `pnpm exec prettier --check tools/scripts/explain-care-report-index-candidates.ts tools/scripts/explain-care-report-index-candidates.test.ts tools/scripts/db-precheck-cli-conventions.test.ts tools/scripts/README.md package.json Plans.md`;
+    `git diff --check -- Plans.md package.json tools/scripts/README.md tools/scripts/db-precheck-cli-conventions.test.ts tools/scripts/explain-care-report-index-candidates.ts tools/scripts/explain-care-report-index-candidates.test.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Focused Vitest passed `11`; CLI help passed without `DATABASE_URL`; ESLint passed; Prettier
+    check passed after formatting; diff whitespace check passed; full typecheck passed.
+  - commit:
+    pending.
+  - remaining:
+    `PERF-DB-006D-INDEX` still needs approved EXPLAIN artifact from a permitted environment,
+    rollback plan, Oracle/DB review, and human gate before any index migration. `PAYLOAD-BUDGET-001C/D`,
+    dashboard drilldowns/summary rail, frontend slice contracts, and live AWS recovery evidence remain.
+  - next action:
+    Commit and push this slice, then continue with `PAYLOAD-BUDGET-001C/D` unless redirected.
+
 - codex: Plans.md active backlog整理 + PAYLOAD-BUDGET-001B patient movement timeline measured payload budget。
   - current task:
     `Plans.md` の実装済み / 未実装 / Human gate を現行コードとサブエージェント調査に合わせて整理し、

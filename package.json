@@ -61,6 +61,7 @@
     "pmda:onboarding:check": "tsx tools/scripts/pmda-onboarding-check.ts",
     "db:check-care-report-duplicates": "tsx tools/scripts/check-care-report-duplicates.ts",
     "db:check-visit-route-order-conflicts": "tsx tools/scripts/check-visit-route-order-conflicts.ts",
+    "db:explain-care-report-index-candidates": "tsx tools/scripts/explain-care-report-index-candidates.ts",
     "db:external-access-case-boundary-audit": "tsx tools/scripts/external-access-case-boundary-audit.ts",
     "db:handoff-confirmation-tasks:inventory": "tsx tools/scripts/handoff-confirmation-task-inventory.ts",
     "db:verify-migration-preconditions": "tsx tools/scripts/verify-migration-preconditions.ts",

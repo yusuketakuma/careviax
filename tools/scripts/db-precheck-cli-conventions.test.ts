@@ -8,6 +8,7 @@ const dbGatedScripts = [
   'backfill-webhook-registration-secrets.ts',
   'check-care-report-duplicates.ts',
   'check-visit-route-order-conflicts.ts',
+  'explain-care-report-index-candidates.ts',
   'external-access-case-boundary-audit.ts',
   'handoff-confirmation-task-inventory.ts',
   'verify-migration-preconditions.ts',
@@ -17,6 +18,8 @@ const dbGatedScripts = [
 const dbGatedPackageScripts = {
   'db:check-care-report-duplicates': 'tools/scripts/check-care-report-duplicates.ts',
   'db:check-visit-route-order-conflicts': 'tools/scripts/check-visit-route-order-conflicts.ts',
+  'db:explain-care-report-index-candidates':
+    'tools/scripts/explain-care-report-index-candidates.ts',
   'db:external-access-case-boundary-audit': 'tools/scripts/external-access-case-boundary-audit.ts',
   'db:handoff-confirmation-tasks:inventory': 'tools/scripts/handoff-confirmation-task-inventory.ts',
   'db:verify-migration-preconditions': 'tools/scripts/verify-migration-preconditions.ts',
