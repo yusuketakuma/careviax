@@ -41,6 +41,58 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Plans.md implementation backlog cleanup（commit `661121eb8`）。
+  - current task:
+    `Plans.md` 内の実装済み/未実装を現行コードと既存Planに照合して分類し、未実装Planを
+    次PRに切れる粒度へ拡充する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `git log --oneline -30`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/lib/utils/route-payload-budgets.ts`,
+    `src/app/api/care-reports/route.ts`,
+    `src/app/api/care-reports/route.test.ts`,
+    inbound communication / medication-stock / movement timeline / dashboard / backup monitor /
+    permission policy の現行ファイル存在確認。
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `PERF-DB-005B` の実装済み詳細契約を active backlog 入口から圧縮し、
+    `PERF-DB-006A/B/C` の完了済み red-test 前提を削除した。未実装として
+    `PERF-DB-006D-INDEX` と `/api/care-reports` list/search 用
+    `PAYLOAD-BUDGET-003` を Implementation-ready queue に明示し、DoD、payload禁止項目、
+    validation、停止条件を追加した。計画運用品質の派生タスクとして `PLANS-HYGIENE-003`
+    を追加した。
+  - bugs found:
+    `Plans.md` active 入口に、すでに実装済みの詳細実装契約と
+    実装前 red-test 前提が残っていた。`route-payload-budgets.ts` には
+    `/api/care-reports/today-workspace` budget はあるが、通常 list/search
+    `/api/care-reports` budget が未登録だった。
+  - security risks reduced:
+    ランタイム変更はない。計画上、care-report list/search response に
+    `delivery_records` 配列、delivery raw recipient detail、`pdf_url`、storage/signed URL、
+    hidden report content、search-only helper fields を戻さない payload budget gate を
+    明示した。
+  - performance issues improved:
+    ランタイム性能変更はない。残るDB/転送量改善として SELECT-only EXPLAIN-backed index gate と
+    `/api/care-reports` payload budget を次PR候補へ固定した。
+  - validation commands:
+    `pnpm exec prettier --write Plans.md`;
+    `pnpm exec prettier --check Plans.md`;
+    `git diff --check -- Plans.md`;
+    `rg -n "現状は.*赤|PERF-DB-005B.*実装契約|PERF-DB-006 test contract|\(実装済み\).*red test" Plans.md || true`.
+  - validation results:
+    Prettier write completed. Prettier check passed. diff whitespace check passed.
+    stale implemented-red-test wording scan returned no matches.
+  - remaining:
+    `PERF-DB-006D-INDEX`, `PAYLOAD-BUDGET-003`, frontend implementation queue、
+    `INBOUND-002-REVIEW`、`STOCK-001-*`、`MOV-001-API` など未実装Planの実装。
+  - next action:
+    Final formatting/diff checks for `Plans.md` / this STATE entry, scoped commit, push if the
+    branch remains aligned with the user's prior push instruction.
+
 - codex: PERF-DB-006C care-report delivery summary page-basis（commit `8570ecde9`）。
   - current task:
     Active goal の backend-only 実装ループとして、`PERF-DB-006C-DELIVERY` を実装する。
