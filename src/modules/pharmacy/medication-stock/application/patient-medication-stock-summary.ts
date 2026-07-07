@@ -338,6 +338,10 @@ export async function getPatientMedicationStockSummary(
       generated_at: new Date().toISOString(),
       item_limit: itemLimit,
       event_limit: eventLimit,
+      visible_count: itemDtos.length,
+      hidden_count: Math.max(totalItemCount - itemDtos.length, 0),
+      count_basis: 'limited_items',
+      partial_failures: [],
     },
   };
 }

@@ -347,6 +347,73 @@ describe('performance metrics', () => {
     expect(JSON.stringify(snapshot)).not.toContain('limit=');
   });
 
+  it('marks inbound and medication stock payload budgets using normalized route keys', () => {
+    recordRoutePerformance({
+      route: '/api/communications/inbound?status=needs_review&channel=mcs',
+      method: 'GET',
+      status: 200,
+      durationMs: 70,
+      payloadBytes: 161 * 1024,
+    });
+    recordRoutePerformance({
+      route: '/api/communications/inbound/signals?domain=medication_stock',
+      method: 'GET',
+      status: 200,
+      durationMs: 80,
+      payloadBytes: 80 * 1024,
+    });
+    recordRoutePerformance({
+      route: '/api/patients/patient_123456/medication-stock?item_limit=100',
+      method: 'GET',
+      status: 200,
+      durationMs: 90,
+      payloadBytes: 251 * 1024,
+    });
+
+    const snapshot = getPerformanceSnapshot({ topRoutes: 10 });
+
+    expect(snapshot.summary.payload_budgeted_routes).toBe(3);
+    expect(snapshot.summary.routes_over_payload_budget).toBe(2);
+    expect(snapshot.routes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          route: '/api/communications/inbound',
+          method: 'GET',
+          critical_route: true,
+          critical_route_family: 'communications-inbound-inbox',
+          payload_budget_bytes: 160 * 1024,
+          payload_budget_status: 'over_budget',
+          payload_budget_met: false,
+          payload_budget_over_count: 1,
+        }),
+        expect.objectContaining({
+          route: '/api/communications/inbound/signals',
+          method: 'GET',
+          critical_route: true,
+          critical_route_family: 'communications-inbound-signals',
+          payload_budget_bytes: 160 * 1024,
+          payload_budget_status: 'within_budget',
+          payload_budget_met: true,
+          payload_budget_over_count: 0,
+        }),
+        expect.objectContaining({
+          route: '/api/patients/:id/medication-stock',
+          method: 'GET',
+          critical_route: true,
+          critical_route_family: 'patient-medication-stock-summary',
+          payload_budget_bytes: 250 * 1024,
+          payload_budget_status: 'over_budget',
+          payload_budget_met: false,
+          payload_budget_over_count: 1,
+        }),
+      ]),
+    );
+    expect(JSON.stringify(snapshot)).not.toContain('status=needs_review');
+    expect(JSON.stringify(snapshot)).not.toContain('domain=medication_stock');
+    expect(JSON.stringify(snapshot)).not.toContain('patient_123456');
+    expect(JSON.stringify(snapshot)).not.toContain('item_limit=');
+  });
+
   it('drops query strings and hash fragments before route bucketing', () => {
     recordRoutePerformance({
       route: '/api/patients/board?search=patient-name&org_id=org_1#section',

@@ -76,5 +76,9 @@ export type PatientMedicationStockSummaryResponse = {
     generated_at: string;
     item_limit: number;
     event_limit: number;
+    visible_count: number;
+    hidden_count: number;
+    count_basis: 'limited_items';
+    partial_failures: [];
   };
 };

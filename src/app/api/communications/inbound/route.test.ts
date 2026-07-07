@@ -37,6 +37,7 @@ import { GET as rawGET } from './route';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
 const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
+const jsonPayloadBytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length;
 
 function createRequest(search = '') {
   return new NextRequest(`http://localhost/api/communications/inbound${search}`);
@@ -121,11 +122,18 @@ describe('/api/communications/inbound', () => {
     const response = await GET(createRequest('?limit=10'));
     const payload = (await response.json()) as {
       data: { items: Array<{ channel: string; action_href: string }> };
-      meta: { count_basis: string; limit: number };
+      meta: {
+        count_basis: string;
+        limit: number;
+        visible_count: number;
+        hidden_count: number;
+        partial_failures: unknown[];
+      };
     };
 
     expect(response.status).toBe(200);
     expectNoStore(response);
+    expect(response.headers.get('Content-Length')).toBe(String(jsonPayloadBytes(payload)));
     expect(listCommunicationQueueMock).toHaveBeenCalledWith(
       {},
       {
@@ -135,7 +143,13 @@ describe('/api/communications/inbound', () => {
         sourceScope: 'requested',
       },
     );
-    expect(payload.meta).toMatchObject({ count_basis: 'visible_window', limit: 10 });
+    expect(payload.meta).toMatchObject({
+      count_basis: 'visible_window',
+      limit: 10,
+      visible_count: 3,
+      hidden_count: 0,
+      partial_failures: [],
+    });
     expect(payload.data.items).toHaveLength(3);
     expect(payload.data.items[0]).toMatchObject({
       channel: 'phone',
@@ -163,11 +177,17 @@ describe('/api/communications/inbound', () => {
     const response = await GET(createRequest('?channel=phone&status=needs_review&priority=high'));
     const payload = (await response.json()) as {
       data: { items: Array<{ channel: string; priority: string }> };
+      meta: { visible_count: number; hidden_count: number; count_basis: string };
     };
 
     expect(response.status).toBe(200);
     expect(payload.data.items).toEqual([expect.objectContaining({ channel: 'phone' })]);
     expect(payload.data.items[0].priority).toBe('high');
+    expect(payload.meta).toMatchObject({
+      visible_count: 1,
+      hidden_count: 2,
+      count_basis: 'visible_window',
+    });
   });
 
   it('filters mcs channel after the inbound bridge projection', async () => {
@@ -251,6 +271,52 @@ describe('/api/communications/inbound', () => {
     ]);
   });
 
+  it('falls back relative action hrefs that contain signed or storage query material', async () => {
+    listCommunicationQueueMock.mockResolvedValueOnce({
+      summary: {
+        pending_count: 1,
+        overdue_count: 0,
+        self_reports: 0,
+        callback_followups: 0,
+        inbound_communications: 1,
+        open_requests: 0,
+        delivery_backlog: 0,
+        expiring_external_shares: 0,
+        unconfirmed_count: 0,
+        reply_waiting_count: 0,
+        failed_count: 0,
+      },
+      items: [
+        {
+          id: 'inbound_communication:event_secret_href',
+          queue_type: 'inbound_communication',
+          title: '電話連絡を受信',
+          summary: '他職種または関係者からの受信情報があります。',
+          channel: 'phone',
+          status: 'needs_review',
+          priority: 'high',
+          patient_id: 'patient_1',
+          patient_name: '佐藤花子',
+          due_at: '2026-07-07T01:00:00.000Z',
+          action_href: '/patients/patient_1/collaboration?storageKey=secret&token=secret',
+          action_label: '受信情報を確認',
+        },
+      ],
+      timeline: [],
+      emergency_drafts: [],
+    });
+
+    const response = await GET(createRequest());
+    const payload = (await response.json()) as {
+      data: { items: Array<{ action_href: string }> };
+    };
+
+    expect(response.status).toBe(200);
+    expect(payload.data.items[0].action_href).toBe('/communications/requests');
+    expect(JSON.stringify(payload)).not.toContain('storageKey=secret');
+    expect(JSON.stringify(payload)).not.toContain('token=secret');
+  });
+
   it('rejects unsupported filters', async () => {
     const response = await GET(createRequest('?channel=postal'));
     const payload = (await response.json()) as { code: string; details: unknown };
@@ -259,5 +325,16 @@ describe('/api/communications/inbound', () => {
     expectNoStore(response);
     expect(payload.code).toBe('VALIDATION_ERROR');
     expect(listCommunicationQueueMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a no-store internal error without leaking source errors when the queue read fails', async () => {
+    listCommunicationQueueMock.mockRejectedValueOnce(new Error('database unavailable'));
+
+    const response = await GET(createRequest());
+    const payload = await response.json();
+
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    expect(JSON.stringify(payload)).not.toContain('database unavailable');
   });
 });

@@ -48,6 +48,8 @@ vi.mock('@/modules/pharmacy/medication-stock/application/patient-medication-stoc
 
 import { GET } from './route';
 
+const jsonPayloadBytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length;
+
 function createRequest(url = 'http://localhost/api/patients/patient_1/medication-stock') {
   return new NextRequest(url);
 }
@@ -75,6 +77,10 @@ describe('GET /api/patients/[id]/medication-stock', () => {
         generated_at: '2026-07-07T00:00:00.000Z',
         item_limit: 50,
         event_limit: 12,
+        visible_count: 1,
+        hidden_count: 0,
+        count_basis: 'limited_items',
+        partial_failures: [],
       },
     });
 
@@ -84,6 +90,17 @@ describe('GET /api/patients/[id]/medication-stock', () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    const payload = await response.json();
+    expect(response.headers.get('Content-Length')).toBe(String(jsonPayloadBytes(payload)));
+    expect(payload.meta).toMatchObject({
+      generated_at: '2026-07-07T00:00:00.000Z',
+      item_limit: 50,
+      event_limit: 12,
+      visible_count: 1,
+      hidden_count: 0,
+      count_basis: 'limited_items',
+      partial_failures: [],
+    });
     expect(createScopedTxRunnerMock).toHaveBeenCalledWith('org_1');
     expect(getPatientMedicationStockSummaryMock).toHaveBeenCalledWith(
       { tx: true },
@@ -121,6 +138,10 @@ describe('GET /api/patients/[id]/medication-stock', () => {
         generated_at: '2026-07-07T00:00:00.000Z',
         item_limit: 5,
         event_limit: 0,
+        visible_count: 0,
+        hidden_count: 0,
+        count_basis: 'limited_items',
+        partial_failures: [],
       },
     });
 
@@ -174,6 +195,20 @@ describe('GET /api/patients/[id]/medication-stock', () => {
     });
 
     expect(response.status).toBe(404);
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a no-store internal error without PHI audit when the summary read fails', async () => {
+    getPatientMedicationStockSummaryMock.mockRejectedValueOnce(new Error('database unavailable'));
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+    const payload = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(JSON.stringify(payload)).not.toContain('database unavailable');
     expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 });

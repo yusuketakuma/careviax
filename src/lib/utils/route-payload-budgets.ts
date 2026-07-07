@@ -80,6 +80,24 @@ export const CRITICAL_ROUTE_PAYLOAD_BUDGETS: PayloadBudgetDefinition[] = [
   },
   {
     method: 'GET',
+    route: '/api/patients/:id/medication-stock',
+    family: 'patient-medication-stock-summary',
+    budget_bytes: 250 * KIB,
+  },
+  {
+    method: 'GET',
+    route: '/api/communications/inbound',
+    family: 'communications-inbound-inbox',
+    budget_bytes: 160 * KIB,
+  },
+  {
+    method: 'GET',
+    route: '/api/communications/inbound/signals',
+    family: 'communications-inbound-signals',
+    budget_bytes: 160 * KIB,
+  },
+  {
+    method: 'GET',
     route: '/api/care-reports/today-workspace',
     family: 'reports-today-workspace',
     budget_bytes: 250 * KIB,
@@ -129,7 +147,7 @@ function isDynamicRouteSegment(segment: string): boolean {
     return true;
   }
   if (/^[a-z]{1,16}_[a-z0-9][a-z0-9_-]*$/i.test(segment)) return true;
-  if (/^c[a-z0-9]{8,}$/i.test(segment)) return true;
+  if (/^c(?=.*\d)[a-z0-9]{8,}$/i.test(segment)) return true;
   return segment.length >= 8 && /\d/.test(segment) && /^[a-z0-9_-]+$/i.test(segment);
 }
 

@@ -1,6 +1,6 @@
 import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
-import { success, validationError, internalError } from '@/lib/api/response';
+import { successWithMeasuredJsonPayload, validationError, internalError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import {
@@ -57,7 +57,15 @@ function parseLimit(searchParams: URLSearchParams) {
 }
 
 function isSafeRelativeHref(href: string) {
-  return href.startsWith('/') && !href.startsWith('//');
+  if (!href.startsWith('/') || href.startsWith('//')) return false;
+  const lowered = href.toLowerCase();
+  return (
+    !lowered.includes('token=') &&
+    !lowered.includes('storagekey=') &&
+    !lowered.includes('storage_key=') &&
+    !lowered.includes('x-amz-') &&
+    !lowered.includes('signature=')
+  );
 }
 
 function toInboundInboxItem(item: CommunicationQueueItem) {
@@ -79,71 +87,91 @@ function toInboundInboxItem(item: CommunicationQueueItem) {
 
 const authenticatedGET = withAuthContext(
   async (req, ctx) => {
-    const { searchParams } = req.nextUrl;
-    const limitResult = parseLimit(searchParams);
-    if (!limitResult.ok) return withSensitiveNoStore(limitResult.response);
+    try {
+      const { searchParams } = req.nextUrl;
+      const limitResult = parseLimit(searchParams);
+      if (!limitResult.ok) return withSensitiveNoStore(limitResult.response);
 
-    const channelResult = parseEnumParam(searchParams, 'channel', CHANNELS);
-    if (!channelResult.ok) return withSensitiveNoStore(channelResult.response);
+      const channelResult = parseEnumParam(searchParams, 'channel', CHANNELS);
+      if (!channelResult.ok) return withSensitiveNoStore(channelResult.response);
 
-    const statusResult = parseEnumParam(searchParams, 'status', STATUSES);
-    if (!statusResult.ok) return withSensitiveNoStore(statusResult.response);
+      const statusResult = parseEnumParam(searchParams, 'status', STATUSES);
+      if (!statusResult.ok) return withSensitiveNoStore(statusResult.response);
 
-    const priorityResult = parseEnumParam(searchParams, 'priority', PRIORITIES);
-    if (!priorityResult.ok) return withSensitiveNoStore(priorityResult.response);
+      const priorityResult = parseEnumParam(searchParams, 'priority', PRIORITIES);
+      if (!priorityResult.ok) return withSensitiveNoStore(priorityResult.response);
 
-    const overview = await listCommunicationQueue(prisma, {
-      orgId: ctx.orgId,
-      limit: limitResult.value,
-      queueTypes: ['inbound_communication'],
-      sourceScope: 'requested',
-    });
+      const overview = await listCommunicationQueue(prisma, {
+        orgId: ctx.orgId,
+        limit: limitResult.value,
+        queueTypes: ['inbound_communication'],
+        sourceScope: 'requested',
+      });
 
-    const channel = channelResult.value as InboundChannel | null;
-    const status = statusResult.value as InboundStatus | null;
-    const priority = priorityResult.value as InboundPriority | null;
+      const channel = channelResult.value as InboundChannel | null;
+      const status = statusResult.value as InboundStatus | null;
+      const priority = priorityResult.value as InboundPriority | null;
 
-    const filteredItems = overview.items.filter((item) => {
-      if (channel && item.channel !== channel) return false;
-      if (status && item.status !== status) return false;
-      if (priority && item.priority !== priority) return false;
-      return true;
-    });
+      const filteredItems = overview.items.filter((item) => {
+        if (channel && item.channel !== channel) return false;
+        if (status && item.status !== status) return false;
+        if (priority && item.priority !== priority) return false;
+        return true;
+      });
 
-    return withSensitiveNoStore(
-      success({
-        data: {
-          summary: {
-            total_visible_count: overview.summary.inbound_communications,
-            filtered_count: filteredItems.length,
-            needs_review_count: overview.items.filter((item) => item.status === 'needs_review')
-              .length,
-            reviewed_pending_action_count: overview.items.filter(
-              (item) => item.status === 'reviewed_pending_action',
-            ).length,
-            urgent_count: overview.items.filter((item) => item.priority === 'urgent').length,
-            channel_counts: CHANNELS.reduce<Record<InboundChannel, number>>(
-              (acc, current) => {
-                acc[current] = overview.items.filter((item) => item.channel === current).length;
-                return acc;
-              },
-              { phone: 0, fax: 0, email: 0, mcs: 0 },
+      return withSensitiveNoStore(
+        successWithMeasuredJsonPayload({
+          data: {
+            summary: {
+              total_visible_count: overview.summary.inbound_communications,
+              filtered_count: filteredItems.length,
+              needs_review_count: overview.items.filter((item) => item.status === 'needs_review')
+                .length,
+              reviewed_pending_action_count: overview.items.filter(
+                (item) => item.status === 'reviewed_pending_action',
+              ).length,
+              urgent_count: overview.items.filter((item) => item.priority === 'urgent').length,
+              channel_counts: CHANNELS.reduce<Record<InboundChannel, number>>(
+                (acc, current) => {
+                  acc[current] = overview.items.filter((item) => item.channel === current).length;
+                  return acc;
+                },
+                { phone: 0, fax: 0, email: 0, mcs: 0 },
+              ),
+            },
+            items: filteredItems.map(toInboundInboxItem),
+            filters: {
+              channel,
+              status,
+              priority,
+            },
+          },
+          meta: {
+            generated_at: new Date().toISOString(),
+            limit: limitResult.value,
+            visible_count: filteredItems.length,
+            hidden_count: Math.max(
+              overview.summary.inbound_communications - filteredItems.length,
+              0,
             ),
+            count_basis: 'visible_window',
+            partial_failures: [],
           },
-          items: filteredItems.map(toInboundInboxItem),
-          filters: {
-            channel,
-            status,
-            priority,
-          },
+        }),
+      );
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error(
+        {
+          event: 'inbound_communications_get_unhandled_error',
+          route: ROUTE,
+          method: req.method,
+          status: 500,
         },
-        meta: {
-          generated_at: new Date().toISOString(),
-          limit: limitResult.value,
-          count_basis: 'visible_window',
-        },
-      }),
-    );
+        err,
+      );
+      return withSensitiveNoStore(internalError());
+    }
   },
   {
     permission: 'canReport',

@@ -1,6 +1,6 @@
 import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
-import { success, validationError, internalError } from '@/lib/api/response';
+import { successWithMeasuredJsonPayload, validationError, internalError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
 import {
@@ -273,205 +273,222 @@ const emptyDomainCounts = () =>
 
 const authenticatedGET = withAuthContext(
   async (req, ctx) => {
-    const { searchParams } = req.nextUrl;
-    const limitResult = parseLimit(searchParams);
-    if (!limitResult.ok) return withSensitiveNoStore(limitResult.response);
+    try {
+      const { searchParams } = req.nextUrl;
+      const limitResult = parseLimit(searchParams);
+      if (!limitResult.ok) return withSensitiveNoStore(limitResult.response);
 
-    const channelResult = parseEnumParam(searchParams, 'channel', CHANNELS);
-    if (!channelResult.ok) return withSensitiveNoStore(channelResult.response);
+      const channelResult = parseEnumParam(searchParams, 'channel', CHANNELS);
+      if (!channelResult.ok) return withSensitiveNoStore(channelResult.response);
 
-    const domainResult = parseEnumParam(searchParams, 'domain', SIGNAL_DOMAINS);
-    if (!domainResult.ok) return withSensitiveNoStore(domainResult.response);
+      const domainResult = parseEnumParam(searchParams, 'domain', SIGNAL_DOMAINS);
+      if (!domainResult.ok) return withSensitiveNoStore(domainResult.response);
 
-    const typeResult = parseEnumParam(searchParams, 'type', SIGNAL_TYPES);
-    if (!typeResult.ok) return withSensitiveNoStore(typeResult.response);
+      const typeResult = parseEnumParam(searchParams, 'type', SIGNAL_TYPES);
+      if (!typeResult.ok) return withSensitiveNoStore(typeResult.response);
 
-    const channel = channelResult.value as InboundChannel | null;
-    const domain = domainResult.value as InboundSignalDomain | null;
-    const type = typeResult.value as InboundSignalType | null;
+      const channel = channelResult.value as InboundChannel | null;
+      const domain = domainResult.value as InboundSignalDomain | null;
+      const type = typeResult.value as InboundSignalType | null;
 
-    const materialization = await withOrgContext(
-      ctx.orgId,
-      async (tx) => {
-        const assignmentWhere = await buildInboundCommunicationEventAssignmentWhere({
-          db: tx,
-          orgId: ctx.orgId,
-          accessContext: ctx,
-        });
-
-        const rows = (await tx.inboundCommunicationEvent.findMany({
-          where: {
-            AND: [
-              {
-                org_id: ctx.orgId,
-                source_channel: channel
-                  ? { equals: channel }
-                  : { in: ['phone', 'fax', 'email', 'mcs'] },
-              },
-              ...(assignmentWhere ? [assignmentWhere] : []),
-            ],
-          },
-          orderBy: [{ received_at: 'desc' }, { created_at: 'desc' }],
-          take: limitResult.value,
-          select: {
-            id: true,
-            patient_id: true,
-            case_id: true,
-            source_channel: true,
-            raw_text: true,
-            received_at: true,
-          },
-        })) as SignalSourceRow[];
-
-        const candidates: MaterializedSignalCandidate[] = [];
-        const eventIdsWithSignals = new Set<string>();
-
-        for (const row of rows) {
-          const extraction = extractInboundCommunicationSignals({
-            communication: toCommunicationInput(row),
+      const materialization = await withOrgContext(
+        ctx.orgId,
+        async (tx) => {
+          const assignmentWhere = await buildInboundCommunicationEventAssignmentWhere({
+            db: tx,
+            orgId: ctx.orgId,
+            accessContext: ctx,
           });
 
-          for (const [index, candidate] of extraction.signals.entries()) {
-            eventIdsWithSignals.add(row.id);
-            const signal = (await tx.inboundCommunicationSignal.upsert({
-              where: {
-                org_id_inbound_event_id_signal_index: {
+          const rows = (await tx.inboundCommunicationEvent.findMany({
+            where: {
+              AND: [
+                {
                   org_id: ctx.orgId,
+                  source_channel: channel
+                    ? { equals: channel }
+                    : { in: ['phone', 'fax', 'email', 'mcs'] },
+                },
+                ...(assignmentWhere ? [assignmentWhere] : []),
+              ],
+            },
+            orderBy: [{ received_at: 'desc' }, { created_at: 'desc' }],
+            take: limitResult.value,
+            select: {
+              id: true,
+              patient_id: true,
+              case_id: true,
+              source_channel: true,
+              raw_text: true,
+              received_at: true,
+            },
+          })) as SignalSourceRow[];
+
+          const candidates: MaterializedSignalCandidate[] = [];
+          const eventIdsWithSignals = new Set<string>();
+
+          for (const row of rows) {
+            const extraction = extractInboundCommunicationSignals({
+              communication: toCommunicationInput(row),
+            });
+
+            for (const [index, candidate] of extraction.signals.entries()) {
+              eventIdsWithSignals.add(row.id);
+              const signal = (await tx.inboundCommunicationSignal.upsert({
+                where: {
+                  org_id_inbound_event_id_signal_index: {
+                    org_id: ctx.orgId,
+                    inbound_event_id: row.id,
+                    signal_index: index,
+                  },
+                },
+                create: {
+                  org_id: ctx.orgId,
+                  patient_id: row.patient_id,
+                  case_id: row.case_id,
                   inbound_event_id: row.id,
                   signal_index: index,
+                  signal_domain: candidate.signalDomain,
+                  signal_type: candidate.signalType,
+                  extracted_quantity: candidate.extractedQuantity ?? null,
+                  extracted_unit: candidate.extractedUnit ?? null,
+                  structured_payload: buildSignalStructuredPayload(candidate),
+                  source_confidence: candidate.sourceConfidence,
+                  review_status: candidate.reviewStatus,
+                  action_status: candidate.actionStatus,
                 },
-              },
-              create: {
-                org_id: ctx.orgId,
-                patient_id: row.patient_id,
-                case_id: row.case_id,
-                inbound_event_id: row.id,
-                signal_index: index,
-                signal_domain: candidate.signalDomain,
-                signal_type: candidate.signalType,
-                extracted_quantity: candidate.extractedQuantity ?? null,
-                extracted_unit: candidate.extractedUnit ?? null,
-                structured_payload: buildSignalStructuredPayload(candidate),
-                source_confidence: candidate.sourceConfidence,
-                review_status: candidate.reviewStatus,
-                action_status: candidate.actionStatus,
-              },
-              update: {
-                patient_id: row.patient_id,
-                case_id: row.case_id,
-                signal_domain: candidate.signalDomain,
-                signal_type: candidate.signalType,
-                extracted_quantity: candidate.extractedQuantity ?? null,
-                extracted_unit: candidate.extractedUnit ?? null,
-                structured_payload: buildSignalStructuredPayload(candidate),
-                source_confidence: candidate.sourceConfidence,
-              },
-              select: {
-                id: true,
-                review_status: true,
-                action_status: true,
-              },
-            })) as PersistedSignalRow;
+                update: {
+                  patient_id: row.patient_id,
+                  case_id: row.case_id,
+                  signal_domain: candidate.signalDomain,
+                  signal_type: candidate.signalType,
+                  extracted_quantity: candidate.extractedQuantity ?? null,
+                  extracted_unit: candidate.extractedUnit ?? null,
+                  structured_payload: buildSignalStructuredPayload(candidate),
+                  source_confidence: candidate.sourceConfidence,
+                },
+                select: {
+                  id: true,
+                  review_status: true,
+                  action_status: true,
+                },
+              })) as PersistedSignalRow;
 
-            candidates.push({
-              row,
-              candidate,
-              signalIndex: index,
-              signal,
+              candidates.push({
+                row,
+                candidate,
+                signalIndex: index,
+                signal,
+              });
+            }
+          }
+
+          if (eventIdsWithSignals.size > 0) {
+            await tx.inboundCommunicationEvent.updateMany({
+              where: {
+                org_id: ctx.orgId,
+                id: { in: [...eventIdsWithSignals] },
+                processing_status: 'unprocessed',
+              },
+              data: {
+                processing_status: 'signals_extracted',
+              },
             });
           }
+
+          return {
+            sourceEventCount: rows.length,
+            candidates,
+          };
+        },
+        { requestContext: ctx },
+      );
+
+      const domainCounts = emptyDomainCounts();
+      let signalCount = 0;
+      let urgentCount = 0;
+      const items: Array<{
+        candidate_key: string;
+        inbound_event_id: string;
+        signal_id: string;
+        channel: InboundChannel;
+        occurred_at: string;
+        patient_linked: boolean;
+        case_linked: boolean;
+        signal: PublicSignalDto;
+      }> = [];
+
+      for (const item of materialization.candidates) {
+        const { row, candidate, signal } = item;
+        if (domain && candidate.signalDomain !== domain) continue;
+        if (type && candidate.signalType !== type) continue;
+
+        signalCount += 1;
+        if (candidate.signalDomain in domainCounts) {
+          domainCounts[candidate.signalDomain as keyof typeof domainCounts] += 1;
         }
+        if (candidate.signalDomain === 'urgent') urgentCount += 1;
 
-        if (eventIdsWithSignals.size > 0) {
-          await tx.inboundCommunicationEvent.updateMany({
-            where: {
-              org_id: ctx.orgId,
-              id: { in: [...eventIdsWithSignals] },
-              processing_status: 'unprocessed',
-            },
-            data: {
-              processing_status: 'signals_extracted',
-            },
-          });
-        }
-
-        return {
-          sourceEventCount: rows.length,
-          candidates,
-        };
-      },
-      { requestContext: ctx },
-    );
-
-    const domainCounts = emptyDomainCounts();
-    let signalCount = 0;
-    let urgentCount = 0;
-    const items: Array<{
-      candidate_key: string;
-      inbound_event_id: string;
-      signal_id: string;
-      channel: InboundChannel;
-      occurred_at: string;
-      patient_linked: boolean;
-      case_linked: boolean;
-      signal: PublicSignalDto;
-    }> = [];
-
-    for (const item of materialization.candidates) {
-      const { row, candidate, signal } = item;
-      if (domain && candidate.signalDomain !== domain) continue;
-      if (type && candidate.signalType !== type) continue;
-
-      signalCount += 1;
-      if (candidate.signalDomain in domainCounts) {
-        domainCounts[candidate.signalDomain as keyof typeof domainCounts] += 1;
+        items.push({
+          candidate_key: `inbound_signal:${signal.id}`,
+          inbound_event_id: row.id,
+          signal_id: signal.id,
+          channel: row.source_channel,
+          occurred_at: row.received_at.toISOString(),
+          patient_linked: row.patient_id != null,
+          case_linked: row.case_id != null,
+          signal: {
+            ...toSignalDto(row, candidate),
+            review_status: signal.review_status,
+            action_status: signal.action_status,
+          },
+        });
       }
-      if (candidate.signalDomain === 'urgent') urgentCount += 1;
 
-      items.push({
-        candidate_key: `inbound_signal:${signal.id}`,
-        inbound_event_id: row.id,
-        signal_id: signal.id,
-        channel: row.source_channel,
-        occurred_at: row.received_at.toISOString(),
-        patient_linked: row.patient_id != null,
-        case_linked: row.case_id != null,
-        signal: {
-          ...toSignalDto(row, candidate),
-          review_status: signal.review_status,
-          action_status: signal.action_status,
+      const eventsWithSignals = new Set(items.map((item) => item.inbound_event_id));
+
+      return withSensitiveNoStore(
+        successWithMeasuredJsonPayload({
+          data: {
+            summary: {
+              source_event_count: materialization.sourceEventCount,
+              events_with_signals_count: eventsWithSignals.size,
+              signal_count: signalCount,
+              urgent_count: urgentCount,
+              domain_counts: domainCounts,
+            },
+            items,
+            filters: {
+              channel,
+              domain,
+              type,
+            },
+          },
+          meta: {
+            generated_at: new Date().toISOString(),
+            limit: limitResult.value,
+            visible_count: items.length,
+            hidden_count: Math.max(materialization.candidates.length - items.length, 0),
+            count_basis: 'visible_window',
+            partial_failures: [],
+            source: 'inbound_communication_event',
+            classifier_version: CLASSIFIER_VERSION,
+          },
+        }),
+      );
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error(
+        {
+          event: 'inbound_signal_candidates_get_unhandled_error',
+          route: ROUTE,
+          method: req.method,
+          status: 500,
         },
-      });
+        err,
+      );
+      return withSensitiveNoStore(internalError());
     }
-
-    const eventsWithSignals = new Set(items.map((item) => item.inbound_event_id));
-
-    return withSensitiveNoStore(
-      success({
-        data: {
-          summary: {
-            source_event_count: materialization.sourceEventCount,
-            events_with_signals_count: eventsWithSignals.size,
-            signal_count: signalCount,
-            urgent_count: urgentCount,
-            domain_counts: domainCounts,
-          },
-          items,
-          filters: {
-            channel,
-            domain,
-            type,
-          },
-        },
-        meta: {
-          generated_at: new Date().toISOString(),
-          limit: limitResult.value,
-          count_basis: 'visible_window',
-          source: 'inbound_communication_event',
-          classifier_version: CLASSIFIER_VERSION,
-        },
-      }),
-    );
   },
   {
     permission: 'canReport',

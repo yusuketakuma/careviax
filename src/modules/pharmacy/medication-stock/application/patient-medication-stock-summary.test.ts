@@ -63,7 +63,7 @@ describe('getPatientMedicationStockSummary', () => {
       id: 'patient_1',
       cases: [{ id: 'case_1' }],
     } as never);
-    vi.mocked(db.patientMedicationStockItem.count).mockResolvedValue(2);
+    vi.mocked(db.patientMedicationStockItem.count).mockResolvedValue(3);
     vi.mocked(db.externalMedicationStockObservation.count).mockResolvedValue(1);
     vi.mocked(db.patientMedicationStockItem.findMany).mockResolvedValue([
       {
@@ -163,9 +163,9 @@ describe('getPatientMedicationStockSummary', () => {
 
     expect(result?.data.patient_id).toBe('patient_1');
     expect(result?.data.summary).toMatchObject({
-      total_item_count: 2,
+      total_item_count: 3,
       visible_item_count: 2,
-      active_item_count: 2,
+      active_item_count: 3,
       urgent_count: 1,
       unknown_risk_count: 1,
       usage_unknown_count: 1,
@@ -190,6 +190,10 @@ describe('getPatientMedicationStockSummary', () => {
     expect(result?.meta).toMatchObject({
       item_limit: 10,
       event_limit: 5,
+      visible_count: 2,
+      hidden_count: 1,
+      count_basis: 'limited_items',
+      partial_failures: [],
     });
 
     expect(db.patientMedicationStockItem.findMany).toHaveBeenCalledWith(

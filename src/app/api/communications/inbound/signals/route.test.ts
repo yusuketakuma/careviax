@@ -52,6 +52,7 @@ import { GET as rawGET } from './route';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
 const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
+const jsonPayloadBytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length;
 
 function createRequest(search = '') {
   return new NextRequest(`http://localhost/api/communications/inbound/signals${search}`);
@@ -169,6 +170,9 @@ describe('/api/communications/inbound/signals', () => {
       };
       meta: {
         count_basis: string;
+        visible_count: number;
+        hidden_count: number;
+        partial_failures: unknown[];
         source: string;
         classifier_version: string;
       };
@@ -176,6 +180,7 @@ describe('/api/communications/inbound/signals', () => {
 
     expect(response.status).toBe(200);
     expectNoStore(response);
+    expect(response.headers.get('Content-Length')).toBe(String(jsonPayloadBytes(payload)));
     expect(assignmentWhereMock).toHaveBeenCalledWith(expect.objectContaining({ orgId: 'org_1' }));
     expect(inboundCommunicationEventFindManyMock).toHaveBeenCalledWith({
       where: {
@@ -260,6 +265,9 @@ describe('/api/communications/inbound/signals', () => {
     });
     expect(payload.meta).toMatchObject({
       count_basis: 'visible_window',
+      visible_count: 5,
+      hidden_count: 0,
+      partial_failures: [],
       source: 'inbound_communication_event',
       classifier_version: 'inbound_signal_classifier_v1',
     });
@@ -360,6 +368,7 @@ describe('/api/communications/inbound/signals', () => {
     );
     const payload = (await response.json()) as {
       data: { items: Array<{ channel: string; signal: { domain: string; type: string } }> };
+      meta: { visible_count: number; hidden_count: number; count_basis: string };
     };
 
     expect(response.status).toBe(200);
@@ -385,6 +394,11 @@ describe('/api/communications/inbound/signals', () => {
         }),
       ]),
     );
+    expect(payload.meta).toMatchObject({
+      visible_count: 2,
+      hidden_count: 3,
+      count_basis: 'visible_window',
+    });
   });
 
   it('queries formal MCS inbound source events by the public mcs channel', async () => {

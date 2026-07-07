@@ -41,6 +41,114 @@
 
 ## 直近の land（本日・要点）
 
+- codex: `PAYLOAD-BUDGET-001C-A/B/C/D` inbound / signal / medication-stock summary payload budget。
+  - current task:
+    `Plans.md` の active queue で未実装扱いだった `PAYLOAD-BUDGET-001C-A/B/C/D` を実装し、
+    inbound inbox、inbound signal list、patient medication-stock summary を measured JSON +
+    payload budget + additive count metadata へ移行する。同時に `Plans.md` の実装済み /
+    未実装分類を更新し、残タスクを `PAYLOAD-BUDGET-001D` 以降へ進める。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `git remote -v`,
+    `git branch --show-current`,
+    `git rev-parse HEAD`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `.agents/skills/oracle-consult/SKILL.md`,
+    `src/lib/auth/context.ts`,
+    `src/lib/api/response.ts`,
+    `src/lib/api/sensitive-response.ts`,
+    `src/lib/utils/performance.ts`,
+    `src/lib/utils/route-payload-budgets.ts`,
+    `src/app/api/communications/inbound/route.ts`,
+    `src/app/api/communications/inbound/signals/route.ts`,
+    `src/app/api/patients/[id]/medication-stock/route.ts`,
+    `src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.ts`,
+    related route/service tests.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/api/communications/inbound/route.ts`,
+    `src/app/api/communications/inbound/route.test.ts`,
+    `src/app/api/communications/inbound/signals/route.ts`,
+    `src/app/api/communications/inbound/signals/route.test.ts`,
+    `src/app/api/patients/[id]/medication-stock/route.ts`,
+    `src/app/api/patients/[id]/medication-stock/route.test.ts`,
+    `src/lib/utils/performance.test.ts`,
+    `src/lib/utils/route-payload-budgets.ts`,
+    `src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.ts`,
+    `src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.test.ts`,
+    `src/types/medication-stock.ts`.
+  - implementation:
+    `GET /api/communications/inbound`, `GET /api/communications/inbound/signals`,
+    and `GET /api/patients/:id/medication-stock` now return successful sensitive
+    responses via `successWithMeasuredJsonPayload`, allowing the existing
+    authenticated route performance wrapper to record `Content-Length`. The three route
+    families are registered in `route-payload-budgets` as
+    `communications-inbound-inbox`, `communications-inbound-signals`, and
+    `patient-medication-stock-summary`. The list/summary meta is additive and keeps
+    existing data shapes while adding `visible_count`, `hidden_count`,
+    `count_basis`, `partial_failures`, and existing generated/limit metadata.
+    Medication stock summary service now reports limited item visibility explicitly.
+    Route normalization now requires a digit for CUID-like `c...` segments so static
+    `/api/communications/...` routes are not collapsed to `/api/:id/...`.
+  - bugs found:
+    `normalizeRoutePath()` incorrectly treated the static segment `communications`
+    as a CUID-like dynamic id, preventing `/api/communications/inbound*` payload
+    budgets from resolving. Oracle also found that `withAuthContext` catches handler
+    exceptions before route-level outer catches, so sensitive 500 responses could miss
+    no-store headers. The three touched handlers now catch inside the authenticated
+    handler and return `withSensitiveNoStore(internalError())`. Inbound action href
+    sanitization now also rejects relative hrefs carrying token/storage/signature query
+    material.
+  - security risks reduced:
+    No auth/authorization semantics changed. Sensitive success and error paths now keep
+    no-store headers on the touched PHI/medical routes. List/summary DTO tests continue
+    to block raw chat text, phone numbers, MCS URLs, storage keys, signed/token query
+    material, provider raw errors, and classifier raw payload fields. Detail surfaces
+    remain the required path for raw/detail PHI with reauthorization/read-audit.
+  - performance issues improved:
+    Three critical PHI/medical read paths are now measurable by the route performance
+    collector and have explicit payload budgets. Route normalization now preserves
+    `/api/communications/...` family buckets, avoiding unbudgeted metrics caused by
+    static route misclassification.
+  - Oracle / GPT-5.5 Pro:
+    Consulted Oracle browser mode (`gpt-5.5-pro`, session `payload-budget-review`)
+    after providing GitHub context for `https://github.com/yusuketakuma/careviax`,
+    branch `main`, commit `3e1a9574ee0e767d28c4d50a8d0dd3e075837e6b`, and dirty state.
+    Oracle reported GitHub access succeeded and returned "conditional Go". Accepted
+    the two actionable findings: add handler-internal sensitive error handling and
+    harden relative action href sanitizer for secret-like query material.
+  - validation commands:
+    `pnpm exec vitest run src/lib/utils/performance.test.ts src/app/api/communications/inbound/route.test.ts src/app/api/communications/inbound/signals/route.test.ts 'src/app/api/patients/[id]/medication-stock/route.test.ts' src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint src/lib/utils/route-payload-budgets.ts src/lib/utils/performance.test.ts src/app/api/communications/inbound/route.ts src/app/api/communications/inbound/route.test.ts src/app/api/communications/inbound/signals/route.ts src/app/api/communications/inbound/signals/route.test.ts 'src/app/api/patients/[id]/medication-stock/route.ts' 'src/app/api/patients/[id]/medication-stock/route.test.ts' src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.ts src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.test.ts src/types/medication-stock.ts`;
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/lib/utils/route-payload-budgets.ts src/lib/utils/performance.test.ts src/app/api/communications/inbound/route.ts src/app/api/communications/inbound/route.test.ts src/app/api/communications/inbound/signals/route.ts src/app/api/communications/inbound/signals/route.test.ts 'src/app/api/patients/[id]/medication-stock/route.ts' 'src/app/api/patients/[id]/medication-stock/route.test.ts' src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.ts src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.test.ts src/types/medication-stock.ts`;
+    `pnpm exec vitest run src/lib/auth/context.test.ts src/lib/auth/__tests__/context.test.ts src/lib/utils/performance.test.ts --reporter=dot --testTimeout=30000`;
+    `git diff --check -- Plans.md src/lib/utils/route-payload-budgets.ts src/lib/utils/performance.test.ts src/app/api/communications/inbound/route.ts src/app/api/communications/inbound/route.test.ts src/app/api/communications/inbound/signals/route.ts src/app/api/communications/inbound/signals/route.test.ts 'src/app/api/patients/[id]/medication-stock/route.ts' 'src/app/api/patients/[id]/medication-stock/route.test.ts' src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.ts src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.test.ts src/types/medication-stock.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Focused route/service/performance suite passed `5` files / `39` tests.
+    Auth context + performance suite passed `3` files / `30` tests. Scoped ESLint
+    passed. Prettier check passed after formatting `Plans.md`. Diff whitespace check
+    passed. Full typecheck passed.
+  - gbrain:
+    `projects/careviax/reviews/2026-07-08/inbound-stock-payload-budget`
+    (`PerformanceFinding`) に PHI-free で payload budget / no-store / route
+    normalization の再利用知見を保存済み。gbrain write-through で生成された
+    `projects/careviax/reviews/2026-07-08/inbound-stock-payload-budget.md` は、
+    既存の未追跡 gbrain mirror 群と同じく今回の scoped commit には含めない。
+  - remaining:
+    `PAYLOAD-BUDGET-001D`横断 perf-smoke matrix、patients board / reports payload
+    budgets、`QUERY-SHAPE-TEST-002`、dashboard rail/drilldown、frontend slice contracts、
+    raw detail reauthorization, permission matrix coverage, and human-gated
+    care-report index / live AWS recovery evidence remain.
+  - commit:
+    included in the scoped implementation commit; final hash is reported in the
+    user-facing summary after commit creation.
+  - next action:
+    Commit and push this scoped slice, then continue with `PAYLOAD-BUDGET-001D` unless
+    redirected.
+
 - codex: `Plans.md` active backlog分類整理 + 未実装Plan拡充。
   - current task:
     `Plans.md` 内の実装済み / 未実装 / Partial / Human gate を現行コードと既存計画に合わせて分類し、
@@ -93,7 +201,7 @@
     frontend slice contracts, raw detail reauthorization, permission matrix coverage, and
     human-gated care-report index / live AWS recovery evidence.
   - commit:
-    pending for this docs-only slice.
+    `3e1a9574e` (`docs: organize active implementation plan`).
   - next action:
     Commit this scoped docs slice, then continue with `PAYLOAD-BUDGET-001C-A` unless redirected.
 
