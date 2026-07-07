@@ -41,6 +41,52 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Plans.md 実装済み/未実装分類と care-report DB速度派生タスク拡充（commit `47942c473`）。
+  - current task:
+    既存 `Plans.md` 内を整理し、実装済み・一部実装済み・未実装・Human gate を分類する。
+    未実装項目は次PRに落とせる粒度へ拡充し、派生タスクが見つかった場合は追記する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `PLANS.md` hardlink/同一inode確認,
+    `ops/refactor/STATE.md`,
+    dashboard / inbound / medication-stock / movement / backup / permission matrix の現行コード検索,
+    read-only subagent evidence for `/api/care-reports` search / DeliveryRecord summary / index backlog,
+    and read-only subagent proposed red-test contract for `PERF-DB-006`.
+  - files changed:
+    `Plans.md`.
+  - implementation:
+    Added a 2026-07-08 live-code reconciliation block to the Plan Status Registry.
+    Clarified that completed items in lower `cc:REFERENCE` / `cc:WIP` sections are not active backlog,
+    and that new work must start from the registry, `Implementation-ready queue`, or `Frontend implementation queue`.
+    Reclassified dashboard, inbound, medication stock, movement timeline, AWS backup monitor, and permission SSOT
+    as implemented or partially implemented based on current code.
+    Expanded the remaining DB performance work into `PERF-DB-006A-D`: bounded non-palette patient search,
+    keyword scan semantics, delivery summary aggregate review, and EXPLAIN-backed index human gate.
+    Added `CARE-REPORT-SEARCH-TEST-001` and `PAYLOAD-BUDGET-003` so the next care-report performance PR starts
+    with red tests and payload-budget guardrails.
+  - bugs found:
+    `Plans.md` still mixed implemented tasks with active backlog and treated the remaining care-report DB speed work
+    as one broad item instead of separating bounded search, keyword behavior, delivery summary, and index-gated work.
+  - security risks reduced:
+    No runtime code changed. The plan now preserves PHI/medical information visibility for authorized users while
+    requiring raw/detail reauthorization and list/summary payload budgets for care-report and timeline surfaces.
+  - performance issues improved:
+    No runtime code changed. The next DB read-speed task is now scoped to a bounded non-palette care-report
+    patient search fix first, with keyword scan and delivery summary/index work separated behind tests and EXPLAIN.
+  - validation commands:
+    `pnpm exec prettier --check Plans.md`;
+    `git diff --check -- Plans.md`;
+    `git diff --cached --check`.
+  - validation results:
+    Plans.md Prettier check passed after formatting.
+    `git diff --check -- Plans.md` and staged diff check passed.
+  - remaining:
+    `ops/refactor/STATE.md` ledger sync is being recorded in a follow-up commit.
+    Runtime DB improvements remain unimplemented; next code slice should start with `PERF-DB-006A-SEARCH`.
+  - next action:
+    Commit this ledger sync, push both commits, then resume implementation from the top-ranked active backlog.
+
 - codex: Plans.md status registry cleanup / 未実装Plan拡充（commit `6f6f9541e`, pushed to `main`）。
   - current task:
     既存 `Plans.md` 内の実装済み/未実装を分類し、実装済み項目を再タスク化しないよう
