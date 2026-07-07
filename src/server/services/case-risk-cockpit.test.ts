@@ -1,6 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getCaseRiskCockpit, type CaseRiskCockpitDb } from './case-risk-cockpit';
 
+const loggerMocks = vi.hoisted(() => ({
+  warn: vi.fn(),
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    debug: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+    warn: loggerMocks.warn,
+  },
+}));
+
 function buildDb() {
   return {
     careCase: { findFirst: vi.fn() },
@@ -15,6 +28,8 @@ function buildDb() {
     residence: { findMany: vi.fn() },
     patientMcsLink: { findMany: vi.fn() },
     communicationEvent: { findMany: vi.fn() },
+    inboundCommunicationEvent: { findMany: vi.fn() },
+    inboundCommunicationSignal: { findMany: vi.fn() },
     patientShareCase: { findMany: vi.fn() },
     task: { findMany: vi.fn() },
     billingEvidence: { findMany: vi.fn() },
@@ -44,6 +59,7 @@ function baseCase(patientId = 'patient_1') {
 describe('getCaseRiskCockpit', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    loggerMocks.warn.mockReset();
   });
 
   it('returns null without fetching downstream risk data when scoped case is unavailable', async () => {
@@ -78,6 +94,8 @@ describe('getCaseRiskCockpit', () => {
     expect(db.residence.findMany).not.toHaveBeenCalled();
     expect(db.patientMcsLink.findMany).not.toHaveBeenCalled();
     expect(db.communicationEvent.findMany).not.toHaveBeenCalled();
+    expect(db.inboundCommunicationEvent.findMany).not.toHaveBeenCalled();
+    expect(db.inboundCommunicationSignal.findMany).not.toHaveBeenCalled();
     expect(db.patientShareCase.findMany).not.toHaveBeenCalled();
     expect(db.task.findMany).not.toHaveBeenCalled();
     expect(db.billingEvidence.findMany).not.toHaveBeenCalled();
@@ -179,6 +197,8 @@ describe('getCaseRiskCockpit', () => {
         attachments: [{ storage_key: 's3://bucket/secret' }],
       },
     ]);
+    db.inboundCommunicationEvent.findMany.mockResolvedValue([]);
+    db.inboundCommunicationSignal.findMany.mockResolvedValue([]);
     db.patientShareCase.findMany.mockResolvedValue([
       {
         id: 'share/1',
@@ -464,6 +484,62 @@ describe('getCaseRiskCockpit', () => {
         },
       }),
     );
+    expect(db.inboundCommunicationEvent.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          patient_id: patientId,
+          OR: [{ case_id: 'case_1' }, { case_id: null }],
+          processing_status: {
+            in: ['unprocessed', 'signals_extracted'],
+          },
+        },
+        select: {
+          occurred_at: true,
+          received_at: true,
+          processing_status: true,
+          has_medication_stock_signal: true,
+          has_patient_safety_signal: true,
+          has_schedule_signal: true,
+        },
+      }),
+    );
+    expect(db.inboundCommunicationSignal.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          patient_id: patientId,
+          OR: [{ case_id: 'case_1' }, { case_id: null }],
+          inbound_event: {
+            is: {
+              org_id: 'org_1',
+              patient_id: patientId,
+              OR: [{ case_id: 'case_1' }, { case_id: null }],
+            },
+          },
+          AND: [
+            {
+              OR: [
+                { review_status: 'needs_review' },
+                {
+                  AND: [
+                    { review_status: 'accepted' },
+                    { action_status: 'not_linked' },
+                    { signal_domain: 'medication_stock' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        select: {
+          signal_domain: true,
+          review_status: true,
+          action_status: true,
+          created_at: true,
+        },
+      }),
+    );
     expect(db.patientShareCase.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -503,6 +579,184 @@ describe('getCaseRiskCockpit', () => {
     );
   });
 
+  it('uses formal inbound events and signals for controlled risk findings', async () => {
+    const db = buildDb();
+    db.careCase.findFirst.mockResolvedValue(baseCase());
+    db.consentRecord.findFirst.mockResolvedValue({ id: 'consent_1', expiry_date: null });
+    db.managementPlan.findFirst.mockResolvedValue({
+      id: 'plan_1',
+      next_review_date: new Date('2026-08-01T00:00:00.000Z'),
+    });
+    db.firstVisitDocument.findFirst.mockResolvedValue({
+      id: 'doc_1',
+      delivered_at: new Date('2026-07-01T00:00:00.000Z'),
+    });
+    db.visitSchedule.findMany.mockResolvedValue([]);
+    db.careReport.findMany.mockResolvedValue([]);
+    db.dispenseTask.findMany.mockResolvedValue([]);
+    db.prescriptionLine.findMany.mockResolvedValue([]);
+    db.notification.findMany.mockResolvedValue([]);
+    db.residence.findMany.mockResolvedValue([]);
+    db.patientMcsLink.findMany.mockResolvedValue([]);
+    db.communicationEvent.findMany.mockResolvedValue([]);
+    db.inboundCommunicationEvent.findMany.mockResolvedValue([
+      {
+        occurred_at: new Date('2026-07-07T08:00:00.000Z'),
+        received_at: new Date('2026-07-07T08:01:00.000Z'),
+        processing_status: 'unprocessed',
+        has_medication_stock_signal: true,
+        has_patient_safety_signal: true,
+        has_schedule_signal: true,
+        raw_text: '訪問看護師: 湿布 残り4枚 090-1234-5678',
+      },
+    ]);
+    db.inboundCommunicationSignal.findMany.mockResolvedValue([
+      {
+        signal_domain: 'medication_safety',
+        review_status: 'needs_review',
+        action_status: 'not_linked',
+        created_at: new Date('2026-07-07T08:05:00.000Z'),
+        extracted_text: 'raw safety text',
+      },
+      {
+        signal_domain: 'medication_stock',
+        review_status: 'accepted',
+        action_status: 'not_linked',
+        created_at: new Date('2026-07-07T08:04:00.000Z'),
+        extracted_medication_name: '湿布',
+        extracted_quantity: 4,
+      },
+      {
+        signal_domain: 'schedule',
+        review_status: 'needs_review',
+        action_status: 'not_linked',
+        created_at: new Date('2026-07-07T08:03:00.000Z'),
+      },
+    ]);
+    db.patientShareCase.findMany.mockResolvedValue([]);
+    db.task.findMany.mockResolvedValue([]);
+    db.billingEvidence.findMany.mockResolvedValue([]);
+
+    const result = await getCaseRiskCockpit(asDb(db), {
+      orgId: 'org_1',
+      caseId: 'case_1',
+      userId: 'user_1',
+      role: 'pharmacist',
+      now: new Date('2026-07-07T09:00:00.000Z'),
+    });
+
+    const findings = result?.sections.flatMap((section) => section.findings) ?? [];
+    expect(findings.map((finding) => finding.key)).toEqual(
+      expect.arrayContaining([
+        'inbound_interprofessional:signal_review_required',
+        'inbound_interprofessional:safety_signal',
+        'inbound_interprofessional:medication_stock_apply_required',
+        'inbound_interprofessional:schedule_request',
+        'inbound_interprofessional:unprocessed',
+      ]),
+    );
+    expect(result?.overall).toMatchObject({
+      status: 'attention',
+      urgent_count: 2,
+      warning_count: 3,
+    });
+    expect(findings.map((finding) => finding.action_href)).toEqual(
+      expect.arrayContaining([
+        '/communications/inbound?patient_id=patient_1&case_id=case_1&status=needs_review',
+        '/communications/inbound?patient_id=patient_1&case_id=case_1&status=accepted&domain=medication_stock',
+      ]),
+    );
+    expect(JSON.stringify(result)).not.toContain('訪問看護師');
+    expect(JSON.stringify(result)).not.toContain('湿布');
+    expect(JSON.stringify(result)).not.toContain('090-1234-5678');
+    expect(JSON.stringify(result)).not.toContain('raw safety text');
+  });
+
+  it('does not treat converted_to_task formal events as unprocessed inbound risk', async () => {
+    const db = buildDb();
+    db.careCase.findFirst.mockResolvedValue(baseCase());
+    db.consentRecord.findFirst.mockResolvedValue(null);
+    db.managementPlan.findFirst.mockResolvedValue(null);
+    db.firstVisitDocument.findFirst.mockResolvedValue(null);
+    db.visitSchedule.findMany.mockResolvedValue([]);
+    db.careReport.findMany.mockResolvedValue([]);
+    db.dispenseTask.findMany.mockResolvedValue([]);
+    db.prescriptionLine.findMany.mockResolvedValue([]);
+    db.notification.findMany.mockResolvedValue([]);
+    db.residence.findMany.mockResolvedValue([]);
+    db.patientMcsLink.findMany.mockResolvedValue([]);
+    db.communicationEvent.findMany.mockResolvedValue([]);
+    db.inboundCommunicationEvent.findMany.mockResolvedValue([
+      {
+        occurred_at: new Date('2026-07-07T08:00:00.000Z'),
+        received_at: new Date('2026-07-07T08:01:00.000Z'),
+        processing_status: 'converted_to_task',
+        has_medication_stock_signal: true,
+        has_patient_safety_signal: true,
+        has_schedule_signal: true,
+      },
+    ]);
+    db.inboundCommunicationSignal.findMany.mockResolvedValue([]);
+    db.patientShareCase.findMany.mockResolvedValue([]);
+    db.task.findMany.mockResolvedValue([]);
+    db.billingEvidence.findMany.mockResolvedValue([]);
+
+    const result = await getCaseRiskCockpit(asDb(db), {
+      orgId: 'org_1',
+      caseId: 'case_1',
+      userId: 'user_1',
+      role: 'pharmacist',
+      now: new Date('2026-07-07T09:00:00.000Z'),
+    });
+
+    const findingKeys = result?.sections.flatMap((section) =>
+      section.findings.map((finding) => finding.key),
+    );
+    expect(findingKeys).not.toContain('inbound_interprofessional:unprocessed');
+    expect(findingKeys).not.toContain('inbound_interprofessional:pending');
+  });
+
+  it('falls back to legacy inbound communication when formal inbound reads fail', async () => {
+    const db = buildDb();
+    db.careCase.findFirst.mockResolvedValue(baseCase());
+    db.consentRecord.findFirst.mockResolvedValue(null);
+    db.managementPlan.findFirst.mockResolvedValue(null);
+    db.firstVisitDocument.findFirst.mockResolvedValue(null);
+    db.visitSchedule.findMany.mockResolvedValue([]);
+    db.careReport.findMany.mockResolvedValue([]);
+    db.dispenseTask.findMany.mockResolvedValue([]);
+    db.prescriptionLine.findMany.mockResolvedValue([]);
+    db.notification.findMany.mockResolvedValue([]);
+    db.residence.findMany.mockResolvedValue([]);
+    db.patientMcsLink.findMany.mockResolvedValue([]);
+    db.communicationEvent.findMany.mockResolvedValue([
+      { occurred_at: new Date('2026-07-07T08:00:00.000Z') },
+    ]);
+    db.inboundCommunicationEvent.findMany.mockRejectedValue(
+      Object.assign(new Error('formal event table unavailable'), { code: 'P2021' }),
+    );
+    db.inboundCommunicationSignal.findMany.mockRejectedValue(
+      Object.assign(new Error('formal signal table unavailable'), { code: 'P2021' }),
+    );
+    db.patientShareCase.findMany.mockResolvedValue([]);
+    db.task.findMany.mockResolvedValue([]);
+    db.billingEvidence.findMany.mockResolvedValue([]);
+
+    const result = await getCaseRiskCockpit(asDb(db), {
+      orgId: 'org_1',
+      caseId: 'case_1',
+      userId: 'user_1',
+      role: 'pharmacist',
+      now: new Date('2026-07-07T09:00:00.000Z'),
+    });
+
+    const findings = result?.sections.flatMap((section) => section.findings) ?? [];
+    expect(findings.map((finding) => finding.key)).toContain('inbound_interprofessional:pending');
+    expect(loggerMocks.warn).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(loggerMocks.warn.mock.calls)).not.toContain('patient_1');
+    expect(JSON.stringify(loggerMocks.warn.mock.calls)).not.toContain('formal event table');
+  });
+
   it('uses Japan business date for management plan and task overdue rollups', async () => {
     const db = buildDb();
     db.careCase.findFirst.mockResolvedValue(baseCase());
@@ -523,6 +777,8 @@ describe('getCaseRiskCockpit', () => {
     db.residence.findMany.mockResolvedValue([]);
     db.patientMcsLink.findMany.mockResolvedValue([]);
     db.communicationEvent.findMany.mockResolvedValue([]);
+    db.inboundCommunicationEvent.findMany.mockResolvedValue([]);
+    db.inboundCommunicationSignal.findMany.mockResolvedValue([]);
     db.patientShareCase.findMany.mockResolvedValue([]);
     db.task.findMany.mockResolvedValue([
       {

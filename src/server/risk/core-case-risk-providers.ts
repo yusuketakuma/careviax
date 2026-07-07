@@ -2,7 +2,7 @@ import type { RiskFindingProvider } from '@/core/risk/provider-registry';
 import {
   adaptCareReportToRiskFinding,
   adaptConsentPlanLifecycleToRiskFindings,
-  adaptInboundInterprofessionalCommunicationToRiskFinding,
+  adaptInboundInterprofessionalCommunicationToRiskFindings,
   adaptNotificationToRiskFinding,
   adaptOperationalTaskToRiskFinding,
   adaptPatientMcsIntegrationToRiskFinding,
@@ -96,16 +96,15 @@ const integrationRiskProvider: CoreCaseRiskProvider = {
 const inboundInterprofessionalRiskProvider: CoreCaseRiskProvider = {
   module: 'core',
   providerId: 'core.inbound_interprofessional',
-  domains: ['integration'],
+  domains: ['integration', 'medication', 'visit_preparation'],
   collect(input) {
-    const finding = adaptInboundInterprofessionalCommunicationToRiskFinding(
+    return adaptInboundInterprofessionalCommunicationToRiskFindings(
       input.inboundInterprofessionalCommunication,
       {
         patientId: input.patientId,
         caseId: input.caseId,
       },
     );
-    return finding ? [finding] : [];
   },
 };
 

@@ -17263,3 +17263,79 @@
   Commit and push this inbound signal apply slice, then resume the AWS backup
   recovery request by checking the existing `9a62e12c2` baseline for missing
   restore/runbook coverage.
+
+## 2026-07-07 formal inbound Case Risk source
+
+- current task:
+  Connect formal `InboundCommunicationEvent` / `InboundCommunicationSignal`
+  rows to Case Risk Cockpit without exposing raw inbound PHI or breaking the
+  legacy `CommunicationEvent` fallback.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `.agents/skills/oracle-consult/SKILL.md`,
+  Oracle session `formal-inbound-risk-review`,
+  `src/server/services/case-risk-cockpit.ts`,
+  `src/server/services/case-risk-cockpit.test.ts`,
+  `src/server/services/risk-finding-registry.ts`,
+  `src/server/services/risk-finding-registry.test.ts`,
+  `src/server/risk/core-case-risk-providers.ts`,
+  `src/server/risk/case-risk-provider-types.ts`,
+  `src/server/risk/active-case-risk-registry.test.ts`,
+  `Plans.md`.
+- files changed:
+  `src/server/services/case-risk-cockpit.ts`,
+  `src/server/services/case-risk-cockpit.test.ts`,
+  `src/server/services/risk-finding-registry.ts`,
+  `src/server/services/risk-finding-registry.test.ts`,
+  `src/server/risk/core-case-risk-providers.ts`,
+  `src/server/risk/case-risk-provider-types.ts`,
+  `src/server/risk/active-case-risk-registry.test.ts`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- implementation:
+  Added formal inbound risk summary fields and expanded
+  `core.inbound_interprofessional` to emit controlled findings for unprocessed
+  inbound events, signal review required, patient-safety signals, medication
+  stock apply required, and schedule requests. Case Risk Cockpit now reads
+  bounded formal event/signal rows, preserves the legacy `communicationEvent`
+  fallback, and links findings to `/communications/inbound` filters rather
+  than embedding raw inbound data. Oracle/GPT-5.5 Pro initially returned
+  no-go because `converted_to_task` was counted as unprocessed, formal reads
+  were not fail-soft, and accepted/not-linked signals were too broad. The slice
+  now excludes `converted_to_task` from pending inbound risk, wraps formal
+  inbound reads in PHI-safe fail-soft logging, limits accepted/not-linked reads
+  to `signal_domain='medication_stock'`, and locks query shape in tests.
+  gbrain writeback:
+  `careviax/implementation-decision/formal-inbound-case-risk-source-2026-07-07`.
+- bugs found:
+  The first implementation could have kept task-converted inbound events in
+  the unprocessed risk bucket and could have failed the whole Case Risk Cockpit
+  if formal inbound tables or relations were unavailable while the legacy
+  source was still valid.
+- security risks reduced:
+  Risk findings select and expose only controlled fields. Raw text, sender
+  contact, medication name, extracted text, quantity, attachment metadata,
+  storage keys, signed URLs, and provider errors are not selected for Case Risk
+  DTOs. Fail-soft logs include only source, org id, case id, and Prisma error
+  code; patient id/name and raw error messages are not logged.
+- performance issues improved:
+  Formal inbound reads are bounded (`take: 8` events, `take: 20` signals) and
+  select narrow fields only. Accepted/not-linked reads are narrowed to
+  medication-stock signals so schedule/safety rows already accepted do not
+  inflate review risk queries.
+- validation commands:
+  `pnpm exec prettier --write Plans.md src/server/risk/active-case-risk-registry.test.ts src/server/risk/case-risk-provider-types.ts src/server/risk/core-case-risk-providers.ts src/server/services/case-risk-cockpit.test.ts src/server/services/case-risk-cockpit.ts src/server/services/risk-finding-registry.test.ts src/server/services/risk-finding-registry.ts`;
+  `pnpm exec vitest run src/server/services/risk-finding-registry.test.ts src/server/risk/active-case-risk-registry.test.ts src/server/services/case-risk-cockpit.test.ts --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint src/server/risk/case-risk-provider-types.ts src/server/risk/core-case-risk-providers.ts src/server/risk/active-case-risk-registry.test.ts src/server/services/case-risk-cockpit.ts src/server/services/case-risk-cockpit.test.ts src/server/services/risk-finding-registry.ts src/server/services/risk-finding-registry.test.ts`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+- validation results:
+  Prettier passed. Focused tests passed (3 files / 26 tests). Targeted ESLint
+  passed. Full typecheck passed.
+- remaining work:
+  Patient Command Center priority tuning, source-mapping risk for unlinked
+  inbound sources, VisitBrief/Schedule/Report downstream integration, and
+  formal migration cleanup of legacy `CommunicationEvent` fallback remain.
+- next action:
+  Run diff whitespace checks, commit and push the validated formal inbound
+  Case Risk source slice, then continue with the next backend source in
+  `Plans.md`.

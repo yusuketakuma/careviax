@@ -32,7 +32,7 @@ describe('activeCaseRiskFindingProviderRegistry', () => {
       activeCaseRiskFindingProviderRegistry.get('core.inbound_interprofessional'),
     ).toMatchObject({
       module: 'core',
-      domains: ['integration'],
+      domains: ['integration', 'medication', 'visit_preparation'],
     });
     expect(activeCaseRiskFindingProviderRegistry.get('missing.provider')).toBeNull();
   });

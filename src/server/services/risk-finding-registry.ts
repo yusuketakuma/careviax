@@ -41,6 +41,22 @@ function buildPatientConferencesHref(args: { patientId?: string | null; caseId?:
   return `/conferences?${new URLSearchParams(params).toString()}`;
 }
 
+function buildInboundCommunicationRiskHref(args: {
+  patientId?: string | null;
+  caseId?: string | null;
+  status?: string;
+  domain?: string;
+}) {
+  const params = new URLSearchParams();
+  if (args.patientId) params.set('patient_id', args.patientId);
+  if (args.caseId) params.set('case_id', args.caseId);
+  if (args.status) params.set('status', args.status);
+  if (args.domain) params.set('domain', args.domain);
+
+  const query = params.toString();
+  return query ? `/communications/inbound?${query}` : '/communications/inbound';
+}
+
 export type OperationalTaskRiskInput = {
   id: string;
   task_type: string;
@@ -131,6 +147,13 @@ export type PatientMcsIntegrationRiskInput = {
 export type InboundInterprofessionalCommunicationRiskInput = {
   has_inbound_communication: boolean;
   latest_occurred_at?: Date | string | null;
+  unprocessed_event_count?: number;
+  needs_review_signal_count?: number;
+  medication_stock_signal_count?: number;
+  safety_signal_count?: number;
+  schedule_signal_count?: number;
+  unlinked_medication_stock_signal_count?: number;
+  legacy_inbound_event_count?: number;
 };
 
 export type PatientSharePrivacyRiskInput = {
@@ -723,26 +746,147 @@ export function adaptInboundInterprofessionalCommunicationToRiskFinding(
   input: InboundInterprofessionalCommunicationRiskInput,
   context: RiskFindingAdapterContext = {},
 ): RiskFinding | null {
-  if (!input.has_inbound_communication) return null;
+  return adaptInboundInterprofessionalCommunicationToRiskFindings(input, context)[0] ?? null;
+}
 
-  return createRiskFinding({
-    key: 'inbound_interprofessional:pending',
-    domain: 'integration',
-    severity: 'warning',
-    title: '他職種からの受信情報の確認が必要です',
-    detail: '他職種からの受信情報があります。内容は患者の連絡履歴で確認してください。',
+export function adaptInboundInterprofessionalCommunicationToRiskFindings(
+  input: InboundInterprofessionalCommunicationRiskInput,
+  context: RiskFindingAdapterContext = {},
+): RiskFinding[] {
+  if (!input.has_inbound_communication) return [];
+
+  const findings: RiskFinding[] = [];
+  const dueAt = iso(input.latest_occurred_at);
+  const base = {
     patient_id: context.patientId ?? null,
     case_id: context.caseId ?? null,
     related_entity_type: 'inbound_interprofessional_communication',
     related_entity_id: null,
-    due_at: null,
-    action_href: buildPatientConferencesHref({
-      patientId: context.patientId,
-      caseId: context.caseId,
+    due_at: dueAt,
+    source: 'external' as const,
+  };
+
+  if ((input.unprocessed_event_count ?? 0) > 0) {
+    findings.push(
+      createRiskFinding({
+        ...base,
+        key: 'inbound_interprofessional:unprocessed',
+        domain: 'integration',
+        severity: 'warning',
+        title: '未処理の他職種受信があります',
+        detail:
+          '他職種から届いた受信情報が未処理です。原文ではなく受信キューで要約と処理状態を確認してください。',
+        action_href: buildInboundCommunicationRiskHref({
+          patientId: context.patientId,
+          caseId: context.caseId,
+          status: 'unprocessed',
+        }),
+        action_label: '受信キューを確認',
+      }),
+    );
+  }
+
+  if ((input.needs_review_signal_count ?? 0) > 0) {
+    findings.push(
+      createRiskFinding({
+        ...base,
+        key: 'inbound_interprofessional:signal_review_required',
+        domain: 'integration',
+        severity: input.safety_signal_count ? 'urgent' : 'warning',
+        title: '他職種情報のシグナル確認が必要です',
+        detail:
+          '他職種受信から抽出された業務シグナルが薬剤師レビュー待ちです。内容確認後にタスク化、記録のみ、または業務反映を選択してください。',
+        action_href: buildInboundCommunicationRiskHref({
+          patientId: context.patientId,
+          caseId: context.caseId,
+          status: 'needs_review',
+        }),
+        action_label: 'シグナルを確認',
+      }),
+    );
+  }
+
+  if ((input.safety_signal_count ?? 0) > 0) {
+    findings.push(
+      createRiskFinding({
+        ...base,
+        key: 'inbound_interprofessional:safety_signal',
+        domain: 'integration',
+        severity: 'urgent',
+        title: '他職種から安全確認シグナルがあります',
+        detail:
+          '副作用疑い、服薬困難、緊急連絡など患者安全に関わる受信シグナルがあります。薬剤師が確認してください。',
+        action_href: buildInboundCommunicationRiskHref({
+          patientId: context.patientId,
+          caseId: context.caseId,
+          domain: 'medication_safety',
+          status: 'needs_review',
+        }),
+        action_label: '安全シグナルを確認',
+      }),
+    );
+  }
+
+  if ((input.unlinked_medication_stock_signal_count ?? 0) > 0) {
+    findings.push(
+      createRiskFinding({
+        ...base,
+        key: 'inbound_interprofessional:medication_stock_apply_required',
+        domain: 'medication',
+        severity: 'warning',
+        title: '残数報告の台帳反映待ちがあります',
+        detail:
+          '承認済みの残数・使用量シグナルがMedication Stock Ledgerへ未反映です。対象薬剤と単位を確認して反映してください。',
+        action_href: buildInboundCommunicationRiskHref({
+          patientId: context.patientId,
+          caseId: context.caseId,
+          domain: 'medication_stock',
+          status: 'accepted',
+        }),
+        action_label: '残数シグナルを確認',
+      }),
+    );
+  }
+
+  if ((input.schedule_signal_count ?? 0) > 0) {
+    findings.push(
+      createRiskFinding({
+        ...base,
+        key: 'inbound_interprofessional:schedule_request',
+        domain: 'visit_preparation',
+        severity: 'warning',
+        title: '他職種から訪問・日程相談があります',
+        detail:
+          '他職種受信に訪問希望や日程変更に関わるシグナルがあります。訪問予定へ反映する前に確認してください。',
+        action_href: buildInboundCommunicationRiskHref({
+          patientId: context.patientId,
+          caseId: context.caseId,
+          domain: 'schedule',
+          status: 'needs_review',
+        }),
+        action_label: '日程相談を確認',
+      }),
+    );
+  }
+
+  if (findings.length > 0) return findings;
+
+  return [
+    createRiskFinding({
+      ...base,
+      key: 'inbound_interprofessional:pending',
+      domain: 'integration',
+      severity: 'warning',
+      title: '他職種からの受信情報の確認が必要です',
+      detail: '他職種からの受信情報があります。内容は患者の連絡履歴で確認してください。',
+      due_at: null,
+      action_href: buildPatientConferencesHref({
+        patientId: context.patientId,
+        caseId: context.caseId,
+      }),
+      action_label: '受信情報を確認',
     }),
-    action_label: '受信情報を確認',
-    source: 'external',
-  });
+  ];
 }
 
 export function adaptPatientSharePrivacyToRiskFindings(

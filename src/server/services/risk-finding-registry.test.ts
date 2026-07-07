@@ -5,6 +5,7 @@ import {
   adaptConsentPlanLifecycleToRiskFindings,
   adaptDispenseTaskToRiskFinding,
   adaptInboundInterprofessionalCommunicationToRiskFinding,
+  adaptInboundInterprofessionalCommunicationToRiskFindings,
   adaptNotificationToRiskFinding,
   adaptOperationalTaskToRiskFinding,
   adaptPatientMcsIntegrationToRiskFinding,
@@ -559,6 +560,41 @@ describe('risk-finding-registry adapters', () => {
         latest_occurred_at: '2026-07-06T00:00:00.000Z',
       })?.action_href,
     ).toBe('/workflow?focus=communication');
+  });
+
+  it('maps formal inbound signal states to controlled findings without raw text', () => {
+    const findings = adaptInboundInterprofessionalCommunicationToRiskFindings(
+      {
+        has_inbound_communication: true,
+        latest_occurred_at: '2026-07-07T08:05:00.000Z',
+        unprocessed_event_count: 1,
+        needs_review_signal_count: 2,
+        medication_stock_signal_count: 1,
+        safety_signal_count: 1,
+        schedule_signal_count: 1,
+        unlinked_medication_stock_signal_count: 1,
+        raw_text: '訪問看護師: 湿布 残り4枚 090-1234-5678',
+        extracted_medication_name: '湿布',
+      } as never,
+      { patientId: 'patient_1', caseId: 'case_1' },
+    );
+
+    expect(findings.map((finding) => finding.key)).toEqual([
+      'inbound_interprofessional:unprocessed',
+      'inbound_interprofessional:signal_review_required',
+      'inbound_interprofessional:safety_signal',
+      'inbound_interprofessional:medication_stock_apply_required',
+      'inbound_interprofessional:schedule_request',
+    ]);
+    expect(findings.map((finding) => finding.action_href)).toEqual(
+      expect.arrayContaining([
+        '/communications/inbound?patient_id=patient_1&case_id=case_1&status=unprocessed',
+        '/communications/inbound?patient_id=patient_1&case_id=case_1&status=accepted&domain=medication_stock',
+      ]),
+    );
+    expect(JSON.stringify(findings)).not.toContain('訪問看護師');
+    expect(JSON.stringify(findings)).not.toContain('湿布');
+    expect(JSON.stringify(findings)).not.toContain('090-1234-5678');
   });
 
   it('maps active patient share privacy risks without exposing share scope or consent details', () => {

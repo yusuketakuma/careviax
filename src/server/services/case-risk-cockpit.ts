@@ -8,6 +8,7 @@ import {
   statusFromRiskFindings,
   summarizeRiskFindings,
 } from '@/lib/risk/risk-finding';
+import { logger } from '@/lib/utils/logger';
 import { activeCaseRiskFindingProviderRegistry } from '@/server/risk/active-case-risk-registry';
 import type {
   BillingEvidenceRow,
@@ -53,9 +54,27 @@ type CaseRiskCockpitDbReader = {
   residence: FindManyDelegate<ResidenceRiskRow>;
   patientMcsLink: FindManyDelegate<PatientMcsLinkRiskRow>;
   communicationEvent: FindManyDelegate<{ occurred_at: Date }>;
+  inboundCommunicationEvent: FindManyDelegate<FormalInboundCommunicationEventRow>;
+  inboundCommunicationSignal: FindManyDelegate<FormalInboundCommunicationSignalRow>;
   patientShareCase: FindManyDelegate<PatientShareCaseRiskRow>;
   task: FindManyDelegate<TaskRow>;
   billingEvidence: FindManyDelegate<BillingEvidenceRow>;
+};
+
+type FormalInboundCommunicationEventRow = {
+  occurred_at: Date | null;
+  received_at: Date;
+  processing_status: string;
+  has_medication_stock_signal: boolean;
+  has_patient_safety_signal: boolean;
+  has_schedule_signal: boolean;
+};
+
+type FormalInboundCommunicationSignalRow = {
+  signal_domain: string;
+  review_status: string;
+  action_status: string;
+  created_at: Date;
 };
 
 export type CaseRiskCockpitDb = PrismaClient | Prisma.TransactionClient | CaseRiskCockpitDbReader;
@@ -83,6 +102,7 @@ type GetCaseRiskCockpitArgs = {
 };
 
 const CASE_RISK_NEXT_ACTION_LIMIT = 12;
+const FORMAL_INBOUND_PENDING_EVENT_STATUSES = ['unprocessed', 'signals_extracted'] as const;
 
 function priorityFromSeverity(
   severity: CaseRiskFinding['severity'],
@@ -135,6 +155,31 @@ function buildNextActions(findings: readonly CaseRiskFinding[]): CaseRiskNextAct
     }));
 }
 
+function readPrismaErrorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== 'object' || !('code' in error)) return undefined;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'string' ? code : undefined;
+}
+
+async function readFormalInboundRiskRows<T>(args: {
+  source: 'inboundCommunicationEvent' | 'inboundCommunicationSignal';
+  orgId: string;
+  caseId: string;
+  read: () => Promise<T[]>;
+}): Promise<T[]> {
+  try {
+    return await args.read();
+  } catch (error) {
+    logger.warn('case risk formal inbound read failed', {
+      source: args.source,
+      org_id: args.orgId,
+      case_id: args.caseId,
+      error_code: readPrismaErrorCode(error),
+    });
+    return [];
+  }
+}
+
 export async function getCaseRiskCockpit(
   db: CaseRiskCockpitDb,
   args: GetCaseRiskCockpitArgs,
@@ -183,6 +228,8 @@ export async function getCaseRiskCockpit(
     residences,
     patientMcsLinks,
     inboundCommunicationEvents,
+    formalInboundCommunicationEvents,
+    formalInboundCommunicationSignals,
     patientShareCases,
     tasks,
   ] = await Promise.all([
@@ -392,6 +439,74 @@ export async function getCaseRiskCockpit(
         occurred_at: true,
       },
     }),
+    readFormalInboundRiskRows({
+      source: 'inboundCommunicationEvent',
+      orgId: args.orgId,
+      caseId: careCase.id,
+      read: () =>
+        db.inboundCommunicationEvent.findMany({
+          where: {
+            org_id: args.orgId,
+            patient_id: careCase.patient_id,
+            OR: [{ case_id: careCase.id }, { case_id: null }],
+            processing_status: {
+              in: [...FORMAL_INBOUND_PENDING_EVENT_STATUSES],
+            },
+          },
+          orderBy: [{ received_at: 'desc' }, { created_at: 'desc' }],
+          take: 8,
+          select: {
+            occurred_at: true,
+            received_at: true,
+            processing_status: true,
+            has_medication_stock_signal: true,
+            has_patient_safety_signal: true,
+            has_schedule_signal: true,
+          },
+        }),
+    }),
+    readFormalInboundRiskRows({
+      source: 'inboundCommunicationSignal',
+      orgId: args.orgId,
+      caseId: careCase.id,
+      read: () =>
+        db.inboundCommunicationSignal.findMany({
+          where: {
+            org_id: args.orgId,
+            patient_id: careCase.patient_id,
+            OR: [{ case_id: careCase.id }, { case_id: null }],
+            inbound_event: {
+              is: {
+                org_id: args.orgId,
+                patient_id: careCase.patient_id,
+                OR: [{ case_id: careCase.id }, { case_id: null }],
+              },
+            },
+            AND: [
+              {
+                OR: [
+                  { review_status: 'needs_review' },
+                  {
+                    AND: [
+                      { review_status: 'accepted' },
+                      { action_status: 'not_linked' },
+                      { signal_domain: 'medication_stock' },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+          orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+          take: 20,
+          select: {
+            signal_domain: true,
+            review_status: true,
+            action_status: true,
+            created_at: true,
+          },
+        }),
+    }),
     db.patientShareCase.findMany({
       where: {
         org_id: args.orgId,
@@ -458,11 +573,55 @@ export async function getCaseRiskCockpit(
   const selectedInboundCommunicationEvents = inboundCommunicationEvents as Array<{
     occurred_at: Date;
   }>;
+  const selectedFormalInboundCommunicationEvents =
+    formalInboundCommunicationEvents as FormalInboundCommunicationEventRow[];
+  const selectedFormalInboundCommunicationSignals =
+    formalInboundCommunicationSignals as FormalInboundCommunicationSignalRow[];
   const selectedPatientShareCases = patientShareCases as PatientShareCaseRiskRow[];
   const selectedTasks = tasks as TaskRow[];
+  const pendingFormalInboundCommunicationEvents = selectedFormalInboundCommunicationEvents.filter(
+    (event) =>
+      (FORMAL_INBOUND_PENDING_EVENT_STATUSES as readonly string[]).includes(
+        event.processing_status,
+      ),
+  );
+  const latestFormalInboundDate =
+    selectedFormalInboundCommunicationSignals[0]?.created_at ??
+    pendingFormalInboundCommunicationEvents[0]?.occurred_at ??
+    pendingFormalInboundCommunicationEvents[0]?.received_at ??
+    null;
   const inboundInterprofessionalCommunication: InboundInterprofessionalCommunicationRiskSummary = {
-    has_inbound_communication: selectedInboundCommunicationEvents.length > 0,
-    latest_occurred_at: selectedInboundCommunicationEvents[0]?.occurred_at ?? null,
+    has_inbound_communication:
+      pendingFormalInboundCommunicationEvents.length > 0 ||
+      selectedFormalInboundCommunicationSignals.length > 0 ||
+      selectedInboundCommunicationEvents.length > 0,
+    latest_occurred_at:
+      latestFormalInboundDate ?? selectedInboundCommunicationEvents[0]?.occurred_at ?? null,
+    unprocessed_event_count: pendingFormalInboundCommunicationEvents.length,
+    needs_review_signal_count: selectedFormalInboundCommunicationSignals.filter(
+      (signal) => signal.review_status === 'needs_review',
+    ).length,
+    medication_stock_signal_count: selectedFormalInboundCommunicationSignals.filter(
+      (signal) => signal.signal_domain === 'medication_stock',
+    ).length,
+    safety_signal_count:
+      pendingFormalInboundCommunicationEvents.filter((event) => event.has_patient_safety_signal)
+        .length +
+      selectedFormalInboundCommunicationSignals.filter((signal) =>
+        ['medication_safety', 'symptom', 'urgent'].includes(signal.signal_domain),
+      ).length,
+    schedule_signal_count:
+      pendingFormalInboundCommunicationEvents.filter((event) => event.has_schedule_signal).length +
+      selectedFormalInboundCommunicationSignals.filter(
+        (signal) => signal.signal_domain === 'schedule',
+      ).length,
+    unlinked_medication_stock_signal_count: selectedFormalInboundCommunicationSignals.filter(
+      (signal) =>
+        signal.signal_domain === 'medication_stock' &&
+        signal.review_status === 'accepted' &&
+        signal.action_status === 'not_linked',
+    ).length,
+    legacy_inbound_event_count: selectedInboundCommunicationEvents.length,
   };
 
   const visitRecordIds = selectedSchedules

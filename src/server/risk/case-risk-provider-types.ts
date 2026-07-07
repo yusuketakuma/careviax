@@ -83,6 +83,13 @@ export type PatientMcsLinkRiskRow = {
 export type InboundInterprofessionalCommunicationRiskSummary = {
   has_inbound_communication: boolean;
   latest_occurred_at: Date | null;
+  unprocessed_event_count?: number;
+  needs_review_signal_count?: number;
+  medication_stock_signal_count?: number;
+  safety_signal_count?: number;
+  schedule_signal_count?: number;
+  unlinked_medication_stock_signal_count?: number;
+  legacy_inbound_event_count?: number;
 };
 
 export type PatientShareCaseRiskRow = {
