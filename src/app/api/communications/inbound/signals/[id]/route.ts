@@ -1,29 +1,97 @@
 import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { withAuthContext } from '@/lib/auth/context';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { internalError, notFound, success, validationError } from '@/lib/api/response';
+import {
+  conflict,
+  forbidden,
+  internalError,
+  notFound,
+  success,
+  validationError,
+} from '@/lib/api/response';
+import { parseOptionalIdempotencyKey } from '@/lib/api/idempotency-key';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
+import { isPrismaErrorCode } from '@/lib/db/prisma-errors';
 import { buildInboundCommunicationEventAssignmentWhere } from '@/server/services/communication-request-access';
 import { logger } from '@/lib/utils/logger';
+import {
+  applyInboundSignalToMedicationStock,
+  type ApplyInboundMedicationStockSignalResult,
+} from '@/modules/pharmacy/medication-stock/application/apply-inbound-medication-stock-signal';
 
 const ROUTE = '/api/communications/inbound/signals/[id]';
-
-const reviewSignalSchema = z.discriminatedUnion('action', [
-  z.object({
-    action: z.literal('accept'),
-  }),
-  z.object({
-    action: z.literal('record_only'),
-    reason: z.string().trim().max(300).optional(),
-  }),
-  z.object({
-    action: z.literal('reject'),
-    reason: z.string().trim().min(1, '却下理由は必須です').max(300),
-  }),
+const medicationStockUnitSchema = z.enum([
+  'tablet',
+  'capsule',
+  'packet',
+  'sheet',
+  'patch',
+  'tube',
+  'bottle',
+  'ml',
+  'g',
+  'dose',
+  'application',
+  'other',
 ]);
+
+const idempotencyKeySchema = z
+  .string()
+  .trim()
+  .regex(/^[A-Za-z0-9._:-]{1,128}$/, 'idempotency_key が不正です');
+
+const eventAtSchema = z
+  .string()
+  .datetime({ offset: true, message: 'event_at はISO日時で指定してください' })
+  .optional();
+
+const acceptSignalSchema = z.object({
+  action: z.literal('accept'),
+});
+const recordOnlySignalSchema = z.object({
+  action: z.literal('record_only'),
+  reason: z.string().trim().max(300).optional(),
+});
+const rejectSignalSchema = z.object({
+  action: z.literal('reject'),
+  reason: z.string().trim().min(1, '却下理由は必須です').max(300),
+});
+const applyMedicationStockSignalSchema = z.object({
+  action: z.literal('apply_to_medication_stock'),
+  target_stock_item_id: z.string().trim().min(1, '残数管理対象薬剤IDは必須です'),
+  idempotency_key: idempotencyKeySchema.optional(),
+  observation: z.discriminatedUnion('kind', [
+    z.object({
+      kind: z.literal('observed_absolute'),
+      quantity: z.number().finite().min(0, '残数は0以上で指定してください'),
+      unit: medicationStockUnitSchema,
+      event_at: eventAtSchema,
+    }),
+    z.object({
+      kind: z.literal('no_stock_observed'),
+      unit: medicationStockUnitSchema,
+      event_at: eventAtSchema,
+    }),
+  ]),
+});
+
+const reviewOnlySignalSchema = z.discriminatedUnion('action', [
+  acceptSignalSchema,
+  recordOnlySignalSchema,
+  rejectSignalSchema,
+]);
+const reviewSignalSchema = z.discriminatedUnion('action', [
+  acceptSignalSchema,
+  recordOnlySignalSchema,
+  rejectSignalSchema,
+  applyMedicationStockSignalSchema,
+]);
+
+type ReviewOnlySignalInput = z.infer<typeof reviewOnlySignalSchema>;
 
 type ReviewSignalRouteContext = {
   params: Promise<{ id?: string }>;
@@ -33,7 +101,7 @@ type TaskUpdateManyResult = {
   count?: number;
 };
 
-function buildReviewUpdate(input: z.infer<typeof reviewSignalSchema>, userId: string) {
+function buildReviewUpdate(input: ReviewOnlySignalInput, userId: string) {
   const reviewedAt = new Date();
   if (input.action === 'accept') {
     return {
@@ -72,6 +140,53 @@ function normalizeUpdatedCount(result: unknown) {
     : 0;
 }
 
+function parseEventAt(value?: string) {
+  if (!value) return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function resolveApplyIdempotencyKey(req: Request, payloadKey?: string) {
+  const header = parseOptionalIdempotencyKey(req.headers.get('idempotency-key'));
+  if (!header.ok) return header;
+  const bodyKey = payloadKey?.trim() || null;
+  if (header.key && bodyKey && header.key !== bodyKey) {
+    return {
+      ok: false as const,
+      message: 'Idempotency-Key と idempotency_key が一致しません',
+    };
+  }
+  const key = header.key ?? bodyKey;
+  if (!key) {
+    return {
+      ok: false as const,
+      message: 'Idempotency-Key は必須です',
+    };
+  }
+  return { ok: true as const, key };
+}
+
+function applyResultToResponse(result: ApplyInboundMedicationStockSignalResult) {
+  switch (result.kind) {
+    case 'applied':
+      return success({
+        data: result.data,
+        meta: {
+          generated_at: new Date().toISOString(),
+        },
+      });
+    case 'forbidden':
+      return forbidden(result.message);
+    case 'not_found':
+      return notFound(result.message);
+    case 'validation_error':
+      return validationError(result.message);
+    case 'invalid_state':
+    case 'conflict':
+      return conflict(result.message);
+  }
+}
+
 const authenticatedPATCH = withAuthContext(
   async (req, ctx, routeContext: ReviewSignalRouteContext) => {
     const signalId = normalizeRequiredRouteParam((await routeContext.params).id ?? '');
@@ -89,6 +204,48 @@ const authenticatedPATCH = withAuthContext(
       );
     }
 
+    if (parsed.data.action === 'apply_to_medication_stock') {
+      const applyPayload = parsed.data;
+      const idempotencyKey = resolveApplyIdempotencyKey(req, applyPayload.idempotency_key);
+      if (!idempotencyKey.ok) {
+        return withSensitiveNoStore(validationError(idempotencyKey.message));
+      }
+
+      const result = await withOrgContext(
+        ctx.orgId,
+        (tx) =>
+          applyInboundSignalToMedicationStock(tx, {
+            orgId: ctx.orgId,
+            userId: ctx.userId,
+            role: ctx.role,
+            signalId,
+            targetStockItemId: applyPayload.target_stock_item_id,
+            idempotencyKey: idempotencyKey.key,
+            observation:
+              applyPayload.observation.kind === 'observed_absolute'
+                ? {
+                    kind: 'observed_absolute',
+                    quantity: applyPayload.observation.quantity,
+                    unit: applyPayload.observation.unit,
+                    eventAt: parseEventAt(applyPayload.observation.event_at),
+                  }
+                : {
+                    kind: 'no_stock_observed',
+                    unit: applyPayload.observation.unit,
+                    eventAt: parseEventAt(applyPayload.observation.event_at),
+                  },
+          }),
+        {
+          requestContext: ctx,
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          timeoutMs: 5000,
+        },
+      );
+
+      return withSensitiveNoStore(applyResultToResponse(result));
+    }
+
+    const reviewPayload = reviewOnlySignalSchema.parse(parsed.data);
     const result = await withOrgContext(
       ctx.orgId,
       async (tx) => {
@@ -137,7 +294,7 @@ const authenticatedPATCH = withAuthContext(
           where: {
             id: signal.id,
           },
-          data: buildReviewUpdate(parsed.data, ctx.userId),
+          data: buildReviewUpdate(reviewPayload, ctx.userId),
           select: {
             id: true,
             inbound_event_id: true,
@@ -201,6 +358,11 @@ export const PATCH: typeof authenticatedPATCH = async (req, routeContext) => {
     return await authenticatedPATCH(req, routeContext);
   } catch (err) {
     unstable_rethrow(err);
+    if (isPrismaErrorCode(err, 'P2034')) {
+      return withSensitiveNoStore(
+        conflict('残数反映が同時に更新されました。再読み込みしてください'),
+      );
+    }
     logger.error(
       {
         event: 'inbound_signal_review_patch_unhandled_error',

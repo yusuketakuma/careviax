@@ -17199,3 +17199,67 @@
 - remaining work: live CloudFormation validation/deploy, restore testing enablement,
   and live recovery drill require AWS credentials and operator approval.
 - next action: commit and push this DB/AWS backup slice.
+
+## 2026-07-07 inbound stock signal apply
+
+- current task:
+  Add the first write path that applies reviewed inbound medication-stock
+  signals to the append-only Medication Stock Ledger.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `.agents/skills/oracle-consult/SKILL.md`,
+  Oracle session `stock-write-lifecycle-review`,
+  `src/app/api/communications/inbound/signals/[id]/route.ts`,
+  `src/server/services/communication-request-access.ts`,
+  `src/server/services/patient-detail-scope.ts`,
+  `src/server/services/patient-access.ts`,
+  `src/modules/pharmacy/medication-stock/domain/stockout-forecast.ts`.
+- files changed:
+  `src/app/api/communications/inbound/signals/[id]/route.ts`,
+  `src/app/api/communications/inbound/signals/[id]/route.test.ts`,
+  `src/modules/pharmacy/medication-stock/application/apply-inbound-medication-stock-signal.ts`,
+  `src/modules/pharmacy/medication-stock/application/apply-inbound-medication-stock-signal.test.ts`,
+  `ops/refactor/STATE.md`.
+- implementation:
+  Added `applyInboundSignalToMedicationStock` as the single application service
+  for inbound signal to stock-ledger conversion. The route now supports
+  `PATCH /api/communications/inbound/signals/:id` action
+  `apply_to_medication_stock` with a required idempotency key, Serializable
+  transaction, pharmacist-equivalent role gate, signal/patient/case visibility
+  checks, accepted/not-linked state checks, append-only
+  `MedicationStockEvent` creation, `ExternalMedicationStockObservation`
+  evidence linking, snapshot recalculation, and review-task closure. The first
+  slice intentionally supports only observed absolute quantity and no-stock
+  observation.
+- bugs found:
+  The first local typecheck caught review-only and medication-stock apply schema
+  mixing in the route, and a service argument type that incorrectly required a
+  caller-supplied patient ID. The final implementation narrows review/apply
+  payloads separately and resolves patient identity from the stored signal/event
+  before rechecking access.
+- security risks reduced:
+  Idempotency conflicts return 409 without exposing raw keys. The response and
+  tests avoid leaking medication names, raw inbound text, extracted free text,
+  or idempotency values. Clerk-level users are blocked before DB reads, and the
+  stock write path revalidates org, patient, case, active stock item, unit, and
+  signal state inside the transaction.
+- performance issues improved:
+  Snapshot recalculation is scoped to the affected stock item and reuses the
+  medication-stock event timeline indexes added in the DB performance slice.
+- validation commands:
+  `pnpm exec prettier --write src/modules/pharmacy/medication-stock/application/apply-inbound-medication-stock-signal.ts src/modules/pharmacy/medication-stock/application/apply-inbound-medication-stock-signal.test.ts 'src/app/api/communications/inbound/signals/[id]/route.ts' 'src/app/api/communications/inbound/signals/[id]/route.test.ts'`;
+  `pnpm exec vitest run src/modules/pharmacy/medication-stock/application/apply-inbound-medication-stock-signal.test.ts 'src/app/api/communications/inbound/signals/[id]/route.test.ts' --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint src/modules/pharmacy/medication-stock/application/apply-inbound-medication-stock-signal.ts src/modules/pharmacy/medication-stock/application/apply-inbound-medication-stock-signal.test.ts 'src/app/api/communications/inbound/signals/[id]/route.ts' 'src/app/api/communications/inbound/signals/[id]/route.test.ts'`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `git diff --check`.
+- validation results:
+  Focused route/service tests passed (2 files / 16 tests). Targeted ESLint
+  passed. Full typecheck passed. Diff whitespace check passed.
+- remaining work:
+  Later slices should add usage-delta/frequency/refill request review flows,
+  stock write UI, dashboard urgent integration, and final Oracle review before a
+  broad medication-stock merge point.
+- next action:
+  Commit and push this inbound signal apply slice, then resume the AWS backup
+  recovery request by checking the existing `9a62e12c2` baseline for missing
+  restore/runbook coverage.

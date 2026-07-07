@@ -9,6 +9,7 @@ const {
   withOrgContextMock,
   assignmentWhereMock,
   withAuthContextOptions,
+  applyInboundSignalToMedicationStockMock,
 } = vi.hoisted(() => ({
   inboundCommunicationSignalFindFirstMock: vi.fn(),
   inboundCommunicationSignalUpdateMock: vi.fn(),
@@ -16,6 +17,7 @@ const {
   withOrgContextMock: vi.fn(),
   assignmentWhereMock: vi.fn(),
   withAuthContextOptions: [] as Array<{ permission?: string; message?: string }>,
+  applyInboundSignalToMedicationStockMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -48,6 +50,13 @@ vi.mock('@/lib/db/rls', () => ({
 vi.mock('@/server/services/communication-request-access', () => ({
   buildInboundCommunicationEventAssignmentWhere: assignmentWhereMock,
 }));
+
+vi.mock(
+  '@/modules/pharmacy/medication-stock/application/apply-inbound-medication-stock-signal',
+  () => ({
+    applyInboundSignalToMedicationStock: applyInboundSignalToMedicationStockMock,
+  }),
+);
 
 import { PATCH as rawPATCH } from './route';
 
@@ -99,6 +108,25 @@ describe('/api/communications/inbound/signals/[id]', () => {
       reviewed_at: new Date('2026-07-07T07:10:00.000Z'),
     });
     taskUpdateManyMock.mockResolvedValue({ count: 1 });
+    applyInboundSignalToMedicationStockMock.mockResolvedValue({
+      kind: 'applied',
+      data: {
+        signal_id: 'signal_1',
+        inbound_event_id: 'event_1',
+        stock_item_id: 'stock_item_1',
+        stock_event_id: 'stock_event_1',
+        external_observation_id: 'external_observation_1',
+        review_status: 'accepted',
+        action_status: 'linked_to_stock_event',
+        snapshot: {
+          current_quantity: 4,
+          stock_risk_level: 'watch',
+          calculated_at: '2026-07-07T07:20:00.000Z',
+        },
+        review_task_closure_count: 1,
+        idempotent_replay: false,
+      },
+    });
   });
 
   it('marks a signal as record_only without returning raw inbound content', async () => {
@@ -272,6 +300,119 @@ describe('/api/communications/inbound/signals/[id]', () => {
     expect(payload.code).toBe('WORKFLOW_NOT_FOUND');
     expect(inboundCommunicationSignalUpdateMock).not.toHaveBeenCalled();
     expect(taskUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('applies an accepted medication stock signal through the application service', async () => {
+    const response = await PATCH(
+      new NextRequest('http://localhost/api/communications/inbound/signals/signal_1', {
+        method: 'PATCH',
+        headers: {
+          'content-type': 'application/json',
+          'idempotency-key': 'apply-signal-1',
+        },
+        body: JSON.stringify({
+          action: 'apply_to_medication_stock',
+          target_stock_item_id: 'stock_item_1',
+          observation: {
+            kind: 'observed_absolute',
+            quantity: 4,
+            unit: 'sheet',
+            event_at: '2026-07-07T07:20:00.000Z',
+          },
+        }),
+      }),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    expect(assignmentWhereMock).not.toHaveBeenCalled();
+    expect(inboundCommunicationSignalFindFirstMock).not.toHaveBeenCalled();
+    expect(applyInboundSignalToMedicationStockMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        inboundCommunicationSignal: expect.any(Object),
+      }),
+      {
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+        signalId: 'signal_1',
+        targetStockItemId: 'stock_item_1',
+        idempotencyKey: 'apply-signal-1',
+        observation: {
+          kind: 'observed_absolute',
+          quantity: 4,
+          unit: 'sheet',
+          eventAt: new Date('2026-07-07T07:20:00.000Z'),
+        },
+      },
+    );
+    expect(payload).toMatchObject({
+      data: {
+        signal_id: 'signal_1',
+        action_status: 'linked_to_stock_event',
+        stock_event_id: 'stock_event_1',
+        snapshot: {
+          stock_risk_level: 'watch',
+        },
+      },
+    });
+    expect(JSON.stringify(payload)).not.toContain('湿布');
+    expect(JSON.stringify(payload)).not.toContain('apply-signal-1');
+  });
+
+  it('requires an idempotency key before applying a signal to medication stock', async () => {
+    const response = await PATCH(
+      createRequest({
+        action: 'apply_to_medication_stock',
+        target_stock_item_id: 'stock_item_1',
+        observation: {
+          kind: 'observed_absolute',
+          quantity: 4,
+          unit: 'sheet',
+        },
+      }),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    expect(payload.code).toBe('VALIDATION_ERROR');
+    expect(applyInboundSignalToMedicationStockMock).not.toHaveBeenCalled();
+  });
+
+  it('maps medication stock apply conflicts to no-store 409 responses', async () => {
+    applyInboundSignalToMedicationStockMock.mockResolvedValueOnce({
+      kind: 'conflict',
+      message: '同じ冪等キーで異なる反映内容が指定されています',
+    });
+
+    const response = await PATCH(
+      new NextRequest('http://localhost/api/communications/inbound/signals/signal_1', {
+        method: 'PATCH',
+        headers: {
+          'content-type': 'application/json',
+          'idempotency-key': 'apply-signal-conflict',
+        },
+        body: JSON.stringify({
+          action: 'apply_to_medication_stock',
+          target_stock_item_id: 'stock_item_1',
+          observation: {
+            kind: 'no_stock_observed',
+            unit: 'sheet',
+          },
+        }),
+      }),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(409);
+    expectNoStore(response);
+    expect(payload).toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '同じ冪等キーで異なる反映内容が指定されています',
+    });
+    expect(JSON.stringify(payload)).not.toContain('apply-signal-conflict');
   });
 
   it('returns a no-store internal error without leaking raw details', async () => {
