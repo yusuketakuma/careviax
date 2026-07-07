@@ -17614,3 +17614,60 @@
 - next action:
   Save the implementation decision to gbrain, commit and push this slice, then
   continue with the next backend Plans.md task.
+
+## 2026-07-07 Dashboard urgent role-focus ordering
+
+- current task:
+  Continue `DASH-P0-001 Unified Urgent Queue` by making the backend urgent
+  queue honor role focus when multiple warning items have the same hard
+  deadline.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/(dashboard)/dashboard/dashboard-role-focus.ts`,
+  `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+  `src/app/(dashboard)/dashboard/use-dashboard-cockpit-view-model.ts`,
+  `src/server/services/dashboard-cockpit.ts`,
+  `src/types/dashboard-cockpit.ts`,
+  `src/app/api/dashboard/cockpit/route.test.ts`,
+  and `gbrain search "careviax dashboard urgent queue source-specific drilldown role focus DASH-P0-001"`.
+- files changed:
+  `src/server/services/dashboard-cockpit.ts`,
+  `src/app/api/dashboard/cockpit/route.test.ts`,
+  `ops/refactor/STATE.md`.
+- implementation:
+  Added backend role-focus weights for pharmacist, clerk, and common dashboard
+  views. `blocking`/`urgent` severity and earlier deadlines still win first;
+  role focus is only a tie-breaker among `warning` urgent items with the same
+  due time, and a final tie-breaker for undated warning items. Clerk focus now
+  prefers inbound/callback/report/billing warning items ahead of audit warnings
+  when the deadline is otherwise equal.
+- bugs found:
+  The frontend exposed role focus hints, but the backend urgent queue ordering
+  did not use the authenticated role, so clerk-focused dashboards could still
+  rank same-deadline audit warning work ahead of callback/communication work.
+- security risks reduced:
+  No data visibility or authorization rule changed. Ordering is derived only
+  from the authenticated `AuthContext.role`; PHI-bearing dashboard items remain
+  within the existing dashboard access scope.
+- performance issues improved:
+  No new DB reads were added. The role focus is applied in the existing in-memory
+  urgent queue sort.
+- validation commands:
+  `pnpm exec vitest run src/app/api/dashboard/cockpit/route.test.ts -t "uses role focus" --reporter=dot --testTimeout=30000`;
+  `pnpm exec vitest run src/app/api/dashboard/cockpit/route.test.ts --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint src/server/services/dashboard-cockpit.ts src/app/api/dashboard/cockpit/route.test.ts`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `git diff --check`.
+- validation results:
+  Focused role-ordering test passed. Dashboard cockpit route tests passed (1
+  file / 38 tests). Scoped ESLint passed. Full typecheck passed. Diff check
+  passed.
+- gbrain:
+  `careviax/implementation-decision/dashboard-role-focus-urgent-order-2026-07-07`.
+- remaining work:
+  `DASH-P0-001` still needs source-specific drilldown links. Production-like DB
+  profiling remains needed after the dashboard urgent queue sources settle.
+- next action:
+  Commit and push this slice, then continue with the next backend Plans.md task.

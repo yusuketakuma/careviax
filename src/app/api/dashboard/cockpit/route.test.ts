@@ -761,6 +761,70 @@ describe('/api/dashboard/cockpit', () => {
     );
   });
 
+  it('uses role focus priority for warning urgent items without demoting blocking work', async () => {
+    authContextMock.role = 'clerk';
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: { ...authContextMock, role: 'clerk' },
+    });
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
+    dispenseTaskFindManyMock.mockResolvedValue([
+      buildAuditTask({
+        id: 'task_plain',
+        priority: 'normal',
+        dueDate: new Date(2026, 5, 12, 11, 0),
+        patientName: '佐々木 ハル',
+      }),
+      buildAuditTask({
+        id: 'task_narcotic',
+        priority: 'normal',
+        dueDate: new Date(2026, 5, 12, 12, 0),
+        patientName: '田中 一郎',
+        lineTags: ['narcotic'],
+        packagingInstructions: '冷所保管',
+      }),
+    ]);
+    visitScheduleContactLogCountMock.mockResolvedValue(1);
+    visitScheduleContactLogFindManyMock.mockResolvedValue([
+      {
+        id: 'callback_late',
+        patient_id: 'patient_callback',
+        schedule_id: 'schedule_callback',
+        outcome: 'attempted',
+        contact_name: '長女',
+        note: '午後の折返し',
+        callback_due_at: new Date(2026, 5, 12, 11, 0),
+        called_at: new Date('2026-06-12T08:00:00'),
+      },
+    ]);
+    patientFindManyMock.mockResolvedValue([{ id: 'patient_callback', name: '折返 花子' }]);
+
+    const response = (await GETDetails(createRequest('', '/api/dashboard/cockpit/details'), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const json = await response.json();
+    expect(json.data.scope).toMatchObject({ applied: 'mine', can_view_team: false });
+    expect(json.data.urgent_items.map((item: { id: string }) => item.id)).toEqual([
+      'audit:task_narcotic',
+      'task:exception_1',
+      'callback:callback_late',
+      'audit:task_plain',
+      'task:exception_2',
+    ]);
+    expect(json.data.urgent_items[2]).toMatchObject({
+      source: 'callback',
+      severity: 'warning',
+      due_at: new Date(2026, 5, 12, 11, 0).toISOString(),
+    });
+    expect(json.data.urgent_items[3]).toMatchObject({
+      source: 'audit',
+      severity: 'warning',
+      due_at: new Date(2026, 5, 12, 11, 0).toISOString(),
+    });
+  });
+
   it('adds reviewed medication stock apply waits to the unified urgent queue', async () => {
     inboundCommunicationSignalCountMock.mockResolvedValue(1);
     inboundCommunicationSignalFindManyMock.mockResolvedValue([

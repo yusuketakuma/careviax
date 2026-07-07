@@ -112,6 +112,8 @@ type DashboardCockpitSegmentResponse =
   | DashboardCockpitMedicationStockResponse
   | DashboardCockpitReportBillingResponse;
 
+type DashboardUrgentFocusRole = 'pharmacist' | 'clerk' | 'common';
+
 type DashboardCockpitScopeContext = {
   now: Date;
   todayRange: ReturnType<typeof todayUtcRange>;
@@ -413,7 +415,10 @@ function compareAuditQueueItems(left: CockpitAuditQueueItem, right: CockpitAudit
   const weightDiff =
     (TASK_PRIORITY_WEIGHT[left.priority] ?? 2) - (TASK_PRIORITY_WEIGHT[right.priority] ?? 2);
   if (weightDiff !== 0) return weightDiff;
-  if (left.due_at && right.due_at) return left.due_at.localeCompare(right.due_at);
+  if (left.due_at && right.due_at) {
+    const dueDiff = left.due_at.localeCompare(right.due_at);
+    if (dueDiff !== 0) return dueDiff;
+  }
   if (left.due_at) return -1;
   if (right.due_at) return 1;
   return (left.waiting_since ?? '').localeCompare(right.waiting_since ?? '');
@@ -425,18 +430,87 @@ const URGENT_SEVERITY_WEIGHT: Record<DashboardUrgentItem['severity'], number> = 
   warning: 2,
 };
 
-function compareDashboardUrgentItems(left: DashboardUrgentItem, right: DashboardUrgentItem) {
+const DASHBOARD_URGENT_SOURCE_WEIGHT_BY_FOCUS = {
+  pharmacist: {
+    audit: 0,
+    medication_stock: 1,
+    visit_preparation: 2,
+    inbound: 3,
+    task: 4,
+    report: 5,
+    callback: 6,
+    billing: 7,
+  },
+  clerk: {
+    inbound: 0,
+    callback: 1,
+    report: 2,
+    billing: 3,
+    task: 4,
+    visit_preparation: 5,
+    audit: 6,
+    medication_stock: 7,
+  },
+  common: {
+    inbound: 0,
+    task: 1,
+    visit_preparation: 2,
+    audit: 3,
+    medication_stock: 4,
+    report: 5,
+    callback: 6,
+    billing: 7,
+  },
+} as const satisfies Record<
+  DashboardUrgentFocusRole,
+  Record<DashboardUrgentItem['source'], number>
+>;
+
+function resolveDashboardUrgentFocusRole(role: AuthContext['role']): DashboardUrgentFocusRole {
+  if (
+    role === 'owner' ||
+    role === 'admin' ||
+    role === 'pharmacist' ||
+    role === 'pharmacist_trainee'
+  ) {
+    return 'pharmacist';
+  }
+  if (role === 'clerk') return 'clerk';
+  return 'common';
+}
+
+function compareDashboardUrgentItems(
+  left: DashboardUrgentItem,
+  right: DashboardUrgentItem,
+  focusRole: DashboardUrgentFocusRole,
+) {
   const severityDiff =
     URGENT_SEVERITY_WEIGHT[left.severity] - URGENT_SEVERITY_WEIGHT[right.severity];
   if (severityDiff !== 0) return severityDiff;
-  if (left.due_at && right.due_at) return left.due_at.localeCompare(right.due_at);
+  if (left.due_at && right.due_at) {
+    const dueDiff = left.due_at.localeCompare(right.due_at);
+    if (dueDiff !== 0) return dueDiff;
+    if (left.severity === 'warning' && right.severity === 'warning') {
+      const sourceWeightDiff =
+        DASHBOARD_URGENT_SOURCE_WEIGHT_BY_FOCUS[focusRole][left.source] -
+        DASHBOARD_URGENT_SOURCE_WEIGHT_BY_FOCUS[focusRole][right.source];
+      if (sourceWeightDiff !== 0) return sourceWeightDiff;
+    }
+  }
   if (left.due_at) return -1;
   if (right.due_at) return 1;
   if (left.waiting_since && right.waiting_since) {
-    return left.waiting_since.localeCompare(right.waiting_since);
+    const waitingDiff = left.waiting_since.localeCompare(right.waiting_since);
+    if (waitingDiff !== 0) return waitingDiff;
   }
   if (left.waiting_since) return -1;
   if (right.waiting_since) return 1;
+  if (left.severity === 'warning' && right.severity === 'warning') {
+    const sourceWeightDiff =
+      DASHBOARD_URGENT_SOURCE_WEIGHT_BY_FOCUS[focusRole][left.source] -
+      DASHBOARD_URGENT_SOURCE_WEIGHT_BY_FOCUS[focusRole][right.source];
+    if (sourceWeightDiff !== 0) return sourceWeightDiff;
+  }
   return left.id.localeCompare(right.id);
 }
 
@@ -1130,6 +1204,7 @@ function buildDashboardUrgentItems(args: {
   billingItems?: DashboardUrgentItem[];
   taskItems?: DashboardUrgentItem[];
   blockedReasons?: CockpitBlockedReason[];
+  focusRole: DashboardUrgentFocusRole;
   now: Date;
 }) {
   return [
@@ -1144,7 +1219,7 @@ function buildDashboardUrgentItems(args: {
     ...(args.billingItems ?? []),
     ...(args.taskItems ?? []),
     ...(args.blockedReasons ?? []).map((reason) => buildBlockedReasonUrgentItem(reason, args.now)),
-  ].sort(compareDashboardUrgentItems);
+  ].sort((left, right) => compareDashboardUrgentItems(left, right, args.focusRole));
 }
 
 function readCount(value: bigint | number | string | null | undefined): number {
@@ -3221,6 +3296,7 @@ async function buildCockpitDetails(
     billingItems: billingUrgents.items,
     taskItems: taskUrgents.items,
     blockedReasons,
+    focusRole: resolveDashboardUrgentFocusRole(ctx.role),
     now: scopeContext.now,
   });
   const urgentSourceCount =
