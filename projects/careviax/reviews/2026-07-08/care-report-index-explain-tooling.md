@@ -28,8 +28,11 @@ expires_at: null
 feature_id: PERF-DB-006
 project_id: careviax
 updated_at: '2026-07-07T20:50:00.000Z'
+ingested_at: '2026-07-07T20:53:11.104Z'
 owner_agent: codex-lead
+source_kind: put_page
 commit_after: null
+ingested_via: put_page
 commit_before: e3a27070682e9e948a6ab9b27257cc17bf51d814
 superseded_by: null
 evidence_level: tested
@@ -46,9 +49,6 @@ validity_scope:
     - Prisma
   directories:
     - tools/scripts
-ingested_via: put_page
-ingested_at: '2026-07-07T20:50:01.626Z'
-source_kind: put_page
 tags:
   - care-report
   - db
@@ -81,7 +81,7 @@ severity: medium · status: fixed
 ## Resolution
 
 - action_taken: added the SELECT-only EXPLAIN CLI, mocked pg-client tests, package script registration, DB precheck convention coverage, and plan candidate wording aligned to current `created_at DESC, id DESC` route order.
-- fixed_in_commit: pending
+- fixed_in_commit: c3148fd6d
 
 ## Lesson candidate
 

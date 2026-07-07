@@ -105,7 +105,7 @@
     Focused Vitest passed `11`; CLI help passed without `DATABASE_URL`; ESLint passed; Prettier
     check passed after formatting; diff whitespace check passed; full typecheck passed.
   - commit:
-    pending.
+    `c3148fd6d` (`perf: add care report index explain tooling`).
   - remaining:
     `PERF-DB-006D-INDEX` still needs approved EXPLAIN artifact from a permitted environment,
     rollback plan, Oracle/DB review, and human gate before any index migration. `PAYLOAD-BUDGET-001C/D`,
