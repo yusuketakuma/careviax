@@ -31,6 +31,7 @@
     "test:e2e:harness:doctor": "sh tools/browser-harness/run.sh --doctor",
     "test:e2e:harness:patient-detail": "sh tools/browser-harness/run.sh < tools/browser-harness/patient-detail-smoke.py",
     "perf:smoke": "tsx tools/scripts/perf-smoke.ts",
+    "perf:smoke:payload-matrix": "tsx tools/scripts/perf-smoke.ts --payload-budget-matrix",
     "pilot:readiness": "tsx tools/scripts/pilot-readiness-report.ts",
     "pilot:org-audit": "tsx tools/scripts/pilot-org-audit.ts",
     "pilot:dossier": "tsx tools/scripts/pilot-dossier.ts",

@@ -41,6 +41,87 @@
 
 ## 直近の land（本日・要点）
 
+- codex: `PAYLOAD-BUDGET-001D` critical route payload budget matrix smoke。
+  - current task:
+    `perf-smoke` を単一集計のpayload checkから、設定済みcritical GET routeをroute familyごとに
+    独立測定するmatrix smokeへ拡張する。mixed routeのover-budget見落とし、`Content-Length`
+    未計測routeのfalse-pass、query/search/patient id/hashの出力漏れを防ぐ。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `git rev-parse HEAD`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `docs/operations/performance-smoke-test.md`,
+    `package.json`,
+    `tools/scripts/perf-smoke.ts`,
+    `tools/scripts/perf-smoke.test.ts`,
+    `src/lib/utils/route-payload-budgets.ts`,
+    `src/lib/utils/performance.test.ts`.
+  - bounded subagents:
+    `Mapper the 35th` mapped the current perf-smoke / payload budget seam and recommended
+    matrix-mode coverage with sanitized path identity. `Test Architect the 35th` identified
+    the mixed-budget false-pass risk, the need to fail configured routes without runtime
+    `Content-Length`, and coverage guards for every configured exact GET budget route.
+  - files changed:
+    `Plans.md`,
+    `docs/operations/performance-smoke-test.md`,
+    `package.json`,
+    `tools/scripts/perf-smoke.ts`,
+    `tools/scripts/perf-smoke.test.ts`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Added `--payload-budget-matrix`, `PERF_PAYLOAD_BUDGET_MATRIX=1`, and
+    `perf:smoke:payload-matrix`. When matrix mode is enabled without explicit `--path`,
+    the script expands all configured exact GET entries from `CRITICAL_ROUTE_PAYLOAD_BUDGETS`,
+    materializing patient dynamic ids from `PERF_PATIENT_ID` or a test-safe default.
+    Each route is measured independently, produces a per-route entry with its resolved
+    budget, and reports matrix summary counts for configured budgets, runtime
+    `Content-Length` measurements, unmeasured routes, over-budget routes, request errors,
+    and latency failures. Output path identity is sanitized to pathname only; the request
+    can still include query strings, but query/search terms/patient ids/hash are not echoed
+    in JSON output.
+  - bugs found:
+    The previous aggregate perf-smoke payload result could hide route-level budget failures
+    when multiple paths were sampled together. Configured routes without `Content-Length`
+    were also indistinguishable from unbudgeted/no-payload cases, which could make runtime
+    route-performance monitoring appear covered when it was not.
+  - security risks reduced:
+    Matrix output now strips query strings and hashes from emitted path identity, reducing
+    the chance that search terms, patient identifiers, or signed/token query material are
+    copied into perf artifacts. No auth/authorization or PHI route semantics changed.
+  - performance issues improved:
+    Critical payload budgets now have a focused smoke matrix that fails independently on
+    `PAYLOAD_OVER_BUDGET`, `PAYLOAD_UNMEASURED`, request errors, or latency target misses.
+    This makes the dashboard / patient movement / inbound / medication-stock payload
+    budgets actionable in local, staging, and CI-like runs instead of relying on a single
+    aggregate value.
+  - validation commands:
+    `pnpm exec vitest run tools/scripts/perf-smoke.test.ts src/lib/utils/performance.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint tools/scripts/perf-smoke.ts tools/scripts/perf-smoke.test.ts src/lib/utils/route-payload-budgets.ts src/lib/utils/performance.test.ts`;
+    `pnpm exec prettier --write tools/scripts/perf-smoke.test.ts Plans.md`;
+    `pnpm exec prettier --check tools/scripts/perf-smoke.ts tools/scripts/perf-smoke.test.ts docs/operations/performance-smoke-test.md package.json Plans.md`;
+    `git diff --check -- tools/scripts/perf-smoke.ts tools/scripts/perf-smoke.test.ts docs/operations/performance-smoke-test.md package.json Plans.md`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Focused perf-smoke/performance suite passed `2` files / `33` tests. Scoped ESLint
+    passed. Prettier check passed after formatting `tools/scripts/perf-smoke.test.ts`
+    and `Plans.md`. Diff whitespace check passed. Full typecheck passed.
+  - gbrain:
+    `projects/careviax/reviews/2026-07-08/payload-budget-matrix-smoke`
+    (`PerformanceFinding`) に PHI-free で aggregate perf-smoke false-pass、pathname-only
+    output、configured route `Content-Length` requirement の再利用知見を保存する。
+  - remaining:
+    Care-report EXPLAIN artifact取得 / index migration human gate、
+    `QUERY-SHAPE-TEST-002`, dashboard rail/drilldown, frontend slice contracts,
+    raw detail reauthorization, permission matrix coverage, and live environment
+    perf-smoke evidence remain.
+  - commit:
+    included in the scoped implementation commit; final hash is reported in the
+    user-facing summary after commit creation.
+  - next action:
+    Commit and push this scoped slice, then continue with dashboard rail/drilldown or
+    query-shape smoke unless redirected.
+
 - codex: `PAYLOAD-BUDGET-001C-A/B/C/D` inbound / signal / medication-stock summary payload budget。
   - current task:
     `Plans.md` の active queue で未実装扱いだった `PAYLOAD-BUDGET-001C-A/B/C/D` を実装し、

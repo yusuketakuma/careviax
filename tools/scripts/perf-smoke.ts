@@ -2,8 +2,10 @@ import process from 'node:process';
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import {
+  CRITICAL_ROUTE_PAYLOAD_BUDGETS,
   payloadBudgetStatus,
   resolveRoutePayloadBudget,
+  type PayloadBudgetDefinition,
   type PayloadBudgetStatus,
 } from '../../src/lib/utils/route-payload-budgets';
 import { maybeUnrefTimeout } from '../shared/abort-timeout';
@@ -19,6 +21,7 @@ type Args = {
   paths: string[];
   headers: Record<string, string>;
   body?: string;
+  payloadBudgetMatrix: boolean;
 };
 
 export type PerfSmokeResult = {
@@ -32,6 +35,9 @@ export type PerfSmokeResult = {
   paths: string[];
   body_bytes: number;
   response_payload_sample_count: number;
+  response_payload_content_length_sample_count: number;
+  response_payload_body_fallback_sample_count: number;
+  response_payload_measurement_status: ResponsePayloadMeasurementStatus;
   average_response_payload_bytes: number | null;
   p50_response_payload_bytes: number | null;
   p95_response_payload_bytes: number | null;
@@ -50,6 +56,51 @@ export type PerfSmokeResult = {
   timeout_count: number;
   p95_target_met: boolean;
   p99_target_met: boolean;
+  target_met: boolean;
+};
+
+type ResponsePayloadMeasurementSource = 'content_length' | 'body_fallback';
+export type ResponsePayloadMeasurementStatus =
+  | 'content_length'
+  | 'body_fallback'
+  | 'mixed'
+  | 'none';
+
+export type PerfSmokeMatrixEntry = PerfSmokeResult & {
+  path: string;
+  budget_route: string | null;
+  runtime_payload_measurement_required: boolean;
+  runtime_payload_measurement_met: boolean | null;
+};
+
+export type PerfSmokeMatrixWarning = {
+  code: 'PAYLOAD_UNMEASURED' | 'PAYLOAD_OVER_BUDGET' | 'REQUEST_ERROR' | 'LATENCY_TARGET_MISSED';
+  path: string;
+  family: string | null;
+  budget_route: string | null;
+};
+
+export type PerfSmokeMatrixResult = {
+  mode: 'payload_budget_matrix';
+  base_url: string;
+  requests_per_path: number;
+  concurrency: number;
+  target_ms: number;
+  p99_target_ms: number;
+  request_timeout_ms: number;
+  method: string;
+  paths: string[];
+  summary: {
+    route_count: number;
+    configured_payload_budget_count: number;
+    measured_by_content_length_count: number;
+    runtime_unmeasured_route_count: number;
+    over_budget_route_count: number;
+    error_route_count: number;
+    latency_failed_route_count: number;
+  };
+  warnings: PerfSmokeMatrixWarning[];
+  entries: PerfSmokeMatrixEntry[];
   target_met: boolean;
 };
 
@@ -99,6 +150,7 @@ export function parseArgs(
     paths: ['/api/health'],
     headers: {},
     ...(env.PERF_BODY ? { body: env.PERF_BODY } : {}),
+    payloadBudgetMatrix: env.PERF_PAYLOAD_BUDGET_MATRIX === '1',
   };
 
   let hasExplicitPath = false;
@@ -128,6 +180,9 @@ export function parseArgs(
     if (value === '--method' && next) args.method = next.toUpperCase();
     if (value === '--body' && next) args.body = next;
     if (value === '--body-file' && next) args.body = readFileSync(next, 'utf8');
+    if (value === '--payload-budget-matrix') {
+      args.payloadBudgetMatrix = true;
+    }
     if (value === '--path' && next) {
       if (!hasExplicitPath) {
         args.paths = [];
@@ -145,8 +200,42 @@ export function parseArgs(
     }
   }
 
+  if (args.payloadBudgetMatrix && !hasExplicitPath) {
+    args.paths = buildDefaultPayloadBudgetMatrixPaths(env);
+  }
+
   args.paths = args.paths.filter((item, index, list) => list.indexOf(item) === index);
   return args;
+}
+
+function buildDefaultPayloadBudgetMatrixPaths(env: Record<string, string | undefined>): string[] {
+  return CRITICAL_ROUTE_PAYLOAD_BUDGETS.filter(isMatrixBudgetDefinition).map((definition) =>
+    materializeBudgetRoute(definition.route, env),
+  );
+}
+
+function isMatrixBudgetDefinition(definition: PayloadBudgetDefinition): boolean {
+  return (
+    definition.method === 'GET' &&
+    definition.budget_bytes != null &&
+    !definition.route.endsWith('*')
+  );
+}
+
+function materializeBudgetRoute(
+  route: string,
+  env: Record<string, string | undefined> = process.env,
+): string {
+  const patientId = env.PERF_PATIENT_ID ?? 'patient_1';
+  return route.replaceAll(':id', patientId);
+}
+
+function safeOutputPath(path: string, baseUrl: string): string {
+  try {
+    return new URL(path, baseUrl).pathname || '/';
+  } catch {
+    return path.split(/[?#]/, 1)[0] || '/';
+  }
 }
 
 function hasHeader(headers: Record<string, string>, name: string): boolean {
@@ -177,11 +266,14 @@ function parseContentLength(value: string | null): number | null {
   return Number.isSafeInteger(parsed) ? parsed : null;
 }
 
-async function measureResponsePayloadBytes(response: Response): Promise<number> {
+async function measureResponsePayloadBytes(response: Response): Promise<{
+  bytes: number;
+  source: ResponsePayloadMeasurementSource;
+}> {
   const contentLength = parseContentLength(response.headers.get('content-length'));
-  if (contentLength != null) return contentLength;
+  if (contentLength != null) return { bytes: contentLength, source: 'content_length' };
 
-  return (await response.arrayBuffer()).byteLength;
+  return { bytes: (await response.arrayBuffer()).byteLength, source: 'body_fallback' };
 }
 
 function resolveResponsePayloadBudget(args: Args): {
@@ -234,12 +326,24 @@ export function createRequestAbort(timeoutMs: number): {
   };
 }
 
+function summarizePayloadMeasurement(
+  contentLengthCount: number,
+  bodyFallbackCount: number,
+): ResponsePayloadMeasurementStatus {
+  if (contentLengthCount === 0 && bodyFallbackCount === 0) return 'none';
+  if (contentLengthCount > 0 && bodyFallbackCount === 0) return 'content_length';
+  if (contentLengthCount === 0 && bodyFallbackCount > 0) return 'body_fallback';
+  return 'mixed';
+}
+
 export async function runPerfSmoke(
   args: Args,
   fetchImpl: typeof fetch = fetch,
 ): Promise<PerfSmokeResult> {
   const durations: number[] = [];
   const responsePayloadBytes: number[] = [];
+  let responsePayloadContentLengthCount = 0;
+  let responsePayloadBodyFallbackCount = 0;
   let errorCount = 0;
   let timeoutCount = 0;
   let cursor = 0;
@@ -259,7 +363,13 @@ export async function runPerfSmoke(
         const response = await fetchImpl(target, {
           ...buildRequestInit(args, requestAbort.signal),
         });
-        responsePayloadBytes.push(await measureResponsePayloadBytes(response));
+        const responsePayload = await measureResponsePayloadBytes(response);
+        responsePayloadBytes.push(responsePayload.bytes);
+        if (responsePayload.source === 'content_length') {
+          responsePayloadContentLengthCount += 1;
+        } else {
+          responsePayloadBodyFallbackCount += 1;
+        }
         durations.push(Math.round(performance.now() - startedAt));
         if (!response.ok) {
           errorCount += 1;
@@ -323,9 +433,15 @@ export async function runPerfSmoke(
     p99_target_ms: args.p99TargetMs,
     request_timeout_ms: args.requestTimeoutMs,
     method: args.method,
-    paths: args.paths,
+    paths: args.paths.map((path) => safeOutputPath(path, args.baseUrl)),
     body_bytes: args.body ? Buffer.byteLength(args.body) : 0,
     response_payload_sample_count: responsePayloadBytes.length,
+    response_payload_content_length_sample_count: responsePayloadContentLengthCount,
+    response_payload_body_fallback_sample_count: responsePayloadBodyFallbackCount,
+    response_payload_measurement_status: summarizePayloadMeasurement(
+      responsePayloadContentLengthCount,
+      responsePayloadBodyFallbackCount,
+    ),
     average_response_payload_bytes: averageResponsePayload,
     p50_response_payload_bytes: p50ResponsePayload,
     p95_response_payload_bytes: p95ResponsePayload,
@@ -349,8 +465,112 @@ export async function runPerfSmoke(
   };
 }
 
+export async function runPerfSmokeMatrix(
+  args: Args,
+  fetchImpl: typeof fetch = fetch,
+): Promise<PerfSmokeMatrixResult> {
+  const entries: PerfSmokeMatrixEntry[] = [];
+  const warnings: PerfSmokeMatrixWarning[] = [];
+
+  for (const path of args.paths) {
+    const entryArgs: Args = { ...args, paths: [path], payloadBudgetMatrix: false };
+    const result = await runPerfSmoke(entryArgs, fetchImpl);
+    const budget = resolveRoutePayloadBudget(args.method, path);
+    const outputPath = safeOutputPath(path, args.baseUrl);
+    const runtimePayloadMeasurementRequired = budget?.budget_bytes != null;
+    const runtimePayloadMeasurementMet =
+      runtimePayloadMeasurementRequired && result.response_payload_sample_count > 0
+        ? result.response_payload_body_fallback_sample_count === 0
+        : runtimePayloadMeasurementRequired
+          ? false
+          : null;
+
+    const entry: PerfSmokeMatrixEntry = {
+      ...result,
+      paths: [outputPath],
+      path: outputPath,
+      budget_route: budget?.route ?? null,
+      runtime_payload_measurement_required: runtimePayloadMeasurementRequired,
+      runtime_payload_measurement_met: runtimePayloadMeasurementMet,
+      target_met: result.target_met && runtimePayloadMeasurementMet !== false,
+    };
+    entries.push(entry);
+
+    if (entry.runtime_payload_measurement_met === false) {
+      warnings.push({
+        code: 'PAYLOAD_UNMEASURED',
+        path: outputPath,
+        family: entry.response_payload_route_family,
+        budget_route: entry.budget_route,
+      });
+    }
+    if (entry.response_payload_budget_status === 'over_budget') {
+      warnings.push({
+        code: 'PAYLOAD_OVER_BUDGET',
+        path: outputPath,
+        family: entry.response_payload_route_family,
+        budget_route: entry.budget_route,
+      });
+    }
+    if (entry.error_count > 0 || entry.timeout_count > 0) {
+      warnings.push({
+        code: 'REQUEST_ERROR',
+        path: outputPath,
+        family: entry.response_payload_route_family,
+        budget_route: entry.budget_route,
+      });
+    }
+    if (!entry.p95_target_met || !entry.p99_target_met) {
+      warnings.push({
+        code: 'LATENCY_TARGET_MISSED',
+        path: outputPath,
+        family: entry.response_payload_route_family,
+        budget_route: entry.budget_route,
+      });
+    }
+  }
+
+  const targetMet = entries.every((entry) => entry.target_met);
+  return {
+    mode: 'payload_budget_matrix',
+    base_url: args.baseUrl,
+    requests_per_path: args.requests,
+    concurrency: args.concurrency,
+    target_ms: args.targetMs,
+    p99_target_ms: args.p99TargetMs,
+    request_timeout_ms: args.requestTimeoutMs,
+    method: args.method,
+    paths: args.paths.map((path) => safeOutputPath(path, args.baseUrl)),
+    summary: {
+      route_count: entries.length,
+      configured_payload_budget_count: entries.filter(
+        (entry) => entry.response_payload_budget_bytes != null,
+      ).length,
+      measured_by_content_length_count: entries.filter(
+        (entry) => entry.runtime_payload_measurement_met === true,
+      ).length,
+      runtime_unmeasured_route_count: entries.filter(
+        (entry) => entry.runtime_payload_measurement_met === false,
+      ).length,
+      over_budget_route_count: entries.filter(
+        (entry) => entry.response_payload_budget_status === 'over_budget',
+      ).length,
+      error_route_count: entries.filter((entry) => entry.error_count > 0).length,
+      latency_failed_route_count: entries.filter(
+        (entry) => !entry.p95_target_met || !entry.p99_target_met,
+      ).length,
+    },
+    warnings,
+    entries,
+    target_met: targetMet,
+  };
+}
+
 async function main() {
-  const result = await runPerfSmoke(parseArgs(process.argv.slice(2)));
+  const args = parseArgs(process.argv.slice(2));
+  const result = args.payloadBudgetMatrix
+    ? await runPerfSmokeMatrix(args)
+    : await runPerfSmoke(args);
 
   console.log(JSON.stringify(result, null, 2));
 
