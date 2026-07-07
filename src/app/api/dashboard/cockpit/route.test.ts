@@ -14,6 +14,7 @@ const {
   setPlanFindManyMock,
   visitRecordFindManyMock,
   careReportFindManyMock,
+  careReportCountMock,
   taskCommentFindManyMock,
   userFindManyMock,
   queryRawMock,
@@ -49,6 +50,7 @@ const {
   setPlanFindManyMock: vi.fn(),
   visitRecordFindManyMock: vi.fn(),
   careReportFindManyMock: vi.fn(),
+  careReportCountMock: vi.fn(),
   taskCommentFindManyMock: vi.fn(),
   userFindManyMock: vi.fn(),
   queryRawMock: vi.fn(),
@@ -88,7 +90,7 @@ vi.mock('@/lib/db/client', () => ({
     dispenseTask: { findMany: dispenseTaskFindManyMock },
     setPlan: { findMany: setPlanFindManyMock },
     visitRecord: { findMany: visitRecordFindManyMock },
-    careReport: { findMany: careReportFindManyMock },
+    careReport: { findMany: careReportFindManyMock, count: careReportCountMock },
     taskComment: { findMany: taskCommentFindManyMock },
     user: { findMany: userFindManyMock },
     $queryRaw: queryRawMock,
@@ -140,6 +142,7 @@ import { GET as GETSummary } from './summary/route';
 import { GET as GETTeam } from './team/route';
 import { GET as GETComments } from './comments/route';
 import { GET as GETInbound } from './inbound/route';
+import { GET as GETReportBilling } from './report-billing/route';
 
 function createRequest(search = '', path = '/api/dashboard/cockpit') {
   return new NextRequest(`http://localhost${path}${search}`, {
@@ -269,6 +272,7 @@ describe('/api/dashboard/cockpit', () => {
     setPlanFindManyMock.mockResolvedValue([]);
     visitRecordFindManyMock.mockResolvedValue([]);
     careReportFindManyMock.mockResolvedValue([]);
+    careReportCountMock.mockResolvedValue(0);
     taskCommentFindManyMock.mockResolvedValue([]);
     userFindManyMock.mockResolvedValue([]);
     inboundCommunicationEventFindManyMock.mockResolvedValue([]);
@@ -281,6 +285,14 @@ describe('/api/dashboard/cockpit', () => {
     patientFindManyMock.mockResolvedValue([]);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        careReport: {
+          findMany: careReportFindManyMock,
+          count: careReportCountMock,
+        },
+        deliveryRecord: {
+          findMany: deliveryRecordFindManyMock,
+          count: deliveryRecordCountMock,
+        },
         visitSchedule: {
           findMany: visitScheduleFindManyMock,
           count: visitScheduleCountMock,
@@ -1026,6 +1038,257 @@ describe('/api/dashboard/cockpit', () => {
       ],
     });
     expect(prepCountQuery?.where).toEqual(prepFindQuery?.where);
+  });
+
+  it('returns the report-billing segment without full cockpit fields or raw evidence', async () => {
+    careReportCountMock.mockResolvedValue(1);
+    deliveryRecordCountMock.mockImplementation(
+      (args?: { where?: { status?: { in?: string[] } } }) => {
+        const statuses = args?.where?.status?.in ?? [];
+        if (statuses.includes('failed')) return Promise.resolve(1);
+        if (statuses.includes('response_waiting')) return Promise.resolve(1);
+        return Promise.resolve(0);
+      },
+    );
+    billingCandidateCountMock.mockResolvedValue(1);
+    careReportFindManyMock.mockResolvedValue([
+      {
+        id: 'report_draft',
+        patient_id: 'patient_draft',
+        report_type: 'physician_report',
+        status: 'draft',
+        updated_at: new Date(2026, 5, 12, 8, 50),
+        content: { raw: '患者 090-0000-0000 報告書本文' },
+      },
+    ]);
+    deliveryRecordFindManyMock.mockResolvedValue([
+      {
+        id: 'delivery_failed',
+        channel: 'fax',
+        recipient_name: 'やまもと内科',
+        recipient_contact: '090-1111-2222',
+        failure_reason: 'FAX送信エラー',
+        status: 'failed',
+        retry_count: 1,
+        updated_at: new Date(2026, 5, 12, 9, 20),
+        report: {
+          id: 'report_failed',
+          patient_id: 'patient_failed',
+          report_type: 'physician_report',
+        },
+      },
+      {
+        id: 'delivery_waiting',
+        channel: 'email',
+        recipient_name: '訪問看護ST',
+        recipient_contact: 'secret@example.com',
+        failure_reason: null,
+        status: 'response_waiting',
+        retry_count: 0,
+        updated_at: new Date(2026, 5, 12, 8, 40),
+        report: {
+          id: 'report_waiting',
+          patient_id: 'patient_waiting',
+          report_type: 'nurse_share',
+        },
+      },
+    ]);
+    billingCandidateFindManyMock.mockResolvedValue([
+      {
+        id: 'candidate_open',
+        patient_id: 'patient_billing',
+        billing_month: new Date('2026-06-01T00:00:00.000Z'),
+        billing_code: 'MED_HOME_VISIT',
+        billing_name: '在宅患者訪問薬剤管理指導料',
+        updated_at: new Date(2026, 5, 12, 9, 10),
+        source_snapshot: {
+          validation_layers: { raw: '患者個別事情 090-2222-3333 token-like-value' },
+        },
+        calculation_breakdown: { raw: '算定根拠全文' },
+      },
+    ]);
+    patientFindManyMock.mockResolvedValue([
+      { id: 'patient_draft', name: '下書き 太郎' },
+      { id: 'patient_failed', name: '送付 花子' },
+      { id: 'patient_waiting', name: '確認 次郎' },
+      { id: 'patient_billing', name: '算定 三郎' },
+    ]);
+
+    const response = (await GETReportBilling(
+      createRequest('', '/api/dashboard/cockpit/report-billing'),
+      {
+        params: Promise.resolve({}),
+      },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const json = await response.json();
+    expect(json.data.reports).toEqual({
+      draft_needed_count: 1,
+      delivery_failed_count: 1,
+      waiting_confirmation_count: 1,
+    });
+    expect(json.data.billing).toEqual({
+      blocker_count: 1,
+      close_queue_count: 1,
+      month_end_risk_count: 0,
+      can_view_billing: true,
+    });
+    expect(json.data.items_total_count).toBe(4);
+    expect(json.data.items_visible_count).toBe(4);
+    expect(json.data.items_hidden_count).toBe(0);
+    expect(json.data.cycle_status_counts).toBeUndefined();
+    expect(json.data.audit_queue).toBeUndefined();
+    expect(json.data.today_visits).toBeUndefined();
+    expect(json.data.team_capacity).toBeUndefined();
+    expect(json.data.items.map((item: { id: string }) => item.id)).toEqual([
+      'report_delivery:delivery_failed',
+      'report:report_draft',
+      'report_delivery:delivery_waiting',
+      'billing:candidate_open',
+    ]);
+    expect(json.data.items[0]).toMatchObject({
+      kind: 'report_delivery_failed',
+      source_id: 'delivery_failed',
+      patient_id: 'patient_failed',
+      patient_name: '送付 花子',
+      title: '報告書の送付失敗',
+      summary: 'やまもと内科 / FAX / 理由: FAX送信エラー',
+      severity: 'blocking',
+      reference_label: 'FAX',
+      due_at: new Date(2026, 5, 12, 9, 20).toISOString(),
+      waiting_since: new Date(2026, 5, 12, 9, 20).toISOString(),
+      action_href: '/reports/report_failed?action=resend&delivery_id=delivery_failed',
+      action_label: '宛先確認・再送',
+    });
+    expect(json.data.items[3]).toMatchObject({
+      kind: 'billing_candidate_pending',
+      source_id: 'candidate_open',
+      patient_id: 'patient_billing',
+      patient_name: '算定 三郎',
+      reference_label: '2026-06 / MED_HOME_VISIT',
+      action_href:
+        '/billing/candidates?billing_month=2026-06-01&status=candidate&candidate_id=candidate_open&patient_id=patient_billing',
+    });
+
+    const responseBody = JSON.stringify(json.data);
+    expect(responseBody).not.toContain('content');
+    expect(responseBody).not.toContain('source_snapshot');
+    expect(responseBody).not.toContain('calculation_breakdown');
+    expect(responseBody).not.toContain('validation_layers');
+    expect(responseBody).not.toContain('recipient_contact');
+    expect(responseBody).not.toContain('secret@example.com');
+    expect(responseBody).not.toContain('090-1111-2222');
+    expect(responseBody).not.toContain('090-2222-3333');
+
+    expect(careReportFindManyMock.mock.calls.at(-1)?.[0]?.select).toEqual({
+      id: true,
+      patient_id: true,
+      report_type: true,
+      status: true,
+      updated_at: true,
+    });
+    expect(deliveryRecordFindManyMock.mock.calls.at(-1)?.[0]?.select).toEqual({
+      id: true,
+      channel: true,
+      recipient_name: true,
+      failure_reason: true,
+      status: true,
+      retry_count: true,
+      updated_at: true,
+      report: {
+        select: {
+          id: true,
+          patient_id: true,
+          report_type: true,
+        },
+      },
+    });
+    expect(billingCandidateFindManyMock.mock.calls.at(-1)?.[0]?.select).toEqual({
+      id: true,
+      patient_id: true,
+      billing_month: true,
+      billing_code: true,
+      billing_name: true,
+      updated_at: true,
+    });
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: authContextMock,
+      maxWaitMs: 2000,
+      timeoutMs: 3000,
+    });
+  });
+
+  it('skips report-billing billing reads when the dashboard viewer lacks billing permission', async () => {
+    authContextMock.role = 'clerk';
+    careReportCountMock.mockResolvedValue(1);
+    careReportFindManyMock.mockResolvedValue([
+      {
+        id: 'report_draft',
+        patient_id: 'patient_draft',
+        report_type: 'physician_report',
+        status: 'draft',
+        updated_at: new Date(2026, 5, 12, 8, 50),
+      },
+    ]);
+    patientFindManyMock.mockResolvedValue([{ id: 'patient_draft', name: '下書き 太郎' }]);
+
+    const response = (await GETReportBilling(
+      createRequest('', '/api/dashboard/cockpit/report-billing'),
+      {
+        params: Promise.resolve({}),
+      },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const json = await response.json();
+    expect(json.data.reports.draft_needed_count).toBe(1);
+    expect(json.data.billing).toEqual({
+      blocker_count: 0,
+      close_queue_count: 0,
+      month_end_risk_count: 0,
+      can_view_billing: false,
+    });
+    expect(json.data.items.map((item: { kind: string }) => item.kind)).toEqual(['report_draft']);
+    expect(billingCandidateFindManyMock).not.toHaveBeenCalled();
+    expect(billingCandidateCountMock).not.toHaveBeenCalled();
+  });
+
+  it('scopes report-billing reads by assigned patients and cases for non-admin members', async () => {
+    authContextMock.role = 'pharmacist';
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
+
+    const response = (await GETReportBilling(
+      createRequest('?scope=team', '/api/dashboard/cockpit/report-billing'),
+      {
+        params: Promise.resolve({}),
+      },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const json = await response.json();
+    expect(json.data.scope).toEqual({
+      requested: 'team',
+      applied: 'mine',
+      can_view_team: false,
+    });
+    expect(careReportFindManyMock.mock.calls.at(-1)?.[0]?.where).toMatchObject({
+      org_id: 'org_1',
+      OR: [{ patient_id: { in: ['patient_1'] } }, { case_id: { in: ['case_1'] } }],
+    });
+    expect(deliveryRecordFindManyMock.mock.calls.at(-1)?.[0]?.where).toMatchObject({
+      org_id: 'org_1',
+      report: {
+        OR: [{ patient_id: { in: ['patient_1'] } }, { case_id: { in: ['case_1'] } }],
+      },
+    });
+    expect(billingCandidateFindManyMock.mock.calls.at(-1)?.[0]?.where).toMatchObject({
+      org_id: 'org_1',
+      patient_id: { in: ['patient_1'] },
+    });
   });
 
   it('returns the team segment without audit or exception reads', async () => {

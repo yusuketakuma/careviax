@@ -47,11 +47,13 @@ import type {
   DashboardCockpitCommentsResponse,
   DashboardCockpitDetailsResponse,
   DashboardCockpitInboundResponse,
+  DashboardCockpitReportBillingResponse,
   DashboardCockpitResponse,
   DashboardCockpitScope,
   DashboardCockpitScopeMetadata,
   DashboardCockpitSummaryResponse,
   DashboardCockpitTeamResponse,
+  DashboardReportBillingItem,
   DashboardUrgentItem,
 } from '@/types/dashboard-cockpit';
 import { buildTeamCapacity } from '@/app/api/dashboard/cockpit/team-capacity';
@@ -68,12 +70,20 @@ const CALLBACK_URGENT_FETCH_LIMIT = 12;
 const REPORT_URGENT_FETCH_LIMIT = 12;
 const BILLING_URGENT_FETCH_LIMIT = 12;
 const VISIT_PREPARATION_URGENT_FETCH_LIMIT = 12;
+const REPORT_BILLING_ITEM_RESPONSE_LIMIT = 10;
 
 type DashboardScopeQuery =
   | { ok: true; scope: DashboardCockpitScope | null }
   | { ok: false; response: ReturnType<typeof validationError> };
 
-type DashboardCockpitPart = 'full' | 'summary' | 'details' | 'team' | 'comments' | 'inbound';
+type DashboardCockpitPart =
+  | 'full'
+  | 'summary'
+  | 'details'
+  | 'team'
+  | 'comments'
+  | 'inbound'
+  | 'report-billing';
 
 type DashboardCockpitSegmentResponse =
   | DashboardCockpitResponse
@@ -81,7 +91,8 @@ type DashboardCockpitSegmentResponse =
   | DashboardCockpitDetailsResponse
   | DashboardCockpitTeamResponse
   | DashboardCockpitCommentsResponse
-  | DashboardCockpitInboundResponse;
+  | DashboardCockpitInboundResponse
+  | DashboardCockpitReportBillingResponse;
 
 type DashboardCockpitScopeContext = {
   now: Date;
@@ -179,6 +190,29 @@ type DashboardBillingUrgentCandidate = {
 type DashboardBillingUrgentResult = {
   items: DashboardUrgentItem[];
   totalCount: number;
+};
+
+type DashboardReportBillingDraftReport = {
+  id: string;
+  patient_id: string;
+  report_type: string;
+  status: string;
+  updated_at: Date;
+};
+
+type DashboardReportBillingDelivery = {
+  id: string;
+  channel: string;
+  recipient_name: string;
+  failure_reason: string | null;
+  status: string;
+  retry_count: number;
+  updated_at: Date;
+  report: {
+    id: string;
+    patient_id: string;
+    report_type: string;
+  };
 };
 
 type DashboardVisitPreparationSchedule = {
@@ -605,6 +639,144 @@ function buildBillingUrgentItem(args: {
     action_href: buildBillingCandidateHref(args.candidate),
     action_label: '算定候補へ',
   };
+}
+
+function formatReportStatusLabel(status: string) {
+  switch (status) {
+    case ReportStatus.draft:
+      return '下書き';
+    case ReportStatus.sent:
+      return '送付済み';
+    case ReportStatus.failed:
+      return '送付失敗';
+    case ReportStatus.confirmed:
+      return '確認済み';
+    case ReportStatus.response_waiting:
+      return '受領確認待ち';
+    default:
+      return status;
+  }
+}
+
+function buildReportDraftBillingItem(args: {
+  report: DashboardReportBillingDraftReport;
+  patientName: string | null;
+}): DashboardReportBillingItem {
+  const reportTypeLabel = formatReportTypeLabel(args.report.report_type);
+  return {
+    id: `report:${args.report.id}`,
+    kind: 'report_draft',
+    source_id: args.report.id,
+    patient_id: args.report.patient_id,
+    patient_name: args.patientName,
+    title: '報告書の下書き確認',
+    summary: `${reportTypeLabel} が下書きです。記載内容を確認して送付準備を進めてください。`,
+    status: args.report.status,
+    severity: 'warning',
+    reference_label: reportTypeLabel,
+    due_at: null,
+    waiting_since: args.report.updated_at.toISOString(),
+    updated_at: args.report.updated_at.toISOString(),
+    action_href: buildReportHref(args.report.id),
+    action_label: '報告書を開く',
+    badges: [
+      { label: reportTypeLabel, tone: 'info' },
+      { label: formatReportStatusLabel(args.report.status), tone: 'warning' },
+    ],
+  };
+}
+
+function buildReportDeliveryBillingItem(args: {
+  delivery: DashboardReportBillingDelivery;
+  patientName: string | null;
+}): DashboardReportBillingItem {
+  const reportTypeLabel = formatReportTypeLabel(args.delivery.report.report_type);
+  const statusLabel = formatReportStatusLabel(args.delivery.status);
+  const channelLabel = contactMethodLabel(args.delivery.channel);
+  const isFailed = args.delivery.status === ReportStatus.failed;
+  const reason = args.delivery.failure_reason?.trim();
+  return {
+    id: `report_delivery:${args.delivery.id}`,
+    kind: isFailed ? 'report_delivery_failed' : 'report_waiting_confirmation',
+    source_id: args.delivery.id,
+    patient_id: args.delivery.report.patient_id,
+    patient_name: args.patientName,
+    title: isFailed ? '報告書の送付失敗' : '報告書の受領確認待ち',
+    summary:
+      isFailed && reason
+        ? `${args.delivery.recipient_name} / ${channelLabel} / 理由: ${reason}`
+        : `${args.delivery.recipient_name} への ${channelLabel} 送付状況を確認してください。`,
+    status: args.delivery.status,
+    severity: isFailed ? 'blocking' : 'warning',
+    reference_label: channelLabel,
+    due_at: isFailed ? args.delivery.updated_at.toISOString() : null,
+    waiting_since: args.delivery.updated_at.toISOString(),
+    updated_at: args.delivery.updated_at.toISOString(),
+    action_href: isFailed
+      ? buildReportSendHref(args.delivery.report.id, {
+          action: 'resend',
+          deliveryRecordId: args.delivery.id,
+        })
+      : buildReportHref(args.delivery.report.id),
+    action_label: isFailed ? '宛先確認・再送' : '送付状況を確認',
+    badges: [
+      { label: reportTypeLabel, tone: 'info' },
+      { label: channelLabel, tone: 'neutral' },
+      {
+        label: isFailed
+          ? args.delivery.retry_count > 0
+            ? `再送${args.delivery.retry_count}回`
+            : '再送未実施'
+          : statusLabel,
+        tone: isFailed ? 'danger' : 'warning',
+      },
+    ],
+  };
+}
+
+function buildBillingCandidateReportBillingItem(args: {
+  candidate: DashboardBillingUrgentCandidate;
+  patientName: string | null;
+}): DashboardReportBillingItem {
+  const monthLabel = formatBillingMonthLabel(args.candidate.billing_month);
+  return {
+    id: `billing:${args.candidate.id}`,
+    kind: 'billing_candidate_pending',
+    source_id: args.candidate.id,
+    patient_id: args.candidate.patient_id,
+    patient_name: args.patientName,
+    title: '算定候補の確認待ち',
+    summary: `${args.candidate.billing_name} の算定候補が未確認です。請求候補画面で根拠を確認してください。`,
+    status: 'candidate',
+    severity: 'warning',
+    reference_label: `${monthLabel} / ${args.candidate.billing_code}`,
+    due_at: null,
+    waiting_since: args.candidate.updated_at.toISOString(),
+    updated_at: args.candidate.updated_at.toISOString(),
+    action_href: buildBillingCandidateHref(args.candidate),
+    action_label: '算定候補へ',
+    badges: [
+      { label: '請求候補', tone: 'warning' },
+      { label: monthLabel, tone: 'neutral' },
+      { label: args.candidate.billing_code, tone: 'info' },
+    ],
+  };
+}
+
+function compareReportBillingItems(
+  left: DashboardReportBillingItem,
+  right: DashboardReportBillingItem,
+) {
+  const statusWeight = (item: DashboardReportBillingItem) => {
+    if (item.status === ReportStatus.failed) return 0;
+    if (item.status === ReportStatus.draft) return 1;
+    if (item.status === ReportStatus.response_waiting) return 2;
+    if (item.kind === 'billing_candidate_pending') return 3;
+    return 4;
+  };
+  const weightDiff = statusWeight(left) - statusWeight(right);
+  if (weightDiff !== 0) return weightDiff;
+  return right.updated_at.localeCompare(left.updated_at);
 }
 
 function getVerifiedVisitPreparation(schedule: DashboardVisitPreparationSchedule, orgId: string) {
@@ -1248,6 +1420,47 @@ function buildDashboardReportDeliveryWhere(args: {
         ? { report: { OR: reportScopeClauses } }
         : { id: { in: [] } }
       : {}),
+  };
+}
+
+function buildDashboardCareReportWhere(args: {
+  orgId: string;
+  assignmentScope: DashboardAssignmentScope;
+  status?: ReportStatus;
+}): Prisma.CareReportWhereInput {
+  const reportScopeClauses = [
+    ...(args.assignmentScope.patientIds && args.assignmentScope.patientIds.length > 0
+      ? [{ patient_id: { in: args.assignmentScope.patientIds } }]
+      : []),
+    ...(args.assignmentScope.caseIds && args.assignmentScope.caseIds.length > 0
+      ? [{ case_id: { in: args.assignmentScope.caseIds } }]
+      : []),
+  ];
+  const hasRestrictedScope =
+    args.assignmentScope.patientIds !== undefined || args.assignmentScope.caseIds !== undefined;
+
+  return {
+    org_id: args.orgId,
+    ...(args.status ? { status: args.status } : {}),
+    ...(hasRestrictedScope
+      ? reportScopeClauses.length > 0
+        ? { OR: reportScopeClauses }
+        : { id: { in: [] } }
+      : {}),
+  };
+}
+
+function buildDashboardReportDeliveryStatusWhere(args: {
+  orgId: string;
+  assignmentScope: DashboardAssignmentScope;
+  statuses: ReportStatus[];
+}): Prisma.DeliveryRecordWhereInput {
+  return {
+    ...buildDashboardReportDeliveryWhere({
+      orgId: args.orgId,
+      assignmentScope: args.assignmentScope,
+    }),
+    status: { in: args.statuses },
   };
 }
 
@@ -1910,6 +2123,175 @@ async function readDashboardVisitPreparationUrgents(args: {
   );
 }
 
+async function readDashboardReportBilling(args: {
+  ctx: AuthContext;
+  scopeContext: DashboardCockpitScopeContext;
+}): Promise<DashboardCockpitReportBillingResponse> {
+  const billingMonth = billingMonthForJapanTimestamp(args.scopeContext.now);
+  const draftReportWhere = buildDashboardCareReportWhere({
+    orgId: args.ctx.orgId,
+    assignmentScope: args.scopeContext.assignmentScope,
+    status: ReportStatus.draft,
+  });
+  const deliveryAttentionWhere = buildDashboardReportDeliveryStatusWhere({
+    orgId: args.ctx.orgId,
+    assignmentScope: args.scopeContext.assignmentScope,
+    statuses: [ReportStatus.failed, ReportStatus.response_waiting],
+  });
+  const failedDeliveryWhere = buildDashboardReportDeliveryStatusWhere({
+    orgId: args.ctx.orgId,
+    assignmentScope: args.scopeContext.assignmentScope,
+    statuses: [ReportStatus.failed],
+  });
+  const waitingDeliveryWhere = buildDashboardReportDeliveryStatusWhere({
+    orgId: args.ctx.orgId,
+    assignmentScope: args.scopeContext.assignmentScope,
+    statuses: [ReportStatus.response_waiting],
+  });
+  const canReadBilling = hasPermission(args.ctx.role, 'canManageBilling');
+  const billingWhere = buildDashboardBillingCandidateWhere({
+    orgId: args.ctx.orgId,
+    assignmentScope: args.scopeContext.assignmentScope,
+    billingMonth,
+  });
+
+  return withOrgContext(
+    args.ctx.orgId,
+    async (tx) => {
+      const [
+        draftReports,
+        deliveryRecords,
+        billingCandidates,
+        draftNeededCount,
+        deliveryFailedCount,
+        waitingConfirmationCount,
+        billingCandidateCount,
+      ] = await Promise.all([
+        tx.careReport.findMany({
+          where: draftReportWhere,
+          orderBy: [{ updated_at: 'desc' }, { id: 'asc' }],
+          take: REPORT_BILLING_ITEM_RESPONSE_LIMIT,
+          select: {
+            id: true,
+            patient_id: true,
+            report_type: true,
+            status: true,
+            updated_at: true,
+          },
+        }),
+        tx.deliveryRecord.findMany({
+          where: deliveryAttentionWhere,
+          orderBy: [{ updated_at: 'desc' }, { id: 'asc' }],
+          take: REPORT_BILLING_ITEM_RESPONSE_LIMIT,
+          select: {
+            id: true,
+            channel: true,
+            recipient_name: true,
+            failure_reason: true,
+            status: true,
+            retry_count: true,
+            updated_at: true,
+            report: {
+              select: {
+                id: true,
+                patient_id: true,
+                report_type: true,
+              },
+            },
+          },
+        }),
+        canReadBilling
+          ? tx.billingCandidate.findMany({
+              where: billingWhere,
+              orderBy: [{ updated_at: 'asc' }, { id: 'asc' }],
+              take: REPORT_BILLING_ITEM_RESPONSE_LIMIT,
+              select: {
+                id: true,
+                patient_id: true,
+                billing_month: true,
+                billing_code: true,
+                billing_name: true,
+                updated_at: true,
+              },
+            })
+          : [],
+        tx.careReport.count({ where: draftReportWhere }),
+        tx.deliveryRecord.count({ where: failedDeliveryWhere }),
+        tx.deliveryRecord.count({ where: waitingDeliveryWhere }),
+        canReadBilling ? tx.billingCandidate.count({ where: billingWhere }) : 0,
+      ]);
+
+      const patientIds = Array.from(
+        new Set(
+          [
+            ...draftReports.map((report) => report.patient_id),
+            ...deliveryRecords.map((delivery) => delivery.report.patient_id),
+            ...billingCandidates
+              .map((candidate) => candidate.patient_id)
+              .filter((patientId): patientId is string => Boolean(patientId)),
+          ].filter((patientId): patientId is string => Boolean(patientId)),
+        ),
+      );
+      const patients =
+        patientIds.length > 0
+          ? await tx.patient.findMany({
+              where: { org_id: args.ctx.orgId, id: { in: patientIds } },
+              select: { id: true, name: true },
+            })
+          : [];
+      const patientNameById = new Map(patients.map((patient) => [patient.id, patient.name]));
+
+      const items = [
+        ...draftReports.map((report) =>
+          buildReportDraftBillingItem({
+            report,
+            patientName: patientNameById.get(report.patient_id) ?? null,
+          }),
+        ),
+        ...deliveryRecords.map((delivery) =>
+          buildReportDeliveryBillingItem({
+            delivery,
+            patientName: patientNameById.get(delivery.report.patient_id) ?? null,
+          }),
+        ),
+        ...billingCandidates.map((candidate) =>
+          buildBillingCandidateReportBillingItem({
+            candidate,
+            patientName: candidate.patient_id
+              ? (patientNameById.get(candidate.patient_id) ?? null)
+              : null,
+          }),
+        ),
+      ]
+        .sort(compareReportBillingItems)
+        .slice(0, REPORT_BILLING_ITEM_RESPONSE_LIMIT);
+      const totalCount =
+        draftNeededCount + deliveryFailedCount + waitingConfirmationCount + billingCandidateCount;
+      const isMonthEndWindow = args.scopeContext.now.getDate() >= 25;
+
+      return {
+        ...args.scopeContext.metadata,
+        reports: {
+          draft_needed_count: draftNeededCount,
+          delivery_failed_count: deliveryFailedCount,
+          waiting_confirmation_count: waitingConfirmationCount,
+        },
+        billing: {
+          blocker_count: billingCandidateCount,
+          close_queue_count: billingCandidateCount,
+          month_end_risk_count: isMonthEndWindow ? billingCandidateCount : 0,
+          can_view_billing: canReadBilling,
+        },
+        items,
+        items_total_count: totalCount,
+        items_visible_count: items.length,
+        items_hidden_count: Math.max(totalCount - items.length, 0),
+      };
+    },
+    { requestContext: args.ctx, maxWaitMs: 2000, timeoutMs: 3000 },
+  );
+}
+
 async function readDashboardComments(args: {
   ctx: AuthContext;
   scopeContext: DashboardCockpitScopeContext;
@@ -2270,6 +2652,9 @@ async function buildCockpitSegment(args: {
   }
   if (args.part === 'inbound') {
     return readDashboardInbound({ ctx: args.ctx, scopeContext });
+  }
+  if (args.part === 'report-billing') {
+    return readDashboardReportBilling({ ctx: args.ctx, scopeContext });
   }
 
   const cachedData = serverCache.get<DashboardCockpitSegmentResponse>(scopeContext.cacheKey);

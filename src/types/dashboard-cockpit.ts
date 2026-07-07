@@ -226,6 +226,50 @@ export type DashboardCockpitInboundResponse = DashboardCockpitScopeMetadata & {
   inbound_safety_signal_count: number;
 };
 
+export type DashboardReportBillingItem = {
+  id: string;
+  kind:
+    | 'report_draft'
+    | 'report_delivery_failed'
+    | 'report_waiting_confirmation'
+    | 'billing_candidate_pending';
+  source_id: string;
+  patient_id: string | null;
+  patient_name: string | null;
+  title: string;
+  summary: string;
+  status: string;
+  severity: 'blocking' | 'urgent' | 'warning';
+  reference_label: string | null;
+  due_at: string | null;
+  waiting_since: string | null;
+  updated_at: string;
+  action_href: string;
+  action_label: string;
+  badges: Array<{
+    label: string;
+    tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger';
+  }>;
+};
+
+export type DashboardCockpitReportBillingResponse = DashboardCockpitScopeMetadata & {
+  reports: {
+    draft_needed_count: number;
+    delivery_failed_count: number;
+    waiting_confirmation_count: number;
+  };
+  billing: {
+    blocker_count: number;
+    close_queue_count: number;
+    month_end_risk_count: number;
+    can_view_billing: boolean;
+  };
+  items: DashboardReportBillingItem[];
+  items_total_count: number;
+  items_visible_count: number;
+  items_hidden_count: number;
+};
+
 export type DashboardCockpitResponse = DashboardCockpitScopeMetadata & {
   /** MedicationCycle.overall_status → 件数(cancelled を除く)。工程の今(9工程)の元データ */
   cycle_status_counts: Record<string, number>;
