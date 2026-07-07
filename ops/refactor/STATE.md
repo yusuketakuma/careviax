@@ -41,6 +41,73 @@
 
 ## 直近の land（本日・要点）
 
+- codex: PERF-DB-006A care-report q patient search bounded/id-only（commit `bed46d41f`）。
+  - current task:
+    Active goal の backend-only 実装ループとして、`Plans.md` の最上位未実装
+    `PERF-DB-006A-SEARCH` を実装する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/api/care-reports/route.ts`,
+    `src/app/api/care-reports/route.test.ts`,
+    `src/lib/api/pagination.ts`,
+    `prisma/schema/patient.prisma`,
+    gbrain search result for care-report search history,
+    and read-only subagent reviews from `db_steward`, `test_architect`, `privacy_compliance_reviewer`,
+    and `backend_reviewer`.
+  - files changed:
+    `src/app/api/care-reports/route.ts`,
+    `src/app/api/care-reports/route.test.ts`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `careviax/performance-finding/care-report-bounded-patient-search-2026-07-08.md`.
+  - implementation:
+    Added `CARE_REPORT_PATIENT_SEARCH_CANDIDATE_LIMIT = 100` and a stable
+    `name_kana/name/id` candidate order for regular non-palette `q` patient search.
+    The candidate lookup now selects only `id`, reads at most `101` rows, and trims the active
+    candidate set to `100` ids before building the `CareReport.patient_id in [...]` predicate.
+    When `patient_id + q` is present, the route checks only the explicit patient with `take: 1`
+    before preserving the existing F88 intersection semantics. Patient display names are now
+    loaded only for returned report row patient ids after report filtering/access shaping.
+    Palette search remains unchanged.
+  - bugs found:
+    Non-palette `q` previously ran an unbounded org-scoped `Patient.name/name_kana contains`
+    `findMany`, selected `id/name/name_kana`, and used all matched ids in a CareReport `IN` filter.
+    This could inflate DB work, server heap PHI, and downstream query size.
+  - security risks reduced:
+    Candidate expansion now materializes only patient ids, not names/kana, before report filtering.
+    Explicit patient search remains an intersection and does not broaden to same-name patients.
+    No response/log raw PHI behavior was expanded. Oracle consult was attempted with GitHub context
+    and minimal files but the browser session ended with `chrome-disconnected` / Node `setTypeOfService EINVAL`;
+    no Oracle recommendation was available, so the implementation followed three GPT-5.5 subagent reviews.
+  - performance issues improved:
+    Regular care-report `q` search now has a deterministic upper bound on patient candidates and avoids
+    pre-report patient display field reads. This is a route-local improvement only; keyword scan,
+    delivery summary aggregation, and real index work remain as `PERF-DB-006B-D`.
+  - validation commands:
+    `pnpm exec vitest run src/app/api/care-reports/route.test.ts --reporter=dot --testTimeout=30000 -t "PERF-DB-006A|F88"` before implementation, failed as expected;
+    `pnpm exec vitest run src/app/api/care-reports/route.test.ts --reporter=dot --testTimeout=30000 -t "PERF-DB-006A|F88"` after implementation;
+    `pnpm exec vitest run src/app/api/care-reports/route.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint src/app/api/care-reports/route.ts src/app/api/care-reports/route.test.ts`;
+    `pnpm exec prettier --check src/app/api/care-reports/route.ts src/app/api/care-reports/route.test.ts`;
+    `git diff --check -- src/app/api/care-reports/route.ts src/app/api/care-reports/route.test.ts`;
+    `git diff --name-only -- prisma/schema prisma/migrations`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Red test failed before implementation for missing `take/orderBy/id-only select`.
+    Targeted PERF/F88 tests passed `3` tests.
+    Full care-reports route test passed `68` tests.
+    Scoped ESLint, Prettier, diff-check, no-migration changed-file check, and full typecheck passed.
+    Backend implementation review verdict: APPROVE.
+  - gbrain:
+    Wrote `careviax/performance-finding/care-report-bounded-patient-search-2026-07-08`.
+  - remaining:
+    `PERF-DB-006B` keyword scan semantics/truncation, `PERF-DB-006C` delivery summary aggregate cost,
+    `PERF-DB-006D` EXPLAIN-backed index human gate, and `PAYLOAD-BUDGET-003` remain.
+  - next action:
+    Push the synced commits, then resume from `PERF-DB-006B/006C` or payload budget.
+
 - codex: Plans.md 実装済み/未実装分類と care-report DB速度派生タスク拡充（commit `47942c473`）。
   - current task:
     既存 `Plans.md` 内を整理し、実装済み・一部実装済み・未実装・Human gate を分類する。
