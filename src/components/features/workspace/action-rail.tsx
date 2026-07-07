@@ -239,7 +239,7 @@ export type EvidenceItem = {
   id: string;
   label: string;
   /** 新デザイン: 行の補足(日時/種別 例「6/12」「09:31」「eGFR」) */
-  meta?: string;
+  meta?: React.ReactNode;
   onView?: () => void;
   href?: string;
 };

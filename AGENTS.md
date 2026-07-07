@@ -7,6 +7,16 @@ This version of Next.js has breaking changes. Read the relevant guide in `node_m
 For any UI/UX change, read `docs/ui-ux-design-guidelines.md` first and treat it as the PH-OS UI/UX SSOT. Reference that file when proposing, implementing, or reviewing page structure, grouping, borders, spacing, and heading hierarchy.
 When a UI/UX change requires visual reconstruction or a design reference, use `imagegen` with `gpt-image-2` as the standard image model before implementation. Keep prompts PHI/secret-free; if a non-visual slice omits image generation, record the omission reason in `ops/refactor/STATE.md`.
 
+Dashboard and authenticated operational surfaces must follow the disclosure rule in
+`docs/ui-ux-design-guidelines.md`: if the current user is authorized by role,
+assignment, case scope, consent, support session, and purpose, show the operationally
+relevant patient, medical, medication, stock, communication, attachment, visit,
+report, billing, and task details. Do not blanket-redact dashboard or cockpit data
+just because it is PHI; organize it with density, expansion, preview, drawer, and
+detail affordances. Keep separate redaction/minimization boundaries for OS
+notifications, SSE payloads, audit diffs, server logs, external sharing, exports,
+public URLs, and Oracle/GPT prompts.
+
 For any AWS-related implementation, consult the relevant AWS official documentation or API reference before editing code, IaC, runtime env, IAM/S3/RDS/ECS/DynamoDB/SES/Cognito/CloudWatch/Route 53/ACM/Secrets Manager/EventBridge configuration, or operational scripts. Record the official reference name, URL, and confirmation date in the implementation notes, PR description, `ops/refactor/STATE.md`, or the relevant docs. If AWS official guidance conflicts with repository planning docs, prefer the official guidance and update `Plans.md` with the delta before implementation.
 
 For high-risk implementation, repeated failure, or unclear technical decisions, consult

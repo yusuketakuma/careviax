@@ -9,6 +9,7 @@ import { formatNullableDateKey } from '@/lib/date-key';
 import { buildDispenseTaskHref } from '@/lib/dispense/navigation';
 import { extractPackagingInstructionTags } from '@/lib/dispensing/packaging';
 import { buildPatientHref } from '@/lib/patient/navigation';
+import { formatPrescriptionCardNumber } from '@/lib/prescription/rx-number';
 import { buildReportHref } from '@/lib/reports/navigation';
 import { buildSetPlanHref } from '@/lib/set/navigation';
 import { canViewAllDashboardWork } from '@/lib/auth/visit-schedule-access';
@@ -30,14 +31,17 @@ import type {
   CockpitAuditQueueItem,
   CockpitBlockedReason,
   CockpitCommentItem,
+  CockpitInboundItem,
   CockpitVisit,
   DashboardCockpitCommentsResponse,
   DashboardCockpitDetailsResponse,
+  DashboardCockpitInboundResponse,
   DashboardCockpitResponse,
   DashboardCockpitScope,
   DashboardCockpitScopeMetadata,
   DashboardCockpitSummaryResponse,
   DashboardCockpitTeamResponse,
+  DashboardUrgentItem,
 } from '@/types/dashboard-cockpit';
 import { buildTeamCapacity } from '@/app/api/dashboard/cockpit/team-capacity';
 
@@ -47,19 +51,22 @@ const BLOCKED_REASONS_LIMIT = 3;
 const COMMENT_FEED_FETCH_LIMIT = 80;
 const COMMENT_FEED_RESPONSE_LIMIT = 5;
 const COMMENT_EXCERPT_LENGTH = 96;
+const INBOUND_FEED_FETCH_LIMIT = 40;
+const INBOUND_FEED_RESPONSE_LIMIT = 8;
 
 type DashboardScopeQuery =
   | { ok: true; scope: DashboardCockpitScope | null }
   | { ok: false; response: ReturnType<typeof validationError> };
 
-type DashboardCockpitPart = 'full' | 'summary' | 'details' | 'team' | 'comments';
+type DashboardCockpitPart = 'full' | 'summary' | 'details' | 'team' | 'comments' | 'inbound';
 
 type DashboardCockpitSegmentResponse =
   | DashboardCockpitResponse
   | DashboardCockpitSummaryResponse
   | DashboardCockpitDetailsResponse
   | DashboardCockpitTeamResponse
-  | DashboardCockpitCommentsResponse;
+  | DashboardCockpitCommentsResponse
+  | DashboardCockpitInboundResponse;
 
 type DashboardCockpitScopeContext = {
   now: Date;
@@ -82,6 +89,22 @@ type AuditTaskLine = {
 
 type AuditQueueCountRow = {
   count: bigint | number | string | null;
+};
+
+type AuditQueueSummaryRow = {
+  total_count: bigint | number | string | null;
+  narcotic_count: bigint | number | string | null;
+  earliest_due_at: Date | string | null;
+};
+
+type DashboardAuditQueueSummary = {
+  totalCount: number;
+  narcoticCount: number;
+  earliestDueAt: string | null;
+};
+
+type TodayVisitSummaryRow = {
+  time_window_start: Date | null;
 };
 
 type DashboardCommentCandidate = {
@@ -110,6 +133,33 @@ const HANDLING_TAG_ORDER = [
   'staple_required',
   'label_required',
 ];
+
+const HANDLING_TAG_LABELS: Record<string, string> = {
+  narcotic: '麻薬',
+  cold_storage: '冷所',
+  unit_dose: '一包化',
+  half_tablet: '半錠',
+  crush_prohibited: '粉砕不可',
+  separate_pack: '別包',
+  staple_required: 'ホチキス',
+  label_required: 'ラベル',
+};
+
+const INBOUND_CHANNEL_LABELS: Record<string, string> = {
+  phone: '電話',
+  fax: 'FAX',
+  email: 'メール',
+  mcs: 'MCS',
+  in_person: '対面',
+  patient_family: '患者・家族',
+  facility_note: '施設連絡',
+  external_api: '外部連携',
+  manual: '手入力',
+};
+
+type DashboardInboundStatus = CockpitInboundItem['status'];
+
+type DashboardInboundPriority = CockpitInboundItem['priority'];
 
 export function parseDashboardScope(req: Request): DashboardScopeQuery {
   const values = new URL(req.url).searchParams.getAll('scope');
@@ -165,6 +215,164 @@ function compareAuditQueueItems(left: CockpitAuditQueueItem, right: CockpitAudit
   return (left.waiting_since ?? '').localeCompare(right.waiting_since ?? '');
 }
 
+const URGENT_SEVERITY_WEIGHT: Record<DashboardUrgentItem['severity'], number> = {
+  blocking: 0,
+  urgent: 1,
+  warning: 2,
+};
+
+function compareDashboardUrgentItems(left: DashboardUrgentItem, right: DashboardUrgentItem) {
+  const severityDiff =
+    URGENT_SEVERITY_WEIGHT[left.severity] - URGENT_SEVERITY_WEIGHT[right.severity];
+  if (severityDiff !== 0) return severityDiff;
+  if (left.due_at && right.due_at) return left.due_at.localeCompare(right.due_at);
+  if (left.due_at) return -1;
+  if (right.due_at) return 1;
+  if (left.waiting_since && right.waiting_since) {
+    return left.waiting_since.localeCompare(right.waiting_since);
+  }
+  if (left.waiting_since) return -1;
+  if (right.waiting_since) return 1;
+  return left.id.localeCompare(right.id);
+}
+
+function buildAuditUrgentItem(item: CockpitAuditQueueItem): DashboardUrgentItem {
+  const severity =
+    item.has_narcotic || item.priority === 'emergency'
+      ? 'blocking'
+      : item.priority === 'urgent'
+        ? 'urgent'
+        : 'warning';
+  return {
+    id: `audit:${item.task_id}`,
+    source: 'audit',
+    source_id: item.task_id,
+    source_label: item.has_narcotic ? '麻薬監査' : '調剤監査',
+    reference_label: formatPrescriptionCardNumber(
+      item.intake_id ?? item.cycle_id,
+      item.prescribed_date,
+      'rx_year',
+    ),
+    severity,
+    patient_id: null,
+    patient_name: item.patient_name,
+    title: item.has_narcotic ? '麻薬を含む監査待ち' : '調剤監査待ち',
+    summary: item.has_narcotic
+      ? '麻薬を含む監査待ちです。完了しないと訪問の持参準備が始まりません。'
+      : '調剤済みの監査待ちです。完了でセット・訪問準備に進めます。',
+    due_at: item.due_at,
+    waiting_since: item.waiting_since,
+    badges:
+      item.handling_tags.length > 0
+        ? item.handling_tags.map((tag) => ({
+            label: HANDLING_TAG_LABELS[tag] ?? tag,
+            tone: tag === 'narcotic' ? ('danger' as const) : ('warning' as const),
+          }))
+        : [{ label: '安全タグなし', tone: 'neutral' }],
+    action_href: '/audit',
+    action_label: '監査を開始する',
+  };
+}
+
+function buildInboundUrgentItem(item: CockpitInboundItem): DashboardUrgentItem | null {
+  if (item.status !== 'needs_review' && item.status !== 'reviewed_pending_action') return null;
+  const severity = item.priority === 'urgent' ? 'urgent' : 'warning';
+  const primarySignal = item.signals[0] ?? null;
+  const signalSummary = primarySignal
+    ? [
+        primarySignal.extracted_medication_name,
+        primarySignal.extracted_quantity != null && primarySignal.extracted_unit
+          ? `${primarySignal.extracted_quantity}${primarySignal.extracted_unit}`
+          : null,
+        primarySignal.extracted_text,
+      ]
+        .filter(Boolean)
+        .join(' / ')
+    : item.summary;
+
+  return {
+    id: `inbound:${item.event_id}`,
+    source: 'inbound',
+    source_id: item.event_id,
+    source_label: item.channel_label,
+    reference_label: item.sender_role ?? item.channel_label,
+    severity,
+    patient_id: item.patient_id,
+    patient_name: item.patient_name,
+    title: item.title,
+    summary: signalSummary || item.raw_text,
+    due_at: item.due_at,
+    waiting_since: item.received_at,
+    badges: [
+      {
+        label: item.has_patient_safety_signal
+          ? '安全確認'
+          : item.has_medication_stock_signal
+            ? '残数・薬剤'
+            : '他職種受信',
+        tone: item.has_patient_safety_signal
+          ? 'danger'
+          : item.has_medication_stock_signal
+            ? 'success'
+            : 'info',
+      },
+      {
+        label: item.status === 'needs_review' ? '確認待ち' : '反映待ち',
+        tone: item.status === 'needs_review' ? 'warning' : 'info',
+      },
+    ],
+    action_href: item.action_href,
+    action_label: item.action_label,
+  };
+}
+
+function buildBlockedReasonUrgentItem(item: CockpitBlockedReason, now: Date): DashboardUrgentItem {
+  const waitingSince = new Date(now.getTime() - item.age_minutes * 60_000).toISOString();
+  const severity = item.severity === 'critical' ? 'blocking' : 'warning';
+
+  return {
+    id: `task:${item.id}`,
+    source: 'task',
+    source_id: item.id,
+    source_label: '止まっている理由',
+    reference_label: item.category,
+    severity,
+    patient_id: null,
+    patient_name: null,
+    title: item.label,
+    summary: item.category ? `${item.category}: ${item.label}` : item.label,
+    due_at: null,
+    waiting_since: waitingSince,
+    badges: [
+      {
+        label: item.category ?? '業務',
+        tone: item.category === '患者' ? 'warning' : 'info',
+      },
+      {
+        label: item.severity === 'critical' ? '重大' : '確認待ち',
+        tone: item.severity === 'critical' ? 'danger' : 'warning',
+      },
+    ],
+    action_href: item.action_href,
+    action_label: item.action_label.replace(/\s*→\s*$/, '') || '状況を確認',
+  };
+}
+
+function buildDashboardUrgentItems(args: {
+  auditItems: CockpitAuditQueueItem[];
+  inboundItems?: CockpitInboundItem[];
+  blockedReasons?: CockpitBlockedReason[];
+  now: Date;
+}) {
+  return [
+    ...args.auditItems.map(buildAuditUrgentItem),
+    ...(args.inboundItems ?? [])
+      .map(buildInboundUrgentItem)
+      .filter((item): item is DashboardUrgentItem => item != null),
+    ...(args.blockedReasons ?? []).map((reason) => buildBlockedReasonUrgentItem(reason, args.now)),
+  ].sort(compareDashboardUrgentItems);
+}
+
 function readCount(value: AuditQueueCountRow['count'] | undefined): number {
   if (typeof value === 'bigint') return Number(value);
   const count = Number(value ?? 0);
@@ -203,6 +411,71 @@ async function countAuditQueueItems(args: { orgId: string; caseIds?: string[] })
   `);
 
   return readCount(rows[0]?.count);
+}
+
+async function readAuditQueueSummary(args: {
+  orgId: string;
+  assignmentScope: DashboardAssignmentScope;
+}): Promise<DashboardAuditQueueSummary> {
+  if (args.assignmentScope.caseIds && args.assignmentScope.caseIds.length === 0) {
+    return { totalCount: 0, narcoticCount: 0, earliestDueAt: null };
+  }
+
+  const caseScope = args.assignmentScope.caseIds
+    ? Prisma.sql`AND cycle."case_id" IN (${Prisma.join(args.assignmentScope.caseIds)})`
+    : Prisma.empty;
+
+  const rows = await prisma.$queryRaw<AuditQueueSummaryRow[]>(Prisma.sql`
+    SELECT
+      COUNT(DISTINCT task."id")::bigint AS total_count,
+      COUNT(DISTINCT task."id") FILTER (
+        WHERE
+          line."packaging_instruction_tags" @> ARRAY['narcotic'::"PackagingInstructionTag"]
+          OR line."packaging_instructions" ILIKE '%麻薬%'
+          OR line."notes" ILIKE '%麻薬%'
+      )::bigint AS narcotic_count,
+      MIN(task."due_date") AS earliest_due_at
+    FROM "DispenseTask" task
+    INNER JOIN "MedicationCycle" cycle
+      ON cycle."id" = task."cycle_id"
+      AND cycle."org_id" = task."org_id"
+    LEFT JOIN LATERAL (
+      SELECT audit."result"
+      FROM "DispenseAudit" audit
+      WHERE audit."task_id" = task."id"
+        AND audit."org_id" = task."org_id"
+      ORDER BY audit."audited_at" DESC, audit."created_at" DESC, audit."id" DESC
+      LIMIT 1
+    ) latest_audit ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT intake."id"
+      FROM "PrescriptionIntake" intake
+      WHERE intake."cycle_id" = cycle."id"
+        AND intake."org_id" = cycle."org_id"
+      ORDER BY intake."created_at" DESC
+      LIMIT 1
+    ) latest_intake ON TRUE
+    LEFT JOIN "PrescriptionLine" line
+      ON line."intake_id" = latest_intake."id"
+      AND line."org_id" = task."org_id"
+    WHERE task."org_id" = ${args.orgId}
+      AND task."status" = 'completed'
+      ${caseScope}
+      AND (latest_audit."result" IS NULL OR latest_audit."result"::text = 'hold')
+  `);
+
+  const row = rows[0];
+  const earliestDueAt = row?.earliest_due_at;
+  return {
+    totalCount: readCount(row?.total_count),
+    narcoticCount: readCount(row?.narcotic_count),
+    earliestDueAt:
+      earliestDueAt instanceof Date
+        ? earliestDueAt.toISOString()
+        : typeof earliestDueAt === 'string'
+          ? earliestDueAt
+          : null,
+  };
 }
 
 async function resolveCockpitScopeContext(args: {
@@ -401,6 +674,32 @@ async function readTodayVisits(args: {
   return rows;
 }
 
+async function readTodayVisitSummary(args: {
+  orgId: string;
+  assignmentScope: DashboardAssignmentScope;
+  todayRange: ReturnType<typeof todayUtcRange>;
+}) {
+  const rows = await prisma.visitSchedule.findMany({
+    where: {
+      org_id: args.orgId,
+      ...buildCycleCaseScope(args.assignmentScope),
+      scheduled_date: args.todayRange,
+      schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+    },
+    orderBy: [{ time_window_start: 'asc' }, { route_order: 'asc' }],
+    select: {
+      time_window_start: true,
+    },
+  });
+
+  return {
+    count: rows.length,
+    times: rows
+      .map((schedule: TodayVisitSummaryRow) => timeDateToString(schedule.time_window_start))
+      .filter((value): value is string => value != null),
+  };
+}
+
 function mapTodayVisits(rows: Awaited<ReturnType<typeof readTodayVisits>>): CockpitVisit[] {
   return rows.map((schedule) => ({
     id: schedule.id,
@@ -470,6 +769,88 @@ function buildDashboardCommentHref(
     default:
       return '/handoff';
   }
+}
+
+function buildInboundCommunicationWhere(args: {
+  orgId: string;
+  assignmentScope: DashboardAssignmentScope;
+}) {
+  if (args.assignmentScope.caseIds === undefined && args.assignmentScope.patientIds === undefined) {
+    return { org_id: args.orgId };
+  }
+
+  const clauses = [
+    ...(args.assignmentScope.patientIds && args.assignmentScope.patientIds.length > 0
+      ? [{ patient_id: { in: args.assignmentScope.patientIds } }]
+      : []),
+    ...(args.assignmentScope.caseIds && args.assignmentScope.caseIds.length > 0
+      ? [{ case_id: { in: args.assignmentScope.caseIds } }]
+      : []),
+  ];
+
+  return clauses.length > 0
+    ? { org_id: args.orgId, OR: clauses }
+    : { org_id: args.orgId, id: { in: [] } };
+}
+
+function buildInboundCommunicationHref(event: { id: string; patient_id: string | null }) {
+  if (event.patient_id) return buildPatientHref(event.patient_id, '#inbound-communications');
+  return `/communications/inbound?event=${encodeURIComponent(event.id)}`;
+}
+
+function deriveInboundStatus(args: {
+  processingStatus: string;
+  signals: Array<{ review_status: string; action_status: string }>;
+}): DashboardInboundStatus {
+  if (args.signals.some((signal) => signal.action_status === 'linked_to_task')) {
+    return 'task_created';
+  }
+  if (args.signals.some((signal) => signal.review_status === 'needs_review')) {
+    return 'needs_review';
+  }
+  if (
+    args.signals.some(
+      (signal) =>
+        (signal.review_status === 'accepted' || signal.review_status === 'auto_accepted') &&
+        signal.action_status === 'not_linked',
+    )
+  ) {
+    return 'reviewed_pending_action';
+  }
+  if (args.processingStatus === 'unprocessed' || args.processingStatus === 'signals_extracted') {
+    return 'needs_review';
+  }
+  if (args.processingStatus === 'converted_to_task') return 'task_created';
+  if (args.processingStatus === 'linked_to_workflow') return 'task_completed';
+  return 'task_completed';
+}
+
+function deriveInboundPriority(args: {
+  hasPatientSafetySignal: boolean;
+  hasMedicationStockSignal: boolean;
+  status: DashboardInboundStatus;
+  signals: Array<{ signal_domain: string; signal_type: string }>;
+}): DashboardInboundPriority {
+  if (
+    args.hasPatientSafetySignal ||
+    args.signals.some(
+      (signal) => signal.signal_domain === 'urgent' || signal.signal_type.includes('side_effect'),
+    )
+  ) {
+    return 'urgent';
+  }
+  if (args.status === 'needs_review' || args.hasMedicationStockSignal) return 'high';
+  return 'normal';
+}
+
+function buildInboundTitle(args: {
+  channelLabel: string;
+  hasMedicationStockSignal: boolean;
+  hasPatientSafetySignal: boolean;
+}) {
+  if (args.hasPatientSafetySignal) return `${args.channelLabel}受信: 安全確認が必要`;
+  if (args.hasMedicationStockSignal) return `${args.channelLabel}受信: 残数・薬剤情報あり`;
+  return `${args.channelLabel}連絡を受信`;
 }
 
 async function readAllowedCommentEntities(args: {
@@ -583,6 +964,174 @@ async function readAllowedCommentEntities(args: {
   return { allowed, cyclePatientIds };
 }
 
+async function readDashboardInbound(args: {
+  ctx: AuthContext;
+  scopeContext: DashboardCockpitScopeContext;
+}): Promise<DashboardCockpitInboundResponse> {
+  const where = buildInboundCommunicationWhere({
+    orgId: args.ctx.orgId,
+    assignmentScope: args.scopeContext.assignmentScope,
+  });
+  const [events, totalCount] = await Promise.all([
+    prisma.inboundCommunicationEvent.findMany({
+      where,
+      orderBy: [{ received_at: 'desc' }, { id: 'asc' }],
+      take: INBOUND_FEED_FETCH_LIMIT,
+      select: {
+        id: true,
+        patient_id: true,
+        case_id: true,
+        source_channel: true,
+        sender_name: true,
+        sender_role: true,
+        sender_organization_name: true,
+        sender_contact: true,
+        event_type: true,
+        received_at: true,
+        occurred_at: true,
+        raw_text: true,
+        normalized_summary: true,
+        attachment_count: true,
+        has_medication_stock_signal: true,
+        has_patient_safety_signal: true,
+        has_schedule_signal: true,
+        has_report_signal: true,
+        processing_status: true,
+      },
+    }),
+    prisma.inboundCommunicationEvent.count({ where }),
+  ]);
+
+  const visibleEvents = events.slice(0, INBOUND_FEED_RESPONSE_LIMIT);
+  const eventIds = visibleEvents.map((event) => event.id);
+  const patientIds = Array.from(
+    new Set(
+      visibleEvents
+        .map((event) => event.patient_id)
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+  const [signals, patients] = await Promise.all([
+    eventIds.length > 0
+      ? prisma.inboundCommunicationSignal.findMany({
+          where: {
+            org_id: args.ctx.orgId,
+            inbound_event_id: { in: eventIds },
+          },
+          orderBy: [{ inbound_event_id: 'asc' }, { signal_index: 'asc' }],
+          select: {
+            id: true,
+            inbound_event_id: true,
+            signal_domain: true,
+            signal_type: true,
+            extracted_text: true,
+            extracted_medication_name: true,
+            extracted_quantity: true,
+            extracted_unit: true,
+            review_status: true,
+            action_status: true,
+            source_confidence: true,
+          },
+        })
+      : [],
+    patientIds.length > 0
+      ? prisma.patient.findMany({
+          where: { org_id: args.ctx.orgId, id: { in: patientIds } },
+          select: { id: true, name: true },
+        })
+      : [],
+  ]);
+
+  const patientNameById = new Map(patients.map((patient) => [patient.id, patient.name]));
+  const signalsByEventId = new Map<string, typeof signals>();
+  for (const signal of signals) {
+    const current = signalsByEventId.get(signal.inbound_event_id) ?? [];
+    current.push(signal);
+    signalsByEventId.set(signal.inbound_event_id, current);
+  }
+
+  const inboundItems: CockpitInboundItem[] = visibleEvents.map((event) => {
+    const eventSignals = signalsByEventId.get(event.id) ?? [];
+    const status = deriveInboundStatus({
+      processingStatus: event.processing_status,
+      signals: eventSignals,
+    });
+    const priority = deriveInboundPriority({
+      hasPatientSafetySignal: event.has_patient_safety_signal,
+      hasMedicationStockSignal: event.has_medication_stock_signal,
+      status,
+      signals: eventSignals,
+    });
+    const channel = String(event.source_channel);
+    const channelLabel = INBOUND_CHANNEL_LABELS[channel] ?? '受信';
+    return {
+      id: `inbound_communication:${event.id}`,
+      event_id: event.id,
+      channel,
+      channel_label: channelLabel,
+      event_type: String(event.event_type),
+      processing_status: String(event.processing_status),
+      status,
+      priority,
+      patient_id: event.patient_id,
+      patient_name: event.patient_id ? (patientNameById.get(event.patient_id) ?? null) : null,
+      sender_name: event.sender_name,
+      sender_role: String(event.sender_role),
+      sender_organization_name: event.sender_organization_name,
+      sender_contact: event.sender_contact,
+      title: buildInboundTitle({
+        channelLabel,
+        hasMedicationStockSignal: event.has_medication_stock_signal,
+        hasPatientSafetySignal: event.has_patient_safety_signal,
+      }),
+      summary: event.normalized_summary ?? event.raw_text,
+      raw_text: event.raw_text,
+      normalized_summary: event.normalized_summary,
+      received_at: event.received_at.toISOString(),
+      occurred_at: event.occurred_at?.toISOString() ?? null,
+      due_at: event.received_at.toISOString(),
+      attachment_count: event.attachment_count,
+      has_medication_stock_signal: event.has_medication_stock_signal,
+      has_patient_safety_signal: event.has_patient_safety_signal,
+      has_schedule_signal: event.has_schedule_signal,
+      has_report_signal: event.has_report_signal,
+      signals: eventSignals.map((signal) => ({
+        id: signal.id,
+        signal_domain: String(signal.signal_domain),
+        signal_type: String(signal.signal_type),
+        extracted_text: signal.extracted_text,
+        extracted_medication_name: signal.extracted_medication_name,
+        extracted_quantity: signal.extracted_quantity,
+        extracted_unit: signal.extracted_unit,
+        review_status: String(signal.review_status),
+        action_status: String(signal.action_status),
+        source_confidence: String(signal.source_confidence),
+      })),
+      action_href: buildInboundCommunicationHref(event),
+      action_label: status === 'needs_review' ? '受信情報を確認' : '処理状況を開く',
+    };
+  });
+
+  return {
+    ...args.scopeContext.metadata,
+    inbound_items: inboundItems,
+    inbound_total_count: totalCount,
+    inbound_visible_count: inboundItems.length,
+    inbound_hidden_count: Math.max(totalCount - inboundItems.length, 0),
+    inbound_needs_review_count: inboundItems.filter((item) => item.status === 'needs_review')
+      .length,
+    inbound_reviewed_pending_action_count: inboundItems.filter(
+      (item) => item.status === 'reviewed_pending_action',
+    ).length,
+    inbound_urgent_count: inboundItems.filter((item) => item.priority === 'urgent').length,
+    inbound_medication_stock_signal_count: inboundItems.filter(
+      (item) => item.has_medication_stock_signal,
+    ).length,
+    inbound_safety_signal_count: inboundItems.filter((item) => item.has_patient_safety_signal)
+      .length,
+  };
+}
+
 async function readDashboardComments(args: {
   ctx: AuthContext;
   scopeContext: DashboardCockpitScopeContext;
@@ -665,32 +1214,25 @@ async function buildCockpitSummary(
   ctx: AuthContext,
   scopeContext: DashboardCockpitScopeContext,
 ): Promise<DashboardCockpitSummaryResponse> {
-  const [cycleStatusCounts, auditQueue, todaySchedules] = await Promise.all([
+  const [cycleStatusCounts, auditSummary, todayVisitSummary] = await Promise.all([
     readCycleStatusCounts({ orgId: ctx.orgId, assignmentScope: scopeContext.assignmentScope }),
-    readAuditQueue({ orgId: ctx.orgId, assignmentScope: scopeContext.assignmentScope }),
-    readTodayVisits({
+    readAuditQueueSummary({ orgId: ctx.orgId, assignmentScope: scopeContext.assignmentScope }),
+    readTodayVisitSummary({
       orgId: ctx.orgId,
       assignmentScope: scopeContext.assignmentScope,
       todayRange: scopeContext.todayRange,
     }),
   ]);
-  const todayVisitTimes = todaySchedules
-    .map((schedule) => timeDateToString(schedule.time_window_start))
-    .filter((value): value is string => value != null);
 
   return {
     ...scopeContext.metadata,
     cycle_status_counts: cycleStatusCounts,
-    audit_pending_count: auditQueue.totalCount,
-    audit_queue_total_count: auditQueue.totalCount,
-    narcotic_audit_count: auditQueue.all.filter((item) => item.has_narcotic).length,
-    earliest_audit_due_at:
-      auditQueue.all
-        .map((item) => item.due_at)
-        .filter((dueAt): dueAt is string => dueAt != null)
-        .sort()[0] ?? null,
-    today_visit_count: todaySchedules.length,
-    today_visit_times: todayVisitTimes,
+    audit_pending_count: auditSummary.totalCount,
+    audit_queue_total_count: auditSummary.totalCount,
+    narcotic_audit_count: auditSummary.narcoticCount,
+    earliest_audit_due_at: auditSummary.earliestDueAt,
+    today_visit_count: todayVisitSummary.count,
+    today_visit_times: todayVisitSummary.times,
   };
 }
 
@@ -698,8 +1240,9 @@ async function buildCockpitDetails(
   ctx: AuthContext,
   scopeContext: DashboardCockpitScopeContext,
 ): Promise<DashboardCockpitDetailsResponse> {
-  const [auditQueue, todaySchedules, openExceptions, carryoverCount] = await Promise.all([
+  const [auditQueue, inbound, todaySchedules, openExceptions, carryoverCount] = await Promise.all([
     readAuditQueue({ orgId: ctx.orgId, assignmentScope: scopeContext.assignmentScope }),
+    readDashboardInbound({ ctx, scopeContext }),
     readTodayVisits({
       orgId: ctx.orgId,
       assignmentScope: scopeContext.assignmentScope,
@@ -740,17 +1283,30 @@ async function buildCockpitDetails(
   ]);
 
   const visibleQueue = auditQueue.all.slice(0, AUDIT_QUEUE_RESPONSE_LIMIT);
+  const blockedReasons = buildBlockedReasons(
+    openExceptions,
+    scopeContext.now,
+  ) as CockpitBlockedReason[];
+  const urgentItems = buildDashboardUrgentItems({
+    auditItems: visibleQueue,
+    inboundItems: inbound.inbound_items,
+    blockedReasons,
+    now: scopeContext.now,
+  });
+  const urgentSourceCount =
+    auditQueue.totalCount + inbound.inbound_needs_review_count + blockedReasons.length;
   return {
     ...scopeContext.metadata,
     audit_queue_total_count: auditQueue.totalCount,
     audit_queue_visible_count: visibleQueue.length,
     audit_queue_hidden_count: Math.max(auditQueue.totalCount - visibleQueue.length, 0),
     audit_queue: visibleQueue,
+    urgent_items: urgentItems,
+    urgent_total_count: urgentSourceCount,
+    urgent_visible_count: urgentItems.length,
+    urgent_hidden_count: Math.max(urgentSourceCount - urgentItems.length, 0),
     today_visits: mapTodayVisits(todaySchedules),
-    blocked_reasons: buildBlockedReasons(
-      openExceptions,
-      scopeContext.now,
-    ) as CockpitBlockedReason[],
+    blocked_reasons: blockedReasons,
     carryover_count: carryoverCount,
   };
 }
@@ -909,6 +1465,9 @@ async function buildCockpitSegment(args: {
   });
   if (args.part === 'comments') {
     return readDashboardComments({ ctx: args.ctx, scopeContext });
+  }
+  if (args.part === 'inbound') {
+    return readDashboardInbound({ ctx: args.ctx, scopeContext });
   }
 
   const cachedData = serverCache.get<DashboardCockpitSegmentResponse>(scopeContext.cacheKey);

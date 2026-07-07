@@ -4,7 +4,8 @@ const {
   selfReportFindManyMock,
   contactLogFindManyMock,
   communicationRequestFindManyMock,
-  communicationEventFindManyMock,
+  inboundCommunicationEventFindManyMock,
+  inboundCommunicationSignalFindManyMock,
   deliveryRecordFindManyMock,
   externalAccessGrantFindManyMock,
   careReportFindManyMock,
@@ -12,11 +13,13 @@ const {
   patientFindFirstMock,
   patientFindManyMock,
   medicationIssueFindManyMock,
+  taskFindManyMock,
 } = vi.hoisted(() => ({
   selfReportFindManyMock: vi.fn(),
   contactLogFindManyMock: vi.fn(),
   communicationRequestFindManyMock: vi.fn(),
-  communicationEventFindManyMock: vi.fn(),
+  inboundCommunicationEventFindManyMock: vi.fn(),
+  inboundCommunicationSignalFindManyMock: vi.fn(),
   deliveryRecordFindManyMock: vi.fn(),
   externalAccessGrantFindManyMock: vi.fn(),
   careReportFindManyMock: vi.fn(),
@@ -24,6 +27,7 @@ const {
   patientFindFirstMock: vi.fn(),
   patientFindManyMock: vi.fn(),
   medicationIssueFindManyMock: vi.fn(),
+  taskFindManyMock: vi.fn(),
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -41,7 +45,8 @@ function makeDb() {
     patientSelfReport: { findMany: selfReportFindManyMock },
     visitScheduleContactLog: { findMany: contactLogFindManyMock },
     communicationRequest: { findMany: communicationRequestFindManyMock },
-    communicationEvent: { findMany: communicationEventFindManyMock },
+    inboundCommunicationEvent: { findMany: inboundCommunicationEventFindManyMock },
+    inboundCommunicationSignal: { findMany: inboundCommunicationSignalFindManyMock },
     deliveryRecord: { findMany: deliveryRecordFindManyMock },
     externalAccessGrant: { findMany: externalAccessGrantFindManyMock },
     careReport: { findMany: careReportFindManyMock },
@@ -51,6 +56,7 @@ function makeDb() {
       findMany: patientFindManyMock,
     },
     medicationIssue: { findMany: medicationIssueFindManyMock },
+    task: { findMany: taskFindManyMock },
   };
 }
 
@@ -58,7 +64,8 @@ function emptyDbMocks() {
   selfReportFindManyMock.mockResolvedValue([]);
   contactLogFindManyMock.mockResolvedValue([]);
   communicationRequestFindManyMock.mockResolvedValue([]);
-  communicationEventFindManyMock.mockResolvedValue([]);
+  inboundCommunicationEventFindManyMock.mockResolvedValue([]);
+  inboundCommunicationSignalFindManyMock.mockResolvedValue([]);
   deliveryRecordFindManyMock.mockResolvedValue([]);
   externalAccessGrantFindManyMock.mockResolvedValue([]);
   careReportFindManyMock.mockResolvedValue([]);
@@ -66,6 +73,7 @@ function emptyDbMocks() {
   patientFindFirstMock.mockResolvedValue(null);
   patientFindManyMock.mockResolvedValue([]);
   medicationIssueFindManyMock.mockResolvedValue([]);
+  taskFindManyMock.mockResolvedValue([]);
 }
 
 describe('listCommunicationQueue', () => {
@@ -198,15 +206,14 @@ describe('listCommunicationQueue', () => {
   it('includes inbound communication events as summary-only queue items', async () => {
     emptyDbMocks();
     const patientId = 'patient/1?x=y#frag';
-    communicationEventFindManyMock.mockResolvedValue([
+    inboundCommunicationEventFindManyMock.mockResolvedValue([
       {
         id: 'event/1?x=y#frag',
         patient_id: patientId,
         case_id: 'case-1',
         event_type: 'medication_stock_report',
-        channel: 'phone',
-        direction: 'inbound',
-        occurred_at: new Date('2026-04-02T10:00:00Z'),
+        source_channel: 'phone',
+        received_at: new Date('2026-04-02T10:00:00Z'),
         subject: '湿布の残りが少ない',
         content: '湿布は残り4枚です',
         counterpart_name: '訪問看護師A',
@@ -222,24 +229,50 @@ describe('listCommunicationQueue', () => {
       caseIds: ['case-1'],
     });
 
-    expect(communicationEventFindManyMock).toHaveBeenCalledWith(
+    expect(inboundCommunicationEventFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           org_id: 'org-1',
           patient_id: patientId,
-          event_type: { not: 'patient_self_report' },
-          direction: 'inbound',
-          channel: { in: ['phone', 'fax', 'email'] },
+          source_channel: { in: ['phone', 'fax', 'email', 'mcs'] },
           AND: [{ OR: [{ case_id: null }, { case_id: { in: ['case-1'] } }] }],
         }),
         select: {
           id: true,
           patient_id: true,
-          channel: true,
-          occurred_at: true,
+          source_channel: true,
+          received_at: true,
         },
       }),
     );
+    expect(taskFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org-1',
+        task_type: {
+          in: [
+            'core.inbound_communication_review_required',
+            'pharmacy.inbound_medication_stock_signal_review_required',
+            'pharmacy.inbound_low_stock_unquantified_report',
+            'pharmacy.inbound_medication_safety_review_required',
+            'pharmacy.inbound_schedule_request_review_required',
+          ],
+        },
+        OR: [
+          {
+            dedupe_key: {
+              startsWith: 'inbound-signal-task:event/1?x=y#frag:',
+            },
+          },
+        ],
+      },
+      select: {
+        id: true,
+        task_type: true,
+        status: true,
+        priority: true,
+        dedupe_key: true,
+      },
+    });
     expect(result.items).toEqual([
       expect.objectContaining({
         id: 'inbound_communication:event/1?x=y#frag',
@@ -268,6 +301,334 @@ describe('listCommunicationQueue', () => {
     expect(serialized).not.toContain('090-0000-0000');
     expect(serialized).not.toContain('photo.jpg');
     expect(serialized).not.toContain('secret-key');
+  });
+
+  it('marks inbound communication events as task-created when a deduped signal task exists', async () => {
+    emptyDbMocks();
+    inboundCommunicationEventFindManyMock.mockResolvedValue([
+      {
+        id: 'event_1',
+        patient_id: 'patient_1',
+        case_id: null,
+        event_type: 'medication_stock_report',
+        source_channel: 'phone',
+        received_at: new Date('2026-04-02T10:00:00Z'),
+        subject: '湿布の残りが少ない',
+        content: '湿布は残り4枚です',
+        counterpart_name: '訪問看護師A',
+        counterpart_contact: '090-0000-0000',
+        attachments: [{ name: 'photo.jpg', storage_key: 'secret-key' }],
+      },
+    ]);
+    taskFindManyMock.mockResolvedValue([
+      {
+        id: 'task_1',
+        task_type: 'pharmacy.inbound_medication_stock_signal_review_required',
+        status: 'pending',
+        priority: 'urgent',
+        dedupe_key:
+          'inbound-signal-task:event_1:0:pharmacy.inbound_medication_stock_signal_review_required',
+      },
+    ]);
+    patientFindManyMock.mockResolvedValue([{ id: 'patient_1', name: '佐藤花子' }]);
+
+    const result = await listCommunicationQueue(makeDb(), {
+      orgId: 'org-1',
+      queueTypes: ['inbound_communication'],
+    });
+
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        id: 'inbound_communication:event_1',
+        status: 'task_created',
+        priority: 'urgent',
+        summary:
+          '他職種受信から薬剤師確認タスクを作成済みです。タスク一覧で処理状況を確認してください。',
+        action_href:
+          '/tasks?status=&task_type=pharmacy.inbound_medication_stock_signal_review_required',
+        action_label: 'タスクを確認',
+      }),
+    ]);
+
+    const serialized = JSON.stringify(result.items);
+    expect(serialized).not.toContain('湿布は残り4枚です');
+    expect(serialized).not.toContain('訪問看護師A');
+    expect(serialized).not.toContain('090-0000-0000');
+    expect(serialized).not.toContain('photo.jpg');
+    expect(serialized).not.toContain('secret-key');
+  });
+
+  it('marks inbound communication events as task-created from formal signal task dedupe keys', async () => {
+    emptyDbMocks();
+    inboundCommunicationEventFindManyMock.mockResolvedValue([
+      {
+        id: 'event_1',
+        patient_id: 'patient_1',
+        source_channel: 'phone',
+        received_at: new Date('2026-04-02T10:00:00Z'),
+      },
+    ]);
+    inboundCommunicationSignalFindManyMock.mockResolvedValue([
+      {
+        id: 'signal_1',
+        inbound_event_id: 'event_1',
+        review_status: 'needs_review',
+        action_status: 'not_linked',
+      },
+    ]);
+    taskFindManyMock.mockResolvedValue([
+      {
+        id: 'task_1',
+        task_type: 'pharmacy.inbound_medication_stock_signal_review_required',
+        status: 'pending',
+        priority: 'urgent',
+        dedupe_key: 'inbound:signal_1:pharmacy.inbound_medication_stock_signal_review_required',
+      },
+    ]);
+    patientFindManyMock.mockResolvedValue([{ id: 'patient_1', name: '佐藤花子' }]);
+
+    const result = await listCommunicationQueue(makeDb(), {
+      orgId: 'org-1',
+      queueTypes: ['inbound_communication'],
+    });
+
+    expect(inboundCommunicationSignalFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org-1',
+        inbound_event_id: {
+          in: ['event_1'],
+        },
+      },
+      select: {
+        id: true,
+        inbound_event_id: true,
+        review_status: true,
+        action_status: true,
+      },
+    });
+    expect(taskFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org-1',
+        task_type: {
+          in: [
+            'core.inbound_communication_review_required',
+            'pharmacy.inbound_medication_stock_signal_review_required',
+            'pharmacy.inbound_low_stock_unquantified_report',
+            'pharmacy.inbound_medication_safety_review_required',
+            'pharmacy.inbound_schedule_request_review_required',
+          ],
+        },
+        OR: [
+          {
+            dedupe_key: {
+              startsWith: 'inbound-signal-task:event_1:',
+            },
+          },
+          {
+            dedupe_key: {
+              startsWith: 'inbound:signal_1:',
+            },
+          },
+        ],
+      },
+      select: {
+        id: true,
+        task_type: true,
+        status: true,
+        priority: true,
+        dedupe_key: true,
+      },
+    });
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        id: 'inbound_communication:event_1',
+        status: 'task_created',
+        priority: 'urgent',
+        action_href:
+          '/tasks?status=&task_type=pharmacy.inbound_medication_stock_signal_review_required',
+        action_label: 'タスクを確認',
+      }),
+    ]);
+  });
+
+  it('marks inbound communication events as completed when all formal signals are record-only or rejected', async () => {
+    emptyDbMocks();
+    inboundCommunicationEventFindManyMock.mockResolvedValue([
+      {
+        id: 'event_1',
+        patient_id: 'patient_1',
+        source_channel: 'phone',
+        received_at: new Date('2026-04-02T10:00:00Z'),
+      },
+    ]);
+    inboundCommunicationSignalFindManyMock.mockResolvedValue([
+      {
+        id: 'signal_1',
+        inbound_event_id: 'event_1',
+        review_status: 'record_only',
+        action_status: 'ignored',
+      },
+      {
+        id: 'signal_2',
+        inbound_event_id: 'event_1',
+        review_status: 'rejected',
+        action_status: 'ignored',
+      },
+    ]);
+    patientFindManyMock.mockResolvedValue([{ id: 'patient_1', name: '佐藤花子' }]);
+
+    const result = await listCommunicationQueue(makeDb(), {
+      orgId: 'org-1',
+      queueTypes: ['inbound_communication'],
+    });
+
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        id: 'inbound_communication:event_1',
+        status: 'task_completed',
+        priority: 'normal',
+        summary:
+          '他職種受信シグナルはレビュー済みです。必要に応じて患者詳細で経緯を確認してください。',
+      }),
+    ]);
+  });
+
+  it('marks accepted formal signals as reviewed pending action until downstream reflection exists', async () => {
+    emptyDbMocks();
+    inboundCommunicationEventFindManyMock.mockResolvedValue([
+      {
+        id: 'event_1',
+        patient_id: 'patient_1',
+        source_channel: 'phone',
+        received_at: new Date('2026-04-02T10:00:00Z'),
+      },
+    ]);
+    inboundCommunicationSignalFindManyMock.mockResolvedValue([
+      {
+        id: 'signal_1',
+        inbound_event_id: 'event_1',
+        review_status: 'accepted',
+        action_status: 'not_linked',
+      },
+    ]);
+    taskFindManyMock.mockResolvedValue([
+      {
+        id: 'task_1',
+        task_type: 'pharmacy.inbound_medication_stock_signal_review_required',
+        status: 'completed',
+        priority: 'normal',
+        dedupe_key: 'inbound:signal_1:pharmacy.inbound_medication_stock_signal_review_required',
+      },
+    ]);
+    patientFindManyMock.mockResolvedValue([{ id: 'patient_1', name: '佐藤花子' }]);
+
+    const result = await listCommunicationQueue(makeDb(), {
+      orgId: 'org-1',
+      queueTypes: ['inbound_communication'],
+    });
+
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        id: 'inbound_communication:event_1',
+        status: 'reviewed_pending_action',
+        priority: 'high',
+        summary:
+          '受信シグナルはレビュー済みです。残数台帳など業務データへの明示反映が残っています。',
+        action_href: '/patients/patient_1/collaboration',
+        action_label: '受信情報を確認',
+      }),
+    ]);
+  });
+
+  it('projects MCS inbound communication events as the public mcs channel without raw payload', async () => {
+    emptyDbMocks();
+    inboundCommunicationEventFindManyMock.mockResolvedValue([
+      {
+        id: 'mcs_event_1',
+        patient_id: 'patient_1',
+        case_id: null,
+        event_type: 'medication_stock_report',
+        source_channel: 'mcs',
+        received_at: new Date('2026-04-02T10:00:00Z'),
+        subject: 'MCS貼り付け: 残数報告',
+        content: 'ロキソニンは残り4錠です。source_url=https://www.medical-care.net/projects/1',
+        counterpart_name: '訪問看護師A',
+        counterpart_contact: 'https://www.medical-care.net/projects/1',
+        attachments: [{ name: 'mcs.png', storage_key: 'secret-key' }],
+      },
+    ]);
+    patientFindManyMock.mockResolvedValue([{ id: 'patient_1', name: '佐藤花子' }]);
+
+    const result = await listCommunicationQueue(makeDb(), {
+      orgId: 'org-1',
+    });
+
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        id: 'inbound_communication:mcs_event_1',
+        queue_type: 'inbound_communication',
+        title: 'MCS連絡を受信',
+        summary: '他職種または関係者からの受信情報があります。内容は連絡履歴で確認してください。',
+        channel: 'mcs',
+        action_href: '/patients/patient_1/collaboration',
+      }),
+    ]);
+    expect(result.summary.inbound_communications).toBe(1);
+
+    const serialized = JSON.stringify(result.items);
+    expect(serialized).not.toContain('ロキソニン');
+    expect(serialized).not.toContain('訪問看護師A');
+    expect(serialized).not.toContain('medical-care.net');
+    expect(serialized).not.toContain('secret-key');
+  });
+
+  it('applies queue type filtering before the final queue item limit', async () => {
+    emptyDbMocks();
+    selfReportFindManyMock.mockResolvedValue([
+      {
+        id: 'sr-1',
+        patient_id: 'p-1',
+        subject: '先に並ぶ自己申告',
+        category: 'symptom',
+        requested_callback: true,
+        preferred_contact_time: null,
+        reported_by_name: '家族A',
+        status: 'submitted',
+        created_at: new Date('2026-04-02T12:00:00Z'),
+      },
+    ]);
+    inboundCommunicationEventFindManyMock.mockResolvedValue([
+      {
+        id: 'event-1',
+        patient_id: 'p-1',
+        case_id: null,
+        event_type: 'general_note',
+        source_channel: 'phone',
+        received_at: new Date('2026-04-01T10:00:00Z'),
+        subject: '電話連絡',
+        content: 'raw text is not selected',
+        counterpart_name: '訪問看護師A',
+        counterpart_contact: '090-0000-0000',
+        attachments: [],
+      },
+    ]);
+    patientFindManyMock.mockResolvedValue([{ id: 'p-1', name: '佐藤花子' }]);
+
+    const result = await listCommunicationQueue(makeDb(), {
+      orgId: 'org-1',
+      limit: 1,
+      queueTypes: ['inbound_communication'],
+    });
+
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        id: 'inbound_communication:event-1',
+        queue_type: 'inbound_communication',
+      }),
+    ]);
+    expect(result.summary.pending_count).toBe(1);
+    expect(result.summary.inbound_communications).toBe(1);
+    expect(result.summary.self_reports).toBe(1);
   });
 
   it('links tracing report timeline entries to related communication requests', async () => {
@@ -395,13 +756,12 @@ describe('listCommunicationQueue', () => {
         }),
       }),
     );
-    expect(communicationEventFindManyMock).toHaveBeenCalledWith(
+    expect(inboundCommunicationEventFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           patient_id: 'p-1',
           AND: [caseScope],
-          direction: 'inbound',
-          event_type: { not: 'patient_self_report' },
+          source_channel: { in: ['phone', 'fax', 'email', 'mcs'] },
         }),
       }),
     );
@@ -484,13 +844,12 @@ describe('listCommunicationQueue', () => {
         }),
       }),
     );
-    expect(communicationEventFindManyMock).toHaveBeenCalledWith(
+    expect(inboundCommunicationEventFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           ...patientScope,
           AND: [caseScope],
-          direction: 'inbound',
-          event_type: { not: 'patient_self_report' },
+          source_channel: { in: ['phone', 'fax', 'email', 'mcs'] },
         }),
       }),
     );
@@ -639,7 +998,7 @@ describe('listCommunicationQueue', () => {
     expect(communicationRequestFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({ take: 8 }),
     );
-    expect(communicationEventFindManyMock).toHaveBeenCalledWith(
+    expect(inboundCommunicationEventFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({ take: 8 }),
     );
   });

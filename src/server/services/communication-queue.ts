@@ -69,6 +69,37 @@ export type CommunicationQueueReader = {
       }>
     >;
   };
+  inboundCommunicationEvent?: {
+    findMany(args: unknown): Promise<
+      Array<{
+        id: string;
+        patient_id: string | null;
+        source_channel: string;
+        received_at: Date;
+      }>
+    >;
+  };
+  inboundCommunicationSignal?: {
+    findMany(args: unknown): Promise<
+      Array<{
+        id: string;
+        inbound_event_id: string;
+        review_status: string;
+        action_status: string;
+      }>
+    >;
+  };
+  task?: {
+    findMany(args: unknown): Promise<
+      Array<{
+        id: string;
+        task_type: string;
+        status: string;
+        priority: string;
+        dedupe_key: string | null;
+      }>
+    >;
+  };
   deliveryRecord?: {
     findMany(args: unknown): Promise<
       Array<{
@@ -146,6 +177,21 @@ export type CommunicationQueueReader = {
 
 type DbClient = CommunicationQueueReader;
 type QueuePriority = 'urgent' | 'high' | 'normal';
+export type CommunicationQueueType =
+  | 'self_report'
+  | 'callback'
+  | 'request'
+  | 'delivery'
+  | 'external_share'
+  | 'inbound_communication';
+type ListCommunicationQueueArgs = {
+  orgId: string;
+  patientId?: string;
+  patientIds?: string[];
+  caseIds?: string[];
+  limit?: number;
+  queueTypes?: readonly CommunicationQueueType[];
+};
 const DEFAULT_COMMUNICATION_QUEUE_LIMIT = 8;
 
 function normalizeCommunicationQueueLimit(value: number | undefined) {
@@ -160,13 +206,7 @@ function normalizeCommunicationQueueLimit(value: number | undefined) {
 
 export type CommunicationQueueItem = {
   id: string;
-  queue_type:
-    | 'self_report'
-    | 'callback'
-    | 'request'
-    | 'delivery'
-    | 'external_share'
-    | 'inbound_communication';
+  queue_type: CommunicationQueueType;
   title: string;
   summary: string;
   channel: string;
@@ -246,9 +286,147 @@ const INBOUND_COMMUNICATION_CHANNEL_LABELS: Record<string, string> = {
   phone: '電話',
   fax: 'FAX',
   email: 'メール',
+  mcs: 'MCS',
 };
 
 const INBOUND_COMMUNICATION_QUEUE_CHANNELS = Object.keys(INBOUND_COMMUNICATION_CHANNEL_LABELS);
+const INBOUND_SIGNAL_TASK_TYPES = [
+  'core.inbound_communication_review_required',
+  'pharmacy.inbound_medication_stock_signal_review_required',
+  'pharmacy.inbound_low_stock_unquantified_report',
+  'pharmacy.inbound_medication_safety_review_required',
+  'pharmacy.inbound_schedule_request_review_required',
+] as const;
+
+function toPublicInboundCommunicationChannel(channel: string) {
+  return channel === 'ph_os_share' ? 'mcs' : channel;
+}
+
+function toQueuePriority(value: string | null | undefined): QueuePriority {
+  if (value === 'urgent') return 'urgent';
+  if (value === 'high') return 'high';
+  return 'normal';
+}
+
+function parseInboundSignalTaskEventId(dedupeKey: string | null) {
+  if (!dedupeKey?.startsWith('inbound-signal-task:')) return null;
+  const match = dedupeKey.match(/^inbound-signal-task:([^:]+):\d+:/);
+  return match?.[1] ?? null;
+}
+
+function parseInboundSignalTaskSignalId(dedupeKey: string | null) {
+  if (!dedupeKey?.startsWith('inbound:')) return null;
+  const match = dedupeKey.match(/^inbound:([^:]+):/);
+  return match?.[1] ?? null;
+}
+
+function buildInboundTaskStateByEventId(
+  tasks: Array<{
+    task_type: string;
+    status: string;
+    priority: string;
+    dedupe_key: string | null;
+  }>,
+  signalEventIdBySignalId: Map<string, string> = new Map(),
+) {
+  const stateByEventId = new Map<
+    string,
+    {
+      status: 'task_created' | 'task_completed';
+      priority: QueuePriority;
+      taskType: string;
+    }
+  >();
+
+  for (const task of tasks) {
+    const signalId = parseInboundSignalTaskSignalId(task.dedupe_key);
+    const eventId =
+      parseInboundSignalTaskEventId(task.dedupe_key) ??
+      (signalId ? signalEventIdBySignalId.get(signalId) : null);
+    if (!eventId) continue;
+
+    const next = {
+      status: ['completed', 'cancelled'].includes(task.status)
+        ? ('task_completed' as const)
+        : ('task_created' as const),
+      priority: toQueuePriority(task.priority),
+      taskType: task.task_type,
+    };
+    const current = stateByEventId.get(eventId);
+    if (!current) {
+      stateByEventId.set(eventId, next);
+      continue;
+    }
+    if (current.status === 'task_completed' && next.status === 'task_created') {
+      stateByEventId.set(eventId, next);
+      continue;
+    }
+    if (priorityRank(next.priority) < priorityRank(current.priority)) {
+      stateByEventId.set(eventId, { ...current, priority: next.priority });
+    }
+  }
+
+  return stateByEventId;
+}
+
+function buildInboundReviewStateByEventId(
+  signals: Array<{
+    inbound_event_id: string;
+    review_status: string;
+    action_status: string;
+  }>,
+) {
+  const signalsByEventId = new Map<
+    string,
+    Array<{
+      review_status: string;
+      action_status: string;
+    }>
+  >();
+
+  for (const signal of signals) {
+    const current = signalsByEventId.get(signal.inbound_event_id) ?? [];
+    current.push(signal);
+    signalsByEventId.set(signal.inbound_event_id, current);
+  }
+
+  const stateByEventId = new Map<
+    string,
+    {
+      status: 'task_completed' | 'reviewed_pending_action';
+      priority: QueuePriority;
+    }
+  >();
+
+  for (const [eventId, eventSignals] of signalsByEventId.entries()) {
+    if (eventSignals.length === 0) continue;
+    const allResolved = eventSignals.every(
+      (signal) =>
+        ['record_only', 'rejected'].includes(signal.review_status) ||
+        ['ignored', 'linked_to_stock_event'].includes(signal.action_status),
+    );
+    if (allResolved) {
+      stateByEventId.set(eventId, {
+        status: 'task_completed',
+        priority: 'normal',
+      });
+      continue;
+    }
+
+    const hasReviewDonePendingAction = eventSignals.some(
+      (signal) =>
+        ['accepted', 'auto_accepted'].includes(signal.review_status) &&
+        signal.action_status === 'not_linked',
+    );
+    if (!hasReviewDonePendingAction) continue;
+    stateByEventId.set(eventId, {
+      status: 'reviewed_pending_action',
+      priority: 'high',
+    });
+  }
+
+  return stateByEventId;
+}
 
 function priorityRank(priority: QueuePriority) {
   switch (priority) {
@@ -489,53 +667,23 @@ async function buildEmergencyDrafts(
 
 export async function listCommunicationQueue(
   db: CommunicationQueueDbClient,
-  args: {
-    orgId: string;
-    patientId?: string;
-    patientIds?: string[];
-    caseIds?: string[];
-    limit?: number;
-  },
+  args: ListCommunicationQueueArgs,
 ): Promise<CommunicationQueueOverview>;
 export async function listCommunicationQueue(
   db: CommunicationQueueReader,
-  args: {
-    orgId: string;
-    patientId?: string;
-    patientIds?: string[];
-    caseIds?: string[];
-    limit?: number;
-  },
+  args: ListCommunicationQueueArgs,
 ): Promise<CommunicationQueueOverview>;
 export async function listCommunicationQueue(
   db: CommunicationQueueDbClient | CommunicationQueueReader,
-  args: {
-    orgId: string;
-    patientId?: string;
-    patientIds?: string[];
-    caseIds?: string[];
-    limit?: number;
-  },
+  args: ListCommunicationQueueArgs,
 ): Promise<CommunicationQueueOverview>;
 export async function listCommunicationQueue(
   db: object,
-  args: {
-    orgId: string;
-    patientId?: string;
-    patientIds?: string[];
-    caseIds?: string[];
-    limit?: number;
-  },
+  args: ListCommunicationQueueArgs,
 ): Promise<CommunicationQueueOverview>;
 export async function listCommunicationQueue(
   db: CommunicationQueueDbClient | CommunicationQueueReader,
-  args: {
-    orgId: string;
-    patientId?: string;
-    patientIds?: string[];
-    caseIds?: string[];
-    limit?: number;
-  },
+  args: ListCommunicationQueueArgs,
 ): Promise<CommunicationQueueOverview> {
   const reader = db as CommunicationQueueReader;
   const now = new Date();
@@ -684,24 +832,22 @@ export async function listCommunicationQueue(
         requested_at: true,
       },
     }) ?? Promise.resolve([]),
-    reader.communicationEvent?.findMany({
+    reader.inboundCommunicationEvent?.findMany({
       where: {
         org_id: args.orgId,
         ...patientScope,
         ...(caseScope ? { AND: [caseScope] } : {}),
-        event_type: { not: 'patient_self_report' },
-        direction: 'inbound',
-        channel: {
+        source_channel: {
           in: INBOUND_COMMUNICATION_QUEUE_CHANNELS,
         },
       },
-      orderBy: [{ occurred_at: 'desc' }, { id: 'asc' }],
+      orderBy: [{ received_at: 'desc' }, { id: 'asc' }],
       take: limit,
       select: {
         id: true,
         patient_id: true,
-        channel: true,
-        occurred_at: true,
+        source_channel: true,
+        received_at: true,
       },
     }) ?? Promise.resolve([]),
     reader.deliveryRecord?.findMany({
@@ -825,6 +971,60 @@ export async function listCommunicationQueue(
           })
         : [];
   const patientNameById = new Map(patients.map((patient) => [patient.id, patient.name]));
+  const inboundSignalRows =
+    reader.inboundCommunicationSignal && inboundCommunicationEvents.length > 0
+      ? await reader.inboundCommunicationSignal.findMany({
+          where: {
+            org_id: args.orgId,
+            inbound_event_id: {
+              in: inboundCommunicationEvents.map((event) => event.id),
+            },
+          },
+          select: {
+            id: true,
+            inbound_event_id: true,
+            review_status: true,
+            action_status: true,
+          },
+        })
+      : [];
+  const inboundSignalEventIdBySignalId = new Map(
+    inboundSignalRows.map((signal) => [signal.id, signal.inbound_event_id]),
+  );
+  const inboundSignalTaskDedupeClauses = [
+    ...inboundCommunicationEvents.map((event) => ({
+      dedupe_key: {
+        startsWith: `inbound-signal-task:${event.id}:`,
+      },
+    })),
+    ...inboundSignalRows.map((signal) => ({
+      dedupe_key: {
+        startsWith: `inbound:${signal.id}:`,
+      },
+    })),
+  ];
+  const inboundSignalTaskRows =
+    reader.task && inboundSignalTaskDedupeClauses.length > 0
+      ? await reader.task.findMany({
+          where: {
+            org_id: args.orgId,
+            task_type: { in: [...INBOUND_SIGNAL_TASK_TYPES] },
+            OR: inboundSignalTaskDedupeClauses,
+          },
+          select: {
+            id: true,
+            task_type: true,
+            status: true,
+            priority: true,
+            dedupe_key: true,
+          },
+        })
+      : [];
+  const inboundTaskStateByEventId = buildInboundTaskStateByEventId(
+    inboundSignalTaskRows,
+    inboundSignalEventIdBySignalId,
+  );
+  const inboundReviewStateByEventId = buildInboundReviewStateByEventId(inboundSignalRows);
 
   const actionableRequests = openRequests.filter((request) =>
     ['draft', 'sent', 'received', 'in_progress', 'escalated'].includes(request.status),
@@ -833,7 +1033,8 @@ export async function listCommunicationQueue(
     ['draft', 'failed', 'response_waiting'].includes(record.status),
   );
 
-  const items: CommunicationQueueItem[] = [
+  const queueTypeFilter = args.queueTypes ? new Set(args.queueTypes) : null;
+  const allItems: CommunicationQueueItem[] = [
     ...selfReports.map((report) => ({
       id: `self_report:${report.id}`,
       queue_type: 'self_report' as const,
@@ -891,23 +1092,39 @@ export async function listCommunicationQueue(
       action_label: '依頼を確認',
     })),
     ...inboundCommunicationEvents.map((event) => {
-      const channelLabel = INBOUND_COMMUNICATION_CHANNEL_LABELS[event.channel] ?? '受信連絡';
+      const channelLabel = INBOUND_COMMUNICATION_CHANNEL_LABELS[event.source_channel] ?? '受信連絡';
       const patientName = event.patient_id ? (patientNameById.get(event.patient_id) ?? null) : null;
+      const taskState = inboundTaskStateByEventId.get(event.id);
+      const reviewState = inboundReviewStateByEventId.get(event.id);
+      const projectedState =
+        taskState?.status === 'task_created' ? taskState : (reviewState ?? taskState);
+      const hasCreatedTask = taskState?.status === 'task_created';
+      const hasCompletedReview = projectedState?.status === 'task_completed';
+      const hasPendingAction = projectedState?.status === 'reviewed_pending_action';
       return {
         id: `inbound_communication:${event.id}`,
         queue_type: 'inbound_communication' as const,
         title: `${channelLabel}連絡を受信`,
-        summary: '他職種または関係者からの受信情報があります。内容は連絡履歴で確認してください。',
-        channel: event.channel,
-        status: 'needs_review',
-        priority: 'high' as const,
+        summary: hasCreatedTask
+          ? '他職種受信から薬剤師確認タスクを作成済みです。タスク一覧で処理状況を確認してください。'
+          : hasPendingAction
+            ? '受信シグナルはレビュー済みです。残数台帳など業務データへの明示反映が残っています。'
+            : hasCompletedReview
+              ? '他職種受信シグナルはレビュー済みです。必要に応じて患者詳細で経緯を確認してください。'
+              : '他職種または関係者からの受信情報があります。内容は連絡履歴で確認してください。',
+        channel: toPublicInboundCommunicationChannel(event.source_channel),
+        status: projectedState?.status ?? 'needs_review',
+        priority: projectedState?.priority ?? ('high' as const),
         patient_id: event.patient_id,
         patient_name: patientName,
-        due_at: event.occurred_at.toISOString(),
-        action_href: event.patient_id
-          ? buildPatientHref(event.patient_id, '/collaboration')
-          : '/communications/requests',
-        action_label: '受信情報を確認',
+        due_at: event.received_at.toISOString(),
+        action_href:
+          hasCreatedTask && taskState
+            ? `/tasks?status=&task_type=${encodeURIComponent(taskState.taskType)}`
+            : event.patient_id
+              ? buildPatientHref(event.patient_id, '/collaboration')
+              : '/communications/requests',
+        action_label: hasCreatedTask ? 'タスクを確認' : '受信情報を確認',
       };
     }),
     ...actionableDeliveries.map((record) => ({
@@ -940,7 +1157,10 @@ export async function listCommunicationQueue(
       action_href: buildPatientHref(grant.patient_id, '/share'),
       action_label: '共有状況を確認',
     })),
-  ]
+  ];
+
+  const items = allItems
+    .filter((item) => !queueTypeFilter || queueTypeFilter.has(item.queue_type))
     .sort(sortItems)
     .slice(0, limit);
 

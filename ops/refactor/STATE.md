@@ -41,6 +41,241 @@
 
 ## 直近の land（本日・要点）
 
+- codex: TASK-011 formal signal inbox status projection（pending commit）。
+  - current task:
+    `POST /api/communications/inbound/signals/tasks` が正式
+    `inbound:{signal_id}:{task_type}` dedupe key を使うようになった後も、
+    `/communications/inbound` の queue status が `task_created` / `task_completed`
+    へ正しく投影されるようにする。
+  - files inspected:
+    `src/server/services/communication-queue.ts`,
+    `src/server/services/communication-queue.test.ts`,
+    `src/app/api/communications/inbound/signals/tasks/route.ts`,
+    `Plans.md`.
+  - files changed:
+    `src/server/services/communication-queue.ts`,
+    `src/server/services/communication-queue.test.ts`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `CommunicationQueueReader` に optional `inboundCommunicationSignal` reader を追加し、
+    visible inbound events に紐づく signal を読み込む。task query は旧
+    `inbound-signal-task:{event_id}:...` と正式 `inbound:{signal_id}:...` の両方を
+    OR で拾う。正式 signal task は `signal_id -> inbound_event_id` へ戻して inbox
+    status に投影する。`record_only` / `rejected` / `ignored` /
+    `linked_to_stock_event` だけで構成される受信は `task_completed` として扱う。
+  - security risks reduced:
+    status projection は signal id / event id / status だけを読む。raw text、送信者、
+    薬剤名、数量値、連絡先、添付名、storage key は queue projection に追加していない。
+  - validation:
+    `pnpm exec vitest run src/server/services/communication-queue.test.ts --reporter=dot --testTimeout=30000`
+    green (1 file / 22 tests).
+  - remaining:
+    `accepted` 後の task closure、MedicationStock `linked_to_stock_event` 実反映、
+    Risk/VisitBrief/Report downstream は未完。
+
+- codex: INBOUND-002 signal review action UI wiring（pending commit）。
+  - current task:
+    `PATCH /api/communications/inbound/signals/:id` の最小 review action API を、
+    `/communications/inbound` の選択中シグナル review panel から操作できるようにする。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `src/app/(dashboard)/communications/inbound/inbound-content.tsx`,
+    `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`,
+    `src/app/api/communications/inbound/signals/[id]/route.ts`,
+    `src/app/api/communications/inbound/signals/[id]/route.test.ts`,
+    `src/lib/api/route-catalog.ts`,
+    `Plans.md`.
+  - files changed:
+    `src/app/(dashboard)/communications/inbound/inbound-content.tsx`,
+    `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`,
+    `src/lib/api/route-catalog.ts`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    選択中の受信シグナル候補に `確認済み` / `記録のみ` / `却下` ボタンを追加し、
+    `signal_id` と controlled `action` だけで
+    `PATCH /api/communications/inbound/signals/:id` を呼ぶ mutation を接続した。
+    `reject` は固定 reason `rejected_from_inbound_review_queue` を使い、UI から raw text
+    や薬剤名/数量値を送らない。review済み/record_only/rejected の候補は action button を
+    disable する。route catalog に PATCH route も登録した。
+  - security risks reduced:
+    inbox UI からの review action request は signal id と action のみにし、raw本文、
+    送信者、連絡先、薬剤名、数量値を request/response へ混ぜない契約を UI test で固定した。
+  - validation:
+    `pnpm exec vitest run 'src/app/(dashboard)/communications/inbound/inbound-content.test.tsx' 'src/app/api/communications/inbound/signals/[id]/route.test.ts' 'src/app/api/communications/inbound/signals/tasks/route.test.ts' --reporter=dot --testTimeout=30000`
+    green (3 files / 21 tests).
+  - remaining:
+    `linked_to_stock_event`、MedicationStock 実反映、accepted/record_only/rejected 後の
+    task closure、raw_text detail 再認可、Risk/VisitBrief/Report 連動は未完。
+
+- codex: Plans.md INBOUND workflow backlog 補強（pending commit）。
+  - current task:
+    ユーザー指定の「タイムライン以外で必ず作るべき他職種受信処理導線」を、既存
+    `INB-001` / `INBOUND-001` / `INBOUND-002` / `TASK-011` / `RISK-021`
+    と重複しない形で `Plans.md` に追記する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `src/app/api/communications/inbound/signals/[id]/route.ts`,
+    `src/app/api/communications/inbound/signals/[id]/route.test.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `TASK-010` は現行 `TASK-011`、`RISK-020` は現行 `RISK-021` へ統合する
+    ID整合ルールを追記した。`INBOUND-001` は薬局全体インボックス、
+    `INBOUND-002` は受信シグナルレビュー、`MOV-001` は患者ごとの経緯表示に限定すると
+    明記した。薬局全体インボックス、3カラムレビュー、業務変換、source別初期導線の
+    受入条件を追加し、MCS/電話/FAX/メール/施設・家族・口頭情報を同じ inbound
+    workflow で処理する計画に整理した。
+  - security risks reduced:
+    raw text は一覧、通知、SSE、監査 changes、report候補、timeline card に出さず、
+    summary/signal と raw_text 再認可を分ける方針を Plan に再固定した。
+  - validation:
+    `pnpm exec vitest run 'src/app/api/communications/inbound/signals/[id]/route.test.ts' --reporter=dot --testTimeout=30000`
+    green (1 file / 5 tests);
+    `pnpm exec prettier --write Plans.md` green;
+    `pnpm exec prettier --check Plans.md` green.
+  - remaining:
+    `INBOUND-002` の UI review action wiring、MedicationStock 実反映、
+    raw_text detail 再認可、task closure / Risk / VisitBrief / Report 連動は未完。
+
+- codex: INBOUND-001 Phase 2 formal inbound communication schema（pending commit）。
+  - current task:
+    他職種受信の短期 `CommunicationEvent` bridge の次段として、正式
+    `InboundCommunicationEvent` / `InboundCommunicationSignal` / attachment /
+    source mapping の DB 正本、migration、RLS policy を追加し、Plans.md の残タスクを
+    API/review cutover へ絞る。
+  - Oracle / GPT-5.5 Pro:
+    高リスク領域（PHI/DB schema/RLS）として Oracle 相談を実施したが、session
+    `formal-inbound-schema-review` は ChatGPT browser 接続後に
+    `setTypeOfService EINVAL` / `chrome-disconnected` で error/incomplete となり、
+    回答は得られなかった。重複実行はしていない。以後はコード inspection、
+    Prisma validate/generate、RLS contract、focused tests で検証した。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `prisma/schema/communication.prisma`,
+    `prisma/rls-policies.sql`,
+    `src/tools/rls-policy-contract.test.ts`,
+    `docs/security/rls-gap-ledger.md`,
+    `src/app/api/communications/inbound/route.ts`,
+    `src/app/api/communications/inbound/signals/route.ts`,
+    `src/server/services/communication-queue.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `docs/security/rls-gap-ledger.md`,
+    `prisma/schema/communication.prisma`,
+    `prisma/rls-policies.sql`,
+    `prisma/migrations/20260707070000_add_inbound_communication_schema/migration.sql`.
+  - implementation:
+    Prisma schema に inbound 専用 enum と `InboundCommunicationEvent`,
+    `InboundCommunicationSignal`, `InboundCommunicationAttachment`,
+    `InboundSourceMapping` を追加した。migration では table/index/unique/indexed
+    lookup、`direction='inbound'`、非負 `attachment_count` / `signal_index` check、
+    foreign key、RLS ENABLE + FORCE + tenant isolation policy を追加した。
+    `prisma/rls-policies.sql` と `docs/security/rls-gap-ledger.md` も更新済み。
+    `Plans.md` は「正式DB未実装」から「schema/migration/RLS 追加済み、残りは
+    API/queue/review cutover」として整合させた。
+  - security risks reduced:
+    他職種受信 raw text の正本を `InboundCommunicationEvent.raw_text` に閉じ、
+    downstream workflow は `InboundCommunicationSignal` の構造化 field を経由する
+    DB 境界を作った。全4 table は `org_id` non-null、RLS FORCE、tenant policy 付き。
+    public DTO はまだ短期 bridge のままで、raw text / sender / contact / MCS URL /
+    drug-like text / quantity values は引き続き list/signal/task response に出さない。
+  - performance improved:
+    inbox/review/timeline の想定 query に合わせて
+    `org_id + processing_status + received_at`、patient/case/source/type、
+    signal domain/review/action status、source mapping review status の index を追加した。
+    background job、polling、外部通信、migration適用は行っていない。
+  - validation:
+    `pnpm db:generate` green;
+    `npx prisma format --schema=prisma/schema/` green;
+    `npx prisma validate --schema=prisma/schema/` green;
+    `UPDATE_RLS_LEDGER=1 pnpm exec vitest run src/tools/rls-policy-contract.test.ts --reporter=dot --testTimeout=30000`
+    green and updated `docs/security/rls-gap-ledger.md`;
+    `pnpm exec vitest run src/app/api/communications/inbound/mcs/route.test.ts src/app/api/communications/inbound/phone/route.test.ts src/app/api/communications/inbound/route.test.ts src/app/api/communications/inbound/signals/route.test.ts src/app/api/communications/inbound/signals/tasks/route.test.ts src/server/services/communication-queue.test.ts src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx src/tools/rls-policy-contract.test.ts --reporter=dot --testTimeout=30000`
+    green (8 files / 78 tests);
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green.
+  - remaining:
+    `POST /api/communications/inbound/{phone,mcs}` と queue/signal candidate API はまだ
+    short-term `CommunicationEvent` bridge を使う。次は formal DB への dual-write or
+    cutover、`InboundCommunicationSignal` review actions、`accepted` /
+    `record_only` / `rejected` / `linked_to_stock_event` 永続化、
+    MedicationStock 実反映、Risk/Task/VisitBrief/Report source cutover、
+    raw_text permission/detail audit tests を進める。
+
+- codex: INBOUND-002 MedicationStock stock_review summary bridge（pending commit）。
+  - current task:
+    他職種受信 signal candidate API/UI を、正式DB migrationなしで既存
+    `modules/pharmacy/medication-stock` の review staging adapter へ接続し、
+    薬剤師レビューの反映先候補をより具体化する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    Oracle consult skill,
+    `git remote -v`,
+    `git branch --show-current`,
+    `git rev-parse HEAD`,
+    `src/app/api/communications/inbound/signals/route.ts`,
+    `src/app/api/communications/inbound/signals/route.test.ts`,
+    `src/app/(dashboard)/communications/inbound/inbound-content.tsx`,
+    `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`,
+    `src/core/interprofessional/inbound/domain/inbound-signal-classifier.ts`,
+    `src/core/interprofessional/inbound/domain/inbound-communication.ts`,
+    `src/modules/pharmacy/medication-stock/application/medication-stock-signal-adapter.ts`,
+    `src/modules/pharmacy/medication-stock/domain/external-observation.ts`,
+    `Plans.md`.
+  - files changed:
+    `src/app/api/communications/inbound/signals/route.ts`,
+    `src/app/api/communications/inbound/signals/route.test.ts`,
+    `src/app/(dashboard)/communications/inbound/inbound-content.tsx`,
+    `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `GET /api/communications/inbound/signals` の medication_stock candidate に
+    `stock_review` summary を追加した。値は controlled fields のみで、
+    `action`, `target_label`, `observation_kind`, `ledger_write_policy`,
+    `review_priority`, `warning_codes`, quantity/identity boolean、direct ledger write
+    禁止フラグだけを返す。staging key、source record staging id、薬剤名、
+    抽出数量値、raw text、source URL、sender/contact、storage key/provider payload は
+    public DTO に出さない。UI は選択中 review panel に優先度・観測種別・警告コードを
+    badge 表示し、下部 global candidate list は最小表示に留める。
+  - Oracle / GPT-5.5 Pro:
+    高リスクPHI境界のため GitHub context 付きで `inbound-stock-review-dto`
+    consult を起動したが、添付アップロード timeout で回答なし。
+    重複実行はせず、ローカル契約確認と PHI omission tests を根拠に進めた。
+  - security risks reduced:
+    薬剤師が「残数レビュー」「優先度」「薬剤未紐づけ/名寄せ確認」などを
+    raw本文なしで判断できるようになった。外部受信情報は引き続き MedicationStock
+    ledger へ直接書かず、`stage_for_pharmacist_review` の summary だけを表示する。
+    Tests assert raw memo text, sender, phone, drug-name-like text, MCS URL,
+    storage key/token-like values, `content`, `subject`, extracted quantity,
+    staging/source record fields, and observation quantity objects are not emitted.
+  - performance:
+    追加DB query/API callなし。既存 visible-window signal candidates の生成中に
+    pure adapter を呼ぶだけで、UI は既存 response を表示する。
+  - validation:
+    `pnpm exec vitest run src/app/api/communications/inbound/signals/route.test.ts src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx --reporter=dot --testTimeout=30000`
+    green (2 files / 13 tests);
+    `pnpm exec vitest run src/app/api/communications/inbound/mcs/route.test.ts src/app/api/communications/inbound/phone/route.test.ts src/app/api/communications/inbound/route.test.ts src/app/api/communications/inbound/signals/route.test.ts src/server/services/communication-queue.test.ts src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx --reporter=dot --testTimeout=30000`
+    green (6 files / 44 tests);
+    scoped ESLint green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green;
+    `pnpm api-response-shape:check` green (243 allowlisted violations, 0 new);
+    `pnpm route-auth-wrapper:check` green (176 allowlisted routes, 252 direct
+    `requireAuthContext` calls, 0 new);
+    Prettier check green after formatting touched UI file;
+    targeted `git diff --check` green.
+  - remaining:
+    `INBOUND-002` still needs formal `InboundCommunicationSignal` DB persistence,
+    durable review actions (`apply_to_stock`, `create_task`, `record_only`,
+    `reject`, `supersede`), raw_text re-auth detail UI, and MedicationStock
+    event write after pharmacist acceptance.
+
 - codex: Plans.md MOV-001 Patient Movement Timeline 整理（pending commit）。
   - current task:
     ユーザー指定の「Google Maps Timeline 風。ただし上部地図なし」の患者タイムライン計画を、
@@ -14853,8 +15088,8 @@
 - performance improved:
   None; documentation/planning cleanup only.
 - validation:
-  `pnpm exec prettier --check Plans.md` green;
-  `git diff --check -- Plans.md` green.
+  `pnpm exec prettier --check Plans.md ops/refactor/STATE.md` green;
+  `git diff --check -- Plans.md ops/refactor/STATE.md` green.
 - remaining:
   Continue deleting completed tasks from `Plans.md` only after current code confirms they are
   implemented. Remaining active items include API envelope/request_id/error-code work, RLS contract
@@ -14954,3 +15189,1654 @@
   `INB-001` still needs the actual DB/API/inbox/review implementation. `MOV-001` still needs the
   standalone movement-timeline API and formal inbound/MedicationStock/safety sources. `RX-002`
   still needs Medication Stock Ledger DB/API/UI and migration/backfill work.
+
+## 2026-07-07 INB-001 backlog code-scan cleanup
+
+- codex:
+  Re-scanned the inbound interprofessional backlog against the current code before updating
+  `Plans.md`. Confirmed the short-term bridge already exists for inbound queue items, inbound task
+  type registry entries, the `core.inbound_interprofessional` risk provider, VisitBrief inbound
+  queue reflection, and patient movement task/communication markers. Updated the active plan so
+  implemented registry/provider work is not listed as pending work.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `Plans.md`,
+  `src/server/services/communication-queue.ts`,
+  `src/lib/tasks/task-registry.ts`,
+  `src/server/risk/core-case-risk-providers.ts`,
+  `src/server/services/visit-brief.ts`,
+  `ops/refactor/STATE.md`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  Reduced plan drift by replacing pending `TASK-010` / `RISK-020` rows with remaining formal-source
+  work: `TASK-011` for review/action lifecycle task creation/resolution and `RISK-021` for
+  connecting the existing provider to formal `InboundCommunicationEvent` / `InboundCommunicationSignal`
+  sources. This keeps the next implementation PR focused on inbox/review/source lifecycle instead of
+  rebuilding already-present task/risk bridge code.
+- security risks reduced:
+  Kept the active plan centered on raw_text separation and formal source boundaries; no runtime
+  security behavior changed.
+- performance improved:
+  None; documentation/planning cleanup only.
+- validation:
+  `pnpm exec prettier --check Plans.md` green;
+  `git diff --check -- Plans.md` green.
+- remaining:
+  `INBOUND-001` pharmacy-wide inbox, `INBOUND-002` signal review, formal Inbound DB/API, and
+  MedicationStock/Report/Share source integration remain active.
+
+## 2026-07-07 INBOUND-001 pharmacy-wide inbox bridge
+
+- codex:
+  Implemented the short-term `INBOUND-001` pharmacy-wide inbound inbox bridge. Existing
+  `CommunicationEvent(direction='inbound')` phone/FAX/email rows now project through
+  `communication-queue.ts` as summary-only `inbound_communication` queue items, and the new
+  `/communications/inbound` UI plus `GET /api/communications/inbound` route expose the queue outside
+  patient detail pages. `/communications` now redirects to the inbound inbox.
+- Oracle / GPT-5.5 Pro:
+  Consult was attempted before implementation because this slice touches PHI-adjacent inbound
+  medical communication boundaries. The Oracle browser run failed with `setTypeOfService EINVAL`
+  after acquiring and releasing a browser slot, and `oracle status` showed the
+  `inbound-inbox-review` session in `error` state. Proceeded with a constrained bridge
+  implementation after local code inspection, official/local docs checks, and focused validation.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `Plans.md`,
+  `docs/ui-ux-design-guidelines.md`,
+  `node_modules/next/dist/docs/01-app/index.md`,
+  `node_modules/next/dist/docs/01-app/03-api-reference/02-components/link.md`,
+  `node_modules/next/dist/docs/01-app/03-api-reference/01-directives/use-client.md`,
+  `node_modules/next/dist/docs/01-app/02-guides/authentication.md`,
+  `src/server/services/communication-queue.ts`,
+  `src/server/services/communication-queue.test.ts`,
+  `src/app/(dashboard)/communications/page.tsx`,
+  `src/app/(dashboard)/communications/requests/requests-content.tsx`,
+  `src/lib/auth/context.ts`,
+  `src/lib/api/response.ts`,
+  `src/lib/api/route-catalog.ts`,
+  `src/components/layout/page-scaffold.tsx`,
+  `src/components/features/workflow/workflow-page-header.tsx`,
+  `src/components/features/workflow/page-shortcut-links.tsx`,
+  `src/components/ui/empty-state.tsx`,
+  `src/components/ui/error-state.tsx`,
+  `src/components/ui/state-badge.tsx`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/(dashboard)/communications/page.tsx`,
+  `src/app/(dashboard)/communications/inbound/page.tsx`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`,
+  `src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx`,
+  `src/app/api/communications/inbound/route.ts`,
+  `src/app/api/communications/inbound/route.test.ts`,
+  `src/lib/api/route-catalog.ts`,
+  `src/server/services/communication-queue.ts`,
+  `src/server/services/communication-queue.test.ts`.
+- bugs / risks reduced:
+  Inbound phone/FAX/email communication can now be discovered at pharmacy-wide scope instead of only
+  after opening a patient detail page. `queueTypes` filtering is applied before the final item limit,
+  so earlier non-inbound queue items cannot hide inbound inbox entries. Full typecheck also exposed
+  and fixed an existing `PatientMovementTimeline` tuple narrowing error in the day summary builder.
+- security risks reduced:
+  The bridge route uses `withAuthContext(canReport)`, `withSensitiveNoStore`, standard API envelope,
+  route-catalog registration, relative-href fallback, and summary-only DTO projection. Tests assert
+  that raw communication text, sender name/contact, storage keys, signed URL tokens, and raw medical
+  text are not emitted by the API or rendered by the inbox UI.
+- performance improved:
+  No DB schema or query fan-out changes. The route reuses the existing bounded
+  `listCommunicationQueue` reader with an explicit `queueTypes` filter and UI-side channel/priority
+  filters for the short-term bridge.
+- validation:
+  `pnpm exec vitest run src/server/services/communication-queue.test.ts src/app/api/communications/inbound/route.test.ts src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx --reporter=dot --testTimeout=30000`
+  green (3 files / 25 tests);
+  `pnpm exec eslint src/app/'(dashboard)'/communications/inbound/inbound-content.tsx src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx src/app/'(dashboard)'/communications/inbound/page.tsx src/app/api/communications/inbound/route.ts src/app/api/communications/inbound/route.test.ts src/app/'(dashboard)'/communications/page.tsx src/lib/api/route-catalog.ts src/server/services/communication-queue.ts src/server/services/communication-queue.test.ts`
+  green;
+  `pnpm exec vitest run src/app/'(dashboard)'/patients/'[id]'/patient-movement-timeline.test.tsx --reporter=dot --testTimeout=30000`
+  green (1 file / 13 tests);
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green;
+  `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/app/'(dashboard)'/communications/inbound/inbound-content.tsx src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx src/app/'(dashboard)'/communications/inbound/page.tsx src/app/api/communications/inbound/route.ts src/app/api/communications/inbound/route.test.ts src/app/'(dashboard)'/communications/page.tsx src/lib/api/route-catalog.ts src/server/services/communication-queue.ts src/server/services/communication-queue.test.ts src/app/'(dashboard)'/patients/'[id]'/patient-movement-timeline.tsx`
+  green;
+  `pnpm api-response-shape:check` green (243 allowlisted violations, 0 new violations);
+  `git diff --check -- src/app/'(dashboard)'/communications/inbound/inbound-content.tsx src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx src/app/'(dashboard)'/communications/inbound/page.tsx src/app/api/communications/inbound/route.ts src/app/api/communications/inbound/route.test.ts src/app/'(dashboard)'/communications/page.tsx src/lib/api/route-catalog.ts src/server/services/communication-queue.ts src/server/services/communication-queue.test.ts src/app/'(dashboard)'/patients/'[id]'/patient-movement-timeline.tsx Plans.md ops/refactor/STATE.md`
+  green.
+- remaining:
+  `INBOUND-001` still needs the formal `InboundCommunicationEvent` /
+  `InboundCommunicationSignal` DB source, MCS/phone/FAX/email/manual registration APIs, official
+  review status/action status lifecycle, 3-column signal review UI, and formal Task/Risk/VisitBrief/
+  MedicationStock/Report/Share conversion.
+
+## 2026-07-07 PHONE-001 inbound phone memo bridge
+
+- codex:
+  Added the short-term `PHONE-001` bridge for structured inbound phone memo registration. The
+  pharmacy-wide inbound inbox now includes a phone memo form, and `POST
+/api/communications/inbound/phone` stores the raw memo as an inbound `CommunicationEvent` while
+  returning only a minimal review DTO.
+- files inspected:
+  `src/app/api/communication-events/route.ts`,
+  `src/app/api/communication-events/route.test.ts`,
+  `src/server/services/communication-request-access.ts`,
+  `src/core/interprofessional/inbound/domain/inbound-signal-classifier.ts`,
+  `src/core/interprofessional/inbound/domain/inbound-signal-classifier.test.ts`,
+  `prisma/schema/communication.prisma`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`,
+  `src/lib/validations/communication-channel.ts`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`,
+  `src/app/api/communications/inbound/phone/route.ts`,
+  `src/app/api/communications/inbound/phone/route.test.ts`,
+  `src/lib/api/route-catalog.ts`.
+- bugs / risks reduced:
+  The inbound inbox can now create phone-derived review items without using the generic
+  `/api/communication-events` POST response, which returns raw event content. The dedicated inbound
+  phone route keeps the raw note in `CommunicationEvent.content` but returns only id, linkage,
+  controlled event type, status, and a safe relative action href.
+- security risks reduced:
+  Tests assert that the phone create response does not include raw memo text, sender name, sender
+  phone number, `subject`, `content`, or storage-key-like strings. The route uses
+  `withAuthContext(canReport)`, `withOrgContext`, `canAccessCommunicationRequestRecord`, and
+  `withSensitiveNoStore`.
+- performance improved:
+  No new polling or background work. Successful phone memo creation invalidates only the
+  `communications-inbound` query family for the active org.
+- validation:
+  `pnpm exec vitest run src/app/api/communications/inbound/phone/route.test.ts src/app/api/communications/inbound/route.test.ts src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx --reporter=dot --testTimeout=30000`
+  green (3 files / 12 tests).
+- remaining:
+  Phone memo bridge still needs formal `InboundCommunicationEvent` persistence, structured role/
+  organization/next-action fields, automatic signal extraction into `InboundCommunicationSignal`,
+  and the 3-column review UI before `PHONE-001` is fully complete.
+
+## 2026-07-07 INBOUND-002 signal candidate bridge
+
+- codex:
+  Added the formal-DB-prep `INBOUND-002` bridge endpoint `GET
+/api/communications/inbound/signals`. The route reads existing inbound
+  `CommunicationEvent` rows only inside the server, runs the existing
+  rule-based inbound signal classifier, and returns only route-allowlisted
+  candidate signal fields for a future review queue. The pharmacy-wide inbound
+  inbox now also renders a controlled signal candidate panel from that endpoint.
+- Oracle / GPT-5.5 Pro:
+  Consulted before implementation because this slice reads PHI-adjacent
+  `CommunicationEvent.content` in a GET route. Oracle returned conditional Go
+  for a dedicated endpoint, rejected mixing signal candidates into the existing
+  inbox response, and required no-store, assignment scoping, route-level DTO
+  allowlist, raw PHI omission tests, visible-window counts, classifier version,
+  and no writes to MedicationStock/Task in this slice.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `git remote -v`,
+  `git branch --show-current`,
+  `git rev-parse HEAD`,
+  `src/core/interprofessional/inbound/domain/inbound-communication.ts`,
+  `src/core/interprofessional/inbound/domain/inbound-signal-classifier.ts`,
+  `src/core/interprofessional/inbound/domain/inbound-signal-classifier.test.ts`,
+  `src/server/services/communication-request-access.ts`,
+  `src/app/api/communications/inbound/route.ts`,
+  `src/app/api/communications/inbound/route.test.ts`,
+  `src/app/api/communications/inbound/phone/route.ts`,
+  `src/app/api/communications/inbound/phone/route.test.ts`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`,
+  `prisma/schema/communication.prisma`,
+  `src/lib/api/route-catalog.ts`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- files changed:
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`,
+  `src/app/api/communications/inbound/signals/route.ts`,
+  `src/app/api/communications/inbound/signals/route.test.ts`,
+  `src/lib/api/route-catalog.ts`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  The future signal review queue now has a dedicated read-only bridge instead
+  of overloading `/api/communications/inbound`. Signal candidates are scoped by
+  org, assignment visibility, inbound direction, and phone/FAX/email source
+  channel. Candidate keys are ephemeral and based only on event id plus signal
+  index. The inbox UI now surfaces signal candidates separately from raw review
+  content, so pharmacists can see classification work without opening patient
+  detail pages.
+- security risks reduced:
+  The route uses `withAuthContext(canReport)`, `withOrgContext`,
+  `buildCommunicationEventAssignmentWhere`, `withSensitiveNoStore`, standard
+  error envelope, and route-catalog registration. The API test proves that raw
+  memo text, drug names, sender names, phone numbers, subject/content keys,
+  attachments, storage-key-like values, signed-token-like values, raw evidence
+  text, and extracted quantity values do not appear in the response. The route
+  never writes to MedicationStock, Task, or formal Inbound tables. The UI test
+  also proves the signal candidate panel shows controlled classification,
+  unit, and linkage badges without raw text, drug names, sender names, phone
+  numbers, or storage-token-like strings.
+- performance improved:
+  No background work or polling. The bridge is bounded by `limit` with
+  `DEFAULT_LIMIT=24` and `MAX_LIMIT=50`, computes counts over the visible
+  window only, and exposes `meta.count_basis='visible_window'` plus
+  `meta.classifier_version`.
+- validation:
+  `pnpm exec vitest run src/app/api/communications/inbound/signals/route.test.ts --reporter=dot --testTimeout=30000`
+  green (1 file / 5 tests);
+  `pnpm exec vitest run src/app/api/communications/inbound/signals/route.test.ts src/app/api/communications/inbound/route.test.ts src/app/api/communications/inbound/phone/route.test.ts src/core/interprofessional/inbound/domain/inbound-signal-classifier.test.ts --reporter=dot --testTimeout=30000`
+  green (4 files / 21 tests);
+  `pnpm exec vitest run src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx src/app/api/communications/inbound/signals/route.test.ts src/app/api/communications/inbound/route.test.ts src/app/api/communications/inbound/phone/route.test.ts src/core/interprofessional/inbound/domain/inbound-signal-classifier.test.ts --reporter=dot --testTimeout=30000`
+  green (5 files / 26 tests);
+  `pnpm exec eslint src/app/'(dashboard)'/communications/inbound/inbound-content.tsx src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx src/app/api/communications/inbound/signals/route.ts src/app/api/communications/inbound/signals/route.test.ts src/lib/api/route-catalog.ts`
+  green;
+  `pnpm exec prettier --check src/app/'(dashboard)'/communications/inbound/inbound-content.tsx src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx src/app/api/communications/inbound/signals/route.ts src/app/api/communications/inbound/signals/route.test.ts src/lib/api/route-catalog.ts Plans.md ops/refactor/STATE.md`
+  green;
+  `pnpm api-response-shape:check` green (243 allowlisted violations, 0 new
+  violations);
+  `pnpm route-auth-wrapper:check` green (176 allowlisted routes, 252 direct
+  requireAuthContext calls, 0 new routes);
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green;
+  `git diff --check -- src/app/'(dashboard)'/communications/inbound/inbound-content.tsx src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx src/app/api/communications/inbound/signals/route.ts src/app/api/communications/inbound/signals/route.test.ts src/lib/api/route-catalog.ts Plans.md ops/refactor/STATE.md`
+  green.
+- remaining:
+  `INBOUND-002` still needs the three-column review UI, formal
+  `InboundCommunicationSignal` persistence, and review/action state transitions
+  for apply-to-stock, create-task, record-only, reject, and supersede.
+
+## 2026-07-07 MCS-001 inbound MCS paste bridge
+
+- codex:
+  Added the short-term `MCS-001` bridge for MCS paste registration in the
+  pharmacy-wide inbound inbox. `POST /api/communications/inbound/mcs` stores
+  pasted MCS text as an inbound `CommunicationEvent` with DB channel
+  `ph_os_share`, while the public API/UI treats the source as controlled
+  channel `mcs`.
+- Oracle / GPT-5.5 Pro:
+  A required high-risk consult was attempted with GitHub context
+  (`origin`, branch, HEAD, dirty tree, and minimal relevant files) in session
+  `mcs-inbound-bridge-review`. Oracle browser mode failed before returning
+  advice with `chrome-disconnected` / `setTypeOfService EINVAL`; the rendered
+  session contained only the prompt. Proceeded with a minimal local bridge
+  based on schema inspection: `PatientMcsMessage` remains a sync-specific table
+  requiring `link_id` and `source_message_id`; manual paste uses
+  `CommunicationEvent` until formal `InboundCommunicationEvent` is added.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `git remote -v`,
+  `git branch --show-current`,
+  `git rev-parse HEAD`,
+  `prisma/schema/patient.prisma`,
+  `prisma/schema/communication.prisma`,
+  `src/app/api/patients/[id]/mcs/route.ts`,
+  `src/app/api/patients/[id]/mcs/logs/route.ts`,
+  `src/lib/validations/medical-care-station.ts`,
+  `src/server/services/communication-queue.ts`,
+  `src/app/api/communications/inbound/route.ts`,
+  `src/app/api/communications/inbound/signals/route.ts`,
+  `src/app/api/communications/inbound/phone/route.ts`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx`,
+  `src/lib/api/route-catalog.ts`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- files changed:
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`,
+  `src/app/api/communications/inbound/mcs/route.ts`,
+  `src/app/api/communications/inbound/mcs/route.test.ts`,
+  `src/app/api/communications/inbound/route.ts`,
+  `src/app/api/communications/inbound/route.test.ts`,
+  `src/app/api/communications/inbound/signals/route.ts`,
+  `src/app/api/communications/inbound/signals/route.test.ts`,
+  `src/lib/api/route-catalog.ts`,
+  `src/server/services/communication-queue.ts`,
+  `src/server/services/communication-queue.test.ts`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  MCS paste no longer needs to use the patient-specific sync/log endpoints or a
+  generic communication-event create path that could expose raw fields. The
+  inbox can discover MCS-derived review items through the same bounded
+  inbound queue as phone/FAX/email, and signal candidates can filter public
+  `channel=mcs` while the DB remains on existing `ph_os_share`.
+- security risks reduced:
+  The MCS create route uses `withAuthContext(canReport)`, `withOrgContext`,
+  `canAccessCommunicationRequestRecord`, `parseMedicalCareStationUrl`, and
+  `withSensitiveNoStore`. Tests assert the response omits raw MCS text,
+  sender/organization, MCS URL, drug-name-like text, `subject`, `content`,
+  storage-key-like values, and token-like values. The queue and signal APIs map
+  DB `ph_os_share` to public `mcs` without returning raw content or source URL.
+- performance improved:
+  No new polling, background worker, or schema fan-out. The route performs one
+  bounded access check for patient/case linkage and one `CommunicationEvent`
+  insert. Successful UI submit invalidates only inbound queue and signal
+  candidate query families.
+- validation:
+  `pnpm exec vitest run src/app/api/communications/inbound/mcs/route.test.ts src/app/api/communications/inbound/phone/route.test.ts src/app/api/communications/inbound/route.test.ts src/app/api/communications/inbound/signals/route.test.ts src/server/services/communication-queue.test.ts src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx --reporter=dot --testTimeout=30000`
+  green (6 files / 43 tests).
+- remaining:
+  `MCS-001` still needs formal `InboundCommunicationEvent` persistence,
+  structured screenshot attachments through `FileAsset`, explicit residual/
+  usage/safety checkboxes, official MCS API/export/webhook feasibility review,
+  `InboundSourceMapping`, and the three-column signal review UI before it is
+  complete.
+
+## 2026-07-07 INBOUND-002 selected-signal review bridge
+
+- codex:
+  Extended the inbound inbox UI from a queue plus separate global signal list
+  into a short-term three-column review bridge. The left column remains the
+  filter rail, the center column remains the summary-only inbound card list,
+  and the right column now shows only the selected inbound item's controlled
+  signal candidates, proposed review target, linkage badges, and safe detail
+  link.
+- files inspected:
+  `Plans.md`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`,
+  `src/app/api/communications/inbound/signals/route.ts`,
+  `src/app/api/communications/inbound/signals/route.test.ts`.
+- files changed:
+  `Plans.md`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`.
+- bugs / risks reduced:
+  The signal candidate list is no longer only a global section below the inbox.
+  Pharmacists can select an inbound item and see the candidate classification
+  for that item in the review panel, reducing the risk of acting on the wrong
+  communication event in the short-term bridge.
+- security risks reduced:
+  The right review panel still consumes only the allowlisted signal candidate
+  DTO. Tests assert the selected review panel does not expose raw memo text,
+  sender names, phone numbers, drug-name-like text, storage keys, or token-like
+  strings. No MedicationStock, Task, or formal Inbound persistence write path
+  was added in this slice.
+- performance improved:
+  No new API calls or polling. The selected review panel filters the already
+  fetched visible-window signal candidates in memory by communication event id.
+- validation:
+  `pnpm exec vitest run src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx --reporter=dot --testTimeout=30000`
+  green (1 file / 7 tests);
+  `pnpm exec vitest run src/app/api/communications/inbound/mcs/route.test.ts src/app/api/communications/inbound/phone/route.test.ts src/app/api/communications/inbound/route.test.ts src/app/api/communications/inbound/signals/route.test.ts src/server/services/communication-queue.test.ts src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx --reporter=dot --testTimeout=30000`
+  green (6 files / 44 tests);
+  `pnpm exec eslint src/app/'(dashboard)'/communications/inbound/inbound-content.tsx src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx src/app/'(dashboard)'/communications/inbound/page.tsx src/app/api/communications/inbound/route.ts src/app/api/communications/inbound/route.test.ts src/app/api/communications/inbound/phone/route.ts src/app/api/communications/inbound/phone/route.test.ts src/app/api/communications/inbound/signals/route.ts src/app/api/communications/inbound/signals/route.test.ts src/app/api/communications/inbound/mcs/route.ts src/app/api/communications/inbound/mcs/route.test.ts src/app/'(dashboard)'/communications/page.tsx src/lib/api/route-catalog.ts src/server/services/communication-queue.ts src/server/services/communication-queue.test.ts src/app/'(dashboard)'/patients/'[id]'/patient-movement-timeline.tsx`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check Plans.md ops/refactor/STATE.md .codex/ralph-state.md src/app/'(dashboard)'/communications/inbound/inbound-content.tsx src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx src/app/'(dashboard)'/communications/inbound/page.tsx src/app/api/communications/inbound/route.ts src/app/api/communications/inbound/route.test.ts src/app/api/communications/inbound/phone/route.ts src/app/api/communications/inbound/phone/route.test.ts src/app/api/communications/inbound/signals/route.ts src/app/api/communications/inbound/signals/route.test.ts src/app/api/communications/inbound/mcs/route.ts src/app/api/communications/inbound/mcs/route.test.ts src/app/'(dashboard)'/communications/page.tsx src/lib/api/route-catalog.ts src/server/services/communication-queue.ts src/server/services/communication-queue.test.ts src/app/'(dashboard)'/patients/'[id]'/patient-movement-timeline.tsx`
+  green after formatting the touched UI file;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green;
+  `pnpm api-response-shape:check` green (243 allowlisted violations, 0 new
+  violations);
+  `pnpm route-auth-wrapper:check` green (176 allowlisted routes, 252 direct
+  requireAuthContext calls, 0 new routes).
+- remaining:
+  `INBOUND-002` still needs formal `InboundCommunicationSignal` persistence
+  and durable review actions for apply-to-stock, create-task, record-only,
+  reject, and supersede. The current right panel is a safe bridge and does not
+  mutate MedicationStock or OperationalTask.
+
+## 2026-07-07 TASK-011 inbound signal task bridge
+
+- codex:
+  Added a short-term `TASK-011` bridge from inbound signal candidates to
+  OperationalTask. `POST /api/communications/inbound/signals/tasks` accepts
+  only a `candidate_key`, reloads the source inbound `CommunicationEvent` under
+  org/assignment scope, recomputes the signal server-side, maps it to an
+  existing registered inbound task type, and creates a pharmacist review task
+  with controlled title/description/metadata only. The inbound inbox right
+  panel now exposes a `薬剤師確認タスク化` action per candidate.
+- Oracle / GPT-5.5 Pro:
+  Required high-risk consult completed in session
+  `inbound-signal-task-bridge`. GPT-5.5 Pro reported GitHub access succeeded
+  for `https://github.com/yusuketakuma/careviax`, gave conditional Go, and
+  flagged three merge blockers: do not blind-upsert because it can reopen
+  completed tasks, do not use `inbound_medication_stock_signal` as related
+  entity before a formal DB row exists, and verify PHI omission in both task
+  response and task metadata. Implemented those recommendations: the route
+  checks an existing dedupe task first and preserves its status, uses `patient`
+  when linked and `communication_event`/core fallback when unlinked, and tests
+  response plus task input redaction.
+- files inspected:
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/api/communications/inbound/signals/route.ts`,
+  `src/app/api/communications/inbound/signals/route.test.ts`,
+  `src/app/api/communications/inbound/phone/route.ts`,
+  `src/app/api/communications/inbound/phone/route.test.ts`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`,
+  `src/server/services/operational-tasks.ts`,
+  `src/server/services/communication-request-access.ts`,
+  `src/lib/tasks/task-registry.ts`,
+  `src/lib/api/route-catalog.ts`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`,
+  `src/app/api/communications/inbound/signals/tasks/route.ts`,
+  `src/app/api/communications/inbound/signals/tasks/route.test.ts`,
+  `src/lib/api/route-catalog.ts`.
+- bugs / risks reduced:
+  Signal candidates can now become actionable pharmacist review tasks without
+  writing MedicationStock directly from external text. The route is idempotent
+  for the bridge dedupe key and does not move existing completed/in-progress
+  tasks back to pending on repeated POST.
+- security risks reduced:
+  The task route uses `withAuthContext(canReport)`, `withOrgContext`,
+  `buildCommunicationEventAssignmentWhere`, `withSensitiveNoStore`, strict
+  `candidate_key` parsing, and server-side signal recomputation. Tests assert
+  raw inbound text, patient/drug-like content, quantity phrases, sender names,
+  phone numbers, storage keys, token-like strings, extracted quantity internals,
+  and `sourceRecordId` do not appear in the POST response or task input
+  metadata/title/description. The UI sends only `candidate_key` and never sends
+  client-provided domain/type/task metadata.
+- performance improved:
+  No polling or background job was added. The route performs one scoped
+  `CommunicationEvent.findFirst`, recomputes only that event's visible
+  candidates, checks one dedupe task, then creates at most one task.
+- validation:
+  `pnpm exec vitest run src/app/api/communications/inbound/signals/tasks/route.test.ts --reporter=dot --testTimeout=30000`
+  green (1 file / 7 tests);
+  `pnpm exec vitest run src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx src/app/api/communications/inbound/signals/tasks/route.test.ts --reporter=dot --testTimeout=30000`
+  green (2 files / 15 tests);
+  `pnpm exec vitest run src/app/api/communications/inbound/mcs/route.test.ts src/app/api/communications/inbound/phone/route.test.ts src/app/api/communications/inbound/route.test.ts src/app/api/communications/inbound/signals/route.test.ts src/app/api/communications/inbound/signals/tasks/route.test.ts src/server/services/communication-queue.test.ts src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx --reporter=dot --testTimeout=30000`
+  green (7 files / 52 tests);
+  `pnpm exec eslint src/app/api/communications/inbound/signals/tasks/route.ts src/app/api/communications/inbound/signals/tasks/route.test.ts src/app/'(dashboard)'/communications/inbound/inbound-content.tsx src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx src/lib/api/route-catalog.ts`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/app/'(dashboard)'/communications/inbound/inbound-content.tsx src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx src/app/'(dashboard)'/communications/inbound/page.tsx src/app/api/communications/inbound/route.ts src/app/api/communications/inbound/route.test.ts src/app/api/communications/inbound/phone/route.ts src/app/api/communications/inbound/phone/route.test.ts src/app/api/communications/inbound/signals/route.ts src/app/api/communications/inbound/signals/route.test.ts src/app/api/communications/inbound/signals/tasks/route.ts src/app/api/communications/inbound/signals/tasks/route.test.ts src/app/api/communications/inbound/mcs/route.ts src/app/api/communications/inbound/mcs/route.test.ts src/lib/api/route-catalog.ts src/server/services/communication-queue.ts src/server/services/communication-queue.test.ts`
+  green;
+  `pnpm api-response-shape:check` green (243 allowlisted violations, 0 new
+  violations);
+  `pnpm route-auth-wrapper:check` green (176 allowlisted routes, 252 direct
+  requireAuthContext calls, 0 new routes);
+  `git diff --check -- Plans.md ops/refactor/STATE.md src/app/'(dashboard)'/communications/inbound/inbound-content.tsx src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx src/app/api/communications/inbound/signals/tasks/route.ts src/app/api/communications/inbound/signals/tasks/route.test.ts src/lib/api/route-catalog.ts`
+  green.
+- remaining:
+  `TASK-011` still needs the formal `InboundCommunicationSignal` table and
+  review lifecycle. After persistence exists, bridge dedupe keys should migrate
+  from `inbound-signal-task:{event_id}:{candidate_index}:{task_type}` to
+  `inbound:{signal_id}:{task_type}`, and task closure should follow
+  `accepted` / `record_only` / `rejected` / `linked_to_stock_event` state
+  transitions.
+
+- codex: INBOUND-001 / TASK-011 inbox task status reflection（pending commit）。
+  - current task:
+    他職種受信 candidate を薬剤師確認 task に変換した後、薬局全体 inbox でも
+    `task_created` / `task_completed` として確認できるようにし、task 化済みの受信が
+    `needs_review` に残り続ける運用事故を避ける。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/communication-queue.ts`,
+    `src/server/services/communication-queue.test.ts`,
+    `src/app/api/communications/inbound/route.ts`,
+    `src/app/api/communications/inbound/route.test.ts`,
+    `src/app/(dashboard)/communications/inbound/inbound-content.tsx`,
+    `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/communication-queue.ts`,
+    `src/server/services/communication-queue.test.ts`,
+    `src/app/api/communications/inbound/route.ts`,
+    `src/app/api/communications/inbound/route.test.ts`,
+    `src/app/(dashboard)/communications/inbound/inbound-content.tsx`,
+    `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`.
+  - implementation:
+    `CommunicationQueue` が visible inbound event window に対して bridge task
+    dedupe key `inbound-signal-task:{event_id}:...` を読むようにした。task があれば
+    inbox item の status を `task_created` または `task_completed` にし、priority と
+    action を task 確認導線へ切り替える。UI は status filter を追加し、default は
+    `needs_review` のままにして、task化済み item は明示的に `タスク化済み` /
+    `完了済みタスク` で見られるようにした。
+  - security risks reduced:
+    Task status projection は controlled task fields と dedupe key だけを見る。
+    raw inbound text、sender/contact、薬剤名、数量値、MCS URL、storage key、
+    provider payload は inbox DTO に追加していない。
+  - performance improved:
+    task lookup は inbound event がある場合のみ実行し、現在の visible window の
+    event id に対する bounded `startsWith` 条件に限定した。polling や background job
+    は追加していない。
+  - validation:
+    `pnpm exec vitest run src/server/services/communication-queue.test.ts src/app/api/communications/inbound/route.test.ts src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx --reporter=dot --testTimeout=30000`
+    green (3 files / 33 tests);
+    `pnpm exec eslint src/server/services/communication-queue.ts src/server/services/communication-queue.test.ts src/app/api/communications/inbound/route.ts src/app/api/communications/inbound/route.test.ts src/app/'(dashboard)'/communications/inbound/inbound-content.tsx src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx`
+    green;
+    `pnpm exec vitest run src/app/api/communications/inbound/mcs/route.test.ts src/app/api/communications/inbound/phone/route.test.ts src/app/api/communications/inbound/route.test.ts src/app/api/communications/inbound/signals/route.test.ts src/app/api/communications/inbound/signals/tasks/route.test.ts src/server/services/communication-queue.test.ts src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx --reporter=dot --testTimeout=30000`
+    green (7 files / 54 tests);
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/server/services/communication-queue.ts src/server/services/communication-queue.test.ts src/app/api/communications/inbound/route.ts src/app/api/communications/inbound/route.test.ts src/app/'(dashboard)'/communications/inbound/inbound-content.tsx src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx`
+    green;
+    `pnpm api-response-shape:check` green;
+    `pnpm route-auth-wrapper:check` green;
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/server/services/communication-queue.ts src/server/services/communication-queue.test.ts src/app/api/communications/inbound/route.ts src/app/api/communications/inbound/route.test.ts src/app/'(dashboard)'/communications/inbound/inbound-content.tsx src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx`
+    green.
+  - remaining:
+    正式 `InboundCommunicationSignal` DB 後は bridge dedupe key ではなく
+    `inbound:{signal_id}:{task_type}` へ移行する。`task_created` /
+    `task_completed` は短期 status であり、正式には `accepted`,
+    `record_only`, `rejected`, `linked_to_stock_event`, `ignored` を
+    InboundSignal lifecycle として永続化する。
+
+## 2026-07-07 INBOUND-001 formal event source cutover verification
+
+- codex:
+  Cut over the active phone/MCS inbound registration, pharmacy-wide inbox,
+  signal candidate extraction, and signal-to-task bridge from the temporary
+  `CommunicationEvent` source to the formal `InboundCommunicationEvent`
+  source. The formal schema/migration/RLS already contains
+  `InboundCommunicationEvent`, `InboundCommunicationSignal`,
+  `InboundCommunicationAttachment`, and `InboundSourceMapping`; this slice makes
+  the implemented routes and queue use that source for the current bridge.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `prisma/schema/communication.prisma`,
+  `src/server/services/communication-request-access.ts`,
+  `src/server/services/communication-queue.ts`,
+  `src/server/services/communication-queue.test.ts`,
+  `src/app/api/communications/inbound/phone/route.ts`,
+  `src/app/api/communications/inbound/phone/route.test.ts`,
+  `src/app/api/communications/inbound/mcs/route.ts`,
+  `src/app/api/communications/inbound/mcs/route.test.ts`,
+  `src/app/api/communications/inbound/signals/route.ts`,
+  `src/app/api/communications/inbound/signals/route.test.ts`,
+  `src/app/api/communications/inbound/signals/tasks/route.ts`,
+  `src/app/api/communications/inbound/signals/tasks/route.test.ts`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/server/services/communication-request-access.ts`,
+  `src/server/services/communication-queue.ts`,
+  `src/server/services/communication-queue.test.ts`,
+  `src/app/api/communications/inbound/phone/route.ts`,
+  `src/app/api/communications/inbound/phone/route.test.ts`,
+  `src/app/api/communications/inbound/mcs/route.ts`,
+  `src/app/api/communications/inbound/mcs/route.test.ts`,
+  `src/app/api/communications/inbound/signals/route.ts`,
+  `src/app/api/communications/inbound/signals/route.test.ts`,
+  `src/app/api/communications/inbound/signals/tasks/route.ts`,
+  `src/app/api/communications/inbound/signals/tasks/route.test.ts`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`.
+- bugs / risks reduced:
+  The active inbound bridge no longer stores new phone/MCS inputs in generic
+  `CommunicationEvent` rows. Signal candidate keys now use
+  `inbound_event:{event_id}:candidate:{index}`, task creation reloads the
+  scoped `InboundCommunicationEvent`, and queue task status projection uses the
+  same formal event id. A typecheck failure also caught and fixed an invalid
+  `confidence='manual'` value; source provenance remains represented by
+  `source_channel` / `source_system`, while event confidence uses the schema
+  enum (`high` for manually registered source entries).
+- security risks reduced:
+  Public route responses remain summary-only. Phone/MCS registration responses
+  do not return raw text, sender/contact, source URL, subject, attachments, or
+  extracted medication/quantity values. Signal/task routes recompute candidates
+  server-side from scoped formal events, and task metadata remains controlled
+  without raw inbound text, sender details, storage keys, signed URLs, or token
+  shaped values.
+- performance improved:
+  No polling or background job was added. Inbox reads are bounded by the visible
+  queue window and task status projection only checks dedupe keys for those
+  visible formal event ids.
+- validation:
+  `pnpm exec vitest run src/app/api/communications/inbound/mcs/route.test.ts src/app/api/communications/inbound/phone/route.test.ts src/app/api/communications/inbound/route.test.ts src/app/api/communications/inbound/signals/route.test.ts src/app/api/communications/inbound/signals/tasks/route.test.ts src/server/services/communication-queue.test.ts src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx --reporter=dot --testTimeout=30000`
+  green (7 files / 54 tests);
+  `pnpm exec eslint src/app/api/communications/inbound/mcs/route.ts src/app/api/communications/inbound/mcs/route.test.ts src/app/api/communications/inbound/phone/route.ts src/app/api/communications/inbound/phone/route.test.ts src/app/api/communications/inbound/route.ts src/app/api/communications/inbound/route.test.ts src/app/api/communications/inbound/signals/route.ts src/app/api/communications/inbound/signals/route.test.ts src/app/api/communications/inbound/signals/tasks/route.ts src/app/api/communications/inbound/signals/tasks/route.test.ts src/server/services/communication-queue.ts src/server/services/communication-queue.test.ts src/server/services/communication-request-access.ts src/app/'(dashboard)'/communications/inbound/inbound-content.tsx src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx`
+  green;
+  `npx prisma validate --schema=prisma/schema/` green;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check Plans.md ops/refactor/STATE.md docs/security/rls-gap-ledger.md src/server/services/communication-queue.ts src/server/services/communication-queue.test.ts src/server/services/communication-request-access.ts src/app/api/communications/inbound/mcs/route.ts src/app/api/communications/inbound/mcs/route.test.ts src/app/api/communications/inbound/phone/route.ts src/app/api/communications/inbound/phone/route.test.ts src/app/api/communications/inbound/route.ts src/app/api/communications/inbound/route.test.ts src/app/api/communications/inbound/signals/route.ts src/app/api/communications/inbound/signals/route.test.ts src/app/api/communications/inbound/signals/tasks/route.ts src/app/api/communications/inbound/signals/tasks/route.test.ts src/app/'(dashboard)'/communications/inbound/inbound-content.tsx src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx`
+  green;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green;
+  `pnpm api-response-shape:check` green (243 allowlisted violations, 0 new
+  violations);
+  `pnpm route-auth-wrapper:check` green (176 allowlisted routes, 252 direct
+  requireAuthContext calls, 0 new routes);
+  `git diff --check -- ...` green after rerunning with quoted dashboard paths.
+- remaining:
+  `InboundCommunicationSignal` persistence and the formal review lifecycle are
+  still the next highest-value work. Candidate extraction is still recomputed
+  from `InboundCommunicationEvent.raw_text`; accepted / record_only / rejected /
+  linked_to_stock_event must become durable state before MedicationStock, Risk,
+  VisitBrief, and Report workflows consume signals as source-of-truth.
+
+## 2026-07-07 INBOUND-002 formal signal materialize bridge
+
+- codex:
+  Moved `INBOUND-002` one step past event-only recomputation. `GET
+/api/communications/inbound/signals` now idempotently materializes extracted
+  candidates into `InboundCommunicationSignal` by
+  `org_id + inbound_event_id + signal_index`, returns `signal_id`, and emits
+  `candidate_key=inbound_signal:<signal_id>` for the normal UI path. The route
+  preserves reviewed signal state by updating extraction fields without
+  resetting `review_status` / `action_status`.
+- Oracle / GPT-5.5 Pro:
+  High-risk DB/API/PHI consult attempted with required GitHub context
+  (`https://github.com/yusuketakuma/careviax`, branch `main`, commit
+  `d184860a568d09dad5ef0494d56eb50e15271b7b`, dirty worktree), session
+  `inbound-signal-persistenc`. The browser run failed before model review with
+  `Attachments did not finish uploading before timeout`; no answer was
+  received and no duplicate run was started. Proceeded with local code
+  inspection, focused PHI omission tests, typecheck, and route/API ratchets.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `.agents/skills/oracle-consult/SKILL.md`,
+  `prisma/schema/communication.prisma`,
+  `src/core/interprofessional/inbound/domain/inbound-signal-classifier.ts`,
+  `src/app/api/communications/inbound/signals/route.ts`,
+  `src/app/api/communications/inbound/signals/route.test.ts`,
+  `src/app/api/communications/inbound/signals/tasks/route.ts`,
+  `src/app/api/communications/inbound/signals/tasks/route.test.ts`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`,
+  `src/server/services/communication-request-access.ts`,
+  `src/server/services/communication-queue.ts`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/api/communications/inbound/signals/route.ts`,
+  `src/app/api/communications/inbound/signals/route.test.ts`,
+  `src/app/api/communications/inbound/signals/tasks/route.ts`,
+  `src/app/api/communications/inbound/signals/tasks/route.test.ts`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`.
+- implementation:
+  Signal candidate extraction now upserts `InboundCommunicationSignal` rows with
+  controlled fields only: domain/type, quantity/unit, source confidence, and a
+  structured payload containing classifier version, evidence code,
+  quantity-effect, and review-required flag. It also marks source events from
+  `unprocessed` to `signals_extracted` when at least one signal is materialized.
+  Public DTOs include `signal_id`, status, and controlled summary fields only.
+  The task bridge now accepts `inbound_signal:<id>` first, scopes the signal
+  through its parent `InboundCommunicationEvent`, uses formal dedupe key
+  `inbound:{signal_id}:{task_type}`, and advances signal `action_status` from
+  `not_linked` to `linked_to_task` after task creation. The old
+  `inbound_event:<id>:candidate:<index>` path remains as fallback.
+- bugs / risks reduced:
+  Candidate identity is no longer tied only to an unstable visible-window event
+  index for the normal UI path. Repeated candidate GETs are idempotent and
+  preserve review status. Task creation can now key off the durable signal id
+  and link medication-stock review tasks to `inbound_medication_stock_signal`
+  when appropriate.
+- security risks reduced:
+  Public signal DTOs and task responses still do not expose raw inbound text,
+  sender/contact, patient names, drug names, exact quantity values, MCS URLs,
+  attachments, storage keys, signed URLs, or token-shaped values. Task metadata
+  stores only controlled domain/type/status/source/channel/classifier fields and
+  formal ids.
+- performance improved:
+  Materialization is bounded by the existing visible signal window
+  (`limit <= 50`) and uses the existing unique index
+  `org_id + inbound_event_id + signal_index`. No polling, background job, or
+  external call was added.
+- validation:
+  `pnpm exec vitest run src/app/api/communications/inbound/signals/route.test.ts src/app/api/communications/inbound/signals/tasks/route.test.ts src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx --reporter=dot --testTimeout=30000`
+  green (3 files / 21 tests);
+  `pnpm exec vitest run src/app/api/communications/inbound/mcs/route.test.ts src/app/api/communications/inbound/phone/route.test.ts src/app/api/communications/inbound/route.test.ts src/app/api/communications/inbound/signals/route.test.ts src/app/api/communications/inbound/signals/tasks/route.test.ts src/server/services/communication-queue.test.ts src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx --reporter=dot --testTimeout=30000`
+  green (7 files / 54 tests);
+  `pnpm exec eslint src/app/api/communications/inbound/mcs/route.ts src/app/api/communications/inbound/mcs/route.test.ts src/app/api/communications/inbound/phone/route.ts src/app/api/communications/inbound/phone/route.test.ts src/app/api/communications/inbound/route.ts src/app/api/communications/inbound/route.test.ts src/app/api/communications/inbound/signals/route.ts src/app/api/communications/inbound/signals/route.test.ts src/app/api/communications/inbound/signals/tasks/route.ts src/app/api/communications/inbound/signals/tasks/route.test.ts src/server/services/communication-queue.ts src/server/services/communication-queue.test.ts src/server/services/communication-request-access.ts src/app/'(dashboard)'/communications/inbound/inbound-content.tsx src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx`
+  green;
+  `npx prisma validate --schema=prisma/schema/` green;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` green;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/app/api/communications/inbound/signals/route.ts src/app/api/communications/inbound/signals/route.test.ts src/app/api/communications/inbound/signals/tasks/route.ts src/app/api/communications/inbound/signals/tasks/route.test.ts src/app/'(dashboard)'/communications/inbound/inbound-content.tsx src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx`
+  green;
+  `pnpm api-response-shape:check` green (243 allowlisted violations, 0 new
+  violations);
+  `pnpm route-auth-wrapper:check` green (176 allowlisted routes, 252 direct
+  requireAuthContext calls, 0 new routes);
+  `git diff --check -- Plans.md ops/refactor/STATE.md src/app/api/communications/inbound/signals/route.ts src/app/api/communications/inbound/signals/route.test.ts src/app/api/communications/inbound/signals/tasks/route.ts src/app/api/communications/inbound/signals/tasks/route.test.ts src/app/'(dashboard)'/communications/inbound/inbound-content.tsx src/app/'(dashboard)'/communications/inbound/inbound-content.test.tsx`
+  green.
+- remaining:
+  Next slice should add durable review actions for `accepted`, `record_only`,
+  `rejected`, and `linked_to_stock_event`; then connect accepted medication
+  stock signals to the MedicationStock adapter and add task closure rules for
+  reviewed/rejected/applied signals.
+
+## 2026-07-07 Dashboard operations command center plan append
+
+- current task:
+  Add the dashboard operations command center backlog to `Plans.md` while
+  preserving existing inbound, patient movement timeline, and medication stock
+  plan boundaries.
+- files inspected:
+  `git status --short --untracked-files=all`, `Plans.md`,
+  `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+  `src/app/(dashboard)/dashboard/dashboard-cockpit.helpers.ts`,
+  `src/server/services/dashboard-cockpit.ts`.
+- files changed:
+  `Plans.md`, `ops/refactor/STATE.md`.
+- implementation:
+  Added `DASH-OPS` as a plan-only backlog. It treats existing
+  `DashboardCockpit` segment fetching, partial failure handling, and role focus
+  as implemented foundations, then scopes remaining work around unified urgent
+  queue, query duplication reduction, segment-specific realtime invalidation,
+  clock island separation, inbound/stock/report/billing dashboard segments,
+  drilldowns, quick actions, role-based layout, density, semantic tone, and
+  section-level performance work.
+- bugs found:
+  No runtime bug was changed in this slice. Code scan confirmed that
+  `buildCockpitSummary()` and `buildCockpitDetails()` both call
+  `readAuditQueue()` and `readTodayVisits()`, matching the new
+  `DASH-P0-002` plan item.
+- security risks found:
+  The plan explicitly keeps MCS/phone raw text, drug free text, addresses,
+  phone numbers, storage keys, and signed URLs out of dashboard summary cards,
+  quick actions, SSE/push, and audit changes.
+- performance issues found:
+  The plan records dashboard summary/details duplicate query work, broad
+  realtime invalidation for summary/details/team, and cockpit-wide 30-second
+  clock rerenders as follow-up tasks.
+- validation commands:
+  `pnpm exec prettier --write Plans.md ops/refactor/STATE.md`;
+  `pnpm exec prettier --check Plans.md ops/refactor/STATE.md`;
+  `git diff --check -- Plans.md ops/refactor/STATE.md`.
+- validation results:
+  Green. Both Markdown files are Prettier-formatted and `git diff --check`
+  reported no whitespace errors.
+- remaining work:
+  Implement the first dashboard slice later: `DASH-P0-001` Unified Urgent
+  Queue plus `DASH-P0-002` summary/details query duplication reduction.
+- next action:
+  Return to the active implementation backlog or start the first `DASH-OPS`
+  PR when requested.
+
+## 2026-07-07 INBOUND-002 review task closure
+
+- current task:
+  Close formal inbound signal review tasks when a pharmacist completes the
+  durable signal review action.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/api/communications/inbound/signals/[id]/route.ts`,
+  `src/app/api/communications/inbound/signals/[id]/route.test.ts`,
+  `src/app/api/communications/inbound/signals/tasks/route.ts`,
+  `src/app/api/communications/inbound/signals/tasks/route.test.ts`,
+  `src/server/services/communication-queue.ts`,
+  `src/server/services/communication-queue.test.ts`,
+  `src/server/services/operational-tasks.ts`,
+  `src/lib/tasks/task-registry.ts`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/api/communications/inbound/signals/[id]/route.ts`,
+  `src/app/api/communications/inbound/signals/[id]/route.test.ts`.
+- implementation:
+  `PATCH /api/communications/inbound/signals/:id` now closes pending or
+  in-progress review tasks with formal dedupe keys matching
+  `inbound:<signal_id>:*` after `accept`, `record_only`, or `reject`.
+  The route returns only the controlled `review_task_closure_count`; it does
+  not echo rejection reasons or raw inbound content.
+- bugs found:
+  Formal signal review state could be completed while its previously-created
+  pharmacist review task remained open. This caused the inbox/task lifecycle to
+  drift even though the signal itself had a durable review status.
+- security risks found:
+  The closure query uses only org id, formal signal id prefix, and task status.
+  It does not read raw inbound text, sender/contact, patient names, medication
+  names, quantity values, MCS URLs, storage keys, signed URLs, or task metadata.
+- performance issues found:
+  Closure is a single bounded `task.updateMany` scoped by org and the formal
+  signal dedupe prefix. No polling, background job, or external call was added.
+- validation commands:
+  `pnpm exec vitest run 'src/app/api/communications/inbound/signals/[id]/route.test.ts' --reporter=dot --testTimeout=30000`;
+  `pnpm exec vitest run 'src/app/api/communications/inbound/signals/[id]/route.test.ts' 'src/app/api/communications/inbound/signals/tasks/route.test.ts' 'src/app/(dashboard)/communications/inbound/inbound-content.test.tsx' 'src/server/services/communication-queue.test.ts' --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint 'src/app/api/communications/inbound/signals/[id]/route.ts' 'src/app/api/communications/inbound/signals/[id]/route.test.ts' 'src/app/api/communications/inbound/signals/tasks/route.ts' 'src/app/api/communications/inbound/signals/tasks/route.test.ts' 'src/app/(dashboard)/communications/inbound/inbound-content.tsx' 'src/app/(dashboard)/communications/inbound/inbound-content.test.tsx' 'src/server/services/communication-queue.ts' 'src/server/services/communication-queue.test.ts'`;
+  `pnpm exec prettier --write Plans.md ops/refactor/STATE.md 'src/app/api/communications/inbound/signals/[id]/route.ts' 'src/app/api/communications/inbound/signals/[id]/route.test.ts'`;
+  `pnpm exec prettier --check Plans.md ops/refactor/STATE.md 'src/app/api/communications/inbound/signals/[id]/route.ts' 'src/app/api/communications/inbound/signals/[id]/route.test.ts'`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `pnpm api-response-shape:check`;
+  `pnpm route-auth-wrapper:check`;
+  `git diff --check -- Plans.md ops/refactor/STATE.md 'src/app/api/communications/inbound/signals/[id]/route.ts' 'src/app/api/communications/inbound/signals/[id]/route.test.ts'`.
+- validation results:
+  Focused review route test green (1 file / 6 tests). Inbound API/UI/queue
+  regression green (4 files / 44 tests). ESLint green for the touched inbound
+  API/UI/queue files. Prettier check green. Typecheck green. API response shape
+  check green (243 allowlisted, 0 new). Route auth wrapper check green (176
+  allowlisted routes, 0 new). `git diff --check` green.
+- remaining work:
+  `linked_to_stock_event` and MedicationStock persistence remain. Legacy
+  event-index task dedupe keys still exist as fallback and should be migrated
+  after formal signal-only paths are stable.
+- next action:
+  Run final formatting, typecheck/route ratchets as needed, then continue with
+  MedicationStock application or review detail shell.
+
+## 2026-07-07 INBOUND-002 review status UI hardening
+
+- current task:
+  Prevent durable inbound signal review states from being presented as still
+  reviewable in the pharmacy-wide inbound inbox.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `.agents/skills/oracle-consult/SKILL.md`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/components/ui/state-badge.tsx`,
+  `src/lib/constants/status-tokens.ts`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`,
+  `src/app/api/communications/inbound/signals/[id]/route.ts`,
+  `src/app/api/communications/inbound/signals/[id]/route.test.ts`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`.
+- implementation:
+  The inbound review panel now renders controlled `review_status` and
+  `action_status` badges instead of always showing `確認待ち`. Signals outside
+  `needs_review` cannot be reviewed or task-created again from the inbox. An
+  accepted medication-stock signal that is still `not_linked` is shown as
+  explicitly waiting for the future MedicationStock apply action, not as a
+  completed stock ledger write. The UI also consumes the controlled
+  `review_task_closure_count` response and uses it only to choose a generic
+  success toast.
+- bugs found:
+  Accepted formal signals could still appear as `確認待ち` in the review panel
+  and their review/task buttons remained enabled. That allowed repeated review
+  or duplicate task attempts after the durable signal review had already
+  advanced.
+- security risks found:
+  The UI still sends only `signal_id` and controlled action names for review,
+  and only `candidate_key` for task creation. No raw text, sender/contact,
+  patient names, medication names, quantity values, MCS URLs, storage keys, or
+  signed URLs were added to requests, responses, badges, or toast messages.
+- performance issues found:
+  The change is render-state only and adds no new queries, polling, or
+  background work.
+- validation commands:
+  `pnpm exec prettier --write 'src/app/(dashboard)/communications/inbound/inbound-content.tsx' 'src/app/(dashboard)/communications/inbound/inbound-content.test.tsx'`;
+  `pnpm exec vitest run 'src/app/(dashboard)/communications/inbound/inbound-content.test.tsx' --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint 'src/app/(dashboard)/communications/inbound/inbound-content.tsx' 'src/app/(dashboard)/communications/inbound/inbound-content.test.tsx'`;
+  `pnpm exec vitest run 'src/app/api/communications/inbound/signals/[id]/route.test.ts' 'src/app/api/communications/inbound/signals/tasks/route.test.ts' 'src/app/(dashboard)/communications/inbound/inbound-content.test.tsx' 'src/server/services/communication-queue.test.ts' --reporter=dot --testTimeout=30000`;
+  `pnpm exec prettier --check Plans.md ops/refactor/STATE.md 'src/app/(dashboard)/communications/inbound/inbound-content.tsx' 'src/app/(dashboard)/communications/inbound/inbound-content.test.tsx'`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `pnpm api-response-shape:check`;
+  `pnpm route-auth-wrapper:check`;
+  `git diff --check -- Plans.md ops/refactor/STATE.md 'src/app/(dashboard)/communications/inbound/inbound-content.tsx' 'src/app/(dashboard)/communications/inbound/inbound-content.test.tsx'`.
+- validation results:
+  Focused inbound UI test green (1 file / 10 tests). Related inbound API/UI/
+  queue regression green (4 files / 45 tests). ESLint green for the touched
+  inbound UI files. Prettier check green. Typecheck green. API response shape
+  check green (243 allowlisted, 0 new). Route auth wrapper check green (176
+  allowlisted routes, 0 new). `git diff --check` green.
+- remaining work:
+  `linked_to_stock_event` and MedicationStock persistence remain. A formal
+  review detail shell and raw_text re-auth UI are still needed before exposing
+  raw inbound content.
+- next action:
+  Run formatting/typecheck/ratchets for the updated slice, then continue with
+  either MedicationStock apply or a review detail shell depending on the next
+  safest task boundary.
+
+## 2026-07-07 INBOUND-001 reviewed-pending-action projection
+
+- current task:
+  Keep accepted inbound signals that still need downstream reflection visible
+  as actionable inbox work instead of treating them as completed or still
+  reviewable.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/server/services/communication-queue.ts`,
+  `src/server/services/communication-queue.test.ts`,
+  `src/app/api/communications/inbound/route.ts`,
+  `src/app/api/communications/inbound/route.test.ts`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/server/services/communication-queue.ts`,
+  `src/server/services/communication-queue.test.ts`,
+  `src/app/api/communications/inbound/route.ts`,
+  `src/app/api/communications/inbound/route.test.ts`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`.
+- implementation:
+  Added `reviewed_pending_action` to the inbound inbox status vocabulary.
+  `CommunicationQueue` now projects `accepted` / `auto_accepted` signals with
+  `action_status=not_linked` as `reviewed_pending_action`, even if their
+  formal review task is already completed. The inbound API accepts this status
+  as a filter and returns `reviewed_pending_action_count`. The inbox UI exposes
+  the status as `確認済み未反映`.
+- bugs found:
+  Accepted signal reviews could close their review task and then appear as
+  `task_completed` in the pharmacy-wide inbox even though MedicationStock or
+  another downstream workflow had not yet received a formal linked action.
+- security risks found:
+  The new status and summary remain controlled vocabulary only. No raw inbound
+  text, sender/contact, medication name, quantity value, MCS URL, storage key,
+  signed URL, or task metadata is exposed.
+- performance issues found:
+  The projection reuses already-loaded formal signal rows and task rows. No new
+  database query or background work was added.
+- validation commands:
+  `pnpm exec prettier --write 'src/server/services/communication-queue.ts' 'src/server/services/communication-queue.test.ts' 'src/app/api/communications/inbound/route.ts' 'src/app/api/communications/inbound/route.test.ts' 'src/app/(dashboard)/communications/inbound/inbound-content.tsx' 'src/app/(dashboard)/communications/inbound/inbound-content.test.tsx'`;
+  `pnpm exec vitest run 'src/app/api/communications/inbound/route.test.ts' 'src/server/services/communication-queue.test.ts' 'src/app/(dashboard)/communications/inbound/inbound-content.test.tsx' --reporter=dot --testTimeout=30000`;
+  `pnpm exec vitest run 'src/app/api/communications/inbound/route.test.ts' 'src/app/api/communications/inbound/signals/[id]/route.test.ts' 'src/app/api/communications/inbound/signals/tasks/route.test.ts' 'src/app/(dashboard)/communications/inbound/inbound-content.test.tsx' 'src/server/services/communication-queue.test.ts' --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint 'src/server/services/communication-queue.ts' 'src/server/services/communication-queue.test.ts' 'src/app/api/communications/inbound/route.ts' 'src/app/api/communications/inbound/route.test.ts' 'src/app/api/communications/inbound/signals/[id]/route.ts' 'src/app/api/communications/inbound/signals/[id]/route.test.ts' 'src/app/api/communications/inbound/signals/tasks/route.ts' 'src/app/api/communications/inbound/signals/tasks/route.test.ts' 'src/app/(dashboard)/communications/inbound/inbound-content.tsx' 'src/app/(dashboard)/communications/inbound/inbound-content.test.tsx'`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `pnpm exec prettier --check Plans.md ops/refactor/STATE.md 'src/server/services/communication-queue.ts' 'src/server/services/communication-queue.test.ts' 'src/app/api/communications/inbound/route.ts' 'src/app/api/communications/inbound/route.test.ts' 'src/app/(dashboard)/communications/inbound/inbound-content.tsx' 'src/app/(dashboard)/communications/inbound/inbound-content.test.tsx'`;
+  `pnpm api-response-shape:check`;
+  `pnpm route-auth-wrapper:check`;
+  `git diff --check -- Plans.md ops/refactor/STATE.md 'src/server/services/communication-queue.ts' 'src/server/services/communication-queue.test.ts' 'src/app/api/communications/inbound/route.ts' 'src/app/api/communications/inbound/route.test.ts' 'src/app/(dashboard)/communications/inbound/inbound-content.tsx' 'src/app/(dashboard)/communications/inbound/inbound-content.test.tsx'`.
+- validation results:
+  Inbound API/queue/UI focused regression green (3 files / 39 tests). Broader
+  inbound API/UI/queue regression green (5 files / 52 tests). ESLint green for
+  the touched inbound queue/API/UI files. Typecheck green. Prettier check
+  green. API response shape check green (243 allowlisted, 0 new). Route auth
+  wrapper check green (176 allowlisted routes, 0 new). `git diff --check`
+  green.
+- remaining work:
+  `linked_to_stock_event` and MedicationStock persistence remain. Once
+  downstream reflection exists, `reviewed_pending_action` should move to
+  `linked_to_stock_event` / task completed through the formal action path.
+- next action:
+  Run final formatting/typecheck/ratchets, then decide between MedicationStock
+  apply and raw-text re-auth detail shell.
+
+## 2026-07-07 Plans DASH-OPS backlog linkage
+
+- current task:
+  Record the dashboard operations command-center improvement plan in
+  `Plans.md` while keeping it aligned with existing INB/RX/MOV lanes.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `Plans.md`,
+  `src/types/dashboard-cockpit.ts`,
+  `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+  `src/server/services/dashboard-cockpit.ts`,
+  `ops/refactor/STATE.md`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- implementation:
+  The detailed `Dashboard Operations Command Center Expansion` section was
+  already present in `Plans.md`. Added a top-level `DASH-OPS` row to the
+  `RISK-P0` backlog table so the dashboard work is reachable from the main
+  implementation index and explicitly linked to `DashboardCockpit`,
+  dashboard cockpit BFF, inbound, medication stock, report, and billing
+  segments.
+- security risks found:
+  The dashboard plan keeps raw text, medication free text, contact details,
+  storage keys, and signed URLs out of dashboard payloads.
+- validation commands:
+  `pnpm exec prettier --check Plans.md ops/refactor/STATE.md`;
+  `git diff --check -- Plans.md ops/refactor/STATE.md`.
+- validation results:
+  `git diff --check` green. Prettier check reported existing code style
+  issues in `Plans.md`; no broad `prettier --write` was run to avoid
+  reformatting the large in-flight plan diff unrelated to this linkage row.
+- remaining work:
+  Implement `DASH-P0-001`, `DASH-P0-002`, `DASH-P0-003`, `DASH-P0-004`, and
+  `DASH-BFF-001`.
+- next action:
+  Continue with the next implementation slice once the user selects it, or run
+  a dedicated Plans.md formatting pass as a separate cleanup slice.
+
+## 2026-07-07 DASH-OPS disclosure policy correction
+
+- current task:
+  Correct the dashboard plan after user feedback: the dashboard is an
+  authenticated operational surface, so it should not hide information needed
+  for clinical or operational judgment merely because the data is PHI.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- implementation:
+  Updated `DASH-OPS` to say that authorized users may see patient names,
+  medication names, stock quantities, MCS/phone text, contact details,
+  attachments, and other operationally relevant details on the dashboard.
+  The plan now distinguishes permission-based disclosure and information
+  density from blanket dashboard redaction. It also keeps separate redaction
+  boundaries for OS notifications, SSE payloads, audit changes, logs,
+  external sharing, and exports.
+- security risks found:
+  The previous plan wording over-redacted dashboard data and could make the
+  cockpit less useful. The corrected policy still requires role, assignment,
+  case scope, consent, support-session, and purpose checks.
+- remaining work:
+  Implement dashboard inbound/urgent segments with permission-aware detail
+  levels instead of raw-omission-only DTOs.
+- next action:
+  Continue `DASH-BFF-001` with a dashboard disclosure policy that returns all
+  data the current user is authorized to see, while keeping external/logging
+  surfaces separately masked.
+
+## 2026-07-07 Dashboard disclosure SSOT update
+
+- current task:
+  Record the user's disclosure decision in SSOT documents, not only in
+  `Plans.md`.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `docs/ui-ux-design-guidelines.md`,
+  `AGENTS.md`,
+  `ops/refactor/STATE.md`.
+- files changed:
+  `docs/ui-ux-design-guidelines.md`,
+  `AGENTS.md`,
+  `ops/refactor/STATE.md`.
+- implementation:
+  Added a UI/UX SSOT rule that authenticated operational surfaces such as the
+  dashboard may show all patient, medical, medication, stock, communication,
+  attachment, visit, report, billing, and task details the current user is
+  authorized to see. Added the same implementation rule to `AGENTS.md` so future
+  Codex work does not blanket-redact dashboard/cockpit data merely because it is
+  PHI. The policy keeps OS notifications, SSE payloads, audit diffs, logs,
+  external shares, exports, public URLs, and Oracle/GPT prompts as separate
+  redaction/minimization boundaries.
+- security risks found:
+  The decision does not weaken authorization. Disclosure still depends on role,
+  assignment, case scope, consent, support session, and purpose.
+- remaining work:
+  Ensure future dashboard/inbound/stock BFF DTOs implement this policy by
+  returning all authorized operational details while preserving separate output
+  boundary masking.
+- next action:
+  Continue the dashboard inbound segment and unified urgent queue plans using
+  the SSOT disclosure rule.
+
+## 2026-07-07 Access control policy SSOT alignment
+
+- current task:
+  Answer and act on whether an account-type/function access document exists by
+  aligning the stale access control policy with the current implementation.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `docs/compliance/access-control-policy.md`,
+  `docs/compliance/three-ministry-guideline-mapping.md`,
+  `prisma/schema/organization.prisma`,
+  `prisma/schema/platform.prisma`,
+  `src/lib/auth/permission-matrix.ts`,
+  `src/lib/auth/permissions.ts`,
+  `src/lib/auth/member-roles.ts`,
+  `src/lib/auth/phos-role.ts`,
+  `src/lib/auth/__tests__/permissions.test.ts`.
+- files changed:
+  `docs/compliance/access-control-policy.md`,
+  `docs/compliance/three-ministry-guideline-mapping.md`,
+  `ops/refactor/STATE.md`.
+- implementation:
+  Updated the access-control policy from the old `system_admin` /
+  `org_admin` / `technician` / `viewer` / `external` CRUD table to the current
+  tenant `MemberRole` values (`owner`, `admin`, `pharmacist`,
+  `pharmacist_trainee`, `clerk`, `driver`, `external_viewer`) and the actual
+  capability keys from `permission-matrix.ts`. Added PH-OS platform operator
+  separation (`platform_support`, `platform_admin`, `platform_owner`) and
+  documented that dashboard/cockpit disclosure is permission-aware rather than
+  blanket-redacted. Updated the 3-ministry guideline mapping to cite the
+  current evidence files.
+- security risks found:
+  The previous compliance document was stale relative to code and could lead to
+  incorrect implementation assumptions. The update records code as the
+  capability SSOT and keeps platform operator / break-glass separate from
+  tenant membership roles.
+- remaining work:
+  Add route-level role/function coverage tests for new inbound, medication
+  stock, dashboard, external sharing, export, and platform support flows as
+  those slices are implemented.
+- next action:
+  Continue the dashboard/inbound implementation using the current
+  `MemberRole` capability matrix as the account-type authority.
+
+## 2026-07-07 INBOUND route permission coverage
+
+- current task:
+  Turn the updated access-control SSOT into executable coverage for the active
+  inbound communication routes.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `docs/compliance/access-control-policy.md`,
+  `prisma/schema/organization.prisma`,
+  `src/lib/auth/permission-matrix.ts`,
+  `src/lib/auth/permissions.ts`,
+  `src/app/api/communications/inbound/route.ts`,
+  `src/app/api/communications/inbound/mcs/route.ts`,
+  `src/app/api/communications/inbound/phone/route.ts`,
+  `src/app/api/communications/inbound/signals/route.ts`,
+  `src/app/api/communications/inbound/signals/[id]/route.ts`,
+  `src/app/api/communications/inbound/signals/tasks/route.ts`,
+  and their route tests.
+- files changed:
+  `src/app/api/communications/inbound/route.test.ts`,
+  `src/app/api/communications/inbound/mcs/route.test.ts`,
+  `src/app/api/communications/inbound/phone/route.test.ts`,
+  `src/app/api/communications/inbound/signals/route.test.ts`,
+  `src/app/api/communications/inbound/signals/[id]/route.test.ts`,
+  `src/app/api/communications/inbound/signals/tasks/route.test.ts`,
+  `ops/refactor/STATE.md`.
+- implementation:
+  Added route-import-time tests that capture the `withAuthContext` options for
+  all active inbound communication routes and assert they are gated by
+  `permission: 'canReport'` with the route-specific forbidden message. This
+  locks the current account-type policy for inbound inbox, phone/MCS
+  registration, signal listing, signal review, and signal-to-task conversion.
+- bugs found:
+  Existing route tests executed the handlers through a passthrough auth mock and
+  did not verify that the intended permission gate was actually registered.
+- security risks reduced:
+  Future changes that accidentally remove or weaken the inbound route
+  `canReport` gate now fail focused route tests. This preserves the current
+  access-control policy while allowing authorized dashboard/inbox users to see
+  operational details inside their permitted scope.
+- performance issues found:
+  None. Test-only change.
+- validation commands:
+  `pnpm exec vitest run src/app/api/communications/inbound/route.test.ts src/app/api/communications/inbound/mcs/route.test.ts src/app/api/communications/inbound/phone/route.test.ts src/app/api/communications/inbound/signals/route.test.ts 'src/app/api/communications/inbound/signals/[id]/route.test.ts' src/app/api/communications/inbound/signals/tasks/route.test.ts --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint src/app/api/communications/inbound/route.test.ts src/app/api/communications/inbound/mcs/route.test.ts src/app/api/communications/inbound/phone/route.test.ts src/app/api/communications/inbound/signals/route.test.ts 'src/app/api/communications/inbound/signals/[id]/route.test.ts' src/app/api/communications/inbound/signals/tasks/route.test.ts`;
+  `pnpm exec prettier --write src/app/api/communications/inbound/route.test.ts src/app/api/communications/inbound/mcs/route.test.ts src/app/api/communications/inbound/phone/route.test.ts src/app/api/communications/inbound/signals/route.test.ts 'src/app/api/communications/inbound/signals/[id]/route.test.ts' src/app/api/communications/inbound/signals/tasks/route.test.ts`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `pnpm route-auth-wrapper:check`;
+  `pnpm exec prettier --check src/app/api/communications/inbound/route.test.ts src/app/api/communications/inbound/mcs/route.test.ts src/app/api/communications/inbound/phone/route.test.ts src/app/api/communications/inbound/signals/route.test.ts 'src/app/api/communications/inbound/signals/[id]/route.test.ts' src/app/api/communications/inbound/signals/tasks/route.test.ts AGENTS.md docs/ui-ux-design-guidelines.md docs/compliance/access-control-policy.md docs/compliance/three-ministry-guideline-mapping.md ops/refactor/STATE.md`;
+  `git diff --check -- src/app/api/communications/inbound/route.test.ts src/app/api/communications/inbound/mcs/route.test.ts src/app/api/communications/inbound/phone/route.test.ts src/app/api/communications/inbound/signals/route.test.ts 'src/app/api/communications/inbound/signals/[id]/route.test.ts' src/app/api/communications/inbound/signals/tasks/route.test.ts AGENTS.md docs/ui-ux-design-guidelines.md docs/compliance/access-control-policy.md docs/compliance/three-ministry-guideline-mapping.md ops/refactor/STATE.md`.
+- validation results:
+  Focused inbound route tests green (6 files / 39 tests). ESLint green for the
+  touched route tests. Typecheck green. Route auth wrapper check green (176
+  allowlisted routes, 252 direct requireAuthContext calls, 0 new routes).
+  Prettier check green. `git diff --check` green.
+- remaining work:
+  Add similar permission matrix tests for medication stock, dashboard inbound
+  segments, external sharing/export, and platform support routes as those
+  implementation slices are added or touched.
+- next action:
+  Continue with `DASH-BFF-001` or MedicationStock apply using the access-control
+  policy and inbound permission coverage as guardrails.
+
+## 2026-07-07 DASH-BFF-001 dashboard inbound segment
+
+- current task:
+  Implement the first dashboard BFF slice for `DASH-BFF-001`, exposing
+  interprofessional inbound communications as a dedicated cockpit segment.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `AGENTS.md`,
+  `.agents/skills/oracle-consult/SKILL.md`,
+  `Plans.md`,
+  `docs/ui-ux-design-guidelines.md`,
+  `src/server/services/dashboard-cockpit.ts`,
+  `src/types/dashboard-cockpit.ts`,
+  `src/app/api/dashboard/cockpit/*/route.ts`,
+  `src/app/api/dashboard/cockpit/route.test.ts`,
+  `src/server/services/communication-queue.ts`,
+  `prisma/schema/communication.prisma`,
+  `src/lib/auth/visit-schedule-access.ts`,
+  `src/server/services/dashboard-assignment-scope.ts`,
+  and `src/lib/api/route-catalog.ts`.
+- files changed:
+  `src/types/dashboard-cockpit.ts`,
+  `src/server/services/dashboard-cockpit.ts`,
+  `src/app/api/dashboard/cockpit/inbound/route.ts`,
+  `src/app/api/dashboard/cockpit/route.test.ts`,
+  `src/lib/api/route-catalog.ts`,
+  `ops/refactor/STATE.md`.
+- implementation:
+  Added `DashboardCockpitInboundResponse`, `CockpitInboundItem`, and
+  `CockpitInboundSignalItem` DTOs. Added `/api/dashboard/cockpit/inbound`
+  through the existing `dashboardCockpitSegmentResponse` entrypoint with
+  `permission: canViewDashboard`, `withSensitiveNoStore`, and no cockpit cache.
+  The segment reads `InboundCommunicationEvent` and visible
+  `InboundCommunicationSignal` rows under the existing dashboard scope rules,
+  returns patient name, raw inbound text, sender contact, extracted medication
+  name/quantity/unit, attachment count, flags, status, priority, and safe
+  relative action links for authorized users. This follows the updated
+  dashboard disclosure SSOT: authenticated operational dashboards should not
+  blanket-redact information that the role/scope is allowed to see.
+- Oracle / GPT-5.5 Pro:
+  The existing `dashboard-inbound-segment-review` Oracle browser session had
+  failed with `chrome-disconnected` and returned no model advice. Its prompt
+  also used the now-obsolete "no raw PHI in dashboard payload" assumption, so
+  it was not adopted. Implementation proceeded with local SSOT inspection,
+  authorization checks, scope filtering, no-store response boundaries, and
+  focused tests instead of starting a duplicate consult.
+- bugs found:
+  The dashboard cockpit had no inbound segment despite `Plans.md` listing
+  `DASH-BFF-001`; operators would need to open the inbound inbox separately and
+  could not load inbound work as an independent dashboard segment.
+- security risks reduced:
+  The new route is gated by `canViewDashboard`, uses the same mine/team scope
+  resolution as other dashboard segments, returns only relative action links,
+  does not expose storage keys or signed URLs, and is wrapped with
+  `withSensitiveNoStore`. Authorized PHI/medical details are intentionally
+  returned inside this authenticated operational boundary; external outputs
+  remain separate redaction boundaries.
+- performance issues improved:
+  Inbound is a separate segment and is not loaded through summary/details/team.
+  It bypasses cockpit cache like comments, caps the fetched event window at 40
+  and the returned items at 8, and avoids signal/patient lookups on false-empty
+  responses.
+- validation commands:
+  `pnpm exec prettier --write src/types/dashboard-cockpit.ts src/server/services/dashboard-cockpit.ts src/app/api/dashboard/cockpit/inbound/route.ts src/app/api/dashboard/cockpit/route.test.ts src/lib/api/route-catalog.ts`;
+  `pnpm exec vitest run src/app/api/dashboard/cockpit/route.test.ts --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint src/types/dashboard-cockpit.ts src/server/services/dashboard-cockpit.ts src/app/api/dashboard/cockpit/inbound/route.ts src/app/api/dashboard/cockpit/route.test.ts src/lib/api/route-catalog.ts`;
+  `git diff --check -- src/types/dashboard-cockpit.ts src/server/services/dashboard-cockpit.ts src/app/api/dashboard/cockpit/inbound/route.ts src/app/api/dashboard/cockpit/route.test.ts src/lib/api/route-catalog.ts`;
+  `pnpm route-auth-wrapper:check`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+- validation results:
+  Dashboard cockpit route tests green (1 file / 23 tests). Targeted ESLint
+  green. `git diff --check` green. Route auth wrapper check green (176
+  allowlisted routes, 252 direct requireAuthContext calls, 0 new routes).
+  Typecheck green.
+- remaining work:
+  Connect the new inbound segment to the dashboard UI (`DASH-P1-004` inbound
+  feed card), then continue `DASH-P0-001` Unified Urgent Queue so inbound,
+  medication stock, reports, callbacks, billing blockers, and existing audit
+  items compete in the same "今すぐ対応" model.
+- next action:
+  Implement the dashboard inbound feed card or start the Unified Urgent Queue
+  DTO/presenter using the new inbound segment as the first non-audit source.
+
+## 2026-07-07 DASH-P1-004 dashboard inbound feed card
+
+- current task:
+  Connect the new `/api/dashboard/cockpit/inbound` segment to the dashboard UI so
+  team conversation and interprofessional inbound work are no longer mixed.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `docs/ui-ux-design-guidelines.md`,
+  `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+  `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`,
+  `src/types/dashboard-cockpit.ts`,
+  and the existing `DASH-BFF-001` state entry above.
+- files changed:
+  `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+  `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`,
+  `ops/refactor/STATE.md`.
+- implementation:
+  Added `fetchDashboardCockpitInbound()` and a separate realtime query key
+  `['dashboard', 'cockpit', 'inbound', orgId, viewScope]` with inbound-specific
+  workflow invalidation sources. Added `InboundFeedPanel` to the dashboard right
+  rail above `TeamConversationPanel`, with loading/error/empty states,
+  `SegmentError` retry, hidden-count copy, source/status/priority badges,
+  patient name, raw inbound text, extracted signal summary, sender context, and
+  a relative action link into the inbound workflow. The panel follows the
+  dashboard disclosure SSOT: role/scope-authorized operational UI may show the
+  patient/medical details humans need for judgment, while external/log/export
+  boundaries remain separate.
+- bugs found:
+  Without a dedicated inbound card, MCS/phone/FAX/email review work was only
+  available through the inbound inbox and could not be seen in the cockpit right
+  rail. The stale-refetch UI test also used a global patient-name query that
+  became ambiguous once inbound work displayed the same patient; the test now
+  scopes that assertion to `dashboard-urgent-now`.
+- security risks reduced:
+  Inbound work is fetched from its own `canViewDashboard` segment and rendered
+  in an authenticated cockpit boundary. The error state does not dump backend
+  payloads, storage keys, signed URLs, or raw provider diagnostics. `action_href`
+  continues to come from the BFF as a relative application link.
+- performance issues improved:
+  Inbound data is independently fetched and retried rather than bundled into
+  summary/details/team. Realtime invalidation for this panel is limited to
+  inbound communication/signal workflow refreshes instead of broad dashboard
+  refresh sources.
+- validation commands:
+  `pnpm exec prettier --write 'src/app/(dashboard)/dashboard/dashboard-cockpit.tsx' 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx'`;
+  `pnpm exec vitest run 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx' --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint 'src/app/(dashboard)/dashboard/dashboard-cockpit.tsx' 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx'`;
+  `git diff --check -- 'src/app/(dashboard)/dashboard/dashboard-cockpit.tsx' 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx'`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+- validation results:
+  Dashboard cockpit UI tests green (1 file / 18 tests). Targeted ESLint green.
+  `git diff --check` green. Typecheck green.
+- remaining work:
+  `DASH-P0-001` Unified Urgent Queue still needs a shared DTO/presenter so
+  inbound signals, medication stock risk, report delivery failures, callbacks,
+  billing blockers, task items, and current audit queue all compete in the same
+  "今すぐ対応" list. `DASH-P0-002` summary/details duplication reduction is also
+  still open.
+- next action:
+  Start `DASH-P0-001` by extracting a `DashboardUrgentItem` DTO and presenter
+  that preserves the existing audit cards while adding inbound review items as
+  the first non-audit source.
+
+## 2026-07-07 DASH-P0-001 unified urgent queue first source
+
+- current task:
+  Start `DASH-P0-001` by introducing a shared urgent item contract and merging
+  inbound review work into the dashboard "今すぐ対応" section without removing
+  the legacy `audit_queue` contract.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `src/types/dashboard-cockpit.ts`,
+  `src/server/services/dashboard-cockpit.ts`,
+  `src/app/api/dashboard/cockpit/route.test.ts`,
+  `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+  `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`,
+  and the `DASH-P0-001` / `DASH-BFF-001` entries in `Plans.md` and this state
+  file.
+- files changed:
+  `src/types/dashboard-cockpit.ts`,
+  `src/server/services/dashboard-cockpit.ts`,
+  `src/app/api/dashboard/cockpit/route.test.ts`,
+  `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+  `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`,
+  `ops/refactor/STATE.md`.
+- implementation:
+  Added `DashboardUrgentItem` with source, severity, patient, title, summary,
+  due/waiting timestamps, badges, and action link fields. `buildCockpitDetails`
+  now builds `urgent_items` from legacy audit queue items plus inbound items
+  whose status is `needs_review` or `reviewed_pending_action`. Existing
+  `audit_queue` remains in the response for compatibility with summary/evidence
+  logic, but `UrgentNowSection` renders `details.urgent_items` and uses
+  `urgent_total_count` for the visible/hidden count. Inbound review items now
+  compete with audit cards in the main "今すぐ対応" grid; the separate inbound
+  right-rail card still provides a compact feed.
+- bugs found:
+  The previous urgent section was hard-coded to `CockpitAuditQueueItem`, so
+  non-audit urgent work could only appear in side panels and could not be
+  prioritized against audit deadlines.
+- security risks reduced:
+  The unified queue reuses the already-authorized dashboard details segment and
+  inbound scope filtering. It does not add external notification/export/log
+  disclosure paths. Action links remain relative application routes.
+- performance issues improved:
+  This is a first integration slice and does not yet complete `DASH-P0-002`.
+  It reuses the inbound segment reader inside details, which adds one inbound
+  query family to the details segment; the next optimization should split
+  summary counts and reduce duplicated dashboard reads.
+- validation commands:
+  `pnpm exec prettier --write src/types/dashboard-cockpit.ts src/server/services/dashboard-cockpit.ts src/app/api/dashboard/cockpit/route.test.ts 'src/app/(dashboard)/dashboard/dashboard-cockpit.tsx' 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx'`;
+  `pnpm exec vitest run 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx' src/app/api/dashboard/cockpit/route.test.ts --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint src/types/dashboard-cockpit.ts src/server/services/dashboard-cockpit.ts src/app/api/dashboard/cockpit/route.test.ts 'src/app/(dashboard)/dashboard/dashboard-cockpit.tsx' 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx'`;
+  `git diff --check -- src/types/dashboard-cockpit.ts src/server/services/dashboard-cockpit.ts src/app/api/dashboard/cockpit/route.test.ts 'src/app/(dashboard)/dashboard/dashboard-cockpit.tsx' 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx'`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+- validation results:
+  Dashboard API/UI tests green (2 files / 41 tests). Targeted ESLint green.
+  `git diff --check` green. Typecheck green.
+- remaining work:
+  Extend `DashboardUrgentItem` sources beyond audit + inbound: medication stock
+  risk, report delivery failures, callbacks, billing blockers, and task health.
+  Add source-specific drilldown filters (`/audit?filter=dashboard_urgent`,
+  `/communications/inbound?...`) and complete `DASH-P0-002` so summary and
+  details do not duplicate heavy audit/visit reads.
+- next action:
+  Continue `DASH-P0-001` by adding the next urgent source with the least schema
+  risk, or pivot to `DASH-P0-002` query duplication reduction before adding more
+  sources.
+
+## 2026-07-07 DASH-P0-002 dashboard summary/details query split
+
+- current task:
+  Reduce dashboard cockpit query duplication by keeping the `summary` segment
+  PHI-light and count-oriented while leaving the `details` segment responsible
+  for patient-name audit rows and visit detail rows.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `src/server/services/dashboard-cockpit.ts`,
+  `src/app/api/dashboard/cockpit/route.test.ts`,
+  `src/types/dashboard-cockpit.ts`,
+  `prisma/schema/prescription.prisma`,
+  `src/lib/dispensing/packaging.ts`.
+- files changed:
+  `src/server/services/dashboard-cockpit.ts`,
+  `src/app/api/dashboard/cockpit/route.test.ts`,
+  `ops/refactor/STATE.md`.
+- implementation:
+  Added `readAuditQueueSummary()` so the dashboard summary segment reads
+  audit total count, narcotic count, and earliest due timestamp via one
+  aggregate SQL query instead of fetching `DispenseTask` rows with patient
+  names, prescription intakes, and prescription lines. Added
+  `readTodayVisitSummary()` so summary reads only visit count and
+  `time_window_start` values, while `details` and `team` keep the existing
+  full visit rows. `buildCockpitSummary()` now uses these lightweight readers;
+  `buildCockpitDetails()` remains the segment that fetches the visible audit
+  queue, inbound urgent items, visit details, exceptions, and carryover count.
+- bugs found:
+  The previous `summary` segment did not return PHI, but it still performed
+  the same heavy patient-name audit queue and visit detail reads as `details`.
+  That made initial summary loading more expensive and duplicated the work
+  immediately repeated by the details query.
+- security risks reduced:
+  Summary now avoids fetching patient names and prescription/visit detail
+  rows it does not need. This is not a dashboard redaction rule; authorized
+  dashboard detail surfaces still show operationally necessary PHI. It simply
+  keeps the lightweight summary segment from reading unnecessary PHI-bearing
+  rows.
+- performance issues improved:
+  `summary` no longer calls `dispenseTask.findMany()` for the audit queue and
+  no longer fetches visit patient names. Audit summary uses one aggregate query;
+  visit summary selects only `time_window_start`.
+- validation commands:
+  `pnpm exec prettier --write src/server/services/dashboard-cockpit.ts src/app/api/dashboard/cockpit/route.test.ts`;
+  `pnpm exec vitest run src/app/api/dashboard/cockpit/route.test.ts --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint src/server/services/dashboard-cockpit.ts src/app/api/dashboard/cockpit/route.test.ts`;
+  `pnpm exec vitest run 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx' src/app/api/dashboard/cockpit/route.test.ts --reporter=dot --testTimeout=30000`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `git diff --check -- src/server/services/dashboard-cockpit.ts src/app/api/dashboard/cockpit/route.test.ts`.
+- validation results:
+  Dashboard API test green (1 file / 23 tests). Dashboard API/UI tests green
+  together (2 files / 41 tests). Targeted ESLint green. Typecheck green.
+  `git diff --check` green.
+- remaining work:
+  `DASH-P0-003` still needs segment-specific invalidation beyond the current
+  dashboard query hooks. `DASH-P0-004` still needs Clock Island separation.
+  `DASH-P0-001` can continue by adding medication stock, report, callback,
+  billing, and task urgent sources after their upstream BFF contracts are ready.
+- next action:
+  Continue with `DASH-P0-003` segment-specific invalidation because the
+  dashboard now has summary/details/inbound split enough to benefit from
+  narrower realtime invalidation.
+
+## 2026-07-07 DASH-P0-003 dashboard segment-specific invalidation
+
+- current task:
+  Split dashboard cockpit realtime invalidation policy by segment so summary,
+  details, team, comments, and inbound do not all refetch for the same broad
+  workflow event set.
+- files inspected:
+  `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+  `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`,
+  `src/lib/hooks/use-realtime-query.ts`,
+  `src/lib/hooks/use-realtime-invalidation.ts`.
+- files changed:
+  `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+  `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`,
+  `ops/refactor/STATE.md`.
+- implementation:
+  Replaced the shared `DASHBOARD_COCKPIT_REALTIME_EVENTS` usage with segment
+  policies. `summary` keeps cycle/workflow sources that affect cycle counts,
+  audit counts, and today visit counts. `details` uses summary events plus
+  inbound update events because unified urgent items include inbound review
+  work. `team` now listens only to visit/facility-route/shift workflow sources.
+  `comments` remains `comment_refresh` only and `inbound` remains inbound
+  workflow sources only.
+- bugs found:
+  Before this slice, summary/details/team used the same broad invalidation
+  list, so inbound, visit, audit, and cycle changes could make unrelated
+  dashboard segments refetch together.
+- security risks reduced:
+  No security boundary changed. The segment split only narrows refetch triggers
+  for already-authorized dashboard queries.
+- performance issues improved:
+  Team capacity no longer refetches for dispense/audit/inbound-only events.
+  Summary no longer refetches for inbound-only events. Details still receives
+  inbound invalidation because its unified urgent queue depends on inbound
+  items.
+- validation commands:
+  `pnpm exec prettier --write 'src/app/(dashboard)/dashboard/dashboard-cockpit.tsx' 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx'`;
+  `pnpm exec vitest run 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx' --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint 'src/app/(dashboard)/dashboard/dashboard-cockpit.tsx' 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx'`;
+  `pnpm exec vitest run 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx' src/app/api/dashboard/cockpit/route.test.ts --reporter=dot --testTimeout=30000`;
+  `git diff --check -- 'src/app/(dashboard)/dashboard/dashboard-cockpit.tsx' 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx'`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+- validation results:
+  Dashboard UI test green (1 file / 18 tests). Dashboard API/UI tests green
+  together (2 files / 41 tests). Targeted ESLint green. Typecheck green.
+  `git diff --check` green.
+- remaining work:
+  `DASH-P0-004` Clock Island separation remains. `FE-RT-001` still needs the
+  repository-wide realtime invalidation policy cleanup; this slice only narrows
+  dashboard caller policy.
+- next action:
+  Continue with `DASH-P0-004` Clock Island separation or broaden realtime
+  policy work under `FE-RT-001`.
+
+## 2026-07-07 DASH-P0-004/P0-005 dashboard Clock Island + ViewModel
+
+- current task:
+  Separate dashboard clock-driven rendering from `DashboardCockpit` and move
+  cockpit-derived view data into a focused ViewModel hook.
+- files inspected:
+  `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+  `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`,
+  `src/app/api/dashboard/cockpit/route.test.ts`,
+  `src/components/features/workspace/action-rail.tsx`,
+  `src/types/dashboard-cockpit.ts`,
+  `Plans.md`.
+- files changed:
+  `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+  `src/app/(dashboard)/dashboard/dashboard-clock.tsx`,
+  `src/app/(dashboard)/dashboard/use-dashboard-cockpit-view-model.ts`,
+  `src/components/features/workspace/action-rail.tsx`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- implementation:
+  Added `dashboard-clock.tsx` with small clock subscribers for the header clock,
+  deadline countdown, waiting-since label, generated-at freshness label, and
+  today-flow now marker. Removed the 30-second `now` state from
+  `DashboardCockpit`, so the parent cockpit shell no longer re-renders just to
+  refresh time labels. Added `useDashboardCockpitViewModel()` to centralize
+  applied scope, process tiles, blockers, evidence rows, handoff suggestion,
+  urgent items, and next action selection. Updated `WorkspaceActionRail`
+  evidence metadata from `string` to `ReactNode` so the freshness label can be
+  a Clock Island while existing string metadata remains compatible.
+- bugs found:
+  The first implementation pass dropped the `timelinePercent` import and the
+  `format` import used by comment/inbound timestamps; focused tests caught both
+  regressions and they were restored. The next-action label initially changed
+  from `麻薬監査を開始` to the generic audit CTA; it was corrected to preserve
+  audit-source wording.
+- security risks reduced:
+  No authorization or PHI output boundary changed. Dashboard remains an
+  authenticated operational UI, and the ReactNode metadata widening affects only
+  already-rendered evidence metadata.
+- performance issues improved:
+  Clock updates are now isolated to the clock labels and now marker instead of
+  `DashboardCockpit` state. Static derived values are built in the ViewModel
+  hook, reducing render-body work and preparing the dashboard for Summary Rail
+  and additional lazy segments.
+- validation commands:
+  `pnpm exec vitest run 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx' --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint 'src/app/(dashboard)/dashboard/dashboard-cockpit.tsx' 'src/app/(dashboard)/dashboard/dashboard-clock.tsx' 'src/app/(dashboard)/dashboard/use-dashboard-cockpit-view-model.ts' 'src/components/features/workspace/action-rail.tsx' --max-warnings=0`;
+  `pnpm exec vitest run 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx' src/app/api/dashboard/cockpit/route.test.ts --reporter=dot --testTimeout=30000`;
+  `pnpm exec prettier --check 'src/app/(dashboard)/dashboard/dashboard-cockpit.tsx' 'src/app/(dashboard)/dashboard/dashboard-clock.tsx' 'src/app/(dashboard)/dashboard/use-dashboard-cockpit-view-model.ts' 'src/components/features/workspace/action-rail.tsx' Plans.md`;
+  `git diff --check -- 'src/app/(dashboard)/dashboard/dashboard-cockpit.tsx' 'src/app/(dashboard)/dashboard/dashboard-clock.tsx' 'src/app/(dashboard)/dashboard/use-dashboard-cockpit-view-model.ts' 'src/components/features/workspace/action-rail.tsx' Plans.md`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+- validation results:
+  Dashboard UI test green (1 file / 18 tests). Dashboard API/UI tests green
+  together (2 files / 41 tests). Targeted ESLint green. Targeted Prettier check
+  green. `git diff --check` green. Typecheck green.
+- remaining work:
+  `DASH-P0-001` still needs remaining urgent sources beyond audit/inbound:
+  medication stock, visit preparation, report, callback, billing, and task.
+  `DASH-P1-010` Summary Rail and `DASH-BFF-002/003` stock/report/billing
+  segments remain.
+- next action:
+  Continue with `DASH-P0-001` remaining urgent source integration, starting
+  with report/billing or medication-stock once the upstream BFF data is
+  available.
+
+## 2026-07-07 DASH-P0-001 task urgent + frontend plan quality
+
+- current task:
+  Extend Dashboard Unified Urgent Queue with an existing task/blocker source,
+  add the requested dashboard target UI spec to `Plans.md`, and strengthen the
+  frontend improvement tasks with Oracle-reviewed agent slice quality gates.
+- files inspected:
+  `src/server/services/dashboard-cockpit.ts`,
+  `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`,
+  `src/app/api/dashboard/cockpit/route.test.ts`,
+  `Plans.md`,
+  `docs/ui-ux-design-guidelines.md`,
+  `.agents/skills/oracle-consult/SKILL.md`,
+  `ops/refactor/STATE.md`.
+- files changed:
+  `src/server/services/dashboard-cockpit.ts`,
+  `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`,
+  `src/app/api/dashboard/cockpit/route.test.ts`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- implementation:
+  Added `buildBlockedReasonUrgentItem()` so existing workflow blocked reasons
+  become `DashboardUrgentItem` entries with `source='task'`, controlled labels,
+  relative action hrefs, and urgency derived from the existing blocker severity.
+  `buildCockpitDetails()` now includes these task-source urgent items and counts
+  them in `urgent_total_count` without adding an extra query because blocked
+  reasons were already built from the existing workflow exceptions.
+
+  `Plans.md` now includes the dashboard target UI gap specification and a
+  stronger `UI-REDESIGN-001` frontend quality contract. The frontend plan was
+  upgraded from screen-level vision into coding-agent-ready constraints:
+  Definition of Ready/Done, state matrix, PR slice template, Agent Slice
+  Contract, hard rules against mixing contract/layout/mutation/QA work,
+  per-slice required contracts, agent-ready frontend backlog, required screen
+  fixtures, and verification gates.
+
+- Oracle consult:
+  Used the local `oracle-consult` skill and included GitHub context per the
+  project rule. First run failed because two large attachments timed out during
+  browser upload. The second run bundled `Plans.md` only and completed under
+  session `phos-frontend-plan-review-small`. Oracle reported GitHub access
+  succeeded for `https://github.com/yusuketakuma/careviax`, noted that attached
+  `Plans.md` was newer than GitHub, and judged the existing frontend rubric as
+  product-direction GO but coding-agent NO-GO until an Agent Slice Contract was
+  added. The accepted advice was to add Contract/Layout/Interaction/State-QA
+  slice types, per-slice data/PHI/state/mobile/perf/verification fields,
+  agent-ready slice backlog, screen fixtures, and explicit verification gates.
+- bugs found:
+  Focused dashboard UI tests caught that `urgent_total_count` in the test
+  fixture still expected 7 after adding a task urgent item; it was updated to 8.
+  The same test also assumed the text `患者` appeared once in the new task card,
+  but the card intentionally shows it both as reference label and badge; the
+  assertion now allows multiple matches.
+- security risks reduced:
+  The task urgent item uses existing scoped workflow exception data and does
+  not expose raw PHI beyond already-authorized dashboard blocker labels and
+  action links. The strengthened frontend plan now explicitly forbids raw text,
+  storage keys, signed URLs, provider raw errors, external URLs, and stack
+  traces in list/dashboard/timeline DTOs, while preserving the project
+  decision that permissioned clinical data can be shown inside authenticated
+  operational screens.
+- performance issues improved:
+  No new dashboard query was added. Task urgent items reuse already-materialized
+  blocked reasons. The plan quality update adds explicit payload budgets,
+  lazy-mount requirements, non-active tab hydration constraints, render
+  memoization, and interaction budgets to future frontend slices.
+- validation commands:
+  `pnpm exec prettier --write Plans.md 'src/server/services/dashboard-cockpit.ts' 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx' src/app/api/dashboard/cockpit/route.test.ts`;
+  `pnpm exec vitest run 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx' src/app/api/dashboard/cockpit/route.test.ts --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint 'src/server/services/dashboard-cockpit.ts' 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx' src/app/api/dashboard/cockpit/route.test.ts --max-warnings=0`;
+  `pnpm exec prettier --check Plans.md 'src/server/services/dashboard-cockpit.ts' 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx' src/app/api/dashboard/cockpit/route.test.ts`;
+  `git diff --check -- Plans.md 'src/server/services/dashboard-cockpit.ts' 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx' src/app/api/dashboard/cockpit/route.test.ts`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+- validation results:
+  Dashboard API/UI tests green together (2 files / 41 tests). Targeted ESLint
+  green. Targeted Prettier check green. `git diff --check` green. Full
+  typecheck green.
+- remaining work:
+  `DASH-P0-001` still needs medication_stock, visit_preparation, report,
+  callback, and billing sources after the relevant BFF data is available.
+  `UI-REDESIGN-001` remains a planning contract; no seven-screen UI
+  implementation was attempted in this slice.
+- next action:
+  Continue with one bounded frontend or dashboard slice. Preferred next
+  dashboard slice is `DASH-P0-001` report/billing or medication stock source
+  once source DTOs exist. Preferred UI planning slice is to select one
+  agent-ready frontend slice, starting with `UI-FOUND-001` or
+  `PAT-LIST-001A`, and implement it without mixing contract/layout/mutation/QA
+  categories.

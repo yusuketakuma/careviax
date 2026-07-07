@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
 
 export default function CommunicationsPage() {
-  redirect('/communications/requests');
+  redirect('/communications/inbound');
 }

@@ -80,6 +80,80 @@ export type CockpitCommentItem = {
   href: string;
 };
 
+export type CockpitInboundSignalItem = {
+  id: string;
+  signal_domain: string;
+  signal_type: string;
+  extracted_text: string | null;
+  extracted_medication_name: string | null;
+  extracted_quantity: number | null;
+  extracted_unit: string | null;
+  review_status: string;
+  action_status: string;
+  source_confidence: string;
+};
+
+export type CockpitInboundItem = {
+  id: string;
+  event_id: string;
+  channel: string;
+  channel_label: string;
+  event_type: string;
+  processing_status: string;
+  status: 'needs_review' | 'reviewed_pending_action' | 'task_created' | 'task_completed';
+  priority: 'urgent' | 'high' | 'normal';
+  patient_id: string | null;
+  patient_name: string | null;
+  sender_name: string | null;
+  sender_role: string | null;
+  sender_organization_name: string | null;
+  sender_contact: string | null;
+  title: string;
+  summary: string;
+  raw_text: string;
+  normalized_summary: string | null;
+  received_at: string;
+  occurred_at: string | null;
+  due_at: string | null;
+  attachment_count: number;
+  has_medication_stock_signal: boolean;
+  has_patient_safety_signal: boolean;
+  has_schedule_signal: boolean;
+  has_report_signal: boolean;
+  signals: CockpitInboundSignalItem[];
+  action_href: string;
+  action_label: string;
+};
+
+export type DashboardUrgentItem = {
+  id: string;
+  source:
+    | 'audit'
+    | 'inbound'
+    | 'medication_stock'
+    | 'visit_preparation'
+    | 'report'
+    | 'callback'
+    | 'billing'
+    | 'task';
+  source_id: string;
+  source_label: string;
+  reference_label: string | null;
+  severity: 'blocking' | 'urgent' | 'warning';
+  patient_id: string | null;
+  patient_name: string | null;
+  title: string;
+  summary: string;
+  due_at: string | null;
+  waiting_since: string | null;
+  badges: Array<{
+    label: string;
+    tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger';
+  }>;
+  action_href: string;
+  action_label: string;
+};
+
 export type DashboardCockpitScope = 'mine' | 'team';
 
 export type DashboardCockpitScopeMetadata = {
@@ -117,6 +191,10 @@ export type DashboardCockpitDetailsResponse = DashboardCockpitScopeMetadata & {
   audit_queue_hidden_count?: number;
   /** 監査待ちキュー(麻薬優先・緊急度順)。今すぐ対応カードの元データ */
   audit_queue: CockpitAuditQueueItem[];
+  urgent_items: DashboardUrgentItem[];
+  urgent_total_count: number;
+  urgent_visible_count: number;
+  urgent_hidden_count: number;
   today_visits: CockpitVisit[];
   blocked_reasons: CockpitBlockedReason[];
   /** 昨日以前に作成され、まだ完了していないタスク件数(根拠・記録「昨日からの持ち越し」) */
@@ -136,6 +214,18 @@ export type DashboardCockpitCommentsResponse = DashboardCockpitScopeMetadata & {
   comments_hidden_count: number;
 };
 
+export type DashboardCockpitInboundResponse = DashboardCockpitScopeMetadata & {
+  inbound_items: CockpitInboundItem[];
+  inbound_total_count: number;
+  inbound_visible_count: number;
+  inbound_hidden_count: number;
+  inbound_needs_review_count: number;
+  inbound_reviewed_pending_action_count: number;
+  inbound_urgent_count: number;
+  inbound_medication_stock_signal_count: number;
+  inbound_safety_signal_count: number;
+};
+
 export type DashboardCockpitResponse = DashboardCockpitScopeMetadata & {
   /** MedicationCycle.overall_status → 件数(cancelled を除く)。工程の今(9工程)の元データ */
   cycle_status_counts: Record<string, number>;
@@ -149,6 +239,10 @@ export type DashboardCockpitResponse = DashboardCockpitScopeMetadata & {
   narcotic_audit_count: number;
   /** 監査待ちキュー(麻薬優先・緊急度順)。今すぐ対応カードの元データ */
   audit_queue: CockpitAuditQueueItem[];
+  urgent_items?: DashboardUrgentItem[];
+  urgent_total_count?: number;
+  urgent_visible_count?: number;
+  urgent_hidden_count?: number;
   today_visits: CockpitVisit[];
   blocked_reasons: CockpitBlockedReason[];
   /** 昨日以前に作成され、まだ完了していないタスク件数(根拠・記録「昨日からの持ち越し」) */

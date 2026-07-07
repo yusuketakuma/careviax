@@ -1,9 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
-import { ja } from 'date-fns/locale';
 import { Lock, MessageSquare, TriangleAlert } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/loading';
@@ -11,50 +10,46 @@ import { SegmentError, SegmentStaleBanner } from '@/components/ui/segment-state'
 import { FilterChipBar } from '@/components/features/workspace/filter-chip-bar';
 import {
   WorkspaceActionRail,
-  type BlockedReason,
   type EvidenceItem,
-  type NextActionPanelProps,
 } from '@/components/features/workspace/action-rail';
-import {
-  getHandlingTagBadgeClass,
-  getHandlingTagLabel,
-} from '@/components/features/workspace/safety-board';
 import { readApiJson } from '@/lib/api/client-json';
-import { formatPrescriptionCardNumber } from '@/lib/prescription/rx-number';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
-import { buildDailyOpsBlockedReasons } from '@/lib/workspace/daily-ops-rail';
 import { cn } from '@/lib/utils';
 import type {
-  CockpitAuditQueueItem,
   CockpitCommentItem,
+  CockpitInboundItem,
   CockpitTeamMember,
   CockpitVisit,
   DashboardCockpitCommentsResponse,
   DashboardCockpitScope,
   DashboardCockpitDetailsResponse,
+  DashboardCockpitInboundResponse,
   DashboardCockpitResponse,
   DashboardCockpitSummaryResponse,
   DashboardCockpitTeamResponse,
+  DashboardUrgentItem,
 } from '@/types/dashboard-cockpit';
 import type { DashboardFocusRole } from './dashboard-role-focus';
 import {
   buildBottleneckNote,
-  buildTeamHandoffSuggestion,
   buildConditionSummary,
   COCKPIT_FRESHNESS_WINDOW_MS,
-  formatCockpitGeneratedAtMeta,
-  buildProcessNowTiles,
   buildTimelineBlocks,
-  formatAgeLabel,
-  formatDeadlineCountdown,
-  formatTimeOfDay,
   TIMELINE_END_MINUTES,
   TIMELINE_START_MINUTES,
   timelinePercent,
   type ProcessNowTile,
 } from './dashboard-cockpit.helpers';
+import {
+  DashboardGeneratedAtMeta,
+  DashboardHeaderClock,
+  DashboardNowMarker,
+  DeadlineCountdownLabel,
+  WaitingSinceLabel,
+} from './dashboard-clock';
+import { useDashboardCockpitViewModel } from './use-dashboard-cockpit-view-model';
 
 /**
  * new_01_dashboard の運用コックピット(docs/design-gap-analysis-new.md)。
@@ -83,7 +78,7 @@ export async function fetchDashboardCockpit(
 async function fetchDashboardCockpitSegment<TData>(
   orgId: string,
   scope: DashboardCockpitScope,
-  segment: 'summary' | 'details' | 'team' | 'comments',
+  segment: 'summary' | 'details' | 'team' | 'comments' | 'inbound',
   errorMessage: string,
 ): Promise<TData> {
   const params = new URLSearchParams({ scope });
@@ -130,6 +125,13 @@ export function fetchDashboardCockpitComments(
   scope: DashboardCockpitScope = 'mine',
 ): Promise<DashboardCockpitCommentsResponse> {
   return fetchDashboardCockpitSegment(orgId, scope, 'comments', 'チームの会話の取得に失敗しました');
+}
+
+export function fetchDashboardCockpitInbound(
+  orgId: string,
+  scope: DashboardCockpitScope = 'mine',
+): Promise<DashboardCockpitInboundResponse> {
+  return fetchDashboardCockpitSegment(orgId, scope, 'inbound', '他職種受信の取得に失敗しました');
 }
 
 type DashboardViewScope = 'mine' | 'team';
@@ -187,9 +189,43 @@ const DASHBOARD_COCKPIT_WORKFLOW_SOURCES = [
   'visit_schedules_update',
 ] as const;
 
-const DASHBOARD_COCKPIT_REALTIME_EVENTS = [
+const DASHBOARD_SUMMARY_REALTIME_EVENTS = [
   'cycle_transition',
   { type: 'workflow_refresh', source: DASHBOARD_COCKPIT_WORKFLOW_SOURCES },
+] as const;
+
+const DASHBOARD_INBOUND_REALTIME_EVENTS = [
+  {
+    type: 'workflow_refresh',
+    source: ['inbound_communications_update', 'inbound_signal_update'],
+  },
+] as const;
+
+const DASHBOARD_DETAILS_REALTIME_EVENTS = [
+  ...DASHBOARD_SUMMARY_REALTIME_EVENTS,
+  ...DASHBOARD_INBOUND_REALTIME_EVENTS,
+] as const;
+
+const DASHBOARD_TEAM_WORKFLOW_SOURCES = [
+  'facility_visit_batch_delete',
+  'facility_visit_batch_reorder',
+  'facility_visit_batches_upsert',
+  'facility_visit_days_upsert',
+  'pharmacist_shifts_update',
+  'visit_routes_mixed_reorder',
+  'visit_schedule_conflict_reconfirmation',
+  'visit_schedules_create',
+  'visit_schedules_delete',
+  'visit_schedules_generate',
+  'visit_schedules_reopen',
+  'visit_schedules_reorder',
+  'visit_schedules_reschedule_approve',
+  'visit_schedules_reschedule_request',
+  'visit_schedules_update',
+] as const;
+
+const DASHBOARD_TEAM_REALTIME_EVENTS = [
+  { type: 'workflow_refresh', source: DASHBOARD_TEAM_WORKFLOW_SOURCES },
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -244,33 +280,21 @@ function ConditionBanner({ data }: { data: DashboardCockpitSummaryResponse }) {
 // 今すぐ対応
 // ---------------------------------------------------------------------------
 
-function UrgentNowCard({
-  item,
-  isPrimary,
-  now,
-}: {
-  item: CockpitAuditQueueItem;
-  isPrimary: boolean;
-  now: Date;
-}) {
-  const accentClass = item.has_narcotic
-    ? 'bg-tag-hazard'
-    : item.priority === 'emergency' || item.priority === 'urgent'
-      ? 'bg-state-confirm'
-      : 'bg-tag-info';
-  const typePill = item.has_narcotic
-    ? { label: '麻薬監査', className: 'bg-tag-hazard/10 text-tag-hazard' }
-    : { label: '調剤監査', className: 'bg-tag-info/10 text-tag-info' };
-  const rxNumber = formatPrescriptionCardNumber(
-    item.intake_id ?? item.cycle_id,
-    item.prescribed_date,
-    'rx_year',
-  );
-  const countdown = item.due_at ? formatDeadlineCountdown(item.due_at, now) : null;
-  const waitingMinutes = item.waiting_since
-    ? Math.max(0, Math.floor((now.getTime() - new Date(item.waiting_since).getTime()) / 60_000))
-    : null;
-
+function UrgentNowCard({ item, isPrimary }: { item: DashboardUrgentItem; isPrimary: boolean }) {
+  const accentClass =
+    item.severity === 'blocking'
+      ? 'bg-tag-hazard'
+      : item.severity === 'urgent'
+        ? 'bg-state-confirm'
+        : 'bg-tag-info';
+  const typePill =
+    item.source === 'audit'
+      ? item.source_label === '麻薬監査'
+        ? { label: item.source_label, className: 'bg-tag-hazard/10 text-tag-hazard' }
+        : { label: item.source_label, className: 'bg-tag-info/10 text-tag-info' }
+      : item.source === 'inbound'
+        ? { label: item.source_label, className: 'bg-primary/10 text-primary' }
+        : { label: item.source_label, className: 'bg-muted text-muted-foreground' };
   return (
     <article
       className="relative flex flex-col gap-2 overflow-hidden rounded-lg border border-border/70 bg-card p-4 pl-5"
@@ -278,7 +302,7 @@ function UrgentNowCard({
     >
       <span aria-hidden="true" className={cn('absolute inset-y-0 left-0 w-1', accentClass)} />
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs text-muted-foreground">{rxNumber}</span>
+        <span className="text-xs text-muted-foreground">{item.reference_label}</span>
         <span
           className={cn(
             'inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-semibold',
@@ -288,18 +312,28 @@ function UrgentNowCard({
           {typePill.label}
         </span>
       </div>
-      <p className="text-sm font-bold text-foreground">{item.patient_name} 様</p>
+      <p className="text-sm font-bold text-foreground">
+        {item.patient_name ? `${item.patient_name} 様` : item.title}
+      </p>
       <div className="flex flex-wrap gap-1">
-        {item.handling_tags.length > 0 ? (
-          item.handling_tags.map((tag) => (
+        {item.badges.length > 0 ? (
+          item.badges.map((badge) => (
             <span
-              key={tag}
+              key={`${item.id}:${badge.label}`}
               className={cn(
                 'inline-flex items-center rounded-full border px-2 py-0.5 text-xs',
-                getHandlingTagBadgeClass(tag),
+                badge.tone === 'danger'
+                  ? 'border-tag-hazard/30 bg-tag-hazard/10 text-tag-hazard'
+                  : badge.tone === 'warning'
+                    ? 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm'
+                    : badge.tone === 'success'
+                      ? 'border-chart-2/30 bg-chart-2/10 text-chart-2'
+                      : badge.tone === 'info'
+                        ? 'border-tag-info/30 bg-tag-info/10 text-tag-info'
+                        : 'border-border bg-muted text-muted-foreground',
               )}
             >
-              {getHandlingTagLabel(tag)}
+              {badge.label}
             </span>
           ))
         ) : (
@@ -308,32 +342,26 @@ function UrgentNowCard({
           </span>
         )}
       </div>
-      <p className="text-sm leading-5 text-muted-foreground">
-        {item.has_narcotic
-          ? '麻薬を含む監査待ちです。完了しないと訪問の持参準備が始まりません。'
-          : '調剤済みの監査待ちです。完了でセット・訪問準備に進めます。'}
-      </p>
-      {countdown ? (
-        <p className="text-sm font-bold text-destructive">
-          期限 {formatTimeOfDay(item.due_at as string)} — {countdown.label}
-        </p>
-      ) : waitingMinutes != null ? (
-        <p className="text-sm font-semibold text-state-confirm">
-          {formatAgeLabel(waitingMinutes)}前から監査待ちです
-        </p>
+      <p className="text-sm leading-5 text-muted-foreground">{item.summary}</p>
+      {item.due_at ? (
+        <DeadlineCountdownLabel dueAt={item.due_at} />
+      ) : item.waiting_since ? (
+        <WaitingSinceLabel waitingSince={item.waiting_since} />
       ) : null}
       <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
         {isPrimary ? (
           <Button asChild>
-            <Link href="/audit">監査を開始する</Link>
+            <Link href={item.action_href}>{item.action_label}</Link>
           </Button>
         ) : (
           <Button asChild variant="outline">
-            <Link href="/audit">監査を開く</Link>
+            <Link href={item.action_href}>
+              {item.source === 'audit' ? '監査を開く' : item.action_label}
+            </Link>
           </Button>
         )}
-        <Link href="/audit" className="text-sm font-medium text-primary hover:underline">
-          → 監査へ
+        <Link href={item.action_href} className="text-sm font-medium text-primary hover:underline">
+          → 詳細へ
         </Link>
       </div>
     </article>
@@ -343,11 +371,9 @@ function UrgentNowCard({
 function UrgentNowSection({
   items,
   totalCount,
-  now,
 }: {
-  items: CockpitAuditQueueItem[];
+  items: DashboardUrgentItem[];
   totalCount: number;
-  now: Date;
 }) {
   const cards = items.slice(0, 3);
   const shownCountLabel =
@@ -373,12 +399,12 @@ function UrgentNowSection({
       ) : null}
       {cards.length === 0 ? (
         <p className="mt-3 rounded-lg border border-border/70 bg-card px-4 py-6 text-sm text-muted-foreground">
-          いま期限・待ち解除で対応が必要な処方サイクルはありません。
+          いま期限・待ち解除で対応が必要な業務はありません。
         </p>
       ) : (
         <div className="mt-3 grid gap-3 lg:grid-cols-3">
           {cards.map((item, index) => (
-            <UrgentNowCard key={item.task_id} item={item} isPrimary={index === 0} now={now} />
+            <UrgentNowCard key={item.id} item={item} isPrimary={index === 0} />
           ))}
         </div>
       )}
@@ -401,17 +427,13 @@ function TodayFlowSection({
   auditCount,
   narcoticAuditCount,
   reportCount,
-  now,
 }: {
   visits: CockpitVisit[];
   auditCount: number;
   narcoticAuditCount: number;
   reportCount: number;
-  now: Date;
 }) {
   const blocks = buildTimelineBlocks({ visits, auditCount, narcoticAuditCount, reportCount });
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  const showNowMarker = nowMinutes >= TIMELINE_START_MINUTES && nowMinutes <= TIMELINE_END_MINUTES;
   const hourLabels: string[] = [];
   for (let minutes = TIMELINE_START_MINUTES; minutes <= TIMELINE_END_MINUTES; minutes += 60) {
     hourLabels.push(`${Math.floor(minutes / 60)}:00`);
@@ -469,22 +491,8 @@ function TodayFlowSection({
               );
             })}
           </ol>
-          {showNowMarker ? (
-            <span
-              aria-hidden="true"
-              className="absolute inset-y-0 w-0.5 -translate-x-1/2 bg-tag-info"
-              style={{ left: `${timelinePercent(nowMinutes)}%` }}
-            />
-          ) : null}
+          <DashboardNowMarker />
         </div>
-        {showNowMarker ? (
-          <p
-            className="mt-1 text-xs font-semibold text-tag-info"
-            style={{ paddingLeft: `${Math.min(timelinePercent(nowMinutes), 88)}%` }}
-          >
-            いま {formatTimeOfDay(now.toISOString())}
-          </p>
-        ) : null}
       </div>
     </section>
   );
@@ -506,8 +514,7 @@ const PROCESS_TILE_TONE_CLASSES: Record<ProcessNowTile['tone'], { tile: string; 
   normal: { tile: 'border-border/70 bg-background', count: 'text-foreground' },
 };
 
-function ProcessNowSection({ statusCounts }: { statusCounts: Record<string, number> }) {
-  const tiles = buildProcessNowTiles(statusCounts);
+function ProcessNowSection({ tiles }: { tiles: ProcessNowTile[] }) {
   const bottleneckNote = buildBottleneckNote(tiles);
 
   return (
@@ -925,36 +932,196 @@ function TeamConversationPanel({
   );
 }
 
-// ---------------------------------------------------------------------------
-// 右レール(次にやること / 止まっている理由 / 根拠・記録)
-// ---------------------------------------------------------------------------
+function inboundPriorityBadge(item: CockpitInboundItem) {
+  if (item.priority === 'urgent') {
+    return { label: '安全確認', className: 'bg-destructive/10 text-destructive' };
+  }
+  if (item.has_medication_stock_signal) {
+    return { label: '残数・薬剤', className: 'bg-state-confirm/10 text-state-confirm' };
+  }
+  return { label: '受信', className: 'bg-tag-info/10 text-tag-info' };
+}
 
-function buildNextAction(
-  topAudit: CockpitAuditQueueItem | null,
-  visitCount: number,
-): NextActionPanelProps {
-  if (topAudit) {
-    const auditLabel = topAudit.has_narcotic ? '麻薬監査' : '監査';
-    return {
-      actionLabel: topAudit.due_at
-        ? `${auditLabel}を開始 — ${formatTimeOfDay(topAudit.due_at)}期限`
-        : `${auditLabel}を開始する`,
-      description: `${topAudit.patient_name} 様の調剤監査が待ちです。完了で次の工程が動き出します。`,
-      actionHref: '/audit',
-    };
+function inboundStatusLabel(status: CockpitInboundItem['status']) {
+  switch (status) {
+    case 'needs_review':
+      return '確認待ち';
+    case 'reviewed_pending_action':
+      return '反映待ち';
+    case 'task_created':
+      return 'タスク化済み';
+    case 'task_completed':
+      return '処理済み';
+    default:
+      return status;
   }
-  if (visitCount > 0) {
-    return {
-      actionLabel: '訪問準備を確認する',
-      description: `本日の訪問 ${visitCount}件の準備状況を確認します。`,
-      actionHref: '/schedules',
-    };
+}
+
+function InboundFeedPanel({
+  items,
+  hiddenCount,
+  needsReviewCount,
+  isLoading,
+  isError,
+  error,
+  onRetry,
+}: {
+  items: CockpitInboundItem[];
+  hiddenCount: number;
+  needsReviewCount: number;
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+  onRetry: () => void;
+}) {
+  if (isLoading) {
+    return (
+      <section
+        aria-label="他職種受信を読み込み中"
+        className="rounded-lg border border-border/70 bg-card p-4"
+        role="status"
+        data-testid="dashboard-inbound-loading"
+      >
+        <div className="flex items-center gap-2">
+          <MessageSquare className="size-4 text-muted-foreground" aria-hidden="true" />
+          <h3 className="text-sm font-semibold text-foreground">他職種受信</h3>
+        </div>
+        <div className="mt-3 space-y-2">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <Skeleton key={index} className="h-20 w-full rounded-md" />
+          ))}
+        </div>
+      </section>
+    );
   }
-  return {
-    actionLabel: '今日の予定を確認する',
-    description: 'いま期限で止まっている作業はありません。',
-    actionHref: '/schedules',
-  };
+
+  if (isError) {
+    return (
+      <section
+        className="rounded-lg border border-border/70 bg-card p-4"
+        data-testid="dashboard-inbound-error"
+      >
+        <SegmentError
+          title="他職種受信を表示できません"
+          cause="MCS・電話・FAX・メールの受信情報だけ取得に失敗しました。"
+          nextAction="監査・訪問・工程状況は表示したまま、受信情報だけ再試行できます。"
+          detail={error instanceof Error ? error.message : undefined}
+          onRetry={onRetry}
+          retryLabel="再試行"
+          metadata={{ route: '/api/dashboard/cockpit/inbound' }}
+        />
+      </section>
+    );
+  }
+
+  return (
+    <section
+      aria-labelledby="dashboard-inbound-heading"
+      className="space-y-3 rounded-lg border border-border/70 bg-card p-4"
+      data-testid="dashboard-inbound-panel"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <MessageSquare className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <div className="min-w-0">
+            <h3 id="dashboard-inbound-heading" className="text-sm font-semibold text-foreground">
+              他職種受信
+            </h3>
+            <p className="text-xs leading-5 text-muted-foreground">
+              MCS・電話・FAX・メールから薬局業務へ変換します
+            </p>
+          </div>
+        </div>
+        <Link
+          href="/communications/inbound"
+          className="shrink-0 text-xs font-medium text-primary hover:underline"
+        >
+          すべて見る
+        </Link>
+      </div>
+      {needsReviewCount > 0 ? (
+        <p className="rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-xs font-semibold text-state-confirm">
+          確認待ち {needsReviewCount}件
+        </p>
+      ) : null}
+      {items.length === 0 ? (
+        <p className="rounded-md border border-border/70 bg-muted/30 px-3 py-4 text-sm leading-6 text-muted-foreground">
+          未処理の他職種受信はありません。
+        </p>
+      ) : (
+        <ul className="space-y-2" role="list">
+          {items.map((item) => {
+            const badge = inboundPriorityBadge(item);
+            const signalSummary = item.signals
+              .map((signal) =>
+                signal.extracted_medication_name
+                  ? `${signal.extracted_medication_name}${
+                      signal.extracted_quantity != null && signal.extracted_unit
+                        ? ` ${signal.extracted_quantity}${signal.extracted_unit}`
+                        : ''
+                    }`
+                  : signal.extracted_text,
+              )
+              .filter((value): value is string => Boolean(value))
+              .slice(0, 2)
+              .join(' / ');
+            return (
+              <li key={item.id} className="rounded-md border border-border/70 bg-background p-3">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-[11px] font-semibold text-muted-foreground">
+                    {item.channel_label}
+                  </span>
+                  <span
+                    className={cn(
+                      'inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold',
+                      badge.className,
+                    )}
+                  >
+                    {badge.label}
+                  </span>
+                  <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                    {inboundStatusLabel(item.status)}
+                  </span>
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {formatCommentTimestamp(item.received_at)}
+                  </span>
+                </div>
+                <p className="mt-2 text-sm font-semibold leading-5 text-foreground">
+                  {item.patient_name ? `${item.patient_name} 様` : '患者未紐づけ'}
+                </p>
+                <p className="mt-1 line-clamp-2 text-sm leading-5 text-foreground">
+                  {item.raw_text}
+                </p>
+                {signalSummary ? (
+                  <p className="mt-1 text-xs font-medium leading-5 text-state-confirm">
+                    {signalSummary}
+                  </p>
+                ) : null}
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <span className="min-w-0 truncate text-xs text-muted-foreground">
+                    {[item.sender_role, item.sender_name, item.sender_organization_name]
+                      .filter(Boolean)
+                      .join(' / ')}
+                  </span>
+                  <Link
+                    href={item.action_href}
+                    className="shrink-0 text-xs font-medium text-primary hover:underline"
+                  >
+                    {item.action_label}
+                  </Link>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {hiddenCount > 0 ? (
+        <p className="text-xs leading-5 text-muted-foreground">
+          他{hiddenCount}件は受信インボックスで確認できます。
+        </p>
+      ) : null}
+    </section>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -993,7 +1160,7 @@ export function DashboardCockpit({ focusRole = 'common' }: { focusRole?: Dashboa
     queryFn: () => fetchDashboardCockpitSummary(orgId, viewScope),
     staleTime: COCKPIT_FRESHNESS_WINDOW_MS,
     enabled: !isBootstrappingOrg,
-    invalidateOn: DASHBOARD_COCKPIT_REALTIME_EVENTS,
+    invalidateOn: DASHBOARD_SUMMARY_REALTIME_EVENTS,
   });
   const summary = summaryQuery.data ?? null;
   const segmentQueriesEnabled = !isBootstrappingOrg && summary != null;
@@ -1002,14 +1169,14 @@ export function DashboardCockpit({ focusRole = 'common' }: { focusRole?: Dashboa
     queryFn: () => fetchDashboardCockpitDetails(orgId, viewScope),
     staleTime: COCKPIT_FRESHNESS_WINDOW_MS,
     enabled: segmentQueriesEnabled,
-    invalidateOn: DASHBOARD_COCKPIT_REALTIME_EVENTS,
+    invalidateOn: DASHBOARD_DETAILS_REALTIME_EVENTS,
   });
   const teamQuery = useRealtimeQuery({
     queryKey: ['dashboard', 'cockpit', 'team', orgId, viewScope],
     queryFn: () => fetchDashboardCockpitTeam(orgId, viewScope),
     staleTime: COCKPIT_FRESHNESS_WINDOW_MS,
     enabled: segmentQueriesEnabled,
-    invalidateOn: DASHBOARD_COCKPIT_REALTIME_EVENTS,
+    invalidateOn: DASHBOARD_TEAM_REALTIME_EVENTS,
   });
   const commentsQuery = useRealtimeQuery({
     queryKey: ['dashboard', 'cockpit', 'comments', orgId, viewScope],
@@ -1018,49 +1185,41 @@ export function DashboardCockpit({ focusRole = 'common' }: { focusRole?: Dashboa
     enabled: segmentQueriesEnabled,
     invalidateOn: ['comment_refresh'],
   });
+  const inboundQuery = useRealtimeQuery({
+    queryKey: ['dashboard', 'cockpit', 'inbound', orgId, viewScope],
+    queryFn: () => fetchDashboardCockpitInbound(orgId, viewScope),
+    staleTime: COCKPIT_FRESHNESS_WINDOW_MS,
+    enabled: segmentQueriesEnabled,
+    invalidateOn: DASHBOARD_INBOUND_REALTIME_EVENTS,
+  });
 
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(new Date()), COCKPIT_FRESHNESS_WINDOW_MS);
-    return () => window.clearInterval(timer);
-  }, []);
   const details = detailsQuery.data ?? null;
   const team = teamQuery.data ?? null;
   const comments = commentsQuery.data ?? null;
+  const inbound = inboundQuery.data ?? null;
+  const viewModel = useDashboardCockpitViewModel({
+    summary,
+    details,
+    team,
+    comments,
+    inbound,
+    requestedScope: viewScope,
+  });
   const hasStaleRefetchError =
     (summary != null && (summaryQuery.isRefetchError || summaryQuery.isError)) ||
     (details != null && (detailsQuery.isRefetchError || detailsQuery.isError)) ||
     (team != null && (teamQuery.isRefetchError || teamQuery.isError)) ||
-    (comments != null && (commentsQuery.isRefetchError || commentsQuery.isError));
-  const appliedScope = summary?.scope?.applied ?? viewScope;
-  const canViewTeam = summary?.scope?.can_view_team ?? true;
-  const scopeLabel =
-    VIEW_SCOPE_OPTIONS.find((option) => option.value === appliedScope)?.label ?? '私の今日';
-  const dateLabel = `${format(now, 'M/d(EEE) HH:mm', { locale: ja })} — ${scopeLabel}`;
-
-  const todayVisits = details?.today_visits ?? [];
-  const topAudit = details?.audit_queue[0] ?? null;
-  const blockedReasons: BlockedReason[] = buildDailyOpsBlockedReasons(details);
-  const evidence: EvidenceItem[] = [
-    {
-      id: 'sync',
-      label: '今朝の同期',
-      meta: summary ? formatCockpitGeneratedAtMeta(summary.generated_at, now) : '—',
-      onView: () => void summaryQuery.refetch(),
-    },
-    {
-      id: 'carryover',
-      label: '昨日からの持ち越し',
-      meta: `${details?.carryover_count ?? 0}件`,
-      href: '/workflow',
-    },
-    {
-      id: 'wip-guide',
-      label: 'WIP目安の設定',
-      meta: '標準値',
-      href: '#dashboard-process-now',
-    },
-  ];
+    (comments != null && (commentsQuery.isRefetchError || commentsQuery.isError)) ||
+    (inbound != null && (inboundQuery.isRefetchError || inboundQuery.isError));
+  const evidence: EvidenceItem[] = viewModel.evidence.map((item) =>
+    item.id === 'sync'
+      ? {
+          ...item,
+          meta: summary ? <DashboardGeneratedAtMeta generatedAt={summary.generated_at} /> : '—',
+          onView: () => void summaryQuery.refetch(),
+        }
+      : item,
+  );
   const detailsReady = details != null;
   const detailsInitialError = !detailsReady && detailsQuery.isError;
   const detailsInitialLoading =
@@ -1073,16 +1232,17 @@ export function DashboardCockpit({ focusRole = 'common' }: { focusRole?: Dashboa
   const commentsInitialError = !commentsReady && commentsQuery.isError;
   const commentsInitialLoading =
     !commentsReady && (commentsQuery.isLoading || summary != null) && !commentsInitialError;
+  const inboundReady = inbound != null;
+  const inboundInitialError = !inboundReady && inboundQuery.isError;
+  const inboundInitialLoading =
+    !inboundReady && (inboundQuery.isLoading || summary != null) && !inboundInitialError;
 
   return (
     <section aria-label="運用コックピット" data-testid="dashboard-cockpit">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="text-xl font-bold text-foreground">ダッシュボード</h1>
-          {/* HH:mm を含むため、SSR とハイドレーションが分を跨ぐと text mismatch になる */}
-          <p className="text-sm text-muted-foreground" suppressHydrationWarning>
-            {dateLabel}
-          </p>
+          <DashboardHeaderClock scopeLabel={viewModel.scopeLabel} />
           <p className="text-xs font-medium text-muted-foreground">{FOCUS_ROLE_HINT[focusRole]}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -1097,7 +1257,7 @@ export function DashboardCockpit({ focusRole = 'common' }: { focusRole?: Dashboa
           </Link>
           <FilterChipBar
             options={VIEW_SCOPE_OPTIONS.map((option) =>
-              option.value === 'team' && !canViewTeam
+              option.value === 'team' && !viewModel.canViewTeam
                 ? {
                     ...option,
                     disabled: true,
@@ -1105,7 +1265,7 @@ export function DashboardCockpit({ focusRole = 'common' }: { focusRole?: Dashboa
                   }
                 : option,
             )}
-            value={appliedScope}
+            value={viewModel.appliedScope}
             onChange={setViewScope}
             ariaLabel="表示範囲の切替"
           />
@@ -1145,6 +1305,7 @@ export function DashboardCockpit({ focusRole = 'common' }: { focusRole?: Dashboa
                   void detailsQuery.refetch();
                   void teamQuery.refetch();
                   void commentsQuery.refetch();
+                  void inboundQuery.refetch();
                 }}
               />
             ) : null}
@@ -1153,16 +1314,14 @@ export function DashboardCockpit({ focusRole = 'common' }: { focusRole?: Dashboa
               {detailsReady ? (
                 <>
                   <UrgentNowSection
-                    items={details.audit_queue}
-                    totalCount={summary.audit_pending_count}
-                    now={now}
+                    items={viewModel.urgentItems}
+                    totalCount={viewModel.urgentTotalCount}
                   />
                   <TodayFlowSection
-                    visits={todayVisits}
+                    visits={viewModel.todayVisits}
                     auditCount={summary.audit_pending_count}
                     narcoticAuditCount={summary.narcotic_audit_count}
                     reportCount={summary.cycle_status_counts['visit_completed'] ?? 0}
-                    now={now}
                   />
                 </>
               ) : detailsInitialError ? (
@@ -1177,14 +1336,11 @@ export function DashboardCockpit({ focusRole = 'common' }: { focusRole?: Dashboa
                 />
               ) : null}
               <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]">
-                <ProcessNowSection statusCounts={summary.cycle_status_counts} />
+                <ProcessNowSection tiles={viewModel.processTiles} />
                 {teamReady ? (
                   <TeamCapacityCard
                     team={team.team_capacity ?? []}
-                    suggestion={buildTeamHandoffSuggestion(
-                      buildProcessNowTiles(summary.cycle_status_counts),
-                      team.team_capacity ?? [],
-                    )}
+                    suggestion={viewModel.teamHandoffSuggestion}
                   />
                 ) : teamInitialError ? (
                   <TeamCapacityError
@@ -1202,15 +1358,24 @@ export function DashboardCockpit({ focusRole = 'common' }: { focusRole?: Dashboa
              */}
             {detailsReady ? (
               <WorkspaceActionRail
-                nextAction={buildNextAction(topAudit, todayVisits.length)}
-                blockedReasons={blockedReasons}
+                nextAction={viewModel.nextAction}
+                blockedReasons={viewModel.blockedReasons}
                 blockedReasonsEmptyLabel="止まっている作業はありません"
                 evidence={evidence}
                 evidenceOpenLabel="開く"
               >
+                <InboundFeedPanel
+                  items={inbound?.inbound_items ?? []}
+                  hiddenCount={viewModel.inboundHiddenCount}
+                  needsReviewCount={viewModel.inboundNeedsReviewCount}
+                  isLoading={inboundInitialLoading}
+                  isError={inboundInitialError}
+                  error={inboundQuery.error}
+                  onRetry={() => void inboundQuery.refetch()}
+                />
                 <TeamConversationPanel
                   comments={comments?.comments ?? []}
-                  hiddenCount={comments?.comments_hidden_count ?? 0}
+                  hiddenCount={viewModel.commentsHiddenCount}
                   isLoading={commentsInitialLoading}
                   isError={commentsInitialError}
                   error={commentsQuery.error}

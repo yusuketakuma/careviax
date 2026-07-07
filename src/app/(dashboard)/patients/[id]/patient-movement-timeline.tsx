@@ -547,7 +547,7 @@ function buildGroups(events: TimelineEvent[]) {
 
 function DaySummary({ events }: { events: TimelineEvent[] }) {
   const summary = summarizeDay(events);
-  const items: Array<[string, number]> = [
+  const items = [
     ['訪問', summary.visit],
     ['処方・調剤', summary.prescription],
     ['他職種受信', summary.interprofessional],
@@ -555,7 +555,7 @@ function DaySummary({ events }: { events: TimelineEvent[] }) {
     ['文書', summary.document],
     ['タスク', summary.task],
     ['安全', summary.safety],
-  ].filter(([, count]) => Number(count) > 0);
+  ].filter((item): item is [string, number] => Number(item[1]) > 0);
 
   return (
     <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">

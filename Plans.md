@@ -345,25 +345,26 @@ FE 仕上げ（低優先）:
 
 #### RISK-P0. 最優先実装バックログ `cc:TODO`
 
-| ID       | 領域           | タスク                                         | 主な対象                                                                                                 | 残タスク / 受入条件                                                                                                                                                                                                                             |
-| -------- | -------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| RX-001   | 薬剤変更       | Medication Change Review Gate                  | `medication-change-review`, `visit-preparation-readiness`, `today-preparation`                           | 追加/削除/増量/減量/用法/剤形変更を分類し、high-risk は薬剤師確認完了まで ready/contact/confirm 不可。確認者・日時・判断結果・理由を audit。                                                                                                    |
-| RX-002   | 残薬/頓服/外用 | Medication Stock Ledger / Stock Risk           | `modules/pharmacy/medication-stock`, `visit-records`, patient board                                      | 残: DB/API/UI、ledger正本化、VisitBrief/Schedule接続、正式 provider 統合。                                                                                                                                                                      |
-| DSP-001  | 調剤/監査      | Dispensing SLA Board                           | `dispense-tasks`, patient board, `dispense-tasks/sla-board`                                              | 調剤中、監査待ち、セット中、保留、緊急、期限超過を一覧化し、麻薬/冷所/一包化/訪問当日を上位表示。                                                                                                                                               |
-| BIL-001  | 請求           | Billing Close Work Queue                       | `billing-evidence/core.ts`, billing close board                                                          | `unreviewed` / `blocked` / `confirmed` / `excluded` / `exported` を患者/訪問/根拠単位で処理。除外/確認は理由と reviewer 必須。                                                                                                                  |
-| BIL-002  | 請求           | Billing blocker task bridge                    | `billing-evidence/core.ts`, `risk-task-bridge.ts`                                                        | 同意なし、計画なし、報告未送付、認定/公費/QR保険レビュー等を dedupe task 化し、再評価で解消。                                                                                                                                                   |
-| REC-001  | 訪問記録       | Visit Record Quality Gate                      | `visit-record-quality`, `visit-records`                                                                  | outcome 別に服薬状況、残薬、副作用、薬剤変更説明、次回方針、連携事項を検査。warning は acknowledgement、block は保存不可。                                                                                                                      |
-| REP-001  | 報告/共有      | Report Delivery Policy                         | `care-reports`, `care-report-output-policy`, `report-masking-profile`                                    | physician/care_manager/facility/nurse/family/internal 別に出力項目・権限・送付完了判定を分け、失敗は task 化。                                                                                                                                  |
-| INB-001  | 他職種受信     | Inbound Interprofessional Communication Module | `CommunicationEvent`, `PatientMcsMessage`, `PartnerVisitRecord`, `communication-queue`, medication-stock | 残: `InboundCommunicationEvent` / `InboundCommunicationSignal` DB正本、薬局全体 inbox、3カラム review UI、Task/Risk/VisitBrief/Report 変換。raw text は通知・監査・共有・timeline一覧・queue item・report workspace・case risk に直接出さない。 |
-| MOV-001  | 患者詳細/UI    | Patient Movement Timeline                      | `PatientMovementTimeline`, `patient-detail-timeline-*`, INB/MedicationStock sources                      | 残: 地図なし Google Maps Timeline 風の最終UX、standalone movement-timeline API、正式 INB / MedicationStock / safety source。処方・訪問・文書は詳細本文を payload に出さず正本 deep link のみ。                                                  |
-| SEC-001  | PII/監査       | PII Policy Matrix / endpoint audit             | `pii-policy.ts`, `pii-endpoint-audit.ts`, `permission-matrix.ts`                                         | field class と role/output profile を定義し、list API/audit/外部通知/PDF/CSV/添付の PHI 漏洩候補を検出。                                                                                                                                        |
-| SEC-002  | PII/監査       | AuditLog changes allowlist/minifier registry   | `audit-entry.ts`, audit redaction/export/admin APIs                                                      | action ごとに許可 `changes` field を宣言し、raw diagnostics / provider error / token / storage key は export/admin response で要約または drop。                                                                                                 |
-| EXP-001  | 出力           | Bulk export audit/job minimization             | `pdf-bulk-export.ts`, admin jobs API, export audit                                                       | AuditLog は patient_count、hash snapshot、job/file id、status のみ。job output/error/admin response に raw patient id array や per-patient raw error を出さない。                                                                               |
-| EXP-002  | 出力           | Export Surface Matrix                          | patients/prescriptions/billing/communication/audit/file/PDF exports                                      | permission、org/RLS/case assignment、no-store、CSV formula neutralization、非PHI filename、fail-closed audit、row limit/truncation を surface ごとに固定。                                                                                      |
-| NTF-001  | 通知           | Notification Delivery Health Board             | `notifications.ts`, notification health board, notification rules UI                                     | rule 未設定、送信先0、外部通知失敗、urgent 未達を一覧化し task 化できる。                                                                                                                                                                       |
-| ONB-001  | 同意/計画      | Renewal Board                                  | `management-plans.ts`, `operational-tasks.ts`, onboarding renewal board                                  | 同意期限・管理計画見直し期限が近い/超過した患者を抽出し、更新 task を生成/解決。                                                                                                                                                                |
-| PERM-001 | 権限           | Permission Coverage Test                       | `permission-matrix.ts`, route tests                                                                      | patient/report/billing/visit-record/audit/export/attachment の主要 API で role forbidden tests を追加。                                                                                                                                         |
-| QA-001   | 品質保証       | 横断リスク regression pack                     | vitest suites, API tests, targeted Playwright                                                            | 薬剤変更、残薬、患者基盤、請求 blocker、記録品質、報告送付、通知 redaction、task SLA、PII redaction を固定。                                                                                                                                    |
+| ID       | 領域           | タスク                                         | 主な対象                                                                                           | 残タスク / 受入条件                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| -------- | -------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| RX-001   | 薬剤変更       | Medication Change Review Gate                  | `medication-change-review`, `visit-preparation-readiness`, `today-preparation`                     | 追加/削除/増量/減量/用法/剤形変更を分類し、high-risk は薬剤師確認完了まで ready/contact/confirm 不可。確認者・日時・判断結果・理由を audit。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| RX-002   | 残薬/頓服/外用 | Medication Stock Ledger / Stock Risk           | `modules/pharmacy/medication-stock`, `visit-records`, patient board                                | 残: DB/API/UI、ledger正本化、VisitBrief/Schedule接続、正式 provider 統合。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| DSP-001  | 調剤/監査      | Dispensing SLA Board                           | `dispense-tasks`, patient board, `dispense-tasks/sla-board`                                        | 調剤中、監査待ち、セット中、保留、緊急、期限超過を一覧化し、麻薬/冷所/一包化/訪問当日を上位表示。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| BIL-001  | 請求           | Billing Close Work Queue                       | `billing-evidence/core.ts`, billing close board                                                    | `unreviewed` / `blocked` / `confirmed` / `excluded` / `exported` を患者/訪問/根拠単位で処理。除外/確認は理由と reviewer 必須。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| BIL-002  | 請求           | Billing blocker task bridge                    | `billing-evidence/core.ts`, `risk-task-bridge.ts`                                                  | 同意なし、計画なし、報告未送付、認定/公費/QR保険レビュー等を dedupe task 化し、再評価で解消。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| REC-001  | 訪問記録       | Visit Record Quality Gate                      | `visit-record-quality`, `visit-records`                                                            | outcome 別に服薬状況、残薬、副作用、薬剤変更説明、次回方針、連携事項を検査。warning は acknowledgement、block は保存不可。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| REP-001  | 報告/共有      | Report Delivery Policy                         | `care-reports`, `care-report-output-policy`, `report-masking-profile`                              | physician/care_manager/facility/nurse/family/internal 別に出力項目・権限・送付完了判定を分け、失敗は task 化。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| INB-001  | 他職種受信     | Inbound Interprofessional Communication Module | `InboundCommunicationEvent`, `InboundCommunicationSignal`, `communication-queue`, medication-stock | `/communications/inbound`、`GET /api/communications/inbound`、`POST /api/communications/inbound/{phone,mcs}`、`GET /api/communications/inbound/signals`、`POST /api/communications/inbound/signals/tasks` は正式 `InboundCommunicationEvent` source へ cutover 済み。正式DB正本: `InboundCommunicationEvent` / `InboundCommunicationSignal` / attachment / source mapping の Prisma schema、migration、RLS policy は追加済み。Signal materialize も追加済み。残: 3カラム review UI、accepted/record_only/rejected/linked lifecycle、MedicationStock/Task/Risk/VisitBrief/Report 変換。raw text は通知・監査・共有・timeline一覧・queue item・report workspace・case risk に直接出さない。                           |
+| MOV-001  | 患者詳細/UI    | Patient Movement Timeline                      | `PatientMovementTimeline`, `patient-detail-timeline-*`, INB/MedicationStock sources                | 残: 地図なし Google Maps Timeline 風の最終UX、standalone movement-timeline API、正式 INB / MedicationStock / safety source。処方・訪問・文書は詳細本文を payload に出さず正本 deep link のみ。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| DASH-OPS | ダッシュボード | Dashboard Operations Command Center            | `DashboardCockpit`, dashboard cockpit BFF, INB/RX/report/billing segments                          | 済: `DASH-P0-002` summary/details 重複取得削減、`DASH-P0-003` segment-specific invalidation、`DashboardUrgentItem` 初期導入、inbound segment 初期導入。残: `DASH-P0-001` の残 source 統合、`DASH-P0-004` Clock Island、`DASH-P0-005` ViewModel、Summary Rail、MedicationStock/Report/Billing segment、drilldown/quick action。監査中心の「今すぐ対応」を、他職種受信、残数不足、報告送付失敗、折返し期限、請求blockerまで含む運用司令塔に拡張する。ダッシュボードは認証済み業務画面なので、権限内の患者名・薬剤名・残数・MCS/電話本文・連絡先・添付導線など判断に必要な情報は表示してよい。制限は dashboard 固有の blanket redaction ではなく、role / assignment / scope / consent / purpose による権限制御で行う。 |
+| SEC-001  | PII/監査       | PII Policy Matrix / endpoint audit             | `pii-policy.ts`, `pii-endpoint-audit.ts`, `permission-matrix.ts`                                   | field class と role/output profile を定義し、list API/audit/外部通知/PDF/CSV/添付の PHI 漏洩候補を検出。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| SEC-002  | PII/監査       | AuditLog changes allowlist/minifier registry   | `audit-entry.ts`, audit redaction/export/admin APIs                                                | action ごとに許可 `changes` field を宣言し、raw diagnostics / provider error / token / storage key は export/admin response で要約または drop。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| EXP-001  | 出力           | Bulk export audit/job minimization             | `pdf-bulk-export.ts`, admin jobs API, export audit                                                 | AuditLog は patient_count、hash snapshot、job/file id、status のみ。job output/error/admin response に raw patient id array や per-patient raw error を出さない。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| EXP-002  | 出力           | Export Surface Matrix                          | patients/prescriptions/billing/communication/audit/file/PDF exports                                | permission、org/RLS/case assignment、no-store、CSV formula neutralization、非PHI filename、fail-closed audit、row limit/truncation を surface ごとに固定。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| NTF-001  | 通知           | Notification Delivery Health Board             | `notifications.ts`, notification health board, notification rules UI                               | rule 未設定、送信先0、外部通知失敗、urgent 未達を一覧化し task 化できる。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ONB-001  | 同意/計画      | Renewal Board                                  | `management-plans.ts`, `operational-tasks.ts`, onboarding renewal board                            | 同意期限・管理計画見直し期限が近い/超過した患者を抽出し、更新 task を生成/解決。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| PERM-001 | 権限           | Permission Coverage Test                       | `permission-matrix.ts`, route tests                                                                | patient/report/billing/visit-record/audit/export/attachment の主要 API で role forbidden tests を追加。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| QA-001   | 品質保証       | 横断リスク regression pack                     | vitest suites, API tests, targeted Playwright                                                      | 薬剤変更、残薬、患者基盤、請求 blocker、記録品質、報告送付、通知 redaction、task SLA、PII redaction を固定。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 #### RISK-P1/P2. 次フェーズ不足領域 `cc:TODO`
 
@@ -393,7 +394,11 @@ FE 仕上げ（低優先）:
 
 > 2026-07-06 追加。これは `INB-001` として、既存の薬局→他職種 outbound（報告書、外部共有、delivery record、tracing report）とは逆方向の **他職種→薬局 inbound** を正本化するタスク。Medication Stock Ledger はこの inbound signal の活用先の 1 つであり、主役ではない。現行コードでは `CommunicationEvent.direction` は `inbound/outbound` を表現でき、`PatientMcsMessage` は MCS 投稿本文/投稿者/職種/所属/source URL/raw payload を持ち、`PartnerVisitRecord.record_content` は協力薬局や共有ケース由来の訪問記録を保持できる。`communication-queue.ts` は self report、架電 follow-up、communication request、delivery backlog、external share、care/tracing report timeline を統合する reader を持つため、UI 表示は既存 queue に接続しつつ、受信情報の正本は新しい `InboundCommunicationEvent` / `InboundCommunicationSignal` に分離する。
 >
-> 残: `InboundCommunicationEvent` / `InboundCommunicationSignal` のDB正本、登録API、review UI、正式 signal queue、正式 MedicationStock/Risk/Task/VisitBrief/Schedule/Report 連動。raw text は通知・監査・共有・timeline一覧・queue item・report workspace・case risk に直接出さない。
+> 2026-07-07 実装メモ: `/communications/inbound`、`GET /api/communications/inbound`、`POST /api/communications/inbound/phone`、`POST /api/communications/inbound/mcs`、`GET /api/communications/inbound/signals`、`POST /api/communications/inbound/signals/tasks` は正式 `InboundCommunicationEvent` source へ cutover 済み。`communication-queue.ts` は summary-only `inbound_communication` item だけを薬局全体 inbox に出し、raw text / 相手連絡先 / 添付名 / storage key / signed URL は list API と UI に出さない。電話/MCS登録レスポンスには本文・送信者・連絡先・subject を返さない。signal candidate API は `InboundCommunicationEvent.raw_text` をサーバー側分類器の入力としてのみ読み、route-level allowlist DTO に `domain/type/has_quantity/unit/quantity_effect/evidence_code` などの controlled fields だけを返す。取得失敗と空状態は分離済み。`/communications` は inbound inbox へ redirect する。
+>
+> 2026-07-07 実装メモ: 正式DB正本として `InboundCommunicationEvent`、`InboundCommunicationSignal`、`InboundCommunicationAttachment`、`InboundSourceMapping` の Prisma schema / migration / RLS policy を追加済み。`org_id` は非nullable、RLS は ENABLE + FORCE、tenant policy は `public.app_enforced_org_id()` を使う。`raw_text` は Event に閉じ、Signal は業務変換用の構造化情報として分離する。登録API、inbox queue、signal candidate、task bridge は正式 `InboundCommunicationEvent` へ cutover 済み。`GET /api/communications/inbound/signals` は候補を `InboundCommunicationSignal` に idempotent materialize し、以後の task/review action は `inbound_signal:<id>` を優先する。
+>
+> 残: `linked_to_stock_event`、MedicationStock 実反映、正式 review detail shell、raw_text 再認可 UI、FAX/メール/手入力 source、MedicationStock/Risk/VisitBrief/Schedule/Report 連動。raw text は通知・監査・共有・timeline一覧・queue item・report workspace・case risk に直接出さない。
 
 外部参照:
 
@@ -468,7 +473,7 @@ MedicationStock / Risk / Task / VisitBrief / Schedule / Report:
 | `communication-queue.ts`                                               | `CommunicationQueueItem` / `CommunicationTimelineItem` / `CommunicationDraftSuggestion` があり、患者詳細や workflow dashboard へ統合表示できる。 | 正本にはしない。`queue_type=inbound_communication` 等を追加し、未処理 signal / review task の entrypoint として表示する。                               |
 | `src/modules/pharmacy/medication-stock/domain/external-observation.ts` | 他職種・MCS・communication_event・partner_visit_record 由来の残数観測を直接 ledger に書かず staging する純粋 domain helper。                     | Phase 0/1 の短期 shim。中長期は generic `InboundCommunicationSignal(signal_domain='medication_stock')` に置き換え、MedicationStock adapter が取り込む。 |
 
-**DB設計案（migrationは別slice）**:
+**DB設計（schema/migration/RLS 追加済み、API cutover は別slice）**:
 
 | table                            | 目的                                                                                            | 主な field                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | -------------------------------- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -599,24 +604,93 @@ UI 実装時は PH-OS UI/UX SSOT に従い、必要な redesign では `gpt-imag
 **タイムライン外の必須業務導線（2026-07-07 追記）**:
 
 > `MOV-001` は患者ごとの「見える化」。`INB-001` の本体は、薬局全体で受信情報を見つけ、薬剤師が確認し、MedicationStock / Task / Risk / VisitBrief / Report へ安全に変換する業務導線である。患者詳細を開かないと気づけない構造は運用事故になるため、inbox / review queue を timeline と別に作る。
+>
+> 2026-07-07 のコードスキャンでは、`communication-queue.ts` の `inbound_communication` item、`TaskTypeRegistry` の inbound task type 群、`core.inbound_interprofessional` Risk provider、VisitBrief への inbound queue 反映、患者 movement timeline への task/communication marker は導入済み。さらに正式 `InboundCommunicationEvent` / `InboundCommunicationSignal` / attachment / source mapping の schema/migration/RLS と、phone/MCS 登録・inbox・signal candidate・task bridge の正式 `InboundCommunicationEvent` cutover も追加済み。`GET /api/communications/inbound/signals` は candidate を `InboundCommunicationSignal` へ idempotent に materialize し、公開DTOは `signal_id` / controlled status / badge情報だけを返す。ここでは実装済み task registry / risk provider / DB schema / event source cutover / signal materialize そのものは再掲せず、薬局全体 review lifecycle、正式 review action、downstream 連動を残タスクとして扱う。
+>
+> ID整合: 以前の検討メモにある `TASK-010` は現行 `TASK-011` へ、`RISK-020` は現行 `RISK-021` へ統合する。重複IDは作らない。`INBOUND-001` は薬局全体の受信インボックス、`INBOUND-002` は受信シグナルレビューと反映前確認、`MOV-001` は患者ごとの経緯表示に限定する。
 
-| ID              | 優先度 | タスク                                     | 主な対象                                                                                                | 受入条件                                                                                                                                                                                                                                                                                                        |
-| --------------- | ------ | ------------------------------------------ | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| INBOUND-001     | P0     | 他職種受信インボックス / レビューキュー    | `/communications/inbound` または `/inbound`, `communication-queue.ts`, `InboundCommunicationEvent`      | MCS/電話/FAX/メール/手入力を薬局全体で一覧化できる。未処理、確認待ち、タスク化済み、反映済み、却下で絞れる。患者詳細 timeline とは別に、患者を開かなくても未処理受信を発見できる。false-empty と取得失敗を分離する。                                                                                            |
-| INBOUND-002     | P0     | Inbound Signal Review 画面                 | `InboundSignalReviewPanel`, `InboundCommunicationSignal`, MedicationStock adapter                       | 原文、抽出候補、反映先を3カラムで表示する。`残数へ反映`、`タスク化`、`記録のみ`、`却下` を選べる。raw_text は一覧に出さず、レビュー画面で権限確認後に表示する。受信情報を直接 MedicationStock/Task へ反映せず、必ず `InboundCommunicationSignal` を経由する。                                                   |
-| STOCK-001       | P0     | 外用薬・頓服薬残数管理の独立モジュール化   | `RX-002`, `src/modules/pharmacy/medication-stock`, `PatientMedicationStockItem`, `MedicationStockEvent` | `RX-002` の実装 lane として扱う。処方供給、訪問時観測、他職種報告、補正、廃棄を append-only event として記録し、snapshot は再計算可能にする。YJ/HOT/GS1(=GTIN/JAN)/一般名/規格/剤形/メーカー連動と薬剤師確認つき名寄せに対応する。                                                                              |
-| TASK-010        | P0/P1  | 他職種受信タスクの TaskTypeRegistry 追加   | `TaskTypeRegistry`, `operational-tasks.ts`, `risk-task-bridge.ts`                                       | `core.inbound_communication_review_required`, `pharmacy.inbound_medication_stock_signal_review_required`, `pharmacy.inbound_low_stock_unquantified_report`, `pharmacy.inbound_medication_safety_review_required`, `pharmacy.inbound_schedule_request_review_required` を登録する。dedupe key で重複作成を防ぐ。 |
-| RISK-020        | P0/P1  | Inbound Interprofessional Risk Provider    | `RiskFindingProvider`, Case Risk Cockpit, patient command center                                        | 未処理の他職種受信、薬剤師確認待ちの残数報告、副作用疑い、服薬困難報告、スケジュール変更希望、MCS/電話情報の患者紐づけ不明を controlled finding にする。free text は finding title/summary に出さず、正本 review へ deep link する。                                                                            |
-| MCS-001         | P1     | MCS情報貼り付け入力 UI                     | MCS paste drawer/form, `PatientMcsMessage` bridge, `InboundCommunicationEvent`                          | 投稿本文、投稿者、職種、所属、投稿日時、MCSスレッドURL、スクリーンショット添付、残薬/使用状況 checkbox を登録できる。API/export/webhook 自動連携は後続調査にし、Phase 1 は手入力/貼り付けで開始する。                                                                                                           |
-| PHONE-001       | P1     | 電話メモ構造化                             | phone inbound form, `CommunicationEvent` bridge, `InboundCommunicationEvent`                            | 相手、職種、所属、要件、残数報告あり、副作用/体調変化あり、補充希望あり、スケジュール変更あり、薬剤師確認必要、次アクションを構造化する。自由記述だけにしない。                                                                                                                                                 |
-| VISIT-BRIEF-010 | P1     | 他職種受信情報を訪問ブリーフに反映         | VisitBrief contributor, `InboundCommunicationSignal`, `MedicationStockSnapshot`                         | 直近MCS受信、電話申し送り、訪看の残数報告、ケアマネの日程変更、家族の服薬困難報告、未処理安全シグナルを訪問時確認項目として優先表示する。未処理/安全/残数を上位に出す。                                                                                                                                         |
-| REPORT-020      | P1     | 他職種受信情報の報告書候補化               | report workspace, draft suggestion, masking profile                                                     | `normalized_summary` を報告書候補として提示する。raw_text は自動挿入しない。薬剤師が `報告書に含める` / `申し送りのみ` / `内部記録のみ` を選択できる。                                                                                                                                                          |
-| INBOUND-010     | P1/P2  | Inbound Source Mapping                     | `InboundSourceMapping`, MCS thread, phone/fax/email source mapping                                      | MCSスレッドURL、外部room ID、電話番号、発信者名、職種、所属を patient_id / case_id に mapping し、confidence と review status を持つ。患者紐づけ不明は review queue と RiskFinding に出す。                                                                                                                     |
-| SECURITY-030    | P0/P1  | Inbound raw_text / summary / signal の分離 | DTO/presenter, audit, notification, SSE, export/share                                                   | `raw_text` は一覧、通知、SSE、OS push、監査 changes、report候補、timeline card に出さない。業務 UI は `normalized_summary` と `Signal` を使う。raw_text 閲覧は権限、理由、監査ログ、request_id を必須にする。                                                                                                   |
-| SHARE-010       | P1/P2  | Inbound情報の共有scope追加                 | external share scope registry, masking profile, consent/audit                                           | `inbound_communication_summary`, `inbound_communication_detail`, `inbound_communication_raw_text` を追加する。raw_text 共有は明示許可、理由、監査ログ必須。default は summary のみ。                                                                                                                            |
-| COLLAB-001      | P1     | Collaboration Entity Access Provider化     | `collaboration-access.ts`, module registry, pharmacy collaboration providers                            | common collaboration が `dispense_task` / `medication_cycle` / `set_plan` など薬局固有 entity を直接知らない。pharmacy 側 provider 登録で既存 entity を維持し、将来 home_nursing / home_medical entity を core 変更なしに追加できる。                                                                           |
-| ARCH-010        | P1     | Module boundary allowlist 削減             | module boundary check, patient-detail-workspace, visit-brief, report-templates, collaboration-access    | patient detail の薬局依存は panel provider、visit brief の薬局依存は pharmacy contributor、report templates は pharmacy report provider、collaboration access は provider 化へ移す。allowlist expectedCount を増やさない。                                                                                      |
-| PATIENT-UI-020  | P1     | Patient Workspace Panel Provider化         | patient detail shell, pharmacy/inbound/stock/movement/billing/document panels                           | `card-workspace.tsx` に残数管理、他職種受信、患者の動き、リスク、タスクを直接積み増さない。非active tab / panel の mutation hooks は初期化せず、panel provider で module 境界を保つ。                                                                                                                           |
+| ID              | 優先度 | タスク                                     | 主な対象                                                                                                                                                                                                 | 受入条件                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| --------------- | ------ | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| INBOUND-001     | P0     | 他職種受信インボックス / レビューキュー    | `/communications/inbound`, `GET /api/communications/inbound`, `communication-queue.ts`, `InboundCommunicationEvent`                                                                                      | 正式 `InboundCommunicationEvent` source への cutover 済み: phone/MCS 貼り付け登録、inbox list、task status projection は formal event を使う。MCSは `source_channel=mcs` として扱う。false-empty と取得失敗を分離する。正式 schema/migration/RLS は追加済み。薬局全体の未処理受信を患者詳細を開かずに見つけられることをDoDにする。左filter、中央card list、右review/反映panelの3ペインを基本とし、未処理、薬剤師確認待ち、残数関連、副作用/安全、スケジュール相談、MCS、電話、FAX、メールで絞り込む。残: FAX/メール/手入力登録、未処理/確認待ち/タスク化済み/反映済み/却下の正式状態遷移、3カラム review queue の永続 action 連動。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| INBOUND-002     | P0     | Inbound Signal Review 画面                 | `GET /api/communications/inbound/signals`, `PATCH /api/communications/inbound/signals/:id`, `/communications/inbound`, `InboundSignalReviewPanel`, `InboundCommunicationSignal`, MedicationStock adapter | signal candidate API と inbox 内 candidate panel は正式 `InboundCommunicationEvent.raw_text` をサーバー側分類器だけで読み、候補を `InboundCommunicationSignal` に idempotent upsert する。公開DTOは `candidate_key=inbound_signal:<signal_id>`、`signal_id`、controlled 分類、単位、状態、未紐づけ badge だけを返し、raw本文・subject・相手名・連絡先・患者名・薬剤名・数量値・添付情報・MCS URL は返さない。短期 review bridge として左=filter、中央=受信card、右=選択中受信の抽出候補/反映先候補/詳細リンクの3カラム構造まで導入済み。MedicationStock adapter の `stock_review` summary も追加済みで、優先度・観測種別・ledger write policy・警告コードだけを表示し、staging key / source record / 薬剤名 / 数量値は出さない。`POST /api/communications/inbound/signals/tasks` は `inbound_signal:<id>` を優先し、旧 `inbound_event:<id>:candidate:<n>` は fallback として残す。正式 `InboundCommunicationSignal` schema/migration/RLS と signal materialize は追加済み。`PATCH /api/communications/inbound/signals/:id` は `accept` / `record_only` / `reject` の最小 review action API として扱い、response に raw reason/free text を返さない。inbox UI から `signal_id` と controlled action のみを送る review action wiring も追加済み。PATCH 後は formal dedupe key `inbound:<signal_id>:*` の pending/in_progress review task を completed にする。UI は `review_status` / `action_status` を badge 表示し、`needs_review` 以外の signal は再レビュー/再タスク化できない。`accepted` かつ `not_linked` の medication stock signal は「残数台帳への明示反映待ち」として表示する。残: `残数へ反映` / `linked_to_stock_event`、MedicationStock への実反映、正式 review detail shell、raw_text再認可。受信情報を直接 MedicationStock へ反映せず、必ず signal lifecycle を経由する。 |
+| STOCK-001       | P0     | 外用薬・頓服薬残数管理の独立モジュール化   | `RX-002`, `src/modules/pharmacy/medication-stock`, `PatientMedicationStockItem`, `MedicationStockEvent`                                                                                                  | `RX-002` の実装 lane として扱う。処方供給、訪問時観測、他職種報告、補正、廃棄を append-only event として記録し、snapshot は再計算可能にする。YJ/HOT/GS1(=GTIN/JAN)/一般名/規格/剤形/メーカー連動と薬剤師確認つき名寄せに対応する。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| TASK-011        | P0/P1  | 他職種受信 task lifecycle 連動             | `InboundCommunicationSignal`, `communication-queue.ts`, `operational-tasks.ts`, `risk-task-bridge.ts`, `POST /api/communications/inbound/signals/tasks`                                                  | formal signal bridge は導入済み: `inbound_signal:<signal_id>` selector を優先し、assignment scoped `InboundCommunicationSignal -> InboundCommunicationEvent` を再読込して既存 inbound task type へ mappingする。dedupe key は正式 path で `inbound:{signal_id}:{task_type}`。task response / metadata は controlled field のみで、raw text、患者名、薬剤名、数量値、送信者、連絡先、MCS URL、storage/signed URL は保存しない。`CommunicationQueue` は正式 `inbound:{signal_id}:...` task dedupe を event へ戻して `task_created` / `task_completed` に投影し、`record_only` / `rejected` / `ignored` / `linked_to_stock_event` の formal signal は処理済みに投影する。`PATCH /api/communications/inbound/signals/:id` は review 完了後に同じ formal signal の open review task を completed にする。旧 `inbound_event:<id>:candidate:<n>` / `inbound-signal-task:{event_id}:{candidate_index}:{task_type}` は fallback として残る。残: `linked_to_stock_event` の MedicationStock 実反映、legacy event-index task の移行、task解消の双方向同期。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| RISK-021        | P0/P1  | Inbound formal source Risk連動             | `InboundCommunicationEvent`, `InboundCommunicationSignal`, Case Risk Cockpit, patient command center                                                                                                     | 既存 `core.inbound_interprofessional` provider を正式 Inbound DB/API source に接続する。未処理の他職種受信、薬剤師確認待ちの残数報告、副作用疑い、服薬困難報告、スケジュール変更希望、患者紐づけ不明を controlled finding にする。free text は finding title/summary に出さず、正本 review へ deep link する。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| MCS-001         | P1     | MCS情報貼り付け入力 UI                     | MCS paste form, `POST /api/communications/inbound/mcs`, `InboundCommunicationEvent(source_channel=mcs)`                                                                                                  | 正式 event source へ cutover 済み: `/communications/inbound` から投稿本文、投稿者、職種、所属、MCSスレッドURL、種別を登録できる。登録レスポンスと inbox/signal 一覧には raw本文・投稿者・所属・MCS URL・薬剤名・数量値を出さない。`PatientMcsMessage` は同期専用正本として維持する。スクリーンショット添付、残薬/使用状況 checkbox、API/export/webhook 自動連携は後続。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| PHONE-001       | P1     | 電話メモ構造化                             | phone inbound form, `InboundCommunicationEvent(source_channel=phone)`                                                                                                                                    | 正式 event source へ cutover 済み: `/communications/inbound` から患者ID/ケースID/相手/連絡先/種別/本文を `POST /api/communications/inbound/phone` へ登録できる。登録レスポンスと inbox 一覧に raw本文・相手名・連絡先は出さない。`GET /api/communications/inbound/signals` で電話由来 signal は正式 `InboundCommunicationSignal` へ materialize される。残: 職種/所属/残数/副作用/補充/スケジュール/次アクションの正式 structured field、review action UI。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| VISIT-BRIEF-010 | P1     | 他職種受信情報を訪問ブリーフに反映         | VisitBrief contributor, `InboundCommunicationSignal`, `MedicationStockSnapshot`                                                                                                                          | 直近MCS受信、電話申し送り、訪看の残数報告、ケアマネの日程変更、家族の服薬困難報告、未処理安全シグナルを訪問時確認項目として優先表示する。未処理/安全/残数を上位に出す。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| REPORT-020      | P1     | 他職種受信情報の報告書候補化               | report workspace, draft suggestion, masking profile                                                                                                                                                      | `normalized_summary` を報告書候補として提示する。raw_text は自動挿入しない。薬剤師が `報告書に含める` / `申し送りのみ` / `内部記録のみ` を選択できる。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| INBOUND-010     | P1/P2  | Inbound Source Mapping                     | `InboundSourceMapping`, MCS thread, phone/fax/email source mapping                                                                                                                                       | MCSスレッドURL、外部room ID、電話番号、発信者名、職種、所属を patient_id / case_id に mapping し、confidence と review status を持つ。患者紐づけ不明は review queue と RiskFinding に出す。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| SECURITY-030    | P0/P1  | Inbound raw_text / summary / signal の分離 | DTO/presenter, audit, notification, SSE, export/share                                                                                                                                                    | `raw_text` は一覧、通知、SSE、OS push、監査 changes、report候補、timeline card に出さない。業務 UI は `normalized_summary` と `Signal` を使う。raw_text 閲覧は権限、理由、監査ログ、request_id を必須にする。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| SHARE-010       | P1/P2  | Inbound情報の共有scope追加                 | external share scope registry, masking profile, consent/audit                                                                                                                                            | `inbound_communication_summary`, `inbound_communication_detail`, `inbound_communication_raw_text` を追加する。raw_text 共有は明示許可、理由、監査ログ必須。default は summary のみ。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| COLLAB-001      | P1     | Collaboration Entity Access Provider化     | `collaboration-access.ts`, module registry, pharmacy collaboration providers                                                                                                                             | common collaboration が `dispense_task` / `medication_cycle` / `set_plan` など薬局固有 entity を直接知らない。pharmacy 側 provider 登録で既存 entity を維持し、将来 home_nursing / home_medical entity を core 変更なしに追加できる。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ARCH-010        | P1     | Module boundary allowlist 削減             | module boundary check, patient-detail-workspace, visit-brief, report-templates, collaboration-access                                                                                                     | patient detail の薬局依存は panel provider、visit brief の薬局依存は pharmacy contributor、report templates は pharmacy report provider、collaboration access は provider 化へ移す。allowlist expectedCount を増やさない。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| PATIENT-UI-020  | P1     | Patient Workspace Panel Provider化         | patient detail shell, pharmacy/inbound/stock/movement/billing/document panels                                                                                                                            | `card-workspace.tsx` に残数管理、他職種受信、患者の動き、リスク、タスクを直接積み増さない。非active tab / panel の mutation hooks は初期化せず、panel provider で module 境界を保つ。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+
+**2026-07-07 bridge実装メモ（正式DB event cutover後 / Signal materialize 後の現在地）**:
+
+- `INBOUND-001`: `/communications/inbound` は正式 `InboundCommunicationEvent`
+  を薬局全体の summary-only inbox として表示し、`needs_review` / `task_created`
+  / `task_completed` の短期 status filter を持つ。`CommunicationQueue` は bridge
+  task の dedupe key を読み、task化済み受信を `タスクを確認` action に切り替える。
+  これにより、候補を task 化した後も inbox に未処理として残り続ける状態を避ける。
+- `INBOUND-001`: `accepted/auto_accepted` かつ `not_linked` の signal は
+  `reviewed_pending_action` として薬局全体 inbox に投影する。薬剤師レビュー完了と
+  MedicationStock 等への業務データ反映完了を混同しないため、この状態は処理済みではなく
+  「確認済み未反映」として filter / summary で扱う。
+- `INBOUND-002`: candidate review panel は `InboundCommunicationSignal` を
+  idempotent に materialize した `signal_id` を持つ。公開DTOは signal id、controlled
+  domain/type/status、stock_review summary のみで、raw text / sender / drug name /
+  quantity value / MCS URL / storage key は出さない。
+- `TASK-011`: `POST /api/communications/inbound/signals/tasks` は
+  `inbound_signal:<id>` 形式を優先し、controlled metadata の task を
+  `inbound:{signal_id}:{task_type}` で dedupe 作成する。旧
+  `inbound_event:<id>:candidate:<n>` は fallback。既存 task は status を保持し、完了済み
+  task を再オープンしない。task 作成後、signal は `linked_to_task` へ進む。
+- `INBOUND-002`: `PATCH /api/communications/inbound/signals/:id` は
+  `accept` / `record_only` / `reject` を no-store response で処理し、UI は `signal_id`
+  と `action` だけを送る。reject reason は controlled fixed reason を使い、raw本文、
+  薬剤名、数量値、送信者、連絡先を request/response に混ぜない。
+- `INBOUND-002`: inbox の signal review panel は `review_status` と `action_status`
+  を badge で表示する。`needs_review` 以外の signal は review ボタンと
+  薬剤師確認タスク化ボタンを無効化し、`accepted` かつ `not_linked` の
+  medication stock signal は残数台帳への明示反映待ちとして表示する。
+- `TASK-011`: `CommunicationQueue` は正式 `inbound:{signal_id}:...` task dedupe を
+  `InboundCommunicationSignal.inbound_event_id` 経由で event に戻す。`record_only` /
+  `rejected` / `ignored` / `linked_to_stock_event` の signal だけで構成される受信は
+  `task_completed` として投影し、処理済み filter に乗せる。
+- 残タスク: `linked_to_stock_event` の永続状態、MedicationStock 実反映、legacy
+  event-index task の移行。
+
+**INBOUND-001/002 の review workflow 受入条件**:
+
+```text
+薬局全体インボックス:
+  - 患者詳細を開かなくても未処理のMCS/電話/FAX/メール/手入力が分かる。
+  - 未処理、確認待ち、タスク化済み、反映済み、却下を同じstatus vocabularyで扱う。
+  - false-empty、取得失敗、権限不足を別状態で表示する。
+
+3カラムレビュー:
+  左: 原文/添付/送信者/日時。ただし raw_text は権限確認後のみ。
+  中央: 抽出候補、signal type、数量/単位の有無、confidence、review status。
+  右: 反映先、MedicationStock候補、Task化、記録のみ、却下、詳細deep link。
+
+業務変換:
+  - 「残り4枚」は observed_quantity、「2枚使用」は usage_delta として区別する。
+  - 曖昧な「少ない」「足りない」は low_stock_text / record_only / review_required に留める。
+  - auto apply は当面禁止し、薬剤師review後に accepted signal だけ downstream へ渡す。
+  - `record_only` / `reject` は downstream side effect を起こさない。
+  - `accept` だけでは MedicationStock へ直接書かず、`apply_to_medication_stock` 相当の明示actionで `linked_to_stock_event` に進める。
+```
+
+**Inbound Source別の初期導線**:
+
+| source         | Phase 1入力                                                     | Phase 1活用                                         | 後続                                             |
+| -------------- | --------------------------------------------------------------- | --------------------------------------------------- | ------------------------------------------------ |
+| MCS            | 投稿本文、投稿日時、投稿者、職種、所属、スレッドURL、添付候補。 | signal抽出、review queue、task化、timeline marker。 | API/export/webhookは公式仕様・契約・許諾確認後。 |
+| 電話           | 相手、職種/関係、電話番号、所属、日時、要件、本文。             | 残数/安全/日程/補充希望 checkbox、signal抽出。      | structured field化、録音/STTは別gate。           |
+| FAX/メール     | 受信日時、送信元、本文または添付、患者/ケース候補。             | review queue、source mapping、FileAsset scan連動。  | OCR/自動取込は raw payload最小化後。             |
+| 施設/家族/口頭 | 手入力メモ、関係者、確認項目、次アクション。                    | record_only、task化、VisitBrief確認項目化。         | source mapping と権限scope整理後。               |
 
 **タイムライン外の実装優先順**:
 
@@ -624,8 +698,8 @@ UI 実装時は PH-OS UI/UX SSOT に従い、必要な redesign では `gpt-imag
 1. INBOUND-001 他職種受信インボックス
 2. INBOUND-002 受信シグナルレビュー画面
 3. STOCK-001 / RX-002 外用薬・頓服薬残数管理の独立モジュール
-4. TASK-010 受信情報 -> OperationalTask 変換
-5. RISK-020 受信情報 -> RiskFinding 変換
+4. TASK-011 受信情報 -> OperationalTask lifecycle 変換
+5. RISK-021 受信情報 -> 正式 RiskFinding source 変換
 6. MCS-001 / PHONE-001 MCS貼り付け・電話メモ入力UI
 7. VISIT-BRIEF-010 訪問ブリーフ連動
 8. REPORT-020 報告書候補化
@@ -688,13 +762,14 @@ notification:
 
 **Phased PR plan（未完のみ）**:
 
-| phase   | 内容                                                                                       | validation                                                                          |
-| ------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
-| Phase 2 | DB schema: `InboundCommunicationEvent`, `InboundCommunicationSignal`, attachment/mapping。 | migration precondition、RLS/org_id/index、DTO snapshot、raw_text permission tests。 |
-| Phase 3 | API + CommunicationQueue: 手入力/MCS貼付/電話登録、review queue、queue item 接続。         | API tests、forbidden tests、no-store、false-empty separation。                      |
-| Phase 4 | MedicationStock adapter: accepted stock signal を MedicationStockEvent へ反映。            | integration: MCS投稿 -> Signal -> review -> StockEvent -> Risk/Task。               |
-| Phase 5 | Risk/Task/VisitBrief/Schedule/Report/Share 接続。                                          | cockpit/task/brief/schedule/report masking/share scope tests。                      |
-| Phase 6 | MCS API/export/webhook 調査と自動取込。                                                    | 公式仕様/契約確認、provider payload minimization、retry/idempotency tests。         |
+| phase    | 内容                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | validation                                                                                                                                                                                                                                                                                                                                                    |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Phase 2  | DB schema: `InboundCommunicationEvent`, `InboundCommunicationSignal`, attachment/mapping。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | 実装済み: Prisma schema、migration、RLS ENABLE/FORCE、RLS ledger 更新、Prisma validate/generate。残: DTO snapshot、raw_text permission tests を正式 API cutover と同時に追加。                                                                                                                                                                                |
+| Phase 3a | Event-source API + CommunicationQueue: 正式 `InboundCommunicationEvent` の item を `/communications/inbound` に summary-only 表示し、電話メモを `POST /api/communications/inbound/phone`、MCS貼り付けを `POST /api/communications/inbound/mcs` で最小レスポンス登録し、`GET /api/communications/inbound/signals` で controlled signal candidate と MedicationStock `stock_review` summary だけを返し、inbox UI に candidate panel を出す。`POST /api/communications/inbound/signals/tasks` で `inbound_event:<id>:candidate:<n>` から薬剤師確認 task を dedupe 作成し、bridge task 状態を inbox の `task_created` / `task_completed` status に反映する。 | 実装済み。API/UI tests、no-store、false-empty separation、raw text omission、safe relative href fallback、phone/MCS create minimal DTO、assignment-scoped signal candidate DTO、candidate panel raw omission、stock review DTO omission、task response/metadata PHI omission、completed task reopen 防止、task化済み受信の status filter / action_href 反映。 |
+| Phase 3b | 正式 API + CommunicationQueue: 手入力/MCS貼付/電話登録、review queue、queue item 接続。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | API tests、forbidden tests、no-store、false-empty separation、review status/action status tests。                                                                                                                                                                                                                                                             |
+| Phase 4  | MedicationStock adapter: accepted stock signal を MedicationStockEvent へ反映。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | integration: MCS投稿 -> Signal -> review -> StockEvent -> Risk/Task。                                                                                                                                                                                                                                                                                         |
+| Phase 5  | Risk/Task/VisitBrief/Schedule/Report/Share 接続。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | cockpit/task/brief/schedule/report masking/share scope tests。                                                                                                                                                                                                                                                                                                |
+| Phase 6  | MCS API/export/webhook 調査と自動取込。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | 公式仕様/契約確認、provider payload minimization、retry/idempotency tests。                                                                                                                                                                                                                                                                                   |
 
 **受入基準**:
 
@@ -736,15 +811,15 @@ notification:
 
 **残スコープ**:
 
-| 残ID          | 優先度 | タスク                               | 実装単位                                                                                                                                                                                                 | 受入条件                                                                                                                               |
-| ------------- | ------ | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| MOV-UX-001    | P0/P1  | Google Maps Timeline風の最終UX       | `PatientMovementTimeline` を日付カード + 縦タイムライン + 時刻 + event card + 詳細CTAに磨く。1日サマリー、今日/昨日/7日/30日、未処理 filter、モバイル bottom sheet を追加。                              | 上部地図なし。日ごとの流れが見える。種別は色だけでなく icon + label。処方/訪問/文書は発生 marker と正本 deep link のみ。               |
-| MOV-API-001   | P0/P1  | standalone movement-timeline API     | `GET /api/patients/:id/movement-timeline?limit&cursor&from&to&category&include` を追加し、患者詳細初期 BFF から重い timeline を分離する。                                                                | 初期表示は直近20-40件。cursor追加取得、category/date filter、partial failures、`meta.next_cursor`。payload budget と no-store を持つ。 |
-| MOV-INB-001   | P0/P1  | Formal inbound source                | `InboundCommunicationEvent` / `InboundCommunicationSignal` DB/API 実装後に、正式 source adapter を追加する。既存 `CommunicationEvent` / `PatientMcsMessage` / task marker は短期 bridge として維持する。 | raw_text は一覧DTO、timeline card、search haystack、通知、監査changesへ出さない。source failure は fail-soft。                         |
-| MOV-STOCK-001 | P0/P1  | Medication Stock source              | `MedicationStockEvent`、equivalence review、shortage finding が入った後に medication stock source を追加する。                                                                                           | 残数・使用量・名寄せ・不足イベントは発生 marker と status/badge のみ。薬剤名/数量は必要最小限または詳細先で確認する。                  |
-| MOV-SAFE-001  | P1     | Formal safety finding source         | Case Risk / safety finding の formal source を追加し、urgent safety signal を movement の上位表示へ接続する。                                                                                            | safety finding は controlled title/summary と finding deep link を持つ。free text finding detail は一覧に出さない。                    |
-| MOV-RAW-001   | P1     | raw_text re-auth detail UI           | MCS/電話/FAX/メールなど raw PHI を読む detail UI を、再認可・理由・監査ログ付きで実装する。                                                                                                              | 一覧から raw_text は見えない。raw 閲覧は permission、reason、audit、request_id を持つ。                                                |
-| MOV-LINK-001  | P1     | deep link coverage / safe navigation | `src/lib/patient-movement/navigation.ts` 相当の href builder を整備し、visit/prescription/report/billing/share/task/inbound/stock を相対URLへ統一する。                                                  | 全 event が相対 `href` を持つ。未実装詳細は `/patients/:id/timeline/:eventId` fallback。権限なしは 403 または summary-only。           |
+| 残ID          | 優先度 | タスク                               | 実装単位                                                                                                                                                                                                                            | 受入条件                                                                                                                               |
+| ------------- | ------ | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| MOV-UX-001    | P0/P1  | Google Maps Timeline風の最終UX       | `PatientMovementTimeline` を日付カード + 縦タイムライン + 時刻 + event card + 詳細CTAに磨く。1日サマリー、今日/昨日/7日/30日、未処理 filter、モバイル bottom sheet を追加。                                                         | 上部地図なし。日ごとの流れが見える。種別は色だけでなく icon + label。処方/訪問/文書は発生 marker と正本 deep link のみ。               |
+| MOV-API-001   | P0/P1  | standalone movement-timeline API     | `GET /api/patients/:id/movement-timeline?limit&cursor&from&to&category&include` を追加し、患者詳細初期 BFF から重い timeline を分離する。                                                                                           | 初期表示は直近20-40件。cursor追加取得、category/date filter、partial failures、`meta.next_cursor`。payload budget と no-store を持つ。 |
+| MOV-INB-001   | P0/P1  | Formal inbound source                | `InboundCommunicationEvent` / `InboundCommunicationSignal` schema 実装後、正式 API/queue cutover に合わせて source adapter を追加する。既存 `CommunicationEvent` / `PatientMcsMessage` / task marker は短期 bridge として維持する。 | raw_text は一覧DTO、timeline card、search haystack、通知、監査changesへ出さない。source failure は fail-soft。                         |
+| MOV-STOCK-001 | P0/P1  | Medication Stock source              | `MedicationStockEvent`、equivalence review、shortage finding が入った後に medication stock source を追加する。                                                                                                                      | 残数・使用量・名寄せ・不足イベントは発生 marker と status/badge のみ。薬剤名/数量は必要最小限または詳細先で確認する。                  |
+| MOV-SAFE-001  | P1     | Formal safety finding source         | Case Risk / safety finding の formal source を追加し、urgent safety signal を movement の上位表示へ接続する。                                                                                                                       | safety finding は controlled title/summary と finding deep link を持つ。free text finding detail は一覧に出さない。                    |
+| MOV-RAW-001   | P1     | raw_text re-auth detail UI           | MCS/電話/FAX/メールなど raw PHI を読む detail UI を、再認可・理由・監査ログ付きで実装する。                                                                                                                                         | 一覧から raw_text は見えない。raw 閲覧は permission、reason、audit、request_id を持つ。                                                |
+| MOV-LINK-001  | P1     | deep link coverage / safe navigation | `src/lib/patient-movement/navigation.ts` 相当の href builder を整備し、visit/prescription/report/billing/share/task/inbound/stock を相対URLへ統一する。                                                                             | 全 event が相対 `href` を持つ。未実装詳細は `/patients/:id/timeline/:eventId` fallback。権限なしは 403 または summary-only。           |
 
 **Google Maps Timeline風 UI 要件（地図なし）**:
 
@@ -812,6 +887,1342 @@ type PatientMovementTimelineResponse = {
 - 処方・訪問・文書 marker の primary CTA は正本画面へ直接遷移し、event detail shell を primary にしない。
 - 日付ジャンパー、1日サマリー、未処理 filter、右側 preview / mobile sheet が破綻しない。
 - mobile で map-less vertical timeline が崩れない。
+
+#### P0/P1: Dashboard Operations Command Center Expansion（DASH-OPS） `cc:TODO`
+
+> 2026-07-07 追加。現行ダッシュボードは `DashboardContent -> DashboardCockpit` に集約され、
+> `summary` / `details` / `team` / `comments` の分割取得、`SegmentError` による部分失敗、
+> role focus、リアルタイム更新、右レールの「次にやること / 止まっている理由 / 根拠・記録」
+> まで実装済み。ここでは実装済みの分割取得や部分失敗UIを再タスク化せず、ダッシュボードを
+> 「今日の薬局業務コックピット」から、他職種受信・残数・安全シグナル・報告/請求ブロッカー・
+> チーム稼働まで含む運用司令塔へ拡張する。
+
+**現行コードとの整合**:
+
+| 現行実装                                              | 確認できた状態                                                                                                                                                                   | DASH-OPS での扱い                                                                                                                   |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx` | `summary` / `details` / `team` / `comments` / `inbound` を segment query として取得。comments、summary、details、team、inbound の realtime invalidation は source 別に分離済み。 | segment 分割と source 別 invalidation は維持する。次は Clock Island / ViewModel / stock-risks / report-billing segment を追加する。 |
+| `UrgentNowSection`                                    | `DashboardUrgentItem[]` を最大3件表示し、監査と他職種受信の初期 source は統合済み。                                                                                              | 監査と inbound は維持し、medication_stock / visit_preparation / report / callback / billing / task を同じ urgent queue に追加する。 |
+| `buildNextAction()`                                   | 監査待ちを最優先、次に本日の訪問、最後に予定確認。                                                                                                                               | `DashboardUrgentItem` の severity / due_at / waiting_since / role focus を使って next action を決める。                             |
+| `src/server/services/dashboard-cockpit.ts`            | `buildCockpitSummary()` は `readAuditQueueSummary()` / `readTodayVisitSummary()` に分離済み。details だけが患者名付き queue / visit list を返す。                                | 軽量 summary は維持する。次は p95/payload smoke、stock-risks / report-billing segment、summary rail BFF 化を進める。                |
+| `PROCESS_WIP_GUIDES`                                  | フロント固定値。コメント上も「バックエンドに目安マスタが無いため第一版はクライアント定数」。                                                                                     | P1で薬局設定化し、規模・曜日・時間帯・role focus に応じて API から guide を返す。                                                   |
+| `TeamConversationPanel`                               | 内部コメントを表示し、コメントだけ fail-soft に再試行可能。                                                                                                                      | 内部コメントと MCS/電話/FAX/メール等の inbound feed を分離する。inbound 正本は `INBOUND-001/002` を使う。                           |
+
+**DashboardUrgentItem DTO 方針**:
+
+```ts
+type DashboardUrgentItem = {
+  id: string;
+  source:
+    | 'audit'
+    | 'inbound'
+    | 'medication_stock'
+    | 'visit_preparation'
+    | 'report'
+    | 'callback'
+    | 'billing'
+    | 'task';
+  source_id: string;
+  source_label: string;
+  reference_label: string | null;
+  severity: 'blocking' | 'urgent' | 'warning';
+  patient_id: string | null;
+  patient_name: string | null;
+  title: string;
+  summary: string;
+  due_at: string | null;
+  waiting_since: string | null;
+  badges: Array<{
+    label: string;
+    tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger';
+  }>;
+  action_href: string;
+  action_label: string;
+};
+```
+
+Dashboard disclosure policy:
+
+- ダッシュボードは認証済みの業務コックピットであり、権限内で閲覧できる患者名、薬剤名、残数、MCS/電話本文、連絡先、添付、報告/請求/訪問の具体情報は出してよい。判断するのは現場の人間であり、情報を過度に隠して業務判断を妨げない。
+- 制限は `role`、担当/assignment、case scope、consent、support session、purpose によって行う。`pharmacist`、`clerk`、`manager`、PH-OS運営者 support mode、フリーランス薬剤師 assignment で表示範囲を変える。
+- 一覧カードは最初から全情報を押し込まず、業務判断に必要な要約と主要項目を出し、全文・添付・連絡先・詳細メタデータは展開行、右側preview、drawer、詳細画面で表示する。これは秘匿ではなく情報密度制御である。
+- `action_href` は相対URLのみ。添付表示やダウンロードは権限確認済みの専用 endpoint / 短時間URL経由にする。storage key を人間向けラベルとして直接表示する必要はないが、権限内の添付・原文・連絡先への導線は隠さない。
+- OS通知、SSE payload、監査 `changes`、server log、外部共有、CSV/PDF export、public URL には dashboard 表示内容をそのまま流用しない。それぞれの出力境界で別の redaction / masking / audit policy を適用する。
+
+**Dashboard target UI gap review（2026-07-07追記）**:
+
+目標画面は、現行 `DashboardCockpit` を全面作り直しせず、次の構造へ拡張する。
+
+```text
+ダッシュボード
+  ├─ 左サマリーレール
+  │   ├─ 今日のサマリー
+  │   ├─ 主なタスク
+  │   ├─ チーム状況
+  │   └─ 最終更新
+  │
+  ├─ メイン領域
+  │   ├─ 今すぐ対応
+  │   ├─ 今日の流れ
+  │   ├─ 工程の今
+  │   └─ 下部カード群
+  │       ├─ チーム余白
+  │       ├─ チームの会話
+  │       └─ 根拠・記録
+  │
+  └─ 右側補助領域 / WorkspaceActionRail
+      ├─ 次にやること
+      ├─ 止まっている理由
+      ├─ 根拠・記録
+      └─ チームの会話 / 他職種受信
+```
+
+実装方針:
+
+```text
+1. 既存 DashboardCockpit と segment API を活かす。
+2. 監査待ち中心の「今すぐ対応」は Unified Urgent Queue として拡張する。
+3. 左サマリーレール、役割別表示、他職種受信、残数リスクを追加する。
+4. summary/details の重複取得削減は完了済みとして扱い、再タスク化しない。
+5. realtime invalidation 分離は完了済みとして扱い、追加segmentだけ同じ方針を踏襲する。
+6. 30秒更新、ViewModel、section memoization でレンダリング更新範囲を小さくする。
+7. ダッシュボード固有の semantic tone を定義し、色だけに依存しない。
+```
+
+**Dashboard Summary Rail 仕様**:
+
+不足している左側サマリーレールを追加する。最小実装では既存 `summary` / `details` / `team` からフロントで合成し、将来は専用BFFへ移す。
+
+```ts
+export type DashboardSummaryRailResponse = DashboardCockpitScopeMetadata & {
+  patient_cycle_summary: {
+    stable_count: number;
+    attention_count: number;
+    waiting_review_count: number;
+  };
+  task_summary: Array<{
+    key: 'audit' | 'visit' | 'report' | 'handoff' | 'carryover' | 'inbound' | 'stock';
+    label: string;
+    count: number;
+    tone: 'normal' | 'warning' | 'urgent' | 'info';
+    href: string;
+  }>;
+  team_summary: {
+    total_slack_minutes: number | null;
+    bottleneck_label: string | null;
+  };
+  generated_at: string;
+};
+```
+
+追加候補:
+
+```text
+GET /api/dashboard/cockpit/rail?scope=mine|team
+src/app/(dashboard)/dashboard/dashboard-summary-rail.tsx
+```
+
+受入条件:
+
+```text
+- ダッシュボード左側に今日のサマリーが表示される。
+- 通常運用/要対応/確認待ちの患者サイクル数が表示される。
+- 主なタスク件数から該当画面へ遷移できる。
+- 最終更新時刻が表示される。
+- 狭い画面では上部折りたたみまたは横スクロールカードになる。
+```
+
+**DASH-OPS completed / initial cutover（再タスク化しない）**:
+
+```text
+- DASH-P0-002 Lightweight summary builder / query duplication削減
+  - summary は PHI 詳細を読まず、count / earliest_due_at / today_visit_times の軽量取得へ分離済み。
+  - details だけが患者名付き audit_queue / today_visits を返す。
+
+- DASH-P0-003 Segment-specific realtime invalidation
+  - summary / details / team / comments / inbound の invalidate source は分離済み。
+  - comment_refresh で summary/details/team が再取得されない構造に整理済み。
+
+- Dashboard inbound segment 初期cutover
+  - /api/dashboard/cockpit/inbound と inbound feed の初期表示は追加済み。
+  - 残: review UX、role focus、MedicationStock/Report/Billing 連動、drilldown。
+
+- DashboardUrgentItem 初期cutover
+  - audit と inbound は urgent item として統合済み。
+  - 残: stock/report/callback/billing/task/visit_preparation source。
+```
+
+**P0 backlog**:
+
+| ID          | 優先度 | タスク                        | 主な対象                                                                                | 受入条件                                                                                                                                                                                                                                                                              |
+| ----------- | ------ | ----------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| DASH-P0-001 | P0     | Unified Urgent Queue          | `DashboardUrgentItem`, dashboard summary/details, `UrgentNowSection`, `buildNextAction` | `audit_queue` だけでなく、`inbound_signal`、`medication_stock_risk`、`visit_preparation`、`report_delivery`、`callback`、`billing`、`task` を統合する。既存監査カードは `source='audit'` として維持する。「今すぐ対応」は severity/due/waiting で3件を表示し、残件 drilldown を持つ。 |
+| DASH-P0-004 | P0     | Dashboard Clock Island 分離   | `DashboardCockpit`, `useDashboardClock`, countdown/freshness components                 | 30秒ごとの `now` 更新で cockpit 全体を再描画しない。期限表示、現在時刻 marker、freshness だけを小さい ClockIsland / memo component で更新する。                                                                                                                                       |
+| DASH-P0-005 | P0     | Dashboard ViewModel hook 追加 | `useDashboardCockpitViewModel`, `dashboard-cockpit.helpers.ts`                          | `buildProcessNowTiles`、`buildTimelineBlocks`、`buildDailyOpsBlockedReasons`、`buildNextAction` などの派生値を ViewModel hook / pure helper に寄せる。`DashboardCockpit` 本体は segment 取得と layout に集中させる。                                                                  |
+
+**P1 backlog**:
+
+| ID           | 優先度 | タスク                                   | 主な対象                                                 | 受入条件                                                                                                                                                                                                                             |
+| ------------ | ------ | ---------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| DASH-P1-010  | P1     | Dashboard Summary Rail 追加              | `DashboardSummaryRail`, `DashboardCockpit` layout        | 左サマリーレールに今日のサマリー、主なタスク、チーム状況、最終更新を表示する。初期は既存 segment から合成し、将来 `GET /api/dashboard/cockpit/rail` へ移す。狭い画面では上部カード化する。                                           |
+| DASH-P1-001  | P1     | Hidden queue drilldown                   | `audit_queue_hidden_count`, `/audit` link builder        | 「残りN件を見る」を明示ボタン化し、`/audit?filter=dashboard_urgent` など条件付き遷移を使う。麻薬監査、期限超過、担当分へ絞れる。                                                                                                     |
+| DASH-P1-002  | P1     | Carryover task drilldown                 | `carryover_count`, tasks API/UI                          | 持ち越しを患者連絡、報告、請求、訪問準備、他職種受信、残数確認に分解する。`/tasks?filter=carryover` へ遷移し、右レールに上位3件を表示する。                                                                                          |
+| DASH-P1-003  | P1     | Team handoff recommendation              | `team_capacity`, handoff workspace                       | 余白が少ない担当者と余白がある担当者をペア化し、「Aさんの報告2件をBさんへ」のような候補を出す。候補付きで handoff へ遷移する。                                                                                                       |
+| DASH-P1-004  | P1     | Team conversation と Inbound feed の分離 | `TeamConversationPanel`, inbound segment                 | 内部コメントは「チームの会話」、MCS/電話/FAX/メールは「他職種受信」として別カードにする。未処理N件、薬剤師確認待ちN件、残数報告N件を表示する。                                                                                       |
+| DASH-P1-005  | P1     | Process tiles clickable                  | `ProcessNowSection`, route builders                      | 9工程tileに href を付ける。`intake -> /prescriptions/intake?status=intake_received`、`audit -> /audit?from=dashboard`、`visit -> /schedules?date=today`、`report -> /reports?status=pending`、`billing -> /billing?status=pending`。 |
+| DASH-P1-006  | P1     | WIP guide 薬局設定化                     | `PROCESS_WIP_GUIDES`, dashboard settings, summary API    | フロント固定のWIP目安を薬局設定へ移す。チーム人数、曜日、時間帯で guide を変えられる。Dashboard API が `guide` と `count` を返す。                                                                                                   |
+| DASH-P1-007  | P1     | Today Flow 担当者別表示                  | `TodayFlowSection`, schedule/team data                   | 現在の薬局全体横棒に加え、担当者別表示と未配置タスクを追加する。訪問、監査、セット、報告、患者連絡を block 化する。                                                                                                                  |
+| DASH-P1-008  | P1     | Dashboard quick actions                  | urgent card, inbound card, task assignment               | ダッシュボード内で既読、タスク作成、担当者割当、メモ追加、詳細への deep link までを許可する。不可逆操作は詳細画面へ遷移させる。                                                                                                      |
+| DASH-P1-009  | P1     | Role-based dashboard layout              | `focusRole`, section order, next action priority         | pharmacist は監査/訪問準備/薬剤変更/残数不足/他職種薬剤情報、clerk は患者連絡/報告書送付/請求/書類/MCS電話受付、manager はチーム余白/詰まり/SLA/負荷を優先する。                                                                     |
+| DASH-BFF-002 | P1     | Medication stock risk segment            | `/api/dashboard/cockpit/stock-risks`, `STOCK-001/RX-002` | 不足見込み、使用頻度不明、名寄せ確認待ち、他職種残数報告ありを返す。`STOCK-001` の台帳と `InboundCommunicationSignal` を消費し、権限内では薬剤名、規格、残数、使用頻度、他職種報告本文/要約を表示できる。                            |
+
+**P2 backlog / UX・性能**:
+
+| ID              | 優先度 | タスク                       | 主な対象                                                                                                                    | 受入条件                                                                                                                                                                                                                    |
+| --------------- | ------ | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| DASH-DESIGN-001 | P2     | Dashboard semantic tone 定義 | dashboard UI tokens, PH-OS UI guidelines                                                                                    | `urgent`, `warning`, `inbound`, `medication_stock`, `visit`, `document`, `billing`, `neutral` の semantic tone を定義する。色だけで意味を伝えず、icon + label + text を併用する。赤は本当に止まる/危険/期限超過に限定する。 |
+| DASH-UX-001     | P2     | Dashboard density mode       | dashboard shell/settings                                                                                                    | `標準`、`コンパクト`、`管理者` の密度を切り替える。日常利用では説明文を減らし、件数とCTAを優先できる。                                                                                                                      |
+| DASH-PERF-001   | P2     | Section memoization          | `ConditionBanner`, `UrgentNowSection`, `TodayFlowSection`, `ProcessNowSection`, `TeamCapacityCard`, `TeamConversationPanel` | section を memo 化し、必要 props だけで再描画する。`now` と query state の変更が無関係 section へ波及しない。                                                                                                               |
+| DASH-BFF-003    | P2     | Report/billing segment       | `/api/dashboard/cockpit/reports`, `/api/dashboard/cockpit/billing`                                                          | 報告書送付失敗、報告書未作成、請求締め前未処理、算定 blocker を返す。請求確定や報告送付は dashboard quick action では行わない。                                                                                             |
+| DASH-QA-001     | P2     | Dashboard visual regression  | dashboard story/test route, Playwright screenshot                                                                           | Summary Rail、Unified Urgent Queue、Today Flow、Process Tiles、Inbound Panel の主要状態を screenshot で固定する。PHIを含むfixtureは非実在データのみ使う。                                                                   |
+
+**Dashboard quick action 安全ルール**:
+
+```text
+Dashboardで許可:
+  - 既読 / レビュー待ちへの状態付け
+  - タスク作成
+  - 担当者割当
+  - メモ追加
+  - 詳細画面へのdeep link
+
+Dashboardで禁止:
+  - 請求確定
+  - 報告書送付
+  - 薬剤師確認完了
+  - 患者情報の削除
+  - MedicationStockへの直接反映
+```
+
+**追加 segment 方針**:
+
+```text
+既存:
+  /api/dashboard/cockpit/summary
+  /api/dashboard/cockpit/details
+  /api/dashboard/cockpit/team
+  /api/dashboard/cockpit/comments
+
+追加:
+  /api/dashboard/cockpit/inbound
+  /api/dashboard/cockpit/stock-risks
+  /api/dashboard/cockpit/reports
+  /api/dashboard/cockpit/billing
+```
+
+初期表示ではすべてを取らない。`role focus` と first viewport に応じて `summary`、`urgent`、`inbound`
+を優先し、stock/report/billing は lazy segment とする。
+
+**追加/変更コンポーネント一覧**:
+
+```text
+DashboardSummaryRail
+DashboardUrgentQueueSection
+DashboardUrgentItemCard
+DashboardTodayFlowSectionV2
+DashboardProcessTiles
+DashboardTeamSlackCard
+DashboardInboundPanel
+DashboardMedicationStockRiskPanel
+DashboardReportBillingPanel
+DashboardMetricCard
+DashboardSegmentCard
+DashboardClockLabel
+DashboardNowMarker
+DashboardDensityToggle
+```
+
+既存再利用:
+
+```text
+WorkspaceActionRail
+SegmentError
+SegmentStaleBanner
+FilterChipBar
+SafetyBoard badge helpers
+buttonVariants
+```
+
+**実装順**:
+
+| PR   | 内容                                                                                                                                             | validation                                                                             |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| PR-1 | `DASH-P0-004` Clock Island と `DASH-P0-005` ViewModel hook。`DASH-P0-002/003` 済みの構造を崩さず、30秒更新と派生値計算を分離する。               | dashboard-cockpit unit tests、render count smoke、clock-only update tests、typecheck。 |
+| PR-2 | `DASH-P0-001` Unified Urgent Queue の残 source 統合。audit/inbound に加え、stock/report/callback/billing/task/visit_preparation を段階追加する。 | urgent item presenter tests、relative href tests、role/scope tests。                   |
+| PR-3 | `DASH-P1-010` Dashboard Summary Rail。既存 segment から合成し、狭い画面では上部カードへ変形する。                                                | responsive UI tests、rail link tests、a11y label tests。                               |
+| PR-4 | `DASH-P1-001/002/005` drilldown と clickable process tiles。                                                                                     | route builder unit tests、dashboard UI tests、href allowlist tests。                   |
+| PR-5 | `DASH-BFF-002` medication stock risk segment と `DASH-BFF-003` report/billing segment。                                                          | segment API tests、false-empty/error tests、role focus tests。                         |
+| PR-6 | `DASH-DESIGN-001` semantic tone、`DASH-UX-001` density mode、`DASH-QA-001` visual regression。                                                   | screenshot regression、mobile layout tests、contrast/a11y tests。                      |
+
+**次のPR推奨**:
+
+```text
+1. DASH-P0-004 Dashboard Clock Island
+2. DASH-P0-005 Dashboard ViewModel hook
+3. DASH-P0-001 Unified Urgent Queue の残 source 統合
+```
+
+理由: `DASH-P0-002` と `DASH-P0-003` は完了済みなので、次はUI追加前に再描画範囲と派生値計算を整理する。
+その後、`今すぐ対応` の対象範囲を監査/inboundから残数・報告・請求・折返しへ広げる。
+
+**最終受入基準**:
+
+```text
+- ダッシュボード左側に今日のサマリーがある。
+- 今すぐ対応に監査以外の urgent item を表示できる。
+- 今日の流れで訪問とデスク作業の流れが見える。
+- 工程の今から各工程へクリック遷移できる。
+- チーム余白が見える。
+- チームの会話と他職種受信が分離される。
+- 右レールに次にやること/止まっている理由/根拠・記録がある。
+- summary/details の重複取得削減が維持されている。
+- 30秒更新で全体が過剰再描画されない。
+- 色の意味が semantic tone として整理されている。
+- モバイルでも主要CTAが見える。
+```
+
+#### P0/P1: PH-OS 7画面 UI/UX全面改善 Mock Alignment（UI-REDESIGN-001） `cc:TODO`
+
+> 2026-07-07 追加。生成済み7画面UIモックに、現在のPH-OS実コードを可能な限り近づけるための横断UI/UX仕様。
+> これは全面作り直しではない。既存の `AppShell`、`Sidebar`、`WorkspaceActionRail`、`DataTable`、`SegmentError`、各BFF/API、権限、監査、RLS、no-store を維持し、現行画面を上書き改善する。
+>
+> このタスクは新しい業務概念を増やすためのものではなく、既存/計画済みレーンを画面体験へ接続するためのUI統合レーンである。
+> 対応する既存レーン: `DASH-OPS`、`MOV-001`、`INB-001`、`RX-002`、`VISIT-SYNC-001`、`REPORT-001`、`PATIENT-UI-020`、`DASH-DESIGN-001`。
+
+対象画面:
+
+```text
+1. 患者一覧
+2. 患者詳細
+3. 調剤ワークスペース
+4. スケジュール管理
+5. 訪問時機能
+6. 報告書機能
+7. 他職種機能
+```
+
+参照UIイメージ:
+
+```text
+/mnt/data/患者一覧ダッシュボードの詳細.png
+/mnt/data/薬局患者管理ダッシュボード.png
+/mnt/data/調剤ワークスペースダッシュボード.png
+/mnt/data/薬局スケジュール管理ダッシュボード.png
+/mnt/data/医療訪問管理ダッシュボード.png
+/mnt/data/医療報告書作成画面.png
+/mnt/data/薬局連携ツールダッシュボード.png
+```
+
+実装前に必ず確認するコード:
+
+```text
+src/app/(dashboard)/layout.tsx
+src/components/layout/app-shell.tsx
+src/components/layout/sidebar.tsx
+src/components/layout/navigation-config.ts
+src/components/ui/*
+src/components/features/workspace/action-rail.tsx
+src/components/ui/data-table.tsx
+
+src/app/(dashboard)/patients/page.tsx
+src/app/(dashboard)/patients/patients-board.tsx
+src/app/(dashboard)/patients/[id]/page.tsx
+src/app/(dashboard)/patients/[id]/card-workspace.tsx
+src/app/(dashboard)/patients/[id]/patient-activity-timeline.tsx
+src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx
+
+src/components/features/dispense-workbench/dispensing-workbench.tsx
+src/components/features/dispense-workbench/dispensing-workbench.adapter.ts
+
+src/app/(dashboard)/schedules/page.tsx
+src/app/(dashboard)/schedules/schedule-team-board.tsx
+src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx
+src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx
+
+src/app/(dashboard)/visits/page.tsx
+src/app/(dashboard)/visits/visits-today.tsx
+src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx
+
+src/app/(dashboard)/reports/page.tsx
+src/app/(dashboard)/reports/report-share-workspace.tsx
+
+src/app/(dashboard)/communications/page.tsx
+src/app/(dashboard)/communications/inbound/*
+src/server/services/*
+src/types/*
+docs/ui-ux-design-guidelines.md
+```
+
+**共通レイアウト方針**:
+
+7画面すべてを、次の情報構造へ寄せる。
+
+```text
+Top Header
+  - 薬局/拠点 selector
+  - global search
+  - notification bell
+  - user avatar / role
+
+Left Sidebar
+  - PH-OS logo
+  - icon + Japanese label
+  - active item = subtle teal background
+  - bottom: お知らせ / ヘルプ・サポート
+
+Main Workspace
+  - page header / context
+  - status / filter / summary
+  - main card / table / board
+  - right rail / detail panel
+```
+
+右レールは全画面で「次に何をするか」の場所として統一する。
+
+```text
+患者一覧:
+  選択患者の次アクション
+
+患者詳細:
+  重要アラート / 次回までのタスク / 医療チャット
+
+調剤:
+  監査チェック / 次工程
+
+スケジュール:
+  AI提案 / 患者連絡待ち
+
+訪問:
+  保存 / 報告書草案 / 終了
+
+報告書:
+  AI抽出 / 送付先ステータス
+
+他職種:
+  構造化シグナル / 推奨アクション
+```
+
+**色・状態・密度**:
+
+```text
+teal:
+  primary action, active nav, selected tab, main CTA
+
+blue:
+  schedule, visit, info, links
+
+green:
+  completed, safe, enough, submitted
+
+orange:
+  caution, soon, waiting
+
+red:
+  urgent, shortage, overdue, must check, high risk
+
+purple:
+  interprofessional / inbound medical chat / shared communication
+
+gray:
+  neutral, disabled, secondary, metadata
+```
+
+原則:
+
+```text
+- raw color を増やさず design token / Tailwind token を優先する。
+- 色だけで状態を伝えず、icon + label + text + badge を併用する。
+- 主要CTAは画面に1-2個までにし、それ以外は右レールまたはmenuへ逃がす。
+- カードは `rounded-lg` or `rounded-xl`、`border border-border/70`、`bg-card`、弱いshadow、`p-4` / `p-5` を基本にする。
+- モバイルでは sidebar は MobileNav、右レールは Sheet/drawer、主要CTAは下部固定、tap target は44px以上。
+```
+
+**PHI / 医療情報表示方針**:
+
+業務システム内では、権限内で判断に必要な患者情報・薬剤情報・医療情報は表示してよい。
+ただし表示可否は画面単位の blanket redaction ではなく、role / assignment / scope / consent / purpose / raw access によって制御する。
+
+```text
+表示してよい:
+  権限内の患者名、年齢、性別、住所/施設、次回訪問、薬剤名、残数、リスク、受信要約、報告/請求状態、担当者、次アクション。
+
+制御する:
+  raw chat text、電話原文、添付画像、外部共有用raw、通知/OS push、監査ログchanges、export/PDF/CSV、signed URL/storage key。
+
+raw text:
+  一覧には出しすぎない。詳細画面で再認可し、閲覧は監査ログ対象。
+```
+
+**フロントエンド改善タスクの品質基準**:
+
+このUI改善レーンでは、曖昧な「見た目を近づける」タスクを禁止する。
+各PRは、必ず以下の項目を実装メモまたはPR本文に持つ。
+
+```text
+1. 現行コード読解
+   - 読んだ entrypoint
+   - 読んだ BFF/API
+   - 読んだ shared component
+   - 既存の loading / empty / error / forbidden / stale / offline 表示
+
+2. 画面契約
+   - first viewport に必ず出す情報
+   - 右レールに置く次アクション
+   - primary CTA / secondary CTA
+   - クリック先の deep link
+   - 表示してよい PHI / 再認可が必要な raw 情報
+
+3. データ契約
+   - 既存DTOを使うか、新DTOを追加するか
+   - list pagination / cursor / hidden_count
+   - partial failure / stale / generated_at
+   - payload budget
+   - client-only派生値と server-side presenter の境界
+
+4. 状態マトリクス
+   - loading
+   - empty
+   - data
+   - partial
+   - error
+   - forbidden
+   - stale
+   - offline / sync pending
+   - conflict
+
+5. レスポンシブ契約
+   - desktop: left / main / right の幅
+   - tablet: right rail の折りたたみ
+   - mobile: drawer / bottom action bar / card list
+   - 44px target
+   - safe-area
+
+6. A11y契約
+   - heading hierarchy
+   - landmark / region label
+   - filter / tab / chip の keyboard 操作
+   - aria-live が必要な件数変化
+   - 色だけに依存しない状態表示
+
+7. 性能契約
+   - 初期表示で lazy mount する heavy panel
+   - search debounce / deferred value
+   - tab switch budget
+   - render memoization
+   - API payload budget
+
+8. 検証
+   - targeted unit/component test
+   - route/API test
+   - exact-path eslint
+   - prettier
+   - typecheck
+   - 必要な画面は Playwright / screenshot
+```
+
+Definition of Ready:
+
+```text
+- 対象画面の entrypoint と既存BFF/APIを読んでいる。
+- `docs/ui-ux-design-guidelines.md` を確認している。
+- 既存 component で再利用できるものを列挙している。
+- 新規DTOが必要な場合、既存API envelope / list contract / permission DTO と整合している。
+- PHI表示方針が「権限内で表示」か「raw再認可」かに分類されている。
+- 画面の desktop / mobile 両方の構成が決まっている。
+```
+
+Definition of Done:
+
+```text
+- first viewport で、その画面の「対象」「状態」「次アクション」が分かる。
+- 右レールまたは下部固定CTAに、次に押すべき操作がある。
+- false-empty がない。取得失敗と0件状態を分離している。
+- forbidden は権限不足として説明し、空状態に見せない。
+- 主要カード/行には deep link がある。
+- raw text / signed URL / storage key / provider raw error を一覧や通知に出していない。
+- モバイルで横スクロール前提になっていない。
+- keyboard だけで主要フィルタ、タブ、CTAを操作できる。
+- 対象画面の focused tests と exact-path lint / prettier / typecheck が通っている。
+```
+
+Frontend state matrix:
+
+| 状態      | 必須UI                                       | 禁止                                                |
+| --------- | -------------------------------------------- | --------------------------------------------------- |
+| loading   | skeleton / progress / `aria-busy`            | 空状態文言を先に出す                                |
+| empty     | 0件理由、次アクション、filter reset          | API失敗を0件に見せる                                |
+| data      | 件数、generated_at、主要CTA、deep link       | 詳細導線なしのカード                                |
+| partial   | 表示できた範囲、失敗segment、retry           | 全体errorにして閲覧可能情報を消す                   |
+| error     | recovery action、request_id、retry           | raw backend message / stack / provider error の表示 |
+| forbidden | 必要権限、依頼導線、戻る導線                 | empty扱い                                           |
+| stale     | 最終更新、再読込、古い可能性の明示           | 古い情報を確定情報として強調                        |
+| offline   | 未同期/同期待ち/競合の区別、local draft 状態 | 保存済みと誤認させる                                |
+| conflict  | 競合相手ではなく競合理由、再読込/差分確認    | 上書き保存を primary にする                         |
+
+Frontend PR slice template:
+
+```md
+## 対象画面
+
+## 既存コード読解
+
+- entrypoints:
+- BFF/API:
+- shared components:
+
+## 変更するUI契約
+
+- first viewport:
+- right rail / bottom CTA:
+- filters:
+- deep links:
+
+## データ契約
+
+- existing DTO:
+- new DTO:
+- payload budget:
+- partial failure:
+
+## 状態マトリクス
+
+- loading:
+- empty:
+- partial:
+- error:
+- forbidden:
+- mobile:
+
+## PHI / 権限
+
+- permissioned data shown:
+- raw/re-auth data:
+- notification/export/audit considerations:
+
+## 検証
+
+- unit/component:
+- API:
+- eslint:
+- prettier:
+- typecheck:
+- screenshot/e2e:
+```
+
+**Frontend Agent Slice Contract / coding-agent 実装契約**:
+
+このレーンは「7画面を一気に作り替える」タスクではない。
+coding agent が安全に実装できるよう、各PRは次のいずれか1種類に分類し、原則として混ぜない。
+
+```text
+A. Contract / Presenter slice
+   - BFF DTO、presenter、view-model、route helper、allowed/forbidden fields、payload budget を固定する。
+   - UI layout の大改造、mutation 追加、visual polish は含めない。
+
+B. Layout / Component slice
+   - 既存 DTO を使って layout、right rail、cards、table/card toggle、mobile drawer を実装する。
+   - API shape、auth/authz、RLS、audit、DB schema、状態遷移は変えない。
+
+C. Interaction / Mutation slice
+   - review/apply/reject/link/save/send などの操作を実装する。
+   - confirmation、reason、idempotency/OCC、audit、forbidden/error/conflict UI を必須にする。
+   - irreversible / high-risk operation は詳細画面へ遷移させ、dashboard/list quick action で確定しない。
+
+D. State / QA slice
+   - loading / empty / partial / error / forbidden / stale / offline / conflict fixture、
+     mobile snapshot、keyboard/a11y、PHI omission snapshot、payload/perf smoke を追加する。
+   - 機能追加や visual redesign と混ぜない。
+```
+
+Hard rules:
+
+```text
+- 1 PR = 1 route surface または 1 shared foundation。7画面横断の巨大PRは禁止。
+- BFF/API contract 変更と visual polish を同じ PR に入れない。
+- auth/authz、RLS、no-store、audit、export、push notification、storage URL、signed URL の扱いを visual PR で緩めない。
+- client component に Prisma shape / raw backend DTO を直接渡さない。BFF presenter / adapter / view-model を境界にする。
+- list/dashboard/timeline DTO は raw text、storage key、signed URL、provider raw error、stack、external URL を持たない。
+- raw text / 添付 / 連絡先詳細は dedicated detail surface で表示する。必要に応じて再認可、purpose、read audit、request_id を持たせる。
+- `action_href` / deep link は相対URLのみ。外部URLや storage URL を card/action に直接入れない。
+- empty と failed fetch を同じ UI にしない。forbidden を empty に見せない。
+- mobile は 390px 幅で主要CTAが見えること。横スクロール前提は禁止。
+- 色だけで状態を表現しない。icon + label + text + badge を併用する。
+```
+
+Per-slice required contract:
+
+| 項目              | PR本文 / 実装メモに必須で書く内容                                                                                                     |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Route surface     | 対象 route / component / tab / rail                                                                                                   |
+| Existing code map | 読んだ entrypoint、BFF/API、shared component、既存 state UI                                                                           |
+| Slice type        | Contract / Layout / Interaction / State-QA のどれか                                                                                   |
+| Data contract     | DTO名、presenter名、allowed fields、forbidden fields、payload budget、pagination/cursor、hidden_count、generated_at、partial_failures |
+| PHI boundary      | summary/list に出す情報、detail/raw surface に逃がす情報、export/push/audit/log に出さない情報                                        |
+| State matrix      | loading / empty / filtered-empty / data / partial / error / forbidden / stale / offline / conflict の対象有無                         |
+| Mobile/a11y       | 390px layout、right rail drawer 化、44px target、heading/landmark、keyboard path、aria-live                                           |
+| Performance       | lazy mount 対象、debounce/deferred 対象、initial payload、interaction budget、non-active tab hydration                                |
+| Verification      | focused unit/component/API tests、state fixture、mobile/a11y、PHI snapshot、exact-path lint/typecheck、必要な e2e/perf gate           |
+
+**画面別タスクの品質改善版**:
+
+| ID                | Priority | 画面         | 実装単位                                | 必須成果物                                                                                       | 品質ゲート                                                                                              |
+| ----------------- | -------- | ------------ | --------------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| UI-PAT-LIST-001   | P0/P1    | 患者一覧     | 3カラム運用一覧                         | `PatientSummaryRail`、`PatientListTable/Card`、`PatientQuickDetailPanel`、status chip、deep link | selected patient state、filter reset、empty/error分離、mobile drawer、patient list component tests      |
+| UI-PAT-DETAIL-001 | P0/P1    | 患者詳細     | Command Center再構成                    | Patient header、Must Check、Safety Board、Next Action、right rail、movement tab link             | PHI表示権限、non-active tab lazy mount、tab keyboard、patient detail tests、payload budget              |
+| UI-DISPENSE-001   | P1       | 調剤         | 調剤作業台                              | queue、workflow stepper、prescription line table、audit right rail、next step CTA                | high-risk badge、step transition link、table mobile fallback、dispense/audit tests                      |
+| UI-SCHEDULE-001   | P1       | スケジュール | 薬剤師別タイムライン                    | date toolbar、legend、pharmacist rows、visit/travel blocks、proposal rail                        | timezone/JST、empty day、overflow、keyboard nav、schedule board tests                                   |
+| UI-VISIT-001      | P0/P1    | 訪問中       | mobile visit mode                       | patient header、goal/stock/observation/inbound/voice cards、bottom action bar                    | mobile viewport、offline/sync states、keystroke budget、visit record section tests                      |
+| UI-REPORT-001     | P1       | 報告書       | editor + AI/送付 rail                   | report list rail、editor sections、inbound summary candidates、delivery status rail              | raw text not auto-inserted、draft state、delivery forbidden/error、report workspace tests               |
+| UI-INBOUND-001    | P0/P1    | 他職種       | 受信インボックス + signal review        | inbox filters、message detail、structured signal panel、action rail                              | raw/detail separation、review lifecycle, task creation, formal signal tests, inbound UI component tests |
+| UI-SHELL-001      | P1       | 共通shell    | sidebar/header/right rail visual polish | active nav、global search placeholder、notification/user area、right rail consistency            | no route regressions、mobile nav parity、a11y landmarks、layout smoke                                   |
+| UI-QA-001         | P1/P2    | 横断         | visual/state regression pack            | major screen fixtures、state matrix snapshots、mobile snapshots                                  | non-PHI fixtures only、screenshot diff threshold、focused Playwright or story route                     |
+
+各タスクの実装方針:
+
+```text
+- UI-PAT-LIST-001 と UI-PAT-DETAIL-001 は `PATIENT-UI-020` / `MOV-001` / `INB-001` / `RX-002` と直列で進める。
+- UI-VISIT-001 は `VISIT-SYNC-001` と直列で進め、訪問記録の入力喪失防止をUI改善より優先する。
+- UI-INBOUND-001 は `INB-001` / `INBOUND-002` / `TASK-011` の formal signal lifecycle を壊さない。
+- UI-REPORT-001 は raw text を report body に自動挿入しない。summary/signal を候補として薬剤師が選択する。
+- UI-SHELL-001 は全画面の見た目だけを変え、navigation config、permission gate、layout auth boundary を変えない。
+```
+
+**Agent-ready frontend slice backlog**:
+
+| Slice ID        | Existing lane                                  | Slice type             | Scope                                                                                                                      | Data / PHI contract                                                                                                                  | Required proof                                                                                          |
+| --------------- | ---------------------------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| UI-FOUND-001    | `DASH-DESIGN-001`, `UI-SHELL-001`              | Layout                 | AppShell / Sidebar / Header / Card / Badge / WorkspaceActionRail の見た目統一。auth boundary は変更しない。                | data 変更なし。raw color 追加禁止。semantic token / icon / label を使う。                                                            | layout smoke、landmark/heading test、mobile nav parity、`colors:check`                                  |
+| DASH-UI-001     | `DASH-P0-004`, `DASH-P0-005`                   | Contract + Layout      | Clock Island と Dashboard ViewModel hook。30秒更新を freshness/clock component に閉じる。                                  | API shape 変更なし。derived values は pure helper / view-model に寄せる。                                                            | dashboard helper unit、clock-only update test、render count smoke                                       |
+| DASH-UI-002     | `DASH-P0-001`                                  | Contract               | Unified Urgent Queue source を 1 PR 1 source で追加する。`stock` / `report` / `billing` / `callback` / `task` を混ぜない。 | `DashboardUrgentItem` allowed fields を snapshot。raw text、signed URL、storage key、external URL は urgent DTO に入れない。         | presenter tests、relative href tests、role/scope tests、partial failure tests                           |
+| PAT-LIST-001A   | `PATIENT-UI-020`, `PERF-BFF-001`               | Contract               | patient board presenter / `PatientListItemViewModel` を固定する。layout変更前にDTOを安定化する。                           | list item は status、next_action、badges、summary、deep link まで。raw inbound body、attachment、free text は持たない。              | API snapshot、forbidden tests、false-empty tests、payload budget                                        |
+| PAT-LIST-001B   | `UI-PAT-LIST-001`                              | Layout                 | 患者一覧3カラム、filter chips、list/card toggle、selected patient right drawer。                                           | 既存presenterのみ使用。bulk mutation は入れない。                                                                                    | component tests、filter reset、selected patient state、390px drawer、keyboard navigation                |
+| PAT-DETAIL-001A | `FE-PAT-001`, `MOV-001`, `RX-002`, `INB-001`   | Layout + Perf          | patient detail island split。Command tab first viewport だけ初期hydrate。非active tabはlazy mount。                        | API shape 変更なし。tab内 raw/detail surface は各laneのcontractに従う。                                                              | non-active tab hook init test、tab keyboard test、payload/bundle note、patient detail smoke             |
+| MOV-UI-001      | `MOV-001`                                      | Contract + Layout      | movement timeline standalone API と map-less date card UI を分離実装する。                                                 | occurrence-only。処方明細、訪問本文、SOAP、文書本文、OCR、添付名、raw MCS/電話本文はtimeline list DTOに入れない。                    | raw omission snapshot、relative href tests、partial failure tests、mobile vertical timeline snapshot    |
+| INB-UI-001      | `INB-001`, `TASK-011`, `RISK-021`              | Interaction            | inbound tri-pane: inbox / raw-detail / structured signal action rail。review lifecycle を明示する。                        | list は controlled summary。raw body / attachment は dedicated detail surface。MedicationStock反映はreview endpoint経由。            | review state tests、task creation tests、raw/detail separation tests、audit/request_id tests            |
+| STOCK-UI-001    | `RX-002`, `MOV-001`, `VISIT-SYNC-001`          | Contract + Interaction | MedicationStock panel / observation form / external observation review queue。                                             | ledger DTO は controlled fields のみ。source raw text は表示元detailへdeep link。apply/rejectはpharmacist review + reason + audit。  | stock DTO snapshot、idempotency tests、review apply/reject tests、mobile input tests                    |
+| VISIT-UI-001    | `VISIT-SYNC-001`, `UX-MOB-001`, `FE-VISIT-001` | Layout + State-QA      | visit record mobile shell split、section-level watch、bottom action bar、offline/sync/conflict states。                    | raw sync error / PHI を toast/log/indicator に出さない。offline draft は暗号化対象のみ。                                             | section watch tests、mobile e2e、offline draft recovery、conflict UI、keystroke budget                  |
+| REPORT-UI-001   | `REPORT-020`, `INB-001`, `RX-002`              | Interaction            | report editor + evidence/AI/delivery rail。inbound/stock を候補として扱う。                                                | raw text 自動挿入禁止。normalized_summary / pharmacist-selected signal のみ report candidate。send/exportは別permission/audit gate。 | candidate insertion tests、raw auto-insert absence、delivery forbidden/error tests、export PHI snapshot |
+| SCHED-UI-001    | `VS-AUTO`, `SCHED-UX`, `RX-002`                | Layout                 | pharmacist timeline grid、legend、proposal rail。初回は proposal read-only review を優先。                                 | proposal-first維持。confirmed schedule / ready/departed/in_progress/completed を自動再配置しない。JST/timezoneを固定。               | timezone tests、overflow tests、keyboard navigation、mobile layout                                      |
+| DISP-UI-001     | `DSP-001`, `RX workflow`, `DASH-DESIGN-001`    | Layout                 | dispensing workbench stepper、prescription line table、audit right rail。                                                  | workflow mutation contract は変えない。high-risk / narcotic / audit blocker は badge + text + right rail action。                    | workbench component tests、high-risk badge tests、table mobile fallback、keyboard shortcut smoke        |
+| UI-QA-001A      | `DEV-UI-001`, `FE-BUDGET-001`, `DEV-PHI-001`   | State-QA               | major screen fixtures and screenshots。default / empty / partial-error / forbidden / mobile-390 / long-text を固定する。   | fixture は non-PHI。hostile patient name、drug name、storage key、provider error を混ぜて leakage を検査する。                       | screenshot diff、state matrix snapshots、PHI omission snapshots、a11y smoke                             |
+
+**Required screen fixtures**:
+
+| Surface           | Required states                                                                 | Extra required states                                              |
+| ----------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Dashboard         | default / partial segment failure / stale / forbidden / mobile-390              | hidden urgent count、role focus、clock-only update                 |
+| Patients list     | default / empty / filtered-empty / error / forbidden / mobile-390               | selected patient drawer、load more / cursor、long facility/address |
+| Patient detail    | default / tab loading / tab error / forbidden / mobile-390                      | non-active lazy tab、movement occurrence-only、right rail overflow |
+| Movement timeline | default / empty date range / partial source failure / mobile-390                | raw omission、relative href fallback、long timeline                |
+| Inbound           | inbox empty / unprocessed / needs review / raw detail forbidden / conflict      | accepted / record_only / rejected / linked lifecycle               |
+| Medication stock  | default / usage unknown / shortage expected / equivalence review / mobile input | external observation pending、apply/reject conflict                |
+| Visit mode        | default / offline / sync pending / sync failed / conflict / mobile-390          | reload recovery、bottom CTA safe-area、keystroke budget            |
+| Report            | draft / delivery forbidden / delivery error / export blocked / mobile-390       | raw not auto-inserted、selected signal candidate                   |
+| Schedule          | empty day / overloaded day / proposal pending / timezone edge / mobile-390      | confirmed schedule lock、travel block overflow                     |
+| Dispense          | no selected patient / high-risk / audit blocker / table overflow / mobile-390   | current step preserved、right rail checklist                       |
+
+**Frontend verification gates**:
+
+Base gate for every frontend PR:
+
+```bash
+pnpm format:check
+git diff --check
+pnpm colors:check
+pnpm boundaries:check
+pnpm api-response-shape:check
+pnpm dto-direct-prisma-return:check
+pnpm route-auth-wrapper:check
+NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck
+NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused
+pnpm lint
+pnpm vitest run <focused test files> --reporter=dot --testTimeout=30000
+```
+
+BFF/API/presenter slice gate:
+
+```bash
+pnpm vitest run <route tests> <presenter tests> --reporter=dot --testTimeout=30000
+pnpm perf:smoke
+```
+
+Auth/RLS/PHI-sensitive route gate:
+
+```bash
+pnpm test:rls-proof
+pnpm test:e2e:audit
+```
+
+Major medical UI route gate:
+
+```bash
+pnpm medical-ui:e2e:preflight
+pnpm medical-ui:e2e:targeted
+# full gate when route-level UX/auth/data changes are large:
+pnpm medical-ui:e2e:gate
+```
+
+Gate policy:
+
+```text
+- Next.js build は typecheck と並列に走らせない。
+- Visual-only PR でも `colors:check` と a11y/mobile smoke は必須。
+- API/BFF を触る PR は route tests、payload budget、partial failure、forbidden を必須にする。
+- PHI/export/audit/push/storage を触る PR は PHI omission snapshot と audit e2e を必須にする。
+- Dashboard/list/timeline/report の DTO は hostile fixture を含め、raw text / storage key / signed URL / provider raw error が出ないことを snapshot する。
+```
+
+##### UI-REDESIGN-001A: 患者一覧
+
+目的:
+
+```text
+単なる患者カード一覧ではなく、在宅患者の状態と次アクションを高速に確認できるオペレーション一覧にする。
+```
+
+既存接続:
+
+```text
+src/app/(dashboard)/patients/page.tsx
+src/app/(dashboard)/patients/patients-board.tsx
+src/components/ui/data-table.tsx
+```
+
+目標構成:
+
+```text
+患者一覧
+  ├─ Header: title / description / 患者追加
+  ├─ 検索/フィルタバー: patient search / saved filter / sort / view mode
+  ├─ 状態チップ: すべて / 要対応 / 本日訪問 / 処方変更あり / 残数確認 / 他職種受信あり
+  ├─ 左サマリー: 総患者数 / 本日訪問 / 未処理受信 / 残数不足見込み / 報告書未提出 / 担当者 / 施設
+  ├─ 中央患者リスト: list/card toggle / paging or load more
+  └─ 右詳細パネル: selected patient summary / next visit / alerts / recommended actions / detail link
+```
+
+患者行:
+
+```text
+- checkbox
+- avatar
+- patient name
+- age / sex
+- insurance / address / facility
+- next visit
+- previous visit
+- medication / inbound / report status
+- next action
+- detail link
+- overflow menu
+```
+
+ステータスバッジ例:
+
+```text
+処方変更あり
+外用薬 残数: 3日分
+他職種受信: 1件
+報告書: 未提出
+本日訪問
+経過観察
+```
+
+受入基準:
+
+```text
+- 3カラム構成になる。
+- 患者を選択すると右側に詳細が出る。
+- 患者一覧上で要対応理由が分かる。
+- 他職種受信/残数不足/報告未提出が一覧で見える。
+- list/card view を切り替えられる。
+- モバイルでは右パネルが drawer になる。
+```
+
+##### UI-REDESIGN-001B: 患者詳細
+
+目的:
+
+```text
+患者詳細を、在宅患者の Command Center として使える画面にする。
+```
+
+既存接続:
+
+```text
+src/app/(dashboard)/patients/[id]/card-workspace.tsx
+src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx
+MOV-001
+PATIENT-UI-020
+RX-002
+INB-001
+```
+
+目標構成:
+
+```text
+患者詳細
+  ├─ Header: patient name / kana / home-care status / avatar / age-sex-id / insurance / address / primary pharmacist / next visit / key risk
+  ├─ 上部3カード: Must Check / Safety Board / 次アクション
+  ├─ tabs: Command / 概要 / 薬剤・訪問 / 患者の動き / 共有・文書 / 請求・会議 / 履歴・構造化
+  ├─ main cards: 薬剤サイクル / 直近訪問 / 外用薬・頓服薬残数 / inbound medical chat / 今後の予定 / care coordination note
+  └─ right rail: 重要アラート / 次回までのタスク / 医療チャット / shortcuts
+```
+
+Must Check:
+
+```text
+- 外用薬 残数不足
+- インスリン自己注射フォロー
+- 腎機能低下
+- 転倒リスク
+```
+
+Safety Board:
+
+```text
+- 腎機能低下に伴う用量注意
+- 転倒リスク薬
+- 嚥下機能低下
+- ポリファーマシー
+```
+
+患者の動き:
+
+```text
+- Google Maps Timeline風の上部地図なし。
+- 日付カード、時刻、event icon、他職種受信、残数反映、訪問、報告書、処方変更、タスク作成/解決、deep link。
+- 処方内容・訪問内容・文書登録は「発生したこと」が分かればよい。詳細は deep link で正本へ遷移する。
+```
+
+受入基準:
+
+```text
+- 患者の現在状態、次アクション、リスクが first viewport に出る。
+- 残数/他職種受信が患者詳細の中心に入っている。
+- 右レールで重要アラートと医療チャットが見える。
+- 患者の動きタブで時系列が見える。
+- 各カードから正本詳細へ遷移できる。
+```
+
+##### UI-REDESIGN-001C: 調剤ワークスペース
+
+目的:
+
+```text
+処方登録 -> 調剤 -> 調剤監査 -> セット -> セット監査までを一気通貫で操作できる調剤作業台にする。
+```
+
+既存接続:
+
+```text
+src/components/features/dispense-workbench/dispensing-workbench.tsx
+src/components/features/dispense-workbench/dispensing-workbench.adapter.ts
+src/app/(dashboard)/dispense/page.tsx
+src/app/(dashboard)/audit/page.tsx
+src/app/(dashboard)/set/page.tsx
+src/app/(dashboard)/set-audit/page.tsx
+```
+
+目標構成:
+
+```text
+調剤ワークスペース
+  ├─ 左キュー: 本日タスク / 状態チップ / patient search / patient task list
+  ├─ 中央作業台: patient header / workflow stepper / prescription table / instruction tabs / warnings / next step button
+  └─ 右レール: audit checklist / safety-interaction alerts / counseling points / dispensing photos-records / next step
+```
+
+工程ステッパー:
+
+```text
+処方登録
+調剤
+調剤監査
+セット
+セット監査
+```
+
+処方テーブル:
+
+```text
+Rp / 薬剤名・規格 / 用法・用量 / 日数 / 数量 / 調剤 / 注意
+```
+
+薬剤行 badge:
+
+```text
+麻薬
+同梱注意
+高リスク
+相互作用
+粉砕不可
+一包化不可
+```
+
+右チェック:
+
+```text
+- 処方内容と疑義照会内容の確認
+- 薬剤名・規格・数量の確認
+- 用法・用量・日数の確認
+- 一包化・粉砕指示の確認
+- 相互作用・重複投与の確認
+- 患者アレルギーの確認
+```
+
+受入基準:
+
+```text
+- 左キューで対象患者を選択できる。
+- 中央で処方と工程が見える。
+- 右レールで安全確認と次アクションができる。
+- 高リスク薬や麻薬が視覚的に分かる。
+- 現在工程が迷わない。
+```
+
+##### UI-REDESIGN-001D: スケジュール管理
+
+目的:
+
+```text
+薬剤師ごとの訪問ルート、仮予定、確定予定、移動時間、緊急挿入、AI提案を一画面で操作できるスケジュール司令塔にする。
+```
+
+既存接続:
+
+```text
+src/app/(dashboard)/schedules/page.tsx
+src/app/(dashboard)/schedules/schedule-team-board.tsx
+src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx
+src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx
+```
+
+目標構成:
+
+```text
+スケジュール管理
+  ├─ Header: date nav / day-week toggle / pharmacist filter / route proposal / emergency replan
+  ├─ 状態凡例: 確定 / 仮予定 / ホールド / 移動 / 高中低優先 / 緊急挿入 / 患者希望 / 処方変更 / 残薬不足予測 / 連絡依頼
+  ├─ メインタイムライン: pharmacist rows / time columns / visit cards / travel blocks / break / unassigned waiting slots
+  └─ 右提案パネル: total travel time / efficiency / auto proposal / front-load candidate / patient contact pending / route efficiency points
+```
+
+訪問カード:
+
+```text
+patient code
+patient name
+time
+status
+priority badge
+stock / prescription / contact badge
+```
+
+受入基準:
+
+```text
+- 薬剤師別の1日スケジュールが横棒で見える。
+- 移動時間が見える。
+- 仮予定/確定/緊急挿入が区別できる。
+- 右パネルで自動提案を確認できる。
+- 患者連絡待ちが見える。
+- 残数不足/処方変更による前倒し候補が見える。
+```
+
+##### UI-REDESIGN-001E: 訪問時機能
+
+目的:
+
+```text
+患者宅でスマホ/タブレットでも使える訪問中モードにする。
+外用薬・頓服薬の残数入力、バイタル、観察、他職種情報確認、音声入力、写真記録、報告書下書き作成を統合する。
+```
+
+既存接続:
+
+```text
+src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx
+src/app/(dashboard)/visits/visits-today.tsx
+VISIT-SYNC-001
+RX-002
+INB-001
+```
+
+目標構成:
+
+```text
+訪問実施中
+  ├─ patient header: patient name / age-sex / visit time / visitor / detail link
+  ├─ 左列: 本日の目標 / 持参物チェック / バイタル・観察記録
+  ├─ 中央列: 残数入力 / 服薬状況 / 他職種からの受信確認
+  ├─ 右中央: 次回訪問までの不足予測 / teach-back / photo records
+  ├─ 右列: voice memo / transcription / manual note
+  └─ 下部固定バー: elapsed time / draft save / save record / create report draft / add next check / end visit
+```
+
+残数入力:
+
+```text
+- 薬剤名
+- 前回残数
+- 今回残数入力
+- 差分
+- 次回まで不足予測
+```
+
+他職種受信確認:
+
+```text
+- 訪問看護記録
+- ケアマネ連絡事項
+- リハビリ報告
+- 未確認/確認済み
+```
+
+受入基準:
+
+```text
+- 訪問中に必要な項目が1画面で見える。
+- 残数入力が大きく使いやすい。
+- 他職種情報を確認済みにできる。
+- 音声入力と文字起こし欄がある。
+- 下部固定バーで保存/終了操作が迷わない。
+- モバイルではカードを縦積みし、下部CTAを維持する。
+```
+
+##### UI-REDESIGN-001F: 報告書機能
+
+目的:
+
+```text
+訪問記録、医療用チャット、残数管理、他職種情報、AI要約を使い、報告書を安全に作成・送付できる画面にする。
+```
+
+既存接続:
+
+```text
+src/app/(dashboard)/reports/page.tsx
+src/app/(dashboard)/reports/report-share-workspace.tsx
+src/app/api/care-reports/today-workspace/route.ts
+REPORT-020
+INB-001
+RX-002
+```
+
+目標構成:
+
+```text
+報告書作成
+  ├─ Header: draft save / share / send / PDF export / menu
+  ├─ patient information card
+  ├─ 左レール: report list / new report / template
+  ├─ 中央エディタ: visit summary / SOAP / adherence / stock / prescription change / interprofessional / proposal / attachments
+  └─ 右AI/送付レール: AI assist / inbound medical chat / stock extraction / phrase suggestions / delivery status / send button
+```
+
+AI assist tabs:
+
+```text
+要約・抽出
+文例提案
+医療チャット
+```
+
+医療チャット反映:
+
+```text
+- 医師からの返信
+- 看護師からの連絡
+- ケアマネからの連絡
+```
+
+原則:
+
+```text
+- raw text は直接挿入しない。
+- normalized_summary と pharmacist-selected signal を候補として提示する。
+- [報告書に含める] / [申し送りのみ] / [内部記録のみ] を選べるようにする。
+```
+
+受入基準:
+
+```text
+- 左に報告書一覧、中央にエディタ、右にAI/送付がある。
+- 医療チャット内容を選択して報告書候補にできる。
+- 残数/残薬の抽出結果を報告書に含められる。
+- 送付先ごとのステータスが見える。
+- PDF出力/送付/下書き保存が上部にある。
+```
+
+##### UI-REDESIGN-001G: 他職種機能
+
+目的:
+
+```text
+MCSに限らず、医療用チャット・電話・FAX・メール・施設申し送りなどを受け取り、構造化シグナルへ変換し、薬局業務へ反映する画面にする。
+```
+
+既存接続:
+
+```text
+src/app/(dashboard)/communications/page.tsx
+src/app/(dashboard)/communications/inbound/*
+src/server/services/communication-queue.ts
+INB-001
+TASK-011
+RISK-021
+SECURITY-030
+```
+
+目標構成:
+
+```text
+他職種機能
+  ├─ tabs: 受信 / 共有 / 医療用チャット / 連携先
+  ├─ 左インボックス: search / all / unprocessed / needs review / applied / message list
+  ├─ 中央メッセージ詳細: sender / role / patient / received_at / body / attachments / history / reply input
+  └─ 右シグナル/アクション: structured signals / recommended actions / processing status / history
+```
+
+構造化シグナル:
+
+```text
+残薬報告
+服薬状況の変化
+体調変化の可能性
+受診予定
+バイタル情報
+```
+
+推奨アクション:
+
+```text
+残数管理へ反映
+タスク化
+患者の動きへ追加
+記録のみ
+却下
+```
+
+入力:
+
+```text
+- チャット本文
+- 発信者
+- 職種
+- 所属
+- 日時
+- 患者候補
+- 添付
+```
+
+受入基準:
+
+```text
+- 他職種からの情報をインボックスで処理できる。
+- 医療用チャット貼り付けから構造化シグナルが出る。
+- 残数管理/タスク/患者の動きへ反映できる。
+- 原文、要約、シグナルが分かれている。
+- 処理状態を管理できる。
+```
+
+**横断実装ルール**:
+
+```text
+- 既存コンポーネントを再利用する:
+  DataTable, ErrorState, SegmentError, SegmentLoading, WorkspaceActionRail, FilterChipBar, Button, Badge, Card, Tabs, Sheet.
+
+- 画面を巨大化させない:
+  patients-board/
+    PatientListToolbar
+    PatientSummaryRail
+    PatientListTable
+    PatientQuickDetailPanel
+
+  patient-detail/
+    PatientHeader
+    PatientMustCheckCards
+    PatientMedicationPanel
+    PatientMovementTimeline
+    PatientRightRail
+
+  dispense-workbench/
+    DispenseQueuePanel
+    DispensePatientHeader
+    DispenseWorkflowStepper
+    PrescriptionLineTable
+    DispenseInstructionTabs
+    DispenseRightRail
+
+  schedules/
+    ScheduleToolbar
+    ScheduleLegend
+    PharmacistTimelineGrid
+    ScheduleProposalRail
+
+  visits/
+    VisitPatientHeader
+    VisitGoalCard
+    MedicationStockInputCard
+    VisitObservationCard
+    VoiceMemoCard
+    VisitBottomActionBar
+
+  reports/
+    ReportListRail
+    ReportEditor
+    ReportAiAssistantRail
+    ReportDeliveryRail
+
+  interprofessional/
+    InboundInbox
+    InboundMessageDetail
+    StructuredSignalPanel
+    InboundActionRail
+
+- 重いパネルは lazy mount / dynamic import に寄せる:
+  patient movement full timeline, report AI assist, medical chat attachment preview, schedule proposal, dispensing photo upload.
+```
+
+**推奨PR順**:
+
+| PR   | 内容                                                                 | 主な既存レーン                        |
+| ---- | -------------------------------------------------------------------- | ------------------------------------- |
+| PR-1 | 共通Shell / Sidebar / Header微修正、Card/Badge/RightRailの見た目統一 | `DASH-DESIGN-001`, `UI-REDESIGN-001`  |
+| PR-2 | 患者一覧: 左サマリー、中央リスト、右詳細パネル、状態チップ           | `PATIENT-UI-020`, `INB-001`, `RX-002` |
+| PR-3 | 患者詳細: Header、Must Check/Safety/Next Action、患者の動き          | `MOV-001`, `RX-002`, `INB-001`        |
+| PR-4 | 調剤ワークスペース: 工程ステッパー、処方テーブル、右監査レール       | `RX workflow`, `DASH-DESIGN-001`      |
+| PR-5 | スケジュール管理: 薬剤師別タイムライン、状態凡例、AI提案レール       | `SCHED-UX`, `RX-002`                  |
+| PR-6 | 訪問時機能: 訪問中モード、残数入力、他職種受信確認、下部固定バー     | `VISIT-SYNC-001`, `RX-002`, `INB-001` |
+| PR-7 | 報告書: 左一覧、中央エディタ、右AI/送付レール、医療チャット候補化    | `REPORT-020`, `INB-001`               |
+| PR-8 | 他職種機能: 受信インボックス、医療チャット入力、構造化シグナル       | `INB-001`, `TASK-011`, `RISK-021`     |
+
+**最終受入基準**:
+
+```text
+- 7画面が参照モックの構成に近づいている。
+- 左サイドバー、トップバー、右レールの体験が統一されている。
+- 状態バッジ、色、カード、CTAが一貫している。
+- 患者一覧で状態と次アクションが分かる。
+- 患者詳細でリスク、残数、医療チャット、次回予定が分かる。
+- 調剤で工程と安全確認が分かる。
+- スケジュールで薬剤師別ルートとAI提案が分かる。
+- 訪問中に残数入力、観察、音声入力、保存が迷わない。
+- 報告書で医療チャット/残数/訪問記録を反映できる。
+- 他職種機能で受信 -> 構造化 -> 反映ができる。
+- モバイルでも主要操作が可能。
+- PHI表示方針、権限制御、監査ログ方針を壊していない。
+```
 
 #### P0/P1: 外用薬・頓服薬残数管理 Medication Stock Ledger（RX-002詳細化） `cc:TODO`
 

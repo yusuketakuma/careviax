@@ -23,6 +23,10 @@ const {
   careCaseFindManyMock,
   membershipFindManyMock,
   pharmacistShiftFindManyMock,
+  inboundCommunicationEventFindManyMock,
+  inboundCommunicationEventCountMock,
+  inboundCommunicationSignalFindManyMock,
+  patientFindManyMock,
   serverCacheGetMock,
   serverCacheSetMock,
 } = vi.hoisted(() => ({
@@ -46,6 +50,10 @@ const {
   careCaseFindManyMock: vi.fn(),
   membershipFindManyMock: vi.fn(),
   pharmacistShiftFindManyMock: vi.fn(),
+  inboundCommunicationEventFindManyMock: vi.fn(),
+  inboundCommunicationEventCountMock: vi.fn(),
+  inboundCommunicationSignalFindManyMock: vi.fn(),
+  patientFindManyMock: vi.fn(),
   serverCacheGetMock: vi.fn(),
   serverCacheSetMock: vi.fn(),
 }));
@@ -74,6 +82,12 @@ vi.mock('@/lib/db/client', () => ({
     careCase: { findMany: careCaseFindManyMock },
     membership: { findMany: membershipFindManyMock },
     pharmacistShift: { findMany: pharmacistShiftFindManyMock },
+    inboundCommunicationEvent: {
+      findMany: inboundCommunicationEventFindManyMock,
+      count: inboundCommunicationEventCountMock,
+    },
+    inboundCommunicationSignal: { findMany: inboundCommunicationSignalFindManyMock },
+    patient: { findMany: patientFindManyMock },
   },
 }));
 
@@ -97,6 +111,7 @@ import { GET as GETDetails } from './details/route';
 import { GET as GETSummary } from './summary/route';
 import { GET as GETTeam } from './team/route';
 import { GET as GETComments } from './comments/route';
+import { GET as GETInbound } from './inbound/route';
 
 function createRequest(search = '', path = '/api/dashboard/cockpit') {
   return new NextRequest(`http://localhost${path}${search}`, {
@@ -155,7 +170,14 @@ describe('/api/dashboard/cockpit', () => {
       { overall_status: 'audit_pending', _count: { id: 14 } },
       { overall_status: 'visit_completed', _count: { id: 2 } },
     ]);
-    queryRawMock.mockResolvedValue([{ count: BigInt(2) }]);
+    queryRawMock.mockResolvedValue([
+      {
+        count: BigInt(2),
+        total_count: BigInt(2),
+        narcotic_count: BigInt(1),
+        earliest_due_at: new Date(2026, 5, 12, 11, 0),
+      },
+    ]);
     dispenseTaskFindManyMock.mockResolvedValue([
       buildAuditTask({
         id: 'task_plain',
@@ -217,6 +239,10 @@ describe('/api/dashboard/cockpit', () => {
     careReportFindManyMock.mockResolvedValue([]);
     taskCommentFindManyMock.mockResolvedValue([]);
     userFindManyMock.mockResolvedValue([]);
+    inboundCommunicationEventFindManyMock.mockResolvedValue([]);
+    inboundCommunicationEventCountMock.mockResolvedValue(0);
+    inboundCommunicationSignalFindManyMock.mockResolvedValue([]);
+    patientFindManyMock.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -404,6 +430,17 @@ describe('/api/dashboard/cockpit', () => {
     expect(body).not.toContain('田中 一郎');
     expect(body).not.toContain('佐々木 ハル');
     expect(body).not.toContain('伊藤');
+    expect(dispenseTaskFindManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: { time_window_start: true },
+      }),
+    );
+    expect(visitScheduleFindManyMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({ case_: expect.anything() }),
+      }),
+    );
     expect(workflowExceptionFindManyMock).not.toHaveBeenCalled();
     expect(taskCountMock).not.toHaveBeenCalled();
     expect(membershipFindManyMock).not.toHaveBeenCalled();
@@ -416,6 +453,47 @@ describe('/api/dashboard/cockpit', () => {
   });
 
   it('returns the details segment without cycle count or team capacity reads', async () => {
+    inboundCommunicationEventCountMock.mockResolvedValue(1);
+    inboundCommunicationEventFindManyMock.mockResolvedValue([
+      {
+        id: 'event_urgent',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        source_channel: 'mcs',
+        sender_name: '山田 花子',
+        sender_role: 'nurse',
+        sender_organization_name: '訪問看護ステーションA',
+        sender_contact: '090-0000-0000',
+        event_type: 'medication_stock_report',
+        received_at: new Date('2026-06-12T00:20:00.000Z'),
+        occurred_at: new Date('2026-06-12T00:10:00.000Z'),
+        raw_text: '湿布は残り4枚です。',
+        normalized_summary: '湿布残数4枚の報告',
+        attachment_count: 0,
+        has_medication_stock_signal: true,
+        has_patient_safety_signal: true,
+        has_schedule_signal: false,
+        has_report_signal: false,
+        processing_status: 'signals_extracted',
+      },
+    ]);
+    inboundCommunicationSignalFindManyMock.mockResolvedValue([
+      {
+        id: 'signal_urgent',
+        inbound_event_id: 'event_urgent',
+        signal_domain: 'medication_stock',
+        signal_type: 'observed_quantity',
+        extracted_text: '湿布は残り4枚',
+        extracted_medication_name: '湿布',
+        extracted_quantity: 4,
+        extracted_unit: 'sheet',
+        review_status: 'needs_review',
+        action_status: 'not_linked',
+        source_confidence: 'text_parsed_high',
+      },
+    ]);
+    patientFindManyMock.mockResolvedValue([{ id: 'patient_1', name: '田中 一郎' }]);
+
     const response = (await GETDetails(createRequest('', '/api/dashboard/cockpit/details'), {
       params: Promise.resolve({}),
     }))!;
@@ -432,6 +510,31 @@ describe('/api/dashboard/cockpit', () => {
     ]);
     expect(json.data.blocked_reasons).toHaveLength(2);
     expect(json.data.carryover_count).toBe(2);
+    expect(json.data.urgent_total_count).toBe(5);
+    expect(json.data.urgent_items.map((item: { id: string }) => item.id)).toEqual([
+      'audit:task_narcotic',
+      'task:exception_1',
+      'inbound:event_urgent',
+      'audit:task_plain',
+      'task:exception_2',
+    ]);
+    expect(json.data.urgent_items[1]).toMatchObject({
+      source: 'task',
+      source_label: '止まっている理由',
+      reference_label: '患者',
+      title: 'ご家族の同意待ち(新規契約)',
+      summary: '患者: ご家族の同意待ち(新規契約)',
+      action_href: '/patients',
+      action_label: '再連絡する',
+    });
+    expect(json.data.urgent_items[2]).toMatchObject({
+      source: 'inbound',
+      source_label: 'MCS',
+      patient_name: '田中 一郎',
+      title: 'MCS受信: 安全確認が必要',
+      summary: '湿布 / 4sheet / 湿布は残り4枚',
+      action_href: '/patients/patient_1#inbound-communications',
+    });
     expect(json.data.cycle_status_counts).toBeUndefined();
     expect(json.data.team_capacity).toBeUndefined();
     expect(medicationCycleGroupByMock).not.toHaveBeenCalled();
@@ -649,6 +752,181 @@ describe('/api/dashboard/cockpit', () => {
       },
     });
     expect(userFindManyMock).not.toHaveBeenCalled();
+    expect(serverCacheSetMock).not.toHaveBeenCalled();
+  });
+
+  it('returns authorized inbound communication details without cockpit cache writes', async () => {
+    inboundCommunicationEventCountMock.mockResolvedValue(2);
+    inboundCommunicationEventFindManyMock.mockResolvedValue([
+      {
+        id: 'event_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        source_channel: 'mcs',
+        sender_name: '山田 花子',
+        sender_role: 'nurse',
+        sender_organization_name: '訪問看護ステーションA',
+        sender_contact: '090-0000-0000',
+        event_type: 'medication_stock_report',
+        received_at: new Date('2026-06-12T00:20:00.000Z'),
+        occurred_at: new Date('2026-06-12T00:10:00.000Z'),
+        raw_text: '湿布は残り4枚です。痛みが強く使用頻度が増えています。',
+        normalized_summary: '訪問看護師から湿布残数4枚と使用増加の報告',
+        attachment_count: 1,
+        has_medication_stock_signal: true,
+        has_patient_safety_signal: true,
+        has_schedule_signal: false,
+        has_report_signal: true,
+        processing_status: 'signals_extracted',
+      },
+      {
+        id: 'event_2',
+        patient_id: null,
+        case_id: null,
+        source_channel: 'phone',
+        sender_name: '佐藤 太郎',
+        sender_role: 'care_manager',
+        sender_organization_name: '居宅介護支援B',
+        sender_contact: '093-000-0000',
+        event_type: 'schedule_request',
+        received_at: new Date('2026-06-12T00:15:00.000Z'),
+        occurred_at: null,
+        raw_text: '来週の訪問時間を変更したいです。',
+        normalized_summary: null,
+        attachment_count: 0,
+        has_medication_stock_signal: false,
+        has_patient_safety_signal: false,
+        has_schedule_signal: true,
+        has_report_signal: false,
+        processing_status: 'unprocessed',
+      },
+    ]);
+    inboundCommunicationSignalFindManyMock.mockResolvedValue([
+      {
+        id: 'signal_1',
+        inbound_event_id: 'event_1',
+        signal_domain: 'medication_stock',
+        signal_type: 'observed_quantity',
+        extracted_text: '湿布は残り4枚',
+        extracted_medication_name: '湿布',
+        extracted_quantity: 4,
+        extracted_unit: 'sheet',
+        review_status: 'needs_review',
+        action_status: 'not_linked',
+        source_confidence: 'text_parsed_high',
+      },
+      {
+        id: 'signal_2',
+        inbound_event_id: 'event_1',
+        signal_domain: 'medication_safety',
+        signal_type: 'side_effect_suspected',
+        extracted_text: '痛みが強く使用頻度が増えています',
+        extracted_medication_name: null,
+        extracted_quantity: null,
+        extracted_unit: null,
+        review_status: 'needs_review',
+        action_status: 'not_linked',
+        source_confidence: 'text_parsed_low',
+      },
+    ]);
+    patientFindManyMock.mockResolvedValue([{ id: 'patient_1', name: '田中 一郎' }]);
+
+    const response = (await GETInbound(createRequest('', '/api/dashboard/cockpit/inbound'), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canViewDashboard',
+      message: 'ダッシュボードの閲覧権限がありません',
+    });
+    const json = await response.json();
+    expect(json.data).toMatchObject({
+      inbound_total_count: 2,
+      inbound_visible_count: 2,
+      inbound_hidden_count: 0,
+      inbound_needs_review_count: 2,
+      inbound_urgent_count: 1,
+      inbound_medication_stock_signal_count: 1,
+      inbound_safety_signal_count: 1,
+    });
+    expect(json.data.inbound_items[0]).toMatchObject({
+      id: 'inbound_communication:event_1',
+      event_id: 'event_1',
+      channel: 'mcs',
+      channel_label: 'MCS',
+      status: 'needs_review',
+      priority: 'urgent',
+      patient_id: 'patient_1',
+      patient_name: '田中 一郎',
+      sender_name: '山田 花子',
+      sender_role: 'nurse',
+      sender_contact: '090-0000-0000',
+      raw_text: '湿布は残り4枚です。痛みが強く使用頻度が増えています。',
+      normalized_summary: '訪問看護師から湿布残数4枚と使用増加の報告',
+      attachment_count: 1,
+      action_href: '/patients/patient_1#inbound-communications',
+      action_label: '受信情報を確認',
+    });
+    expect(json.data.inbound_items[0].signals).toEqual([
+      expect.objectContaining({
+        id: 'signal_1',
+        signal_domain: 'medication_stock',
+        extracted_medication_name: '湿布',
+        extracted_quantity: 4,
+        extracted_unit: 'sheet',
+      }),
+      expect.objectContaining({
+        id: 'signal_2',
+        signal_domain: 'medication_safety',
+      }),
+    ]);
+    expect(json.data.inbound_items[1]).toMatchObject({
+      channel: 'phone',
+      channel_label: '電話',
+      patient_id: null,
+      action_href: '/communications/inbound?event=event_2',
+    });
+    expect(inboundCommunicationEventFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { org_id: 'org_1' },
+        take: 40,
+      }),
+    );
+    expect(inboundCommunicationEventCountMock).toHaveBeenCalledWith({
+      where: { org_id: 'org_1' },
+    });
+    expect(inboundCommunicationSignalFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          inbound_event_id: { in: ['event_1', 'event_2'] },
+        },
+      }),
+    );
+    expect(serverCacheGetMock).not.toHaveBeenCalled();
+    expect(serverCacheSetMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a false-empty inbound segment without signal or patient lookups', async () => {
+    const response = (await GETInbound(createRequest('', '/api/dashboard/cockpit/inbound'), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        inbound_items: [],
+        inbound_total_count: 0,
+        inbound_visible_count: 0,
+        inbound_hidden_count: 0,
+        inbound_needs_review_count: 0,
+      },
+    });
+    expect(inboundCommunicationSignalFindManyMock).not.toHaveBeenCalled();
+    expect(patientFindManyMock).not.toHaveBeenCalled();
     expect(serverCacheSetMock).not.toHaveBeenCalled();
   });
 

@@ -52,6 +52,143 @@ enum SelfReportStatus {
   dismissed
 }
 
+enum InboundCommunicationSourceChannel {
+  mcs
+  phone
+  fax
+  email
+  in_person
+  patient_family
+  facility_note
+  external_api
+  manual
+  unknown
+}
+
+enum InboundCommunicationSenderRole {
+  nurse
+  care_manager
+  physician
+  dentist
+  therapist
+  facility_staff
+  family
+  patient
+  pharmacist
+  admin
+  unknown
+}
+
+enum InboundCommunicationEventType {
+  medication_stock_report
+  medication_usage_report
+  medication_question
+  symptom_report
+  side_effect_report
+  adherence_problem
+  care_update
+  schedule_request
+  prescription_instruction
+  urgent_contact
+  general_note
+}
+
+enum InboundCommunicationConfidence {
+  high
+  medium
+  low
+  unknown
+}
+
+enum InboundCommunicationProcessingStatus {
+  unprocessed
+  signals_extracted
+  reviewed
+  converted_to_task
+  linked_to_workflow
+  ignored
+}
+
+enum InboundSignalDomain {
+  medication_stock
+  medication_safety
+  adherence
+  symptom
+  schedule
+  report
+  care_coordination
+  urgent
+  other
+}
+
+enum InboundSignalType {
+  observed_quantity
+  usage_delta
+  usage_frequency
+  low_stock_text
+  out_of_stock_text
+  refill_request
+  side_effect_suspected
+  medication_not_taken
+  medication_overuse
+  medication_lost
+  storage_issue
+  schedule_change_request
+  visit_request
+  urgent_review_required
+  unknown
+}
+
+enum InboundSignalSourceConfidence {
+  structured_exact
+  structured_partial
+  text_parsed_high
+  text_parsed_low
+  manual
+  unknown
+}
+
+enum InboundSignalReviewStatus {
+  needs_review
+  auto_accepted
+  accepted
+  rejected
+  record_only
+  superseded
+}
+
+enum InboundSignalActionStatus {
+  not_linked
+  linked_to_stock_event
+  linked_to_task
+  linked_to_schedule
+  linked_to_report
+  linked_to_visit_brief
+  ignored
+}
+
+enum InboundCommunicationAttachmentType {
+  mcs_image
+  medication_photo
+  fax_image
+  document
+  screenshot
+  other
+}
+
+enum InboundSourceMappingStatus {
+  active
+  needs_review
+  inactive
+}
+
+enum InboundSourceMappingConfidence {
+  exact
+  probable
+  manual
+  unknown
+}
+
 model CommunicationEvent {
   id                  String               @id @default(cuid())
   org_id              String
@@ -74,6 +211,144 @@ model CommunicationEvent {
   @@index([org_id])
   @@index([patient_id])
   @@index([event_type])
+}
+
+model InboundCommunicationEvent {
+  id                          String                               @id @default(cuid())
+  org_id                      String
+  display_id                  String?
+  patient_id                  String?
+  case_id                     String?
+  source_channel              InboundCommunicationSourceChannel
+  source_system               String?
+  external_thread_id          String?
+  external_message_id         String?
+  external_url                String?
+  direction                   String                               @default("inbound")
+  sender_name                 String?
+  sender_role                 InboundCommunicationSenderRole       @default(unknown)
+  sender_organization_name    String?
+  sender_contact              String?
+  event_type                  InboundCommunicationEventType
+  received_at                 DateTime                             @default(now())
+  occurred_at                 DateTime?
+  raw_text                    String
+  normalized_summary          String?
+  attachment_count            Int                                  @default(0)
+  has_medication_stock_signal Boolean                              @default(false)
+  has_patient_safety_signal   Boolean                              @default(false)
+  has_schedule_signal         Boolean                              @default(false)
+  has_report_signal           Boolean                              @default(false)
+  confidence                  InboundCommunicationConfidence       @default(unknown)
+  processing_status           InboundCommunicationProcessingStatus @default(unprocessed)
+  reviewed_by                 String?
+  reviewed_at                 DateTime?
+  created_by                  String
+  created_at                  DateTime                             @default(now())
+  updated_at                  DateTime                             @updatedAt
+
+  signals     InboundCommunicationSignal[]
+  attachments InboundCommunicationAttachment[]
+
+  @@unique([org_id, display_id])
+  @@unique([id, org_id])
+  @@unique([org_id, source_system, external_message_id])
+  @@index([org_id])
+  @@index([org_id, processing_status, received_at])
+  @@index([org_id, patient_id, received_at])
+  @@index([org_id, case_id, received_at])
+  @@index([org_id, source_channel, received_at])
+  @@index([org_id, event_type, received_at])
+  @@index([org_id, external_thread_id])
+}
+
+model InboundCommunicationSignal {
+  id                        String                        @id @default(cuid())
+  org_id                    String
+  display_id                String?
+  patient_id                String?
+  case_id                   String?
+  inbound_event_id          String
+  signal_index              Int
+  signal_domain             InboundSignalDomain
+  signal_type               InboundSignalType
+  extracted_text            String?
+  extracted_medication_name String?
+  extracted_quantity        Float?
+  extracted_unit            String?
+  extracted_occurred_at     DateTime?
+  structured_payload        Json?
+  source_confidence         InboundSignalSourceConfidence @default(unknown)
+  review_status             InboundSignalReviewStatus     @default(needs_review)
+  action_status             InboundSignalActionStatus     @default(not_linked)
+  reviewed_by               String?
+  reviewed_at               DateTime?
+  rejection_reason          String?
+  created_at                DateTime                      @default(now())
+  updated_at                DateTime                      @updatedAt
+
+  inbound_event InboundCommunicationEvent        @relation(fields: [inbound_event_id, org_id], references: [id, org_id], onDelete: Cascade, onUpdate: Cascade)
+  attachments   InboundCommunicationAttachment[]
+
+  @@unique([org_id, display_id])
+  @@unique([id, org_id])
+  @@unique([org_id, inbound_event_id, signal_index])
+  @@index([org_id])
+  @@index([org_id, review_status, created_at])
+  @@index([org_id, action_status, created_at])
+  @@index([org_id, patient_id, created_at])
+  @@index([org_id, case_id, created_at])
+  @@index([org_id, signal_domain, review_status])
+  @@index([org_id, signal_type, review_status])
+}
+
+model InboundCommunicationAttachment {
+  id               String                             @id @default(cuid())
+  org_id           String
+  inbound_event_id String
+  signal_id        String?
+  file_asset_id    String
+  attachment_type  InboundCommunicationAttachmentType @default(other)
+  created_at       DateTime                           @default(now())
+
+  inbound_event InboundCommunicationEvent   @relation(fields: [inbound_event_id, org_id], references: [id, org_id], onDelete: Cascade, onUpdate: Cascade)
+  signal        InboundCommunicationSignal? @relation(fields: [signal_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@unique([id, org_id])
+  @@index([org_id])
+  @@index([org_id, inbound_event_id])
+  @@index([org_id, signal_id])
+  @@index([org_id, file_asset_id])
+}
+
+model InboundSourceMapping {
+  id                         String                            @id @default(cuid())
+  org_id                     String
+  display_id                 String?
+  patient_id                 String
+  case_id                    String?
+  source_system              InboundCommunicationSourceChannel
+  external_patient_label     String?
+  external_thread_id         String?
+  external_room_id           String?
+  external_contact_name      String?
+  external_contact_role      String?
+  external_organization_name String?
+  mapping_status             InboundSourceMappingStatus        @default(needs_review)
+  confidence                 InboundSourceMappingConfidence    @default(unknown)
+  created_by                 String
+  reviewed_by                String?
+  reviewed_at                DateTime?
+  created_at                 DateTime                          @default(now())
+  updated_at                 DateTime                          @updatedAt
+
+  @@unique([org_id, display_id])
+  @@index([org_id])
+  @@index([org_id, patient_id])
+  @@index([org_id, case_id])
+  @@index([org_id, source_system, external_thread_id])
+  @@index([org_id, source_system, external_room_id])
+  @@index([org_id, mapping_status])
 }
 
 model CommunicationRequest {

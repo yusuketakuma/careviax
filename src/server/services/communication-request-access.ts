@@ -94,6 +94,39 @@ export async function buildCommunicationEventAssignmentWhere(args: {
   };
 }
 
+export async function buildInboundCommunicationEventAssignmentWhere(args: {
+  db: CommunicationScopeDb;
+  orgId: string;
+  accessContext: VisitScheduleAccessContext;
+}): Promise<Prisma.InboundCommunicationEventWhereInput | null> {
+  if (canBypassVisitScheduleAssignmentAccess(args.accessContext)) return null;
+
+  const [caseIds, patientIds] = await Promise.all([
+    listAccessibleCareCaseIds({
+      db: args.db,
+      orgId: args.orgId,
+      accessContext: args.accessContext,
+    }),
+    listAccessiblePatientIds({
+      db: args.db,
+      orgId: args.orgId,
+      accessContext: args.accessContext,
+    }),
+  ]);
+
+  return {
+    OR: [
+      { case_id: { in: caseIds } },
+      {
+        AND: [{ case_id: null }, { patient_id: { in: patientIds } }],
+      },
+      {
+        AND: [{ case_id: null }, { patient_id: null }],
+      },
+    ],
+  };
+}
+
 export async function canAccessCommunicationRequestRecord(args: {
   db: CommunicationRecordAccessDb;
   orgId: string;

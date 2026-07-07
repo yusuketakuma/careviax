@@ -943,3 +943,32 @@ CREATE POLICY tenant_isolation ON "ContractDocument"
   USING ("org_id" = public.app_enforced_org_id())
   WITH CHECK ("org_id" = public.app_enforced_org_id());
 ALTER TABLE "ContractDocument" FORCE ROW LEVEL SECURITY;
+
+-- ─── Inbound Interprofessional Communication ───────────────────────────────
+ALTER TABLE "InboundCommunicationEvent" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "InboundCommunicationEvent";
+CREATE POLICY tenant_isolation ON "InboundCommunicationEvent"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "InboundCommunicationEvent" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "InboundCommunicationSignal" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "InboundCommunicationSignal";
+CREATE POLICY tenant_isolation ON "InboundCommunicationSignal"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "InboundCommunicationSignal" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "InboundCommunicationAttachment" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "InboundCommunicationAttachment";
+CREATE POLICY tenant_isolation ON "InboundCommunicationAttachment"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "InboundCommunicationAttachment" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "InboundSourceMapping" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "InboundSourceMapping";
+CREATE POLICY tenant_isolation ON "InboundSourceMapping"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "InboundSourceMapping" FORCE ROW LEVEL SECURITY;

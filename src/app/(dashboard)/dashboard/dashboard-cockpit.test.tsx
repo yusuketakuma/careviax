@@ -9,9 +9,11 @@ import { buildOrgHeaders } from '@/lib/api/org-headers';
 import type {
   DashboardCockpitCommentsResponse,
   DashboardCockpitDetailsResponse,
+  DashboardCockpitInboundResponse,
   DashboardCockpitResponse,
   DashboardCockpitSummaryResponse,
   DashboardCockpitTeamResponse,
+  DashboardUrgentItem,
 } from '@/types/dashboard-cockpit';
 
 setupDomTestEnv();
@@ -41,7 +43,90 @@ function localIso(hours: number, minutes = 0) {
   return new Date(2026, 5, 12, hours, minutes).toISOString();
 }
 
+function buildUrgentFixture(): DashboardUrgentItem[] {
+  return [
+    {
+      id: 'audit:task_1',
+      source: 'audit',
+      source_id: 'task_1',
+      source_label: '麻薬監査',
+      reference_label: 'RX-2024-0500',
+      severity: 'blocking',
+      patient_id: null,
+      patient_name: '田中 一郎',
+      title: '麻薬を含む監査待ち',
+      summary: '麻薬を含む監査待ちです。完了しないと訪問の持参準備が始まりません。',
+      due_at: localIso(12, 0),
+      waiting_since: localIso(8, 0),
+      badges: [
+        { label: '麻薬', tone: 'danger' },
+        { label: '冷所', tone: 'warning' },
+      ],
+      action_href: '/audit',
+      action_label: '監査を開始する',
+    },
+    {
+      id: 'inbound:event_1',
+      source: 'inbound',
+      source_id: 'event_1',
+      source_label: 'MCS',
+      reference_label: 'nurse',
+      severity: 'urgent',
+      patient_id: 'patient_1',
+      patient_name: '田中 一郎',
+      title: 'MCS受信: 安全確認が必要',
+      summary: '湿布 / 4sheet / 湿布は残り4枚',
+      due_at: localIso(9, 18),
+      waiting_since: localIso(9, 18),
+      badges: [
+        { label: '安全確認', tone: 'danger' },
+        { label: '確認待ち', tone: 'warning' },
+      ],
+      action_href: '/patients/patient_1#inbound-communications',
+      action_label: '受信情報を確認',
+    },
+    {
+      id: 'task:exception_1',
+      source: 'task',
+      source_id: 'exception_1',
+      source_label: '止まっている理由',
+      reference_label: '患者',
+      severity: 'blocking',
+      patient_id: null,
+      patient_name: null,
+      title: 'ご家族の同意待ち(新規契約)',
+      summary: '患者: ご家族の同意待ち(新規契約)',
+      due_at: null,
+      waiting_since: localIso(8, 42),
+      badges: [
+        { label: '患者', tone: 'warning' },
+        { label: '重大', tone: 'danger' },
+      ],
+      action_href: '/patients',
+      action_label: '再連絡する',
+    },
+    {
+      id: 'audit:task_2',
+      source: 'audit',
+      source_id: 'task_2',
+      source_label: '調剤監査',
+      reference_label: 'RX-2024-0473',
+      severity: 'warning',
+      patient_id: null,
+      patient_name: '佐々木 ハル',
+      title: '調剤監査待ち',
+      summary: '調剤済みの監査待ちです。完了でセット・訪問準備に進めます。',
+      due_at: null,
+      waiting_since: localIso(7, 42),
+      badges: [{ label: '安全タグなし', tone: 'neutral' }],
+      action_href: '/audit',
+      action_label: '監査を開始する',
+    },
+  ];
+}
+
 function buildFixture(): DashboardCockpitResponse {
+  const urgentItems = buildUrgentFixture();
   return {
     generated_at: localIso(9, 42),
     cycle_status_counts: {
@@ -84,6 +169,10 @@ function buildFixture(): DashboardCockpitResponse {
         waiting_since: localIso(7, 42),
       },
     ],
+    urgent_items: urgentItems,
+    urgent_total_count: 8,
+    urgent_visible_count: urgentItems.length,
+    urgent_hidden_count: 4,
     today_visits: [
       {
         id: 'visit_1',
@@ -199,6 +288,10 @@ function buildDetailsFixture(data = buildFixture()): DashboardCockpitDetailsResp
     audit_queue_visible_count: data.audit_queue_visible_count,
     audit_queue_hidden_count: data.audit_queue_hidden_count,
     audit_queue: data.audit_queue,
+    urgent_items: data.urgent_items ?? buildUrgentFixture(),
+    urgent_total_count: data.urgent_total_count ?? 0,
+    urgent_visible_count: data.urgent_visible_count ?? 0,
+    urgent_hidden_count: data.urgent_hidden_count ?? 0,
     today_visits: data.today_visits,
     blocked_reasons: data.blocked_reasons,
     carryover_count: data.carryover_count,
@@ -251,6 +344,67 @@ function buildCommentsFixture(data = buildFixture()): DashboardCockpitCommentsRe
   };
 }
 
+function buildInboundFixture(data = buildFixture()): DashboardCockpitInboundResponse {
+  return {
+    generated_at: data.generated_at,
+    scope: data.scope,
+    inbound_items: [
+      {
+        id: 'inbound_communication:event_1',
+        event_id: 'event_1',
+        channel: 'mcs',
+        channel_label: 'MCS',
+        event_type: 'medication_stock_report',
+        processing_status: 'signals_extracted',
+        status: 'needs_review',
+        priority: 'urgent',
+        patient_id: 'patient_1',
+        patient_name: '田中 一郎',
+        sender_name: '山田 花子',
+        sender_role: 'nurse',
+        sender_organization_name: '訪問看護ステーションA',
+        sender_contact: '090-0000-0000',
+        title: 'MCS受信: 安全確認が必要',
+        summary: '湿布残数4枚と使用増加の報告',
+        raw_text: '湿布は残り4枚です。痛みが強く使用頻度が増えています。',
+        normalized_summary: '湿布残数4枚と使用増加の報告',
+        received_at: localIso(9, 18),
+        occurred_at: localIso(9, 10),
+        due_at: localIso(9, 18),
+        attachment_count: 1,
+        has_medication_stock_signal: true,
+        has_patient_safety_signal: true,
+        has_schedule_signal: false,
+        has_report_signal: true,
+        action_href: '/patients/patient_1#inbound-communications',
+        action_label: '受信情報を確認',
+        signals: [
+          {
+            id: 'signal_1',
+            signal_domain: 'medication_stock',
+            signal_type: 'observed_quantity',
+            extracted_text: '湿布は残り4枚',
+            extracted_medication_name: '湿布',
+            extracted_quantity: 4,
+            extracted_unit: 'sheet',
+            review_status: 'needs_review',
+            action_status: 'not_linked',
+            source_confidence: 'text_parsed_high',
+          },
+        ],
+      },
+    ],
+    inbound_total_count: 3,
+    inbound_visible_count: 1,
+    inbound_hidden_count: 2,
+    inbound_needs_review_count: 1,
+    inbound_reviewed_pending_action_count: 0,
+    inbound_urgent_count: 1,
+    inbound_medication_stock_signal_count: 1,
+    inbound_safety_signal_count: 1,
+  };
+}
+
 function successQuery<TData>(data: TData): SegmentQueryState<TData> {
   return {
     data,
@@ -267,18 +421,21 @@ function mockDashboardQueries({
   details,
   team,
   comments,
+  inbound,
 }: {
   fixture?: DashboardCockpitResponse;
   summary?: Partial<SegmentQueryState<DashboardCockpitSummaryResponse>>;
   details?: Partial<SegmentQueryState<DashboardCockpitDetailsResponse>>;
   team?: Partial<SegmentQueryState<DashboardCockpitTeamResponse>>;
   comments?: Partial<SegmentQueryState<DashboardCockpitCommentsResponse>>;
+  inbound?: Partial<SegmentQueryState<DashboardCockpitInboundResponse>>;
 } = {}) {
   const states = {
     summary: { ...successQuery(buildSummaryFixture(fixture)), ...summary },
     details: { ...successQuery(buildDetailsFixture(fixture)), ...details },
     team: { ...successQuery(buildTeamFixture(fixture)), ...team },
     comments: { ...successQuery(buildCommentsFixture(fixture)), ...comments },
+    inbound: { ...successQuery(buildInboundFixture(fixture)), ...inbound },
   };
 
   useRealtimeQueryMock.mockImplementation((config: { queryKey: unknown[] }) => {
@@ -287,12 +444,13 @@ function mockDashboardQueries({
     if (segment === 'details') return states.details;
     if (segment === 'team') return states.team;
     if (segment === 'comments') return states.comments;
+    if (segment === 'inbound') return states.inbound;
     return successQuery(fixture);
   });
 }
 
 function queryConfigFor(
-  segment: 'summary' | 'details' | 'team' | 'comments',
+  segment: 'summary' | 'details' | 'team' | 'comments' | 'inbound',
   scope: 'mine' | 'team' = 'mine',
 ) {
   return useRealtimeQueryMock.mock.calls
@@ -345,6 +503,7 @@ describe('DashboardCockpit', () => {
     const mineDetailsConfig = queryConfigFor('details');
     const mineTeamConfig = queryConfigFor('team');
     const mineCommentsConfig = queryConfigFor('comments');
+    const mineInboundConfig = queryConfigFor('inbound');
     expect(mineSummaryConfig?.queryKey).toEqual([
       'dashboard',
       'cockpit',
@@ -367,33 +526,87 @@ describe('DashboardCockpit', () => {
       'org_1',
       'mine',
     ]);
-    for (const config of [mineSummaryConfig, mineDetailsConfig, mineTeamConfig]) {
-      expect(config?.invalidateOn).not.toContain('workflow_refresh');
-      expect(config?.invalidateOn).toEqual([
-        'cycle_transition',
+    expect(mineInboundConfig?.queryKey).toEqual([
+      'dashboard',
+      'cockpit',
+      'inbound',
+      'org_1',
+      'mine',
+    ]);
+    expect(mineSummaryConfig?.invalidateOn).not.toContain('workflow_refresh');
+    expect(mineSummaryConfig?.invalidateOn).toEqual([
+      'cycle_transition',
+      expect.objectContaining({
+        type: 'workflow_refresh',
+        source: expect.arrayContaining([
+          'medication_cycles_transition',
+          'prescription_intakes_create',
+          'visit_schedules_update',
+          'visit_schedule_proposals_create',
+          'set_batches_update',
+        ]),
+      }),
+    ]);
+    expect(mineSummaryConfig?.invalidateOn).not.toEqual(
+      expect.arrayContaining([
         expect.objectContaining({
-          type: 'workflow_refresh',
-          source: expect.arrayContaining([
-            'medication_cycles_transition',
-            'prescription_intakes_create',
-            'visit_schedules_update',
-            'visit_schedule_proposals_create',
-            'set_batches_update',
-          ]),
+          source: ['inbound_communications_update', 'inbound_signal_update'],
         }),
-      ]);
-    }
+      ]),
+    );
+    expect(mineDetailsConfig?.invalidateOn).toEqual([
+      'cycle_transition',
+      expect.objectContaining({
+        type: 'workflow_refresh',
+        source: expect.arrayContaining([
+          'dispense_audits',
+          'dispense_tasks_update',
+          'visit_schedules_update',
+        ]),
+      }),
+      expect.objectContaining({
+        type: 'workflow_refresh',
+        source: ['inbound_communications_update', 'inbound_signal_update'],
+      }),
+    ]);
+    expect(mineTeamConfig?.invalidateOn).toEqual([
+      expect.objectContaining({
+        type: 'workflow_refresh',
+        source: expect.arrayContaining([
+          'visit_schedules_update',
+          'visit_schedules_reorder',
+          'facility_visit_batches_upsert',
+          'pharmacist_shifts_update',
+        ]),
+      }),
+    ]);
+    expect(mineTeamConfig?.invalidateOn).not.toEqual(expect.arrayContaining(['cycle_transition']));
+    expect(mineTeamConfig?.invalidateOn).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: expect.arrayContaining(['dispense_audits', 'inbound_signal_update']),
+        }),
+      ]),
+    );
     expect(mineCommentsConfig?.invalidateOn).toEqual(['comment_refresh']);
+    expect(mineInboundConfig?.invalidateOn).toEqual([
+      expect.objectContaining({
+        type: 'workflow_refresh',
+        source: ['inbound_communications_update', 'inbound_signal_update'],
+      }),
+    ]);
 
     await mineSummaryConfig?.queryFn();
     await mineDetailsConfig?.queryFn();
     await mineTeamConfig?.queryFn();
     await mineCommentsConfig?.queryFn();
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    await mineInboundConfig?.queryFn();
+    expect(fetchMock).toHaveBeenCalledTimes(5);
     expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/dashboard/cockpit/summary?scope=mine');
     expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/dashboard/cockpit/details?scope=mine');
     expect(fetchMock.mock.calls[2]?.[0]).toBe('/api/dashboard/cockpit/team?scope=mine');
     expect(fetchMock.mock.calls[3]?.[0]).toBe('/api/dashboard/cockpit/comments?scope=mine');
+    expect(fetchMock.mock.calls[4]?.[0]).toBe('/api/dashboard/cockpit/inbound?scope=mine');
     expect((fetchMock.mock.calls[0]?.[1] as RequestInit).headers).toBe(sentinelHeaders);
 
     fireEvent.click(screen.getByRole('button', { name: 'チーム全体' }));
@@ -411,7 +624,7 @@ describe('DashboardCockpit', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/dashboard/cockpit/summary?scope=team');
     expect((fetchMock.mock.calls[0]?.[1] as RequestInit).headers).toBe(sentinelHeaders);
-    expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledTimes(5);
+    expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledTimes(6);
     expect(vi.mocked(buildOrgHeaders)).toHaveBeenNthCalledWith(1, 'org_1');
     expect(vi.mocked(buildOrgHeaders)).toHaveBeenNthCalledWith(2, 'org_1');
   });
@@ -454,11 +667,11 @@ describe('DashboardCockpit', () => {
     const section = screen.getByTestId('dashboard-urgent-now');
     expect(within(section).getByRole('heading', { name: '今すぐ対応', level: 2 })).toBeTruthy();
     expect(within(section).getByText('今すぐ対応')).toBeTruthy();
-    expect(within(section).getByText('表示 2/6件')).toBeTruthy();
-    expect(within(section).getByText('全6件のうち、期限が近い2件を表示しています。')).toBeTruthy();
+    expect(within(section).getByText('表示 3/8件')).toBeTruthy();
+    expect(within(section).getByText('全8件のうち、期限が近い3件を表示しています。')).toBeTruthy();
 
     const cards = within(section).getAllByTestId('dashboard-urgent-card');
-    expect(cards).toHaveLength(2);
+    expect(cards).toHaveLength(3);
 
     // 1枚目: 麻薬監査(危険タグを隠さない)+ 期限カウントダウン + 主操作(青)は 1 つ
     expect(within(cards[0]).getByText('田中 一郎 様')).toBeTruthy();
@@ -469,10 +682,18 @@ describe('DashboardCockpit', () => {
     expect(within(cards[0]).getByText('期限 12:00 — あと 2時間18分')).toBeTruthy();
     expect(within(section).getAllByRole('link', { name: '監査を開始する' })).toHaveLength(1);
 
-    // 2枚目: タグなしは「安全タグなし」を明示し、主操作はアウトライン
-    expect(within(cards[1]).getByText('佐々木 ハル 様')).toBeTruthy();
-    expect(within(cards[1]).getByText('安全タグなし')).toBeTruthy();
-    expect(within(cards[1]).getByRole('link', { name: '監査を開く' })).toBeTruthy();
+    // 2枚目: 他職種受信も監査と同じ urgent queue に並ぶ
+    expect(within(cards[1]).getByText('MCS')).toBeTruthy();
+    expect(within(cards[1]).getByText('安全確認')).toBeTruthy();
+    expect(within(cards[1]).getByText('湿布 / 4sheet / 湿布は残り4枚')).toBeTruthy();
+    expect(within(cards[1]).getByRole('link', { name: '受信情報を確認' })).toBeTruthy();
+
+    // 3枚目: WorkflowException 由来の詰まりも task source として並ぶ
+    expect(within(cards[2]).getByText('ご家族の同意待ち(新規契約)')).toBeTruthy();
+    expect(within(cards[2]).getByText('止まっている理由')).toBeTruthy();
+    expect(within(cards[2]).getAllByText('患者').length).toBeGreaterThan(0);
+    expect(within(cards[2]).getByText('重大')).toBeTruthy();
+    expect(within(cards[2]).getByRole('link', { name: '再連絡する' })).toBeTruthy();
   });
 
   it('keeps urgent safety cues in the main body when the auxiliary panel is closed', () => {
@@ -483,11 +704,12 @@ describe('DashboardCockpit', () => {
     expect(screen.queryByTestId('next-action-panel')).toBeNull();
 
     const section = screen.getByTestId('dashboard-urgent-now');
-    expect(within(section).getByText('田中 一郎 様')).toBeTruthy();
-    expect(within(section).getByText('麻薬監査')).toBeTruthy();
-    expect(within(section).getByText('麻薬')).toBeTruthy();
-    expect(within(section).getByText('冷所')).toBeTruthy();
-    expect(within(section).getByText('期限 12:00 — あと 2時間18分')).toBeTruthy();
+    const primaryCard = within(section).getAllByTestId('dashboard-urgent-card')[0];
+    expect(within(primaryCard).getByText('田中 一郎 様')).toBeTruthy();
+    expect(within(primaryCard).getByText('麻薬監査')).toBeTruthy();
+    expect(within(primaryCard).getByText('麻薬')).toBeTruthy();
+    expect(within(primaryCard).getByText('冷所')).toBeTruthy();
+    expect(within(primaryCard).getByText('期限 12:00 — あと 2時間18分')).toBeTruthy();
     expect(within(section).getByRole('link', { name: '監査を開始する' })).toBeTruthy();
   });
 
@@ -579,6 +801,20 @@ describe('DashboardCockpit', () => {
     // デザイン 01: 右レールは 3 点セットのみ。「私の今日」リストカードは置かない
     expect(screen.queryByTestId('dashboard-my-today')).toBeNull();
 
+    const inbound = screen.getByTestId('dashboard-inbound-panel');
+    expect(within(inbound).getByRole('heading', { name: '他職種受信', level: 3 })).toBeTruthy();
+    expect(within(inbound).getByText('確認待ち 1件')).toBeTruthy();
+    expect(within(inbound).getByText('MCS')).toBeTruthy();
+    expect(within(inbound).getByText('安全確認')).toBeTruthy();
+    expect(within(inbound).getByText('田中 一郎 様')).toBeTruthy();
+    expect(
+      within(inbound).getByText('湿布は残り4枚です。痛みが強く使用頻度が増えています。'),
+    ).toBeTruthy();
+    expect(within(inbound).getByText('湿布 4sheet')).toBeTruthy();
+    expect(within(inbound).getByText('nurse / 山田 花子 / 訪問看護ステーションA')).toBeTruthy();
+    expect(within(inbound).getByRole('link', { name: '受信情報を確認' })).toBeTruthy();
+    expect(within(inbound).getByText('他2件は受信インボックスで確認できます。')).toBeTruthy();
+
     const comments = screen.getByTestId('dashboard-comments-panel');
     expect(within(comments).getByRole('heading', { name: 'チームの会話', level: 3 })).toBeTruthy();
     expect(within(comments).getByText('自分宛')).toBeTruthy();
@@ -669,14 +905,17 @@ describe('DashboardCockpit', () => {
     render(<DashboardCockpit />);
 
     expect(screen.getByRole('heading', { name: 'ダッシュボード' })).toBeTruthy();
-    expect(screen.getByText('田中 一郎 様')).toBeTruthy();
+    const primaryCard = within(screen.getByTestId('dashboard-urgent-now')).getAllByTestId(
+      'dashboard-urgent-card',
+    )[0];
+    expect(within(primaryCard).getByText('田中 一郎 様')).toBeTruthy();
     expect(
       screen.getByText('最新化に失敗しました。表示中の情報は前回取得時点のものです。'),
     ).toBeTruthy();
     expect(screen.queryByText('ダッシュボードを表示できません')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: '再試行' }));
-    expect(refetchMock).toHaveBeenCalledTimes(4);
+    expect(refetchMock).toHaveBeenCalledTimes(5);
   });
 
   it('keeps summary sections visible when details fail before the first payload arrives', () => {
