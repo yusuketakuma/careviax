@@ -724,734 +724,102 @@ notification:
 
 #### P0/P1: 患者の動きタイムライン Patient Movement Timeline（MOV-001） `cc:TODO`
 
-> 2026-07-07 追加。これは `INB-001` と Medication Stock Ledger の表示面を患者詳細へ統合する UI/BFF タスク。患者詳細には `movement` タブ「患者の動き」、`PatientMovementTimeline`、共通 `PatientMovementTimelineEvent` 型、`/api/patients/:id/timeline/:eventId` resolver の土台が入っている。今後は既存 source adapter / href / action_label の土台へ、formal inbound / medication stock / safety source を追加する。
-> 残: 正式 `InboundCommunicationEvent` / `InboundCommunicationSignal` source、正式 `MedicationStockEvent` / equivalence review / shortage finding source、formal safety finding source、raw_text 再認可 UI、Playwright mobile smoke。
-> 最終スコープ: 処方・訪問・文書登録については **処方があった / 訪問があった / 文書登録があった** ことを timeline 上で確認できればよい。カードは内容閲覧ではなく発生 marker として扱い、詳細確認は必ず `event.href` の deep link 先で行う。処方内容、訪問内容、文書本文、添付名、薬剤名、数量、SOAP、OCR全文を timeline payload / card / search haystack に戻してはいけない。
+> 2026-07-07 整理。`movement` タブ、`PatientMovementTimeline`、共通 `PatientMovementTimelineEvent` 型、`/api/patients/:id/timeline/:eventId` resolver、処方/訪問/文書/MCS/電話/協力薬局/タスク系 marker の土台は実装済みのため、実装済みフェーズと重複した詳細仕様は削除した。MOV-001 の残作業は、正式な Inbound / MedicationStock / safety source と raw_text 再認可 UI、Google Maps タイムライン風の最終UX仕上げに限定する。
 
-**重要なUI方針**:
+**実装済みとして Plans から削除した範囲**:
 
-```text
-採用する:
-  Google Maps タイムラインのような、日付ごとの縦軸、時刻、地点カード風イベント、連続した患者の動き。
+- 患者詳細 `movement` タブ、hash alias、Command excerpt からの導線。
+- `PatientMovementTimeline` の lazy load と `history` タブからの責務分離。
+- `src/types/patient-movement-timeline.ts` への共通型分離。
+- `patient-movement-timeline-presenter` による controlled summary / category / href / raw detail omission。
+- `/api/patients/[id]/timeline/[eventId]` の safe resolver。
+- 既存 `SourceAdapter` を使った処方、訪問、文書、報告、共有、MCS、電話、協力薬局、task の marker 化。
+- 処方内容、訪問本文、文書本文、添付名、storage key、signed URL を timeline JSON / card / search haystack に出さない regression 方針。
 
-採用しない:
-  上部の地図部分。
-  地図、ピン配置、移動経路マップ、位置情報可視化はこのタスクでは作らない。
-```
+**残スコープ**:
 
-**最終スコープ固定（2026-07-07）**:
+| 残ID          | 優先度 | タスク                             | 実装単位                                                                                                                                                                                                       | 受入条件                                                                                                              |
+| ------------- | ------ | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| MOV-INB-001   | P0/P1  | Formal inbound source              | `InboundCommunicationEvent` / `InboundCommunicationSignal` DB/API 実装後に、正式 source adapter を追加する。既存 `CommunicationEvent` / `PatientMcsMessage` / task marker は短期 bridge として維持する。       | raw_text は一覧DTO、timeline card、search haystack、通知、監査changesへ出さない。source failure は fail-soft。        |
+| MOV-STOCK-001 | P0/P1  | Medication Stock source            | `MedicationStockEvent`、equivalence review、shortage finding が入った後に medication stock source を追加する。                                                                                                 | 残数・使用量・名寄せ・不足イベントは発生 marker と status/badge のみ。薬剤名/数量は必要最小限または詳細先で確認する。 |
+| MOV-SAFE-001  | P1     | Formal safety finding source       | Case Risk / safety finding の formal source を追加し、urgent safety signal を movement の上位表示へ接続する。                                                                                                  | safety finding は controlled title/summary と finding deep link を持つ。free text finding detail は一覧に出さない。   |
+| MOV-RAW-001   | P1     | raw_text re-auth detail UI         | MCS/電話/FAX/メールなど raw PHI を読む detail UI を、再認可・理由・監査ログ付きで実装する。                                                                                                                    | 一覧から raw_text は見えない。raw 閲覧は permission、reason、audit、request_id を持つ。                               |
+| MOV-UX-001    | P1     | Map-less Google timeline UX finish | 上部地図なし。日付ごとの縦 rail、時刻、地点カード風 event、summary strip、filter/search、表示密度、mobile 1列表示を仕上げる。UI変更時は `docs/ui-ux-design-guidelines.md` と `gpt-image-2` 非PHI参照案を使う。 | Google Maps タイムライン風だが地図・ピン・移動経路は出さない。mobile smoke と a11y を確認する。                       |
+
+**最終スコープ固定**:
 
 ```text
 Patient Movement Timeline は、処方・訪問・文書の詳細内容を読む画面ではない。
 
-timelineで確認できればよいこと:
-  ・処方登録/処方受付/処方変更があった。
+タイムラインで確認できればよいこと:
+  ・処方登録/処方受付/処方変更/疑義照会があった。
   ・訪問予定/訪問記録/訪問完了があった。
-  ・文書登録/文書更新があった。
+  ・文書登録/文書更新/報告書作成/文書送付があった。
 
-timelineで必須にすること:
-  ・各イベントに正本画面へ直接移動する deep link を持たせる。
-  ・カード上の primary CTA は event detail shell ではなく event.href を使う。
-  ・処方は処方詳細/処方サイクル、訪問は訪問記録/訪問準備、文書は共有・文書タブ/文書詳細/報告詳細/FileAsset detail へ遷移する。
-  ・処方/訪問/文書 event に相対 deep link を作れない source は、本文や明細を代替表示せず、fallback と不足実装として扱う。
+タイムラインで必須にすること:
+  ・発生日時、controlled title、controlled status、badge、相対 deep link を持つ。
+  ・primary CTA は `event.href` を使い、正本画面へ直接遷移する。
+  ・処方/訪問/文書の詳細は、処方詳細、訪問記録、共有・文書タブ、報告詳細、FileAsset detail で確認する。
 
-timelineでしないこと:
-  ・処方内容、薬剤明細、用法用量を表示しない。
-  ・訪問本文、SOAP本文、観察内容、位置情報を表示しない。
-  ・文書本文、PDF本文、OCR全文、添付ファイル名、storage key、signed URL を表示しない。
+タイムラインに戻してはいけないこと:
+  ・処方内容、薬剤明細、用法用量、処方OCR全文。
+  ・訪問本文、SOAP本文、観察内容、残薬詳細、副作用詳細、位置情報。
+  ・文書本文、PDF本文、OCR全文、添付ファイル名、storage key、signed URL。
 ```
 
-目的:
+**処方・訪問・文書 marker 契約**:
 
-- 薬局内イベントだけでなく、他職種受信、MCS、電話、残数/使用量signal、残数台帳反映、安全signal、task、処方、訪問、文書登録、調剤、報告、共有、請求の発生を時系列で追えるようにする。
-- 処方、訪問、文書登録はタイムライン上では発生確認に留め、内容・本文・明細は正本画面への deep link で確認する。
-- 各イベントは `event.href` を primary CTA として deep link できる。
-- 特に処方・訪問・文書登録は、中間 drawer/detail shell ではなく、処方詳細・訪問記録・共有/文書タブなど正本画面へ直接遷移する。
-- 処方・訪問・文書登録については、「登録/記録/更新があったこと」「いつ起きたか」「処理状態」「どこで詳細を見るか」だけを card に載せる。
-- deep link がないことを詳細抜粋で補わない。リンク先が未整備なら、その source の detail href を実装する。
-- 一覧では raw text を出さず、詳細表示時に再認可と監査ログを通す。
+| category       | timeline card に出す内容                                                                                                                                                              | primary CTA                                                                         |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `prescription` | 「処方受付あり」「処方登録あり」「処方変更あり」「疑義照会あり」、発生日時、controlled status、確認待ち/注意 badge。薬剤名・用量・日数・処方本文は出さない。                          | `/prescriptions/:id`、処方サイクル、薬剤変更レビュー、疑義照会。                    |
+| `visit`        | 「訪問予定あり」「訪問記録あり」「訪問完了」、訪問日/記録時刻、outcome/status、未完了/報告待ち badge。SOAP本文・観察内容・訪問メモは出さない。                                        | `/visits/:recordId`、`/visits/:scheduleId/record`、`/schedules?focus=:scheduleId`。 |
+| `document`     | 「文書登録あり」「初回訪問文書あり」「報告書作成あり」「文書送付あり」、controlled document type、登録/更新日時、scan/retention/shareability badge。本文・ファイル名・URLは出さない。 | `#patient-documents`、文書詳細、報告詳細、permissioned FileAsset detail。           |
 
-**処方・訪問・文書 marker の最小契約**:
+**Source adapter ガード**:
 
-```text
-timeline card で必須:
-  ・event_type / category
-  ・occurred_at
-  ・controlled title
-  ・controlled status / badge
-  ・正本画面への相対 href
-  ・action_label
-
-timeline card で禁止:
-  ・処方内容、薬剤明細、用法用量
-  ・訪問本文、SOAP本文、観察内容、位置情報
-  ・文書本文、OCR全文、添付ファイル名、FileAsset storage key
-  ・href 未整備を補うための本文抜粋
-
-完了条件:
-  ・処方があったこと、訪問があったこと、文書登録があったことが日付順に分かる。
-  ・詳細確認は primary CTA の deep link 先で行う。
-  ・deep link が作れない source は marker-only 完了に含めず、href 実装を残タスク化する。
-```
-
-**現行コードとの整合**:
-
-| 現行実装                                               | 状態                                                                                         | MOV-001での扱い                                                                                                                                                            |
-| ------------------------------------------------------ | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/app/(dashboard)/patients/[id]/card-workspace.tsx` | `movement` タブ、hash aliases、lazy `PatientMovementTimeline`、Command excerpt link を持つ。 | 既存タブ構成を維持し、formal inbound/stock/safety source 追加時も初期 bundle と非active tab の負荷を増やさない。                                                           |
-| `PatientMovementTimeline`                              | 訪問、処方、調剤、文書、共有連絡、他職種受信、task を発生確認カードとして表示。              | 患者の動き専用 component として維持し、後続PRで formal inbound/stock/safety source を追加。                                                                                |
-| `patient-detail-timeline-registry.ts`                  | `SourceAdapter` が `fetch` / `toEvents` を持つ。                                             | 既存 registry を使い、`inboundCommunicationEventsSource` / `inboundCommunicationSignalsSource` / `medicationStockEventsSource` 等を段階追加。                              |
-| `/api/patients/[id]/timeline`                          | limit 指定で timeline を返す既存 route。                                                     | 既存 route は維持し additive に `movement_events` を返す。`/api/patients/:id/timeline/:eventId` は safe resolver として残すが、UI の主導線は正本詳細の `href` へ直接遷移。 |
-| `CommandTimelineExcerptPanel`                          | command タブに timeline excerpt を出す。                                                     | 抜粋は `movement` の重要イベント上位に寄せ、リンク先を `#patient-movement` へ変更。                                                                                        |
-
-**タブ構成（現行維持）**:
-
-```ts
-type PatientDetailTab =
-  | 'command'
-  | 'foundation'
-  | 'medication'
-  | 'movement'
-  | 'sharing'
-  | 'billing'
-  | 'history';
-```
-
-表示順:
-
-```text
-Command
-正本・在宅運用
-薬剤・訪問
-患者の動き
-共有・文書
-請求・会議
-履歴・構造化
-```
-
-hash deep link:
-
-```ts
-PATIENT_DETAIL_HASH_TABS:
-  'patient-movement' -> 'movement'
-  'patient-timeline' -> 'movement'
-  'inbound-communications' -> 'movement'
-  'inbound-signals' -> 'movement'
-  'medication-stock-events' -> 'movement'
-```
-
-**画面レイアウト**:
-
-```text
-患者の動きタブ
-  ├─ compact summary strip
-  │   ├─ 未処理の他職種情報
-  │   ├─ 薬剤師確認待ち
-  │   ├─ 残数/使用量signal
-  │   ├─ 安全signal
-  │   └─ 直近イベント日
-  │
-  ├─ filter/search bar
-  │   ├─ すべて
-  │   ├─ 訪問
-  │   ├─ 処方・調剤
-  │   ├─ 他職種受信
-  │   ├─ 残数・薬剤
-  │   ├─ 安全
-  │   ├─ 報告・共有
-  │   ├─ 請求
-  │   └─ タスク
-  │
-  ├─ map-less timeline rail
-  │   ├─ 今日
-  │   │   ├─ 09:00 処方登録あり card
-  │   │   ├─ 10:32 MCS 残数報告 card
-  │   │   ├─ 13:30 訪問記録あり card
-  │   │   ├─ 14:10 電話 スケジュール相談 card
-  │   │   ├─ 14:15 残数台帳反映 card
-  │   │   └─ 16:20 文書登録あり card
-  │   ├─ 昨日
-  │   └─ yyyy年M月d日
-  │
-  └─ side/bottom action rail
-      ├─ 未処理受信
-      ├─ 残数反映待ち
-      ├─ 次に見るべきイベント
-      └─ MCS/電話/手入力の登録導線
-```
-
-Google Maps 風にするポイント:
-
-- 日付見出しを強くし、1日単位で患者の動きが追える。
-- 左に細い timeline rail、中央に event card、右に action / metadata を置く。
-- event card は「地点カード」風に、source、actor、発生種別、status、deep link CTA を一目で読める密度にする。
-- summary strip は地図ではなく当日の未処理件数と安全signalを表示する。
-- mobile は rail + card の1列にし、上部 summary は横スクロール chip にする。
-- 処方・訪問・文書のカードは詳細本文のプレビューではなく、正本画面へ移動するための marker として扱う。
-
-**カードに表示する内容の粒度**:
-
-Patient Movement Timeline は、患者に起きたイベントの「存在」を素早く確認するための画面であり、処方内容・訪問記録本文・文書本文をカード上で詳述しない。詳細は必ず deep link 先で確認する。
-
-| category            | event                                                        | timeline card に出す内容                                                                                                                                | detail link                                              |
-| ------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| `prescription`      | 処方取込 / 処方登録 / 処方変更                               | 「処方あり」「処方変更あり」などの発生種別、発生日/受付時刻、status、注意badge、確認待ち有無。薬剤名、用量、日数、処方明細は出さない。                  | 処方受付詳細、処方サイクル、薬剤変更レビュー、疑義照会。 |
-| `visit`             | 訪問予定 / 訪問記録 / 訪問完了                               | 「訪問予定」「訪問記録あり」「訪問完了」などの発生種別、訪問日/記録時刻、outcome/status、未完了/報告待ちbadge。SOAP本文、観察内容、記録本文は出さない。 | 訪問記録、訪問準備、報告書下書き。                       |
-| `document`          | 文書登録 / 初回訪問文書 / 管理計画 / 同意 / 報告書PDF / 添付 | 「文書登録あり」、文書種別、登録日時、登録者/登録元の最小表示、scan/retention/shareability の状態badge。文書本文、PDF本文、添付ファイル名は出さない。   | 文書詳細、文書一覧、共有設定、FileAsset detail。         |
-| `medication_stock`  | 残数報告 / 残数台帳反映 / 名寄せ確認                         | 残数関連イベントの発生、レビュー状態、不足risk/確認待ちbadge。薬剤明細や数量は必要最小限に留める。                                                      | 残数管理、stock event detail、signal review。            |
-| `interprofessional` | MCS / 電話 / FAX / メール / 施設メモ                         | source、送信者職種、未処理/確認待ち、安全signal、残数signal、schedule request の有無。raw text は出さない。                                             | inbound event detail、signal review。                    |
-
-**処方・訪問・文書の strict contract**:
-
-Patient Movement Timeline は詳細ビューではなく、出来事の索引である。特に処方・訪問・文書は以下を固定する。
-
-```text
-prescription:
-  timelineで分かること:
-    処方取込、処方登録、処方変更、疑義照会などがあったこと。
-    受付/登録/変更日時、処理status、確認待ち/注意badge、正本詳細へのhref。
-  timelineに出さないこと:
-    薬剤名、用量、用法、日数、処方全文、薬剤変更理由の自由記載、添付ファイル名。
-  detail:
-    /prescriptions/:id、処方サイクル、薬剤変更レビュー、疑義照会画面で確認する。
-
-visit:
-  timelineで分かること:
-    訪問予定、訪問開始、訪問記録作成、訪問完了、報告待ちがあったこと。
-    訪問日/記録時刻、outcome/status、未完了/報告待ちbadge、正本詳細へのhref。
-  timelineに出さないこと:
-    SOAP本文、観察内容、残薬詳細、副作用詳細、訪問メモ、音声/添付名、位置情報。
-  detail:
-    /visits/:id、訪問記録、訪問準備、報告下書きで確認する。
-
-document:
-  timelineで分かること:
-    初回訪問文書、同意/計画、報告書PDF、添付、共有文書などが登録/更新されたこと。
-    文書種別のcontrolled label、登録/更新日時、status、scan/retention/shareability badge、正本詳細へのhref。
-  timelineに出さないこと:
-    文書本文、PDF本文、文書URL、添付ファイル名、storage key、signed URL、OCR全文。
-  detail:
-    共有・文書タブ、文書詳細、FileAsset detail、報告詳細で確認する。
-```
-
-実装上の制約:
-
-- source adapter の `select` は、処方・訪問・文書の本文/明細/添付名を読まない。
-- `PatientMovementTimelineEvent.summary` は controlled sentence に限定し、DB自由記載をそのまま入れない。
-- 検索 haystack は title、controlled summary、status label、source label、controlled metadata だけを使う。
-- deep link は `event.href` を primary CTA とし、正本画面に直接遷移する。
-- safe resolver `/api/patients/:id/timeline/:eventId` は fallback / destination 解決用に残すが、処方・訪問・文書の本文を返さない。
-
-**処方・訪問・文書登録の最小表示要件**:
-
-```text
-timelineで確認できればよいこと:
-  処方登録/処方受付があった。
-  訪問予定/訪問記録/訪問完了があった。
-  文書登録/文書更新があった。
-
-timelineから直接開けること:
-  処方 -> 処方詳細または処方サイクル。
-  訪問 -> 訪問記録または訪問準備。
-  文書 -> 共有・文書タブ、文書詳細、報告詳細、FileAsset detail。
-
-timelineに持ち込まないこと:
-  処方内容、薬剤明細、用法用量、訪問本文、SOAP本文、文書本文、添付ファイル名、OCR全文。
-```
-
-**処方・訪問・文書 marker 実装計画（追加確認 2026-07-07）**:
-
-```text
-目的:
-  Patient Movement Timeline で、処方・訪問・文書登録が「あったこと」を日付順に確認できるようにする。
-  詳細は timeline 内に複製せず、各正本画面への deep link で確認する。
-
-処方 marker:
-  対象:
-    prescription_intake
-    medication_cycle / prescription cycle
-    inquiry
-    medication change review
-  表示:
-    「処方受付あり」「処方登録あり」「処方変更あり」「疑義照会あり」
-    発生時刻、controlled status、確認待ち/注意 badge、正本 href。
-  禁止:
-    薬剤名、処方明細、用法用量、日数、処方全文、医師名自由記載、処方箋file id。
-  deep link:
-    /prescriptions/:id
-    /patients/:patientId#patient-medication
-    /audit?task=:taskId
-
-訪問 marker:
-  対象:
-    visit_schedule
-    visit_record
-    partner_visit_record
-    visit preparation / visit mode
-  表示:
-    「訪問予定あり」「訪問記録あり」「訪問完了」「協力薬局記録あり」
-    訪問日/記録時刻、controlled status、報告待ち/未完了 badge、正本 href。
-  禁止:
-    SOAP本文、観察内容、残薬詳細、副作用詳細、訪問メモ、音声/添付名、位置情報。
-  deep link:
-    /visits/:scheduleId/record
-    /visits/:recordId
-    /schedules?focus=:scheduleId
-
-文書 marker:
-  対象:
-    first_visit_document
-    management_plan
-    care_report
-    delivery_record
-    generated PDF / document export
-    file_asset attachment event
-  表示:
-    「文書登録あり」「初回訪問文書あり」「報告書作成あり」「文書送付あり」
-    controlled document type、登録/更新時刻、scan/retention/shareability status、正本 href。
-  禁止:
-    文書本文、PDF本文、OCR全文、文書URL、添付ファイル名、storage key、signed URL。
-  deep link:
-    /patients/:patientId#patient-documents
-    /reports/:reportId
-    /reports/:reportId#delivery-records
-    FileAsset detail route if permissioned and implemented.
-```
-
-実装時の判定:
-
-- source adapter が相対 deep link を作れる場合だけ marker を出す。
-- 相対 deep link が作れない source は、本文抜粋で補わない。`partial_failures` または follow-up task として扱う。
-- timeline card / search haystack / summary strip に処方内容・訪問内容・文書本文を入れない。
-- Unit test は marker の存在、相対 href、raw detail の非露出を同時に固定する。
-
-**source adapter 実装ガード**:
-
-- 処方 source は「処方受付/登録/変更/疑義照会があった」こと、controlled status、発生時刻、正本 href だけを返す。
-- 訪問 source は「訪問予定/訪問記録/訪問完了があった」こと、controlled status、発生時刻、正本 href だけを返す。
-- 文書 source は「文書登録/更新があった」こと、controlled document type、scan/retention/shareability status、発生時刻、正本 href だけを返す。
-- source adapter の `select` に薬剤明細、訪問本文、SOAP、文書本文、OCR、添付ファイル名、storage key、signed URL を追加しない。
+- source adapter の `select` に、処方明細、訪問本文、SOAP、文書本文、OCR、添付ファイル名、storage key、signed URL を追加しない。
 - `PatientMovementTimelineEvent.summary` は controlled sentence に固定し、DB自由記載を転記しない。
 - `href` は相対パスのみ。外部URL、S3 URL、signed URL、storage URL は破棄し、正本画面または患者の動き fallback へ丸める。
-- Unit test は「処方/訪問/文書の raw detail が movement event JSON に含まれないこと」と「href が正本画面へ相対 deep link されること」を固定する。
-
-**処方・訪問・文書 marker の実装チェックリスト（2026-07-07 追加）**:
-
-```text
-Prescription marker:
-  OK:
-    event_type: prescription_event / prescription_intake / inquiry / dispense_result
-    category: prescription
-    title: 処方受付を登録 / 処方変更あり / 疑義照会あり / 調剤を記録
-    summary: controlled sentence only
-    href: /prescriptions/:id or existing prescription workflow route
-  NG:
-    medication line names
-    dosage / days / quantity
-    prescription OCR text
-    prescription file id / storage key
-
-Visit marker:
-  OK:
-    event_type: visit_event / visit_schedule / visit_record
-    category: visit
-    title: 訪問予定を登録 / 訪問記録を登録 / 訪問完了
-    summary: controlled sentence only
-    href: /visits/:recordId, /visits/:scheduleId/record, or schedule focus route
-  NG:
-    SOAP text
-    observation note
-    residual medication detail
-    voice / attachment name
-    geolocation
-
-Document marker:
-  OK:
-    event_type: document_registered / care_report / delivery_record / management_plan / first_visit_document
-    category: document
-    title: 文書登録あり / 報告書を作成 / 文書状態を更新 / 報告書を送付
-    summary: controlled sentence only
-    href: /reports/:id, patient documents hash, or permissioned document detail
-  NG:
-    document body
-    PDF text
-    OCR text
-    attachment filename
-    external URL / signed URL / storage key
-```
-
-**最新ユーザー指示による完成判定（2026-07-07 追加）**:
-
-```text
-Patient Movement Timeline における処方・訪問・文書登録の目的:
-  処方があったこと、訪問があったこと、文書登録があったことを時系列で確認できるようにする。
-  詳細はタイムライン内で読ませず、正本画面への deep link で確認する。
-
-処方 marker の完成条件:
-  タイムラインに「処方受付/処方登録/処方変更/疑義照会があった」ことが出る。
-  marker は発生日時、controlled status、必要な badge、正本 deep link を持つ。
-  CTA は処方詳細、処方サイクル、薬剤変更レビュー、疑義照会などの正本画面へ直接遷移する。
-
-訪問 marker の完成条件:
-  タイムラインに「訪問予定/訪問記録/訪問完了があった」ことが出る。
-  marker は訪問日または記録時刻、controlled status、報告待ち/未完了 badge、正本 deep link を持つ。
-  CTA は訪問記録、訪問準備、スケジュール focus などの正本画面へ直接遷移する。
-
-文書 marker の完成条件:
-  タイムラインに「文書登録/文書更新/報告書作成/文書送付があった」ことが出る。
-  marker は登録/更新時刻、controlled document type、scan/retention/shareability badge、正本 deep link を持つ。
-  CTA は共有・文書タブ、文書詳細、報告詳細、FileAsset detail などの正本画面へ直接遷移する。
-
-明示的な非目標:
-  処方内容、薬剤明細、用法用量、訪問本文、SOAP本文、文書本文、添付ファイル名、OCR全文を timeline card に出さない。
-  deep link 未整備を本文プレビューで補わない。
-  中間の event detail shell を処方・訪問・文書の primary CTA にしない。
-```
-
-実装時の追加テスト観点:
-
-- 処方・訪問・文書 marker が日付順に出ること。
-- 各 marker の `href` が相対パスで、正本画面へ直接遷移すること。
-- `event.href` が primary CTA に使われ、処方・訪問・文書では event detail shell が primary CTA にならないこと。
-- 処方内容、訪問内容、文書本文、添付ファイル名、OCR全文、storage key、signed URL が `PatientMovementTimelineEvent` JSON、card 表示、検索 haystack に混入しないこと。
-
-実装者向け注意:
-
-- `patient-movement-timeline-presenter.ts` の `GENERIC_DETAIL_SUMMARIES` は削らない。処方・訪問・文書 category はこの controlled summary を通す。
-- `patient-detail-timeline-registry.ts` の source adapter に詳細本文を select して timeline 表示を改善する方向は禁止。表示改善はラベル、status badge、relative href、日付 grouping、rail UI に限定する。
 - deep link が未整備の source は本文を出して埋め合わせない。まず正本画面の相対 href builder を追加する。
-- tests は `PatientMovementTimelineEvent` JSON に raw detail が混入しないことを snapshot / negative assertion で固定する。
+- safe resolver `/api/patients/:id/timeline/:eventId` は fallback / destination 解決用に残すが、処方・訪問・文書の本文を返さない。
 
-発生確認カードの表示制約:
-
-- 一覧カードは「何があったか」「いつ起きたか」「未処理か」「どこで詳細確認するか」に限定する。
-- 処方薬剤明細、SOAP本文、訪問記録本文、MCS本文、電話メモ、文書本文、添付ファイル名、storage key は一覧カードに出さない。
-- 薬剤名や数量などの詳細は、患者詳細内であっても原則 detail link 先で確認する。
-- `raw_available=true` の場合も、詳細 route で再認可してから表示する。
-- 文書登録イベントは「登録された事実」と「業務で使える状態」を分ける。scan 未完了、retention 未設定、共有不可は badge で明示する。
-- 発生確認カードは、処方・訪問・文書の正本内容を再構成しない。正本の抜粋を作るほど、タイムラインと詳細画面の不整合、PHI露出、 stale 表示が起きやすくなるため。
-
-**イベント種別**:
-
-```ts
-type PatientMovementEventType =
-  | ExistingTimelineEventType
-  | 'prescription_event'
-  | 'visit_event'
-  | 'document_registered'
-  | 'inbound_communication'
-  | 'inbound_mcs'
-  | 'inbound_phone'
-  | 'inbound_fax'
-  | 'inbound_email'
-  | 'inbound_medication_stock_signal'
-  | 'medication_stock_event'
-  | 'medication_stock_snapshot'
-  | 'medication_equivalence_review'
-  | 'interprofessional_note'
-  | 'care_team_update'
-  | 'safety_signal'
-  | 'task_created'
-  | 'task_resolved'
-  | 'support_session';
-```
-
-カテゴリ:
-
-```ts
-type PatientMovementCategory =
-  | 'visit'
-  | 'prescription'
-  | 'medication_stock'
-  | 'interprofessional'
-  | 'communication'
-  | 'document'
-  | 'billing'
-  | 'task'
-  | 'safety'
-  | 'system';
-```
-
-**DTO案**:
-
-```ts
-type PatientMovementTimelineEvent = {
-  id: string;
-  event_type: PatientMovementEventType;
-  category: PatientMovementCategory;
-  occurred_at: string;
-  recorded_at?: string | null;
-  title: string;
-  summary: string | null;
-  href: string;
-  action_label: string;
-  status: string | null;
-  status_label: string | null;
-  actor_name: string | null;
-  actor_role: string | null;
-  source_channel: string | null;
-  source_label: string | null;
-  related_entity_type: string | null;
-  related_entity_id: string | null;
-  severity: 'blocking' | 'urgent' | 'warning' | 'info' | 'normal';
-  badges: Array<{
-    label: string;
-    tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger';
-  }>;
-  metadata: string[];
-  privacy_level: 'summary' | 'detail' | 'raw_phi';
-  raw_available: boolean;
-};
-```
-
-DTO制約:
-
-- `href` は相対パスのみ。
-- 一覧DTOに `raw_text` / provider raw payload / storage key / signed URL を含めない。
-- `privacy_level='raw_phi'` の詳細は一覧では summary のみ。
-- raw 表示は detail resolver 側で権限確認、理由、監査ログを通す。
-
-**Deep link 方針**:
+**Google Maps タイムライン風 UI 方針**:
 
 ```text
-visit_schedule
-  -> /visits/:scheduleId/record または /schedules?focus=:scheduleId
+採用する:
+  日付ごとの縦軸、時刻、地点カード風イベント、連続した患者の動き。
 
-visit_record
-  -> /visits/:recordId
-
-prescription_intake
-  -> /prescriptions/:intakeId
-
-dispense_result
-  -> /dispense?task=:taskId または /audit?task=:taskId
-
-care_report
-  -> /reports/:reportId
-
-delivery_record
-  -> /reports/:reportId#delivery-records
-
-document_registered
-  -> /patients/:patientId#patient-documents
-  または文書詳細/報告詳細/FileAsset detail が存在する場合はその正本画面
-
-billing_candidate
-  -> /billing?candidate=:candidateId
-
-inbound_communication / inbound_mcs / inbound_phone
-  -> /patients/:patientId/timeline/inbound_communication:eventId
-  -> detail shell 内で raw_text 再認可
-
-inbound_medication_stock_signal
-  -> /patients/:patientId/timeline/inbound_signal:signalId
-
-medication_stock_event
-  -> /patients/:patientId/medication-stock?event=:eventId
-
-task_created / task_resolved
-  -> /tasks/:taskId
-
-safety_signal
-  -> /patients/:patientId/risk?finding=:findingKey
+採用しない:
+  上部の地図、地図、ピン配置、移動経路マップ、位置情報可視化。
 ```
 
-**API方針**:
+UI構成:
 
-初期PR:
+- 上部は地図ではなく compact summary strip: 未処理受信、薬剤師確認待ち、残数/使用量signal、安全signal、直近イベント日。
+- filter/search: すべて、訪問、処方・調剤、他職種受信、残数・薬剤、安全、報告・共有、請求、task。
+- timeline rail: 今日、昨日、yyyy年M月d日で日付 grouping。
+- event card: source、actor role、event type、status、badge、deep link CTA。
+- mobile: rail + card の1列、summary は横スクロール chip、touch target 44px 以上。
 
-```text
-GET /api/patients/:id/timeline?limit=40
-```
+**残Phased PR plan**:
 
-を維持し、既存イベントを `movement` タブで表示する。
+| phase   | 内容                                                                            | validation                                                                       |
+| ------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Phase 4 | 正式 `InboundCommunicationEvent` / `InboundCommunicationSignal` source 追加。   | formal inbound source tests、raw_text omission tests、partial failure tests。    |
+| Phase 5 | formal safety finding source 追加。                                             | safety finding source tests、free text omission tests、severity ordering tests。 |
+| Phase 6 | 正式 `MedicationStockEvent`、equivalence review、shortage finding source 追加。 | stock integration tests、risk/task link tests、drug/quantity omission tests。    |
+| Phase 7 | raw_text 再認可 UI と必要な detail shell。                                      | route authz tests、raw omission tests、audit log tests。                         |
+| Phase 8 | summary/action rail、検索、表示密度、mobile 最適化。                            | Playwright browser smoke、a11y、interaction budget。                             |
 
-後続PR:
+**残テスト観点**:
 
-```text
-GET /api/patients/:id/movement-timeline?limit=40&category=all&cursor=
-GET /api/patients/:id/movement-timeline/:eventId
-```
-
-Response:
-
-```ts
-{
-  data: {
-    patient_id: string;
-    timeline_events: PatientMovementTimelineEvent[];
-    summary: {
-      total_count: number;
-      inbound_unprocessed_count: number;
-      medication_stock_signal_count: number;
-      safety_signal_count: number;
-      latest_event_at: string | null;
-    };
-    partial_failures: Array<{
-      source: string;
-      message: string;
-    }>;
-  };
-  meta: {
-    generated_at: string;
-    limit: number;
-    next_cursor: string | null;
-  };
-}
-```
-
-**Source追加計画**:
-
-既存 `TIMELINE_SOURCES` を維持し、段階的に追加する。
-
-```text
-existing:
-  visitSchedules
-  visitRecords
-  visitRecordEvents
-  careReports
-  communicationEvents
-  selfReports
-  externalShares
-  inquiryRecords
-  prescriptionIntakes
-  prescriptionEvents
-  dispenseResults
-  billingCandidates
-  managementPlans
-  firstVisitDocuments
-  documentRegistrationEvents
-  conferenceNotes
-
-new:
-  inboundCommunicationEvents
-  inboundCommunicationSignals
-  medicationStockEvents
-  residualMedications (existing bridge; formal ledger前のsummary-only)
-  medicationStockEquivalenceReviews
-  operationalTaskEvents
-  riskFindingEvents
-  supportSessionEvents
-```
-
-部分失敗:
-
-- source単位で fail-soft。
-- MCS系だけ失敗しても訪問/処方履歴は表示する。
-- MedicationStock系だけ失敗しても他職種受信は表示する。
-- `partial_failures` に source 名と PHI-free message を返す。
-
-**UIアクセシビリティ**:
-
-- 日付グループは見出しとしてマークアップする。
-- 色だけで種別を伝えず、icon + label + badge を併用する。
-- `action_label` は「詳細」ではなく「残数報告を確認」「電話メモを開く」など具体化する。
-- キーボードでフィルタ切替、検索、event CTA に移動できる。
-- 検索結果件数は `aria-live` で通知する。
-- mobile の touch target は 44px 以上。
-- raw_text 表示は明示ボタンにし、初期表示しない。
-
-**技術的負債解消**:
-
-1. `history` タブの責務整理
-   - timeline は `movement` へ移動。
-   - `history` は `PatientFieldRevisionTimeline` と `PatientStructuredCarePanel` へ寄せる。
-
-2. timeline event type の共通化
-   - `PatientActivityTimeline` 内のローカル型を段階的に `src/types/patient-movement-timeline.ts` へ移す。
-
-3. source registry の拡張性維持
-   - `SourceAdapter` を使い、inbound / stock / task / safety を source として追加する。
-
-4. communication deep link の改善
-   - 汎用 communication 表示だけでなく、event id ごとの detail shell に飛べるようにする。
-
-5. self_report / communication / inbound の混在解消
-   - `self_report`: 患者/家族の自己申告。
-   - `communication`: 一般連絡。
-   - `inbound_communication`: 他職種から薬局への業務情報。
-   - `inbound_signal`: 抽出された業務シグナル。
-
-**Phased PR plan**:
-
-| phase   | 内容                                                                           | validation                                                                    |
-| ------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
-| Phase 0 | `MOV-001` contract と既存 timeline/source inventory。                          | code inventory、Plans cross-reference。                                       |
-| Phase 4 | 残: 正式 `InboundCommunicationEvent` / `InboundCommunicationSignal` source。   | formal inbound signal source tests、raw_text omission tests。                 |
-| Phase 5 | 残: formal safety finding source。                                             | safety finding source tests、free text omission tests。                       |
-| Phase 6 | 残: 正式 `MedicationStockEvent`、equivalence review、shortage finding source。 | stock integration tests、risk/task link tests、drug/quantity omission tests。 |
-| Phase 7 | 残: raw_text 再認可 UI と必要な detail shell。                                 | route authz tests、raw omission tests。                                       |
-| Phase 8 | 残: summary/action rail、検索、表示密度、mobile 最適化。                       | Playwright browser smoke、interaction budget。                                |
-
-**テスト**:
-
-Unit:
-
-- inbound event が `interprofessional` category の timeline event へ変換される。
-- MCS は `source_channel=mcs`、電話は `source_channel=phone` で表示される。
-- 処方 event は「処方あり/処方変更あり」の発生種別、日時、status、detail href を持つ。
-- 訪問 event は「訪問予定/訪問記録あり/訪問完了」の発生種別、日時、status、detail href を持つ。
-- 文書登録 event は「文書登録あり」の発生種別、文書種別、日時、status、detail href を持つ。
-- 残数signalは `medication_stock` category になる。
+- formal inbound event が `interprofessional` category の timeline event へ変換される。
+- accepted stock signal / stock event が `medication_stock` category になる。
 - urgent safety signal は `safety` category になる。
 - `href` が相対パス以外なら拒否される。
-- `raw_text`、raw payload、storage key、signed URL が一覧DTOに出ない。
-- 処方薬剤明細、SOAP本文、訪問記録本文、MCS本文、電話メモ全文、文書本文、添付ファイル名は一覧DTOに出ない。
-
-API:
-
-- 患者 movement timeline を取得できる。
-- `limit` / `cursor` / `category` filter が効く。
-- source partial failure でも表示可能なイベントを返す。
-- 他テナント患者は不可。
-- raw detail は権限不足時に不可。
-
-UI:
-
-- 訪問、処方・調剤、他職種受信、残数・薬剤、安全、報告・共有、請求、task で filter できる。
-- 処方カードでは処方登録/変更があったことを確認でき、CTAから処方詳細へ遷移できる。
-- 訪問カードでは訪問予定/記録/完了があったことを確認でき、CTAから訪問詳細へ遷移できる。
-- 文書登録カードでは文書登録があったことを確認でき、CTAから共有・文書タブ、文書詳細、報告詳細、または FileAsset detail へ直接遷移できる。
-- 検索できる。
-- event card のCTAから detail へ遷移できる。
+- raw_text、raw payload、storage key、signed URL、処方薬剤明細、SOAP本文、訪問記録本文、MCS本文、電話メモ全文、文書本文、添付ファイル名が一覧DTOに出ない。
+- 処方・訪問・文書 marker の primary CTA は正本画面へ直接遷移し、event detail shell を primary にしない。
 - mobile で map-less vertical timeline が崩れない。
-
-Integration:
-
-```text
-MCS情報登録
-  -> InboundCommunicationEvent
-  -> movement timeline表示
-  -> detail shellで権限確認後 raw_text表示
-
-MCS残数報告
-  -> InboundCommunicationSignal
-  -> MedicationStockEvent
-  -> movement timelineに「受信」「レビュー」「反映」を表示
-
-電話でスケジュール相談
-  -> InboundCommunicationEvent
-  -> OperationalTask
-  -> movement timelineに「電話」「task作成」を表示
-```
-
-**受入基準**:
-
-- 上部地図は存在しない。
-- Google Maps タイムライン風の、日付別・時刻別・縦軸カードUIで患者の動きが追える。
-- 既存の患者アクションタイムラインは `history` ではなく `movement` で見られる。
-- `history` は変更履歴・構造化ケアの役割に整理される。
-- 訪問、処方、調剤、報告、請求、共有、連絡、他職種受信、MCS、電話、残数報告、残数反映、安全signal、task が時系列で見られる。
-- 処方イベントでは処方登録/変更があったことを確認でき、詳細は deep link 先で確認できる。
-- 訪問イベントでは訪問予定/記録/完了があったことを確認でき、詳細は deep link 先で確認できる。
-- 文書イベントでは文書登録があったことを確認でき、詳細は deep link 先で確認できる。
-- 各イベントには deep link がある。
-- deep link は相対パスで、該当詳細画面または安全な event detail shell に遷移する。
-- 処方・訪問・文書登録イベントの primary CTA は event detail shell ではなく、正本画面へ直接遷移する。
-- MCS/電話の raw_text は一覧に出さず、詳細で権限確認後に表示する。
-- raw_text 閲覧は監査ログに残る。
-- 種別フィルタ、検索、表示密度切替がある。
-- Command Center には movement の直近重要イベント抜粋が出る。
 
 #### P0/P1: 外用薬・頓服薬残数管理 Medication Stock Ledger（RX-002詳細化） `cc:TODO`
 
@@ -1687,10 +1055,10 @@ staging rule:
 
 **コード再スキャンで確認した現在地**:
 
-- `src/components/layout/app-shell.tsx`: `CommandPalette`、`ShortcutHelpModal`、`InstallPrompt`、`SessionTimeoutModal`、`MobileOrientationGuard` を static import し、`CommandPalette` は常時描画される。最小シェル/訪問記録没入モードでも import 自体は初期 bundle に残る。
+- `src/components/layout/app-shell.tsx`: `CommandPalette`、`ShortcutHelpModal`、`InstallPrompt`、`SessionTimeoutModal`、`MobileOrientationGuard` は dynamic import 化済み。`CommandPalette` は `paletteOpen` 時のみ mount され、最小シェルでは閉じる。残る実測は `FE-BUDGET-001` / `FE-BUD-001` で扱う。
 - `src/lib/hooks/use-realtime-invalidation.ts` / `src/lib/hooks/use-realtime-query.ts`: default は `invalidateOn=false`、全 event invalidate は `invalidateOn='all'` の明示制御、source rule、150ms debounce まで実装済み。残は主要画面ごとの source taxonomy / invalidation rule の継続棚卸し。
 - `src/lib/realtime/events.ts` / `src/lib/realtime/shared-event-stream.ts`: single event は event type 別 allowlist、unknown event は safe `workflow_refresh`、通知 array payload は shared stream 境界で `sse-safe` 正規化済み。残タスクではなく、今後の event type 追加時に allowlist test を必須にする。
-- `src/components/ui/data-table.tsx`: client CSV は `fullRows` から `Blob` を生成する。global filter / column filter は入力ごとに即 `setGlobalFilter` / `setFilterValue` する。
+- `src/components/ui/data-table.tsx`: global filter / column filter debounce は実装済み。残は PHI 画面での client CSV export policy、server export 強制、export scope / masking / audit の統一。
 - `src/app/(dashboard)/patients/[id]/card-workspace.tsx`: dynamic import と tabs は入っているが、`CardWorkspace` 本体は約 5,800 行の client component で、複数 query/mutation、Command Center、在宅運用、請求、共有、履歴、DataTable を同居させている。非 active tab にも hooks が残りやすい。
 - `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`: `useWatch({ control: form.control })` の全体 watch、音声/添付/CDS/report readiness/location/offline を同一巨大 form に含む。残は section-level watch / lazy mount / step transition immediate save。
 - `src/app/(dashboard)/reports/report-share-workspace.tsx`: `useQuery` + `REPORT_WORKSPACE_REFETCH_INTERVAL_MS` の固定 polling が残る。realtime connected 時は無駄な polling を止められる。
@@ -1700,7 +1068,6 @@ staging rule:
 | ID             | 優先度 | 既存レーン                                                     | タスク                                        | 実装単位                                                                                                                                                                                                                                                                                                        | 受入条件 / validation                                                                                                                                                                                                     |
 | -------------- | ------ | -------------------------------------------------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | FE-RT-001      | P0/P1  | `PERF-BFF-001`, `PERF-X-001`, `FE-BUD-001`                     | Realtime invalidation policy                  | 残: 主要画面の source rule への段階移行と source taxonomy 整理。                                                                                                                                                                                                                                                | 主要画面で invalidate 対象 event が明示される。`workflow_refresh` 乱発で heavy BFF が一斉 refetch しない。                                                                                                                |
-| FE-SHELL-001   | P1     | `FE-X-001`, `FE-BUD-001`, `UX-MOB-001`                         | AppShell heavy globals dynamic import         | 残: bundle analyzer / route metrics で初期 JS 削減を実測し、SessionTimeoutModal のさらなる event-gated mount が安全か検証する。                                                                                                                                                                                 | 通常画面の AppShell static import から heavy globals を外した状態を維持。訪問 capture/record 没入モードで不要 global UI が読み込まれないことを計測する。                                                                  |
 | FE-PAT-001     | P1     | `PAT-DETAIL-PERF-001`, `UX-CMD-001`, `FE-BUD-001`              | Patient detail island split                   | `CardWorkspaceShell`、`CommandTab`、`FoundationTab`、`MedicationVisitTab`、`SharingDocumentsTab`、`BillingConferenceTab`、`HistoryStructuredTab` に分割する。active tab だけ query/mutation hooks と heavy panels を lazy initialize。                                                                          | 患者詳細初期表示では Command tab の最小 island だけ hydrate。非 active tab の mutation hooks が初期化されない。tab 切替時に必要 island を lazy load。bundle analyzer / route metrics で初期 JS と hydration time を確認。 |
 | FE-VISIT-001   | P0/P1  | `VISIT-SYNC-001`, `UX-MOB-001`, `DEV-MOB-001`, `MOB-001`       | Visit record form split / section-level watch | `VisitRecordShell`、`VisitTimingSection`、`MedicationAdherenceSection`、`ResidualMedicationSection`、`SideEffectSection`、`SoapSection`、`AttachmentsSection`、`ReportReadinessSection`、`LocationSection`、`OfflineSyncBar` へ分割する。`useWatch` は section 単位にし、autosave は差分/section 単位に寄せる。 | keystroke lag が出ない。訪問開始/終了、残薬、添付追加は即保存。5秒 debounce autosave と step transition 即保存。未同期/保存中/端末保存済/同期済/競合ありを下部固定バーで表示。mobile E2E と offline draft tests を追加。  |
 | FE-MOB-001     | P1     | `UX-MOB-001`, `DSP-UX-002`, `UX-CMD-001`                       | Mobile contextual bottom action               | bottom nav 4項目+メニューは維持し、画面ごとに contextual CTA を下部に出す。処方受付=新規受付/QR下書き、調剤/監査=現在患者の次操作、報告=下書き/送付確認、患者詳細=Command/訪問/報告。                                                                                                                           | 主要作業へ 1 tap で進める。訪問記録 immersive shell の下部固定バーと衝突しない。44px target、focus order、safe-area、screen reader label を mobile tests で確認。UI実装時は `gpt-image-2` 参照案を作る。                  |
@@ -1712,11 +1079,10 @@ staging rule:
 **推奨 PR / slice 分割**:
 
 1. `FE-RT-001`: Realtime の event source rule を主要画面へ段階展開し、無駄 refetch を抑える。client payload allowlist / notification array redaction は実装済みのため、新規 event type 追加時は allowlist test を必須にする。
-2. `FE-SHELL-001`: AppShell の dynamic import 効果を bundle analyzer / route metrics で実測し、残る常駐 global UI を安全に削る。
-3. `FE-VISIT-001` + `VISIT-SYNC-001`: 訪問記録の autosave/sync hardening と render split は同じ mobile field-loss リスクとして実装する。
-4. `FE-PAT-001`: 患者詳細 tab 化済みの成果を island split へ進め、Command Center 以外の heavy tab を初期 hydrate しない。
-5. `FE-ERR-001` + `FE-ADMIN-001`: admin screen 群の loading/error/export/destructive action policy を shared pattern へ展開する。
-6. `FE-MOB-001` + `FE-OFFLINE-001` + `FE-BUDGET-001`: mobile CTA、storage PHI audit、interaction budget を UI state matrix と性能計測に接続する。
+2. `FE-VISIT-001` + `VISIT-SYNC-001`: 訪問記録の autosave/sync hardening と render split は同じ mobile field-loss リスクとして実装する。
+3. `FE-PAT-001`: 患者詳細 tab 化済みの成果を island split へ進め、Command Center 以外の heavy tab を初期 hydrate しない。
+4. `FE-ERR-001` + `FE-ADMIN-001`: admin screen 群の loading/error/export/destructive action policy を shared pattern へ展開する。
+5. `FE-MOB-001` + `FE-OFFLINE-001` + `FE-BUDGET-001`: mobile CTA、storage PHI audit、interaction budget を UI state matrix と性能計測に接続する。
 
 #### リリース前 DB/API 契約バックログ（2026-07-06 コード再スキャン反映） `cc:TODO`
 
@@ -1749,7 +1115,7 @@ staging rule:
 | DATA-RET-001A    | P1     | `DATA-001`, `OPS-RECOVERY-001`, `FILE-LIFE-001`                | Retention / Archive / Legal Hold schema policy | Patient/CareCase/Prescription/Visit/Report/Billing/FileAsset/Notification/WebhookDelivery/AuditLog/OfflineDraft/SyncQueue へ retention/archive/legal hold の policy matrix を作り、必要 column と guard を migration plan 化する。                                                                                                                                                | archive後の write guard、legal_hold中の削除/匿名化拒否、AuditLog/Billing/Report/FileAsset の保持/非表示/失効方針がテストできる。retention job が対象を抽出できる。                                          |
 | API-ACTION-001   | P1     | `CORE-ROUTE-001`, `AUD-001`, `SCHED-UX-003`                    | API action endpoint naming convention          | action discriminated union と `/route/:id/action` 形式を棚卸しし、操作名がURLで分かる action endpoint へ寄せる方針を確定する。idempotency_key / expected_updated_at / reason / audit action を操作単位に定義する。                                                                                                                                                                | mutation endpoint と audit action が1対1に近い。新規 mutation は endpoint registry に操作名、権限、idempotency/OCC、reason、audit を登録する。既存互換 action shape はリリース前に削除対象を決める。        |
 | API-DTO-001      | P1     | `SEC-001`, `CORE-ROUTE-001`, `DEV-PHI-001`                     | API DTO / presenter boundary enforcement       | `src/types/api/*`、`src/server/dto/*`、`src/server/presenters/*` を整理し、Prisma model を直接 `success()` に渡す route を検出する script/test を追加する。public DTO は presenter/serializer 経由にする。                                                                                                                                                                        | Prisma result の余剰 field が public API に出ない。DTO snapshot test で storage_key、dedupe_key、idempotency_key、raw payload、free text の露出を検出できる。                                               |
-| DB-SEARCH-001    | P1/P2  | `PAT-LIST-PERF-001`, `RX-REG-UX-001`, `FE-SHELL-001`           | SearchIndex / denormalized search contract     | command palette、patients board、prescription intake、reports、tasks、facility/external professional/drug master の横断検索を `SearchIndex` または PostgreSQL tsvector/trigram に寄せる設計を作る。permission scope と safe display label を保持する。                                                                                                                            | global search が各 domain API を横断fetchしない。org/role/assignment scope を検索時に適用できる。患者名などの表示は permissioned DTO でのみ返す。                                                           |
+| DB-SEARCH-001    | P1/P2  | `PAT-LIST-PERF-001`, `RX-REG-UX-001`, `FE-BUD-001`             | SearchIndex / denormalized search contract     | command palette、patients board、prescription intake、reports、tasks、facility/external professional/drug master の横断検索を `SearchIndex` または PostgreSQL tsvector/trigram に寄せる設計を作る。permission scope と safe display label を保持する。                                                                                                                            | global search が各 domain API を横断fetchしない。org/role/assignment scope を検索時に適用できる。患者名などの表示は permissioned DTO でのみ返す。                                                           |
 | DB-JSON-001      | P1/P2  | `CORE-001`, `MED-001`, `FILE-LIFE-001`, `NTF-001`              | JSON field gate-dependency normalization       | gate に使う値を JSON から column/child table へ寄せる棚卸しを行う。対象は薬剤変更分類、残薬リスク、薬剤師確認状態、報告送付、請求blocker、通知delivery、Webhook retry、File scan、患者不可曜日/定期イベント。                                                                                                                                                                     | gate/readiness/billing/report/export が JSON free-form に依存しない。JSON は audit/debug/minimized snapshot/非検索設定に限定される。migration plan と backfill test を用意する。                            |
 
 **推奨 PR / slice 分割**:

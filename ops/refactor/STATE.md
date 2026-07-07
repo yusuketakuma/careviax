@@ -41,6 +41,44 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Plans.md implemented task cleanup（pending commit）。
+  - current task:
+    `Plans.md` 内の実装済みタスクを削除し、残タスクだけが実装バックログとして読めるように整理する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/components/layout/app-shell.tsx`,
+    `src/components/ui/data-table.tsx`,
+    `src/app/(dashboard)/reports/report-share-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx`,
+    `src/app/api/patients/[id]/timeline/[eventId]/route.ts`,
+    `src/types/patient-movement-timeline.ts`,
+    `src/server/services/patient-detail.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-movement-timeline-presenter.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    MOV-001 の巨大な重複計画を、実装済みの movement tab / timeline component / shared event type / detail resolver / existing source marker を削除した残タスク表に圧縮した。
+    残作業は formal inbound source、formal medication stock source、formal safety source、raw_text 再認可 UI、map-less timeline UX finish に限定した。
+    `FE-SHELL-001` は AppShell heavy globals dynamic import がコード上実装済みのため未完了タスクから削除し、残る bundle/interaction 実測は `FE-BUDGET-001` / `FE-BUD-001` に寄せた。
+    DataTable filter debounce は実装済みとして現在地を更新し、残タスクを PHI client CSV export policy / server export / masking / audit へ絞った。
+  - bugs found:
+    `Plans.md` に、既に実装済みの Patient Movement Phase 1-3 / marker strict contract / AppShell dynamic import / DataTable debounce が未完了または古い現在地として残っていた。
+  - security risks reduced:
+    実装済みの PHI-minimized movement marker と realtime/client boundary を重複実装し、再び raw detail を timeline/card/search に戻すリスクを下げた。
+  - performance issues improved:
+    計画整理のみ。AppShell の残作業は実装タスクではなく計測タスクへ統合した。
+  - validation:
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md` → pass。
+    `git diff --check -- Plans.md ops/refactor/STATE.md` → pass。
+    `rg -n "FE-SHELL-001|static import|入力ごとに即|Phase 1: UIタブ分離|Phase 2: Timeline型|Phase 3: Inbound source|Phase 4: Medication Stock source|Phase 5: Deep link|PatientActivityTimeline" Plans.md` → no matches。
+  - remaining work:
+    validation 後に scoped commit/push。
+
 - codex: FE-RT-002 realtime client payload boundary hardening（commit `2b73ec9bc`, pushed to `main`）。
   - current task:
     shared realtime stream の array payload 経路を `sse-safe` 正規化し、SSE 通知配列から raw title/message/link、患者名、薬剤名、storage key 等が React listener へ届かないようにする。
