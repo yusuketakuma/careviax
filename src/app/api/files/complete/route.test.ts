@@ -22,6 +22,19 @@ const { requireAuthContextMock, completeUploadedFileMock, FileStorageErrorMock }
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: { orgId: string; userId: string; role: string },
+        routeContext: { params: Promise<Record<string, string>> },
+      ) => Promise<Response>,
+    ) =>
+    async (req: NextRequest, routeContext: { params: Promise<Record<string, string>> }) => {
+      const authResult = await requireAuthContextMock(req);
+      if ('response' in authResult) return authResult.response;
+      return handler(req, authResult.ctx, routeContext);
+    },
 }));
 
 vi.mock('@/server/services/file-storage', () => ({

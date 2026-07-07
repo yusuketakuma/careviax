@@ -41,6 +41,46 @@
 
 ## 直近の land（本日・要点）
 
+- codex: CORE-ROUTE-001 files/complete withAuthContext migration（pending commit）。
+  - current task:
+    `CORE-ROUTE-001` の小スライスとして、`/api/files/complete` の direct `requireAuthContext`
+    使用を標準 `withAuthContext` wrapper へ移行し、no-store / legacy-disable / public DTO 最小化を維持する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `src/app/api/files/complete/route.ts`,
+    `src/app/api/files/complete/route.test.ts`,
+    `src/app/api/__tests__/api-conventions-static.test.ts`,
+    `src/lib/auth/context.ts`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - files changed:
+    `src/app/api/files/complete/route.ts`,
+    `src/app/api/files/complete/route.test.ts`,
+    `src/app/api/__tests__/api-conventions-static.test.ts`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `files/complete` の認証処理を `withAuthContext` に移し、wrapper が持つ
+    `withRoutePerformance` / 標準 500 envelope / request auth context の既定に合わせた。
+    legacy file API disable は従来どおり auth より前に返すため、exported `POST` の入口に残した。
+    public response は既存の `id/status/completedAt` のみを維持し、static convention test で
+    `withAuthContext` 使用と direct `requireAuthContext` 非使用を固定した。
+  - bugs found:
+    `files/complete` は public response 最小化済みだったが、route 基盤としては direct
+    `requireAuthContext` のままで、`CORE-ROUTE-001` の preferred wrapper から外れていた。
+  - security risks reduced:
+    sensitive file completion route が標準 auth wrapper / route performance / fixed internal error envelope に乗り、
+    direct auth path への回帰を static test で検出できるようになった。metadata/PHI露出の最小化は維持。
+  - performance issues improved:
+    `withAuthContext` 経由で route performance wrapper に入るため、critical file completion route の観測漏れを減らした。
+  - validation:
+    `pnpm exec prettier --write src/app/api/files/complete/route.ts src/app/api/files/complete/route.test.ts src/app/api/__tests__/api-conventions-static.test.ts Plans.md ops/refactor/STATE.md` → pass。
+    `pnpm exec eslint src/app/api/files/complete/route.ts src/app/api/files/complete/route.test.ts src/app/api/__tests__/api-conventions-static.test.ts` → pass。
+    `pnpm exec vitest run src/app/api/files/complete/route.test.ts src/app/api/__tests__/api-conventions-static.test.ts --reporter=dot --testTimeout=30000` → pass（2 files / 15 tests）。
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` → pass。
+  - remaining work:
+    残る direct `requireAuthContext` route は route catalog / permission / no-store / performance / audit type 別に棚卸しする。
+
 - codex: DB-TENANT-001 RLS static contract expansion（committed）。
   - current task:
     `DB-TENANT-001` の小スライスとして、既存 RLS contract を nullable `org_id` と

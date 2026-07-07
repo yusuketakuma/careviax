@@ -1,13 +1,12 @@
 import { NextRequest } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext } from '@/lib/auth/context';
 import { error, internalError, success, validationError } from '@/lib/api/response';
 import { legacyFileApiDisabledResponse } from '@/lib/api/legacy-file-api-boundary';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { trimStringOrUndefined } from '@/lib/validations/string';
-import { logger } from '@/lib/utils/logger';
 import { completeUploadedFile, FileStorageError } from '@/server/services/file-storage';
 
 type CompletedFileRecord = Awaited<ReturnType<typeof completeUploadedFile>>;
@@ -25,14 +24,7 @@ function toPublicCompletedFile(data: CompletedFileRecord) {
   };
 }
 
-async function handlePOST(req: NextRequest) {
-  const disabledResponse = legacyFileApiDisabledResponse();
-  if (disabledResponse) return disabledResponse;
-
-  const authResult = await requireAuthContext(req);
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
+const authenticatedPOST = withAuthContext(async (req, ctx) => {
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
 
@@ -61,22 +53,16 @@ async function handlePOST(req: NextRequest) {
 
     return error('EXTERNAL_FILE_COMPLETE_FAILED', 'ファイル状態の更新に失敗しました', 502);
   }
-}
+});
 
 export async function POST(req: NextRequest) {
   try {
-    return withSensitiveNoStore(await handlePOST(req));
+    const disabledResponse = legacyFileApiDisabledResponse();
+    if (disabledResponse) return withSensitiveNoStore(disabledResponse);
+
+    return withSensitiveNoStore(await authenticatedPOST(req, { params: Promise.resolve({}) }));
   } catch (err) {
     unstable_rethrow(err);
-    logger.error(
-      {
-        event: 'files_complete_unhandled_error',
-        route: '/api/files/complete',
-        method: req.method,
-        status: 500,
-      },
-      err,
-    );
     return withSensitiveNoStore(internalError());
   }
 }
