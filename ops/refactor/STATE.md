@@ -41,6 +41,46 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOD-BOUND-001 billing prescription classification seam / allowlist reduction（pending commit）。
+  - current task:
+    `visit-schedule-billing-preview.ts` が `prescription-intake-classification.ts` を直接 import する
+    `MOD-BILLING-001` の module-boundary 負債を削除する。
+  - files inspected:
+    `src/server/services/visit-schedule-billing-preview.ts`,
+    `src/server/services/visit-schedule-billing-preview.test.ts`,
+    `src/server/services/prescription-intake-classification.ts`,
+    `src/server/services/prescription-intake-classification.test.ts`,
+    `tools/module-boundary-allowlist.json`.
+  - files changed:
+    `src/server/services/billing-prescription-classification.ts`,
+    `src/server/services/billing-prescription-classification.test.ts`,
+    `src/server/services/prescription-intake-classification.ts`,
+    `src/server/services/visit-schedule-billing-preview.ts`,
+    `src/server/services/visit-schedule-billing-preview.test.ts`,
+    `tools/module-boundary-allowlist.json`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    算定プレビューで使う処方取込区分 read model を `billing-prescription-classification.ts` として billing-owned seam へ移した。
+    既存 `prescription-intake-classification.ts` は re-export 互換 module にし、既存 API 呼び出しは維持した。
+    `visit-schedule-billing-preview.ts` と test mock は billing seam を直接参照するように変更した。
+    stale になった billing allowlist entry を削除し、allowlist は 4 imports / 3 files から 3 imports / 2 files へ減少した。
+  - bugs found:
+    billing preview が処方取込分類 query を直接 pharmacy-named helper から読み、module boundary 上の billing contributor seam が未分離だった。
+  - security risks reduced:
+    DB/API/auth/PHI payload 変更なし。算定隣接の read model を billing seam として明示し、P2022 fallback とbatch latest selectionの既存挙動をテストで固定した。
+  - performance issues improved:
+    実行時性能変更なし。既存 batch query の shape は維持しつつ、module-boundary ratchet の既存負債をさらに1件削減した。
+  - validation:
+    `pnpm boundaries:check` → pass（0 new violations、3 allowlisted debt imports / 2 files、owner report: `MOV-001=3`）。
+    `pnpm exec vitest run src/server/services/billing-prescription-classification.test.ts src/server/services/prescription-intake-classification.test.ts src/server/services/visit-schedule-billing-preview.test.ts tools/scripts/check-module-boundaries.test.ts --reporter=dot --testTimeout=30000` → pass（4 files / 29 tests）。
+    `pnpm exec eslint src/server/services/billing-prescription-classification.ts src/server/services/billing-prescription-classification.test.ts src/server/services/prescription-intake-classification.ts src/server/services/prescription-intake-classification.test.ts src/server/services/visit-schedule-billing-preview.ts src/server/services/visit-schedule-billing-preview.test.ts` → pass。
+    `pnpm exec prettier --check src/server/services/billing-prescription-classification.ts src/server/services/billing-prescription-classification.test.ts src/server/services/prescription-intake-classification.ts src/server/services/prescription-intake-classification.test.ts src/server/services/visit-schedule-billing-preview.ts src/server/services/visit-schedule-billing-preview.test.ts tools/module-boundary-allowlist.json` → pass。
+    `git diff --check -- src/server/services/billing-prescription-classification.ts src/server/services/billing-prescription-classification.test.ts src/server/services/prescription-intake-classification.ts src/server/services/visit-schedule-billing-preview.ts src/server/services/visit-schedule-billing-preview.test.ts tools/module-boundary-allowlist.json Plans.md` → pass。
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` → pass。
+  - remaining work:
+    残 allowlist は MOV の3 imports / 2 files。Patient Movement Timeline の prescription source adapter 化が次候補。
+
 - codex: MOD-BOUND-001 visit deadline PRN extraction / allowlist reduction（pending commit）。
   - current task:
     `visit-medication-deadline.ts` が頓服判定のために dispensing outside-med classification へ依存していた

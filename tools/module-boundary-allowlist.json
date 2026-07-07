@@ -18,15 +18,6 @@
       "reason": "患者詳細タイムライン登録が処方サイクル (prescription/cycle-workspace) と処方ナビゲーション (prescriptions/navigation) を参照している既存負債。",
       "plannedAction": "Patient Movement Timeline の prescription source を pharmacy module adapter 化し、core registry は pharmacy-internal cycle/navigation helpers を直接 import しない。",
       "targets": ["@/lib/prescription/cycle-workspace", "@/lib/prescriptions/navigation"]
-    },
-    {
-      "path": "src/server/services/visit-schedule-billing-preview.ts",
-      "expectedCount": 1,
-      "owner": "MOD-BILLING-001",
-      "debtId": "DEBT-BILLING-001",
-      "reason": "訪問スケジュール請求プレビューが処方取込区分 (prescription-intake-classification) を参照している既存負債。算定プレビューが薬局固有の処方区分に依存している。将来は区分判定を薬局非依存の場所へ切り出す。",
-      "plannedAction": "Schedule/Billing contributor seam を追加し、処方取込区分判定を pharmacy billing adapter へ閉じる。",
-      "targets": ["./prescription-intake-classification"]
     }
   ]
 }

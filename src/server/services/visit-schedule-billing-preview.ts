@@ -12,9 +12,9 @@ import {
 import { resolveBillingPayerBasis } from './billing-payer-basis';
 import { resolvePatientInsurance } from './patient-insurance';
 import {
-  findLatestPrescriptionIntakeClassification,
-  findLatestPrescriptionIntakeClassificationsByCaseIds,
-} from './prescription-intake-classification';
+  findLatestBillingPrescriptionClassification,
+  findLatestBillingPrescriptionClassificationsByCaseIds,
+} from './billing-prescription-classification';
 import type { InsuranceApplicationStatus, InsuranceType, PrismaClient } from '@prisma/client';
 import type {
   BillingRuntimeHomeComprehensive,
@@ -92,7 +92,7 @@ type BillingPreviewCareCase = {
 };
 
 type LatestPrescriptionIntakeClassification = Awaited<
-  ReturnType<typeof findLatestPrescriptionIntakeClassification>
+  ReturnType<typeof findLatestBillingPrescriptionClassification>
 >;
 
 type BillingRuntimeContextResult = Awaited<ReturnType<typeof resolveBillingRuntimeContext>>;
@@ -848,7 +848,7 @@ async function buildVisitScheduleBillingPreviewForCareCase(
     await Promise.all([
       args.latestIntake !== undefined
         ? Promise.resolve(args.latestIntake)
-        : findLatestPrescriptionIntakeClassification(args.db, {
+        : findLatestBillingPrescriptionClassification(args.db, {
             orgId: args.orgId,
             caseId: args.caseId,
           }),
@@ -1018,7 +1018,7 @@ export async function buildVisitScheduleBillingPreviewBatch(
     select: BILLING_PREVIEW_CARE_CASE_SELECT,
   });
   const careCaseById = new Map(careCases.map((careCase) => [careCase.id, careCase]));
-  const latestIntakeByCaseId = await findLatestPrescriptionIntakeClassificationsByCaseIds(db, {
+  const latestIntakeByCaseId = await findLatestBillingPrescriptionClassificationsByCaseIds(db, {
     orgId,
     caseIds: careCases.map((careCase) => careCase.id),
   });
