@@ -19,6 +19,7 @@ const {
   prescriptionIntakeFindManyMock,
   prescriptionIntakeCountMock,
   prescriptionIntakeGroupByMock,
+  medicationCycleFindManyMock,
   drugMasterFindManyMock,
   medicationProfileFindManyMock,
   medicationProfileCreateManyMock,
@@ -52,6 +53,7 @@ const {
   prescriptionIntakeFindManyMock: vi.fn(),
   prescriptionIntakeCountMock: vi.fn().mockResolvedValue(2),
   prescriptionIntakeGroupByMock: vi.fn().mockResolvedValue([]),
+  medicationCycleFindManyMock: vi.fn().mockResolvedValue([]),
   drugMasterFindManyMock: vi.fn().mockResolvedValue([]),
   medicationProfileFindManyMock: vi.fn().mockResolvedValue([]),
   medicationProfileCreateManyMock: vi.fn().mockResolvedValue({ count: 0 }),
@@ -106,6 +108,9 @@ vi.mock('@/lib/db/client', () => ({
       count: prescriptionIntakeCountMock,
       groupBy: prescriptionIntakeGroupByMock,
       findFirst: vi.fn().mockResolvedValue(null),
+    },
+    medicationCycle: {
+      findMany: medicationCycleFindManyMock,
     },
     drugMaster: {
       findMany: drugMasterFindManyMock,
@@ -2850,6 +2855,7 @@ describe('/api/prescription-intakes GET', () => {
     enforceFeatureRateLimitMock.mockResolvedValue(null);
     prescriptionIntakeCountMock.mockResolvedValue(2);
     prescriptionIntakeGroupByMock.mockResolvedValue([]);
+    medicationCycleFindManyMock.mockResolvedValue([]);
     prescriptionIntakeFindManyMock.mockResolvedValue([
       {
         id: 'intake_2',
@@ -3164,9 +3170,20 @@ describe('/api/prescription-intakes GET', () => {
 
   it('returns optional facet counts without treating the loaded page window as totals', async () => {
     prescriptionIntakeCountMock.mockResolvedValue(7);
-    prescriptionIntakeGroupByMock.mockResolvedValue([
-      { source_type: 'paper', _count: { _all: 11 } },
-      { source_type: 'fax', _count: { _all: 3 } },
+    prescriptionIntakeGroupByMock
+      .mockResolvedValueOnce([
+        { cycle_id: 'cycle_ready_1', _count: { _all: 4 } },
+        { cycle_id: 'cycle_ready_2', _count: { _all: 3 } },
+        { cycle_id: 'cycle_inquiry_1', _count: { _all: 5 } },
+      ])
+      .mockResolvedValueOnce([
+        { source_type: 'paper', _count: { _all: 11 } },
+        { source_type: 'fax', _count: { _all: 3 } },
+      ]);
+    medicationCycleFindManyMock.mockResolvedValue([
+      { id: 'cycle_ready_1', overall_status: 'ready_to_dispense' },
+      { id: 'cycle_ready_2', overall_status: 'ready_to_dispense' },
+      { id: 'cycle_inquiry_1', overall_status: 'inquiry_pending' },
     ]);
 
     const response = await GET(
@@ -3185,7 +3202,8 @@ describe('/api/prescription-intakes GET', () => {
       facets: {
         status: {
           ready_to_dispense: 7,
-          inquiry_pending: 7,
+          inquiry_pending: 5,
+          intake_received: 0,
         },
         source_type: {
           paper: 11,
@@ -3198,21 +3216,34 @@ describe('/api/prescription-intakes GET', () => {
       },
     });
 
-    const statusFacetCall = prescriptionIntakeCountMock.mock.calls.find(
-      ([args]) => args.where?.cycle?.overall_status === 'inquiry_pending',
-    )?.[0];
-    expect(statusFacetCall).toEqual(
+    expect(prescriptionIntakeCountMock).toHaveBeenCalledTimes(1);
+    expect(prescriptionIntakeGroupByMock).toHaveBeenCalledTimes(2);
+    expect(prescriptionIntakeGroupByMock).toHaveBeenNthCalledWith(
+      1,
       expect.objectContaining({
+        by: ['cycle_id'],
+        _count: { _all: true },
         where: expect.objectContaining({
           org_id: 'org_1',
           source_type: 'paper',
-          cycle: { overall_status: 'inquiry_pending' },
         }),
       }),
     );
+    expect(prescriptionIntakeGroupByMock.mock.calls[0]?.[0].where).not.toHaveProperty('cycle');
+    expect(medicationCycleFindManyMock).toHaveBeenCalledTimes(1);
+    expect(medicationCycleFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        id: { in: ['cycle_ready_1', 'cycle_ready_2', 'cycle_inquiry_1'] },
+      },
+      select: {
+        id: true,
+        overall_status: true,
+      },
+    });
 
-    expect(prescriptionIntakeGroupByMock).toHaveBeenCalledTimes(1);
-    expect(prescriptionIntakeGroupByMock).toHaveBeenCalledWith(
+    expect(prescriptionIntakeGroupByMock).toHaveBeenNthCalledWith(
+      2,
       expect.objectContaining({
         by: ['source_type'],
         _count: { _all: true },
@@ -3222,7 +3253,7 @@ describe('/api/prescription-intakes GET', () => {
         }),
       }),
     );
-    expect(prescriptionIntakeGroupByMock.mock.calls[0]?.[0].where).not.toHaveProperty(
+    expect(prescriptionIntakeGroupByMock.mock.calls[1]?.[0].where).not.toHaveProperty(
       'source_type',
     );
   });

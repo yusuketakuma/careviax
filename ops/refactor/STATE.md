@@ -13880,3 +13880,39 @@
 - remaining:
   `FE-RT-001` is complete for app/component code and has been removed from `Plans.md`. Continue with
   the remaining frontend backlog items now listed under the frontend common foundation section.
+
+## 2026-07-07 RX-REG-FACET-001 facet aggregation
+
+- codex:
+  Reduced `/api/prescription-intakes?facets=1` query fan-out by replacing per-status
+  `prescriptionIntake.count()` calls with a fixed status aggregation path:
+  `prescriptionIntake.groupBy({ by: ['cycle_id'] })` plus one cycle status lookup. Source type
+  facets continue to use one `prescriptionIntake.groupBy({ by: ['source_type'] })`.
+- files inspected:
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/api/prescription-intakes/route.ts`,
+  `src/app/api/prescription-intakes/route.test.ts`,
+  `src/server/services/prescription-access.ts`,
+  `prisma/schema/prescription.prisma`,
+  `src/lib/prescription/intake-filters.ts`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/api/prescription-intakes/route.ts`,
+  `src/app/api/prescription-intakes/route.test.ts`.
+- bugs / risks reduced:
+  `facets=1` no longer issues one count query per `MedicationCycleStatus`. The status facet now
+  preserves the same assignment/source/search/care-tag population through a cycle relation query and
+  fills missing statuses with zero.
+- performance improved:
+  Status facets no longer issue one count query per status. The route now uses a fixed number of
+  facet queries as status taxonomy grows while preserving existing intake-count semantics.
+- validation:
+  `pnpm exec vitest run src/app/api/prescription-intakes/route.test.ts --reporter=dot --testTimeout=30000`
+  green (1 file / 81 tests);
+  `pnpm exec eslint src/app/api/prescription-intakes/route.ts src/app/api/prescription-intakes/route.test.ts`
+  green.
+- remaining:
+  `RX-REG-FACET-001` still needs facets route p95/payload/query-count observability and optional
+  search-time facet cache/delay. `Plans.md` now tracks only those remaining pieces.

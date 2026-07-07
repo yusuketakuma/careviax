@@ -290,25 +290,18 @@ async function buildPrescriptionIntakeFacets(args: {
   assignmentWhere: Prisma.PrescriptionIntakeWhereInput;
   filters: ParsedPrescriptionIntakeListFilters;
 }) {
-  const [statusEntries, sourceEntries] = await Promise.all([
-    Promise.all(
-      MEDICATION_CYCLE_STATUSES.map(async (status) => [
-        status,
-        await prisma.prescriptionIntake.count({
-          where: {
-            ...buildPrescriptionIntakeListWhere({
-              orgId: args.orgId,
-              assignmentWhere: args.assignmentWhere,
-              filters: args.filters,
-              omitStatus: true,
-            }),
-            cycle: {
-              overall_status: status,
-            },
-          },
-        }),
-      ]),
-    ),
+  const statusFacetIntakeWhere = buildPrescriptionIntakeListWhere({
+    orgId: args.orgId,
+    assignmentWhere: args.assignmentWhere,
+    filters: args.filters,
+    omitStatus: true,
+  });
+  const [statusCycleEntries, sourceEntries] = await Promise.all([
+    prisma.prescriptionIntake.groupBy({
+      by: ['cycle_id'],
+      where: statusFacetIntakeWhere,
+      _count: { _all: true },
+    }),
     prisma.prescriptionIntake.groupBy({
       by: ['source_type'],
       where: buildPrescriptionIntakeListWhere({
@@ -326,9 +319,29 @@ async function buildPrescriptionIntakeFacets(args: {
   for (const entry of sourceEntries) {
     sourceCounts[entry.source_type] = entry._count._all;
   }
+  const statusCounts = Object.fromEntries(MEDICATION_CYCLE_STATUSES.map((status) => [status, 0]));
+  const statusCycleIds = statusCycleEntries.map((entry) => entry.cycle_id);
+  if (statusCycleIds.length > 0) {
+    const cycles = await prisma.medicationCycle.findMany({
+      where: {
+        org_id: args.orgId,
+        id: { in: statusCycleIds },
+      },
+      select: {
+        id: true,
+        overall_status: true,
+      },
+    });
+    const cycleStatusById = new Map(cycles.map((cycle) => [cycle.id, cycle.overall_status]));
+    for (const entry of statusCycleEntries) {
+      const status = cycleStatusById.get(entry.cycle_id);
+      if (!status) continue;
+      statusCounts[status] += entry._count._all;
+    }
+  }
 
   return {
-    status: Object.fromEntries(statusEntries),
+    status: statusCounts,
     source_type: sourceCounts,
   };
 }
