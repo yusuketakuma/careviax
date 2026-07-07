@@ -129,8 +129,7 @@
     artifact取得 / index migration human gate; environment-specific perf-smoke
     evidence; dashboard rail/drilldown; frontend slice contracts.
   - commit:
-    pending scoped commit; final hash is reported in the user-facing summary after
-    commit creation.
+    `339ac1d83` (`perf: guard critical query shapes`).
   - next action:
     Run focused validations, write gbrain memory, commit this scoped slice, push, then
     continue with dashboard rail/drilldown or frontend slice contracts unless redirected.
