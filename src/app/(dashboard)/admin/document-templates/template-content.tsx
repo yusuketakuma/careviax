@@ -13,13 +13,13 @@ import { z } from 'zod';
 import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { getAdminDocumentTemplatesShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { DataTable } from '@/components/ui/data-table';
-import { ErrorState } from '@/components/ui/error-state';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SegmentError } from '@/components/ui/segment-state';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
@@ -746,12 +746,12 @@ export function DocumentTemplateContent() {
           </CardHeader>
           <CardContent>
             {isError ? (
-              // 取得失敗時は空一覧(false-empty)にせず、再読み込み導線つきの ErrorState を出す。
-              <ErrorState
-                size="inline"
-                description="文書テンプレートを取得できませんでした。時間をおいて再読み込みしてください。"
+              // 取得失敗時は空一覧(false-empty)にせず、再読み込み導線つきの SegmentError を出す。
+              <SegmentError
+                title="文書テンプレートを取得できませんでした"
+                cause="文書テンプレート一覧の取得に失敗しました。"
+                nextAction="通信状態を確認して再読み込みしてください。"
                 onRetry={() => void refetch()}
-                retryLabel="再読み込み"
               />
             ) : (
               <DataTable

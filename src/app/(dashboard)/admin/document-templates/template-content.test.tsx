@@ -295,8 +295,13 @@ describe('DocumentTemplateContent', () => {
         const url = String(input);
         if (url.startsWith('/api/templates') && !init?.method) {
           templatesCalls += 1;
-          // 取得失敗 → 空一覧ではなく ErrorState + 再読み込み。
-          return new Response(JSON.stringify({ message: 'failed' }), { status: 500 });
+          // 取得失敗 → 空一覧ではなく SegmentError + 再読み込み。
+          return new Response(
+            JSON.stringify({
+              message: '患者 山田太郎 storage_key=private/provider_error token=secret',
+            }),
+            { status: 500 },
+          );
         }
         return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
       }),
@@ -304,7 +309,13 @@ describe('DocumentTemplateContent', () => {
 
     renderContent();
 
-    expect(await screen.findByText('サーバーエラーが発生しました')).toBeTruthy();
+    expect(await screen.findByText('文書テンプレートを取得できませんでした')).toBeTruthy();
+    expect(screen.getByText(/文書テンプレート一覧の取得に失敗しました。/)).toBeTruthy();
+    const renderedText = document.body.textContent ?? '';
+    expect(renderedText).not.toContain('患者 山田太郎');
+    expect(renderedText).not.toContain('storage_key');
+    expect(renderedText).not.toContain('provider_error');
+    expect(renderedText).not.toContain('token=secret');
     // false-empty（空一覧メッセージ）を出していないこと。
     expect(screen.queryByText('文書テンプレートはまだありません')).toBeNull();
 
