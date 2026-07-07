@@ -18419,3 +18419,65 @@
 - next action:
   Write gbrain memory, commit the bounded patient read + Plans hygiene slice,
   push it, then continue with `PERF-DB-007`.
+
+## 2026-07-08 Plans registry cleanup / implementation status split
+
+- current task:
+  Reorganize `Plans.md` so implemented, partially implemented,
+  unimplemented, and human-gated work are clearly separated. Expand the
+  unimplemented backlog into implementation-ready entries and add derived
+  tasks found during the review.
+- files inspected:
+  `git status --short --untracked-files=all`, `Plans.md`,
+  `docs/plans-archive.md`, `ops/refactor/STATE.md`, recent `git log` evidence,
+  dashboard/inbound/medication-stock/movement/backup/access-control code paths
+  referenced by the plan status registry, and previous validation/progress
+  entries in this file.
+- files changed:
+  `Plans.md`, `ops/refactor/STATE.md`.
+- implementation:
+  Added explicit `Plans.md` hygiene rules making the Plan Status Registry,
+  Implementation-ready queue, and Frontend implementation queue the active
+  entrypoints. Classified major tracks as implemented, partial, unimplemented,
+  or human gate; added missing status rows for API contracts,
+  FILE/DATA/WEBHOOK, FE foundation, and release/ops work; expanded
+  implementation-ready rows for API envelope, request/correlation IDs, error
+  registry, list contract, DomainEventOutbox, FileAsset lifecycle, retention,
+  visit sync, and runtime performance metrics. Converted legacy lower
+  `cc:TODO` headings to `cc:REFERENCE` so they remain specification context
+  rather than active sprint backlog.
+- bugs found:
+  `Plans.md` still mixed old prompt/spec sections with active task queues,
+  which made completed dashboard, inbound, medication-stock, movement, backup,
+  and DB performance work easy to re-task accidentally. Several release-critical
+  unimplemented items lacked owner lane, DoD, validation, and stopping
+  conditions.
+- security risks reduced:
+  Planning now keeps DB/auth/PHI/billing/migration/deploy work behind explicit
+  review or human-gate wording, separates live AWS restore evidence from
+  runtime restore APIs, and records the dashboard/UI principle that role-scoped
+  users may see necessary PHI while raw/detail surfaces still require
+  authorization, scope, purpose, and audit controls.
+- performance issues improved:
+  No runtime code changed. The active queue now separates remaining DB read
+  speed work into `PERF-DB-007-LIMIT` and `PERF-DB-006-SEARCH`, and adds
+  payload-budget/query-shape follow-up tasks to prevent future broad reads and
+  oversized list DTOs.
+- validation commands:
+  `pnpm exec prettier --check Plans.md`;
+  `rg -n "^#+ .*cc:TODO" Plans.md`;
+  `git diff --check -- Plans.md`;
+  `pnpm exec prettier --check Plans.md ops/refactor/STATE.md`;
+  `git diff --check -- Plans.md ops/refactor/STATE.md`.
+- validation results:
+  Prettier check passed. Active `cc:TODO` headings are absent (`rg` returned no
+  matches). Final Prettier check for `Plans.md` and `ops/refactor/STATE.md`
+  passed. Final diff whitespace check passed.
+- remaining work:
+  `PLAN-ARCHIVE-001` still needs long reference specs moved into
+  `docs/plans-archive.md` or dedicated docs without losing links. Future
+  implementation slices should begin from the active queues and refresh the
+  registry after major commits.
+- next action:
+  Commit and push the documentation cleanup, then continue with the next
+  implementation task selected from the active queue.
