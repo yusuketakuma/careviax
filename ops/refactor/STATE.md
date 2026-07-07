@@ -41,6 +41,55 @@
 
 ## 直近の land（本日・要点）
 
+- codex: `Plans.md` active backlog classification and recovery/AWS derived plan cleanup。
+  - current task:
+    既存 `Plans.md` 内を整理し、実装済み・一部実装済み・未実装・human gate を分類する。
+    未実装項目は next PR に切れる粒度へ拡充し、派生タスクが見つかれば追記する。今回は
+    documentation/planning slice のみで、実DB、migration、AWS live操作、runtime restore API は
+    実装しない。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    prior bounded reviewer findings for recovery/AWS readiness, evidence hardening, DB integrity audit,
+    and backup monitor gaps.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Fixed the contradictory payload-budget classification so already-landed dashboard, movement,
+    inbound, medication-stock, and matrix payload-budget work is marked implemented. Added a
+    Recovery / AWS lane that separates Codex-implementable preparation work from human-gated live
+    restore evidence. Added `OPS-RECOVERY-EVIDENCE-001`, `OPS-RECOVERY-INTEGRITY-001`,
+    `OPS-RECOVERY-MONITOR-003`, and `OPS-RECOVERY-DOC-001` to the derived task list, 未実装Plan拡充マップ,
+    active backlog, and Implementation-ready queue. The new plans require structured/redacted recovery
+    evidence, SELECT-only restored DB integrity auditing, strict read-only backup/Object Lock monitoring,
+    and recovery doc SSOT cleanup before live AWS human-gate work.
+  - bugs found:
+    `Plans.md` said several already-implemented payload-budget items were "未実装に分類" in one sentence,
+    contradicting the surrounding Done / frozen evidence. Recovery/AWS planning also lacked a clear
+    split between Codex-safe preparatory hardening and live AWS restore evidence that requires human
+    credentials/approval.
+  - security risks reduced:
+    Documentation now explicitly forbids raw PHI/secrets/ARN/endpoints/storage keys in recovery evidence
+    tasks, forbids runtime restore APIs and destructive AWS permissions in Codex implementation slices,
+    and requires production-like DB URL guards for restored DB integrity audits.
+  - performance issues improved:
+    No runtime code was changed. The plan now includes a concrete SELECT-only restored DB integrity audit
+    task and keeps blind index / live migration work behind evidence and human gate.
+  - validation commands:
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md`;
+    `git diff --check -- Plans.md ops/refactor/STATE.md`.
+  - validation results:
+    `Plans.md` / `ops/refactor/STATE.md` Prettier check passed. Diff whitespace check passed.
+  - remaining:
+    Implement `OPS-RECOVERY-EVIDENCE-001` first, then `OPS-RECOVERY-INTEGRITY-001`,
+    `OPS-RECOVERY-MONITOR-003`, and `OPS-RECOVERY-DOC-001`. Live AWS recovery validation remains
+    `OPS-RECOVERY-LIVE-001` human gate. Other active queues still include Dashboard UX, Inbound review,
+    Medication Stock prescription/visit connections, Movement standalone API, and API contract work.
+  - next action:
+    Validate `Plans.md` and this state update, then commit and push the scoped documentation slice.
+
 - codex: `QUERY-SHAPE-WATCHLIST-003E` visit schedule service read-shape ratchet。
   - current task:
     `Plans.md` の実装済み/未実装分類に沿って、未実装DB速度タスク
