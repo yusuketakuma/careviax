@@ -112,6 +112,27 @@ const VIEW_MODE_OPTIONS: Array<{ value: BoardViewMode; label: string }> = [
 ];
 
 const PATIENT_BOARD_PAGE_LIMIT = 60;
+const PATIENT_BOARD_WORKFLOW_SOURCES = [
+  'patients_board',
+  'patient_detail_edit',
+  'visit_record',
+  'initial_visit_record',
+  'visit_preparation_put',
+  'visit_preparations_update',
+  'visit_schedules_create',
+  'visit_schedules_update',
+  'visit_schedules_delete',
+  'visit_schedules_reschedule_request',
+  'visit_schedules_reschedule_approve',
+  'visit_schedules_reopen',
+  'visit_schedule_conflict_reconfirmation',
+  'visit_schedule_proposals_create',
+  'visit_schedule_proposals_approve',
+  'visit_schedule_proposals_reject',
+  'visit_schedule_proposals_contact_attempt',
+  'visit_schedule_proposals_confirm',
+  'facility_visit_batches_upsert',
+] as const;
 
 /** フィルタチップ。「今すぐ対応」=既定(優先順で全件表示)、他は絞り込み。 */
 // wait_release は summaryTile「再開できる」専用の絞り込み(tile-only)。下段 chipOptions には出さない。
@@ -740,7 +761,10 @@ export function PatientsBoard() {
       }),
     staleTime: 30_000,
     enabled: !isBootstrappingOrg,
-    invalidateOn: ['cycle_transition', 'workflow_refresh'],
+    invalidateOn: [
+      'cycle_transition',
+      { type: 'workflow_refresh', source: PATIENT_BOARD_WORKFLOW_SOURCES },
+    ],
   });
 
   const boardPageFilterKey = `${scope}|${chip}|${sort}|${deferredSearchQuery}`;

@@ -35,6 +35,19 @@ vi.mock('@/lib/patient/navigation', async (importActual) => {
 import { PatientsBoard, formatNextVisitLabel, selectVisibleSafetyTags } from './patients-board';
 import { PatientBoardLoadingShell } from './patient-board-loading';
 
+function latestRealtimeQueryOptions() {
+  const options = useRealtimeQueryMock.mock.calls.at(-1)?.[0] as
+    | {
+        queryKey?: readonly unknown[];
+        invalidateOn?: readonly unknown[];
+        enabled?: boolean;
+        staleTime?: unknown;
+      }
+    | undefined;
+  if (!options) throw new Error('useRealtimeQuery options are required');
+  return options;
+}
+
 function localIso(hours: number, minutes = 0) {
   return new Date(2026, 5, 12, hours, minutes).toISOString();
 }
@@ -328,6 +341,33 @@ describe('PatientsBoard', () => {
     const search = screen.getByRole('searchbox', { name: '氏名・カナ・住所・施設で検索' });
     expect(search).toBeTruthy();
     expect(search.className).toContain('min-h-[44px]');
+  });
+
+  it('uses patient-board scoped realtime invalidation for the board query', () => {
+    render(<PatientsBoard />);
+
+    expect(latestRealtimeQueryOptions()).toEqual(
+      expect.objectContaining({
+        queryKey: ['patients', 'board', 'org_1', 'mine', undefined, 'all', 'priority', '', 60],
+        staleTime: 30_000,
+        enabled: true,
+        invalidateOn: [
+          'cycle_transition',
+          {
+            type: 'workflow_refresh',
+            source: expect.arrayContaining([
+              'patients_board',
+              'patient_detail_edit',
+              'visit_record',
+              'visit_preparations_update',
+              'visit_schedules_update',
+              'visit_schedule_proposals_confirm',
+              'facility_visit_batches_upsert',
+            ]),
+          },
+        ],
+      }),
+    );
   });
 
   it('does not show the truncation note when the board is not truncated', () => {

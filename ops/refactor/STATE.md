@@ -13597,3 +13597,43 @@
 - remaining:
   Continue source-scoped migration on dashboard, patients board, schedule proposals/day-board, and
   handoff.
+
+## 2026-07-07 Patients board source-scoped realtime
+
+- codex:
+  Continued `FE-RT-001` for `PatientsBoard`. The patient board query now keeps `cycle_transition`
+  refreshes but scopes `workflow_refresh` to patient-board, patient edit, visit, visit-preparation,
+  schedule/proposal, and facility-batch sources instead of accepting every workflow refresh.
+- files inspected:
+  `Plans.md`,
+  `src/app/(dashboard)/patients/patients-board.tsx`,
+  `src/app/(dashboard)/patients/patients-board.test.tsx`,
+  `src/app/api/patients/*`,
+  `src/app/api/visit-records/*`,
+  `src/app/api/visit-preparations/*`,
+  `src/app/api/visit-schedules/*`,
+  `src/app/api/visit-schedule-proposals/*`,
+  `src/server/services/workflow-dashboard-cache.ts`,
+  `src/lib/realtime/events.ts`,
+  `src/lib/hooks/use-realtime-query.ts`,
+  `src/lib/hooks/use-realtime-invalidation.ts`.
+- files changed:
+  `src/app/(dashboard)/patients/patients-board.tsx`,
+  `src/app/(dashboard)/patients/patients-board.test.tsx`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  Unrelated report, prescription, dashboard, or comment workflow refreshes no longer refetch
+  `/api/patients/board`. Patient detail edits, visit records/preparations, schedules, proposals, and
+  facility-batch updates still refresh the board query.
+- validation:
+  `pnpm exec vitest run 'src/app/(dashboard)/patients/patients-board.test.tsx' src/lib/hooks/use-realtime-invalidation.test.tsx src/lib/hooks/use-realtime-query.test.tsx --reporter=dot --testTimeout=30000`
+  green (3 files / 38 tests);
+  `pnpm exec eslint 'src/app/(dashboard)/patients/patients-board.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx'`
+  green;
+  `pnpm exec prettier --check 'src/app/(dashboard)/patients/patients-board.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx' Plans.md ops/refactor/STATE.md`
+  green;
+  `git diff --check -- 'src/app/(dashboard)/patients/patients-board.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx' Plans.md ops/refactor/STATE.md`
+  green.
+- remaining:
+  Continue source-scoped migration on dashboard, schedule proposals/day-board, and handoff.
