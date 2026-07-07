@@ -267,6 +267,26 @@ describe('care-reports/[id] route', () => {
       },
     });
     expect(payload.data).not.toHaveProperty('org_id');
+    expect(careReportFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'report_1', org_id: 'org_1' },
+        select: expect.objectContaining({
+          delivery_records: expect.objectContaining({
+            orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+            take: 20,
+            select: expect.objectContaining({
+              id: true,
+              channel: true,
+              recipient_name: true,
+              recipient_contact: true,
+              status: true,
+              sent_at: true,
+              created_at: true,
+            }),
+          }),
+        }),
+      }),
+    );
   });
 
   it('returns minimal archived-patient state in the report patient summary', async () => {

@@ -41,6 +41,101 @@
 
 ## 直近の land（本日・要点）
 
+- codex: `QUERY-SHAPE-WATCHLIST-003A/003D` zero-debt watchlist expansion and guard tests。
+  - current task:
+    `Plans.md` の backend-only / DB read speed 残タスクから、query-shape watchlist を
+    zero allowlist debt で拡張し、transaction-client / date-range / timeline registry /
+    MedicationStock fan-in の regression tests を追加する。実DB、migration、production data には触れない。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `docs/ui-ux-design-guidelines.md`,
+    `tools/query-shape-watchlist.json`,
+    `tools/query-shape-allowlist.json`,
+    `tools/scripts/check-query-shape.mjs`,
+    `tools/scripts/check-query-shape.test.ts`,
+    `src/app/api/care-reports/[id]/route.ts`,
+    `src/app/api/care-reports/[id]/route.test.ts`,
+    `src/lib/prescriptions/prescriber-institutions.ts`,
+    `src/lib/reports/document-delivery-rules.ts`,
+    `src/app/api/visit-schedules/route.ts`,
+    `src/server/services/visit-schedule-service.ts`,
+    `src/app/api/visit-preparations/brief-batch/route.ts`,
+    `src/app/api/visit-preparations/brief-batch/route.test.ts`,
+    `src/app/api/visit-schedules/route.test.ts`,
+    `src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.ts`,
+    `src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.test.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`.
+  - bounded subagents:
+    `DB Steward the 35th` reviewed the 003A candidates read-only and confirmed the current
+    five candidate entries pass with zero query-shape debt, while noting that visit-schedules
+    route is only an entrypoint marker and the real service include/RLS proof remains a later
+    task. `Matrix the 36th` reviewed 003D test coverage read-only and recommended transaction
+    client, date-range-only, MedicationStock snapshot, and timeline registry adapter tests.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `tools/query-shape-watchlist.json`,
+    `tools/scripts/check-query-shape.test.ts`,
+    `src/app/api/care-reports/[id]/route.ts`,
+    `src/app/api/care-reports/[id]/route.test.ts`,
+    `src/lib/prescriptions/prescriber-institutions.ts`,
+    `src/lib/prescriptions/prescriber-institutions.test.ts`,
+    `src/lib/reports/document-delivery-rules.ts`,
+    `src/lib/reports/document-delivery-rules.test.ts`,
+    `src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.test.ts`,
+    `src/server/services/patient-detail-timeline-registry.test.ts`.
+  - implementation:
+    Added five zero-debt query-shape watchlist entries: care-report detail, prescriber institution
+    suggestions, document delivery rules, visit-schedules route entrypoint, and visit-preparation
+    brief-batch. Capped care-report detail nested `delivery_records` at 20 with stable
+    `created_at + id` ordering. Added `id` tie-breakers to prescriber institution and document
+    delivery rule top-1 lookups. Added guard fixtures for `tx.*.findMany` unstable reads and
+    date-range-only unbounded reads. Added helper tests for stable top-1 query shapes, MedicationStock
+    snapshot fan-in scope/projection assertion, and patient timeline registry adapter query-shape
+    tests. Updated `Plans.md` to mark 003A as implemented, 003D as partially implemented, and
+    preserve the remaining visit-schedule-service cleanup as 003E.
+  - bugs found:
+    Care-report detail loaded nested delivery history without `take` and without an `id` tie-breaker.
+    Prescriber institution and document delivery rule helpers used top-1 `findFirst` ordering without
+    deterministic `id` tie-breakers. The query-shape guard lacked explicit tests proving `tx.*.findMany`
+    detection and date-range-only reads remaining unbounded.
+  - security risks reduced:
+    No auth/authorization semantics changed. Read-path tests now better protect PHI/medical list/detail
+    payloads from broad `include` regressions and unscoped snapshot/timeline reads. Care-report delivery
+    detail remains behind existing report permission checks and no-store response handling.
+  - performance issues improved:
+    Added static ratchet coverage for five additional read entrypoints/helpers without allowlist debt.
+    Bounded care-report detail delivery history, stabilized top-1 helper reads, and expanded tests for
+    transaction-client reads, date-range-only scans, MedicationStock snapshot fan-in, and timeline adapter
+    source shapes.
+  - validation commands:
+    `pnpm db:query-shape:check`;
+    `pnpm exec vitest run tools/scripts/check-query-shape.test.ts 'src/app/api/care-reports/[id]/route.test.ts' src/lib/prescriptions/prescriber-institutions.test.ts src/lib/reports/document-delivery-rules.test.ts src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.test.ts src/server/services/patient-detail-timeline-registry.test.ts src/app/api/visit-preparations/brief-batch/route.test.ts src/app/api/visit-schedules/route.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint tools/scripts/check-query-shape.test.ts 'src/app/api/care-reports/[id]/route.ts' 'src/app/api/care-reports/[id]/route.test.ts' src/lib/prescriptions/prescriber-institutions.ts src/lib/prescriptions/prescriber-institutions.test.ts src/lib/reports/document-delivery-rules.ts src/lib/reports/document-delivery-rules.test.ts src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.test.ts src/server/services/patient-detail-timeline-registry.test.ts`;
+    `pnpm exec prettier --check tools/query-shape-watchlist.json tools/query-shape-allowlist.json tools/scripts/check-query-shape.mjs tools/scripts/check-query-shape.test.ts 'src/app/api/care-reports/[id]/route.ts' 'src/app/api/care-reports/[id]/route.test.ts' src/lib/prescriptions/prescriber-institutions.ts src/lib/prescriptions/prescriber-institutions.test.ts src/lib/reports/document-delivery-rules.ts src/lib/reports/document-delivery-rules.test.ts src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.test.ts src/server/services/patient-detail-timeline-registry.test.ts Plans.md ops/refactor/STATE.md`;
+    `git diff --check -- tools/query-shape-watchlist.json tools/query-shape-allowlist.json tools/scripts/check-query-shape.mjs tools/scripts/check-query-shape.test.ts 'src/app/api/care-reports/[id]/route.ts' 'src/app/api/care-reports/[id]/route.test.ts' src/lib/prescriptions/prescriber-institutions.ts src/lib/prescriptions/prescriber-institutions.test.ts src/lib/reports/document-delivery-rules.ts src/lib/reports/document-delivery-rules.test.ts src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.test.ts src/server/services/patient-detail-timeline-registry.test.ts Plans.md ops/refactor/STATE.md`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Query-shape checker passed with `0` allowlisted violations and `0` new violations. Focused
+    Vitest suite passed `8` files / `95` tests; visit-schedules tests emitted expected sanitized
+    error-path stderr. Scoped ESLint passed. Prettier check passed. Diff whitespace check passed.
+    Full typecheck passed.
+  - gbrain:
+    `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003a-003d`
+    (`PerformanceFinding`) に PHI-free で watchlist expansion、care-report delivery cap、
+    helper top-1 tie-breakers、003E residual service-level scheduling cleanup を保存した。
+  - remaining:
+    `QUERY-SHAPE-WATCHLIST-003B/C/E`: patients board, day-board, visit-schedule-service,
+    contact profiles, visit-preparation detail, visit-brief, visit-record BFF cleanup before
+    watchlisting. `care-reports/today-workspace` stable order / `take` assertions remain in
+    the route cleanup slice. `src/app/api/visit-schedules/route.ts` watchlist entry is an
+    entrypoint marker only; service-level broad include/RLS proof is not complete.
+  - next action:
+    Commit/push this scoped backend slice, then continue with `QUERY-SHAPE-WATCHLIST-003E`
+    or dashboard rail/link work unless redirected.
+
 - codex: `Plans.md` 実装済み / 未実装分類と未実装Plan拡充。
   - current task:
     既存 `Plans.md` を整理し、実装済み・一部実装済み・未実装・human gate・reference-only

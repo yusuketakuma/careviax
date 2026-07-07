@@ -224,6 +224,27 @@ describe('getPatientMedicationStockSummary', () => {
         take: 5,
       }),
     );
+    expect(db.medicationStockSnapshot.findMany).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        stock_item_id: { in: ['stock_urgent', 'stock_ok'] },
+      },
+      select: {
+        stock_item_id: true,
+        current_quantity: true,
+        unit: true,
+        last_observed_quantity: true,
+        last_observed_at: true,
+        estimated_daily_usage: true,
+        usage_confidence: true,
+        estimated_stockout_date: true,
+        days_until_stockout: true,
+        stock_risk_level: true,
+        risk_reason_code: true,
+        calculated_at: true,
+      },
+    });
     expect(JSON.stringify(result)).not.toContain('visit_record_1');
   });
 });

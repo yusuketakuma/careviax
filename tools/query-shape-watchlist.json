@@ -6,6 +6,21 @@
       "reason": "Care report list/search is a critical read path with bounded search and payload budgets."
     },
     {
+      "path": "src/app/api/care-reports/[id]/route.ts",
+      "owner": "PERF-DB-001",
+      "reason": "Care report detail is a critical PHI/medical read path with delivery history and support metadata."
+    },
+    {
+      "path": "src/lib/prescriptions/prescriber-institutions.ts",
+      "owner": "PERF-DB-001",
+      "reason": "Prescriber institution suggestions feed report delivery and must stay narrow and stable."
+    },
+    {
+      "path": "src/lib/reports/document-delivery-rules.ts",
+      "owner": "PERF-DB-001",
+      "reason": "Document delivery rule lookup feeds report sending and must stay scoped."
+    },
+    {
       "path": "src/server/services/patient-overview-base-query.ts",
       "owner": "PERF-DB-001",
       "reason": "Patient overview base select must keep relation reads bounded and stable."
@@ -29,6 +44,16 @@
       "path": "src/app/api/communications/inbound/signals/route.ts",
       "owner": "PERF-DB-001",
       "reason": "Inbound signal list is a critical PHI/medical list read path."
+    },
+    {
+      "path": "src/app/api/visit-schedules/route.ts",
+      "owner": "PERF-DB-001",
+      "reason": "Visit schedule list route is a critical scheduling read entrypoint; heavy query shape is delegated to service watch follow-ups."
+    },
+    {
+      "path": "src/app/api/visit-preparations/brief-batch/route.ts",
+      "owner": "PERF-DB-001",
+      "reason": "Visit preparation brief batch is a bounded visit read path and must keep id-in fan-in scoped."
     }
   ]
 }

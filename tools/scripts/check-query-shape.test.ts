@@ -115,6 +115,37 @@ describe('check-query-shape', () => {
     expect(() => runCheck(root)).toThrow(/missing_stable_order_by/);
   });
 
+  it('rejects unstable transaction-client findMany calls', () => {
+    const root = createFixtureRepo({
+      'src/server/services/example.ts': `
+        await tx.deliveryRecord.findMany({
+          where: { org_id: orgId, status: 'response_waiting' },
+          select: { id: true, sent_at: true },
+          orderBy: { sent_at: 'asc' },
+          take: 5,
+        });
+      `,
+    });
+
+    expect(() => runCheck(root)).toThrow(/missing_stable_order_by/);
+  });
+
+  it('rejects date-range-only findMany calls as unbounded', () => {
+    const root = createFixtureRepo({
+      'src/server/services/example.ts': `
+        await db.communicationEvent.findMany({
+          where: {
+            org_id: orgId,
+            occurred_at: { gte: startAt, lt: endAt },
+          },
+          select: { id: true },
+        });
+      `,
+    });
+
+    expect(() => runCheck(root)).toThrow(/unbounded_find_many/);
+  });
+
   it('rejects aggregate calls without where clauses', () => {
     const root = createFixtureRepo({
       'src/server/services/example.ts': `

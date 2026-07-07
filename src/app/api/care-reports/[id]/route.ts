@@ -35,6 +35,7 @@ import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import type { CareReportActionPermissions } from '@/types/care-report-permissions';
 
 const sensitiveResponse = withSensitiveNoStore;
+const CARE_REPORT_DETAIL_DELIVERY_RECORD_LIMIT = 20;
 
 function toDateOnlyString(value: Date | null | undefined) {
   return formatNullableDateKey(value);
@@ -127,7 +128,8 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
               sent_at: true,
               created_at: true,
             },
-            orderBy: { created_at: 'desc' },
+            orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+            take: CARE_REPORT_DETAIL_DELIVERY_RECORD_LIMIT,
           },
           case_: {
             select: { required_visit_support: true },

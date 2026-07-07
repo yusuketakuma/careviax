@@ -33,7 +33,7 @@ export async function resolveDocumentDeliveryRule(args: {
       target_role: args.targetRole,
       is_active: true,
     },
-    orderBy: { updated_at: 'desc' },
+    orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
     select: {
       document_type: true,
       target_role: true,

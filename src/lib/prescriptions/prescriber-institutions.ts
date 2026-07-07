@@ -28,7 +28,7 @@ export type PrescriberInstitutionSuggestion = {
 export async function findPrescriberInstitutionById(
   db: PrescriberInstitutionLookupDb,
   orgId: string,
-  institutionId: string | null | undefined
+  institutionId: string | null | undefined,
 ) {
   if (!institutionId) return null;
 
@@ -52,7 +52,7 @@ export async function findPrescriberInstitutionById(
 export async function assertPrescriberInstitutionReference(
   db: PrescriberInstitutionLookupDb,
   orgId: string,
-  institutionId: string | null | undefined
+  institutionId: string | null | undefined,
 ) {
   if (!institutionId) return;
 
@@ -68,13 +68,13 @@ export async function resolvePrescriberInstitutionFields(
   input: {
     prescriber_institution_id?: string | null;
     prescriber_institution?: string | null;
-  }
+  },
 ) {
   if (input.prescriber_institution_id) {
     const institution = await findPrescriberInstitutionById(
       db,
       orgId,
-      input.prescriber_institution_id
+      input.prescriber_institution_id,
     );
     if (!institution) {
       throw new PrescriberInstitutionReferenceValidationError();
@@ -100,7 +100,7 @@ export async function findLatestPrescriberInstitutionSuggestion(
   input: {
     caseId?: string | null;
     patientId?: string | null;
-  }
+  },
 ): Promise<PrescriberInstitutionSuggestion | null> {
   if (!input.caseId && !input.patientId) return null;
 
@@ -115,7 +115,7 @@ export async function findLatestPrescriberInstitutionSuggestion(
         ...(input.patientId ? { patient_id: input.patientId } : {}),
       },
     },
-    orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }],
+    orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
     select: {
       prescribed_date: true,
       prescriber_name: true,
