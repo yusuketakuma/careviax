@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext } from '@/lib/auth/context';
 import { error, validationError } from '@/lib/api/response';
 import { legacyFileApiDisabledResponse } from '@/lib/api/legacy-file-api-boundary';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -15,39 +15,31 @@ import {
   prepareFileDownload,
 } from '@/server/services/file-storage';
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const disabledResponse = legacyFileApiDisabledResponse();
-  if (disabledResponse) return disabledResponse;
-
-  const authResult = await requireAuthContext(req);
-  if ('response' in authResult) return authResult.response;
-
+const authenticatedGET = withAuthContext(async (_req, ctx, { params }) => {
   const { id } = await params;
   const fileId = normalizeRequiredRouteParam(id);
   if (!fileId) return withSensitiveNoStore(validationError('ファイルIDが不正です'));
 
   try {
     const data = await prepareFileDownload({
-      orgId: authResult.ctx.orgId,
+      orgId: ctx.orgId,
       fileId,
       accessContext: {
-        userId: authResult.ctx.userId,
-        role: authResult.ctx.role,
+        userId: ctx.userId,
+        role: ctx.role,
       },
     });
 
     try {
       const auditContext = await resolveFileDownloadAuditContext(prisma, {
-        orgId: authResult.ctx.orgId,
+        orgId: ctx.orgId,
         fileId: data.id,
       });
       await recordFileDownloadAudit(prisma, {
-        orgId: authResult.ctx.orgId,
-        actorId: authResult.ctx.userId,
-        ...(authResult.ctx.actorPharmacyId
-          ? { actorPharmacyId: authResult.ctx.actorPharmacyId }
-          : {}),
-        ...(authResult.ctx.actorSiteId ? { actorSiteId: authResult.ctx.actorSiteId } : {}),
+        orgId: ctx.orgId,
+        actorId: ctx.userId,
+        ...(ctx.actorPharmacyId ? { actorPharmacyId: ctx.actorPharmacyId } : {}),
+        ...(ctx.actorSiteId ? { actorSiteId: ctx.actorSiteId } : {}),
         ...(auditContext?.patientId ? { patientId: auditContext.patientId } : {}),
         fileId: data.id,
         purpose: data.purpose,
@@ -65,8 +57,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         ...(auditContext?.contractDocumentContext
           ? { contractDocumentContext: auditContext.contractDocumentContext }
           : {}),
-        ipAddress: authResult.ctx.ipAddress,
-        userAgent: authResult.ctx.userAgent,
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
       });
     } catch {
       return withSensitiveNoStore(
@@ -95,4 +87,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       error('EXTERNAL_FILE_DOWNLOAD_FAILED', 'ファイルダウンロードに失敗しました', 502),
     );
   }
+});
+
+export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  const disabledResponse = legacyFileApiDisabledResponse();
+  if (disabledResponse) return withSensitiveNoStore(disabledResponse);
+
+  return withSensitiveNoStore(await authenticatedGET(req, routeContext));
 }

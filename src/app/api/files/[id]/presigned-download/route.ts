@@ -1,18 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext } from '@/lib/auth/context';
 import { error, validationError } from '@/lib/api/response';
 import { legacyFileApiDisabledResponse } from '@/lib/api/legacy-file-api-boundary';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { encodePathSegment } from '@/lib/http/path-segment';
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const disabledResponse = legacyFileApiDisabledResponse();
-  if (disabledResponse) return disabledResponse;
-
-  const authResult = await requireAuthContext(req);
-  if ('response' in authResult) return authResult.response;
-
+const authenticatedGET = withAuthContext(async (req, _ctx, { params }) => {
   const { id } = await params;
   const fileId = normalizeRequiredRouteParam(id);
   if (!fileId) return withSensitiveNoStore(validationError('ファイルIDが不正です'));
@@ -32,4 +26,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       410,
     ),
   );
+});
+
+export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  const disabledResponse = legacyFileApiDisabledResponse();
+  if (disabledResponse) return withSensitiveNoStore(disabledResponse);
+
+  return withSensitiveNoStore(await authenticatedGET(req, routeContext));
 }

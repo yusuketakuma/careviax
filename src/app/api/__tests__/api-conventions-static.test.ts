@@ -67,9 +67,11 @@ describe('API route conventions', () => {
       join(process.cwd(), 'src/app/api/files/complete/route.test.ts'),
       'utf8',
     );
-    const completeRoute = readFileSync(
-      join(process.cwd(), 'src/app/api/files/complete/route.ts'),
-      'utf8',
+    const sensitiveRouteSources = Object.fromEntries(
+      sensitiveFileApiRoutes.map((filePath) => [
+        filePath,
+        readFileSync(join(process.cwd(), filePath), 'utf8'),
+      ]),
     );
     const presignedUploadTest = readFileSync(
       join(process.cwd(), 'src/app/api/files/presigned-upload/route.test.ts'),
@@ -93,8 +95,12 @@ describe('API route conventions', () => {
     );
 
     expect(testsMissingNoStoreAssertions).toEqual([]);
-    expect(completeRoute).toContain('withAuthContext');
-    expect(completeRoute).not.toContain('requireAuthContext');
+    for (const [filePath, source] of Object.entries(sensitiveRouteSources)) {
+      expect(source, `${filePath} should use withAuthContext`).toContain('withAuthContext');
+      expect(source, `${filePath} should not call requireAuthContext directly`).not.toContain(
+        'requireAuthContext',
+      );
+    }
     expect(completeTest).toContain("not.toHaveProperty('originalName')");
     expect(completeTest).toContain("not.toContain('storageKey')");
     expect(presignedUploadTest).toContain("not.toContain('objectKey')");

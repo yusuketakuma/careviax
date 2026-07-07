@@ -41,6 +41,52 @@
 
 ## 直近の land（本日・要点）
 
+- codex: CORE-ROUTE-001 sensitive file API withAuthContext burn-down（pending commit）。
+  - current task:
+    `CORE-ROUTE-001` の実体移行として、残る sensitive file API route のうち
+    presigned upload / presigned download / stream download を direct `requireAuthContext` から
+    preferred `withAuthContext` wrapper へ移す。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `src/app/api/files/presigned-upload/route.ts`,
+    `src/app/api/files/[id]/presigned-download/route.ts`,
+    `src/app/api/files/[id]/download/route.ts`,
+    対応 route tests、`src/app/api/__tests__/api-conventions-static.test.ts`,
+    `tools/route-auth-wrapper-allowlist.json`.
+  - files changed:
+    `src/app/api/files/presigned-upload/route.ts`,
+    `src/app/api/files/presigned-upload/route.test.ts`,
+    `src/app/api/files/[id]/presigned-download/route.ts`,
+    `src/app/api/files/[id]/presigned-download/route.test.ts`,
+    `src/app/api/files/[id]/download/route.ts`,
+    `src/app/api/files/[id]/download/route.test.ts`,
+    `src/app/api/__tests__/api-conventions-static.test.ts`,
+    `tools/route-auth-wrapper-allowlist.json`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    three sensitive file routes now authenticate through `withAuthContext`; legacy file API disable remains before auth
+    and every response remains wrapped by `withSensitiveNoStore`. Static API convention tests now require all sensitive
+    file routes to use `withAuthContext` and avoid direct `requireAuthContext`. Route auth wrapper allowlist was reduced
+    from 179 to 176 entries.
+  - bugs found:
+    presigned upload, presigned download, and stream download were still direct-auth routes despite being sensitive file
+    API boundaries.
+  - security risks reduced:
+    sensitive file upload/download routes now share the standard auth wrapper, fixed internal error envelope, request
+    auth context, and route performance path. The file API PHI regression test now covers all sensitive file routes.
+  - performance issues improved:
+    `withAuthContext` puts these file API boundaries on the standard route performance path.
+  - validation:
+    `pnpm route-auth-wrapper:check` → pass（176 allowlisted routes / 252 direct calls）。
+    `pnpm exec vitest run src/app/api/files/presigned-upload/route.test.ts 'src/app/api/files/[id]/presigned-download/route.test.ts' 'src/app/api/files/[id]/download/route.test.ts' src/app/api/__tests__/api-conventions-static.test.ts --reporter=dot --testTimeout=30000` → pass（4 files / 47 tests）。
+    `pnpm exec eslint src/app/api/files/presigned-upload/route.ts src/app/api/files/presigned-upload/route.test.ts 'src/app/api/files/[id]/presigned-download/route.ts' 'src/app/api/files/[id]/presigned-download/route.test.ts' 'src/app/api/files/[id]/download/route.ts' 'src/app/api/files/[id]/download/route.test.ts' src/app/api/__tests__/api-conventions-static.test.ts` → pass。
+    `pnpm exec prettier --check src/app/api/files/presigned-upload/route.ts src/app/api/files/presigned-upload/route.test.ts 'src/app/api/files/[id]/presigned-download/route.ts' 'src/app/api/files/[id]/presigned-download/route.test.ts' 'src/app/api/files/[id]/download/route.ts' 'src/app/api/files/[id]/download/route.test.ts' src/app/api/__tests__/api-conventions-static.test.ts tools/route-auth-wrapper-allowlist.json` → pass。
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` → pass。
+    `git diff --check -- ...` → pass。
+  - remaining work:
+    Continue CORE-ROUTE burn-down by moving the next high-risk PHI / export / audit routes off direct
+    `requireAuthContext`, while keeping documented exceptions explicit.
+
 - codex: CORE-ROUTE-001 route auth wrapper ratchet（pending commit）。
   - current task:
     `CORE-ROUTE-001` の小スライスとして、残る direct `requireAuthContext` route を

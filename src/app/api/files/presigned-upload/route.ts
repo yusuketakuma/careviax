@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
 import type { MemberRole } from '@prisma/client';
 import { z } from 'zod';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext } from '@/lib/auth/context';
 import {
   error,
   forbiddenResponse,
@@ -18,7 +18,6 @@ import {
   canBypassVisitScheduleAssignmentAccess,
 } from '@/lib/auth/visit-schedule-access';
 import { prisma } from '@/lib/db/client';
-import { logger } from '@/lib/utils/logger';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { trimStringOrUndefined } from '@/lib/validations/string';
 import { requireWritablePatient } from '@/server/services/patient-write-guard';
@@ -264,14 +263,7 @@ function toPublicPresignedUpload(data: PresignedUploadResult) {
   };
 }
 
-async function handlePOST(req: NextRequest) {
-  const disabledResponse = legacyFileApiDisabledResponse();
-  if (disabledResponse) return disabledResponse;
-
-  const authResult = await requireAuthContext(req);
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
+const authenticatedPOST = withAuthContext(async (req, ctx) => {
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
 
@@ -468,22 +460,16 @@ async function handlePOST(req: NextRequest) {
 
     return error('EXTERNAL_FILE_UPLOAD_FAILED', 'アップロードURLの発行に失敗しました', 502);
   }
-}
+});
 
 export async function POST(req: NextRequest) {
   try {
-    return withSensitiveNoStore(await handlePOST(req));
+    const disabledResponse = legacyFileApiDisabledResponse();
+    if (disabledResponse) return withSensitiveNoStore(disabledResponse);
+
+    return withSensitiveNoStore(await authenticatedPOST(req, { params: Promise.resolve({}) }));
   } catch (err) {
     unstable_rethrow(err);
-    logger.error(
-      {
-        event: 'files_presigned_upload_unhandled_error',
-        route: '/api/files/presigned-upload',
-        method: req.method,
-        status: 500,
-      },
-      err,
-    );
     return withSensitiveNoStore(internalError());
   }
 }

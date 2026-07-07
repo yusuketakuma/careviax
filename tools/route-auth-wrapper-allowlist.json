@@ -673,39 +673,6 @@
       "plannedAction": "Migrate this route to withAuthContext when touched, or replace this allowlist entry with an explicit documented exception including auth type, permission, no-store, route performance, rate-limit/CSRF, and audit/security event rationale."
     },
     {
-      "path": "src/app/api/files/[id]/download/route.ts",
-      "expectedCount": 1,
-      "permissions": [],
-      "sensitiveNoStore": true,
-      "routePerformance": false,
-      "owner": "platform-routing",
-      "debtId": "CORE-ROUTE-001",
-      "reason": "Existing route still calls requireAuthContext directly. This is frozen so no new direct-auth route can be added while the route wrapper audit burns down.",
-      "plannedAction": "Migrate this route to withAuthContext when touched, or replace this allowlist entry with an explicit documented exception including auth type, permission, no-store, route performance, rate-limit/CSRF, and audit/security event rationale."
-    },
-    {
-      "path": "src/app/api/files/[id]/presigned-download/route.ts",
-      "expectedCount": 1,
-      "permissions": [],
-      "sensitiveNoStore": true,
-      "routePerformance": false,
-      "owner": "platform-routing",
-      "debtId": "CORE-ROUTE-001",
-      "reason": "Existing route still calls requireAuthContext directly. This is frozen so no new direct-auth route can be added while the route wrapper audit burns down.",
-      "plannedAction": "Migrate this route to withAuthContext when touched, or replace this allowlist entry with an explicit documented exception including auth type, permission, no-store, route performance, rate-limit/CSRF, and audit/security event rationale."
-    },
-    {
-      "path": "src/app/api/files/presigned-upload/route.ts",
-      "expectedCount": 1,
-      "permissions": [],
-      "sensitiveNoStore": true,
-      "routePerformance": false,
-      "owner": "platform-routing",
-      "debtId": "CORE-ROUTE-001",
-      "reason": "Existing route still calls requireAuthContext directly. This is frozen so no new direct-auth route can be added while the route wrapper audit burns down.",
-      "plannedAction": "Migrate this route to withAuthContext when touched, or replace this allowlist entry with an explicit documented exception including auth type, permission, no-store, route performance, rate-limit/CSRF, and audit/security event rationale."
-    },
-    {
       "path": "src/app/api/first-visit-documents/[id]/route.ts",
       "expectedCount": 1,
       "permissions": ["canVisit"],
