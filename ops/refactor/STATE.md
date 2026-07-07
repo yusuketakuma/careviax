@@ -41,6 +41,72 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Plans.md active backlog refinement。
+  - current task:
+    `Plans.md` 内の既存計画を現行 main と照合し、実装済み / 一部実装済み / 未実装 /
+    Human gate を再分類する。未実装は次PRへ切れる粒度に拡充し、派生タスクを追記する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `AGENTS.md`,
+    `docs/ui-ux-design-guidelines.md`,
+    `docs/plans-archive.md`,
+    `src/lib/api/response.ts`,
+    `src/lib/utils/route-payload-budgets.ts`,
+    dashboard cockpit / inbound / movement / medication-stock / backup / permission 関連の現行 route/service/type/test file list,
+    recent `git log --oneline -30`,
+    relevant memory lines for keeping `Plans.md` as living SSOT.
+  - subagent:
+    `code_mapper` performed read-only impact mapping for `PAYLOAD-BUDGET-001` and found
+    that only dashboard summary and existing patients/care-report routes are budgeted,
+    while dashboard details/inbound/stock-risks/report-billing/comments/team,
+    movement timeline, inbound inbox/signals, and medication-stock summary are not
+    yet payload-budgeted. It also confirmed `withRoutePerformance` needs
+    `Content-Length` or payloads become `unmeasured`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Updated the Plan Status Registry with the new classification that dashboard
+    segment payload budgets beyond `summary` remain unimplemented. Reordered the
+    recommended next work so `PAYLOAD-BUDGET-001A` becomes the lowest-risk
+    immediate slice before human-gated index planning. Added implementation-ready
+    rows for `PAYLOAD-BUDGET-001A/B/C/D` covering dashboard measured responses,
+    movement timeline budgeting, inbound/stock count metadata, and perf-smoke
+    budget matrix. Added derived tasks `ROUTE-PERF-MEASURE-001`,
+    `BFF-COUNT-META-001`, and `PLAN-ACTIVE-LINT-001`.
+  - bugs found:
+    Plan-level bug only: `PAYLOAD-BUDGET-001` was too coarse and could be read as
+    already covered by the care-report payload budget. The current code shows
+    several critical list/summary routes are still unbudgeted or unmeasured.
+  - security risks reduced:
+    No runtime code changed. The active plan now explicitly separates authenticated
+    operational display from list/summary payload minimization and keeps raw text,
+    storage keys, signed URLs, provider raw errors, and notification/export
+    boundaries out of summary payloads.
+  - performance issues improved:
+    No runtime performance changed. The next measurable performance slice is now
+    concrete: dashboard segment payload budgets plus measured JSON response
+    helper, followed by movement/inbound/stock payload-budget smoke.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md`;
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md`;
+    `git diff --check -- Plans.md ops/refactor/STATE.md`;
+    `rg -n "PAYLOAD-BUDGET-001A|PAYLOAD-BUDGET-001B|PAYLOAD-BUDGET-001C|PAYLOAD-BUDGET-001D|ROUTE-PERF-MEASURE-001|BFF-COUNT-META-001|PLAN-ACTIVE-LINT-001|今回の追加照合" Plans.md ops/refactor/STATE.md`.
+  - validation results:
+    Prettier write completed. Prettier check passed for `Plans.md` and
+    `ops/refactor/STATE.md`. Diff whitespace check passed. The new
+    implementation-ready IDs and derived tasks are present in `Plans.md` and
+    this STATE entry.
+  - remaining:
+    `PAYLOAD-BUDGET-001A` dashboard segment measured payload budget, `PERF-DB-006D`
+    SELECT-only EXPLAIN-backed index backlog, `PAYLOAD-BUDGET-001B/C`, dashboard
+    rail/drilldown, frontend slice contracts, and plan archive hygiene.
+  - next action:
+    Commit explicit owned docs, push, then continue from `PAYLOAD-BUDGET-001A`
+    unless the user redirects.
+
 - codex: PAYLOAD-BUDGET-003 care-report list/search payload boundary（commit `10573dc88`）。
   - current task:
     Active goal の backend-only 実装ループとして、`PAYLOAD-BUDGET-003` を実装し、
