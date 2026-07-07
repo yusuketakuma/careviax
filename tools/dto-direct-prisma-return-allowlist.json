@@ -1,0 +1,236 @@
+{
+  "entries": [
+    {
+      "path": "src/app/api/admin/facilities/[id]/contacts/route.ts",
+      "expectedCount": 1,
+      "owner": "API-DTO-001",
+      "debtId": "DTO-DIRECT-001",
+      "reason": "Existing route returns Prisma contact rows directly through success().",
+      "plannedAction": "Move response through an admin facility contact presenter."
+    },
+    {
+      "path": "src/app/api/admin/facilities/[id]/units/route.ts",
+      "expectedCount": 1,
+      "owner": "API-DTO-001",
+      "debtId": "DTO-DIRECT-002",
+      "reason": "Existing route returns Prisma facility unit rows directly through success().",
+      "plannedAction": "Move response through an admin facility unit presenter."
+    },
+    {
+      "path": "src/app/api/business-holidays/route.ts",
+      "expectedCount": 1,
+      "owner": "API-DTO-001",
+      "debtId": "DTO-DIRECT-003",
+      "reason": "Existing route returns Prisma holiday rows directly through success().",
+      "plannedAction": "Move response through a business holiday presenter."
+    },
+    {
+      "path": "src/app/api/care-reports/[id]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-DTO-001",
+      "debtId": "DTO-DIRECT-004",
+      "reason": "Existing route returns a Prisma care report row directly through success().",
+      "plannedAction": "Move response through a care report presenter with PHI masking."
+    },
+    {
+      "path": "src/app/api/cases/[id]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-DTO-001",
+      "debtId": "DTO-DIRECT-005",
+      "reason": "Existing route returns a Prisma care case row directly through success().",
+      "plannedAction": "Move response through a case presenter."
+    },
+    {
+      "path": "src/app/api/communication-requests/[id]/responses/route.ts",
+      "expectedCount": 1,
+      "owner": "API-DTO-001",
+      "debtId": "DTO-DIRECT-006",
+      "reason": "Existing route returns Prisma communication response rows directly through success().",
+      "plannedAction": "Move response through a communication response presenter."
+    },
+    {
+      "path": "src/app/api/communication-requests/[id]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-DTO-001",
+      "debtId": "DTO-DIRECT-007",
+      "reason": "Existing route returns a Prisma communication request row directly through success().",
+      "plannedAction": "Move response through a communication request presenter."
+    },
+    {
+      "path": "src/app/api/dispense-results/[id]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-DTO-001",
+      "debtId": "DTO-DIRECT-008",
+      "reason": "Existing route returns a Prisma dispense result row directly through success().",
+      "plannedAction": "Move response through a dispense result presenter."
+    },
+    {
+      "path": "src/app/api/drug-master-import-logs/route.ts",
+      "expectedCount": 1,
+      "owner": "API-DTO-001",
+      "debtId": "DTO-DIRECT-009",
+      "reason": "Existing route returns Prisma drug master import log rows directly through success().",
+      "plannedAction": "Move response through a drug master import log presenter."
+    },
+    {
+      "path": "src/app/api/drug-masters/[id]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-DTO-001",
+      "debtId": "DTO-DIRECT-010",
+      "reason": "Existing route returns a Prisma drug master row directly through success().",
+      "plannedAction": "Move response through a drug master presenter."
+    },
+    {
+      "path": "src/app/api/interventions/[id]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-DTO-001",
+      "debtId": "DTO-DIRECT-011",
+      "reason": "Existing route returns a Prisma intervention row directly through success().",
+      "plannedAction": "Move response through an intervention presenter."
+    },
+    {
+      "path": "src/app/api/management-plans/[id]/route.ts",
+      "expectedCount": 2,
+      "owner": "API-DTO-001",
+      "debtId": "DTO-DIRECT-012",
+      "reason": "Existing route returns Prisma management plan rows directly through success().",
+      "plannedAction": "Move response through a management plan presenter."
+    },
+    {
+      "path": "src/app/api/patient-share-cases/route.ts",
+      "expectedCount": 1,
+      "owner": "API-DTO-001",
+      "debtId": "DTO-DIRECT-013",
+      "reason": "Existing route returns a Prisma patient share case result directly through success().",
+      "plannedAction": "Move response through a patient share case presenter."
+    },
+    {
+      "path": "src/app/api/patients/[id]/conditions/route.ts",
+      "expectedCount": 1,
+      "owner": "API-DTO-001",
+      "debtId": "DTO-DIRECT-014",
+      "reason": "Existing route returns Prisma patient condition rows directly through success().",
+      "plannedAction": "Move response through a patient condition presenter."
+    },
+    {
+      "path": "src/app/api/patients/[id]/contacts/route.ts",
+      "expectedCount": 1,
+      "owner": "API-DTO-001",
+      "debtId": "DTO-DIRECT-015",
+      "reason": "Existing route returns Prisma patient contact rows directly through success().",
+      "plannedAction": "Move response through a patient contact presenter."
+    },
+    {
+      "path": "src/app/api/patients/[id]/labs/route.ts",
+      "expectedCount": 1,
+      "owner": "API-DTO-001",
+      "debtId": "DTO-DIRECT-016",
+      "reason": "Existing route returns Prisma lab rows directly through success().",
+      "plannedAction": "Move response through a patient lab presenter."
+    },
+    {
+      "path": "src/app/api/pharmacist-shift-templates/route.ts",
+      "expectedCount": 1,
+      "owner": "API-DTO-001",
+      "debtId": "DTO-DIRECT-017",
+      "reason": "Existing route returns Prisma shift template rows directly through success().",
+      "plannedAction": "Move response through a shift template presenter."
+    },
+    {
+      "path": "src/app/api/pharmacy-drug-stock-templates/route.ts",
+      "expectedCount": 1,
+      "owner": "API-DTO-001",
+      "debtId": "DTO-DIRECT-018",
+      "reason": "Existing route returns Prisma drug stock template rows directly through success().",
+      "plannedAction": "Move response through a drug stock template presenter."
+    },
+    {
+      "path": "src/app/api/pharmacy-sites/[id]/insurance-configs/route.ts",
+      "expectedCount": 1,
+      "owner": "API-DTO-001",
+      "debtId": "DTO-DIRECT-019",
+      "reason": "Existing route returns Prisma insurance config rows directly through success().",
+      "plannedAction": "Move response through an insurance config presenter."
+    },
+    {
+      "path": "src/app/api/pharmacy-sites/[id]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-DTO-001",
+      "debtId": "DTO-DIRECT-020",
+      "reason": "Existing route returns a Prisma pharmacy site row directly through success().",
+      "plannedAction": "Move response through a pharmacy site presenter."
+    },
+    {
+      "path": "src/app/api/pharmacy-sites/route.ts",
+      "expectedCount": 1,
+      "owner": "API-DTO-001",
+      "debtId": "DTO-DIRECT-021",
+      "reason": "Existing route returns Prisma pharmacy site rows directly through success().",
+      "plannedAction": "Move response through a pharmacy site presenter."
+    },
+    {
+      "path": "src/app/api/prescriber-institutions/route.ts",
+      "expectedCount": 1,
+      "owner": "API-DTO-001",
+      "debtId": "DTO-DIRECT-022",
+      "reason": "Existing route returns Prisma prescriber institution rows directly through success().",
+      "plannedAction": "Move response through a prescriber institution presenter."
+    },
+    {
+      "path": "src/app/api/prescription-intakes/[id]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-DTO-001",
+      "debtId": "DTO-DIRECT-023",
+      "reason": "Existing route returns a Prisma prescription intake row directly through success().",
+      "plannedAction": "Move response through a prescription intake presenter."
+    },
+    {
+      "path": "src/app/api/residual-medications/route.ts",
+      "expectedCount": 1,
+      "owner": "API-DTO-001",
+      "debtId": "DTO-DIRECT-024",
+      "reason": "Existing route returns Prisma residual medication rows directly through success().",
+      "plannedAction": "Move response through a residual medication presenter."
+    },
+    {
+      "path": "src/app/api/saved-views/route.ts",
+      "expectedCount": 1,
+      "owner": "API-DTO-001",
+      "debtId": "DTO-DIRECT-025",
+      "reason": "Existing route returns Prisma saved view rows directly through success().",
+      "plannedAction": "Move response through a saved view presenter."
+    },
+    {
+      "path": "src/app/api/tasks/route.ts",
+      "expectedCount": 1,
+      "owner": "API-DTO-001",
+      "debtId": "DTO-DIRECT-026",
+      "reason": "Existing route returns a Prisma task row directly through success().",
+      "plannedAction": "Move response through a task presenter."
+    },
+    {
+      "path": "src/app/api/visit-schedule-proposals/route.ts",
+      "expectedCount": 2,
+      "owner": "API-DTO-001",
+      "debtId": "DTO-DIRECT-027",
+      "reason": "Existing route returns Prisma visit schedule proposal rows directly through success().",
+      "plannedAction": "Move response through a visit schedule proposal presenter."
+    },
+    {
+      "path": "src/app/api/visit-schedules/[id]/route.ts",
+      "expectedCount": 2,
+      "owner": "API-DTO-001",
+      "debtId": "DTO-DIRECT-028",
+      "reason": "Existing route returns Prisma visit schedule rows directly through success().",
+      "plannedAction": "Move response through a visit schedule presenter."
+    },
+    {
+      "path": "src/app/api/workflow-exceptions/[id]/route.ts",
+      "expectedCount": 1,
+      "owner": "API-DTO-001",
+      "debtId": "DTO-DIRECT-029",
+      "reason": "Existing route returns a Prisma workflow exception row directly through success().",
+      "plannedAction": "Move response through a workflow exception presenter."
+    }
+  ]
+}

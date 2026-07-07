@@ -41,6 +41,50 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOD-CI-001 DTO direct Prisma return ratchet（pending commit）。
+  - current task:
+    `MOD-CI-001` / `API-DTO-001` の残 gate として、Prisma result を presenter/DTOなしで
+    public `success()` へ返す route を検出する `dto-direct-prisma-return:check` を実装する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `src/lib/api/response.ts`,
+    `src/app/api/**/route.ts` の `success()` / Prisma delegate 返却候補,
+    `package.json`,
+    `.github/workflows/ci.yml`,
+    `tools/scripts/check-task-type-registry.mjs`.
+  - files changed:
+    `tools/scripts/check-dto-direct-prisma-return.mjs`,
+    `tools/scripts/check-dto-direct-prisma-return.test.ts`,
+    `tools/dto-direct-prisma-return-allowlist.json`,
+    `package.json`,
+    `.github/workflows/ci.yml`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `src/app/api` の production route を静的にスキャンし、
+    `await prisma|tx|db.<model>.<delegate>` の結果を `success(...)` または `success({ data: ... })` に
+    直接渡す候補を検出する checker を追加した。
+    既存候補 32 件は `tools/dto-direct-prisma-return-allowlist.json` に owner/debt/plannedAction 付きで固定し、
+    新規候補または stale allowlist は fail する ratchet にした。
+    `pnpm dto-direct-prisma-return:check` を package script と GitHub Actions CI に接続した。
+  - bugs found:
+    複数 route で Prisma row/list を presenter/serializer なしに `success()` へ渡す既存負債が残っていた。
+    これまでは新規 route が同じ形を増やしてもCIで検出できなかった。
+  - security risks reduced:
+    public API へ `storage_key`、raw payload、dedupe/idempotency key、free text などが Prisma result 経由で混入する
+    再発面を縮小した。既存32件は残負債として明示化し、今後は presenter/DTO 化で expectedCount を減らせる。
+  - performance issues improved:
+    実行時性能変更なし。checker はCI/ローカル静的検査のみ。
+  - validation:
+    `node tools/scripts/check-dto-direct-prisma-return.mjs` → pass（32 allowlisted violations、0 new violations）。
+    `pnpm exec vitest run tools/scripts/check-dto-direct-prisma-return.test.ts --reporter=dot --testTimeout=30000` → pass（5 tests）。
+    `pnpm exec eslint tools/scripts/check-dto-direct-prisma-return.mjs tools/scripts/check-dto-direct-prisma-return.test.ts` → pass。
+    `pnpm exec prettier --write tools/scripts/check-dto-direct-prisma-return.mjs tools/scripts/check-dto-direct-prisma-return.test.ts tools/dto-direct-prisma-return-allowlist.json` → pass。
+  - remaining work:
+    `MOD-CI-001` の残りは `api-response-shape:check` と `rls-policy-contract` との役割整理。
+    `API-DTO-001` の実体返済は allowlist entries を presenter/DTO 化して減らす。
+
 - codex: MOD-CI-001 operational task type registry gate（pending commit）。
   - current task:
     `MOD-CI-001` の残 gate として、未登録 `task_type` と module prefix なし新規 task type を
@@ -14529,3 +14573,33 @@
 - remaining:
   `RX-REG-FACET-001` still needs facets route p95/payload/query-count observability and optional
   search-time facet cache/delay. `Plans.md` now tracks only those remaining pieces.
+
+## 2026-07-07 Plans.md implemented-task cleanup
+
+- codex:
+  Cleaned implemented CI gate work out of active `Plans.md` tasks. The DTO direct Prisma response
+  detector and task type registry check are now treated as existing ratchets, not as future
+  implementation tasks.
+- files inspected:
+  `Plans.md`,
+  `package.json`,
+  `.github/workflows/ci.yml`,
+  `tools/scripts/check-task-type-registry.mjs`,
+  `tools/scripts/check-dto-direct-prisma-return.mjs`,
+  `ops/refactor/STATE.md`.
+- files changed:
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  Reduced plan drift where implemented gates still appeared as pending tasks. `API-DTO-001` now
+  tracks remaining presenter migration, DTO snapshots, and allowlist burn-down instead of adding the
+  already-implemented detection script.
+- performance improved:
+  None; documentation/planning cleanup only.
+- validation:
+  `pnpm exec prettier --check Plans.md` green;
+  `git diff --check -- Plans.md` green.
+- remaining:
+  Continue deleting completed tasks from `Plans.md` only after current code confirms they are
+  implemented. Remaining active items include API envelope/request_id/error-code work, RLS contract
+  expansion, DTO allowlist burn-down, and presenter migration.

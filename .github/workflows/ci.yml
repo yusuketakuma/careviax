@@ -61,6 +61,9 @@ jobs:
       - name: Module boundary check
         run: pnpm boundaries:check
 
+      - name: DTO direct Prisma return check
+        run: pnpm dto-direct-prisma-return:check
+
       - name: Operational task type registry check
         run: pnpm task-types:check
 
