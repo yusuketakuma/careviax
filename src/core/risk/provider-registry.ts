@@ -37,7 +37,13 @@ export function createRiskFindingProviderRegistry<
       return providerIds;
     },
     collectAll(input: TInput) {
-      return providers.flatMap((provider) => [...provider.collect(input)]);
+      return providers.flatMap((provider) => {
+        try {
+          return [...provider.collect(input)];
+        } catch {
+          return [];
+        }
+      });
     },
   });
 }

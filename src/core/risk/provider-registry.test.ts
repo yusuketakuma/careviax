@@ -68,4 +68,35 @@ describe('createRiskFindingProviderRegistry', () => {
       ]),
     ).toThrow(/Duplicate risk finding provider: core\.duplicate/);
   });
+
+  it('fails soft when one provider throws and keeps other provider findings', () => {
+    const registry = createRiskFindingProviderRegistry([
+      {
+        module: 'core',
+        providerId: 'core.throwing',
+        domains: ['patient_foundation'],
+        collect: () => {
+          throw new Error('provider unavailable');
+        },
+      },
+      {
+        module: 'pharmacy',
+        providerId: 'pharmacy.ok',
+        domains: ['medication'],
+        collect: () => [
+          createRiskFinding({
+            key: 'ok',
+            domain: 'medication',
+            severity: 'warning',
+            title: 'OK',
+            detail: 'OK detail',
+            action_href: '/ok',
+            action_label: 'OK',
+          }),
+        ],
+      },
+    ]);
+
+    expect(registry.collectAll({ caseId: 'case_1' }).map((finding) => finding.key)).toEqual(['ok']);
+  });
 });

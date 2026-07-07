@@ -41,6 +41,41 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOD-CI-001 risk provider fail-soft contract（pending commit）。
+  - current task:
+    `MOD-CI-001` の provider contract 小スライスとして、RiskFinding provider の失敗ポリシーを固定する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `src/core/risk/provider-registry.ts`,
+    `src/core/risk/provider-registry.test.ts`,
+    `src/server/risk/active-case-risk-registry.test.ts`,
+    `src/server/services/case-risk-cockpit.ts`.
+  - files changed:
+    `src/core/risk/provider-registry.ts`,
+    `src/core/risk/provider-registry.test.ts`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `createRiskFindingProviderRegistry().collectAll()` を provider ごとの try/catch にし、
+    1 provider の例外で Case Risk collection 全体が落ちない fail-soft contract にした。
+    既存の provider order / duplicate id test に加え、throwing provider を落として後続 provider の finding を返すテストを追加した。
+  - bugs found:
+    risk provider registry は duplicate/order は固定済みだったが、provider 例外が `collectAll()` 全体へ伝播し、
+    module adapter 追加時に単一providerの不具合で Case Risk Cockpit 全体を落とす可能性があった。
+  - security risks reduced:
+    新規PHI/API/DB変更なし。provider failure を空 findings として扱い、raw provider error を response/log へ流さない backstop になった。
+  - performance issues improved:
+    実行時性能影響は negligible。providerごとの配列展開は既存と同等。
+  - validation:
+    `pnpm exec vitest run src/core/risk/provider-registry.test.ts src/server/risk/active-case-risk-registry.test.ts --reporter=dot --testTimeout=30000` → pass（5 tests）。
+    `pnpm exec eslint src/core/risk/provider-registry.ts src/core/risk/provider-registry.test.ts` → pass。
+    `pnpm exec prettier --check src/core/risk/provider-registry.ts src/core/risk/provider-registry.test.ts` → pass after targeted write.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` → pass。
+  - remaining work:
+    `MOD-CI-001` の残りは API envelope / DTO direct Prisma return / task type registry /
+    collaboration provider contract / RLS policy contract role整理。
+
 - codex: MOD-CI-001 module-boundary allowlist zero ratchet（pending commit）。
   - current task:
     `MOD-CI-001` の小スライスとして、`MOD-BOUND-001` で 0 entries になった module-boundary allowlist が
