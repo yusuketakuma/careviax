@@ -27,6 +27,10 @@ import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
+import {
+  SCHEDULE_WORKFLOW_INVALIDATION_EVENTS,
+  WORKFLOW_DASHBOARD_INVALIDATION_EVENTS,
+} from '@/lib/realtime/workflow-invalidation-policy';
 import { StaffKpiPanel } from '@/app/(dashboard)/admin/staff/staff-kpi-panel';
 
 type WorkflowData = {
@@ -245,7 +249,7 @@ export default function PerformancePage() {
       return readApiJson<{ data: WorkflowData }>(res, 'ワークフローの取得に失敗しました');
     },
     enabled: !!orgId,
-    invalidateOn: ['workflow_refresh', 'cycle_transition'],
+    invalidateOn: WORKFLOW_DASHBOARD_INVALIDATION_EVENTS,
     fallbackRefetchInterval: 60_000,
   });
 
@@ -263,7 +267,7 @@ export default function PerformancePage() {
       return readApiJson<{ data: VisitSchedule[] }>(res, '訪問予定の取得に失敗しました');
     },
     enabled: !!orgId,
-    invalidateOn: ['workflow_refresh'],
+    invalidateOn: SCHEDULE_WORKFLOW_INVALIDATION_EVENTS,
     fallbackRefetchInterval: 60_000,
   });
 
@@ -280,7 +284,7 @@ export default function PerformancePage() {
       return readApiJson<{ data: Proposal[] }>(res, '訪問候補の取得に失敗しました');
     },
     enabled: !!orgId,
-    invalidateOn: ['workflow_refresh'],
+    invalidateOn: SCHEDULE_WORKFLOW_INVALIDATION_EVENTS,
     fallbackRefetchInterval: 60_000,
   });
 

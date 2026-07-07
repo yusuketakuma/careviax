@@ -20,6 +20,7 @@ import { PRIORITY_DISPLAY_LABELS, PRIORITY_ROLE } from '@/lib/constants/status-l
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { normalizeNotificationStreamPayload } from '@/lib/notifications/stream-payload';
+import { WORKFLOW_DASHBOARD_INVALIDATION_EVENTS } from '@/lib/realtime/workflow-invalidation-policy';
 
 type NotificationType = 'urgent' | 'business' | 'reminder' | 'system';
 
@@ -78,8 +79,6 @@ function mergeNotifications(current: Notification[], incoming: Notification[]) {
   return unique.slice(0, 12);
 }
 
-const ADMIN_REALTIME_WORKFLOW_EVENTS = ['workflow_refresh', 'cycle_transition'] as const;
-
 export default function RealtimePage() {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
@@ -107,7 +106,7 @@ export default function RealtimePage() {
       return readApiJson<{ data: WorkflowSnapshot }>(res, 'ワークフローの取得に失敗しました');
     },
     enabled: !!orgId,
-    invalidateOn: ADMIN_REALTIME_WORKFLOW_EVENTS,
+    invalidateOn: WORKFLOW_DASHBOARD_INVALIDATION_EVENTS,
     fallbackRefetchInterval: 15_000,
   });
 

@@ -41,6 +41,49 @@
 
 ## 直近の land（本日・要点）
 
+- codex: FE-RT-001 admin realtime/performance source-scoped invalidation（pending commit）。
+  - current task:
+    `/admin/realtime` と `/admin/performance` の workflow/schedule query を broad
+    `workflow_refresh` から source-scoped policy へ移行する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/admin/realtime/page.tsx`,
+    `src/app/(dashboard)/admin/realtime/page.test.tsx`,
+    `src/app/(dashboard)/admin/performance/page.tsx`,
+    `src/app/(dashboard)/admin/performance/page.test.tsx`,
+    `src/lib/realtime/workflow-invalidation-policy.ts`.
+  - files changed:
+    `src/app/(dashboard)/admin/realtime/page.tsx`,
+    `src/app/(dashboard)/admin/realtime/page.test.tsx`,
+    `src/app/(dashboard)/admin/performance/page.tsx`,
+    `src/app/(dashboard)/admin/performance/page.test.tsx`,
+    `src/lib/realtime/workflow-invalidation-policy.ts`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `admin/realtime` の workflow snapshot と `admin/performance` の workflow metrics は
+    `WORKFLOW_DASHBOARD_INVALIDATION_EVENTS` を再利用するようにした。
+    `admin/performance` の schedules/proposals は新規 `SCHEDULE_WORKFLOW_INVALIDATION_EVENTS`
+    に寄せ、schedule/proposal/facility source だけで更新する。
+    tests は bare `workflow_refresh` ではなく source allowlist を期待するように更新した。
+  - bugs found:
+    admin 補助画面の workflow/schedule query は broad `workflow_refresh` を購読しており、
+    source 不明や対象外の workflow event でも再取得し得た。
+  - security risks reduced:
+    なし。本sliceはPHI payload boundaryではなく refetch policy の絞り込み。
+  - performance issues improved:
+    admin/realtime と admin/performance の無関係 realtime event による再取得を抑制する。
+  - validation:
+    `pnpm exec vitest run 'src/app/(dashboard)/admin/realtime/page.test.tsx' 'src/app/(dashboard)/admin/performance/page.test.tsx' src/lib/hooks/use-realtime-invalidation.test.tsx src/lib/hooks/use-realtime-query.test.tsx --reporter=dot --testTimeout=30000`
+    → pass（4 files / 34 tests）。
+    `pnpm exec eslint 'src/app/(dashboard)/admin/realtime/page.tsx' 'src/app/(dashboard)/admin/realtime/page.test.tsx' 'src/app/(dashboard)/admin/performance/page.tsx' 'src/app/(dashboard)/admin/performance/page.test.tsx' src/lib/realtime/workflow-invalidation-policy.ts`
+    → pass。
+  - remaining work:
+    Prettier/diff check 後に scoped commit / push。FE-RT-001 の残りは visits today と
+    workflow history widgets。
+
 - codex: FE-RT-001 workflow dashboard source-scoped invalidation（pending commit）。
   - current task:
     `/workflow` dashboard と `useWorkflowPhaseAccess` の `dashboard-workflow` query を

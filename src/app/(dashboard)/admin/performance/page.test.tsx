@@ -45,6 +45,31 @@ type QueryOption = {
   queryFn?: () => Promise<unknown>;
 };
 
+const EXPECTED_WORKFLOW_INVALIDATION = [
+  'cycle_transition',
+  expect.objectContaining({
+    type: 'workflow_refresh',
+    source: expect.arrayContaining([
+      'medication_cycles_transition',
+      'prescription_intakes_create',
+      'visit_schedules_update',
+      'set_batches_update',
+    ]),
+  }),
+];
+
+const EXPECTED_SCHEDULE_INVALIDATION = [
+  expect.objectContaining({
+    type: 'workflow_refresh',
+    source: expect.arrayContaining([
+      'visit_schedules_update',
+      'visit_schedule_proposals_create',
+      'visit_schedule_proposals_confirm',
+      'facility_visit_batches_upsert',
+    ]),
+  }),
+];
+
 describe('PerformancePage polling policy', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -64,21 +89,21 @@ describe('PerformancePage polling policy', () => {
     expect(useRealtimeQueryMock).toHaveBeenCalledWith(
       expect.objectContaining({
         queryKey: ['admin-performance-workflow', 'org_1'],
-        invalidateOn: ['workflow_refresh', 'cycle_transition'],
+        invalidateOn: EXPECTED_WORKFLOW_INVALIDATION,
         fallbackRefetchInterval: 60_000,
       }),
     );
     expect(useRealtimeQueryMock).toHaveBeenCalledWith(
       expect.objectContaining({
         queryKey: expect.arrayContaining(['admin-performance-schedules', 'org_1']),
-        invalidateOn: ['workflow_refresh'],
+        invalidateOn: EXPECTED_SCHEDULE_INVALIDATION,
         fallbackRefetchInterval: 60_000,
       }),
     );
     expect(useRealtimeQueryMock).toHaveBeenCalledWith(
       expect.objectContaining({
         queryKey: expect.arrayContaining(['admin-performance-proposals', 'org_1']),
-        invalidateOn: ['workflow_refresh'],
+        invalidateOn: EXPECTED_SCHEDULE_INVALIDATION,
         fallbackRefetchInterval: 60_000,
       }),
     );

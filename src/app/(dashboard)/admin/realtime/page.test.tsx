@@ -103,7 +103,18 @@ describe('RealtimePage', () => {
     expect(useRealtimeQueryMock).toHaveBeenCalledWith(
       expect.objectContaining({
         queryKey: ['admin-realtime-workflow', 'org_1'],
-        invalidateOn: ['workflow_refresh', 'cycle_transition'],
+        invalidateOn: [
+          'cycle_transition',
+          expect.objectContaining({
+            type: 'workflow_refresh',
+            source: expect.arrayContaining([
+              'medication_cycles_transition',
+              'prescription_intakes_create',
+              'visit_schedules_update',
+              'set_batches_update',
+            ]),
+          }),
+        ],
         fallbackRefetchInterval: 15_000,
       }),
     );
