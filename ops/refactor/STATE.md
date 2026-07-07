@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: PERF-DB-002 dashboard medication-stock signal window aggregate reader（commit `bb08073fa`, pushed to `main` pending）。
+- codex: PERF-DB-002 dashboard medication-stock signal window aggregate reader（commit `e207c779a`, pushed to `main` pending）。
   - current task:
     Plans registry の DB read-speed 改善順に従い、`/api/dashboard/cockpit/stock-risks`
     の medication-stock inbound signal 読み出しを `findMany + count x6` から window aggregate
