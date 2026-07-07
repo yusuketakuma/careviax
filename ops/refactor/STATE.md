@@ -41,6 +41,50 @@
 
 ## 直近の land（本日・要点）
 
+- codex: FE-RT-001 schedule proposals source-scoped invalidation（pending commit）。
+  - current task:
+    `/schedules/proposals` の weekly optimizer / proposals dashboard / detail query の
+    `workflow_refresh` invalidation を全source対象から schedule/proposal/facility source 群へ絞り、
+    無関係な workflow event で訪問候補BFFを再取得しないようにする。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx`,
+    `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx`,
+    `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx`,
+    `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx`,
+    `src/app/(dashboard)/schedules/calendar-view.tsx`.
+  - files changed:
+    `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx`,
+    `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx`,
+    `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx`,
+    `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    calendar view と同じ schedule/proposal/facility workflow source 群を proposals 画面へ適用し、
+    `invalidateOn: ['workflow_refresh']` を
+    `{ type: 'workflow_refresh', source: SCHEDULE_PROPOSAL_WORKFLOW_SOURCES }` に置換した。
+    weekly optimizer と proposals dashboard/detail のテストに、bare `workflow_refresh` に戻らない
+    source-scoped policy assertion を追加した。
+    `Plans.md` の `FE-RT-001` 現在地を更新し、schedule proposals/day-board を対応済みに移した。
+  - bugs found:
+    schedule proposals 画面は weekly optimizer / dashboard / detail query の全てで
+    `workflow_refresh` をsource指定なしで購読しており、訪問候補と無関係な workflow event でも
+    重い候補BFFを再取得し得た。
+  - security risks reduced:
+    なし。本sliceはPHI payload boundaryではなく refetch policy の絞り込み。
+  - performance issues improved:
+    unrelated `workflow_refresh` burst 時の schedule proposals/day-board 再取得を抑制する。
+  - validation:
+    `pnpm exec vitest run 'src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx' 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx' src/lib/hooks/use-realtime-invalidation.test.tsx src/lib/hooks/use-realtime-query.test.tsx --reporter=dot --testTimeout=30000`
+    → pass（4 files / 67 tests）。
+    `pnpm exec eslint 'src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx' 'src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx' 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx' 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx'`
+    → pass。
+  - remaining work:
+    Prettier/diff check 後に scoped commit / push。FE-RT-001 の残りは dashboard source rule。
+
 - codex: FE-RT-001 prescription intake source-scoped invalidation（commit `59d6ca264`, pending push）。
   - current task:
     処方受付 triage 画面の `workflow_refresh` invalidation を全source対象から `prescription_intakes_create` source のみに絞り、無関係な workflow event で処方受付BFFと右レールcockpitを再取得しないようにする。

@@ -72,6 +72,7 @@ setupDomTestEnv();
 type QueryConfig = {
   queryKey: unknown[];
   queryFn?: () => Promise<unknown>;
+  invalidateOn?: unknown[];
 };
 
 const PROPOSAL_UPDATED_AT = '2026-04-09T08:00:00.000Z';
@@ -433,6 +434,20 @@ describe('ScheduleProposalsContent', () => {
     const billingPreviewQuery = queryConfigs.find(
       (config) => config.queryKey[0] === 'schedule-proposals-dashboard-billing-preview',
     );
+    for (const config of [dashboardQuery, detailQuery]) {
+      expect(config?.invalidateOn).not.toContain('workflow_refresh');
+      expect(config?.invalidateOn).toEqual([
+        expect.objectContaining({
+          type: 'workflow_refresh',
+          source: expect.arrayContaining([
+            'visit_schedules_update',
+            'visit_schedule_proposals_approve',
+            'visit_schedule_proposals_contact_attempt',
+            'facility_visit_batch_reorder',
+          ]),
+        }),
+      ]);
+    }
 
     await expect(dashboardQuery?.queryFn?.()).rejects.toThrow('訪問候補データを表示できません');
     await expect(casesQuery?.queryFn?.()).rejects.toThrow('訪問候補データを表示できません');

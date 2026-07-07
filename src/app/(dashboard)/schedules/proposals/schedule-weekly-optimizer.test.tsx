@@ -76,7 +76,11 @@ setupDomTestEnv();
 import { ScheduleWeeklyOptimizer } from './schedule-weekly-optimizer';
 import { toast } from 'sonner';
 
-type QueryConfig = { queryKey: unknown[]; queryFn?: () => Promise<unknown> };
+type QueryConfig = {
+  queryKey: unknown[];
+  queryFn?: () => Promise<unknown>;
+  invalidateOn?: unknown[];
+};
 
 function buildWeeklySchedule(overrides?: Record<string, unknown>) {
   return {
@@ -333,6 +337,25 @@ describe('ScheduleWeeklyOptimizer', () => {
 
     for (const key of readQueries) {
       await expect(findQuery(key)?.queryFn?.()).rejects.toThrow('週間最適化データを表示できません');
+    }
+
+    const scheduleRealtimeQueries = realtimeQueryConfigs.filter((config) =>
+      ['visit-schedules', 'visit-schedule-proposals'].includes(String(config.queryKey[0])),
+    );
+    expect(scheduleRealtimeQueries).toHaveLength(2);
+    for (const config of scheduleRealtimeQueries) {
+      expect(config.invalidateOn).not.toContain('workflow_refresh');
+      expect(config.invalidateOn).toEqual([
+        expect.objectContaining({
+          type: 'workflow_refresh',
+          source: expect.arrayContaining([
+            'visit_schedules_update',
+            'visit_schedule_proposals_create',
+            'visit_schedule_proposals_confirm',
+            'facility_visit_batches_upsert',
+          ]),
+        }),
+      ]);
     }
 
     expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual([

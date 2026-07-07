@@ -129,6 +129,27 @@ type DashboardTab = 'unapproved' | 'patient_contact_pending' | 'confirmed' | 're
 type TravelMode = 'DRIVE' | 'BICYCLE' | 'WALK' | 'TWO_WHEELER';
 type FilterPreset = 'all' | 'today' | 'contact' | 'reschedule' | 'stale';
 
+const SCHEDULE_PROPOSAL_WORKFLOW_SOURCES = [
+  'visit_schedules_create',
+  'visit_schedules_update',
+  'visit_schedules_delete',
+  'visit_schedules_reschedule_request',
+  'visit_schedules_reschedule_approve',
+  'visit_schedules_reopen',
+  'visit_schedules_reorder',
+  'visit_schedule_conflict_reconfirmation',
+  'visit_schedule_proposals_create',
+  'visit_schedule_proposals_approve',
+  'visit_schedule_proposals_reject',
+  'visit_schedule_proposals_contact_attempt',
+  'visit_schedule_proposals_confirm',
+  'visit_schedule_proposals_reorder',
+  'facility_visit_batches_upsert',
+  'facility_visit_batch_delete',
+  'facility_visit_batch_reorder',
+  'facility_visit_days_upsert',
+] as const;
+
 type ProposalDetail = Proposal & {
   approved_at?: string | null;
   patient_contacted_at?: string | null;
@@ -786,7 +807,7 @@ export function ScheduleProposalsContent({
       return readApiJson<ScheduleProposalsResponse>(response, '訪問候補の取得に失敗しました');
     },
     enabled: !!orgId,
-    invalidateOn: ['workflow_refresh'],
+    invalidateOn: [{ type: 'workflow_refresh', source: SCHEDULE_PROPOSAL_WORKFLOW_SOURCES }],
   });
 
   const proposals = useMemo(() => proposalsQuery.data?.data ?? [], [proposalsQuery.data]);
@@ -980,7 +1001,7 @@ export function ScheduleProposalsContent({
       );
     },
     enabled: !!orgId && !!activeDetailId,
-    invalidateOn: ['workflow_refresh'],
+    invalidateOn: [{ type: 'workflow_refresh', source: SCHEDULE_PROPOSAL_WORKFLOW_SOURCES }],
   });
 
   const detail = detailQuery.data?.data ?? null;
