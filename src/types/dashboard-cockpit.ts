@@ -226,6 +226,49 @@ export type DashboardCockpitInboundResponse = DashboardCockpitScopeMetadata & {
   inbound_safety_signal_count: number;
 };
 
+export type DashboardMedicationStockRiskItem = {
+  id: string;
+  source: 'inbound_signal';
+  signal_id: string;
+  inbound_event_id: string;
+  patient_id: string | null;
+  patient_name: string | null;
+  case_id: string | null;
+  risk_level: 'urgent' | 'shortage_expected' | 'review_required' | 'usage_unknown' | 'linked';
+  signal_type: string;
+  review_status: string;
+  action_status: string;
+  medication_name: string | null;
+  quantity_label: string | null;
+  source_text: string | null;
+  source_channel: string;
+  source_label: string;
+  sender_role: string | null;
+  received_at: string;
+  updated_at: string;
+  action_href: string;
+  action_label: string;
+  badges: Array<{
+    label: string;
+    tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger';
+  }>;
+};
+
+export type DashboardCockpitMedicationStockResponse = DashboardCockpitScopeMetadata & {
+  stock_summary: {
+    urgent_shortage_count: number;
+    shortage_expected_count: number;
+    usage_unknown_count: number;
+    equivalence_review_count: number;
+    inbound_stock_signal_count: number;
+    linked_to_stock_event_count: number;
+  };
+  stock_items: DashboardMedicationStockRiskItem[];
+  stock_items_total_count: number;
+  stock_items_visible_count: number;
+  stock_items_hidden_count: number;
+};
+
 export type DashboardReportBillingItem = {
   id: string;
   kind:

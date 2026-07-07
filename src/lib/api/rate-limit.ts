@@ -585,6 +585,7 @@ export const API_ROUTE_TEMPLATES = [
   '/api/dashboard/cockpit',
   '/api/dashboard/cockpit/details',
   '/api/dashboard/cockpit/report-billing',
+  '/api/dashboard/cockpit/stock-risks',
   '/api/dashboard/cockpit/summary',
   '/api/dashboard/cockpit/team',
   '/api/dashboard/clerk-support',

@@ -47,12 +47,14 @@ import type {
   DashboardCockpitCommentsResponse,
   DashboardCockpitDetailsResponse,
   DashboardCockpitInboundResponse,
+  DashboardCockpitMedicationStockResponse,
   DashboardCockpitReportBillingResponse,
   DashboardCockpitResponse,
   DashboardCockpitScope,
   DashboardCockpitScopeMetadata,
   DashboardCockpitSummaryResponse,
   DashboardCockpitTeamResponse,
+  DashboardMedicationStockRiskItem,
   DashboardReportBillingItem,
   DashboardUrgentItem,
 } from '@/types/dashboard-cockpit';
@@ -66,6 +68,8 @@ const COMMENT_FEED_RESPONSE_LIMIT = 5;
 const COMMENT_EXCERPT_LENGTH = 96;
 const INBOUND_FEED_FETCH_LIMIT = 40;
 const INBOUND_FEED_RESPONSE_LIMIT = 8;
+const MEDICATION_STOCK_RISK_FETCH_LIMIT = 40;
+const MEDICATION_STOCK_RISK_RESPONSE_LIMIT = 10;
 const CALLBACK_URGENT_FETCH_LIMIT = 12;
 const REPORT_URGENT_FETCH_LIMIT = 12;
 const BILLING_URGENT_FETCH_LIMIT = 12;
@@ -83,6 +87,7 @@ type DashboardCockpitPart =
   | 'team'
   | 'comments'
   | 'inbound'
+  | 'stock-risks'
   | 'report-billing';
 
 type DashboardCockpitSegmentResponse =
@@ -92,6 +97,7 @@ type DashboardCockpitSegmentResponse =
   | DashboardCockpitTeamResponse
   | DashboardCockpitCommentsResponse
   | DashboardCockpitInboundResponse
+  | DashboardCockpitMedicationStockResponse
   | DashboardCockpitReportBillingResponse;
 
 type DashboardCockpitScopeContext = {
@@ -190,6 +196,32 @@ type DashboardBillingUrgentCandidate = {
 type DashboardBillingUrgentResult = {
   items: DashboardUrgentItem[];
   totalCount: number;
+};
+
+type DashboardMedicationStockSignalRow = {
+  id: string;
+  patient_id: string | null;
+  case_id: string | null;
+  inbound_event_id: string;
+  signal_type: string;
+  extracted_text: string | null;
+  extracted_medication_name: string | null;
+  extracted_quantity: number | null;
+  extracted_unit: string | null;
+  source_confidence: string;
+  review_status: string;
+  action_status: string;
+  created_at: Date;
+  updated_at: Date;
+  inbound_event: {
+    id: string;
+    patient_id: string | null;
+    case_id: string | null;
+    source_channel: string;
+    sender_role: string;
+    normalized_summary: string | null;
+    received_at: Date;
+  };
 };
 
 type DashboardReportBillingDraftReport = {
@@ -1589,6 +1621,144 @@ function buildInboundTitle(args: {
   return `${args.channelLabel}連絡を受信`;
 }
 
+function buildDashboardMedicationStockSignalWhere(args: {
+  orgId: string;
+  assignmentScope: DashboardAssignmentScope;
+}): Prisma.InboundCommunicationSignalWhereInput {
+  const restricted = hasRestrictedDashboardScope(args.assignmentScope);
+  const scopeClauses = [
+    ...(args.assignmentScope.patientIds && args.assignmentScope.patientIds.length > 0
+      ? [{ patient_id: { in: args.assignmentScope.patientIds } }]
+      : []),
+    ...(args.assignmentScope.caseIds && args.assignmentScope.caseIds.length > 0
+      ? [{ case_id: { in: args.assignmentScope.caseIds } }]
+      : []),
+  ];
+
+  const statusWhere: Prisma.InboundCommunicationSignalWhereInput = {
+    OR: [
+      { review_status: 'needs_review' },
+      { action_status: 'not_linked' },
+      { action_status: 'linked_to_task' },
+      { action_status: 'linked_to_stock_event' },
+    ],
+  };
+
+  return {
+    org_id: args.orgId,
+    signal_domain: 'medication_stock',
+    ...(restricted
+      ? scopeClauses.length > 0
+        ? { AND: [{ OR: scopeClauses }, statusWhere] }
+        : { id: { in: [] } }
+      : statusWhere),
+  };
+}
+
+function medicationStockRiskLevel(signal: DashboardMedicationStockSignalRow) {
+  if (signal.action_status === 'linked_to_stock_event') return 'linked';
+  if (signal.signal_type === 'out_of_stock_text') return 'urgent';
+  if (signal.signal_type === 'observed_quantity' && signal.extracted_quantity === 0) {
+    return 'urgent';
+  }
+  if (signal.signal_type === 'low_stock_text' || signal.signal_type === 'refill_request') {
+    return 'shortage_expected';
+  }
+  if (signal.signal_type === 'usage_frequency' || signal.signal_type === 'usage_delta') {
+    return 'usage_unknown';
+  }
+  return 'review_required';
+}
+
+function medicationStockRiskLabel(riskLevel: DashboardMedicationStockRiskItem['risk_level']) {
+  switch (riskLevel) {
+    case 'urgent':
+      return '不足報告';
+    case 'shortage_expected':
+      return '不足見込み';
+    case 'usage_unknown':
+      return '使用状況確認';
+    case 'linked':
+      return '台帳反映済み';
+    case 'review_required':
+      return '確認待ち';
+  }
+}
+
+function medicationStockRiskBadgeTone(
+  riskLevel: DashboardMedicationStockRiskItem['risk_level'],
+): DashboardMedicationStockRiskItem['badges'][number]['tone'] {
+  switch (riskLevel) {
+    case 'urgent':
+      return 'danger';
+    case 'shortage_expected':
+    case 'usage_unknown':
+      return 'warning';
+    case 'linked':
+      return 'success';
+    case 'review_required':
+      return 'info';
+  }
+}
+
+function formatMedicationStockQuantity(signal: DashboardMedicationStockSignalRow) {
+  if (signal.extracted_quantity == null || !signal.extracted_unit) return null;
+  return `${signal.extracted_quantity}${signal.extracted_unit}`;
+}
+
+function buildMedicationStockSignalHref(signal: DashboardMedicationStockSignalRow) {
+  const patientId = signal.patient_id ?? signal.inbound_event.patient_id;
+  if (patientId) {
+    return buildPatientHref(patientId, '#medication-stock-events');
+  }
+  return `/communications/inbound?signal=${encodeURIComponent(signal.id)}`;
+}
+
+function buildMedicationStockRiskItem(args: {
+  signal: DashboardMedicationStockSignalRow;
+  patientName: string | null;
+}): DashboardMedicationStockRiskItem {
+  const signal = args.signal;
+  const riskLevel = medicationStockRiskLevel(signal);
+  const quantityLabel = formatMedicationStockQuantity(signal);
+  const channel = String(signal.inbound_event.source_channel);
+  const sourceLabel = INBOUND_CHANNEL_LABELS[channel] ?? '受信';
+  const sourceText = signal.extracted_text ?? signal.inbound_event.normalized_summary ?? null;
+
+  return {
+    id: `medication_stock_signal:${signal.id}`,
+    source: 'inbound_signal',
+    signal_id: signal.id,
+    inbound_event_id: signal.inbound_event_id,
+    patient_id: signal.patient_id ?? signal.inbound_event.patient_id,
+    patient_name: args.patientName,
+    case_id: signal.case_id ?? signal.inbound_event.case_id,
+    risk_level: riskLevel,
+    signal_type: signal.signal_type,
+    review_status: signal.review_status,
+    action_status: signal.action_status,
+    medication_name: signal.extracted_medication_name,
+    quantity_label: quantityLabel,
+    source_text: sourceText,
+    source_channel: channel,
+    source_label: sourceLabel,
+    sender_role: String(signal.inbound_event.sender_role),
+    received_at: signal.inbound_event.received_at.toISOString(),
+    updated_at: signal.updated_at.toISOString(),
+    action_href: buildMedicationStockSignalHref(signal),
+    action_label:
+      signal.action_status === 'linked_to_stock_event' ? '残数反映を確認' : '残数報告を確認',
+    badges: [
+      { label: medicationStockRiskLabel(riskLevel), tone: medicationStockRiskBadgeTone(riskLevel) },
+      { label: sourceLabel, tone: 'neutral' },
+      ...(quantityLabel ? [{ label: quantityLabel, tone: 'info' as const }] : []),
+      ...(signal.extracted_medication_name
+        ? [{ label: signal.extracted_medication_name, tone: 'info' as const }]
+        : [{ label: '薬剤名確認', tone: 'warning' as const }]),
+    ],
+  };
+}
+
 async function readAllowedCommentEntities(args: {
   orgId: string;
   assignmentScope: DashboardAssignmentScope;
@@ -1866,6 +2036,156 @@ async function readDashboardInbound(args: {
     inbound_safety_signal_count: inboundItems.filter((item) => item.has_patient_safety_signal)
       .length,
   };
+}
+
+async function readDashboardMedicationStockRisks(args: {
+  ctx: AuthContext;
+  scopeContext: DashboardCockpitScopeContext;
+}): Promise<DashboardCockpitMedicationStockResponse> {
+  const where = buildDashboardMedicationStockSignalWhere({
+    orgId: args.ctx.orgId,
+    assignmentScope: args.scopeContext.assignmentScope,
+  });
+  const urgentWhere: Prisma.InboundCommunicationSignalWhereInput = {
+    AND: [
+      where,
+      {
+        OR: [
+          { signal_type: 'out_of_stock_text' },
+          { signal_type: 'observed_quantity', extracted_quantity: 0 },
+        ],
+      },
+    ],
+  };
+  const shortageWhere: Prisma.InboundCommunicationSignalWhereInput = {
+    AND: [where, { signal_type: { in: ['low_stock_text', 'refill_request'] } }],
+  };
+  const usageWhere: Prisma.InboundCommunicationSignalWhereInput = {
+    AND: [where, { signal_type: { in: ['usage_frequency', 'usage_delta'] } }],
+  };
+  const equivalenceWhere: Prisma.InboundCommunicationSignalWhereInput = {
+    AND: [
+      where,
+      {
+        OR: [{ extracted_medication_name: null }, { extracted_medication_name: '' }],
+      },
+    ],
+  };
+  const linkedWhere: Prisma.InboundCommunicationSignalWhereInput = {
+    AND: [where, { action_status: 'linked_to_stock_event' }],
+  };
+
+  return withOrgContext(
+    args.ctx.orgId,
+    async (tx) => {
+      const [
+        signals,
+        totalCount,
+        urgentShortageCount,
+        shortageExpectedCount,
+        usageUnknownCount,
+        equivalenceReviewCount,
+        linkedToStockEventCount,
+      ] = await Promise.all([
+        tx.inboundCommunicationSignal.findMany({
+          where,
+          orderBy: [{ updated_at: 'desc' }, { id: 'asc' }],
+          take: MEDICATION_STOCK_RISK_FETCH_LIMIT,
+          select: {
+            id: true,
+            patient_id: true,
+            case_id: true,
+            inbound_event_id: true,
+            signal_type: true,
+            extracted_text: true,
+            extracted_medication_name: true,
+            extracted_quantity: true,
+            extracted_unit: true,
+            source_confidence: true,
+            review_status: true,
+            action_status: true,
+            created_at: true,
+            updated_at: true,
+            inbound_event: {
+              select: {
+                id: true,
+                patient_id: true,
+                case_id: true,
+                source_channel: true,
+                sender_role: true,
+                normalized_summary: true,
+                received_at: true,
+              },
+            },
+          },
+        }),
+        tx.inboundCommunicationSignal.count({ where }),
+        tx.inboundCommunicationSignal.count({ where: urgentWhere }),
+        tx.inboundCommunicationSignal.count({ where: shortageWhere }),
+        tx.inboundCommunicationSignal.count({ where: usageWhere }),
+        tx.inboundCommunicationSignal.count({ where: equivalenceWhere }),
+        tx.inboundCommunicationSignal.count({ where: linkedWhere }),
+      ]);
+
+      const visibleSignals = signals.slice(0, MEDICATION_STOCK_RISK_RESPONSE_LIMIT);
+      const patientIds = Array.from(
+        new Set(
+          visibleSignals
+            .map((signal) => signal.patient_id ?? signal.inbound_event.patient_id)
+            .filter((patientId): patientId is string => Boolean(patientId)),
+        ),
+      );
+      const patients =
+        patientIds.length > 0
+          ? await tx.patient.findMany({
+              where: { org_id: args.ctx.orgId, id: { in: patientIds } },
+              select: { id: true, name: true },
+            })
+          : [];
+      const patientNameById = new Map(patients.map((patient) => [patient.id, patient.name]));
+
+      const stockItems = visibleSignals
+        .map((signal) =>
+          buildMedicationStockRiskItem({
+            signal,
+            patientName: signal.patient_id
+              ? (patientNameById.get(signal.patient_id) ?? null)
+              : signal.inbound_event.patient_id
+                ? (patientNameById.get(signal.inbound_event.patient_id) ?? null)
+                : null,
+          }),
+        )
+        .sort((left, right) => {
+          const riskWeight: Record<DashboardMedicationStockRiskItem['risk_level'], number> = {
+            urgent: 0,
+            shortage_expected: 1,
+            usage_unknown: 2,
+            review_required: 3,
+            linked: 4,
+          };
+          const weightDiff = riskWeight[left.risk_level] - riskWeight[right.risk_level];
+          if (weightDiff !== 0) return weightDiff;
+          return right.updated_at.localeCompare(left.updated_at);
+        });
+
+      return {
+        ...args.scopeContext.metadata,
+        stock_summary: {
+          urgent_shortage_count: urgentShortageCount,
+          shortage_expected_count: shortageExpectedCount,
+          usage_unknown_count: usageUnknownCount,
+          equivalence_review_count: equivalenceReviewCount,
+          inbound_stock_signal_count: totalCount,
+          linked_to_stock_event_count: linkedToStockEventCount,
+        },
+        stock_items: stockItems,
+        stock_items_total_count: totalCount,
+        stock_items_visible_count: stockItems.length,
+        stock_items_hidden_count: Math.max(totalCount - stockItems.length, 0),
+      };
+    },
+    { requestContext: args.ctx, maxWaitMs: 2000, timeoutMs: 3000 },
+  );
 }
 
 async function readDashboardCallbackUrgents(args: {
@@ -2652,6 +2972,9 @@ async function buildCockpitSegment(args: {
   }
   if (args.part === 'inbound') {
     return readDashboardInbound({ ctx: args.ctx, scopeContext });
+  }
+  if (args.part === 'stock-risks') {
+    return readDashboardMedicationStockRisks({ ctx: args.ctx, scopeContext });
   }
   if (args.part === 'report-billing') {
     return readDashboardReportBilling({ ctx: args.ctx, scopeContext });

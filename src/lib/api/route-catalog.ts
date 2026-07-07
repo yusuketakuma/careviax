@@ -771,6 +771,13 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'dashboard',
   },
   {
+    path: '/api/dashboard/cockpit/stock-risks',
+    methods: ['GET'],
+    permission: 'canViewDashboard',
+    description: '運用コックピット 残数リスク segment',
+    area: 'dashboard',
+  },
+  {
     path: '/api/dashboard/monthly-stats',
     methods: ['GET'],
     permission: 'canViewDashboard',

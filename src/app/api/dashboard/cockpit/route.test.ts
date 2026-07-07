@@ -28,6 +28,7 @@ const {
   inboundCommunicationEventFindManyMock,
   inboundCommunicationEventCountMock,
   inboundCommunicationSignalFindManyMock,
+  inboundCommunicationSignalCountMock,
   visitScheduleContactLogFindManyMock,
   visitScheduleContactLogCountMock,
   deliveryRecordFindManyMock,
@@ -64,6 +65,7 @@ const {
   inboundCommunicationEventFindManyMock: vi.fn(),
   inboundCommunicationEventCountMock: vi.fn(),
   inboundCommunicationSignalFindManyMock: vi.fn(),
+  inboundCommunicationSignalCountMock: vi.fn(),
   visitScheduleContactLogFindManyMock: vi.fn(),
   visitScheduleContactLogCountMock: vi.fn(),
   deliveryRecordFindManyMock: vi.fn(),
@@ -104,7 +106,10 @@ vi.mock('@/lib/db/client', () => ({
       findMany: inboundCommunicationEventFindManyMock,
       count: inboundCommunicationEventCountMock,
     },
-    inboundCommunicationSignal: { findMany: inboundCommunicationSignalFindManyMock },
+    inboundCommunicationSignal: {
+      findMany: inboundCommunicationSignalFindManyMock,
+      count: inboundCommunicationSignalCountMock,
+    },
     visitScheduleContactLog: {
       findMany: visitScheduleContactLogFindManyMock,
       count: visitScheduleContactLogCountMock,
@@ -143,6 +148,7 @@ import { GET as GETTeam } from './team/route';
 import { GET as GETComments } from './comments/route';
 import { GET as GETInbound } from './inbound/route';
 import { GET as GETReportBilling } from './report-billing/route';
+import { GET as GETStockRisks } from './stock-risks/route';
 
 function createRequest(search = '', path = '/api/dashboard/cockpit') {
   return new NextRequest(`http://localhost${path}${search}`, {
@@ -278,6 +284,7 @@ describe('/api/dashboard/cockpit', () => {
     inboundCommunicationEventFindManyMock.mockResolvedValue([]);
     inboundCommunicationEventCountMock.mockResolvedValue(0);
     inboundCommunicationSignalFindManyMock.mockResolvedValue([]);
+    inboundCommunicationSignalCountMock.mockResolvedValue(0);
     visitScheduleContactLogFindManyMock.mockResolvedValue([]);
     visitScheduleContactLogCountMock.mockResolvedValue(0);
     deliveryRecordFindManyMock.mockResolvedValue([]);
@@ -292,6 +299,10 @@ describe('/api/dashboard/cockpit', () => {
         deliveryRecord: {
           findMany: deliveryRecordFindManyMock,
           count: deliveryRecordCountMock,
+        },
+        inboundCommunicationSignal: {
+          findMany: inboundCommunicationSignalFindManyMock,
+          count: inboundCommunicationSignalCountMock,
         },
         visitSchedule: {
           findMany: visitScheduleFindManyMock,
@@ -1038,6 +1049,262 @@ describe('/api/dashboard/cockpit', () => {
       ],
     });
     expect(prepCountQuery?.where).toEqual(prepFindQuery?.where);
+  });
+
+  it('returns medication stock risks from formal inbound signals without full cockpit fields', async () => {
+    inboundCommunicationSignalCountMock
+      .mockResolvedValueOnce(4)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1);
+    inboundCommunicationSignalFindManyMock.mockResolvedValue([
+      {
+        id: 'signal_urgent',
+        patient_id: 'patient_stock_1',
+        case_id: 'case_stock_1',
+        inbound_event_id: 'event_urgent',
+        signal_type: 'out_of_stock_text',
+        extracted_text: '湿布がなくなりました',
+        extracted_medication_name: '湿布A',
+        extracted_quantity: null,
+        extracted_unit: null,
+        source_confidence: 'manual',
+        review_status: 'needs_review',
+        action_status: 'not_linked',
+        created_at: new Date(2026, 5, 12, 8, 10),
+        updated_at: new Date(2026, 5, 12, 9, 20),
+        inbound_event: {
+          id: 'event_urgent',
+          patient_id: 'patient_stock_1',
+          case_id: 'case_stock_1',
+          source_channel: 'mcs',
+          sender_name: '訪問看護師 山田',
+          sender_role: 'nurse',
+          raw_text: '湿布がなくなりました。090-9999-9999',
+          normalized_summary: '湿布不足の報告',
+          received_at: new Date(2026, 5, 12, 9, 0),
+        },
+      },
+      {
+        id: 'signal_usage',
+        patient_id: 'patient_stock_2',
+        case_id: null,
+        inbound_event_id: 'event_usage',
+        signal_type: 'usage_delta',
+        extracted_text: null,
+        extracted_medication_name: 'カロナール',
+        extracted_quantity: 2,
+        extracted_unit: '錠',
+        source_confidence: 'text_parsed_high',
+        review_status: 'accepted',
+        action_status: 'not_linked',
+        created_at: new Date(2026, 5, 12, 8, 15),
+        updated_at: new Date(2026, 5, 12, 8, 50),
+        inbound_event: {
+          id: 'event_usage',
+          patient_id: 'patient_stock_2',
+          case_id: null,
+          source_channel: 'phone',
+          sender_name: '家族 佐藤',
+          sender_role: 'family',
+          raw_text: 'カロナールを2錠使いました。secret@example.com',
+          normalized_summary: 'カロナールを2錠使用',
+          received_at: new Date(2026, 5, 12, 8, 30),
+        },
+      },
+      {
+        id: 'signal_missing_medication',
+        patient_id: 'patient_stock_3',
+        case_id: null,
+        inbound_event_id: 'event_missing',
+        signal_type: 'observed_quantity',
+        extracted_text: '薬が残り4枚です',
+        extracted_medication_name: null,
+        extracted_quantity: 4,
+        extracted_unit: '枚',
+        source_confidence: 'text_parsed_low',
+        review_status: 'needs_review',
+        action_status: 'linked_to_task',
+        created_at: new Date(2026, 5, 12, 8, 20),
+        updated_at: new Date(2026, 5, 12, 8, 45),
+        inbound_event: {
+          id: 'event_missing',
+          patient_id: 'patient_stock_3',
+          case_id: null,
+          source_channel: 'fax',
+          sender_name: '施設職員',
+          sender_role: 'facility_staff',
+          raw_text: '薬が残り4枚です',
+          normalized_summary: null,
+          received_at: new Date(2026, 5, 12, 8, 40),
+        },
+      },
+      {
+        id: 'signal_linked',
+        patient_id: 'patient_stock_4',
+        case_id: null,
+        inbound_event_id: 'event_linked',
+        signal_type: 'low_stock_text',
+        extracted_text: '軟膏が少ないです',
+        extracted_medication_name: '軟膏B',
+        extracted_quantity: null,
+        extracted_unit: null,
+        source_confidence: 'manual',
+        review_status: 'accepted',
+        action_status: 'linked_to_stock_event',
+        created_at: new Date(2026, 5, 12, 8, 25),
+        updated_at: new Date(2026, 5, 12, 8, 35),
+        inbound_event: {
+          id: 'event_linked',
+          patient_id: 'patient_stock_4',
+          case_id: null,
+          source_channel: 'manual',
+          sender_name: '薬剤師',
+          sender_role: 'pharmacist',
+          raw_text: '軟膏が少ないです',
+          normalized_summary: null,
+          received_at: new Date(2026, 5, 12, 8, 35),
+        },
+      },
+    ]);
+    patientFindManyMock.mockResolvedValue([
+      { id: 'patient_stock_1', name: '残数 一郎' },
+      { id: 'patient_stock_2', name: '残数 二郎' },
+      { id: 'patient_stock_3', name: '残数 三郎' },
+      { id: 'patient_stock_4', name: '残数 四郎' },
+    ]);
+
+    const response = (await GETStockRisks(createRequest('', '/api/dashboard/cockpit/stock-risks'), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const json = await response.json();
+    expect(json.data.stock_summary).toEqual({
+      urgent_shortage_count: 1,
+      shortage_expected_count: 1,
+      usage_unknown_count: 1,
+      equivalence_review_count: 1,
+      inbound_stock_signal_count: 4,
+      linked_to_stock_event_count: 1,
+    });
+    expect(json.data.stock_items_total_count).toBe(4);
+    expect(json.data.stock_items_visible_count).toBe(4);
+    expect(json.data.stock_items_hidden_count).toBe(0);
+    expect(json.data.cycle_status_counts).toBeUndefined();
+    expect(json.data.audit_queue).toBeUndefined();
+    expect(json.data.today_visits).toBeUndefined();
+    expect(json.data.items).toBeUndefined();
+    expect(json.data.stock_items.map((item: { id: string }) => item.id)).toEqual([
+      'medication_stock_signal:signal_urgent',
+      'medication_stock_signal:signal_usage',
+      'medication_stock_signal:signal_missing_medication',
+      'medication_stock_signal:signal_linked',
+    ]);
+    expect(json.data.stock_items[0]).toMatchObject({
+      risk_level: 'urgent',
+      medication_name: '湿布A',
+      patient_name: '残数 一郎',
+      source_text: '湿布がなくなりました',
+      source_label: 'MCS',
+      action_href: '/patients/patient_stock_1#medication-stock-events',
+      action_label: '残数報告を確認',
+    });
+    expect(json.data.stock_items[1]).toMatchObject({
+      risk_level: 'usage_unknown',
+      quantity_label: '2錠',
+      source_text: 'カロナールを2錠使用',
+    });
+    expect(json.data.stock_items[2]).toMatchObject({
+      risk_level: 'review_required',
+      medication_name: null,
+      quantity_label: '4枚',
+    });
+    expect(json.data.stock_items[3]).toMatchObject({
+      risk_level: 'linked',
+      action_label: '残数反映を確認',
+    });
+
+    const responseBody = JSON.stringify(json.data);
+    expect(responseBody).not.toContain('sender_contact');
+    expect(responseBody).not.toContain('訪問看護師 山田');
+    expect(responseBody).not.toContain('external_url');
+    expect(responseBody).not.toContain('attachment');
+    expect(responseBody).not.toContain('090-9999-9999');
+    expect(responseBody).not.toContain('secret@example.com');
+
+    expect(inboundCommunicationSignalFindManyMock.mock.calls.at(-1)?.[0]?.select).toEqual({
+      id: true,
+      patient_id: true,
+      case_id: true,
+      inbound_event_id: true,
+      signal_type: true,
+      extracted_text: true,
+      extracted_medication_name: true,
+      extracted_quantity: true,
+      extracted_unit: true,
+      source_confidence: true,
+      review_status: true,
+      action_status: true,
+      created_at: true,
+      updated_at: true,
+      inbound_event: {
+        select: {
+          id: true,
+          patient_id: true,
+          case_id: true,
+          source_channel: true,
+          sender_role: true,
+          normalized_summary: true,
+          received_at: true,
+        },
+      },
+    });
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: authContextMock,
+      maxWaitMs: 2000,
+      timeoutMs: 3000,
+    });
+    expect(serverCacheSetMock).not.toHaveBeenCalled();
+  });
+
+  it('scopes medication stock risks by assigned patients and cases for non-admin members', async () => {
+    authContextMock.role = 'pharmacist';
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
+
+    const response = (await GETStockRisks(
+      createRequest('?scope=team', '/api/dashboard/cockpit/stock-risks'),
+      {
+        params: Promise.resolve({}),
+      },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const json = await response.json();
+    expect(json.data.scope).toEqual({
+      requested: 'team',
+      applied: 'mine',
+      can_view_team: false,
+    });
+    expect(inboundCommunicationSignalFindManyMock.mock.calls.at(-1)?.[0]?.where).toMatchObject({
+      org_id: 'org_1',
+      signal_domain: 'medication_stock',
+      AND: [
+        { OR: [{ patient_id: { in: ['patient_1'] } }, { case_id: { in: ['case_1'] } }] },
+        {
+          OR: [
+            { review_status: 'needs_review' },
+            { action_status: 'not_linked' },
+            { action_status: 'linked_to_task' },
+            { action_status: 'linked_to_stock_event' },
+          ],
+        },
+      ],
+    });
   });
 
   it('returns the report-billing segment without full cockpit fields or raw evidence', async () => {
