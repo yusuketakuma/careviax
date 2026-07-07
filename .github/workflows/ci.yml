@@ -58,6 +58,9 @@ jobs:
       - name: State color token check
         run: pnpm colors:check
 
+      - name: Module boundary check
+        run: pnpm boundaries:check
+
       - name: EventBridge schedule definition check
         run: pnpm eventbridge-schedules:check
 

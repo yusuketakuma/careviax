@@ -41,6 +41,54 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOD-BOUND-001 structured module-boundary ratchet（scoped tooling slice）。
+  - current task:
+    `Plans.md` の `MOD-BOUND-001` に従い、実装済み module registry / active pharmacy module の境界チェックを
+    structured allowlist と CI gate へ接続する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `package.json`,
+    `.github/workflows/ci.yml`,
+    `tools/scripts/check-module-boundaries.mjs`,
+    `tools/scripts/check-module-boundaries.test.ts`,
+    `tools/module-boundary-allowlist.json`,
+    `src/core/module-registry/index.ts`,
+    `src/core/module-registry/module-ids.json`,
+    `src/modules/active-modules.ts`,
+    `src/modules/pharmacy/index.ts`,
+    `docs/architecture/module-boundary.md`。
+  - files changed:
+    `.github/workflows/ci.yml`,
+    `Plans.md`,
+    `docs/architecture/module-boundary.md`,
+    `tools/module-boundary-allowlist.json`,
+    `tools/scripts/check-module-boundaries.mjs`,
+    `tools/scripts/check-module-boundaries.test.ts`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    module-boundary allowlist entry に `owner`、`debtId`、`plannedAction`、non-empty `targets` を必須化した。
+    checker は owner別の allowlisted debt report を出すようにし、CI に `pnpm boundaries:check` を追加した。
+    現行 allowlist 6 files / 7 imports へ owner と planned action を付与し、module-boundary docs と Plans の残作業を更新した。
+  - bugs found:
+    `pnpm boundaries:check` が local script として存在する一方、CIには未接続だった。
+    allowlist は `reason` と `expectedCount` だけで、どの Plans task が負債削減を持つか機械的に追えなかった。
+  - security risks reduced:
+    patient timeline、patient share、visit medication deadline、billing preview などPHI/薬剤/請求隣接の既存境界負債に owner と削減方針を付けた。
+    実装変更は static tooling / docs / CI のみで、DB migration、API route behavior、auth/authz、PHI payload、外部送信、production data mutation は変更していない。
+  - performance issues improved:
+    実行時性能変更なし。CIで module boundary ratchet が走るため、core -> pharmacy / sibling module / app/api -> module internal の新規依存増加を早期検出できる。
+  - validation:
+    `pnpm boundaries:check` → pass（0 new violations、7 allowlisted debt imports / 6 files、owner report: `MOD-BILLING-001=1`, `MOD-BOUND-001=1`, `MOD-SHARE-001=1`, `MOD-VISIT-001=1`, `MOV-001=3`）。
+    `pnpm exec vitest run tools/scripts/check-module-boundaries.test.ts src/core/module-registry/index.test.ts --reporter=dot --testTimeout=30000` → pass（2 files / 12 tests）。
+    `pnpm exec eslint tools/scripts/check-module-boundaries.test.ts src/core/module-registry/index.test.ts` → pass。
+    `pnpm exec prettier --check tools/scripts/check-module-boundaries.mjs tools/scripts/check-module-boundaries.test.ts tools/module-boundary-allowlist.json .github/workflows/ci.yml docs/architecture/module-boundary.md` → pass。
+    `git diff --check -- .github/workflows/ci.yml Plans.md docs/architecture/module-boundary.md tools/module-boundary-allowlist.json tools/scripts/check-module-boundaries.mjs tools/scripts/check-module-boundaries.test.ts ops/refactor/STATE.md` → pass。
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` → pass。
+  - remaining work:
+    Provider unknown/failure/PHI masking contract はこの slice では解決していない。`MOD-PATIENT-001`、`MOD-VISIT-001`、`MOD-REPORT-001`、`MOD-SHARE-001`、`MOD-BILLING-001` の各domain sliceで個別にテストする。
+    `MOD-BOUND-001` の次作業は allowlist count を実際に減らす依存反転。
+
 - codex: Plans.md implemented-task pruning（scoped doc slice）。
   - current task:
     `Plans.md` 内の実装済み task を削り、残る未実装 task だけが次の実装候補として読めるように整理する。

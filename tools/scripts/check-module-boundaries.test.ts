@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 
 const SCRIPT_PATH = path.join(process.cwd(), 'tools/scripts/check-module-boundaries.mjs');
 
-function createFixtureRepo(files: Record<string, string>) {
+function createFixtureRepo(files: Record<string, string>, allowlist: unknown = { entries: [] }) {
   const root = mkdtempSync(path.join(tmpdir(), 'phos-boundary-'));
   for (const dir of [
     'tools/scripts',
@@ -20,10 +20,7 @@ function createFixtureRepo(files: Record<string, string>) {
     mkdirSync(path.join(root, dir), { recursive: true });
   }
   cpSync(SCRIPT_PATH, path.join(root, 'tools/scripts/check-module-boundaries.mjs'));
-  writeFileSync(
-    path.join(root, 'tools/module-boundary-allowlist.json'),
-    JSON.stringify({ entries: [] }),
-  );
+  writeFileSync(path.join(root, 'tools/module-boundary-allowlist.json'), JSON.stringify(allowlist));
   writeFileSync(
     path.join(root, 'src/core/module-registry/module-ids.json'),
     JSON.stringify({
@@ -87,5 +84,61 @@ describe('check-module-boundaries', () => {
     });
 
     expect(() => runBoundaryCheck(root)).toThrow(/core must not import feature modules/);
+  });
+
+  it.each([
+    ['owner', /entries\[0\]\.owner is required/],
+    ['debtId', /entries\[0\]\.debtId is required/],
+    ['plannedAction', /entries\[0\]\.plannedAction is required/],
+    ['targets', /entries\[0\]\.targets must be a non-empty string array/],
+  ] as const)('requires %s for allowlisted debt', (missingField, errorPattern) => {
+    const allowlistEntry = {
+      path: 'src/server/services/patient-detail.ts',
+      expectedCount: 1,
+      owner: 'MOD-PATIENT-001',
+      debtId: 'DEBT-PATIENT-001',
+      reason: 'Legacy patient detail link helper imports pharmacy-specific navigation.',
+      plannedAction: 'Move prescription href construction behind a pharmacy module adapter.',
+      targets: ['@/lib/prescriptions/navigation'],
+    };
+    delete allowlistEntry[missingField];
+
+    const root = createFixtureRepo(
+      {
+        'src/server/services/patient-detail.ts':
+          "import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';\n",
+      },
+      {
+        entries: [allowlistEntry],
+      },
+    );
+
+    expect(() => runBoundaryCheck(root)).toThrow(errorPattern);
+  });
+
+  it('prints an owner-level ratchet report for allowlisted boundary debt', () => {
+    const root = createFixtureRepo(
+      {
+        'src/server/services/patient-detail.ts':
+          "import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';\n",
+      },
+      {
+        entries: [
+          {
+            path: 'src/server/services/patient-detail.ts',
+            expectedCount: 1,
+            owner: 'MOD-PATIENT-001',
+            debtId: 'DEBT-PATIENT-001',
+            reason: 'Legacy patient detail link helper imports pharmacy-specific navigation.',
+            plannedAction: 'Move prescription href construction behind a pharmacy module adapter.',
+            targets: ['@/lib/prescriptions/navigation'],
+          },
+        ],
+      },
+    );
+
+    expect(runBoundaryCheck(root)).toContain(
+      'Allowlisted module-boundary debt by owner: MOD-PATIENT-001=1.',
+    );
   });
 });

@@ -230,8 +230,24 @@ function readAllowlist() {
     const label = `${ALLOWLIST_PATH}:entries[${index}]`;
     if (!entry || typeof entry !== 'object') throw new Error(`${label} must be an object`);
     if (typeof entry.path !== 'string' || !entry.path) throw new Error(`${label}.path is required`);
+    if (typeof entry.owner !== 'string' || !entry.owner.trim()) {
+      throw new Error(`${label}.owner is required`);
+    }
+    if (typeof entry.debtId !== 'string' || !entry.debtId.trim()) {
+      throw new Error(`${label}.debtId is required`);
+    }
     if (typeof entry.reason !== 'string' || !entry.reason) {
       throw new Error(`${label}.reason is required`);
+    }
+    if (typeof entry.plannedAction !== 'string' || !entry.plannedAction.trim()) {
+      throw new Error(`${label}.plannedAction is required`);
+    }
+    if (
+      !Array.isArray(entry.targets) ||
+      entry.targets.length === 0 ||
+      entry.targets.some((target) => typeof target !== 'string' || !target.trim())
+    ) {
+      throw new Error(`${label}.targets must be a non-empty string array`);
     }
     if (
       typeof entry.expectedCount !== 'number' ||
@@ -359,6 +375,20 @@ if (newViolations.length > 0 || staleEntries.length > 0) {
 }
 
 const totalDebt = entries.reduce((sum, entry) => sum + entry.actualCount, 0);
+const debtByOwner = entries
+  .filter((entry) => entry.actualCount > 0)
+  .reduce((summary, entry) => {
+    summary.set(entry.owner, (summary.get(entry.owner) ?? 0) + entry.actualCount);
+    return summary;
+  }, new Map());
 console.log(
   `Module boundary check passed: 0 new violations, ${totalDebt} allowlisted debt imports across ${entries.length} files.`,
 );
+if (debtByOwner.size > 0) {
+  console.log(
+    `Allowlisted module-boundary debt by owner: ${[...debtByOwner.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([owner, count]) => `${owner}=${count}`)
+      .join(', ')}.`,
+  );
+}
