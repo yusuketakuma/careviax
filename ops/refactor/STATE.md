@@ -41,6 +41,45 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOD-BOUND-001 patient-share type extraction / allowlist reduction（pending commit）。
+  - current task:
+    `MOD-SHARE-001` の前段として、`patient-share-policy.ts` が `pharmacy-partnerships.ts` から型だけを借りる
+    module-boundary 負債を削除し、allowlist count をさらに減らす。
+  - files inspected:
+    `tools/module-boundary-allowlist.json`,
+    `src/server/services/patient-share-policy.ts`,
+    `src/server/services/patient-share-policy.test.ts`,
+    `src/server/services/pharmacy-partnerships.ts`,
+    `src/server/services/pharmacy-partnerships.test.ts`.
+  - files changed:
+    `src/server/services/patient-share-types.ts`,
+    `src/server/services/patient-share-policy.ts`,
+    `src/server/services/pharmacy-partnerships.ts`,
+    `tools/module-boundary-allowlist.json`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `PatientShareCaseLifecycleStatus` と `PharmacyOwner` を neutral な `patient-share-types.ts` へ切り出した。
+    `pharmacy-partnerships.ts` は互換のため type re-export を維持し、`patient-share-policy.ts` は neutral type module から直接 import するようにした。
+    stale になった `patient-share-policy.ts` の allowlist entry を削除し、allowlist は 6 imports / 5 files から
+    5 imports / 4 files へ減少した。
+  - bugs found:
+    patient share の policy 関数が実装依存ではなく型だけのために pharmacy partnership service へ依存し、module boundary debt として残っていた。
+  - security risks reduced:
+    患者共有の data output / correction policy が薬局間連携実装へ直接触れず、share policy の境界が明確になった。
+    PHI payload、auth/authz、DB、外部送信は変更していない。
+  - performance issues improved:
+    実行時性能変更なし。module-boundary ratchet の既存負債をさらに1件削減した。
+  - validation:
+    `pnpm boundaries:check` → pass（0 new violations、5 allowlisted debt imports / 4 files、owner report: `MOD-BILLING-001=1`, `MOD-VISIT-001=1`, `MOV-001=3`）。
+    `pnpm exec vitest run src/server/services/patient-share-policy.test.ts src/server/services/pharmacy-partnerships.test.ts tools/scripts/check-module-boundaries.test.ts --reporter=dot --testTimeout=30000` → pass（3 files / 33 tests）。
+    `pnpm exec eslint src/server/services/patient-share-types.ts src/server/services/patient-share-policy.ts src/server/services/pharmacy-partnerships.ts` → pass。
+    `pnpm exec prettier --check src/server/services/patient-share-types.ts src/server/services/patient-share-policy.ts src/server/services/pharmacy-partnerships.ts tools/module-boundary-allowlist.json` → pass。
+    `git diff --check -- src/server/services/patient-share-types.ts src/server/services/patient-share-policy.ts src/server/services/pharmacy-partnerships.ts tools/module-boundary-allowlist.json Plans.md` → pass。
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` → pass。
+  - remaining work:
+    残 allowlist は MOV / VISIT / BILLING。`MOD-SHARE-001` 本体の payload/masking enforcement は別タスクとして残る。
+
 - codex: MOD-BOUND-001 import-source extraction / allowlist reduction（pending commit）。
   - current task:
     `Plans.md` の `MOD-BOUND-001` 残作業として、実際に module-boundary allowlist count を減らす。

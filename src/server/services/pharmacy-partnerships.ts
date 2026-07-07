@@ -1,14 +1,7 @@
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import type { PatientShareCaseLifecycleStatus, PharmacyOwner } from './patient-share-types';
 
-export type PatientShareCaseLifecycleStatus =
-  | 'draft'
-  | 'consent_pending'
-  | 'partner_confirmation_pending'
-  | 'active'
-  | 'suspended'
-  | 'revoked'
-  | 'ended'
-  | 'declined';
+export type { PatientShareCaseLifecycleStatus, PharmacyOwner } from './patient-share-types';
 
 export type PatientLinkLifecycleStatus = 'pending' | 'accepted' | 'declined';
 
@@ -49,8 +42,6 @@ export type PharmacyContractLifecycleStatus =
   | 'suspended';
 
 export type PharmacyContractVersionLifecycleStatus = 'draft' | 'active';
-
-export type PharmacyOwner = 'base_pharmacy' | 'partner_pharmacy';
 
 export type PatientShareConsentForPolicy = {
   consent_date: Date;

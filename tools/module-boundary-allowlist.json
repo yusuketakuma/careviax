@@ -20,15 +20,6 @@
       "targets": ["@/lib/prescription/cycle-workspace", "@/lib/prescriptions/navigation"]
     },
     {
-      "path": "src/server/services/patient-share-policy.ts",
-      "expectedCount": 1,
-      "owner": "MOD-SHARE-001",
-      "debtId": "DEBT-PATIENT-001",
-      "reason": "患者共有ポリシーが薬局間連携 (pharmacy-partnerships) を参照している既存負債。共有可否判定が薬局提携情報に依存している。",
-      "plannedAction": "External Share payload enforcement で share scope / partnership predicate を module adapter 経由へ移し、patient share policy から pharmacy partnership service 直 import を外す。",
-      "targets": ["./pharmacy-partnerships"]
-    },
-    {
       "path": "src/server/services/visit-medication-deadline.ts",
       "expectedCount": 1,
       "owner": "MOD-VISIT-001",

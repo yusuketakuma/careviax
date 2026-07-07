@@ -1,5 +1,5 @@
-import type { PatientShareCaseLifecycleStatus, PharmacyOwner } from './pharmacy-partnerships';
 import { enabledPatientShareScopeKeys, type PatientShareScopeKey } from './patient-share-scope';
+import type { PatientShareCaseLifecycleStatus, PharmacyOwner } from './patient-share-types';
 import type { PatientShareCorrectionTargetType } from '@/lib/patient-share/correction-request-domain';
 import { PATIENT_SHARE_CORRECTION_TARGET_TYPES } from '@/lib/patient-share/correction-request-domain';
 
