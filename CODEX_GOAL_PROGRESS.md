@@ -49302,6 +49302,55 @@ false` for every migrated column.
   - Existing unrelated `refactor-instructions.md` and local skill install files
     remain outside this slice.
 
+## Plans.md Implementation Status Cleanup - 2026-07-08 02:34 JST
+
+- Scope:
+  - `Plans.md`
+- Status:
+  - Implemented, validated, and committed in the docs cleanup slice.
+- Changes:
+  - Added explicit cleanup rules that make the top `Plan Status Registry` and
+    `Implementation-ready queue` the working entrypoint for future
+    implementation.
+  - Classified current lanes as implemented, partial, unimplemented, or
+    human-gated, without re-opening completed dashboard, inbound, stock,
+    movement, backup, permission, and DB-read slices.
+  - Expanded unimplemented/partial work into implementation-ready rows for
+    patient-detail bounded selects, movement caller-limit reads, care-report
+    bounded search, dashboard rail/drilldowns, inbound review, stock
+    prescription/visit adapters, movement API, visit brief, report candidates,
+    permission docs sync, recovery live validation, tenant support, and module
+    registry remnants.
+  - Added a dedicated frontend implementation queue that turns the 7-screen
+    redesign plan into contract/layout/interaction/state-QA slices instead of a
+    single large visual rewrite.
+  - Added derived tasks: plan archiving, task ID dedupe, query-shape red tests,
+    payload budget snapshots, right-rail action checklist, and raw-detail
+    reauthorization/audit helper work.
+- Safety:
+  - Docs-only. No runtime code, DB schema, auth, authorization, RLS, PHI
+    projection, billing behavior, deployment, external send, package
+    dependency, live DB operation, secret handling, or destructive operation
+    changed.
+  - Preserved the SSOT decision that authenticated operational screens may show
+    permissioned patient/medication/clinical detail, while notification,
+    export, audit diff, server logs, public URLs, and external sharing remain
+    separate minimized output boundaries.
+- Validation:
+  - `pnpm exec prettier --check Plans.md` passed after formatting.
+  - `pnpm exec prettier --check Plans.md CODEX_GOAL_PROGRESS.md` passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check .codex/ralph-state.md`
+    passed.
+  - `git diff --check -- Plans.md CODEX_GOAL_PROGRESS.md .codex/ralph-state.md`
+    passed.
+  - No code tests were run because this slice only edits planning
+    documentation.
+- Remaining:
+  - `PLAN-ARCHIVE-001` should move long reference specs out of the active
+    backlog over time.
+  - Next implementation queue item: `PERF-DB-005B-TEST` followed by
+    `PERF-DB-005B-IMPL`.
+
 ## R40/R44 Business Holidays readApiJson Slice - 2026-07-05 03:59 JST
 
 - Scope:
