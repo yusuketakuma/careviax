@@ -20,6 +20,18 @@ function renderCalendar() {
   return render(<CalendarView />, { wrapper: createQueryClientWrapper() });
 }
 
+function latestRealtimeQueryOptions() {
+  const options = realtimeQueryMock.mock.calls.at(-1)?.[0] as
+    | {
+        queryKey?: readonly unknown[];
+        invalidateOn?: readonly unknown[];
+        fallbackRefetchInterval?: unknown;
+      }
+    | undefined;
+  if (!options) throw new Error('useRealtimeQuery options are required');
+  return options;
+}
+
 // カレンダーの日セルは aria-label="M月d日(件数)" を持つ。月ナビ(前月/翌月/今月)は「日」を含まない。
 const DAY_CELL_NAME = /月.+日/;
 
@@ -72,6 +84,37 @@ describe('CalendarView false-empty', () => {
     // 取得成功・0件は ErrorState を出さず、通常の空カレンダー(日セル)を描画する。
     expect(screen.queryByText('スケジュールを取得できませんでした')).toBeNull();
     expect(screen.getAllByRole('button', { name: DAY_CELL_NAME }).length).toBeGreaterThan(0);
+  });
+
+  it('uses schedule-scoped realtime invalidation for the monthly schedule query', () => {
+    realtimeQueryMock.mockReturnValue({
+      data: [],
+      isLoading: false,
+      isError: false,
+      refetch: refetchMock,
+      connected: true,
+    });
+
+    renderCalendar();
+
+    expect(latestRealtimeQueryOptions()).toEqual(
+      expect.objectContaining({
+        queryKey: expect.arrayContaining(['visit-schedules', 'calendar', 'org_1']),
+        fallbackRefetchInterval: 60_000,
+        invalidateOn: [
+          {
+            type: 'workflow_refresh',
+            source: expect.arrayContaining([
+              'visit_schedules_create',
+              'visit_schedules_update',
+              'visit_schedules_delete',
+              'visit_schedule_proposals_confirm',
+              'facility_visit_batches_upsert',
+            ]),
+          },
+        ],
+      }),
+    );
   });
 
   it('does not render an error or grid while loading', () => {

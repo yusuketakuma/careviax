@@ -13560,3 +13560,40 @@
   green.
 - remaining:
   Continue source-scoped migration on dashboard, patients board, schedule, and handoff.
+
+## 2026-07-07 Schedule calendar source-scoped realtime
+
+- codex:
+  Continued `FE-RT-001` for the monthly schedule calendar. `CalendarView` now invalidates the
+  calendar query only for schedule/proposal/facility-batch workflow sources instead of every
+  `workflow_refresh` event.
+- files inspected:
+  `Plans.md`,
+  `src/app/(dashboard)/schedules/calendar-view.tsx`,
+  `src/app/(dashboard)/schedules/calendar-view.test.tsx`,
+  `src/app/api/visit-schedules/*`,
+  `src/app/api/visit-schedule-proposals/*`,
+  `src/app/api/facility-visit-batches/*`,
+  `src/lib/hooks/use-realtime-query.ts`,
+  `src/lib/hooks/use-realtime-invalidation.ts`.
+- files changed:
+  `src/app/(dashboard)/schedules/calendar-view.tsx`,
+  `src/app/(dashboard)/schedules/calendar-view.test.tsx`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  Unrelated prescription/report/dashboard workflow refreshes no longer refetch the monthly calendar.
+  Schedule creation, update, delete, reschedule, proposal confirmation, proposal reorder, and facility
+  batch/day updates still invalidate the calendar query.
+- validation:
+  `pnpm exec vitest run 'src/app/(dashboard)/schedules/calendar-view.test.tsx' src/lib/hooks/use-realtime-invalidation.test.tsx src/lib/hooks/use-realtime-query.test.tsx --reporter=dot --testTimeout=30000`
+  green (3 files / 25 tests);
+  `pnpm exec eslint 'src/app/(dashboard)/schedules/calendar-view.tsx' 'src/app/(dashboard)/schedules/calendar-view.test.tsx'`
+  green;
+  `pnpm exec prettier --check 'src/app/(dashboard)/schedules/calendar-view.tsx' 'src/app/(dashboard)/schedules/calendar-view.test.tsx' Plans.md ops/refactor/STATE.md`
+  green;
+  `git diff --check -- 'src/app/(dashboard)/schedules/calendar-view.tsx' 'src/app/(dashboard)/schedules/calendar-view.test.tsx' Plans.md ops/refactor/STATE.md`
+  green.
+- remaining:
+  Continue source-scoped migration on dashboard, patients board, schedule proposals/day-board, and
+  handoff.

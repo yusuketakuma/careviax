@@ -57,6 +57,26 @@ const STATUS_CONFIG: Record<ScheduleStatus, { label: string; className: string }
 };
 
 const WEEKDAY_LABELS = ['月', '火', '水', '木', '金', '土', '日'];
+const SCHEDULE_CALENDAR_WORKFLOW_SOURCES = [
+  'visit_schedules_create',
+  'visit_schedules_update',
+  'visit_schedules_delete',
+  'visit_schedules_reschedule_request',
+  'visit_schedules_reschedule_approve',
+  'visit_schedules_reopen',
+  'visit_schedules_reorder',
+  'visit_schedule_conflict_reconfirmation',
+  'visit_schedule_proposals_create',
+  'visit_schedule_proposals_approve',
+  'visit_schedule_proposals_reject',
+  'visit_schedule_proposals_contact_attempt',
+  'visit_schedule_proposals_confirm',
+  'visit_schedule_proposals_reorder',
+  'facility_visit_batches_upsert',
+  'facility_visit_batch_delete',
+  'facility_visit_batch_reorder',
+  'facility_visit_days_upsert',
+] as const;
 
 // ---- Hooks ----------------------------------------------------------------
 
@@ -79,7 +99,7 @@ function useMonthSchedules(orgId: string, year: number, month: number) {
     enabled: Boolean(orgId),
     staleTime: 30_000,
     fallbackRefetchInterval: 60_000,
-    invalidateOn: ['workflow_refresh'],
+    invalidateOn: [{ type: 'workflow_refresh', source: SCHEDULE_CALENDAR_WORKFLOW_SOURCES }],
   });
 }
 
