@@ -41,6 +41,58 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Plans.md implementation status registry / backlog expansion（pending commit）。
+  - current task:
+    既存 `Plans.md` 内の実装済み / 一部実装済み / 未実装を最新 main のコードとコミット履歴に照らして整理し、
+    未実装項目は次PRに切れる粒度へ拡充する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `git log --oneline -30`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `docs/compliance/access-control-policy.md`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+    `src/app/(dashboard)/dashboard/use-dashboard-cockpit-view-model.ts`,
+    `src/server/services/dashboard-cockpit.ts`,
+    `src/types/dashboard-cockpit.ts`,
+    `src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx`,
+    `src/app/api/patients/[id]/timeline/[eventId]/route.ts`,
+    `src/app/api/dashboard/cockpit/{inbound,stock-risks,report-billing}`,
+    `src/app/api/communications/inbound/**`,
+    `src/modules/pharmacy/medication-stock/**`,
+    `prisma/schema/{communication,medication}.prisma`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `Plans.md` 冒頭に 2026-07-08 status registry を追加し、実装済み / 一部実装済み /
+    未実装 / human gate の判定基準を固定した。Dashboard、Inbound、MedicationStock、
+    Movement、AWS Backup、権限SSOT の実装済み根拠をまとめ、再タスク化しない項目を明示した。
+    `DASH-P0-005` ViewModel hook、stock-risks/report-billing segment、主要 urgent source を
+    実装済み扱いへ移し、DASH-OPS の残タスクを Clock Island、Summary Rail、drilldown、
+    process clickable、visual regression に整理した。派生タスクとして `PLANS-HYGIENE-001`、
+    `PERF-DB-001`、`OPS-RECOVERY-002`、`PERM-DOC-001`、各 status burn-down task を追加した。
+  - security risks reduced:
+    権限SSOTは既存 `docs/compliance/access-control-policy.md` と `permission-matrix.ts` にあることを
+    Plans 側へ明記し、新account種別やsupport mode追加時に capability表、permission test、RLS proof、
+    audit要件を同時更新する派生タスクを追加した。AWS Backup hardening は read-only monitor に限定し、
+    runtime restore API を作らない方針を固定した。
+  - performance issues improved:
+    コード性能変更はなし。DB読出し速度改善に向けて、dashboard / patient / inbound / stock / report の
+    read path 棚卸し、N+1、unbounded read、payload、RLS、missing index候補を `EXPLAIN` 根拠つきで
+    管理する `PERF-DB-001` を追加した。
+  - validation commands:
+    `pnpm exec prettier --write Plans.md`;
+    `git diff --check -- Plans.md`.
+  - validation results:
+    Prettier write green. Diff check green.
+  - remaining:
+    このスライスは計画整理のみで、Clock Island、Summary Rail、AWS Backup Assurance Monitor、
+    DB read-path inventory、Inbound raw detail/source mapping、MedicationStock write/UI連動は未実装。
+  - next action:
+    `DASH-P0-004` Clock Island か `OPS-RECOVERY-002` AWS Backup Assurance Monitor Hardening の
+    どちらかを次の実装スライスとして選ぶ。
+
 - codex: STOCK-001 patient medication-stock summary API。
   - current task:
     DB read indexes + Medication Stock Ledger schema の次段として、
