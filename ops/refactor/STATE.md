@@ -41,6 +41,43 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOD-CI-001 collaboration provider active contract（pending commit）。
+  - current task:
+    `MOD-CI-001` の collaboration-provider contract 小スライスとして、active collaboration provider の
+    entity order / registry一致 / unknown fail-closed を固定する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `src/core/collaboration/registry.ts`,
+    `src/core/collaboration/registry.test.ts`,
+    `src/server/collaboration/active-access-registry.ts`,
+    `src/server/services/collaboration-access.ts`,
+    `src/modules/pharmacy/collaboration/access-providers.ts`,
+    `src/modules/pharmacy/collaboration/access-providers.test.ts`,
+    `src/server/services/collaboration-access.test.ts`.
+  - files changed:
+    `src/server/collaboration/active-access-registry.test.ts`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `activeCollaborationAccessRegistry` の core -> pharmacy entity order を固定し、
+    `ACTIVE_COLLABORATION_ENTITY_TYPES` と registry `entityTypes()` の一致をテストした。
+    すべての宣言 entity type が provider 解決でき、未知の `nursing_record` は null になることを固定した。
+  - bugs found:
+    core registry と individual provider の fail-closed/predicate tests はあったが、active registry の
+    宣言 schema と provider list の一致を固定するテストがなく、module追加時に schema と provider がずれる余地があった。
+  - security risks reduced:
+    auth/DB/API変更なし。未知 entity type は active registry 上も fail-closed であることを明示し、将来の多職種 entity 追加時の誤開放を防ぐ。
+  - performance issues improved:
+    実行時性能変更なし。テストのみ。
+  - validation:
+    `pnpm exec vitest run src/core/collaboration/registry.test.ts src/server/collaboration/active-access-registry.test.ts src/modules/pharmacy/collaboration/access-providers.test.ts src/server/services/collaboration-access.test.ts --reporter=dot --testTimeout=30000` → pass（27 tests）。
+    `pnpm exec eslint src/server/collaboration/active-access-registry.test.ts` → pass。
+    `pnpm exec prettier --check src/server/collaboration/active-access-registry.test.ts` → pass。
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` → pass。
+  - remaining work:
+    `MOD-CI-001` の残りは API envelope / DTO direct Prisma return / task type registry / RLS policy contract role整理。
+
 - codex: MOD-CI-001 risk provider fail-soft contract（pending commit）。
   - current task:
     `MOD-CI-001` の provider contract 小スライスとして、RiskFinding provider の失敗ポリシーを固定する。
