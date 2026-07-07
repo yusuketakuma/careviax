@@ -41,6 +41,62 @@
 
 ## 直近の land（本日・要点）
 
+- codex: `Plans.md` active backlog分類整理 + 未実装Plan拡充。
+  - current task:
+    `Plans.md` 内の実装済み / 未実装 / Partial / Human gate を現行コードと既存計画に合わせて分類し、
+    未実装項目だけを次PRに切れる粒度へ拡充する。派生タスクが見つかれば active entry に追加する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `git log --oneline -40`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `docs/compliance/access-control-policy.md`,
+    `docs/ui-ux-design-guidelines.md`,
+    `src/lib/api/response.ts`,
+    `src/lib/utils/route-payload-budgets.ts`,
+    `src/app/api/communications/inbound/route.ts`,
+    `src/app/api/communications/inbound/signals/route.ts`,
+    `src/app/api/patients/[id]/medication-stock/route.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Added `2026-07-08 Active Execution Board v2` to `Plans.md`, separating Done/frozen,
+    Partial/residual, Not started, and Human gate buckets. Removed already implemented
+    `PERF-DB-006D-EXPLAIN`, `PAYLOAD-BUDGET-001A`, and `PAYLOAD-BUDGET-001B` from the
+    active implementation queue. Split `PAYLOAD-BUDGET-001C` into route-sized slices:
+    inbound inbox, inbound signals, patient medication-stock summary, and shared budget tests.
+    Added derived tasks for active backlog lint, reference archive compression, query-shape
+    tests, raw/detail reauthorization, right-rail action checklist, and permission matrix coverage.
+  - bugs found:
+    Planning bug only: implemented tasks were still visible in the active implementation queue,
+    which could cause reimplementation instead of residual work.
+  - security risks reduced:
+    The plan now keeps authorized in-app PHI display as the rule while preserving raw/detail
+    boundaries: raw chat text, phone memo text, attachments, storage keys, signed URLs, provider
+    raw errors, and classifier raw payloads stay out of list/notification/audit-diff surfaces
+    unless a reauthorized detail surface is used.
+  - performance issues improved:
+    No runtime performance code changed. The DB/payload speed work is now split into executable
+    next slices: `PAYLOAD-BUDGET-001C-A/B/C/D`, `PAYLOAD-BUDGET-001D`, `QUERY-SHAPE-TEST-002`,
+    and human-gated `PERF-DB-006D-INDEX`.
+  - validation commands:
+    `pnpm exec prettier --check Plans.md`;
+    `git diff --check -- Plans.md`;
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md`;
+    `git diff --check -- Plans.md ops/refactor/STATE.md`.
+  - validation results:
+    Prettier check passed after formatting `Plans.md`; final Prettier check passed for
+    `Plans.md` and `ops/refactor/STATE.md`; diff whitespace check passed for both files.
+  - remaining:
+    Implement `PAYLOAD-BUDGET-001C-A/B/C/D`, `PAYLOAD-BUDGET-001D`, dashboard rail/drilldown,
+    frontend slice contracts, raw detail reauthorization, permission matrix coverage, and
+    human-gated care-report index / live AWS recovery evidence.
+  - commit:
+    pending for this docs-only slice.
+  - next action:
+    Commit this scoped docs slice, then continue with `PAYLOAD-BUDGET-001C-A` unless redirected.
+
 - codex: `PERF-DB-006D-EXPLAIN` care-report index候補の SELECT-only EXPLAIN capture tooling。
   - current task:
     DB読出しスピード改善の安全な次段として、`/api/care-reports` の index候補を blind migration ではなく
