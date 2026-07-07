@@ -305,6 +305,7 @@ model InboundCommunicationSignal {
 model InboundCommunicationAttachment {
   id               String                             @id @default(cuid())
   org_id           String
+  display_id       String?
   inbound_event_id String
   signal_id        String?
   file_asset_id    String
@@ -314,6 +315,7 @@ model InboundCommunicationAttachment {
   inbound_event InboundCommunicationEvent   @relation(fields: [inbound_event_id, org_id], references: [id, org_id], onDelete: Cascade, onUpdate: Cascade)
   signal        InboundCommunicationSignal? @relation(fields: [signal_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
+  @@unique([org_id, display_id])
   @@unique([id, org_id])
   @@index([org_id])
   @@index([org_id, inbound_event_id])

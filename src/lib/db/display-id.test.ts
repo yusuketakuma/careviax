@@ -48,6 +48,14 @@ const VISIT_BILLING_DISPLAY_ID_B2_MIGRATION =
   'prisma/migrations/20260704092500_add_visit_instruction_special_patient_status/migration.sql';
 const CARE_REPORT_REVISION_DISPLAY_ID_B6A_MIGRATION =
   'prisma/migrations/20260704124000_add_care_report_revision_schema/migration.sql';
+const INBOUND_COMMUNICATION_DISPLAY_ID_MIGRATION =
+  'prisma/migrations/20260707070000_add_inbound_communication_schema/migration.sql';
+const AUDIT_LOG_REVIEW_DISPLAY_ID_MIGRATION =
+  'prisma/migrations/20260707083000_add_audit_log_review_display_id/migration.sql';
+const INBOUND_ATTACHMENT_DISPLAY_ID_MIGRATION =
+  'prisma/migrations/20260707084000_add_inbound_attachment_display_id/migration.sql';
+const MEDICATION_STOCK_DISPLAY_ID_MIGRATION =
+  'prisma/migrations/20260707090000_add_medication_stock_ledger/migration.sql';
 const PATIENT_DISPLAY_ID_W1_MODELS = [
   'Patient',
   'Residence',
@@ -213,6 +221,23 @@ const VISIT_BILLING_DISPLAY_ID_B2_MODELS = [
 const CARE_REPORT_REVISION_DISPLAY_ID_B6A_MODELS = [
   'CareReportRevision',
 ] as const satisfies readonly DisplayIdModel[];
+const INBOUND_COMMUNICATION_DISPLAY_ID_MODELS = [
+  'InboundCommunicationEvent',
+  'InboundCommunicationSignal',
+  'InboundSourceMapping',
+] as const satisfies readonly DisplayIdModel[];
+const INBOUND_ATTACHMENT_DISPLAY_ID_MODELS = [
+  'InboundCommunicationAttachment',
+] as const satisfies readonly DisplayIdModel[];
+const AUDIT_LOG_REVIEW_DISPLAY_ID_MODELS = [
+  'AuditLogReview',
+] as const satisfies readonly DisplayIdModel[];
+const MEDICATION_STOCK_DISPLAY_ID_MODELS = [
+  'PatientMedicationStockItem',
+  'MedicationStockEvent',
+  'MedicationStockSnapshot',
+  'ExternalMedicationStockObservation',
+] as const satisfies readonly DisplayIdModel[];
 // Permanent defer: nullable/hybrid org_id requires explicit tenant-vs-global semantics.
 const PERMANENT_DEFERRED_DISPLAY_ID_SCHEMA_MODELS = [
   'DrugAlertRule',
@@ -311,6 +336,32 @@ const DISPLAY_ID_SCHEMA_WAVES = [
     models: CARE_REPORT_REVISION_DISPLAY_ID_B6A_MODELS,
     displayIdRequired: true,
   },
+  {
+    label: 'W10 inbound-communication-domain',
+    schemaFile: 'communication.prisma',
+    migrationPath: INBOUND_COMMUNICATION_DISPLAY_ID_MIGRATION,
+    models: INBOUND_COMMUNICATION_DISPLAY_ID_MODELS,
+    createdWithNullableDisplayId: true,
+  },
+  {
+    label: 'W10 inbound-attachment-domain',
+    schemaFile: 'communication.prisma',
+    migrationPath: INBOUND_ATTACHMENT_DISPLAY_ID_MIGRATION,
+    models: INBOUND_ATTACHMENT_DISPLAY_ID_MODELS,
+  },
+  {
+    label: 'W10 audit-log-review-domain',
+    schemaFile: 'admin.prisma',
+    migrationPath: AUDIT_LOG_REVIEW_DISPLAY_ID_MIGRATION,
+    models: AUDIT_LOG_REVIEW_DISPLAY_ID_MODELS,
+  },
+  {
+    label: 'W10 medication-stock-domain',
+    schemaFile: 'medication.prisma',
+    migrationPath: MEDICATION_STOCK_DISPLAY_ID_MIGRATION,
+    models: MEDICATION_STOCK_DISPLAY_ID_MODELS,
+    createdWithNullableDisplayId: true,
+  },
 ] as const;
 const DISPLAY_ID_PARENT_SCOPED_SCHEMA_WAVES = [
   {
@@ -344,6 +395,9 @@ const DISPLAY_ID_WAVE_MODELS = [
   ...DISPLAY_ID_PARENT_SCOPED_WAVE_MODELS,
 ];
 const DISPLAY_ID_SCHEMA_DEFERRED_MODELS = [...DEFERRED_DISPLAY_ID_SCHEMA_MODELS];
+const DISPLAY_ID_NON_PARTIAL_UNIQUE_MODELS = new Set<DisplayIdModel>(
+  INBOUND_COMMUNICATION_DISPLAY_ID_MODELS,
+);
 const RUN_ID = randomUUID().replaceAll('-', '').slice(0, 12);
 const databaseUrl = process.env.DISPLAY_ID_DATABASE_URL ?? process.env.DATABASE_URL;
 const shouldRunDbTests =
@@ -439,8 +493,8 @@ function parseSequence(id: string): bigint {
 describe('display_id registry and format contract', () => {
   it('covers every Prisma model through registry, explicit business exclusion, or infrastructure exclusion', () => {
     const schemaModels = readSchemaModels();
-    expect(schemaModels).toHaveLength(144);
-    expect(Object.keys(DISPLAY_ID_REGISTRY)).toHaveLength(142);
+    expect(schemaModels).toHaveLength(153);
+    expect(Object.keys(DISPLAY_ID_REGISTRY)).toHaveLength(151);
     expect(DISPLAY_ID_EXCLUDED_MODELS).toEqual(['Setting']);
     expect(DISPLAY_ID_INFRASTRUCTURE_MODELS).toEqual(['IdSequence']);
 
@@ -457,7 +511,7 @@ describe('display_id registry and format contract', () => {
     const entries = Object.entries(DISPLAY_ID_REGISTRY);
     const prefixes = entries.map(([, entry]) => entry.prefix);
     expect(new Set(prefixes).size).toBe(prefixes.length);
-    expect(prefixes).toHaveLength(142);
+    expect(prefixes).toHaveLength(151);
     for (const prefix of prefixes) {
       expect(prefix).toMatch(/^[a-z]{1,6}$/);
     }
@@ -468,7 +522,7 @@ describe('display_id registry and format contract', () => {
       counts[entry.scope] = (counts[entry.scope] ?? 0) + 1;
       return counts;
     }, {});
-    expect(scopeCounts).toEqual({ global: 13, org: 128, orgViaParent: 1 });
+    expect(scopeCounts).toEqual({ global: 13, org: 137, orgViaParent: 1 });
 
     expect(
       entries
@@ -584,13 +638,30 @@ describe('display_id registry and format contract', () => {
           expect(migration, `${wave.label}:${model}`).not.toContain(
             `ALTER TABLE "${model}" ADD COLUMN "display_id" TEXT;`,
           );
+        } else if ('createdWithNullableDisplayId' in wave && wave.createdWithNullableDisplayId) {
+          expect(migration, `${wave.label}:${model}`).toContain(`CREATE TABLE "${model}"`);
+          expect(migration, `${wave.label}:${model}`).toContain('"display_id" TEXT');
+          expect(migration, `${wave.label}:${model}`).not.toContain('"display_id" TEXT NOT NULL');
+          expect(migration, `${wave.label}:${model}`).toContain(
+            `CREATE UNIQUE INDEX "${model}_org_id_display_id_key"`,
+          );
+          expect(migration, `${wave.label}:${model}`).toContain(
+            `ON "${model}"("org_id", "display_id")`,
+          );
+          expect(migration, `${wave.label}:${model}`).not.toContain(
+            `ALTER TABLE "${model}" ALTER COLUMN "display_id" SET NOT NULL`,
+          );
         } else {
           expect(migration, `${wave.label}:${model}`).toContain(
             `ALTER TABLE "${model}" ADD COLUMN "display_id" TEXT;`,
           );
           expect(migration, `${wave.label}:${model}`).toContain(
-            `CREATE UNIQUE INDEX "${model}_org_id_display_id_key" ON "${model}"("org_id", "display_id") WHERE "display_id" IS NOT NULL;`,
+            `CREATE UNIQUE INDEX "${model}_org_id_display_id_key"`,
           );
+          expect(migration, `${wave.label}:${model}`).toContain(
+            `ON "${model}"("org_id", "display_id")`,
+          );
+          expect(migration, `${wave.label}:${model}`).toContain('WHERE "display_id" IS NOT NULL;');
           expect(migration, `${wave.label}:${model}`).not.toContain(
             `ALTER TABLE "${model}" ALTER COLUMN "display_id" SET NOT NULL`,
           );
@@ -600,7 +671,7 @@ describe('display_id registry and format contract', () => {
         );
       }
 
-      expect(migration, wave.label).not.toMatch(/\bDROP\b/i);
+      expect(migration, wave.label).not.toMatch(/\bDROP\s+(?:TABLE|COLUMN|TYPE|INDEX)\b/i);
       expect(migration, wave.label).not.toMatch(/\bALTER COLUMN\b/i);
     }
   });
@@ -673,7 +744,7 @@ describe('display_id registry and format contract', () => {
         );
       }
 
-      expect(migration, wave.label).not.toMatch(/\bDROP\b/i);
+      expect(migration, wave.label).not.toMatch(/\bDROP\s+(?:TABLE|COLUMN|TYPE|INDEX)\b/i);
       expect(migration, wave.label).not.toMatch(/\bALTER COLUMN\b/i);
     }
   });
@@ -690,7 +761,7 @@ describe('display_id registry and format contract', () => {
     const drugSchema = readFileSync(join(SCHEMA_DIR, 'drug.prisma'), 'utf8');
 
     expect(collectNonNullableOrgScopedModels(adminSchema)).toEqual(
-      [...ADMIN_DISPLAY_ID_W6_MODELS].sort(),
+      [...ADMIN_DISPLAY_ID_W6_MODELS, ...AUDIT_LOG_REVIEW_DISPLAY_ID_MODELS].sort(),
     );
     expect(collectNonNullableOrgScopedModels(drugSchema)).toEqual(
       [...DRUG_DISPLAY_ID_W6_MODELS].sort(),
@@ -702,7 +773,7 @@ describe('display_id registry and format contract', () => {
       collectNonNullableOrgScopedModels(
         readFileSync(join(SCHEMA_DIR, 'medication.prisma'), 'utf8'),
       ),
-    ).toEqual([...MEDICATION_DISPLAY_ID_W7_MODELS].sort());
+    ).toEqual([...MEDICATION_DISPLAY_ID_W7_MODELS, ...MEDICATION_STOCK_DISPLAY_ID_MODELS].sort());
     expect(
       collectNonNullableOrgScopedModels(readFileSync(join(SCHEMA_DIR, 'pca-pump.prisma'), 'utf8')),
     ).toEqual([...PCA_PUMP_DISPLAY_ID_W7_MODELS].sort());
@@ -827,10 +898,13 @@ describeDb('display_id allocator integration (local e2e DB)', () => {
 
     for (const model of DISPLAY_ID_DIRECT_WAVE_MODELS) {
       const row = byIndexName.get(`${model}_org_id_display_id_key`);
+      const predicate = DISPLAY_ID_NON_PARTIAL_UNIQUE_MODELS.has(model)
+        ? null
+        : '(display_id IS NOT NULL)';
       expect(row, model).toMatchObject({
         tableName: model,
         isUnique: true,
-        predicate: '(display_id IS NOT NULL)',
+        predicate,
       });
       expect(row?.indexDef, model).toContain('CREATE UNIQUE INDEX');
       expect(row?.indexDef, model).toContain(`ON public."${model}"`);

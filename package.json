@@ -43,6 +43,7 @@
     "aws:ecs-express:roles:validate": "tsx tools/scripts/aws-ecs-express-roles-template-validate.ts",
     "aws:ecs-express:runtime-policy:validate": "tsx tools/scripts/aws-ecs-express-runtime-policy-validate.ts",
     "aws:github-oidc:template:validate": "tsx tools/scripts/aws-github-oidc-template-validate.ts",
+    "aws:rds-backup:template:validate": "tsx tools/scripts/aws-rds-backup-template-validate.ts",
     "aws:pilot:plan": "tsx tools/scripts/aws-pilot-deployment-plan.ts",
     "aws:lightsail:plan": "tsx tools/scripts/aws-lightsail-pilot-plan.ts",
     "aws:lightsail:runtime-env:validate": "tsx tools/scripts/aws-lightsail-runtime-env-validate.ts",

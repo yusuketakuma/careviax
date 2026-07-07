@@ -298,6 +298,34 @@ CREATE POLICY tenant_isolation ON "ResidualMedication"
   USING (org_id = current_setting('app.current_org_id', true))
   WITH CHECK (org_id = current_setting('app.current_org_id', true));
 
+ALTER TABLE "PatientMedicationStockItem" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "PatientMedicationStockItem";
+CREATE POLICY tenant_isolation ON "PatientMedicationStockItem"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "PatientMedicationStockItem" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "MedicationStockEvent" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "MedicationStockEvent";
+CREATE POLICY tenant_isolation ON "MedicationStockEvent"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "MedicationStockEvent" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "MedicationStockSnapshot" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "MedicationStockSnapshot";
+CREATE POLICY tenant_isolation ON "MedicationStockSnapshot"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "MedicationStockSnapshot" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "ExternalMedicationStockObservation" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "ExternalMedicationStockObservation";
+CREATE POLICY tenant_isolation ON "ExternalMedicationStockObservation"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "ExternalMedicationStockObservation" FORCE ROW LEVEL SECURITY;
+
 ALTER TABLE "MedicationIssue" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON "MedicationIssue"
   USING (org_id = current_setting('app.current_org_id', true))

@@ -13,6 +13,7 @@ export interface DisplayIdRegistryEntry {
 
 export const DISPLAY_ID_REGISTRY = {
   AuditLog: { prefix: 'l', scope: 'org' },
+  AuditLogReview: { prefix: 'alr', scope: 'org' },
   BillingCandidate: { prefix: 'b', scope: 'org' },
   BillingEvidence: { prefix: 'bev', scope: 'org' },
   BillingRule: { prefix: 'brul', scope: 'org' },
@@ -52,6 +53,7 @@ export const DISPLAY_ID_REGISTRY = {
   DrugPriceVersion: { prefix: 'dpv', scope: 'global' },
   EscalationRule: { prefix: 'esc', scope: 'org' },
   ExternalAccessGrant: { prefix: 'e', scope: 'org' },
+  ExternalMedicationStockObservation: { prefix: 'emso', scope: 'org' },
   ExternalProfessional: { prefix: 'extp', scope: 'org' },
   Facility: { prefix: 'fac', scope: 'org' },
   FacilityContact: { prefix: 'facc', scope: 'org' },
@@ -66,6 +68,10 @@ export const DISPLAY_ID_REGISTRY = {
   HandoffBoard: { prefix: 'hb', scope: 'org' },
   HandoffItem: { prefix: 'h', scope: 'orgViaParent', parent: 'HandoffBoard' },
   IncidentReport: { prefix: 'x', scope: 'org' },
+  InboundCommunicationAttachment: { prefix: 'icatt', scope: 'org' },
+  InboundCommunicationEvent: { prefix: 'icev', scope: 'org' },
+  InboundCommunicationSignal: { prefix: 'icsig', scope: 'org' },
+  InboundSourceMapping: { prefix: 'ismap', scope: 'org' },
   InquiryRecord: { prefix: 'i', scope: 'org' },
   // Nullable org_id job rows can represent global work; schema/backfill wave is permanently deferred.
   IntegrationJob: { prefix: 'ijob', scope: 'org' },
@@ -76,6 +82,8 @@ export const DISPLAY_ID_REGISTRY = {
   MedicationCycle: { prefix: 'mcyc', scope: 'org' },
   MedicationIssue: { prefix: 'miss', scope: 'org' },
   MedicationProfile: { prefix: 'm', scope: 'org' },
+  MedicationStockEvent: { prefix: 'msev', scope: 'org' },
+  MedicationStockSnapshot: { prefix: 'mss', scope: 'org' },
   Membership: { prefix: 'mem', scope: 'org' },
   Notification: { prefix: 'n', scope: 'org' },
   NotificationRule: { prefix: 'nrul', scope: 'org' },
@@ -94,6 +102,7 @@ export const DISPLAY_ID_REGISTRY = {
   PatientMcsMessage: { prefix: 'pmmsg', scope: 'org' },
   PatientMcsSummary: { prefix: 'pmsum', scope: 'org' },
   PatientMedicalProcedure: { prefix: 'pmp', scope: 'org' },
+  PatientMedicationStockItem: { prefix: 'pmsi', scope: 'org' },
   PatientNarcoticUse: { prefix: 'pnar', scope: 'org' },
   PatientPackagingProfile: { prefix: 'ppp', scope: 'org' },
   PatientSchedulePreference: { prefix: 'psp', scope: 'org' },

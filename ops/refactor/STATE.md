@@ -17085,3 +17085,39 @@
   frontend execution contract but does not implement the planned UI changes.
 - next action:
   Commit and push the `Plans.md` frontend plan quality overlay.
+
+## 2026-07-07 DB read indexes + AWS RDS backup baseline
+
+- current task: add DB read-speed measures and AWS-backed recovery capability.
+- files inspected: current git status, Prisma schemas/migrations, RLS SSOT,
+  display-id registry/tests, backup runbooks, AWS infra validators, external
+  readiness checks, AWS official docs, and Oracle/GPT-5.5 Pro consult output
+  with GitHub repository context.
+- files changed: medication stock Prisma schema/migration, audit/inbound
+  display-id schema/migrations, RLS SSOT/ledger, display-id registry/tests,
+  medication-stock DB contract test, AWS RDS Backup CloudFormation
+  template/validator/tests, backup readiness script, and backup/RDS docs.
+- bugs found: display-id registry drift for inbound/AuditLogReview/stock models
+  and missing inbound attachment display ID; backup drill table parsing treated
+  a formatted separator row as a record.
+- security risks reduced: implemented AWS Backup + RDS PITR baseline without
+  app-level dump/restore endpoints; app runtime is not granted restore/delete
+  or secret-write permissions; cross-region copy and Vault Lock compliance mode
+  default off; new stock tables have RLS and append-only stock events.
+- performance issues improved: added stock item, event timeline, snapshot risk,
+  and external observation review queue composite indexes for fast patient and
+  medication-stock reads.
+- validation commands: `pnpm exec prisma format --schema=prisma/schema/`;
+  `pnpm db:generate`; focused vitest for medication-stock DB contract, RLS
+  contract, display-id contract, external-readiness, and AWS backup validator;
+  `pnpm aws:rds-backup:template:validate`; `pnpm backup:drill:check`;
+  `pnpm format:check`; scoped ESLint; `git diff --check`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+- validation results: all focused tests/format/ESLint/diff/typecheck passed.
+  AWS Backup template static validation passed 10 checks and skipped live AWS
+  validation. Backup drill check found required files but live drill remains
+  not ready in this shell because `DATABASE_URL` and `AWS_REGION` are unset.
+  Plain `pnpm typecheck` hit Node OOM at default heap; the 8GB rerun passed.
+- remaining work: live CloudFormation validation/deploy, restore testing enablement,
+  and live recovery drill require AWS credentials and operator approval.
+- next action: commit and push this DB/AWS backup slice.

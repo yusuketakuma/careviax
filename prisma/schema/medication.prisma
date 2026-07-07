@@ -22,6 +22,136 @@ enum InterventionType {
   other
 }
 
+enum MedicationStockSourceType {
+  prescription
+  initial_leftover
+  other_institution
+  otc
+  manual
+  unknown
+}
+
+enum MedicationStockCategory {
+  prn
+  topical
+  external
+  regular_leftover
+  otc
+  other
+  unknown
+}
+
+enum MedicationStockUnit {
+  tablet
+  capsule
+  packet
+  sheet
+  patch
+  tube
+  bottle
+  ml
+  g
+  dose
+  application
+  other
+}
+
+enum MedicationStockManagingParty {
+  patient
+  family
+  facility
+  pharmacy
+  unknown
+}
+
+enum MedicationStockEventType {
+  prescription_supply
+  visit_observation
+  external_observation_apply
+  patient_report
+  manual_adjustment
+  disposal
+  transfer_in
+  transfer_out
+  usage_frequency_update
+  equivalence_merge
+  correction
+  no_stock_observed
+}
+
+enum MedicationStockQuantityKind {
+  delta
+  observed_absolute
+  usage_rate
+  no_quantity
+}
+
+enum MedicationStockSourceEntityType {
+  prescription_line
+  visit_record
+  inbound_signal
+  external_observation
+  patient_self_report
+  manual
+  unknown
+}
+
+enum MedicationStockUsageConfidence {
+  high
+  medium
+  low
+  unknown
+}
+
+enum MedicationStockRiskLevel {
+  ok
+  watch
+  shortage_expected
+  urgent
+  unknown
+}
+
+enum MedicationStockEquivalenceReviewStatus {
+  not_required
+  needs_review
+  reviewed
+  uncertain
+}
+
+enum MedicationStockEquivalenceConfidence {
+  exact_code
+  ingredient_strength_form
+  ingredient_only
+  manual
+  uncertain
+}
+
+enum ExternalMedicationStockObservationKind {
+  remaining_quantity
+  patient_held_stock
+  prn_usage_report
+  topical_remaining_report
+  no_stock_observed
+  unknown
+}
+
+enum MedicationStockSourceConfidence {
+  structured_exact
+  structured_partial
+  text_parsed_high
+  text_parsed_low
+  manual
+  unknown
+}
+
+enum ExternalMedicationStockObservationReviewState {
+  pending_pharmacist_review
+  applied
+  rejected
+  held
+  superseded
+}
+
 model MedicationProfile {
   id             String    @id @default(cuid())
   org_id         String
@@ -69,6 +199,166 @@ model ResidualMedication {
   @@index([visit_record_id])
   @@index([drug_master_id])
   @@index([org_id, drug_master_id])
+}
+
+model PatientMedicationStockItem {
+  id                            String                                 @id @default(cuid())
+  org_id                        String
+  display_id                    String?
+  patient_id                    String
+  case_id                       String?
+  drug_master_id                String?
+  drug_package_id               String?
+  canonical_medication_group_id String?
+  source_type                   MedicationStockSourceType              @default(unknown)
+  medication_category           MedicationStockCategory                @default(unknown)
+  display_name                  String
+  normalized_name               String?
+  ingredient_name               String?
+  strength                      String?
+  dosage_form                   String?
+  route                         String?
+  unit                          MedicationStockUnit
+  default_usage_amount_per_day  Decimal?                               @db.Decimal(12, 4)
+  default_usage_frequency_text  String?
+  max_usage_amount_per_day      Decimal?                               @db.Decimal(12, 4)
+  indication_text               String?
+  usage_instruction_text        String?
+  managing_party                MedicationStockManagingParty           @default(unknown)
+  equivalence_review_status     MedicationStockEquivalenceReviewStatus @default(not_required)
+  equivalence_confidence        MedicationStockEquivalenceConfidence?
+  active                        Boolean                                @default(true)
+  archived_at                   DateTime?
+  archived_by                   String?
+  created_by                    String
+  created_at                    DateTime                               @default(now())
+  updated_at                    DateTime                               @updatedAt
+
+  @@unique([org_id, display_id])
+  @@unique([id, org_id])
+  @@index([org_id])
+  @@index([org_id, patient_id, active], map: "PatientMedicationStockItem_org_patient_active_idx")
+  @@index([org_id, case_id, active], map: "PatientMedicationStockItem_org_case_active_idx")
+  @@index([org_id, drug_master_id], map: "PatientMedicationStockItem_org_drug_master_idx")
+  @@index([org_id, drug_package_id], map: "PatientMedicationStockItem_org_drug_package_idx")
+  @@index([org_id, canonical_medication_group_id], map: "PatientMedicationStockItem_org_canonical_group_idx")
+  @@index([org_id, equivalence_review_status])
+}
+
+model MedicationStockEvent {
+  id                       String                          @id @default(cuid())
+  org_id                   String
+  display_id               String?
+  patient_id               String
+  case_id                  String?
+  stock_item_id            String
+  event_type               MedicationStockEventType
+  event_at                 DateTime
+  recorded_at              DateTime                        @default(now())
+  recorded_by              String
+  quantity_kind            MedicationStockQuantityKind     @default(no_quantity)
+  quantity_delta           Decimal?                        @db.Decimal(12, 4)
+  observed_quantity        Decimal?                        @db.Decimal(12, 4)
+  usage_quantity           Decimal?                        @db.Decimal(12, 4)
+  usage_period_days        Int?
+  unit                     MedicationStockUnit
+  source_entity_type       MedicationStockSourceEntityType @default(unknown)
+  source_entity_id         String?
+  source_signal_id         String?
+  external_observation_id  String?
+  idempotency_key_hash     String
+  request_fingerprint_hash String
+  supersedes_event_id      String?
+  created_at               DateTime                        @default(now())
+
+  @@unique([org_id, display_id])
+  @@unique([id, org_id])
+  @@unique([org_id, idempotency_key_hash])
+  @@index([org_id])
+  @@index([org_id, patient_id, event_at(sort: Desc)], map: "MedicationStockEvent_org_patient_event_at_idx")
+  @@index([org_id, case_id, event_at(sort: Desc)], map: "MedicationStockEvent_org_case_event_at_idx")
+  @@index([org_id, stock_item_id, event_at(sort: Desc)], map: "MedicationStockEvent_org_stock_item_event_at_idx")
+  @@index([org_id, source_entity_type, source_entity_id])
+  @@index([org_id, source_signal_id])
+  @@index([org_id, external_observation_id])
+  @@index([org_id, supersedes_event_id])
+}
+
+model MedicationStockSnapshot {
+  id                      String                         @id @default(cuid())
+  org_id                  String
+  display_id              String?
+  stock_item_id           String
+  patient_id              String
+  case_id                 String?
+  current_quantity        Decimal?                       @db.Decimal(12, 4)
+  unit                    MedicationStockUnit
+  last_observed_quantity  Decimal?                       @db.Decimal(12, 4)
+  last_observed_at        DateTime?
+  last_event_id           String?
+  estimated_daily_usage   Decimal?                       @db.Decimal(12, 4)
+  usage_confidence        MedicationStockUsageConfidence @default(unknown)
+  estimated_stockout_date DateTime?
+  days_until_stockout     Int?
+  stock_risk_level        MedicationStockRiskLevel       @default(unknown)
+  risk_reason_code        String?
+  calculation_version     String                         @default("medication-stock-snapshot:v1")
+  calculated_at           DateTime                       @default(now())
+  created_at              DateTime                       @default(now())
+  updated_at              DateTime                       @updatedAt
+
+  @@unique([org_id, display_id])
+  @@unique([id, org_id])
+  @@unique([org_id, stock_item_id])
+  @@index([org_id])
+  @@index([org_id, patient_id])
+  @@index([org_id, case_id])
+  @@index([org_id, stock_risk_level, estimated_stockout_date], map: "MedicationStockSnapshot_org_stock_risk_stockout_idx")
+  @@index([org_id, patient_id, stock_risk_level], map: "MedicationStockSnapshot_org_patient_stock_risk_idx")
+  @@index([org_id, estimated_stockout_date])
+  @@index([org_id, last_event_id])
+}
+
+model ExternalMedicationStockObservation {
+  id                        String                                        @id @default(cuid())
+  org_id                    String
+  display_id                String?
+  patient_id                String
+  case_id                   String?
+  inbound_signal_id         String?
+  source_entity_type        MedicationStockSourceEntityType               @default(unknown)
+  source_entity_id          String?
+  source_author_role        String?
+  observed_at               DateTime?
+  observation_kind          ExternalMedicationStockObservationKind
+  matched_stock_item_id     String?
+  matched_drug_master_id    String?
+  matched_drug_package_id   String?
+  extracted_medication_name String?
+  extracted_quantity        Decimal?                                      @db.Decimal(12, 4)
+  extracted_unit            MedicationStockUnit?
+  source_confidence         MedicationStockSourceConfidence               @default(unknown)
+  review_state              ExternalMedicationStockObservationReviewState @default(pending_pharmacist_review)
+  reviewed_by               String?
+  reviewed_at               DateTime?
+  applied_stock_event_id    String?
+  idempotency_key_hash      String
+  request_fingerprint_hash  String
+  created_at                DateTime                                      @default(now())
+  updated_at                DateTime                                      @updatedAt
+
+  @@unique([org_id, display_id])
+  @@unique([id, org_id])
+  @@unique([org_id, idempotency_key_hash])
+  @@index([org_id])
+  @@index([org_id, review_state, created_at(sort: Desc)], map: "ExternalMedicationStockObservation_org_review_created_idx")
+  @@index([org_id, patient_id, review_state, created_at(sort: Desc)], map: "ExtMedicationStockObs_org_patient_review_created_idx")
+  @@index([org_id, case_id, review_state])
+  @@index([org_id, inbound_signal_id])
+  @@index([org_id, matched_stock_item_id])
+  @@index([org_id, matched_drug_master_id])
+  @@index([org_id, matched_drug_package_id])
+  @@index([org_id, applied_stock_event_id])
 }
 
 model MedicationIssue {

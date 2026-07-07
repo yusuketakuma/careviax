@@ -60,6 +60,8 @@ const PMDA_REQUIRED_DOCS = [
 const BACKUP_REQUIRED_PATHS = [
   'docs/compliance/backup-recovery-drill.md',
   'docs/compliance/rds-configuration.md',
+  'tools/infra/rds-aws-backup-template.yaml',
+  'tools/scripts/aws-rds-backup-template-validate.ts',
   'tools/infra/file-storage-bucket-policy.json',
   'tools/infra/s3-kms-key-policy.json',
   'tools/infra/vpc-security-groups.json',
@@ -95,7 +97,8 @@ function parseMarkdownTableRows(markdown: string) {
   return markdown
     .split('\n')
     .map((line) => line.trim())
-    .filter((line) => line.startsWith('|') && !line.includes('|---'));
+    .filter((line) => line.startsWith('|'))
+    .filter((line) => !/^\|\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(line));
 }
 
 function classifyBackupDrillMode(args: { result: string; notes: string }) {
@@ -196,12 +199,14 @@ export function getBackupDrillSummary(args?: {
   return {
     files,
     env: envChecks,
-    ready_for_live_drill: files.every((item) => item.exists) && envChecks.every((item) => item.exists),
+    ready_for_live_drill:
+      files.every((item) => item.exists) && envChecks.every((item) => item.exists),
     recorded_runs: recordedRuns,
     live_drill_recorded: liveRuns.length > 0,
     live_run_count: liveRuns.length,
     last_live_run_date: liveRuns.at(-1)?.date ?? null,
     next_steps: [
+      'pnpm aws:rds-backup:template:validate で AWS Backup / RDS PITR の IaC 契約を確認する',
       '本番相当権限で RDS / S3 / Cognito の live drill を実施する',
       '所要時間と失敗点を docs/compliance/backup-recovery-drill.md に記録する',
       'RTO/RPO を満たせない箇所があれば IaC と runbook を更新する',
@@ -209,18 +214,27 @@ export function getBackupDrillSummary(args?: {
   };
 }
 
-export function getIsmsReadinessSummary(args?: {
-  cwd?: string;
-}): IsmsReadinessSummary {
+export function getIsmsReadinessSummary(args?: { cwd?: string }): IsmsReadinessSummary {
   const cwd = args?.cwd ?? process.cwd();
   const docs = toChecks(cwd, ISMS_REQUIRED_DOCS);
-  const vendorTemplate = readTextIfExists(cwd, 'docs/compliance/isms-vendor-comparison-template.md');
+  const vendorTemplate = readTextIfExists(
+    cwd,
+    'docs/compliance/isms-vendor-comparison-template.md',
+  );
   const comparisonTableStarted = vendorTemplate
     .split('\n')
-    .some((line) => /^\|\s*(会社名|担当者|初回見積|年間費用|初回審査候補月)\s*\|/.test(line) && !/\|\s*\|\s*\|\s*\|$/.test(line));
+    .some(
+      (line) =>
+        /^\|\s*(会社名|担当者|初回見積|年間費用|初回審査候補月)\s*\|/.test(line) &&
+        !/\|\s*\|\s*\|\s*\|$/.test(line),
+    );
   const decisionMemoStarted = vendorTemplate
     .split('\n')
-    .some((line) => /^- (認証スコープ|予算上限|キックオフ候補日|プロジェクトオーナー|事務局|次アクション):\s*\S+/.test(line));
+    .some((line) =>
+      /^- (認証スコープ|予算上限|キックオフ候補日|プロジェクトオーナー|事務局|次アクション):\s*\S+/.test(
+        line,
+      ),
+    );
 
   return {
     docs,

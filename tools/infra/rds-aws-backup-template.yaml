@@ -1,0 +1,278 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  PH-OS RDS backup baseline. Uses AWS Backup for continuous RDS PITR, daily
+  recovery points, an encrypted backup vault, optional restore testing, and an
+  optional cross-region copy destination. Restore jobs are intentionally not
+  granted to the application runtime role.
+
+Parameters:
+  Prefix:
+    Type: String
+    Default: ph-os-prod
+    AllowedPattern: '^[a-z0-9-]{3,40}$'
+    Description: Resource name prefix.
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues:
+      - production
+      - staging
+      - drill
+    Description: Environment label for tags.
+  RdsDbInstanceArn:
+    Type: String
+    MinLength: 20
+    Description: ARN of the protected production RDS DB instance.
+  BackupRetentionDays:
+    Type: Number
+    Default: 35
+    MinValue: 7
+    MaxValue: 35
+    Description: Retention for RDS continuous backups and daily recovery points.
+  DailyBackupScheduleExpression:
+    Type: String
+    Default: cron(0 17 * * ? *)
+    Description: Daily backup schedule in UTC. 17:00 UTC is 02:00 JST.
+  StartWindowMinutes:
+    Type: Number
+    Default: 60
+    MinValue: 60
+    Description: Start window for scheduled daily recovery points.
+  CompletionWindowMinutes:
+    Type: Number
+    Default: 240
+    MinValue: 120
+    Description: Completion window for scheduled daily recovery points.
+  EnableCrossRegionCopy:
+    Type: String
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: >
+      Disabled by default for PHI locality. Enable only after legal/customer
+      approval and after setting CopyDestinationBackupVaultArn.
+  CopyDestinationBackupVaultArn:
+    Type: String
+    Default: ''
+    Description: Destination backup vault ARN for approved cross-region copies.
+  CopyRetentionDays:
+    Type: Number
+    Default: 35
+    MinValue: 7
+    MaxValue: 35
+    Description: Retention for approved cross-region copies.
+  EnableVaultLockComplianceMode:
+    Type: String
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: >
+      Disabled by default. Set true only when irreversible compliance-mode lock
+      has been approved for the environment.
+  VaultLockMinRetentionDays:
+    Type: Number
+    Default: 7
+    MinValue: 1
+    Description: Minimum vault-lock retention days when lock is enabled.
+  VaultLockMaxRetentionDays:
+    Type: Number
+    Default: 35
+    MinValue: 7
+    Description: Maximum vault-lock retention days when lock is enabled.
+  VaultLockChangeableForDays:
+    Type: Number
+    Default: 7
+    MinValue: 3
+    Description: ChangeableForDays for compliance-mode lock approval window.
+  EnableRestoreTesting:
+    Type: String
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: Enable AWS Backup restore testing plan resources.
+  RestoreTestingScheduleExpression:
+    Type: String
+    Default: cron(0 18 ? * SUN *)
+    Description: Weekly restore testing schedule in UTC.
+  RestoreTestingValidationWindowHours:
+    Type: Number
+    Default: 2
+    MinValue: 1
+    MaxValue: 24
+    Description: Validation window for AWS Backup restore testing jobs.
+
+Conditions:
+  UseCrossRegionCopy: !And
+    - !Equals [!Ref EnableCrossRegionCopy, 'true']
+    - !Not [!Equals [!Ref CopyDestinationBackupVaultArn, '']]
+  UseVaultLock: !Equals [!Ref EnableVaultLockComplianceMode, 'true']
+  UseRestoreTesting: !Equals [!Ref EnableRestoreTesting, 'true']
+
+Resources:
+  RdsBackupKey:
+    Type: AWS::KMS::Key
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: !Sub '${Prefix} RDS backup vault encryption key'
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: EnableRootAccountAdministration
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: AllowAwsBackupServiceUse
+            Effect: Allow
+            Principal:
+              Service: backup.amazonaws.com
+            Action:
+              - kms:Decrypt
+              - kms:DescribeKey
+              - kms:Encrypt
+              - kms:GenerateDataKey
+              - kms:ReEncryptFrom
+              - kms:ReEncryptTo
+            Resource: '*'
+      Tags:
+        - Key: Application
+          Value: PH-OS
+        - Key: Environment
+          Value: !Ref Environment
+
+  RdsBackupKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/${Prefix}-rds-backup'
+      TargetKeyId: !Ref RdsBackupKey
+
+  RdsBackupVault:
+    Type: AWS::Backup::BackupVault
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BackupVaultName: !Sub '${Prefix}-rds-backup-vault'
+      EncryptionKeyArn: !GetAtt RdsBackupKey.Arn
+      LockConfiguration: !If
+        - UseVaultLock
+        - MinRetentionDays: !Ref VaultLockMinRetentionDays
+          MaxRetentionDays: !Ref VaultLockMaxRetentionDays
+          ChangeableForDays: !Ref VaultLockChangeableForDays
+        - !Ref AWS::NoValue
+      BackupVaultTags:
+        Application: PH-OS
+        Environment: !Ref Environment
+        DataClass: PHI
+
+  RdsBackupServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${Prefix}-rds-aws-backup-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: backup.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup
+        - arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores
+      Tags:
+        - Key: Application
+          Value: PH-OS
+        - Key: Environment
+          Value: !Ref Environment
+
+  RdsBackupPlan:
+    Type: AWS::Backup::BackupPlan
+    Properties:
+      BackupPlan:
+        BackupPlanName: !Sub '${Prefix}-rds-backup-plan'
+        BackupPlanRule:
+          - RuleName: rds-continuous-pitr
+            TargetBackupVault: !Ref RdsBackupVault
+            EnableContinuousBackup: true
+            Lifecycle:
+              DeleteAfterDays: !Ref BackupRetentionDays
+          - RuleName: rds-daily-recovery-point
+            TargetBackupVault: !Ref RdsBackupVault
+            ScheduleExpression: !Ref DailyBackupScheduleExpression
+            StartWindowMinutes: !Ref StartWindowMinutes
+            CompletionWindowMinutes: !Ref CompletionWindowMinutes
+            Lifecycle:
+              DeleteAfterDays: !Ref BackupRetentionDays
+            CopyActions: !If
+              - UseCrossRegionCopy
+              - - DestinationBackupVaultArn: !Ref CopyDestinationBackupVaultArn
+                  Lifecycle:
+                    DeleteAfterDays: !Ref CopyRetentionDays
+              - !Ref AWS::NoValue
+      BackupPlanTags:
+        Application: PH-OS
+        Environment: !Ref Environment
+        DataClass: PHI
+
+  RdsBackupSelection:
+    Type: AWS::Backup::BackupSelection
+    Properties:
+      BackupPlanId: !Ref RdsBackupPlan
+      BackupSelection:
+        SelectionName: !Sub '${Prefix}-rds-db-instance'
+        IamRoleArn: !GetAtt RdsBackupServiceRole.Arn
+        Resources:
+          - !Ref RdsDbInstanceArn
+
+  RdsRestoreTestingPlan:
+    Type: AWS::Backup::RestoreTestingPlan
+    Condition: UseRestoreTesting
+    Properties:
+      RestoreTestingPlanName: !Sub '${Prefix}-rds-restore-test'
+      ScheduleExpression: !Ref RestoreTestingScheduleExpression
+      RecoveryPointSelection:
+        Algorithm: LATEST_WITHIN_WINDOW
+        IncludeVaults:
+          - !GetAtt RdsBackupVault.BackupVaultArn
+        RecoveryPointTypes:
+          - CONTINUOUS
+          - SNAPSHOT
+        SelectionWindowDays: 7
+      Tags:
+        Application: PH-OS
+        Environment: !Ref Environment
+        DataClass: PHI
+
+  RdsRestoreTestingSelection:
+    Type: AWS::Backup::RestoreTestingSelection
+    Condition: UseRestoreTesting
+    Properties:
+      RestoreTestingPlanName: !Ref RdsRestoreTestingPlan
+      RestoreTestingSelectionName: !Sub '${Prefix}-rds-db-instance'
+      IamRoleArn: !GetAtt RdsBackupServiceRole.Arn
+      ProtectedResourceType: RDS
+      ProtectedResourceArns:
+        - !Ref RdsDbInstanceArn
+      ValidationWindowHours: !Ref RestoreTestingValidationWindowHours
+
+Outputs:
+  BackupVaultName:
+    Description: AWS Backup vault name for PH-OS RDS recovery points.
+    Value: !Ref RdsBackupVault
+  BackupVaultArn:
+    Description: AWS Backup vault ARN for PH-OS RDS recovery points.
+    Value: !GetAtt RdsBackupVault.BackupVaultArn
+  BackupPlanId:
+    Description: AWS Backup plan ID.
+    Value: !Ref RdsBackupPlan
+  BackupPlanArn:
+    Description: AWS Backup plan ARN.
+    Value: !GetAtt RdsBackupPlan.BackupPlanArn
+  BackupServiceRoleArn:
+    Description: IAM role used by AWS Backup for PH-OS RDS backups and restores.
+    Value: !GetAtt RdsBackupServiceRole.Arn

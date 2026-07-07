@@ -218,6 +218,7 @@ model AuditLog {
 model AuditLogReview {
   id           String    @id @default(cuid())
   org_id       String
+  display_id   String?
   audit_log_id String
   review_state String    @default("pending")
   reviewed_by  String?
@@ -228,6 +229,7 @@ model AuditLogReview {
   updated_at   DateTime  @updatedAt
   audit_log    AuditLog  @relation(fields: [audit_log_id, org_id], references: [id, org_id], onDelete: Cascade)
 
+  @@unique([org_id, display_id])
   @@unique([org_id, audit_log_id])
   @@index([org_id, review_state, updated_at])
   @@index([audit_log_id])

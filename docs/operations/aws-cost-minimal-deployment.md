@@ -16,6 +16,8 @@ The lowest-cost path is therefore not a new serverless rewrite. Build the existi
 
 Do not use the Lightsail 1 GB database plan for PH-OS pilot data because the current Lightsail pricing table marks that tier as not encrypted. Start at the 2 GB encrypted database tier or use RDS PostgreSQL.
 
+For production or production-like PHI data, prefer RDS PostgreSQL plus the AWS Backup baseline in `tools/infra/rds-aws-backup-template.yaml`. The Lightsail database backup setting is acceptable for the lowest-cost pilot only; it is not the long-term disaster-recovery baseline.
+
 Do not select App Runner for a new PH-OS AWS account. AWS states that App Runner is no longer open to new customers as of April 30, 2026; existing App Runner customers can continue using it, but AWS recommends ECS Express Mode for containerized applications. ECS Express Mode has no additional service charge, but the underlying Fargate, Application Load Balancer, CloudWatch, and data transfer resources still bill normally.
 
 ## Docker Build
@@ -159,6 +161,13 @@ Current scenario totals:
 | `ha-production-floor`              |          $120.20 | Minimum HA direction before full production sizing      |
 
 The ECS Express scenario uses public AWS Price List rates observed for Tokyo on 2026-06-17: one 0.25 vCPU / 0.5 GB Linux/x86 Fargate task running 730 hours, one Application Load Balancer running 730 hours, and one starter LCU allowance. Refresh the rates with AWS Pricing Calculator or AWS Price List before procurement because this document is an operational estimate, not a quote.
+
+AWS Backup adds variable cost for backup storage, recovery testing restores, KMS requests, and optional cross-region copy. Keep cross-region copy disabled until PHI locality and customer/legal approval are complete. Validate the RDS backup template before procurement or deployment:
+
+```bash
+pnpm aws:rds-backup:template:validate
+pnpm aws:rds-backup:template:validate -- --live-aws --strict
+```
 
 ## Deployment Readiness Check
 

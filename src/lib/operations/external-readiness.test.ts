@@ -42,6 +42,8 @@ describe('external-readiness', () => {
 
     for (const filePath of [
       'docs/compliance/rds-configuration.md',
+      'tools/infra/rds-aws-backup-template.yaml',
+      'tools/scripts/aws-rds-backup-template-validate.ts',
       'tools/infra/file-storage-bucket-policy.json',
       'tools/infra/s3-kms-key-policy.json',
       'tools/infra/vpc-security-groups.json',
@@ -59,12 +61,12 @@ describe('external-readiness', () => {
         '# backup drill',
         '',
         '| 実施日 | 実施者 | 結果 | 所要時間 | 備考 |',
-        '|---|---|---|---|---|',
+        '| ---------- | ------ | -------------------- | -------- | ---------------------------------------------------------------------------------------- |',
         '| 2026-03-31 | 運用担当 | 机上訓練完了 | 45分 | [mode:tabletop] RDS/S3/Cognito の確認 |',
         '| 2026-04-01 | 運用担当 | live drill 完了 | 2時間15分 | [mode:live] RDS PITR + S3 restore + Cognito |',
         '',
       ].join('\n'),
-      'utf8'
+      'utf8',
     );
 
     const summary = getBackupDrillSummary({
