@@ -41,6 +41,72 @@
 
 ## 直近の land（本日・要点）
 
+- codex: PERF-DB-006C care-report delivery summary page-basis（commit `8570ecde9`）。
+  - current task:
+    Active goal の backend-only 実装ループとして、`PERF-DB-006C-DELIVERY` を実装する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/api/care-reports/route.ts`,
+    `src/app/api/care-reports/route.test.ts`,
+    `src/lib/api/pagination.ts`,
+    `src/lib/api/cursor-pagination-client.test.ts`,
+    `src/lib/api/response-schemas.test.ts`,
+    `src/lib/db/rls.ts`,
+    `src/server/services/care-report-access.ts`,
+    gbrain search results for care-report delivery summary history.
+  - files changed:
+    `src/app/api/care-reports/route.ts`,
+    `src/app/api/care-reports/route.test.ts`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `careviax/performance-finding/care-report-page-delivery-summary-2026-07-08.md`.
+  - implementation:
+    Removed the regular list `DeliveryRecord` count/groupBy/findMany fan-out from
+    `/api/care-reports`. `deliverySummary` is now built from already-selected page rows and
+    returns `basis: 'page'`. Keyword mode remains bounded and returns
+    `basis: 'bounded_keyword_scan_result'` for its scan-window result summary. GET DB reads are
+    inside `withOrgContext(..., { requestContext: ctx })`, and `DeliveryRecord` relation select /
+    filter paths include `org_id: ctx.orgId`.
+  - bugs found:
+    Regular list pages already selected latest delivery snippets per returned report but still ran
+    three additional DeliveryRecord aggregate queries over the full search `where`, making broad
+    report list/search requests more expensive and semantically ambiguous.
+  - security risks reduced:
+    The response does not expose new raw recipient/failure detail. It changes count basis metadata
+    to make the list summary truthful instead of implying full filtered-set coverage. Oracle
+    flagged missing `delivery_records.some.org_id`; this was fixed and locked in tests.
+  - performance issues improved:
+    Regular list/search now avoids full-filter DeliveryRecord aggregate fan-out and derives summary
+    from page rows already read for the response. Relation child reads remain bounded to latest 10
+    delivery records per report row.
+  - validation commands:
+    `pnpm exec vitest run src/app/api/care-reports/route.test.ts --reporter=dot --testTimeout=30000 -t "PERF-DB-006C|database keyset pagination|extended report search|hidden report metadata|PERF-DB-006B"` before implementation, failed as expected;
+    `pnpm exec vitest run src/app/api/care-reports/route.test.ts --reporter=dot --testTimeout=30000 -t "DeliveryRecord|deliverySummary|withOrgContext|org_id|keyword|no patient matches|Japan-day|extended report search"`;
+    `pnpm exec vitest run src/app/api/care-reports/route.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint src/app/api/care-reports/route.ts src/app/api/care-reports/route.test.ts src/lib/db/rls.ts src/server/services/care-report-access.ts`;
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md careviax/performance-finding/care-report-page-delivery-summary-2026-07-08.md src/app/api/care-reports/route.ts src/app/api/care-reports/route.test.ts src/lib/db/rls.ts src/server/services/care-report-access.ts`;
+    `git diff --check -- Plans.md ops/refactor/STATE.md careviax/performance-finding/care-report-page-delivery-summary-2026-07-08.md src/app/api/care-reports/route.ts src/app/api/care-reports/route.test.ts src/lib/db/rls.ts src/server/services/care-report-access.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Red test failed because `deliveryRecord.count` was still called. Final targeted tests passed
+    `10`; full route tests passed `70`; eslint, Prettier check, diff whitespace check, and
+    typecheck passed.
+  - Oracle / GPT-5.5 Pro:
+    First browser run failed because attachments did not finish uploading before timeout. Retried
+    with inline minimal files and GitHub context. Oracle returned "No-Go as-is / 1点修正後 Go";
+    required adding `org_id: ctx.orgId` to `delivery_records.some`, then Go. The required fix was
+    implemented and verified.
+  - gbrain:
+    Wrote `careviax/performance-finding/care-report-page-delivery-summary-2026-07-08`.
+  - remaining:
+    `PERF-DB-006D` EXPLAIN-backed index human gate and `PAYLOAD-BUDGET-003` remain.
+  - next action:
+    Wait for DB/API subagent reviews, run full route validation, lint, typecheck,
+    formatting/diff checks, commit explicit owned paths, push, then resume from payload budget
+    or EXPLAIN-backed index planning.
+
 - codex: PERF-DB-006B care-report keyword search bounded metadata（commit `2460167c3`）。
   - current task:
     Active goal の backend-only 実装ループとして、`PERF-DB-006B-KEYWORD` を実装する。
