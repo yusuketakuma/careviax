@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: Plans.md status registry cleanup / 未実装Plan拡充（commit pending）。
+- codex: Plans.md status registry cleanup / 未実装Plan拡充（commit `6f6f9541e`, pushed to `main`）。
   - current task:
     既存 `Plans.md` 内の実装済み/未実装を分類し、実装済み項目を再タスク化しないよう
     top-level registry を更新する。未実装項目は次PRに落とせる粒度へ拡充し、派生タスクを追記する。
@@ -86,8 +86,7 @@
     Lower long-form prompt sections still contain historical `cc:TODO` markers for genuinely unfinished
     tracks; `PLAN-ARCHIVE-001` should later move completed prompt-style specs into reference docs.
   - next action:
-    Commit this documentation slice, then resume implementation from `PERF-DB-005B` or the ranked
-    active backlog.
+    Resume implementation from `PERF-DB-005B` or the ranked active backlog.
 
 - codex: PERF-DB-005 patient detail root scoped read + timeline fan-out removal（commit `5fdea246e`, pushed to `main`; ledger sync `e1b68878a`）。
   - current task:
