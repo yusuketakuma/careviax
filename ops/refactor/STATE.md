@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: PAYLOAD-BUDGET-003 care-report list/search payload boundary（commit `PENDING`）。
+- codex: PAYLOAD-BUDGET-003 care-report list/search payload boundary（commit `10573dc88`）。
   - current task:
     Active goal の backend-only 実装ループとして、`PAYLOAD-BUDGET-003` を実装し、
     `Plans.md` の実装済み/未実装分類を現行コードに同期する。

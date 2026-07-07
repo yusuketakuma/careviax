@@ -22,8 +22,11 @@ expires_at: null
 feature_id: null
 project_id: careviax
 updated_at: '2026-07-07T20:09:21.000Z'
+ingested_at: '2026-07-07T20:11:52.299Z'
 owner_agent: codex-lead
-commit_after: null
+source_kind: put_page
+commit_after: 10573dc88
+ingested_via: put_page
 commit_before: fabbd99a45afdf1c690d2b590a54040555be2622
 superseded_by: null
 evidence_level: tested
@@ -42,9 +45,6 @@ validity_scope:
   directories:
     - src/app/api/care-reports
     - src/lib/utils
-ingested_via: put_page
-ingested_at: '2026-07-07T20:09:40.286Z'
-source_kind: put_page
 tags:
   - care-report
   - careviax
