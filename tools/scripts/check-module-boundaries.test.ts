@@ -40,10 +40,11 @@ function createFixtureRepo(files: Record<string, string>, allowlist: unknown = {
   return root;
 }
 
-function runBoundaryCheck(root: string) {
+function runBoundaryCheck(root: string, env: Record<string, string> = {}) {
   return execFileSync(process.execPath, ['tools/scripts/check-module-boundaries.mjs'], {
     cwd: root,
     encoding: 'utf8',
+    env: { ...process.env, ...env },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 }
@@ -110,6 +111,30 @@ describe('check-module-boundaries', () => {
     expect(() => runBoundaryCheck(root)).toThrow(/registered public services/);
   });
 
+  it('rejects non-empty allowlists in normal CI after the debt ratchet reaches zero', () => {
+    const root = createFixtureRepo(
+      {
+        'src/server/services/patient-detail.ts':
+          "import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';\n",
+      },
+      {
+        entries: [
+          {
+            path: 'src/server/services/patient-detail.ts',
+            expectedCount: 1,
+            owner: 'MOD-PATIENT-001',
+            debtId: 'DEBT-PATIENT-001',
+            reason: 'Legacy patient detail link helper imports pharmacy-specific navigation.',
+            plannedAction: 'Move prescription href construction behind a pharmacy module adapter.',
+            targets: ['@/lib/prescriptions/navigation'],
+          },
+        ],
+      },
+    );
+
+    expect(() => runBoundaryCheck(root)).toThrow(/must stay empty in normal CI/);
+  });
+
   it.each([
     ['owner', /entries\[0\]\.owner is required/],
     ['debtId', /entries\[0\]\.debtId is required/],
@@ -161,7 +186,7 @@ describe('check-module-boundaries', () => {
       },
     );
 
-    expect(runBoundaryCheck(root)).toContain(
+    expect(runBoundaryCheck(root, { PHOS_ALLOW_MODULE_BOUNDARY_DEBT: '1' })).toContain(
       'Allowlisted module-boundary debt by owner: MOD-PATIENT-001=1.',
     );
   });

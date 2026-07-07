@@ -37,6 +37,7 @@ import path from 'node:path';
 const REPO_ROOT = process.cwd();
 const ALLOWLIST_PATH = 'tools/module-boundary-allowlist.json';
 const MODULE_IDS_PATH = 'src/core/module-registry/module-ids.json';
+const ALLOW_MODULE_BOUNDARY_DEBT = process.env.PHOS_ALLOW_MODULE_BOUNDARY_DEBT === '1';
 const SCAN_ROOTS = ['src/server/services', 'src/lib', 'src/core', 'src/modules', 'src/app/api'];
 const TARGET_EXTENSIONS = new Set(['.ts', '.tsx']);
 const SKIPPED_SUFFIXES = ['.test.ts', '.test.tsx', '.spec.ts', '.spec.tsx', '.stories.tsx'];
@@ -385,6 +386,15 @@ function findViolations() {
 }
 
 const entries = readAllowlist();
+if (entries.length > 0 && !ALLOW_MODULE_BOUNDARY_DEBT) {
+  console.error('Module boundary check failed.');
+  console.error(
+    `\n${ALLOWLIST_PATH} must stay empty in normal CI. Existing module-boundary debt was ratcheted to zero;` +
+      '\nnew allowlist entries require architecture review and an explicit PHOS_ALLOW_MODULE_BOUNDARY_DEBT=1 audit run.',
+  );
+  process.exit(1);
+}
+
 const allowByPath = new Map(entries.map((entry) => [entry.path, entry]));
 const violations = findViolations();
 const newViolations = [];

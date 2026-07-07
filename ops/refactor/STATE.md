@@ -41,6 +41,45 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOD-CI-001 module-boundary allowlist zero ratchet（pending commit）。
+  - current task:
+    `MOD-CI-001` の小スライスとして、`MOD-BOUND-001` で 0 entries になった module-boundary allowlist が
+    通常CIで再増加しないようにする。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `package.json`,
+    `.github/workflows/ci.yml`,
+    `tools/scripts/check-module-boundaries.mjs`,
+    `tools/scripts/check-module-boundaries.test.ts`,
+    `tools/module-boundary-allowlist.json`.
+  - files changed:
+    `tools/scripts/check-module-boundaries.mjs`,
+    `tools/scripts/check-module-boundaries.test.ts`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `tools/scripts/check-module-boundaries.mjs` は allowlist entries が非空の場合、通常実行では失敗するようにした。
+    例外的な既存負債の棚卸し/architecture review 時だけ `PHOS_ALLOW_MODULE_BOUNDARY_DEBT=1` を指定すると
+    従来の owner-level debt report を出せる。CI の `pnpm boundaries:check` は環境変数を指定しないため、
+    allowlist 0 を維持する gate になった。
+  - bugs found:
+    allowlist debt は 0 になっていたが、checker は valid metadata 付き entries を通常CIでも許容し続けるため、
+    0へのratchet後に境界負債を再導入できる余地が残っていた。
+  - security risks reduced:
+    auth/PHI/DB/API変更なし。モジュール境界の再汚染をCIで止め、将来 module/provider 分離時の accidental coupling を減らした。
+  - performance issues improved:
+    実行時性能変更なし。checker は既存ファイルスキャンのまま、allowlist entries の早期failを追加しただけ。
+  - validation:
+    `pnpm boundaries:check` → pass（0 new violations、0 allowlisted debt imports / 0 files）。
+    `pnpm exec vitest run tools/scripts/check-module-boundaries.test.ts --reporter=dot --testTimeout=30000` → pass（12 tests）。
+    `pnpm exec eslint tools/scripts/check-module-boundaries.mjs tools/scripts/check-module-boundaries.test.ts` → pass。
+    `pnpm exec prettier --check tools/scripts/check-module-boundaries.mjs tools/scripts/check-module-boundaries.test.ts` → pass。
+  - remaining work:
+    `MOD-CI-001` の残りは API envelope / DTO direct Prisma return / task type registry /
+    risk-provider / collaboration-provider の contract gates。次候補は `task-type-registry:check` または
+    provider contract test の小スライス。
+
 - codex: MOD-BOUND-001 patient movement pharmacy timeline seam / allowlist zero（pending commit）。
   - current task:
     `Patient Movement Timeline` の処方 deep link / cycle status label 依存を pharmacy module public service に移し、
