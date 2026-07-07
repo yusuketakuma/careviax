@@ -41,6 +41,55 @@
 
 ## 直近の land（本日・要点）
 
+- codex: PERF-DB-006B care-report keyword search bounded metadata（commit `2460167c3`）。
+  - current task:
+    Active goal の backend-only 実装ループとして、`PERF-DB-006B-KEYWORD` を実装する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/api/care-reports/route.ts`,
+    `src/app/api/care-reports/route.test.ts`,
+    `src/lib/api/response.ts`,
+    `src/lib/api/response-body.ts`.
+  - files changed:
+    `src/app/api/care-reports/route.ts`,
+    `src/app/api/care-reports/route.test.ts`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `careviax/performance-finding/care-report-keyword-bounded-metadata-2026-07-08.md`.
+  - implementation:
+    Keyword body search now reads `CARE_REPORT_KEYWORD_SCAN_LIMIT + 1` rows to detect overflow,
+    processes only the first `500` rows, and returns `search.count_basis = 'bounded_keyword_scan'`
+    with `keyword_scan_limit`, `keyword_scan_truncated`, and `result_window_truncated`.
+    Because keyword cursor pagination is rejected, keyword responses no longer emit a conflicting
+    `nextCursor`; `hasMore` is false for keyword mode and truncation is represented by the
+    `search` metadata.
+  - bugs found:
+    Keyword body search already had a hard `500` row scan cap and rejected cursor input, but it
+    did not disclose scan overflow and could return `nextCursor` for a mode where the same cursor
+    would be rejected on the next request.
+  - security risks reduced:
+    The response adds only bounded-count metadata, not raw report content or hidden metadata.
+    Overflow detection no longer causes patient display lookup for the plus-one overflow row.
+  - performance issues improved:
+    The scan remains explicitly bounded and truthful. The implementation prevents accidental
+    future expansion into an unbounded application-side body scan and avoids patient lookup for
+    rows outside the bounded processing window.
+  - validation commands:
+    `pnpm exec vitest run src/app/api/care-reports/route.test.ts --reporter=dot --testTimeout=30000 -t "PERF-DB-006B"` before implementation, failed as expected;
+    `pnpm exec vitest run src/app/api/care-reports/route.test.ts --reporter=dot --testTimeout=30000 -t "PERF-DB-006B|keyword|F88"` after implementation.
+  - validation results:
+    Red test failed before implementation for `take: 500` instead of `501`.
+    Targeted keyword/F88 tests passed `8` tests.
+  - gbrain:
+    Wrote `careviax/performance-finding/care-report-keyword-bounded-metadata-2026-07-08`.
+  - remaining:
+    `PERF-DB-006C` delivery summary aggregate cost, `PERF-DB-006D` EXPLAIN-backed index human gate,
+    and `PAYLOAD-BUDGET-003` remain.
+  - next action:
+    Push the synced commits, then resume from `PERF-DB-006C` or payload budget.
+
 - codex: PERF-DB-006A care-report q patient search bounded/id-only（commit `bed46d41f`）。
   - current task:
     Active goal の backend-only 実装ループとして、`Plans.md` の最上位未実装
