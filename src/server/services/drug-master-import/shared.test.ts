@@ -310,10 +310,10 @@ describe('fetchBytes', () => {
     expect(cancelMock).toHaveBeenCalledTimes(1);
     expect(loggerWarnMock).toHaveBeenCalledWith(
       {
-        event: 'drug-master-import.stream-cancel-failed',
+        event: 'import-source.stream-cancel-failed',
         operation: 'read-response-bytes',
         code: 'max-bytes-exceeded',
-        filePurpose: 'drug-master-import',
+        filePurpose: 'import-source',
         externalProvider: 'mhlw-price',
       },
       cancelError,

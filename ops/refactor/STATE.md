@@ -41,6 +41,61 @@
 
 ## 直近の land（本日・要点）
 
+- codex: MOD-BOUND-001 import-source extraction / allowlist reduction（pending commit）。
+  - current task:
+    `Plans.md` の `MOD-BOUND-001` 残作業として、実際に module-boundary allowlist count を減らす。
+    介護サービス事業所/医療機関マスタ取込が `drug-master-import/shared` へ依存していた import 基盤 helper を
+    pharmacy 非依存の `import-source` へ切り出す。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `tools/module-boundary-allowlist.json`,
+    `tools/scripts/check-module-boundaries.mjs`,
+    `src/server/services/drug-master-import/shared.ts`,
+    `src/server/services/drug-master-import/shared.test.ts`,
+    `src/server/services/care-service-office-master-import.ts`,
+    `src/server/services/care-service-office-master-import.test.ts`,
+    `src/server/services/medical-institution-master-import.ts`,
+    `src/server/services/medical-institution-master-import.test.ts`.
+  - files changed:
+    `src/server/services/import-source/shared.ts`,
+    `src/server/services/import-source/shared.test.ts`,
+    `src/server/services/drug-master-import/shared.ts`,
+    `src/server/services/drug-master-import/shared.test.ts`,
+    `src/server/services/care-service-office-master-import.ts`,
+    `src/server/services/medical-institution-master-import.ts`,
+    `tools/module-boundary-allowlist.json`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    公式 import source の URL validation、SSRF/private IP guard、manual redirect validation、timeout、
+    byte cap、CSV/ZIP/text decode helper を `src/server/services/import-source/shared.ts` へ移した。
+    `drug-master-import/shared.ts` は drug source policy、fingerprint/date/decimal/logging など drug 固有責務だけを持ち、
+    import-source helper は re-export する互換 module にした。
+    `care-service-office-master-import.ts` と `medical-institution-master-import.ts` は generic
+    `ImportSourceUrlPolicy` / helper を直接 import するように変更した。
+    stale になった `DEBT-COMMON-IMPORT-001` allowlist entry を削除し、allowlist は 7 imports / 6 files から
+    6 imports / 5 files へ減少した。
+  - bugs found:
+    介護サービス事業所マスタ取込と医療機関マスタ取込が、実装上は汎用 import infrastructure なのに
+    `DrugMasterImportUrlPolicy` と `drug-master-import/shared` に依存していた。
+  - security risks reduced:
+    SSRF/credential URL/private IP/redirect/byte cap/ZIP expansion guard は generic module に移して維持した。
+    新規 generic test で non-drug source policy、caller-specific extra host env、credential-bearing URL の fetch前拒否を固定した。
+    raw URL credential、token、PHI、provider body は logger context に入れていない。
+  - performance issues improved:
+    実行時性能変更なし。module-boundary ratchet の既存負債を1件削減し、今後の import基盤再利用が drug module を経由しない。
+  - validation:
+    `pnpm boundaries:check` → pass（0 new violations、6 allowlisted debt imports / 5 files、owner report: `MOD-BILLING-001=1`, `MOD-SHARE-001=1`, `MOD-VISIT-001=1`, `MOV-001=3`）。
+    `pnpm exec vitest run src/server/services/import-source/shared.test.ts src/server/services/drug-master-import/shared.test.ts src/server/services/care-service-office-master-import.test.ts src/server/services/medical-institution-master-import.test.ts tools/scripts/check-module-boundaries.test.ts --reporter=dot --testTimeout=30000` → pass（5 files / 58 tests）。
+    `pnpm exec eslint src/server/services/import-source/shared.ts src/server/services/import-source/shared.test.ts src/server/services/drug-master-import/shared.ts src/server/services/drug-master-import/shared.test.ts src/server/services/care-service-office-master-import.ts src/server/services/medical-institution-master-import.ts` → pass。
+    `pnpm exec prettier --check src/server/services/import-source/shared.ts src/server/services/import-source/shared.test.ts src/server/services/drug-master-import/shared.ts src/server/services/drug-master-import/shared.test.ts src/server/services/care-service-office-master-import.ts src/server/services/medical-institution-master-import.ts tools/module-boundary-allowlist.json docs/architecture/module-boundary.md` → pass。
+    `git diff --check -- src/server/services/import-source/shared.ts src/server/services/import-source/shared.test.ts src/server/services/drug-master-import/shared.ts src/server/services/drug-master-import/shared.test.ts src/server/services/care-service-office-master-import.ts src/server/services/medical-institution-master-import.ts tools/module-boundary-allowlist.json Plans.md` → pass。
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` → pass。
+  - remaining work:
+    `MOD-BOUND-001` の残 allowlist は MOV / SHARE / VISIT / BILLING の domain slice で削減する。
+    module public entrypoint 例外の追加テスト拡張は未着手。
+
 - codex: MOD-BOUND-001 structured module-boundary ratchet（scoped tooling slice）。
   - current task:
     `Plans.md` の `MOD-BOUND-001` に従い、実装済み module registry / active pharmacy module の境界チェックを

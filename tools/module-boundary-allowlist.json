@@ -38,15 +38,6 @@
       "targets": ["@/lib/dispensing/outside-med-classification"]
     },
     {
-      "path": "src/server/services/care-service-office-master-import.ts",
-      "expectedCount": 1,
-      "owner": "MOD-BOUND-001",
-      "debtId": "DEBT-COMMON-IMPORT-001",
-      "reason": "介護サービス事業所マスタ取込が薬剤マスタ取込の共有ユーティリティ (drug-master-import/shared) を再利用している既存負債。取込基盤どうしの依存 (import-infra -> import-infra) で実害は小さいが、basename 'care' によりコア判定されるため ratchet 台帳に明示登録する。将来は取込共通ユーティリティを薬局非依存の場所へ切り出す。",
-      "plannedAction": "import 共通ユーティリティを pharmacy 非依存の server/import infrastructure へ切り出し、care service office と drug master import の双方をそこへ寄せる。",
-      "targets": ["@/server/services/drug-master-import/shared"]
-    },
-    {
       "path": "src/server/services/visit-schedule-billing-preview.ts",
       "expectedCount": 1,
       "owner": "MOD-BILLING-001",

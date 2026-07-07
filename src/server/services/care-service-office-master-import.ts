@@ -8,17 +8,19 @@ import {
   readDelimitedCell,
   resolveImportSourceUrl,
   stripBom,
-  type DrugMasterImportUrlPolicy,
   type FetchLike,
-} from '@/server/services/drug-master-import/shared';
+  type ImportSourceUrlPolicy,
+} from '@/server/services/import-source/shared';
 
 const BYTES_PER_MIB = 1024 * 1024;
-const CARE_SERVICE_SOURCE = 'mhlw_price';
+const CARE_SERVICE_SOURCE = 'mhlw_care_service';
 
 export const MHLW_CARE_SERVICE_OPEN_DATA_PAGE_URL =
   'https://www.mhlw.go.jp/stf/kaigo-kouhyou_opendata.html';
 
-export const MHLW_CARE_SERVICE_IMPORT_URL_POLICY: DrugMasterImportUrlPolicy = {
+export const MHLW_CARE_SERVICE_IMPORT_URL_POLICY: ImportSourceUrlPolicy<
+  typeof CARE_SERVICE_SOURCE
+> = {
   source: CARE_SERVICE_SOURCE,
   allowedHosts: ['www.mhlw.go.jp'],
   maxBytes: 32 * BYTES_PER_MIB,

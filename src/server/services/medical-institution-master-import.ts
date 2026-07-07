@@ -10,16 +10,18 @@ import {
   stripBom,
   unzipWithLimits,
   type FetchLike,
-  type DrugMasterImportUrlPolicy,
-} from '@/server/services/drug-master-import/shared';
+  type ImportSourceUrlPolicy,
+} from '@/server/services/import-source/shared';
 
 const BYTES_PER_MIB = 1024 * 1024;
-const MEDICAL_INSTITUTION_SOURCE = 'mhlw_price';
+const MEDICAL_INSTITUTION_SOURCE = 'mhlw_medical_institution';
 
 export const MHLW_MEDICAL_OPEN_DATA_PAGE_URL =
   'https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/kenkou_iryou/iryou/newpage_43373.html';
 
-export const MHLW_MEDICAL_INSTITUTION_IMPORT_URL_POLICY: DrugMasterImportUrlPolicy = {
+export const MHLW_MEDICAL_INSTITUTION_IMPORT_URL_POLICY: ImportSourceUrlPolicy<
+  typeof MEDICAL_INSTITUTION_SOURCE
+> = {
   source: MEDICAL_INSTITUTION_SOURCE,
   allowedHosts: ['www.mhlw.go.jp'],
   maxBytes: 128 * BYTES_PER_MIB,
