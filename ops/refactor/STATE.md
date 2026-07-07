@@ -41,6 +41,51 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Plans.md implemented-task cleanup（pending commit）。
+  - current task:
+    `Plans.md` 内の実装済みタスクを削除し、残タスクだけが実装候補として読めるように整理する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `src/app/api/files/complete/route.ts`,
+    `src/app/api/files/complete/route.test.ts`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/types/patient-movement-timeline.ts`,
+    `src/server/services/patient-movement-timeline-presenter.ts`,
+    `src/core/module-registry/index.ts`,
+    `src/modules/pharmacy/index.ts`,
+    `src/core/collaboration/registry.ts`,
+    `src/core/risk/provider-registry.ts`,
+    `src/lib/tasks/task-registry.ts`,
+    `src/core/report/template-registry.ts`,
+    `src/core/share/scope-registry.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `files/complete` response minimization、Patient Movement Timeline 基本実装、
+    RiskFinding provider registry、Case Risk Cockpit、RiskFinding->OperationalTask bridge、
+    TaskType registry、Module Registry / collaboration / report template / share scope baseline を
+    実装済みとして未実装リストから削除・圧縮した。
+    残タスクは Inbound 正本、Medication Stock Ledger、autosave/sync、productionized metrics、
+    API/DB contract、module boundary ratchet、未接続 domain adapter に寄せた。
+  - bugs found:
+    なし。計画整理のみ。
+  - security risks reduced:
+    `files/complete` の response 最小化を未実装タスクとして残す stale plan を削除し、
+    残る file 系 risk を FileAsset lifecycle / retention / public DTO boundary へ集約した。
+  - performance issues improved:
+    実装変更なし。Plans 上では prescription intake facet count fan-out を実装済みに更新し、
+    残りを route p95/payload/query-count observability に限定した。
+  - validation:
+    `git diff --check -- Plans.md ops/refactor/STATE.md` → pass。
+    `pnpm exec prettier --check ops/refactor/STATE.md` → pass。
+    `pnpm exec prettier --check Plans.md` は既存ファイル全体のprettier非準拠で warning になるため、
+    今回差分の gate には `git diff --check` を採用。
+  - remaining work:
+    scoped commit / push。既存未コミットの
+    `src/lib/utils/performance.*` query-count instrumentation 差分はこの Plans cleanup とは別slice。
+
 - codex: FE-RT-001 admin realtime/performance source-scoped invalidation（pending commit）。
   - current task:
     `/admin/realtime` と `/admin/performance` の workflow/schedule query を broad
