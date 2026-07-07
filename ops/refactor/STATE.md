@@ -13637,3 +13637,40 @@
   green.
 - remaining:
   Continue source-scoped migration on dashboard, schedule proposals/day-board, and handoff.
+
+## 2026-07-07 Handoff workspace source-scoped realtime
+
+- codex:
+  Continued `FE-RT-001` for `HandoffWorkspace`. The handoff board query now keeps
+  `cycle_transition` refreshes but scopes `workflow_refresh` to handoff, visit handoff, visit record,
+  and visit-preparation sources instead of accepting every workflow refresh. The related nav badge
+  and handoff task invalidation callback uses the same source gate.
+- files inspected:
+  `Plans.md`,
+  `src/app/(dashboard)/handoff/handoff-workspace.tsx`,
+  `src/app/(dashboard)/handoff/handoff-workspace.test.tsx`,
+  `src/app/api/handoff-board/*`,
+  `src/app/api/visit-records/*`,
+  `src/server/services/visit-handoff.ts`,
+  `src/lib/hooks/use-realtime-query.ts`,
+  `src/lib/hooks/use-realtime-invalidation.ts`.
+- files changed:
+  `src/app/(dashboard)/handoff/handoff-workspace.tsx`,
+  `src/app/(dashboard)/handoff/handoff-workspace.test.tsx`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- bugs / risks reduced:
+  Unrelated prescription/report/dashboard workflow refreshes no longer refetch `/api/handoff-board`
+  or invalidate handoff nav/task queries. Handoff item changes, visit handoff extraction/confirmation,
+  visit records, and visit preparations still refresh the workspace.
+- validation:
+  `pnpm exec vitest run 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx' src/lib/hooks/use-realtime-invalidation.test.tsx src/lib/hooks/use-realtime-query.test.tsx --reporter=dot --testTimeout=30000`
+  green (3 files / 48 tests; existing act warnings remain in this broad component test file);
+  `pnpm exec eslint 'src/app/(dashboard)/handoff/handoff-workspace.tsx' 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx'`
+  green;
+  `pnpm exec prettier --check 'src/app/(dashboard)/handoff/handoff-workspace.tsx' 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx' Plans.md ops/refactor/STATE.md`
+  green;
+  `git diff --check -- 'src/app/(dashboard)/handoff/handoff-workspace.tsx' 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx' Plans.md ops/refactor/STATE.md`
+  green.
+- remaining:
+  Continue source-scoped migration on dashboard and schedule proposals/day-board.

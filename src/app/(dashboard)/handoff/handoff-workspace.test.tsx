@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
@@ -1147,7 +1147,7 @@ describe('HandoffWorkspace', () => {
     );
   });
 
-  it('refreshes board queries from workflow realtime events', async () => {
+  it('refreshes board queries only from handoff-related realtime events', async () => {
     useAuthStore.getState().setCurrentUser({ id: 'user_1' });
     let realtimeOptions: { onEvent: (event: unknown) => void } | null = null;
     const invalidateSpy = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
@@ -1172,7 +1172,25 @@ describe('HandoffWorkspace', () => {
       expect(handoffBoardFetchCount()).toBe(1);
     });
 
-    getRealtimeOptions().onEvent({ type: 'workflow_refresh' });
+    await act(async () => {
+      getRealtimeOptions().onEvent({
+        type: 'workflow_refresh',
+        source: 'prescription_intakes_create',
+      });
+      await new Promise((resolve) => setTimeout(resolve, 220));
+    });
+    expect(handoffBoardFetchCount()).toBe(1);
+    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: ['nav-badges'] });
+    expect(invalidateSpy).not.toHaveBeenCalledWith({
+      queryKey: ['tasks', 'handoff-confirmation', 'org_1'],
+    });
+
+    await act(async () => {
+      getRealtimeOptions().onEvent({
+        type: 'workflow_refresh',
+        source: 'handoff_board_item_create',
+      });
+    });
 
     await waitFor(() => {
       expect(handoffBoardFetchCount()).toBeGreaterThan(1);

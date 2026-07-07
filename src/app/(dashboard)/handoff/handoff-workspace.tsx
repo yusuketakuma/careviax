@@ -84,7 +84,23 @@ export async function fetchHandoffBoard(orgId: string): Promise<HandoffBoardResp
   return json.data;
 }
 
-const HANDOFF_BOARD_INVALIDATION_EVENTS = ['workflow_refresh', 'cycle_transition'] as const;
+const HANDOFF_BOARD_WORKFLOW_SOURCES = [
+  'handoff_board',
+  'handoff_board_item_create',
+  'handoff_board_item_read',
+  'handoff_board_item_resolve',
+  'visit_handoff_extraction',
+  'visit_handoff_confirmed',
+  'visit_handoff_supervision_confirmed',
+  'visit_handoff_supervision_requested',
+  'visit_record',
+  'initial_visit_record',
+  'visit_preparations_update',
+] as const;
+const HANDOFF_BOARD_INVALIDATION_EVENTS = [
+  'cycle_transition',
+  { type: 'workflow_refresh', source: HANDOFF_BOARD_WORKFLOW_SOURCES },
+] as const;
 const COMMUNICATION_WAITING_REQUESTS_HREF = buildCommunicationRequestsHref({ status: 'sent' });
 
 function isHandoffBoardInvalidationEvent(event: unknown) {
@@ -92,7 +108,16 @@ function isHandoffBoardInvalidationEvent(event: unknown) {
     typeof event === 'object' && event !== null && 'type' in event
       ? (event as { type: string }).type
       : undefined;
-  return HANDOFF_BOARD_INVALIDATION_EVENTS.some((type) => type === eventType);
+  if (eventType === 'cycle_transition') return true;
+  if (eventType !== 'workflow_refresh') return false;
+  const source =
+    typeof event === 'object' && event !== null && 'source' in event
+      ? (event as { source: unknown }).source
+      : undefined;
+  return (
+    typeof source === 'string' &&
+    (HANDOFF_BOARD_WORKFLOW_SOURCES as readonly string[]).includes(source)
+  );
 }
 
 export async function fetchOperationCockpit(orgId: string): Promise<DashboardCockpitResponse> {
