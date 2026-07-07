@@ -17545,6 +17545,8 @@
 - validation results:
   Dashboard cockpit route tests passed (1 file / 36 tests). Scoped ESLint
   passed. Full typecheck passed. Diff check passed.
+- commit:
+  `512aeecda` (`perf: prefilter dashboard audit queue reads`).
 - gbrain:
   `careviax/performance-finding/dashboard-audit-queue-prefilter-2026-07-07`.
 - remaining work:
@@ -17552,5 +17554,5 @@
   quantify p95 impact and decide whether an additional composite index on
   `DispenseAudit(task_id, org_id, audited_at, created_at, id)` is justified.
 - next action:
-  Write a gbrain note for the dashboard audit queue read pattern, then commit
-  and push this focused DB-read optimization slice.
+  Push the implementation and ledger commits, then continue the backend-focused
+  Plans.md objective from the next P0/P1 slice.
