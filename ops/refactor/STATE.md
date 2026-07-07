@@ -41,6 +41,54 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Plans.md status registry cleanup / 未実装Plan拡充（commit pending）。
+  - current task:
+    既存 `Plans.md` 内の実装済み/未実装を分類し、実装済み項目を再タスク化しないよう
+    top-level registry を更新する。未実装項目は次PRに落とせる粒度へ拡充し、派生タスクを追記する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `AGENTS.md`,
+    `docs/ui-ux-design-guidelines.md`,
+    `ops/refactor/STATE.md`,
+    recent `git log --oneline`,
+    dashboard/patient/movement/inbound/stock code search results,
+    and read-only subagent evidence for the remaining patient master broad include follow-up.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Promoted the 2026-07-08 plan status registry to the active entry point and clarified that
+    same-ID status/residual scope in the registry overrides stale lower-section TODO markers.
+    Marked dashboard ViewModel and Clock Island as implemented, moved dashboard residual work to
+    Summary Rail, drilldown/clickable process tiles, quick action boundaries, density/semantic tone,
+    render-boundary evidence, and visual regression. Clarified DB read-speed residual work as
+    `PERF-DB-005B` patient master bounded select / per-relation take, with compatibility fields,
+    prohibited broad includes, and route/service/payload tests. Added derived planning tasks for
+    plan archival and frontend slice contract/state-matrix quality.
+  - bugs found:
+    `Plans.md` still treated completed dashboard Clock Island / ViewModel work and the first patient
+    detail DB speed slice as active implementation backlog in several places.
+  - security risks reduced:
+    No runtime code changed. The plan now keeps authorized dashboard/detail disclosure separate from
+    list/summary payload budgets, and records the remaining patient master bounded read as a PHI/payload
+    control task.
+  - performance issues improved:
+    No runtime code changed. The next DB performance task is now explicitly scoped to replacing broad
+    patient master relation includes with bounded `select` / `take` reads.
+  - validation commands:
+    `pnpm exec prettier --check Plans.md`;
+    `git diff --check -- Plans.md`.
+  - validation results:
+    Plans.md Prettier check passed after formatting the edited Markdown tables.
+    `git diff --check -- Plans.md` passed.
+  - remaining:
+    Lower long-form prompt sections still contain historical `cc:TODO` markers for genuinely unfinished
+    tracks; `PLAN-ARCHIVE-001` should later move completed prompt-style specs into reference docs.
+  - next action:
+    Commit this documentation slice, then resume implementation from `PERF-DB-005B` or the ranked
+    active backlog.
+
 - codex: PERF-DB-005 patient detail root scoped read + timeline fan-out removal（commit `5fdea246e`, pushed to `main`; ledger sync `e1b68878a`）。
   - current task:
     Plans registry の DB read-speed 改善順に従い、legacy `GET /api/patients/[id]`
