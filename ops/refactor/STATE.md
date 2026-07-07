@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: Plans.md notification boundary cleanup（pending commit）。
+- codex: Plans.md notification boundary cleanup（commit `011e05e37`, pushed to `main`）。
   - current task:
     実装済みの notification stream / Web Push redaction タスクを `Plans.md` の未完了タスクから削除し、未完了の realtime client hardening / outbox / 通知未達監視へ依存を寄せ直す。
   - files inspected:
@@ -77,7 +77,7 @@
     `pnpm exec prettier --check Plans.md ops/refactor/STATE.md` → pass。
     `git diff --check -- Plans.md ops/refactor/STATE.md` → pass。
   - remaining work:
-    scoped commit 後、次の stale/implemented plan task cleanup または `FE-RT-002` client realtime payload allowlist 実装へ進む。
+    次の stale/implemented plan task cleanup または `FE-RT-002` client realtime payload allowlist 実装へ進む。
 
 - codex: FE-ERR-001 pharmacist credentials segment hardening（commit `e51df69c1`, pushed to `main`）。
   - current task:
