@@ -18530,6 +18530,9 @@
   `projects/careviax/decisions/2026-07-08/perf-db-007-timeline-source-limit`
   records the source-reduction policy and Oracle rationale. A mistakenly
   created repo-source duplicate was soft-deleted and its untracked file removed.
+- commit:
+  `6c853a999` (`perf(db): bound patient timeline source reads`) was pushed to
+  `origin/main`.
 - bugs found:
   The timeline service accepted small caller limits but source fetchers still
   used fixed caps, so small initial movement/timeline requests paid the read
