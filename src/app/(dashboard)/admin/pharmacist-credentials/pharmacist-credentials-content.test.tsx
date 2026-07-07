@@ -424,15 +424,27 @@ describe('PharmacistCredentialsContent', () => {
     const refetch = vi.fn();
     useQueryMock.mockImplementation(({ queryKey }: { queryKey: readonly unknown[] }) => {
       if (queryKey[0] === 'pharmacist-credentials') {
-        // 取得失敗 → 空一覧(false-empty)ではなく ErrorState + 再読み込み。
-        return { data: undefined, isLoading: false, isError: true, refetch };
+        // 取得失敗 → 空一覧(false-empty)ではなく SegmentError + 再読み込み。
+        return {
+          data: undefined,
+          isLoading: false,
+          isError: true,
+          error: new Error('患者 山田太郎 storage_key=private/provider_error token=secret'),
+          refetch,
+        };
       }
       return defaultUseQueryImpl({ queryKey });
     });
 
     render(<PharmacistCredentialsContent />);
 
-    expect(screen.getByText('サーバーエラーが発生しました')).toBeTruthy();
+    expect(screen.getByText('薬剤師認定情報を取得できませんでした')).toBeTruthy();
+    expect(screen.getByText(/薬剤師認定情報の取得に失敗しました。/)).toBeTruthy();
+    const renderedText = document.body.textContent ?? '';
+    expect(renderedText).not.toContain('患者 山田太郎');
+    expect(renderedText).not.toContain('storage_key');
+    expect(renderedText).not.toContain('provider_error');
+    expect(renderedText).not.toContain('token=secret');
     // 空のテーブルを描画していないこと(false-empty 回避)。
     expect(screen.queryByTestId('credentials-table')).toBeNull();
 

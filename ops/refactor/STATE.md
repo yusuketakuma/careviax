@@ -41,7 +41,42 @@
 
 ## 直近の land（本日・要点）
 
-- codex: FE-ERR-001 document template list segment hardening（pending commit）。
+- codex: FE-ERR-001 pharmacist credentials segment hardening（pending commit）。
+  - current task:
+    `/admin/pharmacist-credentials` の薬剤師認定情報一覧取得失敗を shared segment state に寄せる。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx`,
+    `src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx`,
+    `src/components/ui/segment-state.tsx`,
+    `src/components/ui/segment-state.test.tsx`.
+  - files changed:
+    `src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx`,
+    `src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    credentials query failure の旧 `ErrorState` 直利用を `SegmentError` の固定文言 + retry に置換した。
+    hostile query error に patient name / storage key / provider error / token が含まれても画面へ出ない regression test を追加した。
+  - bugs found:
+    なし。既存は false-empty 回避済みだったが、admin screen の error 表現が旧 `ErrorState` 直利用だった。
+  - security risks reduced:
+    pharmacist credentials error UI に hostile query error text が出ないことを focused test で固定した。
+  - performance issues improved:
+    なし。fail-soft/error state の共有化。
+  - validation:
+    `pnpm exec vitest run 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx' src/components/ui/segment-state.test.tsx --reporter=dot --testTimeout=30000` → pass（2 files / 23 tests）。
+    `pnpm exec eslint 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx'` → pass。
+    `pnpm exec prettier --check 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx'` → pass。
+    `git diff --check -- 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx'` → pass。
+  - remaining:
+    FE-ERR-001 は admin screen 群への段階展開が残る。
+    Formal `InboundCommunicationEvent` / `InboundCommunicationSignal` DB/API/review UI and MedicationStock Ledger source remain.
+  - next action:
+    scoped commit/push。
+
+- codex: FE-ERR-001 document template list segment hardening（commit `de864e04f`, pushed to `main`）。
   - current task:
     `/admin/document-templates` の文書テンプレート一覧取得失敗を shared segment state に寄せる。
   - files inspected:

@@ -14,7 +14,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
-import { ErrorState } from '@/components/ui/error-state';
 import {
   Dialog,
   DialogContent,
@@ -26,6 +25,7 @@ import {
 import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SegmentError } from '@/components/ui/segment-state';
 import {
   Select,
   SelectContent,
@@ -552,12 +552,12 @@ export function PharmacistCredentialsContent() {
         </CardHeader>
         <CardContent className="p-0">
           {isError ? (
-            // 取得失敗時は空の一覧(false-empty)にせず、再読み込み導線つきの ErrorState を出す。
-            <ErrorState
-              size="inline"
-              description="薬剤師認定情報を取得できませんでした。時間をおいて再読み込みしてください。"
+            // 取得失敗時は空の一覧(false-empty)にせず、再読み込み導線つきの SegmentError を出す。
+            <SegmentError
+              title="薬剤師認定情報を取得できませんでした"
+              cause="薬剤師認定情報の取得に失敗しました。"
+              nextAction="通信状態を確認して再読み込みしてください。"
               onRetry={() => void refetch()}
-              retryLabel="再読み込み"
               className="m-4"
             />
           ) : (
