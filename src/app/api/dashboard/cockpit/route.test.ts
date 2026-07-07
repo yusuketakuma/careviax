@@ -676,6 +676,96 @@ describe('/api/dashboard/cockpit', () => {
     );
   });
 
+  it('adds reviewed medication stock apply waits to the unified urgent queue', async () => {
+    inboundCommunicationSignalCountMock.mockResolvedValue(1);
+    inboundCommunicationSignalFindManyMock.mockResolvedValue([
+      {
+        id: 'signal_stock_apply',
+        patient_id: 'patient_stock',
+        case_id: 'case_stock',
+        inbound_event_id: 'event_stock',
+        signal_type: 'out_of_stock_text',
+        extracted_text: '湿布がなくなりました',
+        extracted_medication_name: '湿布A',
+        extracted_quantity: null,
+        extracted_unit: null,
+        source_confidence: 'manual',
+        review_status: 'accepted',
+        action_status: 'not_linked',
+        created_at: new Date(2026, 5, 12, 8, 50),
+        updated_at: new Date(2026, 5, 12, 9, 5),
+        inbound_event: {
+          id: 'event_stock',
+          patient_id: 'patient_stock',
+          case_id: 'case_stock',
+          source_channel: 'mcs',
+          sender_role: 'nurse',
+          normalized_summary: '湿布不足の報告',
+          received_at: new Date(2026, 5, 12, 8, 45),
+          raw_text: '訪問看護師 山田 090-9999-9999 湿布Aがなくなりました',
+          sender_contact: '090-9999-9999',
+          external_url: 'https://example.invalid/secret',
+          attachments: [{ storage_key: 'private/storage/key' }],
+        },
+      },
+    ]);
+    patientFindManyMock.mockResolvedValue([{ id: 'patient_stock', name: '残数 太郎' }]);
+
+    const response = (await GETDetails(createRequest('', '/api/dashboard/cockpit/details'), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const json = await response.json();
+    expect(json.data.urgent_total_count).toBe(5);
+    expect(json.data.urgent_items.map((item: { id: string }) => item.id)).toEqual([
+      'audit:task_narcotic',
+      'task:exception_1',
+      'medication_stock:signal_stock_apply',
+      'audit:task_plain',
+      'task:exception_2',
+    ]);
+    expect(json.data.urgent_items[2]).toMatchObject({
+      source: 'medication_stock',
+      source_id: 'signal_stock_apply',
+      source_label: '残数管理',
+      reference_label: 'MCS',
+      severity: 'urgent',
+      patient_id: 'patient_stock',
+      patient_name: '残数 太郎',
+      title: '外用薬・頓服薬の不足報告',
+      summary: '湿布A: 湿布がなくなりました',
+      due_at: new Date(2026, 5, 12, 8, 45).toISOString(),
+      waiting_since: new Date(2026, 5, 12, 8, 45).toISOString(),
+      action_href: '/patients/patient_stock#medication-stock-events',
+      action_label: '残数報告を確認',
+    });
+
+    const responseBody = JSON.stringify(json.data.urgent_items);
+    expect(responseBody).not.toContain('sender_contact');
+    expect(responseBody).not.toContain('090-9999-9999');
+    expect(responseBody).not.toContain('external_url');
+    expect(responseBody).not.toContain('storage_key');
+    expect(responseBody).not.toContain('private/storage/key');
+
+    expect(inboundCommunicationSignalFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          AND: [
+            expect.objectContaining({
+              org_id: 'org_1',
+              signal_domain: 'medication_stock',
+            }),
+            { review_status: { in: ['accepted', 'auto_accepted'] } },
+            { action_status: { in: ['not_linked', 'linked_to_task'] } },
+          ],
+        },
+        take: 40,
+      }),
+    );
+  });
+
   it('adds failed report deliveries to the unified urgent queue', async () => {
     deliveryRecordCountMock.mockResolvedValue(1);
     deliveryRecordFindManyMock.mockResolvedValue([

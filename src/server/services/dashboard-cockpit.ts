@@ -198,6 +198,11 @@ type DashboardBillingUrgentResult = {
   totalCount: number;
 };
 
+type DashboardMedicationStockUrgentResult = {
+  items: DashboardUrgentItem[];
+  totalCount: number;
+};
+
 type DashboardMedicationStockSignalRow = {
   id: string;
   patient_id: string | null;
@@ -952,6 +957,7 @@ function buildVisitPreparationUrgentItem(args: {
 function buildDashboardUrgentItems(args: {
   auditItems: CockpitAuditQueueItem[];
   inboundItems?: CockpitInboundItem[];
+  medicationStockItems?: DashboardUrgentItem[];
   visitPreparationItems?: DashboardUrgentItem[];
   callbackItems?: DashboardUrgentItem[];
   reportItems?: DashboardUrgentItem[];
@@ -964,6 +970,7 @@ function buildDashboardUrgentItems(args: {
     ...(args.inboundItems ?? [])
       .map(buildInboundUrgentItem)
       .filter((item): item is DashboardUrgentItem => item != null),
+    ...(args.medicationStockItems ?? []),
     ...(args.visitPreparationItems ?? []),
     ...(args.callbackItems ?? []),
     ...(args.reportItems ?? []),
@@ -1759,6 +1766,38 @@ function buildMedicationStockRiskItem(args: {
   };
 }
 
+function buildMedicationStockUrgentItem(
+  item: DashboardMedicationStockRiskItem,
+): DashboardUrgentItem | null {
+  if (item.risk_level === 'linked') return null;
+
+  const severity = item.risk_level === 'urgent' ? 'urgent' : 'warning';
+  const medicationLabel = item.medication_name ?? '薬剤名確認';
+  const quantityLabel = item.quantity_label ? ` / ${item.quantity_label}` : '';
+  const sourceText = item.source_text?.trim();
+  const summary = sourceText
+    ? `${medicationLabel}${quantityLabel}: ${sourceText}`
+    : `${medicationLabel}${quantityLabel} の残数・使用状況を確認してください。`;
+
+  return {
+    id: `medication_stock:${item.signal_id}`,
+    source: 'medication_stock',
+    source_id: item.signal_id,
+    source_label: '残数管理',
+    reference_label: item.source_label,
+    severity,
+    patient_id: item.patient_id,
+    patient_name: item.patient_name,
+    title: item.risk_level === 'urgent' ? '外用薬・頓服薬の不足報告' : '外用薬・頓服薬の残数確認',
+    summary,
+    due_at: item.risk_level === 'urgent' ? item.received_at : null,
+    waiting_since: item.received_at,
+    badges: item.badges,
+    action_href: item.action_href,
+    action_label: item.action_label,
+  };
+}
+
 async function readAllowedCommentEntities(args: {
   orgId: string;
   assignmentScope: DashboardAssignmentScope;
@@ -2036,6 +2075,102 @@ async function readDashboardInbound(args: {
     inbound_safety_signal_count: inboundItems.filter((item) => item.has_patient_safety_signal)
       .length,
   };
+}
+
+async function readDashboardMedicationStockUrgents(args: {
+  ctx: AuthContext;
+  scopeContext: DashboardCockpitScopeContext;
+}): Promise<DashboardMedicationStockUrgentResult> {
+  const baseWhere = buildDashboardMedicationStockSignalWhere({
+    orgId: args.ctx.orgId,
+    assignmentScope: args.scopeContext.assignmentScope,
+  });
+  const where: Prisma.InboundCommunicationSignalWhereInput = {
+    AND: [
+      baseWhere,
+      { review_status: { in: ['accepted', 'auto_accepted'] } },
+      { action_status: { in: ['not_linked', 'linked_to_task'] } },
+    ],
+  };
+
+  return withOrgContext(
+    args.ctx.orgId,
+    async (tx) => {
+      const [signals, totalCount] = await Promise.all([
+        tx.inboundCommunicationSignal.findMany({
+          where,
+          orderBy: [{ updated_at: 'desc' }, { id: 'asc' }],
+          take: MEDICATION_STOCK_RISK_FETCH_LIMIT,
+          select: {
+            id: true,
+            patient_id: true,
+            case_id: true,
+            inbound_event_id: true,
+            signal_type: true,
+            extracted_text: true,
+            extracted_medication_name: true,
+            extracted_quantity: true,
+            extracted_unit: true,
+            source_confidence: true,
+            review_status: true,
+            action_status: true,
+            created_at: true,
+            updated_at: true,
+            inbound_event: {
+              select: {
+                id: true,
+                patient_id: true,
+                case_id: true,
+                source_channel: true,
+                sender_role: true,
+                normalized_summary: true,
+                received_at: true,
+              },
+            },
+          },
+        }),
+        tx.inboundCommunicationSignal.count({ where }),
+      ]);
+
+      const actionableSignals = signals.filter(
+        (signal) =>
+          ['accepted', 'auto_accepted'].includes(signal.review_status) &&
+          ['not_linked', 'linked_to_task'].includes(signal.action_status),
+      );
+      const visibleSignals = actionableSignals.slice(0, MEDICATION_STOCK_RISK_RESPONSE_LIMIT);
+      const patientIds = Array.from(
+        new Set(
+          visibleSignals
+            .map((signal) => signal.patient_id ?? signal.inbound_event.patient_id)
+            .filter((patientId): patientId is string => Boolean(patientId)),
+        ),
+      );
+      const patients =
+        patientIds.length > 0
+          ? await tx.patient.findMany({
+              where: { org_id: args.ctx.orgId, id: { in: patientIds } },
+              select: { id: true, name: true },
+            })
+          : [];
+      const patientNameById = new Map(patients.map((patient) => [patient.id, patient.name]));
+      const urgentItems = visibleSignals
+        .map((signal) =>
+          buildMedicationStockRiskItem({
+            signal,
+            patientName: signal.patient_id
+              ? (patientNameById.get(signal.patient_id) ?? null)
+              : signal.inbound_event.patient_id
+                ? (patientNameById.get(signal.inbound_event.patient_id) ?? null)
+                : null,
+          }),
+        )
+        .map(buildMedicationStockUrgentItem)
+        .filter((item): item is DashboardUrgentItem => item != null);
+
+      return { items: urgentItems, totalCount };
+    },
+    { requestContext: args.ctx, maxWaitMs: 2000, timeoutMs: 3000 },
+  );
 }
 
 async function readDashboardMedicationStockRisks(args: {
@@ -2723,6 +2858,7 @@ async function buildCockpitDetails(
   const [
     auditQueue,
     inbound,
+    medicationStockUrgents,
     visitPreparationUrgents,
     callbackUrgents,
     reportUrgents,
@@ -2733,6 +2869,7 @@ async function buildCockpitDetails(
   ] = await Promise.all([
     readAuditQueue({ orgId: ctx.orgId, assignmentScope: scopeContext.assignmentScope }),
     readDashboardInbound({ ctx, scopeContext }),
+    readDashboardMedicationStockUrgents({ ctx, scopeContext }),
     readDashboardVisitPreparationUrgents({ ctx, scopeContext }),
     readDashboardCallbackUrgents({ ctx, scopeContext }),
     readDashboardReportDeliveryUrgents({ ctx, scopeContext }),
@@ -2784,6 +2921,7 @@ async function buildCockpitDetails(
   const urgentItems = buildDashboardUrgentItems({
     auditItems: visibleQueue,
     inboundItems: inbound.inbound_items,
+    medicationStockItems: medicationStockUrgents.items,
     visitPreparationItems: visitPreparationUrgents.items,
     callbackItems: callbackUrgents.items,
     reportItems: reportUrgents.items,
@@ -2794,6 +2932,7 @@ async function buildCockpitDetails(
   const urgentSourceCount =
     auditQueue.totalCount +
     inbound.inbound_needs_review_count +
+    medicationStockUrgents.totalCount +
     visitPreparationUrgents.totalCount +
     callbackUrgents.totalCount +
     reportUrgents.totalCount +

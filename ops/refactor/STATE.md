@@ -17339,3 +17339,68 @@
   Run diff whitespace checks, commit and push the validated formal inbound
   Case Risk source slice, then continue with the next backend source in
   `Plans.md`.
+
+## 2026-07-07 dashboard medication-stock urgent source
+
+- current task:
+  Add reviewed medication-stock apply-wait signals to the Dashboard Unified
+  Urgent Queue without exposing uncontrolled inbound/raw fields.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `.agents/skills/oracle-consult/SKILL.md`,
+  Oracle sessions `dashboard-stock-urgent-review` and
+  `dashboard-stock-urgent-review-2`,
+  `Plans.md`,
+  `src/server/services/dashboard-cockpit.ts`,
+  `src/types/dashboard-cockpit.ts`,
+  `src/app/api/dashboard/cockpit/stock-risks/route.ts`,
+  `src/app/api/dashboard/cockpit/route.test.ts`,
+  `prisma/schema/medication.prisma`.
+- files changed:
+  `src/server/services/dashboard-cockpit.ts`,
+  `src/app/api/dashboard/cockpit/route.test.ts`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`.
+- implementation:
+  Added a bounded medication-stock urgent reader that consumes only
+  `accepted` / `auto_accepted` medication-stock signals whose action status is
+  still `not_linked` or `linked_to_task`. These rows are mapped into
+  `DashboardUrgentItem` with `source='medication_stock'` and reuse the existing
+  controlled stock-risk presenter fields. Linked stock-event rows are excluded
+  from urgent queue display.
+- oracle review:
+  Required due medical/PHI dashboard scope. The first Oracle browser session
+  failed after Chrome became unreachable; the restart session also failed in
+  the Oracle CLI with `setTypeOfService EINVAL` after archive. No completed
+  advisory artifact was available. Proceeded only after narrow local code
+  review and validation because the slice is bounded to presenter/query
+  integration and does not change auth, writes, schema, or migrations.
+- bugs found:
+  No runtime bug was reproduced. The implementation intentionally avoids
+  duplicating unreviewed inbound urgent rows by selecting only reviewed stock
+  signals that still need ledger/action work.
+- security risks reduced:
+  The details urgent DTO selects and emits controlled summary fields only.
+  Tests cover that raw sender contact, phone text, external URLs, attachment
+  storage keys, and private storage paths do not leak into urgent items.
+- performance issues improved:
+  The urgent reader uses the same bounded stock-signal query shape as the
+  stock-risks segment, limits response rows, and resolves patient names only for
+  visible signal patient IDs.
+- validation commands:
+  `pnpm exec vitest run src/app/api/dashboard/cockpit/route.test.ts --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint src/server/services/dashboard-cockpit.ts src/app/api/dashboard/cockpit/route.test.ts`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `git diff --check -- src/server/services/dashboard-cockpit.ts src/app/api/dashboard/cockpit/route.test.ts`.
+- validation results:
+  Focused dashboard cockpit route tests passed (1 file / 36 tests). Targeted
+  ESLint passed. Full typecheck passed. Diff whitespace check passed.
+- remaining work:
+  Add generic task-source urgent items, source-specific drilldown, role-focus
+  ordering, Clock Island, and Dashboard ViewModel. Oracle browser review should
+  be retried on the next broad dashboard/PHI merge point after CLI stability is
+  restored.
+- next action:
+  Commit and push this validated dashboard slice, then resume the AWS database
+  backup/recovery request by checking the existing AWS Backup/RDS baseline for
+  missing restore automation and runbook coverage.
