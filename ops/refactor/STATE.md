@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: FE-RT-002 realtime client payload boundary hardening（commit `63e48c95b`, pending push）。
+- codex: FE-RT-002 realtime client payload boundary hardening（commit `2b73ec9bc`, pushed to `main`）。
   - current task:
     shared realtime stream の array payload 経路を `sse-safe` 正規化し、SSE 通知配列から raw title/message/link、患者名、薬剤名、storage key 等が React listener へ届かないようにする。
   - files inspected:
@@ -83,7 +83,7 @@
     `pnpm exec prettier --check src/lib/realtime/shared-event-stream.ts src/lib/realtime/shared-event-stream.test.ts Plans.md` → pass。
     `git diff --check -- src/lib/realtime/shared-event-stream.ts src/lib/realtime/shared-event-stream.test.ts Plans.md` → pass。
   - remaining work:
-    push 後、`FE-RT-001` の主要画面 source taxonomy / invalidation rule 棚卸し、または次の Plans 実装済み項目整理へ進む。
+    `FE-RT-001` の主要画面 source taxonomy / invalidation rule 棚卸し、または次の Plans 実装済み項目整理へ進む。
 
 - codex: Plans.md notification boundary cleanup（commit `011e05e37`, pushed to `main`）。
   - current task:
