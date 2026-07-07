@@ -1,16 +1,18 @@
-import { Prisma } from '@prisma/client';
+import { PatientContactStatus, Prisma, ReportStatus } from '@prisma/client';
 import type { NextRequest } from 'next/server';
 import { requireAuthContext, type AuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { COCKPIT_CACHE_TTL_MS } from '@/lib/constants/workflow';
 import { success, validationError } from '@/lib/api/response';
+import { contactMethodLabel } from '@/lib/contact-profile-options';
 import { prisma } from '@/lib/db/client';
 import { formatNullableDateKey } from '@/lib/date-key';
 import { buildDispenseTaskHref } from '@/lib/dispense/navigation';
 import { extractPackagingInstructionTags } from '@/lib/dispensing/packaging';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { formatPrescriptionCardNumber } from '@/lib/prescription/rx-number';
-import { buildReportHref } from '@/lib/reports/navigation';
+import { buildReportHref, buildReportSendHref } from '@/lib/reports/navigation';
+import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
 import { buildSetPlanHref } from '@/lib/set/navigation';
 import { canViewAllDashboardWork } from '@/lib/auth/visit-schedule-access';
 import { buildVisitHref } from '@/lib/visits/navigation';
@@ -53,6 +55,8 @@ const COMMENT_FEED_RESPONSE_LIMIT = 5;
 const COMMENT_EXCERPT_LENGTH = 96;
 const INBOUND_FEED_FETCH_LIMIT = 40;
 const INBOUND_FEED_RESPONSE_LIMIT = 8;
+const CALLBACK_URGENT_FETCH_LIMIT = 12;
+const REPORT_URGENT_FETCH_LIMIT = 12;
 
 type DashboardScopeQuery =
   | { ok: true; scope: DashboardCockpitScope | null }
@@ -115,6 +119,41 @@ type DashboardCommentCandidate = {
   author_id: string;
   mentions: string[];
   created_at: Date;
+};
+
+type DashboardCallbackUrgentLog = {
+  id: string;
+  patient_id: string;
+  schedule_id: string | null;
+  outcome: string;
+  contact_name: string | null;
+  note: string | null;
+  callback_due_at: Date | null;
+  called_at: Date;
+};
+
+type DashboardCallbackUrgentResult = {
+  items: DashboardUrgentItem[];
+  totalCount: number;
+};
+
+type DashboardReportUrgentDelivery = {
+  id: string;
+  channel: string;
+  recipient_name: string;
+  failure_reason: string | null;
+  retry_count: number;
+  updated_at: Date;
+  report: {
+    id: string;
+    patient_id: string;
+    report_type: string;
+  };
+};
+
+type DashboardReportUrgentResult = {
+  items: DashboardUrgentItem[];
+  totalCount: number;
 };
 
 const TASK_PRIORITY_WEIGHT: Record<string, number> = {
@@ -358,9 +397,113 @@ function buildBlockedReasonUrgentItem(item: CockpitBlockedReason, now: Date): Da
   };
 }
 
+const CALLBACK_OUTCOME_LABELS: Record<string, string> = {
+  pending: '連絡待ち',
+  attempted: '未接続',
+  confirmed: '確認済み',
+  declined: '辞退',
+  change_requested: '変更希望',
+  unreachable: '不通',
+};
+
+function buildCallbackUrgentItem(args: {
+  log: DashboardCallbackUrgentLog;
+  patientName: string | null;
+  now: Date;
+}): DashboardUrgentItem {
+  const dueAt = args.log.callback_due_at?.toISOString() ?? null;
+  const isOverdue = Boolean(args.log.callback_due_at && args.log.callback_due_at <= args.now);
+  const statusLabel = CALLBACK_OUTCOME_LABELS[args.log.outcome] ?? args.log.outcome;
+  const contactLabel = args.log.contact_name ? `連絡先: ${args.log.contact_name}` : '連絡先未指定';
+
+  return {
+    id: `callback:${args.log.id}`,
+    source: 'callback',
+    source_id: args.log.id,
+    source_label: '折返し',
+    reference_label: statusLabel,
+    severity: isOverdue ? 'urgent' : 'warning',
+    patient_id: args.log.patient_id,
+    patient_name: args.patientName,
+    title: isOverdue ? '患者連絡の折返し期限超過' : '患者連絡の折返し確認',
+    summary: args.log.note?.trim() || contactLabel,
+    due_at: dueAt,
+    waiting_since: args.log.called_at.toISOString(),
+    badges: [
+      { label: '電話', tone: 'info' },
+      { label: statusLabel, tone: isOverdue ? 'danger' : 'warning' },
+    ],
+    action_href: args.log.schedule_id
+      ? buildScheduleFocusHref(args.log.schedule_id)
+      : buildPatientHref(args.log.patient_id, '#patient-movement'),
+    action_label: '折返しを確認',
+  };
+}
+
+function formatReportTypeLabel(value: string) {
+  switch (value) {
+    case 'physician_report':
+      return '医師向け報告';
+    case 'care_manager_report':
+      return 'ケアマネ報告';
+    case 'facility_handoff':
+      return '施設申し送り';
+    case 'nurse_share':
+      return '訪問看護共有';
+    case 'family_share':
+      return '家族共有';
+    case 'internal_record':
+      return '内部記録';
+    default:
+      return value;
+  }
+}
+
+function buildReportDeliveryUrgentItem(args: {
+  delivery: DashboardReportUrgentDelivery;
+  patientName: string | null;
+}): DashboardUrgentItem {
+  const channelLabel = contactMethodLabel(args.delivery.channel);
+  const recipientLabel = args.delivery.recipient_name?.trim() || '宛先未設定';
+  const reason = args.delivery.failure_reason?.trim();
+  const reportTypeLabel = formatReportTypeLabel(args.delivery.report.report_type);
+
+  return {
+    id: `report_delivery:${args.delivery.id}`,
+    source: 'report',
+    source_id: args.delivery.id,
+    source_label: '報告書送付',
+    reference_label: channelLabel,
+    severity: 'blocking',
+    patient_id: args.delivery.report.patient_id,
+    patient_name: args.patientName,
+    title: '報告書の送付失敗',
+    summary: reason
+      ? `${recipientLabel} / ${channelLabel} / 理由: ${reason}`
+      : `${recipientLabel} への ${channelLabel} 送付が失敗しています。宛先とチャネルを確認してください。`,
+    due_at: args.delivery.updated_at.toISOString(),
+    waiting_since: args.delivery.updated_at.toISOString(),
+    badges: [
+      { label: reportTypeLabel, tone: 'info' },
+      { label: channelLabel, tone: 'neutral' },
+      {
+        label: args.delivery.retry_count > 0 ? `再送${args.delivery.retry_count}回` : '再送未実施',
+        tone: args.delivery.retry_count > 0 ? 'warning' : 'danger',
+      },
+    ],
+    action_href: buildReportSendHref(args.delivery.report.id, {
+      action: 'resend',
+      deliveryRecordId: args.delivery.id,
+    }),
+    action_label: '宛先確認・再送',
+  };
+}
+
 function buildDashboardUrgentItems(args: {
   auditItems: CockpitAuditQueueItem[];
   inboundItems?: CockpitInboundItem[];
+  callbackItems?: DashboardUrgentItem[];
+  reportItems?: DashboardUrgentItem[];
   blockedReasons?: CockpitBlockedReason[];
   now: Date;
 }) {
@@ -369,6 +512,8 @@ function buildDashboardUrgentItems(args: {
     ...(args.inboundItems ?? [])
       .map(buildInboundUrgentItem)
       .filter((item): item is DashboardUrgentItem => item != null),
+    ...(args.callbackItems ?? []),
+    ...(args.reportItems ?? []),
     ...(args.blockedReasons ?? []).map((reason) => buildBlockedReasonUrgentItem(reason, args.now)),
   ].sort(compareDashboardUrgentItems);
 }
@@ -793,6 +938,69 @@ function buildInboundCommunicationWhere(args: {
     : { org_id: args.orgId, id: { in: [] } };
 }
 
+function buildDashboardCallbackWhere(args: {
+  orgId: string;
+  assignmentScope: DashboardAssignmentScope;
+}): Prisma.VisitScheduleContactLogWhereInput {
+  const scopeClauses = [
+    ...(args.assignmentScope.patientIds && args.assignmentScope.patientIds.length > 0
+      ? [{ patient_id: { in: args.assignmentScope.patientIds } }]
+      : []),
+    ...(args.assignmentScope.caseIds && args.assignmentScope.caseIds.length > 0
+      ? [{ case_id: { in: args.assignmentScope.caseIds } }]
+      : []),
+  ];
+  const hasRestrictedScope =
+    args.assignmentScope.patientIds !== undefined || args.assignmentScope.caseIds !== undefined;
+
+  return {
+    org_id: args.orgId,
+    ...(hasRestrictedScope
+      ? scopeClauses.length > 0
+        ? { OR: scopeClauses }
+        : { id: { in: [] } }
+      : {}),
+    AND: [
+      {
+        OR: [
+          { callback_due_at: { not: null } },
+          {
+            outcome: {
+              in: [PatientContactStatus.attempted, PatientContactStatus.unreachable],
+            },
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function buildDashboardReportDeliveryWhere(args: {
+  orgId: string;
+  assignmentScope: DashboardAssignmentScope;
+}): Prisma.DeliveryRecordWhereInput {
+  const reportScopeClauses = [
+    ...(args.assignmentScope.patientIds && args.assignmentScope.patientIds.length > 0
+      ? [{ patient_id: { in: args.assignmentScope.patientIds } }]
+      : []),
+    ...(args.assignmentScope.caseIds && args.assignmentScope.caseIds.length > 0
+      ? [{ case_id: { in: args.assignmentScope.caseIds } }]
+      : []),
+  ];
+  const hasRestrictedScope =
+    args.assignmentScope.patientIds !== undefined || args.assignmentScope.caseIds !== undefined;
+
+  return {
+    org_id: args.orgId,
+    status: ReportStatus.failed,
+    ...(hasRestrictedScope
+      ? reportScopeClauses.length > 0
+        ? { report: { OR: reportScopeClauses } }
+        : { id: { in: [] } }
+      : {}),
+  };
+}
+
 function buildInboundCommunicationHref(event: { id: string; patient_id: string | null }) {
   if (event.patient_id) return buildPatientHref(event.patient_id, '#inbound-communications');
   return `/communications/inbound?event=${encodeURIComponent(event.id)}`;
@@ -1132,6 +1340,106 @@ async function readDashboardInbound(args: {
   };
 }
 
+async function readDashboardCallbackUrgents(args: {
+  ctx: AuthContext;
+  scopeContext: DashboardCockpitScopeContext;
+}): Promise<DashboardCallbackUrgentResult> {
+  const where = buildDashboardCallbackWhere({
+    orgId: args.ctx.orgId,
+    assignmentScope: args.scopeContext.assignmentScope,
+  });
+  const [logs, totalCount] = await Promise.all([
+    prisma.visitScheduleContactLog.findMany({
+      where,
+      orderBy: [{ callback_due_at: 'asc' }, { called_at: 'desc' }, { id: 'asc' }],
+      take: CALLBACK_URGENT_FETCH_LIMIT,
+      select: {
+        id: true,
+        patient_id: true,
+        schedule_id: true,
+        outcome: true,
+        contact_name: true,
+        note: true,
+        callback_due_at: true,
+        called_at: true,
+      },
+    }),
+    prisma.visitScheduleContactLog.count({ where }),
+  ]);
+  const patientIds = Array.from(new Set(logs.map((log) => log.patient_id)));
+  const patients =
+    patientIds.length > 0
+      ? await prisma.patient.findMany({
+          where: { org_id: args.ctx.orgId, id: { in: patientIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+  const patientNameById = new Map(patients.map((patient) => [patient.id, patient.name]));
+
+  return {
+    totalCount,
+    items: logs.map((log) =>
+      buildCallbackUrgentItem({
+        log,
+        patientName: patientNameById.get(log.patient_id) ?? null,
+        now: args.scopeContext.now,
+      }),
+    ),
+  };
+}
+
+async function readDashboardReportDeliveryUrgents(args: {
+  ctx: AuthContext;
+  scopeContext: DashboardCockpitScopeContext;
+}): Promise<DashboardReportUrgentResult> {
+  const where = buildDashboardReportDeliveryWhere({
+    orgId: args.ctx.orgId,
+    assignmentScope: args.scopeContext.assignmentScope,
+  });
+  const [deliveries, totalCount] = await Promise.all([
+    prisma.deliveryRecord.findMany({
+      where,
+      orderBy: [{ updated_at: 'desc' }, { id: 'asc' }],
+      take: REPORT_URGENT_FETCH_LIMIT,
+      select: {
+        id: true,
+        channel: true,
+        recipient_name: true,
+        failure_reason: true,
+        retry_count: true,
+        updated_at: true,
+        report: {
+          select: {
+            id: true,
+            patient_id: true,
+            report_type: true,
+          },
+        },
+      },
+    }),
+    prisma.deliveryRecord.count({ where }),
+  ]);
+  const patientIds = Array.from(new Set(deliveries.map((delivery) => delivery.report.patient_id)));
+  const patients =
+    patientIds.length > 0
+      ? await prisma.patient.findMany({
+          where: { org_id: args.ctx.orgId, id: { in: patientIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+  const patientNameById = new Map(patients.map((patient) => [patient.id, patient.name]));
+
+  return {
+    totalCount,
+    items: deliveries.map((delivery) =>
+      buildReportDeliveryUrgentItem({
+        delivery,
+        patientName: patientNameById.get(delivery.report.patient_id) ?? null,
+      }),
+    ),
+  };
+}
+
 async function readDashboardComments(args: {
   ctx: AuthContext;
   scopeContext: DashboardCockpitScopeContext;
@@ -1240,9 +1548,19 @@ async function buildCockpitDetails(
   ctx: AuthContext,
   scopeContext: DashboardCockpitScopeContext,
 ): Promise<DashboardCockpitDetailsResponse> {
-  const [auditQueue, inbound, todaySchedules, openExceptions, carryoverCount] = await Promise.all([
+  const [
+    auditQueue,
+    inbound,
+    callbackUrgents,
+    reportUrgents,
+    todaySchedules,
+    openExceptions,
+    carryoverCount,
+  ] = await Promise.all([
     readAuditQueue({ orgId: ctx.orgId, assignmentScope: scopeContext.assignmentScope }),
     readDashboardInbound({ ctx, scopeContext }),
+    readDashboardCallbackUrgents({ ctx, scopeContext }),
+    readDashboardReportDeliveryUrgents({ ctx, scopeContext }),
     readTodayVisits({
       orgId: ctx.orgId,
       assignmentScope: scopeContext.assignmentScope,
@@ -1290,11 +1608,17 @@ async function buildCockpitDetails(
   const urgentItems = buildDashboardUrgentItems({
     auditItems: visibleQueue,
     inboundItems: inbound.inbound_items,
+    callbackItems: callbackUrgents.items,
+    reportItems: reportUrgents.items,
     blockedReasons,
     now: scopeContext.now,
   });
   const urgentSourceCount =
-    auditQueue.totalCount + inbound.inbound_needs_review_count + blockedReasons.length;
+    auditQueue.totalCount +
+    inbound.inbound_needs_review_count +
+    callbackUrgents.totalCount +
+    reportUrgents.totalCount +
+    blockedReasons.length;
   return {
     ...scopeContext.metadata,
     audit_queue_total_count: auditQueue.totalCount,

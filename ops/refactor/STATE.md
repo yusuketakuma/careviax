@@ -16840,3 +16840,120 @@
   agent-ready frontend slice, starting with `UI-FOUND-001` or
   `PAT-LIST-001A`, and implement it without mixing contract/layout/mutation/QA
   categories.
+
+## 2026-07-07 DASH-P0-001 callback urgent source
+
+- current task:
+  Continue backend-first implementation of Dashboard Unified Urgent Queue by
+  adding an existing callback follow-up source without schema changes.
+- files inspected:
+  `src/server/services/dashboard-cockpit.ts`,
+  `src/app/api/dashboard/cockpit/route.test.ts`,
+  `src/server/services/communication-queue.ts`,
+  `prisma/schema/visit.prisma`,
+  `src/lib/schedules/navigation.ts`,
+  `ops/refactor/STATE.md`.
+- files changed:
+  `src/server/services/dashboard-cockpit.ts`,
+  `src/app/api/dashboard/cockpit/route.test.ts`,
+  `ops/refactor/STATE.md`.
+- implementation:
+  Added `readDashboardCallbackUrgents()` over existing
+  `VisitScheduleContactLog` records with `callback_due_at` or attempted /
+  unreachable outcomes. The reader applies the dashboard assignment scope,
+  fetches patient names through the existing `Patient` table, and converts
+  callback logs into `DashboardUrgentItem` entries with `source='callback'`,
+  relative schedule or patient deep links, due timestamps, waiting-since
+  timestamps, and phone/status badges. `buildCockpitDetails()` now merges
+  callback urgent items with audit, inbound, and workflow blocker items and
+  includes callback totals in `urgent_total_count`.
+- bugs found:
+  Full typecheck caught the callback where clause initially inferred
+  `outcome.in` as `string[]`; it was corrected to use Prisma's
+  `PatientContactStatus` enum and an explicit
+  `Prisma.VisitScheduleContactLogWhereInput` return type.
+- security risks reduced:
+  The source uses the same org and dashboard assignment scope boundaries as
+  other dashboard details. It does not add raw external text or external URLs
+  to the dashboard; action links are generated through existing relative
+  navigation helpers.
+- performance issues improved:
+  No new schema or broad scan was added. The callback reader is bounded to 12
+  records, uses an existing indexed org/case/patient surface, and performs a
+  separate count for hidden urgent accounting.
+- validation commands:
+  `pnpm exec prettier --write src/server/services/dashboard-cockpit.ts src/app/api/dashboard/cockpit/route.test.ts`;
+  `pnpm exec vitest run src/app/api/dashboard/cockpit/route.test.ts 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx' --reporter=dot --testTimeout=30000`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `pnpm exec eslint src/server/services/dashboard-cockpit.ts src/app/api/dashboard/cockpit/route.test.ts`;
+  `git diff --check`.
+- validation results:
+  Dashboard API/UI focused tests green (2 files / 42 tests). Full typecheck
+  green. Targeted ESLint green. `git diff --check` green.
+- remaining work:
+  `DASH-P0-001` still needs medication_stock, visit_preparation, report, and
+  billing sources. Medication stock still depends on the planned stock ledger
+  BFF/schema work, so the next lowest-risk existing-data source is report
+  delivery failure or billing blocker.
+- next action:
+  Continue backend-first with `DASH-P0-001` report delivery failed urgent
+  source or billing blocker source, choosing the one with the narrowest
+  existing DTO/query path.
+
+## 2026-07-07 DASH-P0-001 report delivery urgent source
+
+- current task:
+  Continue backend-first Dashboard Unified Urgent Queue expansion by adding
+  failed report delivery records as a first-class urgent source.
+- files inspected:
+  `src/server/services/dashboard-cockpit.ts`,
+  `src/app/api/dashboard/cockpit/route.test.ts`,
+  `src/app/api/care-reports/today-workspace/route.ts`,
+  `src/types/reports-today-workspace.ts`,
+  `src/lib/reports/navigation.ts`,
+  `src/lib/contact-profile-options.ts`,
+  `prisma/schema/communication.prisma`,
+  `ops/refactor/STATE.md`.
+- files changed:
+  `src/server/services/dashboard-cockpit.ts`,
+  `src/app/api/dashboard/cockpit/route.test.ts`,
+  `ops/refactor/STATE.md`.
+- implementation:
+  Added `readDashboardReportDeliveryUrgents()` over existing
+  `DeliveryRecord.status=failed` rows. The reader applies org and dashboard
+  assignment scope through the related `CareReport`, fetches patient names, and
+  converts failed delivery records into `DashboardUrgentItem` entries with
+  `source='report'`, blocking severity, report type/channel/retry badges, and
+  resend deep links generated through `buildReportSendHref()`. Details segment
+  now merges report urgent items with audit, inbound, callback, and workflow
+  blocker items, and includes report delivery failures in `urgent_total_count`.
+- bugs found:
+  No additional implementation bug was found in this slice. The existing
+  report workspace code already had the failed-delivery semantics and retry
+  link shape, which the dashboard source now reuses.
+- security risks reduced:
+  Failed report delivery surfacing uses existing authenticated dashboard
+  details scope and report relation boundaries. It exposes recipient/channel
+  and failure reason only inside the permissioned operational dashboard, with a
+  relative resend URL and without raw provider response bodies.
+- performance issues improved:
+  The query is bounded to 12 visible failed deliveries plus a count for hidden
+  accounting. It uses existing `org_id`/`status` filters and does not expand
+  summary segment work.
+- validation commands:
+  `pnpm exec prettier --write src/server/services/dashboard-cockpit.ts src/app/api/dashboard/cockpit/route.test.ts`;
+  `pnpm exec vitest run src/app/api/dashboard/cockpit/route.test.ts 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx' --reporter=dot --testTimeout=30000`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `pnpm exec eslint src/server/services/dashboard-cockpit.ts src/app/api/dashboard/cockpit/route.test.ts`;
+  `git diff --check`.
+- validation results:
+  Dashboard API/UI focused tests green (2 files / 43 tests). Full typecheck
+  green. Targeted ESLint green. `git diff --check` green.
+- remaining work:
+  `DASH-P0-001` still needs medication_stock, visit_preparation, and billing
+  sources. Medication stock remains dependent on the planned ledger/BFF work,
+  so billing blocker is the next existing-data source to evaluate.
+- next action:
+  Continue backend-first with a billing blocker urgent source if the existing
+  billing candidate validation snapshots can be read without broad schema or
+  migration changes.

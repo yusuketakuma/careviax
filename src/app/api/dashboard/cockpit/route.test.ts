@@ -26,6 +26,10 @@ const {
   inboundCommunicationEventFindManyMock,
   inboundCommunicationEventCountMock,
   inboundCommunicationSignalFindManyMock,
+  visitScheduleContactLogFindManyMock,
+  visitScheduleContactLogCountMock,
+  deliveryRecordFindManyMock,
+  deliveryRecordCountMock,
   patientFindManyMock,
   serverCacheGetMock,
   serverCacheSetMock,
@@ -53,6 +57,10 @@ const {
   inboundCommunicationEventFindManyMock: vi.fn(),
   inboundCommunicationEventCountMock: vi.fn(),
   inboundCommunicationSignalFindManyMock: vi.fn(),
+  visitScheduleContactLogFindManyMock: vi.fn(),
+  visitScheduleContactLogCountMock: vi.fn(),
+  deliveryRecordFindManyMock: vi.fn(),
+  deliveryRecordCountMock: vi.fn(),
   patientFindManyMock: vi.fn(),
   serverCacheGetMock: vi.fn(),
   serverCacheSetMock: vi.fn(),
@@ -87,6 +95,14 @@ vi.mock('@/lib/db/client', () => ({
       count: inboundCommunicationEventCountMock,
     },
     inboundCommunicationSignal: { findMany: inboundCommunicationSignalFindManyMock },
+    visitScheduleContactLog: {
+      findMany: visitScheduleContactLogFindManyMock,
+      count: visitScheduleContactLogCountMock,
+    },
+    deliveryRecord: {
+      findMany: deliveryRecordFindManyMock,
+      count: deliveryRecordCountMock,
+    },
     patient: { findMany: patientFindManyMock },
   },
 }));
@@ -242,6 +258,10 @@ describe('/api/dashboard/cockpit', () => {
     inboundCommunicationEventFindManyMock.mockResolvedValue([]);
     inboundCommunicationEventCountMock.mockResolvedValue(0);
     inboundCommunicationSignalFindManyMock.mockResolvedValue([]);
+    visitScheduleContactLogFindManyMock.mockResolvedValue([]);
+    visitScheduleContactLogCountMock.mockResolvedValue(0);
+    deliveryRecordFindManyMock.mockResolvedValue([]);
+    deliveryRecordCountMock.mockResolvedValue(0);
     patientFindManyMock.mockResolvedValue([]);
   });
 
@@ -544,6 +564,119 @@ describe('/api/dashboard/cockpit', () => {
       expect.stringContaining('cockpit:org_1:admin:user_1:2026-06-12:team:details'),
       expect.objectContaining({ carryover_count: 2 }),
       15_000,
+    );
+  });
+
+  it('adds overdue callback follow-ups to the unified urgent queue', async () => {
+    visitScheduleContactLogCountMock.mockResolvedValue(1);
+    visitScheduleContactLogFindManyMock.mockResolvedValue([
+      {
+        id: 'callback_1',
+        patient_id: 'patient_callback',
+        schedule_id: 'schedule_callback',
+        outcome: 'attempted',
+        contact_name: '長女',
+        note: '訪問時間の再調整で折返し',
+        callback_due_at: new Date(2026, 5, 12, 9, 30),
+        called_at: new Date(2026, 5, 12, 9, 0),
+      },
+    ]);
+    patientFindManyMock.mockResolvedValue([{ id: 'patient_callback', name: '折返 花子' }]);
+
+    const response = (await GETDetails(createRequest('', '/api/dashboard/cockpit/details'), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const json = await response.json();
+    expect(json.data.urgent_total_count).toBe(5);
+    expect(json.data.urgent_items.map((item: { id: string }) => item.id)).toEqual([
+      'audit:task_narcotic',
+      'task:exception_1',
+      'callback:callback_1',
+      'audit:task_plain',
+      'task:exception_2',
+    ]);
+    expect(json.data.urgent_items[2]).toMatchObject({
+      source: 'callback',
+      source_label: '折返し',
+      reference_label: '未接続',
+      severity: 'urgent',
+      patient_id: 'patient_callback',
+      patient_name: '折返 花子',
+      title: '患者連絡の折返し期限超過',
+      summary: '訪問時間の再調整で折返し',
+      due_at: new Date(2026, 5, 12, 9, 30).toISOString(),
+      waiting_since: new Date(2026, 5, 12, 9, 0).toISOString(),
+      action_href: '/schedules?focus=schedule&schedule_id=schedule_callback',
+      action_label: '折返しを確認',
+    });
+    expect(visitScheduleContactLogFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 12,
+        where: expect.objectContaining({
+          org_id: 'org_1',
+        }),
+      }),
+    );
+  });
+
+  it('adds failed report deliveries to the unified urgent queue', async () => {
+    deliveryRecordCountMock.mockResolvedValue(1);
+    deliveryRecordFindManyMock.mockResolvedValue([
+      {
+        id: 'delivery_failed',
+        channel: 'fax',
+        recipient_name: 'やまもと内科',
+        failure_reason: 'FAX送信エラー',
+        retry_count: 1,
+        updated_at: new Date(2026, 5, 12, 9, 20),
+        report: {
+          id: 'report_failed',
+          patient_id: 'patient_report',
+          report_type: 'physician_report',
+        },
+      },
+    ]);
+    patientFindManyMock.mockResolvedValue([{ id: 'patient_report', name: '報告 太郎' }]);
+
+    const response = (await GETDetails(createRequest('', '/api/dashboard/cockpit/details'), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const json = await response.json();
+    expect(json.data.urgent_total_count).toBe(5);
+    expect(json.data.urgent_items.map((item: { id: string }) => item.id)).toEqual([
+      'report_delivery:delivery_failed',
+      'audit:task_narcotic',
+      'task:exception_1',
+      'audit:task_plain',
+      'task:exception_2',
+    ]);
+    expect(json.data.urgent_items[0]).toMatchObject({
+      source: 'report',
+      source_label: '報告書送付',
+      reference_label: 'FAX',
+      severity: 'blocking',
+      patient_id: 'patient_report',
+      patient_name: '報告 太郎',
+      title: '報告書の送付失敗',
+      summary: 'やまもと内科 / FAX / 理由: FAX送信エラー',
+      due_at: new Date(2026, 5, 12, 9, 20).toISOString(),
+      action_href: '/reports/report_failed?action=resend&delivery_id=delivery_failed',
+      action_label: '宛先確認・再送',
+    });
+    expect(deliveryRecordFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 12,
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          status: 'failed',
+        }),
+      }),
     );
   });
 
