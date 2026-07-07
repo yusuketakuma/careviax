@@ -14,6 +14,8 @@ const {
   getPatientWorkflowPreviewDataMock,
   authContextMock,
   authRejectionMock,
+  withOrgContextMock,
+  createScopedTxRunnerMock,
 } = vi.hoisted(() => ({
   getPatientHeaderSummaryMock: vi.fn(),
   getPatientOverviewMock: vi.fn(),
@@ -30,6 +32,10 @@ const {
     userId: 'user_1',
   })),
   authRejectionMock: vi.fn<() => Response | null>(() => null),
+  withOrgContextMock: vi.fn(
+    async (_orgId: string, work: (tx: Record<string, never>) => Promise<unknown>) => work({}),
+  ),
+  createScopedTxRunnerMock: vi.fn(() => vi.fn()),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -45,6 +51,11 @@ vi.mock('@/lib/auth/context', () => ({
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {},
+}));
+
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
+  createScopedTxRunner: createScopedTxRunnerMock,
 }));
 
 vi.mock('@/server/services/patient-detail', () => ({
@@ -265,6 +276,10 @@ describe('patient detail slice routes', () => {
       userId: 'user_1',
     });
     authRejectionMock.mockReturnValue(null);
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, work: (tx: Record<string, never>) => Promise<unknown>) => work({}),
+    );
+    createScopedTxRunnerMock.mockReturnValue(vi.fn());
   });
 
   it('returns patient header summary data', async () => {

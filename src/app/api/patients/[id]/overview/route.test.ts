@@ -64,11 +64,23 @@ describe('GET /api/patients/[id]/overview PHI read audit', () => {
 
     await flushMicrotasks();
 
-    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
-    expect(withOrgContextMock).toHaveBeenCalledWith(
-      'org_1',
-      expect.any(Function),
-      expect.anything(),
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        role: 'pharmacist',
+        userId: 'user_1',
+      }),
+    });
+    expect(getPatientOverviewMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        auditLog: expect.objectContaining({ create: auditCreateMock }),
+      }),
+      {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        role: 'pharmacist',
+        userId: 'user_1',
+      },
     );
     expect(auditCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -87,7 +99,11 @@ describe('GET /api/patients/[id]/overview PHI read audit', () => {
 
   it('still returns 200 when the audit write fails (best-effort, non-blocking)', async () => {
     getPatientOverviewMock.mockResolvedValue({ id: 'patient_1' });
-    withOrgContextMock.mockRejectedValue(new Error('audit db down'));
+    withOrgContextMock
+      .mockImplementationOnce(async (_orgId, work) =>
+        work({ auditLog: { create: auditCreateMock } }),
+      )
+      .mockRejectedValueOnce(new Error('audit db down'));
 
     const response = await GET(createRequest(), {
       params: Promise.resolve({ id: 'patient_1' }),
@@ -108,7 +124,8 @@ describe('GET /api/patients/[id]/overview PHI read audit', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
     await flushMicrotasks();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
+    expect(auditCreateMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank patient ids before recording an audit', async () => {

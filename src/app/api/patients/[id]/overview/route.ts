@@ -1,7 +1,7 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import { prisma } from '@/lib/db/client';
+import { withOrgContext } from '@/lib/db/rls';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { getPatientOverview } from '@/server/services/patient-detail';
 import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
@@ -12,12 +12,17 @@ const authenticatedGET = withAuthContext(
     const id = normalizeRequiredRouteParam(rawId);
     if (!id) return validationError('患者IDが不正です');
 
-    const overview = await getPatientOverview(prisma, {
-      orgId: ctx.orgId,
-      patientId: id,
-      role: ctx.role,
-      userId: ctx.userId,
-    });
+    const overview = await withOrgContext(
+      ctx.orgId,
+      (tx) =>
+        getPatientOverview(tx, {
+          orgId: ctx.orgId,
+          patientId: id,
+          role: ctx.role,
+          userId: ctx.userId,
+        }),
+      { requestContext: ctx },
+    );
     if (!overview) return notFound('患者が見つかりません');
 
     // PHI 閲覧監査（3省2GL アクセス記録）。ベストエフォート、await しない。

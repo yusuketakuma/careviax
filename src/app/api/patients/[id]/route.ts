@@ -54,6 +54,7 @@ import {
   buildPatientDetailWhere,
   buildVisitRecordCaseScope,
 } from '@/server/services/patient-detail-scope';
+import { buildPatientOverviewBaseSelect } from '@/server/services/patient-overview-base-query';
 import {
   buildVisibleExternalAccessGrantWhere,
   toPublicExternalAccessScope,
@@ -916,8 +917,6 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   return withOrgContext(
     ctx.orgId,
     async (tx) => {
-      const assignedCareCaseWhere = buildAssignedCareCaseWhere(ctx);
-
       const patient = await tx.patient.findFirst({
         where: buildPatientDetailWhere({
           orgId: ctx.orgId,
@@ -925,21 +924,12 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
           role: ctx.role,
           userId: ctx.userId,
         }),
-        include: {
-          residences: true,
-          cases: {
-            ...(assignedCareCaseWhere ? { where: assignedCareCaseWhere } : {}),
-            orderBy: { created_at: 'desc' },
-            include: {
-              care_team_links: true,
-            },
-          },
-          contacts: true,
-          conditions: {
-            orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
-          },
-          consents: true,
-        },
+        select: buildPatientOverviewBaseSelect({
+          orgId: ctx.orgId,
+          patientId: id,
+          role: ctx.role,
+          userId: ctx.userId,
+        }),
       });
 
       if (!patient) return notFound('患者が見つかりません');
@@ -1273,7 +1263,6 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
                 id: true,
                 case_id: true,
                 emergency_contacts: true,
-                document_url: true,
                 delivered_at: true,
                 delivered_to: true,
                 created_at: true,
@@ -1322,7 +1311,24 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
       recordPhiReadAuditForRequest(ctx, { patientId: id, view: 'patient_detail' });
 
       return success({
-        ...patient,
+        id: patient.id,
+        display_id: patient.display_id,
+        name: patient.name,
+        name_kana: patient.name_kana,
+        birth_date: patient.birth_date,
+        gender: patient.gender,
+        billing_support_flag: patient.billing_support_flag,
+        primary_pharmacist_id: patient.primary_pharmacist_id,
+        backup_pharmacist_id: patient.backup_pharmacist_id,
+        primary_staff_id: patient.primary_staff_id,
+        backup_staff_id: patient.backup_staff_id,
+        allergy_info: patient.allergy_info,
+        notes: patient.notes,
+        archived_at: patient.archived_at,
+        archived_by: patient.archived_by,
+        created_at: patient.created_at,
+        updated_at: patient.updated_at,
+        scheduling_preference: patient.scheduling_preference,
         phone: privacy.sensitiveFieldsMasked ? maskPhoneNumber(patient.phone) : patient.phone,
         medical_insurance_number: privacy.sensitiveFieldsMasked
           ? maskInsuranceNumber(patient.medical_insurance_number)
@@ -1364,19 +1370,28 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
         risk_summary: riskSummary,
         home_care_feature_summary: homeCareFeatureSummary,
         visit_brief: visitBrief,
-        first_visit_documents: firstVisitDocuments.map((item) => ({
-          ...item,
-          emergency_contacts: normalizeFirstVisitDocumentContacts(item.emergency_contacts).map(
-            (contact) => ({
-              ...contact,
-              phone: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.phone) : contact.phone,
-              fax: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.fax) : contact.fax,
-              email: privacy.sensitiveFieldsMasked
-                ? maskContactValue(contact.email)
-                : contact.email,
-            }),
-          ),
-        })),
+        first_visit_documents: firstVisitDocuments.map((rawItem) => {
+          const item = {
+            ...rawItem,
+          } as typeof rawItem & { document_url?: unknown };
+          delete item.document_url;
+
+          return {
+            ...item,
+            emergency_contacts: normalizeFirstVisitDocumentContacts(item.emergency_contacts).map(
+              (contact) => ({
+                ...contact,
+                phone: privacy.sensitiveFieldsMasked
+                  ? maskPhoneNumber(contact.phone)
+                  : contact.phone,
+                fax: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.fax) : contact.fax,
+                email: privacy.sensitiveFieldsMasked
+                  ? maskContactValue(contact.email)
+                  : contact.email,
+              }),
+            ),
+          };
+        }),
         billing_summary: {
           evidence: billingEvidence.map((item) => ({
             ...item,

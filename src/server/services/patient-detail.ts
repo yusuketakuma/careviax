@@ -366,7 +366,24 @@ export async function getPatientOverview(db: DbClient, args: DetailArgs) {
     : maskFoundationForExternalViewer(foundation);
 
   return {
-    ...patient,
+    id: patient.id,
+    display_id: patient.display_id,
+    name: patient.name,
+    name_kana: patient.name_kana,
+    birth_date: patient.birth_date,
+    gender: patient.gender,
+    billing_support_flag: patient.billing_support_flag,
+    primary_pharmacist_id: patient.primary_pharmacist_id,
+    backup_pharmacist_id: patient.backup_pharmacist_id,
+    primary_staff_id: patient.primary_staff_id,
+    backup_staff_id: patient.backup_staff_id,
+    allergy_info: patient.allergy_info,
+    notes: patient.notes,
+    archived_at: patient.archived_at,
+    archived_by: patient.archived_by,
+    created_at: patient.created_at,
+    updated_at: patient.updated_at,
+    scheduling_preference: patient.scheduling_preference,
     archived_by_name: archivedByName,
     phone: privacy.sensitiveFieldsMasked ? maskPhoneNumber(patient.phone) : patient.phone,
     medical_insurance_number: privacy.sensitiveFieldsMasked

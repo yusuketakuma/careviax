@@ -553,20 +553,103 @@ describe('/api/patients/[id]', () => {
         id: 'patient_1',
         org_id: 'corg1234567890123456789012',
       },
-      include: expect.objectContaining({
-        residences: true,
-        contacts: true,
-        consents: true,
+      select: expect.objectContaining({
+        id: true,
+        name: true,
+        name_kana: true,
+        phone: true,
+        medical_insurance_number: true,
+        care_insurance_number: true,
+        residences: expect.objectContaining({
+          take: 4,
+          orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }, { id: 'asc' }],
+          select: expect.objectContaining({
+            id: true,
+            address: true,
+            facility_id: true,
+            facility_unit_id: true,
+            unit_name: true,
+            is_primary: true,
+          }),
+        }),
+        contacts: expect.objectContaining({
+          take: 12,
+          orderBy: [
+            { is_primary: 'desc' },
+            { is_emergency_contact: 'desc' },
+            { created_at: 'asc' },
+            { id: 'asc' },
+          ],
+          select: expect.objectContaining({
+            id: true,
+            relation: true,
+            name: true,
+            phone: true,
+            email: true,
+            fax: true,
+            organization_name: true,
+          }),
+        }),
+        consents: expect.objectContaining({
+          take: 8,
+          select: expect.not.objectContaining({
+            document_url: true,
+            document_file_id: true,
+          }),
+        }),
         conditions: expect.objectContaining({
-          orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
+          take: 12,
+          orderBy: [
+            { is_active: 'desc' },
+            { is_primary: 'desc' },
+            { noted_at: 'desc' },
+            { created_at: 'desc' },
+            { id: 'asc' },
+          ],
+          select: expect.objectContaining({
+            id: true,
+            condition_type: true,
+            name: true,
+            is_primary: true,
+            is_active: true,
+            noted_at: true,
+            notes: true,
+          }),
         }),
         cases: expect.objectContaining({
-          include: {
-            care_team_links: true,
-          },
+          take: 8,
+          select: expect.objectContaining({
+            care_team_links: expect.objectContaining({
+              take: 12,
+              orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }, { id: 'asc' }],
+              select: expect.objectContaining({
+                id: true,
+                external_professional_id: true,
+                role: true,
+                name: true,
+                organization_name: true,
+                phone: true,
+              }),
+            }),
+          }),
         }),
       }),
     });
+    const patientQuery = patientFindFirstMock.mock.calls[0]?.[0] as {
+      include?: unknown;
+      select?: {
+        residences?: unknown;
+        contacts?: unknown;
+        consents?: { select?: Record<string, unknown> };
+        cases?: { include?: unknown };
+      };
+    };
+    expect(patientQuery).not.toHaveProperty('include');
+    expect(patientQuery.select?.residences).not.toBe(true);
+    expect(patientQuery.select?.contacts).not.toBe(true);
+    expect(patientQuery.select?.consents?.select).not.toHaveProperty('document_url');
+    expect(patientQuery.select?.consents?.select).not.toHaveProperty('document_file_id');
+    expect(patientQuery.select?.cases).not.toHaveProperty('include');
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
@@ -1014,12 +1097,12 @@ describe('/api/patients/[id]', () => {
     );
 
     if (!response) throw new Error('response is required');
-    await expect(response.json()).resolves.toMatchObject({
+    const payload = await response.json();
+    expect(payload).toMatchObject({
       first_visit_documents: [
         {
           id: 'first_visit_1',
           case_id: 'case_1',
-          document_url: '/api/visit-records/record_1/pdf',
           delivered_to: '長男 山田',
           emergency_contacts: [
             {
@@ -1034,6 +1117,14 @@ describe('/api/patients/[id]', () => {
         },
       ],
     });
+    expect(JSON.stringify(payload.first_visit_documents)).not.toContain('document_url');
+    expect(firstVisitDocumentFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.not.objectContaining({
+          document_url: true,
+        }),
+      }),
+    );
   });
 
   it('updates patient master and primary residence fields', async () => {

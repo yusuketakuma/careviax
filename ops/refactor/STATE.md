@@ -18327,3 +18327,95 @@
 - next action:
   Write gbrain decision memory, commit and push this slice, then continue with
   the next backend Plans.md task.
+
+## 2026-07-08 Patient overview bounded select / Plans hygiene
+
+- current task:
+  Organize `Plans.md` by moving implemented work out of active queues, then
+  complete the next DB read-speed slice: bound patient master reads used by
+  patient detail root GET and the shared overview/snapshot base reader.
+- files inspected:
+  `git status --short --untracked-files=all`, `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/app/api/patients/[id]/route.ts`,
+  `src/app/api/patients/[id]/route.test.ts`,
+  `src/app/api/patients/[id]/overview/route.ts`,
+  `src/app/api/patients/[id]/overview/route.test.ts`,
+  `src/app/api/patients/[id]/detail-slices.test.ts`,
+  `src/server/services/patient-state-snapshot.ts`,
+  `src/server/services/patient-state-snapshot.test.ts`,
+  `src/server/services/patient-detail.ts`,
+  `src/server/services/patient-detail.test.ts`,
+  `src/server/services/patient-detail-foundation.ts`,
+  `src/server/services/patient-detail-scope.ts`,
+  `prisma/schema/patient.prisma`,
+  `gbrain search "CareViaX DB performance backup AWS Plans PERF-DB"`,
+  and Oracle session `patient-master-bounded-select`.
+- Oracle / GPT-5.5 Pro review:
+  Oracle launched in browser mode with GPT-5.5 Pro but failed before review
+  because attachments did not finish uploading within the browser automation
+  timeout. No Oracle advice was applied. The slice proceeded from local code
+  inspection, prior subagent read-only review findings, and red/green query
+  shape tests.
+- files changed:
+  `Plans.md`,
+  `src/server/services/patient-overview-base-query.ts`,
+  `src/server/services/patient-state-snapshot.ts`,
+  `src/server/services/patient-state-snapshot.test.ts`,
+  `src/server/services/patient-detail.ts`,
+  `src/app/api/patients/[id]/route.ts`,
+  `src/app/api/patients/[id]/route.test.ts`,
+  `src/app/api/patients/[id]/overview/route.ts`,
+  `src/app/api/patients/[id]/overview/route.test.ts`,
+  `src/app/api/patients/[id]/detail-slices.test.ts`,
+  `ops/refactor/STATE.md`.
+- implementation:
+  Added a shared `buildPatientOverviewBaseSelect()` query contract with
+  deterministic per-relation `take`, `orderBy`, and minimal `select` for
+  residences, contacts, conditions, consents, cases, and care team links. The
+  patient detail root GET and `findPatientOverviewBase()` now use this bounded
+  select instead of broad relation includes. Root GET also stopped spreading the
+  full Prisma patient object into the public response and defensively strips
+  first-visit `document_url` from the response shape. The overview route now
+  reads through `withOrgContext()` instead of the global Prisma client.
+- Plans.md hygiene:
+  Moved `PERF-DB-005B` out of active/implementation-ready queues, marked it as
+  implemented in the DB performance registry, and updated the next recommended
+  order to `PERF-DB-007`, `PERF-DB-006`, dashboard rail/drilldown, frontend
+  contract, and plan archive hygiene.
+- bugs found:
+  Patient detail root GET and the shared overview base reader could still read
+  broad patient relations, making relation row counts and projected columns
+  unbounded for the root/detail path. The overview slice route also bypassed
+  the org-scoped transaction seam.
+- security risks reduced:
+  Consent document URLs/file ids and first-visit document URLs no longer ride
+  along the root/overview base response. The route keeps role-based masking,
+  RLS org context, and PHI read audit behavior. Query-shape tests assert that
+  broad includes and consent document fields do not return.
+- performance issues improved:
+  The patient master read now uses one bounded projection with explicit caps:
+  residences 4, contacts 12, conditions 12, consents 8, cases 8, and care team
+  links 12 per case. The change prevents relation fan-out from growing with
+  historical patient master data on root/overview reads.
+- validation commands:
+  `pnpm exec vitest run 'src/app/api/patients/[id]/route.test.ts' src/server/services/patient-state-snapshot.test.ts 'src/app/api/patients/[id]/overview/route.test.ts' --reporter=dot --testTimeout=30000`;
+  `pnpm exec vitest run 'src/app/api/patients/[id]/route.test.ts' 'src/app/api/patients/[id]/detail-slices.test.ts' 'src/app/api/patients/[id]/timeline/route.test.ts' 'src/app/api/patients/[id]/overview/route.test.ts' src/server/services/patient-state-snapshot.test.ts src/server/services/patient-detail.test.ts --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint 'src/app/api/patients/[id]/route.ts' 'src/app/api/patients/[id]/route.test.ts' 'src/app/api/patients/[id]/overview/route.ts' 'src/app/api/patients/[id]/overview/route.test.ts' 'src/app/api/patients/[id]/detail-slices.test.ts' src/server/services/patient-overview-base-query.ts src/server/services/patient-state-snapshot.ts src/server/services/patient-state-snapshot.test.ts src/server/services/patient-detail.ts src/server/services/patient-detail.test.ts`;
+  `pnpm exec prettier --check 'src/app/api/patients/[id]/route.ts' 'src/app/api/patients/[id]/route.test.ts' 'src/app/api/patients/[id]/overview/route.ts' 'src/app/api/patients/[id]/overview/route.test.ts' 'src/app/api/patients/[id]/detail-slices.test.ts' src/server/services/patient-overview-base-query.ts src/server/services/patient-state-snapshot.ts src/server/services/patient-state-snapshot.test.ts src/server/services/patient-detail.ts src/server/services/patient-detail.test.ts`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `git diff --check`.
+- validation results:
+  Focused patient root/overview/snapshot tests passed (3 files / 45 tests).
+  Broader patient detail pack passed (6 files / 182 tests). Scoped ESLint
+  passed. Prettier check passed after formatting `overview/route.test.ts`.
+  Full typecheck passed. Diff check passed before final commit verification.
+- remaining work:
+  Run a payload-size smoke against seeded data, add movement timeline
+  caller-limit-aware source reads (`PERF-DB-007`), then bounded care-report
+  search / EXPLAIN-backed index planning (`PERF-DB-006`). `Plans.md`
+  `PLANS-HYGIENE-002` still needs the long reference specs moved out of active
+  backlog into reference docs.
+- next action:
+  Write gbrain memory, commit the bounded patient read + Plans hygiene slice,
+  push it, then continue with `PERF-DB-007`.

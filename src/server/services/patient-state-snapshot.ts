@@ -2,10 +2,10 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
 import {
-  buildAssignedCareCaseWhere,
   buildPatientDetailWhere,
   type PatientDetailScopeArgs,
 } from '@/server/services/patient-detail-scope';
+import { buildPatientOverviewBaseSelect } from '@/server/services/patient-overview-base-query';
 
 type DbClient = typeof prisma | Prisma.TransactionClient;
 type DetailArgs = PatientDetailScopeArgs;
@@ -21,66 +21,7 @@ type DetailArgs = PatientDetailScopeArgs;
 export async function findPatientOverviewBase(db: DbClient, args: DetailArgs) {
   return db.patient.findFirst({
     where: buildPatientDetailWhere(args),
-    select: {
-      id: true,
-      name: true,
-      name_kana: true,
-      birth_date: true,
-      gender: true,
-      phone: true,
-      medical_insurance_number: true,
-      care_insurance_number: true,
-      billing_support_flag: true,
-      primary_pharmacist_id: true,
-      backup_pharmacist_id: true,
-      primary_staff_id: true,
-      backup_staff_id: true,
-      allergy_info: true,
-      notes: true,
-      archived_at: true,
-      archived_by: true,
-      updated_at: true,
-      residences: true,
-      scheduling_preference: {
-        select: {
-          preferred_weekdays: true,
-          preferred_time_from: true,
-          preferred_time_to: true,
-          phone_contact_from: true,
-          phone_contact_to: true,
-          facility_time_from: true,
-          facility_time_to: true,
-          family_presence_required: true,
-          visit_buffer_minutes: true,
-          preferred_contact_name: true,
-          preferred_contact_phone: true,
-          visit_before_contact_required: true,
-          first_visit_preferred_date: true,
-          first_visit_time_slot: true,
-          first_visit_time_note: true,
-          parking_available: true,
-          primary_contact_preference: true,
-          mcs_linked: true,
-          adl_level: true,
-          dementia_level: true,
-          swallowing_route: true,
-          care_level: true,
-          infection_isolation: true,
-        },
-      },
-      contacts: true,
-      conditions: {
-        orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
-      },
-      consents: true,
-      cases: {
-        ...(buildAssignedCareCaseWhere(args) ? { where: buildAssignedCareCaseWhere(args) } : {}),
-        orderBy: { created_at: 'desc' },
-        include: {
-          care_team_links: true,
-        },
-      },
-    },
+    select: buildPatientOverviewBaseSelect(args),
   });
 }
 

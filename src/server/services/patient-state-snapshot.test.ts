@@ -59,6 +59,141 @@ const baseArgs = {
 };
 
 describe('buildPatientStateSnapshot', () => {
+  it('overview base は患者 master relation を bounded select で読む', async () => {
+    const { db, patientFindFirst } = createDb(basePatient);
+
+    await buildPatientStateSnapshot(db, baseArgs);
+
+    const query = patientFindFirst.mock.calls[0]?.[0] as {
+      include?: unknown;
+      select?: Record<string, unknown>;
+    };
+    const select = query.select ?? {};
+    const residences = select.residences as Record<string, unknown>;
+    const contacts = select.contacts as Record<string, unknown>;
+    const conditions = select.conditions as Record<string, unknown>;
+    const consents = select.consents as { select?: Record<string, unknown> };
+    const cases = select.cases as { include?: unknown; select?: Record<string, unknown> };
+    const careTeamLinks = cases.select?.care_team_links as Record<string, unknown>;
+
+    expect(query).not.toHaveProperty('include');
+    expect(select).toEqual(
+      expect.objectContaining({
+        id: true,
+        name: true,
+        name_kana: true,
+        phone: true,
+        medical_insurance_number: true,
+        care_insurance_number: true,
+      }),
+    );
+    expect(residences).toEqual({
+      where: { org_id: 'org_1' },
+      take: 4,
+      orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }, { id: 'asc' }],
+      select: expect.objectContaining({
+        id: true,
+        address: true,
+        facility_id: true,
+        facility_unit_id: true,
+        unit_name: true,
+        is_primary: true,
+      }),
+    });
+    expect(contacts).toEqual({
+      where: { org_id: 'org_1' },
+      take: 12,
+      orderBy: [
+        { is_primary: 'desc' },
+        { is_emergency_contact: 'desc' },
+        { created_at: 'asc' },
+        { id: 'asc' },
+      ],
+      select: expect.objectContaining({
+        id: true,
+        relation: true,
+        name: true,
+        phone: true,
+        email: true,
+        fax: true,
+        organization_name: true,
+      }),
+    });
+    expect(conditions).toEqual({
+      where: { org_id: 'org_1' },
+      take: 12,
+      orderBy: [
+        { is_active: 'desc' },
+        { is_primary: 'desc' },
+        { noted_at: 'desc' },
+        { created_at: 'desc' },
+        { id: 'asc' },
+      ],
+      select: expect.objectContaining({
+        id: true,
+        condition_type: true,
+        name: true,
+        is_primary: true,
+        is_active: true,
+        noted_at: true,
+        notes: true,
+      }),
+    });
+    expect(consents).toEqual({
+      where: {
+        org_id: 'org_1',
+        OR: [{ is_active: true }, { revoked_date: { not: null } }],
+      },
+      take: 8,
+      orderBy: [
+        { is_active: 'desc' },
+        { obtained_date: 'desc' },
+        { created_at: 'desc' },
+        { id: 'desc' },
+      ],
+      select: expect.objectContaining({
+        id: true,
+        consent_type: true,
+        method: true,
+        obtained_date: true,
+        expiry_date: true,
+        revoked_date: true,
+        is_active: true,
+        access_restricted: true,
+      }),
+    });
+    expect(cases).toEqual(
+      expect.objectContaining({
+        where: expect.objectContaining({ org_id: 'org_1' }),
+        take: 8,
+        orderBy: [{ updated_at: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
+        select: expect.objectContaining({
+          id: true,
+          display_id: true,
+          status: true,
+        }),
+      }),
+    );
+    expect(careTeamLinks).toEqual({
+      where: { org_id: 'org_1' },
+      take: 12,
+      orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }, { id: 'asc' }],
+      select: expect.objectContaining({
+        id: true,
+        external_professional_id: true,
+        role: true,
+        name: true,
+        organization_name: true,
+        phone: true,
+      }),
+    });
+    expect(select.residences).not.toBe(true);
+    expect(select.contacts).not.toBe(true);
+    expect(consents.select).not.toHaveProperty('document_url');
+    expect(consents.select).not.toHaveProperty('document_file_id');
+    expect(cases).not.toHaveProperty('include');
+  });
+
   it('訪問時点の患者現在値を JSON 安全な凍結オブジェクトとして返す', async () => {
     const { db, insuranceFindMany } = createDb(basePatient, [
       {
