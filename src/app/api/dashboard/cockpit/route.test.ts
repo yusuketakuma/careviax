@@ -607,6 +607,37 @@ describe('/api/dashboard/cockpit', () => {
       'audit:task_plain',
       'task:exception_2',
     ]);
+    expect(json.data.urgent_source_links).toEqual([
+      {
+        source: 'audit',
+        label: '監査待ち',
+        total_count: 2,
+        visible_count: 2,
+        hidden_count: 0,
+        href: '/audit?filter=dashboard_urgent',
+      },
+      {
+        source: 'inbound',
+        label: '他職種受信',
+        total_count: 1,
+        visible_count: 1,
+        hidden_count: 0,
+        href: '/communications/inbound?status=needs_review',
+      },
+      {
+        source: 'task',
+        label: 'タスク',
+        total_count: 2,
+        visible_count: 2,
+        hidden_count: 0,
+        href: '/tasks?status=&context=dashboard_home',
+      },
+    ]);
+    expect(
+      json.data.urgent_source_links.every(
+        (link: { href: string }) => link.href.startsWith('/') && !link.href.startsWith('//'),
+      ),
+    ).toBe(true);
     expect(json.data.urgent_items[1]).toMatchObject({
       source: 'task',
       source_label: '止まっている理由',

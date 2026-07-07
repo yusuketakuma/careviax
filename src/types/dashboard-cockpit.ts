@@ -154,6 +154,15 @@ export type DashboardUrgentItem = {
   action_label: string;
 };
 
+export type DashboardUrgentSourceLink = {
+  source: DashboardUrgentItem['source'];
+  label: string;
+  total_count: number;
+  visible_count: number;
+  hidden_count: number;
+  href: string;
+};
+
 export type DashboardCockpitScope = 'mine' | 'team';
 
 export type DashboardCockpitScopeMetadata = {
@@ -192,6 +201,7 @@ export type DashboardCockpitDetailsResponse = DashboardCockpitScopeMetadata & {
   /** 監査待ちキュー(麻薬優先・緊急度順)。今すぐ対応カードの元データ */
   audit_queue: CockpitAuditQueueItem[];
   urgent_items: DashboardUrgentItem[];
+  urgent_source_links: DashboardUrgentSourceLink[];
   urgent_total_count: number;
   urgent_visible_count: number;
   urgent_hidden_count: number;
@@ -327,6 +337,7 @@ export type DashboardCockpitResponse = DashboardCockpitScopeMetadata & {
   /** 監査待ちキュー(麻薬優先・緊急度順)。今すぐ対応カードの元データ */
   audit_queue: CockpitAuditQueueItem[];
   urgent_items?: DashboardUrgentItem[];
+  urgent_source_links?: DashboardUrgentSourceLink[];
   urgent_total_count?: number;
   urgent_visible_count?: number;
   urgent_hidden_count?: number;

@@ -60,6 +60,7 @@ import type {
   DashboardMedicationStockRiskItem,
   DashboardReportBillingItem,
   DashboardUrgentItem,
+  DashboardUrgentSourceLink,
 } from '@/types/dashboard-cockpit';
 import { buildTeamCapacity } from '@/app/api/dashboard/cockpit/team-capacity';
 
@@ -430,6 +431,28 @@ const URGENT_SEVERITY_WEIGHT: Record<DashboardUrgentItem['severity'], number> = 
   warning: 2,
 };
 
+const DASHBOARD_URGENT_SOURCE_LABELS: Record<DashboardUrgentItem['source'], string> = {
+  audit: '監査待ち',
+  inbound: '他職種受信',
+  medication_stock: '残数・薬剤',
+  visit_preparation: '訪問準備',
+  report: '報告書',
+  callback: '折返し',
+  billing: '請求',
+  task: 'タスク',
+};
+
+const DASHBOARD_URGENT_SOURCE_ORDER: DashboardUrgentItem['source'][] = [
+  'audit',
+  'inbound',
+  'medication_stock',
+  'visit_preparation',
+  'report',
+  'callback',
+  'billing',
+  'task',
+];
+
 const DASHBOARD_URGENT_SOURCE_WEIGHT_BY_FOCUS = {
   pharmacist: {
     audit: 0,
@@ -512,6 +535,63 @@ function compareDashboardUrgentItems(
     if (sourceWeightDiff !== 0) return sourceWeightDiff;
   }
   return left.id.localeCompare(right.id);
+}
+
+function buildDashboardUrgentSourceHref(source: DashboardUrgentItem['source']) {
+  switch (source) {
+    case 'audit':
+      return '/audit?filter=dashboard_urgent';
+    case 'inbound':
+      return '/communications/inbound?status=needs_review';
+    case 'medication_stock':
+      return '/communications/inbound?status=reviewed_pending_action&priority=high';
+    case 'visit_preparation':
+      return '/schedules?date=today&status=preparation&filter=dashboard_urgent';
+    case 'report':
+      return '/reports?focus=delivery&delivery_status=failed&context=dashboard_home';
+    case 'callback':
+      return '/schedules?date=today&filter=callback_due';
+    case 'billing':
+      return '/billing/candidates?status=candidate&filter=dashboard_urgent';
+    case 'task':
+      return buildTasksHref({ status: '', context: 'dashboard_home' });
+  }
+}
+
+function buildDashboardUrgentSourceLinks(args: {
+  urgentItems: DashboardUrgentItem[];
+  sourceTotals: Record<DashboardUrgentItem['source'], number>;
+}): DashboardUrgentSourceLink[] {
+  const visibleCounts = args.urgentItems.reduce<Record<DashboardUrgentItem['source'], number>>(
+    (acc, item) => {
+      acc[item.source] += 1;
+      return acc;
+    },
+    {
+      audit: 0,
+      inbound: 0,
+      medication_stock: 0,
+      visit_preparation: 0,
+      report: 0,
+      callback: 0,
+      billing: 0,
+      task: 0,
+    },
+  );
+
+  return DASHBOARD_URGENT_SOURCE_ORDER.map((source) => {
+    const totalCount = args.sourceTotals[source] ?? 0;
+    if (totalCount <= 0) return null;
+    const visibleCount = visibleCounts[source] ?? 0;
+    return {
+      source,
+      label: DASHBOARD_URGENT_SOURCE_LABELS[source],
+      total_count: totalCount,
+      visible_count: visibleCount,
+      hidden_count: Math.max(totalCount - visibleCount, 0),
+      href: buildDashboardUrgentSourceHref(source),
+    };
+  }).filter((link): link is DashboardUrgentSourceLink => link != null);
 }
 
 function buildAuditUrgentItem(item: CockpitAuditQueueItem): DashboardUrgentItem {
@@ -3309,6 +3389,19 @@ async function buildCockpitDetails(
     billingUrgents.totalCount +
     taskUrgents.totalCount +
     blockedReasons.length;
+  const urgentSourceLinks = buildDashboardUrgentSourceLinks({
+    urgentItems,
+    sourceTotals: {
+      audit: auditQueue.totalCount,
+      inbound: inbound.inbound_needs_review_count,
+      medication_stock: medicationStockUrgents.totalCount,
+      visit_preparation: visitPreparationUrgents.totalCount,
+      report: reportUrgents.totalCount,
+      callback: callbackUrgents.totalCount,
+      billing: billingUrgents.totalCount,
+      task: taskUrgents.totalCount + blockedReasons.length,
+    },
+  });
   return {
     ...scopeContext.metadata,
     audit_queue_total_count: auditQueue.totalCount,
@@ -3316,6 +3409,7 @@ async function buildCockpitDetails(
     audit_queue_hidden_count: Math.max(auditQueue.totalCount - visibleQueue.length, 0),
     audit_queue: visibleQueue,
     urgent_items: urgentItems,
+    urgent_source_links: urgentSourceLinks,
     urgent_total_count: urgentSourceCount,
     urgent_visible_count: urgentItems.length,
     urgent_hidden_count: Math.max(urgentSourceCount - urgentItems.length, 0),

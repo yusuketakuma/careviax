@@ -17671,3 +17671,66 @@
   profiling remains needed after the dashboard urgent queue sources settle.
 - next action:
   Commit and push this slice, then continue with the next backend Plans.md task.
+
+## 2026-07-07 Dashboard urgent source drilldown links
+
+- current task:
+  Finish the remaining `DASH-P0-001 Unified Urgent Queue` drilldown contract by
+  returning source-specific aggregate links from the dashboard details segment.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `src/types/dashboard-cockpit.ts`,
+  `src/server/services/dashboard-cockpit.ts`,
+  `src/lib/dashboard/home-link-builders.ts`,
+  `src/app/api/dashboard/cockpit/route.test.ts`,
+  `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+  `src/app/(dashboard)/dashboard/use-dashboard-cockpit-view-model.ts`,
+  `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`,
+  `src/app/(dashboard)/communications/inbound/page.tsx`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx`,
+  and `gbrain search "careviax dashboard urgent queue drilldown source-specific DashboardUrgentItem"`.
+- files changed:
+  `src/types/dashboard-cockpit.ts`,
+  `src/server/services/dashboard-cockpit.ts`,
+  `src/app/api/dashboard/cockpit/route.test.ts`,
+  `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`,
+  `ops/refactor/STATE.md`.
+- implementation:
+  Added `DashboardUrgentSourceLink` and `urgent_source_links` to the details
+  segment. The backend now returns source-specific total/visible/hidden counts
+  and relative drilldown hrefs for audit, inbound, medication stock, visit
+  preparation, report, callback, billing, and task sources. The links are built
+  from existing source totals, so no new DB reads are introduced.
+- bugs found:
+  The unified urgent queue had `urgent_hidden_count`, but no source-specific
+  drilldown contract. UI could only show a generic hidden count and could not
+  direct the user to the right queue for audit, inbound, task, report, billing,
+  callback, visit preparation, or medication-stock work.
+- security risks reduced:
+  Drilldown metadata contains only source labels, counts, and relative hrefs.
+  It does not include raw communication text, patient names, medication names,
+  storage keys, external URLs, signed URLs, or contact details.
+- performance issues improved:
+  No additional query was added. Source totals reuse the data already read for
+  the details segment.
+- validation commands:
+  `pnpm exec vitest run src/app/api/dashboard/cockpit/route.test.ts -t "returns the details segment" --reporter=dot --testTimeout=30000`;
+  `pnpm exec vitest run 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx' --reporter=dot --testTimeout=30000`;
+  `pnpm exec vitest run src/app/api/dashboard/cockpit/route.test.ts --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint src/server/services/dashboard-cockpit.ts src/types/dashboard-cockpit.ts src/app/api/dashboard/cockpit/route.test.ts 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx'`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `git diff --check`.
+- validation results:
+  Focused details route test passed. Dashboard cockpit component tests passed
+  (1 file / 18 tests). Dashboard cockpit route tests passed (1 file / 38
+  tests). Scoped ESLint passed. Full typecheck passed. Diff check passed.
+- gbrain:
+  `careviax/implementation-decision/dashboard-urgent-source-drilldown-links-2026-07-07`.
+- remaining work:
+  Production-like DB profiling remains needed after the dashboard urgent queue
+  sources settle. Frontend can now consume `urgent_source_links` to render
+  source-specific "残りN件を見る" controls.
+- next action:
+  Commit and push this slice, then continue with the next backend Plans.md task.
