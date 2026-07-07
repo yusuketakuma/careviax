@@ -4,6 +4,7 @@ import {
   PATIENT_DUPLICATE_CHECK_API_PATH,
   buildPatientApiPath,
   buildPatientDuplicateCheckApiPath,
+  buildPatientMedicationStockApiPath,
   buildPatientWorkflowPreviewApiPath,
 } from './api-paths';
 
@@ -60,6 +61,7 @@ describe('buildPatientApiPath', () => {
       '/readiness',
       '/mcs',
       '/mcs-sync',
+      '/medication-stock',
       '/mcs/logs',
       '/medications/pdf',
       '/overview',
@@ -77,6 +79,22 @@ describe('buildPatientApiPath', () => {
 
   it.each(['.', '..'])('rejects exact dot-segment patient id %s', (patientId) => {
     expect(() => buildPatientApiPath(patientId)).toThrow(RangeError);
+  });
+});
+
+describe('buildPatientMedicationStockApiPath', () => {
+  it('builds the medication stock API path from the shared patient path helper', () => {
+    expect(buildPatientMedicationStockApiPath('patient_1')).toBe(
+      '/api/patients/patient_1/medication-stock',
+    );
+  });
+
+  it('encodes only the patient id path segment', () => {
+    const patientId = 'patient/1?tab=x#frag';
+
+    expect(buildPatientMedicationStockApiPath(patientId)).toBe(
+      `/api/patients/${encodeURIComponent(patientId)}/medication-stock`,
+    );
   });
 });
 

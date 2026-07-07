@@ -50,6 +50,13 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'patients',
   },
   {
+    path: '/api/patients/:id/medication-stock',
+    methods: ['GET'],
+    permission: 'canVisit',
+    description: '患者別の外用薬・頓服薬残数台帳サマリー取得',
+    area: 'patients',
+  },
+  {
     path: '/api/patients/board',
     methods: ['GET'],
     permission: 'canVisit',

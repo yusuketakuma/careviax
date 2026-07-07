@@ -185,6 +185,9 @@ describe('rate-limit', () => {
     expect(canonicalizeRateLimitPath('/api/patients/patient_2/timeline')).toBe(
       '/api/patients/:id/timeline',
     );
+    expect(canonicalizeRateLimitPath('/api/patients/patient_2/medication-stock')).toBe(
+      '/api/patients/:id/medication-stock',
+    );
     expect(canonicalizeRateLimitPath('/api/patients/patient_1/insurance/insurance_1')).toBe(
       '/api/patients/:id/insurance/:id',
     );

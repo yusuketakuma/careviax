@@ -15,3 +15,7 @@ export function buildPatientApiPath(patientId: string, suffix = '') {
 export function buildPatientWorkflowPreviewApiPath(patientId: string) {
   return buildPatientApiPath(patientId, '/workflow-preview');
 }
+
+export function buildPatientMedicationStockApiPath(patientId: string) {
+  return buildPatientApiPath(patientId, '/medication-stock');
+}

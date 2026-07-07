@@ -41,6 +41,84 @@
 
 ## 直近の land（本日・要点）
 
+- codex: STOCK-001 patient medication-stock summary API。
+  - current task:
+    DB read indexes + Medication Stock Ledger schema の次段として、
+    `GET /api/patients/:id/medication-stock` を追加し、患者別の外用薬・頓服薬
+    stock summary / active items / recent events / pending external observations を
+    権限内で読める backend BFF にする。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `ops/refactor/STATE.md`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`,
+    `prisma/schema/medication.prisma`,
+    `src/lib/auth/context.ts`,
+    `src/lib/db/rls.ts`,
+    `src/lib/api/response.ts`,
+    `src/lib/api/sensitive-response.ts`,
+    `src/server/services/patient-detail-scope.ts`,
+    `src/lib/auth/visit-schedule-access.ts`,
+    existing patient overview/timeline routes and tests,
+    existing medication-stock domain/application adapters.
+  - files changed:
+    `src/types/medication-stock.ts`,
+    `src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.ts`,
+    `src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.test.ts`,
+    `src/app/api/patients/[id]/medication-stock/route.ts`,
+    `src/app/api/patients/[id]/medication-stock/route.test.ts`,
+    `src/lib/api/route-catalog.ts`,
+    `src/lib/api/rate-limit.ts`,
+    `src/lib/api/rate-limit.test.ts`,
+    `src/lib/patient/api-paths.ts`,
+    `src/lib/patient/api-paths.test.ts`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Added a patient-scoped medication stock summary reader that first validates
+    patient visibility, derives visible care-case ids, reads active
+    `PatientMedicationStockItem` rows, joins visible `MedicationStockSnapshot`
+    rows, fetches bounded recent `MedicationStockEvent` rows ordered by
+    `event_at desc`, and counts pending `ExternalMedicationStockObservation`
+    rows. The route uses `withAuthContext(permission='canVisit')`,
+    `createScopedTxRunner(ctx.orgId)`, `withSensitiveNoStore`, bounded
+    `item_limit` / `event_limit`, and best-effort `phi_read` audit metadata.
+    Route catalog, patient API path helper, and rate-limit canonical templates
+    were updated; rate-limit catalog was also synced with existing App Router
+    API files that the catalog sync test detected as missing.
+  - security risks reduced:
+    The new BFF returns only authorized operational medication-stock data under
+    the existing patient `canVisit` boundary and RLS scoped transaction. It
+    does not expose inbound raw text, sender/contact details, external URLs,
+    attachment storage keys, signed URLs, or raw source entity IDs; event DTOs
+    expose `has_source_entity` only. PHI read audit records only view/count
+    metadata, not drug names or quantities.
+  - performance issues improved:
+    Read path uses the newly added patient/item/event/snapshot indexes:
+    `PatientMedicationStockItem(org_id, patient_id, active)`,
+    `MedicationStockSnapshot(org_id, patient_id, stock_risk_level)`, and
+    `MedicationStockEvent(org_id, stock_item_id, event_at desc)` via bounded
+    patient/item queries. Limits default to 50 items and 12 events, capped at
+    100 and 50 respectively; `event_limit=0` avoids event reads entirely.
+  - validation commands:
+    `pnpm exec vitest run src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.test.ts 'src/app/api/patients/[id]/medication-stock/route.test.ts' src/lib/api/rate-limit.test.ts src/lib/patient/api-paths.test.ts --reporter=dot --testTimeout=30000`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm exec eslint src/types/medication-stock.ts src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.ts src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.test.ts 'src/app/api/patients/[id]/medication-stock/route.ts' 'src/app/api/patients/[id]/medication-stock/route.test.ts' src/lib/api/route-catalog.ts src/lib/api/rate-limit.ts src/lib/api/rate-limit.test.ts src/lib/patient/api-paths.ts src/lib/patient/api-paths.test.ts`;
+    `pnpm exec prettier --check src/types/medication-stock.ts src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.ts src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.test.ts 'src/app/api/patients/[id]/medication-stock/route.ts' 'src/app/api/patients/[id]/medication-stock/route.test.ts' src/lib/api/route-catalog.ts src/lib/api/rate-limit.ts src/lib/api/rate-limit.test.ts src/lib/patient/api-paths.ts src/lib/patient/api-paths.test.ts`;
+    `git diff --check`.
+  - validation results:
+    Focused vitest green (4 files / 62 tests). Full typecheck green with
+    8GB heap. Targeted ESLint green. Prettier check green. Diff check green.
+  - remaining:
+    `POST /api/patients/:id/medication-stock/items`,
+    `POST /api/patients/:id/medication-stock/items/:itemId/events`,
+    external observation review/apply endpoint, prescription supply apply,
+    `linked_to_stock_event` lifecycle, snapshot recalculation, Risk/Task/
+    VisitBrief/Dashboard medication-stock source integration remain open.
+    The apply/write slice should get Oracle/GPT-5.5 Pro review before editing.
+  - next action:
+    Commit and push this read API slice, then consult Oracle before implementing
+    the MedicationStock external observation apply/write lifecycle.
+
 - codex: TASK-011 formal signal inbox status projection（pending commit）。
   - current task:
     `POST /api/communications/inbound/signals/tasks` が正式
