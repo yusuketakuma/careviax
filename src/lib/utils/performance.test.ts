@@ -320,6 +320,33 @@ describe('performance metrics', () => {
     expect(JSON.stringify(snapshot)).not.toContain('scope=');
   });
 
+  it('marks patient movement timeline payload budgets using normalized patient ids', () => {
+    recordRoutePerformance({
+      route: '/api/patients/patient_123456/timeline?limit=40',
+      method: 'GET',
+      status: 200,
+      durationMs: 90,
+      payloadBytes: 251 * 1024,
+    });
+
+    const snapshot = getPerformanceSnapshot({ topRoutes: 5 });
+
+    expect(snapshot.summary.payload_budgeted_routes).toBe(1);
+    expect(snapshot.summary.routes_over_payload_budget).toBe(1);
+    expect(snapshot.routes[0]).toMatchObject({
+      route: '/api/patients/:id/timeline',
+      method: 'GET',
+      critical_route: true,
+      critical_route_family: 'patient-movement-timeline-list',
+      payload_budget_bytes: 250 * 1024,
+      payload_budget_status: 'over_budget',
+      payload_budget_met: false,
+      payload_budget_over_count: 1,
+    });
+    expect(JSON.stringify(snapshot)).not.toContain('patient_123456');
+    expect(JSON.stringify(snapshot)).not.toContain('limit=');
+  });
+
   it('drops query strings and hash fragments before route bucketing', () => {
     recordRoutePerformance({
       route: '/api/patients/board?search=patient-name&org_id=org_1#section',

@@ -41,6 +41,78 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Plans.md active backlog整理 + PAYLOAD-BUDGET-001B patient movement timeline measured payload budget。
+  - current task:
+    `Plans.md` の実装済み / 未実装 / Human gate を現行コードとサブエージェント調査に合わせて整理し、
+    `PAYLOAD-BUDGET-001B` として `/api/patients/:id/timeline` を payload-budgeted measured response にする。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/lib/auth/context.ts`,
+    `src/lib/api/response.ts`,
+    `src/lib/utils/route-payload-budgets.ts`,
+    `src/lib/utils/performance.test.ts`,
+    `src/app/api/patients/[id]/timeline/route.ts`,
+    `src/app/api/patients/[id]/timeline/route.test.ts`,
+    `src/app/api/patients/[id]/detail-slices.test.ts`,
+    `src/server/services/patient-movement-timeline-presenter.test.ts`.
+  - subagent:
+    `code_mapper` confirmed the timeline route should use measured JSON but must not add an explicit
+    `withRoutePerformance` wrapper because `withAuthContext` already wraps authenticated routes.
+    `api_contract_reviewer` mapped `PAYLOAD-BUDGET-001C` gaps for inbound inbox/signals and
+    medication-stock summary: additive `visible_count` / `hidden_count` / `partial_failures`,
+    measured JSON, and budget registry entries. `db_steward` mapped `PERF-DB-006D` into a safe
+    SELECT-only EXPLAIN script/artifact slice plus a separate human-gated index migration lane.
+  - files changed:
+    `Plans.md`,
+    `src/app/api/patients/[id]/timeline/route.ts`,
+    `src/app/api/patients/[id]/timeline/route.test.ts`,
+    `src/lib/utils/performance.test.ts`,
+    `src/lib/utils/route-payload-budgets.ts`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Registered `GET /api/patients/:id/timeline` as `patient-movement-timeline-list` with a
+    250 KiB critical payload budget. The timeline route now returns
+    `successWithMeasuredJsonPayload(timeline)` so the existing authenticated route performance
+    wrapper can measure `Content-Length` without double wrapping. Route tests lock measured JSON
+    `Content-Length`; performance tests lock normalized dynamic patient IDs and query stripping.
+    `Plans.md` now marks dashboard segment payload budgets and movement timeline list budget as
+    implemented, separates `PERF-DB-006D-EXPLAIN` from the human-gated index migration row, and
+    expands `PAYLOAD-BUDGET-001C` with concrete inbound/stock API contract work.
+  - bugs found:
+    Timeline list was a critical PHI read path but had no payload budget and used plain JSON
+    success, so route performance could not measure payload bytes. The first local patch briefly
+    added an explicit performance wrapper, but code inspection showed this would double-count
+    because `withAuthContext` already calls `withRoutePerformance`; the final diff avoids that.
+  - security risks reduced:
+    No auth/authorization semantics changed. The plan now explicitly preserves authorized in-app
+    PHI visibility while keeping raw text, storage keys, signed URLs, provider raw errors, and
+    raw signal payloads out of list/notification surfaces unless a reauthorized detail surface is used.
+  - performance issues improved:
+    Patient movement timeline payload regressions are now observable and budgeted. The active plan
+    now separates safe DB speed work (`PERF-DB-006D-EXPLAIN`) from migration/human-gate work.
+  - gbrain:
+    Wrote
+    `projects/careviax/reviews/2026-07-08/patient-timeline-payload-budget`
+    for the `PAYLOAD-BUDGET-001B` measured response / no double route-performance wrapper pattern.
+  - validation commands:
+    `pnpm exec vitest run src/lib/utils/performance.test.ts 'src/app/api/patients/[id]/timeline/route.test.ts' 'src/app/api/patients/[id]/detail-slices.test.ts' src/server/services/patient-movement-timeline-presenter.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint 'src/app/api/patients/[id]/timeline/route.ts' 'src/app/api/patients/[id]/timeline/route.test.ts' src/lib/utils/route-payload-budgets.ts src/lib/utils/performance.test.ts`;
+    `pnpm exec prettier --check Plans.md 'src/app/api/patients/[id]/timeline/route.ts' 'src/app/api/patients/[id]/timeline/route.test.ts' src/lib/utils/route-payload-budgets.ts src/lib/utils/performance.test.ts`;
+    `git diff --check -- Plans.md 'src/app/api/patients/[id]/timeline/route.ts' 'src/app/api/patients/[id]/timeline/route.test.ts' src/lib/utils/route-payload-budgets.ts src/lib/utils/performance.test.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Focused Vitest passed `78`; ESLint passed; Prettier check passed after formatting `Plans.md`;
+    diff whitespace check passed; full typecheck passed. Existing PHI audit warnings appeared in
+    mocked tests and did not fail the suite.
+  - remaining:
+    `PAYLOAD-BUDGET-001C/D`, `PERF-DB-006D-EXPLAIN`, dashboard drilldowns/summary rail,
+    frontend slice contracts, and live AWS backup/restore evidence remain.
+  - next action:
+    Commit and push this slice, then continue with either `PERF-DB-006D-EXPLAIN` or
+    `PAYLOAD-BUDGET-001C` unless redirected.
+
 - codex: PAYLOAD-BUDGET-001A dashboard segment measured payload budgets。
   - current task:
     `PAYLOAD-BUDGET-001A` として、dashboard cockpit segment routes を payload-budgeted にし、

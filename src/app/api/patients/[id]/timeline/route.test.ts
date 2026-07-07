@@ -46,6 +46,12 @@ function createRequest(url = 'http://localhost/api/patients/patient_1/timeline')
   return new NextRequest(url);
 }
 
+function expectMeasuredJsonContentLength(response: Response, body: unknown) {
+  expect(response.headers.get('content-length')).toBe(
+    String(new TextEncoder().encode(JSON.stringify(body)).length),
+  );
+}
+
 describe('GET /api/patients/[id]/timeline', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -80,7 +86,9 @@ describe('GET /api/patients/[id]/timeline', () => {
       timelineLimit: 40,
     });
 
-    await expect(response.json()).resolves.toMatchObject({
+    const json = await response.json();
+    expectMeasuredJsonContentLength(response, json);
+    expect(json).toMatchObject({
       timeline_events: [],
       self_reports: [],
     });

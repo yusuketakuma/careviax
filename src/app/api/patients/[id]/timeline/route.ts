@@ -1,6 +1,11 @@
 import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
-import { internalError, notFound, success, validationError } from '@/lib/api/response';
+import {
+  internalError,
+  notFound,
+  successWithMeasuredJsonPayload,
+  validationError,
+} from '@/lib/api/response';
 import { parseExactIntegerSearchParam } from '@/lib/api/search-params';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { createScopedTxRunner } from '@/lib/db/rls';
@@ -32,7 +37,7 @@ const authenticatedGET = withAuthContext(
     // PHI 閲覧監査（3省2GL アクセス記録）。ベストエフォート、await しない。
     recordPhiReadAuditForRequest(ctx, { patientId: id, view: 'patient_timeline' });
 
-    return success(timeline);
+    return successWithMeasuredJsonPayload(timeline);
   },
   {
     permission: 'canVisit',
