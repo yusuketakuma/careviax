@@ -67,6 +67,9 @@ jobs:
       - name: DTO direct Prisma return check
         run: pnpm dto-direct-prisma-return:check
 
+      - name: Route auth wrapper check
+        run: pnpm route-auth-wrapper:check
+
       - name: Operational task type registry check
         run: pnpm task-types:check
 

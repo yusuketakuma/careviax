@@ -41,6 +41,54 @@
 
 ## 直近の land（本日・要点）
 
+- codex: CORE-ROUTE-001 route auth wrapper ratchet（pending commit）。
+  - current task:
+    `CORE-ROUTE-001` の小スライスとして、残る direct `requireAuthContext` route を
+    `tools/route-auth-wrapper-allowlist.json` に棚卸しし、新規 direct auth route をCIで検出する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `tools/scripts/check-dto-direct-prisma-return.mjs`,
+    `tools/scripts/check-api-response-shape.mjs`,
+    `tools/scripts/check-task-type-registry.test.ts`,
+    `package.json`,
+    `.github/workflows/ci.yml`,
+    `Plans.md`,
+    `src/app/api/**/route.ts` の direct `requireAuthContext` scan output。
+  - files changed:
+    `tools/scripts/check-route-auth-wrapper.mjs`,
+    `tools/scripts/check-route-auth-wrapper.test.ts`,
+    `tools/route-auth-wrapper-allowlist.json`,
+    `package.json`,
+    `.github/workflows/ci.yml`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `src/app/api/**/route.ts` の direct `requireAuthContext(` を検出する
+    `route-auth-wrapper:check` を追加した。allowlist には path、expectedCount、permission、
+    `withSensitiveNoStore` 有無、route performance 有無、owner、debtId、reason、plannedAction を持たせた。
+    現在の 179 routes / 255 direct calls を初期台帳化し、新規 direct route、stale entry、
+    permission/no-store/performance metadata drift をCIで fail する。
+    GitHub Actions CI に `Route auth wrapper check` を追加し、`Plans.md` は checker 新設済み
+    guardrail と残る allowlist burn-down に整理した。
+  - bugs found:
+    `withAuthContext` が preferred wrapper である一方、direct `requireAuthContext` route が
+    179件残っており、新規追加を止める静的gateがなかった。
+  - security risks reduced:
+    新規 direct auth route が標準 wrapper の route performance / fixed 500 envelope /
+    request auth context から外れる再発をCIで止められる。
+    既存 direct routes も permission/no-store/performance の棚卸し対象として固定された。
+  - performance issues improved:
+    実行時性能変更なし。critical route の performance wrapper 漏れを burn-down するための静的基盤を追加。
+  - validation:
+    `pnpm exec prettier --write tools/scripts/check-route-auth-wrapper.mjs tools/scripts/check-route-auth-wrapper.test.ts tools/route-auth-wrapper-allowlist.json package.json .github/workflows/ci.yml Plans.md ops/refactor/STATE.md` → pass。
+    `pnpm exec eslint tools/scripts/check-route-auth-wrapper.mjs tools/scripts/check-route-auth-wrapper.test.ts` → pass。
+    `pnpm route-auth-wrapper:check` → pass（179 allowlisted routes / 255 direct calls）。
+    `pnpm exec vitest run tools/scripts/check-route-auth-wrapper.test.ts --reporter=dot --testTimeout=30000` → pass（4 tests）。
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` → pass。
+  - remaining work:
+    次の CORE-ROUTE 実体移行は high-risk/sensitive routes から `withAuthContext` へ移し、
+    allowlist expectedCount を削減する。
+
 - codex: CORE-ROUTE-001 files/complete withAuthContext migration（pending commit）。
   - current task:
     `CORE-ROUTE-001` の小スライスとして、`/api/files/complete` の direct `requireAuthContext`
