@@ -41,6 +41,56 @@
 
 ## 直近の land（本日・要点）
 
+- codex: `Plans.md` 実装済み / 未実装分類と未実装Plan拡充。
+  - current task:
+    既存 `Plans.md` を整理し、実装済み・一部実装済み・未実装・human gate・reference-only
+    を分類する。未実装は次PRに切れる粒度へ拡充し、派生タスクが見つかった場合は追加する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `docs/ui-ux-design-guidelines.md`,
+    `tools/scripts/check-query-shape.mjs`,
+    `tools/query-shape-watchlist.json`,
+    query-shape read-only review notifications for patients board, day-board,
+    care-report detail, visit preparation, timeline registry, and medication-stock summary.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Added a cleanup pass that defines classification gates for Done / Partial / Not-started /
+    Human-gate / Reference-only work. Added a未実装Plan拡充マップ covering dashboard UX,
+    inbound review, medication stock, patient movement, API contracts, durable backend,
+    permission/tenant, recovery/AWS, and frontend slice contracts. Added archive/reference
+    handling rules so prompt-like historical specs are not counted as active backlog. Refined
+    `QUERY-SHAPE-WATCHLIST-003` into actionable derived tasks: zero-debt watchlist batch first,
+    patients board/day-board cleanup before watchlisting, reports/visit detail cleanup, and guard/test
+    seam hardening for transaction-client reads and service adapter query shape tests.
+  - bugs found:
+    No code bug was changed in this doc-only slice. Planning defects reduced: several completed
+    tasks were still easy to misread as active work, and query-shape watchlist expansion previously
+    mixed zero-debt candidates with BFFs that need cleanup first.
+  - security risks reduced:
+    No runtime security behavior changed. The plan now preserves raw/detail re-auth boundaries,
+    tenant/support human gates, and forbids treating PHI/auth/migration/live AWS tasks as complete
+    without evidence.
+  - performance issues improved:
+    No runtime performance changed. Added concrete DB read-path follow-ups for query-shape guard
+    expansion, patients board/day-board cleanup, nested delivery-record bounds, and read-path
+    watchlist tests.
+  - validation commands:
+    `pnpm exec prettier --check Plans.md`;
+    `git diff --check -- Plans.md`.
+  - validation results:
+    Prettier check passed. Diff whitespace check passed.
+  - remaining:
+    Active implementation remains open. Highest next candidates are `DASH-P1-010-RAIL` /
+    `DASH-P1-005-LINKS`, `FRONTEND-CONTRACT-001`, and `QUERY-SHAPE-WATCHLIST-003A-D`.
+  - next action:
+    If continuing on planning hygiene, split historical prompt/reference sections into
+    `docs/plans-archive.md`. If switching back to implementation, start with the zero-debt
+    query-shape watchlist batch or dashboard rail/link slice.
+
 - codex: `QUERY-SHAPE-TEST-002` critical read path query-shape watchlist guard。
   - current task:
     `Plans.md` の DB速度改善残タスクから、critical read path の broad include、
