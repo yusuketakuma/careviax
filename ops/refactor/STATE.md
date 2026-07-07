@@ -41,7 +41,42 @@
 
 ## 直近の land（本日・要点）
 
-- codex: FE-ERR-001 pharmacy cooperation setup segment hardening（pending commit）。
+- codex: FE-ERR-001 analytics segment state hardening（pending commit）。
+  - current task:
+    `/admin/analytics` の請求分析・地域資源マップの初回取得失敗/stale refetch 失敗を shared segment state に寄せる。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/admin/analytics/analytics-content.tsx`,
+    `src/app/(dashboard)/admin/analytics/analytics-content.test.tsx`,
+    `src/components/ui/segment-state.tsx`,
+    `src/components/ui/segment-state.test.tsx`.
+  - files changed:
+    `src/app/(dashboard)/admin/analytics/analytics-content.tsx`,
+    `src/app/(dashboard)/admin/analytics/analytics-content.test.tsx`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    blocking query failure は `SegmentError`、background refetch failure は `SegmentStaleBanner` に置換した。
+    billing analytics / resource map の失敗 payload に patient name / storage key / provider error / token が含まれても画面へ出ない regression test を追加した。
+  - bugs found:
+    なし。既存は raw detail を直出ししていなかったが、admin screen の error/stale 表現が旧 `ErrorState` 直利用だった。
+  - security risks reduced:
+    analytics error UI に hostile backend text が出ないことを focused test で固定した。
+  - performance issues improved:
+    なし。fail-soft/error state の共有化。
+  - validation:
+    `pnpm exec vitest run 'src/app/(dashboard)/admin/analytics/analytics-content.test.tsx' src/components/ui/segment-state.test.tsx --reporter=dot --testTimeout=30000` → pass（2 files / 15 tests）。
+    `pnpm exec eslint 'src/app/(dashboard)/admin/analytics/analytics-content.tsx' 'src/app/(dashboard)/admin/analytics/analytics-content.test.tsx'` → pass。
+    `pnpm exec prettier --check 'src/app/(dashboard)/admin/analytics/analytics-content.tsx' 'src/app/(dashboard)/admin/analytics/analytics-content.test.tsx'` → pass。
+    `git diff --check -- 'src/app/(dashboard)/admin/analytics/analytics-content.tsx' 'src/app/(dashboard)/admin/analytics/analytics-content.test.tsx'` → pass。
+  - remaining:
+    FE-ERR-001 は admin screen 群への段階展開が残る。
+    Formal `InboundCommunicationEvent` / `InboundCommunicationSignal` DB/API/review UI and MedicationStock Ledger source remain.
+  - next action:
+    scoped commit/push。
+
+- codex: FE-ERR-001 pharmacy cooperation setup segment hardening（commit `a2263fba6`, pushed to `main`）。
   - current task:
     `/admin/pharmacy-cooperation` の薬局間協力設定初期ロード失敗を raw backend detail なしの shared segment state に寄せる。
   - files inspected:

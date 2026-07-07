@@ -9,8 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
-import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
+import { SegmentError, SegmentStaleBanner } from '@/components/ui/segment-state';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
@@ -253,27 +253,19 @@ export function AnalyticsContent() {
       data-testid="analytics-workbench"
     >
       {isError && !data ? (
-        <ErrorState
-          variant="server"
-          size="inline"
+        <SegmentError
           title="請求分析を取得できませんでした"
-          description="時間をおいて再度お試しください。"
+          cause="時間をおいて再度お試しください。"
+          nextAction="通信状態を確認して再読み込みしてください。"
           onRetry={() => void refetch()}
-          retryLabel="再読み込み"
-          live="assertive"
         />
       ) : (
         <>
           {isError && data && (
-            <ErrorState
-              variant="server"
-              size="inline"
+            <SegmentStaleBanner
+              title="前回取得時点の請求分析を表示中"
               description="最新の請求分析を取得できませんでした。表示は前回取得した値です。"
               onRetry={() => void refetch()}
-              retryLabel="再読み込み"
-              retryVariant="outline"
-              retrySize="sm"
-              live="polite"
             />
           )}
           <div
@@ -396,27 +388,19 @@ export function AnalyticsContent() {
       )}
 
       {resourceMapError && !resourceMapData ? (
-        <ErrorState
-          variant="server"
-          size="inline"
+        <SegmentError
           title="地域資源マップを取得できませんでした"
-          description="時間をおいて再度お試しください。"
+          cause="時間をおいて再度お試しください。"
+          nextAction="通信状態を確認して再読み込みしてください。"
           onRetry={() => void resourceMapRefetch()}
-          retryLabel="再読み込み"
-          live="assertive"
         />
       ) : (
         <>
           {resourceMapError && resourceMapData && (
-            <ErrorState
-              variant="server"
-              size="inline"
+            <SegmentStaleBanner
+              title="前回取得時点の地域資源マップを表示中"
               description="最新の地域資源マップを取得できませんでした。表示は前回取得した値です。"
               onRetry={() => void resourceMapRefetch()}
-              retryLabel="再読み込み"
-              retryVariant="outline"
-              retrySize="sm"
-              live="polite"
             />
           )}
           <div aria-busy={resourceMapLoading} className="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">

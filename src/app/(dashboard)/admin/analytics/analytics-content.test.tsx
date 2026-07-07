@@ -249,7 +249,9 @@ describe('AnalyticsContent', () => {
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
         if (url === '/api/billing-evidence/analytics') {
-          return new Response('error', { status: 500 });
+          return new Response('患者 山田太郎 storage_key=private/provider_error token=secret', {
+            status: 500,
+          });
         }
         if (url === '/api/pharmacy-sites?view=resource_map') {
           return new Response(
@@ -287,6 +289,11 @@ describe('AnalyticsContent', () => {
     renderContent();
 
     expect(await screen.findByText('請求分析を取得できませんでした')).toBeTruthy();
+    const renderedText = document.body.textContent ?? '';
+    expect(renderedText).not.toContain('患者 山田太郎');
+    expect(renderedText).not.toContain('storage_key');
+    expect(renderedText).not.toContain('provider_error');
+    expect(renderedText).not.toContain('token=secret');
     // billing section is replaced by the error state -> no fabricated billing figures
     expect(screen.queryByText('今月候補')).toBeNull();
     expect(screen.queryByText('月次推移')).toBeNull();
@@ -334,7 +341,9 @@ describe('AnalyticsContent', () => {
           );
         }
         if (url === '/api/pharmacy-sites?view=resource_map') {
-          return new Response('error', { status: 500 });
+          return new Response('患者 山田太郎 storage_key=private/provider_error token=secret', {
+            status: 500,
+          });
         }
         return new Response('{}', { status: 404 });
       }),
@@ -343,6 +352,11 @@ describe('AnalyticsContent', () => {
     renderContent();
 
     expect(await screen.findByText('地域資源マップを取得できませんでした')).toBeTruthy();
+    const renderedText = document.body.textContent ?? '';
+    expect(renderedText).not.toContain('患者 山田太郎');
+    expect(renderedText).not.toContain('storage_key');
+    expect(renderedText).not.toContain('provider_error');
+    expect(renderedText).not.toContain('token=secret');
     // resource section is replaced by the error state -> no false-empty regional copy
     expect(screen.queryByText('拠点数')).toBeNull();
     expect(screen.queryByText('地域資源データはありません。')).toBeNull();
