@@ -41,6 +41,48 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Plans.md implemented-task cleanup for module backlog（docs-only, pending commit）。
+  - current task:
+    `Plans.md` 内を整理し、実装済みタスクが未完 backlog として残らないように削除・圧縮する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `git log --oneline -20 -- Plans.md`,
+    `.github/workflows/ci.yml`,
+    `package.json`,
+    `tools/scripts/check-module-boundaries.mjs`,
+    `tools/module-boundary-allowlist.json`,
+    `src/core/risk/provider-registry.ts`,
+    `src/server/collaboration/active-access-registry.ts`,
+    `src/modules/pharmacy/index.ts`,
+    `src/modules/pharmacy/patient-movement/timeline-links.ts`,
+    `src/lib/tasks/task-registry.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    空の `Wave 0-2 — 整理済み` 節を削除した。
+    `MOD-BOUND-001` は module-boundary allowlist 0 / CI ratchet 実装済みのため、
+    module backlog の未完タスク表から削除した。
+    `MOD-CI-001` は完了済みの boundaries / risk provider / collaboration provider 記述を削り、
+    残タスクを API response shape、DTO direct Prisma return、task type registry、RLS contract の gate だけにした。
+    PR template、CI gate候補、推奨PR順、残完了条件も allowlist 削減前提から allowlist 0 維持へ更新した。
+  - bugs found:
+    `Plans.md` に、完了済みの boundary/provider 小スライスが未完 backlog として読める表現で残っていた。
+  - security risks reduced:
+    コード変更なし。実装済み境界タスクの重複実装や、allowlist 再導入を前提にした計画誤読を減らした。
+  - performance issues improved:
+    なし。docs-only。
+  - validation:
+    `git diff --check -- Plans.md` → pass。
+    `rg -n <implemented-task-marker-pattern> Plans.md` → no matches。
+    `pnpm exec prettier --write Plans.md` → pass。
+    `pnpm exec prettier --check Plans.md` → pass。
+  - remaining work:
+    `Plans.md` には API/DB/PHI/UX/運用の未完タスクが残る。次候補は `MOD-CI-001` の
+    `task-type-registry:check`、または `API-CONTRACT-001` / `API-DTO-001` の契約 gate。
+
 - codex: MOD-CI-001 collaboration provider active contract（pending commit）。
   - current task:
     `MOD-CI-001` の collaboration-provider contract 小スライスとして、active collaboration provider の
