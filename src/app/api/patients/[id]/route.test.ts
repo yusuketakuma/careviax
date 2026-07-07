@@ -414,7 +414,54 @@ describe('/api/patients/[id]', () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         patient: {
+          findFirst: patientFindFirstMock,
+          findMany: patientFindManyMock,
           update: patientUpdateMock,
+        },
+        medicationProfile: {
+          findMany: medicationProfileFindManyMock,
+        },
+        visitSchedule: {
+          findMany: visitScheduleFindManyMock,
+          count: visitScheduleCountMock,
+        },
+        visitRecord: {
+          findMany: visitRecordFindManyMock,
+          findFirst: visitRecordFindFirstMock,
+        },
+        careReport: {
+          findMany: careReportFindManyMock,
+        },
+        communicationEvent: {
+          findMany: communicationEventFindManyMock,
+        },
+        patientSelfReport: {
+          findMany: patientSelfReportFindManyMock,
+        },
+        externalAccessGrant: {
+          findMany: externalAccessGrantFindManyMock,
+        },
+        task: {
+          findMany: taskFindManyMock,
+          upsert: taskUpsertMock,
+        },
+        medicationIssue: {
+          findMany: medicationIssueFindManyMock,
+        },
+        medicationCycle: {
+          findMany: medicationCycleFindManyMock,
+        },
+        billingEvidence: {
+          findMany: billingEvidenceFindManyMock,
+        },
+        billingCandidate: {
+          findMany: billingCandidateFindManyMock,
+        },
+        firstVisitDocument: {
+          findMany: firstVisitDocumentFindManyMock,
+        },
+        patientLabObservation: {
+          findMany: vi.fn().mockResolvedValue([]),
         },
         residence: {
           findFirst: residenceFindFirstMock,
@@ -450,12 +497,6 @@ describe('/api/patients/[id]', () => {
           updateMany: patientFieldRevisionUpdateManyMock,
           create: patientFieldRevisionCreateMock,
         },
-        visitRecord: {
-          findFirst: visitRecordFindFirstMock,
-        },
-        task: {
-          upsert: taskUpsertMock,
-        },
         patientMedicalProcedure: {
           findMany: patientMedicalProcedureFindManyMock,
           create: patientMedicalProcedureCreateMock,
@@ -470,7 +511,7 @@ describe('/api/patients/[id]', () => {
     );
   });
 
-  it('loads patient detail with expanded patient master relations', async () => {
+  it('loads patient detail through scoped RLS context without timeline-only fan-out', async () => {
     patientFindFirstMock.mockResolvedValue({
       id: 'patient_1',
       name: '患者A',
@@ -496,6 +537,17 @@ describe('/api/patients/[id]', () => {
       },
     );
 
+    expect(withOrgContextMock).toHaveBeenCalledWith(
+      'corg1234567890123456789012',
+      expect.any(Function),
+      {
+        requestContext: expect.objectContaining({
+          orgId: 'corg1234567890123456789012',
+          role: 'pharmacist',
+          userId: 'user_1',
+        }),
+      },
+    );
     expect(patientFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'patient_1',
@@ -522,8 +574,17 @@ describe('/api/patients/[id]', () => {
     expect(medicationProfileFindManyMock).toHaveBeenCalled();
     expect(externalAccessGrantFindManyMock).toHaveBeenCalled();
     expect(taskFindManyMock).toHaveBeenCalled();
+    expect(communicationEventFindManyMock).not.toHaveBeenCalled();
+    expect(inquiryRecordFindManyMock).not.toHaveBeenCalled();
+    expect(prescriptionIntakeFindManyMock).not.toHaveBeenCalled();
+    expect(dispenseResultFindManyMock).not.toHaveBeenCalled();
+    expect(managementPlanFindManyMock).not.toHaveBeenCalled();
+    expect(conferenceNoteFindManyMock).not.toHaveBeenCalled();
+    expect(auditLogFindManyMock).not.toHaveBeenCalled();
+    expect(userFindManyMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       monthly_visit_count: 0,
+      timeline_events: [],
       first_visit_documents: [],
       home_care_feature_summary: {
         totals: {
@@ -1907,514 +1968,6 @@ describe('/api/patients/[id]', () => {
     );
   });
 
-  it('includes inquiry history in patient timeline events', async () => {
-    patientFindFirstMock.mockResolvedValue({
-      id: 'patient_1',
-      name: '患者A',
-      cases: [{ id: 'case_1' }],
-    });
-    inquiryRecordFindManyMock.mockResolvedValue([
-      {
-        id: 'inquiry_1',
-        reason: '相互作用',
-        inquiry_to_physician: '在宅主治医',
-        inquiry_content: '併用可否を確認',
-        result: 'pending',
-        change_detail: null,
-        inquired_at: new Date('2026-03-28T09:00:00.000Z'),
-        resolved_at: null,
-        created_at: new Date('2026-03-28T08:50:00.000Z'),
-      },
-      {
-        id: 'inquiry_2',
-        reason: '用量疑義',
-        inquiry_to_physician: '在宅主治医',
-        inquiry_content: '減量で合意',
-        result: 'changed',
-        change_detail: '5mgへ減量',
-        inquired_at: new Date('2026-03-27T09:00:00.000Z'),
-        resolved_at: new Date('2026-03-27T10:00:00.000Z'),
-        created_at: new Date('2026-03-27T08:50:00.000Z'),
-      },
-    ]);
-
-    const response = await GET(
-      createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
-      {
-        params: Promise.resolve({ id: 'patient_1' }),
-      },
-    );
-
-    if (!response) throw new Error('response is required');
-
-    await expect(response.json()).resolves.toMatchObject({
-      timeline_events: expect.arrayContaining([
-        expect.objectContaining({
-          event_type: 'inquiry',
-          title: '疑義照会 回答待ち',
-        }),
-        expect.objectContaining({
-          event_type: 'inquiry',
-          title: '疑義照会 変更あり',
-          summary: expect.stringContaining('5mgへ減量'),
-        }),
-      ]),
-    });
-  });
-
-  it('includes prescription, dispensing, and management plan activity in patient timeline events', async () => {
-    patientFindFirstMock.mockResolvedValue({
-      id: 'patient_1',
-      name: '患者A',
-      cases: [{ id: 'case_1' }],
-    });
-    prescriptionIntakeFindManyMock.mockResolvedValue([
-      {
-        id: 'intake_1',
-        source_type: 'paper',
-        prescribed_date: new Date('2026-03-29T00:00:00.000Z'),
-        prescriber_name: '在宅主治医',
-        prescriber_institution: null,
-        original_collected_by: '受付A',
-        created_at: new Date('2026-03-29T09:00:00.000Z'),
-        cycle: {
-          overall_status: 'ready_to_dispense',
-        },
-        lines: [{ id: 'line_1' }],
-      },
-    ]);
-    dispenseResultFindManyMock.mockResolvedValue([
-      {
-        id: 'dispense_1',
-        actual_drug_name: 'アムロジピン',
-        actual_quantity: 30,
-        actual_unit: '錠',
-        carry_type: 'carry',
-        dispensed_by: 'user_2',
-        dispensed_at: new Date('2026-03-29T11:00:00.000Z'),
-        task: {
-          cycle: {
-            overall_status: 'dispensed',
-          },
-        },
-        line: {
-          intake: {
-            id: 'intake_1',
-          },
-        },
-      },
-    ]);
-    managementPlanFindManyMock.mockResolvedValue([
-      {
-        id: 'plan_1',
-        status: 'approved',
-        title: '訪問薬剤管理指導計画書',
-        effective_from: new Date('2026-04-01T00:00:00.000Z'),
-        next_review_date: new Date('2026-05-01T00:00:00.000Z'),
-        created_by: 'user_1',
-        approved_by: 'user_2',
-        approved_at: new Date('2026-03-30T09:00:00.000Z'),
-        reviewed_by: 'user_2',
-        reviewed_at: new Date('2026-03-30T09:00:00.000Z'),
-        created_at: new Date('2026-03-29T08:00:00.000Z'),
-      },
-    ]);
-    userFindManyMock.mockResolvedValue([{ id: 'user_2', name: '薬剤師B' }]);
-
-    const response = await GET(
-      createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
-      {
-        params: Promise.resolve({ id: 'patient_1' }),
-      },
-    );
-
-    if (!response) throw new Error('response is required');
-
-    await expect(response.json()).resolves.toMatchObject({
-      timeline_events: expect.arrayContaining([
-        expect.objectContaining({
-          event_type: 'prescription_intake',
-          category: 'prescription',
-          href: '/prescriptions/intake_1',
-          status_label: '調剤待ち',
-          actor_name: '受付A',
-        }),
-        expect.objectContaining({
-          event_type: 'dispense_result',
-          title: '調剤を記録',
-          actor_name: '薬剤師B',
-          href: '/prescriptions/intake_1',
-        }),
-        expect.objectContaining({
-          event_type: 'management_plan',
-          category: 'document',
-          title: '管理計画書を承認',
-          href: '/patients/patient_1/management-plan',
-        }),
-      ]),
-    });
-  });
-
-  it('falls back to visit record detail when a visit timeline event has no schedule id', async () => {
-    patientFindFirstMock.mockResolvedValue({
-      id: 'patient_1',
-      name: '患者A',
-      cases: [{ id: 'case_1' }],
-    });
-    visitRecordFindManyMock.mockResolvedValue([
-      {
-        id: 'record_1',
-        schedule_id: null,
-        visit_date: new Date('2026-03-28T10:00:00.000Z'),
-        outcome_status: 'completed',
-        next_visit_suggestion_date: null,
-        cancellation_reason: null,
-        postpone_reason: null,
-        revisit_reason: null,
-        created_at: new Date('2026-03-28T09:00:00.000Z'),
-      },
-    ]);
-
-    const response = await GET(
-      createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
-      {
-        params: Promise.resolve({ id: 'patient_1' }),
-      },
-    );
-
-    if (!response) throw new Error('response is required');
-
-    await expect(response.json()).resolves.toMatchObject({
-      timeline_events: expect.arrayContaining([
-        expect.objectContaining({
-          event_type: 'visit_record',
-          href: '/visits/record_1',
-        }),
-      ]),
-    });
-  });
-
-  it('links scheduled visit timeline events to record detail when a record exists', async () => {
-    patientFindFirstMock.mockResolvedValue({
-      id: 'patient_1',
-      name: '患者A',
-      cases: [{ id: 'case_1' }],
-    });
-    visitScheduleFindManyMock.mockResolvedValue([
-      {
-        id: 'schedule_1',
-        case_id: 'case_1',
-        visit_type: 'regular',
-        scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
-        time_window_start: null,
-        time_window_end: null,
-        schedule_status: 'completed',
-        priority: 'normal',
-        pharmacist_id: 'user_1',
-        assignment_mode: 'primary',
-        confirmed_at: new Date('2026-03-28T08:00:00.000Z'),
-        route_order: 1,
-        created_at: new Date('2026-03-27T08:00:00.000Z'),
-        updated_at: new Date('2026-03-28T08:00:00.000Z'),
-        visit_record: {
-          id: 'record_1',
-          outcome_status: 'completed',
-          visit_date: new Date('2026-03-28T09:00:00.000Z'),
-          next_visit_suggestion_date: null,
-          created_at: new Date('2026-03-28T09:10:00.000Z'),
-        },
-      },
-    ]);
-
-    const response = await GET(
-      createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
-      {
-        params: Promise.resolve({ id: 'patient_1' }),
-      },
-    );
-
-    if (!response) throw new Error('response is required');
-
-    await expect(response.json()).resolves.toMatchObject({
-      timeline_events: expect.arrayContaining([
-        expect.objectContaining({
-          event_type: 'visit_schedule',
-          href: '/visits/record_1',
-          action_label: '訪問記録を開く',
-        }),
-      ]),
-    });
-  });
-
-  it('links scheduled visit timeline events without a record to the record input page', async () => {
-    patientFindFirstMock.mockResolvedValue({
-      id: 'patient_1',
-      name: '患者A',
-      cases: [{ id: 'case_1' }],
-    });
-    visitScheduleFindManyMock.mockResolvedValue([
-      {
-        id: 'schedule_1',
-        case_id: 'case_1',
-        visit_type: 'regular',
-        scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
-        time_window_start: null,
-        time_window_end: null,
-        schedule_status: 'ready',
-        priority: 'normal',
-        pharmacist_id: 'user_1',
-        assignment_mode: 'primary',
-        confirmed_at: null,
-        route_order: 1,
-        created_at: new Date('2026-03-27T08:00:00.000Z'),
-        updated_at: new Date('2026-03-28T08:00:00.000Z'),
-        visit_record: null,
-      },
-    ]);
-
-    const response = await GET(
-      createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
-      {
-        params: Promise.resolve({ id: 'patient_1' }),
-      },
-    );
-
-    if (!response) throw new Error('response is required');
-
-    await expect(response.json()).resolves.toMatchObject({
-      timeline_events: expect.arrayContaining([
-        expect.objectContaining({
-          event_type: 'visit_schedule',
-          href: '/visits/schedule_1/record',
-          action_label: '訪問記録を入力',
-        }),
-      ]),
-    });
-  });
-
-  it('includes billing candidate activity in patient timeline events through the shared builder', async () => {
-    patientFindFirstMock.mockResolvedValue({
-      id: 'patient_1',
-      name: '患者A',
-      cases: [{ id: 'case_1' }],
-    });
-    medicationCycleFindManyMock.mockResolvedValue([{ id: 'cycle_1' }]);
-    billingCandidateFindManyMock.mockResolvedValue([
-      {
-        id: 'candidate_1',
-        billing_month: new Date('2026-03-01T00:00:00.000Z'),
-        billing_code: 'C001',
-        billing_name: '在宅患者訪問薬剤管理指導料',
-        points: 650,
-        status: 'candidate',
-        exclusion_reason: null,
-        updated_at: new Date('2026-03-30T09:00:00.000Z'),
-      },
-    ]);
-
-    const response = await GET(
-      createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
-      {
-        params: Promise.resolve({ id: 'patient_1' }),
-      },
-    );
-
-    if (!response) throw new Error('response is required');
-
-    expect(billingCandidateFindManyMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        select: expect.objectContaining({
-          updated_at: true,
-        }),
-      }),
-    );
-    await expect(response.json()).resolves.toMatchObject({
-      timeline_events: expect.arrayContaining([
-        expect.objectContaining({
-          event_type: 'billing_candidate',
-          category: 'billing',
-          title: '算定候補を更新',
-          summary: '在宅患者訪問薬剤管理指導料 / 650点',
-          href: '/billing/candidates?billing_month=2026-03-01&patient_id=patient_1',
-          action_label: '算定候補を開く',
-          status_label: '候補',
-          metadata: ['C001', '算定月 2026/03/01'],
-        }),
-      ]),
-    });
-  });
-
-  it('includes conference notes and scoped operation history in patient timeline events', async () => {
-    patientFindFirstMock.mockResolvedValue({
-      id: 'patient_1',
-      name: '患者A',
-      cases: [{ id: 'case_1' }],
-    });
-    conferenceNoteFindManyMock.mockResolvedValue([
-      {
-        id: 'conference_1',
-        note_type: 'service_manager',
-        title: 'サービス担当者会議',
-        conference_date: new Date('2026-04-05T10:00:00.000Z'),
-        follow_up_date: new Date('2026-04-06T00:00:00.000Z'),
-        follow_up_completed: false,
-        generated_report_id: null,
-        action_items: [{ title: '報告書作成' }, { title: '次回訪問調整' }],
-      },
-    ]);
-    auditLogFindManyMock.mockResolvedValue([
-      {
-        id: 'audit_conference_1',
-        action: 'conference_note.created',
-        target_type: 'conference_note',
-        target_id: 'conference_1',
-        actor_id: 'user_2',
-        changes: {
-          content: '退院後の服薬支援本文',
-          conference_note: {
-            note_type: 'service_manager',
-            report_type: 'care_manager_report',
-            follow_up_date: '2026-04-06T00:00:00.000Z',
-            follow_up_completed: false,
-            action_item_count: 2,
-            billing_code: 'MED_INFO_PROVISION_2_HA',
-          },
-        },
-        created_at: new Date('2026-04-05T11:00:00.000Z'),
-      },
-    ]);
-    userFindManyMock.mockResolvedValue([{ id: 'user_2', name: '薬剤師B' }]);
-
-    const response = await GET(
-      createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
-      {
-        params: Promise.resolve({ id: 'patient_1' }),
-      },
-    );
-
-    expect(response.status).toBe(200);
-    expect(conferenceNoteFindManyMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          org_id: 'corg1234567890123456789012',
-          OR: [{ patient_id: 'patient_1', case_id: null }, { case_id: { in: ['case_1'] } }],
-        },
-        take: 8,
-      }),
-    );
-    expect(auditLogFindManyMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          org_id: 'corg1234567890123456789012',
-          OR: expect.arrayContaining([
-            expect.objectContaining({
-              target_type: 'conference_note',
-              target_id: { in: ['conference_1'] },
-              action: { startsWith: 'conference_note.' },
-            }),
-          ]),
-        }),
-        take: 20,
-      }),
-    );
-
-    const json = await response.json();
-    expect(json.timeline_events).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          event_type: 'conference_note',
-          category: 'communication',
-          title: '担当者会議を記録',
-          href: '/conferences?patient_id=patient_1',
-          metadata: ['フォロー期限 2026/04/06'],
-        }),
-        expect.objectContaining({
-          event_type: 'operation_history',
-          category: 'communication',
-          title: 'カンファレンス記録を登録',
-          summary: expect.stringContaining('報告用途 ケアマネ向け'),
-          actor_name: '薬剤師B',
-        }),
-      ]),
-    );
-    expect(JSON.stringify(json.timeline_events)).not.toContain('退院後の服薬支援本文');
-  });
-
-  it('includes patient-level conference notes even when the patient has no assigned cases', async () => {
-    patientFindFirstMock.mockResolvedValue({
-      id: 'patient_1',
-      name: '患者A',
-      cases: [],
-    });
-    conferenceNoteFindManyMock.mockResolvedValue([
-      {
-        id: 'conference_patient_level',
-        note_type: 'service_manager',
-        title: 'ケース作成前の担当者会議',
-        conference_date: new Date('2026-04-08T10:00:00.000Z'),
-        follow_up_date: null,
-        follow_up_completed: true,
-        generated_report_id: null,
-        action_items: [],
-      },
-    ]);
-    auditLogFindManyMock.mockResolvedValue([
-      {
-        id: 'audit_conference_patient_level',
-        action: 'conference_note.updated',
-        target_type: 'conference_note',
-        target_id: 'conference_patient_level',
-        actor_id: 'user_2',
-        changes: { conference_note: { note_type: 'service_manager' } },
-        created_at: new Date('2026-04-08T11:00:00.000Z'),
-      },
-    ]);
-    userFindManyMock.mockResolvedValue([{ id: 'user_2', name: '薬剤師B' }]);
-
-    const response = await GET(
-      createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
-      {
-        params: Promise.resolve({ id: 'patient_1' }),
-      },
-    );
-
-    expect(response.status).toBe(200);
-    expect(conferenceNoteFindManyMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          org_id: 'corg1234567890123456789012',
-          OR: [{ patient_id: 'patient_1', case_id: null }],
-        },
-      }),
-    );
-    expect(auditLogFindManyMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          OR: expect.arrayContaining([
-            expect.objectContaining({
-              target_type: 'conference_note',
-              target_id: { in: ['conference_patient_level'] },
-            }),
-          ]),
-        }),
-      }),
-    );
-    const json = await response.json();
-    expect(json.timeline_events).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          event_type: 'conference_note',
-          title: '担当者会議を記録',
-        }),
-        expect.objectContaining({
-          event_type: 'operation_history',
-          title: 'カンファレンス記録を更新',
-          actor_name: '薬剤師B',
-        }),
-      ]),
-    );
-  });
-
   it('omits billing candidate activity for roles without billing management permission', async () => {
     requireAuthContextMock.mockResolvedValue({
       ctx: {
@@ -2489,9 +2042,7 @@ describe('/api/patients/[id]', () => {
     expect(billingEvidenceFindManyMock).not.toHaveBeenCalled();
     expect(billingEvidenceBlockersMock).not.toHaveBeenCalled();
     expect(billingCandidateFindManyMock).not.toHaveBeenCalled();
-    expect(JSON.stringify(auditLogFindManyMock.mock.calls[0]?.[0])).not.toContain(
-      'billing_payment_profile_updated',
-    );
+    expect(auditLogFindManyMock).not.toHaveBeenCalled();
     const json = await response.json();
     expect(json.billing_summary.evidence).toEqual([]);
     expect(json.billing_summary.candidates).toEqual([]);

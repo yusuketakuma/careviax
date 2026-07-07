@@ -40,7 +40,6 @@ import {
 } from '@/server/services/patient-field-revision';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import { syncStructuredHomeCare } from '@/server/services/patient-structured-care';
-import { batchResolveNames } from '@/lib/utils/name-resolver';
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { getHomeVisitIntake, type HomeVisitIntake } from '@/lib/patient/home-visit-intake';
 import { normalizePatientPrimaryContacts } from '@/lib/patient/care-team-contact';
@@ -52,7 +51,6 @@ import { KEY_LAB_ANALYTE_CODES } from '@/lib/patient/lab-analytes';
 import {
   buildAssignedCareCaseWhere,
   buildCareReportCaseScope,
-  buildNullableCaseScope,
   buildPatientDetailWhere,
   buildVisitRecordCaseScope,
 } from '@/server/services/patient-detail-scope';
@@ -60,13 +58,8 @@ import {
   buildVisibleExternalAccessGrantWhere,
   toPublicExternalAccessScope,
 } from '@/server/services/external-access';
-import { buildPatientTimelineEvents } from '@/server/services/patient-detail-timeline-events';
 import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { listPatientBillingCaseRefs } from '@/server/services/patient-detail-billing-refs';
-import {
-  buildPatientTimelineConferenceNoteWhere,
-  buildPatientTimelineOperationHistoryFilters,
-} from '@/server/services/patient-detail-timeline-query';
 
 type FirstVisitDocumentContact = {
   id?: string;
@@ -143,12 +136,15 @@ function normalizeCurrentUpdatedAt(value: unknown): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-async function listVisibleExternalSharesForPatient(args: {
-  orgId: string;
-  patientId: string;
-  caseIds: string[];
-}) {
-  return prisma.externalAccessGrant.findMany({
+async function listVisibleExternalSharesForPatient(
+  db: Pick<Prisma.TransactionClient, 'externalAccessGrant'>,
+  args: {
+    orgId: string;
+    patientId: string;
+    caseIds: string[];
+  },
+) {
+  return db.externalAccessGrant.findMany({
     where: buildVisibleExternalAccessGrantWhere(args),
     orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
     take: PATIENT_EXTERNAL_SHARE_LIMIT,
@@ -917,734 +913,491 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('患者IDが不正です');
 
-  const assignedCareCaseWhere = buildAssignedCareCaseWhere(ctx);
+  return withOrgContext(
+    ctx.orgId,
+    async (tx) => {
+      const assignedCareCaseWhere = buildAssignedCareCaseWhere(ctx);
 
-  const patient = await prisma.patient.findFirst({
-    where: buildPatientDetailWhere({
-      orgId: ctx.orgId,
-      patientId: id,
-      role: ctx.role,
-      userId: ctx.userId,
-    }),
-    include: {
-      residences: true,
-      cases: {
-        ...(assignedCareCaseWhere ? { where: assignedCareCaseWhere } : {}),
-        orderBy: { created_at: 'desc' },
+      const patient = await tx.patient.findFirst({
+        where: buildPatientDetailWhere({
+          orgId: ctx.orgId,
+          patientId: id,
+          role: ctx.role,
+          userId: ctx.userId,
+        }),
         include: {
-          care_team_links: true,
+          residences: true,
+          cases: {
+            ...(assignedCareCaseWhere ? { where: assignedCareCaseWhere } : {}),
+            orderBy: { created_at: 'desc' },
+            include: {
+              care_team_links: true,
+            },
+          },
+          contacts: true,
+          conditions: {
+            orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
+          },
+          consents: true,
         },
-      },
-      contacts: true,
-      conditions: {
-        orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
-      },
-      consents: true,
-    },
-  });
+      });
 
-  if (!patient) return notFound('患者が見つかりません');
+      if (!patient) return notFound('患者が見つかりません');
 
-  const caseIds = (patient.cases ?? []).map((item) => item.id);
-  const billingRefs = canManageBilling
-    ? await listPatientBillingCaseRefs(prisma, { orgId: ctx.orgId, patientId: id }, caseIds)
-    : { visitRecordIds: [] as string[], cycleIds: [] as string[] };
-  const billingEvidenceScope =
-    billingRefs.visitRecordIds.length === 0 && billingRefs.cycleIds.length === 0
-      ? { id: { in: [] } }
-      : {
-          OR: [
-            { visit_record_id: { in: billingRefs.visitRecordIds } },
-            { cycle_id: { in: billingRefs.cycleIds } },
-          ],
-        };
-  const billingCandidateScope =
-    billingRefs.cycleIds.length === 0
-      ? { id: { in: [] } }
-      : { cycle_id: { in: billingRefs.cycleIds } };
-  // scheduled_date(@db.Date)比較用: ローカル今月の月初/翌月初を UTC 深夜で表す
-  const todayKey = localDateKey();
-  const [currentYear, currentMonth] = todayKey.split('-').map(Number);
-  const currentMonthStart = utcDateFromLocalKey(
-    `${currentYear}-${`${currentMonth}`.padStart(2, '0')}-01`,
-  );
-  const nextMonthStart = new Date(
-    Date.UTC(currentYear, currentMonth, 1), // monthIndex = currentMonth で翌月 1 日
-  );
+      const caseIds = (patient.cases ?? []).map((item) => item.id);
+      const billingRefs = canManageBilling
+        ? await listPatientBillingCaseRefs(tx, { orgId: ctx.orgId, patientId: id }, caseIds)
+        : { visitRecordIds: [] as string[], cycleIds: [] as string[] };
+      const billingEvidenceScope =
+        billingRefs.visitRecordIds.length === 0 && billingRefs.cycleIds.length === 0
+          ? { id: { in: [] } }
+          : {
+              OR: [
+                { visit_record_id: { in: billingRefs.visitRecordIds } },
+                { cycle_id: { in: billingRefs.cycleIds } },
+              ],
+            };
+      const billingCandidateScope =
+        billingRefs.cycleIds.length === 0
+          ? { id: { in: [] } }
+          : { cycle_id: { in: billingRefs.cycleIds } };
+      // scheduled_date(@db.Date)比較用: ローカル今月の月初/翌月初を UTC 深夜で表す
+      const todayKey = localDateKey();
+      const [currentYear, currentMonth] = todayKey.split('-').map(Number);
+      const currentMonthStart = utcDateFromLocalKey(
+        `${currentYear}-${`${currentMonth}`.padStart(2, '0')}-01`,
+      );
+      const nextMonthStart = new Date(
+        Date.UTC(currentYear, currentMonth, 1), // monthIndex = currentMonth で翌月 1 日
+      );
 
-  const [
-    currentMedications,
-    visitSchedules,
-    currentMonthVisitCount,
-    visitRecords,
-    careReports,
-    communicationEvents,
-    selfReports,
-    externalShares,
-    openTasks,
-    medicationIssues,
-    inquiryRecords,
-    prescriptionIntakes,
-    dispenseResults,
-    managementPlans,
-    billingEvidence,
-    billingEvidenceBlockers,
-    billingCandidates,
-    communicationQueue,
-    riskSummary,
-    visitBrief,
-    firstVisitDocuments,
-    conferenceNotes,
-  ] = await Promise.all([
-    prisma.medicationProfile.findMany({
-      where: {
-        org_id: ctx.orgId,
-        patient_id: id,
-        is_current: true,
-      },
-      orderBy: [{ created_at: 'desc' }],
-      take: 20,
-      select: {
-        id: true,
-        drug_name: true,
-        dose: true,
-        frequency: true,
-        start_date: true,
-        end_date: true,
-        prescriber: true,
-        is_current: true,
-        source: true,
-        created_at: true,
-      },
-    }),
-    caseIds.length === 0
-      ? Promise.resolve([])
-      : prisma.visitSchedule.findMany({
+      const [
+        currentMedications,
+        visitSchedules,
+        currentMonthVisitCount,
+        visitRecords,
+        careReports,
+        selfReports,
+        externalShares,
+        openTasks,
+        medicationIssues,
+        billingEvidence,
+        billingEvidenceBlockers,
+        billingCandidates,
+        communicationQueue,
+        riskSummary,
+        visitBrief,
+        firstVisitDocuments,
+      ] = await Promise.all([
+        tx.medicationProfile.findMany({
           where: {
             org_id: ctx.orgId,
-            case_id: { in: caseIds },
+            patient_id: id,
+            is_current: true,
           },
-          orderBy: [{ scheduled_date: 'desc' }, { time_window_start: 'desc' }],
-          take: 12,
+          orderBy: [{ created_at: 'desc' }],
+          take: 20,
           select: {
             id: true,
-            case_id: true,
-            visit_type: true,
-            scheduled_date: true,
-            time_window_start: true,
-            time_window_end: true,
-            schedule_status: true,
-            priority: true,
-            pharmacist_id: true,
-            assignment_mode: true,
-            confirmed_at: true,
-            route_order: true,
+            drug_name: true,
+            dose: true,
+            frequency: true,
+            start_date: true,
+            end_date: true,
+            prescriber: true,
+            is_current: true,
+            source: true,
             created_at: true,
-            updated_at: true,
-            visit_record: {
+          },
+        }),
+        caseIds.length === 0
+          ? Promise.resolve([])
+          : tx.visitSchedule.findMany({
+              where: {
+                org_id: ctx.orgId,
+                case_id: { in: caseIds },
+              },
+              orderBy: [{ scheduled_date: 'desc' }, { time_window_start: 'desc' }],
+              take: 12,
               select: {
                 id: true,
-                outcome_status: true,
+                case_id: true,
+                visit_type: true,
+                scheduled_date: true,
+                time_window_start: true,
+                time_window_end: true,
+                schedule_status: true,
+                priority: true,
+                pharmacist_id: true,
+                assignment_mode: true,
+                confirmed_at: true,
+                route_order: true,
+                created_at: true,
+                updated_at: true,
+                visit_record: {
+                  select: {
+                    id: true,
+                    outcome_status: true,
+                    visit_date: true,
+                    next_visit_suggestion_date: true,
+                    created_at: true,
+                  },
+                },
+              },
+            }),
+        caseIds.length === 0
+          ? Promise.resolve(0)
+          : tx.visitSchedule.count({
+              where: {
+                org_id: ctx.orgId,
+                case_id: { in: caseIds },
+                scheduled_date: {
+                  gte: currentMonthStart,
+                  lt: nextMonthStart,
+                },
+              },
+            }),
+        caseIds.length === 0
+          ? Promise.resolve([])
+          : tx.visitRecord.findMany({
+              where: {
+                org_id: ctx.orgId,
+                patient_id: id,
+                ...buildVisitRecordCaseScope(caseIds),
+              },
+              orderBy: [{ visit_date: 'desc' }, { created_at: 'desc' }],
+              take: 12,
+              select: {
+                id: true,
+                schedule_id: true,
+                pharmacist_id: true,
                 visit_date: true,
+                outcome_status: true,
                 next_visit_suggestion_date: true,
+                cancellation_reason: true,
+                postpone_reason: true,
+                revisit_reason: true,
+                created_at: true,
+              },
+            }),
+        tx.careReport.findMany({
+          where: {
+            org_id: ctx.orgId,
+            patient_id: id,
+            ...buildCareReportCaseScope(caseIds),
+          },
+          orderBy: [{ created_at: 'desc' }],
+          take: 8,
+          select: {
+            id: true,
+            report_type: true,
+            status: true,
+            created_by: true,
+            created_at: true,
+            delivery_records: {
+              orderBy: [{ created_at: 'desc' }],
+              take: 4,
+              select: {
+                id: true,
+                channel: true,
+                recipient_name: true,
+                status: true,
+                sent_at: true,
+                confirmed_at: true,
                 created_at: true,
               },
             },
           },
         }),
-    caseIds.length === 0
-      ? Promise.resolve(0)
-      : prisma.visitSchedule.count({
-          where: {
-            org_id: ctx.orgId,
-            case_id: { in: caseIds },
-            scheduled_date: {
-              gte: currentMonthStart,
-              lt: nextMonthStart,
-            },
-          },
-        }),
-    caseIds.length === 0
-      ? Promise.resolve([])
-      : prisma.visitRecord.findMany({
+        tx.patientSelfReport.findMany({
           where: {
             org_id: ctx.orgId,
             patient_id: id,
-            ...buildVisitRecordCaseScope(caseIds),
           },
-          orderBy: [{ visit_date: 'desc' }, { created_at: 'desc' }],
-          take: 12,
-          select: {
-            id: true,
-            schedule_id: true,
-            pharmacist_id: true,
-            visit_date: true,
-            outcome_status: true,
-            next_visit_suggestion_date: true,
-            cancellation_reason: true,
-            postpone_reason: true,
-            revisit_reason: true,
-            created_at: true,
-          },
-        }),
-    prisma.careReport.findMany({
-      where: {
-        org_id: ctx.orgId,
-        patient_id: id,
-        ...buildCareReportCaseScope(caseIds),
-      },
-      orderBy: [{ created_at: 'desc' }],
-      take: 8,
-      select: {
-        id: true,
-        report_type: true,
-        status: true,
-        created_by: true,
-        created_at: true,
-        delivery_records: {
           orderBy: [{ created_at: 'desc' }],
-          take: 4,
-          select: {
-            id: true,
-            channel: true,
-            recipient_name: true,
-            status: true,
-            sent_at: true,
-            confirmed_at: true,
-            created_at: true,
-          },
-        },
-      },
-    }),
-    prisma.communicationEvent.findMany({
-      where: {
-        org_id: ctx.orgId,
-        patient_id: id,
-        ...buildNullableCaseScope(caseIds),
-      },
-      orderBy: [{ occurred_at: 'desc' }],
-      take: 8,
-      select: {
-        id: true,
-        event_type: true,
-        channel: true,
-        direction: true,
-        subject: true,
-        counterpart_name: true,
-        occurred_at: true,
-      },
-    }),
-    prisma.patientSelfReport.findMany({
-      where: {
-        org_id: ctx.orgId,
-        patient_id: id,
-      },
-      orderBy: [{ created_at: 'desc' }],
-      take: 8,
-      select: {
-        id: true,
-        subject: true,
-        category: true,
-        content: true,
-        relation: true,
-        status: true,
-        reported_by_name: true,
-        requested_callback: true,
-        preferred_contact_time: true,
-        created_at: true,
-      },
-    }),
-    listVisibleExternalSharesForPatient({
-      orgId: ctx.orgId,
-      patientId: id,
-      caseIds,
-    }),
-    prisma.task.findMany({
-      where: {
-        org_id: ctx.orgId,
-        status: {
-          in: ['pending', 'in_progress'],
-        },
-        OR: [
-          {
-            related_entity_type: 'patient',
-            related_entity_id: id,
-          },
-          ...(caseIds.length > 0
-            ? [
-                {
-                  related_entity_type: 'case',
-                  related_entity_id: {
-                    in: caseIds,
-                  },
-                },
-              ]
-            : []),
-        ],
-      },
-      orderBy: [{ sla_due_at: 'asc' }, { due_date: 'asc' }, { created_at: 'asc' }],
-      take: 8,
-      select: {
-        id: true,
-        task_type: true,
-        title: true,
-        description: true,
-        status: true,
-        priority: true,
-        due_date: true,
-        sla_due_at: true,
-        created_at: true,
-      },
-    }),
-    prisma.medicationIssue.findMany({
-      where: {
-        org_id: ctx.orgId,
-        patient_id: id,
-        OR: [{ case_id: { in: caseIds } }, { case_id: null }],
-        status: {
-          in: ['open', 'in_progress'],
-        },
-      },
-      orderBy: [{ priority: 'desc' }, { identified_at: 'desc' }],
-      take: 6,
-      select: {
-        id: true,
-        title: true,
-        description: true,
-        status: true,
-        priority: true,
-        category: true,
-        identified_at: true,
-      },
-    }),
-    caseIds.length === 0
-      ? Promise.resolve([])
-      : prisma.inquiryRecord.findMany({
-          where: {
-            org_id: ctx.orgId,
-            cycle: {
-              patient_id: id,
-              case_id: { in: caseIds },
-            },
-          },
-          orderBy: [{ resolved_at: 'desc' }, { inquired_at: 'desc' }, { created_at: 'desc' }],
           take: 8,
           select: {
             id: true,
-            reason: true,
-            inquiry_to_physician: true,
-            inquiry_content: true,
-            result: true,
-            proposal_origin: true,
-            residual_adjustment: true,
-            change_detail: true,
-            inquired_at: true,
-            resolved_at: true,
-            created_at: true,
-            line: {
-              select: {
-                intake: {
-                  select: {
-                    id: true,
-                  },
-                },
-              },
-            },
-          },
-        }),
-    caseIds.length === 0
-      ? Promise.resolve([])
-      : prisma.prescriptionIntake.findMany({
-          where: {
-            org_id: ctx.orgId,
-            cycle: {
-              patient_id: id,
-              case_id: { in: caseIds },
-            },
-          },
-          orderBy: [{ created_at: 'desc' }],
-          take: 10,
-          select: {
-            id: true,
-            source_type: true,
-            prescribed_date: true,
-            prescriber_name: true,
-            prescriber_institution: true,
-            original_collected_by: true,
-            created_at: true,
-            cycle: {
-              select: {
-                overall_status: true,
-              },
-            },
-            lines: {
-              take: 3,
-              select: {
-                id: true,
-              },
-            },
-          },
-        }),
-    caseIds.length === 0
-      ? Promise.resolve([])
-      : prisma.dispenseResult.findMany({
-          where: {
-            org_id: ctx.orgId,
-            line: {
-              intake: {
-                cycle: {
-                  patient_id: id,
-                  case_id: { in: caseIds },
-                },
-              },
-            },
-          },
-          orderBy: [{ dispensed_at: 'desc' }],
-          take: 12,
-          select: {
-            id: true,
-            actual_drug_name: true,
-            actual_quantity: true,
-            actual_unit: true,
-            carry_type: true,
-            dispensed_by: true,
-            dispensed_at: true,
-            task: {
-              select: {
-                cycle: {
-                  select: {
-                    overall_status: true,
-                  },
-                },
-              },
-            },
-            line: {
-              select: {
-                intake: {
-                  select: {
-                    id: true,
-                  },
-                },
-              },
-            },
-          },
-        }),
-    caseIds.length === 0
-      ? Promise.resolve([])
-      : prisma.managementPlan.findMany({
-          where: {
-            org_id: ctx.orgId,
-            case_id: {
-              in: caseIds,
-            },
-          },
-          orderBy: [{ updated_at: 'desc' }],
-          take: 6,
-          select: {
-            id: true,
+            subject: true,
+            category: true,
+            content: true,
+            relation: true,
             status: true,
-            title: true,
-            effective_from: true,
-            next_review_date: true,
-            created_by: true,
-            approved_by: true,
-            approved_at: true,
-            reviewed_by: true,
-            reviewed_at: true,
+            reported_by_name: true,
+            requested_callback: true,
+            preferred_contact_time: true,
             created_at: true,
           },
         }),
-    canManageBilling
-      ? prisma.billingEvidence.findMany({
-          where: {
-            org_id: ctx.orgId,
-            patient_id: id,
-            ...billingEvidenceScope,
-          },
-          orderBy: [{ billing_month: 'desc' }, { created_at: 'desc' }],
-          take: 6,
-          select: {
-            id: true,
-            billing_month: true,
-            claimable: true,
-            exclusion_reason: true,
-            validation_notes: true,
-          },
-        })
-      : Promise.resolve([]),
-    canManageBilling
-      ? listBillingEvidenceBlockers(prisma, {
+        listVisibleExternalSharesForPatient(tx, {
           orgId: ctx.orgId,
           patientId: id,
-          visitRecordIds: billingRefs.visitRecordIds,
-          cycleIds: billingRefs.cycleIds,
-          limit: 6,
-        })
-      : Promise.resolve([]),
-    canManageBilling
-      ? prisma.billingCandidate.findMany({
+          caseIds,
+        }),
+        tx.task.findMany({
+          where: {
+            org_id: ctx.orgId,
+            status: {
+              in: ['pending', 'in_progress'],
+            },
+            OR: [
+              {
+                related_entity_type: 'patient',
+                related_entity_id: id,
+              },
+              ...(caseIds.length > 0
+                ? [
+                    {
+                      related_entity_type: 'case',
+                      related_entity_id: {
+                        in: caseIds,
+                      },
+                    },
+                  ]
+                : []),
+            ],
+          },
+          orderBy: [{ sla_due_at: 'asc' }, { due_date: 'asc' }, { created_at: 'asc' }],
+          take: 8,
+          select: {
+            id: true,
+            task_type: true,
+            title: true,
+            description: true,
+            status: true,
+            priority: true,
+            due_date: true,
+            sla_due_at: true,
+            created_at: true,
+          },
+        }),
+        tx.medicationIssue.findMany({
           where: {
             org_id: ctx.orgId,
             patient_id: id,
-            ...billingCandidateScope,
+            OR: [{ case_id: { in: caseIds } }, { case_id: null }],
+            status: {
+              in: ['open', 'in_progress'],
+            },
           },
-          orderBy: [{ billing_month: 'desc' }, { created_at: 'desc' }],
+          orderBy: [{ priority: 'desc' }, { identified_at: 'desc' }],
           take: 6,
           select: {
             id: true,
-            billing_month: true,
-            billing_code: true,
-            billing_name: true,
-            points: true,
+            title: true,
+            description: true,
             status: true,
-            exclusion_reason: true,
-            updated_at: true,
+            priority: true,
+            category: true,
+            identified_at: true,
           },
-        })
-      : Promise.resolve([]),
-    listCommunicationQueue(prisma, {
-      orgId: ctx.orgId,
-      patientId: id,
-      caseIds,
-      limit: 6,
-    }),
-    getPatientRiskSummary(prisma, {
-      orgId: ctx.orgId,
-      patientId: id,
-      caseIds,
-    }),
-    getPatientVisitBrief(prisma, {
-      orgId: ctx.orgId,
-      patientId: id,
-      context: 'patient',
-      caseIds,
-      role: ctx.role,
-      userId: ctx.userId,
-    }),
-    caseIds.length === 0
-      ? Promise.resolve([])
-      : prisma.firstVisitDocument.findMany({
+        }),
+        canManageBilling
+          ? tx.billingEvidence.findMany({
+              where: {
+                org_id: ctx.orgId,
+                patient_id: id,
+                ...billingEvidenceScope,
+              },
+              orderBy: [{ billing_month: 'desc' }, { created_at: 'desc' }],
+              take: 6,
+              select: {
+                id: true,
+                billing_month: true,
+                claimable: true,
+                exclusion_reason: true,
+                validation_notes: true,
+              },
+            })
+          : Promise.resolve([]),
+        canManageBilling
+          ? listBillingEvidenceBlockers(tx, {
+              orgId: ctx.orgId,
+              patientId: id,
+              visitRecordIds: billingRefs.visitRecordIds,
+              cycleIds: billingRefs.cycleIds,
+              limit: 6,
+            })
+          : Promise.resolve([]),
+        canManageBilling
+          ? tx.billingCandidate.findMany({
+              where: {
+                org_id: ctx.orgId,
+                patient_id: id,
+                ...billingCandidateScope,
+              },
+              orderBy: [{ billing_month: 'desc' }, { created_at: 'desc' }],
+              take: 6,
+              select: {
+                id: true,
+                billing_month: true,
+                billing_code: true,
+                billing_name: true,
+                points: true,
+                status: true,
+                exclusion_reason: true,
+                updated_at: true,
+              },
+            })
+          : Promise.resolve([]),
+        listCommunicationQueue(tx, {
+          orgId: ctx.orgId,
+          patientId: id,
+          caseIds,
+          limit: 6,
+        }),
+        getPatientRiskSummary(tx, {
+          orgId: ctx.orgId,
+          patientId: id,
+          caseIds,
+        }),
+        getPatientVisitBrief(tx, {
+          orgId: ctx.orgId,
+          patientId: id,
+          context: 'patient',
+          caseIds,
+          role: ctx.role,
+          userId: ctx.userId,
+        }),
+        caseIds.length === 0
+          ? Promise.resolve([])
+          : tx.firstVisitDocument.findMany({
+              where: {
+                org_id: ctx.orgId,
+                patient_id: id,
+                case_id: { in: caseIds },
+              },
+              orderBy: [{ created_at: 'desc' }],
+              take: 8,
+              select: {
+                id: true,
+                case_id: true,
+                emergency_contacts: true,
+                document_url: true,
+                delivered_at: true,
+                delivered_to: true,
+                created_at: true,
+                updated_at: true,
+              },
+            }),
+      ]);
+
+      const [homeCareFeatureSummary, labRows] = await Promise.all([
+        getPatientHomeCareFeatureSummary(tx, {
+          orgId: ctx.orgId,
+          patientId: id,
+        }),
+        // Lab summary: most recent value per analyte for key analytes
+        tx.patientLabObservation.findMany({
           where: {
             org_id: ctx.orgId,
             patient_id: id,
-            case_id: { in: caseIds },
+            analyte_code: { in: [...KEY_LAB_ANALYTE_CODES] },
           },
-          orderBy: [{ created_at: 'desc' }],
+          orderBy: [{ measured_at: 'desc' }],
+          take: 50,
           select: {
             id: true,
-            case_id: true,
-            emergency_contacts: true,
-            document_url: true,
-            delivered_at: true,
-            delivered_to: true,
-            created_at: true,
-            updated_at: true,
+            analyte_code: true,
+            measured_at: true,
+            value_numeric: true,
+            value_text: true,
+            unit: true,
+            abnormal_flag: true,
           },
         }),
-    prisma.conferenceNote.findMany({
-      where: buildPatientTimelineConferenceNoteWhere({
-        orgId: ctx.orgId,
-        patientId: id,
-        caseIds,
-      }),
-      orderBy: [{ conference_date: 'desc' }],
-      take: 8,
-      select: {
-        id: true,
-        note_type: true,
-        title: true,
-        conference_date: true,
-        follow_up_date: true,
-        follow_up_completed: true,
-        generated_report_id: true,
-        action_items: true,
-      },
-    }),
-  ]);
-  const prescriptionIntakeIds = prescriptionIntakes.map((item) => item.id);
-  const firstVisitDocumentIds = firstVisitDocuments.map((item) => item.id);
-  const billingCandidateIds = billingCandidates.map((item) => item.id);
-  const conferenceNoteIds = conferenceNotes.map((item) => item.id);
-  const operationHistoryFilters = buildPatientTimelineOperationHistoryFilters({
-    patientId: id,
-    prescriptionIntakeIds,
-    firstVisitDocumentIds,
-    billingCandidateIds,
-    conferenceNoteIds,
-    canManageBilling,
-  });
+      ]);
 
-  // homeCareFeatureSummary / operationHistory / labRows は互いに独立した読み取りのため
-  // 並列化して RTT を削減(actorNameMap は operationHistory に依存するため後段で逐次実行)。
-  const [homeCareFeatureSummary, operationHistory, labRows] = await Promise.all([
-    getPatientHomeCareFeatureSummary(prisma, {
-      orgId: ctx.orgId,
-      patientId: id,
-    }),
-    prisma.auditLog.findMany({
-      where: {
-        org_id: ctx.orgId,
-        OR: operationHistoryFilters,
-      },
-      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
-      take: 20,
-      select: {
-        id: true,
-        action: true,
-        target_type: true,
-        target_id: true,
-        actor_id: true,
-        changes: true,
-        created_at: true,
-      },
-    }),
-    // Lab summary: most recent value per analyte for key analytes
-    prisma.patientLabObservation.findMany({
-      where: {
-        org_id: ctx.orgId,
-        patient_id: id,
-        analyte_code: { in: [...KEY_LAB_ANALYTE_CODES] },
-      },
-      orderBy: [{ measured_at: 'desc' }],
-      take: 50,
-      select: {
-        id: true,
-        analyte_code: true,
-        measured_at: true,
-        value_numeric: true,
-        value_text: true,
-        unit: true,
-        abnormal_flag: true,
-      },
-    }),
-  ]);
+      // Latest per analyte (labRows は上の Promise.all で並列取得済み)
+      const labSummaryMap = new Map<string, (typeof labRows)[number]>();
+      for (const row of labRows) {
+        if (!labSummaryMap.has(row.analyte_code)) {
+          labSummaryMap.set(row.analyte_code, row);
+        }
+      }
+      const labSummary = Array.from(labSummaryMap.values());
+      const privacy = getPatientPrivacyFlags(ctx.role);
 
-  const actorNameMap = await batchResolveNames(
-    prisma,
-    ctx.orgId,
-    Array.from(
-      new Set(
-        [
-          ...visitSchedules.map((item) => item.pharmacist_id),
-          ...visitRecords.map((item) => item.pharmacist_id),
-          ...careReports.map((item) => item.created_by),
-          ...dispenseResults.map((item) => item.dispensed_by),
-          ...managementPlans.flatMap((item) => [
-            item.created_by,
-            item.approved_by,
-            item.reviewed_by,
-          ]),
-          ...operationHistory.map((item) => item.actor_id),
-        ].filter((value): value is string => Boolean(value && value.trim())),
-      ),
-    ),
-  );
+      // PHI 閲覧監査（3省2GL アクセス記録）。ベストエフォート、await しない。
+      recordPhiReadAuditForRequest(ctx, { patientId: id, view: 'patient_detail' });
 
-  // Latest per analyte (labRows は上の Promise.all で並列取得済み)
-  const labSummaryMap = new Map<string, (typeof labRows)[number]>();
-  for (const row of labRows) {
-    if (!labSummaryMap.has(row.analyte_code)) {
-      labSummaryMap.set(row.analyte_code, row);
-    }
-  }
-  const labSummary = Array.from(labSummaryMap.values());
-  const privacy = getPatientPrivacyFlags(ctx.role);
-
-  // PHI 閲覧監査（3省2GL アクセス記録）。ベストエフォート、await しない。
-  recordPhiReadAuditForRequest(ctx, { patientId: id, view: 'patient_detail' });
-
-  const timeline_events = buildPatientTimelineEvents({
-    patientId: id,
-    actorNameMap,
-    visitSchedules,
-    visitRecords,
-    careReports,
-    communicationEvents,
-    patientMcsMessages: [],
-    partnerVisitRecords: [],
-    operationalTasks: [],
-    residualMedications: [],
-    selfReports,
-    externalShares,
-    inquiryRecords,
-    prescriptionIntakes,
-    dispenseResults,
-    managementPlans,
-    firstVisitDocuments,
-    conferenceNotes,
-    billingCandidates,
-    operationHistory,
-  });
-
-  return success({
-    ...patient,
-    phone: privacy.sensitiveFieldsMasked ? maskPhoneNumber(patient.phone) : patient.phone,
-    medical_insurance_number: privacy.sensitiveFieldsMasked
-      ? maskInsuranceNumber(patient.medical_insurance_number)
-      : patient.medical_insurance_number,
-    care_insurance_number: privacy.sensitiveFieldsMasked
-      ? maskInsuranceNumber(patient.care_insurance_number)
-      : patient.care_insurance_number,
-    residences: (patient.residences ?? []).map((residence) => ({
-      ...residence,
-      address: privacy.addressFieldsMasked
-        ? maskAddressDetail(residence.address)
-        : residence.address,
-    })),
-    contacts: (patient.contacts ?? []).map((contact) => ({
-      ...contact,
-      phone: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.phone) : contact.phone,
-      fax: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.fax) : contact.fax,
-      email: privacy.sensitiveFieldsMasked ? maskContactValue(contact.email) : contact.email,
-      address: privacy.addressFieldsMasked ? maskAddressDetail(contact.address) : contact.address,
-    })),
-    current_medications: currentMedications,
-    visit_schedules: visitSchedules,
-    monthly_visit_count: currentMonthVisitCount,
-    visit_records: visitRecords,
-    care_reports: careReports,
-    self_reports: selfReports,
-    external_shares: externalShares.map((item) => ({
-      ...item,
-      scope: toPublicExternalAccessScope(item.scope),
-      granted_to_contact: privacy.sensitiveFieldsMasked
-        ? maskContactValue(item.granted_to_contact)
-        : item.granted_to_contact,
-    })),
-    open_tasks: openTasks,
-    medication_issues: medicationIssues,
-    communication_queue: communicationQueue,
-    risk_summary: riskSummary,
-    home_care_feature_summary: homeCareFeatureSummary,
-    visit_brief: visitBrief,
-    first_visit_documents: firstVisitDocuments.map((item) => ({
-      ...item,
-      emergency_contacts: normalizeFirstVisitDocumentContacts(item.emergency_contacts).map(
-        (contact) => ({
+      return success({
+        ...patient,
+        phone: privacy.sensitiveFieldsMasked ? maskPhoneNumber(patient.phone) : patient.phone,
+        medical_insurance_number: privacy.sensitiveFieldsMasked
+          ? maskInsuranceNumber(patient.medical_insurance_number)
+          : patient.medical_insurance_number,
+        care_insurance_number: privacy.sensitiveFieldsMasked
+          ? maskInsuranceNumber(patient.care_insurance_number)
+          : patient.care_insurance_number,
+        residences: (patient.residences ?? []).map((residence) => ({
+          ...residence,
+          address: privacy.addressFieldsMasked
+            ? maskAddressDetail(residence.address)
+            : residence.address,
+        })),
+        contacts: (patient.contacts ?? []).map((contact) => ({
           ...contact,
           phone: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.phone) : contact.phone,
           fax: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.fax) : contact.fax,
           email: privacy.sensitiveFieldsMasked ? maskContactValue(contact.email) : contact.email,
-        }),
-      ),
-    })),
-    billing_summary: {
-      evidence: billingEvidence.map((item) => ({
-        ...item,
-        blockers: billingEvidenceBlockers.find((blocker) => blocker.id === item.id)?.blockers ?? [],
-      })),
-      candidates: billingCandidates,
-      claimable_count: billingEvidence.filter((item) => item.claimable).length,
-      blocked_count: billingEvidence.filter((item) => !item.claimable).length,
+          address: privacy.addressFieldsMasked
+            ? maskAddressDetail(contact.address)
+            : contact.address,
+        })),
+        current_medications: currentMedications,
+        visit_schedules: visitSchedules,
+        monthly_visit_count: currentMonthVisitCount,
+        visit_records: visitRecords,
+        care_reports: careReports,
+        self_reports: selfReports,
+        external_shares: externalShares.map((item) => ({
+          ...item,
+          scope: toPublicExternalAccessScope(item.scope),
+          granted_to_contact: privacy.sensitiveFieldsMasked
+            ? maskContactValue(item.granted_to_contact)
+            : item.granted_to_contact,
+        })),
+        open_tasks: openTasks,
+        medication_issues: medicationIssues,
+        communication_queue: communicationQueue,
+        risk_summary: riskSummary,
+        home_care_feature_summary: homeCareFeatureSummary,
+        visit_brief: visitBrief,
+        first_visit_documents: firstVisitDocuments.map((item) => ({
+          ...item,
+          emergency_contacts: normalizeFirstVisitDocumentContacts(item.emergency_contacts).map(
+            (contact) => ({
+              ...contact,
+              phone: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.phone) : contact.phone,
+              fax: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.fax) : contact.fax,
+              email: privacy.sensitiveFieldsMasked
+                ? maskContactValue(contact.email)
+                : contact.email,
+            }),
+          ),
+        })),
+        billing_summary: {
+          evidence: billingEvidence.map((item) => ({
+            ...item,
+            blockers:
+              billingEvidenceBlockers.find((blocker) => blocker.id === item.id)?.blockers ?? [],
+          })),
+          candidates: billingCandidates,
+          claimable_count: billingEvidence.filter((item) => item.claimable).length,
+          blocked_count: billingEvidence.filter((item) => !item.claimable).length,
+        },
+        lab_summary: labSummary,
+        timeline_events: [],
+        privacy: {
+          sensitive_fields_masked: privacy.sensitiveFieldsMasked,
+          address_fields_masked: privacy.addressFieldsMasked,
+          can_view_detail: privacy.canViewDetail,
+        },
+      });
     },
-    lab_summary: labSummary,
-    timeline_events,
-    privacy: {
-      sensitive_fields_masked: privacy.sensitiveFieldsMasked,
-      address_fields_masked: privacy.addressFieldsMasked,
-      can_view_detail: privacy.canViewDetail,
-    },
-  });
+    { requestContext: ctx },
+  );
 }
 
 export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
