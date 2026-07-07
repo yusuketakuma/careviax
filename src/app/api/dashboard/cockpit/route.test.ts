@@ -1326,14 +1326,13 @@ describe('/api/dashboard/cockpit', () => {
   });
 
   it('returns medication stock risks from formal inbound signals without full cockpit fields', async () => {
-    inboundCommunicationSignalCountMock
-      .mockResolvedValueOnce(4)
-      .mockResolvedValueOnce(1)
-      .mockResolvedValueOnce(1)
-      .mockResolvedValueOnce(1)
-      .mockResolvedValueOnce(1)
-      .mockResolvedValueOnce(1);
-    inboundCommunicationSignalFindManyMock.mockResolvedValue([
+    inboundCommunicationSignalCountMock.mockImplementation(() => {
+      throw new Error('PERF-DB-002 legacy stock-risk count path must not run');
+    });
+    inboundCommunicationSignalFindManyMock.mockImplementation(() => {
+      throw new Error('PERF-DB-002 legacy stock-risk findMany path must not run');
+    });
+    medicationStockQueryRawMock.mockResolvedValueOnce([
       {
         id: 'signal_urgent',
         patient_id: 'patient_stock_1',
@@ -1349,17 +1348,23 @@ describe('/api/dashboard/cockpit', () => {
         action_status: 'not_linked',
         created_at: new Date(2026, 5, 12, 8, 10),
         updated_at: new Date(2026, 5, 12, 9, 20),
-        inbound_event: {
-          id: 'event_urgent',
-          patient_id: 'patient_stock_1',
-          case_id: 'case_stock_1',
-          source_channel: 'mcs',
-          sender_name: '訪問看護師 山田',
-          sender_role: 'nurse',
-          raw_text: '湿布がなくなりました。090-9999-9999',
-          normalized_summary: '湿布不足の報告',
-          received_at: new Date(2026, 5, 12, 9, 0),
-        },
+        inbound_event_patient_id: 'patient_stock_1',
+        inbound_event_case_id: 'case_stock_1',
+        inbound_event_source_channel: 'mcs',
+        inbound_event_sender_role: 'nurse',
+        inbound_event_normalized_summary: '湿布不足の報告',
+        inbound_event_received_at: new Date(2026, 5, 12, 9, 0),
+        total_count: BigInt(6),
+        urgent_count: BigInt(2),
+        shortage_expected_count: BigInt(1),
+        usage_unknown_count: BigInt(1),
+        equivalence_review_count: BigInt(1),
+        linked_to_stock_event_count: BigInt(2),
+        sender_name: '訪問看護師 山田',
+        sender_contact: '090-9999-9999',
+        raw_text: '湿布がなくなりました。090-9999-9999',
+        external_url: 'https://example.invalid/secret',
+        attachment: { storage_key: 'private/storage/key' },
       },
       {
         id: 'signal_usage',
@@ -1376,17 +1381,19 @@ describe('/api/dashboard/cockpit', () => {
         action_status: 'not_linked',
         created_at: new Date(2026, 5, 12, 8, 15),
         updated_at: new Date(2026, 5, 12, 8, 50),
-        inbound_event: {
-          id: 'event_usage',
-          patient_id: 'patient_stock_2',
-          case_id: null,
-          source_channel: 'phone',
-          sender_name: '家族 佐藤',
-          sender_role: 'family',
-          raw_text: 'カロナールを2錠使いました。secret@example.com',
-          normalized_summary: 'カロナールを2錠使用',
-          received_at: new Date(2026, 5, 12, 8, 30),
-        },
+        inbound_event_patient_id: 'patient_stock_2',
+        inbound_event_case_id: null,
+        inbound_event_source_channel: 'phone',
+        inbound_event_sender_role: 'family',
+        inbound_event_normalized_summary: 'カロナールを2錠使用',
+        inbound_event_received_at: new Date(2026, 5, 12, 8, 30),
+        total_count: BigInt(6),
+        urgent_count: BigInt(2),
+        shortage_expected_count: BigInt(1),
+        usage_unknown_count: BigInt(1),
+        equivalence_review_count: BigInt(1),
+        linked_to_stock_event_count: BigInt(2),
+        raw_text: 'カロナールを2錠使いました。secret@example.com',
       },
       {
         id: 'signal_missing_medication',
@@ -1403,17 +1410,18 @@ describe('/api/dashboard/cockpit', () => {
         action_status: 'linked_to_task',
         created_at: new Date(2026, 5, 12, 8, 20),
         updated_at: new Date(2026, 5, 12, 8, 45),
-        inbound_event: {
-          id: 'event_missing',
-          patient_id: 'patient_stock_3',
-          case_id: null,
-          source_channel: 'fax',
-          sender_name: '施設職員',
-          sender_role: 'facility_staff',
-          raw_text: '薬が残り4枚です',
-          normalized_summary: null,
-          received_at: new Date(2026, 5, 12, 8, 40),
-        },
+        inbound_event_patient_id: 'patient_stock_3',
+        inbound_event_case_id: null,
+        inbound_event_source_channel: 'fax',
+        inbound_event_sender_role: 'facility_staff',
+        inbound_event_normalized_summary: null,
+        inbound_event_received_at: new Date(2026, 5, 12, 8, 40),
+        total_count: BigInt(6),
+        urgent_count: BigInt(2),
+        shortage_expected_count: BigInt(1),
+        usage_unknown_count: BigInt(1),
+        equivalence_review_count: BigInt(1),
+        linked_to_stock_event_count: BigInt(2),
       },
       {
         id: 'signal_linked',
@@ -1430,19 +1438,21 @@ describe('/api/dashboard/cockpit', () => {
         action_status: 'linked_to_stock_event',
         created_at: new Date(2026, 5, 12, 8, 25),
         updated_at: new Date(2026, 5, 12, 8, 35),
-        inbound_event: {
-          id: 'event_linked',
-          patient_id: 'patient_stock_4',
-          case_id: null,
-          source_channel: 'manual',
-          sender_name: '薬剤師',
-          sender_role: 'pharmacist',
-          raw_text: '軟膏が少ないです',
-          normalized_summary: null,
-          received_at: new Date(2026, 5, 12, 8, 35),
-        },
+        inbound_event_patient_id: 'patient_stock_4',
+        inbound_event_case_id: null,
+        inbound_event_source_channel: 'manual',
+        inbound_event_sender_role: 'pharmacist',
+        inbound_event_normalized_summary: null,
+        inbound_event_received_at: new Date(2026, 5, 12, 8, 35),
+        total_count: BigInt(6),
+        urgent_count: BigInt(2),
+        shortage_expected_count: BigInt(1),
+        usage_unknown_count: BigInt(1),
+        equivalence_review_count: BigInt(1),
+        linked_to_stock_event_count: BigInt(2),
       },
     ]);
+    medicationStockQueryRawMock.mockResolvedValueOnce([]);
     patientFindManyMock.mockResolvedValue([
       { id: 'patient_stock_1', name: '残数 一郎' },
       { id: 'patient_stock_2', name: '残数 二郎' },
@@ -1458,17 +1468,17 @@ describe('/api/dashboard/cockpit', () => {
     expectSensitiveNoStore(response);
     const json = await response.json();
     expect(json.data.stock_summary).toEqual({
-      urgent_shortage_count: 1,
+      urgent_shortage_count: 2,
       shortage_expected_count: 1,
       usage_unknown_count: 1,
       equivalence_review_count: 1,
-      inbound_stock_signal_count: 4,
+      inbound_stock_signal_count: 6,
       ledger_stock_risk_count: 0,
-      linked_to_stock_event_count: 1,
+      linked_to_stock_event_count: 2,
     });
-    expect(json.data.stock_items_total_count).toBe(4);
+    expect(json.data.stock_items_total_count).toBe(6);
     expect(json.data.stock_items_visible_count).toBe(4);
-    expect(json.data.stock_items_hidden_count).toBe(0);
+    expect(json.data.stock_items_hidden_count).toBe(2);
     expect(json.data.cycle_status_counts).toBeUndefined();
     expect(json.data.audit_queue).toBeUndefined();
     expect(json.data.today_visits).toBeUndefined();
@@ -1508,36 +1518,13 @@ describe('/api/dashboard/cockpit', () => {
     expect(responseBody).not.toContain('訪問看護師 山田');
     expect(responseBody).not.toContain('external_url');
     expect(responseBody).not.toContain('attachment');
+    expect(responseBody).not.toContain('storage_key');
     expect(responseBody).not.toContain('090-9999-9999');
     expect(responseBody).not.toContain('secret@example.com');
 
-    expect(inboundCommunicationSignalFindManyMock.mock.calls.at(-1)?.[0]?.select).toEqual({
-      id: true,
-      patient_id: true,
-      case_id: true,
-      inbound_event_id: true,
-      signal_type: true,
-      extracted_text: true,
-      extracted_medication_name: true,
-      extracted_quantity: true,
-      extracted_unit: true,
-      source_confidence: true,
-      review_status: true,
-      action_status: true,
-      created_at: true,
-      updated_at: true,
-      inbound_event: {
-        select: {
-          id: true,
-          patient_id: true,
-          case_id: true,
-          source_channel: true,
-          sender_role: true,
-          normalized_summary: true,
-          received_at: true,
-        },
-      },
-    });
+    expect(inboundCommunicationSignalFindManyMock).not.toHaveBeenCalled();
+    expect(inboundCommunicationSignalCountMock).not.toHaveBeenCalled();
+    expect(medicationStockQueryRawMock).toHaveBeenCalledTimes(2);
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       requestContext: authContextMock,
       maxWaitMs: 2000,
@@ -1547,9 +1534,8 @@ describe('/api/dashboard/cockpit', () => {
   });
 
   it('adds medication stock ledger snapshot risks without leaking raw instructions', async () => {
-    inboundCommunicationSignalFindManyMock.mockResolvedValue([]);
-    inboundCommunicationSignalCountMock.mockResolvedValue(0);
-    medicationStockQueryRawMock.mockResolvedValue([
+    medicationStockQueryRawMock.mockResolvedValueOnce([]);
+    medicationStockQueryRawMock.mockResolvedValueOnce([
       {
         stock_item_id: 'stock_item_urgent',
         stock_item_display_id: 'MS-001',
@@ -1746,6 +1732,9 @@ describe('/api/dashboard/cockpit', () => {
     expect(responseBody).not.toContain('secret@example.com');
     expect(responseBody).not.toContain('usage_instruction_text');
     expect(responseBody).not.toContain('indication_text');
+    expect(inboundCommunicationSignalFindManyMock).not.toHaveBeenCalled();
+    expect(inboundCommunicationSignalCountMock).not.toHaveBeenCalled();
+    expect(medicationStockQueryRawMock).toHaveBeenCalledTimes(2);
   });
 
   it('scopes medication stock risks by assigned patients and cases for non-admin members', async () => {
@@ -1767,21 +1756,55 @@ describe('/api/dashboard/cockpit', () => {
       applied: 'mine',
       can_view_team: false,
     });
-    expect(inboundCommunicationSignalFindManyMock.mock.calls.at(-1)?.[0]?.where).toMatchObject({
-      org_id: 'org_1',
-      signal_domain: 'medication_stock',
-      AND: [
-        { OR: [{ patient_id: { in: ['patient_1'] } }, { case_id: { in: ['case_1'] } }] },
-        {
-          OR: [
-            { review_status: 'needs_review' },
-            { action_status: 'not_linked' },
-            { action_status: 'linked_to_task' },
-            { action_status: 'linked_to_stock_event' },
-          ],
-        },
-      ],
+    expect(inboundCommunicationSignalFindManyMock).not.toHaveBeenCalled();
+    expect(inboundCommunicationSignalCountMock).not.toHaveBeenCalled();
+    expect(medicationStockQueryRawMock).toHaveBeenCalledTimes(2);
+    const signalQuery = medicationStockQueryRawMock.mock.calls[0]?.[0] as {
+      strings?: readonly string[];
+      values?: unknown[];
+    };
+    const signalSql = signalQuery.strings?.join('?') ?? String(signalQuery);
+    expect(signalSql).toContain('signal."patient_id"');
+    expect(signalSql).toContain('signal."case_id"');
+    expect(signalQuery.values).toEqual(expect.arrayContaining(['org_1', 'patient_1', 'case_1']));
+  });
+
+  it('returns empty medication stock risks without stock DB reads for empty assignment scope', async () => {
+    authContextMock.role = 'pharmacist';
+    careCaseFindManyMock.mockResolvedValue([]);
+
+    const response = (await GETStockRisks(
+      createRequest('?scope=team', '/api/dashboard/cockpit/stock-risks'),
+      {
+        params: Promise.resolve({}),
+      },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const json = await response.json();
+    expect(json.data.scope).toEqual({
+      requested: 'team',
+      applied: 'mine',
+      can_view_team: false,
     });
+    expect(json.data.stock_summary).toEqual({
+      urgent_shortage_count: 0,
+      shortage_expected_count: 0,
+      usage_unknown_count: 0,
+      equivalence_review_count: 0,
+      inbound_stock_signal_count: 0,
+      ledger_stock_risk_count: 0,
+      linked_to_stock_event_count: 0,
+    });
+    expect(json.data.stock_items).toEqual([]);
+    expect(json.data.stock_items_total_count).toBe(0);
+    expect(json.data.stock_items_visible_count).toBe(0);
+    expect(json.data.stock_items_hidden_count).toBe(0);
+    expect(inboundCommunicationSignalFindManyMock).not.toHaveBeenCalled();
+    expect(inboundCommunicationSignalCountMock).not.toHaveBeenCalled();
+    expect(medicationStockQueryRawMock).not.toHaveBeenCalled();
+    expect(patientFindManyMock).not.toHaveBeenCalled();
   });
 
   it('returns the report-billing segment without full cockpit fields or raw evidence', async () => {

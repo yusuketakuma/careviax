@@ -41,6 +41,65 @@
 
 ## 直近の land（本日・要点）
 
+- codex: PERF-DB-002 dashboard medication-stock signal window aggregate reader（commit `bb08073fa`, pushed to `main` pending）。
+  - current task:
+    Plans registry の DB read-speed 改善順に従い、`/api/dashboard/cockpit/stock-risks`
+    の medication-stock inbound signal 読み出しを `findMany + count x6` から window aggregate
+    reader へ集約する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/dashboard-cockpit.ts`,
+    `src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.ts`,
+    `src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.test.ts`,
+    `src/app/api/dashboard/cockpit/route.test.ts`,
+    `prisma/schema/communication.prisma`,
+    and gbrain memories for dashboard medication-stock urgent/source decisions.
+  - files changed:
+    `src/server/services/dashboard-cockpit.ts`,
+    `src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.ts`,
+    `src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.test.ts`,
+    `src/app/api/dashboard/cockpit/route.test.ts`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `careviax/performance-finding/dashboard-stock-signal-window-reader-2026-07-08.md`.
+  - implementation:
+    Added `readDashboardMedicationStockSignalRisks()` beside the existing ledger stock risk window reader.
+    The reader runs inside the existing `withOrgContext` transaction via `tx.$queryRaw`,
+    joins `InboundCommunicationSignal` to `InboundCommunicationEvent`, preserves assignment scope on
+    `signal.patient_id` / `signal.case_id`, and returns bounded rows plus total/urgent/shortage/usage/
+    equivalence/linked window counts in one query.
+    `readDashboardMedicationStockRisks()` now maps the flattened raw row into the existing dashboard
+    presenter row shape and no longer calls `inboundCommunicationSignal.findMany()` or six separate
+    `count()` calls for the stock-risks segment.
+  - bugs found:
+    Route tests previously accepted the legacy count fan-out, so a regression back to six count calls would
+    still pass. Updated tests now fail if stock-risks calls `inboundCommunicationSignal.findMany()` or
+    `inboundCommunicationSignal.count()`.
+  - security risks reduced:
+    The new stock signal reader selects only dashboard-safe signal fields and event summary metadata.
+    It does not select inbound `raw_text`, sender contact/name, external URL, attachments, storage keys, or
+    structured payloads. Empty restricted assignment scope returns a zero result without stock-risk DB reads.
+  - performance issues improved:
+    `/api/dashboard/cockpit/stock-risks` now reduces inbound medication-stock signal reads from one row query
+    plus six count queries to one bounded window-aggregate query, while preserving the existing ledger
+    window-aggregate reader. No migration or blind index was added.
+  - validation commands:
+    `pnpm vitest run src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.test.ts src/app/api/dashboard/cockpit/route.test.ts --reporter=dot`;
+    `pnpm exec eslint src/server/services/dashboard-cockpit.ts src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.ts src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.test.ts src/app/api/dashboard/cockpit/route.test.ts`;
+    `pnpm exec prettier --write src/server/services/dashboard-cockpit.ts src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.ts src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.test.ts src/app/api/dashboard/cockpit/route.test.ts Plans.md ops/refactor/STATE.md careviax/performance-finding/dashboard-stock-signal-window-reader-2026-07-08.md`;
+    `git diff --check -- src/server/services/dashboard-cockpit.ts src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.ts src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.test.ts src/app/api/dashboard/cockpit/route.test.ts Plans.md ops/refactor/STATE.md careviax/performance-finding/dashboard-stock-signal-window-reader-2026-07-08.md`;
+    `pnpm typecheck`.
+  - validation results:
+    Focused Vitest passed `45` tests across `2` files.
+    Scoped ESLint, Prettier, diff-check, and full typecheck passed.
+  - remaining:
+    DB read-speed backlog now continues with `PERF-DB-005` patient detail bounded scoped read,
+    `PERF-DB-007` movement timeline caller-limit-aware source reads, and `PERF-DB-006` care-report bounded search.
+  - next action:
+    Run scoped lint/format/diff-check/full typecheck, then commit and push the slice.
+
 - codex: PERF-DB-003/004 inbound queue source gating + report workspace direct inbound count（pushed to `main`）。
   - current task:
     Plans registry の推奨順に従い、バックエンド read path の DB 読み出し速度改善を実装する。

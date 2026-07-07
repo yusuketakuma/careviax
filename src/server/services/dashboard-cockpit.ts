@@ -31,7 +31,9 @@ import {
 } from '@/server/services/dashboard-assignment-scope';
 import {
   readDashboardMedicationStockLedgerRisks,
+  readDashboardMedicationStockSignalRisks,
   type DashboardMedicationStockLedgerRiskRow,
+  type DashboardMedicationStockSignalRiskRow,
 } from '@/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader';
 import {
   buildCockpitCacheKey,
@@ -2022,6 +2024,36 @@ function medicationStockRiskLevel(signal: DashboardMedicationStockSignalRow) {
   return 'review_required';
 }
 
+function mapDashboardMedicationStockSignalRiskRow(
+  row: DashboardMedicationStockSignalRiskRow,
+): DashboardMedicationStockSignalRow {
+  return {
+    id: row.id,
+    patient_id: row.patient_id,
+    case_id: row.case_id,
+    inbound_event_id: row.inbound_event_id,
+    signal_type: row.signal_type,
+    extracted_text: row.extracted_text,
+    extracted_medication_name: row.extracted_medication_name,
+    extracted_quantity: row.extracted_quantity,
+    extracted_unit: row.extracted_unit,
+    source_confidence: row.source_confidence,
+    review_status: row.review_status,
+    action_status: row.action_status,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    inbound_event: {
+      id: row.inbound_event_id,
+      patient_id: row.inbound_event_patient_id,
+      case_id: row.inbound_event_case_id,
+      source_channel: row.inbound_event_source_channel,
+      sender_role: row.inbound_event_sender_role,
+      normalized_summary: row.inbound_event_normalized_summary,
+      received_at: row.inbound_event_received_at,
+    },
+  };
+}
+
 function medicationStockRiskLabel(riskLevel: DashboardMedicationStockRiskItem['risk_level']) {
   switch (riskLevel) {
     case 'urgent':
@@ -2675,90 +2707,16 @@ async function readDashboardMedicationStockRisks(args: {
   ctx: AuthContext;
   scopeContext: DashboardCockpitScopeContext;
 }): Promise<DashboardCockpitMedicationStockResponse> {
-  const where = buildDashboardMedicationStockSignalWhere({
-    orgId: args.ctx.orgId,
-    assignmentScope: args.scopeContext.assignmentScope,
-  });
-  const urgentWhere: Prisma.InboundCommunicationSignalWhereInput = {
-    AND: [
-      where,
-      {
-        OR: [
-          { signal_type: 'out_of_stock_text' },
-          { signal_type: 'observed_quantity', extracted_quantity: 0 },
-        ],
-      },
-    ],
-  };
-  const shortageWhere: Prisma.InboundCommunicationSignalWhereInput = {
-    AND: [where, { signal_type: { in: ['low_stock_text', 'refill_request'] } }],
-  };
-  const usageWhere: Prisma.InboundCommunicationSignalWhereInput = {
-    AND: [where, { signal_type: { in: ['usage_frequency', 'usage_delta'] } }],
-  };
-  const equivalenceWhere: Prisma.InboundCommunicationSignalWhereInput = {
-    AND: [
-      where,
-      {
-        OR: [{ extracted_medication_name: null }, { extracted_medication_name: '' }],
-      },
-    ],
-  };
-  const linkedWhere: Prisma.InboundCommunicationSignalWhereInput = {
-    AND: [where, { action_status: 'linked_to_stock_event' }],
-  };
-
   return withOrgContext(
     args.ctx.orgId,
     async (tx) => {
-      const [
-        signals,
-        totalCount,
-        urgentShortageCount,
-        shortageExpectedCount,
-        usageUnknownCount,
-        equivalenceReviewCount,
-        linkedToStockEventCount,
-        ledgerResult,
-      ] = await Promise.all([
-        tx.inboundCommunicationSignal.findMany({
-          where,
-          orderBy: [{ updated_at: 'desc' }, { id: 'asc' }],
+      const [signalResult, ledgerResult] = await Promise.all([
+        readDashboardMedicationStockSignalRisks(tx, {
+          orgId: args.ctx.orgId,
+          patientIds: args.scopeContext.assignmentScope.patientIds,
+          caseIds: args.scopeContext.assignmentScope.caseIds,
           take: MEDICATION_STOCK_RISK_FETCH_LIMIT,
-          select: {
-            id: true,
-            patient_id: true,
-            case_id: true,
-            inbound_event_id: true,
-            signal_type: true,
-            extracted_text: true,
-            extracted_medication_name: true,
-            extracted_quantity: true,
-            extracted_unit: true,
-            source_confidence: true,
-            review_status: true,
-            action_status: true,
-            created_at: true,
-            updated_at: true,
-            inbound_event: {
-              select: {
-                id: true,
-                patient_id: true,
-                case_id: true,
-                source_channel: true,
-                sender_role: true,
-                normalized_summary: true,
-                received_at: true,
-              },
-            },
-          },
         }),
-        tx.inboundCommunicationSignal.count({ where }),
-        tx.inboundCommunicationSignal.count({ where: urgentWhere }),
-        tx.inboundCommunicationSignal.count({ where: shortageWhere }),
-        tx.inboundCommunicationSignal.count({ where: usageWhere }),
-        tx.inboundCommunicationSignal.count({ where: equivalenceWhere }),
-        tx.inboundCommunicationSignal.count({ where: linkedWhere }),
         readDashboardMedicationStockLedgerRisks(tx, {
           orgId: args.ctx.orgId,
           patientIds: args.scopeContext.assignmentScope.patientIds,
@@ -2766,6 +2724,7 @@ async function readDashboardMedicationStockRisks(args: {
           take: MEDICATION_STOCK_RISK_FETCH_LIMIT,
         }),
       ]);
+      const signals = signalResult.rows.map(mapDashboardMedicationStockSignalRiskRow);
 
       const patientIds = Array.from(
         new Set(
@@ -2803,18 +2762,20 @@ async function readDashboardMedicationStockRisks(args: {
       const stockItems = [...inboundItems, ...ledgerItems]
         .sort(compareMedicationStockRiskItems)
         .slice(0, MEDICATION_STOCK_RISK_RESPONSE_LIMIT);
-      const combinedTotalCount = totalCount + ledgerResult.totalCount;
+      const combinedTotalCount = signalResult.totalCount + ledgerResult.totalCount;
 
       return {
         ...args.scopeContext.metadata,
         stock_summary: {
-          urgent_shortage_count: urgentShortageCount + ledgerResult.urgentCount,
-          shortage_expected_count: shortageExpectedCount + ledgerResult.shortageExpectedCount,
-          usage_unknown_count: usageUnknownCount + ledgerResult.usageUnknownCount,
-          equivalence_review_count: equivalenceReviewCount + ledgerResult.equivalenceReviewCount,
-          inbound_stock_signal_count: totalCount,
+          urgent_shortage_count: signalResult.urgentCount + ledgerResult.urgentCount,
+          shortage_expected_count:
+            signalResult.shortageExpectedCount + ledgerResult.shortageExpectedCount,
+          usage_unknown_count: signalResult.usageUnknownCount + ledgerResult.usageUnknownCount,
+          equivalence_review_count:
+            signalResult.equivalenceReviewCount + ledgerResult.equivalenceReviewCount,
+          inbound_stock_signal_count: signalResult.totalCount,
           ledger_stock_risk_count: ledgerResult.totalCount,
-          linked_to_stock_event_count: linkedToStockEventCount,
+          linked_to_stock_event_count: signalResult.linkedToStockEventCount,
         },
         stock_items: stockItems,
         stock_items_total_count: combinedTotalCount,
