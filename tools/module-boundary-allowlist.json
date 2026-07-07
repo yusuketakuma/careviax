@@ -1,23 +1,4 @@
 {
   "description": "共通コア (訪問/患者/ケア/報告/タスク/監査/通知/ファイル/連絡/会議/協働 のワークフロー基盤) が薬局固有ドメイン (処方/調剤/薬剤マスタ/PCA/セット/薬/QR/薬局) を import している既存負債の台帳。tools/scripts/check-module-boundaries.mjs が ratchet の起点として使う。各エントリはファイル単位で、expectedCount = そのファイル内の境界跨ぎ import 行数。負債の増減時は expectedCount を更新すること。新規ファイルの境界跨ぎ import は原則ここに追加せず、依存方向を反転させるか共有型を薬局非依存の場所へ切り出すこと。targets は該当 import 先の記録 (informational)。",
-  "entries": [
-    {
-      "path": "src/server/services/patient-detail-timeline-events.ts",
-      "expectedCount": 1,
-      "owner": "MOV-001",
-      "debtId": "DEBT-PATIENT-001",
-      "reason": "患者詳細タイムラインが処方ナビゲーション (prescriptions/navigation) を参照している既存負債。イベント整形が薬局固有リンク生成に依存している。",
-      "plannedAction": "Patient Movement Timeline の正式 source adapter を module/public href builder 経由へ寄せ、処方 deep link 生成を core timeline event 整形から切り離す。",
-      "targets": ["@/lib/prescriptions/navigation"]
-    },
-    {
-      "path": "src/server/services/patient-detail-timeline-registry.ts",
-      "expectedCount": 2,
-      "owner": "MOV-001",
-      "debtId": "DEBT-PATIENT-001",
-      "reason": "患者詳細タイムライン登録が処方サイクル (prescription/cycle-workspace) と処方ナビゲーション (prescriptions/navigation) を参照している既存負債。",
-      "plannedAction": "Patient Movement Timeline の prescription source を pharmacy module adapter 化し、core registry は pharmacy-internal cycle/navigation helpers を直接 import しない。",
-      "targets": ["@/lib/prescription/cycle-workspace", "@/lib/prescriptions/navigation"]
-    }
-  ]
+  "entries": []
 }

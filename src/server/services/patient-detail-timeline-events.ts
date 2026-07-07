@@ -1,6 +1,6 @@
 import { buildPatientHref } from '@/lib/patient/navigation';
-import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';
 import { getConferenceTypeLabel } from '@/lib/visits/visit-workflow-projection';
+import { buildPharmacyPrescriptionTimelineHref } from '@/modules/pharmacy/patient-movement/timeline-links';
 import {
   TIMELINE_SOURCES,
   type TimelineProjectCtx,
@@ -729,7 +729,7 @@ export function buildOperationHistoryEvents(
       href: isBilling
         ? hrefs.patientBillingCandidatesHref
         : isPrescription
-          ? buildPrescriptionHref(item.target_id)
+          ? buildPharmacyPrescriptionTimelineHref(item.target_id)
           : isMcs
             ? hrefs.patientMcsHref
             : isConference

@@ -41,7 +41,59 @@
 
 ## 直近の land（本日・要点）
 
-- codex: Plans.md implemented-task pruning / stale phase cleanup（pending commit）。
+- codex: MOD-BOUND-001 patient movement pharmacy timeline seam / allowlist zero（pending commit）。
+  - current task:
+    `Patient Movement Timeline` の処方 deep link / cycle status label 依存を pharmacy module public service に移し、
+    `tools/module-boundary-allowlist.json` を 0 entries へ削減する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `tools/module-boundary-allowlist.json`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/modules/pharmacy/index.ts`,
+    `src/lib/prescriptions/navigation.ts`,
+    `src/lib/prescription/cycle-workspace.ts`,
+    `tools/scripts/check-module-boundaries.mjs`,
+    `tools/scripts/check-module-boundaries.test.ts`,
+    `Plans.md`.
+  - files changed:
+    `src/modules/pharmacy/patient-movement/timeline-links.ts`,
+    `src/modules/pharmacy/patient-movement/timeline-links.test.ts`,
+    `src/modules/pharmacy/index.ts`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `tools/module-boundary-allowlist.json`,
+    `tools/scripts/check-module-boundaries.mjs`,
+    `tools/scripts/check-module-boundaries.test.ts`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    処方受付 href と medication cycle status label を `src/modules/pharmacy/patient-movement/timeline-links.ts`
+    へ集約し、patient-detail timeline core 側は direct `@/lib/prescription*` import を持たない形にした。
+    pharmacy module metadata の `publicServices` に timeline link seam を登録し、boundary checker は
+    core service/lib から feature module internal への import を拒否し、registered public service だけ許可する。
+    `tools/module-boundary-allowlist.json` は 0 entries になり、`Plans.md` の `MOD-BOUND-001` を
+    allowlist 0 imports / 0 files 前提へ更新した。
+  - bugs found:
+    `patient-detail-timeline-events.ts` と `patient-detail-timeline-registry.ts` が処方 navigation / cycle workspace を
+    直接 import し、MOV-001 の module boundary debt として残っていた。
+  - security risks reduced:
+    Patient Movement Timeline の marker-only / canonical deep-link 方針は維持。新しい API/DB/PHI payload は追加していない。
+    boundary checker の回帰検出を強化し、feature module internal への戻りを検出可能にした。
+  - performance issues improved:
+    実行時の DB query/payload 変更なし。timeline helper は軽量 subpath import にし、pharmacy barrel 経由の重い provider 読み込みを避けた。
+  - validation:
+    `pnpm boundaries:check` → pass（0 new violations、0 allowlisted debt imports / 0 files）。
+    `pnpm exec vitest run src/modules/pharmacy/patient-movement/timeline-links.test.ts tools/scripts/check-module-boundaries.test.ts src/server/services/patient-movement-timeline-presenter.test.ts src/server/services/patient-detail.test.ts --reporter=dot --testNamePattern "movement|timeline|prescription|dispense|inquiry|operation|pharmacy patient movement timeline links|check-module-boundaries" --testTimeout=30000` → pass（4 files / 59 passed / 34 skipped）。
+    `pnpm exec eslint src/modules/pharmacy/index.ts src/modules/pharmacy/patient-movement/timeline-links.ts src/modules/pharmacy/patient-movement/timeline-links.test.ts src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts tools/scripts/check-module-boundaries.mjs tools/scripts/check-module-boundaries.test.ts` → pass。
+    `pnpm exec prettier --check src/modules/pharmacy/index.ts src/modules/pharmacy/patient-movement/timeline-links.ts src/modules/pharmacy/patient-movement/timeline-links.test.ts src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts tools/module-boundary-allowlist.json tools/scripts/check-module-boundaries.mjs tools/scripts/check-module-boundaries.test.ts` → pass。
+    `git diff --check -- Plans.md src/modules/pharmacy/index.ts src/modules/pharmacy/patient-movement/timeline-links.ts src/modules/pharmacy/patient-movement/timeline-links.test.ts src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts tools/module-boundary-allowlist.json tools/scripts/check-module-boundaries.mjs tools/scripts/check-module-boundaries.test.ts` → pass。
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` → pass。
+  - remaining work:
+    `MOD-BOUND-001` は allowlist debt 0 まで削減済み。残りは `MOD-CI-001` 側で provider/adapter contract test と
+    追加 ratchet gate を広げる。次候補は `MOD-PATIENT-001` / `MOD-VISIT-001` の provider境界の続き。
+
+- codex: Plans.md implemented-task pruning / stale phase cleanup（commit `aa3179305`, pushed）。
   - current task:
     `Plans.md` 内の実装済み・重複済みタスクを削り、未完タスクだけが残るように整理する。
   - files inspected:
@@ -58,7 +110,7 @@
     Visit autosave、Report realtime、module registry / report template / share scope registry など完了済み前提の説明を、
     残タスクだけが読める文言へ圧縮した。
     `MOD-BILLING-001` は直近実装で billing seam が入ったため、module backlog から完了済みタスクとして削除し、
-    `MOD-BOUND-001` は残 allowlist 3 imports / 2 files と MOV adapter 残に絞った。
+    `MOD-BOUND-001` は当時の残 allowlist 3 imports / 2 files と MOV adapter 残に絞った。
   - validation:
     `rg -n "\\[x\\]|cc:DONE|cc:done|DONE|完了済み|実装済み|移行済み|追加済み|対応済み|12-4|12-8|Phase 0:|Phase 1a:|Phase 1b:|Phase 12:" Plans.md` → old phase headings / completed-task markers なし（旧ID参照は上部の履歴括弧のみ）。
     `git diff --check -- Plans.md` → pass。

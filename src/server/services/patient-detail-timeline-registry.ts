@@ -7,13 +7,15 @@ import {
   SCHEDULE_STATUS_LABELS,
   VISIT_OUTCOME_LABELS,
 } from '@/lib/constants/status-labels';
-import { CYCLE_STATUS_LABELS } from '@/lib/prescription/cycle-workspace';
 import { buildTasksHref } from '@/lib/dashboard/home-link-builders';
-import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';
 import { buildReportHref } from '@/lib/reports/navigation';
 import { getTaskTypeDefinition } from '@/lib/tasks/task-registry';
 import { buildVisitHref, buildVisitRecordHref } from '@/lib/visits/navigation';
 import { getConferenceTypeLabel } from '@/lib/visits/visit-workflow-projection';
+import {
+  buildPharmacyPrescriptionTimelineHref,
+  getPharmacyCycleStatusLabel,
+} from '@/modules/pharmacy/patient-movement/timeline-links';
 import { buildVisibleExternalAccessGrantWhere } from '@/server/services/external-access';
 import {
   buildCareReportCaseScope,
@@ -853,7 +855,7 @@ export const inquiryRecordsSource = defineTimelineSource<'inquiryRecords', Inqui
         title: `疑義照会 ${inquiryStatus}`,
         summary: '疑義照会が記録されました。内容は処方詳細で確認してください。',
         href: item.line?.intake?.id
-          ? buildPrescriptionHref(item.line.intake.id)
+          ? buildPharmacyPrescriptionTimelineHref(item.line.intake.id)
           : hrefs.patientMedicationHref,
         action_label: item.line?.intake?.id ? '処方受付を開く' : '薬剤・訪問を開く',
         status: item.result ?? 'pending',
@@ -912,10 +914,10 @@ export const prescriptionIntakesSource = defineTimelineSource<
             ? `処方日 ${formatTimelineDate(item.prescribed_date)}`
             : null,
         ]).join(' / ') || null,
-      href: buildPrescriptionHref(item.id),
+      href: buildPharmacyPrescriptionTimelineHref(item.id),
       action_label: '処方受付を開く',
       status: item.cycle.overall_status,
-      status_label: CYCLE_STATUS_LABELS[item.cycle.overall_status] ?? item.cycle.overall_status,
+      status_label: getPharmacyCycleStatusLabel(item.cycle.overall_status),
       actor_name: null,
       metadata: [],
     })),
@@ -976,10 +978,10 @@ export const dispenseResultsSource = defineTimelineSource<
       occurred_at: item.dispensed_at,
       title: '調剤を記録',
       summary: '調剤結果が記録されました。内容は処方詳細で確認してください。',
-      href: buildPrescriptionHref(item.line.intake.id),
+      href: buildPharmacyPrescriptionTimelineHref(item.line.intake.id),
       action_label: '処方記録を開く',
       status: item.task.cycle?.overall_status ?? 'dispensed',
-      status_label: CYCLE_STATUS_LABELS[item.task.cycle?.overall_status ?? 'dispensed'] ?? '調剤済',
+      status_label: getPharmacyCycleStatusLabel(item.task.cycle?.overall_status ?? 'dispensed'),
       actor_name: null,
       metadata: [],
     })),

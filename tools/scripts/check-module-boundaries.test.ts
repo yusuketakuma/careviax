@@ -86,6 +86,30 @@ describe('check-module-boundaries', () => {
     expect(() => runBoundaryCheck(root)).toThrow(/core must not import feature modules/);
   });
 
+  it('allows core services to import registered feature module public services', () => {
+    const root = createFixtureRepo({
+      'src/modules/pharmacy/index.ts':
+        "export const pharmacyModule = { publicServices: ['src/modules/pharmacy/public-service.ts'] };\n",
+      'src/modules/pharmacy/public-service.ts': 'export const publicService = {};\n',
+      'src/server/services/patient-detail.ts':
+        "import { publicService } from '@/modules/pharmacy/public-service';\n",
+    });
+
+    expect(runBoundaryCheck(root)).toContain('Module boundary check passed');
+  });
+
+  it('rejects core services importing unregistered feature module internals', () => {
+    const root = createFixtureRepo({
+      'src/modules/pharmacy/index.ts':
+        "export const pharmacyModule = { publicServices: ['src/modules/pharmacy/public-service.ts'] };\n",
+      'src/modules/pharmacy/internal.ts': 'export const internal = {};\n',
+      'src/server/services/patient-detail.ts':
+        "import { internal } from '@/modules/pharmacy/internal';\n",
+    });
+
+    expect(() => runBoundaryCheck(root)).toThrow(/registered public services/);
+  });
+
   it.each([
     ['owner', /entries\[0\]\.owner is required/],
     ['debtId', /entries\[0\]\.debtId is required/],

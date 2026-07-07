@@ -57,6 +57,35 @@ const FEATURE_MODULE_DIRS = new Set(
   }),
 );
 
+function withoutKnownExtension(rel) {
+  return rel.replace(/\.(tsx?|jsx?)$/, '');
+}
+
+function readModulePublicServiceTargets() {
+  const targets = new Set();
+  for (const moduleMeta of moduleIds.featureModules) {
+    const indexPath = path.join(REPO_ROOT, MODULES_ROOT, moduleMeta.dir, 'index.ts');
+    let content;
+    try {
+      content = readFileSync(indexPath, 'utf8');
+    } catch {
+      continue;
+    }
+    const match = content.match(/\bpublicServices\s*:\s*\[([\s\S]*?)\]/);
+    if (!match) continue;
+
+    for (const serviceMatch of match[1].matchAll(/['"]([^'"]+)['"]/g)) {
+      const servicePath = serviceMatch[1];
+      if (!servicePath.startsWith('src/')) continue;
+      targets.add(servicePath);
+      targets.add(withoutKnownExtension(servicePath));
+    }
+  }
+  return targets;
+}
+
+const MODULE_PUBLIC_SERVICE_TARGETS = readModulePublicServiceTargets();
+
 // 共通コアとして扱う src/server/services 直下の basename 先頭トークン。
 const CORE_SERVICE_PREFIXES = new Set([
   'visit',
@@ -152,9 +181,25 @@ function isModulePublicEntrypoint(targetRel) {
   );
 }
 
+function isModulePublicService(targetRel) {
+  return (
+    MODULE_PUBLIC_SERVICE_TARGETS.has(targetRel) ||
+    MODULE_PUBLIC_SERVICE_TARGETS.has(`${targetRel}.ts`)
+  );
+}
+
 function moduleGraphViolation(fromRel, targetRel) {
   if (fromRel.startsWith(CORE_ROOT) && targetRel.startsWith(MODULES_ROOT)) {
     return 'core must not import feature modules';
+  }
+
+  if (
+    isCoreFile(fromRel) &&
+    targetRel.startsWith(MODULES_ROOT) &&
+    !isModulePublicEntrypoint(targetRel) &&
+    !isModulePublicService(targetRel)
+  ) {
+    return 'core services/libs must import feature modules through public entrypoints or registered public services';
   }
 
   if (
@@ -288,7 +333,10 @@ function findViolations() {
   const moduleGraphFiles = [];
   for (const root of SCAN_ROOTS) {
     for (const file of walkFiles(root)) {
-      if (isCoreFile(file)) coreFiles.push(file);
+      if (isCoreFile(file)) {
+        coreFiles.push(file);
+        moduleGraphFiles.push(file);
+      }
       if (
         file.startsWith(CORE_ROOT) ||
         file.startsWith(MODULES_ROOT) ||
