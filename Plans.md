@@ -968,20 +968,20 @@ staging rule:
 
 - `src/lib/utils/performance.ts`: live AWS drift check を実deploy gateへ接続する。
 - `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`: attachment draft reload recovery を要求する場合の encrypted evidence draft contract、mobile E2E。
-- `src/app/api/prescription-intakes/route.ts`: `facets=1` の route p95/payload/query-count を route performance で確認できるようにする。
+- `src/app/api/prescription-intakes/route.ts`: 検索中 facets の遅延取得または cache summary 化を検討する。
 
 | ID               | 優先度 | 既存レーン                                    | タスク                                           | 実装単位                                                                                                                                                                                 | 受入条件 / validation                                                                                                                                                                                                         |
 | ---------------- | ------ | --------------------------------------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | PERF-RTE-001A    | P0     | `PERF-RTE-001`, `DEV-PERF-001`, `DEV-PAY-001` | Performance metrics productionization            | 残: live AWS drift check を実deploy gateへ接続。                                                                                                                                         | current-process だけを本番根拠にしない。deploy readiness が実AWS上の metrics flush schedule / alarm / dimension drift を検出できる。                                                                                          |
 | VISIT-SYNC-001   | P0/P1  | `UX-MOB-001`, `DEV-MOB-001`, `MOB-001`        | Visit record autosave / sync hardening           | 残: attachment draft reload recovery を要求する場合の encrypted evidence draft contract、mobile E2E。                                                                                    | 通信断でも draft が消えない。未同期0件では polling 停止。online 復帰で同期が走る。保存状態は「保存中 / 端末保存済 / 同期待ち / 同期済 / 競合あり」。raw sync error / PHI は toast/log/indicator に出ない。mobile E2E を追加。 |
-| RX-REG-FACET-001 | P1     | `RX-REG-UX-002`, `DEV-PERF-001`               | Prescription intake facet observability          | 検索中 facets の遅延/cache summary、facets route p95/payload/query-count 記録。                                                                                                         | `facets=1` の counts は検索条件全体で返す。status/source counts は従来互換。facet route の p95/payload/query-count を route performance で確認できる。                                                                        |
+| RX-REG-FACET-001 | P1/P2   | `RX-REG-UX-002`, `DEV-PERF-001`               | Prescription intake facet cache/delay            | 残: 検索中 facets の遅延取得または cache summary 化。                                                                                                                                   | `facets=1` の counts は検索条件全体で返す。status/source counts は従来互換。facet p95/payload/query-count は route performance で確認できる状態を維持する。                                                                    |
 | SEC-AUDIT-001A   | P1     | `SEC-002`, `UX-AUD-001`, `DEV-PHI-001`        | AuditLog allowlist / minifier registry hardening | action taxonomy、risk tier、review state、audit-log-view audit を registry 化。unknown nested string、provider raw error、token、storage key を admin/export response で要約/drop する。 | hostile patient name、住所、電話、薬剤名、処方 text、token、provider raw error、storage key の redaction snapshot。high-risk audit log の risk filter と監査ログ閲覧 audit を追加。                                           |
 
 **推奨実装順**:
 
 1. `VISIT-SYNC-001`: モバイル現場での入力喪失リスクを減らす。autosave/sync 状態は UI/UX と PHI log 安全を同時に見る。
 2. `PERF-RTE-001A`: heavy route 改修と並行して、本番 SLO/CloudWatch/release gate へ接続する。
-3. `RX-REG-FACET-001`: prescription intake facet の p95/payload/query-count を route performance へ接続する。
+3. `RX-REG-FACET-001`: 検索中 facets の遅延取得または cache summary 化が必要か、route performance の実測を見て判断する。
 4. `SEC-AUDIT-001A`: AuditLog allowlist / minifier registry を固め、監査 UI と export の PHI backstop を広げる。
 
 #### フロントエンド共通基盤 追加バックログ（2026-07-06 コード再スキャン反映） `cc:TODO`

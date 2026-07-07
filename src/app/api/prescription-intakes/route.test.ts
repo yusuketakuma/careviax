@@ -134,6 +134,7 @@ vi.mock('@/lib/db/client', () => ({
 
 import { GET as rawGET, POST as rawPOST } from './route';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
+import { ROUTE_QUERY_COUNT_HEADER } from '@/lib/utils/performance';
 
 const emptyRouteContext: TestRouteContext = { params: Promise.resolve({}) };
 const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
@@ -3195,6 +3196,7 @@ describe('/api/prescription-intakes GET', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(response.headers.get(ROUTE_QUERY_COUNT_HEADER)).toBe('5');
     const body = await response.json();
     expect(body).toMatchObject({
       data: [{ id: 'intake_2' }],

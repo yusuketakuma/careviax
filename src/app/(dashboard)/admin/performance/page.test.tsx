@@ -202,6 +202,7 @@ describe('PerformancePage polling policy', () => {
             overall_p50_ms: 80,
             overall_p95_ms: 140,
             overall_p95_payload_bytes: 327_680,
+            overall_p95_query_count: 5,
             critical_routes: 1,
             payload_budgeted_routes: 1,
             routes_over_payload_budget: 1,
@@ -226,6 +227,10 @@ describe('PerformancePage polling policy', () => {
               average_payload_bytes: 310_000,
               p95_payload_bytes: 327_680,
               max_payload_bytes: 330_000,
+              query_count_sample_count: 12,
+              average_query_count: 4,
+              p95_query_count: 5,
+              max_query_count: 6,
               payload_budget_bytes: 307_200,
               payload_budget_status: 'over_budget',
               payload_budget_met: false,
@@ -247,6 +252,7 @@ describe('PerformancePage polling policy', () => {
     expect(screen.getByText('/api/patients/board')).toBeTruthy();
     expect(screen.getByText('route family patients-board')).toBeTruthy();
     expect(screen.getByText('payload P95 327,680B')).toBeTruthy();
+    expect(screen.getByText('query P95 5')).toBeTruthy();
     expect(screen.getByText('payload budget 307,200B超過')).toBeTruthy();
   });
 

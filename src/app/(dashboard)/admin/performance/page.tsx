@@ -120,6 +120,7 @@ type RuntimePerformanceSnapshot = {
     overall_p95_ms: number;
     overall_p99_ms: number;
     overall_p95_payload_bytes: number | null;
+    overall_p95_query_count: number | null;
     critical_routes: number;
     payload_budgeted_routes: number;
     routes_over_payload_budget: number;
@@ -145,6 +146,10 @@ type RuntimePerformanceSnapshot = {
     average_payload_bytes: number | null;
     p95_payload_bytes: number | null;
     max_payload_bytes: number | null;
+    query_count_sample_count: number;
+    average_query_count: number | null;
+    p95_query_count: number | null;
+    max_query_count: number | null;
     payload_budget_bytes: number | null;
     payload_budget_status: 'unconfigured' | 'unmeasured' | 'within_budget' | 'over_budget';
     payload_budget_met: boolean | null;
@@ -510,7 +515,7 @@ export default function PerformancePage() {
           <h2 id="performance-runtime-kpis" className="text-base font-semibold text-foreground">
             API latency KPI
           </h2>
-          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
             <KpiCard
               title="API P95"
               value={runtime?.summary.overall_p95_ms ?? 0}
@@ -544,6 +549,16 @@ export default function PerformancePage() {
               description="P95 が目標を超える endpoint"
               icon={ShieldAlert}
               tone={kpiToneClass(runtime?.summary.routes_over_target ?? 0, 0, true)}
+            />
+            <KpiCard
+              title="Query P95"
+              value={
+                runtime?.summary.overall_p95_query_count == null
+                  ? '未計測'
+                  : runtime.summary.overall_p95_query_count
+              }
+              description="route performance が記録した DB query count P95"
+              icon={Route}
             />
           </div>
         </section>
@@ -811,7 +826,7 @@ export default function PerformancePage() {
                       <p>max {route.max_ms}ms</p>
                     </div>
                   </div>
-                  <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-8">
+                  <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-9">
                     <div>件数 {route.request_count}</div>
                     <div>平均 {route.average_ms}ms</div>
                     <div>超過率 {route.slow_rate}%</div>
@@ -826,6 +841,12 @@ export default function PerformancePage() {
                       {route.p95_payload_bytes == null
                         ? '未計測'
                         : `${route.p95_payload_bytes.toLocaleString()}B`}
+                    </div>
+                    <div>
+                      query P95{' '}
+                      {route.p95_query_count == null
+                        ? '未計測'
+                        : route.p95_query_count.toLocaleString()}
                     </div>
                     <div>payload budget {formatPayloadBudget(route)}</div>
                   </div>

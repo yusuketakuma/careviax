@@ -41,6 +41,54 @@
 
 ## 直近の land（本日・要点）
 
+- codex: RX-REG-FACET-001 route query-count observability（pending commit）。
+  - current task:
+    prescription intake `facets=1` の DB query count を route performance に接続し、admin performance 画面で確認できるようにする。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `src/lib/utils/performance.ts`,
+    `src/lib/utils/performance.test.ts`,
+    `src/app/api/prescription-intakes/route.ts`,
+    `src/app/api/prescription-intakes/route.test.ts`,
+    `src/app/(dashboard)/admin/performance/page.tsx`,
+    `src/app/(dashboard)/admin/performance/page.test.tsx`,
+    `src/components/ui/segment-state.tsx`,
+    `Plans.md`。
+  - files changed:
+    `src/lib/utils/performance.ts`,
+    `src/lib/utils/performance.test.ts`,
+    `src/app/api/prescription-intakes/route.ts`,
+    `src/app/api/prescription-intakes/route.test.ts`,
+    `src/app/(dashboard)/admin/performance/page.tsx`,
+    `src/app/(dashboard)/admin/performance/page.test.tsx`,
+    `src/components/ui/segment-state.tsx`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`。
+  - implementation:
+    `ROUTE_QUERY_COUNT_HEADER` を route performance の内部計測 header として追加し、
+    `withRoutePerformance` が query count を sample 化してレスポンスから削除するようにした。
+    prescription intake GET は base list / optional total / optional facets の query count を header に載せる。
+    admin performance は overall / per-route の Query P95 を表示する。
+    `SegmentError` の `headingLevel` は既存 `StateHeadingLevel` 型へ揃え、typecheck の既存型不整合を解消した。
+  - bugs found:
+    `facets=1` の status/source facet は groupBy 化済みだったが、route performance で query count を確認できなかった。
+    `SegmentError.headingLevel` は 5/6 を許す型になっており、`ErrorState` の heading level 型と不一致だった。
+  - security risks reduced:
+    内部 query-count header は `withRoutePerformance` で削除され、public response に残らない。
+    PHI/free text は metric sample に入れず、数値だけを記録する。
+  - performance issues improved:
+    prescription intake facet route の DB query count を p95 と route summary で観測可能にした。
+    CloudWatch flush に route/overall query count metric を追加した。
+  - validation:
+    `pnpm exec vitest run src/lib/utils/performance.test.ts src/app/api/prescription-intakes/route.test.ts 'src/app/(dashboard)/admin/performance/page.test.tsx' --reporter=dot --testTimeout=30000` → pass（3 files / 99 tests）。
+    `pnpm exec eslint src/lib/utils/performance.ts src/lib/utils/performance.test.ts src/app/api/prescription-intakes/route.ts src/app/api/prescription-intakes/route.test.ts 'src/app/(dashboard)/admin/performance/page.tsx' 'src/app/(dashboard)/admin/performance/page.test.tsx' src/components/ui/segment-state.tsx` → pass。
+    `pnpm exec prettier --check src/lib/utils/performance.ts src/lib/utils/performance.test.ts src/app/api/prescription-intakes/route.ts src/app/api/prescription-intakes/route.test.ts 'src/app/(dashboard)/admin/performance/page.tsx' 'src/app/(dashboard)/admin/performance/page.test.tsx' src/components/ui/segment-state.tsx` → pass。
+    `git diff --check -- src/lib/utils/performance.ts src/lib/utils/performance.test.ts src/app/api/prescription-intakes/route.ts src/app/api/prescription-intakes/route.test.ts 'src/app/(dashboard)/admin/performance/page.tsx' 'src/app/(dashboard)/admin/performance/page.test.tsx' src/components/ui/segment-state.tsx` → pass。
+    `pnpm typecheck` → fail（Node heap 4GB OOM、exit 134）。
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` → pass。
+  - remaining work:
+    `Plans.md` / `ops/refactor/STATE.md` の diff check 後に scoped commit / push。
+
 - codex: Plans.md implemented-task cleanup follow-up（22240c1d0 / pushed）。
   - current task:
     `Plans.md` 内に残っていた実装済み task / baseline 記述を削り、未完了バックログだけが実装候補として読めるように整理する。

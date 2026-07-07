@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { SkeletonRows } from '@/components/ui/loading';
+import type { StateHeadingLevel } from '@/components/ui/state-elements';
 import { cn } from '@/lib/utils';
 
 type SegmentMetadata = {
@@ -127,7 +128,7 @@ export function SegmentError({
   retryLabel?: string;
   metadata?: SegmentMetadata;
   detail?: ReactNode;
-  headingLevel?: 1 | 2 | 3 | 4 | 5 | 6;
+  headingLevel?: StateHeadingLevel;
   className?: string;
 }) {
   const metadataDetail = metadata ? <SegmentMetadataList {...metadata} /> : null;

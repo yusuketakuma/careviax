@@ -12,12 +12,14 @@ const DEFAULT_MAX_SAMPLES_PER_ROUTE = 200;
 const DEFAULT_MAX_ROUTES = 500;
 const DEFAULT_TOP_ROUTES = 8;
 const EXCLUDED_PATHS = new Set(['/api/admin/performance-metrics']);
+export const ROUTE_QUERY_COUNT_HEADER = 'x-phos-query-count';
 
 type RoutePerformanceSample = {
   duration_ms: number;
   status: number;
   recorded_at: number;
   payload_bytes: number | null;
+  query_count: number | null;
   org_scope: RouteOrgScope;
 };
 
@@ -53,6 +55,10 @@ export type RoutePerformanceSummary = {
   average_payload_bytes: number | null;
   p95_payload_bytes: number | null;
   max_payload_bytes: number | null;
+  query_count_sample_count: number;
+  average_query_count: number | null;
+  p95_query_count: number | null;
+  max_query_count: number | null;
   payload_budget_bytes: number | null;
   payload_budget_status: PayloadBudgetStatus;
   payload_budget_met: boolean | null;
@@ -77,6 +83,7 @@ export type PerformanceSnapshot = {
     overall_p95_ms: number;
     overall_p99_ms: number;
     overall_p95_payload_bytes: number | null;
+    overall_p95_query_count: number | null;
     critical_routes: number;
     payload_budgeted_routes: number;
     routes_over_payload_budget: number;
@@ -125,6 +132,14 @@ function percentile(values: number[], ratio: number): number {
 }
 
 function parsePayloadBytes(value: string | null): number | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const parsed = Number(trimmed);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+function parseNonNegativeInteger(value: string | null): number | null {
   if (!value) return null;
   const trimmed = value.trim();
   if (!/^\d+$/.test(trimmed)) return null;
@@ -185,6 +200,7 @@ export function recordRoutePerformance(args: {
   status: number;
   durationMs: number;
   payloadBytes?: number | null;
+  queryCount?: number | null;
   orgScopePresent?: boolean;
   recordedAt?: number;
 }): void {
@@ -206,6 +222,10 @@ export function recordRoutePerformance(args: {
     payload_bytes:
       typeof args.payloadBytes === 'number' && Number.isSafeInteger(args.payloadBytes)
         ? Math.max(0, args.payloadBytes)
+        : null,
+    query_count:
+      typeof args.queryCount === 'number' && Number.isSafeInteger(args.queryCount)
+        ? Math.max(0, args.queryCount)
         : null,
     org_scope: args.orgScopePresent ? 'with_org' : 'without_org',
   });
@@ -235,6 +255,7 @@ export function getPerformanceSnapshot(options?: {
   const routeSummaries: RoutePerformanceSummary[] = [];
   const allDurations: number[] = [];
   const allPayloadBytes: number[] = [];
+  const allQueryCounts: number[] = [];
   let slowRequests = 0;
   let errorRequests = 0;
 
@@ -242,6 +263,9 @@ export function getPerformanceSnapshot(options?: {
     const durations = bucket.samples.map((sample) => sample.duration_ms);
     const payloadBytes = bucket.samples
       .map((sample) => sample.payload_bytes)
+      .filter((value): value is number => value != null);
+    const queryCounts = bucket.samples
+      .map((sample) => sample.query_count)
       .filter((value): value is number => value != null);
     const payloadBudget = resolveRoutePayloadBudget(bucket.method, bucket.route);
     const payloadBudgetBytes = payloadBudget?.budget_bytes ?? null;
@@ -257,6 +281,7 @@ export function getPerformanceSnapshot(options?: {
 
     allDurations.push(...durations);
     allPayloadBytes.push(...payloadBytes);
+    allQueryCounts.push(...queryCounts);
     slowRequests += slowCount;
     errorRequests += errorCount;
 
@@ -279,6 +304,10 @@ export function getPerformanceSnapshot(options?: {
       average_payload_bytes: payloadBytes.length ? average(payloadBytes) : null,
       p95_payload_bytes: p95PayloadBytes,
       max_payload_bytes: payloadBytes.length ? Math.max(...payloadBytes) : null,
+      query_count_sample_count: queryCounts.length,
+      average_query_count: queryCounts.length ? average(queryCounts) : null,
+      p95_query_count: queryCounts.length ? percentile(queryCounts, 0.95) : null,
+      max_query_count: queryCounts.length ? Math.max(...queryCounts) : null,
       payload_budget_bytes: payloadBudgetBytes ?? null,
       payload_budget_status: budgetStatus,
       payload_budget_met:
@@ -313,6 +342,7 @@ export function getPerformanceSnapshot(options?: {
       overall_p95_ms: percentile(allDurations, 0.95),
       overall_p99_ms: percentile(allDurations, 0.99),
       overall_p95_payload_bytes: allPayloadBytes.length ? percentile(allPayloadBytes, 0.95) : null,
+      overall_p95_query_count: allQueryCounts.length ? percentile(allQueryCounts, 0.95) : null,
       critical_routes: routeSummaries.filter((route) => route.critical_route).length,
       payload_budgeted_routes: routeSummaries.filter((route) => route.payload_budget_bytes != null)
         .length,
@@ -354,8 +384,10 @@ export async function withRoutePerformance<T extends NextResponse | Response>(
       status: response.status,
       durationMs: Date.now() - startedAt,
       payloadBytes: parsePayloadBytes(response.headers.get('content-length')),
+      queryCount: parseNonNegativeInteger(response.headers.get(ROUTE_QUERY_COUNT_HEADER)),
       orgScopePresent: Boolean(req.headers?.get('x-org-id')),
     });
+    response.headers.delete(ROUTE_QUERY_COUNT_HEADER);
     return response;
   } catch (error) {
     recordRoutePerformance({
@@ -447,6 +479,17 @@ export async function flushPerformanceMetricsToCloudWatch(options?: {
       Timestamp: timestamp,
       Dimensions: routeDimensions(route),
     },
+    ...(route.p95_query_count == null
+      ? []
+      : [
+          {
+            MetricName: 'RouteP95QueryCount',
+            Value: route.p95_query_count,
+            Unit: StandardUnit.Count,
+            Timestamp: timestamp,
+            Dimensions: routeDimensions(route),
+          },
+        ]),
   ]);
 
   // Overall summary metrics (no Route dimension)
@@ -493,6 +536,24 @@ export async function flushPerformanceMetricsToCloudWatch(options?: {
       Timestamp: timestamp,
       Dimensions: stableSummaryDimensions,
     },
+    ...(snapshot.summary.overall_p95_query_count == null
+      ? []
+      : [
+          {
+            MetricName: 'OverallP95QueryCount',
+            Value: snapshot.summary.overall_p95_query_count,
+            Unit: StandardUnit.Count,
+            Timestamp: timestamp,
+            Dimensions: summaryDimensions,
+          },
+          {
+            MetricName: 'OverallP95QueryCount',
+            Value: snapshot.summary.overall_p95_query_count,
+            Unit: StandardUnit.Count,
+            Timestamp: timestamp,
+            Dimensions: stableSummaryDimensions,
+          },
+        ]),
   );
 
   await putMetrics(datums);

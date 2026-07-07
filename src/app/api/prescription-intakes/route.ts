@@ -14,6 +14,7 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
+import { ROUTE_QUERY_COUNT_HEADER } from '@/lib/utils/performance';
 import { format } from 'date-fns';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
@@ -290,6 +291,7 @@ async function buildPrescriptionIntakeFacets(args: {
   assignmentWhere: Prisma.PrescriptionIntakeWhereInput;
   filters: ParsedPrescriptionIntakeListFilters;
 }) {
+  let queryCount = 2;
   const statusFacetIntakeWhere = buildPrescriptionIntakeListWhere({
     orgId: args.orgId,
     assignmentWhere: args.assignmentWhere,
@@ -322,6 +324,7 @@ async function buildPrescriptionIntakeFacets(args: {
   const statusCounts = Object.fromEntries(MEDICATION_CYCLE_STATUSES.map((status) => [status, 0]));
   const statusCycleIds = statusCycleEntries.map((entry) => entry.cycle_id);
   if (statusCycleIds.length > 0) {
+    queryCount += 1;
     const cycles = await prisma.medicationCycle.findMany({
       where: {
         org_id: args.orgId,
@@ -341,9 +344,20 @@ async function buildPrescriptionIntakeFacets(args: {
   }
 
   return {
-    status: statusCounts,
-    source_type: sourceCounts,
+    facets: {
+      status: statusCounts,
+      source_type: sourceCounts,
+    },
+    queryCount,
   };
+}
+
+function attachPrescriptionIntakeQueryCount<TResponse extends Response>(
+  response: TResponse,
+  queryCount: number,
+) {
+  response.headers.set(ROUTE_QUERY_COUNT_HEADER, String(queryCount));
+  return response;
 }
 
 function buildPrescriptionIntakeSearchWhere(query: string): Prisma.PrescriptionIntakeWhereInput {
@@ -597,15 +611,19 @@ const authenticatedGET = withAuthContext(
 
       const page = buildCursorPage(intakes, limit, (intake) => intake.id);
       const data = page.data.map(toPrescriptionSearchResponse);
+      const queryCount = 1 + (filters.includeTotal ? 1 : 0) + (facets?.queryCount ?? 0);
 
       return withSensitiveNoStore(
-        success({
-          data,
-          hasMore: page.hasMore,
-          nextCursor: page.nextCursor,
-          ...(filters.includeTotal ? { totalCount } : {}),
-          ...(filters.includeFacets ? { facets } : {}),
-        }),
+        attachPrescriptionIntakeQueryCount(
+          success({
+            data,
+            hasMore: page.hasMore,
+            nextCursor: page.nextCursor,
+            ...(filters.includeTotal ? { totalCount } : {}),
+            ...(filters.includeFacets ? { facets: facets?.facets } : {}),
+          }),
+          queryCount,
+        ),
       );
     }
 
@@ -651,15 +669,19 @@ const authenticatedGET = withAuthContext(
     ]);
 
     const page = buildCursorPage(intakes, limit, (intake) => intake.id);
+    const queryCount = 1 + (filters.includeTotal ? 1 : 0) + (facets?.queryCount ?? 0);
 
     return withSensitiveNoStore(
-      success({
-        data: page.data,
-        hasMore: page.hasMore,
-        nextCursor: page.nextCursor,
-        ...(filters.includeTotal ? { totalCount } : {}),
-        ...(filters.includeFacets ? { facets } : {}),
-      }),
+      attachPrescriptionIntakeQueryCount(
+        success({
+          data: page.data,
+          hasMore: page.hasMore,
+          nextCursor: page.nextCursor,
+          ...(filters.includeTotal ? { totalCount } : {}),
+          ...(filters.includeFacets ? { facets: facets?.facets } : {}),
+        }),
+        queryCount,
+      ),
     );
   },
   {

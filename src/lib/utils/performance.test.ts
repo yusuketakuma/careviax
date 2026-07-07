@@ -14,6 +14,7 @@ vi.mock('@/lib/aws/cloudwatch', () => ({
 }));
 
 import {
+  ROUTE_QUERY_COUNT_HEADER,
   flushPerformanceMetricsToCloudWatch,
   getPerformanceSnapshot,
   recordRoutePerformance,
@@ -130,6 +131,36 @@ describe('performance metrics', () => {
       payload_budget_met: true,
       last_payload_bytes: 11,
       org_scope: 'without_org',
+    });
+  });
+
+  it('records query count from an internal response header and strips it before returning', async () => {
+    const request = {
+      method: 'GET',
+      nextUrl: { pathname: '/api/prescription-intakes' },
+    } as Parameters<typeof withRoutePerformance>[0];
+
+    const response = await withRoutePerformance(
+      request,
+      async () =>
+        new Response('{"data":[]}', {
+          status: 200,
+          headers: {
+            'content-length': '11',
+            [ROUTE_QUERY_COUNT_HEADER]: '4',
+          },
+        }),
+    );
+
+    expect(response.headers.has(ROUTE_QUERY_COUNT_HEADER)).toBe(false);
+    const snapshot = getPerformanceSnapshot();
+    expect(snapshot.summary.overall_p95_query_count).toBe(4);
+    expect(snapshot.routes[0]).toMatchObject({
+      route: '/api/prescription-intakes',
+      query_count_sample_count: 1,
+      average_query_count: 4,
+      p95_query_count: 4,
+      max_query_count: 4,
     });
   });
 
