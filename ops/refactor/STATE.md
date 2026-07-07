@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: Plans.md implementation backlog cleanup（commit `661121eb8`）。
+- codex: Plans.md implementation backlog cleanup（commit `e7a3aca5b`）。
   - current task:
     `Plans.md` 内の実装済み/未実装を現行コードと既存Planに照合して分類し、未実装Planを
     次PRに切れる粒度へ拡充する。
