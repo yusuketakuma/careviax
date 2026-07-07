@@ -13,7 +13,12 @@ export function buildPatientOperationalSummarySelect(orgId: string) {
         org_id: orgId,
         insurance_type: { in: OPERATIONAL_INSURANCE_TYPES },
       },
-      orderBy: [{ is_active: 'desc' }, { valid_from: 'desc' }, { created_at: 'desc' }],
+      orderBy: [
+        { is_active: 'desc' },
+        { valid_from: 'desc' },
+        { created_at: 'desc' },
+        { id: 'desc' },
+      ],
       take: 6,
       select: {
         insurance_type: true,

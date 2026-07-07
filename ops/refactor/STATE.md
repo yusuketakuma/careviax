@@ -41,6 +41,102 @@
 
 ## 直近の land（本日・要点）
 
+- codex: `QUERY-SHAPE-WATCHLIST-003E` visit schedule service read-shape ratchet。
+  - current task:
+    `Plans.md` の実装済み/未実装分類に沿って、未実装DB速度タスク
+    `QUERY-SHAPE-WATCHLIST-003E` を実装する。visit schedule list の実体serviceを
+    broad `include` から explicit bounded `select` へ移行し、query-shape watchlist に
+    zero allowlist debt で追加する。実DB、migration、production data には触れない。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `tools/query-shape-watchlist.json`,
+    `tools/scripts/check-query-shape.mjs`,
+    `tools/scripts/check-query-shape.test.ts`,
+    `src/lib/db/schedule-includes.ts`,
+    `src/lib/db/patient-operational-summary-select.ts`,
+    `src/server/services/visit-schedule-service.ts`,
+    `src/app/api/visit-schedules/route.test.ts`,
+    `src/app/api/care-reports/route.ts`,
+    `src/app/api/care-reports/route.test.ts`.
+  - bounded subagents:
+    `DB Steward the 36th` reviewed the service read-shape seam read-only and recommended
+    replacing list `include` with explicit `select`, adding stable route-validation ordering,
+    and keeping auth `where` semantics unchanged. `Test Architect the 36th` recommended route
+    assertions for no `include`, tenant/patient where, child relation bounds, raw insurer
+    non-selection, response stripping, and service watchlist coverage.
+  - Oracle:
+    Consulted Oracle/GPT-5.5 Pro via browser mode with GitHub repository context. The result was
+    `No-go (small blockers)`, and the blockers were accepted: fix query-shape nested `take`
+    false-negative, bound vehicle route validation reads, add insurance `id` tie-breaker, and
+    assert route tenant/patient predicates. The `withOrgContext`/DB-RLS hard-boundary conversion
+    was deferred to a separate permission/RLS proof task because this slice preserves current
+    app-layer auth semantics and performs no migration.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `tools/query-shape-watchlist.json`,
+    `tools/scripts/check-query-shape.mjs`,
+    `tools/scripts/check-query-shape.test.ts`,
+    `src/app/api/care-reports/route.ts`,
+    `src/app/api/visit-schedules/route.test.ts`,
+    `src/lib/db/patient-operational-summary-select.ts`,
+    `src/lib/db/schedule-includes.ts`,
+    `src/server/services/visit-schedule-service.ts`.
+  - implementation:
+    Added `buildScheduleListSelect(orgId)` and switched `listSchedules` from top-level
+    `include: buildScheduleListInclude(orgId)` to explicit `select`. Kept the existing bounded
+    `limit + 1` pagination and stable schedule order. Bounded vehicle route duration validation
+    with `take: routeDurationValidationLimit + 1`, stable `route_order + time_window_start + id`
+    ordering, and a fail-safe validation error if existing stop inspection exceeds the cap. Added
+    `id` as a deterministic insurance tie-breaker. Added the service file to the query-shape
+    watchlist. Tightened the checker so nested relation `take` no longer counts as top-level
+    `findMany` bounding, and added a regression fixture. While validating, this exposed the
+    care-report list conditional-spread `take`; that query was changed to an explicit top-level
+    `take: reportReadLimit` without changing runtime behavior.
+  - bugs found:
+    The query-shape checker could previously treat a nested relation `take` as a top-level
+    `findMany` bound. Visit schedule service list reads were still broad-include shaped behind
+    the route entrypoint marker. Vehicle route validation read all existing same-day vehicle stops
+    without an explicit cap or stable order. Operational insurance top-N ordering lacked an `id`
+    tie-breaker. Care-report list had a bounded `take`, but expressed it through conditional spread,
+    making the static guard unable to prove the bound.
+  - security risks reduced:
+    No auth/authorization behavior changed. Route tests now assert `org_id` and patient boundary
+    predicates on visit schedule list reads and continue to verify raw insurer fields and internal
+    patient summary fields are not returned in the public response. RLS/requestContext migration
+    remains a separate high-risk permission proof task.
+  - performance issues improved:
+    Visit schedule list payload shape is now an explicit projection instead of broad include.
+    Vehicle route validation is capped and deterministic. Query-shape guard coverage now catches
+    nested-`take` false negatives and can prove the care-report list top-level bound.
+  - validation commands:
+    `pnpm db:query-shape:check`;
+    `pnpm exec vitest run tools/scripts/check-query-shape.test.ts src/app/api/visit-schedules/route.test.ts src/app/api/care-reports/route.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint tools/scripts/check-query-shape.test.ts tools/scripts/check-query-shape.mjs src/lib/db/patient-operational-summary-select.ts src/lib/db/schedule-includes.ts src/server/services/visit-schedule-service.ts src/app/api/visit-schedules/route.test.ts src/app/api/care-reports/route.ts src/app/api/care-reports/route.test.ts`;
+    `pnpm exec prettier --check Plans.md src/app/api/care-reports/route.ts tools/scripts/check-query-shape.mjs tools/scripts/check-query-shape.test.ts src/lib/db/patient-operational-summary-select.ts src/lib/db/schedule-includes.ts src/server/services/visit-schedule-service.ts src/app/api/visit-schedules/route.test.ts tools/query-shape-watchlist.json`;
+    `git diff --check -- Plans.md src/app/api/care-reports/route.ts tools/scripts/check-query-shape.mjs tools/scripts/check-query-shape.test.ts src/lib/db/patient-operational-summary-select.ts src/lib/db/schedule-includes.ts src/server/services/visit-schedule-service.ts src/app/api/visit-schedules/route.test.ts tools/query-shape-watchlist.json`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Query-shape checker passed with `0` allowlisted violations and `0` new violations. Focused
+    Vitest suite passed `3` files / `121` tests; visit-schedules tests emitted expected sanitized
+    error-path stderr. Scoped ESLint passed. Prettier check passed. Diff whitespace check passed.
+    Full typecheck passed.
+  - gbrain:
+    `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003e`
+    (`PerformanceFinding`) に PHI-free で visit schedule service read-shape ratchet、
+    checker nested-take guard、vehicle route cap、care-report explicit top-level take を保存する。
+  - remaining:
+    `QUERY-SHAPE-WATCHLIST-003B/C`: patients board, day-board, contact profiles,
+    visit-preparation detail, visit-brief, and visit-record BFF cleanup before watchlisting.
+    `care-reports/today-workspace` stable order / `take` assertions remain in the route cleanup
+    slice. `withOrgContext`/DB-RLS hard-boundary proof remains in the permission/RLS track, not
+    this DB speed slice.
+  - next action:
+    Commit/push this scoped backend slice, then continue Plans.md cleanup by expanding the remaining
+    未実装 DB read-path tasks or switch to the next user-selected task.
+
 - codex: `QUERY-SHAPE-WATCHLIST-003A/003D` zero-debt watchlist expansion and guard tests。
   - current task:
     `Plans.md` の backend-only / DB read speed 残タスクから、query-shape watchlist を

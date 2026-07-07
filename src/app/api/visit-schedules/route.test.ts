@@ -353,14 +353,66 @@ describe('/api/visit-schedules', () => {
         take: 2,
       }),
     );
-    const patientSelect =
-      visitScheduleFindManyMock.mock.calls[0]?.[0]?.include.case_.select.patient.select;
-    expect(visitScheduleFindManyMock.mock.calls[0]?.[0]?.include.case_.select.display_id).toBe(
-      true,
+    const query = visitScheduleFindManyMock.mock.calls[0]?.[0];
+    expect(query).not.toHaveProperty('include');
+    expect(query?.where).toEqual(
+      expect.objectContaining({
+        org_id: 'org_1',
+        case_: { patient_id: 'patient_1' },
+      }),
     );
+    expect(query?.select).toEqual(
+      expect.objectContaining({
+        id: true,
+        display_id: true,
+        org_id: true,
+        case_id: true,
+        visit_type: true,
+        pharmacist_id: true,
+        schedule_status: true,
+        scheduled_date: true,
+        time_window_start: true,
+        time_window_end: true,
+        priority: true,
+        assignment_mode: true,
+        route_order: true,
+        facility_batch_id: true,
+        confirmed_at: true,
+        carry_items_status: true,
+        updated_at: true,
+      }),
+    );
+    expect(query?.orderBy).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 'asc' })]),
+    );
+    const patientSelect = query?.select.case_.select.patient.select;
+    expect(query?.select.case_.select.display_id).toBe(true);
     expect(patientSelect.display_id).toBe(true);
+    expect(patientSelect.archived_at).toBe(true);
+    expect(patientSelect.allergy_info).toBe(true);
+    expect(patientSelect.residences).toMatchObject({
+      where: { is_primary: true },
+      take: 1,
+      select: {
+        address: true,
+        building_id: true,
+        unit_name: true,
+        lat: true,
+        lng: true,
+      },
+    });
     expect(patientSelect.insurances.where).toMatchObject({ org_id: 'org_1' });
+    expect(patientSelect.insurances.orderBy).toEqual([
+      { is_active: 'desc' },
+      { valid_from: 'desc' },
+      { created_at: 'desc' },
+      { id: 'desc' },
+    ]);
+    expect(patientSelect.insurances.take).toBe(6);
+    expect(patientSelect.insurances.select).not.toHaveProperty('insurer_number');
+    expect(patientSelect.insurances.select).not.toHaveProperty('number');
     expect(patientSelect.lab_observations.where).toMatchObject({ org_id: 'org_1' });
+    expect(patientSelect.lab_observations.take).toBe(6);
     expect(payload.data[0].case_.patient).not.toHaveProperty('archived_at');
     expect(payload.data[0].case_.patient).not.toHaveProperty('allergy_info');
     expect(payload.data[0].case_.patient).not.toHaveProperty('insurances');
@@ -1213,7 +1265,87 @@ describe('/api/visit-schedules', () => {
           },
         },
       },
+      take: 9,
+      orderBy: [{ route_order: 'asc' }, { time_window_start: 'asc' }, { id: 'asc' }],
     });
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects vehicle route duration validation when existing stop inspection exceeds the safety cap', async () => {
+    careCaseFindFirstMock.mockResolvedValueOnce({
+      patient_id: 'patient_1',
+      primary_pharmacist_id: 'user_2',
+      backup_pharmacist_id: 'user_1',
+      required_visit_support: null,
+      patient: {
+        scheduling_preference: null,
+        residences: [
+          {
+            facility_unit_id: null,
+            address: '候補患者宅',
+            lat: 0,
+            lng: 0.2,
+            facility: null,
+          },
+        ],
+      },
+    });
+    visitVehicleResourceFindFirstMock.mockResolvedValueOnce({
+      id: 'vehicle_1',
+      site_id: 'site_1',
+      label: '社用車A',
+      max_stops: null,
+      max_route_duration_minutes: 30,
+      travel_mode: 'DRIVE',
+      site: {
+        address: '本店',
+        lat: 0,
+        lng: 0,
+      },
+    });
+    visitScheduleFindManyMock.mockResolvedValueOnce(
+      Array.from({ length: 65 }, (_, index) => ({
+        route_order: index + 1,
+        time_window_start: new Date('1970-01-01T09:00:00.000Z'),
+        case_: {
+          patient: {
+            residences: [
+              {
+                address: `既存患者宅${index + 1}`,
+                lat: 0,
+                lng: 0.1,
+              },
+            ],
+          },
+        },
+      })),
+    );
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedules', {
+        case_id: 'case_1',
+        site_id: 'site_1',
+        visit_type: 'regular',
+        scheduled_date: '2026-03-31',
+        pharmacist_id: 'user_2',
+        time_window_start: '10:00',
+        time_window_end: '11:00',
+        vehicle_resource_id: 'vehicle_1',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: expect.stringContaining('対象日の既存訪問件数が多すぎます'),
+    });
+    expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 65,
+        orderBy: [{ route_order: 'asc' }, { time_window_start: 'asc' }, { id: 'asc' }],
+      }),
+    );
     expect(visitScheduleCreateMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });

@@ -6,7 +6,7 @@ import {
   type VisitScheduleAccessContext,
 } from '@/lib/auth/visit-schedule-access';
 import { withOrgContext } from '@/lib/db/rls';
-import { buildScheduleListInclude } from '@/lib/db/schedule-includes';
+import { buildScheduleListSelect } from '@/lib/db/schedule-includes';
 import { ACTIVE_VISIT_SCHEDULE_STATUSES } from '@/lib/constants/visit';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { conflict, forbiddenResponse, validationError } from '@/lib/api/response';
@@ -36,6 +36,7 @@ import type { createVisitScheduleSchema } from '@/lib/validations/visit-schedule
 
 type CreateScheduleData = z.infer<typeof createVisitScheduleSchema>;
 const DEFAULT_ROUTE_DURATION_START = '09:00';
+const ROUTE_DURATION_VALIDATION_MAX_EXISTING_STOPS = 64;
 
 const CREATE_SCHEDULE_SERIALIZABLE_RETRY_LIMIT = 3;
 
@@ -176,7 +177,7 @@ export async function listSchedules(
       filters.sort === 'time_window_start'
         ? [primarySort ?? { time_window_start: 'asc' }, { scheduled_date: 'asc' }, { id: 'asc' }]
         : [primarySort ?? { scheduled_date: 'asc' }, { time_window_start: 'asc' }, { id: 'asc' }],
-    include: buildScheduleListInclude(orgId),
+    select: buildScheduleListSelect(orgId),
   });
 
   const hasMore = schedules.length > limit;
@@ -265,6 +266,8 @@ export async function validateVisitVehicleResourceForSchedule(
       };
     }
 
+    const routeDurationValidationLimit =
+      vehicleResource.max_stops ?? ROUTE_DURATION_VALIDATION_MAX_EXISTING_STOPS;
     const existingSchedules = await prisma.visitSchedule.findMany({
       where: {
         org_id: args.orgId,
@@ -296,7 +299,17 @@ export async function validateVisitVehicleResourceForSchedule(
           },
         },
       },
+      take: routeDurationValidationLimit + 1,
+      orderBy: [{ route_order: 'asc' }, { time_window_start: 'asc' }, { id: 'asc' }],
     });
+    if (existingSchedules.length > routeDurationValidationLimit) {
+      return {
+        ok: false as const,
+        response: validationError(
+          `${vehicleResource.label} の稼働上限 ${vehicleResource.max_route_duration_minutes}分を検証できません。対象日の既存訪問件数が多すぎます`,
+        ),
+      };
+    }
     const existingPoints = existingSchedules.map((schedule) =>
       buildVehicleRoutePoint({
         scheduledDate: args.scheduledDate,

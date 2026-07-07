@@ -51,6 +51,11 @@
       "reason": "Visit schedule list route is a critical scheduling read entrypoint; heavy query shape is delegated to service watch follow-ups."
     },
     {
+      "path": "src/server/services/visit-schedule-service.ts",
+      "owner": "PERF-DB-001",
+      "reason": "Visit schedule service owns critical patient schedule list reads and vehicle route validation query shapes."
+    },
+    {
       "path": "src/app/api/visit-preparations/brief-batch/route.ts",
       "owner": "PERF-DB-001",
       "reason": "Visit preparation brief batch is a bounded visit read path and must keep id-in fan-in scoped."

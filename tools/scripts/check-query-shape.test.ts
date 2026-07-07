@@ -146,6 +146,38 @@ describe('check-query-shape', () => {
     expect(() => runCheck(root)).toThrow(/unbounded_find_many/);
   });
 
+  it('does not treat nested relation take as a top-level findMany bound', () => {
+    const root = createFixtureRepo({
+      'src/server/services/example.ts': `
+        await db.visitSchedule.findMany({
+          where: {
+            org_id: orgId,
+            vehicle_resource_id: vehicleId,
+            scheduled_date: scheduledDate,
+          },
+          select: {
+            case_: {
+              select: {
+                patient: {
+                  select: {
+                    residences: {
+                      where: { is_primary: true },
+                      take: 1,
+                      select: { address: true },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          orderBy: [{ route_order: 'asc' }, { id: 'asc' }],
+        });
+      `,
+    });
+
+    expect(() => runCheck(root)).toThrow(/unbounded_find_many/);
+  });
+
   it('rejects aggregate calls without where clauses', () => {
     const root = createFixtureRepo({
       'src/server/services/example.ts': `

@@ -755,6 +755,9 @@ async function authenticatedGET(req: NextRequest) {
         const listWhere = cursorReport
           ? appendCareReportWhereAnd(where, buildCareReportCursorWhere(cursorReport))
           : where;
+        const reportReadLimit = canUseDbPagination
+          ? limit + 1
+          : CARE_REPORT_KEYWORD_SCAN_READ_LIMIT;
 
         const reports = (await db.careReport.findMany({
           where: listWhere,
@@ -763,9 +766,7 @@ async function authenticatedGET(req: NextRequest) {
             orgId: ctx.orgId,
             includeContent: shouldReadContent,
           }),
-          ...(canUseDbPagination
-            ? { take: limit + 1 }
-            : { take: CARE_REPORT_KEYWORD_SCAN_READ_LIMIT }),
+          take: reportReadLimit,
         })) as CareReportListRow[];
         const keywordScanTruncated = Boolean(
           keyword && reports.length > CARE_REPORT_KEYWORD_SCAN_LIMIT,

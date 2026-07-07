@@ -240,9 +240,7 @@ function findQueryShapeViolationsInFile(file) {
     }
 
     if (method === 'findMany') {
-      const takeValue =
-        readPropertyValue(firstArgument, 'take') ??
-        (/\btake\s*:/.test(firstArgument) ? '__spread_or_nested_take__' : null);
+      const takeValue = readPropertyValue(firstArgument, 'take');
       const cursorValue = readPropertyValue(firstArgument, 'cursor');
       const whereValue = readPropertyValue(firstArgument, 'where');
       const orderByValue = readPropertyValue(firstArgument, 'orderBy');
