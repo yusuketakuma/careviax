@@ -41,6 +41,42 @@
 
 ## 直近の land（本日・要点）
 
+- codex: Plans.md MOV-001 Patient Movement Timeline 整理（pending commit）。
+  - current task:
+    ユーザー指定の「Google Maps Timeline 風。ただし上部地図なし」の患者タイムライン計画を、
+    既存コードと既存 `Plans.md` の MOV-001 と整合させて追記する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `src/types/patient-movement-timeline.ts`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx`,
+    `src/server/services/patient-detail-timeline-registry.ts`.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    MOV-001 の上位 backlog row と詳細節を更新した。既存実装済みの `movement` tab、共通型、
+    occurrence-only 表示、safe detail resolver は再実装対象にせず、残タスクを map-less date card UX、
+    standalone movement-timeline API、formal inbound / medication stock / safety source、raw_text re-auth、
+    deep link coverage に整理した。処方・訪問・文書登録は timeline では発生確認だけにし、詳細は正本
+    deep link で確認する方針を明記した。
+  - bugs found:
+    なし。docs-only。
+  - security risks reduced:
+    raw_text、処方明細、訪問本文、文書本文、OCR、添付ファイル名、storage key、signed URL を timeline
+    list DTO に載せないガードを MOV-001 に再固定した。
+  - performance issues improved:
+    実行時変更なし。standalone `movement-timeline` API と cursor/date/category filter を残タスクとして明記し、
+    患者詳細初期 BFF の肥大化を避ける計画に整理した。
+  - validation:
+    `pnpm exec prettier --write Plans.md` → pass。
+    `pnpm exec prettier --check Plans.md` → pass。
+    `git diff --check -- Plans.md` → pass。
+  - remaining work:
+    MOV-001 の実装は未着手。次の実装候補は `PatientMovementTimeline` の map-less date card UX 仕上げ、
+    または standalone `movement-timeline` API の切り出し。
+
 - codex: CORE-ROUTE-001 sensitive file API withAuthContext burn-down（pending commit）。
   - current task:
     `CORE-ROUTE-001` の実体移行として、残る sensitive file API route のうち
