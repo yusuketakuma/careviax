@@ -89,8 +89,9 @@
     payload-budget regressions. Duplicate local measured-success helpers were consolidated to one
     shared helper to keep future payload-budgeted routes consistent.
   - gbrain:
-    Planned memory slug:
-    `projects/careviax/reviews/2026-07-08/dashboard-segment-payload-budget`.
+    Wrote
+    `projects/careviax/reviews/2026-07-08/dashboard-segment-payload-budget`
+    for runtime commit `f67a0db1b`.
   - validation commands:
     `pnpm exec vitest run src/lib/utils/performance.test.ts src/app/api/dashboard/cockpit/route.test.ts src/app/api/patients/board/route.test.ts src/app/api/care-reports/route.test.ts --reporter=dot --testTimeout=30000`;
     `pnpm exec prettier --check src/lib/api/response.ts src/app/api/patients/board/route.ts src/app/api/care-reports/route.ts src/server/services/dashboard-cockpit.ts src/lib/utils/route-payload-budgets.ts src/app/api/dashboard/cockpit/route.test.ts src/lib/utils/performance.test.ts`;
@@ -105,8 +106,8 @@
     movement/inbound/medication-stock API payload budgets, dashboard drilldowns, and AWS backup
     design/implementation remain.
   - next action:
-    Commit explicit owned paths, push, write the gbrain memory with the final commit hash, then
-    continue to the next implementation-ready performance slice unless the user redirects.
+    Commit the gbrain write-through record, push, then continue to the next implementation-ready
+    performance slice unless the user redirects.
 
 - codex: Plans.md active backlog refinement。
   - current task:
