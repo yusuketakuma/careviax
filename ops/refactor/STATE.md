@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: Plans.md implemented-task cleanup follow-up（pending commit）。
+- codex: Plans.md implemented-task cleanup follow-up（22240c1d0 / pushed）。
   - current task:
     `Plans.md` 内に残っていた実装済み task / baseline 記述を削り、未完了バックログだけが実装候補として読めるように整理する。
   - files inspected:
@@ -68,7 +68,7 @@
     `pnpm exec prettier --check ops/refactor/STATE.md` → pass。
     `Plans.md` は既存ファイル全体にprettier非準拠箇所があるため、今回差分は `git diff --check` を gate とする。
   - remaining work:
-    scoped commit / push。
+    なし。
     既存未コミットの `src/lib/utils/performance.*` query-count instrumentation 差分はこの Plans cleanup とは別slice。
 
 - codex: FE-RT-001 admin realtime/performance source-scoped invalidation（pending commit）。
