@@ -238,9 +238,11 @@ export type DashboardCockpitInboundResponse = DashboardCockpitScopeMetadata & {
 
 export type DashboardMedicationStockRiskItem = {
   id: string;
-  source: 'inbound_signal';
-  signal_id: string;
-  inbound_event_id: string;
+  source: 'inbound_signal' | 'stock_snapshot';
+  signal_id: string | null;
+  inbound_event_id: string | null;
+  stock_item_id: string | null;
+  snapshot_id: string | null;
   patient_id: string | null;
   patient_name: string | null;
   case_id: string | null;
@@ -271,6 +273,7 @@ export type DashboardCockpitMedicationStockResponse = DashboardCockpitScopeMetad
     usage_unknown_count: number;
     equivalence_review_count: number;
     inbound_stock_signal_count: number;
+    ledger_stock_risk_count: number;
     linked_to_stock_event_count: number;
   };
   stock_items: DashboardMedicationStockRiskItem[];

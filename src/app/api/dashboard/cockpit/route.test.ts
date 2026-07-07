@@ -18,6 +18,7 @@ const {
   taskCommentFindManyMock,
   userFindManyMock,
   queryRawMock,
+  medicationStockQueryRawMock,
   visitScheduleFindManyMock,
   visitScheduleCountMock,
   workflowExceptionFindManyMock,
@@ -56,6 +57,7 @@ const {
   taskCommentFindManyMock: vi.fn(),
   userFindManyMock: vi.fn(),
   queryRawMock: vi.fn(),
+  medicationStockQueryRawMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
   visitScheduleCountMock: vi.fn(),
   workflowExceptionFindManyMock: vi.fn(),
@@ -293,6 +295,7 @@ describe('/api/dashboard/cockpit', () => {
     inboundCommunicationEventCountMock.mockResolvedValue(0);
     inboundCommunicationSignalFindManyMock.mockResolvedValue([]);
     inboundCommunicationSignalCountMock.mockResolvedValue(0);
+    medicationStockQueryRawMock.mockResolvedValue([]);
     visitScheduleContactLogFindManyMock.mockResolvedValue([]);
     visitScheduleContactLogCountMock.mockResolvedValue(0);
     deliveryRecordFindManyMock.mockResolvedValue([]);
@@ -321,6 +324,7 @@ describe('/api/dashboard/cockpit', () => {
           count: billingCandidateCountMock,
         },
         patient: { findMany: patientFindManyMock },
+        $queryRaw: medicationStockQueryRawMock,
       }),
     );
     billingCandidateFindManyMock.mockResolvedValue([]);
@@ -1459,6 +1463,7 @@ describe('/api/dashboard/cockpit', () => {
       usage_unknown_count: 1,
       equivalence_review_count: 1,
       inbound_stock_signal_count: 4,
+      ledger_stock_risk_count: 0,
       linked_to_stock_event_count: 1,
     });
     expect(json.data.stock_items_total_count).toBe(4);
@@ -1539,6 +1544,208 @@ describe('/api/dashboard/cockpit', () => {
       timeoutMs: 3000,
     });
     expect(serverCacheSetMock).not.toHaveBeenCalled();
+  });
+
+  it('adds medication stock ledger snapshot risks without leaking raw instructions', async () => {
+    inboundCommunicationSignalFindManyMock.mockResolvedValue([]);
+    inboundCommunicationSignalCountMock.mockResolvedValue(0);
+    medicationStockQueryRawMock.mockResolvedValue([
+      {
+        stock_item_id: 'stock_item_urgent',
+        stock_item_display_id: 'MS-001',
+        patient_id: 'patient_ledger_1',
+        case_id: 'case_ledger_1',
+        display_name: '湿布A',
+        ingredient_name: 'ロキソプロフェン',
+        strength: '100mg',
+        dosage_form: '貼付剤',
+        route: '外用',
+        unit: 'sheet',
+        medication_category: 'topical',
+        managing_party: 'family',
+        equivalence_review_status: 'not_required',
+        equivalence_confidence: 'exact_code',
+        item_updated_at: new Date(2026, 5, 12, 8, 20),
+        snapshot_id: 'snapshot_urgent',
+        current_quantity: '2',
+        last_observed_quantity: '2',
+        last_observed_at: new Date(2026, 5, 12, 8, 10),
+        estimated_daily_usage: '1',
+        usage_confidence: 'medium',
+        estimated_stockout_date: new Date(Date.UTC(2026, 5, 14, 0, 0)),
+        days_until_stockout: 2,
+        stock_risk_level: 'urgent',
+        risk_reason_code: 'raw instruction 090-1111-2222',
+        calculated_at: new Date(2026, 5, 12, 8, 30),
+        total_count: BigInt(4),
+        urgent_count: BigInt(1),
+        shortage_expected_count: BigInt(1),
+        usage_unknown_count: BigInt(1),
+        equivalence_review_count: BigInt(1),
+      },
+      {
+        stock_item_id: 'stock_item_shortage',
+        stock_item_display_id: 'MS-002',
+        patient_id: 'patient_ledger_2',
+        case_id: null,
+        display_name: '軟膏B',
+        ingredient_name: 'ヘパリン類似物質',
+        strength: null,
+        dosage_form: '軟膏',
+        route: '外用',
+        unit: 'tube',
+        medication_category: 'external',
+        managing_party: 'patient',
+        equivalence_review_status: 'not_required',
+        equivalence_confidence: 'exact_code',
+        item_updated_at: new Date(2026, 5, 12, 8, 10),
+        snapshot_id: 'snapshot_shortage',
+        current_quantity: '1',
+        last_observed_quantity: '1',
+        last_observed_at: new Date(2026, 5, 12, 8, 0),
+        estimated_daily_usage: '0.5',
+        usage_confidence: 'high',
+        estimated_stockout_date: new Date(Date.UTC(2026, 5, 16, 0, 0)),
+        days_until_stockout: 4,
+        stock_risk_level: 'shortage_expected',
+        risk_reason_code: null,
+        calculated_at: new Date(2026, 5, 12, 8, 25),
+        total_count: BigInt(4),
+        urgent_count: BigInt(1),
+        shortage_expected_count: BigInt(1),
+        usage_unknown_count: BigInt(1),
+        equivalence_review_count: BigInt(1),
+      },
+      {
+        stock_item_id: 'stock_item_usage',
+        stock_item_display_id: 'MS-003',
+        patient_id: 'patient_ledger_3',
+        case_id: null,
+        display_name: 'カロナール錠500',
+        ingredient_name: 'アセトアミノフェン',
+        strength: '500mg',
+        dosage_form: '錠剤',
+        route: '内服',
+        unit: 'tablet',
+        medication_category: 'prn',
+        managing_party: 'patient',
+        equivalence_review_status: 'not_required',
+        equivalence_confidence: 'ingredient_strength_form',
+        item_updated_at: new Date(2026, 5, 12, 8, 0),
+        snapshot_id: 'snapshot_usage',
+        current_quantity: '6',
+        last_observed_quantity: '6',
+        last_observed_at: new Date(2026, 5, 11, 8, 0),
+        estimated_daily_usage: null,
+        usage_confidence: 'unknown',
+        estimated_stockout_date: null,
+        days_until_stockout: null,
+        stock_risk_level: 'ok',
+        risk_reason_code: null,
+        calculated_at: new Date(2026, 5, 12, 8, 15),
+        total_count: BigInt(4),
+        urgent_count: BigInt(1),
+        shortage_expected_count: BigInt(1),
+        usage_unknown_count: BigInt(1),
+        equivalence_review_count: BigInt(1),
+      },
+      {
+        stock_item_id: 'stock_item_equivalence',
+        stock_item_display_id: 'MS-004',
+        patient_id: 'patient_ledger_4',
+        case_id: null,
+        display_name: '不明薬',
+        ingredient_name: null,
+        strength: null,
+        dosage_form: null,
+        route: null,
+        unit: 'dose',
+        medication_category: 'other',
+        managing_party: 'unknown',
+        equivalence_review_status: 'needs_review',
+        equivalence_confidence: 'uncertain',
+        item_updated_at: new Date(2026, 5, 12, 7, 50),
+        snapshot_id: null,
+        current_quantity: null,
+        last_observed_quantity: null,
+        last_observed_at: null,
+        estimated_daily_usage: null,
+        usage_confidence: null,
+        estimated_stockout_date: null,
+        days_until_stockout: null,
+        stock_risk_level: null,
+        risk_reason_code: '患者 太郎 secret@example.com',
+        calculated_at: null,
+        total_count: BigInt(4),
+        urgent_count: BigInt(1),
+        shortage_expected_count: BigInt(1),
+        usage_unknown_count: BigInt(1),
+        equivalence_review_count: BigInt(1),
+      },
+    ]);
+    patientFindManyMock.mockResolvedValue([
+      { id: 'patient_ledger_1', name: '台帳 一郎' },
+      { id: 'patient_ledger_2', name: '台帳 二郎' },
+      { id: 'patient_ledger_3', name: '台帳 三郎' },
+      { id: 'patient_ledger_4', name: '台帳 四郎' },
+    ]);
+
+    const response = (await GETStockRisks(createRequest('', '/api/dashboard/cockpit/stock-risks'), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const json = await response.json();
+    expect(json.data.stock_summary).toEqual({
+      urgent_shortage_count: 1,
+      shortage_expected_count: 1,
+      usage_unknown_count: 1,
+      equivalence_review_count: 1,
+      inbound_stock_signal_count: 0,
+      ledger_stock_risk_count: 4,
+      linked_to_stock_event_count: 0,
+    });
+    expect(json.data.stock_items_total_count).toBe(4);
+    expect(json.data.stock_items_visible_count).toBe(4);
+    expect(json.data.stock_items.map((item: { id: string }) => item.id)).toEqual([
+      'medication_stock_snapshot:snapshot_urgent',
+      'medication_stock_snapshot:snapshot_shortage',
+      'medication_stock_snapshot:snapshot_usage',
+      'medication_stock_snapshot:stock_item_equivalence',
+    ]);
+    expect(json.data.stock_items[0]).toMatchObject({
+      source: 'stock_snapshot',
+      risk_level: 'urgent',
+      medication_name: '湿布A',
+      quantity_label: '2枚',
+      source_label: '残数台帳',
+      source_text: '残数 2枚 / 推定切れ日 2026-06-14',
+      action_href: '/patients/patient_ledger_1#medication-stock-events',
+      action_label: '残数台帳を確認',
+      signal_id: null,
+      inbound_event_id: null,
+      stock_item_id: 'stock_item_urgent',
+      snapshot_id: 'snapshot_urgent',
+    });
+    expect(json.data.stock_items[2]).toMatchObject({
+      risk_level: 'usage_unknown',
+      quantity_label: '6錠',
+      source_text: '残数 6錠 / 使用頻度未確認',
+    });
+    expect(json.data.stock_items[3]).toMatchObject({
+      risk_level: 'review_required',
+      source_text: '名寄せ確認待ち',
+      quantity_label: null,
+    });
+
+    const responseBody = JSON.stringify(json.data);
+    expect(responseBody).not.toContain('risk_reason_code');
+    expect(responseBody).not.toContain('raw instruction');
+    expect(responseBody).not.toContain('090-1111-2222');
+    expect(responseBody).not.toContain('secret@example.com');
+    expect(responseBody).not.toContain('usage_instruction_text');
+    expect(responseBody).not.toContain('indication_text');
   });
 
   it('scopes medication stock risks by assigned patients and cases for non-admin members', async () => {

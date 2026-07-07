@@ -30,6 +30,10 @@ import {
   type DashboardAssignmentScope,
 } from '@/server/services/dashboard-assignment-scope';
 import {
+  readDashboardMedicationStockLedgerRisks,
+  type DashboardMedicationStockLedgerRiskRow,
+} from '@/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader';
+import {
   buildCockpitCacheKey,
   buildWorkflowAssignmentScopeFingerprint,
 } from '@/server/services/workflow-dashboard-cache';
@@ -2054,6 +2058,86 @@ function formatMedicationStockQuantity(signal: DashboardMedicationStockSignalRow
   return `${signal.extracted_quantity}${signal.extracted_unit}`;
 }
 
+function decimalToNumber(
+  value: Prisma.Decimal | number | string | null | undefined,
+): number | null {
+  if (value == null) return null;
+  const numeric =
+    typeof value === 'object' && 'toNumber' in value ? value.toNumber() : Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function formatQuantityNumber(value: number) {
+  return Number.isInteger(value) ? value.toString() : value.toFixed(2).replace(/\.?0+$/, '');
+}
+
+function medicationStockUnitLabel(unit: string | null | undefined) {
+  switch (unit) {
+    case 'tablet':
+      return '錠';
+    case 'capsule':
+      return 'カプセル';
+    case 'packet':
+      return '包';
+    case 'sheet':
+      return '枚';
+    case 'patch':
+      return '枚';
+    case 'tube':
+      return '本';
+    case 'bottle':
+      return '本';
+    case 'ml':
+      return 'mL';
+    case 'g':
+      return 'g';
+    case 'dose':
+      return '回分';
+    case 'application':
+      return '回';
+    default:
+      return unit ?? '';
+  }
+}
+
+function formatMedicationStockLedgerQuantity(row: DashboardMedicationStockLedgerRiskRow) {
+  const quantity = decimalToNumber(row.current_quantity);
+  if (quantity == null) return null;
+  return `${formatQuantityNumber(quantity)}${medicationStockUnitLabel(row.unit)}`;
+}
+
+function formatDateOnly(date: Date | null | undefined) {
+  return date ? date.toISOString().slice(0, 10) : null;
+}
+
+function medicationStockLedgerRiskLevel(
+  row: DashboardMedicationStockLedgerRiskRow,
+): DashboardMedicationStockRiskItem['risk_level'] {
+  if (row.stock_risk_level === 'urgent') return 'urgent';
+  if (row.stock_risk_level === 'shortage_expected') return 'shortage_expected';
+  if (row.usage_confidence === 'unknown') return 'usage_unknown';
+  return 'review_required';
+}
+
+function medicationStockCategoryLabel(category: string | null | undefined) {
+  switch (category) {
+    case 'prn':
+      return '頓服';
+    case 'topical':
+      return '外用';
+    case 'external':
+      return '外用';
+    case 'regular_leftover':
+      return '定期残薬';
+    case 'otc':
+      return 'OTC';
+    case 'other':
+      return 'その他';
+    default:
+      return null;
+  }
+}
+
 function buildMedicationStockSignalHref(signal: DashboardMedicationStockSignalRow) {
   const patientId = signal.patient_id ?? signal.inbound_event.patient_id;
   if (patientId) {
@@ -2078,6 +2162,8 @@ function buildMedicationStockRiskItem(args: {
     source: 'inbound_signal',
     signal_id: signal.id,
     inbound_event_id: signal.inbound_event_id,
+    stock_item_id: null,
+    snapshot_id: null,
     patient_id: signal.patient_id ?? signal.inbound_event.patient_id,
     patient_name: args.patientName,
     case_id: signal.case_id ?? signal.inbound_event.case_id,
@@ -2107,6 +2193,77 @@ function buildMedicationStockRiskItem(args: {
   };
 }
 
+function buildMedicationStockLedgerRiskItem(args: {
+  row: DashboardMedicationStockLedgerRiskRow;
+  patientName: string | null;
+}): DashboardMedicationStockRiskItem {
+  const row = args.row;
+  const riskLevel = medicationStockLedgerRiskLevel(row);
+  const quantityLabel = formatMedicationStockLedgerQuantity(row);
+  const stockoutDate = formatDateOnly(row.estimated_stockout_date);
+  const categoryLabel = medicationStockCategoryLabel(row.medication_category);
+  const updatedAt = row.calculated_at ?? row.item_updated_at;
+  const sourceParts = [
+    quantityLabel ? `残数 ${quantityLabel}` : null,
+    stockoutDate ? `推定切れ日 ${stockoutDate}` : null,
+    row.usage_confidence === 'unknown' ? '使用頻度未確認' : null,
+    row.equivalence_review_status === 'needs_review' ||
+    row.equivalence_review_status === 'uncertain'
+      ? '名寄せ確認待ち'
+      : null,
+  ].filter((part): part is string => Boolean(part));
+
+  return {
+    id: `medication_stock_snapshot:${row.snapshot_id ?? row.stock_item_id}`,
+    source: 'stock_snapshot',
+    signal_id: null,
+    inbound_event_id: null,
+    stock_item_id: row.stock_item_id,
+    snapshot_id: row.snapshot_id,
+    patient_id: row.patient_id,
+    patient_name: args.patientName,
+    case_id: row.case_id,
+    risk_level: riskLevel,
+    signal_type: 'ledger_snapshot',
+    review_status: row.equivalence_review_status,
+    action_status: row.snapshot_id ? 'snapshot_present' : 'snapshot_missing',
+    medication_name: row.display_name,
+    quantity_label: quantityLabel,
+    source_text: sourceParts.join(' / ') || null,
+    source_channel: 'ledger',
+    source_label: '残数台帳',
+    sender_role: null,
+    received_at: updatedAt.toISOString(),
+    updated_at: updatedAt.toISOString(),
+    action_href: buildPatientHref(row.patient_id, '#medication-stock-events'),
+    action_label: '残数台帳を確認',
+    badges: [
+      { label: medicationStockRiskLabel(riskLevel), tone: medicationStockRiskBadgeTone(riskLevel) },
+      { label: '残数台帳', tone: 'neutral' },
+      ...(categoryLabel ? [{ label: categoryLabel, tone: 'info' as const }] : []),
+      ...(quantityLabel ? [{ label: quantityLabel, tone: 'info' as const }] : []),
+    ],
+  };
+}
+
+function compareMedicationStockRiskItems(
+  left: DashboardMedicationStockRiskItem,
+  right: DashboardMedicationStockRiskItem,
+) {
+  const riskWeight: Record<DashboardMedicationStockRiskItem['risk_level'], number> = {
+    urgent: 0,
+    shortage_expected: 1,
+    usage_unknown: 2,
+    review_required: 3,
+    linked: 4,
+  };
+  const weightDiff = riskWeight[left.risk_level] - riskWeight[right.risk_level];
+  if (weightDiff !== 0) return weightDiff;
+  const updatedDiff = right.updated_at.localeCompare(left.updated_at);
+  if (updatedDiff !== 0) return updatedDiff;
+  return left.id.localeCompare(right.id);
+}
+
 function buildMedicationStockUrgentItem(
   item: DashboardMedicationStockRiskItem,
 ): DashboardUrgentItem | null {
@@ -2121,9 +2278,9 @@ function buildMedicationStockUrgentItem(
     : `${medicationLabel}${quantityLabel} の残数・使用状況を確認してください。`;
 
   return {
-    id: `medication_stock:${item.signal_id}`,
+    id: `medication_stock:${item.signal_id ?? item.stock_item_id ?? item.id}`,
     source: 'medication_stock',
-    source_id: item.signal_id,
+    source_id: item.signal_id ?? item.stock_item_id ?? item.id,
     source_label: '残数管理',
     reference_label: item.source_label,
     severity,
@@ -2562,6 +2719,7 @@ async function readDashboardMedicationStockRisks(args: {
         usageUnknownCount,
         equivalenceReviewCount,
         linkedToStockEventCount,
+        ledgerResult,
       ] = await Promise.all([
         tx.inboundCommunicationSignal.findMany({
           where,
@@ -2601,14 +2759,20 @@ async function readDashboardMedicationStockRisks(args: {
         tx.inboundCommunicationSignal.count({ where: usageWhere }),
         tx.inboundCommunicationSignal.count({ where: equivalenceWhere }),
         tx.inboundCommunicationSignal.count({ where: linkedWhere }),
+        readDashboardMedicationStockLedgerRisks(tx, {
+          orgId: args.ctx.orgId,
+          patientIds: args.scopeContext.assignmentScope.patientIds,
+          caseIds: args.scopeContext.assignmentScope.caseIds,
+          take: MEDICATION_STOCK_RISK_FETCH_LIMIT,
+        }),
       ]);
 
-      const visibleSignals = signals.slice(0, MEDICATION_STOCK_RISK_RESPONSE_LIMIT);
       const patientIds = Array.from(
         new Set(
-          visibleSignals
-            .map((signal) => signal.patient_id ?? signal.inbound_event.patient_id)
-            .filter((patientId): patientId is string => Boolean(patientId)),
+          [
+            ...signals.map((signal) => signal.patient_id ?? signal.inbound_event.patient_id),
+            ...ledgerResult.rows.map((row) => row.patient_id),
+          ].filter((patientId): patientId is string => Boolean(patientId)),
         ),
       );
       const patients =
@@ -2620,44 +2784,42 @@ async function readDashboardMedicationStockRisks(args: {
           : [];
       const patientNameById = new Map(patients.map((patient) => [patient.id, patient.name]));
 
-      const stockItems = visibleSignals
-        .map((signal) =>
-          buildMedicationStockRiskItem({
-            signal,
-            patientName: signal.patient_id
-              ? (patientNameById.get(signal.patient_id) ?? null)
-              : signal.inbound_event.patient_id
-                ? (patientNameById.get(signal.inbound_event.patient_id) ?? null)
-                : null,
-          }),
-        )
-        .sort((left, right) => {
-          const riskWeight: Record<DashboardMedicationStockRiskItem['risk_level'], number> = {
-            urgent: 0,
-            shortage_expected: 1,
-            usage_unknown: 2,
-            review_required: 3,
-            linked: 4,
-          };
-          const weightDiff = riskWeight[left.risk_level] - riskWeight[right.risk_level];
-          if (weightDiff !== 0) return weightDiff;
-          return right.updated_at.localeCompare(left.updated_at);
-        });
+      const inboundItems = signals.map((signal) =>
+        buildMedicationStockRiskItem({
+          signal,
+          patientName: signal.patient_id
+            ? (patientNameById.get(signal.patient_id) ?? null)
+            : signal.inbound_event.patient_id
+              ? (patientNameById.get(signal.inbound_event.patient_id) ?? null)
+              : null,
+        }),
+      );
+      const ledgerItems = ledgerResult.rows.map((row) =>
+        buildMedicationStockLedgerRiskItem({
+          row,
+          patientName: patientNameById.get(row.patient_id) ?? null,
+        }),
+      );
+      const stockItems = [...inboundItems, ...ledgerItems]
+        .sort(compareMedicationStockRiskItems)
+        .slice(0, MEDICATION_STOCK_RISK_RESPONSE_LIMIT);
+      const combinedTotalCount = totalCount + ledgerResult.totalCount;
 
       return {
         ...args.scopeContext.metadata,
         stock_summary: {
-          urgent_shortage_count: urgentShortageCount,
-          shortage_expected_count: shortageExpectedCount,
-          usage_unknown_count: usageUnknownCount,
-          equivalence_review_count: equivalenceReviewCount,
+          urgent_shortage_count: urgentShortageCount + ledgerResult.urgentCount,
+          shortage_expected_count: shortageExpectedCount + ledgerResult.shortageExpectedCount,
+          usage_unknown_count: usageUnknownCount + ledgerResult.usageUnknownCount,
+          equivalence_review_count: equivalenceReviewCount + ledgerResult.equivalenceReviewCount,
           inbound_stock_signal_count: totalCount,
+          ledger_stock_risk_count: ledgerResult.totalCount,
           linked_to_stock_event_count: linkedToStockEventCount,
         },
         stock_items: stockItems,
-        stock_items_total_count: totalCount,
+        stock_items_total_count: combinedTotalCount,
         stock_items_visible_count: stockItems.length,
-        stock_items_hidden_count: Math.max(totalCount - stockItems.length, 0),
+        stock_items_hidden_count: Math.max(combinedTotalCount - stockItems.length, 0),
       };
     },
     { requestContext: args.ctx, maxWaitMs: 2000, timeoutMs: 3000 },

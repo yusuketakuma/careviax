@@ -17734,3 +17734,82 @@
   source-specific "残りN件を見る" controls.
 - next action:
   Commit and push this slice, then continue with the next backend Plans.md task.
+
+## 2026-07-07 Dashboard medication stock snapshot risks
+
+- current task:
+  Continue backend-only dashboard work by connecting
+  `/api/dashboard/cockpit/stock-risks` to the actual Medication Stock Ledger
+  snapshot tables, while preserving the existing inbound-signal risk feed.
+- files inspected:
+  `git status --short --untracked-files=all`,
+  `git log --oneline -8`,
+  `ops/refactor/STATE.md`,
+  `prisma/schema/medication.prisma`,
+  `src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.ts`,
+  `src/types/medication-stock.ts`,
+  `src/types/dashboard-cockpit.ts`,
+  `src/server/services/dashboard-cockpit.ts`,
+  `src/server/services/dashboard-assignment-scope.ts`,
+  `src/app/api/dashboard/cockpit/route.test.ts`,
+  `gbrain search "dashboard medication stock risk reader snapshot CareViaX"`,
+  and Oracle session `dashboard-stock-snapshot-review`.
+- Oracle / GPT-5.5 Pro review:
+  Oracle advised a bounded module-local dashboard reader instead of reusing the
+  patient medication-stock summary service, because per-patient summary reuse
+  would create N+1 reads and over-fetch dashboard data. It also flagged that the
+  Prisma schema does not define a relation between `MedicationStockSnapshot` and
+  `PatientMedicationStockItem`, so the safe minimal path is stock-item-origin
+  raw SQL with an explicit left join and dashboard-only projection.
+- files changed:
+  `src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.ts`,
+  `src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.test.ts`,
+  `src/server/services/dashboard-cockpit.ts`,
+  `src/types/dashboard-cockpit.ts`,
+  `src/app/api/dashboard/cockpit/route.test.ts`,
+  `ops/refactor/STATE.md`.
+- implementation:
+  Added a module-local `readDashboardMedicationStockLedgerRisks` reader that
+  reads active `PatientMedicationStockItem` rows with a left join to
+  `MedicationStockSnapshot`, applies org and assignment scope in SQL, returns
+  bounded dashboard projection rows plus window-count metadata, and skips the
+  query entirely when a restricted dashboard scope has no assigned patients or
+  cases. The dashboard stock-risks segment now merges inbound medication-stock
+  signals with ledger snapshot risks, sorts them by risk precedence, and exposes
+  `ledger_stock_risk_count` in the summary while keeping `inbound_stock_signal_count`
+  as the inbound-only count.
+- bugs found:
+  The stock-risks segment only showed inbound communication signals; true ledger
+  snapshot risks such as urgent shortage, shortage expected before the next
+  visit/prescription, usage confidence unknown, and medication equivalence
+  review were invisible on the dashboard.
+- security risks reduced:
+  The ledger projection does not return `usage_instruction_text`,
+  `indication_text`, creator ids, source entity ids, raw event payload,
+  external URLs, storage keys, signed URLs, or inbound raw text. Tests assert
+  that raw instructions, phone/email-like strings, and internal `risk_reason_code`
+  do not leak into the dashboard stock-risks response.
+- performance issues improved:
+  Avoided N+1 per-patient summary reads by using one bounded query over
+  indexed `org_id` / `patient_id` / `case_id` / `stock_risk_level` fields. The
+  existing inbound-signal feed remains bounded, and the final merged dashboard
+  response is sliced to `MEDICATION_STOCK_RISK_RESPONSE_LIMIT`.
+- validation commands:
+  `pnpm exec vitest run src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.test.ts src/app/api/dashboard/cockpit/route.test.ts --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint src/server/services/dashboard-cockpit.ts src/types/dashboard-cockpit.ts src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.ts src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.test.ts src/app/api/dashboard/cockpit/route.test.ts`;
+  `pnpm exec prettier --check src/server/services/dashboard-cockpit.ts src/types/dashboard-cockpit.ts src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.ts src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.test.ts src/app/api/dashboard/cockpit/route.test.ts`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `git diff --check`.
+- validation results:
+  Medication stock reader + dashboard cockpit route tests passed (2 files / 41
+  tests). Scoped ESLint passed. Prettier check passed after formatting
+  `dashboard-cockpit.ts`. Full typecheck passed. Diff check passed.
+- gbrain:
+  `careviax/implementation-decision/dashboard-stock-snapshot-risk-reader-2026-07-07`.
+- remaining work:
+  Frontend can now consume `stock_snapshot` items and `ledger_stock_risk_count`.
+  MedicationStock snapshot recalculation, write/apply lifecycle, VisitBrief,
+  Task/Risk downstream, and production-like DB profiling remain open.
+- next action:
+  Commit and push this slice, then continue with the next backend Plans.md task
+  or the MedicationStock write/apply lifecycle after another Oracle review.
