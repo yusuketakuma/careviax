@@ -84,6 +84,7 @@ export interface TimelineFetchCtx {
   orgId: string;
   patientId: string;
   caseIds: string[];
+  timelineLimit: number;
   canManageBilling: boolean;
   billingRefs: { visitRecordIds: string[]; cycleIds: string[] };
 }
@@ -111,6 +112,7 @@ export function defineTimelineSource<Key extends string, Row>(
 }
 
 const PATIENT_TIMELINE_EXTERNAL_SHARE_LIMIT = 8;
+const PATIENT_TIMELINE_SOURCE_MIN_TAKE = 4;
 const PARTNER_VISIT_RECORD_STATUS_LABELS: Record<string, string> = {
   draft: '下書き',
   submitted: '提出済み',
@@ -160,6 +162,19 @@ function getCommunicationDirectionLabel(direction: string) {
   return direction;
 }
 
+function resolveTimelineSourceTake(
+  ctx: Pick<TimelineFetchCtx, 'timelineLimit'>,
+  defaultTake: number,
+  options?: { minimumTake?: number },
+) {
+  const normalizedLimit = Number.isSafeInteger(ctx.timelineLimit) ? ctx.timelineLimit : defaultTake;
+  const minimumTake = Math.min(
+    defaultTake,
+    options?.minimumTake ?? PATIENT_TIMELINE_SOURCE_MIN_TAKE,
+  );
+  return Math.min(defaultTake, Math.max(minimumTake, normalizedLimit));
+}
+
 function getInboundCommunicationEventType(item: CommunicationTimelineSource) {
   if (getCommunicationDirectionLabel(item.direction) !== '受信') return null;
   return INBOUND_COMMUNICATION_EVENT_TYPE_BY_CHANNEL[item.channel] ?? null;
@@ -184,8 +199,9 @@ export const visitSchedulesSource = defineTimelineSource<
 >({
   key: 'visitSchedules',
   emptyFallback: EMPTY,
-  fetch: ({ db, orgId, caseIds }) =>
-    caseIds.length === 0
+  fetch: (ctx) => {
+    const { db, orgId, caseIds } = ctx;
+    return caseIds.length === 0
       ? Promise.resolve([])
       : db.visitSchedule.findMany({
           where: {
@@ -211,7 +227,8 @@ export const visitSchedulesSource = defineTimelineSource<
               },
             },
           },
-        }),
+        });
+  },
   toEvents: (rows) =>
     rows.map((item) => ({
       id: `visit_schedule:${item.id}`,
@@ -245,8 +262,9 @@ export const visitSchedulesSource = defineTimelineSource<
 export const visitRecordsSource = defineTimelineSource<'visitRecords', VisitRecordTimelineSource>({
   key: 'visitRecords',
   emptyFallback: EMPTY,
-  fetch: ({ db, orgId, patientId, caseIds }) =>
-    caseIds.length === 0
+  fetch: (ctx) => {
+    const { db, orgId, patientId, caseIds } = ctx;
+    return caseIds.length === 0
       ? Promise.resolve([])
       : db.visitRecord.findMany({
           where: {
@@ -255,7 +273,7 @@ export const visitRecordsSource = defineTimelineSource<'visitRecords', VisitReco
             ...buildVisitRecordCaseScope(caseIds),
           },
           orderBy: [{ visit_date: 'desc' }, { created_at: 'desc' }],
-          take: 12,
+          take: resolveTimelineSourceTake(ctx, 12),
           select: {
             id: true,
             schedule_id: true,
@@ -264,7 +282,8 @@ export const visitRecordsSource = defineTimelineSource<'visitRecords', VisitReco
             next_visit_suggestion_date: true,
             created_at: true,
           },
-        }),
+        });
+  },
   toEvents: (rows) =>
     rows.map((item) => ({
       id: `visit_record:${item.id}`,
@@ -366,8 +385,9 @@ export const communicationEventsSource = defineTimelineSource<
 >({
   key: 'communicationEvents',
   emptyFallback: EMPTY,
-  fetch: ({ db, orgId, patientId, caseIds }) =>
-    db.communicationEvent.findMany({
+  fetch: (ctx) => {
+    const { db, orgId, patientId, caseIds } = ctx;
+    return db.communicationEvent.findMany({
       where: {
         org_id: orgId,
         patient_id: patientId,
@@ -375,7 +395,7 @@ export const communicationEventsSource = defineTimelineSource<
         ...buildNullableCaseScope(caseIds),
       },
       orderBy: [{ occurred_at: 'desc' }],
-      take: 8,
+      take: resolveTimelineSourceTake(ctx, 8),
       select: {
         id: true,
         event_type: true,
@@ -383,7 +403,8 @@ export const communicationEventsSource = defineTimelineSource<
         direction: true,
         occurred_at: true,
       },
-    }),
+    });
+  },
   toEvents: (rows, { hrefs }) =>
     rows
       .filter((item) => item.event_type !== 'patient_self_report')
@@ -422,8 +443,9 @@ export const patientMcsMessagesSource = defineTimelineSource<
 >({
   key: 'patientMcsMessages',
   emptyFallback: EMPTY,
-  fetch: ({ db, orgId, patientId }) =>
-    db.patientMcsMessage.findMany({
+  fetch: (ctx) => {
+    const { db, orgId, patientId } = ctx;
+    return db.patientMcsMessage.findMany({
       where: {
         org_id: orgId,
         patient_id: patientId,
@@ -437,7 +459,8 @@ export const patientMcsMessagesSource = defineTimelineSource<
         reply_count: true,
         created_at: true,
       },
-    }),
+    });
+  },
   toEvents: (rows, { hrefs }) =>
     rows.map((item) => ({
       id: `patient_mcs_message:${item.id}`,
@@ -466,8 +489,9 @@ export const partnerVisitRecordsSource = defineTimelineSource<
 >({
   key: 'partnerVisitRecords',
   emptyFallback: EMPTY,
-  fetch: ({ db, orgId, patientId }) =>
-    db.partnerVisitRecord.findMany({
+  fetch: (ctx) => {
+    const { db, orgId, patientId } = ctx;
+    return db.partnerVisitRecord.findMany({
       where: {
         org_id: orgId,
         share_case: {
@@ -485,7 +509,8 @@ export const partnerVisitRecordsSource = defineTimelineSource<
         confirmed_at: true,
         updated_at: true,
       },
-    }),
+    });
+  },
   toEvents: (rows, { hrefs }) =>
     rows.map((item) => ({
       id: `partner_visit_record:${item.id}`,
@@ -511,8 +536,9 @@ export const operationalTasksSource = defineTimelineSource<
 >({
   key: 'operationalTasks',
   emptyFallback: EMPTY,
-  fetch: ({ db, orgId, patientId, caseIds }) =>
-    db.task.findMany({
+  fetch: (ctx) => {
+    const { db, orgId, patientId, caseIds } = ctx;
+    return db.task.findMany({
       where: {
         org_id: orgId,
         OR: [
@@ -547,7 +573,8 @@ export const operationalTasksSource = defineTimelineSource<
         created_at: true,
         updated_at: true,
       },
-    }),
+    });
+  },
   toEvents: (rows) =>
     rows.map((item) => {
       const isResolved = item.status === 'completed' || item.status === 'cancelled';
@@ -622,7 +649,8 @@ export const residualMedicationsSource = defineTimelineSource<
 >({
   key: 'residualMedications',
   emptyFallback: EMPTY,
-  fetch: async ({ db, orgId, patientId, caseIds }) => {
+  fetch: async (ctx) => {
+    const { db, orgId, patientId, caseIds } = ctx;
     if (caseIds.length === 0) return [];
 
     const visitRecords = await db.visitRecord.findMany({
@@ -720,14 +748,15 @@ export const residualMedicationsSource = defineTimelineSource<
 export const selfReportsSource = defineTimelineSource<'selfReports', SelfReportTimelineSource>({
   key: 'selfReports',
   emptyFallback: EMPTY,
-  fetch: ({ db, orgId, patientId }) =>
-    db.patientSelfReport.findMany({
+  fetch: (ctx) => {
+    const { db, orgId, patientId } = ctx;
+    return db.patientSelfReport.findMany({
       where: {
         org_id: orgId,
         patient_id: patientId,
       },
       orderBy: [{ created_at: 'desc' }],
-      take: 8,
+      take: resolveTimelineSourceTake(ctx, 8),
       select: {
         id: true,
         category: true,
@@ -737,7 +766,8 @@ export const selfReportsSource = defineTimelineSource<'selfReports', SelfReportT
         preferred_contact_time: true,
         created_at: true,
       },
-    }),
+    });
+  },
   toEvents: (rows, { hrefs }) =>
     rows.map((item) => ({
       id: `self_report:${item.id}`,
@@ -769,22 +799,24 @@ export const externalSharesSource = defineTimelineSource<
 >({
   key: 'externalShares',
   emptyFallback: EMPTY,
-  fetch: ({ db, orgId, patientId, caseIds }) =>
-    db.externalAccessGrant.findMany({
+  fetch: (ctx) => {
+    const { db, orgId, patientId, caseIds } = ctx;
+    return db.externalAccessGrant.findMany({
       where: buildVisibleExternalAccessGrantWhere({
         orgId,
         patientId,
         caseIds,
       }),
       orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
-      take: PATIENT_TIMELINE_EXTERNAL_SHARE_LIMIT,
+      take: resolveTimelineSourceTake(ctx, PATIENT_TIMELINE_EXTERNAL_SHARE_LIMIT),
       select: {
         id: true,
         expires_at: true,
         accessed_at: true,
         created_at: true,
       },
-    }),
+    });
+  },
   toEvents: (rows, { hrefs }) =>
     rows.map((item) => ({
       id: `external_share:${item.id}`,
@@ -808,8 +840,9 @@ export const externalSharesSource = defineTimelineSource<
 export const inquiryRecordsSource = defineTimelineSource<'inquiryRecords', InquiryTimelineSource>({
   key: 'inquiryRecords',
   emptyFallback: EMPTY,
-  fetch: ({ db, orgId, patientId, caseIds }) =>
-    caseIds.length === 0
+  fetch: (ctx) => {
+    const { db, orgId, patientId, caseIds } = ctx;
+    return caseIds.length === 0
       ? Promise.resolve([])
       : db.inquiryRecord.findMany({
           where: {
@@ -837,7 +870,8 @@ export const inquiryRecordsSource = defineTimelineSource<'inquiryRecords', Inqui
               },
             },
           },
-        }),
+        });
+  },
   toEvents: (rows, { hrefs }) =>
     rows.map((item) => {
       const inquiryStatus =
@@ -875,8 +909,9 @@ export const prescriptionIntakesSource = defineTimelineSource<
 >({
   key: 'prescriptionIntakes',
   emptyFallback: EMPTY,
-  fetch: ({ db, orgId, patientId, caseIds }) =>
-    caseIds.length === 0
+  fetch: (ctx) => {
+    const { db, orgId, patientId, caseIds } = ctx;
+    return caseIds.length === 0
       ? Promise.resolve([])
       : db.prescriptionIntake.findMany({
           where: {
@@ -899,7 +934,8 @@ export const prescriptionIntakesSource = defineTimelineSource<
               },
             },
           },
-        }),
+        });
+  },
   toEvents: (rows) =>
     rows.map((item) => ({
       id: `prescription_intake:${item.id}`,
@@ -930,8 +966,9 @@ export const dispenseResultsSource = defineTimelineSource<
 >({
   key: 'dispenseResults',
   emptyFallback: EMPTY,
-  fetch: ({ db, orgId, patientId, caseIds }) =>
-    caseIds.length === 0
+  fetch: (ctx) => {
+    const { db, orgId, patientId, caseIds } = ctx;
+    return caseIds.length === 0
       ? Promise.resolve([])
       : db.dispenseResult.findMany({
           where: {
@@ -946,7 +983,7 @@ export const dispenseResultsSource = defineTimelineSource<
             },
           },
           orderBy: [{ dispensed_at: 'desc' }],
-          take: 12,
+          take: resolveTimelineSourceTake(ctx, 12),
           select: {
             id: true,
             dispensed_at: true,
@@ -969,7 +1006,8 @@ export const dispenseResultsSource = defineTimelineSource<
               },
             },
           },
-        }),
+        });
+  },
   toEvents: (rows) =>
     rows.map((item) => ({
       id: `dispense_result:${item.id}`,
@@ -994,8 +1032,9 @@ export const managementPlansSource = defineTimelineSource<
 >({
   key: 'managementPlans',
   emptyFallback: EMPTY,
-  fetch: ({ db, orgId, caseIds }) =>
-    caseIds.length === 0
+  fetch: (ctx) => {
+    const { db, orgId, caseIds } = ctx;
+    return caseIds.length === 0
       ? Promise.resolve([])
       : db.managementPlan.findMany({
           where: {
@@ -1013,7 +1052,8 @@ export const managementPlansSource = defineTimelineSource<
             reviewed_at: true,
             created_at: true,
           },
-        }),
+        });
+  },
   toEvents: (rows, { hrefs }) =>
     rows.map((item) => {
       const occurredAt = item.approved_at ?? item.reviewed_at ?? item.created_at;
@@ -1103,8 +1143,9 @@ export const conferenceNotesSource = defineTimelineSource<
 >({
   key: 'conferenceNotes',
   emptyFallback: EMPTY,
-  fetch: ({ db, orgId, patientId, caseIds }) =>
-    db.conferenceNote.findMany({
+  fetch: (ctx) => {
+    const { db, orgId, patientId, caseIds } = ctx;
+    return db.conferenceNote.findMany({
       where: {
         ...buildPatientTimelineConferenceNoteWhere({
           orgId,
@@ -1122,7 +1163,8 @@ export const conferenceNotesSource = defineTimelineSource<
         follow_up_completed: true,
         generated_report_id: true,
       },
-    }),
+    });
+  },
   toEvents: (rows, { hrefs }) =>
     rows.map((item) => ({
       id: `conference_note:${item.id}`,
@@ -1151,8 +1193,9 @@ export const billingCandidatesSource = defineTimelineSource<
 >({
   key: 'billingCandidates',
   emptyFallback: EMPTY,
-  fetch: ({ db, orgId, patientId, canManageBilling, billingRefs }) =>
-    canManageBilling
+  fetch: (ctx) => {
+    const { db, orgId, patientId, canManageBilling, billingRefs } = ctx;
+    return canManageBilling
       ? db.billingCandidate.findMany({
           where: {
             org_id: orgId,
@@ -1171,7 +1214,8 @@ export const billingCandidatesSource = defineTimelineSource<
             updated_at: true,
           },
         })
-      : Promise.resolve([]),
+      : Promise.resolve([]);
+  },
   toEvents: (rows, { patientId }) =>
     rows.map((item) => ({
       id: `billing_candidate:${item.id}`,

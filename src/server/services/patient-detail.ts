@@ -736,6 +736,7 @@ export async function getPatientTimelineData(runScoped: ScopedTxRunner, args: Pa
     orgId: args.orgId,
     patientId: args.patientId,
     caseIds,
+    timelineLimit,
     canManageBilling,
     billingRefs,
   };

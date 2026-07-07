@@ -18481,3 +18481,92 @@
 - next action:
   Commit and push the documentation cleanup, then continue with the next
   implementation task selected from the active queue.
+
+## 2026-07-08 PERF-DB-007 movement timeline caller-limit-aware source reads
+
+- current task:
+  Complete the next DB read-speed slice from `Plans.md`: pass the normalized
+  patient timeline caller `timelineLimit` into timeline source fetch context
+  and reduce only safe per-source reads while preserving timeline false-recency
+  safeguards.
+- files inspected:
+  `git status --short --untracked-files=all`, `Plans.md`,
+  `ops/refactor/STATE.md`,
+  `/Users/yusuke/.codex/memories/MEMORY.md`,
+  `src/server/services/patient-detail.ts`,
+  `src/server/services/patient-detail-timeline-registry.ts`,
+  `src/server/services/patient-detail.test.ts`,
+  `src/app/api/patients/[id]/timeline/route.test.ts`,
+  gbrain search results for patient timeline source reads, and Oracle sessions
+  `timeline-source-limit-review` / `timeline-source-limit-small`.
+- Oracle / GPT-5.5 Pro review:
+  The first Oracle browser run failed because the attachment upload timed out.
+  The smaller follow-up run completed and was reattached from the archived
+  session. Oracle confirmed option B only if narrowed to order-aligned,
+  non-seed, one-row-one-event sources. It specifically warned not to reduce
+  `visitSchedules`, operation-history seed sources, child-event sources, and
+  sources whose query ordering differs from projected `occurred_at`.
+- files changed:
+  `Plans.md`,
+  `src/server/services/patient-detail.ts`,
+  `src/server/services/patient-detail-timeline-registry.ts`,
+  `src/server/services/patient-detail.test.ts`,
+  `ops/refactor/STATE.md`.
+- implementation:
+  Added `timelineLimit` to `TimelineFetchCtx`, populated it from the normalized
+  `resolvePatientTimelineLimit()` result in `getPatientTimelineData()`, and
+  added a bounded `resolveTimelineSourceTake()` helper with a small recency
+  buffer. Only order-aligned/non-seed sources reduce their `take`:
+  `visitRecords`, `communicationEvents`, `patientSelfReport`,
+  `externalAccessGrant`, and `dispenseResults`. Sources that can generate
+  newer child/action events or seed operation-history filters retain their
+  default caps.
+- Plans.md hygiene:
+  Moved `PERF-DB-007` out of active implementation queues, recorded it as
+  implemented in the DB performance registry, and updated the recommended next
+  order to `PERF-DB-006`, `PAYLOAD-BUDGET-001`, dashboard rail/drilldown,
+  frontend slice contracts, and plan archive hygiene.
+- gbrain memory:
+  `projects/careviax/decisions/2026-07-08/perf-db-007-timeline-source-limit`
+  records the source-reduction policy and Oracle rationale. A mistakenly
+  created repo-source duplicate was soft-deleted and its untracked file removed.
+- bugs found:
+  The timeline service accepted small caller limits but source fetchers still
+  used fixed caps, so small initial movement/timeline requests paid the read
+  cost for all default source windows before final merge/slice. A naive fix
+  would have introduced false recency by shrinking sources whose latest visible
+  event is derived from nested delivery records, operation-history actions, or
+  order fields that differ from event `occurred_at`.
+- security risks reduced:
+  No new PHI fields, raw text, storage keys, signed URLs, permission branches,
+  or tenant filters were introduced. `timelineLimit` is the already-normalized
+  service value and is used only for bounded `take` calculations inside the
+  existing scoped transaction and fail-soft source registry.
+- performance issues improved:
+  Small caller limits now shrink safe source reads from their default windows
+  to a floor-buffered caller window, while retaining default caps where reducing
+  reads would risk dropping relevant child/audit events. This lowers initial
+  movement/timeline DB work without changing public DTO shape.
+- validation commands:
+  `pnpm exec vitest run src/server/services/patient-detail.test.ts --reporter=dot --testTimeout=30000`;
+  `pnpm exec vitest run src/server/services/patient-detail.test.ts 'src/app/api/patients/[id]/timeline/route.test.ts' 'src/app/api/patients/[id]/detail-slices.test.ts' --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint src/server/services/patient-detail.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts 'src/app/api/patients/[id]/timeline/route.ts' 'src/app/api/patients/[id]/timeline/route.test.ts'`;
+  `pnpm exec prettier --write Plans.md`;
+  `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/server/services/patient-detail.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts 'src/app/api/patients/[id]/timeline/route.ts' 'src/app/api/patients/[id]/timeline/route.test.ts'`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `git diff --check -- Plans.md ops/refactor/STATE.md src/server/services/patient-detail.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-detail.test.ts`.
+- validation results:
+  Focused patient detail service tests passed (1 file / 77 tests). The first
+  post-Oracle run failed because the test asserted the residual-medication
+  second-stage query even when no parent visit records existed; the assertion
+  was removed because the source correctly short-circuits in that case.
+  Broader patient timeline/detail pack passed (3 files / 138 tests), with only
+  existing PHI audit mock warnings. Scoped ESLint passed. Prettier passed after
+  formatting `Plans.md`. Full typecheck passed. Diff whitespace check passed.
+- remaining work:
+  Commit and push this slice, then continue with `PERF-DB-006` care-report
+  bounded search / EXPLAIN-backed index planning and `PAYLOAD-BUDGET-001`
+  payload smoke.
+- next action:
+  Commit and push the explicit owned files, then begin the next Plans.md
+  backend performance item.

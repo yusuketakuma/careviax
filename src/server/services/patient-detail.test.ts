@@ -4973,6 +4973,62 @@ describe('getPatientTimelineData', () => {
     ]);
   });
 
+  it('passes small caller limits into timeline source reads with a recency buffer', async () => {
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+    });
+
+    await getPatientTimelineData(runnerFor(db), {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+      timelineLimit: 2,
+    });
+
+    expect(db.visitRecord.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 4 }));
+    expect(db.communicationEvent.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 4 }),
+    );
+    expect(db.patientSelfReport.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 4 }),
+    );
+    expect(db.externalAccessGrant.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 4 }),
+    );
+    expect(db.dispenseResult.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 4 }));
+
+    // Child-event/action-sensitive sources keep their original caps. Their
+    // newest visible event can be derived from nested delivery records or
+    // operation-history actions rather than the parent row order alone, and
+    // some of their ids seed the follow-up operation-history filter.
+    expect(db.visitSchedule.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 12 }));
+    expect(db.patientMcsMessage.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 8 }),
+    );
+    expect(db.partnerVisitRecord.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 8 }),
+    );
+    expect(db.task.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 12 }));
+    expect(db.visitRecord.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 12 }));
+    expect(db.careReport.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 8 }));
+    expect(db.inquiryRecord.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 8 }));
+    expect(db.prescriptionIntake.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 10 }),
+    );
+    expect(db.firstVisitDocument.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 8 }),
+    );
+    expect(db.managementPlan.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 6 }));
+    expect(db.conferenceNote.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 8 }));
+    expect(db.billingCandidate.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 8 }));
+  });
+
   it('flows every timeline read through the injected scoped executor, never the global prisma', async () => {
     const db = buildDb({
       patient: {
