@@ -6,6 +6,7 @@ const dbGatedScripts = [
   'backfill-drug-packages-from-drug-master-jan.ts',
   'backfill-prescription-line-drug-master-ids.ts',
   'backfill-webhook-registration-secrets.ts',
+  'backup-recovery-integrity-audit.ts',
   'check-care-report-duplicates.ts',
   'check-visit-route-order-conflicts.ts',
   'explain-care-report-index-candidates.ts',
@@ -16,6 +17,7 @@ const dbGatedScripts = [
 ];
 
 const dbGatedPackageScripts = {
+  'backup:drill:integrity': 'tools/scripts/backup-recovery-integrity-audit.ts',
   'db:check-care-report-duplicates': 'tools/scripts/check-care-report-duplicates.ts',
   'db:check-visit-route-order-conflicts': 'tools/scripts/check-visit-route-order-conflicts.ts',
   'db:explain-care-report-index-candidates':
@@ -69,7 +71,11 @@ describe('DB-gated precheck CLI conventions', () => {
   it('prints structured CLI failure output', () => {
     for (const scriptName of dbGatedScripts) {
       const source = readScript(scriptName);
-      expect(source, scriptName).toContain('JSON.stringify({');
+      if (scriptName === 'backup-recovery-integrity-audit.ts') {
+        expect(source, scriptName).toContain('formatRecoveryIntegrityCliError');
+      } else {
+        expect(source, scriptName).toContain('JSON.stringify({');
+      }
       expect(source, scriptName).toContain('ok: false');
       expect(source, scriptName).toContain("import { inspect } from 'node:util'");
     }

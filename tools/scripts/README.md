@@ -1,6 +1,7 @@
 # Operational Scripts
 
 - `backup-recovery-check.ts` : バックアップ / 復旧手順の前提確認と、必須構造化fieldが揃ったredaction付き復旧drill記録の追記。PHI/secrets/AWS raw identifiers/構造化delimiterは拒否する。
+- `backup-recovery-integrity-audit.ts` : 復元済みDB / staging / local DB に対する SELECT-only 整合監査。件数、orphan count、latest timestamp、RPO補助だけをPHI-freeで出力し、production-like `DATABASE_URL` は `--allow-production` なしで拒否する。
 - `backfill-drug-packages-from-drug-master-jan.ts` : DrugPackage JAN dry-run analyzer for migrating legacy DrugMaster.jan_code into package-level GTIN/JAN rows; supports `--json-output` and `--markdown-output` review artifacts
 - `backfill-prescription-line-drug-master-ids.ts` : PrescriptionLine drug_master_id dry-run analyzer for safe resolver-backed backfill planning; supports `--json-output` and `--markdown-output` review artifacts
 - `backfill-webhook-registration-secrets.ts` : WebhookRegistration signing-secret encrypted-field dry-run/backfill helper

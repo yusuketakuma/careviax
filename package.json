@@ -37,6 +37,7 @@
     "pilot:dossier": "tsx tools/scripts/pilot-dossier.ts",
     "uat:summary": "tsx tools/scripts/uat-feedback-summary.ts",
     "backup:drill:check": "tsx tools/scripts/backup-recovery-check.ts",
+    "backup:drill:integrity": "tsx tools/scripts/backup-recovery-integrity-audit.ts",
     "aws:cost:estimate": "tsx tools/scripts/aws-cost-estimate.ts",
     "aws:deploy:readiness": "tsx tools/scripts/aws-deployment-readiness.ts",
     "aws:ecr:template:validate": "tsx tools/scripts/aws-ecr-template-validate.ts",

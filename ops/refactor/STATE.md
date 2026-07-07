@@ -41,6 +41,104 @@
 
 ## 直近の land（本日・要点）
 
+- codex: `OPS-RECOVERY-INTEGRITY-001` SELECT-only restored DB integrity audit CLI。
+  - current task:
+    `Plans.md` Recovery / AWS lane の次段として、復元済みDB / staging / local DB に対する
+    SELECT-only 業務整合監査CLIを追加する。対象は患者、ケース、訪問予定/記録、報告/送付、
+    請求候補/タスク、FileAsset、AuditLog、InboundCommunication、MedicationStock。
+    出力は count/status/timestamp/issue count/RPO補助に限定し、PHI、raw id、storage key、
+    AWS identifier、endpoint、provider raw error を出さない。runtime restore API、AWS restore
+    call、Secrets書換、migration、DB mutation は実装しない。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `docs/compliance/backup-recovery-drill.md`,
+    `package.json`,
+    `tools/scripts/README.md`,
+    `tools/scripts/backup-recovery-check.ts`,
+    `tools/scripts/db-precheck-cli-conventions.test.ts`,
+    `tools/scripts/db-precheck-import-safety.test.ts`,
+    `prisma/schema/clinical.prisma`,
+    `prisma/schema/tasks.prisma`,
+    `prisma/schema/inbound-communication.prisma`,
+    `prisma/schema/medication-stock.prisma`,
+    `prisma/schema/audit.prisma`,
+    `prisma/schema/files.prisma`,
+    focused validation outputs.
+  - Oracle:
+    Consulted Oracle/GPT-5.5 Pro via browser mode with GitHub context
+    (`https://github.com/yusuketakuma/careviax`, branch `main`, commit
+    `db33554ae2ddaa84e4484768e1bee5ce8da72cfd`). Oracle returned `No-Go as-is`
+    for the pre-final patch. Accepted and implemented the blockers: redact CLI catch-path DB/provider
+    errors, force pg session read-only, harden production-like URL detection for underscore/token names,
+    prevent audit logs alone from satisfying RPO, fail closed on invalid counts, add cross-link checks,
+    and clarify `--allow-production` semantics in the runbook.
+  - files changed:
+    `Plans.md`,
+    `docs/compliance/backup-recovery-drill.md`,
+    `package.json`,
+    `tools/scripts/README.md`,
+    `tools/scripts/backup-recovery-integrity-audit.ts`,
+    `tools/scripts/backup-recovery-integrity-audit.test.ts`,
+    `tools/scripts/db-precheck-cli-conventions.test.ts`,
+    `tools/scripts/db-precheck-import-safety.test.ts`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Added `backup:drill:integrity`, a DB-gated CLI that runs two sequential SELECT-only queries:
+    count/latest timestamp inventory and integrity issue counts. The pg client uses
+    `default_transaction_read_only=on` plus query/statement timeouts. Production-like targets are
+    blocked unless `--allow-production` is explicit. JSON/Markdown output is PHI-free and includes
+    an output policy. RPO helper now uses only critical operational categories, not audit logs alone.
+    CLI failure output preserves safe usage/guard errors but redacts provider raw errors and endpoints.
+    `Plans.md` now marks `OPS-RECOVERY-INTEGRITY-001` implemented and moves the Recovery / AWS lane to
+    Object Lock / strict skipped-check monitor and live AWS human-gate evidence.
+  - bugs found:
+    The initial CLI catch path could have printed raw connection/provider errors. Production-like
+    detection missed underscore-delimited names such as `ph_os_prod`. Invalid count coercion could
+    false-pass as zero. Audit logs alone could have made optional RPO appear fresher than restored
+    operational data. The first integrity set lacked cross-link checks for visit/case/report/task
+    relationships.
+  - security risks reduced:
+    Added fail-closed production-like target guard, read-only session enforcement, PHI-free output
+    policy, provider error redaction, and forbidden SQL mutation tests. No live AWS calls, production
+    DB mutation, restore/delete API, secret write, migration, deploy, or destructive operation was
+    performed.
+  - performance issues improved:
+    Added a recovery-readiness audit that can detect restored-data count/link drift without broad
+    payload reads. The CLI queries are count-only/link-count SELECTs and execute sequentially to avoid
+    pg client concurrency surprises. No production index or runtime query shape was changed in this
+    slice.
+  - validation commands:
+    `npx -y @steipete/oracle --dry-run summary --files-report ...`;
+    `npx -y @steipete/oracle --engine browser --model gpt-5.5-pro ...`;
+    `pnpm exec vitest run tools/scripts/backup-recovery-integrity-audit.test.ts tools/scripts/db-precheck-import-safety.test.ts tools/scripts/db-precheck-cli-conventions.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm backup:drill:integrity -- --help`;
+    `DATABASE_URL='postgresql://phos:secret@ph-os-prod.abc123.ap-northeast-1.rds.amazonaws.com:5432/ph_os' pnpm backup:drill:integrity -- --json`;
+    `pnpm backup:drill:check`;
+    `pnpm exec eslint tools/scripts/backup-recovery-integrity-audit.ts tools/scripts/backup-recovery-integrity-audit.test.ts tools/scripts/db-precheck-cli-conventions.test.ts tools/scripts/db-precheck-import-safety.test.ts`;
+    `pnpm exec prettier --check Plans.md docs/compliance/backup-recovery-drill.md package.json tools/scripts/README.md tools/scripts/db-precheck-cli-conventions.test.ts tools/scripts/db-precheck-import-safety.test.ts tools/scripts/backup-recovery-integrity-audit.ts tools/scripts/backup-recovery-integrity-audit.test.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `git diff --check -- <changed files>`.
+  - validation results:
+    Oracle completed and its blockers were implemented. Focused Vitest passed `3` files / `16` tests.
+    CLI help passed. Production-like URL guard failed closed as expected before DB connect. Existing
+    backup precheck passed and still reports local `DATABASE_URL` / `AWS_REGION` missing with
+    `ready_for_live_drill=false`. Scoped ESLint passed. Prettier check passed. Full typecheck passed.
+    Diff whitespace check passed.
+  - gbrain:
+    `projects/careviax/reviews/2026-07-08/ops-recovery-integrity-001`
+    (`SecurityFinding`) に PHI-free で SELECT-only restored DB integrity audit、Oracle review outcome、
+    read-only session、production guard、RPO basis、CLI error redaction を保存する。
+  - remaining:
+    `OPS-RECOVERY-MONITOR-003` の S3 Object Lock / strict skipped-check monitor、
+    `OPS-RECOVERY-DOC-001` の root runbook least-privilege cleanup、
+    `OPS-RECOVERY-LIVE-001` の live AWS strict validation / restore drill evidence collection は未実装
+    または human gate。実際の復元DB監査は credentials/approved target が必要なため未実行。
+    大量の unrelated untracked memory/docs files はこのsliceの対象外。
+  - next action:
+    Commit/push this scoped recovery integrity slice, then continue with
+    `OPS-RECOVERY-MONITOR-003` or the next user-selected DB/performance task.
+
 - codex: `OPS-RECOVERY-EVIDENCE-001` structured/redacted backup recovery evidence gate。
   - current task:
     `Plans.md` の Recovery / AWS lane から、Codex実装可能な前段 `OPS-RECOVERY-EVIDENCE-001`
