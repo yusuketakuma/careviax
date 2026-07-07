@@ -17,8 +17,8 @@ import { buildReportHref, buildReportSendHref } from '@/lib/reports/navigation';
 import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
 import { buildSetPlanHref } from '@/lib/set/navigation';
 import { canViewAllDashboardWork } from '@/lib/auth/visit-schedule-access';
-import { buildVisitHref } from '@/lib/visits/navigation';
-import { timeDateToString } from '@/lib/visits/time-of-day';
+import { buildVisitHref, buildVisitRecordHref } from '@/lib/visits/navigation';
+import { applyTimeDateToDate, timeDateToString } from '@/lib/visits/time-of-day';
 import { serverCache } from '@/lib/utils/server-cache';
 import { japanDayInstantRange, todayUtcRange } from '@/lib/utils/date-boundary';
 import {
@@ -32,6 +32,12 @@ import {
 } from '@/server/services/workflow-dashboard-cache';
 import { buildBlockedReasons } from '@/lib/workflow/blocked-reason-projection';
 import { billingMonthForJapanTimestamp } from '@/server/services/billing-evidence';
+import {
+  buildVisitReadyReadinessBlockers,
+  VISIT_READY_CARRY_ITEMS_STATUS_BLOCKER,
+  VISIT_READY_PREPARATION_ITEMS,
+  type VisitReadyPreparationChecklist,
+} from '@/server/services/visit-preparation-readiness';
 import type {
   CockpitAuditQueueItem,
   CockpitBlockedReason,
@@ -61,6 +67,7 @@ const INBOUND_FEED_RESPONSE_LIMIT = 8;
 const CALLBACK_URGENT_FETCH_LIMIT = 12;
 const REPORT_URGENT_FETCH_LIMIT = 12;
 const BILLING_URGENT_FETCH_LIMIT = 12;
+const VISIT_PREPARATION_URGENT_FETCH_LIMIT = 12;
 
 type DashboardScopeQuery =
   | { ok: true; scope: DashboardCockpitScope | null }
@@ -174,11 +181,45 @@ type DashboardBillingUrgentResult = {
   totalCount: number;
 };
 
+type DashboardVisitPreparationSchedule = {
+  id: string;
+  display_id: string | null;
+  visit_type: string;
+  priority: string;
+  schedule_status: string;
+  scheduled_date: Date;
+  time_window_start: Date | null;
+  carry_items_status: string | null;
+  pre_visit_checklist_completed: boolean;
+  updated_at: Date;
+  preparation:
+    | ({
+        id: string;
+        org_id: string;
+        prepared_at: Date | null;
+        updated_at: Date;
+      } & VisitReadyPreparationChecklist)
+    | null;
+  case_: {
+    patient: {
+      id: string;
+      name: string;
+    };
+  };
+};
+
+type DashboardVisitPreparationUrgentResult = {
+  items: DashboardUrgentItem[];
+  totalCount: number;
+};
+
 const TASK_PRIORITY_WEIGHT: Record<string, number> = {
   emergency: 0,
   urgent: 1,
   normal: 2,
 };
+
+const VISIT_PREPARATION_ACTIVE_STATUSES = ['planned', 'in_preparation'] as const;
 
 const HANDLING_TAG_ORDER = [
   'narcotic',
@@ -566,9 +607,148 @@ function buildBillingUrgentItem(args: {
   };
 }
 
+function getVerifiedVisitPreparation(schedule: DashboardVisitPreparationSchedule, orgId: string) {
+  return schedule.preparation?.org_id === orgId ? schedule.preparation : null;
+}
+
+function countVisitPreparationReadyItems(preparation: VisitReadyPreparationChecklist | null) {
+  if (!preparation) return 0;
+  return VISIT_READY_PREPARATION_ITEMS.filter(([key]) => preparation[key]).length;
+}
+
+function buildVisitPreparationDueAt(schedule: DashboardVisitPreparationSchedule) {
+  return applyTimeDateToDate(
+    schedule.scheduled_date,
+    schedule.time_window_start,
+    '18:00',
+  ).toISOString();
+}
+
+function buildVisitPreparationReferenceLabel(schedule: DashboardVisitPreparationSchedule) {
+  const dateLabel = formatNullableDateKey(schedule.scheduled_date) ?? '訪問日未設定';
+  const timeLabel = timeDateToString(schedule.time_window_start);
+  return [schedule.display_id ?? dateLabel, timeLabel].filter(Boolean).join(' / ');
+}
+
+function buildVisitPreparationBlockers(args: {
+  schedule: DashboardVisitPreparationSchedule;
+  orgId: string;
+}) {
+  const preparation = getVerifiedVisitPreparation(args.schedule, args.orgId);
+  const blockers = buildVisitReadyReadinessBlockers(preparation, args.schedule.carry_items_status);
+  if (!args.schedule.pre_visit_checklist_completed) {
+    blockers.push('出発前チェック未完了');
+  }
+  if (
+    preparation &&
+    countVisitPreparationReadyItems(preparation) === VISIT_READY_PREPARATION_ITEMS.length &&
+    preparation.prepared_at == null
+  ) {
+    blockers.push('準備完了時刻未確定');
+  }
+  return Array.from(new Set(blockers));
+}
+
+function deriveVisitPreparationSeverity(args: {
+  schedule: DashboardVisitPreparationSchedule;
+  blockers: string[];
+  now: Date;
+}) {
+  if (args.schedule.priority === 'emergency') return 'blocking' as const;
+  if (
+    args.schedule.carry_items_status === 'blocked' ||
+    args.blockers.includes(VISIT_READY_CARRY_ITEMS_STATUS_BLOCKER)
+  ) {
+    return args.schedule.carry_items_status === 'blocked'
+      ? ('blocking' as const)
+      : ('urgent' as const);
+  }
+  if (args.schedule.priority === 'urgent') return 'urgent' as const;
+  const dueAt = new Date(buildVisitPreparationDueAt(args.schedule));
+  if (dueAt.getTime() - args.now.getTime() <= 60 * 60_000) return 'urgent' as const;
+  return 'warning' as const;
+}
+
+function summarizeVisitPreparationBlockers(blockers: string[]) {
+  if (blockers.length === 0) return '訪問準備の確認が必要です。';
+  const visible = blockers.slice(0, 3);
+  const suffix =
+    blockers.length > visible.length ? ` ほか${blockers.length - visible.length}件` : '';
+  return `未完了: ${visible.join('、')}${suffix}`;
+}
+
+function buildVisitPreparationUrgentItem(args: {
+  schedule: DashboardVisitPreparationSchedule;
+  orgId: string;
+  now: Date;
+}): DashboardUrgentItem | null {
+  const preparation = getVerifiedVisitPreparation(args.schedule, args.orgId);
+  const blockers = buildVisitPreparationBlockers({
+    schedule: args.schedule,
+    orgId: args.orgId,
+  });
+  if (blockers.length === 0) return null;
+
+  const readyCount = countVisitPreparationReadyItems(preparation);
+  const severity = deriveVisitPreparationSeverity({
+    schedule: args.schedule,
+    blockers,
+    now: args.now,
+  });
+  const title =
+    args.schedule.carry_items_status === 'blocked'
+      ? '訪問持参物がブロック中です'
+      : preparation == null
+        ? '訪問準備チェックが未作成です'
+        : '訪問準備チェックが未完了です';
+
+  return {
+    id: `visit_preparation:${args.schedule.id}`,
+    source: 'visit_preparation',
+    source_id: preparation?.id ?? args.schedule.id,
+    source_label: '訪問準備',
+    reference_label: buildVisitPreparationReferenceLabel(args.schedule),
+    severity,
+    patient_id: args.schedule.case_.patient.id,
+    patient_name: args.schedule.case_.patient.name,
+    title,
+    summary: summarizeVisitPreparationBlockers(blockers),
+    due_at: buildVisitPreparationDueAt(args.schedule),
+    waiting_since: (preparation?.updated_at ?? args.schedule.updated_at).toISOString(),
+    badges: [
+      { label: '訪問準備', tone: 'info' },
+      {
+        label: `準備 ${readyCount}/${VISIT_READY_PREPARATION_ITEMS.length}`,
+        tone:
+          readyCount === VISIT_READY_PREPARATION_ITEMS.length
+            ? 'success'
+            : severity === 'blocking'
+              ? 'danger'
+              : 'warning',
+      },
+      ...(args.schedule.carry_items_status === 'blocked' ||
+      args.schedule.carry_items_status === 'partial'
+        ? [
+            {
+              label:
+                args.schedule.carry_items_status === 'blocked' ? '持参物ブロック' : '持参物未確定',
+              tone:
+                args.schedule.carry_items_status === 'blocked'
+                  ? ('danger' as const)
+                  : ('warning' as const),
+            },
+          ]
+        : []),
+    ],
+    action_href: buildVisitRecordHref(args.schedule.id),
+    action_label: '準備を確認',
+  };
+}
+
 function buildDashboardUrgentItems(args: {
   auditItems: CockpitAuditQueueItem[];
   inboundItems?: CockpitInboundItem[];
+  visitPreparationItems?: DashboardUrgentItem[];
   callbackItems?: DashboardUrgentItem[];
   reportItems?: DashboardUrgentItem[];
   billingItems?: DashboardUrgentItem[];
@@ -580,6 +760,7 @@ function buildDashboardUrgentItems(args: {
     ...(args.inboundItems ?? [])
       .map(buildInboundUrgentItem)
       .filter((item): item is DashboardUrgentItem => item != null),
+    ...(args.visitPreparationItems ?? []),
     ...(args.callbackItems ?? []),
     ...(args.reportItems ?? []),
     ...(args.billingItems ?? []),
@@ -1092,6 +1273,49 @@ function buildDashboardBillingCandidateWhere(args: {
   };
 }
 
+function buildDashboardVisitPreparationWhere(args: {
+  orgId: string;
+  assignmentScope: DashboardAssignmentScope;
+  todayRange: ReturnType<typeof todayUtcRange>;
+}): Prisma.VisitScheduleWhereInput {
+  const hasRestrictedScope =
+    args.assignmentScope.caseIds !== undefined || args.assignmentScope.patientIds !== undefined;
+  const scopeClauses = [
+    ...(args.assignmentScope.caseIds && args.assignmentScope.caseIds.length > 0
+      ? [{ case_id: { in: args.assignmentScope.caseIds } }]
+      : []),
+    ...(args.assignmentScope.patientIds && args.assignmentScope.patientIds.length > 0
+      ? [{ case_: { org_id: args.orgId, patient_id: { in: args.assignmentScope.patientIds } } }]
+      : []),
+  ];
+
+  return {
+    org_id: args.orgId,
+    scheduled_date: args.todayRange,
+    schedule_status: { in: [...VISIT_PREPARATION_ACTIVE_STATUSES] },
+    ...(hasRestrictedScope
+      ? scopeClauses.length > 0
+        ? { OR: scopeClauses }
+        : { id: { in: [] } }
+      : {}),
+    AND: [
+      {
+        OR: [
+          { pre_visit_checklist_completed: false },
+          { carry_items_status: { in: ['blocked', 'partial'] } },
+          { preparation: { is: null } },
+          { preparation: { is: { prepared_at: null } } },
+          { preparation: { is: { medication_changes_reviewed: false } } },
+          { preparation: { is: { carry_items_confirmed: false } } },
+          { preparation: { is: { previous_issues_reviewed: false } } },
+          { preparation: { is: { route_confirmed: false } } },
+          { preparation: { is: { offline_synced: false } } },
+        ],
+      },
+    ],
+  };
+}
+
 function buildInboundCommunicationHref(event: { id: string; patient_id: string | null }) {
   if (event.patient_id) return buildPatientHref(event.patient_id, '#inbound-communications');
   return `/communications/inbound?event=${encodeURIComponent(event.id)}`;
@@ -1597,6 +1821,95 @@ async function readDashboardBillingUrgents(args: {
   );
 }
 
+async function readDashboardVisitPreparationUrgents(args: {
+  ctx: AuthContext;
+  scopeContext: DashboardCockpitScopeContext;
+}): Promise<DashboardVisitPreparationUrgentResult> {
+  const hasRestrictedScope =
+    args.scopeContext.assignmentScope.caseIds !== undefined ||
+    args.scopeContext.assignmentScope.patientIds !== undefined;
+  const hasScopeTargets =
+    (args.scopeContext.assignmentScope.caseIds?.length ?? 0) > 0 ||
+    (args.scopeContext.assignmentScope.patientIds?.length ?? 0) > 0;
+  if (hasRestrictedScope && !hasScopeTargets) {
+    return { items: [], totalCount: 0 };
+  }
+
+  const where = buildDashboardVisitPreparationWhere({
+    orgId: args.ctx.orgId,
+    assignmentScope: args.scopeContext.assignmentScope,
+    todayRange: args.scopeContext.todayRange,
+  });
+
+  return withOrgContext(
+    args.ctx.orgId,
+    async (tx) => {
+      const [schedules, totalCount] = await Promise.all([
+        tx.visitSchedule.findMany({
+          where,
+          orderBy: [
+            { scheduled_date: 'asc' },
+            { time_window_start: 'asc' },
+            { route_order: 'asc' },
+            { id: 'asc' },
+          ],
+          take: VISIT_PREPARATION_URGENT_FETCH_LIMIT,
+          select: {
+            id: true,
+            display_id: true,
+            visit_type: true,
+            priority: true,
+            schedule_status: true,
+            scheduled_date: true,
+            time_window_start: true,
+            carry_items_status: true,
+            pre_visit_checklist_completed: true,
+            updated_at: true,
+            preparation: {
+              select: {
+                id: true,
+                org_id: true,
+                prepared_at: true,
+                updated_at: true,
+                medication_changes_reviewed: true,
+                carry_items_confirmed: true,
+                previous_issues_reviewed: true,
+                route_confirmed: true,
+                offline_synced: true,
+              },
+            },
+            case_: {
+              select: {
+                patient: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        }),
+        tx.visitSchedule.count({ where }),
+      ]);
+
+      return {
+        totalCount,
+        items: schedules
+          .map((schedule) =>
+            buildVisitPreparationUrgentItem({
+              schedule,
+              orgId: args.ctx.orgId,
+              now: args.scopeContext.now,
+            }),
+          )
+          .filter((item): item is DashboardUrgentItem => item != null),
+      };
+    },
+    { requestContext: args.ctx, maxWaitMs: 2000, timeoutMs: 3000 },
+  );
+}
+
 async function readDashboardComments(args: {
   ctx: AuthContext;
   scopeContext: DashboardCockpitScopeContext;
@@ -1708,6 +2021,7 @@ async function buildCockpitDetails(
   const [
     auditQueue,
     inbound,
+    visitPreparationUrgents,
     callbackUrgents,
     reportUrgents,
     billingUrgents,
@@ -1717,6 +2031,7 @@ async function buildCockpitDetails(
   ] = await Promise.all([
     readAuditQueue({ orgId: ctx.orgId, assignmentScope: scopeContext.assignmentScope }),
     readDashboardInbound({ ctx, scopeContext }),
+    readDashboardVisitPreparationUrgents({ ctx, scopeContext }),
     readDashboardCallbackUrgents({ ctx, scopeContext }),
     readDashboardReportDeliveryUrgents({ ctx, scopeContext }),
     readDashboardBillingUrgents({ ctx, scopeContext }),
@@ -1767,6 +2082,7 @@ async function buildCockpitDetails(
   const urgentItems = buildDashboardUrgentItems({
     auditItems: visibleQueue,
     inboundItems: inbound.inbound_items,
+    visitPreparationItems: visitPreparationUrgents.items,
     callbackItems: callbackUrgents.items,
     reportItems: reportUrgents.items,
     billingItems: billingUrgents.items,
@@ -1776,6 +2092,7 @@ async function buildCockpitDetails(
   const urgentSourceCount =
     auditQueue.totalCount +
     inbound.inbound_needs_review_count +
+    visitPreparationUrgents.totalCount +
     callbackUrgents.totalCount +
     reportUrgents.totalCount +
     billingUrgents.totalCount +

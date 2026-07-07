@@ -18,6 +18,7 @@ const {
   userFindManyMock,
   queryRawMock,
   visitScheduleFindManyMock,
+  visitScheduleCountMock,
   workflowExceptionFindManyMock,
   taskCountMock,
   careCaseFindManyMock,
@@ -52,6 +53,7 @@ const {
   userFindManyMock: vi.fn(),
   queryRawMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
+  visitScheduleCountMock: vi.fn(),
   workflowExceptionFindManyMock: vi.fn(),
   taskCountMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
@@ -90,7 +92,7 @@ vi.mock('@/lib/db/client', () => ({
     taskComment: { findMany: taskCommentFindManyMock },
     user: { findMany: userFindManyMock },
     $queryRaw: queryRawMock,
-    visitSchedule: { findMany: visitScheduleFindManyMock },
+    visitSchedule: { findMany: visitScheduleFindManyMock, count: visitScheduleCountMock },
     workflowException: { findMany: workflowExceptionFindManyMock },
     task: { count: taskCountMock },
     careCase: { findMany: careCaseFindManyMock },
@@ -224,18 +226,22 @@ describe('/api/dashboard/cockpit', () => {
         audits: [{ result: 'approved' }],
       }),
     ]);
-    visitScheduleFindManyMock.mockResolvedValue([
-      {
-        id: 'visit_1',
-        visit_type: 'regular',
-        schedule_status: 'planned',
-        // @db.Time は壁時計を UTC parts に格納する(Date.UTC で表現)。
-        time_window_start: new Date(Date.UTC(2026, 5, 12, 10, 30)),
-        time_window_end: new Date(Date.UTC(2026, 5, 12, 11, 30)),
-        facility_batch_id: null,
-        case_: { patient: { name: '伊藤' } },
-      },
-    ]);
+    visitScheduleFindManyMock.mockImplementation((args?: { select?: Record<string, unknown> }) => {
+      if (args?.select?.preparation) return Promise.resolve([]);
+      return Promise.resolve([
+        {
+          id: 'visit_1',
+          visit_type: 'regular',
+          schedule_status: 'planned',
+          // @db.Time は壁時計を UTC parts に格納する(Date.UTC で表現)。
+          time_window_start: new Date(Date.UTC(2026, 5, 12, 10, 30)),
+          time_window_end: new Date(Date.UTC(2026, 5, 12, 11, 30)),
+          facility_batch_id: null,
+          case_: { patient: { name: '伊藤' } },
+        },
+      ]);
+    });
+    visitScheduleCountMock.mockResolvedValue(0);
     workflowExceptionFindManyMock.mockResolvedValue([
       {
         id: 'exception_1',
@@ -275,6 +281,10 @@ describe('/api/dashboard/cockpit', () => {
     patientFindManyMock.mockResolvedValue([]);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        visitSchedule: {
+          findMany: visitScheduleFindManyMock,
+          count: visitScheduleCountMock,
+        },
         billingCandidate: {
           findMany: billingCandidateFindManyMock,
           count: billingCandidateCountMock,
@@ -791,6 +801,153 @@ describe('/api/dashboard/cockpit', () => {
     });
   });
 
+  it('adds incomplete visit preparation work to the unified urgent queue without leaking raw preparation evidence', async () => {
+    visitScheduleCountMock.mockResolvedValue(1);
+    visitScheduleFindManyMock.mockImplementation(
+      (args?: { select?: Record<string, unknown>; where?: Record<string, unknown> }) => {
+        if (args?.select?.preparation) {
+          return Promise.resolve([
+            {
+              id: 'visit_prep_blocked',
+              display_id: 'VP-001',
+              visit_type: 'regular',
+              priority: 'normal',
+              schedule_status: 'planned',
+              scheduled_date: new Date('2026-06-12T00:00:00.000Z'),
+              time_window_start: new Date(Date.UTC(2026, 5, 12, 10, 0)),
+              carry_items_status: 'blocked',
+              pre_visit_checklist_completed: false,
+              updated_at: new Date(2026, 5, 12, 8, 55),
+              carry_items: { note: '患者 佐藤 090-9999-9999 東京都 アムロジピン 個別事情' },
+              escalation_reason: '患者 佐藤 個別事情',
+              preparation: {
+                id: 'prep_blocked',
+                org_id: 'org_1',
+                prepared_at: null,
+                updated_at: new Date(2026, 5, 12, 9, 5),
+                medication_changes_reviewed: true,
+                carry_items_confirmed: false,
+                previous_issues_reviewed: true,
+                route_confirmed: false,
+                offline_synced: true,
+                checklist: { raw: '患者 佐藤 090-9999-9999' },
+                route_plan_snapshot: { raw: '東京都 アムロジピン' },
+              },
+              case_: {
+                patient: {
+                  id: 'patient_visit_prep',
+                  name: '訪問 準備',
+                },
+              },
+            },
+          ]);
+        }
+        return Promise.resolve([
+          {
+            id: 'visit_1',
+            visit_type: 'regular',
+            schedule_status: 'planned',
+            time_window_start: new Date(Date.UTC(2026, 5, 12, 10, 30)),
+            time_window_end: new Date(Date.UTC(2026, 5, 12, 11, 30)),
+            facility_batch_id: null,
+            case_: { patient: { name: '伊藤' } },
+          },
+        ]);
+      },
+    );
+
+    const response = (await GETDetails(createRequest('', '/api/dashboard/cockpit/details'), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const json = await response.json();
+    expect(json.data.urgent_total_count).toBe(5);
+    expect(json.data.urgent_items.map((item: { id: string }) => item.id)).toEqual([
+      'visit_preparation:visit_prep_blocked',
+      'audit:task_narcotic',
+      'task:exception_1',
+      'audit:task_plain',
+      'task:exception_2',
+    ]);
+    expect(json.data.urgent_items[0]).toMatchObject({
+      source: 'visit_preparation',
+      source_id: 'prep_blocked',
+      source_label: '訪問準備',
+      reference_label: 'VP-001 / 10:00',
+      severity: 'blocking',
+      patient_id: 'patient_visit_prep',
+      patient_name: '訪問 準備',
+      title: '訪問持参物がブロック中です',
+      summary: expect.stringContaining('未完了:'),
+      action_href: '/visits/visit_prep_blocked/record',
+      action_label: '準備を確認',
+    });
+    expect(json.data.urgent_items[0].summary).toContain('持参物ステータス未解決');
+    expect(json.data.urgent_items[0].summary).toContain('持参薬・物品確認');
+
+    const responseBody = JSON.stringify(json.data.urgent_items);
+    expect(responseBody).not.toContain('carry_items');
+    expect(responseBody).not.toContain('checklist');
+    expect(responseBody).not.toContain('route_plan_snapshot');
+    expect(responseBody).not.toContain('escalation_reason');
+    expect(responseBody).not.toContain('090-9999-9999');
+    expect(responseBody).not.toContain('東京都');
+    expect(responseBody).not.toContain('アムロジピン');
+
+    const prepQuery = visitScheduleFindManyMock.mock.calls.find(
+      ([args]) => args?.select?.preparation,
+    )?.[0];
+    expect(prepQuery).toMatchObject({
+      take: 12,
+      where: expect.objectContaining({
+        org_id: 'org_1',
+        schedule_status: { in: ['planned', 'in_preparation'] },
+      }),
+      select: {
+        id: true,
+        display_id: true,
+        visit_type: true,
+        priority: true,
+        schedule_status: true,
+        scheduled_date: true,
+        time_window_start: true,
+        carry_items_status: true,
+        pre_visit_checklist_completed: true,
+        updated_at: true,
+        preparation: {
+          select: {
+            id: true,
+            org_id: true,
+            prepared_at: true,
+            updated_at: true,
+            medication_changes_reviewed: true,
+            carry_items_confirmed: true,
+            previous_issues_reviewed: true,
+            route_confirmed: true,
+            offline_synced: true,
+          },
+        },
+        case_: {
+          select: {
+            patient: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
+    expect(prepQuery?.select).not.toHaveProperty('carry_items');
+    expect(prepQuery?.select).not.toHaveProperty('escalation_reason');
+    expect(prepQuery?.select?.preparation?.select).not.toHaveProperty('checklist');
+    expect(prepQuery?.select?.preparation?.select).not.toHaveProperty('route_plan_snapshot');
+    expect(visitScheduleCountMock).toHaveBeenCalledWith({ where: prepQuery?.where });
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: authContextMock,
+      maxWaitMs: 2000,
+      timeoutMs: 3000,
+    });
+  });
+
   it('skips billing urgent reads when the dashboard viewer lacks billing permission', async () => {
     authContextMock.role = 'clerk';
 
@@ -804,7 +961,6 @@ describe('/api/dashboard/cockpit', () => {
     expect(json.data.urgent_items.map((item: { source: string }) => item.source)).not.toContain(
       'billing',
     );
-    expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(billingCandidateFindManyMock).not.toHaveBeenCalled();
     expect(billingCandidateCountMock).not.toHaveBeenCalled();
   });
@@ -837,6 +993,39 @@ describe('/api/dashboard/cockpit', () => {
     expect(billingCandidateCountMock.mock.calls.at(-1)?.[0]?.where).toMatchObject({
       patient_id: { in: ['patient_1'] },
     });
+  });
+
+  it('scopes visit preparation urgent reads by assigned care cases for non-admin members', async () => {
+    authContextMock.role = 'pharmacist';
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
+
+    const response = (await GETDetails(
+      createRequest('?scope=team', '/api/dashboard/cockpit/details'),
+      {
+        params: Promise.resolve({}),
+      },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const json = await response.json();
+    expect(json.data.scope).toEqual({
+      requested: 'team',
+      applied: 'mine',
+      can_view_team: false,
+    });
+    const prepFindQuery = visitScheduleFindManyMock.mock.calls.find(
+      ([args]) => args?.select?.preparation,
+    )?.[0];
+    const prepCountQuery = visitScheduleCountMock.mock.calls.at(-1)?.[0];
+    expect(prepFindQuery?.where).toMatchObject({
+      org_id: 'org_1',
+      OR: [
+        { case_id: { in: ['case_1'] } },
+        { case_: { org_id: 'org_1', patient_id: { in: ['patient_1'] } } },
+      ],
+    });
+    expect(prepCountQuery?.where).toEqual(prepFindQuery?.where);
   });
 
   it('returns the team segment without audit or exception reads', async () => {
