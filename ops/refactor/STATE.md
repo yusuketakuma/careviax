@@ -41,6 +41,50 @@
 
 ## 直近の land（本日・要点）
 
+- codex: FE-RT-002 realtime client payload boundary hardening（commit `63e48c95b`, pending push）。
+  - current task:
+    shared realtime stream の array payload 経路を `sse-safe` 正規化し、SSE 通知配列から raw title/message/link、患者名、薬剤名、storage key 等が React listener へ届かないようにする。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/lib/realtime/events.ts`,
+    `src/lib/realtime/events.test.ts`,
+    `src/lib/realtime/shared-event-stream.ts`,
+    `src/lib/realtime/shared-event-stream.test.ts`,
+    `src/lib/notifications/stream-payload.ts`,
+    `src/lib/notifications/stream-payload.test.ts`,
+    `src/components/features/notifications/notification-bell.tsx`,
+    `src/app/(dashboard)/notifications/notifications-content.tsx`,
+    `src/app/(dashboard)/admin/realtime/page.tsx`.
+  - external review:
+    Oracle / GPT-5.5 Pro に相談済み。GitHub repository URL は Oracle 側で 404 と報告されたため、添付ローカルファイルを根拠にレビューされた。
+    推奨は Option A: consumer 個別対応ではなく `shared-event-stream` を boundary とし、array payload を `normalizeNotificationStreamPayload(..., { contentPolicy: 'sse-safe' })` で正規化する方針。
+  - files changed:
+    `src/lib/realtime/shared-event-stream.ts`,
+    `src/lib/realtime/shared-event-stream.test.ts`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `dispatchSseChunk` の array raw forwarding を廃止し、通知 array は shared stream 境界で `sse-safe` title/message/link に丸める。
+    非空 raw array が全件 invalid / unsafe で正規化後 empty になった場合は listener へ dispatch しない。
+    明示的な empty notification array は既存の snapshot 互換として listener に渡す。
+    `Plans.md` から `FE-RT-002` を未完了表から削除し、Realtime 残作業は `FE-RT-001` の source rule / taxonomy 整理へ集約した。
+  - bugs found:
+    `src/lib/realtime/shared-event-stream.ts` は single event だけ `normalizeRealtimeEventPayload` を通し、array payload は raw のまま listener へ渡していた。
+    通知 consumer は `normalizeNotificationStreamPayload` を呼んでいたが default policy では title/message/link を保持するため、client boundary としては raw SSE 通知本文が state に入る余地があった。
+  - security risks reduced:
+    SSE 通知 array に患者名、住所、電話、薬剤名、raw message、metadata、provider error、storage key、signed URL、患者詳細 link が混じっても listener へ渡る前に落ちる regression test を追加した。
+  - performance issues improved:
+    なし。payload 正規化は既存 SSE chunk dispatch の境界で小さい array を処理するのみ。
+  - validation:
+    `pnpm exec vitest run src/lib/realtime/shared-event-stream.test.ts src/lib/realtime/events.test.ts src/lib/notifications/stream-payload.test.ts --reporter=dot --testTimeout=30000` → pass（3 files / 25 tests）。
+    `pnpm exec eslint src/lib/realtime/shared-event-stream.ts src/lib/realtime/shared-event-stream.test.ts` → pass。
+    `pnpm exec prettier --check src/lib/realtime/shared-event-stream.ts src/lib/realtime/shared-event-stream.test.ts Plans.md` → pass。
+    `git diff --check -- src/lib/realtime/shared-event-stream.ts src/lib/realtime/shared-event-stream.test.ts Plans.md` → pass。
+  - remaining work:
+    push 後、`FE-RT-001` の主要画面 source taxonomy / invalidation rule 棚卸し、または次の Plans 実装済み項目整理へ進む。
+
 - codex: Plans.md notification boundary cleanup（commit `011e05e37`, pushed to `main`）。
   - current task:
     実装済みの notification stream / Web Push redaction タスクを `Plans.md` の未完了タスクから削除し、未完了の realtime client hardening / outbox / 通知未達監視へ依存を寄せ直す。

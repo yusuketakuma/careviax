@@ -218,6 +218,121 @@ describe('subscribeSharedRealtimeStream', () => {
     unsubscribe();
   });
 
+  it('redacts notification array payloads before notifying shared stream listeners', async () => {
+    const listener = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue(
+      createOpenSseResponse([
+        `data: ${JSON.stringify([
+          {
+            id: 'notification_1',
+            type: 'urgent',
+            title: '田中 一郎さんのモルヒネ残薬確認',
+            message: '山田花子 090-1234-5678 / モルヒネ硫酸塩徐放錠10mg',
+            link: '/patients/patient_1/reports/report_1?token=secret',
+            is_read: false,
+            created_at: '2026-05-31T00:04:00.000Z',
+            raw_message: '患者 山田花子 090-1234-5678',
+            metadata: { token: 'raw-token-secret' },
+            provider_error: 'storage_key=org_1/patients/patient_1/file.pdf',
+            storage_key: 'org_1/patients/patient_1/file.pdf',
+            signed_url: 'https://s3.example.test/file?X-Amz-Signature=secret',
+          },
+        ])}\n\n`,
+      ]),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const unsubscribe = subscribeSharedRealtimeStream({
+      orgId: 'org_1',
+      onEvent: listener,
+    });
+
+    await vi.waitFor(() => {
+      expect(listener).toHaveBeenCalledWith([
+        {
+          id: 'notification_1',
+          type: 'urgent',
+          title: '緊急通知',
+          message: 'アプリで詳細を確認してください',
+          link: '/notifications',
+          is_read: false,
+          created_at: '2026-05-31T00:04:00.000Z',
+        },
+      ]);
+    });
+
+    const serialized = JSON.stringify(listener.mock.calls);
+    expect(serialized).not.toContain('田中');
+    expect(serialized).not.toContain('山田花子');
+    expect(serialized).not.toContain('090-1234-5678');
+    expect(serialized).not.toContain('モルヒネ');
+    expect(serialized).not.toContain('硫酸塩徐放錠');
+    expect(serialized).not.toContain('/patients/');
+    expect(serialized).not.toContain('patient_1');
+    expect(serialized).not.toContain('report_1');
+    expect(serialized).not.toContain('token=secret');
+    expect(serialized).not.toContain('raw_message');
+    expect(serialized).not.toContain('metadata');
+    expect(serialized).not.toContain('provider_error');
+    expect(serialized).not.toContain('storage_key');
+    expect(serialized).not.toContain('signed_url');
+    expect(serialized).not.toContain('X-Amz-Signature');
+    expect(serialized).not.toContain('raw-token-secret');
+
+    unsubscribe();
+  });
+
+  it('does not notify listeners for non-empty notification arrays that normalize to empty', async () => {
+    const listener = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue(
+      createOpenSseResponse([
+        `data: ${JSON.stringify([
+          {
+            id: 'notification_unsafe',
+            type: 'unknown',
+            title: '患者名',
+            message: '薬剤名',
+            link: 'https://example.test/private',
+            is_read: false,
+            created_at: '2026-05-31T00:04:00.000Z',
+          },
+        ])}\n\n`,
+      ]),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const unsubscribe = subscribeSharedRealtimeStream({
+      orgId: 'org_1',
+      onEvent: listener,
+    });
+
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(listener).not.toHaveBeenCalled();
+
+    unsubscribe();
+  });
+
+  it('preserves explicit empty notification array payloads', async () => {
+    const listener = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue(createOpenSseResponse(['data: []\n\n']));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const unsubscribe = subscribeSharedRealtimeStream({
+      orgId: 'org_1',
+      onEvent: listener,
+    });
+
+    await vi.waitFor(() => {
+      expect(listener).toHaveBeenCalledWith([]);
+    });
+
+    unsubscribe();
+  });
+
   it('debounces active SSE reconnects when presence targets change in a burst', async () => {
     vi.useFakeTimers();
     const firstListener = vi.fn();

@@ -1,6 +1,7 @@
 'use client';
 
 import { normalizeRealtimeEventPayload } from '@/lib/realtime/events';
+import { normalizeNotificationStreamPayload } from '@/lib/notifications/stream-payload';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { logger } from '@/lib/utils/logger';
 
@@ -112,7 +113,7 @@ function dispatchSseChunk(stream: SharedRealtimeStream, chunk: string) {
   if (!chunk.startsWith('data: ')) return;
   const parsed = parseSsePayload(chunk.slice(6));
   if (parsed == null) return;
-  const event = Array.isArray(parsed) ? parsed : normalizeRealtimeEventPayload(parsed);
+  const event = normalizeSharedSsePayload(parsed);
   if (event == null) return;
   for (const listener of stream.listeners) {
     try {
@@ -121,6 +122,18 @@ function dispatchSseChunk(stream: SharedRealtimeStream, chunk: string) {
       logRealtimeListenerError(stream, 'notify_event_listener', error);
     }
   }
+}
+
+function normalizeSharedSsePayload(parsed: unknown): unknown | null {
+  if (Array.isArray(parsed)) {
+    const notifications = normalizeNotificationStreamPayload(parsed, {
+      contentPolicy: 'sse-safe',
+    });
+    if (parsed.length > 0 && notifications.length === 0) return null;
+    return notifications;
+  }
+
+  return normalizeRealtimeEventPayload(parsed);
 }
 
 function parseSsePayload(raw: string): unknown | null {
