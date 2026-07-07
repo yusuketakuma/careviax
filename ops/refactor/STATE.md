@@ -41,7 +41,7 @@
 
 ## 直近の land（本日・要点）
 
-- codex: PERF-DB-005 patient detail root scoped read + timeline fan-out removal（commit `5fdea246e`, push pending）。
+- codex: PERF-DB-005 patient detail root scoped read + timeline fan-out removal（commit `5fdea246e`, pushed to `main`; ledger sync `e1b68878a`）。
   - current task:
     Plans registry の DB read-speed 改善順に従い、legacy `GET /api/patients/[id]`
     の患者詳細 root read を bounded/slice 方針へ寄せる第一段を実装する。
@@ -99,8 +99,7 @@
     readers with bounded `select` + per-relation `take`, and for adding tests that fail on broad relation
     includes.
   - next action:
-    Commit ledger/gbrain write-through, push the code+ledger commits, then continue DB read-speed backlog
-    with the bounded patient master select follow-up or the next ranked DB task.
+    Continue DB read-speed backlog with the bounded patient master select follow-up or the next ranked DB task.
 
 - codex: PERF-DB-002 dashboard medication-stock signal window aggregate reader（commit `e207c779a`, pushed to `main`; ledger sync `5ca3e3922`）。
   - current task:
