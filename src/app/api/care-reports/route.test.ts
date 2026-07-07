@@ -260,6 +260,52 @@ describe('/api/care-reports GET', () => {
     );
   });
 
+  it('uses a bounded minimal stable patient lookup for regular q report search (PERF-DB-006A)', async () => {
+    patientFindManyMock.mockResolvedValueOnce([{ id: 'patient_1' }, { id: 'patient_2' }]);
+
+    const response = await getCareReports(
+      createAuthenticatedRequest('http://localhost/api/care-reports?q=山田&limit=1'),
+    );
+
+    expect(response.status).toBe(200);
+    expect(patientFindManyMock).toHaveBeenNthCalledWith(1, {
+      where: {
+        org_id: 'org_1',
+        OR: [
+          { name: { contains: '山田', mode: 'insensitive' } },
+          { name_kana: { contains: '山田', mode: 'insensitive' } },
+        ],
+      },
+      select: {
+        id: true,
+      },
+      orderBy: [{ name_kana: 'asc' }, { name: 'asc' }, { id: 'asc' }],
+      take: 101,
+    });
+
+    const listCall = careReportFindManyMock.mock.calls[0]?.[0];
+    expect(listCall).toMatchObject({
+      take: 2,
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      where: expect.objectContaining({
+        org_id: 'org_1',
+        patient_id: { in: ['patient_1', 'patient_2'] },
+      }),
+    });
+    expect(listCall.select).not.toHaveProperty('content');
+    expect(patientFindManyMock).toHaveBeenNthCalledWith(2, {
+      where: {
+        org_id: 'org_1',
+        id: { in: ['patient_1'] },
+      },
+      select: {
+        id: true,
+        name: true,
+        name_kana: true,
+      },
+    });
+  });
+
   it('does not let a q name-search override an explicit patient_id with same-name other patients (F88)', async () => {
     // 患者詳細コンテキスト(patient_id=patient_A)で同名検索(q=山田)しても、
     // 検索にヒットした同名別患者(patient_B)の報告書を返さない。
@@ -275,6 +321,20 @@ describe('/api/care-reports GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(patientFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        id: 'patient_A',
+        OR: [
+          { name: { contains: '山田', mode: 'insensitive' } },
+          { name_kana: { contains: '山田', mode: 'insensitive' } },
+        ],
+      },
+      select: {
+        id: true,
+      },
+      take: 1,
+    });
     const whereArg = careReportFindManyMock.mock.calls.at(-1)?.[0]?.where;
     expect(whereArg).toMatchObject({ org_id: 'org_1' });
     // 別患者(patient_B)へスコープを広げず、明示患者は検索にヒットしないため空集合。
@@ -292,6 +352,20 @@ describe('/api/care-reports GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(patientFindManyMock).toHaveBeenNthCalledWith(1, {
+      where: {
+        org_id: 'org_1',
+        id: 'patient_1',
+        OR: [
+          { name: { contains: '山田', mode: 'insensitive' } },
+          { name_kana: { contains: '山田', mode: 'insensitive' } },
+        ],
+      },
+      select: {
+        id: true,
+      },
+      take: 1,
+    });
     expect(careReportFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({

@@ -106,8 +106,14 @@ const careReportListOrderBy = [
   { id: 'desc' },
 ] satisfies Prisma.CareReportOrderByWithRelationInput[];
 const CARE_REPORT_KEYWORD_SCAN_LIMIT = 500;
+const CARE_REPORT_PATIENT_SEARCH_CANDIDATE_LIMIT = 100;
 const DEFAULT_CARE_REPORT_PALETTE_LIMIT = 8;
 const MAX_CARE_REPORT_PALETTE_LIMIT = 50;
+const careReportPatientSearchOrderBy = [
+  { name_kana: 'asc' },
+  { name: 'asc' },
+  { id: 'asc' },
+] satisfies Prisma.PatientOrderByWithRelationInput[];
 
 const reportStatusSchema = z.nativeEnum(ReportStatus);
 const reportTypeSchema = z.nativeEnum(ReportType);
@@ -630,11 +636,12 @@ async function authenticatedGET(req: NextRequest) {
           })
         : [];
 
-    const matchingPatients =
+    const matchingPatientSearchArgs: Prisma.PatientFindManyArgs | null =
       query && view !== 'palette'
-        ? await prisma.patient.findMany({
+        ? {
             where: {
               org_id: ctx.orgId,
+              ...(patientId ? { id: patientId } : {}),
               OR: [
                 { name: { contains: query, mode: 'insensitive' } },
                 { name_kana: { contains: query, mode: 'insensitive' } },
@@ -642,16 +649,21 @@ async function authenticatedGET(req: NextRequest) {
             },
             select: {
               id: true,
-              name: true,
-              name_kana: true,
             },
-          })
-        : [];
+            take: patientId ? 1 : CARE_REPORT_PATIENT_SEARCH_CANDIDATE_LIMIT + 1,
+            ...(patientId ? {} : { orderBy: careReportPatientSearchOrderBy }),
+          }
+        : null;
+    const matchingPatients = matchingPatientSearchArgs
+      ? await prisma.patient.findMany(matchingPatientSearchArgs)
+      : [];
 
     const matchedPatientIds =
       view === 'palette'
         ? paletteMatchingPatients.map((patient) => patient.id)
-        : matchingPatients.map((patient) => patient.id);
+        : matchingPatients
+            .slice(0, CARE_REPORT_PATIENT_SEARCH_CANDIDATE_LIMIT)
+            .map((patient) => patient.id);
     if (query && matchedPatientIds.length === 0 && !keyword) {
       if (view === 'palette') {
         return withSensitiveNoStore(
@@ -810,21 +822,19 @@ async function authenticatedGET(req: NextRequest) {
 
     const patientIds = Array.from(new Set(reports.map((report) => report.patient_id)));
     const patientRows =
-      matchingPatients.length > 0 && !patientId
-        ? matchingPatients.filter((patient) => patientIds.includes(patient.id))
-        : patientIds.length === 0
-          ? []
-          : await prisma.patient.findMany({
-              where: {
-                org_id: ctx.orgId,
-                id: { in: patientIds },
-              },
-              select: {
-                id: true,
-                name: true,
-                name_kana: true,
-              },
-            });
+      patientIds.length === 0
+        ? []
+        : await prisma.patient.findMany({
+            where: {
+              org_id: ctx.orgId,
+              id: { in: patientIds },
+            },
+            select: {
+              id: true,
+              name: true,
+              name_kana: true,
+            },
+          });
     const patientNameById = new Map(patientRows.map((patient) => [patient.id, patient.name]));
 
     const enrichedData = reports.map((report) => {
