@@ -344,6 +344,49 @@ describe('ConferencesContent', () => {
     vi.unstubAllGlobals();
   });
 
+  it('reads community activities through the current data/meta cursor page shape', async () => {
+    const activity = {
+      id: 'activity_1',
+      activity_type: 'seminar',
+      title: '地域向け勉強会',
+      description: null,
+      partner_name: null,
+      activity_date: '2026-03-29T09:00:00.000Z',
+      target_population: null,
+      attendee_count: null,
+      referrals_generated: null,
+      follow_up_required: false,
+      outcome_summary: null,
+      created_at: '2026-03-29T09:30:00.000Z',
+    };
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        data: [activity],
+        meta: {
+          has_more: false,
+          next_cursor: null,
+        },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ConferencesContent initialFocus="activities" />);
+
+    const activitiesConfig = queryConfigs.find(
+      (config) => config.queryKey[0] === 'community-activities',
+    );
+    await expect(activitiesConfig?.queryFn?.()).resolves.toEqual({
+      data: [activity],
+      hasMore: false,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/community-activities?limit=100', {
+      headers: buildOrgHeaders('org_1'),
+    });
+
+    vi.unstubAllGlobals();
+  });
+
   it('encodes report, proposal, and PDF browser hrefs for hostile note identities', async () => {
     const hostileNoteId = 'note/id?download=1#frag';
     const hostileReportId = 'report/id?tab=summary#draft';

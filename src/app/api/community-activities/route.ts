@@ -81,7 +81,16 @@ export const GET = withAuthContext(
       orderBy: [{ activity_date: 'desc' }, { id: 'desc' }],
     });
 
-    return success(buildCursorPage(items, limit, (item) => item.id));
+    const page = buildCursorPage(items, limit, (item) => item.id);
+
+    return success({
+      data: page.data,
+      meta: {
+        limit,
+        has_more: page.hasMore,
+        next_cursor: page.nextCursor ?? null,
+      },
+    });
   },
   {
     permission: 'canReport',

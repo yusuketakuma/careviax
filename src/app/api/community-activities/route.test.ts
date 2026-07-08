@@ -81,6 +81,17 @@ describe('/api/community-activities', () => {
       { activity_date: 'desc' },
       { id: 'desc' },
     ]);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: [{ id: 'activity_1' }],
+      meta: {
+        limit: 50,
+        has_more: false,
+        next_cursor: null,
+      },
+    });
+    expect(body).not.toHaveProperty('hasMore');
+    expect(body).not.toHaveProperty('nextCursor');
   });
 
   it('filters community activities by inclusive Japan business-day date range', async () => {

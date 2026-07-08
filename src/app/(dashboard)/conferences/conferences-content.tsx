@@ -58,7 +58,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { readApiJson } from '@/lib/api/client-json';
-import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
+import { fetchAllCursorPages, fetchAllMetaCursorPages } from '@/lib/api/cursor-pagination-client';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { buildReportHref } from '@/lib/reports/navigation';
 import { sectionTemplatesFor, type StructuredSectionDraft } from './conference-note-templates';
@@ -664,7 +664,7 @@ export function ConferencesContent({
   const activitiesQuery = useQuery({
     queryKey: ['community-activities', orgId],
     queryFn: async () => {
-      return fetchAllCursorPages<CommunityActivity>({
+      return fetchAllMetaCursorPages<CommunityActivity>({
         path: '/api/community-activities',
         init: {
           headers: buildOrgHeaders(orgId),
