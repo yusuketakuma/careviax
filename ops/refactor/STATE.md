@@ -24524,6 +24524,77 @@ visit_request/unknown`, `action_status='not_linked'`, and
   Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
   then continue the next safe `API-CONTRACT-001` envelope migration.
 
+## 2026-07-09 - API-CONTRACT-001K operational-policy explicit envelope
+
+- current task:
+  Continue `API-CONTRACT-001` by making
+  `GET/PATCH /api/settings/operational-policy` use explicit
+  `success({ data })` calls that the response-shape guard can verify. No legacy
+  compatibility body was kept.
+- files inspected:
+  `git status --short --untracked-files=all`; `Plans.md`;
+  `ops/refactor/STATE.md`; `tools/api-response-shape-allowlist.json`;
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`;
+  `src/app/api/settings/operational-policy/route.ts`;
+  `src/app/api/settings/operational-policy/route.test.ts`;
+  `src/app/(dashboard)/settings/operational-policy-content.tsx`;
+  `src/app/(dashboard)/settings/operational-policy-content.test.tsx`;
+  operational-policy usage search results.
+- files changed:
+  `src/app/api/settings/operational-policy/route.ts`;
+  `src/app/api/settings/operational-policy/route.test.ts`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `ops/refactor/STATE.md`.
+- bugs found:
+  The route returned the right runtime `data` envelope through
+  `success(buildResponse())`, but the static response-shape guard could not see
+  the top-level `data` property and kept two allowlist violations.
+- bugs fixed:
+  `buildResponse` now returns the operational-policy DTO only, while GET/PATCH
+  call `success({ data: buildResponse(...) })` directly. Route tests now assert
+  the explicit top-level `data` envelope for GET and PATCH. Response-shape debt
+  dropped from 209 to 207 allowlisted violations.
+- security risks found:
+  No auth, authorization, locked safety policy validation, org scoping, audit
+  logging, stored Setting value, or mutation side-effect behavior changed.
+- security risks reduced:
+  The policy API response contract is now statically verifiable without
+  helper-wrapped success calls, reducing ambiguity around settings readers.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this is response contract clarity. Existing parallel context loads and
+  policy update flow are unchanged.
+- UI/UX note:
+  No visible UI/UX change. The settings page already reads `payload.data`, so
+  image generation was not applicable.
+- validation commands:
+  `pnpm exec prettier --write src/app/api/settings/operational-policy/route.ts src/app/api/settings/operational-policy/route.test.ts tools/api-response-shape-allowlist.json Plans.md`;
+  `pnpm vitest run src/app/api/settings/operational-policy/route.test.ts 'src/app/(dashboard)/settings/operational-policy-content.test.tsx' --reporter=dot --testTimeout=30000`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint src/app/api/settings/operational-policy/route.ts src/app/api/settings/operational-policy/route.test.ts 'src/app/(dashboard)/settings/operational-policy-content.test.tsx'`;
+  `pnpm exec prettier --check src/app/api/settings/operational-policy/route.ts src/app/api/settings/operational-policy/route.test.ts tools/api-response-shape-allowlist.json Plans.md`;
+  `git diff --check -- src/app/api/settings/operational-policy/route.ts src/app/api/settings/operational-policy/route.test.ts tools/api-response-shape-allowlist.json Plans.md`.
+- validation results:
+  Prettier passed. Focused route/settings UI tests passed 2 files / 12 tests.
+  `api-response-shape:check` passed with 207 allowlisted violations and 0 new
+  violations. `plans:active:check` passed. Focused ESLint passed. Targeted
+  Prettier check passed. Scoped diff check passed.
+- commit:
+  Operational-policy explicit envelope cleanup, tests, allowlist cleanup, and
+  Plans sync committed as `f6aa0115d`
+  (`fix(api): clarify operational policy envelope`). Push is pending this
+  ledger hash update.
+- remaining work:
+  `API-CONTRACT-001` remains Partial. Continue migrating real legacy success
+  and error response shapes route by route without compatibility fallback
+  bodies. Cursor-list helpers and higher-risk auth/tenant/PII/billing/report
+  slices should be handled as explicit broader or Oracle-gated slices.
+- next action:
+  Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
+  then continue the next safe `API-CONTRACT-001` envelope migration.
+
 ## 2026-07-09 - API-CONTRACT-001A response-shape guard ratchet
 
 - current task:
