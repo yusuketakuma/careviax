@@ -41,6 +41,89 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001X` pharmacist credentials list envelope cleanup.
+  - commit:
+    Implementation and Plans/allowlist/frontend reader update committed as `375d09c46`
+    (`fix(api): envelope pharmacist credential list`). State record is this entry and will be
+    committed separately before pushing the slice.
+  - current task:
+    Continue `Plans.md` highest-priority implementable work under `API-CONTRACT-001`. Convert
+    `GET /api/admin/pharmacist-credentials` from root counted-list metadata to the new
+    `data + meta` envelope only, without compatibility aliases.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `ops/refactor/STATE.md`,
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `.agents/skills/oracle-consult/SKILL.md`,
+    `src/app/api/admin/pharmacist-credentials/route.ts`,
+    `src/app/api/admin/pharmacist-credentials/route.test.ts`,
+    `src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx`,
+    `src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx`,
+    `src/lib/api/list-envelope.ts`,
+    and migrated list envelope references such as notification rules, facility standards, service
+    areas, and visit vehicle resources.
+  - files changed:
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/admin/pharmacist-credentials/route.ts`,
+    `src/app/api/admin/pharmacist-credentials/route.test.ts`,
+    `src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx`,
+    `src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx`,
+    and this `ops/refactor/STATE.md` ledger entry.
+  - implementation:
+    The GET route now builds the counted list once, returns rows in `data`, and moves
+    `total_count`, `visible_count`, `hidden_count`, `truncated`, `count_basis`,
+    `filters_applied`, and `limit` under `meta`. The old root metadata fields are not returned.
+    The pharmacist credentials screen now types and reads `payload.meta` only. The UI test includes
+    poisoned root metadata to prove legacy root fields are ignored. POST remains on its existing
+    `data` envelope. The allowlist entry for this route was removed, and `Plans.md` records
+    `API-CONTRACT-001X` with allowlist debt reduced from 189 to 188.
+  - Oracle:
+    User explicitly paused Oracle consultation. No Oracle prompt was sent or restarted. The change
+    was kept to the response-shape/frontend-reader boundary and verified locally.
+  - imagegen:
+    Not used. This is an API contract and frontend reader cleanup; it does not reconstruct visual
+    layout or interaction design.
+  - Next.js docs:
+    Re-read `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`. The docs
+    confirm app `route.ts` handlers, Web `Request`/`Response`, supported GET/POST methods, and
+    default non-caching for non-GET methods. This slice changes JSON body shape only.
+  - bugs found:
+    The pharmacist credentials GET route still returned counted-list metadata at the response root,
+    so the route stayed on the API response shape allowlist and the admin screen read legacy root
+    fields instead of the standard `meta` contract.
+  - security risks reduced:
+    No permission or tenant boundary was weakened. The existing `canAdmin` gate, org-scoped
+    credential query, consented-patient filter, bounded `limit`, and POST validation/audit behavior
+    were preserved. Moving metadata under `meta` removes ambiguous response roots without exposing
+    extra credential or patient rows.
+  - performance issues improved:
+    No extra DB query or client request was added. The existing count/list queries, bounded `take`,
+    and consented-patient lookup behavior remain unchanged.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json 'src/app/api/admin/pharmacist-credentials/route.ts' 'src/app/api/admin/pharmacist-credentials/route.test.ts' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx'`;
+    `pnpm exec vitest run 'src/app/api/admin/pharmacist-credentials/route.test.ts' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx' --reporter=dot --testTimeout=30000`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint --max-warnings=0 'src/app/api/admin/pharmacist-credentials/route.ts' 'src/app/api/admin/pharmacist-credentials/route.test.ts' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx'`;
+    `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json 'src/app/api/admin/pharmacist-credentials/route.ts' 'src/app/api/admin/pharmacist-credentials/route.test.ts' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx'`;
+    `git diff --check -- Plans.md tools/api-response-shape-allowlist.json 'src/app/api/admin/pharmacist-credentials/route.ts' 'src/app/api/admin/pharmacist-credentials/route.test.ts' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx'`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Targeted Prettier write completed. Focused pharmacist credentials route + content Vitest passed
+    2 files / 31 tests. API response shape check passed with 188 allowlisted violations and 0 new
+    violations. Plans active board check passed. Scoped ESLint passed. Targeted Prettier check
+    passed. Targeted diff-check passed. Full typecheck passed.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial; the next allowlist candidate is
+    `src/app/api/auth/password/reset/confirm/route.ts`. Unrelated local dirty state remains in
+    `.harness-mem/state/continuity.json` and many untracked memory/docs files and was not staged.
+  - next action:
+    Commit this state entry, push the two commits for this slice to `origin/main`, then continue
+    the `Plans.md` high-priority loop while Oracle consultation remains paused.
+
 - codex: `API-CONTRACT-001W` pharmacist credential delete envelope cleanup.
   - commit:
     Implementation and Plans/allowlist update committed as `1ef1a734d`
