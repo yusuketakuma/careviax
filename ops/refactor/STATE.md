@@ -39,7 +39,95 @@
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
-## 直近の作業（未コミット）
+## 直近の作業
+
+- codex: `STOCK-VISIT-UI-READONLY-001` 訪問記録フォームの残数管理 read-only panel。
+  - commit:
+    Implementation committed as `89d51e00a`.
+  - current task:
+    `Plans.md` の `STOCK-001-VISIT-UI` を前進させるため、migration gate 前でも安全に使える
+    訪問中の残数管理参照panelを追加する。write UI は有効化せず、既存の残薬記録フォームは維持する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `docs/ui-ux-design-guidelines.md`,
+    `package.json`,
+    `src/components/features/visits/visit-medication-stock-observation-panel.tsx`,
+    `src/components/features/visits/visit-medication-stock-observation-panel.test.tsx`,
+    `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`,
+    `src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx`,
+    `src/app/api/patients/[id]/timeline-route-handler.ts`,
+    `src/app/api/patients/[id]/timeline/route.ts`,
+    and `src/app/api/patients/[id]/movement-timeline/route.ts`.
+  - files changed:
+    `Plans.md`,
+    `src/components/features/visits/visit-medication-stock-observation-panel.tsx`,
+    `src/components/features/visits/visit-medication-stock-observation-panel.test.tsx`,
+    `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`,
+    `src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx`,
+    `src/app/api/patients/[id]/timeline-route-handler.ts`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Added `VisitMedicationStockObservationPanel` to the visit record residual-medication section.
+    The panel reads `GET /api/patients/:id/medication-stock?item_limit=20&event_limit=0` and displays
+    current estimated quantity, last observed quantity, daily usage, stockout date, risk badge,
+    hidden-count, partial-failure, offline, missing patient, missing org, loading, empty, and error
+    states. Observation inputs and the apply button are deliberately disabled until the
+    `MedicationStockObservationContext` migration gate and DB integration evidence are complete.
+    The existing `ResidualMedicationForm` remains below the panel, and visit submit payloads do not
+    include stock observation fields. Updated `Plans.md` so `STOCK-001-VISIT-UI` is Partial instead
+    of Not started, and recorded `STOCK-VISIT-UI-READONLY-001` as completed derived work. Fixed the
+    movement/timeline shared route handler to accept `NextRequest`, restoring full typecheck.
+  - imagegen:
+    Omitted. This slice is a small, non-visual-reconstruction addition inside an existing visit record
+    section, uses existing Card/Badge/ErrorState/Skeleton/Input/Button components, and follows the
+    PH-OS UI SSOT states. No PHI or new screen layout reference was needed.
+  - Oracle:
+    No new Oracle run in this slice. The existing Oracle review for this exact visit-stock UI path
+    recommended a read-only/gated Option A until migration/DB evidence exists; this implementation
+    stays within that advisory boundary and does not add write, migration, auth, or production data
+    behavior.
+  - bugs found:
+    `VisitMedicationStockObservationPanel` originally allowed a nullable org context to reach
+    `buildOrgHeaders`, which failed full typecheck. It also needed an explicit missing-org state to
+    avoid false empty behavior. Separately, `timeline-route-handler.ts` exposed `GET(req: Request)`
+    even though `withAuthContext` expects `NextRequest`.
+  - security risks reduced:
+    No auth/authorization policy was weakened. The panel uses the existing org header helper and
+    patient medication-stock API, avoids POST/write calls, keeps raw observation writes disabled, and
+    explicitly separates missing patient/org/offline/error from true empty state.
+  - performance issues improved:
+    The panel requests the bounded summary shape with `item_limit=20` and `event_limit=0`, avoiding
+    event history payloads in the visit form. Query keys include patient, org, item limit, and panel
+    context to avoid stale cross-context reuse.
+  - validation commands:
+    `pnpm exec vitest run 'src/components/features/visits/visit-medication-stock-observation-panel.test.tsx' 'src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx' --reporter=dot --testTimeout=30000`;
+    `pnpm exec vitest run 'src/app/api/patients/[id]/timeline/route.test.ts' 'src/app/api/patients/[id]/timeline/[eventId]/route.test.ts' --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint 'src/components/features/visits/visit-medication-stock-observation-panel.tsx' 'src/components/features/visits/visit-medication-stock-observation-panel.test.tsx' 'src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx' 'src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx'`;
+    `pnpm exec eslint 'src/app/api/patients/[id]/timeline-route-handler.ts' 'src/app/api/patients/[id]/timeline/route.ts' 'src/app/api/patients/[id]/movement-timeline/route.ts'`;
+    `pnpm exec prettier --check 'Plans.md' 'src/components/features/visits/visit-medication-stock-observation-panel.tsx' 'src/components/features/visits/visit-medication-stock-observation-panel.test.tsx' 'src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx' 'src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx' 'src/app/api/patients/[id]/timeline-route-handler.ts'`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm plans:active:check`;
+    `pnpm boundaries:check`;
+    `git diff --check -- 'Plans.md' 'src/components/features/visits/visit-medication-stock-observation-panel.tsx' 'src/components/features/visits/visit-medication-stock-observation-panel.test.tsx' 'src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx' 'src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx' 'src/app/api/patients/[id]/timeline-route-handler.ts'`;
+    `pnpm format:check`.
+  - validation results:
+    Focused visit tests passed 2 files / 41 tests. Focused timeline route tests passed 2 files / 8
+    tests. Scoped ESLint passed for visit and timeline touched files. Targeted Prettier check passed.
+    Full typecheck passed after fixing `NextRequest`. Plans active board check passed. Module boundary
+    check passed. Targeted diff-check passed. `pnpm format:check` failed only because unrelated
+    pre-existing untracked Markdown files under `projects/careviax/**` need formatting; touched files
+    pass targeted Prettier.
+  - remaining work:
+    Parent `STOCK-001-VISIT-UI` remains Partial. Remaining work is to enable write UI only after
+    migration apply / DB integration evidence, add idempotency/offline/conflict UI, last-used and
+    usage/refill controls, mobile interaction QA, and downstream risk/task/brief/schedule/movement
+    fan-out.
+  - next action:
+    Continue with the next Plans item:
+    `STOCK-001-VISIT-DOWNSTREAM`, `MOV-002-SOURCE-PARITY`, or
+    `INBOUND-002-REVIEW-DETAIL`.
 
 - codex: `PERF-DB-READ-SLO-001A` read-path SLO registry guard。
   - current task:
