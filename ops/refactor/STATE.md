@@ -23609,8 +23609,10 @@ visit_request/unknown`, `action_status='not_linked'`, and
 - commit:
   Implementation, tests, Plans update, and initial ledger entry committed as
   `1a3faa5a6c0042e4b14d82afd9770fc71e055642`
-  (`feat(external-share): add inbound summary scope`). Push and ledger hash
-  update are pending.
+  (`feat(external-share): add inbound summary scope`). Ledger hash update
+  committed as `e2e369cb23cb1da00f0ce640a3931a094f744bf9`
+  (`docs(state): record external share inbound commit`). Both commits were
+  pushed to `origin/main`.
 - remaining work:
   `inbound_communication_detail` and `inbound_communication_raw_text` external
   share scopes remain intentionally unsupported until a separate high-risk slice
@@ -23619,5 +23621,6 @@ visit_request/unknown`, `action_status='not_linked'`, and
   Next non-human-gated Plans work is `MOV-001-API` or another queue item that
   does not require migration/live AWS approval.
 - next action:
-  Commit this ledger hash update, push the External Share commits to
-  `origin/main`, then record push completion.
+  Continue the next non-human-gated Plans item. `STOCK-001-VISIT-CONTEXT-APPLY`
+  remains a human-gated migration slice, so prefer `MOV-001-API` or another
+  queue item that does not require migration/live AWS approval.
