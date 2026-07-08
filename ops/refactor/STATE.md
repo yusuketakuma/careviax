@@ -23736,3 +23736,114 @@ visit_request/unknown`, `action_status='not_linked'`, and
   Continue the next non-human-gated Plans item. `MOV-001-API` raw detail
   reauthorization is the next MOV residual, while stock migration/DB integration
   remains human-gated.
+
+## 2026-07-08 - MOV-001 raw detail reauthorization gate
+
+- current task:
+  Complete the MOV-001 raw detail reauthorization residual without preserving
+  legacy compatibility. Keep only the current API contract, do not restore old
+  list aliases or page detail shells, and do not return raw SOAP/OCR/chat/
+  prescription/attachment body content in this slice.
+- files inspected:
+  `Plans.md`; `ops/refactor/STATE.md`; `docs/ui-ux-design-guidelines.md`;
+  `.agents/skills/oracle-consult/SKILL.md`;
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`;
+  `src/app/api/patients/[id]/timeline/[eventId]/route.ts`;
+  `src/app/api/patients/[id]/timeline/[eventId]/route.test.ts`;
+  `src/app/api/patients/[id]/timeline-route-handler.ts`;
+  `src/app/api/communications/inbound/[id]/detail/route.ts`;
+  `src/app/api/communications/inbound/[id]/detail/route.test.ts`;
+  `src/server/services/patient-detail.ts`;
+  `src/types/patient-movement-timeline.ts`;
+  `src/lib/audit/phi-read-audit.ts`;
+  `src/lib/api/response.ts`;
+  `src/lib/api/sensitive-response.ts`;
+  `tools/scripts/check-api-response-shape.mjs`;
+  `tools/api-response-shape-allowlist.json`.
+- files changed:
+  `src/app/api/patients/[id]/timeline/[eventId]/route.ts`;
+  `src/app/api/patients/[id]/timeline/[eventId]/route.test.ts`;
+  `tools/api-response-shape-allowlist.json`;
+  `Plans.md`; `ops/refactor/STATE.md`.
+- Oracle safety gate:
+  Required because this slice changes PHI patient detail/audit/API contract
+  boundaries. Ran `npx -y @steipete/oracle --help` first and inspected GitHub
+  context (`https://github.com/yusuketakuma/careviax.git`, branch `main`,
+  commit `11e1e330cc4ecaf6e9c58c1b294faee949b5aeff`, no PR for `main`, dirty
+  tree only unrelated local memory/docs plus `.harness-mem`). First Oracle
+  session `mov-raw-reauth` failed before answer with browser attachment upload
+  timeout. Retried as `mov-raw-reauth-inline` with inline attachments; the CLI
+  ended with a local Node/undici `setTypeOfService EINVAL`, then
+  `oracle session mov-raw-reauth-inline --render-plain` recovered the completed
+  answer. Oracle reported GitHub access succeeded for the provided repo/commit
+  and gave GO for the strict Option A: require `purpose` + coded `read_reason`,
+  validate/generate safe `request_id`, return `data/meta`, set `X-Request-Id`,
+  audit only safe purpose/request/reason/event/category/raw_available metadata,
+  and keep `raw_text_included=false`. Oracle explicitly rejected adding real raw
+  text/body/attachment fields here.
+- bugs found:
+  `GET /api/patients/:id/timeline/:eventId` returned a movement-safe detail
+  object without explicit `purpose`, coded `read_reason`, or traceable
+  `request_id`. The PHI read audit recorded only the patient/view, so a detail
+  open could not be tied to a coded operational reason. The route also remained
+  on the legacy bare success response shape.
+- bugs fixed:
+  The route now rejects missing/invalid `purpose`, missing/invalid
+  `read_reason`, and invalid `request_id` before creating the scoped runner or
+  calling the service. Accepted purposes are `care`, `medication_review`,
+  `safety_review`, `care_coordination`, and `billing`. Accepted read reasons are
+  `review_movement_detail`, `verify_event_context`,
+  `medication_history_review`, `patient_safety_review`,
+  `care_coordination_followup`, and `billing_context_review`. Omitted
+  `request_id` is generated with `randomUUID`; provided values must match the
+  same safe pattern as inbound detail. Success now returns measured
+  `{ data, meta }`, sets `X-Request-Id`, and keeps sensitive no-store headers.
+- security risks found:
+  Patient movement detail is a PHI boundary even when raw text is not included.
+  Audit metadata must not contain event title, summary, actor, destination href,
+  related entity id, raw reason body, request URL/query, SOAP/OCR text,
+  prescription body, storage keys, or attachment content.
+- security risks reduced:
+  Success-only PHI read audit now includes purpose plus safe metadata:
+  route identifier, request_id, read_reason_code, event_id, category, and
+  raw_available. Tests assert no audit is written for validation failure,
+  auth rejection, or not found, and that audit payload excludes event title,
+  actor name, destination href, and related entity field names. The route still
+  returns `raw_text.included=false` and `meta.raw_text_included=false`; no raw
+  body access, database migration, production data mutation, or legacy page
+  compatibility path was added.
+- performance issues found:
+  None in this slice.
+- performance issues improved:
+  The route removed one API response-shape allowlist debt by moving the success
+  response to `data/meta` and measured JSON. The reauth parsing happens before
+  scoped DB access, so invalid detail opens do not create runner/service work.
+- UI/UX note:
+  Read `docs/ui-ux-design-guidelines.md`. Image generation was intentionally
+  omitted because this was an API/audit contract change with no visual
+  reconstruction or layout change.
+- validation commands:
+  `pnpm exec prettier --write Plans.md 'src/app/api/patients/[id]/timeline/[eventId]/route.ts' 'src/app/api/patients/[id]/timeline/[eventId]/route.test.ts' tools/api-response-shape-allowlist.json`;
+  `pnpm vitest run 'src/app/api/patients/[id]/timeline/[eventId]/route.test.ts' tools/scripts/check-api-response-shape.test.ts --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint 'src/app/api/patients/[id]/timeline/[eventId]/route.ts' 'src/app/api/patients/[id]/timeline/[eventId]/route.test.ts'`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `rg -n "success\\(|raw_text_included|review_movement_detail|billing_context_review|/patients/.*/timeline|/patients/[^\"' )]+/timeline" ...`;
+  `git diff --name-only`; `git diff -- prisma prisma/schema`.
+- validation results:
+  Focused patient movement detail route Vitest plus API response shape script
+  test passed 2 files / 16 tests. Scoped ESLint passed. `api-response-shape:check`
+  passed with allowlisted violations reduced to 240 and no new violations.
+  Plans active board check passed. Full typecheck passed after `next typegen`.
+  Static checks showed the changed route/test read-reason/meta additions,
+  existing movement rejection tests, existing unrelated toast `success(...)`
+  text, and no Prisma/schema diff. Commit and push are pending.
+- remaining work:
+  `MOV-001-API` now only has browser/mobile/a11y validation. Stock migration and
+  DB integration remain human-gated. Generic `RAW-DETAIL-REAUDIT-001` remains a
+  broader future helper/task for source-specific raw chat/phone/attachment
+  detail surfaces outside this movement-safe resolver.
+- next action:
+  Run final formatting/diff checks, commit and push the scoped MOV raw detail
+  reauthorization slice, then record the commit/push result in this ledger.
