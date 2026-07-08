@@ -179,12 +179,25 @@ describe('/api/patients/board', () => {
     const select = patientFindManyMock.mock.calls[0][0].select;
     const scheduleWhere = select.cases.select.visit_schedules.where;
     expect(scheduleWhere.scheduled_date.gte.toISOString()).toBe('2026-06-12T00:00:00.000Z');
+    expect(select.contacts).toMatchObject({
+      orderBy: [
+        { is_primary: 'desc' },
+        { is_emergency_contact: 'desc' },
+        { created_at: 'asc' },
+        { id: 'asc' },
+      ],
+      take: 10,
+    });
     expect(select.contacts.select).toMatchObject({
       is_primary: true,
       is_emergency_contact: true,
       phone: true,
       email: true,
       fax: true,
+    });
+    expect(select.cases.select.care_team_links).toMatchObject({
+      orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }, { id: 'asc' }],
+      take: 10,
     });
     expect(select.cases.select.care_team_links.select).toMatchObject({
       role: true,
@@ -194,9 +207,24 @@ describe('/api/patients/board', () => {
       is_primary: true,
     });
     expect(select.cases.take).toBeUndefined();
+    expect(select.cases.orderBy).toEqual([{ updated_at: 'desc' }, { id: 'desc' }]);
     expect(select.residences.select).toEqual({
       facility_id: true,
       building_id: true,
+    });
+    expect(select.lab_observations).toMatchObject({
+      orderBy: [{ measured_at: 'desc' }, { id: 'desc' }],
+      take: 1,
+    });
+    expect(
+      select.cases.select.medication_cycles.select.prescription_intakes.select.lines,
+    ).toMatchObject({
+      orderBy: [{ line_number: 'asc' }, { id: 'asc' }],
+      take: 50,
+      select: {
+        packaging_instruction_tags: true,
+        dispensing_method: true,
+      },
     });
     expect(select.cases.select.visit_schedules.select).toMatchObject({
       carry_items_status: true,
@@ -405,7 +433,7 @@ describe('/api/patients/board', () => {
     const select = patientFindManyMock.mock.calls[0][0].select;
     expect(select.cases.select.care_reports).toEqual({
       where: { status: { in: ['response_waiting', 'failed'] } },
-      orderBy: { updated_at: 'desc' },
+      orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
       take: 1,
       select: {
         id: true,

@@ -41,6 +41,77 @@
 
 ## 直近の land（本日・要点）
 
+- codex: `PATIENT-BOARD-READ-001` patients board nested read-shape speed guard。
+  - current task:
+    ユーザー指示の「DBの読出しスピード改善対策」として、`/api/patients/board`
+    の患者カードBFFを小さく改善する。トップレベルの全件scan/cursor再設計は安全患者を隠す
+    可能性があるためこのsliceでは行わず、患者ごとの nested relation 取得に上限と安定
+    `id` tie-breaker を追加して、payload/read fan-out を削る。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `tools/query-shape-watchlist.json`,
+    `tools/scripts/check-query-shape.mjs`,
+    `tools/scripts/check-query-shape.test.ts`,
+    `src/app/api/patients/board/route.ts`,
+    `src/app/api/patients/board/route.test.ts`,
+    `src/app/api/patients/board/patient-board-card-model.ts`,
+    `src/types/patient-board.ts`,
+    relevant Prisma schema files for patient/contact/care-team/prescription/report/visit models.
+  - Oracle:
+    Attempted Oracle/GPT-5.5 Pro review with GitHub context
+    (`https://github.com/yusuketakuma/careviax`, branch `main`, commit
+    `a2e534b2924da5527ad4ced79d3243d867494755`). First session
+    `patient-board-db-read-review` failed with `chrome-disconnected` after a Node
+    `setTypeOfService EINVAL` error. Second session `patient-board-db-read-review-2`
+    failed before answer with `Attachments did not finish uploading before timeout`.
+    No Oracle answer was available. To keep risk bounded, the implemented patch avoids the proposed
+    top-level bounded scan/cap and only applies relation bounds/stable ordering that preserves the
+    existing card set and count semantics.
+  - files changed:
+    `src/app/api/patients/board/route.ts`,
+    `src/app/api/patients/board/route.test.ts`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Added bounded nested reads for patient board contacts, care team links, and latest prescription
+    lines. Added `id` tie-breakers to latest/first relation reads for lab observations, consents,
+    cases, management plans, care reports, medication cycles, prescription intakes, inquiries,
+    dispense tasks, audits, workflow exceptions, visit schedules, audit queue, and blocked reasons.
+    Existing page counts, cursor format, patient card priority, PHI omission, and assignment/tenant
+    scoping remain unchanged. `Plans.md` now records this as a partial DB-speed implementation while
+    leaving patients board main cursor redesign in the active backlog.
+  - bugs found:
+    Patient board nested relation reads had unbounded contacts, care-team links, and prescription
+    line fan-out. Multiple `take: 1` relation reads lacked stable `id` tie-breakers, creating
+    nondeterministic row choice when timestamps matched.
+  - security risks reduced:
+    No PHI fields were added to payloads. The patch keeps existing sensitive no-store behavior and
+    exact permission/tenant scope. It avoids a risky top-level scan cap that could hide urgent or
+    safety-relevant patients from the board.
+  - performance issues improved:
+    Reduced per-patient nested fan-out for contacts, care-team links, and prescription lines, and
+    made relation top-N reads deterministic. This is a safe partial improvement; the remaining
+    expensive top-level unbounded patient scan is still tracked as a future cursor/count-basis design.
+  - validation commands:
+    `pnpm exec vitest run src/app/api/patients/board/route.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm db:query-shape:check`;
+    `pnpm exec eslint src/app/api/patients/board/route.ts src/app/api/patients/board/route.test.ts`;
+    `pnpm exec prettier --check src/app/api/patients/board/route.ts src/app/api/patients/board/route.test.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Patient board route Vitest passed `1` file / `34` tests. Query-shape guard passed with
+    `0` allowlisted and `0` new violations. Scoped ESLint passed. Prettier check passed. Full
+    typecheck passed.
+  - remaining:
+    `/api/patients/board` top-level patient read still scans the full scoped result to preserve exact
+    facets and priority sorting. `QUERY-SHAPE-WATCHLIST-003B` remains for a real DB-side cursor /
+    truthful count-basis redesign. Oracle/GPT-5.5 Pro review could not complete due Oracle browser
+    automation failures, not due code findings.
+  - next action:
+    Re-run formatting/diff validation after this STATE update, gbrain-write the finding, then
+    commit/push this scoped DB read-shape slice.
+
 - codex: `OPS-RECOVERY-INTEGRITY-001` SELECT-only restored DB integrity audit CLI。
   - current task:
     `Plans.md` Recovery / AWS lane の次段として、復元済みDB / staging / local DB に対する

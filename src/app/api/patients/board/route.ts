@@ -43,6 +43,9 @@ const DEFAULT_PATIENT_BOARD_PAGE_LIMIT = 60;
 const MAX_PATIENT_BOARD_PAGE_LIMIT = 100;
 const PATIENT_BOARD_CURSOR_TTL_MS = 10 * 60 * 1000;
 const BLOCKED_REASONS_LIMIT = 2;
+const PATIENT_BOARD_CONTACT_LIMIT = 10;
+const PATIENT_BOARD_CARE_TEAM_LINK_LIMIT = 10;
+const PATIENT_BOARD_PRESCRIPTION_LINE_LIMIT = 50;
 
 const boardQuerySchema = z.object({
   scope: z.enum(['mine', 'all']).optional(),
@@ -578,6 +581,13 @@ const authenticatedGET = withAuthContext(
         },
       },
       contacts: {
+        orderBy: [
+          { is_primary: 'desc' },
+          { is_emergency_contact: 'desc' },
+          { created_at: 'asc' },
+          { id: 'asc' },
+        ],
+        take: PATIENT_BOARD_CONTACT_LIMIT,
         select: {
           is_primary: true,
           is_emergency_contact: true,
@@ -596,6 +606,7 @@ const authenticatedGET = withAuthContext(
       },
       lab_observations: {
         where: { analyte_code: 'egfr' },
+        orderBy: [{ measured_at: 'desc' }, { id: 'desc' }],
         take: 1,
         select: { id: true },
       },
@@ -606,13 +617,13 @@ const authenticatedGET = withAuthContext(
           revoked_date: null,
           OR: [{ expiry_date: null }, { expiry_date: { gte: now } }],
         },
-        orderBy: [{ obtained_date: 'desc' }],
+        orderBy: [{ obtained_date: 'desc' }, { id: 'desc' }],
         take: 1,
         select: { id: true },
       },
       cases: {
         where: caseScopeWhere,
-        orderBy: { updated_at: 'desc' },
+        orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
         select: {
           id: true,
           status: true,
@@ -622,7 +633,12 @@ const authenticatedGET = withAuthContext(
               approved_at: { not: null },
               OR: [{ effective_from: null }, { effective_from: { lte: now } }],
             },
-            orderBy: [{ effective_from: 'desc' }, { version: 'desc' }, { approved_at: 'desc' }],
+            orderBy: [
+              { effective_from: 'desc' },
+              { version: 'desc' },
+              { approved_at: 'desc' },
+              { id: 'desc' },
+            ],
             take: 1,
             select: {
               id: true,
@@ -630,7 +646,8 @@ const authenticatedGET = withAuthContext(
             },
           },
           care_team_links: {
-            orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
+            orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }, { id: 'asc' }],
+            take: PATIENT_BOARD_CARE_TEAM_LINK_LIMIT,
             select: {
               role: true,
               phone: true,
@@ -641,7 +658,7 @@ const authenticatedGET = withAuthContext(
           },
           care_reports: {
             where: { status: { in: ['response_waiting', 'failed'] } },
-            orderBy: { updated_at: 'desc' },
+            orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
             take: 1,
             select: {
               id: true,
@@ -650,7 +667,7 @@ const authenticatedGET = withAuthContext(
           },
           medication_cycles: {
             where: { overall_status: { not: 'cancelled' } },
-            orderBy: { updated_at: 'desc' },
+            orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
             take: 1,
             select: {
               id: true,
@@ -658,10 +675,12 @@ const authenticatedGET = withAuthContext(
               exception_status: true,
               updated_at: true,
               prescription_intakes: {
-                orderBy: { created_at: 'desc' },
+                orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
                 take: 1,
                 select: {
                   lines: {
+                    orderBy: [{ line_number: 'asc' }, { id: 'asc' }],
+                    take: PATIENT_BOARD_PRESCRIPTION_LINE_LIMIT,
                     select: {
                       packaging_instruction_tags: true,
                       dispensing_method: true,
@@ -670,18 +689,18 @@ const authenticatedGET = withAuthContext(
                 },
               },
               inquiries: {
-                orderBy: { inquired_at: 'desc' },
+                orderBy: [{ inquired_at: 'desc' }, { id: 'desc' }],
                 take: 1,
                 select: { inquired_at: true, resolved_at: true },
               },
               dispense_tasks: {
                 where: { status: 'completed' },
-                orderBy: [{ due_date: 'asc' }],
+                orderBy: [{ due_date: 'asc' }, { id: 'asc' }],
                 take: 1,
                 select: {
                   due_date: true,
                   audits: {
-                    orderBy: { audited_at: 'desc' },
+                    orderBy: [{ audited_at: 'desc' }, { id: 'desc' }],
                     take: 1,
                     select: { result: true },
                   },
@@ -689,7 +708,7 @@ const authenticatedGET = withAuthContext(
               },
               workflow_exceptions: {
                 where: { status: 'open' },
-                orderBy: { created_at: 'asc' },
+                orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
                 take: 1,
                 select: {
                   exception_type: true,
@@ -704,7 +723,7 @@ const authenticatedGET = withAuthContext(
               scheduled_date: { gte: today },
               schedule_status: { in: [...ACTIVE_SCHEDULE_STATUSES] },
             },
-            orderBy: [{ scheduled_date: 'asc' }, { time_window_start: 'asc' }],
+            orderBy: [{ scheduled_date: 'asc' }, { time_window_start: 'asc' }, { id: 'asc' }],
             take: 1,
             select: {
               id: true,
@@ -750,19 +769,27 @@ const authenticatedGET = withAuthContext(
         // 次にやること: 監査待ち(麻薬を最優先)の先頭 1 件
         prisma.dispenseTask.findMany({
           where: { org_id: ctx.orgId, status: 'completed' },
-          orderBy: [{ priority: 'asc' }, { due_date: 'asc' }],
+          orderBy: [{ priority: 'asc' }, { due_date: 'asc' }, { id: 'asc' }],
           take: 10,
           select: {
             due_date: true,
-            audits: { orderBy: { audited_at: 'desc' }, take: 1, select: { result: true } },
+            audits: {
+              orderBy: [{ audited_at: 'desc' }, { id: 'desc' }],
+              take: 1,
+              select: { result: true },
+            },
             cycle: {
               select: {
                 case_: { select: { patient: { select: { name: true } } } },
                 prescription_intakes: {
-                  orderBy: { created_at: 'desc' },
+                  orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
                   take: 1,
                   select: {
-                    lines: { select: { packaging_instruction_tags: true } },
+                    lines: {
+                      orderBy: [{ line_number: 'asc' }, { id: 'asc' }],
+                      take: PATIENT_BOARD_PRESCRIPTION_LINE_LIMIT,
+                      select: { packaging_instruction_tags: true },
+                    },
                   },
                 },
               },
@@ -771,7 +798,7 @@ const authenticatedGET = withAuthContext(
         }),
         prisma.workflowException.findMany({
           where: { org_id: ctx.orgId, status: 'open' },
-          orderBy: { created_at: 'asc' },
+          orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
           take: BLOCKED_REASONS_LIMIT,
           select: {
             id: true,
