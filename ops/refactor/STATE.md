@@ -24048,6 +24048,10 @@ visit_request/unknown`, `action_status='not_linked'`, and
   `tools/scripts/backup-recovery-check.ts`, plus one stale allowlist needle in
   `tools/date-slice-allowlist.json`. Those paths were not changed in this
   slice; keep this as a separate validation hygiene follow-up.
+- commit:
+  Frontend contract doc, checker, package script, Plans cleanup, and initial
+  ledger entry committed as `8d64ab5db6b20b4584abbd978b95e7366c721315`
+  (`docs(frontend): add screen contract gate`) and pushed to `origin/main`.
 - remaining work:
   `STOCK-001-VISIT-CONTEXT-APPLY`, stock write-enabled visit UI, live AWS
   recovery evidence, DB/index human-gated work, and the unrelated date-slice
