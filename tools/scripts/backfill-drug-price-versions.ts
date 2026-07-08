@@ -9,6 +9,7 @@ import { PrismaClient } from '@prisma/client';
 import 'dotenv/config';
 
 import { allocateGlobalDisplayId } from '@/lib/db/display-id';
+import { formatNullableUtcDateKey } from '@/lib/date-key';
 
 type BackfillMode = 'dry-run' | 'apply';
 
@@ -123,7 +124,7 @@ export function parseDrugPriceVersionBackfillArgs(argv: string[]): DrugPriceVers
 }
 
 function isoDate(value: Date | null | undefined) {
-  return value ? value.toISOString().slice(0, 10) : null;
+  return formatNullableUtcDateKey(value);
 }
 
 function renderMarkdown(result: DrugPriceVersionBackfillResult) {

@@ -14,6 +14,7 @@ import { stageInboundMedicationStockSignalForReview } from '@/modules/pharmacy';
 import { buildInboundCommunicationEventAssignmentWhere } from '@/server/services/communication-request-access';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import type { TaskPriority } from '@/lib/tasks/task-registry';
+import { formatUtcDateKey } from '@/lib/date-key';
 import { logger } from '@/lib/utils/logger';
 
 const ROUTE = '/api/communications/inbound/signals/tasks';
@@ -102,7 +103,7 @@ function toCommunicationInput(row: SignalSourceRow): InboundCommunicationInput {
 }
 
 function toDateKey(date: Date): `${number}-${number}-${number}` {
-  return date.toISOString().slice(0, 10) as `${number}-${number}-${number}`;
+  return formatUtcDateKey(date) as `${number}-${number}-${number}`;
 }
 
 const PUBLIC_STOCK_WARNING_CODES = new Set([

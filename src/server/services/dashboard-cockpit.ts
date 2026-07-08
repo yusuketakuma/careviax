@@ -8,7 +8,7 @@ import { successWithMeasuredJsonPayload, validationError } from '@/lib/api/respo
 import { contactMethodLabel } from '@/lib/contact-profile-options';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
-import { formatNullableDateKey } from '@/lib/date-key';
+import { formatNullableDateKey, formatNullableUtcDateKey, formatUtcDateKey } from '@/lib/date-key';
 import { buildDispenseTaskHref } from '@/lib/dispense/navigation';
 import { extractPackagingInstructionTags } from '@/lib/dispensing/packaging';
 import { buildPatientHref } from '@/lib/patient/navigation';
@@ -824,7 +824,7 @@ function buildReportDeliveryUrgentItem(args: {
 }
 
 function formatBillingMonthKey(value: Date) {
-  return value.toISOString().slice(0, 10);
+  return formatUtcDateKey(value);
 }
 
 function formatBillingMonthLabel(value: Date) {
@@ -2161,7 +2161,7 @@ function formatMedicationStockLedgerQuantity(row: DashboardMedicationStockLedger
 }
 
 function formatDateOnly(date: Date | null | undefined) {
-  return date ? date.toISOString().slice(0, 10) : null;
+  return formatNullableUtcDateKey(date);
 }
 
 function medicationStockLedgerRiskLevel(

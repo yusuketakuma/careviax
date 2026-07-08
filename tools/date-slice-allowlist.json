@@ -2,13 +2,6 @@
   "description": "Classified direct toISOString().slice(0, 10) usages. Remove entries as code moves to formatDateKey/formatUtcDateKey or a stronger domain helper.",
   "entries": [
     {
-      "path": "tools/scripts/backup-recovery-check.ts",
-      "needle": "new Date().toISOString().slice(0, 10)",
-      "classification": "utc_audit_log_date",
-      "reason": "Backup drill markdown rows currently use a UTC run date; revisit if operator-local reporting is required.",
-      "expectedCount": 1
-    },
-    {
       "path": "src/server/jobs/runner.ts",
       "needle": "job-failure:${jobType}:${new Date().toISOString().slice(0, 10)}",
       "classification": "utc_job_dedupe_key",

@@ -24216,3 +24216,72 @@ visit_request/unknown`, `action_status='not_linked'`, and
 - next action:
   Commit and push this ledger hash update with only `ops/refactor/STATE.md`
   staged, then continue with the next non-human-gated read-speed cleanup.
+
+## 2026-07-09 - DATE-SLICE-GUARD-001 helper migration
+
+- current task:
+  Clear the known `pnpm date-slices:check` validation failure by replacing
+  unclassified direct UTC ISO date slicing with shared date-key helpers.
+- files inspected:
+  `ops/refactor/STATE.md`; `tools/scripts/check-date-slices.mjs`;
+  `tools/date-slice-allowlist.json`; `src/lib/date-key.ts`;
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`;
+  `src/app/api/communications/inbound/signals/route.ts`;
+  `src/app/api/communications/inbound/signals/tasks/route.ts`;
+  `src/modules/pharmacy/medication-stock/domain/stockout-forecast.ts`;
+  `src/server/services/dashboard-cockpit.ts`;
+  `tools/scripts/backfill-drug-price-versions.ts`;
+  `tools/scripts/backup-recovery-check.ts`;
+  related focused tests for those routes/domain/tool/dashboard surfaces.
+- files changed:
+  `src/app/api/communications/inbound/signals/route.ts`;
+  `src/app/api/communications/inbound/signals/tasks/route.ts`;
+  `src/modules/pharmacy/medication-stock/domain/stockout-forecast.ts`;
+  `src/server/services/dashboard-cockpit.ts`;
+  `tools/scripts/backfill-drug-price-versions.ts`;
+  `tools/scripts/backup-recovery-check.ts`;
+  `tools/date-slice-allowlist.json`; `ops/refactor/STATE.md`.
+- bugs found:
+  `pnpm date-slices:check` failed on seven unclassified direct
+  `toISOString().slice(0, 10)` usages and one stale allowlist needle in
+  `tools/scripts/backup-recovery-check.ts`.
+- bugs fixed:
+  Replaced the unclassified direct slices with `formatUtcDateKey` or
+  `formatNullableUtcDateKey` so the existing UTC date-key semantics remain
+  explicit. Removed the stale backup recovery allowlist entry instead of adding
+  new compatibility debt.
+- security risks found:
+  No auth/authorization or PHI payload behavior changed. The touched inbound
+  signal routes are PHI-bearing, so the slice stayed limited to date-key
+  formatting used in stock-review metadata.
+- security risks reduced:
+  The date-slice guard now catches new direct ISO date slicing again with no
+  stale classification hiding drift.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this is validation hygiene.
+- UI/UX note:
+  No UI/UX change. This was backend/tooling validation hygiene, so image
+  generation was not applicable.
+- validation commands:
+  `pnpm exec prettier --write src/app/api/communications/inbound/signals/route.ts src/app/api/communications/inbound/signals/tasks/route.ts src/modules/pharmacy/medication-stock/domain/stockout-forecast.ts src/server/services/dashboard-cockpit.ts tools/scripts/backfill-drug-price-versions.ts tools/scripts/backup-recovery-check.ts tools/date-slice-allowlist.json`;
+  `pnpm date-slices:check`;
+  `pnpm exec eslint src/app/api/communications/inbound/signals/route.ts src/app/api/communications/inbound/signals/tasks/route.ts src/modules/pharmacy/medication-stock/domain/stockout-forecast.ts src/server/services/dashboard-cockpit.ts tools/scripts/backfill-drug-price-versions.ts tools/scripts/backup-recovery-check.ts tools/scripts/check-date-slices.mjs`;
+  `pnpm vitest run src/app/api/communications/inbound/signals/route.test.ts src/app/api/communications/inbound/signals/tasks/route.test.ts src/modules/pharmacy/medication-stock/domain/stockout-forecast.test.ts tools/scripts/backfill-drug-price-versions.test.ts tools/scripts/backup-recovery-check.test.ts 'src/app/(dashboard)/dashboard/dashboard-cockpit.helpers.test.ts' 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx' --reporter=dot --testTimeout=30000`;
+  `git diff --check -- src/app/api/communications/inbound/signals/route.ts src/app/api/communications/inbound/signals/tasks/route.ts src/modules/pharmacy/medication-stock/domain/stockout-forecast.ts src/server/services/dashboard-cockpit.ts tools/scripts/backfill-drug-price-versions.ts tools/scripts/backup-recovery-check.ts tools/date-slice-allowlist.json`.
+- validation results:
+  Prettier passed. `date-slices:check` passed with 5 remaining classified direct
+  ISO date slices. Scoped ESLint passed. Focused tests passed 7 files / 78
+  tests. Scoped diff check passed.
+- commit:
+  Pending.
+- remaining work:
+  `QUERY-SHAPE-WATCHLIST-003-FOLLOW` remains Partial. Remaining read-speed
+  cleanup targets are patients board main cursor, day-board, report workspace
+  aggregate fan-out/watchlist admission, visit-brief service, visit-record BFF,
+  and contact profiles. Human-gated stock migration, live AWS recovery, and
+  index migration tasks remain gated.
+- next action:
+  Commit and push this validation hygiene slice with only owned files staged,
+  then record the commit hash in this ledger.

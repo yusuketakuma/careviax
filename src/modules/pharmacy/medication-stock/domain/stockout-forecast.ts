@@ -1,4 +1,5 @@
 import type { MatchConfidence } from './medication-equivalence';
+import { formatUtcDateKey } from '@/lib/date-key';
 
 export type DateKey = `${number}-${number}-${number}`;
 
@@ -92,7 +93,7 @@ function parseDateKey(dateKey: DateKey) {
 
 function addDays(dateKey: DateKey, days: number): DateKey {
   const date = new Date(parseDateKey(dateKey) + days * DAY_MS);
-  return date.toISOString().slice(0, 10) as DateKey;
+  return formatUtcDateKey(date) as DateKey;
 }
 
 function daysBetween(left: DateKey, right: DateKey) {

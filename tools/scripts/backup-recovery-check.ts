@@ -4,6 +4,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { getBackupDrillSummary } from '@/lib/operations/external-readiness';
 import { assertSafeRecoveryEvidenceValue } from '@/lib/operations/recovery-evidence';
+import { formatUtcDateKey } from '@/lib/date-key';
 import { parseOptionalStringArg } from './_shared/report-cli';
 
 const ROOT = process.cwd();
@@ -222,7 +223,7 @@ export function buildBackupRecoveryEvidenceNotes(evidence: BackupRecoveryEvidenc
 
 export function buildBackupRecoveryRecordRow(evidence: BackupRecoveryEvidence, now = new Date()) {
   const notes = buildBackupRecoveryEvidenceNotes(evidence);
-  return `| ${now.toISOString().slice(0, 10)} | ${evidence.operator} | ${evidence.result} | ${evidence.duration} | ${notes} |\n`;
+  return `| ${formatUtcDateKey(now)} | ${evidence.operator} | ${evidence.result} | ${evidence.duration} | ${notes} |\n`;
 }
 
 export function appendBackupRecoveryRecord(args: {
