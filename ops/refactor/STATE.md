@@ -24486,6 +24486,98 @@ patient_stats } }`. Tests assert `data` and verify root `month`, `summary`,
   then select the next safe `API-CONTRACT-001` slice from the remaining
   allowlist.
 
+## 2026-07-09 - API-CONTRACT-001V admin organizations envelope cleanup
+
+- current task:
+  Continue `API-CONTRACT-001` by migrating `POST /api/admin/organizations`
+  provisioning success to the new `data` envelope only. Compatibility with
+  legacy root `organization`, `site`, `admin_user`, and `membership` fields was
+  intentionally not kept.
+- files inspected:
+  `git status --short --branch --untracked-files=all`; `Plans.md`;
+  `ops/refactor/STATE.md`; `.agents/skills/oracle-consult/SKILL.md`;
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`
+  (already inspected in this API contract run);
+  `src/app/api/admin/organizations/route.ts`;
+  `src/app/api/admin/organizations/route.test.ts`;
+  `src/lib/api/response.ts`;
+  `tools/api-response-shape-allowlist.json`;
+  `src/lib/api/rate-limit.ts` reference;
+  `rg -n "api/admin/organizations|/admin/organizations|admin_user|membership" src tools`.
+- files changed:
+  `Plans.md`; `tools/api-response-shape-allowlist.json`;
+  `src/app/api/admin/organizations/route.ts`;
+  `src/app/api/admin/organizations/route.test.ts`;
+  `ops/refactor/STATE.md`.
+- advisory gate:
+  Oracle was consulted because the route performs tenant provisioning, owner
+  authorization, Cognito admin invite, rollback cleanup, and returns admin user
+  PII. The first full-attachment browser run failed with `chrome-disconnected`
+  / attachment timeout; the restarted inline 2-file run completed. Oracle
+  returned Go, reported GitHub connector access was available, and advised:
+  change only the final success body to
+  `success({ data: { organization, site, admin_user, membership } }, 201)`;
+  remove only the allowlist entry; add a test that root legacy fields are absent;
+  preserve `requireAuthContext`, owner gate, validation, duplicate checks,
+  tenant transaction, Cognito invite/delete, final local user update, rollback,
+  logging, and error responses.
+- bugs found:
+  `POST /api/admin/organizations` still returned provisioned tenant success
+  fields at the root, and the route test did not assert the new envelope-only
+  success contract.
+- bugs fixed:
+  Successful organization provisioning responses now return
+  `{ data: { organization, site, admin_user, membership } }` with status 201.
+  The happy-path route test asserts `data` is the only top-level key and rejects
+  legacy root fields.
+- security risks found:
+  No auth, owner authorization, validation, duplicate check, tenant transaction,
+  Cognito invite/delete, cleanup, logging, or error-response behavior needed
+  changes.
+- security risks reduced:
+  Removed one tenant-provisioning success shape that exposed admin user and
+  membership data at the response root without adding compatibility fallbacks.
+  Existing owner-only provisioning, rollback, and sanitized provider-error
+  logging tests remain intact.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; no query, transaction, external call, cleanup, or logging path changed.
+- UI/UX note:
+  No UI/UX change. No frontend reader references this endpoint, so image
+  generation was not applicable.
+- validation commands:
+  `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/admin/organizations/route.ts src/app/api/admin/organizations/route.test.ts`;
+  `pnpm exec vitest run src/app/api/admin/organizations/route.test.ts --reporter=dot --testTimeout=30000`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint --max-warnings=0 src/app/api/admin/organizations/route.ts src/app/api/admin/organizations/route.test.ts`;
+  `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/admin/organizations/route.ts src/app/api/admin/organizations/route.test.ts`;
+  `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/admin/organizations/route.ts src/app/api/admin/organizations/route.test.ts`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+- validation results:
+  Prettier write/check passed. Focused Vitest passed 1 file / 12 tests.
+  `api-response-shape:check` passed with 190 allowlisted violations and 0 new
+  violations. `plans:active:check` passed. Focused ESLint passed with
+  `--max-warnings=0`. Scoped diff check passed. Full typecheck passed,
+  including Next route type generation, app TypeScript, and service worker
+  TypeScript.
+- commit:
+  Implementation, tests, allowlist, and Plans update committed as
+  `73e8f4b0d444f0e7230c3b7780f3b808f17302ac`
+  (`fix(api): envelope admin organization provisioning`) and pushed to
+  `origin/main`.
+- remaining work:
+  `API-CONTRACT-001` remains Partial. The allowlist now has 190 expected legacy
+  response-shape violations. Continue migrating real route shapes without
+  compatibility fallbacks. Higher-risk auth/tenant/PII/medical/pharmacy/
+  dashboard surfaces should continue to use Oracle before implementation or
+  finalization.
+- next action:
+  Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
+  then select the next safe `API-CONTRACT-001` slice from the remaining
+  allowlist.
+
 ## 2026-07-09 - API-CONTRACT-001R drug-alert-rules envelope cleanup
 
 - current task:
