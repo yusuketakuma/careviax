@@ -41,6 +41,125 @@
 
 ## 直近の作業
 
+- codex: `STOCK-001-PRESCRIPTION-HORIZON` PrescriptionIntake structured replenishment horizon。
+  - commit:
+    Implementation committed as `da997bef8`; state record committed locally, push pending.
+  - current task:
+    `Plans.md` の `STOCK-001-PRESCRIPTION-HORIZON`。次回処方/補充予定を
+    stockout forecast horizon に使う正本sourceを決め、false negative を作らない条件で
+    minimal code path と tests に固定する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `git log --oneline -8`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `.agents/skills/oracle-consult/SKILL.md`,
+    `prisma/schema/prescription.prisma`,
+    `prisma/schema/medication.prisma`,
+    `src/modules/pharmacy/medication-stock/domain/stockout-forecast.ts`,
+    `src/modules/pharmacy/medication-stock/application/stock-snapshot.ts`,
+    `src/modules/pharmacy/medication-stock/application/apply-prescription-supply.ts`,
+    `src/server/services/prescription-intake-service.ts`,
+    and `src/server/services/visit-medication-deadline.ts`.
+  - files changed:
+    `Plans.md`,
+    `docs/architecture/medication-stock-prescription-horizon.md`,
+    `src/modules/pharmacy/medication-stock/domain/stockout-forecast.ts`,
+    `src/modules/pharmacy/medication-stock/domain/stockout-forecast.test.ts`,
+    `src/modules/pharmacy/medication-stock/application/stock-snapshot.ts`,
+    `src/modules/pharmacy/medication-stock/application/stock-snapshot.test.ts`,
+    `src/modules/pharmacy/medication-stock/application/prescription-replenishment-horizon.ts`,
+    `src/modules/pharmacy/medication-stock/application/prescription-replenishment-horizon.test.ts`,
+    `src/modules/pharmacy/medication-stock/application/apply-prescription-supply.ts`,
+    `src/modules/pharmacy/medication-stock/application/apply-prescription-supply.test.ts`,
+    and `ops/refactor/STATE.md`.
+  - implementation:
+    Stockout forecast now accepts a separate `confirmedReplenishmentDateKey`. A strictly future
+    confirmed replenishment horizon is evaluated before the visit horizon: stockout on/before that
+    date maps to `before_replenishment_horizon`, while stockout after that date maps to
+    `sufficient_until_replenishment_horizon`. `MedicationStockSnapshot` maps replenishment shortage
+    to `shortage_expected`, and maps sufficient-but-review-required forecasts to `watch`.
+    `resolveConfirmedPrescriptionReplenishmentHorizon` uses only structured
+    `PrescriptionIntake.refill_next_dispense_date` / `split_next_dispense_date` and only when
+    `source_type=refill`, split dispensing is incomplete, the date is strictly future in Japan
+    date-key terms, and the matched stock item has `source_type=prescription`. The prescription
+    supply adapter passes this horizon only after exact DrugMaster, single active stock item, unit,
+    and positive quantity checks succeed. `Plans.md` removes `STOCK-001-PRESCRIPTION-HORIZON`
+    from the active queue and records it as frozen. The design doc records non-adopted sources:
+    `MedicationCycle` alone, prescription line days/date derivation, task/free text, and
+    `refill_request`.
+  - imagegen:
+    Omitted. This is domain/service/test/docs/plan work only; no UI layout or visual reconstruction
+    changed.
+  - Next.js docs:
+    Not required. No Next.js route handler, App Router behavior, or UI code changed.
+  - Oracle:
+    Consulted Oracle/GPT-5.5 Pro before implementation because this touches patient/pharmacy/
+    prescription data and stock forecast semantics. Oracle CLI v0.15.1 was confirmed with
+    `npx -y @steipete/oracle --help`. GitHub context was inspected:
+    `https://github.com/yusuketakuma/careviax.git`, branch `main`, current commit
+    `82215d6a369478b00fb1dc25a530caf0183a87bd`, tracked tree clean before this slice, no PR for
+    `main`. Oracle session `stock-replenishm-horizon` completed, reported GitHub access succeeded,
+    and recommended a tightened PrescriptionIntake-only approach: `refill_next_dispense_date` only
+    for `source_type=refill`, `split_next_dispense_date` only for incomplete split dispensing,
+    strictly future dates only, `PatientMedicationStockItem.source_type=prescription`, exact
+    prescription supply context only, and no MedicationCycle-only / line-days-derived / task /
+    `refill_request` automatic horizon.
+  - bugs found:
+    The existing stockout forecast had only a next-visit horizon. If a confirmed refill/split
+    dispense date existed on the exact prescription supply path, snapshots could not distinguish
+    "stock runs out before confirmed replenishment" from generic buffer/visit behavior. The plan also
+    had an unresolved risk that `refill_request`, line days, task metadata, or non-prescription stock
+    items could be overpromoted into automatic replenishment dates unless explicitly rejected.
+  - security risks reduced:
+    Automatic replenishment horizons now require exact prescription-supply evidence and a
+    prescription-source stock item. The implementation selects only structured next-dispense scalar
+    fields and stock item `source_type`; it does not add patient names, drug names, dose/frequency
+    text, prescriber text, task metadata, raw free text, `refill_request`, or external signal content
+    to the forecast path. OTC, other-institution, unknown-source, package-only, name-only, ambiguous,
+    unit-conversion, and quantity-invalid cases remain review/horizon-unknown instead of creating a
+    false automatic sufficient-until-refill result.
+  - performance issues improved:
+    No broad DB read or extra join was added. The prescription supply adapter extends its existing
+    intake and stock-item selects by bounded scalar fields, and horizon resolution is pure in-memory
+    after the exact apply checks. No backfill, migration, notification, or recalculation job was
+    introduced.
+  - validation commands:
+    `npx -y @steipete/oracle --help`;
+    `npx -y @steipete/oracle --dry-run summary --files-report ...`;
+    `npx -y @steipete/oracle --engine browser --model gpt-5.5-pro --browser-manual-login --browser-attachments never --slug "stock-replenishment-horizon" ...`;
+    `pnpm exec prettier --write src/modules/pharmacy/medication-stock/domain/stockout-forecast.ts src/modules/pharmacy/medication-stock/domain/stockout-forecast.test.ts src/modules/pharmacy/medication-stock/application/stock-snapshot.ts src/modules/pharmacy/medication-stock/application/stock-snapshot.test.ts src/modules/pharmacy/medication-stock/application/prescription-replenishment-horizon.ts src/modules/pharmacy/medication-stock/application/prescription-replenishment-horizon.test.ts src/modules/pharmacy/medication-stock/application/apply-prescription-supply.ts src/modules/pharmacy/medication-stock/application/apply-prescription-supply.test.ts docs/architecture/medication-stock-prescription-horizon.md`;
+    `pnpm exec vitest run src/modules/pharmacy/medication-stock/domain/stockout-forecast.test.ts src/modules/pharmacy/medication-stock/application/prescription-replenishment-horizon.test.ts src/modules/pharmacy/medication-stock/application/stock-snapshot.test.ts src/modules/pharmacy/medication-stock/application/apply-prescription-supply.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint src/modules/pharmacy/medication-stock/domain/stockout-forecast.ts src/modules/pharmacy/medication-stock/domain/stockout-forecast.test.ts src/modules/pharmacy/medication-stock/application/stock-snapshot.ts src/modules/pharmacy/medication-stock/application/stock-snapshot.test.ts src/modules/pharmacy/medication-stock/application/prescription-replenishment-horizon.ts src/modules/pharmacy/medication-stock/application/prescription-replenishment-horizon.test.ts src/modules/pharmacy/medication-stock/application/apply-prescription-supply.ts src/modules/pharmacy/medication-stock/application/apply-prescription-supply.test.ts`;
+    `pnpm exec prettier --write Plans.md`;
+    `pnpm plans:active:check`;
+    `pnpm exec prettier --check Plans.md docs/architecture/medication-stock-prescription-horizon.md src/modules/pharmacy/medication-stock/domain/stockout-forecast.ts src/modules/pharmacy/medication-stock/domain/stockout-forecast.test.ts src/modules/pharmacy/medication-stock/application/stock-snapshot.ts src/modules/pharmacy/medication-stock/application/stock-snapshot.test.ts src/modules/pharmacy/medication-stock/application/prescription-replenishment-horizon.ts src/modules/pharmacy/medication-stock/application/prescription-replenishment-horizon.test.ts src/modules/pharmacy/medication-stock/application/apply-prescription-supply.ts src/modules/pharmacy/medication-stock/application/apply-prescription-supply.test.ts`;
+    `git diff --check -- Plans.md docs/architecture/medication-stock-prescription-horizon.md src/modules/pharmacy/medication-stock/domain/stockout-forecast.ts src/modules/pharmacy/medication-stock/domain/stockout-forecast.test.ts src/modules/pharmacy/medication-stock/application/stock-snapshot.ts src/modules/pharmacy/medication-stock/application/stock-snapshot.test.ts src/modules/pharmacy/medication-stock/application/prescription-replenishment-horizon.ts src/modules/pharmacy/medication-stock/application/prescription-replenishment-horizon.test.ts src/modules/pharmacy/medication-stock/application/apply-prescription-supply.ts src/modules/pharmacy/medication-stock/application/apply-prescription-supply.test.ts`;
+    `pnpm boundaries:check`;
+    `pnpm db:query-shape:check`;
+    `pnpm db:read-slo:check`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm format:check`.
+  - validation results:
+    Focused Vitest passed 4 files / 28 tests. Scoped ESLint passed. Targeted Prettier check and
+    targeted diff-check passed. Plans active board check passed. Module boundary check passed with
+    0 new violations and 0 allowlisted debt. Query-shape check passed with 0 allowlisted violations
+    and 0 new violations. Read path SLO check passed. Full typecheck passed. Full format check
+    (`pnpm format:check`) still fails only on unrelated pre-existing untracked Markdown under
+    `projects/careviax/**` (`medication-stock-visit-observation-context-sidecar`, ops recovery
+    reviews, patient-board-read, and query-shape watchlist notes), not on this slice's owned files.
+  - remaining work:
+    `STOCK-001-PRESCRIPTION-HORIZON` is complete/frozen in `Plans.md`. The replenishment horizon is
+    connected only to the exact prescription supply path; visit observation and inbound
+    recalculation callers intentionally remain on existing next-visit/buffer behavior until a later
+    safe exact-context resolver slice. Remaining stock work is `STOCK-001-VISIT-CONTEXT-APPLY` and
+    `STOCK-001-VISIT-DB-INTEGRATION` human gates, write-enabled `STOCK-001-VISIT-UI`, prescription
+    supply follow-up, usage/refill handling, and equivalence review UI.
+  - next action:
+    Record this state commit, push both commits to `origin/main`, then continue with the next
+    highest non-gated item or prepare visit context/apply human-gate evidence if the user provides
+    approval.
+
 - codex: `STOCK-VISIT-DOWNSTREAM-MOVEMENT-001` MedicationStockSnapshot Patient Movement occurrence marker。
   - commit:
     Implementation committed as `99521b01a`; state record committed as `0bac39221`; pushed to
