@@ -24217,6 +24217,87 @@ visit_request/unknown`, `action_status='not_linked'`, and
   Commit and push this ledger hash update with only `ops/refactor/STATE.md`
   staged, then continue with the next non-human-gated read-speed cleanup.
 
+## 2026-07-09 - API-CONTRACT-001M document-template list envelope migration
+
+- current task:
+  Continue `API-CONTRACT-001` by migrating `GET /api/templates` from legacy
+  top-level list metadata to the new-only `data + meta` success envelope.
+- files inspected:
+  `git status --short --branch --untracked-files=all`;
+  `src/lib/api/list-envelope.ts`; `src/app/api/templates/route.ts`;
+  `src/app/api/templates/route.test.ts`;
+  `src/app/(dashboard)/admin/document-templates/template-content.tsx`;
+  `src/app/(dashboard)/admin/document-templates/template-content.test.tsx`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `ops/refactor/STATE.md`.
+- files changed:
+  `src/app/api/templates/route.ts`;
+  `src/app/api/templates/route.test.ts`;
+  `src/app/(dashboard)/admin/document-templates/template-content.tsx`;
+  `src/app/(dashboard)/admin/document-templates/template-content.test.tsx`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  this `ops/refactor/STATE.md` ledger entry.
+- bugs found:
+  `GET /api/templates` still emitted list metadata as top-level
+  `total_count` / `visible_count` / `hidden_count` / `truncated` /
+  `count_basis` / `filters_applied` / `limit`, and the document-template page
+  reader/test fixtures still consumed that legacy shape.
+- bugs fixed:
+  `GET /api/templates` now returns only `data` and `meta`. The document-template
+  page reads `payload.meta` only, and all list-response tests/mocks use the same
+  new envelope. The old allowlist entry for `src/app/api/templates/route.ts` was
+  removed, reducing response-shape debt from 206 to 205.
+- security risks found:
+  No auth, authorization, tenant filtering, raw PHI fields, template content
+  exposure, or mutation semantics were changed.
+- security risks reduced:
+  The route test continues to prove template `content` / raw body text is not
+  selected or returned from the list response while updating the public response
+  contract.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this is a response contract migration. The existing bounded `take`
+  behavior and `count` query are unchanged.
+- UI/UX note:
+  No visual reconstruction or layout change. This was a response reader contract
+  update, so image generation was not applicable.
+- Next.js docs:
+  Route-handler docs were already inspected earlier in this `API-CONTRACT-001`
+  continuation before editing Next.js route handler code.
+- Oracle:
+  Not used. This slice did not change auth/authorization, tenant isolation,
+  PHI selection, DB schema/migration, billing, external sharing, or production
+  data behavior; it only moved existing list metadata under `meta`.
+- validation commands:
+  `pnpm exec prettier --write src/app/api/templates/route.ts src/app/api/templates/route.test.ts src/app/(dashboard)/admin/document-templates/template-content.tsx src/app/(dashboard)/admin/document-templates/template-content.test.tsx tools/api-response-shape-allowlist.json Plans.md`;
+  `pnpm vitest run src/app/api/templates/route.test.ts src/app/(dashboard)/admin/document-templates/template-content.test.tsx --reporter=dot --testTimeout=30000`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint src/app/api/templates/route.ts src/app/api/templates/route.test.ts src/app/(dashboard)/admin/document-templates/template-content.tsx src/app/(dashboard)/admin/document-templates/template-content.test.tsx`;
+  `pnpm exec prettier --check src/app/api/templates/route.ts src/app/api/templates/route.test.ts src/app/(dashboard)/admin/document-templates/template-content.tsx src/app/(dashboard)/admin/document-templates/template-content.test.tsx tools/api-response-shape-allowlist.json Plans.md`;
+  `git diff --check -- src/app/api/templates/route.ts src/app/api/templates/route.test.ts src/app/(dashboard)/admin/document-templates/template-content.tsx src/app/(dashboard)/admin/document-templates/template-content.test.tsx tools/api-response-shape-allowlist.json Plans.md`.
+- validation results:
+  Prettier passed. First focused Vitest run exposed stale old-shape list mocks in
+  several component tests; those fixtures were updated to emit `meta` without
+  adding runtime compatibility fallback. The rerun passed 2 files / 28 tests.
+  `api-response-shape:check` passed with 205 allowlisted violations and 0 new
+  violations. `plans:active:check` passed. Focused ESLint passed. Targeted
+  Prettier check passed. Scoped diff check passed.
+- commit:
+  Document-template list envelope migration, frontend reader/test updates,
+  allowlist cleanup, and Plans sync committed as `aed08c295`
+  (`fix(api): envelope document template list`). Push is pending this ledger
+  hash update.
+- remaining work:
+  `API-CONTRACT-001` remains Partial. Continue migrating real legacy success
+  and error response shapes route by route without compatibility fallbacks.
+  Higher-risk auth/authorization, PHI/PII, patient, billing, external sharing,
+  and migration slices still require the project safety gates.
+- next action:
+  Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
+  then continue with the next safe `API-CONTRACT-001` envelope migration.
+
 ## 2026-07-09 - API-CONTRACT-001G service-areas envelope migration
 
 - current task:
