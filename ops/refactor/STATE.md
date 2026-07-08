@@ -43,7 +43,8 @@
 
 - codex: `INBOUND-002-AUDITED-DETAIL-PANEL-001` inbound review panel audited raw detail connection.
   - commit:
-    Implementation committed as `01cfe28ae`. State record commit pending. Push after state commit.
+    Implementation committed as `01cfe28ae`; state record committed as `76224d4cf`; pushed to
+    `origin/main`.
   - current task:
     `STOCK-001-VISIT-UI` は write 有効化が migration / DB integration human gate 後の残scopeで、
     既存 read-only panel は実装済みだったため、gate を迂回せず次の非 gated candidate として
@@ -124,8 +125,7 @@
     state transitions, and mobile stacked review workflow. `STOCK-001-VISIT-UI` write enablement
     remains blocked behind migration/DB integration human gate.
   - next action:
-    Commit this state record, push the audited detail panel slice, record the push result here, then
-    continue the goal loop with the next safe non-gated item.
+    Continue the goal loop with the next safe non-gated item.
 
 - codex: `INBOUND-002-RAW-DETAIL-API-001` inbound raw detail reauthorization and dashboard raw omission.
   - commit:
