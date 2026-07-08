@@ -43,7 +43,7 @@
 
 - codex: `STOCK-VISIT-DOWNSTREAM-TASK-001` visit stock shortage OperationalTask fan-out。
   - commit:
-    Pending scoped commit.
+    Implementation committed as `a73cf69e3`.
   - current task:
     `Plans.md` の `STOCK-001-VISIT-DOWNSTREAM` から、migration/human gate を踏まずに実装できる
     最初の安全な downstream slice として、visit observation ledger write 後の残数不足 follow-up task
