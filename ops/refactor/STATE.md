@@ -43,7 +43,7 @@
 
 - codex: `STOCK-VISIT-DOWNSTREAM-SCHEDULE-001` MedicationStockSnapshot Schedule proposal review context。
   - commit:
-    Pending scoped commit.
+    Implementation committed as `c8cc123ba`.
   - current task:
     `Plans.md` の `STOCK-001-VISIT-DOWNSTREAM` 残スコープから、訪問観測後の
     `MedicationStockSnapshot` `urgent` / `shortage_expected` を VisitScheduleProposal
@@ -137,7 +137,8 @@
     `pnpm exec eslint src/server/services/visit-schedule-planner.ts src/server/services/visit-schedule-planner.test.ts src/lib/visit-schedule-proposals/diagnostics.ts src/lib/visit-schedule-proposals/diagnostics.test.ts src/app/api/visit-schedule-proposals/route.ts src/app/api/visit-schedule-proposals/route.test.ts src/app/api/visit-schedules/[id]/route.test.ts`;
     `pnpm exec prettier --check src/server/services/visit-schedule-planner.ts src/server/services/visit-schedule-planner.test.ts src/lib/visit-schedule-proposals/diagnostics.ts src/lib/visit-schedule-proposals/diagnostics.test.ts src/app/api/visit-schedule-proposals/route.ts src/app/api/visit-schedule-proposals/route.test.ts src/app/api/visit-schedules/[id]/route.test.ts`;
     `git diff --check -- src/server/services/visit-schedule-planner.ts src/server/services/visit-schedule-planner.test.ts src/lib/visit-schedule-proposals/diagnostics.ts src/lib/visit-schedule-proposals/diagnostics.test.ts src/app/api/visit-schedule-proposals/route.ts src/app/api/visit-schedule-proposals/route.test.ts src/app/api/visit-schedules/[id]/route.test.ts`;
-    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm format:check`.
   - validation results:
     Focused planner/diagnostics/proposal-route Vitest passed 3 files / 145 tests. Scoped ESLint
     passed. Plans active board check passed. Module boundary check passed with 0 new violations and 0
@@ -145,15 +146,16 @@
     Read path SLO check passed. Targeted Prettier and targeted diff-check passed. Full typecheck
     passed. The first `pnpm test:schedule-time:tz` run failed on a stale expectation in
     `src/app/api/visit-schedules/[id]/route.test.ts`; after aligning the expectation with the current
-    bounded route-duration query, rerun passed 31 files / 540 tests.
+    bounded route-duration query, rerun passed 31 files / 540 tests. Full `pnpm format:check` still
+    fails only on unrelated pre-existing untracked Markdown under `projects/careviax/**`, not on this
+    slice's owned files.
   - remaining work:
     Parent `STOCK-001-VISIT-DOWNSTREAM` remains Partial. Residual downstream scope is Patient Movement
     occurrence. `STOCK-001-VISIT-CONTEXT-APPLY`, `STOCK-001-VISIT-DB-INTEGRATION`, and write-enabled
     `STOCK-001-VISIT-UI` remain human-gated by migration / DB integration evidence.
   - next action:
-    Run final format check, commit/push the Schedule slice, record commit hash, then continue with
-    Patient Movement occurrence or `STOCK-001-PRESCRIPTION-HORIZON` if Movement requires broader
-    source-design work.
+    Commit this state hash update, push the scoped commits, then continue with Patient Movement
+    occurrence or `STOCK-001-PRESCRIPTION-HORIZON` if Movement requires broader source-design work.
 
 - codex: `STOCK-VISIT-DOWNSTREAM-BRIEF-001` MedicationStockSnapshot VisitBrief surfacing。
   - commit:
