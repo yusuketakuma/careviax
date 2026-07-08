@@ -41,6 +41,94 @@
 
 ## 直近の作業
 
+- codex: `VISIT-BRIEF-010` formal inbound signal checks for VisitBrief.
+  - commit:
+    Implementation and Plans update committed as `57df361ef` (`feat(visit-brief): surface inbound
+signal checks`).
+  - current task:
+    Finish the non-human-gated VisitBrief downstream slice for `INBOUND-002-REVIEW-DETAIL`.
+    Compatibility aliases/fallbacks were intentionally not added; the slice uses only formal
+    `InboundCommunicationSignal` rows.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `.agents/skills/oracle-consult/SKILL.md`,
+    `prisma/schema/communication.prisma`,
+    `src/types/visit-brief.ts`,
+    `src/server/services/visit-brief.ts`,
+    `src/server/services/visit-brief.test.ts`,
+    `src/server/services/communication-queue.ts`,
+    `src/server/services/case-risk-cockpit.ts`,
+    `src/app/(dashboard)/patients/[id]/patient-command-center-model.ts`,
+    and related command-center model tests.
+  - files changed:
+    `Plans.md`,
+    `src/types/visit-brief.ts`,
+    `src/server/services/visit-brief.ts`,
+    `src/server/services/visit-brief.test.ts`,
+    `src/app/(dashboard)/patients/[id]/patient-command-center-model.ts`,
+    and this `ops/refactor/STATE.md` ledger entry.
+  - implementation:
+    Added a bounded same-case `InboundCommunicationSignal` reader for VisitBrief. It selects only
+    `id`, patient/case ids, inbound event id, controlled `signal_domain`/`signal_type`,
+    `source_confidence`, review/action status, timestamps, and event `source_channel` /
+    `received_at` / `processing_status`. `raw_text`, `normalized_summary`, `extracted_text`,
+    medication name, quantity/unit, structured payload, sender details, source URLs, attachments,
+    and storage references are not selected or passed into brief/AI input. Safety, stock,
+    adherence, schedule, and urgent signals are mapped to fixed labels in `multidisciplinary_updates`,
+    grouped `inbound_communication_signal` unresolved items, `must_check_today`, rule summary refs,
+    and formal `/communications/inbound?signal=<id>` relative action hrefs.
+  - Oracle:
+    Consulted Oracle/GPT-5.5 Pro before implementation because this touches PHI/medical VisitBrief
+    downstream and AI summary input. Session `visit-brief-inbound-signals` returned conditional GO
+    for a narrower Option A: bounded same-case signal read, `not_linked` only, safelist select,
+    fixed labels only, no mutation to `linked_to_visit_brief`, and tests for raw/extracted/sender
+    omission plus schedule case scope. GitHub access succeeded per Oracle output. Codex accepted the
+    advice and added the formal `adherence` domain to satisfy Plans.md's 服薬困難 requirement under
+    the same safelist/fixed-label constraints.
+  - imagegen:
+    Not used. This slice is backend/service contract plus a command-center model label only; it does
+    not reconstruct a UI surface or visual layout.
+  - Next.js docs:
+    Not required. No Next.js route handler, app router behavior, or framework API was modified.
+  - bugs found:
+    VisitBrief only consumed inbound queue summary items, so it could not rank formal safety/stock/
+    adherence/schedule signals by domain, review status, action status, and event processing state.
+    That left VISIT-BRIEF-010 under-implemented and made signal-level omission guarantees untested.
+  - security risks reduced:
+    VisitBrief and AI summary input now have tests proving formal inbound signal checks do not leak
+    raw text, normalized summary, extracted text, medication names, quantities, sender contacts,
+    source URLs, MCS URLs, attachment/file identifiers, or sender identity details. Schedule brief
+    query shape is pinned to each case scope to avoid cross-case signal bleed.
+  - performance issues improved:
+    The new read is bounded (`take: 12`), case-scoped, safelist-select-only, and folded into the
+    existing `Promise.all` so it does not add serial latency. It skips entirely when the delegate is
+    unavailable or case scope is empty.
+  - validation commands:
+    `pnpm exec prettier --write src/types/visit-brief.ts src/server/services/visit-brief.ts src/server/services/visit-brief.test.ts src/app/(dashboard)/patients/[id]/patient-command-center-model.ts`;
+    `pnpm vitest run src/server/services/visit-brief.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint src/server/services/visit-brief.ts src/server/services/visit-brief.test.ts src/types/visit-brief.ts src/app/(dashboard)/patients/[id]/patient-command-center-model.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm exec prettier --write Plans.md`;
+    `pnpm plans:active:check`;
+    `pnpm vitest run src/server/services/visit-brief.test.ts src/app/(dashboard)/patients/[id]/patient-command-center-model.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec prettier --check Plans.md src/types/visit-brief.ts src/server/services/visit-brief.ts src/server/services/visit-brief.test.ts src/app/(dashboard)/patients/[id]/patient-command-center-model.ts`;
+    `git diff --check -- Plans.md src/types/visit-brief.ts src/server/services/visit-brief.ts src/server/services/visit-brief.test.ts src/app/(dashboard)/patients/[id]/patient-command-center-model.ts`.
+  - validation results:
+    Focused VisitBrief Vitest passed 1 file / 11 tests. Focused VisitBrief + command-center model
+    Vitest passed 2 files / 15 tests. Scoped ESLint passed. Full typecheck passed. Plans active board
+    check passed. Targeted Prettier check passed. Targeted diff-check passed.
+  - remaining work:
+    `INBOUND-002-REVIEW-DETAIL` remains Partial only for Schedule/Report/Share downstream and
+    patient-unresolved source risk surfacing. `REPORT-020` is the next non-human-gated downstream
+    slice. `STOCK-001-VISIT-*` write enablement remains behind migration/DB integration human gates.
+    `.harness-mem/state/continuity.json` and many untracked memory/docs files are unrelated local
+    dirty state and were not staged.
+  - next action:
+    Commit this state entry, push both commits to `origin/main`, then continue with the next safe
+    Plans.md item.
+
 - codex: `INBOUND-002-REVIEW-LIFECYCLE-001` inbound review lifecycle and MedicationStock apply policy.
   - commit:
     Implementation and Plans update committed as `6d87dac41` (`feat(inbound): add review lifecycle policy`);
