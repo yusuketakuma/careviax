@@ -163,6 +163,17 @@ describe('/api/communication-events', () => {
     expect(communicationEventFindManyMock.mock.calls[0][0].select).toMatchObject({
       attachments: true,
     });
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: [expect.objectContaining({ id: 'event_1' })],
+      meta: {
+        limit: 50,
+        has_more: false,
+        next_cursor: null,
+      },
+    });
+    expect(body).not.toHaveProperty('hasMore');
+    expect(body).not.toHaveProperty('nextCursor');
   });
 
   it('preserves null attachments when listing events without attachments', async () => {

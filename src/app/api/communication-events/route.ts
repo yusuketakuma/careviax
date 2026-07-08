@@ -340,8 +340,21 @@ const authenticatedGET = withAuthContext(
       },
     });
 
+    const page = buildCursorPage(
+      events.map(toPublicCommunicationEvent),
+      limit,
+      (event) => event.id,
+    );
+
     return withSensitiveNoStore(
-      success(buildCursorPage(events.map(toPublicCommunicationEvent), limit, (event) => event.id)),
+      success({
+        data: page.data,
+        meta: {
+          limit,
+          has_more: page.hasMore,
+          next_cursor: page.nextCursor ?? null,
+        },
+      }),
     );
   },
   {
