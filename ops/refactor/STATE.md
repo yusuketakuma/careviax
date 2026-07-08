@@ -41,6 +41,105 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001AR` consent records success envelope cleanup.
+  - commit:
+    Implementation, Plans/allowlist, consent route tests, protected smoke, and patient consent tab
+    reader tests committed as `7804fed66` (`fix(api): envelope consent record responses`). State
+    record is this entry and will be committed separately before pushing the slice.
+  - current task:
+    Continue `Plans.md` highest-priority implementable work under `API-CONTRACT-001`. Remove
+    `src/app/api/consent-records/route.ts`, `src/app/api/consent-records/[id]/route.ts`, and
+    `src/app/api/consent-records/[id]/revoke/route.ts` from the public response-shape allowlist by
+    moving success bodies to `data` / `data + meta`, without legacy root fallback fields.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`, `ops/refactor/STATE.md`, `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `src/app/api/consent-records/route.ts`,
+    `src/app/api/consent-records/[id]/route.ts`,
+    `src/app/api/consent-records/[id]/revoke/route.ts`, their route tests,
+    `src/app/(dashboard)/patients/[id]/consent/consent-records-content.tsx`,
+    `src/app/(dashboard)/patients/[id]/consent/consent-records-content.test.tsx`,
+    `src/lib/api/response.ts`, `src/lib/api/pagination.ts`,
+    `src/app/api/__tests__/protected-get-routes.test.ts`,
+    `src/app/api/__tests__/protected-post-routes.test.ts`, and
+    `gbrain search "API-CONTRACT consent-records response envelope"`.
+  - files changed:
+    `Plans.md`, `tools/api-response-shape-allowlist.json`,
+    `src/app/api/consent-records/route.ts`, `src/app/api/consent-records/route.test.ts`,
+    `src/app/api/consent-records/[id]/route.ts`,
+    `src/app/api/consent-records/[id]/route.test.ts`,
+    `src/app/api/consent-records/[id]/revoke/route.ts`,
+    `src/app/api/consent-records/[id]/revoke/route.test.ts`,
+    `src/app/(dashboard)/patients/[id]/consent/consent-records-content.tsx`,
+    `src/app/(dashboard)/patients/[id]/consent/consent-records-content.test.tsx`, and this ledger.
+  - implementation:
+    `GET /api/consent-records` now returns `success({ data, meta: { limit, has_more,
+next_cursor, total_count } })`; `POST /api/consent-records`, `GET/PATCH
+/api/consent-records/:id`, and `POST /api/consent-records/:id/revoke` now return
+    `success({ data: record })`. The patient consent tab reader and fixtures now use the current
+    `data + meta` shape and mutation readers use `payload.data`. Existing auth, assignment/case
+    access checks, consent document URL redaction, audit fail-closed behavior, revocation side
+    effects, workflow exception/task creation, RLS transaction boundaries, and validation errors were
+    not changed. The three consent-records allowlist entries were removed, and `Plans.md` records
+    `API-CONTRACT-001AR` with allowlist debt reduced from 159 to 155.
+  - Oracle:
+    User explicitly paused Oracle consultation. No Oracle prompt was sent or restarted. Consent
+    routes are PHI/patient/case/audit adjacent, so the slice stayed mechanical: success wrapping,
+    current-shape readers/tests, allowlist/plan debt, and ledger updates only.
+  - imagegen:
+    Not used. This is an API contract/static guard cleanup with no visible UI/UX reconstruction.
+  - Next.js docs:
+    Re-read `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`. This slice
+    changes JSON response construction only and does not change route placement, supported methods,
+    runtime behavior, no-store wrapping, or cache behavior.
+  - bugs found:
+    Consent records success responses still exposed legacy raw record root fields for create/detail/
+    update/revoke, and list pagination/count fields at the response root.
+  - bugs fixed:
+    Consent records list rows stay under `data`, pagination/count metadata is under `meta`, mutation
+    success records are under `data`, route tests reject old root fields, the patient consent tab no
+    longer types root `hasMore` / `totalCount`, and `api-response-shape:check` now reports 155
+    allowlisted violations and 0 new violations.
+  - security risks found:
+    No new security issue was found in this slice.
+  - security risks reduced:
+    Removing legacy root success fields reduces alternate public contract surface while preserving
+    consent document URL redaction, no-store responses, patient assignment scoping, and audit gates.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None. No DB query shape, selected columns, pagination math, transaction boundaries, external grant
+    revocation query, workflow exception creation, or React query invalidation frequency changed.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/consent-records/route.ts src/app/api/consent-records/route.test.ts src/app/api/consent-records/[id]/route.ts src/app/api/consent-records/[id]/route.test.ts src/app/api/consent-records/[id]/revoke/route.ts src/app/api/consent-records/[id]/revoke/route.test.ts src/app/(dashboard)/patients/[id]/consent/consent-records-content.tsx src/app/(dashboard)/patients/[id]/consent/consent-records-content.test.tsx`;
+    `pnpm vitest run src/app/api/consent-records/route.test.ts src/app/api/consent-records/[id]/route.test.ts src/app/api/consent-records/[id]/revoke/route.test.ts src/app/(dashboard)/patients/[id]/consent/consent-records-content.test.tsx`;
+    `pnpm vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "consent-records"`;
+    `pnpm vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "consent-records POST"`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint --max-warnings=0 src/app/api/consent-records/route.ts src/app/api/consent-records/route.test.ts src/app/api/consent-records/[id]/route.ts src/app/api/consent-records/[id]/route.test.ts src/app/api/consent-records/[id]/revoke/route.ts src/app/api/consent-records/[id]/revoke/route.test.ts src/app/(dashboard)/patients/[id]/consent/consent-records-content.tsx src/app/(dashboard)/patients/[id]/consent/consent-records-content.test.tsx`;
+    `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/consent-records/route.ts src/app/api/consent-records/route.test.ts src/app/api/consent-records/[id]/route.ts src/app/api/consent-records/[id]/route.test.ts src/app/api/consent-records/[id]/revoke/route.ts src/app/api/consent-records/[id]/revoke/route.test.ts src/app/(dashboard)/patients/[id]/consent/consent-records-content.tsx src/app/(dashboard)/patients/[id]/consent/consent-records-content.test.tsx`;
+    `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/consent-records/route.ts src/app/api/consent-records/route.test.ts src/app/api/consent-records/[id]/route.ts src/app/api/consent-records/[id]/route.test.ts src/app/api/consent-records/[id]/revoke/route.ts src/app/api/consent-records/[id]/revoke/route.test.ts src/app/(dashboard)/patients/[id]/consent/consent-records-content.tsx src/app/(dashboard)/patients/[id]/consent/consent-records-content.test.tsx`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm format:check`.
+  - validation results:
+    Prettier write/check passed for all owned changed files. Consent route/frontend Vitest passed (4
+    files / 53 tests). Protected GET filtered smoke passed (6 tests, 378 skipped). Protected POST
+    filtered smoke passed (3 tests, 142 skipped). API response shape guard passed (155 allowlisted
+    violations, 0 new violations). Plans active board check passed. Scoped ESLint passed. Scoped
+    `git diff --check` passed. Full typecheck passed. `pnpm format:check` again confirmed owned
+    changed files are formatted, then failed on unrelated pre-existing untracked Markdown files under
+    `projects/` and `skills/`; those user/local files were not modified.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 155 allowlisted response-shape violations. Next immediate
+    allowlist targets start with `src/app/api/dashboard/workflow/route.ts`, then dispense audit/result
+    routes.
+  - next action:
+    Commit this STATE entry separately, push `7804fed66` plus the state commit to `origin/main`, then
+    continue with `src/app/api/dashboard/workflow/route.ts` under the same Oracle-paused and
+    no-legacy-root constraints.
+
 - codex: `API-CONTRACT-001AQ` conference notes list success envelope cleanup.
   - commit:
     Implementation, Plans/allowlist, route tests, protected smoke, and conference reader tests
@@ -75,7 +174,7 @@
     and this `ops/refactor/STATE.md` ledger entry.
   - implementation:
     `GET /api/conference-notes` now returns `success({ data, meta: { limit, has_more,
-    next_cursor } })`. Existing keyset cursor logic, billing-eligible scan overflow cursor, summary
+next_cursor } })`. Existing keyset cursor logic, billing-eligible scan overflow cursor, summary
     detail redaction, no-store wrapper, POST creation/sync side effects, and sanitized error behavior
     were not changed. The conferences page now uses `fetchAllMetaCursorPages` for both list and
     calendar conference-note queries. Route and page tests were updated to reject root pagination
@@ -180,7 +279,7 @@
     and this `ops/refactor/STATE.md` ledger entry.
   - implementation:
     `GET /api/community-activities` now returns `success({ data, meta: { limit, has_more,
-    next_cursor } })`. The conferences page now uses the current-shape-only
+next_cursor } })`. The conferences page now uses the current-shape-only
     `fetchAllMetaCursorPages` helper for community activities. Existing conference-note pagination
     calls keep their route-specific legacy helper until those routes are migrated. The external viewer
     already reads only `payload.data`, so it remains compatible with the current envelope without a
@@ -290,7 +389,7 @@
     and this `ops/refactor/STATE.md` ledger entry.
   - implementation:
     `GET /api/communication-requests` now returns `success({ data, meta: { limit, has_more,
-    next_cursor } })`. The communications requests page now uses a current-shape-only
+next_cursor } })`. The communications requests page now uses a current-shape-only
     `fetchAllMetaCursorPages` helper that parses `data` plus `meta` and rejects invalid
     `has_more` / `next_cursor` combinations instead of accepting legacy root pagination. Route,
     helper, and page tests were updated. The allowlist entry for
@@ -345,7 +444,7 @@
     381 skipped). Protected POST filtered smoke passed (3 tests, 142 skipped). API response shape
     guard passed (161 allowlisted violations, 0 new violations). Plans active board check passed.
     Scoped ESLint passed. Scoped `git diff --check` passed. Full typecheck passed. `pnpm
-    format:check` again confirmed owned changed files are formatted, then failed on unrelated
+format:check` again confirmed owned changed files are formatted, then failed on unrelated
     pre-existing untracked Markdown files under `projects/` and `skills/`; those user/local files
     were not modified.
   - remaining work:
