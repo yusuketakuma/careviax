@@ -41,6 +41,124 @@
 
 ## 直近の作業
 
+- codex: `STOCK-VISIT-DOWNSTREAM-MOVEMENT-001` MedicationStockSnapshot Patient Movement occurrence marker。
+  - commit:
+    Implementation committed as `99521b01a`.
+  - current task:
+    `Plans.md` の `STOCK-001-VISIT-DOWNSTREAM` 残スコープから、訪問観測後の
+    `MedicationStockSnapshot` `urgent` / `shortage_expected` を Patient Movement timeline の
+    `medication_stock_snapshot` occurrence marker へ PHI-minimized に接続する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `git log --oneline -5`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `.agents/skills/oracle-consult/SKILL.md`,
+    `src/types/patient-movement-timeline.ts`,
+    `src/server/services/patient-detail.ts`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail-timeline-query.ts`,
+    `src/server/services/patient-movement-timeline-presenter.ts`,
+    `src/server/services/patient-detail-timeline-registry.test.ts`,
+    `src/server/services/patient-movement-timeline-presenter.test.ts`,
+    `src/app/api/patients/[id]/movement-timeline/route.ts`,
+    `src/app/api/patients/[id]/movement-timeline/route.test.ts`,
+    `src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx`,
+    `src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx`,
+    `src/modules/pharmacy/patient-movement/timeline-links.ts`,
+    and `prisma/schema/medication.prisma`.
+  - files changed:
+    `Plans.md`,
+    `src/server/services/patient-detail-timeline-events.ts`,
+    `src/server/services/patient-detail-timeline-registry.ts`,
+    `src/server/services/patient-detail-timeline-registry.test.ts`,
+    `src/server/services/patient-movement-timeline-presenter.ts`,
+    `src/server/services/patient-movement-timeline-presenter.test.ts`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `patient-detail-timeline-registry` now has a `medicationStockSnapshotsSource` in
+    `TIMELINE_SOURCES`. It reads only same-org / same-patient / visible same-case
+    `MedicationStockSnapshot` rows with `stock_risk_level` in `urgent` / `shortage_expected`;
+    `case_id: null` fallback is intentionally absent. The query is bounded with
+    `resolveTimelineSourceTake(ctx, 8)`, stable ordered by stockout date, days-until-stockout,
+    calculation time, and id, and selects only `id`, `stock_risk_level`, and `calculated_at`.
+    Projection emits one generic `medication_stock_snapshot` marker with status/status_label,
+    patient medication anchor href, and empty metadata. The movement presenter now forces
+    snapshot markers to the generic summary, drops metadata, and maps `urgent` to urgent severity
+    / `shortage_expected` to warning. `Plans.md` moves `STOCK-001-VISIT-DOWNSTREAM` out of the
+    active implementation queue and records downstream task/risk/brief/schedule/movement as
+    frozen.
+  - imagegen:
+    Omitted. This is backend timeline source, DTO projection, tests, and plan hygiene only; no UI
+    layout or visual reconstruction changed.
+  - Next.js docs:
+    Not required. The existing movement API route remains a thin `createPatientTimelineGET`
+    wrapper and no Next.js route handler code changed.
+  - Oracle:
+    Consulted Oracle/GPT-5.5 Pro before implementation because this touches patient/pharmacy
+    movement payload boundaries. Oracle CLI v0.15.1 was confirmed with
+    `npx -y @steipete/oracle --help`. GitHub context was inspected:
+    `https://github.com/yusuketakuma/careviax.git`, branch `main`, current commit
+    `cfc4a2fb5f8f973758a3c53544e75c236df34eb3`, tracked tree clean, no PR for `main`.
+    Oracle session `movement-stock-occurrence` completed, reported GitHub access succeeded, and
+    recommended a direct per-snapshot source over task-only or aggregate for this slice, with
+    status-only payload, empty metadata, no stockout date/days payload, exact visible case scope,
+    no `stock_item_id` select, no joins, no schema migration, and query-shape/raw-omission tests.
+  - bugs found:
+    Patient Movement could show residual-medication events and stock-related tasks, but current
+    snapshot shortage risk could still be absent when task fan-out was delayed, suppressed, completed,
+    or not the user's immediate timeline focus. The movement presenter also lacked a dedicated guard
+    to normalize a future `medication_stock_snapshot` event if raw stock metadata were accidentally
+    passed into the generic projection path.
+  - security risks reduced:
+    Movement now exposes only a generic status marker for current stock shortage risk. It does not
+    select or expose stock item ids, display ids, patient/org ids, case ids, drug names, quantities,
+    units, last observed values, raw risk reason codes, stockout date/days payload, idempotency hashes,
+    request fingerprints, source signal ids, external observation ids, or medication/drug joins. The
+    source returns no rows without visible case scope, and presenter tests assert hostile raw stock
+    details are omitted from the movement DTO.
+  - performance issues improved:
+    The new source is read-only, join-free, bounded by the requested timeline limit with a max default
+    of 8, and uses existing `MedicationStockSnapshot` org/patient/risk indexes. It adds no writes,
+    task fan-out, notifications, route recalculation, or aggregate post-processing beyond marker
+    projection.
+  - validation commands:
+    `npx -y @steipete/oracle --help`;
+    `npx -y @steipete/oracle --dry-run summary --files-report ...`;
+    `npx -y @steipete/oracle --engine browser --model gpt-5.5-pro --browser-manual-login --browser-attachments never --slug "movement-stock-occurrence" ...`;
+    `pnpm exec prettier --write src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-movement-timeline-presenter.ts src/server/services/patient-detail-timeline-registry.test.ts src/server/services/patient-movement-timeline-presenter.test.ts`;
+    `pnpm exec vitest run src/server/services/patient-detail-timeline-registry.test.ts src/server/services/patient-movement-timeline-presenter.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-movement-timeline-presenter.ts src/server/services/patient-detail-timeline-registry.test.ts src/server/services/patient-movement-timeline-presenter.test.ts`;
+    `pnpm exec prettier --write Plans.md`;
+    `pnpm exec prettier --check Plans.md src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-movement-timeline-presenter.ts src/server/services/patient-detail-timeline-registry.test.ts src/server/services/patient-movement-timeline-presenter.test.ts`;
+    `git diff --check -- Plans.md src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts src/server/services/patient-movement-timeline-presenter.ts src/server/services/patient-detail-timeline-registry.test.ts src/server/services/patient-movement-timeline-presenter.test.ts`;
+    `pnpm plans:active:check`;
+    `pnpm boundaries:check`;
+    `pnpm db:query-shape:check`;
+    `pnpm db:read-slo:check`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm format:check`.
+  - validation results:
+    Focused registry/presenter Vitest passed 2 files / 10 tests. Scoped ESLint passed. Targeted
+    Prettier check and targeted diff-check passed. Plans active board check passed. Module boundary
+    check passed with 0 new violations and 0 allowlisted debt. Query-shape check passed with 0
+    allowlisted violations and 0 new violations. Read path SLO check passed. Full typecheck passed.
+    Full `pnpm format:check` still fails only on unrelated pre-existing untracked Markdown under
+    `projects/careviax/**` (`medication-stock-visit-observation-context-sidecar`,
+    ops recovery reviews, patient-board-read, and query-shape watchlist notes), not on this slice's
+    owned files.
+  - remaining work:
+    Parent `STOCK-001-VISIT-DOWNSTREAM` is complete/frozen in `Plans.md`. Remaining stock work is
+    `STOCK-001-VISIT-CONTEXT-APPLY` and `STOCK-001-VISIT-DB-INTEGRATION` human gates,
+    write-enabled `STOCK-001-VISIT-UI`, `STOCK-001-PRESCRIPTION-HORIZON`, prescription supply
+    follow-up, usage/refill, and equivalence review UI. Movement residual scope remains
+    cursor/date/category filters, map-less date card UX, formal inbound/safety sources, and remaining
+    source parity.
+  - next action:
+    Commit this STATE entry, push the scoped commits, then continue with the next highest non-gated
+    queue item or prepare the human-gated visit context/apply evidence if the user provides approval.
+
 - codex: `STOCK-VISIT-DOWNSTREAM-SCHEDULE-001` MedicationStockSnapshot Schedule proposal review context。
   - commit:
     Implementation committed as `c8cc123ba`; state record committed as `d3e77efd8`; pushed to
