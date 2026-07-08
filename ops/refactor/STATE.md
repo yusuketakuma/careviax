@@ -24142,3 +24142,74 @@ visit_request/unknown`, `action_status='not_linked'`, and
   Commit and push the 003G watchlist slice with only owned files staged, then
   continue with the next non-human-gated read-speed cleanup or validation
   hygiene item.
+
+## 2026-07-09 - QUERY-SHAPE-WATCHLIST-003H report workspace stable reads
+
+- current task:
+  Move `QUERY-SHAPE-WATCHLIST-003-FOLLOW` forward without adding compatibility
+  shims by cleaning the report today-workspace BFF before watchlist admission.
+- files inspected:
+  `Plans.md`; `ops/refactor/STATE.md`;
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`;
+  `tools/scripts/check-query-shape.mjs`;
+  `src/app/api/care-reports/today-workspace/route.ts`;
+  `src/app/api/care-reports/today-workspace/route.test.ts`;
+  `src/types/reports-today-workspace.ts`;
+  `src/app/(dashboard)/reports/report-share-workspace.tsx`.
+- files changed:
+  `src/app/api/care-reports/today-workspace/route.ts`;
+  `src/app/api/care-reports/today-workspace/route.test.ts`; `Plans.md`;
+  `ops/refactor/STATE.md`.
+- bugs found:
+  Report today-workspace had bounded top-N reads ordered only by timestamp
+  fields, so equal timestamps could produce unstable visible windows. The BFF
+  also still had an explicit old-compatibility fallback that inferred a
+  physician report draft target when no current care-team recipient link
+  existed.
+- bugs fixed:
+  Added `id` tie-breakers to delivery waiting, inquiry waiting, resolved
+  response, recent report, nested delivery record, schedule, and nested
+  prescription intake reads. Removed the old physician draft fallback; completed
+  visits without current recipient links now keep empty generation targets and
+  link back to the visit instead of pretending a physician target exists.
+- security risks found:
+  The report workspace is PHI-bearing and creates report draft affordances. An
+  inferred recipient target can route PHI toward a professional category not
+  present in the current care team links.
+- security risks reduced:
+  Draft generation choices now come only from current care-team links and
+  existing report state. No raw inbound text, external detail, schema, migration,
+  production data, live DB, or write path changed.
+- performance issues found:
+  The route still has aggregate fan-out/count cleanup to do before the whole BFF
+  can join `tools/query-shape-watchlist.json` with zero debt.
+- performance issues improved:
+  All bounded report workspace top-N reads touched in this slice now use stable
+  deterministic ordering, reducing page/window drift under equal timestamps.
+- UI/UX note:
+  No UI/UX layout change. This was a backend BFF/query-shape slice, so image
+  generation was not applicable.
+- validation commands:
+  `pnpm exec prettier --write src/app/api/care-reports/today-workspace/route.ts src/app/api/care-reports/today-workspace/route.test.ts`;
+  `pnpm exec prettier --write Plans.md ops/refactor/STATE.md`;
+  `pnpm vitest run src/app/api/care-reports/today-workspace/route.test.ts --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint src/app/api/care-reports/today-workspace/route.ts src/app/api/care-reports/today-workspace/route.test.ts`;
+  `pnpm db:query-shape:check`;
+  `pnpm plans:active:check`;
+  `git diff --check -- src/app/api/care-reports/today-workspace/route.ts src/app/api/care-reports/today-workspace/route.test.ts Plans.md ops/refactor/STATE.md`.
+- validation results:
+  Prettier passed for route/test and Plans/STATE. Focused route test passed 1
+  file / 32 tests. Scoped ESLint passed. Query-shape check passed with 0
+  allowlisted violations and 0 new violations. Plans active board check passed.
+  Scoped diff check passed.
+- commit:
+  Pending.
+- remaining work:
+  `QUERY-SHAPE-WATCHLIST-003-FOLLOW` remains Partial. Remaining read-speed
+  cleanup targets are patients board main cursor, day-board, report workspace
+  aggregate fan-out/watchlist admission, visit-brief service, visit-record BFF,
+  and contact profiles. Human-gated stock migration, live AWS recovery, and
+  index migration tasks remain gated.
+- next action:
+  Run Plans validation, commit and push this stable-read slice with only owned
+  files staged, then record the commit hash in this ledger.

@@ -146,7 +146,7 @@ describe('/api/care-reports/today-workspace', () => {
   });
 
   it('returns empty workspace aggregates with 200', async () => {
-    mockTx();
+    const tx = mockTx();
     const req = createRequest('http://localhost/api/care-reports/today-workspace');
     const res = await GET(req, { params: Promise.resolve({}) });
     expect(res!.status).toBe(200);
@@ -227,6 +227,51 @@ describe('/api/care-reports/today-workspace', () => {
         { id: 'read-receipt', label: '既読確認', meta: 'ポータル連携' },
       ],
     });
+    expect(tx.deliveryRecord.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ sent_at: 'asc' }, { id: 'asc' }],
+        take: 5,
+      }),
+    );
+    expect(tx.communicationRequest.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ requested_at: 'asc' }, { id: 'asc' }],
+        take: 5,
+      }),
+    );
+    expect(tx.communicationResponse.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ responded_at: 'desc' }, { id: 'desc' }],
+        take: 3,
+      }),
+    );
+    expect(tx.careReport.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+        take: 12,
+        select: expect.objectContaining({
+          delivery_records: expect.objectContaining({
+            orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+            take: 6,
+          }),
+        }),
+      }),
+    );
+    expect(tx.visitSchedule.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ time_window_start: 'asc' }, { route_order: 'asc' }, { id: 'asc' }],
+        select: expect.objectContaining({
+          cycle: {
+            select: {
+              prescription_intakes: expect.objectContaining({
+                orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+                take: 1,
+              }),
+            },
+          },
+        }),
+      }),
+    );
     expect(withOrgContextMock).toHaveBeenCalledWith(
       'org_1',
       expect.any(Function),
@@ -651,6 +696,46 @@ describe('/api/care-reports/today-workspace', () => {
       visit_record_updated_at: '2026-06-11T04:45:00.000Z',
       generation_targets: [{ report_type: 'care_manager_report', label: 'ケアマネ向け' }],
       action: null,
+    });
+  });
+
+  it('does not infer a physician draft target when no current recipient link exists', async () => {
+    mockTx({
+      schedules: [
+        {
+          id: 'sched_no_recipient',
+          schedule_status: 'completed',
+          time_window_start: new Date('2026-06-11T05:00:00.000Z'),
+          facility_batch_id: null,
+          facility_batch: null,
+          case_: {
+            patient: { id: 'p_no_recipient', name: '宛先 未設定' },
+            care_team_links: [],
+          },
+          cycle: { prescription_intakes: [{ lines: [] }] },
+          visit_record: {
+            id: 'visit_record_no_recipient',
+            updated_at: new Date('2026-06-11T04:45:00.000Z'),
+          },
+        },
+      ],
+      draftReports: [],
+      patients: [{ id: 'p_no_recipient', name: '宛先 未設定' }],
+    });
+
+    const req = createRequest('http://localhost/api/care-reports/today-workspace');
+    const res = await GET(req, { params: Promise.resolve({}) });
+    expect(res!.status).toBe(200);
+    const json = await res!.json();
+
+    expect(json.data.draft_rows).toHaveLength(1);
+    expect(json.data.draft_rows[0]).toMatchObject({
+      id: 'sched_no_recipient',
+      status: 'before_visit',
+      recipient_label: '宛先未設定',
+      visit_record_id: 'visit_record_no_recipient',
+      generation_targets: [],
+      action: { label: '→ 訪問へ', href: '/visits/sched_no_recipient/record' },
     });
   });
 

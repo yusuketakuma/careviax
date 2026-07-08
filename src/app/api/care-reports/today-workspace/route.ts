@@ -342,8 +342,6 @@ function buildDraftGenerationTargets(
     addTarget('facility_handoff');
   }
 
-  // 既存互換: 宛先が未登録でも従来どおり主治医向け下書きの生成導線は残す。
-  if (targets.length === 0 && existingTypes.size === 0) addTarget('physician_report');
   return targets;
 }
 
@@ -818,7 +816,7 @@ const authenticatedGET = withAuthContext(
       async (tx) => {
         const waitingDeliveriesPromise = tx.deliveryRecord.findMany({
           where: { org_id: ctx.orgId, status: 'response_waiting' },
-          orderBy: { sent_at: 'asc' },
+          orderBy: [{ sent_at: 'asc' }, { id: 'asc' }],
           take: WAITING_LIMIT,
           select: {
             id: true,
@@ -836,7 +834,7 @@ const authenticatedGET = withAuthContext(
             org_id: ctx.orgId,
             status: { in: ['sent', 'received', 'in_progress'] },
           },
-          orderBy: { requested_at: 'asc' },
+          orderBy: [{ requested_at: 'asc' }, { id: 'asc' }],
           take: WAITING_LIMIT,
           select: {
             id: true,
@@ -860,7 +858,7 @@ const authenticatedGET = withAuthContext(
             org_id: ctx.orgId,
             responded_at: targetDayInstantRange,
           },
-          orderBy: { responded_at: 'desc' },
+          orderBy: [{ responded_at: 'desc' }, { id: 'desc' }],
           take: RESOLVED_LIMIT,
           select: {
             id: true,
@@ -876,7 +874,7 @@ const authenticatedGET = withAuthContext(
         });
         const recentReportsPromise = tx.careReport.findMany({
           where: { org_id: ctx.orgId },
-          orderBy: { updated_at: 'desc' },
+          orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
           take: CREATED_REPORT_LIMIT,
           select: {
             id: true,
@@ -890,7 +888,7 @@ const authenticatedGET = withAuthContext(
             created_at: true,
             updated_at: true,
             delivery_records: {
-              orderBy: [{ updated_at: 'desc' }],
+              orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
               take: 6,
               select: {
                 id: true,
@@ -980,7 +978,7 @@ const authenticatedGET = withAuthContext(
               scheduled_date: { gte: today, lt: tomorrow },
               schedule_status: { notIn: ['cancelled', 'rescheduled'] },
             },
-            orderBy: [{ time_window_start: 'asc' }, { route_order: 'asc' }],
+            orderBy: [{ time_window_start: 'asc' }, { route_order: 'asc' }, { id: 'asc' }],
             select: {
               id: true,
               schedule_status: true,
@@ -1000,7 +998,7 @@ const authenticatedGET = withAuthContext(
               cycle: {
                 select: {
                   prescription_intakes: {
-                    orderBy: { created_at: 'desc' },
+                    orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
                     take: 1,
                     select: {
                       lines: { select: { packaging_instruction_tags: true } },
@@ -1148,29 +1146,29 @@ const authenticatedGET = withAuthContext(
             existingReport !== null && isEditableDraftReport(existingReport);
           const canGenerateDraft =
             schedule.schedule_status === 'completed' && Boolean(visitRecordId);
+          const canGenerateTargetedDraft = canGenerateDraft && generationTargets.length > 0;
           draftRows.push({
             id: schedule.id,
             time_start: schedule.time_window_start?.toISOString() ?? null,
             patient_label: `${schedule.case_.patient.name} 様`,
             recipient_label: buildRecipientLabel(schedule.case_.care_team_links),
-            status:
-              canGenerateDraft && generationTargets.length > 0
-                ? 'ready_to_generate'
-                : existingReport
-                  ? hasEditableDraftReport
-                    ? 'draft_ready'
-                    : 'report_existing'
-                  : 'before_visit',
+            status: canGenerateTargetedDraft
+              ? 'ready_to_generate'
+              : existingReport
+                ? hasEditableDraftReport
+                  ? 'draft_ready'
+                  : 'report_existing'
+                : 'before_visit',
             visit_record_id: visitRecordId,
             visit_record_updated_at: visitRecordUpdatedAt,
             note: hasNarcotic ? '麻薬使用状況を含む' : null,
-            generation_targets: canGenerateDraft ? generationTargets : [],
+            generation_targets: canGenerateTargetedDraft ? generationTargets : [],
             action: existingReport
               ? {
                   label: hasEditableDraftReport ? '→ 下書きへ' : '→ 詳細へ',
                   href: buildReportHref(existingReport.id),
                 }
-              : canGenerateDraft
+              : canGenerateTargetedDraft
                 ? null
                 : { label: '→ 訪問へ', href: buildVisitRecordHref(schedule.id) },
           });
