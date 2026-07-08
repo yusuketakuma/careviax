@@ -24292,8 +24292,9 @@ visit_request/unknown`, `action_status='not_linked'`, and
   Prettier check passed. Scoped diff check passed.
 - commit:
   Service-areas route/page envelope migration, tests, allowlist cleanup, and
-  Plans sync committed as `429bfc857` (`fix(api): envelope service areas
-  responses`). Push is pending this ledger hash update.
+  Plans sync committed as `429bfc857`
+  (`fix(api): envelope service areas responses`). Push is pending this ledger
+  hash update.
 - remaining work:
   `API-CONTRACT-001` remains Partial. Continue migrating real legacy success
   and error response shapes route by route without compatibility fallback
@@ -24380,6 +24381,77 @@ visit_request/unknown`, `action_status='not_linked'`, and
   and error response shapes route by route without compatibility fallback
   bodies. High-risk auth/tenant/PII/billing/report-send/external-delivery slices
   should use Oracle consultation where required.
+- next action:
+  Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
+  then continue the next safe `API-CONTRACT-001` envelope migration.
+
+## 2026-07-09 - API-CONTRACT-001I shift-template delete envelope migration
+
+- current task:
+  Continue `API-CONTRACT-001` by migrating
+  `DELETE /api/pharmacist-shift-templates/:id` from a legacy success message to
+  the current `data` envelope. Compatibility message bodies were intentionally
+  not preserved.
+- files inspected:
+  `git status --short --untracked-files=all`; `Plans.md`;
+  `ops/refactor/STATE.md`; `tools/api-response-shape-allowlist.json`;
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`;
+  `src/app/api/pharmacist-shift-templates/[id]/route.ts`;
+  `src/app/api/pharmacist-shift-templates/[id]/route.test.ts`;
+  `src/app/(dashboard)/admin/shifts/shifts-content.tsx`;
+  pharmacist shift-template usage search results.
+- files changed:
+  `src/app/api/pharmacist-shift-templates/[id]/route.ts`;
+  `src/app/api/pharmacist-shift-templates/[id]/route.test.ts`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `ops/refactor/STATE.md`.
+- bugs found:
+  `DELETE /api/pharmacist-shift-templates/:id` returned a legacy success
+  `message` body instead of a stable data envelope. The admin shifts UI already
+  ignores the delete response body, so no frontend reader compatibility path was
+  required.
+- bugs fixed:
+  The delete route now returns `data: { id }`, and the route test asserts the
+  new-only response body. The allowlist entry was removed. Response-shape debt
+  dropped from 211 to 210 allowlisted violations.
+- security risks found:
+  No auth, authorization, org scoping, RLS, validation, or destructive behavior
+  changed. The route remains admin-only and verifies the org-scoped template
+  before deleting it under the org context.
+- security risks reduced:
+  Removed another legacy destructive-operation success shape without preserving
+  old top-level `message` compatibility.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this is response contract cleanup. Existing lookup and delete query
+  shape is unchanged.
+- UI/UX note:
+  No visible UI/UX change. The admin shifts page already ignored the delete
+  payload, so image generation was not applicable.
+- validation commands:
+  `pnpm exec prettier --write 'src/app/api/pharmacist-shift-templates/[id]/route.ts' 'src/app/api/pharmacist-shift-templates/[id]/route.test.ts' tools/api-response-shape-allowlist.json Plans.md`;
+  `pnpm vitest run 'src/app/api/pharmacist-shift-templates/[id]/route.test.ts' --reporter=dot --testTimeout=30000`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint 'src/app/api/pharmacist-shift-templates/[id]/route.ts' 'src/app/api/pharmacist-shift-templates/[id]/route.test.ts'`;
+  `pnpm exec prettier --check 'src/app/api/pharmacist-shift-templates/[id]/route.ts' 'src/app/api/pharmacist-shift-templates/[id]/route.test.ts' tools/api-response-shape-allowlist.json Plans.md`;
+  `git diff --check -- 'src/app/api/pharmacist-shift-templates/[id]/route.ts' 'src/app/api/pharmacist-shift-templates/[id]/route.test.ts' tools/api-response-shape-allowlist.json Plans.md`.
+- validation results:
+  Prettier passed. Focused route tests passed 1 file / 2 tests.
+  `api-response-shape:check` passed with 210 allowlisted violations and 0 new
+  violations. `plans:active:check` passed. Focused ESLint passed. Targeted
+  Prettier check passed. Scoped diff check passed.
+- commit:
+  Shift-template delete envelope migration, route test, allowlist cleanup, and
+  Plans sync committed as `d7678cf93`
+  (`fix(api): envelope shift template delete`). Push is pending this ledger
+  hash update.
+- remaining work:
+  `API-CONTRACT-001` remains Partial. Continue migrating real legacy success
+  and error response shapes route by route without compatibility fallback
+  bodies. High-risk auth/tenant/PII/billing/report-send/external-delivery
+  slices should use Oracle consultation where required.
 - next action:
   Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
   then continue the next safe `API-CONTRACT-001` envelope migration.
