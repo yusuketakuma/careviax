@@ -24217,6 +24217,99 @@ visit_request/unknown`, `action_status='not_linked'`, and
   Commit and push this ledger hash update with only `ops/refactor/STATE.md`
   staged, then continue with the next non-human-gated read-speed cleanup.
 
+## 2026-07-09 - API-CONTRACT-001Q notification-rules envelope
+
+- current task:
+  Continue `API-CONTRACT-001` by migrating notification-rule list/detail/create,
+  update, and delete responses to the current `data` / `data + meta` envelope.
+  Compatibility top-level count fields, raw rule bodies, and delete message
+  bodies were intentionally not preserved.
+- files inspected:
+  `git status --short --branch --untracked-files=all`; `Plans.md`;
+  `ops/refactor/STATE.md`; `tools/api-response-shape-allowlist.json`;
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`;
+  `src/lib/api/list-envelope.ts`; `src/lib/api/response.ts`;
+  `src/app/api/notification-rules/route.ts`;
+  `src/app/api/notification-rules/[id]/route.ts`;
+  `src/app/api/notification-rules/route.test.ts`;
+  `src/app/api/notification-rules/[id]/route.test.ts`;
+  `src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx`;
+  `src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx`;
+  notification-rule API path helpers and focused usage search results.
+- files changed:
+  `src/app/api/notification-rules/route.ts`;
+  `src/app/api/notification-rules/[id]/route.ts`;
+  `src/app/api/notification-rules/route.test.ts`;
+  `src/app/api/notification-rules/[id]/route.test.ts`;
+  `src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx`;
+  `src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `ops/refactor/STATE.md`.
+- bugs found:
+  `GET /api/notification-rules` still returned counted-list metadata at the
+  response root, `POST /api/notification-rules` and detail GET/PATCH returned a
+  raw notification rule body, DELETE returned a legacy message body, and the
+  notification settings page accepted both new and old mutation payload shapes.
+- bugs fixed:
+  Collection GET now returns `data` plus `meta`. Collection POST and detail
+  GET/PATCH return `data: rule`, and DELETE returns `data: { id }`. The
+  notification settings reader now consumes `payload.meta` and mutation
+  `payload.data` only. Route/component tests assert the new shape and fixture
+  mocks no longer rely on legacy top-level count fields or raw rule bodies.
+  Response-shape debt dropped from 202 to 197 allowlisted violations.
+- security risks found:
+  No permission, tenant/org scoping, validation, RLS, audit, or notification
+  delivery behavior changed. Notification rule `recipients` still remain
+  admin-scoped configuration data behind `canAdmin`.
+- security risks reduced:
+  The admin notification settings reader no longer silently accepts raw rule
+  mutation bodies, reducing ambiguity in public response contracts before
+  broader request_id/error unification.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this is response contract cleanup. Existing bounded list limit and
+  counted query behavior are unchanged.
+- UI/UX note:
+  No visible layout or interaction change. This was a response reader contract
+  update, so image generation was not applicable.
+- Oracle note:
+  Oracle was not consulted because this is a narrow admin-configuration
+  envelope migration with focused passing tests and no auth/authorization logic,
+  tenant isolation, PHI/PII selection, DB schema, migration, billing, external
+  sharing, production data, or destructive behavior change.
+- validation commands:
+  `pnpm exec prettier --write src/app/api/notification-rules/route.ts src/app/api/notification-rules/[id]/route.ts src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx src/app/api/notification-rules/route.test.ts src/app/api/notification-rules/[id]/route.test.ts src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx tools/api-response-shape-allowlist.json Plans.md`;
+  `pnpm vitest run src/app/api/notification-rules/route.test.ts src/app/api/notification-rules/[id]/route.test.ts src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx --reporter=dot --testTimeout=30000`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint src/app/api/notification-rules/route.ts src/app/api/notification-rules/[id]/route.ts src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx src/app/api/notification-rules/route.test.ts src/app/api/notification-rules/[id]/route.test.ts src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx`;
+  `pnpm exec prettier --check src/app/api/notification-rules/route.ts src/app/api/notification-rules/[id]/route.ts src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx src/app/api/notification-rules/route.test.ts src/app/api/notification-rules/[id]/route.test.ts src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx tools/api-response-shape-allowlist.json Plans.md`;
+  `git diff --check -- Plans.md src/app/api/notification-rules/route.ts src/app/api/notification-rules/[id]/route.ts src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx src/app/api/notification-rules/route.test.ts src/app/api/notification-rules/[id]/route.test.ts src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx tools/api-response-shape-allowlist.json`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+- validation results:
+  Prettier passed. Focused route/component tests passed 3 files / 32 tests.
+  `api-response-shape:check` passed with 197 allowlisted violations and 0 new
+  violations. `plans:active:check` passed. Focused ESLint passed. Targeted
+  Prettier check passed. Scoped diff check passed. Full typecheck passed after
+  Next route type generation.
+- commit:
+  Notification-rule envelope migration, notification settings reader/test
+  updates, allowlist cleanup, and Plans sync committed as
+  `be8f642d22f2005bbc820d22b2cbea2602fae9c3`
+  (`fix(api): envelope notification rules`). Push is pending this ledger hash
+  update.
+- remaining work:
+  `API-CONTRACT-001` remains Partial. Continue migrating real legacy success
+  and error response shapes route by route with new-only readers/responses and
+  no compatibility fallbacks.
+- next action:
+  Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
+  then continue `API-CONTRACT-001` against the next low-risk non-PHI aggregate
+  or admin configuration response-shape candidate. Patient, medication,
+  billing, external-share, auth, job-execution, and tenant-isolation routes
+  remain Oracle-gated unless handled as explicit high-risk slices.
+
 ## 2026-07-09 - API-CONTRACT-001P dashboard overdue envelope
 
 - current task:
