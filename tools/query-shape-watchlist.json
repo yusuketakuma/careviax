@@ -74,6 +74,21 @@
       "path": "src/app/api/patients/[id]/timeline/[eventId]/route.ts",
       "owner": "PERF-DB-001",
       "reason": "Patient timeline event detail resolver must avoid direct broad reads and keep detail fetches scoped."
+    },
+    {
+      "path": "src/app/api/patients/[id]/visit-brief/route.ts",
+      "owner": "QUERY-SHAPE-WATCHLIST-003-FOLLOW",
+      "reason": "Patient visit brief route is a critical visit read shell; heavy brief reads must stay delegated to bounded service follow-ups."
+    },
+    {
+      "path": "src/app/api/patients/[id]/visits/route.ts",
+      "owner": "QUERY-SHAPE-WATCHLIST-003-FOLLOW",
+      "reason": "Patient visits tab route is a critical visit-detail read shell and must not grow direct broad Prisma reads."
+    },
+    {
+      "path": "src/app/api/patients/[id]/visit-constraints/route.ts",
+      "owner": "QUERY-SHAPE-WATCHLIST-003-FOLLOW",
+      "reason": "Patient visit constraints route must remain patient-scoped and avoid direct list fan-out in the route shell."
     }
   ]
 }

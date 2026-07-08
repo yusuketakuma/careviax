@@ -24062,3 +24062,78 @@ visit_request/unknown`, `action_status='not_linked'`, and
   Commit and push the frontend contract slice with only owned files staged.
   Then continue the active plan queue without applying migrations, live AWS
   actions, production mutations, deploys, or destructive operations.
+
+## 2026-07-09 - QUERY-SHAPE-WATCHLIST-003G patient visit route shells
+
+- current task:
+  Move the highest-priority non-human-gated DB read-speed work forward by
+  expanding the query-shape watchlist while preserving zero allowlist debt.
+- files inspected:
+  `Plans.md`; `ops/refactor/STATE.md`; `tools/scripts/check-query-shape.mjs`;
+  `tools/query-shape-watchlist.json`; `tools/query-shape-allowlist.json`;
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003a-003d.md`;
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003e.md`;
+  `src/app/api/patients/board/route.ts`;
+  `src/app/api/visit-schedules/day-board/route.ts`;
+  `src/app/api/care-reports/today-workspace/route.ts`;
+  `src/app/api/patients/[id]/visit-brief/route.ts`;
+  `src/app/api/patients/[id]/visits/route.ts`;
+  `src/app/api/patients/[id]/visit-constraints/route.ts`;
+  `src/app/api/visit-records/[id]/route.ts`;
+  `src/server/services/visit-brief.ts`; `src/lib/contact-profiles.ts`.
+- files changed:
+  `tools/query-shape-watchlist.json`; `Plans.md`; `ops/refactor/STATE.md`.
+- bugs found:
+  `QUERY-SHAPE-WATCHLIST-003-FOLLOW` had safe route-shell gaps for patient visit
+  read surfaces even though heavier service/BFF files still need cleanup before
+  they can join the static watchlist. `patients/board` still performs main
+  patient reads without a top-level static `take`, which belongs to the separate
+  cursor redesign task. `day-board`, `report today-workspace`, `visit-records`,
+  `visit-brief` service, and `contact-profiles` still contain broad/mixed
+  query shapes that must not be added to the watchlist until cleaned up.
+- bugs fixed:
+  Added patient visit brief, patient visits tab, and patient visit constraints
+  route shells to `tools/query-shape-watchlist.json`. These route shells now
+  fail `pnpm db:query-shape:check` if direct `findMany`, broad include,
+  unstable top-N, or aggregate fan-out is added at the route layer. Updated
+  `Plans.md` with `QUERY-SHAPE-WATCHLIST-003G` evidence and kept the parent
+  follow-up Partial with remaining cleanup explicitly listed.
+- security risks found:
+  These patient/visit route shells are PHI-bearing read entrypoints. A future
+  route-layer broad Prisma read could accidentally bypass existing delegated
+  service scoping, assignment checks, or PHI-minimized DTO boundaries.
+- security risks reduced:
+  The new watchlist entries keep the route shells delegated/patient-scoped and
+  prevent direct broad read regressions from being introduced silently. No
+  schema, migration, production data, live DB, or PHI payload behavior changed.
+- performance issues found:
+  `patients/board` main cursoring, day-board aggregation, report workspace
+  counts/order stability, contact profiles, visit-record BFF, and visit-brief
+  service remain real performance cleanup targets. They are too broad to add to
+  the zero-debt watchlist without code changes.
+- performance issues improved:
+  Expanded the zero-debt query-shape ratchet by three patient visit route
+  shells, catching direct route-layer fan-out before it reaches runtime.
+- UI/UX note:
+  No UI/UX change. `docs/ui-ux-design-guidelines.md` and image generation are
+  not applicable for this backend/tooling watchlist slice.
+- validation commands:
+  `pnpm exec prettier --write tools/query-shape-watchlist.json`;
+  `pnpm db:query-shape:check`;
+  `pnpm exec eslint 'src/app/api/patients/[id]/visit-brief/route.ts' 'src/app/api/patients/[id]/visits/route.ts' 'src/app/api/patients/[id]/visit-constraints/route.ts'`;
+  `pnpm vitest run 'src/app/api/patients/[id]/visit-brief/route.test.ts' 'src/app/api/patients/[id]/visit-constraints/route.test.ts' --reporter=dot --testTimeout=30000`;
+  `pnpm plans:active:check`;
+  `git diff --check -- tools/query-shape-watchlist.json`.
+- validation results:
+  Query-shape check passed with 0 allowlisted violations and 0 new violations.
+  Scoped ESLint passed. Focused route tests passed 2 files / 19 tests. Plans
+  active board check passed. Scoped diff check passed.
+- remaining work:
+  `QUERY-SHAPE-WATCHLIST-003-FOLLOW` remains Partial. Remaining read-speed
+  cleanup targets are patients board main cursor, day-board, report workspace,
+  visit-brief service, visit-record BFF, and contact profiles. Human-gated
+  stock migration, live AWS recovery, and index migration tasks remain gated.
+- next action:
+  Commit and push the 003G watchlist slice with only owned files staged, then
+  continue with the next non-human-gated read-speed cleanup or validation
+  hygiene item.
