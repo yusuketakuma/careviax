@@ -41,6 +41,87 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001AF` generate-from-visit success envelope cleanup.
+  - commit:
+    Implementation and Plans/allowlist route test update committed as `dba016f1f`
+    (`fix(api): envelope generated care reports`). State record is this entry and will be
+    committed separately before pushing the slice.
+  - current task:
+    Continue `Plans.md` highest-priority implementable work under `API-CONTRACT-001`. Remove
+    `src/app/api/care-reports/generate-from-visit/route.ts` from the public response-shape allowlist
+    by making the existing `data` success envelope statically explicit.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `ops/refactor/STATE.md`,
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `src/app/api/care-reports/generate-from-visit/route.ts`,
+    `src/app/api/care-reports/generate-from-visit/route.test.ts`,
+    `src/lib/reports/generate-from-visit-client.ts`,
+    `src/lib/reports/generate-from-visit-client.test.ts`,
+    `src/lib/reports/generate-from-visit-contract.ts`,
+    `src/lib/reports/generate-from-visit-contract.test.ts`,
+    and route usage search results for `generate-from-visit`.
+  - files changed:
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/care-reports/generate-from-visit/route.ts`,
+    `src/app/api/care-reports/generate-from-visit/route.test.ts`,
+    and this `ops/refactor/STATE.md` ledger entry.
+  - implementation:
+    The generate-from-visit route now calls `success({ data: ... }, 201)` directly instead of
+    passing a typed `responseBody` variable. The route test now rejects root-level `reports`. The
+    allowlist entry for `src/app/api/care-reports/generate-from-visit/route.ts` was removed, and
+    `Plans.md` records `API-CONTRACT-001AF` with allowlist debt reduced from 171 to 170.
+  - Oracle:
+    User explicitly paused Oracle consultation. No Oracle prompt was sent or restarted. The slice
+    stayed limited to response construction and tests; report generation permissions, visit/draft
+    version checks, generator behavior, NoStore headers, error sanitization, and client schema were
+    not changed.
+  - imagegen:
+    Not used. This is an API contract/static guard cleanup with no visible UI/UX change.
+  - Next.js docs:
+    Re-read `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md` earlier in
+    this API contract run. This slice changes JSON response construction only and does not change
+    route placement, supported methods, runtime behavior, or cache behavior.
+  - bugs found:
+    Runtime response shape was already `data`, but the route passed a typed `responseBody` variable
+    to `success(responseBody, 201)`, leaving the public route in the static response-shape allowlist.
+    The happy-path route test did not explicitly reject root-level `reports`.
+  - bugs fixed:
+    Success response construction is now directly visible as the current envelope, and the focused
+    route test rejects legacy root `reports`. `api-response-shape:check` now reports 170
+    allowlisted violations and 0 new violations.
+  - security risks reduced:
+    No auth, authorization, org scope, generator input validation, report content, PHI boundary,
+    NoStore, or error body behavior was weakened. Existing stale visit/draft checks and sanitized
+    error mapping are unchanged.
+  - performance issues improved:
+    None. No generator call, DB access, frontend request, or serialization path changed beyond the
+    equivalent response object construction.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/care-reports/generate-from-visit/route.ts src/app/api/care-reports/generate-from-visit/route.test.ts src/lib/reports/generate-from-visit-client.ts src/lib/reports/generate-from-visit-client.test.ts src/lib/reports/generate-from-visit-contract.ts src/lib/reports/generate-from-visit-contract.test.ts`;
+    `pnpm exec vitest run src/app/api/care-reports/generate-from-visit/route.test.ts src/lib/reports/generate-from-visit-client.test.ts src/lib/reports/generate-from-visit-contract.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint --max-warnings=0 src/app/api/care-reports/generate-from-visit/route.ts src/app/api/care-reports/generate-from-visit/route.test.ts src/lib/reports/generate-from-visit-client.ts src/lib/reports/generate-from-visit-client.test.ts src/lib/reports/generate-from-visit-contract.ts src/lib/reports/generate-from-visit-contract.test.ts`;
+    `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/care-reports/generate-from-visit/route.ts src/app/api/care-reports/generate-from-visit/route.test.ts src/lib/reports/generate-from-visit-client.ts src/lib/reports/generate-from-visit-client.test.ts src/lib/reports/generate-from-visit-contract.ts src/lib/reports/generate-from-visit-contract.test.ts`;
+    `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/care-reports/generate-from-visit/route.ts src/app/api/care-reports/generate-from-visit/route.test.ts src/lib/reports/generate-from-visit-client.ts src/lib/reports/generate-from-visit-client.test.ts src/lib/reports/generate-from-visit-contract.ts src/lib/reports/generate-from-visit-contract.test.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Targeted Prettier write completed. Focused generate-from-visit route/client/contract Vitest
+    passed 3 files / 26 tests. API response shape check passed with 170 allowlisted violations and
+    0 new violations. Plans active board check passed. Scoped ESLint passed. Targeted Prettier check
+    passed. Targeted diff-check passed. Full typecheck passed.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial; the next allowlist candidate is
+    `src/app/api/cases/[id]/risk-cockpit/route.ts`. Unrelated local dirty state remains in
+    `.harness-mem/state/continuity.json` and many untracked memory/docs files and was not staged.
+  - next action:
+    Commit this state entry, push the two commits for this slice to `origin/main`, then continue
+    the `Plans.md` high-priority loop while Oracle consultation remains paused.
+
 - codex: `API-CONTRACT-001AE` care report send response-shape cleanup.
   - commit:
     Implementation and Plans/allowlist route test update committed as `c6f7339de`
