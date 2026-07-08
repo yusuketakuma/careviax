@@ -43,7 +43,8 @@
 
 - codex: `INBOUND-002-REVIEW-LIFECYCLE-001` inbound review lifecycle and MedicationStock apply policy.
   - commit:
-    Implementation and Plans update committed as `6d87dac41` (`feat(inbound): add review lifecycle policy`).
+    Implementation and Plans update committed as `6d87dac41` (`feat(inbound): add review lifecycle policy`);
+    state record committed as `c475234fb`; both pushed to `origin/main`.
   - current task:
     Continue `INBOUND-002-REVIEW-DETAIL` without bypassing stock apply safety. The raw detail API
     and audited raw panel already exist, so this slice adds candidate-level review lifecycle and
@@ -121,8 +122,7 @@
     mapping UI, and VisitBrief/Schedule/Report/Share downstream connections. `STOCK-001-VISIT-UI`
     write enablement remains blocked behind migration/DB integration human gate.
   - next action:
-    Commit this state record, push the explicit owned commits, then continue from the next safe
-    non-human-gated item in `Plans.md`.
+    Continue from the next safe non-human-gated item in `Plans.md`.
 
 - codex: `INBOUND-002-AUDITED-DETAIL-PANEL-001` inbound review panel audited raw detail connection.
   - commit:
