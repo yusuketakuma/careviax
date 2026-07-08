@@ -138,19 +138,19 @@ async function authenticatedPOST(req: NextRequest, { params }: PrintAuditRouteCo
     );
   }
 
-  const responseBody = {
-    data: {
-      audited: true,
-      report: {
-        id: printReport.id,
-        report_type: printReport.report_type,
-        updated_at: printReport.updated_at.toISOString(),
-        content: printReport.content as CareReportPrintAuditPrintableReport['content'],
+  return withSensitiveNoStore(
+    success({
+      data: {
+        audited: true,
+        report: {
+          id: printReport.id,
+          report_type: printReport.report_type,
+          updated_at: printReport.updated_at.toISOString(),
+          content: printReport.content as CareReportPrintAuditPrintableReport['content'],
+        },
       },
-    },
-  } satisfies CareReportPrintAuditResponse<CareReportPrintAuditPrintableReport>;
-
-  return withSensitiveNoStore(success(responseBody));
+    } satisfies CareReportPrintAuditResponse<CareReportPrintAuditPrintableReport>),
+  );
 }
 
 export async function POST(req: NextRequest, routeContext: PrintAuditRouteContext) {

@@ -155,6 +155,8 @@ describe('/api/care-reports/[id]/print-audit', () => {
     expectSensitiveNoStore(response);
     const body = await response.json();
     expect(careReportPrintAuditResponseSchema.safeParse(body).success).toBe(true);
+    expect(body).not.toHaveProperty('audited');
+    expect(body).not.toHaveProperty('report');
     expect(body).toMatchObject({
       data: {
         audited: true,
