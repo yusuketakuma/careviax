@@ -19,7 +19,126 @@
 - PH-OS / レセコン / 電子薬歴 / 在宅支援システムの責任分界を先に固定し、二重入力を避ける
 - 公開情報ベースの市場比較では、既存製品は「訪問記録・計画書/報告書作成・FAX/メール送付・現場共有」に強い。初期価値は最適化機能より、現場記録/連携/持参漏れ防止に置く
 
-### 2026-07-08 Plan Status Registry — 実装済み / 未実装整理 `cc:ACTIVE`
+### 2026-07-08 Active Plan Board v3 — 実装済み / 未実装分類 `cc:ACTIVE`
+
+> このセクションが `Plans.md` の実装入口。後段の `cc:REFERENCE` / `cc:WIP` / 旧 status 表は、背景・受入条件・履歴証跡として読む。
+> 実装済みタスクは再タスク化しない。未実装または一部実装済みの残スコープだけを、下の queue から次PRへ切る。
+> 照合根拠: 2026-07-08 時点の `git log --oneline -30`、現行 route/service/type/test、`ops/refactor/STATE.md`、`docs/compliance/access-control-policy.md`、`docs/ui-ux-design-guidelines.md`。
+
+**分類ルール**:
+
+| Status        | 判定                                                                                     | 実装判断                                                                       |
+| ------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Done / frozen | code path、test、commit/STATE evidence がある。                                          | active backlog から外す。回帰防止test・watchlist・docs参照だけ残す。           |
+| Partial       | 正本DB/API/BFFまたは初期UIはあるが、review UI、downstream、role tests、運用証跡が残る。  | 既存土台を再作成せず、残スコープだけ小IDへ切る。                               |
+| Not started   | 永続 code path がなく、計画文だけがある。                                                | DoD、validation、stopping condition を補ってから着手する。                     |
+| Human gate    | migration適用、live AWS、restore drill、PMDA/法務/UAT、production data mutation が必要。 | Codexだけで完了扱いにしない。runbook、evidence、rollback、承認条件を管理する。 |
+
+**実装済み / 再実装しない範囲**:
+
+| Area                     | Done / frozen evidence                                                                                                                                                                                   | 今後の扱い                                                                                                                    |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Dashboard backend        | lightweight summary、segment-specific invalidation、Unified Urgent主要source、inbound / stock-risks / report-billing segments、ViewModel hook、Clock Island、dashboard segment payload budget。          | API/BFFを再作成しない。残は Summary Rail、drilldown、quick actions、visual QA。                                               |
+| Inbound core             | `InboundCommunicationEvent` / `InboundCommunicationSignal` schema、RLS、phone/MCS登録、inbox、signal materialize、task bridge、risk bridge、MedicationStock accepted-signal apply。                      | 正本DB/APIは固定。残は review detail UX、raw再認可、FAX/email/manual、VisitBrief/Schedule/Report/Share downstream。           |
+| Medication Stock base    | schema、RLS/index、append-only event、snapshot、summary API、stockout/equivalence helper、accepted inbound signal apply。                                                                                | 残は処方供給adapter、訪問観測UI/API、usage/refill、equivalence review UI、downstream接続。                                    |
+| Patient Movement base    | `movement` tab、共通DTO、safe detail resolver、処方/訪問/文書 occurrence marker、timeline list payload budget。                                                                                          | 残は standalone API、map-less date card UX、formal inbound/stock/safety sources、deep link coverage。                         |
+| DB read-speed guardrails | care-report bounded patient/keyword search、delivery summary page-basis、payload budgets、SELECT-only EXPLAIN tool、query-shape watchlist guard、patients board nested relation bounds/stable ordering。 | 残は patients board main cursor redesign、day-board/detail surfaces cleanup、index migration human gate、perf-smoke運用証跡。 |
+| Recovery / AWS base      | AWS Backup/RDS read-only monitor、template validator、structured redacted drill evidence、SELECT-only restored DB integrity audit。                                                                      | runtime restore APIは作らない。残は S3 Object Lock monitor、root runbook cleanup、live AWS drill evidence。                   |
+| Permission SSOT base     | `docs/compliance/access-control-policy.md` と `src/lib/auth/permission-matrix.ts` の基本 capability matrix。                                                                                             | 新account種別やsupport mode導入時に docs/code/tests/RLS/audit を同時更新する。                                                |
+
+**一部実装済み / 残スコープ**:
+
+| Track           | 実装済み土台                                                                                    | 未実装の残スコープ                                                                                                                     |
+| --------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `DASH-OPS`      | DashboardCockpit segments、urgent DTO/source、role priority、payload budget。                   | `DASH-P1-010-RAIL`、`DASH-P1-005-LINKS`、quick actions、安全な density/semantic tone、visual regression。                              |
+| `INB-001/002`   | Formal inbound schema/API/inbox/signals/task/risk/stock apply。                                 | 3カラム review shell、raw_text再認可detail、FAX/email/manual、source mapping UI、VisitBrief/Schedule/Report/Share。                    |
+| `RX-002/STOCK`  | MedicationStock ledger base。                                                                   | prescription supply、visit observation、usage_delta/frequency/refill、equivalence review UI、stock risk provider完全統合。             |
+| `MOV-001`       | Movement tab/DTO/resolver/occurrence marker。                                                   | standalone API、日付カードUX、formal inbound/stock/safety sources、relative href builder、raw再認可detail。                            |
+| `PERF-DB-001`   | 主要summary/listのpayload/query-shape改善。                                                     | patients board main cursor、visit-schedules day-board、contact profiles、visit-preparation detail、visit-brief、visit-record BFF。     |
+| `MOD-*`         | module boundary ratchet、collaboration/risk provider contract、TaskTypeRegistry guardrail一部。 | report/share/data crosswalk、DomainEventOutbox、module metadata、service_line/discipline/task.module migration plan。                  |
+| `VS-AUTO`       | proposal-first土台、planner、availability helper、approve/contact/confirm flow。                | DeadlinePolicy、direct generate cordon、review fields migration、PRN/topical stock hard gate、overload apply、Google matrix provider。 |
+| `FE-FOUNDATION` | AppShell、Sidebar、MobileNav、SegmentError、DataTable、WorkspaceActionRail。                    | patient detail island split、visit form split、mobile contextual CTA、browser storage PHI audit、interaction budget。                  |
+
+**Not started / Human gate の主バックログ**:
+
+| ID                         | Status      | Priority | Lane                 | Plan / DoD                                                                                                                                                               | Validation / Stop                                                                                                   |
+| -------------------------- | ----------- | -------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `DASH-P1-010-RAIL`         | Not started | P1       | Dashboard UI         | 既存 segments から左Summary Railを合成する。専用BFFは必要になるまで作らない。狭幅では上部横スクロールカードへ変形。                                                      | dashboard component tests、mobile snapshot。summary/details重複fetch復活なら停止。                                  |
+| `DASH-P1-005-LINKS`        | Not started | P1       | Dashboard routing    | process tiles、hidden queue、carryoverを相対URLでdrilldown化する。0件でも空一覧へ遷移できる。                                                                            | href allowlist、relative URL tests。signed/storage/external URLをaction hrefに入れるなら停止。                      |
+| `INBOUND-002-REVIEW`       | Partial     | P0/P1    | Inbound UI/API       | 3カラム review shell。左=原文/添付/送信者/日時、中央=signal候補、右=反映先/Task/Record-only/Reject/MedicationStock。raw_textはdetail再認可とread audit経由。             | raw omission snapshots、review lifecycle、read-reason/audit tests。raw_textをlist/通知/監査changesへ流すなら停止。  |
+| `STOCK-001-PRESCRIPTION`   | Not started | P1       | Pharmacy stock       | 処方明細から stock item候補を探し、YJ/HOT/GS1(GTIN/JAN)/一般名/規格/剤形/メーカーで候補化。低confidenceは薬剤師review taskへ回す。                                       | adapter/API tests、idempotency、equivalence review tests。単位変換不能を自動加算するなら停止。                      |
+| `STOCK-001-VISIT`          | Not started | P1       | Pharmacy stock/UI    | 訪問観測API/UI。残数、使用頻度、最終使用日、未確認理由をappend-only eventとsnapshot再計算へ接続。`残り4枚` と `2枚使用` を区別。                                         | unit/API/UI/mobile tests、stockout forecast tests。reviewなしで他職種signalをledger直書きするなら停止。             |
+| `MOV-001-API`              | Not started | P1       | Patient detail       | standalone movement API、cursor/date/category filter、map-less date card UX、formal inbound/stock/safety sources。処方・訪問・文書は occurrence marker + deep linkのみ。 | movement API tests、payload budget、raw omission、mobile/a11y。SOAP/OCR/raw chat/薬剤明細全文を一覧に出すなら停止。 |
+| `VISIT-BRIEF-010`          | Not started | P1       | Visit brief          | 他職種受信、残数不足、服薬困難、副作用疑い、日程相談を訪問前確認項目へ変換。未処理/安全/残数を上位表示。                                                                 | visit brief tests、provider contract。raw_textをbrief本文へ自動挿入するなら停止。                                   |
+| `REPORT-020`               | Not started | P1       | Report workspace     | inbound `normalized_summary` を報告書候補化。薬剤師が「報告書に含める / 申し送りのみ / 内部記録のみ」を選ぶ。raw_textは自動挿入しない。                                  | report workspace tests、masking/delivery tests。外部送付本文へraw text自動投入なら停止。                            |
+| `PERM-DOC-SYNC-001`        | Partial     | P0/P1    | Permission docs      | 新account種別、support mode、freelance assignment、external viewer scope導入時に capability表、RLS proof、forbidden tests、audit requirementを同時更新。                 | permission matrix tests、forbidden tests。docs/code片側更新なら停止。                                               |
+| `OPS-RECOVERY-MONITOR-003` | Not started | P1       | AWS recovery monitor | S3 Object Lock read-only checkとstrict skipped-check behavior。admin healthはenabled/mode/default retentionのみ返し、bucket/vault/snapshot/userPoolIdを直接出さない。    | backup-monitor tests、health redaction、strict missing env tests。AWS write permissionが必要なら停止。              |
+| `OPS-RECOVERY-DOC-001`     | Not started | P1       | AWS recovery docs    | `docs/compliance/backup-recovery-drill.md` を復旧SSOTにし、root runbookをhistorical化またはleast-privilege/non-destructiveへ整合。                                       | unsafe phrase rg、docs diff。break-glass権限方針が未決ならhuman gate。                                              |
+| `OPS-RECOVERY-LIVE-001`    | Human gate  | P0/P1    | AWS recovery ops     | 本番相当roleで `--live-aws --strict`、admin health実AWS確認、restore drill evidenceを収集。runtime restore APIは作らない。                                               | live AWS result、RTO/RPO evidence。credentials/approvalなしなら実行しない。                                         |
+| `TENANT-SUPPORT-001`       | Not started | P0/P1    | Platform access      | Global User/Membership/Grant/Assignment、SupportSession、break-glass、RLS context extension、audit searchをadditive-firstで設計。                                        | threat model、migration rollback、forbidden tests。support_sessionなしのtenant横断read/writeなら停止。              |
+| `API-CONTRACT-001`         | Not started | P0       | API contract         | success/error envelopeを `ApiSuccess<T>` / `ApiError` へ段階統一し、public route allowlistを減らす。                                                                     | route snapshots、frontend reader、`api-response-shape:check` expectedCount減。既存route一括破壊なら停止。           |
+| `API-CONTRACT-002`         | Not started | P0/P1    | API observability    | `request_id` / `correlation_id` を success meta、error、AuditLog、security event、job/outboxへ伝播。                                                                     | representative route tests、audit/security tests。provider raw errorやPHI混入なら停止。                             |
+| `API-CONTRACT-003`         | Not started | P0/P1    | API contract         | error code registryを作り、HTTP status、log level、retryability、user recovery actionを定義する。                                                                        | registry snapshot、unknown code reject。                                                                            |
+| `API-LIST-001`             | Not started | P0/P1    | API list             | cursor list responseを `data[] + meta{ generated_at, limit, next_cursor, has_more, total_count?, count_basis, facets?, truncated? }` へ統一。                            | list API tests、frontend normalizer tests。                                                                         |
+| `DB-EVENT-001`             | Not started | P0/P1    | Durable events       | DomainEventOutbox。mutation transaction内では minimal event insertまで。payloadはaggregate refs、schema version、pii_class、minimal json。                               | migration design、payload PHI snapshot。migration適用はhuman gate。                                                 |
+| `FILE-LIFE-001`            | Not started | P0/P1    | File/PHI             | FileAsset lifecycle、scan gate、safe display name、retention、legal hold。                                                                                               | FileAsset DTO snapshot、external share/report gate。storage_key/signed URLをpublic DTOへ出すなら停止。              |
+| `DATA-RET-001A`            | Not started | P1       | Retention            | entity別保持期間、削除/匿名化/Legal hold/archive guardのpolicy matrixとmigration plan。                                                                                  | policy matrix、archive/write/export tests。保持期間の法務判断はhuman gate。                                         |
+| `PERF-RTE-001A`            | Not started | P0/P1    | Ops/perf             | current-process metrics依存を減らし、route/method/status/p95/p99/org_scope/deploy_shaを横断集計してCloudWatchへ接続。                                                    | metrics tests、deploy readiness smoke。live AWS操作はhuman gate。                                                   |
+| `FRONTEND-CONTRACT-001`    | Not started | P1       | Frontend             | 7画面の entrypoint、BFF/API、state matrix、PHI表示方針、mobile構成、validationを1ページ contract化。                                                                     | docs diff、state matrix。実在しないAPIを前提にしたUI実装なら停止。                                                  |
+
+**Frontend implementation queue（未実装だけ）**:
+
+| ID                      | Status      | Screen            | Slice        | Plan / DoD                                                                                                                                        | Validation                                                               |
+| ----------------------- | ----------- | ----------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `FE-SHELL-001`          | Not started | Shell/Header/Rail | Layout       | AppShell / Sidebar / Top Header / WorkspaceActionRail の見え方と役割を統一。各業務データcontractは変えない。                                      | layout tests、a11y landmarks、mobile nav smoke。                         |
+| `FE-PATIENT-LIST-001`   | Not started | 患者一覧          | Layout       | 左summary / 中央list-card / 右selected patient preview。要対応、他職種受信、残数不足、報告未提出は権限内で表示。                                  | component tests、patients board API contract、mobile drawer screenshot。 |
+| `FE-PATIENT-DETAIL-001` | Partial     | 患者詳細          | Layout/State | Command Center、Must Check、Safety、Next Action、薬剤/訪問、Movement tab、右レールを整理。movement土台は再作成しない。                            | card-workspace tests、movement tests、a11y heading order。               |
+| `FE-DISPENSE-001`       | Not started | 調剤              | Layout       | 左queue、中央作業台、工程stepper、処方table、右監査rail。既存workflow contractは変えない。                                                        | dispense tests、route smoke、keyboard order。                            |
+| `FE-SCHEDULE-001`       | Not started | スケジュール      | Layout       | 薬剤師別timeline、状態凡例、提案rail、患者連絡待ち。proposal-firstとconfirmed不変を守る。                                                         | schedule board/proposal tests、responsive screenshot。                   |
+| `FE-VISIT-001`          | Not started | 訪問中            | Interaction  | 残数入力、観察、他職種受信確認、音声メモ、下部固定bar。正本実装がない操作をmock確定しない。                                                       | visit record tests、mobile/offline/conflict tests。                      |
+| `FE-REPORT-001`         | Not started | 報告書            | Interaction  | 左報告書一覧、中央editor、右AI/送付rail。医療チャット/残数/訪問記録は候補として選択投入する。                                                     | report workspace、delivery/masking、PDF/send route tests。               |
+| `FE-INBOUND-001`        | Partial     | 他職種受信        | Interaction  | 受信inbox、message detail、structured signal panel、action rail。formal Event/Signalを使い、raw detailは再認可とread audit。                      | inbound route/UI tests、raw omission snapshots、review lifecycle。       |
+| `FE-QA-001`             | Not started | 横断              | State/QA     | 7画面の loading/empty/data/partial/error/forbidden/stale/offline/conflict fixtures、mobile snapshot、keyboard navigation、PHI omission snapshot。 | Playwright/component screenshot、exact-path lint、typecheck。            |
+
+**今回昇格した派生タスク**:
+
+- `PLAN-ARCHIVE-001`: 後段の長大なプロンプト型仕様を active backlog から分離し、reference spec として `docs/plans-archive.md` または専用docsへリンク化する。内容を失わず、active入口には status と残scopeだけを残す。
+- `PLANS-ACTIVE-LINT-001`: `Plans.md` の active ID はこの `Active Plan Board` と implementation/frontend queue に存在するものだけとし、`cc:REFERENCE` / `cc:WIP` の未チェックboxを backlog 件数に数えない軽量lintまたは `rg` 手順を作る。
+- `TASK-ID-DEDUP-001`: 統合済みID（例: `TASK-010 -> TASK-011`, `RISK-020 -> RISK-021`）を registry に集約し、同じ意味の新IDを増やさない。
+- `ROUTE-LINK-001`: dashboard / movement / inbound / stock の deep link builder を統一する。相対URLのみ許可し、external/signed/storage URLはaction hrefに入れない。
+- `PAYLOAD-BUDGET-002`: patients board / reports / remaining detail surfaces の list/summary/detail payload budgetを表にし、summary/listでは raw text、storage key、signed URL、provider raw errorを出さないことをsnapshotで固定する。
+- `ROUTE-PERF-MEASURE-001`: `withRoutePerformance` が `unmeasured` にならないよう、shared measured JSON success helperを `src/lib/api/response.ts` に集約する。
+- `BFF-COUNT-META-001`: `returned_count` / `total_count` / `visible_count` / `hidden_count` / `count_basis` の意味をrouteごとに固定し、表示行数を総件数として扱わない。
+- `RIGHT-RAIL-ACTION-002`: dashboard、患者一覧、患者詳細、調剤、スケジュール、訪問、報告、他職種の右レール/下部CTAに「次に何をするか」と「止まっている理由」を必ず持たせる。
+- `RAW-DETAIL-REAUDIT-001`: raw chat text、電話原文、添付、連絡先詳細を表示する場合の `purpose`、再認可、read audit、request_id を共通helper/testへ寄せる。
+- `ACCESS-MATRIX-COVERAGE-001`: `docs/compliance/access-control-policy.md` と `src/lib/auth/permission-matrix.ts` の capability差分を検査し、新機能PRがdocs/code/testsの片側更新で終わらないようにする。
+
+**次に着手する推奨順**:
+
+1. `OPS-RECOVERY-MONITOR-003`: S3 Object Lock read-only monitor + strict skipped-check。AWS公式docs確認とOracle/GPT-5.5 Pro reviewを挟む。
+2. `DASH-P1-010-RAIL` + `DASH-P1-005-LINKS`: Dashboard Summary Rail と drilldown。既存BFFを再作成しない。
+3. `INBOUND-002-REVIEW`: 3カラムreview shell + raw再認可detail。
+4. `STOCK-001-PRESCRIPTION`: 処方供給adapter。YJ/HOT/GS1候補と低confidence review。
+5. `MOV-001-API`: standalone movement API と formal source。
+6. `FRONTEND-CONTRACT-001`: 7画面UI改善のslice contract / state matrix。
+7. `PLANS-ACTIVE-LINT-001` + `PLAN-ARCHIVE-001`: reference spec と active backlog の分離を継続。
+
+**Plans.md セクション分類**:
+
+| Section                                                        | 扱い                        | 実装時の読み方                                                             |
+| -------------------------------------------------------------- | --------------------------- | -------------------------------------------------------------------------- |
+| `Active Plan Board v3`                                         | Active                      | 実装済み / Partial / Not started / Human gate の正。ここを最初に確認する。 |
+| `Implementation-ready queue` / `Frontend implementation queue` | Active                      | 次PRに切れる実装単位。後段の詳細仕様から昇格済みのものだけ。               |
+| `Detailed Status Evidence Archive`                             | Archive                     | 実装済み証跡と旧分類の履歴。active backlog として数えない。                |
+| `cc:PARTIAL`                                                   | Reference + residual detail | 実装済み土台は再作成せず、残タスクをactive boardの対応IDへ戻してから着手。 |
+| `cc:REFERENCE`                                                 | Reference only              | 背景、受入条件、停止条件、仕様詳細。直接sprint backlog化しない。           |
+| `cc:WIP`                                                       | Program context             | 大きなプログラム背景。実装する場合はactive boardへ小IDで切り出す。         |
+| `cc:blocked` / Human gate                                      | External gate               | Codexだけで完了扱いにしない。証跡、runbook、承認条件を残す。               |
+
+### 2026-07-08 Detailed Status Evidence Archive — 旧分類証跡 `cc:REFERENCE`
+
+> ここから下の旧 status 表は、2026-07-08 の分類作業で使った詳細証跡であり、実装入口ではない。
+> 「この registry を入口にする」等の旧文言は当時の履歴として残すが、現在の active 入口は上の `Active Plan Board v3` のみ。
 
 > 目的: `Plans.md` 内の古い TODO と最新 main の実装状態を混ぜない。実装済み項目は再タスク化せず、未実装項目だけを次PRに落とせる粒度へ拡充する。
 > 根拠は 2026-07-08 時点の `git log --oneline -80`、現行コード検索、既存テスト、`ops/refactor/STATE.md`、`docs/compliance/access-control-policy.md`。

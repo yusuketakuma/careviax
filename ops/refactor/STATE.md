@@ -41,6 +41,65 @@
 
 ## 直近の land（本日・要点）
 
+- codex: `PLANS-HYGIENE-003` Active Plan Board v3 / 実装済み・未実装分類の整理。
+  - current task:
+    ユーザー指示の「既存Plans.md内を整理。実装済み、未実装を分類。未実装はPlanを拡充。
+    派生タスクが見つかったら追記」に対応し、`Plans.md` の実装入口を
+    `Active Plan Board v3` に集約した。実装済み項目は再タスク化しないよう frozen
+    として分類し、未実装/Partial/Human gate だけを次PRに切れる粒度へ拡充した。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `.codex/ralph-state.md`,
+    `CODEX_GOAL_PROGRESS.md`,
+    `ops/refactor/STATE.md`,
+    `git log --oneline -30`,
+    `docs/*plan*`,
+    `docs/*archive*`,
+    relevant memory notes for `Plans.md` as living SSOT and dashboard baseline.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Added `2026-07-08 Active Plan Board v3` near the top of `Plans.md` as the single active
+    entry point. It classifies Dashboard backend, Inbound core, Medication Stock base,
+    Patient Movement base, DB read-speed guardrails, Recovery/AWS base, and Permission SSOT
+    as implemented/frozen where code evidence exists. It breaks remaining work into
+    `DASH-*`, `INBOUND-*`, `STOCK-*`, `MOV-*`, `OPS-RECOVERY-*`, `API-CONTRACT-*`,
+    `DB-EVENT-*`, `FILE-LIFE-*`, `PERF-*`, and `FE-*` slices with DoD, validation, and
+    stopping conditions. It also promotes derived tasks for archive/linting, task-id
+    dedupe, deep-link safety, payload budgets, route performance measurement, count metadata,
+    right-rail actions, raw detail reauthorization, and access-matrix coverage. The older
+    `Plan Status Registry` section was renamed to `Detailed Status Evidence Archive` and
+    marked `cc:REFERENCE` so old checklist entries are not counted as active sprint backlog.
+  - bugs found:
+    `Plans.md` mixed implemented tasks, partial residual work, prompt-style reference specs,
+    and active backlog in the same reading path. That made it easy to reimplement already
+    completed Dashboard/Inbound/MedicationStock/Movement/AWS/permission work, and to treat
+    reference checkboxes as sprint-ready tasks.
+  - security risks reduced:
+    The active board now keeps DB/auth/PHI/billing/migration/deploy/destructive work behind
+    explicit review/human gates and records role/scope/consent/purpose/raw-reauthorization as
+    the access model, instead of blanket redaction or accidental unrestricted display.
+  - performance issues improved:
+    No runtime performance code changed in this docs-only slice. Planning risk was reduced by
+    keeping implemented DB read-speed guardrails frozen and adding residual tasks for patients
+    board main cursor redesign, payload budgets, route performance measurement, truthful count
+    metadata, and perf-smoke evidence.
+  - validation commands:
+    `pnpm exec prettier --check Plans.md`;
+    `git diff --check -- Plans.md`;
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md`;
+    `git diff --check -- Plans.md ops/refactor/STATE.md`.
+  - validation results:
+    `Plans.md` Prettier check passed. `git diff --check -- Plans.md` passed.
+    Final two-file Prettier check passed. Final two-file `git diff --check` passed.
+  - remaining:
+    Commit the scoped documentation slice. Follow-up implementation should start from
+    `Active Plan Board v3`, not the archived reference registry.
+  - next action:
+    Inspect status, stage only these two files, then create a small docs commit.
+
 - codex: `PATIENT-BOARD-READ-001` patients board nested read-shape speed guard。
   - current task:
     ユーザー指示の「DBの読出しスピード改善対策」として、`/api/patients/board`
