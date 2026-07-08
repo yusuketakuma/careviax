@@ -51,12 +51,9 @@ vi.mock('@/server/services/communication-request-access', () => ({
   buildInboundCommunicationEventAssignmentWhere: assignmentWhereMock,
 }));
 
-vi.mock(
-  '@/modules/pharmacy/medication-stock/application/apply-inbound-medication-stock-signal',
-  () => ({
-    applyInboundSignalToMedicationStock: applyInboundSignalToMedicationStockMock,
-  }),
-);
+vi.mock('@/modules/pharmacy', () => ({
+  applyInboundSignalToMedicationStock: applyInboundSignalToMedicationStockMock,
+}));
 
 import { PATCH as rawPATCH } from './route';
 

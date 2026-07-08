@@ -56,6 +56,8 @@ const INBOUND_ATTACHMENT_DISPLAY_ID_MIGRATION =
   'prisma/migrations/20260707084000_add_inbound_attachment_display_id/migration.sql';
 const MEDICATION_STOCK_DISPLAY_ID_MIGRATION =
   'prisma/migrations/20260707090000_add_medication_stock_ledger/migration.sql';
+const MEDICATION_STOCK_VISIT_CONTEXT_DISPLAY_ID_MIGRATION =
+  'prisma/migrations/20260708093000_add_medication_stock_visit_observation_context/migration.sql';
 const PATIENT_DISPLAY_ID_W1_MODELS = [
   'Patient',
   'Residence',
@@ -238,6 +240,9 @@ const MEDICATION_STOCK_DISPLAY_ID_MODELS = [
   'MedicationStockSnapshot',
   'ExternalMedicationStockObservation',
 ] as const satisfies readonly DisplayIdModel[];
+const MEDICATION_STOCK_VISIT_CONTEXT_DISPLAY_ID_MODELS = [
+  'MedicationStockObservationContext',
+] as const satisfies readonly DisplayIdModel[];
 // Permanent defer: nullable/hybrid org_id requires explicit tenant-vs-global semantics.
 const PERMANENT_DEFERRED_DISPLAY_ID_SCHEMA_MODELS = [
   'DrugAlertRule',
@@ -360,6 +365,13 @@ const DISPLAY_ID_SCHEMA_WAVES = [
     schemaFile: 'medication.prisma',
     migrationPath: MEDICATION_STOCK_DISPLAY_ID_MIGRATION,
     models: MEDICATION_STOCK_DISPLAY_ID_MODELS,
+    createdWithNullableDisplayId: true,
+  },
+  {
+    label: 'W11 medication-stock-visit-context-domain',
+    schemaFile: 'medication.prisma',
+    migrationPath: MEDICATION_STOCK_VISIT_CONTEXT_DISPLAY_ID_MIGRATION,
+    models: MEDICATION_STOCK_VISIT_CONTEXT_DISPLAY_ID_MODELS,
     createdWithNullableDisplayId: true,
   },
 ] as const;
@@ -493,8 +505,8 @@ function parseSequence(id: string): bigint {
 describe('display_id registry and format contract', () => {
   it('covers every Prisma model through registry, explicit business exclusion, or infrastructure exclusion', () => {
     const schemaModels = readSchemaModels();
-    expect(schemaModels).toHaveLength(153);
-    expect(Object.keys(DISPLAY_ID_REGISTRY)).toHaveLength(151);
+    expect(schemaModels).toHaveLength(154);
+    expect(Object.keys(DISPLAY_ID_REGISTRY)).toHaveLength(152);
     expect(DISPLAY_ID_EXCLUDED_MODELS).toEqual(['Setting']);
     expect(DISPLAY_ID_INFRASTRUCTURE_MODELS).toEqual(['IdSequence']);
 
@@ -511,7 +523,7 @@ describe('display_id registry and format contract', () => {
     const entries = Object.entries(DISPLAY_ID_REGISTRY);
     const prefixes = entries.map(([, entry]) => entry.prefix);
     expect(new Set(prefixes).size).toBe(prefixes.length);
-    expect(prefixes).toHaveLength(151);
+    expect(prefixes).toHaveLength(152);
     for (const prefix of prefixes) {
       expect(prefix).toMatch(/^[a-z]{1,6}$/);
     }
@@ -522,7 +534,7 @@ describe('display_id registry and format contract', () => {
       counts[entry.scope] = (counts[entry.scope] ?? 0) + 1;
       return counts;
     }, {});
-    expect(scopeCounts).toEqual({ global: 13, org: 137, orgViaParent: 1 });
+    expect(scopeCounts).toEqual({ global: 13, org: 138, orgViaParent: 1 });
 
     expect(
       entries
@@ -773,7 +785,13 @@ describe('display_id registry and format contract', () => {
       collectNonNullableOrgScopedModels(
         readFileSync(join(SCHEMA_DIR, 'medication.prisma'), 'utf8'),
       ),
-    ).toEqual([...MEDICATION_DISPLAY_ID_W7_MODELS, ...MEDICATION_STOCK_DISPLAY_ID_MODELS].sort());
+    ).toEqual(
+      [
+        ...MEDICATION_DISPLAY_ID_W7_MODELS,
+        ...MEDICATION_STOCK_DISPLAY_ID_MODELS,
+        ...MEDICATION_STOCK_VISIT_CONTEXT_DISPLAY_ID_MODELS,
+      ].sort(),
+    );
     expect(
       collectNonNullableOrgScopedModels(readFileSync(join(SCHEMA_DIR, 'pca-pump.prisma'), 'utf8')),
     ).toEqual([...PCA_PUMP_DISPLAY_ID_W7_MODELS].sort());

@@ -845,6 +845,7 @@ export const API_ROUTE_TEMPLATES = [
   '/api/visit-records/:id/handoff/extract',
   '/api/visit-records/:id/handoff/supervision-confirm',
   '/api/visit-records/:id/handoff/supervision-request',
+  '/api/visit-records/:id/medication-stock-observations',
   '/api/visit-records/:id/pdf',
   '/api/visit-records/:id/reflected-fields',
   '/api/visit-routes',

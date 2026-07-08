@@ -20634,3 +20634,117 @@
 - next action:
   Commit and push the explicit owned files, then begin the next Plans.md
   backend performance item.
+
+## 2026-07-08 STOCK-001 visit medication stock observation API
+
+- current task:
+  Implement the next backend slice from `Plans.md`: pharmacist-entered visit
+  medication stock observations for external/topical/PRN stock items, without
+  applying the human-gated migration to any database.
+- files inspected:
+  `git status --short --untracked-files=all`, `Plans.md`,
+  `ops/refactor/STATE.md`, `.codex/ralph-state.md`,
+  `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`,
+  `prisma/schema/medication.prisma`,
+  `prisma/migrations/20260708093000_add_medication_stock_visit_observation_context/migration.sql`,
+  `src/app/api/visit-records/[id]/route.ts`,
+  `src/app/api/patients/[id]/medication-stock/route.ts`,
+  `src/lib/auth/visit-schedule-access.ts`, `src/lib/db/rls.ts`,
+  `src/lib/api/idempotency-key.ts`, `src/lib/api/route-catalog.ts`,
+  `src/lib/api/rate-limit.ts`, `src/lib/db/display-id-registry.ts`,
+  `src/lib/db/display-id.test.ts`, and existing inbound medication-stock
+  route/tests affected by public-entrypoint cleanup.
+- Oracle / GPT-5.5 Pro review:
+  High-risk Oracle consultation was attempted with GitHub context and current
+  `steipete/oracle` CLI verification. The browser session
+  `visit-stock-observatio-api` failed before producing advice with
+  `setTypeOfService EINVAL` / `chrome-disconnected`; no Oracle output was used.
+  Proceeded conservatively using local code inspection plus GPT-5.5 subagent
+  review findings (DB steward approved the sidecar approach; API contract
+  reviewer required `refill_request` to stay a controlled state).
+- files changed:
+  `prisma/schema/medication.prisma`,
+  `prisma/migrations/20260708093000_add_medication_stock_visit_observation_context/migration.sql`,
+  `src/modules/pharmacy/medication-stock/application/apply-visit-medication-stock-observation.ts`,
+  `src/modules/pharmacy/medication-stock/application/apply-visit-medication-stock-observation.test.ts`,
+  `src/app/api/visit-records/[id]/medication-stock-observations/route.ts`,
+  `src/app/api/visit-records/[id]/medication-stock-observations/route.test.ts`,
+  `src/modules/pharmacy/medication-stock/domain/medication-stock-db-contract.test.ts`,
+  `src/modules/pharmacy/index.ts`,
+  `src/app/api/communications/inbound/signals/[id]/route.ts`,
+  `src/app/api/communications/inbound/signals/[id]/route.test.ts`,
+  `src/app/api/communications/inbound/signals/route.ts`,
+  `src/app/api/communications/inbound/signals/tasks/route.ts`,
+  `src/app/api/patients/[id]/medication-stock/route.ts`,
+  `src/app/api/patients/[id]/medication-stock/route.test.ts`,
+  `src/lib/api/route-catalog.ts`, `src/lib/api/route-catalog.test.ts`,
+  `src/lib/api/rate-limit.ts`, `src/lib/api/rate-limit.test.ts`,
+  `src/app/api/__tests__/protected-post-routes.test.ts`,
+  `src/lib/db/display-id-registry.ts`, `src/lib/db/display-id.test.ts`,
+  and `tools/api-response-shape-allowlist.json`.
+- implementation:
+  Added `MedicationStockVisitObservationKind` and
+  `MedicationStockObservationContext.observation_kind` to distinguish
+  `observed_absolute`, `usage_delta`, `usage_frequency`, `not_observed`, and
+  `refill_request` without collapsing refill requests into generic no-quantity
+  observations. Added a POST route under visit records that requires
+  `Idempotency-Key`, validates batched observations, runs in org-scoped
+  Serializable transaction context, gates writes to pharmacist-capable roles,
+  reuses `canWriteVisitRecordForSchedule`, appends `MedicationStockEvent`
+  rows, creates matching sidecar context rows, and recalculates snapshots.
+  Idempotency hashes are scoped by org + visit record + client observation ID
+  - request key; `stock_item_id` remains in the clinical fingerprint so changed
+    clinical payloads conflict. The route returns no raw idempotency hashes,
+    request fingerprints, raw DB errors, or raw PHI.
+- technical debt reduced:
+  The new route was added to route catalog, rate-limit templates, protected
+  POST no-store/auth matrix, display-id registry, and DB contract tests. Existing
+  app/api imports of medication-stock internals were moved to the
+  `@/modules/pharmacy` public entrypoint, reducing module-boundary debt to
+  zero. `api-response-shape:check` stale allowlist entries for
+  `patients/[id]/timeline` and `patients/board` were removed, reducing the
+  allowlist from 243 to 241.
+- gbrain memory:
+  `projects/careviax/implementation-decision/medication-stock-visit-observation-api-v1-2026-07-08`.
+- bugs found:
+  Before the final version, the new sidecar model was missing from the
+  display-id registry, and the initial idempotency hash included
+  `stock_item_id`. The registry was updated, and idempotency was tightened so
+  retrying the same `client_observation_id` with different clinical payload
+  fails closed.
+- security risks reduced:
+  Visit stock writes now require route auth, org-scoped RLS context, schedule
+  write access, pharmacist-capable role, request idempotency, fail-closed
+  conflict handling, no-store responses, and sanitized 500s. No migration was
+  applied and no production data was touched.
+- performance issues improved:
+  Snapshot recalculation remains per changed stock item and the route caps each
+  request at 50 observations. Module-boundary and API response shape gates now
+  have less debt, reducing future validation noise.
+- validation commands:
+  `npx -y @steipete/oracle --help`;
+  `npx -y @steipete/oracle --engine browser ... --slug visit-stock-observatio-api`;
+  `pnpm exec prisma generate --schema=prisma/schema/`;
+  `pnpm exec prisma validate --schema=prisma/schema/`;
+  `pnpm vitest run src/modules/pharmacy/medication-stock/application/apply-visit-medication-stock-observation.test.ts 'src/app/api/visit-records/[id]/medication-stock-observations/route.test.ts' src/modules/pharmacy/medication-stock/domain/medication-stock-db-contract.test.ts src/lib/api/route-catalog.test.ts src/lib/api/rate-limit.test.ts src/app/api/__tests__/protected-post-routes.test.ts src/lib/db/display-id.test.ts 'src/app/api/communications/inbound/signals/[id]/route.test.ts' src/app/api/communications/inbound/signals/route.test.ts src/app/api/communications/inbound/signals/tasks/route.test.ts 'src/app/api/patients/[id]/medication-stock/route.test.ts' --reporter=dot --testTimeout=30000`;
+  scoped `pnpm exec eslint ...`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `pnpm boundaries:check`;
+  `pnpm route-auth-wrapper:check`;
+  `pnpm api-response-shape:check`;
+  `git diff --check`.
+- validation results:
+  Oracle CLI help passed, but browser consultation failed before advisory
+  output. Prisma generate and validate passed. Focused Vitest passed 11 files /
+  267 tests with 6 skipped. Scoped ESLint passed. Full typecheck passed.
+  Module-boundary check passed with 0 allowlisted debt imports. Route auth
+  wrapper check passed. API response shape check passed with 241 allowlisted
+  violations and 0 new violations. Diff whitespace check passed.
+- remaining work:
+  `STOCK-001-VISIT-CONTEXT-APPLY` remains human-gated: apply the migration to a
+  controlled DB only after explicit approval, then run migration preconditions /
+  DB integration checks. Visit-record UI wiring for stock observations remains
+  a separate frontend task.
+- next action:
+  Commit and push this backend/API slice with only owned paths staged, then
+  continue with the next `Plans.md` backend item.

@@ -21,7 +21,7 @@ import { logger } from '@/lib/utils/logger';
 import {
   applyInboundSignalToMedicationStock,
   type ApplyInboundMedicationStockSignalResult,
-} from '@/modules/pharmacy/medication-stock/application/apply-inbound-medication-stock-signal';
+} from '@/modules/pharmacy';
 
 const ROUTE = '/api/communications/inbound/signals/[id]';
 const medicationStockUnitSchema = z.enum([

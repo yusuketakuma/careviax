@@ -148,6 +148,14 @@ enum MedicationStockObservationContextKind {
   visit_observation
 }
 
+enum MedicationStockVisitObservationKind {
+  observed_absolute
+  usage_delta
+  usage_frequency
+  not_observed
+  refill_request
+}
+
 enum MedicationStockUnobservedReasonCode {
   patient_refused
   caregiver_unavailable
@@ -301,23 +309,24 @@ model MedicationStockEvent {
 }
 
 model MedicationStockObservationContext {
-  id                       String                              @id @default(cuid())
+  id                       String                                @id @default(cuid())
   org_id                   String
   display_id               String?
   stock_event_id           String
   context_kind             MedicationStockObservationContextKind @default(visit_observation)
+  observation_kind         MedicationStockVisitObservationKind
   visit_record_id          String?
-  observed_date_key_jst    String?                             @db.VarChar(10)
+  observed_date_key_jst    String?                               @db.VarChar(10)
   last_used_at             DateTime?
-  last_used_date_key_jst   String?                             @db.VarChar(10)
-  last_used_precision      String?                             @db.VarChar(16)
+  last_used_date_key_jst   String?                               @db.VarChar(10)
+  last_used_precision      String?                               @db.VarChar(16)
   unobserved_reason_code   MedicationStockUnobservedReasonCode?
-  source_confidence        MedicationStockSourceConfidence      @default(unknown)
-  source_context_code      String?                             @db.VarChar(48)
-  confirmation_level       String?                             @db.VarChar(48)
+  source_confidence        MedicationStockSourceConfidence       @default(unknown)
+  source_context_code      String?                               @db.VarChar(48)
+  confirmation_level       String?                               @db.VarChar(48)
   idempotency_key_hash     String
   request_fingerprint_hash String
-  created_at               DateTime                            @default(now())
+  created_at               DateTime                              @default(now())
 
   @@unique([org_id, display_id])
   @@unique([id, org_id])
@@ -325,6 +334,7 @@ model MedicationStockObservationContext {
   @@unique([org_id, idempotency_key_hash])
   @@index([org_id])
   @@index([org_id, visit_record_id], map: "MedicationStockObservationContext_org_visit_idx")
+  @@index([org_id, observation_kind, created_at(sort: Desc)], map: "MedicationStockObservationContext_org_obs_kind_created_idx")
   @@index([org_id, context_kind, created_at(sort: Desc)], map: "MedicationStockObservationContext_org_kind_created_idx")
   @@index([org_id, unobserved_reason_code], map: "MedicationStockObservationContext_org_reason_idx")
 }

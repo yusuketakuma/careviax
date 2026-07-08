@@ -7,6 +7,14 @@ CREATE TYPE "MedicationStockObservationContextKind" AS ENUM (
   'visit_observation'
 );
 
+CREATE TYPE "MedicationStockVisitObservationKind" AS ENUM (
+  'observed_absolute',
+  'usage_delta',
+  'usage_frequency',
+  'not_observed',
+  'refill_request'
+);
+
 CREATE TYPE "MedicationStockUnobservedReasonCode" AS ENUM (
   'patient_refused',
   'caregiver_unavailable',
@@ -25,6 +33,7 @@ CREATE TABLE "MedicationStockObservationContext" (
   "display_id" TEXT,
   "stock_event_id" TEXT NOT NULL,
   "context_kind" "MedicationStockObservationContextKind" NOT NULL DEFAULT 'visit_observation',
+  "observation_kind" "MedicationStockVisitObservationKind" NOT NULL,
   "visit_record_id" TEXT,
   "observed_date_key_jst" VARCHAR(10),
   "last_used_at" TIMESTAMP(3),
@@ -105,6 +114,9 @@ CREATE INDEX "MedicationStockObservationContext_org_id_idx"
 
 CREATE INDEX "MedicationStockObservationContext_org_visit_idx"
   ON "MedicationStockObservationContext"("org_id", "visit_record_id");
+
+CREATE INDEX "MedicationStockObservationContext_org_obs_kind_created_idx"
+  ON "MedicationStockObservationContext"("org_id", "observation_kind", "created_at" DESC);
 
 CREATE INDEX "MedicationStockObservationContext_org_kind_created_idx"
   ON "MedicationStockObservationContext"("org_id", "context_kind", "created_at" DESC);

@@ -49302,6 +49302,58 @@ false` for every migrated column.
   - Existing unrelated `refactor-instructions.md` and local skill install files
     remain outside this slice.
 
+## STOCK-001 Visit Medication Stock Observation API - 2026-07-08 12:18 JST
+
+- Scope:
+  - `POST /api/visit-records/:id/medication-stock-observations`
+  - `src/modules/pharmacy/medication-stock/application/apply-visit-medication-stock-observation.ts`
+  - `MedicationStockObservationContext.observation_kind`
+  - route catalog / rate-limit / protected POST / display-id / module-boundary guardrails
+- Status:
+  - Implemented locally; commit/push pending at time of this ledger update.
+- Changes:
+  - Added visit-record scoped medication-stock observation writes for pharmacist-entered
+    external/topical/PRN stock observations.
+  - Added controlled `MedicationStockVisitObservationKind`, including
+    `refill_request`, so refill requests are not collapsed into generic no-quantity
+    events.
+  - Wrote append-only `MedicationStockEvent(event_type='visit_observation')`
+    plus `MedicationStockObservationContext` sidecar rows and recalculates
+    snapshots.
+  - Required `Idempotency-Key`; scoped idempotency by org + visit record +
+    client observation ID + request key, with clinical payload changes detected
+    by request fingerprint conflicts.
+  - Moved app/api medication-stock imports to the `@/modules/pharmacy` public
+    entrypoint and reduced module-boundary debt to zero allowlisted imports.
+  - Reduced `api-response-shape:check` allowlist from `243` to `241` by removing
+    stale entries for already-fixed patient timeline and board routes.
+- Safety:
+  - Route uses `withAuthContext`, org-scoped `withOrgContext` with Serializable
+    isolation, schedule write access via `canWriteVisitRecordForSchedule`,
+    pharmacist-capable role gate, sensitive no-store responses, sanitized 500s,
+    and no raw idempotency/fingerprint output.
+  - Migration application remains human-gated and was not run.
+  - Oracle/GPT-5.5 Pro consultation was attempted with GitHub context, but the
+    browser session failed before producing advice (`setTypeOfService EINVAL` /
+    `chrome-disconnected`).
+- gbrain:
+  - `projects/careviax/implementation-decision/medication-stock-visit-observation-api-v1-2026-07-08`
+- Validation:
+  - `pnpm exec prisma generate --schema=prisma/schema/` passed.
+  - `pnpm exec prisma validate --schema=prisma/schema/` passed.
+  - Focused Vitest pack passed `11` files / `267` tests, `6` skipped.
+  - Scoped ESLint passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+  - `pnpm boundaries:check` passed with `0` allowlisted debt imports.
+  - `pnpm route-auth-wrapper:check` passed.
+  - `pnpm api-response-shape:check` passed with `241` allowlisted violations and
+    `0` new violations.
+  - `git diff --check` passed.
+- Remaining:
+  - Apply the migration only after explicit approval and then run DB integration /
+    migration checks.
+  - Visit-record UI wiring remains a later frontend slice.
+
 ## Plans.md Implementation Status Cleanup - 2026-07-08 02:34 JST
 
 - Scope:

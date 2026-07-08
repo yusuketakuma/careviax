@@ -10,7 +10,7 @@ import {
   type InboundSignalCandidate,
 } from '@/core/interprofessional/inbound/domain/inbound-signal-classifier';
 import type { InboundCommunicationInput } from '@/core/interprofessional/inbound/domain/inbound-communication';
-import { stageInboundMedicationStockSignalForReview } from '@/modules/pharmacy/medication-stock/application/medication-stock-signal-adapter';
+import { stageInboundMedicationStockSignalForReview } from '@/modules/pharmacy';
 import { buildInboundCommunicationEventAssignmentWhere } from '@/server/services/communication-request-access';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import type { TaskPriority } from '@/lib/tasks/task-registry';

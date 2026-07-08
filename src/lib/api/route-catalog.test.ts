@@ -98,6 +98,12 @@ describe('routeCatalog', () => {
           area: 'visits',
         }),
         expect.objectContaining({
+          path: '/api/visit-records/:id/medication-stock-observations',
+          methods: ['POST'],
+          permission: 'canVisit',
+          area: 'visits',
+        }),
+        expect.objectContaining({
           path: '/api/visit-records/:id/handoff',
           methods: ['GET', 'PUT'],
           permission: 'canVisit',
@@ -164,6 +170,7 @@ describe('routeCatalog', () => {
       '/api/visits/today-preparation',
       '/api/visit-records',
       '/api/visit-records/:id',
+      '/api/visit-records/:id/medication-stock-observations',
       '/api/dashboard/dispensing-stats',
       '/api/dashboard/overdue',
       '/api/dashboard/clerk-support',

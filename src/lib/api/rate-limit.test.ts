@@ -194,6 +194,9 @@ describe('rate-limit', () => {
     expect(canonicalizeRateLimitPath('/api/visit-schedules/schedule_1/reschedule')).toBe(
       '/api/visit-schedules/:id/reschedule',
     );
+    expect(
+      canonicalizeRateLimitPath('/api/visit-records/visit_record_1/medication-stock-observations'),
+    ).toBe('/api/visit-records/:id/medication-stock-observations');
     expect(canonicalizeRateLimitPath('/api/care-reports/report_1/print-audit')).toBe(
       '/api/care-reports/:id/print-audit',
     );

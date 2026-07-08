@@ -12,6 +12,16 @@ export {
   buildPharmacyPrescriptionTimelineHref,
   getPharmacyCycleStatusLabel,
 } from './patient-movement/timeline-links';
+export {
+  applyInboundSignalToMedicationStock,
+  type ApplyInboundMedicationStockSignalResult,
+} from './medication-stock/application/apply-inbound-medication-stock-signal';
+export {
+  applyVisitMedicationStockObservations,
+  type VisitMedicationStockObservationInput,
+} from './medication-stock/application/apply-visit-medication-stock-observation';
+export { stageInboundMedicationStockSignalForReview } from './medication-stock/application/medication-stock-signal-adapter';
+export { getPatientMedicationStockSummary } from './medication-stock/application/patient-medication-stock-summary';
 export { createPharmacyReportTemplateProviders } from './reports/report-template-providers';
 export {
   buildPharmacyVisitBriefDispensingItems,

@@ -42,7 +42,7 @@ vi.mock('@/lib/audit/phi-read-audit', () => ({
   recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
 }));
 
-vi.mock('@/modules/pharmacy/medication-stock/application/patient-medication-stock-summary', () => ({
+vi.mock('@/modules/pharmacy', () => ({
   getPatientMedicationStockSummary: getPatientMedicationStockSummaryMock,
 }));
 

@@ -83,6 +83,7 @@ export const DISPLAY_ID_REGISTRY = {
   MedicationIssue: { prefix: 'miss', scope: 'org' },
   MedicationProfile: { prefix: 'm', scope: 'org' },
   MedicationStockEvent: { prefix: 'msev', scope: 'org' },
+  MedicationStockObservationContext: { prefix: 'msoc', scope: 'org' },
   MedicationStockSnapshot: { prefix: 'mss', scope: 'org' },
   Membership: { prefix: 'mem', scope: 'org' },
   Notification: { prefix: 'n', scope: 'org' },

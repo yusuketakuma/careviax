@@ -56,6 +56,7 @@ import { POST as tracingReportsPost } from '../tracing-reports/route';
 import { POST as visitSchedulesPost } from '../visit-schedules/route';
 import { POST as visitSchedulesGeneratePost } from '../visit-schedules/generate/route';
 import { POST as visitRecordsPost } from '../visit-records/route';
+import { POST as visitRecordMedicationStockObservationsPost } from '../visit-records/[id]/medication-stock-observations/route';
 import { POST as prescriptionIntakesPost } from '../prescription-intakes/route';
 import { POST as prescriptionIntakesFacilityBatchPost } from '../prescription-intakes/facility-batch/route';
 import { POST as pharmacistShiftsPost } from '../pharmacist-shifts/route';
@@ -168,6 +169,13 @@ const routes: RouteEntry[] = [
     invalidBodyStatus: 410,
   },
   { name: 'visit-records POST', handler: (req) => visitRecordsPost(req) },
+  {
+    name: 'visit-records/[id]/medication-stock-observations POST',
+    handler: (req) =>
+      visitRecordMedicationStockObservationsPost(req, {
+        params: Promise.resolve({ id: 'visit_record_1' }),
+      }),
+  },
   {
     name: 'prescription-intakes POST',
     handler: (req) => prescriptionIntakesPost(req, emptyRouteContext),
@@ -306,6 +314,7 @@ describe('protected POST routes auth/body matrix', () => {
         route.name === 'pharmacist-shifts/bulk POST' ||
         route.name === 'residual-medications POST' ||
         route.name === 'visit-records POST' ||
+        route.name === 'visit-records/[id]/medication-stock-observations POST' ||
         route.name === 'set-plans POST' ||
         route.name === 'set-plans/[id]/generate-batches POST' ||
         route.name === 'set-batches POST' ||
@@ -352,6 +361,7 @@ describe('protected POST routes auth/body matrix', () => {
         route.name === 'pharmacist-shifts/bulk POST' ||
         route.name === 'residual-medications POST' ||
         route.name === 'visit-records POST' ||
+        route.name === 'visit-records/[id]/medication-stock-observations POST' ||
         route.name === 'set-plans POST' ||
         route.name === 'set-plans/[id]/generate-batches POST' ||
         route.name === 'set-batches POST' ||
@@ -400,6 +410,7 @@ describe('protected POST routes auth/body matrix', () => {
         route.name === 'pharmacist-shifts/bulk POST' ||
         route.name === 'residual-medications POST' ||
         route.name === 'visit-records POST' ||
+        route.name === 'visit-records/[id]/medication-stock-observations POST' ||
         route.name === 'set-plans POST' ||
         route.name === 'set-plans/[id]/generate-batches POST' ||
         route.name === 'set-batches POST' ||

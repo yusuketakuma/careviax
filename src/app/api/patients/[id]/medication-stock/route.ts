@@ -12,7 +12,7 @@ import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { createScopedTxRunner } from '@/lib/db/rls';
 import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
-import { getPatientMedicationStockSummary } from '@/modules/pharmacy/medication-stock/application/patient-medication-stock-summary';
+import { getPatientMedicationStockSummary } from '@/modules/pharmacy';
 import { logger } from '@/lib/utils/logger';
 
 const ROUTE = '/api/patients/[id]/medication-stock';

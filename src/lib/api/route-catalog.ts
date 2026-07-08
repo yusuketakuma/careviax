@@ -239,6 +239,13 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'visits',
   },
   {
+    path: '/api/visit-records/:id/medication-stock-observations',
+    methods: ['POST'],
+    permission: 'canVisit',
+    description: '訪問記録に紐づく外用薬・頓服薬残数観測の登録',
+    area: 'visits',
+  },
+  {
     path: '/api/visit-records/:id/handoff',
     methods: ['GET', 'PUT'],
     permission: 'canVisit',

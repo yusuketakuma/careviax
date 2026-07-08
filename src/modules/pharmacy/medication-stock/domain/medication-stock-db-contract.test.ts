@@ -132,6 +132,7 @@ describe('Medication Stock Ledger DB contract', () => {
     for (const field of [
       'stock_event_id',
       'context_kind',
+      'observation_kind',
       'visit_record_id',
       'observed_date_key_jst',
       'last_used_at',
@@ -149,12 +150,17 @@ describe('Medication Stock Ledger DB contract', () => {
     }
 
     expect(SCHEMA).toContain('enum MedicationStockObservationContextKind');
+    expect(SCHEMA).toContain('enum MedicationStockVisitObservationKind');
     expect(SCHEMA).toContain('enum MedicationStockUnobservedReasonCode');
     expect(contextBlock).toContain('@@unique([org_id, stock_event_id])');
     expect(contextBlock).toContain('@@unique([org_id, idempotency_key_hash])');
     expect(VISIT_CONTEXT_MIGRATION).toContain(
       'CREATE TYPE "MedicationStockObservationContextKind" AS ENUM',
     );
+    expect(VISIT_CONTEXT_MIGRATION).toContain(
+      'CREATE TYPE "MedicationStockVisitObservationKind" AS ENUM',
+    );
+    expect(VISIT_CONTEXT_MIGRATION).toContain("'refill_request'");
     expect(VISIT_CONTEXT_MIGRATION).toContain(
       'CREATE TYPE "MedicationStockUnobservedReasonCode" AS ENUM',
     );
