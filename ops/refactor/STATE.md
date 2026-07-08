@@ -24595,6 +24595,76 @@ visit_request/unknown`, `action_status='not_linked'`, and
   Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
   then continue the next safe `API-CONTRACT-001` envelope migration.
 
+## 2026-07-09 - API-CONTRACT-001L document-template delete envelope migration
+
+- current task:
+  Continue `API-CONTRACT-001` by migrating `DELETE /api/templates/:id` from a
+  legacy success message to the current `data` envelope. This slice intentionally
+  did not alter document-template content, list metadata, or frontend layout.
+- files inspected:
+  `git status --short --untracked-files=all`; `Plans.md`;
+  `ops/refactor/STATE.md`; `tools/api-response-shape-allowlist.json`;
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`;
+  `src/app/api/templates/[id]/route.ts`;
+  `src/app/api/templates/[id]/route.test.ts`;
+  `src/app/(dashboard)/admin/document-templates/template-content.tsx`;
+  `src/app/(dashboard)/admin/document-templates/template-content.test.tsx`;
+  document-template usage search results.
+- files changed:
+  `src/app/api/templates/[id]/route.ts`;
+  `src/app/api/templates/[id]/route.test.ts`;
+  `src/app/(dashboard)/admin/document-templates/template-content.test.tsx`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `ops/refactor/STATE.md`.
+- bugs found:
+  `DELETE /api/templates/:id` returned a legacy success message body instead of
+  a stable data envelope. The document-template UI only checks request success
+  and does not read the delete body.
+- bugs fixed:
+  The delete route now returns `data: { id }`, route tests assert the new-only
+  response body, and the UI delete mock fixture was updated to the same
+  envelope. Response-shape debt dropped from 207 to 206 allowlisted violations.
+- security risks found:
+  No auth, authorization, org scoping, no-store handling, sanitized error
+  handling, template lookup, or delete side-effect behavior changed.
+- security risks reduced:
+  Removed another legacy destructive-operation success body without preserving
+  old top-level message compatibility.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this is response contract cleanup. Existing lookup/delete flow is
+  unchanged.
+- UI/UX note:
+  No visible UI/UX change. The document templates page ignores the delete
+  payload; only its test fixture changed. Image generation was not applicable.
+- validation commands:
+  `pnpm exec prettier --write 'src/app/api/templates/[id]/route.ts' 'src/app/api/templates/[id]/route.test.ts' 'src/app/(dashboard)/admin/document-templates/template-content.test.tsx' tools/api-response-shape-allowlist.json Plans.md`;
+  `pnpm vitest run 'src/app/api/templates/[id]/route.test.ts' 'src/app/(dashboard)/admin/document-templates/template-content.test.tsx' --reporter=dot --testTimeout=30000`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint 'src/app/api/templates/[id]/route.ts' 'src/app/api/templates/[id]/route.test.ts' 'src/app/(dashboard)/admin/document-templates/template-content.test.tsx'`;
+  `pnpm exec prettier --check 'src/app/api/templates/[id]/route.ts' 'src/app/api/templates/[id]/route.test.ts' 'src/app/(dashboard)/admin/document-templates/template-content.test.tsx' tools/api-response-shape-allowlist.json Plans.md`;
+  `git diff --check -- 'src/app/api/templates/[id]/route.ts' 'src/app/api/templates/[id]/route.test.ts' 'src/app/(dashboard)/admin/document-templates/template-content.test.tsx' tools/api-response-shape-allowlist.json Plans.md`.
+- validation results:
+  Prettier passed. Focused route/document-template UI tests passed 2 files / 28
+  tests. `api-response-shape:check` passed with 206 allowlisted violations and
+  0 new violations. `plans:active:check` passed. Focused ESLint passed.
+  Targeted Prettier check passed. Scoped diff check passed.
+- commit:
+  Document-template delete envelope migration, route/UI fixture tests, allowlist
+  cleanup, and Plans sync committed as `e5b877c14`
+  (`fix(api): envelope document template delete`). Push is pending this ledger
+  hash update.
+- remaining work:
+  `API-CONTRACT-001` remains Partial. Continue migrating real legacy success
+  and error response shapes route by route without compatibility fallback
+  bodies. The separate `GET /api/templates` list metadata legacy shape remains
+  allowlisted for a broader reader update.
+- next action:
+  Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
+  then continue the next safe `API-CONTRACT-001` envelope migration.
+
 ## 2026-07-09 - API-CONTRACT-001A response-shape guard ratchet
 
 - current task:
