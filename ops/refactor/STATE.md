@@ -23838,12 +23838,19 @@ visit_request/unknown`, `action_status='not_linked'`, and
   Plans active board check passed. Full typecheck passed after `next typegen`.
   Static checks showed the changed route/test read-reason/meta additions,
   existing movement rejection tests, existing unrelated toast `success(...)`
-  text, and no Prisma/schema diff. Commit and push are pending.
+  text, and no Prisma/schema diff. `git diff --check` and
+  `git diff --cached --check` passed.
+- commit:
+  Implementation, tests, Plans update, API response-shape allowlist ratchet, and
+  initial ledger entry committed as
+  `a12a7e34fdc2f2071e2824a16a2afd0b75fa1051`
+  (`feat(movement): require timeline detail reauth`) and pushed to
+  `origin/main`. This ledger hash update is pending commit.
 - remaining work:
   `MOV-001-API` now only has browser/mobile/a11y validation. Stock migration and
   DB integration remain human-gated. Generic `RAW-DETAIL-REAUDIT-001` remains a
   broader future helper/task for source-specific raw chat/phone/attachment
   detail surfaces outside this movement-safe resolver.
 - next action:
-  Run final formatting/diff checks, commit and push the scoped MOV raw detail
-  reauthorization slice, then record the commit/push result in this ledger.
+  Commit and push this ledger hash update, then continue the next
+  non-human-gated Plans item.
