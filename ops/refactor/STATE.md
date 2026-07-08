@@ -22672,3 +22672,92 @@ date`, and active statuses only, then pass that date key into snapshot recalcula
 - next action:
   Commit this explicit owned slice, then continue with the next highest-value
   non-human-gated `Plans.md` item.
+
+## 2026-07-08 MOV-002 movement source parity
+
+- current task:
+  Complete `MOV-002-SOURCE-PARITY` without legacy compatibility by preserving
+  concrete movement source event types for visit, prescription, document,
+  inbound, stock, task, and safety timeline sources while keeping the
+  standalone `/api/patients/:id/movement-timeline` contract.
+- files inspected:
+  `git status --short --untracked-files=all`, `Plans.md`,
+  `ops/refactor/STATE.md`, `.agents/skills/oracle-consult/SKILL.md`,
+  `src/server/services/patient-detail-timeline-registry.ts`,
+  `src/server/services/patient-detail-timeline-events.ts`,
+  `src/server/services/patient-movement-timeline-presenter.ts`,
+  `src/server/services/patient-movement-timeline-presenter.test.ts`,
+  `src/server/services/patient-detail-timeline-registry.test.ts`,
+  `src/app/api/patients/[id]/movement-timeline/route.test.ts`,
+  `src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx`,
+  `src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx`,
+  `src/types/patient-movement-timeline.ts`, `src/lib/tasks/task-registry.ts`,
+  `src/lib/dashboard/home-link-builders.ts`, `src/lib/patient/navigation.ts`,
+  `src/lib/visits/navigation.ts`, `src/lib/reports/navigation.ts`, and
+  `src/lib/prescriptions/navigation.ts`.
+- files changed:
+  `Plans.md`, `ops/refactor/STATE.md`,
+  `src/server/services/patient-movement-timeline-presenter.ts`, and
+  `src/server/services/patient-movement-timeline-presenter.test.ts`.
+- oracle:
+  Consulted Oracle GPT-5.5 Pro session `movement-source-parity` before editing
+  because this slice touches patient movement DTOs and PHI-bearing source
+  boundaries. Oracle reported GitHub access succeeded, gave a Go decision, and
+  recommended the presenter-only concrete mapping plus a typed parity matrix
+  test instead of adding a registry-level movement DTO or route post-processing.
+  Accepted the recommendation; deferred TaskRegistry `actionBuilder` adoption to
+  a later, narrower action-link slice.
+- implementation:
+  Reordered movement projection so known current source event types are mapped
+  directly before category fallback. `visit_schedule`, `visit_record`,
+  `prescription_intake`, `dispense_result`, `inquiry`, `care_report`,
+  `delivery_record`, `management_plan`, and `first_visit_document` now remain
+  concrete in `movement_events`; unknown visit/prescription/document operation
+  history still degrades to `visit_event`, `prescription_event`, or
+  `document_registered`. Added a source parity matrix covering visit,
+  prescription, document, inbound phone/fax/email/MCS/task, stock event,
+  stock snapshot, stock signal task, generic task, resolved task, and safety
+  signal. The tests assert `event_type`, `category`, `href`, `action_label`,
+  relative href fallback behavior, and PHI-heavy summary/metadata omission.
+- imagegen:
+  Omitted. This is a DTO/presenter/test slice only; it does not introduce visual
+  reconstruction, layout, grouping, borders, spacing, heading hierarchy, or new
+  user-facing controls.
+- bugs found:
+  The movement presenter type union already allowed concrete visit,
+  prescription, and document source event types, but the implementation checked
+  category first and collapsed those sources to generic movement markers. That
+  contract drift prevented downstream UI and tests from distinguishing schedule
+  vs visit record, prescription intake vs dispense result, and care report vs
+  first-visit document.
+- security risks reduced:
+  The source parity matrix locks the current movement list boundary so concrete
+  source identity can be exposed without exposing SOAP/OCR/raw chat, task free
+  text, MCS source URLs, drug names, quantities, report bodies, document bodies,
+  external provider raw payloads, or unsafe external hrefs. The existing
+  `raw_available: false`, summary suppression, metadata suppression, and
+  relative-only href normalization remain unchanged.
+- performance issues improved:
+  No runtime query or payload-size behavior changed. The fix is pure projection
+  logic and tests; it does not add DB reads, network calls, or client fetches.
+- validation commands:
+  `pnpm exec prettier --write src/server/services/patient-movement-timeline-presenter.ts src/server/services/patient-movement-timeline-presenter.test.ts`;
+  `pnpm exec vitest run src/server/services/patient-movement-timeline-presenter.test.ts src/server/services/patient-detail-timeline-registry.test.ts 'src/app/api/patients/[id]/movement-timeline/route.test.ts' --reporter=dot --testTimeout=30000`;
+  `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx' --reporter=dot --testTimeout=30000`;
+  scoped `pnpm exec eslint src/server/services/patient-movement-timeline-presenter.ts src/server/services/patient-movement-timeline-presenter.test.ts`;
+  scoped `pnpm exec prettier --check src/server/services/patient-movement-timeline-presenter.ts src/server/services/patient-movement-timeline-presenter.test.ts`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `pnpm plans:active:check`.
+- validation results:
+  Prettier write completed. Focused presenter/registry/route Vitest passed
+  3 files / 41 tests. Patient movement UI Vitest passed 1 file / 13 tests.
+  Scoped ESLint passed. Scoped Prettier check passed. Typecheck passed after
+  `next typegen`. Plans active board check passed.
+- remaining work:
+  `MOV-001-API` remains partial for map-less date-card UX, remaining deep-link
+  coverage, raw detail reauth, and browser/mobile/a11y validation. Task-specific
+  actionBuilder href adoption was intentionally left for a separate slice.
+- next action:
+  Run final formatting/whitespace checks, commit this owned source-parity slice,
+  record the commit hash here, then continue to the next highest-value
+  non-human-gated `Plans.md` item.

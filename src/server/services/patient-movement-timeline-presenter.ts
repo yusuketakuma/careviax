@@ -18,14 +18,18 @@ const GENERIC_DETAIL_SUMMARIES = {
     '現在の残数予測で不足リスクがあります。内容は薬剤・訪問で確認してください。',
 } as const;
 
-const VISIT_EVENT_TYPES = new Set(['visit_schedule', 'visit_record']);
-const PRESCRIPTION_EVENT_TYPES = new Set(['prescription_intake', 'dispense_result', 'inquiry']);
-const DOCUMENT_EVENT_TYPES = new Set([
-  'care_report',
-  'delivery_record',
-  'management_plan',
-  'first_visit_document',
-]);
+const CONCRETE_TIMELINE_EVENT_TYPE_MAP = {
+  visit_schedule: 'visit_schedule',
+  visit_record: 'visit_record',
+  prescription_intake: 'prescription_intake',
+  dispense_result: 'dispense_result',
+  inquiry: 'inquiry',
+  care_report: 'care_report',
+  delivery_record: 'delivery_record',
+  management_plan: 'management_plan',
+  first_visit_document: 'first_visit_document',
+} as const satisfies Record<string, PatientMovementEventType>;
+
 const DIRECT_MOVEMENT_EVENT_TYPES = new Set<PatientMovementEventType>([
   'communication',
   'self_report',
@@ -50,6 +54,13 @@ const DIRECT_MOVEMENT_EVENT_TYPES = new Set<PatientMovementEventType>([
   'support_session',
 ]);
 
+function concreteMovementTypeOf(eventType: string): PatientMovementEventType | null {
+  return (
+    CONCRETE_TIMELINE_EVENT_TYPE_MAP[eventType as keyof typeof CONCRETE_TIMELINE_EVENT_TYPE_MAP] ??
+    null
+  );
+}
+
 function normalizeRelativeHref(href: string | null | undefined, fallback: string) {
   if (!href) return fallback;
   if (!href.startsWith('/') || href.startsWith('//')) return fallback;
@@ -70,12 +81,12 @@ function movementCategoryOf(event: TimelineEvent): PatientMovementCategory {
 }
 
 function movementTypeOf(event: TimelineEvent): PatientMovementEventType {
+  const concreteType = concreteMovementTypeOf(event.event_type);
+  if (concreteType) return concreteType;
+
   if (event.category === 'visit') return 'visit_event';
   if (event.category === 'prescription') return 'prescription_event';
   if (event.category === 'document') return 'document_registered';
-  if (VISIT_EVENT_TYPES.has(event.event_type)) return 'visit_event';
-  if (PRESCRIPTION_EVENT_TYPES.has(event.event_type)) return 'prescription_event';
-  if (DOCUMENT_EVENT_TYPES.has(event.event_type)) return 'document_registered';
   if (DIRECT_MOVEMENT_EVENT_TYPES.has(event.event_type as PatientMovementEventType)) {
     return event.event_type as PatientMovementEventType;
   }
