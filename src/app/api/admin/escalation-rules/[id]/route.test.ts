@@ -250,6 +250,9 @@ describe('/api/admin/escalation-rules/[id]', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    await expect(response.json()).resolves.toEqual({
+      data: { id: 'rule_1' },
+    });
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function));
     expect(escalationRuleDeleteMock).toHaveBeenCalledWith({
       where: { id: 'rule_1' },

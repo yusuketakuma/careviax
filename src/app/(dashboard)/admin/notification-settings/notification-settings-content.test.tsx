@@ -92,20 +92,22 @@ describe('NotificationSettingsContent', () => {
                   created_at: '2026-06-19T10:00:00.000Z',
                 },
               ],
-              total_count: 1,
-              visible_count: 1,
-              hidden_count: 0,
-              truncated: false,
-              count_basis: 'escalation_rules',
-              filters_applied: {},
-              limit: 100,
+              meta: {
+                total_count: 1,
+                visible_count: 1,
+                hidden_count: 0,
+                truncated: false,
+                count_basis: 'escalation_rules',
+                filters_applied: {},
+                limit: 100,
+              },
             }),
             { status: 200 },
           );
         }
 
         if (url === '/__test__/escalation-rules/rule_1' && init?.method === 'DELETE') {
-          return new Response(JSON.stringify({ message: '削除しました' }), { status: 200 });
+          return new Response(JSON.stringify({ data: { id: 'rule_1' } }), { status: 200 });
         }
 
         if (url === '/__test__/escalation-rules/rule_1' && init?.method === 'PATCH') {
@@ -456,13 +458,15 @@ describe('NotificationSettingsContent', () => {
                   created_at: '2026-06-19T10:00:00.000Z',
                 },
               ],
-              total_count: 3,
-              visible_count: 1,
-              hidden_count: 2,
-              truncated: true,
-              count_basis: 'escalation_rules',
-              filters_applied: {},
-              limit: 1,
+              meta: {
+                total_count: 3,
+                visible_count: 1,
+                hidden_count: 2,
+                truncated: true,
+                count_basis: 'escalation_rules',
+                filters_applied: {},
+                limit: 1,
+              },
             }),
             { status: 200 },
           );

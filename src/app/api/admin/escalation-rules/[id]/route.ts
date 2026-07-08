@@ -134,7 +134,7 @@ const authenticatedDELETE = withAuthContext<{ id: string }>(
       return notFound('エスカレーションルールが見つかりません');
     }
 
-    return success({ message: 'エスカレーションルールを削除しました' });
+    return success({ data: { id } });
   },
   {
     permission: 'canAdmin',

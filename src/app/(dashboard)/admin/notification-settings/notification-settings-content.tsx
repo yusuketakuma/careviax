@@ -93,13 +93,15 @@ type EscalationRule = {
 
 type EscalationRulesResponse = {
   data?: EscalationRule[];
-  total_count?: number;
-  visible_count?: number;
-  hidden_count?: number;
-  truncated?: boolean;
-  count_basis?: string;
-  filters_applied?: Record<string, unknown>;
-  limit?: number;
+  meta?: {
+    total_count?: number;
+    visible_count?: number;
+    hidden_count?: number;
+    truncated?: boolean;
+    count_basis?: string;
+    filters_applied?: Record<string, unknown>;
+    limit?: number;
+  };
 };
 
 type NotificationRulesResponse = {
@@ -427,21 +429,21 @@ export function NotificationSettingsContent() {
       .then((payload) => {
         if (!active) return;
         const rows = payload.data ?? [];
-        const totalCount =
-          typeof payload.total_count === 'number' ? payload.total_count : rows.length;
+        const meta = payload.meta;
+        const totalCount = typeof meta?.total_count === 'number' ? meta.total_count : rows.length;
         const visibleCount =
-          typeof payload.visible_count === 'number' ? payload.visible_count : rows.length;
+          typeof meta?.visible_count === 'number' ? meta.visible_count : rows.length;
         const hiddenCount =
-          typeof payload.hidden_count === 'number'
-            ? payload.hidden_count
+          typeof meta?.hidden_count === 'number'
+            ? meta.hidden_count
             : Math.max(totalCount - visibleCount, 0);
         setEscalationRules(rows);
         setEscalationListMeta({
           totalCount,
           visibleCount,
           hiddenCount,
-          truncated: payload.truncated ?? hiddenCount > 0,
-          limit: typeof payload.limit === 'number' ? payload.limit : null,
+          truncated: meta?.truncated ?? hiddenCount > 0,
+          limit: typeof meta?.limit === 'number' ? meta.limit : null,
         });
         setEscalationLoadError(false);
         setEscalationLoadedOrgId(orgId);

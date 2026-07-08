@@ -24356,6 +24356,78 @@ business holiday mutations`) and pushed to `origin/main`.
   staged, then continue `API-CONTRACT-001` by migrating the next real legacy
   success/error response shape without compatibility fallback bodies.
 
+## 2026-07-09 - API-CONTRACT-001C escalation-rules envelope migration
+
+- current task:
+  Continue `API-CONTRACT-001` by migrating `admin/escalation-rules` legacy
+  success response shapes to the current `data` / `meta` envelope without
+  keeping old top-level fields.
+- files inspected:
+  `git status --short --branch --untracked-files=all`; `Plans.md`;
+  `ops/refactor/STATE.md`; `src/lib/api/list-envelope.ts`;
+  `src/lib/api/client-json.ts`; `tools/api-response-shape-allowlist.json`;
+  `src/app/api/admin/escalation-rules/route.ts`;
+  `src/app/api/admin/escalation-rules/[id]/route.ts`;
+  `src/app/api/admin/escalation-rules/route.test.ts`;
+  `src/app/api/admin/escalation-rules/[id]/route.test.ts`;
+  `src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx`;
+  `src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx`.
+- files changed:
+  `src/app/api/admin/escalation-rules/route.ts`;
+  `src/app/api/admin/escalation-rules/[id]/route.ts`;
+  `src/app/api/admin/escalation-rules/route.test.ts`;
+  `src/app/api/admin/escalation-rules/[id]/route.test.ts`;
+  `src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx`;
+  `src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `ops/refactor/STATE.md`.
+- bugs found:
+  `GET /api/admin/escalation-rules` returned list count fields at the response
+  top level via a spread list envelope, and
+  `DELETE /api/admin/escalation-rules/:id` returned a legacy message-only
+  success body.
+- bugs fixed:
+  `GET /api/admin/escalation-rules` now returns `data` plus `meta` containing
+  count/truncation/filter/limit metadata. `DELETE` now returns `data: { id }`.
+  The notification settings escalation reader now consumes `payload.meta`
+  only, and tests were updated for the new response shape. Response-shape debt
+  dropped from 221 to 219 allowlisted violations.
+- security risks found:
+  No permission, membership, RLS, validation, or audit behavior changed. The
+  route remains admin-only and continues to use the existing auth and audit
+  paths.
+- security risks reduced:
+  Removed two legacy public success shapes and avoided fallback response bodies,
+  making the escalation API contract less ambiguous.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this is response contract cleanup.
+- UI/UX note:
+  No visible UI/UX change. The notification settings screen now reads the
+  escalation list metadata from `meta`, but layout and interaction behavior are
+  unchanged.
+- validation commands:
+  `pnpm exec prettier --write src/app/api/admin/escalation-rules/route.ts src/app/api/admin/escalation-rules/[id]/route.ts src/app/api/admin/escalation-rules/route.test.ts src/app/api/admin/escalation-rules/[id]/route.test.ts src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx tools/api-response-shape-allowlist.json Plans.md ops/refactor/STATE.md`;
+  `pnpm vitest run src/app/api/admin/escalation-rules/route.test.ts src/app/api/admin/escalation-rules/[id]/route.test.ts src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx --reporter=dot --testTimeout=30000`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint src/app/api/admin/escalation-rules/route.ts src/app/api/admin/escalation-rules/[id]/route.ts src/app/api/admin/escalation-rules/route.test.ts src/app/api/admin/escalation-rules/[id]/route.test.ts src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx`;
+  `git diff --check -- src/app/api/admin/escalation-rules/route.ts src/app/api/admin/escalation-rules/[id]/route.ts src/app/api/admin/escalation-rules/route.test.ts src/app/api/admin/escalation-rules/[id]/route.test.ts src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx tools/api-response-shape-allowlist.json Plans.md ops/refactor/STATE.md`.
+- validation results:
+  Prettier passed. Focused route and notification settings tests passed 3
+  files / 38 tests. `api-response-shape:check` passed with 219 allowlisted
+  violations and 0 new violations. `plans:active:check` passed. Focused ESLint
+  passed. Scoped diff check passed.
+- commit:
+  Pending.
+- remaining work:
+  `API-CONTRACT-001` remains Partial. Continue removing real legacy success
+  and error response shapes route by route without compatibility fallbacks.
+- next action:
+  Run focused lint, Plans check, response-shape check, focused tests, and
+  scoped diff check; then commit and push the escalation-rules envelope slice.
+
 ## 2026-07-09 - DATE-SLICE-GUARD-001 helper migration
 
 - current task:

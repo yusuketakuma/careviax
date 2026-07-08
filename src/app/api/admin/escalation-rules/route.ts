@@ -40,23 +40,31 @@ const authenticatedGET = withAuthContext(
       }),
     ]);
 
+    const list = buildCountedListEnvelope(
+      rules.map((rule) => ({
+        id: rule.id,
+        trigger_type: rule.trigger_type,
+        condition: serializeCondition(rule.condition),
+        action: rule.action,
+        notify_role: rule.notify_role,
+        is_active: rule.is_active,
+        created_at: rule.created_at.toISOString(),
+        updated_at: rule.updated_at.toISOString(),
+      })),
+      totalCount,
+    );
+
     return success({
-      ...buildCountedListEnvelope(
-        rules.map((rule) => ({
-          id: rule.id,
-          trigger_type: rule.trigger_type,
-          condition: serializeCondition(rule.condition),
-          action: rule.action,
-          notify_role: rule.notify_role,
-          is_active: rule.is_active,
-          created_at: rule.created_at.toISOString(),
-          updated_at: rule.updated_at.toISOString(),
-        })),
-        totalCount,
-      ),
-      count_basis: 'escalation_rules',
-      filters_applied: {},
-      limit,
+      data: list.data,
+      meta: {
+        total_count: list.total_count,
+        visible_count: list.visible_count,
+        hidden_count: list.hidden_count,
+        truncated: list.truncated,
+        count_basis: 'escalation_rules',
+        filters_applied: {},
+        limit,
+      },
     });
   },
   {

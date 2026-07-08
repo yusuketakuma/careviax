@@ -120,16 +120,7 @@ describe('/api/admin/escalation-rules', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     const body = await response.json();
-    expect(Object.keys(body)).toEqual([
-      'data',
-      'total_count',
-      'visible_count',
-      'hidden_count',
-      'truncated',
-      'count_basis',
-      'filters_applied',
-      'limit',
-    ]);
+    expect(Object.keys(body)).toEqual(['data', 'meta']);
     expect(body).toEqual({
       data: [
         {
@@ -143,13 +134,15 @@ describe('/api/admin/escalation-rules', () => {
           updated_at: '2026-03-28T01:00:00.000Z',
         },
       ],
-      total_count: 1,
-      visible_count: 1,
-      hidden_count: 0,
-      truncated: false,
-      count_basis: 'escalation_rules',
-      filters_applied: {},
-      limit: 5,
+      meta: {
+        total_count: 1,
+        visible_count: 1,
+        hidden_count: 0,
+        truncated: false,
+        count_basis: 'escalation_rules',
+        filters_applied: {},
+        limit: 5,
+      },
     });
     expect(escalationRuleCountMock).toHaveBeenCalledWith({
       where: { org_id: 'org_1' },
@@ -186,13 +179,15 @@ describe('/api/admin/escalation-rules', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      total_count: 3,
-      visible_count: 1,
-      hidden_count: 2,
-      truncated: true,
-      count_basis: 'escalation_rules',
-      filters_applied: {},
-      limit: 1,
+      meta: {
+        total_count: 3,
+        visible_count: 1,
+        hidden_count: 2,
+        truncated: true,
+        count_basis: 'escalation_rules',
+        filters_applied: {},
+        limit: 1,
+      },
     });
   });
 
