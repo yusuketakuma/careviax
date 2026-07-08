@@ -75,7 +75,7 @@ describe('CommentThread', () => {
     vi.clearAllMocks();
     vi.stubGlobal('fetch', fetchMock);
     useOrgIdMock.mockReturnValue('org_1');
-    fetchMock.mockResolvedValue(jsonResponse({ deleted: true }));
+    fetchMock.mockResolvedValue(jsonResponse({ data: { deleted: true } }));
     useRealtimeQueryMock.mockReturnValue({
       data: { data: [] },
       isLoading: false,

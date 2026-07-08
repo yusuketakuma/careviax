@@ -66,7 +66,8 @@ describe('/api/comments/[id]', () => {
 
       expect(response.status).toBe(200);
       const body = await response.json();
-      expect(body.deleted).toBe(true);
+      expect(body).toEqual({ data: { deleted: true } });
+      expect(body).not.toHaveProperty('deleted');
       expect(broadcastOrgRealtimeEventMock).toHaveBeenCalledWith({
         orgId: 'org_1',
         type: 'comment_refresh',

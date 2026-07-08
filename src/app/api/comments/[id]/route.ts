@@ -21,7 +21,7 @@ export const DELETE = withAuthContext<{ id: string }>(
       type: 'comment_refresh',
     });
 
-    return success({ deleted: true });
+    return success({ data: { deleted: true } });
   },
   {
     permission: 'canDispense',
