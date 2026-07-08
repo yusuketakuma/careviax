@@ -136,6 +136,47 @@ export type DayBoardPendingProposalCounts = {
   hidden_operational_task_count: number;
 };
 
+export type DayBoardInboundScheduleRequestReviewStatus =
+  | 'needs_review'
+  | 'auto_accepted'
+  | 'accepted';
+
+export type DayBoardInboundScheduleRequestSignalType =
+  | 'schedule_change_request'
+  | 'visit_request'
+  | 'unknown';
+
+export type DayBoardInboundScheduleRequestSourceChannel =
+  | 'mcs'
+  | 'phone'
+  | 'fax'
+  | 'email'
+  | 'manual';
+
+export type DayBoardInboundScheduleRequest = {
+  signal_id: string;
+  signal_type: DayBoardInboundScheduleRequestSignalType;
+  source_channel: DayBoardInboundScheduleRequestSourceChannel;
+  received_at: string;
+  review_status: DayBoardInboundScheduleRequestReviewStatus;
+  action_status: 'not_linked';
+  patient_linked: boolean;
+  case_linked: boolean;
+};
+
+export type DayBoardInboundScheduleRequestCounts = {
+  /** Formal schedule-domain inbound signals before visible-row capping. */
+  total_count: number;
+  /** Rows included in `inbound_schedule_requests`. */
+  visible_count: number;
+  /** Formal schedule signals intentionally not expanded on this board. */
+  hidden_count: number;
+  /** Server-side visible row cap. */
+  limit: number;
+  /** Prevents consumers from treating visible rows as total signal count. */
+  count_basis: 'formal_schedule_signal_visible_window';
+};
+
 export type DayBoardStaffCounts = {
   /** Staff rows after availability filtering, before visible-row capping. */
   total_count: number;
@@ -175,6 +216,8 @@ export type ScheduleDayBoardResponse = {
   vehicle_resources: DayBoardVehicleResource[];
   pending_proposals: DayBoardPendingProposal[];
   pending_proposal_counts: DayBoardPendingProposalCounts;
+  inbound_schedule_requests: DayBoardInboundScheduleRequest[];
+  inbound_schedule_request_counts: DayBoardInboundScheduleRequestCounts;
   /** Current-board visit/proposal operational tasks; replaces the page's org-wide task scan. */
   operational_tasks: ScheduleDayBoardOperationalTask[];
 };

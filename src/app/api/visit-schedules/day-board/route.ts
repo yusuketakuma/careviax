@@ -27,6 +27,7 @@ import type {
   DayBoardVisit,
   DayBoardVisitPreparationSummary,
   DayBoardVisitReadyBlockerSummary,
+  DayBoardInboundScheduleRequest,
   ScheduleDayBoardOperationalTask,
   ScheduleDayBoardResponse,
 } from '@/types/schedule-day-board';
@@ -35,6 +36,7 @@ import {
   buildDashboardTaskAssignmentWhere,
   resolveDashboardAssignmentScope,
 } from '@/server/services/dashboard-assignment-scope';
+import { buildInboundCommunicationEventAssignmentWhere } from '@/server/services/communication-request-access';
 import { describeBillingEvidenceBlockers } from '@/server/services/billing-evidence';
 import {
   VISIT_READY_CARRY_ITEMS_STATUS_BLOCKER,
@@ -55,6 +57,8 @@ import {
 const STAFF_ROW_LIMIT = 6;
 const PENDING_PROPOSAL_LIMIT = 3;
 const OPERATIONAL_TASK_LIMIT = 24;
+const INBOUND_SCHEDULE_REQUEST_LIMIT = 5;
+const INBOUND_SCHEDULE_REQUEST_SCAN_LIMIT = INBOUND_SCHEDULE_REQUEST_LIMIT + 1;
 /** 余白試算: シフト未登録時は 9:00-18:00 とみなす */
 const DEFAULT_WORKDAY_START_MINUTES = 9 * 60;
 const DEFAULT_WORKDAY_END_MINUTES = 18 * 60;
@@ -75,6 +79,17 @@ const SCHEDULE_BOARD_TASK_TYPES = [
   'pharmacy.inbound_schedule_request_review_required',
 ] as const;
 const OPEN_OPERATIONAL_TASK_STATUSES = ['pending', 'in_progress'] as const;
+const INBOUND_SCHEDULE_REQUEST_CHANNELS = ['mcs', 'phone', 'fax', 'email', 'manual'] as const;
+const INBOUND_SCHEDULE_REQUEST_REVIEW_STATUSES = [
+  'needs_review',
+  'auto_accepted',
+  'accepted',
+] as const;
+const INBOUND_SCHEDULE_REQUEST_SIGNAL_TYPES = [
+  'schedule_change_request',
+  'visit_request',
+  'unknown',
+] as const;
 const VEHICLE_ASSIGNABLE_STATUSES = new Set([
   'planned',
   'in_preparation',
@@ -145,8 +160,10 @@ type DayBoardDb = Pick<
   | 'dispenseTask'
   | 'facility'
   | 'firstVisitDocument'
+  | 'inboundCommunicationSignal'
   | 'managementPlan'
   | 'membership'
+  | 'patient'
   | 'pharmacistShift'
   | 'task'
   | 'visitSchedule'
@@ -264,6 +281,95 @@ function serializeOperationalTask(task: {
     metadata: sanitizeOperationalTaskMetadata(task),
     created_at: task.created_at.toISOString(),
   };
+}
+
+type InboundScheduleRequestSignalRow = {
+  id: string;
+  signal_type: string;
+  patient_id: string | null;
+  case_id: string | null;
+  review_status: string;
+  action_status: string;
+  inbound_event: {
+    id: string;
+    patient_id: string | null;
+    case_id: string | null;
+    source_channel: string;
+    received_at: Date;
+  };
+};
+
+type SafeInboundScheduleRequestSignalRow = Omit<
+  InboundScheduleRequestSignalRow,
+  'signal_type' | 'review_status' | 'action_status' | 'inbound_event'
+> & {
+  signal_type: DayBoardInboundScheduleRequest['signal_type'];
+  review_status: DayBoardInboundScheduleRequest['review_status'];
+  action_status: 'not_linked';
+  inbound_event: Omit<InboundScheduleRequestSignalRow['inbound_event'], 'source_channel'> & {
+    source_channel: DayBoardInboundScheduleRequest['source_channel'];
+  };
+};
+
+function hasInboundScheduleRequestScopeMismatch(row: InboundScheduleRequestSignalRow) {
+  return (
+    (row.patient_id &&
+      row.inbound_event.patient_id &&
+      row.patient_id !== row.inbound_event.patient_id) ||
+    (row.case_id && row.inbound_event.case_id && row.case_id !== row.inbound_event.case_id)
+  );
+}
+
+function isInboundScheduleRequestSourceChannel(
+  value: string,
+): value is DayBoardInboundScheduleRequest['source_channel'] {
+  return INBOUND_SCHEDULE_REQUEST_CHANNELS.includes(
+    value as DayBoardInboundScheduleRequest['source_channel'],
+  );
+}
+
+function isInboundScheduleRequestReviewStatus(
+  value: string,
+): value is DayBoardInboundScheduleRequest['review_status'] {
+  return INBOUND_SCHEDULE_REQUEST_REVIEW_STATUSES.includes(
+    value as DayBoardInboundScheduleRequest['review_status'],
+  );
+}
+
+function isInboundScheduleRequestSignalType(
+  value: string,
+): value is DayBoardInboundScheduleRequest['signal_type'] {
+  return INBOUND_SCHEDULE_REQUEST_SIGNAL_TYPES.includes(
+    value as DayBoardInboundScheduleRequest['signal_type'],
+  );
+}
+
+function filterSafeInboundScheduleRequestRows(
+  rows: InboundScheduleRequestSignalRow[],
+): SafeInboundScheduleRequestSignalRow[] {
+  return rows.filter(
+    (row): row is SafeInboundScheduleRequestSignalRow =>
+      row.action_status === 'not_linked' &&
+      isInboundScheduleRequestSignalType(row.signal_type) &&
+      isInboundScheduleRequestReviewStatus(row.review_status) &&
+      isInboundScheduleRequestSourceChannel(row.inbound_event.source_channel) &&
+      !hasInboundScheduleRequestScopeMismatch(row),
+  );
+}
+
+function buildInboundScheduleRequests(
+  rows: SafeInboundScheduleRequestSignalRow[],
+): DayBoardInboundScheduleRequest[] {
+  return rows.slice(0, INBOUND_SCHEDULE_REQUEST_LIMIT).map((row) => ({
+    signal_id: row.id,
+    signal_type: row.signal_type,
+    source_channel: row.inbound_event.source_channel,
+    received_at: row.inbound_event.received_at.toISOString(),
+    review_status: row.review_status,
+    action_status: row.action_status,
+    patient_linked: Boolean(row.patient_id ?? row.inbound_event.patient_id),
+    case_linked: Boolean(row.case_id ?? row.inbound_event.case_id),
+  }));
 }
 
 function minutesOfTimeValue(value: Date | null): number | null {
@@ -897,6 +1003,59 @@ const authenticatedGET = withAuthContext(
         const reportPendingCount = schedules.filter(
           (schedule) => schedule.cycle?.overall_status === 'visit_completed',
         ).length;
+        const assignmentWhere = await buildInboundCommunicationEventAssignmentWhere({
+          db,
+          orgId: ctx.orgId,
+          accessContext: ctx,
+        });
+        const baseInboundScheduleEventWhere: Prisma.InboundCommunicationEventWhereInput = {
+          org_id: ctx.orgId,
+          direction: 'inbound',
+          has_schedule_signal: true,
+          source_channel: { in: [...INBOUND_SCHEDULE_REQUEST_CHANNELS] },
+          processing_status: { not: 'ignored' },
+        };
+        const inboundScheduleEventWhere: Prisma.InboundCommunicationEventWhereInput =
+          assignmentWhere
+            ? { AND: [baseInboundScheduleEventWhere, assignmentWhere] }
+            : baseInboundScheduleEventWhere;
+        const inboundScheduleRequestWhere: Prisma.InboundCommunicationSignalWhereInput = {
+          org_id: ctx.orgId,
+          signal_domain: 'schedule',
+          signal_type: { in: [...INBOUND_SCHEDULE_REQUEST_SIGNAL_TYPES] },
+          action_status: 'not_linked',
+          review_status: { in: [...INBOUND_SCHEDULE_REQUEST_REVIEW_STATUSES] },
+          inbound_event: { is: inboundScheduleEventWhere },
+        };
+        const rawInboundScheduleRequestRows = await db.inboundCommunicationSignal.findMany({
+          where: inboundScheduleRequestWhere,
+          orderBy: [{ created_at: 'desc' }, { id: 'asc' }],
+          take: INBOUND_SCHEDULE_REQUEST_SCAN_LIMIT,
+          select: {
+            id: true,
+            signal_type: true,
+            patient_id: true,
+            case_id: true,
+            review_status: true,
+            action_status: true,
+            inbound_event: {
+              select: {
+                id: true,
+                patient_id: true,
+                case_id: true,
+                source_channel: true,
+                received_at: true,
+              },
+            },
+          },
+        });
+        const safeInboundScheduleRequestRows = filterSafeInboundScheduleRequestRows(
+          rawInboundScheduleRequestRows,
+        );
+        const inboundScheduleRequests = buildInboundScheduleRequests(
+          safeInboundScheduleRequestRows,
+        );
+        const inboundScheduleRequestWindowCount = safeInboundScheduleRequestRows.length;
 
         // 施設名(facility_batch.facility_id → Facility.name)
         const facilityIds = Array.from(
@@ -1376,6 +1535,17 @@ const authenticatedGET = withAuthContext(
             hidden_count: hiddenProposalCount,
             limit: PENDING_PROPOSAL_LIMIT,
             hidden_operational_task_count: hiddenOperationalTaskCount,
+          },
+          inbound_schedule_requests: inboundScheduleRequests,
+          inbound_schedule_request_counts: {
+            total_count: inboundScheduleRequestWindowCount,
+            visible_count: inboundScheduleRequests.length,
+            hidden_count: Math.max(
+              0,
+              inboundScheduleRequestWindowCount - inboundScheduleRequests.length,
+            ),
+            limit: INBOUND_SCHEDULE_REQUEST_LIMIT,
+            count_basis: 'formal_schedule_signal_visible_window',
           },
           operational_tasks: operationalTasks.map(serializeOperationalTask),
         } satisfies ScheduleDayBoardResponse;

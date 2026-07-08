@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { AlertTriangle, Car, Lock, Plus, Route, Send } from 'lucide-react';
+import { AlertTriangle, Car, Lock, Plus, RadioTower, Route, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import { messageFromError } from '@/lib/utils/error-message';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -34,6 +34,7 @@ import { cn } from '@/lib/utils';
 import type { ScheduleStatus } from '@/lib/validations/visit-schedule';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import type {
+  DayBoardInboundScheduleRequest,
   DayBoardPendingProposal,
   DayBoardStaff,
   DayBoardVisit,
@@ -143,16 +144,7 @@ function familyName(name: string): string {
 }
 
 function pendingProposalCounts(board: ScheduleDayBoardResponse) {
-  const visibleCount = board.pending_proposals.length;
-  const counts = (board as Partial<ScheduleDayBoardResponse>).pending_proposal_counts;
-  if (!counts) {
-    return {
-      totalCount: visibleCount,
-      visibleCount,
-      hiddenCount: 0,
-      hiddenOperationalTaskCount: 0,
-    };
-  }
+  const counts = board.pending_proposal_counts;
 
   return {
     totalCount: Math.max(0, counts.total_count),
@@ -161,6 +153,53 @@ function pendingProposalCounts(board: ScheduleDayBoardResponse) {
     hiddenOperationalTaskCount: Math.max(0, counts.hidden_operational_task_count),
   };
 }
+
+function inboundScheduleRequestCounts(board: ScheduleDayBoardResponse) {
+  const counts = board.inbound_schedule_request_counts;
+  return {
+    totalCount: Math.max(0, counts.total_count),
+    visibleCount: Math.max(0, counts.visible_count),
+    hiddenCount: Math.max(0, counts.hidden_count),
+  };
+}
+
+const INBOUND_SCHEDULE_SOURCE_LABELS: Record<
+  DayBoardInboundScheduleRequest['source_channel'],
+  string
+> = {
+  mcs: 'MCS',
+  phone: '電話',
+  fax: 'FAX',
+  email: 'メール',
+  manual: '手入力',
+};
+
+const INBOUND_SCHEDULE_SIGNAL_TYPE_LABELS: Record<
+  DayBoardInboundScheduleRequest['signal_type'],
+  string
+> = {
+  schedule_change_request: '日程変更',
+  visit_request: '訪問依頼',
+  unknown: '日程調整',
+};
+
+const INBOUND_SCHEDULE_REVIEW_LABELS: Record<
+  DayBoardInboundScheduleRequest['review_status'],
+  string
+> = {
+  needs_review: '要確認',
+  auto_accepted: '自動確認',
+  accepted: '確認済み',
+};
+
+const INBOUND_SCHEDULE_REVIEW_ROLES: Record<
+  DayBoardInboundScheduleRequest['review_status'],
+  StatusRole
+> = {
+  needs_review: 'confirm',
+  auto_accepted: 'info',
+  accepted: 'done',
+};
 
 // ---------------------------------------------------------------------------
 // 日/週トグル(日=当日ガント / 週=カレンダー)
@@ -717,6 +756,7 @@ function ScheduleDaySummaryStrip({
   const staffCounts = board.staff_counts;
   const recommendedVehicleTargets = unassignedTimedVisitsForRecommendedVehicle(board).length;
   const proposalCounts = pendingProposalCounts(board);
+  const inboundCounts = inboundScheduleRequestCounts(board);
   const summaryItems = [
     {
       label: '訪問枠',
@@ -762,6 +802,17 @@ function ScheduleDaySummaryStrip({
       tone: proposalCounts.totalCount > 0 ? ('confirm' as const) : ('done' as const),
     },
     {
+      label: '受信調整',
+      value: `${inboundCounts.totalCount}件`,
+      detail:
+        inboundCounts.hiddenCount > 0
+          ? `先頭${inboundCounts.visibleCount}件 +他${inboundCounts.hiddenCount}件`
+          : inboundCounts.totalCount > 0
+            ? 'レビュー待ち'
+            : '未処理なし',
+      tone: inboundCounts.totalCount > 0 ? ('confirm' as const) : ('done' as const),
+    },
+    {
       label: '車両反映',
       value: `${recommendedVehicleTargets}件`,
       detail: recommendedVehicleTargets > 0 ? '推奨あり' : '割当待ちなし',
@@ -783,7 +834,7 @@ function ScheduleDaySummaryStrip({
           {dateLabel}
         </span>
       </div>
-      <dl className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+      <dl className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
         {summaryItems.map((item) => {
           const toneClass = SUMMARY_TONE_CLASSES[item.tone];
           return (
@@ -1462,6 +1513,95 @@ function PendingProposalsCard({
   );
 }
 
+function InboundScheduleRequestsCard({
+  requests,
+  counts,
+}: {
+  requests: DayBoardInboundScheduleRequest[];
+  counts: ReturnType<typeof inboundScheduleRequestCounts>;
+}) {
+  if (counts.totalCount === 0) return null;
+
+  return (
+    <section
+      className="rounded-lg border border-border/70 bg-card p-4"
+      aria-labelledby="schedule-inbound-requests-heading"
+      data-testid="schedule-inbound-requests"
+    >
+      <div className="flex flex-wrap items-baseline gap-2">
+        <h3 id="schedule-inbound-requests-heading" className="text-base font-bold text-foreground">
+          受信訪問調整
+        </h3>
+        <span className="text-xs text-muted-foreground">{counts.totalCount}件</span>
+        {counts.hiddenCount > 0 ? (
+          <span className="rounded-full bg-state-confirm/10 px-2 py-0.5 text-xs font-bold text-state-confirm">
+            +{counts.hiddenCount}件
+          </span>
+        ) : null}
+      </div>
+      <ul className="mt-3 grid gap-2 md:grid-cols-2" role="list">
+        {requests.map((request) => {
+          const sourceLabel = INBOUND_SCHEDULE_SOURCE_LABELS[request.source_channel];
+          const signalLabel = INBOUND_SCHEDULE_SIGNAL_TYPE_LABELS[request.signal_type];
+          const reviewLabel = INBOUND_SCHEDULE_REVIEW_LABELS[request.review_status];
+          const linkedLabel = request.case_linked
+            ? 'ケース紐づけ済み'
+            : request.patient_linked
+              ? '患者紐づけ済み'
+              : '患者未紐づけ';
+          return (
+            <li
+              key={request.signal_id}
+              className="rounded-md border border-border/60 bg-muted/20 px-3 py-2.5"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded bg-background px-1.5 py-0.5 text-xs font-bold text-muted-foreground">
+                  {sourceLabel}
+                </span>
+                <StateBadge
+                  role={INBOUND_SCHEDULE_REVIEW_ROLES[request.review_status]}
+                  className="text-[11px] font-bold"
+                >
+                  {reviewLabel}
+                </StateBadge>
+                <StateBadge
+                  role={request.patient_linked ? 'info' : 'confirm'}
+                  className="text-[11px] font-bold"
+                >
+                  {linkedLabel}
+                </StateBadge>
+              </div>
+              <p className="mt-1 text-sm font-semibold text-foreground">{signalLabel}</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                受信 {formatTimeOfDayIso(request.received_at)}
+              </p>
+              <div className="mt-2">
+                <Link
+                  href="/communications/inbound"
+                  className={buttonVariants({
+                    variant: 'outline',
+                    size: 'sm',
+                    className: '!h-auto !min-h-[44px] bg-card sm:!h-auto sm:!min-h-[44px]',
+                  })}
+                >
+                  <RadioTower className="size-3.5" aria-hidden="true" />
+                  受信レビューへ
+                </Link>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+      {counts.hiddenCount > 0 ? (
+        <div className="mt-3 rounded-md border border-state-confirm/25 bg-state-confirm/5 px-3 py-2 text-sm text-state-confirm">
+          先頭{counts.visibleCount}件を表示中。他{counts.hiddenCount}
+          件は受信レビューで確認してください。
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // 運用タスク(訪問準備 / 架電 / 変更承認)
 // ---------------------------------------------------------------------------
@@ -1818,7 +1958,6 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
   const board = boardQuery.data ?? null;
   const cockpit = cockpitQuery.isError ? null : (cockpitQuery.data ?? null);
   const operationalTasks = board?.operational_tasks ?? [];
-  const proposalCounts = board ? pendingProposalCounts(board) : null;
 
   const blockedReasons: BlockedReason[] = buildDailyOpsBlockedReasons(cockpit);
   const evidence: EvidenceItem[] = [
@@ -1917,10 +2056,14 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
                   }
                   onUpdateTaskStatus={(payload) => taskStatusMutation.mutate(payload)}
                 />
+                <InboundScheduleRequestsCard
+                  requests={board.inbound_schedule_requests}
+                  counts={inboundScheduleRequestCounts(board)}
+                />
                 <PendingProposalsCard
                   proposals={board.pending_proposals}
                   todayKey={todayKey}
-                  counts={proposalCounts ?? pendingProposalCounts(board)}
+                  counts={pendingProposalCounts(board)}
                 />
               </div>
               {actionRail}

@@ -18,6 +18,8 @@ const {
   pharmacistShiftFindManyMock,
   visitVehicleResourceFindManyMock,
   careCaseFindManyMock,
+  patientFindManyMock,
+  inboundCommunicationSignalFindManyMock,
   consentRecordFindManyMock,
   firstVisitDocumentFindManyMock,
   managementPlanFindManyMock,
@@ -39,6 +41,8 @@ const {
   pharmacistShiftFindManyMock: vi.fn(),
   visitVehicleResourceFindManyMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
+  patientFindManyMock: vi.fn(),
+  inboundCommunicationSignalFindManyMock: vi.fn(),
   consentRecordFindManyMock: vi.fn(),
   firstVisitDocumentFindManyMock: vi.fn(),
   managementPlanFindManyMock: vi.fn(),
@@ -65,6 +69,10 @@ vi.mock('@/lib/db/client', () => ({
     pharmacistShift: { findMany: pharmacistShiftFindManyMock },
     visitVehicleResource: { findMany: visitVehicleResourceFindManyMock },
     careCase: { findMany: careCaseFindManyMock },
+    patient: { findMany: patientFindManyMock },
+    inboundCommunicationSignal: {
+      findMany: inboundCommunicationSignalFindManyMock,
+    },
     consentRecord: { findMany: consentRecordFindManyMock },
     firstVisitDocument: { findMany: firstVisitDocumentFindManyMock },
     managementPlan: { findMany: managementPlanFindManyMock },
@@ -115,6 +123,8 @@ describe('/api/visit-schedules/day-board', () => {
     pharmacistShiftFindManyMock.mockResolvedValue([]);
     visitVehicleResourceFindManyMock.mockResolvedValue([]);
     careCaseFindManyMock.mockResolvedValue([]);
+    patientFindManyMock.mockResolvedValue([]);
+    inboundCommunicationSignalFindManyMock.mockResolvedValue([]);
     consentRecordFindManyMock.mockResolvedValue([]);
     firstVisitDocumentFindManyMock.mockResolvedValue([]);
     managementPlanFindManyMock.mockResolvedValue([]);
@@ -142,6 +152,10 @@ describe('/api/visit-schedules/day-board', () => {
           count: proposalCountMock,
         },
         visitVehicleResource: { findMany: visitVehicleResourceFindManyMock },
+        patient: { findMany: patientFindManyMock },
+        inboundCommunicationSignal: {
+          findMany: inboundCommunicationSignalFindManyMock,
+        },
       }),
     );
   });
@@ -214,8 +228,17 @@ describe('/api/visit-schedules/day-board', () => {
       limit: 3,
       hidden_operational_task_count: 0,
     });
+    expect(json.data.inbound_schedule_requests).toEqual([]);
+    expect(json.data.inbound_schedule_request_counts).toEqual({
+      total_count: 0,
+      visible_count: 0,
+      hidden_count: 0,
+      limit: 5,
+      count_basis: 'formal_schedule_signal_visible_window',
+    });
     expect(proposalFindManyMock).toHaveBeenCalledTimes(1);
     expect(proposalCountMock).toHaveBeenCalledTimes(1);
+    expect(inboundCommunicationSignalFindManyMock).toHaveBeenCalledTimes(1);
     expect(contactLogFindManyMock).not.toHaveBeenCalled();
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
     expect(taskCountMock).not.toHaveBeenCalled();
@@ -574,7 +597,7 @@ describe('/api/visit-schedules/day-board', () => {
   });
 
   it('applies personal dashboard assignment scope to hidden proposal task counts', async () => {
-    authContextMock.role = 'pharmacist';
+    authContextMock.role = 'driver';
     authContextMock.userId = 'pharmacist_1';
     membershipFindManyMock.mockResolvedValue([
       { role: 'pharmacist', user: { id: 'pharmacist_1', name: '佐藤 真' } },
@@ -945,6 +968,148 @@ describe('/api/visit-schedules/day-board', () => {
     expect(JSON.stringify(json.data)).not.toContain('MCS本文');
     expect(JSON.stringify(json.data)).not.toContain('電話メモ raw schedule request');
     expect(JSON.stringify(json.data)).not.toContain('raw inbound note should not leak');
+  });
+
+  it('surfaces bounded formal inbound schedule requests without raw/detail fields', async () => {
+    authContextMock.role = 'driver';
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case_schedule' }]);
+    patientFindManyMock.mockResolvedValue([{ id: 'patient_schedule' }]);
+    inboundCommunicationSignalFindManyMock.mockResolvedValue([
+      {
+        id: 'signal_schedule_valid',
+        signal_type: 'schedule_change_request',
+        patient_id: 'patient_schedule',
+        case_id: 'case_schedule',
+        review_status: 'needs_review',
+        action_status: 'not_linked',
+        created_at: new Date('2026-06-12T01:00:00.000Z'),
+        extracted_text: 'raw extracted text should not leak',
+        inbound_event: {
+          id: 'event_schedule_valid',
+          patient_id: 'patient_schedule',
+          case_id: 'case_schedule',
+          source_channel: 'mcs',
+          received_at: new Date('2026-06-12T00:30:00.000Z'),
+          processing_status: 'signals_extracted',
+          raw_text: 'MCS raw text should not leak',
+          normalized_summary: 'normalized summary should not leak',
+          sender_contact: '090-2222-3333',
+        },
+      },
+      {
+        id: 'signal_schedule_mismatch',
+        signal_type: 'visit_request',
+        patient_id: 'patient_a',
+        case_id: 'case_a',
+        review_status: 'accepted',
+        action_status: 'not_linked',
+        created_at: new Date('2026-06-12T00:45:00.000Z'),
+        inbound_event: {
+          id: 'event_schedule_mismatch',
+          patient_id: 'patient_b',
+          case_id: 'case_b',
+          source_channel: 'phone',
+          received_at: new Date('2026-06-12T00:15:00.000Z'),
+          processing_status: 'reviewed',
+        },
+      },
+    ]);
+
+    const response = (await GET(createRequest('2026-06-12'), {
+      params: Promise.resolve({}),
+    }))!;
+    expect(response.status).toBe(200);
+    const json = await response.json();
+
+    const findManyArgs = inboundCommunicationSignalFindManyMock.mock.calls.at(0)?.[0];
+    expect(findManyArgs).toMatchObject({
+      where: {
+        org_id: 'org_1',
+        signal_domain: 'schedule',
+        signal_type: { in: ['schedule_change_request', 'visit_request', 'unknown'] },
+        action_status: 'not_linked',
+        review_status: { in: ['needs_review', 'auto_accepted', 'accepted'] },
+        inbound_event: {
+          is: {
+            AND: [
+              {
+                org_id: 'org_1',
+                direction: 'inbound',
+                has_schedule_signal: true,
+                source_channel: { in: ['mcs', 'phone', 'fax', 'email', 'manual'] },
+                processing_status: { not: 'ignored' },
+              },
+              {
+                OR: [
+                  { case_id: { in: ['case_schedule'] } },
+                  {
+                    AND: [{ case_id: null }, { patient_id: { in: ['patient_schedule'] } }],
+                  },
+                  {
+                    AND: [{ case_id: null }, { patient_id: null }],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      },
+      take: 6,
+      select: {
+        id: true,
+        signal_type: true,
+        patient_id: true,
+        case_id: true,
+        review_status: true,
+        action_status: true,
+        inbound_event: {
+          select: {
+            id: true,
+            patient_id: true,
+            case_id: true,
+            source_channel: true,
+            received_at: true,
+          },
+        },
+      },
+    });
+    expect(JSON.stringify(findManyArgs.select)).not.toContain('raw_text');
+    expect(JSON.stringify(findManyArgs.select)).not.toContain('normalized_summary');
+    expect(JSON.stringify(findManyArgs.select)).not.toContain('extracted_text');
+    expect(JSON.stringify(findManyArgs.select)).not.toContain('extracted_medication_name');
+    expect(JSON.stringify(findManyArgs.select)).not.toContain('structured_payload');
+    expect(JSON.stringify(findManyArgs.select)).not.toContain('sender_name');
+    expect(JSON.stringify(findManyArgs.select)).not.toContain('sender_contact');
+    expect(JSON.stringify(findManyArgs.select)).not.toContain('sender_organization_name');
+    expect(JSON.stringify(findManyArgs.select)).not.toContain('external_url');
+    expect(JSON.stringify(findManyArgs.select)).not.toContain('attachment');
+    expect(JSON.stringify(findManyArgs.select)).not.toContain('medication');
+    expect(JSON.stringify(findManyArgs.select)).not.toContain('rejection_reason');
+
+    expect(json.data.inbound_schedule_requests).toEqual([
+      {
+        signal_id: 'signal_schedule_valid',
+        signal_type: 'schedule_change_request',
+        source_channel: 'mcs',
+        received_at: '2026-06-12T00:30:00.000Z',
+        review_status: 'needs_review',
+        action_status: 'not_linked',
+        patient_linked: true,
+        case_linked: true,
+      },
+    ]);
+    expect(json.data.inbound_schedule_request_counts).toEqual({
+      total_count: 1,
+      visible_count: 1,
+      hidden_count: 0,
+      limit: 5,
+      count_basis: 'formal_schedule_signal_visible_window',
+    });
+    expect(JSON.stringify(json.data)).not.toContain('raw extracted text should not leak');
+    expect(JSON.stringify(json.data)).not.toContain('MCS raw text should not leak');
+    expect(JSON.stringify(json.data)).not.toContain('normalized summary should not leak');
+    expect(JSON.stringify(json.data)).not.toContain('090-2222-3333');
+    expect(JSON.stringify(json.data)).not.toContain('signal_schedule_mismatch');
   });
 
   it('reports hidden staff visit and task counts without exposing hidden task details', async () => {

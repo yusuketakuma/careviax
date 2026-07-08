@@ -355,6 +355,14 @@ function buildBoardFixture(): ScheduleDayBoardResponse {
       limit: 3,
       hidden_operational_task_count: 0,
     },
+    inbound_schedule_requests: [],
+    inbound_schedule_request_counts: {
+      total_count: 0,
+      visible_count: 0,
+      hidden_count: 0,
+      limit: 5,
+      count_basis: 'formal_schedule_signal_visible_window',
+    },
     operational_tasks: [
       buildScheduleTask(),
       buildScheduleTask({
@@ -1353,21 +1361,6 @@ describe('ScheduleTeamBoard', () => {
     expect(screen.getByText('非表示スタッフ1名は別集計')).toBeTruthy();
   });
 
-  it('falls back to visible pending proposal length when count summary is absent', () => {
-    const legacyBoard = {
-      ...buildBoardFixture(),
-      pending_proposal_counts: undefined,
-    } as unknown as ScheduleDayBoardResponse;
-
-    mockQueries({ board: legacyBoard });
-    render(<ScheduleTeamBoard initialDate={TODAY_KEY} activeView="list" />);
-
-    const pending = screen.getByTestId('schedule-pending-proposals');
-    expect(within(pending).getByText('1件')).toBeTruthy();
-    expect(within(pending).queryByText(/\+\d+件/)).toBeNull();
-    expect(within(pending).getAllByTestId('pending-proposal-row')).toHaveLength(1);
-  });
-
   it('routes change-requested pending proposals to reproposal from the day board', () => {
     const board = buildBoardFixture();
     const changeRequested = {
@@ -1466,6 +1459,48 @@ describe('ScheduleTeamBoard', () => {
     expect(proposalLink.getAttribute('href')).toBe(
       '/schedules/proposals?workspace=dashboard&detail=proposal_1',
     );
+  });
+
+  it('surfaces formal inbound schedule requests as review-only day-board signals', () => {
+    mockQueries({
+      board: {
+        ...buildBoardFixture(),
+        inbound_schedule_requests: [
+          {
+            signal_id: 'signal_schedule_change',
+            signal_type: 'schedule_change_request',
+            source_channel: 'mcs',
+            received_at: localIso(9, 15),
+            review_status: 'needs_review',
+            action_status: 'not_linked',
+            patient_linked: true,
+            case_linked: true,
+          },
+        ],
+        inbound_schedule_request_counts: {
+          total_count: 2,
+          visible_count: 1,
+          hidden_count: 1,
+          limit: 5,
+          count_basis: 'formal_schedule_signal_visible_window',
+        },
+      },
+    });
+
+    render(<ScheduleTeamBoard initialDate={TODAY_KEY} activeView="list" />);
+
+    const summary = screen.getByTestId('schedule-day-summary');
+    expect(within(summary).getByText('受信調整')).toBeTruthy();
+    const inboundCard = screen.getByTestId('schedule-inbound-requests');
+    expect(within(inboundCard).getByText('受信訪問調整')).toBeTruthy();
+    expect(within(inboundCard).getByText('MCS')).toBeTruthy();
+    expect(within(inboundCard).getByText('日程変更')).toBeTruthy();
+    expect(within(inboundCard).getByText('要確認')).toBeTruthy();
+    expect(within(inboundCard).getByText('ケース紐づけ済み')).toBeTruthy();
+    expect(within(inboundCard).getByText(/受信 09:15/)).toBeTruthy();
+    expect(within(inboundCard).getByText(/先頭1件を表示中。他1件は受信レビュー/)).toBeTruthy();
+    const reviewLink = within(inboundCard).getByRole('link', { name: '受信レビューへ' });
+    expect(reviewLink.getAttribute('href')).toBe('/communications/inbound');
   });
 
   it('offers visit status changes from the staff gantt', () => {

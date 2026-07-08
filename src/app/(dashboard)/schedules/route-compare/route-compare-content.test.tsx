@@ -236,6 +236,14 @@ function boardFixture(): ScheduleDayBoardResponse {
       limit: 3,
       hidden_operational_task_count: 0,
     },
+    inbound_schedule_requests: [],
+    inbound_schedule_request_counts: {
+      total_count: 0,
+      visible_count: 0,
+      hidden_count: 0,
+      limit: 5,
+      count_basis: 'formal_schedule_signal_visible_window',
+    },
     operational_tasks: [],
   };
 }

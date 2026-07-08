@@ -23390,3 +23390,119 @@ status` no PR). Browser session `inbound-stock-selector` failed with
   Run Plans/format/diff checks, commit the owned slice, record the commit hash
   in this ledger, push to `origin/main`, then continue the next non-human-gated
   Plans item.
+
+## 2026-07-09 INBOUND-002 schedule downstream
+
+- current task:
+  Complete the Schedule downstream part of `INBOUND-002-REVIEW-DETAIL` using
+  only the formal `InboundCommunicationEvent` / `InboundCommunicationSignal`
+  contract. No legacy `CommunicationEvent` fallback, alias payload, raw
+  inbound text, normalized summary, schedule/proposal mutation, task creation,
+  or `linked_to_schedule` write is included in this slice.
+- files inspected:
+  `git status --short --untracked-files=all`, `Plans.md`,
+  `ops/refactor/STATE.md`, `.agents/skills/oracle-consult/SKILL.md`,
+  `docs/ui-ux-design-guidelines.md`,
+  `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`,
+  `prisma/schema/communication.prisma`,
+  `src/server/services/communication-request-access.ts`,
+  `src/types/schedule-day-board.ts`,
+  `src/app/api/visit-schedules/day-board/route.ts`,
+  `src/app/api/visit-schedules/day-board/route.test.ts`,
+  `src/app/(dashboard)/schedules/schedule-team-board.tsx`,
+  `src/app/(dashboard)/schedules/schedule-team-board.test.tsx`, and
+  `src/app/(dashboard)/schedules/route-compare/route-compare-content.test.tsx`.
+- files changed:
+  `Plans.md`, `ops/refactor/STATE.md`,
+  `src/types/schedule-day-board.ts`,
+  `src/app/api/visit-schedules/day-board/route.ts`,
+  `src/app/api/visit-schedules/day-board/route.test.ts`,
+  `src/app/(dashboard)/schedules/schedule-team-board.tsx`,
+  `src/app/(dashboard)/schedules/schedule-team-board.test.tsx`, and
+  `src/app/(dashboard)/schedules/route-compare/route-compare-content.test.tsx`.
+- oracle:
+  Required because this slice touches PHI/inbound/schedule operational
+  boundaries. Ran `npx -y @steipete/oracle --help` first and inspected GitHub
+  context (`https://github.com/yusuketakuma/careviax.git`, branch `main`,
+  commit `508f59ccebc303467f60ee0c3c5c7f1e817426f4`, no PR output, unrelated
+  dirty markdown/memory files). Browser consult attempts
+  `inbound-schedule-downstream` and `inbound-schedule-downstream-2` failed
+  with browser/upload/runtime errors. Minimal consult `inbound-schedule-min`
+  initially errored with Node `setTypeOfService EINVAL`, then
+  `oracle session inbound-schedule-min --render-plain` successfully reattached
+  and recovered GPT-5.5 Pro's answer. Oracle reported GitHub access succeeded,
+  approved direct read-only day-board projection from persisted formal schedule
+  signals, recommended omitting `normalized_summary`, avoiding
+  `/api/communications/inbound/signals` materialization, not mutating
+  schedule/proposal/task/link state, using allowlist select, filtering
+  signal/event scope mismatches, and deriving counts from the same safe
+  post-filter window. Adopted the advice.
+- imagegen:
+  Skipped. This was a narrow state/data addition inside the existing schedule
+  board summary/card pattern with no visual reconstruction or new layout
+  language. Existing PH-OS density, bordered group, heading hierarchy, 44px
+  action target, count metadata, and operational disclosure rules from
+  `docs/ui-ux-design-guidelines.md` were used.
+- implementation:
+  Extended `ScheduleDayBoardResponse` with `inbound_schedule_requests` and
+  `inbound_schedule_request_counts`. The day-board BFF now reads persisted
+  `InboundCommunicationSignal` rows only where
+  `signal_domain='schedule'`, `signal_type in schedule_change_request/
+visit_request/unknown`, `action_status='not_linked'`, and
+  `review_status in needs_review/auto_accepted/accepted`, with event-side
+  `org_id`, `direction='inbound'`, `has_schedule_signal=true`,
+  `source_channel in mcs/phone/fax/email/manual`, `processing_status != ignored`,
+  and event assignment scope when applicable. It uses an allowlist select and
+  filters signal/event patient-case mismatches before building a bounded
+  visible-window count (`count_basis='formal_schedule_signal_visible_window'`).
+  The UI adds a `受信調整` summary item and `受信訪問調整` card that shows only
+  source channel label, signal type label, review status, received time, and
+  patient/case linked state, then links back to `/communications/inbound`.
+  Removed the old pending proposal count compatibility fallback from this
+  touched schedule board path so the UI expects the current BFF contract only.
+- bugs found:
+  Schedule day-board only showed inbound schedule work after an operational
+  task already existed. Persisted formal schedule signals could be present but
+  invisible on the schedule operational surface, leaving pharmacists without a
+  day-board indication that inbound visit timing requests needed review.
+- security risks reduced:
+  The new select/DTO/UI deliberately omit `raw_text`, `normalized_summary`,
+  `extracted_text`, `extracted_medication_name`, structured payload, sender
+  name/contact/organization, external URL, attachment fields, rejection reason,
+  medication names, quantities, and units. No external share, export, report,
+  notification, log, AI prompt, schedule mutation, proposal mutation, task
+  creation, or `linked_to_schedule` write was added. Counts are computed after
+  the same safe post-filter window so mismatch rows do not affect visible row
+  counts.
+- performance issues improved:
+  The projection is a bounded formal-signal read (`take 6`) with a narrow
+  allowlist select and no raw/detail/attachment joins or materialization route
+  call. The UI consumes the existing day-board response without adding a second
+  client fetch.
+- validation commands:
+  `pnpm exec prettier --write src/types/schedule-day-board.ts src/app/api/visit-schedules/day-board/route.ts src/app/api/visit-schedules/day-board/route.test.ts 'src/app/(dashboard)/schedules/schedule-team-board.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' 'src/app/(dashboard)/schedules/route-compare/route-compare-content.test.tsx' Plans.md ops/refactor/STATE.md`;
+  `pnpm vitest run src/app/api/visit-schedules/day-board/route.test.ts 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint src/types/schedule-day-board.ts src/app/api/visit-schedules/day-board/route.ts src/app/api/visit-schedules/day-board/route.test.ts 'src/app/(dashboard)/schedules/schedule-team-board.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx'`;
+  `pnpm exec eslint 'src/app/(dashboard)/schedules/route-compare/route-compare-content.test.tsx'`;
+  `pnpm plans:active:check`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `git diff --check`.
+- validation results:
+  Focused schedule day-board API + UI Vitest passed 2 files / 55 tests after
+  updating the current-contract tests and route-compare fixture. Scoped ESLint
+  passed for the changed schedule files and route-compare fixture. Plans active
+  board check passed. Full typecheck passed after `next typegen`. Initial
+  targeted diff check passed.
+- commit:
+  Pending.
+- remaining work:
+  `INBOUND-002-REVIEW-DETAIL` remains partial only for Share downstream. Future
+  accepted-signal conversion into a concrete schedule/proposal target must be a
+  separate pharmacist-selected write slice. No raw inbound text, normalized
+  summary, schedule/proposal/task mutation, DB migration, deployment,
+  production data mutation, or push was performed in the implementation edit
+  step.
+- next action:
+  Run final Plans/format/diff checks, commit the owned slice, record the commit
+  hash in this ledger, push to `origin/main`, then continue the next
+  non-human-gated Plans item.
