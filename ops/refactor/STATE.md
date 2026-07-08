@@ -41,22 +41,26 @@
 
 ## 直近の作業（未コミット）
 
-- codex: `PLANS-HYGIENE-004` Plans.md active board v4 cleanup。
+- codex: `PLANS-HYGIENE-005` Plans.md active board v5 cleanup。
   - current task:
     既存 `Plans.md` 内の実装済み/未実装を現行コードと既存計画に合わせて分類し、実装済みタスクを active
-    backlog から外し、未実装/Partial の残スコープだけを拡充する。
+    backlog から外し、未実装/Partial の残スコープだけを拡充する。追加で、DB/API/医療安全レビュー結果を反映し、
+    `STOCK-001-VISIT-*` を安全に実装できる順序へ分解する。
   - files inspected:
     `git status --short --branch --untracked-files=all`,
     `Plans.md`,
     `ops/refactor/STATE.md`,
-    `docs/ui-ux-design-guidelines.md`,
     current repo paths found by `rg` for Dashboard, InboundCommunication, MedicationStock,
-    PatientMovement, query-shape, payload budgets, and backup/recovery.
+    PatientMovement, query-shape, payload budgets, and backup/recovery,
+    subagent DB/API/medical-safety read-only reviews for `STOCK-001-VISIT-API`,
+    `prisma/schema/medication.prisma`,
+    `src/modules/pharmacy/medication-stock/**`,
+    and existing `src/app/api/visit-records/**` route surfaces.
   - files changed:
     `Plans.md`,
     `ops/refactor/STATE.md`.
   - implementation:
-    Added `Active Plan Board v4` as the only active implementation entry in `Plans.md`.
+    Updated the active entrance to `Active Plan Board v5`.
     Classified done/frozen work for Dashboard backend, Inbound core, Medication Stock base,
     Patient Movement base, DB read-speed guardrails, AWS recovery base, and permission SSOT.
     Converted the previous v3/v2 plan boards and duplicate queues to archive/reference language.
@@ -66,15 +70,24 @@
     recovery human gate, and frontend slice contracts. Added derived tasks for active-plan linting,
     route link builders, payload budget follow-up, route performance measurement, count metadata,
     right-rail action consistency, raw detail reauthorization, access matrix coverage, and permissioned
-    clinical display.
+    clinical display. Split `STOCK-001-VISIT-API` into `STOCK-001-VISIT-CONTEXT`,
+    `STOCK-001-VISIT-API`, `STOCK-001-VISIT-FORECAST`, `STOCK-001-VISIT-UI`, and
+    `STOCK-001-VISIT-DOWNSTREAM`, and updated the reference Medication Stock section so the v1
+    endpoint is `POST /api/visit-records/:id/medication-stock-observations`.
   - bugs found:
     `Plans.md` had multiple active-looking entry points (`Active Plan Board v3`, `Active Execution Board v2`,
     and duplicate implementation/frontend queues), so implemented work could be re-picked as backlog.
     Some old archive text still claimed the old registry was the implementation entrance.
+    DB/API/medical-safety review found that current `MedicationStockEvent` cannot persist `last_used_at`
+    or controlled unobserved reason, so implementing the visit observation route first would force unsafe
+    `event_at` overloading or loss of clinical context.
   - security risks reduced:
     Clarified that authenticated business surfaces may show permissioned patient/medical information,
     while OS notifications, SSE payloads, logs, audit diffs, exports, external share, and public URLs remain
     separate output boundaries. Reinforced raw detail reauthorization and read audit as a follow-up task.
+    Added explicit stop conditions against raw reason/free text in stock task metadata, logs, public DTOs,
+    or action hrefs, and against direct `ResidualMedication` writes or inbound-signal apply reuse for visit
+    observations.
   - performance issues improved:
     Consolidated DB read-speed residual work into concrete tasks instead of broad rework:
     patients board cursor/bounded include, query-shape watchlist follow-up, human-gated care-report index,
@@ -82,16 +95,17 @@
   - validation commands:
     `pnpm exec prettier --check Plans.md`;
     `git diff --check -- Plans.md`;
-    `rg -n 'Active Plan Board v3|Active Execution Board|この registry を \`Plans\\.md\` の入口|Plan Status Registry.*Active|Implementation-ready queue.*Active|Frontend implementation queue.\*Active' Plans.md`.
+    `rg -n 'Active Plan Board v4|現在は v4|v4 の queue|Active Plan Board v5|STOCK-001-VISIT-CONTEXT|medication-stock-observations' Plans.md`.
   - validation results:
     `pnpm exec prettier --check Plans.md` passed after formatting.
     `git diff --check -- Plans.md` passed.
-    The rg check only returns the expected v4 active queue table plus archived text that explicitly says v4 is the current entrance.
+    The rg check returns the expected v5 active entrance, the new `STOCK-001-VISIT-CONTEXT` rows,
+    and the planned visit observation endpoint; no stale v4 active entrance remains.
   - remaining work:
     `PLAN-ARCHIVE-001` to physically move long reference specs into archive docs, `PLANS-ACTIVE-LINT-001`
-    to automate the active-backlog check, and the implementation queue items listed under `Active Plan Board v4`.
+    to automate the active-backlog check, and the implementation queue items listed under `Active Plan Board v5`.
   - next action:
-    Use `Active Plan Board v4` as the first `Plans.md` section for the next implementation slice.
+    Use `Active Plan Board v5` as the first `Plans.md` section for the next implementation slice.
 
 ## 直近の land（本日・要点）
 
