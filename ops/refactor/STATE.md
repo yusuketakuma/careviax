@@ -95,7 +95,8 @@
     `PLAN-ARCHIVE-001` and `PLANS-ACTIVE-LINT-001` remain implementation-ready. Migration application,
     live AWS restore evidence, and live DB integration remain human-gated.
   - next action:
-    Docs slice committed as `b11a693ea`; amend once to record the final hash in this ledger entry.
+    Docs slice committed as `8a750ea5f`; next implementation slice should start from
+    `PLAN-ARCHIVE-001`, `PLANS-ACTIVE-LINT-001`, or the highest-ranked active backlog row.
 
 - codex: `STOCK-001-VISIT-FORECAST` Medication Stock visit forecast context。
   - current task:
