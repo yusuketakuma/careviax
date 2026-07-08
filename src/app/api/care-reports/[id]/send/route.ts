@@ -1,5 +1,5 @@
 import { unstable_rethrow } from 'next/navigation';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createHash, createHmac, randomUUID } from 'node:crypto';
 import {
   Prisma,
@@ -16,7 +16,6 @@ import {
   error,
   forbiddenResponse,
   internalError,
-  success,
   validationError,
   notFound,
 } from '@/lib/api/response';
@@ -762,6 +761,10 @@ function buildDeliveryResponseItem(outcome: DeliveryOutcome) {
   };
 }
 
+function careReportSendJsonResponse(body: unknown, status = 200) {
+  return NextResponse.json(body, { status });
+}
+
 class DeliveryInProgressConflict extends Error {
   constructor() {
     super('同じ送付先への報告書送付が進行中です。送付履歴を確認してください');
@@ -800,7 +803,7 @@ async function respondCareReportFinalizationConflict(args: {
     responseStatus: 409,
     responseBody: replayBody,
   });
-  return success(args.claim.kind === 'claimed' ? replayBody : responseBody, 409);
+  return careReportSendJsonResponse(args.claim.kind === 'claimed' ? replayBody : responseBody, 409);
 }
 
 function toJsonSerializable(value: unknown) {
@@ -1802,7 +1805,7 @@ async function authenticatedPOST(
     requestFingerprint,
   });
   if (idempotencyPeek.kind === 'replayed') {
-    return success(idempotencyPeek.responseBody, idempotencyPeek.responseStatus);
+    return careReportSendJsonResponse(idempotencyPeek.responseBody, idempotencyPeek.responseStatus);
   }
   if (idempotencyPeek.kind === 'idempotency_conflict') {
     return error(
@@ -1882,7 +1885,10 @@ async function authenticatedPOST(
     requestFingerprint,
   });
   if (idempotencyClaim.kind === 'replayed') {
-    return success(idempotencyClaim.responseBody, idempotencyClaim.responseStatus);
+    return careReportSendJsonResponse(
+      idempotencyClaim.responseBody,
+      idempotencyClaim.responseStatus,
+    );
   }
   if (idempotencyClaim.kind === 'idempotency_conflict') {
     return error(
@@ -1936,7 +1942,10 @@ async function authenticatedPOST(
           responseStatus: 409,
           responseBody: replayBody,
         });
-        return success(idempotencyClaim.kind === 'claimed' ? replayBody : responseBody, 409);
+        return careReportSendJsonResponse(
+          idempotencyClaim.kind === 'claimed' ? replayBody : responseBody,
+          409,
+        );
       }
       if (cause instanceof PartnerVisitRecordFreshnessConflict) {
         const responseBody = {
@@ -1955,7 +1964,10 @@ async function authenticatedPOST(
           responseStatus: 409,
           responseBody: replayBody,
         });
-        return success(idempotencyClaim.kind === 'claimed' ? replayBody : responseBody, 409);
+        return careReportSendJsonResponse(
+          idempotencyClaim.kind === 'claimed' ? replayBody : responseBody,
+          409,
+        );
       }
       throw cause;
     }
@@ -1996,7 +2008,10 @@ async function authenticatedPOST(
       responseStatus: 502,
       responseBody: replayBody,
     });
-    return success(idempotencyClaim.kind === 'claimed' ? replayBody : responseBody, 502);
+    return careReportSendJsonResponse(
+      idempotencyClaim.kind === 'claimed' ? replayBody : responseBody,
+      502,
+    );
   }
 
   let report: { id: string; status: string };
@@ -2036,7 +2051,9 @@ async function authenticatedPOST(
     responseBody: replayBody,
   });
 
-  return success(idempotencyClaim.kind === 'claimed' ? replayBody : responseBody);
+  return careReportSendJsonResponse(
+    idempotencyClaim.kind === 'claimed' ? replayBody : responseBody,
+  );
 }
 
 export const POST: typeof authenticatedPOST = async (req, routeContext) => {

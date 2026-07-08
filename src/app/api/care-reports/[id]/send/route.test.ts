@@ -1927,6 +1927,8 @@ describe('/api/care-reports/[id]/send POST', () => {
     expect(JSON.stringify(storedResponse)).not.toContain('report.pdf');
     const json = await response.json();
     expect(json).toEqual(storedResponse);
+    expect(json).not.toHaveProperty('report');
+    expect(json).not.toHaveProperty('deliveries');
     expect(json).toMatchObject({
       data: {
         report: { id: 'report_1', status: 'sent' },
