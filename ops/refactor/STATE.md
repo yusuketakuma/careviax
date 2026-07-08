@@ -41,6 +41,62 @@
 
 ## 直近の作業（未コミット）
 
+- codex: `QUERY-SHAPE-WATCHLIST-003F` patient timeline / visit brief route-shell ratchet。
+  - current task:
+    DB read-speed follow-up として、すでに bounded service へ委譲している read API shell を
+    `tools/query-shape-watchlist.json` に追加し、今後 direct Prisma read が混入した場合に
+    query-shape guard で止める。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `package.json`,
+    `tools/scripts/check-query-shape.mjs`,
+    `tools/scripts/check-query-shape.test.ts`,
+    `tools/query-shape-watchlist.json`,
+    `tools/query-shape-allowlist.json`,
+    `src/app/api/patients/[id]/timeline/route.ts`,
+    `src/app/api/patients/[id]/timeline/[eventId]/route.ts`,
+    `src/app/api/visit-preparations/[scheduleId]/brief/route.ts`,
+    `src/app/api/visit-preparations/[scheduleId]/route.ts`,
+    `src/app/api/visit-records/[id]/route.ts`,
+    and `src/server/services/visit-brief.ts`.
+  - files changed:
+    `Plans.md`,
+    `tools/query-shape-watchlist.json`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Added zero-debt watchlist entries for patient timeline list, patient timeline event detail, and
+    single visit preparation brief route shells. These API shells currently avoid direct broad
+    `findMany` / `include` / aggregate read shapes and delegate to scoped services; the static guard
+    will fail if future edits add unbounded Prisma reads in those route entrypoints. `Plans.md`
+    records `QUERY-SHAPE-WATCHLIST-003F` as completed derived work while keeping the broader
+    `QUERY-SHAPE-WATCHLIST-003-FOLLOW` parent open for patients board cursor, day-board, contact
+    profiles, visit detail, and visit-brief service cleanup.
+  - bugs found:
+    No runtime bug was changed. The gap was missing regression coverage for route-shell read shape on
+    patient timeline and visit preparation brief entrypoints.
+  - security risks reduced:
+    No auth/authorization or PHI projection behavior changed. The watchlist helps prevent future broad
+    direct reads inside sensitive patient timeline and visit brief API shells.
+  - performance issues improved:
+    Runtime query behavior is unchanged in this slice. Performance protection improved by expanding
+    the zero-debt query-shape ratchet to additional critical read entrypoints with 0 allowlisted debt.
+  - validation commands:
+    `pnpm plans:active:check`;
+    `pnpm db:query-shape:check`;
+    `pnpm exec prettier --write Plans.md tools/query-shape-watchlist.json ops/refactor/STATE.md`;
+    `pnpm exec prettier --check Plans.md tools/query-shape-watchlist.json ops/refactor/STATE.md`;
+    `git diff --check -- Plans.md tools/query-shape-watchlist.json ops/refactor/STATE.md`.
+  - validation results:
+    Plans active board check passed. Query-shape check passed with 0 allowlisted violations and 0
+    new violations. Prettier write/check passed for all touched files. Targeted diff-check passed.
+  - remaining work:
+    Commit explicit owned paths. Broader DB read-speed work remains open for patients board main
+    cursor redesign, day-board, contact profiles, visit-preparation detail, visit-brief service,
+    visit-record BFF, perf SLOs, and human-gated index migration evidence.
+  - next action:
+    Commit this scoped ratchet slice.
+
 - codex: `PLANS-ACTIVE-LINT-001` Plans.md active board guard。
   - current task:
     `Plans.md` の Active Plan Board v8 を唯一の実装入口として保つため、分類件数・active

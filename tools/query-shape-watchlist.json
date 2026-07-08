@@ -59,6 +59,21 @@
       "path": "src/app/api/visit-preparations/brief-batch/route.ts",
       "owner": "PERF-DB-001",
       "reason": "Visit preparation brief batch is a bounded visit read path and must keep id-in fan-in scoped."
+    },
+    {
+      "path": "src/app/api/visit-preparations/[scheduleId]/brief/route.ts",
+      "owner": "PERF-DB-001",
+      "reason": "Single visit preparation brief route must remain schedule-scoped and avoid direct unbounded reads."
+    },
+    {
+      "path": "src/app/api/patients/[id]/timeline/route.ts",
+      "owner": "PERF-DB-001",
+      "reason": "Patient timeline API is a critical PHI read entrypoint and must stay delegated to bounded scoped timeline services."
+    },
+    {
+      "path": "src/app/api/patients/[id]/timeline/[eventId]/route.ts",
+      "owner": "PERF-DB-001",
+      "reason": "Patient timeline event detail resolver must avoid direct broad reads and keep detail fetches scoped."
     }
   ]
 }
