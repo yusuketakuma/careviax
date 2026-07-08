@@ -24217,6 +24217,104 @@ visit_request/unknown`, `action_status='not_linked'`, and
   Commit and push this ledger hash update with only `ops/refactor/STATE.md`
   staged, then continue with the next non-human-gated read-speed cleanup.
 
+## 2026-07-09 - API-CONTRACT-001R drug-alert-rules envelope cleanup
+
+- current task:
+  Continue `API-CONTRACT-001` by migrating `drug-alert-rules` response shapes
+  to the new `data` / `data + meta` contract only. Compatibility with legacy
+  top-level count fields and delete message bodies was intentionally not kept.
+- files inspected:
+  `ops/refactor/STATE.md`; `Plans.md`;
+  `tools/api-response-shape-allowlist.json`;
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`
+  (inspected earlier in this API contract run);
+  `src/app/api/drug-alert-rules/route.ts`;
+  `src/app/api/drug-alert-rules/[id]/route.ts`;
+  `src/app/api/drug-alert-rules/route.test.ts`;
+  `src/app/api/drug-alert-rules/[id]/route.test.ts`;
+  `src/app/(dashboard)/admin/alert-rules/page.tsx`;
+  `src/app/(dashboard)/admin/alert-rules/page.test.tsx`;
+  `src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.tsx`;
+  `src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.test.tsx`.
+- files changed:
+  `Plans.md`; `tools/api-response-shape-allowlist.json`;
+  `src/app/api/drug-alert-rules/route.ts`;
+  `src/app/api/drug-alert-rules/[id]/route.ts`;
+  `src/app/api/drug-alert-rules/route.test.ts`;
+  `src/app/api/drug-alert-rules/[id]/route.test.ts`;
+  `src/app/(dashboard)/admin/alert-rules/page.tsx`;
+  `src/app/(dashboard)/admin/alert-rules/page.test.tsx`;
+  `src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.tsx`;
+  `src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.test.tsx`;
+  `ops/refactor/STATE.md`.
+- advisory gate:
+  Oracle was consulted because this route is medication/pharmacy safety
+  adjacent. The first Browser-mode run timed out while uploading attached
+  files. The second inline-context run returned Go for a strict mechanical
+  contract migration and advised: move counted list fields under `meta`, return
+  `{ data: { id } }` for DELETE, keep auth/RLS/filter/schema semantics
+  unchanged, update readers to `payload.meta` only, and reduce allowlist debt
+  from 197 to 195. The Oracle prompt included GitHub repository URL, branch,
+  commit, dirty-state summary, and asked GPT-5.5 Pro to access GitHub if
+  available.
+- bugs found:
+  `GET /api/drug-alert-rules` still returned counted list metadata at the
+  response root, and `DELETE /api/drug-alert-rules/:id` still returned a
+  success message body. The alert rules page and signal tuning panel still read
+  legacy root count metadata and test fixtures still allowed the old shape.
+- bugs fixed:
+  `GET /api/drug-alert-rules` now returns root keys only `data` and `meta`.
+  Count metadata, count basis, filters, and limit are under `meta`.
+  `DELETE /api/drug-alert-rules/:id` now returns `{ data: { id } }`. Admin
+  alert rule readers consume `payload.meta` only and test fixtures were moved
+  to the new shape. Route tests assert the old root count fields and delete
+  message body are absent.
+- security risks found:
+  No auth, authorization, tenant isolation, RLS, validation schema, where
+  clauses, org/global visibility, ordering, or mutation side effects needed
+  changes. The route is medically adjacent, so the slice stayed limited to
+  response shape and reader contract.
+- security risks reduced:
+  Response shape is now explicit and narrower. DELETE responses no longer
+  expose route-local success text, and list metadata is grouped in `meta` for
+  consistent downstream handling.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; no query shape or data volume behavior was changed.
+- UI/UX note:
+  No visual UI/UX change. This was API reader contract cleanup only, so image
+  generation was not applicable.
+- validation commands:
+  `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/drug-alert-rules/route.ts 'src/app/api/drug-alert-rules/[id]/route.ts' src/app/api/drug-alert-rules/route.test.ts 'src/app/api/drug-alert-rules/[id]/route.test.ts' 'src/app/(dashboard)/admin/alert-rules/page.tsx' 'src/app/(dashboard)/admin/alert-rules/page.test.tsx' 'src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.tsx' 'src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.test.tsx'`;
+  `pnpm exec vitest run src/app/api/drug-alert-rules/route.test.ts 'src/app/api/drug-alert-rules/[id]/route.test.ts' 'src/app/(dashboard)/admin/alert-rules/page.test.tsx' 'src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.test.tsx' --reporter=dot --testTimeout=30000`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint --max-warnings=0 src/app/api/drug-alert-rules/route.ts 'src/app/api/drug-alert-rules/[id]/route.ts' src/app/api/drug-alert-rules/route.test.ts 'src/app/api/drug-alert-rules/[id]/route.test.ts' 'src/app/(dashboard)/admin/alert-rules/page.tsx' 'src/app/(dashboard)/admin/alert-rules/page.test.tsx' 'src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.tsx' 'src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.test.tsx'`;
+  `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/drug-alert-rules/route.ts 'src/app/api/drug-alert-rules/[id]/route.ts' src/app/api/drug-alert-rules/route.test.ts 'src/app/api/drug-alert-rules/[id]/route.test.ts' 'src/app/(dashboard)/admin/alert-rules/page.tsx' 'src/app/(dashboard)/admin/alert-rules/page.test.tsx' 'src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.tsx' 'src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.test.tsx'`;
+  `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/drug-alert-rules/route.ts 'src/app/api/drug-alert-rules/[id]/route.ts' src/app/api/drug-alert-rules/route.test.ts 'src/app/api/drug-alert-rules/[id]/route.test.ts' 'src/app/(dashboard)/admin/alert-rules/page.tsx' 'src/app/(dashboard)/admin/alert-rules/page.test.tsx' 'src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.tsx' 'src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.test.tsx'`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+- validation results:
+  Prettier write/check passed. Focused Vitest passed 4 files / 43 tests after
+  updating the remaining page fixtures to the new shape. `api-response-shape`
+  passed with 195 allowlisted violations and 0 new violations.
+  `plans:active:check` passed. Focused ESLint passed with `--max-warnings=0`.
+  Scoped diff check passed. Full typecheck passed, including Next route type
+  generation, app TypeScript, and service worker TypeScript.
+- commit:
+  Implementation, tests, allowlist, and Plans update committed as
+  `61e10ed774515dafa58e8988037877e109fe3392`
+  (`fix(api): envelope drug alert rules`) and pushed to `origin/main`.
+- remaining work:
+  `API-CONTRACT-001` remains Partial. The allowlist now has 195 expected legacy
+  response-shape violations. Continue migrating real route shapes without
+  compatibility fallbacks. Higher-risk auth/tenant/PII or medical surfaces
+  should continue to use Oracle before implementation/finalization.
+- next action:
+  Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
+  then select the next safe non-human-gated `API-CONTRACT-001` slice from the
+  remaining allowlist.
+
 ## 2026-07-09 - API-CONTRACT-001Q notification-rules envelope
 
 - current task:
