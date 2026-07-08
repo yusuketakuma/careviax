@@ -41,6 +41,105 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001AL` CDS check success envelope cleanup.
+  - commit:
+    Implementation, Plans/allowlist, reader updates, and focused tests committed as `218df4633`
+    (`fix(api): envelope cds check response`). State record is this entry and will be committed
+    separately before pushing the slice.
+  - current task:
+    Continue `Plans.md` highest-priority implementable work under `API-CONTRACT-001`. Remove
+    `src/app/api/cds/check/route.ts` from the public response-shape allowlist by moving CDS check
+    POST success to `data.alerts` only.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `ops/refactor/STATE.md`,
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `tools/scripts/check-api-response-shape.mjs`,
+    `src/app/api/cds/check/route.ts`,
+    `src/app/api/cds/check/route.test.ts`,
+    `src/app/(dashboard)/admin/alert-rules/page.tsx`,
+    `src/app/(dashboard)/admin/alert-rules/page.test.tsx`,
+    `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`,
+    `src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx`,
+    `src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.tsx`,
+    `src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.test.tsx`,
+    and route/frontend usage search results for `/api/cds/check`.
+  - files changed:
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/cds/check/route.ts`,
+    `src/app/api/cds/check/route.test.ts`,
+    `src/app/(dashboard)/admin/alert-rules/page.tsx`,
+    `src/app/(dashboard)/admin/alert-rules/page.test.tsx`,
+    `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`,
+    `src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx`,
+    `src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.tsx`,
+    `src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.test.tsx`,
+    and this `ops/refactor/STATE.md` ledger entry.
+  - implementation:
+    `POST /api/cds/check` now returns `success({ data: { alerts } })`. Admin alert rule testing,
+    visit record CDS alerts, and patient safety check readers now consume `payload.data.alerts` only.
+    The patient safety reader now treats a missing/non-array `data.alerts` as an invalid response
+    instead of silently falling back to an empty root response. Route and component tests were updated
+    to assert the current envelope and reject legacy root `alerts`. The allowlist entry for
+    `src/app/api/cds/check/route.ts` was removed, and `Plans.md` records `API-CONTRACT-001AL` with
+    allowlist debt reduced from 165 to 164.
+  - Oracle:
+    User explicitly paused Oracle consultation. No Oracle prompt was sent or restarted. The slice
+    stayed limited to response construction, reader parsing, route/component tests, allowlist/plan
+    debt, and ledger updates; auth, visit permission, org-scoped cycle lookup, patient binding,
+    NoStore wrapper, service call, logging, and sanitized error handling were not changed.
+  - imagegen:
+    Not used. This is an API contract/static guard cleanup with no visible UI/UX change.
+  - Next.js docs:
+    Re-read `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md` earlier in
+    this API contract run. This slice changes JSON response construction only and does not change
+    route placement, supported methods, runtime behavior, or cache behavior.
+  - bugs found:
+    `POST /api/cds/check` returned `alerts` at the response root, and the admin alert rules, visit
+    record, and patient safety readers consumed or tolerated that legacy root shape. Tests did not
+    reject the legacy root `alerts` body.
+  - bugs fixed:
+    CDS check alerts are now under `data.alerts` only, all identified readers use the current shape,
+    invalid non-envelope success payloads no longer produce false-safe empty patient safety results,
+    and `api-response-shape:check` now reports 164 allowlisted violations and 0 new violations.
+  - security risks reduced:
+    No auth, authorization, org scoping, patient binding, PHI logging, or service authorization logic
+    was weakened. Removing root fallback response parsing reduces alternate public contract surface
+    and avoids silently treating malformed safety-check responses as no-alert results.
+  - performance issues improved:
+    None. No DB query shape, CDS service call, React query key, request frequency, or cycle lookup
+    behavior changed beyond the equivalent response wrapper and reader parsing.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/cds/check/route.ts src/app/api/cds/check/route.test.ts src/app/(dashboard)/admin/alert-rules/page.tsx src/app/(dashboard)/admin/alert-rules/page.test.tsx src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.tsx src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.test.tsx`;
+    `pnpm vitest run src/app/api/cds/check/route.test.ts`;
+    `pnpm vitest run src/app/(dashboard)/admin/alert-rules/page.test.tsx src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.test.tsx`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint --max-warnings=0 src/app/api/cds/check/route.ts src/app/api/cds/check/route.test.ts src/app/(dashboard)/admin/alert-rules/page.tsx src/app/(dashboard)/admin/alert-rules/page.test.tsx src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.tsx src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.test.tsx`;
+    `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/cds/check/route.ts src/app/api/cds/check/route.test.ts src/app/(dashboard)/admin/alert-rules/page.tsx src/app/(dashboard)/admin/alert-rules/page.test.tsx src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.tsx src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.test.tsx`;
+    `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/cds/check/route.ts src/app/api/cds/check/route.test.ts src/app/(dashboard)/admin/alert-rules/page.tsx src/app/(dashboard)/admin/alert-rules/page.test.tsx src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.tsx src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.test.tsx`;
+    `pnpm vitest run src/app/api/__tests__/protected-post-routes.test.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm format:check`.
+  - validation results:
+    Prettier write passed. Focused CDS route Vitest passed (1 file / 4 tests). Related reader
+    component Vitest passed (3 files / 77 tests). API response shape guard passed (164 allowlisted
+    violations, 0 new violations). Plans active board check passed. Scoped ESLint passed. Targeted
+    Prettier check and scoped `git diff --check` passed. Protected POST matrix passed (1 file / 145
+    tests). Full typecheck passed. `pnpm format:check` again confirmed owned changed files are
+    formatted, then failed on unrelated pre-existing untracked Markdown files under `projects/` and
+    `skills/`; those user/local files were not modified.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 164 allowlisted response-shape violations. Next immediate
+    allowlist target is `src/app/api/comments/[id]/route.ts` (expectedCount 1), followed by
+    communication events/requests and community activity routes.
+  - next action:
+    Commit this STATE entry separately, push `218df4633` plus the state commit to `origin/main`, then
+    continue with `src/app/api/comments/[id]/route.ts` under the same Oracle-paused and no-legacy-root
+    constraints.
+
 - codex: `API-CONTRACT-001AK` case collection list/create success envelope cleanup.
   - commit:
     Implementation, Plans/allowlist, reader typing, and focused tests committed as `68e3a1a7e`
