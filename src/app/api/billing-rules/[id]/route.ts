@@ -114,7 +114,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     );
 
     if (!rule) return withSensitiveNoStore(notFound('算定ルールが見つかりません'));
-    return withSensitiveNoStore(success(serializeRule(rule)));
+    return withSensitiveNoStore(success({ data: serializeRule(rule) }));
   } catch (err) {
     unstable_rethrow(err);
     logger.error(
@@ -246,7 +246,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         }),
       );
     }
-    return withSensitiveNoStore(success(serializeRule(result.updated)));
+    return withSensitiveNoStore(success({ data: serializeRule(result.updated) }));
   } catch (err) {
     unstable_rethrow(err);
     logger.error(
@@ -333,7 +333,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         staleBillingRuleConflict(parsedQuery.data.expected_updated_at, result.currentUpdatedAt),
       );
     }
-    return withSensitiveNoStore(success({ message: '算定ルールを削除しました' }));
+    return withSensitiveNoStore(success({ data: { id: ruleId } }));
   } catch (err) {
     unstable_rethrow(err);
     logger.error(

@@ -134,7 +134,8 @@ async function updateBillingRule(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...body, expected_updated_at: expectedUpdatedAt }),
   });
-  return readApiJson<BillingRule>(res, 'Failed to update billing rule');
+  const payload = await readApiJson<{ data: BillingRule }>(res, 'Failed to update billing rule');
+  return payload.data;
 }
 
 async function deleteBillingRule(rule: BillingRule): Promise<void> {
@@ -142,7 +143,7 @@ async function deleteBillingRule(rule: BillingRule): Promise<void> {
     rule.updated_at,
   )}`;
   const res = await fetch(path, { method: 'DELETE' });
-  await readApiJson<unknown>(res, 'Failed to delete billing rule');
+  await readApiJson<{ data: { id: string } }>(res, 'Failed to delete billing rule');
 }
 
 // --- Form helpers ---

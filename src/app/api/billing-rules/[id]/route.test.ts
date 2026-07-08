@@ -147,11 +147,15 @@ describe('/api/billing-rules/[id]', () => {
     const resolvedResponse = response as Response;
     expect(resolvedResponse.status).toBe(200);
     expectNoStore(resolvedResponse);
-    await expect(resolvedResponse.json()).resolves.toMatchObject({
-      id: 'rule_1',
-      conditions: {},
-      evidence_requirements: {},
+    const body = await resolvedResponse.json();
+    expect(body).toMatchObject({
+      data: {
+        id: 'rule_1',
+        conditions: {},
+        evidence_requirements: {},
+      },
     });
+    expect(body).not.toHaveProperty('id');
   });
 
   it('rejects blank GET route ids before rule lookup', async () => {
@@ -341,6 +345,16 @@ describe('/api/billing-rules/[id]', () => {
     const resolvedResponse = response as Response;
     expect(resolvedResponse.status).toBe(200);
     expectNoStore(resolvedResponse);
+    const body = await resolvedResponse.json();
+    expect(body).toMatchObject({
+      data: {
+        id: 'rule_1',
+        is_active: false,
+        conditions: {},
+        evidence_requirements: {},
+      },
+    });
+    expect(body).not.toHaveProperty('id');
     expect(billingRuleUpdateManyMock).toHaveBeenCalledWith({
       where: { id: 'rule_1', org_id: 'org_1', updated_at: new Date(CURRENT_UPDATED_AT) },
       data: { is_active: false },
@@ -584,6 +598,9 @@ describe('/api/billing-rules/[id]', () => {
     const resolvedResponse = response as Response;
     expect(resolvedResponse.status).toBe(200);
     expectNoStore(resolvedResponse);
+    const body = await resolvedResponse.json();
+    expect(body).toEqual({ data: { id: 'rule_1' } });
+    expect(body).not.toHaveProperty('message');
     expect(billingRuleDeleteManyMock).toHaveBeenCalledWith({
       where: { id: 'rule_1', org_id: 'org_1', updated_at: new Date(CURRENT_UPDATED_AT) },
     });

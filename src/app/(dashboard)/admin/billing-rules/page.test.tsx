@@ -431,9 +431,23 @@ describe('BillingRulesPage', () => {
       amount: 150,
       is_active: false,
     };
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: 'legacy_root_rule_must_not_be_read',
+          data: {
+            id: 'updated_rule',
+            updated_at: '2026-06-19T00:02:00.000Z',
+            conditions: {},
+            evidence_requirements: {},
+          },
+        }),
+        { status: 200 },
+      ),
+    );
     render(<BillingRulesPage />);
 
-    await mutationFnAt(2)({
+    const result = await mutationFnAt(2)({
       rule: { id: ruleId, updated_at: '2026-06-19T00:00:00.000Z' },
       body,
     });
@@ -450,6 +464,8 @@ describe('BillingRulesPage', () => {
         }),
       }),
     );
+    expect(result).toMatchObject({ id: 'updated_rule' });
+    expect(result).not.toMatchObject({ id: 'legacy_root_rule_must_not_be_read' });
   });
 
   it('keeps server messages and fallbacks for billing rule update failures', async () => {
@@ -478,6 +494,15 @@ describe('BillingRulesPage', () => {
 
   it('delete DELETE encodes a hostile detail id with the observed version', async () => {
     const ruleId = 'rule/1 space?mode=x#frag';
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          message: 'legacy root delete message must not be required',
+          data: { id: ruleId },
+        }),
+        { status: 200 },
+      ),
+    );
     render(<BillingRulesPage />);
 
     await mutationFnAt(3)({ id: ruleId, updated_at: '2026-06-19T00:00:00.000Z' });
