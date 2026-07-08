@@ -381,6 +381,34 @@ describe('/api/admin/organizations POST', () => {
     });
     expect(deleteCognitoUserMock).not.toHaveBeenCalled();
     expect(response.status).toBe(201);
+    const body = await response.json();
+    expect(Object.keys(body)).toEqual(['data']);
+    expect(body).toEqual({
+      data: {
+        organization: {
+          id: 'org_new',
+          name: '新規法人',
+          created_at: '2026-04-05T00:00:00.000Z',
+        },
+        site: {
+          id: 'site_new',
+          name: '新宿店',
+        },
+        admin_user: {
+          id: 'user_new',
+          email: 'admin@example.com',
+          name: '管理者',
+        },
+        membership: {
+          id: 'membership_new',
+          role: 'owner',
+        },
+      },
+    });
+    expect(body).not.toHaveProperty('organization');
+    expect(body).not.toHaveProperty('site');
+    expect(body).not.toHaveProperty('admin_user');
+    expect(body).not.toHaveProperty('membership');
   });
 
   it('rolls back created tenant state when Cognito invite fails', async () => {

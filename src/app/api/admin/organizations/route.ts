@@ -288,10 +288,12 @@ export async function POST(req: NextRequest) {
 
   return success(
     {
-      organization: result.org,
-      site: result.site,
-      admin_user: result.user,
-      membership: result.membership,
+      data: {
+        organization: result.org,
+        site: result.site,
+        admin_user: result.user,
+        membership: result.membership,
+      },
     },
     201,
   );
