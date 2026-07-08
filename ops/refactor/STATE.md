@@ -24314,6 +24314,85 @@ visit_request/unknown`, `action_status='not_linked'`, and
   Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
   then continue with the next safe `API-CONTRACT-001` envelope migration.
 
+## 2026-07-09 - API-CONTRACT-001O dispensing-stats envelope migration
+
+- current task:
+  Continue `API-CONTRACT-001` by migrating `GET /api/dashboard/dispensing-stats`
+  from raw success fields to the new-only `data` success envelope.
+- files inspected:
+  `git status --short --branch --untracked-files=all`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `src/app/api/dashboard/dispensing-stats/route.ts`;
+  `src/app/api/dashboard/dispensing-stats/route.test.ts`;
+  `src/app/(dashboard)/statistics/statistics-content.tsx`;
+  `src/app/(dashboard)/statistics/statistics-content.test.tsx`;
+  related protected GET route registrations; `ops/refactor/STATE.md`.
+- files changed:
+  `src/app/api/dashboard/dispensing-stats/route.ts`;
+  `src/app/api/dashboard/dispensing-stats/route.test.ts`;
+  `src/app/(dashboard)/statistics/statistics-content.tsx`;
+  `src/app/(dashboard)/statistics/statistics-content.test.tsx`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  this `ops/refactor/STATE.md` ledger entry.
+- bugs found:
+  `GET /api/dashboard/dispensing-stats` still returned raw aggregate count
+  fields at the response root, and the statistics hub reader/test comments
+  explicitly treated raw fields as the correct production contract.
+- bugs fixed:
+  The route now returns `success({ data: counts })`. The statistics hub validates
+  the `data` envelope and reads `payload.data` only. Tests now accept the new
+  envelope and reject raw 2xx fields as malformed. The old allowlist entry for
+  `src/app/api/dashboard/dispensing-stats/route.ts` was removed, reducing
+  response-shape debt from 204 to 203.
+- security risks found:
+  No auth, authorization, tenant scoping, PHI selection, mutation behavior,
+  external sharing, billing, or audit behavior was changed. The endpoint remains
+  permission-gated, org-scoped aggregate counts only, and no-store.
+- security risks reduced:
+  The statistics hub now fails closed if a raw or malformed aggregate payload is
+  returned, preventing silent acceptance of the old public response shape.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this is a response contract migration. The existing aggregate count
+  queries are unchanged.
+- UI/UX note:
+  No visible layout or interaction change. This was a response reader contract
+  update, so image generation was not applicable.
+- Next.js docs:
+  Route-handler docs were already inspected earlier in this `API-CONTRACT-001`
+  continuation before editing Next.js route handler code.
+- Oracle:
+  Not used. This slice changed only aggregate response wrapping and did not
+  modify auth/authorization, tenant isolation, PHI/PII selection, DB schema,
+  billing, external sharing, or production data behavior.
+- validation commands:
+  `pnpm exec prettier --write src/app/api/dashboard/dispensing-stats/route.ts src/app/api/dashboard/dispensing-stats/route.test.ts src/app/(dashboard)/statistics/statistics-content.tsx src/app/(dashboard)/statistics/statistics-content.test.tsx tools/api-response-shape-allowlist.json Plans.md`;
+  `pnpm vitest run src/app/api/dashboard/dispensing-stats/route.test.ts src/app/(dashboard)/statistics/statistics-content.test.tsx --reporter=dot --testTimeout=30000`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint src/app/api/dashboard/dispensing-stats/route.ts src/app/api/dashboard/dispensing-stats/route.test.ts src/app/(dashboard)/statistics/statistics-content.tsx src/app/(dashboard)/statistics/statistics-content.test.tsx`;
+  `pnpm exec prettier --check src/app/api/dashboard/dispensing-stats/route.ts src/app/api/dashboard/dispensing-stats/route.test.ts src/app/(dashboard)/statistics/statistics-content.tsx src/app/(dashboard)/statistics/statistics-content.test.tsx tools/api-response-shape-allowlist.json Plans.md`;
+  `git diff --check -- src/app/api/dashboard/dispensing-stats/route.ts src/app/api/dashboard/dispensing-stats/route.test.ts src/app/(dashboard)/statistics/statistics-content.tsx src/app/(dashboard)/statistics/statistics-content.test.tsx tools/api-response-shape-allowlist.json Plans.md`.
+- validation results:
+  Prettier passed. Focused route/statistics tests passed 2 files / 19 tests.
+  `api-response-shape:check` passed with 203 allowlisted violations and 0 new
+  violations. `plans:active:check` passed. Focused ESLint passed. Targeted
+  Prettier check passed. Scoped diff check passed.
+- commit:
+  Dispensing stats envelope migration, statistics reader/test updates, allowlist
+  cleanup, and Plans sync committed as `29fa7e905`
+  (`fix(api): envelope dispensing stats`). Push is pending this ledger hash
+  update.
+- remaining work:
+  `API-CONTRACT-001` remains Partial. Continue migrating real legacy success
+  and error response shapes route by route without compatibility fallbacks.
+  Higher-risk auth/authorization, PHI/PII, patient, billing, external sharing,
+  and migration slices still require the project safety gates.
+- next action:
+  Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
+  then continue with the next safe `API-CONTRACT-001` envelope migration.
+
 ## 2026-07-09 - API-CONTRACT-001M document-template list envelope migration
 
 - current task:
