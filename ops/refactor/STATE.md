@@ -28706,3 +28706,101 @@ responses`) and pushed to `origin/main`.
   Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
   then continue the next API response envelope cleanup from
   `src/app/api/dispense-tasks/route.ts` unless redirected.
+
+## 2026-07-09 - API-CONTRACT-001AZ dispense task collection envelope cleanup
+
+- current task:
+  Continue `API-CONTRACT-001` public response envelope burn-down without legacy
+  compatibility fields. Move `GET /api/dispense-tasks` list success to
+  `data + meta` and `POST /api/dispense-tasks` create success to `data`.
+- files inspected:
+  `git status --short --branch --untracked-files=all`;
+  `ops/refactor/STATE.md`; `Plans.md`;
+  `tools/api-response-shape-allowlist.json`;
+  `src/app/api/dispense-tasks/route.ts`;
+  `src/app/api/dispense-tasks/route.test.ts`;
+  `src/app/api/__tests__/protected-get-routes.test.ts`; dispense task
+  collection usage search results; and
+  `gbrain search "API-CONTRACT dispense-tasks collection response envelope"`.
+- files changed:
+  `Plans.md`; `tools/api-response-shape-allowlist.json`;
+  `src/app/api/dispense-tasks/route.ts`;
+  `src/app/api/dispense-tasks/route.test.ts`;
+  `ops/refactor/STATE.md`.
+- bugs found:
+  `GET /api/dispense-tasks` returned `buildCursorPage(...)` directly, leaving
+  legacy root `hasMore` and `nextCursor` pagination fields. The collection
+  create endpoint returned the raw created task object at the public response
+  root.
+- bugs fixed:
+  List success now returns the task array under `data` with pagination in
+  `meta`, and create success now returns `success({ data: created }, 201)`.
+  Route tests assert `payload.meta` for pagination and `payload.data.id` for
+  emergency and non-emergency create paths. No legacy root fallback remains.
+  Response-shape debt dropped from 143 to 141 allowlisted violations.
+- security risks found:
+  No auth, authorization, assignment scoping, org scoping, search parameter
+  validation, create body validation, cycle transition, emergency notification
+  recipient selection, notification link encoding, transaction boundary, or
+  no-store behavior changed.
+- security risks reduced:
+  Removed raw collection pagination and raw created task success shapes from
+  the dispensing task collection API surface while preserving existing
+  permission and assignment gates.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this is response contract cleanup. Existing list pagination query,
+  cycle lookup, creation transaction, transition, and notification behavior are
+  unchanged.
+- UI/UX note:
+  No UI/UX change. This was API/test contract work only, so image generation
+  was not applicable.
+- Oracle note:
+  Oracle consultation remains paused per current user instruction, so no
+  Oracle/GPT-5.5 Pro consult was run. The slice stayed mechanical and avoided
+  changing task creation semantics.
+- validation commands:
+  `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/dispense-tasks/route.ts src/app/api/dispense-tasks/route.test.ts`;
+  `pnpm vitest run src/app/api/dispense-tasks/route.test.ts`;
+  `pnpm vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "dispense-tasks GET"`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint src/app/api/dispense-tasks/route.ts src/app/api/dispense-tasks/route.test.ts`;
+  `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/dispense-tasks/route.ts src/app/api/dispense-tasks/route.test.ts`;
+  `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/dispense-tasks/route.ts src/app/api/dispense-tasks/route.test.ts`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `pnpm format:check`.
+- validation results:
+  Prettier passed. Dispense task collection route tests passed 1 file / 24
+  tests. Protected GET targeted tests passed 3 tests with 381 skipped.
+  `api-response-shape:check` passed with 141 allowlisted violations and 0 new
+  violations. `plans:active:check` passed. Scoped ESLint, scoped Prettier
+  check, scoped diff check, and typecheck passed. `pnpm format:check` still
+  fails only on unrelated pre-existing untracked Markdown files:
+  `projects/careviax/implementation-decision/medication-stock-visit-observation-context-sidecar-v1-2026-07-08.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-doc-001.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-evidence-001.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-integrity-001.md`,
+  `projects/careviax/reviews/2026-07-08/patient-board-read-001.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003a-003d.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003e.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-guard.md`, and
+  `skills/_candidates.md`.
+- commit:
+  Dispense task collection list/create response envelope migration, route
+  tests, allowlist cleanup, and Plans sync committed as
+  `a6b78654ae77ab5ea5c6b457d3e2948916eba43c`
+  (`fix(api): envelope dispense task collection responses`). Push is pending
+  this ledger update.
+- remaining work:
+  `API-CONTRACT-001` remains Partial. Next allowlist head is
+  `src/app/api/drug-masters/[id]/generic-recommendations/route.ts` with two
+  expected legacy response shape violations, followed by
+  `src/app/api/drug-masters/[id]/ingredient-group/route.ts`. Existing
+  unrelated dirty/untracked memory/docs files remain unstaged.
+- next action:
+  Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
+  then continue the next API response envelope cleanup from
+  `src/app/api/drug-masters/[id]/generic-recommendations/route.ts` unless
+  redirected.
