@@ -41,6 +41,84 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001W` pharmacist credential delete envelope cleanup.
+  - commit:
+    Implementation and Plans/allowlist update committed as `1ef1a734d`
+    (`fix(api): envelope pharmacist credential delete`). Not pushed; current task has no explicit
+    push instruction.
+  - current task:
+    Continue API response envelope burn-down with compatibility removed. Convert
+    `DELETE /api/admin/pharmacist-credentials/:id` success from legacy root `message` to the new
+    `data: { id }` envelope only.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `ops/refactor/STATE.md`,
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `.agents/skills/oracle-consult/SKILL.md`,
+    `src/app/api/admin/pharmacist-credentials/[id]/route.ts`,
+    `src/app/api/admin/pharmacist-credentials/[id]/route.test.ts`,
+    and pharmacist credentials UI/API references under
+    `src/app/(dashboard)/admin/pharmacist-credentials/**`.
+  - files changed:
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/admin/pharmacist-credentials/[id]/route.ts`,
+    `src/app/api/admin/pharmacist-credentials/[id]/route.test.ts`,
+    and this `ops/refactor/STATE.md` ledger entry.
+  - implementation:
+    The DELETE transaction now returns the deleted credential id from the already org-scoped
+    lookup/delete/audit path, maps missing credentials to the existing `notFound` response, and
+    returns `success({ data: { id } })`. The legacy root `message` success body is removed. The
+    route test now asserts the exact new body and that root `message` is absent. The allowlist entry
+    for this route was removed, and `Plans.md` records `API-CONTRACT-001W` with allowlist debt
+    reduced from 190 to 189.
+  - Oracle:
+    User explicitly paused Oracle consultation for this slice. No Oracle prompt was sent or
+    restarted. The change was kept to the already-inspected local response-shape boundary and
+    verified with focused tests plus full typecheck.
+  - imagegen:
+    Not used. This is an API route response-shape cleanup with no UI/UX reconstruction.
+  - Next.js docs:
+    Read `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`. The docs
+    confirm route handlers use standard Web `Request`/`Response`, app `route.ts` files, supported
+    HTTP verbs including DELETE, and that non-GET methods are not cached by default. This slice does
+    not change route placement, handler exports, or cache behavior.
+  - bugs found:
+    The DELETE success response still emitted a legacy root `message`, keeping the route on the
+    API response shape allowlist and preventing clients from relying on the new `ApiSuccess<T>`
+    envelope contract.
+  - security risks reduced:
+    No permission, tenant, or audit behavior was weakened. The existing `canAdmin` gate,
+    `withOrgContext` org scope, credential existence check, audit log creation, validation errors,
+    not-found behavior, and `withSensitiveNoStore` response wrapping were preserved while removing
+    the ambiguous legacy success body.
+  - performance issues improved:
+    No new DB query, network call, loop, or client request was added. The deleted id is reused from
+    the existing selected credential row.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json 'src/app/api/admin/pharmacist-credentials/[id]/route.ts' 'src/app/api/admin/pharmacist-credentials/[id]/route.test.ts'`;
+    `pnpm exec vitest run 'src/app/api/admin/pharmacist-credentials/[id]/route.test.ts' --reporter=dot --testTimeout=30000`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint --max-warnings=0 'src/app/api/admin/pharmacist-credentials/[id]/route.ts' 'src/app/api/admin/pharmacist-credentials/[id]/route.test.ts'`;
+    `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json 'src/app/api/admin/pharmacist-credentials/[id]/route.ts' 'src/app/api/admin/pharmacist-credentials/[id]/route.test.ts'`;
+    `git diff --check -- Plans.md tools/api-response-shape-allowlist.json 'src/app/api/admin/pharmacist-credentials/[id]/route.ts' 'src/app/api/admin/pharmacist-credentials/[id]/route.test.ts'`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Targeted Prettier write completed. Focused pharmacist credential route Vitest passed 1 file /
+    9 tests. API response shape check passed with 189 allowlisted violations and 0 new violations.
+    Plans active board check passed. Scoped ESLint passed. Targeted Prettier check passed.
+    Targeted diff-check passed. Full typecheck passed.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial; the next allowlist candidate is
+    `src/app/api/admin/pharmacist-credentials/route.ts`. Unrelated local dirty state remains in
+    `.harness-mem/state/continuity.json` and many untracked memory/docs files and was not staged.
+  - next action:
+    Commit this state entry, then continue API response envelope allowlist burn-down without Oracle
+    consultation while the user's pause instruction remains active.
+
 - codex: `VISIT-BRIEF-010` formal inbound signal checks for VisitBrief.
   - commit:
     Implementation and Plans update committed as `57df361ef` (`feat(visit-brief): surface inbound
