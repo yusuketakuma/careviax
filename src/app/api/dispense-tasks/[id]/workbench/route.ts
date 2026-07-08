@@ -457,50 +457,52 @@ const authenticatedGET = withAuthContext(async (_req, ctx, { params }) => {
     task.cycle.inquiries.find((inquiry) => inquiry.resolved_at != null) ?? null;
 
   return success({
-    task: {
-      id: task.id,
-      status: task.status,
-      priority: task.priority,
-      due_date: task.due_date?.toISOString() ?? null,
+    data: {
+      task: {
+        id: task.id,
+        status: task.status,
+        priority: task.priority,
+        due_date: task.due_date?.toISOString() ?? null,
+      },
+      cycle: {
+        id: task.cycle.id,
+        overall_status: task.cycle.overall_status,
+        version: task.cycle.version,
+      },
+      patient: { id: patient.id, name: patient.name },
+      intake: currentIntake
+        ? {
+            id: currentIntake.id,
+            prescribed_date: format(currentIntake.prescribed_date, 'yyyy-MM-dd'),
+            prescriber_institution: currentIntake.prescriber_institution,
+            prescriber_name: currentIntake.prescriber_name,
+          }
+        : null,
+      previous_intake: previousIntake
+        ? { prescribed_date: format(previousIntake.prescribed_date, 'yyyy-MM-dd') }
+        : null,
+      safety,
+      comparison,
+      count_rows: countRows,
+      packaging_groups: packagingGroups,
+      dispenser,
+      auditor: { id: ctx.userId, name: nameMap.get(ctx.userId) ?? '担当者' },
+      is_self_audit: dispenserIds.includes(ctx.userId),
+      has_narcotic: countRows.some((row) => row.is_narcotic),
+      visit_time_label: todayVisit?.time_window_start
+        ? (timeDateToString(todayVisit.time_window_start) ?? null)
+        : null,
+      resolved_inquiry: latestResolvedInquiry
+        ? {
+            inquired_at: latestResolvedInquiry.inquired_at.toISOString(),
+            resolved_at: latestResolvedInquiry.resolved_at?.toISOString() ?? null,
+            institution: latestResolvedInquiry.inquiry_to_physician.split(/\s+/)[0] ?? null,
+            change_detail: latestResolvedInquiry.change_detail,
+          }
+        : null,
+      team_audit_total: teamAuditTotal,
+      stock_check_date_label: latestStock ? format(latestStock.updated_at, 'M/d') : null,
     },
-    cycle: {
-      id: task.cycle.id,
-      overall_status: task.cycle.overall_status,
-      version: task.cycle.version,
-    },
-    patient: { id: patient.id, name: patient.name },
-    intake: currentIntake
-      ? {
-          id: currentIntake.id,
-          prescribed_date: format(currentIntake.prescribed_date, 'yyyy-MM-dd'),
-          prescriber_institution: currentIntake.prescriber_institution,
-          prescriber_name: currentIntake.prescriber_name,
-        }
-      : null,
-    previous_intake: previousIntake
-      ? { prescribed_date: format(previousIntake.prescribed_date, 'yyyy-MM-dd') }
-      : null,
-    safety,
-    comparison,
-    count_rows: countRows,
-    packaging_groups: packagingGroups,
-    dispenser,
-    auditor: { id: ctx.userId, name: nameMap.get(ctx.userId) ?? '担当者' },
-    is_self_audit: dispenserIds.includes(ctx.userId),
-    has_narcotic: countRows.some((row) => row.is_narcotic),
-    visit_time_label: todayVisit?.time_window_start
-      ? (timeDateToString(todayVisit.time_window_start) ?? null)
-      : null,
-    resolved_inquiry: latestResolvedInquiry
-      ? {
-          inquired_at: latestResolvedInquiry.inquired_at.toISOString(),
-          resolved_at: latestResolvedInquiry.resolved_at?.toISOString() ?? null,
-          institution: latestResolvedInquiry.inquiry_to_physician.split(/\s+/)[0] ?? null,
-          change_detail: latestResolvedInquiry.change_detail,
-        }
-      : null,
-    team_audit_total: teamAuditTotal,
-    stock_check_date_label: latestStock ? format(latestStock.updated_at, 'M/d') : null,
   });
 });
 
@@ -577,5 +579,5 @@ export const POST = withAuthContext(async (req, ctx, { params }) => {
     payload: { source: 'dispense_tasks_update', task_id: task.id, interrupted: true },
   });
 
-  return success(exception, 201);
+  return success({ data: exception }, 201);
 });

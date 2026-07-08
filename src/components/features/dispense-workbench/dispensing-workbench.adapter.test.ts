@@ -187,7 +187,7 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
     const fetchMock = vi.fn<typeof fetch>(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/dispense-tasks/task_1/workbench') {
-        return jsonResponse(workbenchBody());
+        return jsonResponse({ data: workbenchBody() });
       }
       return new Response('unexpected patient refetch', { status: 500 });
     });
@@ -238,9 +238,16 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
       const url = String(input);
       if (url === '/api/dispense-tasks/task_audit_ready/workbench') {
         return jsonResponse({
-          ...workbenchBody(),
-          task: { id: 'task_audit_ready', status: 'completed', priority: 'normal', due_date: null },
-          cycle: { id: 'cycle_1', overall_status: 'dispensed', version: 2 },
+          data: {
+            ...workbenchBody(),
+            task: {
+              id: 'task_audit_ready',
+              status: 'completed',
+              priority: 'normal',
+              due_date: null,
+            },
+            cycle: { id: 'cycle_1', overall_status: 'dispensed', version: 2 },
+          },
         });
       }
       return new Response('unexpected task resolution', { status: 500 });
@@ -609,7 +616,7 @@ describe('dispensing-workbench.adapter real-data default + phase filtering', () 
         );
       }
       if (url === '/api/dispense-tasks/task_1/workbench') {
-        return jsonResponse(workbenchBody());
+        return jsonResponse({ data: workbenchBody() });
       }
       return new Response('unexpected url', { status: 500 });
     });

@@ -228,11 +228,12 @@ export async function loadWorkbenchAsync(
   if (phase !== 'dispense' && phase !== 'audit') return null;
   const taskId = row.representative_task_id;
   if (!taskId) return null;
-  const data = await fetchJson<DispenseWorkbenchData>(
+  const payload = await fetchJson<{ data: DispenseWorkbenchData }>(
     buildDispenseTaskApiPath(taskId, '/workbench'),
     options,
   );
-  if (!data) return null;
+  if (!payload) return null;
+  const { data } = payload;
   const { patient, groups, done, audit, quantityConfirmedByDid, operators } =
     workbenchFromApi(data);
   // 書込結線の id 束（task_id / cycle_id / cycle.version / グループ割当）と operator 表示情報を
