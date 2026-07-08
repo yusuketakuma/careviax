@@ -43,7 +43,8 @@
 
 - codex: `STOCK-VISIT-DOWNSTREAM-SCHEDULE-001` MedicationStockSnapshot Schedule proposal review context。
   - commit:
-    Implementation committed as `c8cc123ba`.
+    Implementation committed as `c8cc123ba`; state record committed as `d3e77efd8`; pushed to
+    `origin/main`.
   - current task:
     `Plans.md` の `STOCK-001-VISIT-DOWNSTREAM` 残スコープから、訪問観測後の
     `MedicationStockSnapshot` `urgent` / `shortage_expected` を VisitScheduleProposal
@@ -154,8 +155,8 @@
     occurrence. `STOCK-001-VISIT-CONTEXT-APPLY`, `STOCK-001-VISIT-DB-INTEGRATION`, and write-enabled
     `STOCK-001-VISIT-UI` remain human-gated by migration / DB integration evidence.
   - next action:
-    Commit this state hash update, push the scoped commits, then continue with Patient Movement
-    occurrence or `STOCK-001-PRESCRIPTION-HORIZON` if Movement requires broader source-design work.
+    Continue with Patient Movement occurrence or `STOCK-001-PRESCRIPTION-HORIZON` if Movement requires
+    broader source-design work.
 
 - codex: `STOCK-VISIT-DOWNSTREAM-BRIEF-001` MedicationStockSnapshot VisitBrief surfacing。
   - commit:
