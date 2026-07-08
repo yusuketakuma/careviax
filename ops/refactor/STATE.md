@@ -41,6 +41,109 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001AO` communication requests list success envelope cleanup.
+  - commit:
+    Implementation, Plans/allowlist, route/UI reader tests, and meta-cursor helper coverage
+    committed as `7551e7b7a` (`fix(api): envelope communication requests list`). State record is
+    this entry and will be committed separately before pushing the slice.
+  - current task:
+    Continue `Plans.md` highest-priority implementable work under `API-CONTRACT-001`. Remove
+    `src/app/api/communication-requests/route.ts` from the public response-shape allowlist by moving
+    GET list pagination from legacy root `hasMore` / `nextCursor` to `meta.has_more` /
+    `meta.next_cursor`, without compatibility root fallback readers.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `ops/refactor/STATE.md`,
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/communication-requests/route.ts`,
+    `src/app/api/communication-requests/route.test.ts`,
+    `src/app/(dashboard)/communications/requests/requests-content.tsx`,
+    `src/app/(dashboard)/communications/requests/requests-content.test.tsx`,
+    `src/lib/api/cursor-pagination-client.ts`,
+    `src/lib/api/cursor-pagination-client.test.ts`,
+    `src/app/api/__tests__/protected-get-routes.test.ts`,
+    `src/app/api/__tests__/protected-post-routes.test.ts`,
+    and route/frontend usage search results for `/api/communication-requests`.
+  - files changed:
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/communication-requests/route.ts`,
+    `src/app/api/communication-requests/route.test.ts`,
+    `src/app/(dashboard)/communications/requests/requests-content.tsx`,
+    `src/app/(dashboard)/communications/requests/requests-content.test.tsx`,
+    `src/lib/api/cursor-pagination-client.ts`,
+    `src/lib/api/cursor-pagination-client.test.ts`,
+    and this `ops/refactor/STATE.md` ledger entry.
+  - implementation:
+    `GET /api/communication-requests` now returns `success({ data, meta: { limit, has_more,
+    next_cursor } })`. The communications requests page now uses a current-shape-only
+    `fetchAllMetaCursorPages` helper that parses `data` plus `meta` and rejects invalid
+    `has_more` / `next_cursor` combinations instead of accepting legacy root pagination. Route,
+    helper, and page tests were updated. The allowlist entry for
+    `src/app/api/communication-requests/route.ts` was removed, and `Plans.md` records
+    `API-CONTRACT-001AO` with allowlist debt reduced from 162 to 161.
+  - Oracle:
+    User explicitly paused Oracle consultation. No Oracle prompt was sent or restarted. The slice
+    stayed limited to GET response wrapping, current-shape reader coverage, allowlist/plan debt, and
+    ledger updates; auth, org scoping, escalation visibility, POST creation/reused-draft behavior,
+    contact-profile learning, task writes, sanitized error handling, and notification logic were not
+    changed.
+  - imagegen:
+    Not used. This is an API contract/static guard cleanup with no visible UI/UX change.
+  - Next.js docs:
+    Re-read `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md` earlier in
+    this API contract run. This slice changes JSON response construction only and does not change
+    route placement, supported methods, runtime behavior, or cache behavior.
+  - bugs found:
+    `GET /api/communication-requests` returned `buildCursorPage(...)` directly, leaving legacy root
+    pagination fields (`hasMore`, `nextCursor`) as part of the public response shape. The
+    communications requests page also used the legacy root pagination helper for this route.
+  - bugs fixed:
+    Communication request list rows are now under `data`, pagination is under `meta`, route tests
+    reject root pagination fields, the page reader uses only the current `data + meta` cursor shape,
+    and `api-response-shape:check` now reports 161 allowlisted violations and 0 new violations.
+  - security risks reduced:
+    No auth, authorization, org scoping, escalation filtering, contact-profile validation, POST
+    creation semantics, or sanitized error behavior was weakened. Removing root pagination fields
+    reduces alternate public list contract surface before request_id/error unification.
+  - performance issues improved:
+    None. No DB query shape, selected columns, `limit + 1` pagination, sort order, org where clause,
+    React query invalidation, or request frequency changed beyond the equivalent response wrapper and
+    current-shape pagination helper.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/lib/api/cursor-pagination-client.ts src/lib/api/cursor-pagination-client.test.ts src/app/api/communication-requests/route.ts src/app/api/communication-requests/route.test.ts src/app/(dashboard)/communications/requests/requests-content.tsx src/app/(dashboard)/communications/requests/requests-content.test.tsx`;
+    `pnpm vitest run src/lib/api/cursor-pagination-client.test.ts`;
+    `pnpm vitest run src/app/api/communication-requests/route.test.ts`;
+    `pnpm vitest run src/app/(dashboard)/communications/requests/requests-content.test.tsx`;
+    `pnpm vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "communication-requests GET"`;
+    `pnpm vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "communication-requests POST"`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint --max-warnings=0 src/lib/api/cursor-pagination-client.ts src/lib/api/cursor-pagination-client.test.ts src/app/api/communication-requests/route.ts src/app/api/communication-requests/route.test.ts src/app/(dashboard)/communications/requests/requests-content.tsx src/app/(dashboard)/communications/requests/requests-content.test.tsx`;
+    `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/lib/api/cursor-pagination-client.ts src/lib/api/cursor-pagination-client.test.ts src/app/api/communication-requests/route.ts src/app/api/communication-requests/route.test.ts src/app/(dashboard)/communications/requests/requests-content.tsx src/app/(dashboard)/communications/requests/requests-content.test.tsx`;
+    `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/lib/api/cursor-pagination-client.ts src/lib/api/cursor-pagination-client.test.ts src/app/api/communication-requests/route.ts src/app/api/communication-requests/route.test.ts src/app/(dashboard)/communications/requests/requests-content.tsx src/app/(dashboard)/communications/requests/requests-content.test.tsx`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm format:check`.
+  - validation results:
+    Prettier write/check passed for all owned changed files. Focused cursor helper Vitest passed (1
+    file / 11 tests). Communication requests route Vitest passed (1 file / 44 tests). Communications
+    requests page Vitest passed (1 file / 15 tests). Protected GET filtered smoke passed (3 tests,
+    381 skipped). Protected POST filtered smoke passed (3 tests, 142 skipped). API response shape
+    guard passed (161 allowlisted violations, 0 new violations). Plans active board check passed.
+    Scoped ESLint passed. Scoped `git diff --check` passed. Full typecheck passed. `pnpm
+    format:check` again confirmed owned changed files are formatted, then failed on unrelated
+    pre-existing untracked Markdown files under `projects/` and `skills/`; those user/local files
+    were not modified.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 161 allowlisted response-shape violations. Next immediate
+    allowlist target is `src/app/api/community-activities/route.ts` (expectedCount 1), followed by
+    conference note and document family routes.
+  - next action:
+    Commit this STATE entry separately, push `7551e7b7a` plus the state commit to `origin/main`, then
+    continue with `src/app/api/community-activities/route.ts` under the same Oracle-paused and
+    no-legacy-root constraints.
+
 - codex: `API-CONTRACT-001AN` communication events list success envelope cleanup.
   - commit:
     Implementation, Plans/allowlist, route tests, and protected smoke coverage committed as
