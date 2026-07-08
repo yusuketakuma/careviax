@@ -22662,6 +22662,8 @@ date`, and active statuses only, then pass that date key into snapshot recalcula
   and visit capture context); the one route-matrix failure related to the old
   `/timeline` expected path was fixed and the focused perf-smoke suite now
   passes.
+- commit:
+  `007e93a1a` (`feat(patient): make movement timeline standalone only`).
 - remaining work:
   `MOV-001-API` remains partial for map-less date-card UX, formal inbound/stock/
   safety source parity, remaining deep-link coverage, and raw detail reauth UI.
