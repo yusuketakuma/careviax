@@ -110,6 +110,20 @@ function vehicleFixture(id = 'vehicle_1'): VisitVehicleResource {
   };
 }
 
+function buildVehicleListMeta(visibleCount: number, totalCount = visibleCount, limit = 200) {
+  const hiddenCount = Math.max(totalCount - visibleCount, 0);
+
+  return {
+    total_count: totalCount,
+    visible_count: visibleCount,
+    hidden_count: hiddenCount,
+    truncated: hiddenCount > 0,
+    count_basis: 'visit_vehicle_resources' as const,
+    filters_applied: {},
+    limit,
+  };
+}
+
 function stubFetchWithVehicle(vehicle = vehicleFixture()) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -119,10 +133,7 @@ function stubFetchWithVehicle(vehicle = vehicleFixture()) {
       return new Response(
         JSON.stringify({
           data: [vehicle],
-          total_count: 1,
-          visible_count: 1,
-          hidden_count: 0,
-          truncated: false,
+          meta: buildVehicleListMeta(1),
         }),
         { status: 200 },
       );
@@ -249,10 +260,7 @@ describe('VehiclesContent', () => {
         return new Response(
           JSON.stringify({
             data: [vehicleFixture()],
-            total_count: 1,
-            visible_count: 1,
-            hidden_count: 0,
-            truncated: false,
+            meta: buildVehicleListMeta(1),
           }),
           { status: 200 },
         );
@@ -394,10 +402,7 @@ describe('VehiclesContent', () => {
         return new Response(
           JSON.stringify({
             data: [vehicleFixture()],
-            total_count: 1,
-            visible_count: 1,
-            hidden_count: 0,
-            truncated: false,
+            meta: buildVehicleListMeta(1),
           }),
           { status: 200 },
         );

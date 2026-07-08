@@ -78,14 +78,22 @@ async function authenticatedGET(req: NextRequest) {
         ]),
       { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
     );
+    const listEnvelope = buildCountedListEnvelope(resources, totalCount);
+
     return success({
-      ...buildCountedListEnvelope(resources, totalCount),
-      count_basis: 'visit_vehicle_resources',
-      filters_applied: {
-        ...(parsed.data.site_id ? { site_id: parsed.data.site_id } : {}),
-        ...(parsed.data.available !== undefined ? { available: parsed.data.available } : {}),
+      data: listEnvelope.data,
+      meta: {
+        total_count: listEnvelope.total_count,
+        visible_count: listEnvelope.visible_count,
+        hidden_count: listEnvelope.hidden_count,
+        truncated: listEnvelope.truncated,
+        count_basis: 'visit_vehicle_resources',
+        filters_applied: {
+          ...(parsed.data.site_id ? { site_id: parsed.data.site_id } : {}),
+          ...(parsed.data.available !== undefined ? { available: parsed.data.available } : {}),
+        },
+        limit,
       },
-      limit,
     });
   });
 }

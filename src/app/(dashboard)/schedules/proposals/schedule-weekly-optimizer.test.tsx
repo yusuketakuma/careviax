@@ -289,10 +289,15 @@ describe('ScheduleWeeklyOptimizer', () => {
         return {
           data: {
             data: [],
-            total_count: 3,
-            visible_count: 1,
-            hidden_count: 2,
-            truncated: true,
+            meta: {
+              total_count: 3,
+              visible_count: 1,
+              hidden_count: 2,
+              truncated: true,
+              count_basis: 'visit_vehicle_resources',
+              filters_applied: { available: true },
+              limit: 100,
+            },
           },
           isLoading: false,
         };

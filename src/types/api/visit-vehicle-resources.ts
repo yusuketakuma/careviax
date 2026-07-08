@@ -35,16 +35,24 @@ export type VisitVehicleResourceScheduleOption = VisitVehicleResourceSummary & {
 };
 
 export type VisitVehicleResourcesCountMeta = {
-  total_count?: number;
-  visible_count?: number;
-  hidden_count?: number;
-  truncated?: boolean;
+  total_count: number;
+  visible_count: number;
+  hidden_count: number;
+  truncated: boolean;
+  count_basis: 'visit_vehicle_resources';
+  filters_applied: {
+    site_id?: string;
+    available?: boolean;
+  };
+  limit: number;
 };
 
-export type VisitVehicleResourcesResponse = VisitVehicleResourcesCountMeta & {
+export type VisitVehicleResourcesResponse = {
   data: VisitVehicleResource[];
+  meta: VisitVehicleResourcesCountMeta;
 };
 
-export type VisitVehicleResourceScheduleOptionsResponse = VisitVehicleResourcesCountMeta & {
+export type VisitVehicleResourceScheduleOptionsResponse = {
   data: VisitVehicleResourceScheduleOption[];
+  meta: VisitVehicleResourcesCountMeta;
 };

@@ -351,12 +351,14 @@ export function VehiclesContent() {
 
   const vehicles = vehiclesQuery.data?.data ?? EMPTY_VEHICLES;
   const siteOptions = sitesQuery.data?.data ?? EMPTY_SITE_OPTIONS;
+  const vehicleListMeta = vehiclesQuery.data?.meta;
   const filteredVehicles = useMemo(
     () => vehicles.filter((item) => matchesVehicleQuery(item, query)),
     [vehicles, query],
   );
-  const totalCount = vehiclesQuery.data?.total_count ?? vehicles.length;
-  const hiddenCount = vehiclesQuery.data?.hidden_count ?? 0;
+  const totalCount = vehicleListMeta?.total_count ?? 0;
+  const hiddenCount = vehicleListMeta?.hidden_count ?? 0;
+  const isVehicleListTruncated = Boolean(vehicleListMeta?.truncated);
   const activeCount = vehicles.filter((item) => item.available).length;
   const inactiveCount = vehicles.length - activeCount;
   const formBlocker = getFormBlocker(form, editingVehicle);
@@ -572,7 +574,7 @@ export function VehiclesContent() {
             <StateBadge role={hiddenCount > 0 ? 'confirm' : 'done'}>
               表示 {filteredVehicles.length}件
             </StateBadge>
-            {hiddenCount > 0 || vehiclesQuery.data?.truncated ? (
+            {hiddenCount > 0 || isVehicleListTruncated ? (
               <StateBadge role="confirm">非表示 {hiddenCount}件</StateBadge>
             ) : null}
           </div>

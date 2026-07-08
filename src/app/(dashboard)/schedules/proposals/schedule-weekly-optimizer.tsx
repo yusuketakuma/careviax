@@ -624,13 +624,7 @@ export function ScheduleWeeklyOptimizer({
     () => vehicleResourcesQuery.data?.data ?? EMPTY_VEHICLE_RESOURCES,
     [vehicleResourcesQuery.data],
   );
-  const vehicleResourceHiddenCount =
-    vehicleResourcesQuery.data?.hidden_count ??
-    Math.max(
-      (vehicleResourcesQuery.data?.total_count ?? vehicleResources.length) -
-        (vehicleResourcesQuery.data?.visible_count ?? vehicleResources.length),
-      0,
-    );
+  const vehicleResourceHiddenCount = vehicleResourcesQuery.data?.meta?.hidden_count ?? 0;
   const selectedPlannerVehicle =
     vehicleResources.find((vehicle) => vehicle.id === plannerSettings.vehicle_resource_id) ?? null;
 

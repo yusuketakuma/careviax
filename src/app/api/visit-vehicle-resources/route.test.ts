@@ -160,8 +160,8 @@ describe('/api/visit-vehicle-resources', () => {
       },
     });
     const body = await response.json();
-    expect(Object.keys(body)).toEqual([
-      'data',
+    expect(Object.keys(body)).toEqual(['data', 'meta']);
+    expect(Object.keys(body.meta)).toEqual([
       'total_count',
       'visible_count',
       'hidden_count',
@@ -172,13 +172,15 @@ describe('/api/visit-vehicle-resources', () => {
     ]);
     expect(body).toMatchObject({
       data: [expect.objectContaining({ id: 'vehicle_1', label: '社用車A' })],
-      total_count: 1,
-      visible_count: 1,
-      hidden_count: 0,
-      truncated: false,
-      count_basis: 'visit_vehicle_resources',
-      filters_applied: { site_id: 'site_1', available: true },
-      limit: 100,
+      meta: {
+        total_count: 1,
+        visible_count: 1,
+        hidden_count: 0,
+        truncated: false,
+        count_basis: 'visit_vehicle_resources',
+        filters_applied: { site_id: 'site_1', available: true },
+        limit: 100,
+      },
     });
   });
 
@@ -235,13 +237,15 @@ describe('/api/visit-vehicle-resources', () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       data: [expect.objectContaining({ id: 'vehicle_1' })],
-      total_count: 3,
-      visible_count: 1,
-      hidden_count: 2,
-      truncated: true,
-      count_basis: 'visit_vehicle_resources',
-      filters_applied: { available: true },
-      limit: 1,
+      meta: {
+        total_count: 3,
+        visible_count: 1,
+        hidden_count: 2,
+        truncated: true,
+        count_basis: 'visit_vehicle_resources',
+        filters_applied: { available: true },
+        limit: 1,
+      },
     });
   });
 

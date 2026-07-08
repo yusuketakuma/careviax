@@ -1656,13 +1656,7 @@ export function ScheduleProposalsContent({
       : null;
   const caseSearchResults = casesQuery.data?.data ?? [];
   const vehicleResourceOptions = vehicleResourcesQuery.data?.data ?? [];
-  const vehicleResourceHiddenCount =
-    vehicleResourcesQuery.data?.hidden_count ??
-    Math.max(
-      (vehicleResourcesQuery.data?.total_count ?? vehicleResourceOptions.length) -
-        (vehicleResourcesQuery.data?.visible_count ?? vehicleResourceOptions.length),
-      0,
-    );
+  const vehicleResourceHiddenCount = vehicleResourcesQuery.data?.meta?.hidden_count ?? 0;
   const selectedReproposalVehicle = vehicleResourceOptions.find(
     (vehicle) => vehicle.id === reproposalForm.vehicle_resource_id,
   );
