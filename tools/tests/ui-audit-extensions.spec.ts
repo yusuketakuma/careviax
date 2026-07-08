@@ -104,6 +104,79 @@ async function analyzeMainAccessibility(page: Page) {
   throw new Error('Axe analysis did not complete');
 }
 
+async function analyzeSelectorAccessibility(page: Page, selector: string) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await new AxeBuilder({ page }).include(selector).analyze();
+    } catch (error) {
+      const shouldRetry =
+        error instanceof Error &&
+        error.message.includes('Execution context was destroyed') &&
+        attempt === 0;
+      if (!shouldRetry) {
+        throw error;
+      }
+      await waitForStableUi(page);
+      await expect(page.locator(selector)).toBeVisible();
+    }
+  }
+
+  throw new Error(`Axe analysis did not complete for ${selector}`);
+}
+
+async function collectSmallInteractiveTargets(page: Page, selector: string) {
+  return page.locator(selector).evaluateAll((roots) => {
+    const interactiveSelector = [
+      'button',
+      'a',
+      'input',
+      'select',
+      'textarea',
+      '[role="button"]',
+      '[role="tab"]',
+    ].join(',');
+
+    return roots.flatMap((root) =>
+      Array.from(root.querySelectorAll<HTMLElement>(interactiveSelector))
+        .map((element) => {
+          const rect = element.getBoundingClientRect();
+          const style = window.getComputedStyle(element);
+          const label =
+            element.textContent?.trim() ||
+            element.getAttribute('aria-label') ||
+            element.getAttribute('placeholder') ||
+            element.getAttribute('name') ||
+            element.tagName.toLowerCase();
+
+          return {
+            label: label.slice(0, 80),
+            tag: element.tagName.toLowerCase(),
+            width: Math.round(rect.width),
+            height: Math.round(rect.height),
+            hiddenControl:
+              element.getAttribute('aria-hidden') === 'true' ||
+              (element instanceof HTMLInputElement && element.type === 'hidden') ||
+              (rect.width <= 1 && rect.height <= 1 && !element.getAttribute('aria-label')),
+            visible:
+              rect.width > 0 &&
+              rect.height > 0 &&
+              style.visibility !== 'hidden' &&
+              style.display !== 'none',
+          };
+        })
+        .filter(
+          (target) =>
+            target.visible && !target.hiddenControl && (target.width < 44 || target.height < 44),
+        ),
+    );
+  });
+}
+
+async function openPatientMovementFixture(page: Page) {
+  await openStableRoute(page, '/patients/movement-fixture');
+  await expect(page.getByTestId('patient-movement-fixture')).toBeVisible({ timeout: 60_000 });
+}
+
 async function openFirstPatientDetail(page: Page) {
   const patientLink = page.getByTestId('patient-board-card-link').first();
   const empty = page.locator('main').getByText('条件に一致する患者がいません');
@@ -504,6 +577,71 @@ test.describe('ARIA and keyboard contracts', () => {
     await expect(page.getByTestId('patient-profile-summary')).toBeVisible();
 
     expect(errors).toEqual([]);
+  });
+
+  test('patient movement fixture has no critical or serious accessibility violations', async ({
+    context,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== 'chromium');
+
+    const { page, errors } = await createInstrumentedPage(context);
+    await openPatientMovementFixture(page);
+
+    const movementPanel = page.getByTestId('patient-movement-fixture');
+    await expect(movementPanel).toBeVisible({ timeout: 60_000 });
+    await expect(movementPanel.getByLabel('タイムライン検索')).toBeVisible();
+
+    const results = await analyzeSelectorAccessibility(
+      page,
+      '[data-testid="patient-movement-fixture"]',
+    );
+    const severe = results.violations.filter((violation) =>
+      ['critical', 'serious'].includes(violation.impact ?? ''),
+    );
+
+    await writeScreenshot(page, 'patient-movement-a11y');
+    expect(errors).toEqual([]);
+    expect(summarizeViolations(severe)).toEqual([]);
+  });
+
+  test('patient movement fixture mobile keeps current controls touch-sized without legacy links', async ({
+    context,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== 'mobile-chromium');
+
+    const { page, errors } = await createInstrumentedPage(context);
+    await openPatientMovementFixture(page);
+
+    const movementPanel = page.getByTestId('patient-movement-fixture');
+    await expect(movementPanel).toBeVisible({ timeout: 60_000 });
+    await expect(movementPanel.getByLabel('タイムライン検索')).toBeVisible();
+
+    const metrics = await movementPanel.evaluate((element) => {
+      const root = document.documentElement;
+      const hrefs = Array.from(element.querySelectorAll('a')).map(
+        (anchor) => anchor.getAttribute('href') ?? '',
+      );
+
+      return {
+        clientWidth: root.clientWidth,
+        scrollWidth: root.scrollWidth,
+        legacyTimelineLinks: hrefs.filter((href) =>
+          /^\/patients\/[^/?#]+\/timeline(?:[/?#]|$)/.test(href),
+        ).length,
+        apiLinks: hrefs.filter((href) => href.startsWith('/api')).length,
+      };
+    });
+    const smallTargets = await collectSmallInteractiveTargets(
+      page,
+      '[data-testid="patient-movement-fixture"]',
+    );
+
+    await writeElementScreenshot(movementPanel, 'patient-movement-mobile-panel');
+    expect(errors).toEqual([]);
+    expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
+    expect(metrics.legacyTimelineLinks).toBe(0);
+    expect(metrics.apiLinks).toBe(0);
+    expect(smallTargets).toEqual([]);
   });
 
   test('patient MCS page surfaces setup guidance before the first sync', async ({

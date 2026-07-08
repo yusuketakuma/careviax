@@ -23858,3 +23858,89 @@ visit_request/unknown`, `action_status='not_linked'`, and
   Continue the next non-human-gated Plans item. `MOV-001-API` now only needs
   browser/mobile/a11y validation, while stock migration/DB integration remains
   human-gated.
+
+## 2026-07-08 - MOV-001 browser/mobile/a11y validation
+
+- current task:
+  Complete the remaining MOV-001 browser/mobile/a11y validation without
+  restoring legacy movement list aliases, legacy page detail shells, or raw
+  timeline body/detail surfaces.
+- files inspected:
+  `Plans.md`; `ops/refactor/STATE.md`; `docs/ui-ux-design-guidelines.md`;
+  `playwright.local.config.ts`; `tools/tests/ui-audit-extensions.spec.ts`;
+  `tools/tests/ui-mobile-layout.spec.ts`; `tools/tests/ui-route-mocked-smoke.spec.ts`;
+  `tools/tests/helpers/local-auth.ts`;
+  `src/app/(dashboard)/layout.tsx`;
+  `src/app/(dashboard)/patients/[id]/card-workspace.tsx`;
+  `src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx`;
+  `src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx`.
+- files changed:
+  `src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx`;
+  `src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx`;
+  `src/app/(dashboard)/patients/movement-fixture/page.tsx`;
+  `tools/tests/ui-audit-extensions.spec.ts`;
+  `Plans.md`; `ops/refactor/STATE.md`.
+- bugs found:
+  The movement search input did not explicitly carry the same 44px touch-target
+  contract as the date/filter/action controls. The remaining MOV browser proof
+  also depended on DB-backed patient detail SSR, but the local `ph_os_e2e`
+  schema is stale and lacks `InboundCommunicationSignal`, causing
+  `getPatientVisitBrief()` to throw Prisma `P2021`.
+- bugs fixed:
+  Added `min-h-11` to the movement search input. Added component coverage for
+  the current map-less date-card shell: no table surface, labelled filter
+  groups, labelled day sections, 44px controls, selected detail action label,
+  and no `/api` or old `/patients/:id/timeline` action hrefs. Added a
+  Playwright-only movement fixture route gated by `PLAYWRIGHT` /
+  `PLAYWRIGHT_REUSE_SERVER`; normal runtime returns `notFound()`. The fixture
+  validates the actual Next/AppShell/CSS browser surface without applying DB
+  migrations.
+- security risks found:
+  A browser fixture route must not expose real PHI, production data, raw
+  SOAP/OCR/chat/prescription/attachment body content, or a production-accessible
+  patient detail surrogate.
+- security risks reduced:
+  The fixture uses fictional controlled labels only, includes an unsafe legacy
+  href case to prove disabled rendering, and is unavailable outside Playwright
+  runtime. The Playwright mobile smoke asserts no `/api` action links and no old
+  `/patients/:id/timeline` links are rendered. No migration, DDL/DML,
+  production data mutation, or raw PHI disclosure was performed.
+- performance issues found:
+  None in production code. The browser proof initially hit stale local DB schema
+  before the movement surface could render.
+- performance issues improved:
+  The Playwright validation now uses a bounded movement fixture instead of
+  requiring a DB-backed full patient detail load, so the browser/a11y smoke is
+  deterministic and independent of local seed freshness.
+- UI/UX note:
+  Read `docs/ui-ux-design-guidelines.md`. Image generation was intentionally
+  omitted because this was validation/touch-target hardening of an existing
+  current surface, not a new visual reconstruction or layout concept.
+- validation commands:
+  `pnpm exec prettier --write 'src/app/(dashboard)/patients/movement-fixture/page.tsx' 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx' 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx' tools/tests/ui-audit-extensions.spec.ts`;
+  `pnpm exec eslint 'src/app/(dashboard)/patients/movement-fixture/page.tsx' 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx' 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx' tools/tests/ui-audit-extensions.spec.ts`;
+  `pnpm vitest run 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx' --reporter=dot --testTimeout=30000`;
+  `pnpm dev:e2e:local`;
+  `pnpm test:e2e:local --grep "patient movement fixture"`;
+  `pnpm plans:active:check`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `git diff --check -- Plans.md ops/refactor/STATE.md 'src/app/(dashboard)/patients/movement-fixture/page.tsx' 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx' 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx' tools/tests/ui-audit-extensions.spec.ts`.
+- validation results:
+  Focused movement component Vitest passed 1 file / 16 tests. Scoped ESLint
+  passed. Playwright local fixture proof passed 2 tests with 2 expected project
+  skips: chromium critical/serious axe 0 and mobile-chromium no overflow /
+  no small targets / no legacy or API action links. The first DB-backed patient
+  detail Playwright attempt failed before reaching MOV because `ph_os_e2e`
+  lacks `public.InboundCommunicationSignal`; migration application is a human
+  gate, so it was not run. Plans active board check passed after MOV was removed
+  from Partial/Implementation queue and kept only as Done/frozen evidence. Full
+  typecheck passed after `next typegen`. Scoped diff check passed.
+- remaining work:
+  `MOV-001-API` no longer has active residual scope in Active Plan Board v8.
+  Stock visit context migration / DB integration, live AWS recovery, and
+  DB/index work remain human-gated. Archive/reference sections still contain
+  historical MOV wording and must not be treated as active backlog.
+- next action:
+  Continue the next non-human-gated plan item: prepare `FRONTEND-CONTRACT-001`
+  or `QUERY-SHAPE-WATCHLIST-003-FOLLOW`. Do not apply stock/visit migrations
+  without explicit human approval, rollback plan, and staging evidence.

@@ -1001,6 +1001,7 @@ export function PatientMovementTimeline({
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="例: MCS、電話、処方、訪問、文書登録、残数、確認待ち"
+                className="min-h-11"
               />
             </div>
 

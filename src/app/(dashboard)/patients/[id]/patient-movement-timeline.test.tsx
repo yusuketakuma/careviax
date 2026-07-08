@@ -204,6 +204,41 @@ describe('PatientMovementTimeline', () => {
     ).toBe(true);
   });
 
+  it('keeps the current movement date-card shell accessible and mobile-safe', () => {
+    render(<PatientMovementTimeline timelineEvents={timelineEvents} selfReports={selfReports} />);
+
+    expect(document.querySelector('table')).toBeNull();
+    expect(screen.getByLabelText('タイムライン検索').className).toContain('min-h-11');
+    expect(screen.getByLabelText('日付範囲フィルタ')).toBeTruthy();
+    expect(screen.getByLabelText('確認フィルタ')).toBeTruthy();
+    expect(screen.getByLabelText('タイムライン種別フィルタ')).toBeTruthy();
+
+    const april3Card = screen.getByTestId('movement-day-card-2026-04-03');
+    expect(april3Card.getAttribute('aria-labelledby')).toBe('movement-day-heading-2026-04-03');
+    expect(
+      within(april3Card).getByRole('heading', { level: 3, name: /2026年4月3日/ }),
+    ).toBeTruthy();
+    expect(within(april3Card).getByText('この日の表示中 1件')).toBeTruthy();
+
+    for (const button of screen.getAllByRole('button')) {
+      expect(button.className).toMatch(/(?:min-h-11|size-11)/);
+    }
+
+    expect(
+      screen.getByRole('link', {
+        name: '選択中イベントの詳細を開く: 訪問記録を開く',
+      }),
+    ).toBeTruthy();
+
+    const renderedHrefs = Array.from(document.querySelectorAll('a')).map((link) =>
+      link.getAttribute('href'),
+    );
+    expect(renderedHrefs.every((href) => !href?.startsWith('/api'))).toBe(true);
+    expect(
+      renderedHrefs.every((href) => !/\/patients\/[^/?#]+\/timeline(?:[/?#]|$)/.test(href ?? '')),
+    ).toBe(true);
+  });
+
   it('filters unprocessed inbound events and updates the selected-event preview', () => {
     render(
       <PatientMovementTimeline
