@@ -55,6 +55,17 @@ describe('check-api-response-shape', () => {
     expect(runCheck(root)).toContain('API response shape check passed');
   });
 
+  it('allows success responses using bare data shorthand', () => {
+    const root = createFixtureRepo({
+      'src/app/api/example/route.ts': `
+        const data = serializePatient(patient);
+        return success({ data });
+      `,
+    });
+
+    expect(runCheck(root)).toContain('API response shape check passed');
+  });
+
   it('rejects direct success payloads', () => {
     const root = createFixtureRepo({
       'src/app/api/example/route.ts': `

@@ -168,7 +168,7 @@ function hasTopLevelDataProperty(objectLiteral) {
       depth -= 1;
       continue;
     }
-    if (depth === 1 && objectLiteral.slice(i).match(/^data\s*(?:,|:)/)) return true;
+    if (depth === 1 && objectLiteral.slice(i).match(/^data\s*(?:,|:|\})/)) return true;
   }
   return false;
 }

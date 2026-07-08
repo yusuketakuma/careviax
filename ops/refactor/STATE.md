@@ -24217,6 +24217,69 @@ visit_request/unknown`, `action_status='not_linked'`, and
   Commit and push this ledger hash update with only `ops/refactor/STATE.md`
   staged, then continue with the next non-human-gated read-speed cleanup.
 
+## 2026-07-09 - API-CONTRACT-001A response-shape guard ratchet
+
+- current task:
+  Start `API-CONTRACT-001` with a tooling-only ratchet: make
+  `api-response-shape:check` recognize the current `success({ data })`
+  envelope shorthand so the allowlist only tracks real legacy response debt.
+- files inspected:
+  `git status --short --untracked-files=all`; `Plans.md`;
+  `ops/refactor/STATE.md`; `tools/scripts/check-api-response-shape.mjs`;
+  `tools/scripts/check-api-response-shape.test.ts`;
+  `tools/api-response-shape-allowlist.json`; and
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`.
+- files changed:
+  `tools/scripts/check-api-response-shape.mjs`;
+  `tools/scripts/check-api-response-shape.test.ts`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `ops/refactor/STATE.md`.
+- bugs found:
+  The response-shape guard treated `success({ data })` as missing top-level
+  `data` because the object-literal scanner only accepted `data,` or `data:`.
+  This left stale allowlist entries for routes already using the current
+  response envelope shorthand.
+- bugs fixed:
+  Updated the top-level data-property scanner to accept `data}` shorthand,
+  added a fixture test for `success({ data })`, and removed stale allowlist
+  expectedCount 17. `api-response-shape:check` now reports 223 allowlisted
+  violations and 0 new violations instead of 240 allowlisted violations.
+- security risks found:
+  No auth, authorization, PHI, audit payload, or public route runtime behavior
+  changed. This slice touched only static tooling and planning/ledger files.
+- security risks reduced:
+  Reduced false response-shape debt so remaining legacy public response shapes
+  are easier to identify and migrate without adding compatibility fallbacks.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this is API contract validation hygiene.
+- UI/UX note:
+  No UI/UX change. Image generation was not applicable.
+- validation commands:
+  `pnpm exec prettier --write tools/scripts/check-api-response-shape.mjs tools/scripts/check-api-response-shape.test.ts tools/api-response-shape-allowlist.json`;
+  `pnpm vitest run tools/scripts/check-api-response-shape.test.ts --reporter=dot --testTimeout=30000`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint tools/scripts/check-api-response-shape.mjs tools/scripts/check-api-response-shape.test.ts`;
+  `git diff --check -- tools/scripts/check-api-response-shape.mjs tools/scripts/check-api-response-shape.test.ts tools/api-response-shape-allowlist.json Plans.md ops/refactor/STATE.md`.
+- validation results:
+  Prettier passed. Guard fixture tests passed 1 file / 7 tests.
+  `api-response-shape:check` passed with 223 allowlisted violations and 0 new
+  violations. `plans:active:check` passed. Focused ESLint passed. Scoped diff
+  check passed.
+- commit:
+  Pending.
+- remaining work:
+  `API-CONTRACT-001` remains Partial. Remaining work is real route envelope
+  migration, standardized ApiError/request_id propagation, frontend reader
+  alignment, and further allowlist burn-down. Compatibility aliases or legacy
+  public response fallbacks should not be added.
+- next action:
+  Run focused formatting, tests, response-shape guard, plans active check,
+  ESLint, and diff check; then commit and push this coherent tooling slice with
+  only owned files staged.
+
 ## 2026-07-09 - DATE-SLICE-GUARD-001 helper migration
 
 - current task:
