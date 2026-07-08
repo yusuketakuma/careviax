@@ -1850,10 +1850,10 @@ describe('CardWorkspace', () => {
 
     expect(
       await screen.findByText(
-        '直近5件の患者の動きを先に表示しています。全件は必要な時だけ読み込みます。',
+        '直近5件の患者の動きを先に表示しています。追加履歴は必要な時だけ読み込みます。',
       ),
     ).toBeTruthy();
-    expect(screen.getByRole('button', { name: '全履歴を読み込む（最大40件）' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '履歴を追加読み込み（最大40件）' })).toBeTruthy();
     expect(screen.getAllByText('訪問記録を保存').length).toBeGreaterThanOrEqual(1);
 
     const enabledMovementTimelineConfig = useQueryMock.mock.calls
@@ -1866,7 +1866,7 @@ describe('CardWorkspace', () => {
       enabled: true,
     });
 
-    fireEvent.click(screen.getByRole('button', { name: '全履歴を読み込む（最大40件）' }));
+    fireEvent.click(screen.getByRole('button', { name: '履歴を追加読み込み（最大40件）' }));
 
     await waitFor(() => {
       expect(

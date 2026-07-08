@@ -124,11 +124,17 @@ describe('/api/cases/[id]/risk-cockpit', () => {
         role: 'pharmacist',
       }),
     );
-    await expect(response.json()).resolves.toMatchObject({
-      overall: { status: 'blocked', blocking_count: 1 },
-      sections: [{ domain: 'consent_plan', status: 'blocked' }],
-      next_actions: [{ label: '同意を整備', action_href: '/patients/patient_1/consent' }],
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: {
+        overall: { status: 'blocked', blocking_count: 1 },
+        sections: [{ domain: 'consent_plan', status: 'blocked' }],
+        next_actions: [{ label: '同意を整備', action_href: '/patients/patient_1/consent' }],
+      },
     });
+    expect(body).not.toHaveProperty('overall');
+    expect(body).not.toHaveProperty('sections');
+    expect(body).not.toHaveProperty('next_actions');
   });
 
   it('rejects forbidden roles before loading the cockpit service', async () => {

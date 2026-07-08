@@ -33,7 +33,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   );
   if (!cockpit) return notFound('ケースが見つかりません');
 
-  return success(cockpit);
+  return success({ data: cockpit });
 }
 
 export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {

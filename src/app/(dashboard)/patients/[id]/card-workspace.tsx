@@ -4895,10 +4895,11 @@ export function CardWorkspace({
       const response = await fetch(buildCaseRiskCockpitPath(commandCenterCaseForQuery.id), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<CaseRiskCockpitResponse>(
+      const payload = await readApiJson<{ data: CaseRiskCockpitResponse }>(
         response,
         'Case Risk Cockpit の取得に失敗しました',
       );
+      return payload.data;
     },
     enabled: Boolean(orgId && commandCenterCaseForQuery?.id && isDetailTabMounted('command')),
     staleTime: 30_000,
