@@ -96,6 +96,9 @@ describe('/api/communications/inbound/signals/[id]', () => {
     );
     inboundCommunicationSignalFindFirstMock.mockResolvedValue({
       id: 'signal_1',
+      signal_domain: 'report',
+      review_status: 'needs_review',
+      action_status: 'not_linked',
     });
     inboundCommunicationSignalUpdateMock.mockResolvedValue({
       id: 'signal_1',
@@ -161,6 +164,9 @@ describe('/api/communications/inbound/signals/[id]', () => {
       },
       select: {
         id: true,
+        signal_domain: true,
+        review_status: true,
+        action_status: true,
       },
     });
     expect(inboundCommunicationSignalUpdateMock).toHaveBeenCalledWith({
@@ -249,6 +255,147 @@ describe('/api/communications/inbound/signals/[id]', () => {
       action_status: 'not_linked',
       review_task_closure_count: 1,
     });
+  });
+
+  it('marks a report candidate as include-in-report without linking it to a report target', async () => {
+    inboundCommunicationSignalUpdateMock.mockResolvedValueOnce({
+      id: 'signal_1',
+      inbound_event_id: 'event_1',
+      review_status: 'accepted',
+      action_status: 'not_linked',
+      reviewed_at: new Date('2026-07-07T07:13:00.000Z'),
+    });
+
+    const response = await PATCH(createRequest({ action: 'include_in_report' }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(inboundCommunicationSignalUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          review_status: 'accepted',
+          reviewed_by: 'user_1',
+          rejection_reason: null,
+        }),
+      }),
+    );
+    expect(inboundCommunicationSignalUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.not.objectContaining({
+          action_status: 'linked_to_report',
+        }),
+      }),
+    );
+    expect(inboundCommunicationSignalUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.not.objectContaining({
+          action_status: expect.anything(),
+        }),
+      }),
+    );
+    expect(payload.data).toMatchObject({
+      signal_id: 'signal_1',
+      inbound_event_id: 'event_1',
+      review_status: 'accepted',
+      action_status: 'not_linked',
+      review_task_closure_count: 1,
+    });
+    expect(JSON.stringify(payload)).not.toContain('normalized_summary');
+    expect(JSON.stringify(payload)).not.toContain('raw_text');
+  });
+
+  it('records report candidates as handoff-only with a controlled internal reason', async () => {
+    inboundCommunicationSignalUpdateMock.mockResolvedValueOnce({
+      id: 'signal_1',
+      inbound_event_id: 'event_1',
+      review_status: 'record_only',
+      action_status: 'ignored',
+      reviewed_at: new Date('2026-07-07T07:14:00.000Z'),
+    });
+
+    const response = await PATCH(createRequest({ action: 'handoff_only' }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(inboundCommunicationSignalUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          review_status: 'record_only',
+          action_status: 'ignored',
+          reviewed_by: 'user_1',
+          rejection_reason: 'report_candidate:handoff_only',
+        }),
+      }),
+    );
+    expect(payload.data).toMatchObject({
+      review_status: 'record_only',
+      action_status: 'ignored',
+    });
+    expect(JSON.stringify(payload)).not.toContain('report_candidate:handoff_only');
+  });
+
+  it('records report candidates as internal-record-only with a controlled internal reason', async () => {
+    inboundCommunicationSignalUpdateMock.mockResolvedValueOnce({
+      id: 'signal_1',
+      inbound_event_id: 'event_1',
+      review_status: 'record_only',
+      action_status: 'ignored',
+      reviewed_at: new Date('2026-07-07T07:15:00.000Z'),
+    });
+
+    const response = await PATCH(createRequest({ action: 'internal_record_only' }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(inboundCommunicationSignalUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          review_status: 'record_only',
+          action_status: 'ignored',
+          reviewed_by: 'user_1',
+          rejection_reason: 'report_candidate:internal_record_only',
+        }),
+      }),
+    );
+    expect(payload.data).toMatchObject({
+      review_status: 'record_only',
+      action_status: 'ignored',
+    });
+    expect(JSON.stringify(payload)).not.toContain('report_candidate:internal_record_only');
+  });
+
+  it('does not process non-report signals through report candidate actions', async () => {
+    inboundCommunicationSignalFindFirstMock.mockResolvedValueOnce({
+      id: 'signal_1',
+      signal_domain: 'medication_stock',
+      review_status: 'needs_review',
+      action_status: 'not_linked',
+    });
+
+    const response = await PATCH(createRequest({ action: 'include_in_report' }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(payload.code).toBe('WORKFLOW_NOT_FOUND');
+    expect(inboundCommunicationSignalUpdateMock).not.toHaveBeenCalled();
+    expect(taskUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('does not reprocess terminal or linked report candidates', async () => {
+    inboundCommunicationSignalFindFirstMock.mockResolvedValueOnce({
+      id: 'signal_1',
+      signal_domain: 'report',
+      review_status: 'record_only',
+      action_status: 'ignored',
+    });
+
+    const response = await PATCH(createRequest({ action: 'handoff_only' }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(payload.code).toBe('WORKFLOW_CONFLICT');
+    expect(inboundCommunicationSignalUpdateMock).not.toHaveBeenCalled();
+    expect(taskUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('does not leak or fail when no formal review task is still open', async () => {

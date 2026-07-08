@@ -26,6 +26,8 @@ import { timeIsoToString } from '@/lib/visits/time-of-day';
 import type {
   ReportDraftGenerationTarget,
   ReportDraftRow,
+  ReportInboundCandidate,
+  ReportInboundCandidateAction,
   ReportsTodayWorkspaceResponse,
   ReportCreatedRow,
   ReportOpenIssue,
@@ -80,6 +82,27 @@ type DraftGenerationInput = {
   visitRecordUpdatedAt: string;
   reportType: ReportDraftGenerationTarget['report_type'];
 };
+type ReportInboundCandidateDecisionInput = {
+  signalId: string;
+  action: ReportInboundCandidateAction;
+};
+
+const REPORT_INBOUND_CANDIDATE_ACTION_LABELS: Record<ReportInboundCandidateAction, string> = {
+  include_in_report: '報告書に含める',
+  handoff_only: '申し送りのみ',
+  internal_record_only: '内部記録のみ',
+};
+const REPORT_INBOUND_CANDIDATE_ACTIONS = [
+  'include_in_report',
+  'handoff_only',
+  'internal_record_only',
+] as const satisfies readonly ReportInboundCandidateAction[];
+
+const REPORT_INBOUND_CANDIDATE_ACTION_TOASTS: Record<ReportInboundCandidateAction, string> = {
+  include_in_report: '報告候補として採用しました',
+  handoff_only: '申し送りのみとして記録しました',
+  internal_record_only: '内部記録のみとして記録しました',
+};
 
 function formatDateTime(iso: string): string {
   const date = new Date(iso);
@@ -100,6 +123,25 @@ async function fetchReportsTodayWorkspace(orgId: string): Promise<ReportsTodayWo
     res,
     '報告ワークスペースの取得に失敗しました',
   );
+  return json.data;
+}
+
+async function decideReportInboundCandidate(
+  orgId: string,
+  input: ReportInboundCandidateDecisionInput,
+) {
+  const res = await fetch(
+    `/api/communications/inbound/signals/${encodeURIComponent(input.signalId)}`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...buildOrgHeaders(orgId),
+      },
+      body: JSON.stringify({ action: input.action }),
+    },
+  );
+  const json = await readApiJson<{ data: unknown }>(res, '報告候補の更新に失敗しました');
   return json.data;
 }
 
@@ -271,6 +313,114 @@ function TodayDraftsCard({
             getRowA11yLabel={(row) => `${row.patient_label} / ${row.recipient_label}`}
           />
         </div>
+      )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 他職種受信の報告候補
+// ---------------------------------------------------------------------------
+
+function ReportInboundCandidateStatus({ candidate }: { candidate: ReportInboundCandidate }) {
+  return (
+    <span className="inline-flex rounded-full bg-tag-info/10 px-2.5 py-0.5 text-xs font-bold text-tag-info">
+      {candidate.decision === 'include_pending_report' ? '採用済み・未リンク' : '判断待ち'}
+    </span>
+  );
+}
+
+function ReportInboundCandidatePatient({ candidate }: { candidate: ReportInboundCandidate }) {
+  if (!candidate.patient_id) {
+    return <span className="font-semibold text-foreground">{candidate.patient_label}</span>;
+  }
+
+  return (
+    <Link
+      href={buildPatientHref(candidate.patient_id)}
+      className="inline-flex min-h-8 items-center rounded-sm font-semibold text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+    >
+      {candidate.patient_label}
+    </Link>
+  );
+}
+
+function ReportInboundCandidatesSection({
+  candidates,
+  count,
+  onSelectCandidate,
+  pendingDecisionKey,
+}: {
+  candidates: ReportInboundCandidate[];
+  count: ReportsTodayWorkspaceResponse['count_metadata']['report_candidates'] | null | undefined;
+  onSelectCandidate: (input: ReportInboundCandidateDecisionInput) => void;
+  pendingDecisionKey: string | null;
+}) {
+  return (
+    <section
+      className="rounded-lg border border-border/70 bg-card p-4"
+      aria-labelledby="report-inbound-candidates-heading"
+      data-testid="report-inbound-candidates"
+    >
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h3 id="report-inbound-candidates-heading" className="text-base font-bold text-foreground">
+          他職種受信の報告候補
+        </h3>
+        <span className="text-xs text-muted-foreground">
+          {formatWorkspaceCountLabel(count, candidates.length)}
+        </span>
+      </div>
+      {candidates.length === 0 ? (
+        <p className="mt-3 text-sm text-muted-foreground">報告候補にできる受信要約はありません。</p>
+      ) : (
+        <ul className="mt-3 divide-y divide-border/70" role="list">
+          {candidates.map((candidate) => (
+            <li
+              key={candidate.id}
+              className="grid gap-3 py-3 lg:grid-cols-[minmax(0,1fr)_auto]"
+              data-testid="report-inbound-candidate"
+            >
+              <div className="min-w-0 space-y-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <ReportInboundCandidateStatus candidate={candidate} />
+                  <span className="text-xs font-medium text-muted-foreground">
+                    {candidate.source_label} / 受信 {formatDateTime(candidate.received_at)}
+                  </span>
+                </div>
+                <div className="text-sm">
+                  <ReportInboundCandidatePatient candidate={candidate} />
+                </div>
+                <p className="text-sm leading-6 text-foreground">{candidate.normalized_summary}</p>
+              </div>
+              <div className="flex flex-wrap items-start gap-2 lg:justify-end">
+                {REPORT_INBOUND_CANDIDATE_ACTIONS.map((action) => {
+                  const pendingKey = `${candidate.signal_id}:${action}`;
+                  return (
+                    <Button
+                      key={action}
+                      type="button"
+                      variant={action === 'include_in_report' ? 'default' : 'outline'}
+                      size="sm"
+                      className="h-auto min-h-[44px] px-3 sm:min-h-[44px]"
+                      disabled={pendingDecisionKey === pendingKey}
+                      aria-label={`${candidate.patient_label} ${REPORT_INBOUND_CANDIDATE_ACTION_LABELS[action]}`}
+                      onClick={() =>
+                        onSelectCandidate({
+                          signalId: candidate.signal_id,
+                          action,
+                        })
+                      }
+                    >
+                      {pendingDecisionKey === pendingKey
+                        ? '更新中...'
+                        : REPORT_INBOUND_CANDIDATE_ACTION_LABELS[action]}
+                    </Button>
+                  );
+                })}
+              </div>
+            </li>
+          ))}
+        </ul>
       )}
     </section>
   );
@@ -635,6 +785,7 @@ const REPORT_WORKSPACE_INVALIDATION_EVENTS = [
   'care_report_update',
   'comment_refresh',
   'report_delivery_update',
+  'inbound_signal_update',
 ] as const;
 
 export function ReportShareWorkspace() {
@@ -673,6 +824,16 @@ export function ReportShareWorkspace() {
       router.push(buildReportHref(firstReport.id));
     },
     onError: (err: Error) => toast.error(messageFromError(err, '下書きの作成に失敗しました')),
+  });
+  const decideInboundCandidateMutation = useMutation({
+    mutationFn: (input: ReportInboundCandidateDecisionInput) =>
+      decideReportInboundCandidate(orgId, input),
+    onSuccess: (_result, input) => {
+      toast.success(REPORT_INBOUND_CANDIDATE_ACTION_TOASTS[input.action]);
+      queryClient.invalidateQueries({ queryKey: ['care-reports', 'today-workspace', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['communications-inbound-signals', orgId] });
+    },
+    onError: (err: Error) => toast.error(messageFromError(err, '報告候補の更新に失敗しました')),
   });
 
   const now = new Date();
@@ -747,6 +908,17 @@ export function ReportShareWorkspace() {
                     ? generateDraftMutation.variables
                       ? `${generateDraftMutation.variables.visitRecordId}:${generateDraftMutation.variables.reportType}`
                       : null
+                    : null
+                }
+              />
+              <ReportInboundCandidatesSection
+                candidates={data.inbound_report_candidates}
+                count={data.count_metadata?.report_candidates}
+                onSelectCandidate={(input) => decideInboundCandidateMutation.mutate(input)}
+                pendingDecisionKey={
+                  decideInboundCandidateMutation.isPending &&
+                  decideInboundCandidateMutation.variables
+                    ? `${decideInboundCandidateMutation.variables.signalId}:${decideInboundCandidateMutation.variables.action}`
                     : null
                 }
               />

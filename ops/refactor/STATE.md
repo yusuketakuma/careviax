@@ -23276,3 +23276,113 @@ status` no PR). Browser session `inbound-stock-selector` failed with
   Run final Plans/format/diff checks, commit the owned slice, record the commit
   hash in this ledger, then push to `origin/main` and continue the next
   non-human-gated Plans item.
+
+## 2026-07-08 REPORT-020 inbound report candidates
+
+- current task:
+  Complete `REPORT-020` without legacy compatibility: use only the formal
+  `InboundCommunicationEvent` / `InboundCommunicationSignal` contract to surface
+  inbound `normalized_summary` as report workspace candidates, record the
+  pharmacist's three-way disposition, and keep raw inbound text out of external
+  report send/PDF/share bodies.
+- files inspected:
+  `git status --short --untracked-files=all`, `Plans.md`,
+  `ops/refactor/STATE.md`, `.agents/skills/oracle-consult/SKILL.md`,
+  `docs/ui-ux-design-guidelines.md`,
+  `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`,
+  `prisma/schema/communication.prisma`,
+  `src/server/services/communication-request-access.ts`,
+  `src/types/reports-today-workspace.ts`,
+  `src/app/api/care-reports/today-workspace/route.ts`,
+  `src/app/api/care-reports/today-workspace/route.test.ts`,
+  `src/app/api/communications/inbound/signals/[id]/route.ts`,
+  `src/app/api/communications/inbound/signals/[id]/route.test.ts`,
+  `src/app/(dashboard)/reports/report-share-workspace.tsx`,
+  `src/app/(dashboard)/reports/report-share-workspace.helpers.ts`, and
+  `src/app/(dashboard)/reports/report-share-workspace.test.tsx`.
+- files changed:
+  `Plans.md`, `ops/refactor/STATE.md`,
+  `src/types/reports-today-workspace.ts`,
+  `src/app/api/care-reports/today-workspace/route.ts`,
+  `src/app/api/care-reports/today-workspace/route.test.ts`,
+  `src/app/api/communications/inbound/signals/[id]/route.ts`,
+  `src/app/api/communications/inbound/signals/[id]/route.test.ts`,
+  `src/app/(dashboard)/reports/report-share-workspace.tsx`,
+  `src/app/(dashboard)/reports/report-share-workspace.helpers.ts`, and
+  `src/app/(dashboard)/reports/report-share-workspace.test.tsx`.
+- oracle:
+  Required because this slice touches PHI/report-output boundaries and
+  inbound-to-report disposition semantics. Oracle Browser consult
+  `report-inbound-github` completed with GPT-5.5 Pro after two attachment
+  upload attempts failed. GitHub context was included
+  (`https://github.com/yusuketakuma/careviax.git`, branch `main`, commit
+  `dbd51a4ee5b05d8f1f43df84ba0a209497e44f0b`, no PR, relevant worktree clean).
+  Oracle reported GitHub access succeeded and recommended adding both GET
+  candidate DTOs and a report-specific mutation, using formal report signals
+  only, excluding `record_only` from active candidates, omitting raw/detail
+  fields, and not setting `linked_to_report` until a concrete CareReport target
+  exists. Adopted the advice.
+- imagegen:
+  Skipped. This was a narrow state/data addition inside the existing report
+  workspace card/list pattern, with no visual reconstruction or new layout
+  language. Existing PH-OS card density, borders, heading hierarchy, and
+  operational-disclosure rules from `docs/ui-ux-design-guidelines.md` were used.
+- implementation:
+  Extended `ReportsTodayWorkspaceResponse` with `inbound_report_candidates`,
+  `counts.report_candidates`, and `count_metadata.report_candidates`. The BFF
+  now queries `InboundCommunicationSignal` only for
+  `signal_domain='report'`, `action_status='not_linked'`, and
+  `review_status in needs_review/auto_accepted/accepted`, with event-side
+  `has_report_signal=true`, nonempty `normalized_summary`, allowed source
+  channels, allowed processing statuses, org scope, and assignment scope. It
+  filters signal/event patient-case mismatches in code, allows unassigned
+  patient candidates, and returns only signal/event ids, patient/case ids,
+  patient label, coarse source channel/label, received time, normalized summary,
+  review/action status, and candidate decision.
+  Added report-specific PATCH actions to
+  `/api/communications/inbound/signals/:id`: `include_in_report` writes
+  `review_status='accepted'` and leaves `action_status='not_linked'`;
+  `handoff_only` and `internal_record_only` write
+  `review_status='record_only'`, `action_status='ignored'`, and controlled
+  internal reasons. These actions are accepted only for report-domain,
+  not-linked, non-terminal signals. The mutation response remains minimal and
+  never echoes normalized summary or raw/detail fields.
+  Added a report workspace section after today's drafts that displays inbound
+  report candidates and sends the three formal actions. It invalidates the
+  report workspace and inbound signal list after success, but never calls
+  report send, PDF, share, or report editor insertion APIs in this slice.
+- bugs found:
+  `REPORT-020` was still absent from the report workspace: inbound report
+  signals were counted only as generic action-rail evidence, so pharmacists had
+  no workflow-local way to decide whether a normalized inbound report summary
+  should become a report candidate, a handoff-only note, or an internal record.
+- security risks reduced:
+  The candidate DTO and mutation response deliberately omit `raw_text`,
+  `extracted_text`, sender names/contacts/orgs, external URLs, attachment
+  metadata, structured payload, medication names, quantities, and units. The
+  BFF enforces org/assignment scope and drops signal/event scope mismatches.
+  The UI mutation sends only the signal id and controlled action. No route
+  writes CareReport content, PDF, share, or send body from inbound text.
+- performance issues improved:
+  Candidate retrieval is a bounded formal-signal query (`take 13`) with narrow
+  select and no raw/detail/attachment joins. No report send/PDF/share read path
+  or dashboard cockpit refetch was added.
+- validation commands:
+  `pnpm exec prettier --write src/types/reports-today-workspace.ts src/app/api/care-reports/today-workspace/route.ts src/app/api/care-reports/today-workspace/route.test.ts 'src/app/api/communications/inbound/signals/[id]/route.ts' 'src/app/api/communications/inbound/signals/[id]/route.test.ts' 'src/app/(dashboard)/reports/report-share-workspace.tsx' 'src/app/(dashboard)/reports/report-share-workspace.helpers.ts' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx'`;
+  `pnpm vitest run src/app/api/care-reports/today-workspace/route.test.ts 'src/app/api/communications/inbound/signals/[id]/route.test.ts' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint src/types/reports-today-workspace.ts src/app/api/care-reports/today-workspace/route.ts src/app/api/care-reports/today-workspace/route.test.ts 'src/app/api/communications/inbound/signals/[id]/route.ts' 'src/app/api/communications/inbound/signals/[id]/route.test.ts' 'src/app/(dashboard)/reports/report-share-workspace.tsx' 'src/app/(dashboard)/reports/report-share-workspace.helpers.ts' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx'`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+- validation results:
+  Focused report workspace API + signal PATCH + UI Vitest passed 3 files / 77
+  tests. Scoped ESLint passed. Full typecheck passed after `next typegen`.
+- remaining work:
+  The future report editor insertion/link step remains separate: only a
+  pharmacist-selected normalized summary/signal should be inserted into a
+  concrete CareReport target in that future slice. No raw inbound text, report
+  content mutation, PDF/send/share mutation, DB migration, deployment,
+  production data mutation, or push was performed in the implementation edit
+  step.
+- next action:
+  Run Plans/format/diff checks, commit the owned slice, record the commit hash
+  in this ledger, push to `origin/main`, then continue the next non-human-gated
+  Plans item.

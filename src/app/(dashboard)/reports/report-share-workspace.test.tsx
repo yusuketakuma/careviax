@@ -234,7 +234,31 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
       action: { label: '根拠を確認', href: '/reports/report_draft' },
     },
   ],
-  counts: { to_write: 3, waiting: 2, resolved: 1, created: 3, open_issues: 2 },
+  inbound_report_candidates: [
+    {
+      id: 'inbound-report-candidate-signal_report_1',
+      signal_id: 'signal_report_1',
+      inbound_event_id: 'event_report_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      patient_label: '田中 一郎 様',
+      source_channel: 'fax',
+      source_label: 'FAX',
+      received_at: '2026-06-11T01:15:00.000Z',
+      normalized_summary: '訪問看護から、食事量低下とふらつきの報告候補が届いています。',
+      review_status: 'needs_review',
+      action_status: 'not_linked',
+      decision: 'needs_decision',
+    },
+  ],
+  counts: {
+    to_write: 3,
+    waiting: 2,
+    resolved: 1,
+    created: 3,
+    open_issues: 2,
+    report_candidates: 1,
+  },
   count_metadata: {
     to_write: {
       total_count: 3,
@@ -271,6 +295,14 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
     open_issues: {
       total_count: 2,
       visible_count: 2,
+      hidden_count: 0,
+      limit: 12,
+      truncated: false,
+      count_basis: 'derived_visible_window',
+    },
+    report_candidates: {
+      total_count: 1,
+      visible_count: 1,
       hidden_count: 0,
       limit: 12,
       truncated: false,
@@ -356,6 +388,21 @@ function stubFetch(
         { status: 201 },
       );
     }
+    if (url.includes('/api/communications/inbound/signals/')) {
+      return new Response(
+        JSON.stringify({
+          data: {
+            signal_id: decodeURIComponent(url.split('/').pop() ?? ''),
+            inbound_event_id: 'event_report_1',
+            review_status: 'accepted',
+            action_status: 'not_linked',
+            reviewed_at: '2026-06-11T01:20:00.000Z',
+            review_task_closure_count: 1,
+          },
+        }),
+        { status: 200 },
+      );
+    }
     throw new Error(`unexpected fetch: ${url}`);
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -394,8 +441,10 @@ describe('ReportShareWorkspace', () => {
       expect(screen.getByTestId('report-today-drafts')).toBeTruthy();
     });
 
-    // ヘッダーメタ(書く/待つ/解決の当日件数)
-    expect(screen.getByText(/書く3件・課題抽出内2件・作成済み3件・待つ2件・解決1件/)).toBeTruthy();
+    // ヘッダーメタ(書く/候補/待つ/解決の当日件数)
+    expect(
+      screen.getByText(/書く3件・候補1件・課題抽出内2件・作成済み3件・待つ2件・解決1件/),
+    ).toBeTruthy();
     // テンプレート編集はアウトライン副操作
     expect(screen.getByTestId('report-edit-templates').textContent).toContain('テンプレートを編集');
 
@@ -425,6 +474,17 @@ describe('ReportShareWorkspace', () => {
       screen.getAllByRole('button', { name: '田中 一郎 様 ケアマネ向けの下書きを自動作成' }),
     ).toHaveLength(2);
 
+    // 他職種受信の報告候補: normalized_summary だけを報告候補として表示する
+    expect(screen.getByTestId('report-inbound-candidates')).toBeTruthy();
+    expect(screen.getByText('他職種受信の報告候補')).toBeTruthy();
+    expect(
+      screen.getByText('訪問看護から、食事量低下とふらつきの報告候補が届いています。'),
+    ).toBeTruthy();
+    expect(screen.getByText('FAX / 受信 06/11 10:15')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '田中 一郎 様 報告書に含める' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '田中 一郎 様 申し送りのみ' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '田中 一郎 様 内部記録のみ' })).toBeTruthy();
+
     // 残課題 / 作成済み報告書: 他職種報告済みかどうかと送信日時を表示する
     expect(screen.getByTestId('report-open-issues')).toBeTruthy();
     expect(screen.getAllByText('加藤 ミサ 様 — 薬剤師確認待ち').length).toBeGreaterThanOrEqual(1);
@@ -446,7 +506,7 @@ describe('ReportShareWorkspace', () => {
       screen
         .getAllByRole('link', { name: '田中 一郎 様' })
         .map((link) => link.getAttribute('href')),
-    ).toEqual(['/patients/patient_1', '/patients/patient_1']);
+    ).toEqual(['/patients/patient_1', '/patients/patient_1', '/patients/patient_1']);
     expect(
       screen.getAllByText((text) => text.includes('医師への報告 / 主治医への服薬状況報告')),
     ).not.toHaveLength(0);
@@ -485,6 +545,72 @@ describe('ReportShareWorkspace', () => {
     expect(screen.getByTestId('report-template-policy-bar').textContent).toContain(
       '実施したこと → 観察したこと → 提案',
     );
+  });
+
+  it('updates inbound report candidate decisions without calling report send, PDF, or share APIs', async () => {
+    const workspace = JSON.parse(JSON.stringify(TODAY_WORKSPACE)) as ReportsTodayWorkspaceResponse;
+    Object.assign(workspace.inbound_report_candidates[0]!, {
+      raw_text: '原文: 湿布 残り4枚',
+      sender_name: '訪問看護師A',
+      sender_contact: '090-1234-5678',
+      external_url: 'https://mcs.example/secret',
+      attachment_count: 1,
+    });
+    const fetchMock = stubFetch(workspace);
+    renderWorkspace();
+
+    await screen.findByTestId('report-inbound-candidates');
+    expect(screen.queryByText(/原文/)).toBeNull();
+    expect(screen.queryByText(/湿布/)).toBeNull();
+    expect(screen.queryByText(/訪問看護師A/)).toBeNull();
+    expect(screen.queryByText(/090-1234-5678/)).toBeNull();
+    expect(screen.queryByText(/mcs\.example/)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '田中 一郎 様 報告書に含める' }));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/communications/inbound/signals/signal_report_1',
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'x-org-id': 'org_1' },
+          body: JSON.stringify({ action: 'include_in_report' }),
+        },
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '田中 一郎 様 申し送りのみ' }));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/communications/inbound/signals/signal_report_1',
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'x-org-id': 'org_1' },
+          body: JSON.stringify({ action: 'handoff_only' }),
+        },
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '田中 一郎 様 内部記録のみ' }));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/communications/inbound/signals/signal_report_1',
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'x-org-id': 'org_1' },
+          body: JSON.stringify({ action: 'internal_record_only' }),
+        },
+      );
+    });
+
+    const urls = fetchMock.mock.calls.map(([input]) => String(input));
+    expect(urls.some((url) => url.includes('/api/care-reports/send'))).toBe(false);
+    expect(urls.some((url) => url.includes('/api/care-reports/pdf'))).toBe(false);
+    expect(urls.some((url) => url.includes('/api/care-reports/share'))).toBe(false);
+    expect(urls.some((url) => url.includes('/api/dashboard/cockpit'))).toBe(false);
+    expect(
+      urls.filter((url) => url.includes('/api/care-reports/today-workspace')).length,
+    ).toBeGreaterThanOrEqual(2);
+    expect(toast.success).toHaveBeenCalledWith('報告候補として採用しました');
   });
 
   it('promotes the action rail into the fold ahead of the main content in DOM order', async () => {
@@ -568,7 +694,9 @@ describe('ReportShareWorkspace', () => {
     expect(screen.getByText('先頭1件 / 他3件')).toBeTruthy();
     expect(screen.getByText('先頭3件 / 他9件')).toBeTruthy();
     expect(screen.getByText('抽出内先頭2件 / 他3件')).toBeTruthy();
-    expect(screen.getByText(/書く3件・課題抽出内5件・作成済み12件・待つ6件・解決4件/)).toBeTruthy();
+    expect(
+      screen.getByText(/書く3件・候補1件・課題抽出内5件・作成済み12件・待つ6件・解決4件/),
+    ).toBeTruthy();
   });
 
   it('shows the created-reports empty state only after a successful empty response', async () => {
@@ -762,7 +890,16 @@ describe('ReportShareWorkspace', () => {
         patient_label: '患者未設定',
       },
     ];
-    workspace.counts = { ...workspace.counts, created: 2 };
+    workspace.inbound_report_candidates = [];
+    workspace.counts = { ...workspace.counts, created: 2, report_candidates: 0 };
+    workspace.count_metadata = {
+      ...workspace.count_metadata,
+      report_candidates: {
+        ...workspace.count_metadata.report_candidates,
+        total_count: 0,
+        visible_count: 0,
+      },
+    };
 
     stubFetch(workspace);
     renderWorkspace();
@@ -793,8 +930,19 @@ describe('ReportShareWorkspace', () => {
     const realImpl = vi.mocked(buildPatientHref).getMockImplementation();
     vi.mocked(buildPatientHref).mockImplementation((id: string) => `/patients/__sentinel_${id}__`);
     vi.mocked(buildPatientHref).mockClear();
+    const workspace = JSON.parse(JSON.stringify(TODAY_WORKSPACE)) as ReportsTodayWorkspaceResponse;
+    workspace.inbound_report_candidates = [];
+    workspace.counts = { ...workspace.counts, report_candidates: 0 };
+    workspace.count_metadata = {
+      ...workspace.count_metadata,
+      report_candidates: {
+        ...workspace.count_metadata.report_candidates,
+        total_count: 0,
+        visible_count: 0,
+      },
+    };
     try {
-      stubFetch();
+      stubFetch(workspace);
       renderWorkspace();
 
       await screen.findAllByRole('link', { name: '田中 一郎 様' });
@@ -1085,7 +1233,7 @@ describe('ReportShareWorkspace', () => {
 describe('report-share-workspace helpers', () => {
   it('builds header meta with counts', () => {
     expect(buildHeaderMeta(new Date(2026, 5, 11), TODAY_WORKSPACE.counts)).toMatch(
-      /^6\/11\(木\) — 書く3件・課題抽出内2件・作成済み3件・待つ2件・解決1件$/,
+      /^6\/11\(木\) — 書く3件・候補1件・課題抽出内2件・作成済み3件・待つ2件・解決1件$/,
     );
   });
 
@@ -1099,7 +1247,7 @@ describe('report-share-workspace helpers', () => {
     };
 
     expect(buildHeaderMeta(new Date(2026, 5, 11), TODAY_WORKSPACE.counts, countMetadata)).toMatch(
-      /^6\/11\(木\) — 書く3件・課題2件・作成済み3件・待つ2件・解決1件$/,
+      /^6\/11\(木\) — 書く3件・候補1件・課題2件・作成済み3件・待つ2件・解決1件$/,
     );
   });
 

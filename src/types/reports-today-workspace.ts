@@ -65,6 +65,31 @@ export type ReportResolvedToday = {
   action: { label: string; href: string };
 };
 
+export type ReportInboundCandidateAction =
+  | 'include_in_report'
+  | 'handoff_only'
+  | 'internal_record_only';
+
+export type ReportInboundCandidateReviewStatus = 'needs_review' | 'auto_accepted' | 'accepted';
+
+export type ReportInboundCandidateDecision = 'needs_decision' | 'include_pending_report';
+
+export type ReportInboundCandidate = {
+  id: string;
+  signal_id: string;
+  inbound_event_id: string;
+  patient_id: string | null;
+  case_id: string | null;
+  patient_label: string;
+  source_channel: 'phone' | 'fax' | 'email' | 'mcs' | 'manual';
+  source_label: string;
+  received_at: string;
+  normalized_summary: string;
+  review_status: ReportInboundCandidateReviewStatus;
+  action_status: 'not_linked';
+  decision: ReportInboundCandidateDecision;
+};
+
 export type ReportFailedDelivery = {
   delivery_record_id: string;
   recipient_label: string;
@@ -158,12 +183,14 @@ export type ReportsTodayWorkspaceResponse = {
   resolved_today: ReportResolvedToday[];
   created_reports: ReportCreatedRow[];
   open_issues: ReportOpenIssue[];
+  inbound_report_candidates: ReportInboundCandidate[];
   counts: {
     to_write: number;
     waiting: number;
     resolved: number;
     created: number;
     open_issues: number;
+    report_candidates: number;
   };
   count_metadata: {
     to_write: ReportWorkspaceCount;
@@ -171,6 +198,7 @@ export type ReportsTodayWorkspaceResponse = {
     resolved: ReportWorkspaceCount;
     created: ReportWorkspaceCount;
     open_issues: ReportWorkspaceCount;
+    report_candidates: ReportWorkspaceCount;
   };
   evidence: {
     /** 宛先別テンプレート種数(送付テンプレート N種) */

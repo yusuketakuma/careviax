@@ -21,7 +21,7 @@ export const formatAgeLabel = formatElapsedLabel;
 /** 「田中 一郎」→「田中」 */
 export const familyNameOf = sharedFamilyNameOf;
 
-/** ヘッダーメタ「6/11(木) — 書く3件・待つ2件・解決1件」 */
+/** ヘッダーメタ「6/11(木) — 書く3件・候補1件・待つ2件・解決1件」 */
 export function buildHeaderMeta(
   now: Date,
   counts: ReportsTodayWorkspaceResponse['counts'] | null,
@@ -34,7 +34,7 @@ export function buildHeaderMeta(
     countMetadata?.open_issues?.count_basis === 'full_result'
       ? `${counts.open_issues}件`
       : `抽出内${counts.open_issues}件`;
-  return `${dateLabel} — 書く${counts.to_write}件・課題${openIssueLabel}・作成済み${counts.created}件・待つ${counts.waiting}件・解決${counts.resolved}件`;
+  return `${dateLabel} — 書く${counts.to_write}件・候補${counts.report_candidates}件・課題${openIssueLabel}・作成済み${counts.created}件・待つ${counts.waiting}件・解決${counts.resolved}件`;
 }
 
 type WorkspaceCount =

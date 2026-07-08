@@ -1,5 +1,6 @@
 import type { NextRequest } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
+import type { Prisma } from '@prisma/client';
 import { withAuthContext } from '@/lib/auth/context';
 import { hasPermission } from '@/lib/auth/permissions';
 import { internalError, success, validationError } from '@/lib/api/response';
@@ -24,6 +25,7 @@ import {
   buildCommunicationRequestsHref,
   resolveCommunicationEntityLink,
 } from '@/lib/communications/navigation';
+import { buildInboundCommunicationEventAssignmentWhere } from '@/server/services/communication-request-access';
 import { buildVisitFacilityPacketHref, buildVisitRecordHref } from '@/lib/visits/navigation';
 import {
   BILLING_VALIDATION_LAYER_KEYS,
@@ -35,6 +37,7 @@ import { z } from 'zod';
 import type {
   ReportDraftGenerationTarget,
   ReportDraftRow,
+  ReportInboundCandidate,
   ReportOpenIssue,
   ReportWorkspaceActionRail,
   ReportCreatedRow,
@@ -59,6 +62,8 @@ const WAITING_LIMIT = 5;
 const RESOLVED_LIMIT = 3;
 const CREATED_REPORT_LIMIT = 12;
 const OPEN_ISSUE_LIMIT = 12;
+const REPORT_INBOUND_CANDIDATE_LIMIT = 12;
+const REPORT_INBOUND_CANDIDATE_SCAN_LIMIT = REPORT_INBOUND_CANDIDATE_LIMIT + 1;
 const BILLING_CANDIDATE_OPEN_ISSUE_SCAN_LIMIT = OPEN_ISSUE_LIMIT * 3;
 const OPEN_ISSUE_SEVERITY_RANK: Record<ReportOpenIssue['severity'], number> = {
   critical: 0,
@@ -66,10 +71,64 @@ const OPEN_ISSUE_SEVERITY_RANK: Record<ReportOpenIssue['severity'], number> = {
   info: 2,
 };
 const REPORT_WORKSPACE_INBOUND_CHANNELS = ['phone', 'fax', 'email', 'mcs', 'manual'] as const;
+const REPORT_INBOUND_CANDIDATE_REVIEW_STATUSES = [
+  'needs_review',
+  'auto_accepted',
+  'accepted',
+] as const;
+const REPORT_INBOUND_CANDIDATE_EVENT_STATUSES = [
+  'unprocessed',
+  'signals_extracted',
+  'reviewed',
+] as const;
+const REPORT_WORKSPACE_INBOUND_CHANNEL_LABELS: Record<
+  (typeof REPORT_WORKSPACE_INBOUND_CHANNELS)[number],
+  string
+> = {
+  phone: '電話',
+  fax: 'FAX',
+  email: 'メール',
+  mcs: 'MCS',
+  manual: '手入力',
+};
 
 type ReportWorkspaceInboundCountReader = {
   inboundCommunicationEvent?: {
     count(args: unknown): Promise<number>;
+  };
+};
+
+type ReportInboundCandidateSignalRow = {
+  id: string;
+  inbound_event_id: string;
+  patient_id: string | null;
+  case_id: string | null;
+  review_status: string;
+  action_status: string;
+  created_at: Date;
+  inbound_event: {
+    id: string;
+    patient_id: string | null;
+    case_id: string | null;
+    source_channel: string;
+    received_at: Date;
+    normalized_summary: string | null;
+    processing_status: string;
+  };
+};
+
+type SafeReportInboundCandidateSignalRow = Omit<
+  ReportInboundCandidateSignalRow,
+  'review_status' | 'action_status' | 'inbound_event'
+> & {
+  review_status: ReportInboundCandidate['review_status'];
+  action_status: 'not_linked';
+  inbound_event: Omit<
+    ReportInboundCandidateSignalRow['inbound_event'],
+    'source_channel' | 'processing_status'
+  > & {
+    source_channel: ReportInboundCandidate['source_channel'];
+    processing_status: (typeof REPORT_INBOUND_CANDIDATE_EVENT_STATUSES)[number];
   };
 };
 
@@ -87,6 +146,96 @@ function countReportWorkspaceInboundCommunications(
       },
     }) ?? Promise.resolve(0)
   );
+}
+
+function hasInboundCandidateScopeMismatch(row: ReportInboundCandidateSignalRow) {
+  return (
+    (row.patient_id &&
+      row.inbound_event.patient_id &&
+      row.patient_id !== row.inbound_event.patient_id) ||
+    (row.case_id && row.inbound_event.case_id && row.case_id !== row.inbound_event.case_id)
+  );
+}
+
+function normalizeInboundCandidateSummary(value: string | null) {
+  const summary = value?.trim();
+  return summary && summary.length > 0 ? summary : null;
+}
+
+function isReportInboundCandidateReviewStatus(
+  status: string,
+): status is ReportInboundCandidate['review_status'] {
+  return REPORT_INBOUND_CANDIDATE_REVIEW_STATUSES.includes(
+    status as ReportInboundCandidate['review_status'],
+  );
+}
+
+function isReportWorkspaceInboundChannel(
+  channel: string,
+): channel is ReportInboundCandidate['source_channel'] {
+  return REPORT_WORKSPACE_INBOUND_CHANNELS.includes(
+    channel as ReportInboundCandidate['source_channel'],
+  );
+}
+
+function isReportInboundCandidateEventStatus(
+  status: string,
+): status is (typeof REPORT_INBOUND_CANDIDATE_EVENT_STATUSES)[number] {
+  return REPORT_INBOUND_CANDIDATE_EVENT_STATUSES.includes(
+    status as (typeof REPORT_INBOUND_CANDIDATE_EVENT_STATUSES)[number],
+  );
+}
+
+function effectiveInboundCandidatePatientId(row: SafeReportInboundCandidateSignalRow) {
+  return row.patient_id ?? row.inbound_event.patient_id ?? null;
+}
+
+function effectiveInboundCandidateCaseId(row: SafeReportInboundCandidateSignalRow) {
+  return row.case_id ?? row.inbound_event.case_id ?? null;
+}
+
+function filterSafeInboundReportCandidateRows(
+  rows: ReportInboundCandidateSignalRow[],
+): SafeReportInboundCandidateSignalRow[] {
+  return rows.filter(
+    (row): row is SafeReportInboundCandidateSignalRow =>
+      row.action_status === 'not_linked' &&
+      isReportInboundCandidateReviewStatus(row.review_status) &&
+      isReportWorkspaceInboundChannel(row.inbound_event.source_channel) &&
+      isReportInboundCandidateEventStatus(row.inbound_event.processing_status) &&
+      !hasInboundCandidateScopeMismatch(row) &&
+      normalizeInboundCandidateSummary(row.inbound_event.normalized_summary) !== null,
+  );
+}
+
+function buildInboundReportCandidates(args: {
+  rows: SafeReportInboundCandidateSignalRow[];
+  patientLabel: (patientId: string | null) => string | null;
+}): ReportInboundCandidate[] {
+  return args.rows.slice(0, REPORT_INBOUND_CANDIDATE_LIMIT).map((row) => {
+    const patientId = effectiveInboundCandidatePatientId(row);
+    const patientLabel = patientId
+      ? (args.patientLabel(patientId) ?? '患者名未取得')
+      : '患者未紐付け';
+    const sourceLabel =
+      REPORT_WORKSPACE_INBOUND_CHANNEL_LABELS[row.inbound_event.source_channel] ??
+      row.inbound_event.source_channel;
+    return {
+      id: `inbound-report-candidate-${row.id}`,
+      signal_id: row.id,
+      inbound_event_id: row.inbound_event_id,
+      patient_id: patientId,
+      case_id: effectiveInboundCandidateCaseId(row),
+      patient_label: patientLabel,
+      source_channel: row.inbound_event.source_channel,
+      source_label: sourceLabel,
+      received_at: row.inbound_event.received_at.toISOString(),
+      normalized_summary: normalizeInboundCandidateSummary(row.inbound_event.normalized_summary)!,
+      review_status: row.review_status,
+      action_status: row.action_status,
+      decision: row.review_status === 'accepted' ? 'include_pending_report' : 'needs_decision',
+    };
+  });
 }
 
 function buildWorkspaceCount(args: {
@@ -765,6 +914,58 @@ const authenticatedGET = withAuthContext(
         const inboundCommunicationCountPromise = countReportWorkspaceInboundCommunications(tx, {
           orgId: ctx.orgId,
         });
+        const inboundReportCandidateSignalsPromise = (async (): Promise<
+          ReportInboundCandidateSignalRow[]
+        > => {
+          const assignmentWhere = await buildInboundCommunicationEventAssignmentWhere({
+            db: tx,
+            orgId: ctx.orgId,
+            accessContext: ctx,
+          });
+          const baseInboundEventWhere: Prisma.InboundCommunicationEventWhereInput = {
+            org_id: ctx.orgId,
+            has_report_signal: true,
+            processing_status: { in: [...REPORT_INBOUND_CANDIDATE_EVENT_STATUSES] },
+            source_channel: { in: [...REPORT_WORKSPACE_INBOUND_CHANNELS] },
+            AND: [{ normalized_summary: { not: null } }, { normalized_summary: { not: '' } }],
+          };
+          const inboundEventWhere: Prisma.InboundCommunicationEventWhereInput = assignmentWhere
+            ? { AND: [baseInboundEventWhere, assignmentWhere] }
+            : baseInboundEventWhere;
+          const where: Prisma.InboundCommunicationSignalWhereInput = {
+            org_id: ctx.orgId,
+            signal_domain: 'report',
+            action_status: 'not_linked',
+            review_status: { in: [...REPORT_INBOUND_CANDIDATE_REVIEW_STATUSES] },
+            inbound_event: { is: inboundEventWhere },
+          };
+
+          return tx.inboundCommunicationSignal.findMany({
+            where,
+            orderBy: [{ created_at: 'desc' }, { id: 'asc' }],
+            take: REPORT_INBOUND_CANDIDATE_SCAN_LIMIT,
+            select: {
+              id: true,
+              inbound_event_id: true,
+              patient_id: true,
+              case_id: true,
+              review_status: true,
+              action_status: true,
+              created_at: true,
+              inbound_event: {
+                select: {
+                  id: true,
+                  patient_id: true,
+                  case_id: true,
+                  source_channel: true,
+                  received_at: true,
+                  normalized_summary: true,
+                  processing_status: true,
+                },
+              },
+            },
+          });
+        })();
         const monthlyDeliveryCountPromise = tx.deliveryRecord.count({
           where: {
             org_id: ctx.orgId,
@@ -867,6 +1068,7 @@ const authenticatedGET = withAuthContext(
           recentReportCount,
           templateCount,
           inboundCommunicationCount,
+          inboundReportCandidateSignalRows,
           monthlyDeliveryCount,
         ] = await Promise.all([
           scheduleContextPromise,
@@ -880,6 +1082,7 @@ const authenticatedGET = withAuthContext(
           recentReportCountPromise,
           templateCountPromise,
           inboundCommunicationCountPromise,
+          inboundReportCandidateSignalsPromise,
           monthlyDeliveryCountPromise,
         ]);
 
@@ -973,6 +1176,9 @@ const authenticatedGET = withAuthContext(
           });
         }
 
+        const safeInboundReportCandidateSignalRows = filterSafeInboundReportCandidateRows(
+          inboundReportCandidateSignalRows,
+        );
         const waitingPatientIds = [
           ...new Set(
             [
@@ -984,6 +1190,7 @@ const authenticatedGET = withAuthContext(
               ...waitingRequests.map((request) => request.patient_id),
               ...resolvedResponses.map((response) => response.request.patient_id),
               ...recentReports.map((report) => report.patient_id),
+              ...safeInboundReportCandidateSignalRows.map(effectiveInboundCandidatePatientId),
             ].filter((id): id is string => Boolean(id)),
           ),
         ];
@@ -1036,6 +1243,10 @@ const authenticatedGET = withAuthContext(
           const name = patientNameById.get(patientId);
           return name ? `${name} 様` : null;
         };
+        const inboundReportCandidates = buildInboundReportCandidates({
+          rows: safeInboundReportCandidateSignalRows,
+          patientLabel,
+        });
         const waitingDaysFrom = (since: Date | null) =>
           since ? Math.max(0, Math.floor((now.getTime() - since.getTime()) / 86_400_000)) : 0;
 
@@ -1190,6 +1401,12 @@ const authenticatedGET = withAuthContext(
             limit: OPEN_ISSUE_LIMIT,
             countBasis: 'derived_visible_window',
           }),
+          report_candidates: buildWorkspaceCount({
+            totalCount: safeInboundReportCandidateSignalRows.length,
+            visibleCount: inboundReportCandidates.length,
+            limit: REPORT_INBOUND_CANDIDATE_LIMIT,
+            countBasis: 'derived_visible_window',
+          }),
         };
 
         const responseData: ReportsTodayWorkspaceResponse = {
@@ -1199,12 +1416,14 @@ const authenticatedGET = withAuthContext(
           resolved_today: resolvedToday,
           created_reports: createdReports,
           open_issues: openIssues,
+          inbound_report_candidates: inboundReportCandidates,
           counts: {
             to_write: countMetadata.to_write.total_count,
             waiting: countMetadata.waiting.total_count,
             resolved: countMetadata.resolved.total_count,
             created: countMetadata.created.total_count,
             open_issues: countMetadata.open_issues.total_count,
+            report_candidates: countMetadata.report_candidates.total_count,
           },
           count_metadata: countMetadata,
           evidence: {

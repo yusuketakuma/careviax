@@ -69,6 +69,15 @@ const rejectSignalSchema = z.object({
   action: z.literal('reject'),
   reason: z.string().trim().min(1, '却下理由は必須です').max(300),
 });
+const includeInReportSignalSchema = z.object({
+  action: z.literal('include_in_report'),
+});
+const handoffOnlySignalSchema = z.object({
+  action: z.literal('handoff_only'),
+});
+const internalRecordOnlySignalSchema = z.object({
+  action: z.literal('internal_record_only'),
+});
 const applyMedicationStockSignalSchema = z.object({
   action: z.literal('apply_to_medication_stock'),
   target_stock_item_id: z.string().trim().min(1, '残数管理対象薬剤IDは必須です'),
@@ -115,11 +124,17 @@ const reviewOnlySignalSchema = z.discriminatedUnion('action', [
   acceptSignalSchema,
   recordOnlySignalSchema,
   rejectSignalSchema,
+  includeInReportSignalSchema,
+  handoffOnlySignalSchema,
+  internalRecordOnlySignalSchema,
 ]);
 const reviewSignalSchema = z.discriminatedUnion('action', [
   acceptSignalSchema,
   recordOnlySignalSchema,
   rejectSignalSchema,
+  includeInReportSignalSchema,
+  handoffOnlySignalSchema,
+  internalRecordOnlySignalSchema,
   applyMedicationStockSignalSchema,
 ]);
 
@@ -132,6 +147,14 @@ type ReviewSignalRouteContext = {
 type TaskUpdateManyResult = {
   count?: number;
 };
+
+function isReportCandidateAction(
+  action: ReviewOnlySignalInput['action'],
+): action is 'include_in_report' | 'handoff_only' | 'internal_record_only' {
+  return (
+    action === 'include_in_report' || action === 'handoff_only' || action === 'internal_record_only'
+  );
+}
 
 function buildReviewUpdate(input: ReviewOnlySignalInput, userId: string) {
   const reviewedAt = new Date();
@@ -151,6 +174,35 @@ function buildReviewUpdate(input: ReviewOnlySignalInput, userId: string) {
       reviewed_by: userId,
       reviewed_at: reviewedAt,
       rejection_reason: input.reason ?? null,
+    };
+  }
+
+  if (input.action === 'include_in_report') {
+    return {
+      review_status: 'accepted' as const,
+      reviewed_by: userId,
+      reviewed_at: reviewedAt,
+      rejection_reason: null,
+    };
+  }
+
+  if (input.action === 'handoff_only') {
+    return {
+      review_status: 'record_only' as const,
+      action_status: 'ignored' as const,
+      reviewed_by: userId,
+      reviewed_at: reviewedAt,
+      rejection_reason: 'report_candidate:handoff_only',
+    };
+  }
+
+  if (input.action === 'internal_record_only') {
+    return {
+      review_status: 'record_only' as const,
+      action_status: 'ignored' as const,
+      reviewed_by: userId,
+      reviewed_at: reviewedAt,
+      rejection_reason: 'report_candidate:internal_record_only',
     };
   }
 
@@ -349,6 +401,9 @@ const authenticatedPATCH = withAuthContext(
           },
           select: {
             id: true,
+            signal_domain: true,
+            review_status: true,
+            action_status: true,
           },
         });
 
@@ -357,6 +412,25 @@ const authenticatedPATCH = withAuthContext(
             ok: false as const,
             response: notFound('シグナルが見つかりません'),
           };
+        }
+
+        if (isReportCandidateAction(reviewPayload.action)) {
+          if (signal.signal_domain !== 'report') {
+            return {
+              ok: false as const,
+              response: notFound('シグナルが見つかりません'),
+            };
+          }
+
+          if (
+            signal.action_status !== 'not_linked' ||
+            ['record_only', 'rejected', 'superseded'].includes(signal.review_status)
+          ) {
+            return {
+              ok: false as const,
+              response: conflict('この報告候補は既に処理済みです。再読み込みしてください'),
+            };
+          }
         }
 
         const updated = await tx.inboundCommunicationSignal.update({

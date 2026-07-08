@@ -49,6 +49,7 @@ type TxOverrides = {
   requests?: unknown[];
   waitingRequestCount?: number;
   inboundCommunicationCount?: number;
+  inboundCommunicationSignals?: unknown[];
   responses?: unknown[];
   resolvedResponseCount?: number;
   patients?: unknown[];
@@ -96,6 +97,9 @@ function mockTx(overrides: TxOverrides = {}) {
     },
     inboundCommunicationEvent: {
       count: vi.fn().mockResolvedValue(overrides.inboundCommunicationCount ?? 0),
+    },
+    inboundCommunicationSignal: {
+      findMany: vi.fn().mockResolvedValue(overrides.inboundCommunicationSignals ?? []),
     },
     communicationResponse: {
       findMany: vi.fn().mockResolvedValue(overrides.responses ?? []),
@@ -151,12 +155,14 @@ describe('/api/care-reports/today-workspace', () => {
     expect(json.data.draft_rows).toEqual([]);
     expect(json.data.created_reports).toEqual([]);
     expect(json.data.open_issues).toEqual([]);
+    expect(json.data.inbound_report_candidates).toEqual([]);
     expect(json.data.counts).toEqual({
       to_write: 0,
       waiting: 0,
       resolved: 0,
       created: 0,
       open_issues: 0,
+      report_candidates: 0,
     });
     expect(json.data.count_metadata).toEqual({
       to_write: {
@@ -192,6 +198,14 @@ describe('/api/care-reports/today-workspace', () => {
         count_basis: 'database_total',
       },
       open_issues: {
+        total_count: 0,
+        visible_count: 0,
+        hidden_count: 0,
+        limit: 12,
+        truncated: false,
+        count_basis: 'derived_visible_window',
+      },
+      report_candidates: {
         total_count: 0,
         visible_count: 0,
         hidden_count: 0,
@@ -258,6 +272,178 @@ describe('/api/care-reports/today-workspace', () => {
     expect(responseText).not.toContain('訪問看護師A');
     expect(responseText).not.toContain('090-0000-0000');
     expect(responseText).not.toContain('secret-storage-key');
+  });
+
+  it('returns normalized inbound report candidates from formal signals without raw detail fields', async () => {
+    const tx = mockTx({
+      inboundCommunicationSignals: [
+        {
+          id: 'signal_report_1',
+          inbound_event_id: 'event_report_1',
+          patient_id: 'patient_1',
+          case_id: 'case_1',
+          review_status: 'needs_review',
+          action_status: 'not_linked',
+          created_at: new Date('2026-07-08T01:00:00.000Z'),
+          extracted_text: 'raw extracted 湿布 残り4枚',
+          structured_payload: { secret: 'payload-secret' },
+          extracted_medication_name: '湿布',
+          extracted_quantity: 4,
+          extracted_unit: '枚',
+          inbound_event: {
+            id: 'event_report_1',
+            patient_id: 'patient_1',
+            case_id: 'case_1',
+            source_channel: 'fax',
+            received_at: new Date('2026-07-08T00:45:00.000Z'),
+            normalized_summary: '訪問看護から、ADL低下の報告候補が届いています。',
+            processing_status: 'signals_extracted',
+            raw_text: '原文: 湿布は残り4枚',
+            sender_name: '訪問看護師A',
+            sender_contact: '090-0000-0000',
+            sender_organization_name: '訪問看護ステーション',
+            external_url: 'https://mcs.example/secret',
+            attachment_count: 2,
+          },
+        },
+        {
+          id: 'signal_scope_mismatch',
+          inbound_event_id: 'event_scope_mismatch',
+          patient_id: 'patient_a',
+          case_id: 'case_a',
+          review_status: 'auto_accepted',
+          action_status: 'not_linked',
+          created_at: new Date('2026-07-08T00:55:00.000Z'),
+          inbound_event: {
+            id: 'event_scope_mismatch',
+            patient_id: 'patient_b',
+            case_id: 'case_a',
+            source_channel: 'email',
+            received_at: new Date('2026-07-08T00:40:00.000Z'),
+            normalized_summary: '患者違いの候補',
+            processing_status: 'signals_extracted',
+          },
+        },
+        {
+          id: 'signal_unassigned',
+          inbound_event_id: 'event_unassigned',
+          patient_id: null,
+          case_id: null,
+          review_status: 'accepted',
+          action_status: 'not_linked',
+          created_at: new Date('2026-07-08T00:30:00.000Z'),
+          inbound_event: {
+            id: 'event_unassigned',
+            patient_id: null,
+            case_id: null,
+            source_channel: 'manual',
+            received_at: new Date('2026-07-08T00:20:00.000Z'),
+            normalized_summary: '患者未紐付けの報告候補です。',
+            processing_status: 'reviewed',
+          },
+        },
+      ],
+      patients: [{ id: 'patient_1', name: '田中 一郎' }],
+    });
+    const req = createRequest('http://localhost/api/care-reports/today-workspace');
+
+    const res = await GET(req, { params: Promise.resolve({}) });
+    const json = await res!.json();
+
+    expect(res!.status).toBe(200);
+    expect(tx.inboundCommunicationSignal.findMany).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        signal_domain: 'report',
+        action_status: 'not_linked',
+        review_status: { in: ['needs_review', 'auto_accepted', 'accepted'] },
+        inbound_event: {
+          is: {
+            org_id: 'org_1',
+            has_report_signal: true,
+            processing_status: { in: ['unprocessed', 'signals_extracted', 'reviewed'] },
+            source_channel: { in: ['phone', 'fax', 'email', 'mcs', 'manual'] },
+            AND: [{ normalized_summary: { not: null } }, { normalized_summary: { not: '' } }],
+          },
+        },
+      },
+      orderBy: [{ created_at: 'desc' }, { id: 'asc' }],
+      take: 13,
+      select: {
+        id: true,
+        inbound_event_id: true,
+        patient_id: true,
+        case_id: true,
+        review_status: true,
+        action_status: true,
+        created_at: true,
+        inbound_event: {
+          select: {
+            id: true,
+            patient_id: true,
+            case_id: true,
+            source_channel: true,
+            received_at: true,
+            normalized_summary: true,
+            processing_status: true,
+          },
+        },
+      },
+    });
+    expect(
+      JSON.stringify(tx.inboundCommunicationSignal.findMany.mock.calls[0]?.[0].select),
+    ).not.toContain('raw_text');
+    expect(json.data.inbound_report_candidates).toEqual([
+      {
+        id: 'inbound-report-candidate-signal_report_1',
+        signal_id: 'signal_report_1',
+        inbound_event_id: 'event_report_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        patient_label: '田中 一郎 様',
+        source_channel: 'fax',
+        source_label: 'FAX',
+        received_at: '2026-07-08T00:45:00.000Z',
+        normalized_summary: '訪問看護から、ADL低下の報告候補が届いています。',
+        review_status: 'needs_review',
+        action_status: 'not_linked',
+        decision: 'needs_decision',
+      },
+      {
+        id: 'inbound-report-candidate-signal_unassigned',
+        signal_id: 'signal_unassigned',
+        inbound_event_id: 'event_unassigned',
+        patient_id: null,
+        case_id: null,
+        patient_label: '患者未紐付け',
+        source_channel: 'manual',
+        source_label: '手入力',
+        received_at: '2026-07-08T00:20:00.000Z',
+        normalized_summary: '患者未紐付けの報告候補です。',
+        review_status: 'accepted',
+        action_status: 'not_linked',
+        decision: 'include_pending_report',
+      },
+    ]);
+    expect(json.data.counts.report_candidates).toBe(2);
+    expect(json.data.count_metadata.report_candidates).toMatchObject({
+      total_count: 2,
+      visible_count: 2,
+      hidden_count: 0,
+      limit: 12,
+      count_basis: 'derived_visible_window',
+    });
+    const responseText = JSON.stringify(json.data);
+    expect(responseText).not.toContain('原文');
+    expect(responseText).not.toContain('raw extracted');
+    expect(responseText).not.toContain('訪問看護師A');
+    expect(responseText).not.toContain('090-0000-0000');
+    expect(responseText).not.toContain('payload-secret');
+    expect(responseText).not.toContain('https://mcs.example/secret');
+    expect(responseText).not.toContain('attachment_count');
+    expect(responseText).not.toContain('湿布');
+    expect(responseText).not.toContain('4枚');
+    expect(responseText).not.toContain('患者違いの候補');
   });
 
   it('uses Japan business date and instant ranges when date is omitted under UTC runtime', async () => {
@@ -729,6 +915,7 @@ describe('/api/care-reports/today-workspace', () => {
       resolved: 1,
       created: 0,
       open_issues: 0,
+      report_candidates: 0,
     });
   });
 
