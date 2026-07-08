@@ -24217,6 +24217,92 @@ visit_request/unknown`, `action_status='not_linked'`, and
   Commit and push this ledger hash update with only `ops/refactor/STATE.md`
   staged, then continue with the next non-human-gated read-speed cleanup.
 
+## 2026-07-09 - API-CONTRACT-001G service-areas envelope migration
+
+- current task:
+  Continue `API-CONTRACT-001` by migrating `GET /api/service-areas` and
+  `DELETE /api/service-areas/:id` to the current response envelope. Per the
+  latest product direction, compatibility fallback bodies were not preserved.
+- files inspected:
+  `git status --short --untracked-files=all`; `git log --oneline -8`;
+  `Plans.md`; `ops/refactor/STATE.md`;
+  `tools/api-response-shape-allowlist.json`;
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`;
+  `src/lib/api/list-envelope.ts`; `src/lib/api/response.ts`;
+  `src/app/api/service-areas/route.ts`;
+  `src/app/api/service-areas/route.test.ts`;
+  `src/app/api/service-areas/[id]/route.ts`;
+  `src/app/api/service-areas/[id]/route.test.ts`;
+  `src/app/(dashboard)/admin/service-areas/page.tsx`;
+  `src/app/(dashboard)/admin/service-areas/page.test.tsx`;
+  service-areas API path helpers and usage search results.
+- files changed:
+  `src/app/api/service-areas/route.ts`;
+  `src/app/api/service-areas/route.test.ts`;
+  `src/app/api/service-areas/[id]/route.ts`;
+  `src/app/api/service-areas/[id]/route.test.ts`;
+  `src/app/(dashboard)/admin/service-areas/page.tsx`;
+  `src/app/(dashboard)/admin/service-areas/page.test.tsx`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `ops/refactor/STATE.md`.
+- bugs found:
+  `GET /api/service-areas` spread counted-list metadata at the response top
+  level, and the admin service-areas page read those top-level count fields.
+  `DELETE /api/service-areas/:id` returned a legacy message body instead of a
+  stable data envelope.
+- bugs fixed:
+  The list route now returns only `data` plus `meta` containing
+  total/visible/hidden counts, truncation state, count basis, applied filters,
+  and limit. The admin page consumes `payload.meta` only. The delete route now
+  returns `data: { id }`. Route and page tests assert the new-only contract, and
+  the two allowlist entries were removed. Response-shape debt dropped from 214
+  to 212 allowlisted violations.
+- security risks found:
+  No auth, authorization, org scoping, RLS, validation, PHI, or audit behavior
+  changed. The routes remain org-scoped and keep existing admin requirements for
+  create/update/delete. Higher-risk allowlist candidates such as
+  `admin/organizations`, `pharmacist-credentials`, auth password reset, billing,
+  and care-report send were not touched in this low-risk slice because they
+  require explicit high-risk/Oracle-gated handling.
+- security risks reduced:
+  Removed two legacy public success shapes without old-shape fallback fields,
+  reducing response-contract ambiguity for service-area readers and destructive
+  service-area operations.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this is response contract cleanup. Existing bounded `limit`, counted
+  query, org-filtered lookup, and delete flow are unchanged.
+- UI/UX note:
+  No visible UI/UX change. The service-areas page layout and interaction
+  behavior are unchanged; only response metadata reading moved to `meta`.
+  Image generation was not applicable.
+- validation commands:
+  `pnpm exec prettier --write src/app/api/service-areas/route.ts 'src/app/api/service-areas/[id]/route.ts' src/app/api/service-areas/route.test.ts 'src/app/api/service-areas/[id]/route.test.ts' 'src/app/(dashboard)/admin/service-areas/page.tsx' 'src/app/(dashboard)/admin/service-areas/page.test.tsx' tools/api-response-shape-allowlist.json Plans.md`;
+  `pnpm vitest run src/app/api/service-areas/route.test.ts 'src/app/api/service-areas/[id]/route.test.ts' 'src/app/(dashboard)/admin/service-areas/page.test.tsx' --reporter=dot --testTimeout=30000`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint src/app/api/service-areas/route.ts 'src/app/api/service-areas/[id]/route.ts' src/app/api/service-areas/route.test.ts 'src/app/api/service-areas/[id]/route.test.ts' 'src/app/(dashboard)/admin/service-areas/page.tsx' 'src/app/(dashboard)/admin/service-areas/page.test.tsx'`;
+  `pnpm exec prettier --check src/app/api/service-areas/route.ts 'src/app/api/service-areas/[id]/route.ts' src/app/api/service-areas/route.test.ts 'src/app/api/service-areas/[id]/route.test.ts' 'src/app/(dashboard)/admin/service-areas/page.tsx' 'src/app/(dashboard)/admin/service-areas/page.test.tsx' tools/api-response-shape-allowlist.json Plans.md`;
+  `git diff --check -- src/app/api/service-areas/route.ts 'src/app/api/service-areas/[id]/route.ts' src/app/api/service-areas/route.test.ts 'src/app/api/service-areas/[id]/route.test.ts' 'src/app/(dashboard)/admin/service-areas/page.tsx' 'src/app/(dashboard)/admin/service-areas/page.test.tsx' tools/api-response-shape-allowlist.json Plans.md`.
+- validation results:
+  Prettier passed. Focused route/page tests passed 3 files / 36 tests.
+  `api-response-shape:check` passed with 212 allowlisted violations and 0 new
+  violations. `plans:active:check` passed. Focused ESLint passed. Targeted
+  Prettier check passed. Scoped diff check passed.
+- commit:
+  Service-areas route/page envelope migration, tests, allowlist cleanup, and
+  Plans sync committed as `429bfc857` (`fix(api): envelope service areas
+  responses`). Push is pending this ledger hash update.
+- remaining work:
+  `API-CONTRACT-001` remains Partial. Continue migrating real legacy success
+  and error response shapes route by route without compatibility fallback
+  bodies. Higher-risk tenant/auth/PII/billing/report candidates should be
+  handled as explicit high-risk slices with Oracle consultation where required.
+- next action:
+  Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
+  then continue the next safe `API-CONTRACT-001` envelope migration.
+
 ## 2026-07-09 - API-CONTRACT-001A response-shape guard ratchet
 
 - current task:
