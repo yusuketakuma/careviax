@@ -23174,7 +23174,9 @@ status` no PR). Browser session `inbound-stock-selector` failed with
   Prettier check passed. Final targeted diff-check passed for owned tracked
   files.
 - commit:
-  Pending. Record the implementation commit hash after the scoped commit.
+  Implementation and Plans update committed as
+  `7ecf7d1b9362f0a2b9a23e3d547291463f488c05`
+  (`feat(inbound): add source mapping review`).
 - remaining work:
   `INBOUND-002-REVIEW-DETAIL` remains partial for VisitBrief/Schedule/Report/
   Share downstream integration and patient-unresolved source risk surfacing.
