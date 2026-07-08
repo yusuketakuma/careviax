@@ -61,10 +61,26 @@ function concreteMovementTypeOf(eventType: string): PatientMovementEventType | n
   );
 }
 
-function normalizeRelativeHref(href: string | null | undefined, fallback: string) {
-  if (!href) return fallback;
-  if (!href.startsWith('/') || href.startsWith('//')) return fallback;
-  return href;
+function isInternalApiHref(href: string) {
+  const lowerHref = href.toLowerCase();
+  return (
+    lowerHref === '/api' ||
+    lowerHref.startsWith('/api/') ||
+    lowerHref.startsWith('/api?') ||
+    lowerHref.startsWith('/api#')
+  );
+}
+
+function isLegacyMovementTimelineHref(href: string) {
+  return /^\/patients\/[^/?#]+\/timeline(?:[/?#]|$)/i.test(href);
+}
+
+function normalizeMovementHref(href: string | null | undefined, fallback: string) {
+  const trimmed = href?.trim();
+  if (!trimmed) return fallback;
+  if (!trimmed.startsWith('/') || trimmed.startsWith('//')) return fallback;
+  if (isInternalApiHref(trimmed) || isLegacyMovementTimelineHref(trimmed)) return fallback;
+  return trimmed;
 }
 
 function movementCategoryOf(event: TimelineEvent): PatientMovementCategory {
@@ -181,7 +197,7 @@ export function toPatientMovementTimelineEvent(
     recorded_at: null,
     title: event.title,
     summary: summaryOf(event),
-    href: normalizeRelativeHref(event.href, fallbackHref),
+    href: normalizeMovementHref(event.href, fallbackHref),
     action_label: event.action_label ?? '詳細を開く',
     status: event.status || null,
     status_label: statusLabel,

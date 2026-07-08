@@ -117,6 +117,73 @@ describe('patient-movement-timeline-presenter', () => {
     expect(serialized).not.toContain('storage.example.com');
   });
 
+  it.each([
+    ['blank', '   '],
+    ['external absolute', 'https://storage.example.com/private/rx.pdf'],
+    ['protocol relative', '//storage.example.com/private/rx.pdf'],
+    ['javascript', 'javascript:alert(1)'],
+    ['mailto', 'mailto:care@example.invalid'],
+    ['api root', '/api'],
+    ['api with query', '/api?patient_id=patient_1'],
+    ['api child', '/api/patients/patient_1/timeline'],
+    ['movement api', '/api/patients/patient_1/movement-timeline?limit=40'],
+    ['legacy list alias', '/patients/patient_1/timeline'],
+    ['legacy detail shell', '/patients/patient_1/timeline/prescription_intake%3Aintake_1'],
+    ['legacy detail with query', '/patients/patient_1/timeline/visit_record:visit_1?raw=1'],
+    ['legacy detail for another patient', '/patients/patient_2/timeline/event_1'],
+  ])('falls back for unsafe movement href: %s', (_label, href) => {
+    const movement = toPatientMovementTimelineEvent(
+      baseEvent({
+        id: 'prescription_intake:intake_1',
+        event_type: 'prescription_intake',
+        category: 'prescription',
+        href,
+        summary: 'OCR本文 / カロナール500mg / patient-name-yamada.pdf',
+        metadata: ['OCR本文', 'patient-name-yamada.pdf', '処方せん画像'],
+      }),
+      { patientId: 'patient_1' },
+    );
+
+    expect(movement.href).toBe('/patients/patient_1#patient-movement');
+    expect(movement.raw_available).toBe(false);
+    expect(movement.metadata).toEqual([]);
+    expect(movement).not.toHaveProperty('raw_text');
+    expect(movement).not.toHaveProperty('event_detail_href');
+
+    const serialized = JSON.stringify(movement);
+    expect(serialized).not.toContain('/api/');
+    expect(serialized).not.toContain('/timeline/');
+    expect(serialized).not.toContain('OCR本文');
+    expect(serialized).not.toContain('カロナール500mg');
+    expect(serialized).not.toContain('patient-name-yamada.pdf');
+    expect(serialized).not.toContain('処方せん画像');
+  });
+
+  it.each([
+    '/prescriptions/intake_1',
+    '/visits/visit_1',
+    '/visits/schedule_1/record',
+    '/reports/report_1',
+    '/patients/patient_1#patient-documents',
+    '/patients/patient_1#patient-movement',
+    '/patients/patient_1/management-plan',
+    '/patients/patient_1/mcs',
+    '/tasks?task_type=patient_self_report_followup',
+    '/conferences?patient_id=patient_1',
+  ])('preserves safe movement href %s', (href) => {
+    const movement = toPatientMovementTimelineEvent(
+      baseEvent({
+        id: 'task:task_1',
+        event_type: 'task_created',
+        category: 'task',
+        href,
+      }),
+      { patientId: 'patient_1' },
+    );
+
+    expect(movement.href).toBe(href);
+  });
+
   it('normalizes prescription and document operation history as marker events', () => {
     const movementEvents = buildPatientMovementTimelineEvents(
       [

@@ -447,10 +447,38 @@ describe('PatientMovementTimeline', () => {
           },
           {
             ...inboundTimelineEvent,
+            id: 'event_api_root_href',
+            title: 'API rootを含む受信候補',
+            href: '/api',
+            action_label: 'API rootを開く',
+          },
+          {
+            ...inboundTimelineEvent,
+            id: 'event_api_query_href',
+            title: 'API queryを含む受信候補',
+            href: '/api?patient_id=patient_1',
+            action_label: 'API queryを開く',
+          },
+          {
+            ...inboundTimelineEvent,
             id: 'event_api_href',
             title: 'API pathを含む受信候補',
             href: '/api/patients/patient_1/movement-timeline',
             action_label: 'APIを開く',
+          },
+          {
+            ...inboundTimelineEvent,
+            id: 'event_legacy_list_href',
+            title: '旧timeline一覧を含む受信候補',
+            href: '/patients/patient_1/timeline',
+            action_label: '旧timelineを開く',
+          },
+          {
+            ...inboundTimelineEvent,
+            id: 'event_legacy_detail_href',
+            title: '旧timeline詳細を含む受信候補',
+            href: '/patients/patient_1/timeline/visit_record:visit_1?raw=1',
+            action_label: '旧timeline詳細を開く',
           },
           {
             ...inboundTimelineEvent,
@@ -469,9 +497,39 @@ describe('PatientMovementTimeline', () => {
     );
     expect(hrefs).not.toContain('https://example.invalid/signed-url');
     expect(hrefs).not.toContain('//example.invalid/file');
+    expect(hrefs).not.toContain('/api');
+    expect(hrefs).not.toContain('/api?patient_id=patient_1');
     expect(hrefs).not.toContain('/api/patients/patient_1/movement-timeline');
+    expect(hrefs).not.toContain('/patients/patient_1/timeline');
+    expect(hrefs).not.toContain('/patients/patient_1/timeline/visit_record:visit_1?raw=1');
     expect(hrefs).not.toContain('javascript:alert(1)');
     expect(screen.getAllByText('詳細導線未設定').length).toBeGreaterThan(0);
+  });
+
+  it('renders fallback patient-movement anchors without synthesizing the legacy timeline shell', () => {
+    render(
+      <PatientMovementTimeline
+        timelineEvents={[
+          {
+            ...timelineEvents[0],
+            id: 'visit_record:visit_1',
+            href: '/patients/patient_1#patient-movement',
+            action_label: '患者の動きを開く',
+          },
+        ]}
+        selfReports={[]}
+      />,
+    );
+
+    expect(
+      screen
+        .getAllByRole('link', { name: /患者の動きを開く/ })
+        .some((link) => link.getAttribute('href') === '/patients/patient_1#patient-movement'),
+    ).toBe(true);
+    const hrefs = Array.from(document.querySelectorAll('a')).map((link) =>
+      link.getAttribute('href'),
+    );
+    expect(hrefs.some((href) => href?.includes('/patients/patient_1/timeline'))).toBe(false);
   });
 
   it('renders self report events in the main communication timeline', () => {

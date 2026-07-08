@@ -399,7 +399,15 @@ function getSafeTimelineHref(href: string) {
   const lowerHref = trimmed.toLowerCase();
 
   if (!trimmed.startsWith('/') || trimmed.startsWith('//')) return null;
-  if (lowerHref.startsWith('/api/')) return null;
+  if (
+    lowerHref === '/api' ||
+    lowerHref.startsWith('/api/') ||
+    lowerHref.startsWith('/api?') ||
+    lowerHref.startsWith('/api#')
+  ) {
+    return null;
+  }
+  if (/^\/patients\/[^/?#]+\/timeline(?:[/?#]|$)/i.test(trimmed)) return null;
   return trimmed;
 }
 

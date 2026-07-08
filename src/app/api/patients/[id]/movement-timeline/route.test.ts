@@ -58,6 +58,21 @@ function expectMeasuredJsonContentLength(response: Response, body: unknown) {
   );
 }
 
+function expectMovementListContract(body: unknown) {
+  const serialized = JSON.stringify(body);
+  for (const forbidden of [
+    'timeline_events',
+    'self_reports',
+    'raw_text',
+    'event_detail_href',
+    'SOAP本文',
+    'OCR本文',
+    'patient-name-yamada.pdf',
+  ]) {
+    expect(serialized).not.toContain(forbidden);
+  }
+}
+
 function movementEvent(
   overrides: Partial<{
     id: string;
@@ -185,7 +200,7 @@ describe('GET /api/patients/[id]/movement-timeline', () => {
       timeline_events: [
         {
           id: 'unsafe_timeline_1',
-          title: 'SOAP本文と患者電話番号090-0000-0000',
+          title: 'SOAP本文とOCR本文とpatient-name-yamada.pdfと患者電話番号090-0000-0000',
         },
       ],
       movement_events: [
@@ -235,10 +250,8 @@ describe('GET /api/patients/[id]/movement-timeline', () => {
     expect(typeof firstJson.meta.next_cursor).toBe('string');
     expect(JSON.stringify(firstJson.meta)).not.toContain('090-0000-0000');
     expect(JSON.stringify(firstJson.meta)).not.toContain('SOAP本文');
-    expect(JSON.stringify(firstJson)).not.toContain('timeline_events');
-    expect(JSON.stringify(firstJson)).not.toContain('self_reports');
     expect(JSON.stringify(firstJson)).not.toContain('090-0000-0000');
-    expect(JSON.stringify(firstJson)).not.toContain('SOAP本文');
+    expectMovementListContract(firstJson);
 
     const secondResponse = await GET(
       createRequest(

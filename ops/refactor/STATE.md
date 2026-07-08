@@ -23624,3 +23624,107 @@ visit_request/unknown`, `action_status='not_linked'`, and
   Continue the next non-human-gated Plans item. `STOCK-001-VISIT-CONTEXT-APPLY`
   remains a human-gated migration slice, so prefer `MOV-001-API` or another
   queue item that does not require migration/live AWS approval.
+
+## 2026-07-08 - MOV-001 deep-link guard
+
+- current task:
+  Finish the remaining Patient Movement deep-link guard under the current-only
+  contract. Do not preserve compatibility aliases, do not reintroduce the old
+  `/patients/:id/timeline` page/detail shell, and do not add raw detail access
+  in this slice.
+- files inspected:
+  `Plans.md`; `ops/refactor/STATE.md`; `docs/ui-ux-design-guidelines.md`;
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`;
+  `src/server/services/patient-movement-timeline-presenter.ts`;
+  `src/server/services/patient-movement-timeline-presenter.test.ts`;
+  `src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx`;
+  `src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx`;
+  `src/app/api/patients/[id]/movement-timeline/route.ts`;
+  `src/app/api/patients/[id]/movement-timeline/route.test.ts`;
+  `src/app/api/patients/[id]/timeline-route-handler.ts`;
+  `src/app/api/patients/[id]/timeline/[eventId]/route.ts`;
+  `src/app/api/patients/[id]/timeline/[eventId]/route.test.ts`;
+  `src/server/services/patient-detail.ts`;
+  `src/server/services/patient-detail.test.ts`;
+  `src/server/services/patient-detail-timeline-registry.ts`;
+  `src/types/patient-movement-timeline.ts`.
+- files changed:
+  `src/server/services/patient-movement-timeline-presenter.ts`;
+  `src/server/services/patient-movement-timeline-presenter.test.ts`;
+  `src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx`;
+  `src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx`;
+  `src/app/api/patients/[id]/movement-timeline/route.test.ts`;
+  `Plans.md`; `ops/refactor/STATE.md`.
+- Oracle safety gate:
+  Consulted Oracle/GPT-5.5 Pro before finalizing because this touches
+  patient/PHI movement links and raw-detail boundaries. Ran
+  `npx -y @steipete/oracle --help` first. Target repository context was
+  included: `https://github.com/yusuketakuma/careviax.git`, branch `main`,
+  commit `e1ca5b1b869f78a8165268941e9e43b9b6c77f37`, no active PR for `main`,
+  and unrelated dirty memory/docs only. The `mov-link-guard` consult returned a
+  usable answer after transient local Chrome status noise. Oracle reported the
+  GitHub URL was accessible and gave GO for only href normalization, UI
+  defense-in-depth, and tests. It explicitly advised not to restore old list
+  aliases, not to restore the old event detail shell, and not to add raw
+  SOAP/OCR/prescription/detail/body/attachment fields in this slice.
+- bugs found:
+  Movement presenter accepted any relative href, so an upstream source could put
+  `/api`, `/api?`, `/api/...`, or legacy `/patients/:id/timeline*` links into a
+  movement action. The UI guard also rejected `/api/` but not `/api`, `/api?`,
+  `/api#`, or the legacy patient timeline shell. This could surface internal API
+  URLs or retired raw-detail page shapes as primary movement CTAs.
+- bugs fixed:
+  Presenter href normalization now trims input, rejects external/protocol
+  relative URLs, rejects internal API URLs including `/api`, `/api?`, `/api#`,
+  and rejects legacy `/patients/:id/timeline` list/detail page hrefs. Unsafe
+  presenter hrefs fall back to `/patients/:id#patient-movement`. The UI applies
+  the same reject policy for defense-in-depth and disables unsafe direct hrefs
+  instead of rendering anchors. Safe current relative links remain unchanged.
+- security risks found:
+  Old detail shells and API URLs are sensitive link boundaries for patient data.
+  Movement list payloads must not expose raw text, legacy event detail hrefs,
+  SOAP/OCR bodies, prescription detail text, attachment names, or internal API
+  action targets.
+- security risks reduced:
+  Tests now cover unsafe href fallback for blank, external, protocol-relative,
+  JavaScript, mailto, API root/query/child/movement API, old list alias, old
+  detail shell, old detail shell with query, and old detail shell for another
+  patient. Route tests assert the movement list contract excludes
+  `timeline_events`, `self_reports`, `raw_text`, `event_detail_href`, SOAP/OCR
+  sentinel text, and pdf names. Static `rg` checks showed legacy
+  `/patients/:id/timeline*` hits only in rejection tests and the existing API
+  detail resolver route; no old page/list alias was reintroduced.
+- performance issues found:
+  None in this slice.
+- performance issues improved:
+  The guard is string normalization in the existing presenter/UI paths and does
+  not add queries, joins, client fetches, or payload size.
+- UI/UX note:
+  Read `docs/ui-ux-design-guidelines.md`. Image generation was intentionally
+  omitted because this was a narrow link-state guard and test-contract change,
+  not a visual reconstruction or new layout concept. The existing movement card
+  disabled-action state is reused.
+- validation commands:
+  `pnpm exec prettier --write Plans.md`;
+  `pnpm vitest run src/server/services/patient-movement-timeline-presenter.test.ts 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx' 'src/app/api/patients/[id]/movement-timeline/route.test.ts' --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint src/server/services/patient-movement-timeline-presenter.ts src/server/services/patient-movement-timeline-presenter.test.ts 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx' 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx' 'src/app/api/patients/[id]/movement-timeline/route.test.ts'`;
+  `pnpm exec prettier --check src/server/services/patient-movement-timeline-presenter.ts src/server/services/patient-movement-timeline-presenter.test.ts 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx' 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx' 'src/app/api/patients/[id]/movement-timeline/route.test.ts' Plans.md`;
+  `pnpm plans:active:check`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `rg -n "/patients/.*/timeline|/patients/[^\"' )]+/timeline|event_detail_href|raw_text" src/app src/components src/server/services src/types`;
+  `rg -n "movement-timeline|timeline/\\[eventId\\]|createPatientMovementTimelineGET" src/app/api/patients src/lib src/server/services`.
+- validation results:
+  Focused Movement presenter/UI/API Vitest passed 3 files / 73 tests. Scoped
+  ESLint passed. Scoped Prettier check passed. Plans active board check passed.
+  Full typecheck passed after `next typegen`. Static route/raw searches matched
+  only expected tests, existing inbound raw-detail surfaces, external-share
+  unsupported raw scope tests, and the existing `/api/patients/:id/timeline/:eventId`
+  detail resolver. Commit and push are pending.
+- remaining work:
+  `MOV-001-API` still has raw detail reauthorization and browser/mobile/a11y
+  validation. The old list alias and old page detail shell remain intentionally
+  unsupported. `STOCK-001-VISIT-CONTEXT-APPLY` and related DB integration remain
+  human-gated.
+- next action:
+  Run final diff checks, commit the scoped MOV link-guard slice, push it, then
+  update this ledger with the commit and push hashes.
