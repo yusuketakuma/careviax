@@ -22865,3 +22865,88 @@ status` no PR). Browser session `inbound-stock-selector` failed with
 - next action:
   Commit this ledger update, push the inbound selector slice, then continue to
   the next highest-value non-human-gated item in `Plans.md`.
+
+## 2026-07-08 MOV-001 map-less date card shell
+
+- current task:
+  Complete a small non-legacy `MOV-001-API` UI slice by refining
+  `PatientMovementTimeline` into a map-less date card shell on top of the new
+  `/api/patients/:id/movement-timeline` flow only. Do not restore the old
+  `/api/patients/:id/timeline` list alias or add raw detail drawers in this
+  slice.
+- files inspected:
+  `git status --short --untracked-files=all`, `Plans.md`,
+  `ops/refactor/STATE.md`, `.agents/skills/oracle-consult/SKILL.md`,
+  `docs/ui-ux-design-guidelines.md`,
+  `src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx`,
+  `src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+  `src/types/patient-movement-timeline.ts`,
+  `src/components/ui/button.tsx`, and `src/components/ui/button-variants.ts`.
+- files changed:
+  `Plans.md`, `ops/refactor/STATE.md`,
+  `src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx`, and
+  `src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx`.
+- oracle:
+  Required because the UI displays patient movement / clinical context. Oracle
+  Browser consult `movement-date-card-ui` completed with GPT-5.5 Pro. GitHub
+  context was included and Oracle reported GitHub access succeeded. It returned
+  a limited GO for option A: UI-only date-card refinement, existing DTO only,
+  no API/DB/auth/payload changes, no raw detail drawer, no old timeline list
+  alias, no raw PHI/source URL/attachment/detail exposure, loaded-window counts
+  only, and 44px targets. Adopted the advice by keeping the slice to the
+  movement component/test, adding internal-only href guarding, changing count
+  copy from all/total wording to loaded-window wording, keeping occurrence-only
+  summary suppression, and leaving raw detail reauth for a later slice.
+- imagegen:
+  Used `imagegen` preview-only per PH-OS UI policy for the date-card visual
+  reference. Generated non-PHI mockup:
+  `/Users/yusuke/.codex/generated_images/019f4092-692b-7733-bc51-3fa9d1686c41/ig_0d59af998bf8cb90016a4e417051f08191865bd04dbd31c39e.png`.
+  The generated text/data was treated as design reference only; no asset was
+  copied into the project or referenced by production code.
+- implementation:
+  `PatientMovementTimeline` now presents loaded-window movement events as
+  date-card sections with scoped day counts and day category chips, while the
+  selected-event preview remains in the existing right rail. Filter/action
+  controls were raised to `min-h-11`, filter copy now says `読込済み`, and the
+  top count badge uses loaded-window wording instead of `全` / total wording.
+  Detail actions now pass through an internal-only href guard and render a
+  disabled `詳細導線未設定` control for external, protocol-relative,
+  `javascript:`, or `/api/` hrefs. No API route, DTO fetch, DB, auth,
+  permission, or raw detail surface was changed.
+- bugs found:
+  The movement UI could make loaded-window counts look like full totals and
+  trusted `event.href` unconditionally. That created avoidable UX safety risk
+  if a malformed source URL or API path ever reached the component.
+- security risks reduced:
+  Added UI-level defense against external/protocol-relative/script/API hrefs
+  being rendered as movement detail links. Existing raw omission tests for
+  visit, prescription, and document occurrence markers were preserved, and new
+  tests verify unsafe hrefs are not anchors.
+- performance issues improved:
+  No runtime reads or payloads were added. The date-card shell reuses the
+  already loaded movement DTO, groups client-side by the current filtered
+  window, and does not request raw detail or additional patient data.
+- validation commands:
+  `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx' 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx'`;
+  `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx' --reporter=dot --testTimeout=30000`;
+  `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx' 'src/app/api/patients/[id]/movement-timeline/route.test.ts' --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx' 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx'`;
+  `pnpm exec prettier --check 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx' 'src/app/(dashboard)/patients/[id]/patient-movement-timeline.test.tsx'`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `pnpm exec prettier --write Plans.md`;
+  `pnpm plans:active:check`.
+- validation results:
+  Focused movement UI Vitest passed 1 file / 14 tests. Scoped ESLint passed.
+  Focused movement UI + route regression passed 2 files / 25 tests. Scoped
+  Prettier check passed. Typecheck passed after `next typegen`. Plans active
+  board check passed.
+- remaining work:
+  `MOV-001-API` remains partial for remaining deep-link coverage, raw detail
+  reauth, and browser/mobile/a11y validation. `STOCK-001-VISIT-CONTEXT-APPLY`
+  and DB integration remain human gates. No legacy compatibility path was
+  restored.
+- next action:
+  Run final formatting/diff checks including `ops/refactor/STATE.md`, commit
+  this coherent movement date-card slice, push it, then continue to the next
+  highest-value non-human-gated item in `Plans.md`.

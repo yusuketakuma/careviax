@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { PatientMovementTimeline } from './patient-movement-timeline';
@@ -157,9 +157,20 @@ describe('PatientMovementTimeline', () => {
     expect(screen.getByText('訪問 1件')).toBeTruthy();
     expect(screen.getByText('処方・調剤 1件')).toBeTruthy();
     expect(screen.getByText('文書 1件')).toBeTruthy();
+    expect(screen.getByText('読込済み 4 件表示')).toBeTruthy();
+    expect(screen.queryByText(/全 4 件/)).toBeNull();
+    expect(screen.getByRole('button', { name: '確認フィルタ: 読込済み' }).className).toContain(
+      'min-h-11',
+    );
     for (const label of ['今日', '昨日', '7日', '30日', '日付選択']) {
-      expect(screen.getByRole('button', { name: label })).toBeTruthy();
+      const button = screen.getByRole('button', { name: label });
+      expect(button).toBeTruthy();
+      expect(button.className).toContain('min-h-11');
     }
+    const april2Card = screen.getByTestId('movement-day-card-2026-04-02');
+    expect(within(april2Card).getByText('この日の表示中 2件')).toBeTruthy();
+    expect(within(april2Card).getByText('処方・調剤 1件')).toBeTruthy();
+    expect(within(april2Card).getByText('文書 1件')).toBeTruthy();
     for (const label of [
       '契約・同意・書類',
       'MCS・外部連携',
@@ -214,6 +225,8 @@ describe('PatientMovementTimeline', () => {
     expect(previewButton.getAttribute('aria-pressed')).toBe('true');
     expect(screen.getAllByText('MCS受信').length).toBeGreaterThan(0);
     expect(screen.getAllByRole('link', { name: /受信情報を開く/ }).length).toBeGreaterThan(0);
+    expect(screen.getByText('読込済み 5 件中 1 件表示')).toBeTruthy();
+    expect(screen.queryByText(/表示 1 \/ 全 5 件/)).toBeNull();
   });
 
   it('styles categories and event types with chart series tokens, not bespoke palette colors', () => {
@@ -412,6 +425,53 @@ describe('PatientMovementTimeline', () => {
     ]) {
       expect(renderedText).not.toContain(forbidden);
     }
+  });
+
+  it('does not render unsafe movement hrefs as links', () => {
+    render(
+      <PatientMovementTimeline
+        timelineEvents={[
+          {
+            ...inboundTimelineEvent,
+            id: 'event_external_href',
+            title: '外部URLを含む受信候補',
+            href: 'https://example.invalid/signed-url',
+            action_label: '外部URLを開く',
+          },
+          {
+            ...inboundTimelineEvent,
+            id: 'event_protocol_relative_href',
+            title: 'protocol-relative URLを含む受信候補',
+            href: '//example.invalid/file',
+            action_label: '外部ファイルを開く',
+          },
+          {
+            ...inboundTimelineEvent,
+            id: 'event_api_href',
+            title: 'API pathを含む受信候補',
+            href: '/api/patients/patient_1/movement-timeline',
+            action_label: 'APIを開く',
+          },
+          {
+            ...inboundTimelineEvent,
+            id: 'event_script_href',
+            title: 'script URLを含む受信候補',
+            href: 'javascript:alert(1)',
+            action_label: 'scriptを開く',
+          },
+        ]}
+        selfReports={[]}
+      />,
+    );
+
+    const hrefs = Array.from(document.querySelectorAll('a')).map((link) =>
+      link.getAttribute('href'),
+    );
+    expect(hrefs).not.toContain('https://example.invalid/signed-url');
+    expect(hrefs).not.toContain('//example.invalid/file');
+    expect(hrefs).not.toContain('/api/patients/patient_1/movement-timeline');
+    expect(hrefs).not.toContain('javascript:alert(1)');
+    expect(screen.getAllByText('詳細導線未設定').length).toBeGreaterThan(0);
   });
 
   it('renders self report events in the main communication timeline', () => {

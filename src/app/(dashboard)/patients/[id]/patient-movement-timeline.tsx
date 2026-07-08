@@ -386,13 +386,22 @@ const DATE_SCOPE_LABELS: Record<TimelineDateScope, string> = {
 };
 
 const FOCUS_FILTER_LABELS: Record<TimelineFocusFilter, string> = {
-  all: '全件',
+  all: '読込済み',
   unprocessed: '未処理',
   review_required: '薬剤師確認待ち',
   medication_stock: '残数関連',
   safety: '安全関連',
   today: '今日の動き',
 };
+
+function getSafeTimelineHref(href: string) {
+  const trimmed = href.trim();
+  const lowerHref = trimmed.toLowerCase();
+
+  if (!trimmed.startsWith('/') || trimmed.startsWith('//')) return null;
+  if (lowerHref.startsWith('/api/')) return null;
+  return trimmed;
+}
 
 function formatGroupLabel(value: string) {
   const date = new Date(value);
@@ -558,7 +567,7 @@ function DaySummary({ events }: { events: TimelineEvent[] }) {
   ].filter((item): item is [string, number] => Number(item[1]) > 0);
 
   return (
-    <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+    <div className="flex flex-wrap gap-2 text-xs text-muted-foreground" aria-label="この日の内訳">
       {items.length > 0 ? (
         items.map(([label, count]) => (
           <span
@@ -577,6 +586,52 @@ function DaySummary({ events }: { events: TimelineEvent[] }) {
         </span>
       ) : null}
     </div>
+  );
+}
+
+function TimelineDetailAction({
+  event,
+  className,
+  size,
+  selected = false,
+}: {
+  event: TimelineEvent;
+  className?: string;
+  size?: 'default' | 'xs' | 'sm' | 'lg' | 'icon' | 'icon-xs' | 'icon-sm' | 'icon-lg';
+  selected?: boolean;
+}) {
+  const safeHref = getSafeTimelineHref(event.href);
+
+  if (!safeHref) {
+    return (
+      <Button
+        type="button"
+        variant="outline"
+        size={size ?? undefined}
+        className={cn('min-h-11', className)}
+        disabled
+        aria-label={`${event.title}の詳細導線を確認できません`}
+      >
+        詳細導線未設定
+      </Button>
+    );
+  }
+
+  return (
+    <Button
+      asChild
+      variant="outline"
+      size={size ?? undefined}
+      className={cn('min-h-11', selected ? 'justify-between' : null, className)}
+    >
+      <Link
+        href={safeHref}
+        aria-label={selected ? `選択中イベントの詳細を開く: ${event.action_label}` : undefined}
+      >
+        {event.action_label}
+        <ArrowUpRight className="size-3.5" aria-hidden="true" />
+      </Link>
+    </Button>
   );
 }
 
@@ -653,12 +708,7 @@ function SelectedEventPreview({ event }: { event: TimelineEvent }) {
         </div>
       ) : null}
 
-      <Button asChild variant="outline" className="min-h-11 w-full justify-between">
-        <Link href={event.href} aria-label={`選択中イベントの詳細を開く: ${event.action_label}`}>
-          {event.action_label}
-          <ArrowUpRight className="size-3.5" aria-hidden="true" />
-        </Link>
-      </Button>
+      <TimelineDetailAction event={event} className="w-full" selected />
     </div>
   );
 }
@@ -745,19 +795,14 @@ function TimelineEntry({
                   type="button"
                   variant="secondary"
                   size="sm"
-                  className="min-h-10"
+                  className="min-h-11"
                   aria-label={`${event.title}の概要を表示`}
                   aria-pressed={isSelected}
                   onClick={() => onPreview(event.id)}
                 >
                   概要
                 </Button>
-                <Button asChild variant="outline" size="sm" className="min-h-10">
-                  <Link href={event.href}>
-                    {event.action_label}
-                    <ArrowUpRight className="size-3.5" aria-hidden="true" />
-                  </Link>
-                </Button>
+                <TimelineDetailAction event={event} size="sm" />
               </div>
             </div>
 
@@ -877,6 +922,11 @@ export function PatientMovementTimeline({
     safety: categoryCounts.safety,
     today: timelineEvents.filter((event) => isToday(new Date(event.occurred_at))).length,
   };
+  const loadedCountBadge = isFiltered
+    ? `読込済み ${timelineEvents.length} 件中 ${filteredEvents.length} 件表示`
+    : isPartial
+      ? `直近 ${timelineEvents.length} 件表示`
+      : `読込済み ${timelineEvents.length} 件表示`;
 
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_320px]">
@@ -889,13 +939,7 @@ export function PatientMovementTimeline({
                 処方、訪問、文書登録、連絡の発生を時系列で確認し、詳細は正本画面で開きます。
               </CardDescription>
             </div>
-            <Badge variant="outline">
-              {isFiltered
-                ? `表示 ${filteredEvents.length} / 全 ${timelineEvents.length} 件`
-                : isPartial
-                  ? `直近 ${timelineEvents.length} 件`
-                  : `最新 ${timelineEvents.length} 件`}
-            </Badge>
+            <Badge variant="outline">{loadedCountBadge}</Badge>
           </div>
 
           <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4" aria-label="患者の動きサマリー">
@@ -921,7 +965,7 @@ export function PatientMovementTimeline({
                     aria-pressed={dateScope === key}
                     onClick={() => setDateScope(key)}
                     className={cn(
-                      'inline-flex min-h-10 items-center rounded-full border px-3 text-sm transition-colors',
+                      'inline-flex min-h-11 items-center rounded-full border px-3 text-sm transition-colors',
                       dateScope === key
                         ? 'border-primary/40 bg-primary/10 text-foreground'
                         : 'border-border/70 bg-background text-muted-foreground hover:bg-muted/50',
@@ -933,7 +977,7 @@ export function PatientMovementTimeline({
                 <button
                   type="button"
                   disabled
-                  className="inline-flex min-h-10 items-center rounded-full border border-border/50 bg-muted/30 px-3 text-sm text-muted-foreground"
+                  className="inline-flex min-h-11 items-center rounded-full border border-border/50 bg-muted/30 px-3 text-sm text-muted-foreground"
                 >
                   日付選択
                 </button>
@@ -948,7 +992,7 @@ export function PatientMovementTimeline({
                 id="patient-activity-search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="例: MCS、電話、処方、訪問、文書登録、湿布、残り4枚、ケアマネ"
+                placeholder="例: MCS、電話、処方、訪問、文書登録、残数、確認待ち"
               />
             </div>
 
@@ -963,7 +1007,7 @@ export function PatientMovementTimeline({
                     aria-pressed={focusFilter === key}
                     onClick={() => setFocusFilter(key)}
                     className={cn(
-                      'inline-flex min-h-10 items-center gap-2 rounded-full border px-3 text-sm transition-colors',
+                      'inline-flex min-h-11 items-center gap-2 rounded-full border px-3 text-sm transition-colors',
                       focusFilter === key
                         ? 'border-primary/40 bg-primary/10 text-foreground'
                         : 'border-border/70 bg-background text-muted-foreground hover:bg-muted/50',
@@ -998,7 +1042,7 @@ export function PatientMovementTimeline({
                     aria-pressed={isActive}
                     onClick={() => setCategory(key)}
                     className={cn(
-                      'inline-flex min-h-10 items-center gap-2 rounded-full border px-3 text-sm transition-colors',
+                      'inline-flex min-h-11 items-center gap-2 rounded-full border px-3 text-sm transition-colors',
                       isActive
                         ? meta.className
                         : 'border-border/70 bg-background text-muted-foreground hover:bg-muted/50',
@@ -1028,7 +1072,7 @@ export function PatientMovementTimeline({
             <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
             <span className="min-w-0 flex-1">
               {isPartial
-                ? '直近5件の患者の動きを先に表示しています。全件は必要な時だけ読み込みます。'
+                ? '直近5件の患者の動きを先に表示しています。追加履歴は必要な時だけ読み込みます。'
                 : `患者の動きを最大${fullLimit}件まで読み込んでいます。検索と種別フィルタで絞り込めます。`}
             </span>
             {isPartial && onLoadFull ? (
@@ -1036,11 +1080,13 @@ export function PatientMovementTimeline({
                 type="button"
                 variant="outline"
                 size="sm"
-                className="min-h-9 shrink-0 bg-background"
+                className="min-h-11 shrink-0 bg-background"
                 disabled={isLoadingFull}
                 onClick={onLoadFull}
               >
-                {isLoadingFull ? '全履歴を読み込み中' : `全履歴を読み込む（最大${fullLimit}件）`}
+                {isLoadingFull
+                  ? '履歴を追加読み込み中'
+                  : `履歴を追加読み込み（最大${fullLimit}件）`}
               </Button>
             ) : null}
           </p>
@@ -1076,15 +1122,22 @@ export function PatientMovementTimeline({
             timelineGroups.map((group) => (
               <section
                 key={group.key}
-                className="overflow-hidden rounded-lg border border-border/70 bg-background"
+                data-testid={`movement-day-card-${group.key}`}
+                aria-labelledby={`movement-day-heading-${group.key}`}
+                className="overflow-hidden rounded-lg border border-border/70 bg-card"
               >
-                <div className="space-y-2 border-b border-border/70 bg-muted/20 px-4 py-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <div className="grid gap-3 border-b border-border/70 bg-muted/20 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+                  <div className="space-y-1">
+                    <h3
+                      id={`movement-day-heading-${group.key}`}
+                      className="flex items-center gap-2 text-sm font-semibold text-foreground"
+                    >
                       <span className="size-2 rounded-full bg-primary" aria-hidden="true" />
                       {group.label}
                     </h3>
-                    <span className="text-xs text-muted-foreground">{group.items.length}件</span>
+                    <p className="text-xs text-muted-foreground">
+                      この日の表示中 {group.items.length}件
+                    </p>
                   </div>
                   <DaySummary events={group.items} />
                 </div>
