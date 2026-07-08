@@ -1871,53 +1871,55 @@ async function installFormularyRouteMocks(page: Page) {
 
   await page.route(apiPathPattern('/api/drug-master-imports/status'), async (route) => {
     await fulfillJson(route, {
-      sources: [
-        {
-          source: 'mhlw_price',
-          label: '厚労省 薬価基準収載品目リスト',
-          is_free: true,
-          threshold_days: 120,
-          last_success: {
-            imported_at: '2026-05-20T00:00:00.000Z',
-            record_count: 12343,
-            days_ago: 7,
+      data: {
+        sources: [
+          {
+            source: 'mhlw_price',
+            label: '厚労省 薬価基準収載品目リスト',
+            is_free: true,
+            threshold_days: 120,
+            last_success: {
+              imported_at: '2026-05-20T00:00:00.000Z',
+              record_count: 12343,
+              days_ago: 7,
+            },
+            last_failure: null,
+            recent_runs_30d: {
+              total: 1,
+              failed: 0,
+              failure_streak: 0,
+              latest_status: 'completed',
+              latest_imported_at: '2026-05-20T00:00:00.000Z',
+            },
+            freshness: 'fresh',
           },
-          last_failure: null,
-          recent_runs_30d: {
-            total: 1,
-            failed: 0,
-            failure_streak: 0,
-            latest_status: 'completed',
-            latest_imported_at: '2026-05-20T00:00:00.000Z',
+          {
+            source: 'pmda',
+            label: 'PMDA 添付文書',
+            is_free: false,
+            threshold_days: 14,
+            last_success: null,
+            last_failure: null,
+            recent_runs_30d: {
+              total: 2,
+              failed: 2,
+              failure_streak: 2,
+              latest_status: 'failed',
+              latest_imported_at: '2026-05-26T00:00:00.000Z',
+            },
+            freshness: 'never',
           },
-          freshness: 'fresh',
+        ],
+        totals: {
+          drug_master_count: 12343,
+          hot_code_coverage: 0,
+          package_insert_count: 0,
+          interaction_count: 0,
+          active_alert_rule_count: 0,
+          generic_mapping_count: 0,
         },
-        {
-          source: 'pmda',
-          label: 'PMDA 添付文書',
-          is_free: false,
-          threshold_days: 14,
-          last_success: null,
-          last_failure: null,
-          recent_runs_30d: {
-            total: 2,
-            failed: 2,
-            failure_streak: 2,
-            latest_status: 'failed',
-            latest_imported_at: '2026-05-26T00:00:00.000Z',
-          },
-          freshness: 'never',
-        },
-      ],
-      totals: {
-        drug_master_count: 12343,
-        hot_code_coverage: 0,
-        package_insert_count: 0,
-        interaction_count: 0,
-        active_alert_rule_count: 0,
-        generic_mapping_count: 0,
+        checked_at: '2026-05-27T00:00:00.000Z',
       },
-      checked_at: '2026-05-27T00:00:00.000Z',
     });
   });
 

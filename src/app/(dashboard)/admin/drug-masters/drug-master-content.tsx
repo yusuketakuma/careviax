@@ -328,10 +328,11 @@ function DrugMasterOperationalContent({
       const res = await fetch('/api/drug-master-imports/status', {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<DrugMasterImportStatusResponse>(
+      const payload = await readApiJson<{ data: DrugMasterImportStatusResponse }>(
         res,
         'マスターステータスの取得に失敗しました',
       );
+      return payload.data;
     },
     enabled: !!orgId,
     staleTime: 60_000,

@@ -184,7 +184,7 @@ async function authenticatedGET(req: NextRequest) {
       };
     });
 
-    return success({
+    const statusPayload = {
       sources: sourceStatuses,
       totals: {
         drug_master_count: totalDrugCount,
@@ -199,7 +199,9 @@ async function authenticatedGET(req: NextRequest) {
         generic_mapping_count: genericMappingCount,
       },
       checked_at: now.toISOString(),
-    } satisfies DrugMasterImportStatusResponse) as NextResponse;
+    } satisfies DrugMasterImportStatusResponse;
+
+    return success({ data: statusPayload }) as NextResponse;
   });
 }
 

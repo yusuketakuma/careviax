@@ -82,22 +82,25 @@ async function readStatusPayload(response: Response): Promise<DrugMasterImportSt
   expectNoStore(response);
   const payload: unknown = await response.json();
 
+  expect(Object.keys(payload as Record<string, unknown>)).toEqual(['data']);
   expect(payload).toMatchObject({
-    sources: expect.any(Array),
-    totals: {
-      drug_master_count: expect.any(Number),
-      drug_package_count: expect.any(Number),
-      drug_package_coverage: expect.any(Number),
-      hot_code_coverage: expect.any(Number),
-      package_insert_count: expect.any(Number),
-      interaction_count: expect.any(Number),
-      active_alert_rule_count: expect.any(Number),
-      generic_mapping_count: expect.any(Number),
+    data: {
+      sources: expect.any(Array),
+      totals: {
+        drug_master_count: expect.any(Number),
+        drug_package_count: expect.any(Number),
+        drug_package_coverage: expect.any(Number),
+        hot_code_coverage: expect.any(Number),
+        package_insert_count: expect.any(Number),
+        interaction_count: expect.any(Number),
+        active_alert_rule_count: expect.any(Number),
+        generic_mapping_count: expect.any(Number),
+      },
+      checked_at: expect.any(String),
     },
-    checked_at: expect.any(String),
   });
 
-  return payload as DrugMasterImportStatusResponse;
+  return (payload as { data: DrugMasterImportStatusResponse }).data;
 }
 
 function findStatusSource(
