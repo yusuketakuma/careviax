@@ -202,6 +202,18 @@ describe('/api/dispense-results/[id]', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(response.headers.get('Pragma')).toBe('no-cache');
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: 'result_1',
+        org_id: 'org_1',
+        task_id: 'task_1',
+        line_id: 'line_1',
+        line: {
+          id: 'line_1',
+          drug_name: 'Drug B',
+        },
+      },
+    });
     expect(dispenseResultFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'result_1',
@@ -341,6 +353,13 @@ describe('/api/dispense-results/[id]', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: 'result_1',
+        task_id: 'task_1',
+        line_id: 'line_1',
+      },
+    });
     expect(dispenseResultFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'result_1',

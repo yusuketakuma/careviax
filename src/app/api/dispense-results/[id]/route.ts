@@ -106,7 +106,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
 
   if (!result) return notFound('指定された調剤実績が見つかりません');
 
-  return success(result);
+  return success({ data: result });
 }
 
 export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
@@ -440,5 +440,5 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     payload: { source: 'dispense_results_rework', result_id: id },
   });
 
-  return success(updated);
+  return success({ data: updated });
 }
