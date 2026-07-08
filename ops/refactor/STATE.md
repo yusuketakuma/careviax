@@ -23935,6 +23935,12 @@ visit_request/unknown`, `action_status='not_linked'`, and
   gate, so it was not run. Plans active board check passed after MOV was removed
   from Partial/Implementation queue and kept only as Done/frozen evidence. Full
   typecheck passed after `next typegen`. Scoped diff check passed.
+- commit:
+  Implementation, component/browser/mobile/a11y validation, Plans update, and
+  initial ledger entry committed as
+  `b80938f28a2715bf3462b3e835d428962be759148`
+  (`test(movement): validate timeline browser accessibility`) and pushed to
+  `origin/main`.
 - remaining work:
   `MOV-001-API` no longer has active residual scope in Active Plan Board v8.
   Stock visit context migration / DB integration, live AWS recovery, and
