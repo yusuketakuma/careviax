@@ -97,6 +97,9 @@ function createDb() {
     visitRecord: {
       findFirst: vi.fn(),
     },
+    visitSchedule: {
+      findFirst: vi.fn(),
+    },
     patientMedicationStockItem: {
       findMany: vi.fn(),
     },
@@ -155,11 +158,14 @@ function setupBaseDb(db: ReturnType<typeof createDb>) {
   db.medicationStockObservationContext.findMany.mockResolvedValue([]);
   db.medicationStockEvent.create.mockResolvedValue({ id: 'stock_event_1' });
   db.medicationStockObservationContext.create.mockResolvedValue({ id: 'context_1' });
-  db.medicationStockSnapshot.upsert.mockResolvedValue({
-    current_quantity: '4',
-    stock_risk_level: 'watch',
-    calculated_at: new Date('2026-07-08T01:40:00.000Z'),
+  db.visitSchedule.findFirst.mockResolvedValue({
+    scheduled_date: new Date('2026-07-15T00:00:00.000Z'),
   });
+  db.medicationStockSnapshot.upsert.mockImplementation(async (args) => ({
+    current_quantity: args.create.current_quantity,
+    stock_risk_level: args.create.stock_risk_level,
+    calculated_at: args.create.calculated_at,
+  }));
   allocateDisplayIdMock
     .mockResolvedValueOnce('msev0000000001')
     .mockResolvedValueOnce('msoc0000000001')
@@ -254,7 +260,25 @@ describe('applyVisitMedicationStockObservations', () => {
         }),
       }),
     );
-    expect(db.medicationStockSnapshot.upsert).toHaveBeenCalled();
+    expect(db.visitSchedule.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          case_id: 'case_1',
+          scheduled_date: { gt: new Date('2026-07-08T00:00:00.000Z') },
+          schedule_status: {
+            in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress'],
+          },
+        }),
+      }),
+    );
+    expect(db.medicationStockSnapshot.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          stock_risk_level: 'shortage_expected',
+        }),
+      }),
+    );
   });
 
   it('persists refill_request as a controlled visit observation kind instead of collapsing it', async () => {
@@ -264,6 +288,7 @@ describe('applyVisitMedicationStockObservations', () => {
       .mockReset()
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([]);
+    db.visitSchedule.findFirst.mockResolvedValue(null);
     db.medicationStockSnapshot.upsert.mockResolvedValue({
       current_quantity: null,
       stock_risk_level: 'unknown',
@@ -305,6 +330,14 @@ describe('applyVisitMedicationStockObservations', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           observation_kind: 'refill_request',
+        }),
+      }),
+    );
+    expect(db.medicationStockSnapshot.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          stock_risk_level: 'unknown',
+          risk_reason_code: 'forecast_missing_quantity',
         }),
       }),
     );

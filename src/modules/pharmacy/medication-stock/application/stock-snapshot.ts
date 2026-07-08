@@ -43,8 +43,17 @@ export function decimalToNumber(value: Prisma.Decimal | number | string | null |
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function toDateKey(value: Date): DateKey {
-  return value.toISOString().slice(0, 10) as DateKey;
+function toDateKeyJst(value: Date): DateKey {
+  const formatter = new Intl.DateTimeFormat('en', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const parts = Object.fromEntries(
+    formatter.formatToParts(value).map((part) => [part.type, part.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day}` as DateKey;
 }
 
 function dateKeyToDate(value: DateKey | null) {
@@ -144,6 +153,7 @@ export async function recalculateMedicationStockSnapshot(args: {
   stockItem: MedicationStockSnapshotItem;
   eventId: string;
   asOf: Date;
+  nextVisitDateKey?: DateKey | null;
 }) {
   const events = (await args.db.medicationStockEvent.findMany({
     where: {
@@ -173,9 +183,10 @@ export async function recalculateMedicationStockSnapshot(args: {
           unitKey: args.stockItem.unit,
         };
   const forecast = forecastMedicationStockout({
-    asOfDateKey: toDateKey(args.asOf),
+    asOfDateKey: toDateKeyJst(args.asOf),
     remainingQuantity,
     usePattern: usagePatternForStockItem(args.stockItem, folded.latestDailyUsage),
+    nextVisitDateKey: args.nextVisitDateKey ?? undefined,
     bufferDays: RISK_BUFFER_DAYS,
   });
   const estimatedDailyUsage =

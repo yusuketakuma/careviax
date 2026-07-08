@@ -4,6 +4,7 @@ import { Prisma, type MedicationStockUnit, type MemberRole } from '@prisma/clien
 
 import { canWriteVisitRecordForSchedule } from '@/lib/auth/visit-schedule-access';
 import { allocateDisplayId } from '@/lib/db/display-id';
+import type { DateKey } from '../domain/stockout-forecast';
 import { decimalToNumber, recalculateMedicationStockSnapshot } from './stock-snapshot';
 
 export type VisitMedicationStockObservationKind =
@@ -108,6 +109,7 @@ export type ApplyVisitMedicationStockObservationsResult =
 export type ApplyVisitMedicationStockObservationsDb = Pick<
   Prisma.TransactionClient,
   | 'visitRecord'
+  | 'visitSchedule'
   | 'patientMedicationStockItem'
   | 'medicationStockEvent'
   | 'medicationStockObservationContext'
@@ -158,6 +160,13 @@ type ExistingObservationContextRow = {
 const VISIT_STOCK_WRITE_ROLES: ReadonlySet<MemberRole> = new Set(['owner', 'admin', 'pharmacist']);
 
 const MAX_OBSERVATIONS_PER_REQUEST = 50;
+const ACTIVE_NEXT_VISIT_SCHEDULE_STATUSES = [
+  'planned',
+  'in_preparation',
+  'ready',
+  'departed',
+  'in_progress',
+] as const;
 
 function sha256Hex(value: string) {
   return createHash('sha256').update(value).digest('hex');
@@ -176,7 +185,7 @@ function normalizeUnit(unit: string) {
   return unit.normalize('NFKC').trim();
 }
 
-function toDateKeyJst(value: Date) {
+function toDateKeyJst(value: Date): DateKey {
   const formatter = new Intl.DateTimeFormat('en', {
     timeZone: 'Asia/Tokyo',
     year: 'numeric',
@@ -186,7 +195,35 @@ function toDateKeyJst(value: Date) {
   const parts = Object.fromEntries(
     formatter.formatToParts(value).map((part) => [part.type, part.value]),
   );
-  return `${parts.year}-${parts.month}-${parts.day}`;
+  return `${parts.year}-${parts.month}-${parts.day}` as DateKey;
+}
+
+function dateKeyToDbDate(value: DateKey) {
+  return new Date(`${value}T00:00:00.000Z`);
+}
+
+async function resolveNextVisitDateKeyForStockForecast(args: {
+  db: ApplyVisitMedicationStockObservationsDb;
+  orgId: string;
+  caseId: string | null;
+  baseDateKeyJst: DateKey;
+}) {
+  if (!args.caseId) return null;
+
+  const nextSchedule = (await args.db.visitSchedule.findFirst({
+    where: {
+      org_id: args.orgId,
+      case_id: args.caseId,
+      scheduled_date: { gt: dateKeyToDbDate(args.baseDateKeyJst) },
+      schedule_status: { in: [...ACTIVE_NEXT_VISIT_SCHEDULE_STATUSES] },
+    },
+    orderBy: [{ scheduled_date: 'asc' }, { route_order: 'asc' }, { id: 'asc' }],
+    select: {
+      scheduled_date: true,
+    },
+  })) as { scheduled_date: Date } | null;
+
+  return nextSchedule ? toDateKeyJst(nextSchedule.scheduled_date) : null;
 }
 
 function buildIdempotencyKeyHash(args: {
@@ -543,6 +580,7 @@ export async function applyVisitMedicationStockObservations(
 
   const now = new Date();
   const defaultEventAt = args.observedAt ?? visitRecord.visit_date ?? now;
+  const stockForecastBaseDateKeyJst = toDateKeyJst(defaultEventAt);
   const normalizedObservations: NormalizedObservation[] = [];
   for (const input of args.observations) {
     const stockItem = stockItemById.get(input.stockItemId);
@@ -626,6 +664,16 @@ export async function applyVisitMedicationStockObservations(
     });
   }
 
+  const nextVisitDateKey =
+    observationsToCreate.length > 0
+      ? await resolveNextVisitDateKeyForStockForecast({
+          db,
+          orgId: args.orgId,
+          caseId: visitCaseId,
+          baseDateKeyJst: stockForecastBaseDateKeyJst,
+        })
+      : null;
+
   for (const observation of observationsToCreate) {
     const stockItem = stockItemById.get(observation.stockItemId);
     if (!stockItem) return { kind: 'not_found', message: '残数管理対象薬剤が見つかりません' };
@@ -691,6 +739,7 @@ export async function applyVisitMedicationStockObservations(
       stockItem,
       eventId: stockEvent.id,
       asOf: now,
+      nextVisitDateKey,
     });
     responseObservations.push({
       client_observation_id: observation.clientObservationId,

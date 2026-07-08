@@ -119,4 +119,15 @@ describe('stockout forecast domain', () => {
       }),
     ).toBe('within_buffer');
   });
+
+  it('classifies stockout on the next visit date as before_next_visit', () => {
+    expect(
+      classifyStockoutRisk({
+        asOfDateKey: '2026-07-08',
+        stockoutDateKey: '2026-07-12',
+        nextVisitDateKey: '2026-07-12',
+        bufferDays: 7,
+      }),
+    ).toBe('before_next_visit');
+  });
 });

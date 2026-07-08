@@ -41,6 +41,81 @@
 
 ## 直近の作業（未コミット）
 
+- codex: `STOCK-001-VISIT-FORECAST` Medication Stock visit forecast context。
+  - current task:
+    `Plans.md` v7 の active queue から、訪問観測後の stockout 判定へ次回訪問日と
+    Asia/Tokyo civil date を渡す最小実装を行う。migration適用、人間承認が必要なDB operation、
+    次回処方/補充horizon推定、downstream fan-out はこの slice から除外する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `prisma/schema/visit.prisma`,
+    `src/modules/pharmacy/medication-stock/domain/stockout-forecast.ts`,
+    `src/modules/pharmacy/medication-stock/domain/stockout-forecast.test.ts`,
+    `src/modules/pharmacy/medication-stock/application/stock-snapshot.ts`,
+    `src/modules/pharmacy/medication-stock/application/apply-visit-medication-stock-observation.ts`,
+    `src/modules/pharmacy/medication-stock/application/apply-visit-medication-stock-observation.test.ts`,
+    and the visit observation route test.
+  - Oracle:
+    Consulted Oracle/GPT-5.5 Pro Browser mode with slug `stock-visit-forecast-github`.
+    Two earlier file-attachment attempts timed out, so the successful consult required GitHub access directly.
+    Oracle reported GitHub was reachable and commit `5a26698bc7e6be1ef47359d625aeee1095aaff9e`
+    was available. Recommendation was conditional Go: implement JST date-key + active future
+    `VisitSchedule` horizon now, defer next prescription/refill horizon until a canonical source is
+    designed, and do not infer refill dates from `refill_request`. That advice was accepted.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/modules/pharmacy/medication-stock/domain/stockout-forecast.test.ts`,
+    `src/modules/pharmacy/medication-stock/application/stock-snapshot.ts`,
+    `src/modules/pharmacy/medication-stock/application/stock-snapshot.test.ts`,
+    `src/modules/pharmacy/medication-stock/application/apply-visit-medication-stock-observation.ts`,
+    `src/modules/pharmacy/medication-stock/application/apply-visit-medication-stock-observation.test.ts`.
+  - implementation:
+    `recalculateMedicationStockSnapshot` now computes forecast `asOfDateKey` with
+    `Asia/Tokyo` civil dates and accepts optional `nextVisitDateKey`. Visit stock observation writes now
+    resolve the next active future `VisitSchedule` using `org_id`, `case_id`, `scheduled_date > observed
+date`, and active statuses only, then pass that date key into snapshot recalculation. The API response
+    shape is unchanged and no next-visit date is exposed. Added snapshot tests for UTC/JST boundary behavior,
+    next-visit shortage classification, and buffer-only legacy behavior. Added service tests for the
+    next-visit query shape and for `refill_request` remaining non-forecastable without a quantity/horizon.
+    Updated `Plans.md` to classify `STOCK-001-VISIT-FORECAST` as Partial: next-visit/JST implemented,
+    next prescription/refill horizon split to `STOCK-001-PRESCRIPTION-HORIZON`.
+  - bugs found:
+    Snapshot forecasting previously used `Date.toISOString().slice(0, 10)`, which can use the previous
+    UTC date around Japan midnight and shift projected stockout dates. Visit observations also recalculated
+    snapshot risk without any next-visit horizon, so shortage before the next scheduled visit could degrade
+    to a generic buffer `watch` classification.
+  - security risks reduced:
+    The next schedule lookup is tenant/case-scoped and stays in the existing transaction path. The service
+    did not loosen role checks, visit-record write authorization, stock item patient/case filtering, route
+    auth, rate limiting, no-store response behavior, or PHI projection. It also does not log or return
+    next visit dates.
+  - performance issues improved:
+    Added one bounded `VisitSchedule.findFirst` query only for non-replay writes, ordered by indexed
+    scheduled date / route order / id. Forecast logic remains centralized in the stockout domain helper,
+    avoiding duplicate schedule-side stockout calculations.
+  - validation commands:
+    `pnpm exec prettier --write ...`;
+    `pnpm vitest run src/modules/pharmacy/medication-stock/domain/stockout-forecast.test.ts src/modules/pharmacy/medication-stock/application/stock-snapshot.test.ts src/modules/pharmacy/medication-stock/application/apply-visit-medication-stock-observation.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint src/modules/pharmacy/medication-stock/application/stock-snapshot.ts src/modules/pharmacy/medication-stock/application/stock-snapshot.test.ts src/modules/pharmacy/medication-stock/application/apply-visit-medication-stock-observation.ts src/modules/pharmacy/medication-stock/application/apply-visit-medication-stock-observation.test.ts src/modules/pharmacy/medication-stock/domain/stockout-forecast.test.ts`;
+    `pnpm exec prettier --check src/modules/pharmacy/medication-stock/application/stock-snapshot.ts src/modules/pharmacy/medication-stock/application/stock-snapshot.test.ts src/modules/pharmacy/medication-stock/application/apply-visit-medication-stock-observation.ts src/modules/pharmacy/medication-stock/application/apply-visit-medication-stock-observation.test.ts src/modules/pharmacy/medication-stock/domain/stockout-forecast.test.ts`;
+    `pnpm exec prisma validate --schema=prisma/schema/`;
+    `pnpm vitest run 'src/app/api/visit-records/[id]/medication-stock-observations/route.test.ts' --reporter=dot --testTimeout=30000`;
+    `pnpm route-auth-wrapper:check`;
+    `pnpm typecheck`.
+  - validation results:
+    Focused domain/application tests passed `3` files / `17` tests. Visit observation route test passed
+    `7` tests; the expected sanitized 500-log regression test emitted a redacted error log only. Scoped
+    ESLint, scoped Prettier check, Prisma schema validate, route-auth-wrapper check, and full typecheck passed.
+  - remaining work:
+    `STOCK-001-VISIT-CONTEXT-APPLY` remains human-gated before runtime DB use. `STOCK-001-VISIT-UI`,
+    `STOCK-001-VISIT-DOWNSTREAM`, and `STOCK-001-PRESCRIPTION-HORIZON` remain open. Schedule changes do not
+    yet automatically recalculate existing stock snapshots; that belongs in downstream/risk-provider work.
+  - next action:
+    Run final formatting/diff validation, then scoped commit/push this implementation slice if clean.
+
 - codex: `PLANS-HYGIENE-006` Plans.md active board v6 cleanup。
   - current task:
     既存 `Plans.md` 内を再整理し、実装済み / Partial / 未実装 / Human gate を先頭の active board に集約する。
