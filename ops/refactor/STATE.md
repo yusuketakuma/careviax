@@ -24420,13 +24420,17 @@ business holiday mutations`) and pushed to `origin/main`.
   violations and 0 new violations. `plans:active:check` passed. Focused ESLint
   passed. Scoped diff check passed.
 - commit:
-  Pending.
+  Escalation-rules list/delete envelope migration, notification settings reader
+  update, route/component tests, allowlist cleanup, Plans sync, and validation
+  evidence committed as `5311681d9` (`fix(api): envelope escalation rule
+responses`) and pushed to `origin/main`.
 - remaining work:
   `API-CONTRACT-001` remains Partial. Continue removing real legacy success
   and error response shapes route by route without compatibility fallbacks.
 - next action:
-  Run focused lint, Plans check, response-shape check, focused tests, and
-  scoped diff check; then commit and push the escalation-rules envelope slice.
+  Commit and push this ledger hash update with only `ops/refactor/STATE.md`
+  staged, then continue `API-CONTRACT-001` by migrating the next real legacy
+  success/error response shape without compatibility fallback bodies.
 
 ## 2026-07-09 - DATE-SLICE-GUARD-001 helper migration
 
