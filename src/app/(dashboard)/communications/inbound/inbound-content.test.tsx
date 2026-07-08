@@ -166,16 +166,56 @@ function buildSignalData() {
   };
 }
 
+function buildDetailData() {
+  return {
+    data: {
+      id: 'event_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      source_channel: 'phone',
+      sender_role: 'nurse',
+      sender_name: '訪問看護師A',
+      sender_contact: '090-1234-5678',
+      sender_organization_name: '訪問看護ステーションA',
+      event_type: 'medication_stock_report',
+      received_at: '2026-07-07T01:00:00.000Z',
+      occurred_at: '2026-07-07T00:55:00.000Z',
+      raw_text: '湿布は残り4枚です。storageKey=secret token=secret',
+      normalized_summary: '外用薬の残数確認',
+      attachment_count: 1,
+      processing_status: 'signals_extracted',
+    },
+    meta: {
+      generated_at: '2026-07-07T03:00:00.000Z',
+      request_id: 'inbound_review:event_1',
+      purpose: 'care_coordination',
+      read_reason: 'review_inbound_detail',
+      raw_text_included: true,
+    },
+  };
+}
+
 describe('InboundCommunicationsContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useOrgIdMock.mockReturnValue('org_1');
     useQueryMock.mockImplementation((options: { queryKey: unknown[] }) => {
+      if (options.queryKey[0] === 'communications-inbound-detail') {
+        return {
+          data: buildDetailData(),
+          isLoading: false,
+          isError: false,
+          isFetching: false,
+          refetch: vi.fn(),
+        };
+      }
+
       if (options.queryKey[0] === 'communications-inbound-signals') {
         return {
           data: buildSignalData(),
           isLoading: false,
           isError: false,
+          isFetching: false,
           refetch: vi.fn(),
         };
       }
@@ -184,6 +224,7 @@ describe('InboundCommunicationsContent', () => {
         data: buildInboxData(),
         isLoading: false,
         isError: false,
+        isFetching: false,
         refetch: vi.fn(),
       };
     });
@@ -226,6 +267,47 @@ describe('InboundCommunicationsContent', () => {
     expect(html).not.toContain('ロキソニン');
     expect(html).not.toContain('storageKey');
     expect(html).not.toContain('token=secret');
+  });
+
+  it('fetches and reveals raw detail only after an explicit audited-detail action', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(buildDetailData()), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<InboundCommunicationsContent />);
+
+    expect(screen.queryByText('原文（監査記録済み）')).toBeNull();
+    expect(screen.queryByText(/storageKey=secret/)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '原文を監査付きで表示' }));
+
+    expect(screen.getByText('原文（監査記録済み）')).toBeTruthy();
+    expect(screen.getByText(/storageKey=secret/)).toBeTruthy();
+    expect(screen.getByText('監査ID')).toBeTruthy();
+    expect(screen.getByText('inbound_review:event_1')).toBeTruthy();
+
+    const detailQueryCalls = useQueryMock.mock.calls.filter(
+      ([options]) => options.queryKey[0] === 'communications-inbound-detail',
+    );
+    const detailQueryOptions = detailQueryCalls.at(-1)?.[0] as {
+      queryFn: () => Promise<unknown>;
+      enabled: boolean;
+      retry: boolean;
+    };
+    await detailQueryOptions.queryFn();
+
+    expect(detailQueryOptions.enabled).toBe(true);
+    expect(detailQueryOptions.retry).toBe(false);
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/communications/inbound/event_1/detail?purpose=care_coordination&read_reason=review_inbound_detail&request_id=inbound_review%3Aevent_1',
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'x-org-id': 'org_1' }),
+      }),
+    );
   });
 
   it('shows signal candidates only for the selected inbound item in the right review panel', () => {

@@ -6,9 +6,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BellRing,
   Clock,
+  FileText,
   Inbox,
   Phone,
   RadioTower,
+  ShieldCheck,
   TriangleAlert,
   type LucideIcon,
 } from 'lucide-react';
@@ -171,6 +173,33 @@ type InboundSignalCandidatesResponse = {
   };
 };
 
+type InboundDetailResponse = {
+  data: {
+    id: string;
+    patient_id: string | null;
+    case_id: string | null;
+    source_channel: string;
+    sender_role: string;
+    sender_name: string | null;
+    sender_contact: string | null;
+    sender_organization_name: string | null;
+    event_type: string;
+    received_at: string;
+    occurred_at: string | null;
+    raw_text: string;
+    normalized_summary: string | null;
+    attachment_count: number;
+    processing_status: string;
+  };
+  meta: {
+    generated_at: string;
+    request_id: string;
+    purpose: string;
+    read_reason: string;
+    raw_text_included: boolean;
+  };
+};
+
 type PhoneFormState = {
   patientId: string;
   caseId: string;
@@ -326,6 +355,15 @@ function buildInboundSignalPath(filters: { channel: string }) {
   return `/api/communications/inbound/signals${query ? `?${query}` : ''}`;
 }
 
+function buildInboundDetailPath(eventId: string) {
+  const params = new URLSearchParams({
+    purpose: 'care_coordination',
+    read_reason: 'review_inbound_detail',
+    request_id: `inbound_review:${eventId}`,
+  });
+  return `/api/communications/inbound/${encodeURIComponent(eventId)}/detail?${params.toString()}`;
+}
+
 function formatDateTime(value: string | null) {
   if (!value) return '日時未設定';
   const date = new Date(value);
@@ -448,6 +486,7 @@ export function InboundCommunicationsContent() {
   const [priority, setPriority] = useState('');
   const [status, setStatus] = useState('needs_review');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [detailRequestedEventId, setDetailRequestedEventId] = useState<string | null>(null);
   const [phoneForm, setPhoneForm] = useState<PhoneFormState>(EMPTY_PHONE_FORM);
   const [mcsForm, setMcsForm] = useState<McsFormState>(EMPTY_MCS_FORM);
 
@@ -508,6 +547,7 @@ export function InboundCommunicationsContent() {
       toast.success('電話メモを受信キューに登録しました');
       setPhoneForm(EMPTY_PHONE_FORM);
       setSelectedId(null);
+      setDetailRequestedEventId(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['communications-inbound', orgId] }),
         queryClient.invalidateQueries({ queryKey: ['communications-inbound-signals', orgId] }),
@@ -545,6 +585,7 @@ export function InboundCommunicationsContent() {
       toast.success('MCS投稿を受信キューに登録しました');
       setMcsForm(EMPTY_MCS_FORM);
       setSelectedId(null);
+      setDetailRequestedEventId(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['communications-inbound', orgId] }),
         queryClient.invalidateQueries({ queryKey: ['communications-inbound-signals', orgId] }),
@@ -620,6 +661,26 @@ export function InboundCommunicationsContent() {
   const selectedCommunicationEventId = selectedItem
     ? communicationEventIdFromInboxId(selectedItem.id)
     : null;
+  const selectedDetailRequested = detailRequestedEventId === selectedCommunicationEventId;
+  const detailQueryPath = selectedCommunicationEventId
+    ? buildInboundDetailPath(selectedCommunicationEventId)
+    : null;
+  const detailQuery = useQuery({
+    queryKey: ['communications-inbound-detail', orgId, selectedCommunicationEventId],
+    queryFn: async () => {
+      if (!detailQueryPath) {
+        throw new Error('受信情報を選択してください');
+      }
+      const response = await fetch(detailQueryPath, {
+        headers: buildOrgHeaders(orgId),
+      });
+      return readApiJson<InboundDetailResponse>(response, {
+        fallbackMessage: '受信情報の詳細取得に失敗しました',
+      });
+    },
+    enabled: !!orgId && !!detailQueryPath && selectedDetailRequested,
+    retry: false,
+  });
   const selectedSignalCandidates = useMemo(() => {
     if (!selectedCommunicationEventId || !signalCandidates) return [];
     return signalCandidates.items.filter(
@@ -970,6 +1031,7 @@ export function InboundCommunicationsContent() {
                       onClick={() => {
                         setChannel(filter.value);
                         setSelectedId(null);
+                        setDetailRequestedEventId(null);
                       }}
                     >
                       {filter.label}
@@ -989,6 +1051,7 @@ export function InboundCommunicationsContent() {
                       onClick={() => {
                         setPriority(filter.value);
                         setSelectedId(null);
+                        setDetailRequestedEventId(null);
                       }}
                     >
                       {filter.label}
@@ -1008,6 +1071,7 @@ export function InboundCommunicationsContent() {
                       onClick={() => {
                         setStatus(filter.value);
                         setSelectedId(null);
+                        setDetailRequestedEventId(null);
                       }}
                     >
                       {filter.label}
@@ -1033,7 +1097,10 @@ export function InboundCommunicationsContent() {
                     <div key={item.id} role="listitem">
                       <button
                         type="button"
-                        onClick={() => setSelectedId(item.id)}
+                        onClick={() => {
+                          setSelectedId(item.id);
+                          setDetailRequestedEventId(null);
+                        }}
                         className={cn(
                           'w-full rounded-lg border px-4 py-3 text-left transition-colors',
                           selected
@@ -1104,6 +1171,105 @@ export function InboundCommunicationsContent() {
                   </dl>
                   <div className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-3 text-xs leading-5 text-muted-foreground">
                     一覧では原文・相手連絡先・添付名を表示しません。詳細画面で再認可後に確認します。
+                  </div>
+                  <div className="space-y-3 rounded-md border border-border bg-background p-3">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="space-y-1">
+                        <h4 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                          <ShieldCheck
+                            className="size-4 text-muted-foreground"
+                            aria-hidden="true"
+                          />
+                          監査付き詳細
+                        </h4>
+                        <p className="text-xs leading-5 text-muted-foreground">
+                          原文・連絡先・添付件数は、purpose / read_reason / request_id
+                          を付けて再認可した時だけ表示します。
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="min-h-[40px] gap-2"
+                        disabled={!selectedCommunicationEventId || detailQuery.isFetching}
+                        onClick={() => {
+                          if (selectedCommunicationEventId) {
+                            setDetailRequestedEventId(selectedCommunicationEventId);
+                          }
+                        }}
+                      >
+                        <FileText className="size-4" aria-hidden="true" />
+                        {selectedDetailRequested ? '原文を再取得' : '原文を監査付きで表示'}
+                      </Button>
+                    </div>
+
+                    {selectedDetailRequested && detailQuery.isLoading ? (
+                      <div
+                        role="status"
+                        aria-label="受信詳細を読み込み中"
+                        aria-live="polite"
+                        className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-3"
+                      >
+                        <SkeletonRows rows={1} cols={2} status={false} />
+                      </div>
+                    ) : selectedDetailRequested && detailQuery.isError ? (
+                      <ErrorState
+                        variant="server"
+                        size="inline"
+                        title="受信詳細を表示できません"
+                        cause={messageFromError(detailQuery.error, '詳細取得に失敗しました')}
+                        nextAction="権限、患者/ケース担当範囲、通信状態を確認して再試行してください。"
+                        onRetry={() => void detailQuery.refetch()}
+                        retryLabel="詳細を再取得"
+                        retryVariant="outline"
+                        headingLevel={4}
+                      />
+                    ) : selectedDetailRequested && detailQuery.data ? (
+                      <div className="space-y-3">
+                        <dl className="grid gap-2 text-xs sm:grid-cols-2">
+                          <div className="rounded-md bg-muted/40 p-2">
+                            <dt className="text-muted-foreground">監査ID</dt>
+                            <dd className="font-medium break-all text-foreground">
+                              {detailQuery.data.meta.request_id}
+                            </dd>
+                          </div>
+                          <div className="rounded-md bg-muted/40 p-2">
+                            <dt className="text-muted-foreground">閲覧理由</dt>
+                            <dd className="font-medium text-foreground">
+                              {detailQuery.data.meta.read_reason}
+                            </dd>
+                          </div>
+                          <div className="rounded-md bg-muted/40 p-2">
+                            <dt className="text-muted-foreground">送信者</dt>
+                            <dd className="font-medium text-foreground">
+                              {[
+                                detailQuery.data.data.sender_role,
+                                detailQuery.data.data.sender_name,
+                                detailQuery.data.data.sender_organization_name,
+                              ]
+                                .filter(Boolean)
+                                .join(' / ') || '未設定'}
+                            </dd>
+                          </div>
+                          <div className="rounded-md bg-muted/40 p-2">
+                            <dt className="text-muted-foreground">連絡先 / 添付</dt>
+                            <dd className="font-medium text-foreground">
+                              {detailQuery.data.data.sender_contact ?? '連絡先未設定'} / 添付
+                              {detailQuery.data.data.attachment_count}件
+                            </dd>
+                          </div>
+                        </dl>
+                        <div className="rounded-md border border-border bg-muted/20 p-3">
+                          <p className="mb-2 text-xs font-medium text-muted-foreground">
+                            原文（監査記録済み）
+                          </p>
+                          <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words font-sans text-sm leading-6 text-foreground">
+                            {detailQuery.data.data.raw_text}
+                          </pre>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                   <div className="space-y-3" data-testid="selected-inbound-signals">
                     <div className="flex items-center justify-between gap-3">
