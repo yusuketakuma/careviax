@@ -216,7 +216,7 @@ export const DELETE = withAuthContext<{ id: string }>(
       throw error;
     }
 
-    return success({ ok: true });
+    return success({ data: { id } });
   },
   {
     permission: 'canAdmin',

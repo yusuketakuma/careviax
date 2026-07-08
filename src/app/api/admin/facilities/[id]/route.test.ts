@@ -429,6 +429,9 @@ describe('/api/admin/facilities/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      data: { id: 'facility_1' },
+    });
     expect(facilityDeleteMock).toHaveBeenCalledWith({
       where: { id: 'facility_1' },
     });

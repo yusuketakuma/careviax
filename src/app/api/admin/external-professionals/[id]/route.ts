@@ -176,7 +176,7 @@ const authenticatedDELETE = withAuthContext<{ id: string }>(
       await tx.externalProfessional.delete({ where: { id } });
     });
 
-    return success({ ok: true });
+    return success({ data: { id } });
   },
   {
     permission: 'canAdmin',

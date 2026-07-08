@@ -173,7 +173,7 @@ const authenticatedDELETE = withAuthContext<{ id: string; unitId: string }>(
     if (deleted.kind === 'not_found') return notFound('ユニットが見つかりません');
     if (deleted.kind === 'in_use') return conflict('患者が在籍中のユニットは削除できません');
 
-    return success({ ok: true });
+    return success({ data: { id: unitId } });
   },
   {
     permission: 'canAdmin',

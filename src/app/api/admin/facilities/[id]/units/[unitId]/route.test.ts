@@ -212,6 +212,9 @@ describe('/api/admin/facilities/[id]/units/[unitId]', () => {
 
     expect(response.status).toBe(200);
     expectNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      data: { id: 'unit_1' },
+    });
     expect(facilityUnitDeleteMock).toHaveBeenCalledWith({ where: { id: 'unit_1' } });
     expect(createAuditLogEntryMock).toHaveBeenCalledWith(
       expect.anything(),

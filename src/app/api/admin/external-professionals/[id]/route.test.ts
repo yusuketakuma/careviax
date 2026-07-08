@@ -311,6 +311,9 @@ describe('/api/admin/external-professionals/[id]', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      data: { id: 'external_1' },
+    });
     expect(externalProfessionalDeleteMock).toHaveBeenCalledWith({
       where: { id: 'external_1' },
     });
