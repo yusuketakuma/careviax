@@ -41,6 +41,95 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001AN` communication events list success envelope cleanup.
+  - commit:
+    Implementation, Plans/allowlist, route tests, and protected smoke coverage committed as
+    `a65d267e5` (`fix(api): envelope communication events list`). State record is this entry and
+    will be committed separately before pushing the slice.
+  - current task:
+    Continue `Plans.md` highest-priority implementable work under `API-CONTRACT-001`. Remove
+    `src/app/api/communication-events/route.ts` from the public response-shape allowlist by moving
+    GET list pagination to `meta` while keeping rows under `data`.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `ops/refactor/STATE.md`,
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/communication-events/route.ts`,
+    `src/app/api/communication-events/route.test.ts`,
+    `src/lib/api/pagination.ts`,
+    `src/app/api/__tests__/protected-get-routes.test.ts`,
+    `src/app/api/__tests__/protected-post-routes.test.ts`,
+    `src/app/api/__tests__/api-conventions-static.test.ts`,
+    and route/frontend usage search results for `/api/communication-events`.
+  - files changed:
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/communication-events/route.ts`,
+    `src/app/api/communication-events/route.test.ts`,
+    and this `ops/refactor/STATE.md` ledger entry.
+  - implementation:
+    `GET /api/communication-events` now returns `success({ data, meta: { limit, has_more,
+next_cursor } })`. Existing attachment DTO redaction, assignment scoping, bounded `limit + 1`
+    fetch, sort order, and POST `data` envelope remain unchanged. The route test now asserts
+    `meta` pagination and rejects root `hasMore` / `nextCursor`. The allowlist entry for
+    `src/app/api/communication-events/route.ts` was removed, and `Plans.md` records
+    `API-CONTRACT-001AN` with allowlist debt reduced from 163 to 162.
+  - Oracle:
+    User explicitly paused Oracle consultation. No Oracle prompt was sent or restarted. The slice
+    stayed limited to GET response wrapping, tests, allowlist/plan debt, and ledger updates; auth,
+    assignment scope, attachment validation/redaction, POST creation, contact-profile learning,
+    NoStore wrappers, and sanitized error handling were not changed.
+  - imagegen:
+    Not used. This is an API contract/static guard cleanup with no visible UI/UX change.
+  - Next.js docs:
+    Re-read `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md` earlier in
+    this API contract run. This slice changes JSON response construction only and does not change
+    route placement, supported methods, runtime behavior, or cache behavior.
+  - bugs found:
+    `GET /api/communication-events` returned `buildCursorPage(...)` directly, leaving legacy root
+    pagination fields (`hasMore`, `nextCursor`) as part of the public response shape.
+  - bugs fixed:
+    Communication event list rows are now under `data`, pagination is under `meta`, route tests
+    reject root pagination fields, and `api-response-shape:check` now reports 162 allowlisted
+    violations and 0 new violations.
+  - security risks reduced:
+    No auth, authorization, assignment scoping, PHI attachment redaction, or sanitized error behavior
+    was weakened. Removing root pagination fields reduces alternate public list contract surface.
+  - performance issues improved:
+    None. No DB query shape, selected columns, `limit + 1` pagination, sorting, assignment where, or
+    request frequency changed beyond the equivalent response wrapper.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/communication-events/route.ts src/app/api/communication-events/route.test.ts`;
+    `pnpm vitest run src/app/api/communication-events/route.test.ts`;
+    `pnpm vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "communication-events GET"`;
+    `pnpm vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "communication-events POST"`;
+    `pnpm vitest run src/app/api/__tests__/api-conventions-static.test.ts -t "communication event attachment DTOs"`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint --max-warnings=0 src/app/api/communication-events/route.ts src/app/api/communication-events/route.test.ts`;
+    `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/communication-events/route.ts src/app/api/communication-events/route.test.ts`;
+    `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/communication-events/route.ts src/app/api/communication-events/route.test.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm format:check`.
+  - validation results:
+    Prettier write passed. Focused communication-events route Vitest passed (1 file / 27 tests).
+    Protected GET filtered smoke passed (3 tests, 381 skipped). Protected POST filtered smoke passed
+    (3 tests, 142 skipped). Communication attachment DTO static test passed (1 test, 4 skipped).
+    API response shape guard passed (162 allowlisted violations, 0 new violations). Plans active
+    board check passed. Scoped ESLint passed. Targeted Prettier check and scoped `git diff --check`
+    passed. Full typecheck passed. `pnpm format:check` again confirmed owned changed files are
+    formatted, then failed on unrelated pre-existing untracked Markdown files under `projects/` and
+    `skills/`; those user/local files were not modified.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 162 allowlisted response-shape violations. Next immediate
+    allowlist target is `src/app/api/communication-requests/route.ts` (expectedCount 1), followed by
+    community activity and conference note routes.
+  - next action:
+    Commit this STATE entry separately, push `a65d267e5` plus the state commit to `origin/main`, then
+    continue with `src/app/api/communication-requests/route.ts` under the same Oracle-paused and
+    no-legacy-root constraints.
+
 - codex: `API-CONTRACT-001AM` comment delete success envelope cleanup.
   - commit:
     Implementation, Plans/allowlist, and focused route/UI tests committed as `e399a556d`
