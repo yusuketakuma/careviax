@@ -102,8 +102,11 @@ async function fetchPatientCdsAlerts(orgId: string, patientId: string): Promise<
     }
     return [];
   }
-  const checkJson = (await checkRes.json()) as { alerts?: SafetyCdsAlert[] };
-  return checkJson.alerts ?? [];
+  const checkJson = (await checkRes.json()) as { data?: { alerts?: SafetyCdsAlert[] } };
+  if (!Array.isArray(checkJson.data?.alerts)) {
+    throw new Error('相互作用チェックの応答が不正です');
+  }
+  return checkJson.data.alerts;
 }
 
 // ---------------------------------------------------------------------------

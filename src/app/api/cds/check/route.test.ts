@@ -122,13 +122,17 @@ describe('/api/cds/check POST', () => {
       select: { id: true, patient_id: true },
     });
     expect(checkDispenseAlertsMock).toHaveBeenCalledWith('org_1', 'cycle_1', 'patient_1');
-    await expect(response.json()).resolves.toMatchObject({
-      alerts: [
-        expect.objectContaining({
-          type: 'high_risk',
-        }),
-      ],
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: {
+        alerts: [
+          expect.objectContaining({
+            type: 'high_risk',
+          }),
+        ],
+      },
     });
+    expect(body).not.toHaveProperty('alerts');
   });
 
   it('rejects non-object CDS payloads before loading the cycle', async () => {

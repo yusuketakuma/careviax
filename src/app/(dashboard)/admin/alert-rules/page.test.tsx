@@ -608,7 +608,7 @@ describe('AlertRulesPage', () => {
           { status: 200 },
         );
       }
-      return new Response(JSON.stringify({ alerts: [] }), { status: 200 });
+      return new Response(JSON.stringify({ data: { alerts: [] } }), { status: 200 });
     });
     vi.stubGlobal('fetch', fetchMock);
     return fetchMock;

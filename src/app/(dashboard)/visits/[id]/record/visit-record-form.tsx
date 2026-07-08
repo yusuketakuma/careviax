@@ -177,7 +177,11 @@ export async function fetchVisitRecordCdsAlerts(
     headers: buildOrgJsonHeaders(orgId),
     body: JSON.stringify({ cycleId }),
   });
-  return readApiJson<{ alerts: CdsAlert[] }>(res, '訪問時の処方安全アラート取得に失敗しました');
+  const payload = await readApiJson<{ data: { alerts: CdsAlert[] } }>(
+    res,
+    '訪問時の処方安全アラート取得に失敗しました',
+  );
+  return payload.data;
 }
 
 const outcomeOptions = [

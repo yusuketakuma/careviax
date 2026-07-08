@@ -48,7 +48,7 @@ async function authenticatedPOST(req: NextRequest) {
     // Use the patientId from the cycle for security (prevent cross-patient access)
     const alerts = await checkDispenseAlerts(ctx.orgId, cycleId, cycle.patient_id);
 
-    return success({ alerts });
+    return success({ data: { alerts } });
   });
 }
 

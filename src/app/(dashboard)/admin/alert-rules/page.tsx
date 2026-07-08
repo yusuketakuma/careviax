@@ -297,10 +297,10 @@ export default function AlertRulesPage() {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ cycleId: testCycleId }),
       });
-      return readApiJson<{ alerts: Array<{ message: string; severity: string }> }>(
-        res,
-        '処方安全チェックの実行に失敗しました',
-      );
+      const payload = await readApiJson<{
+        data: { alerts: Array<{ message: string; severity: string }> };
+      }>(res, '処方安全チェックの実行に失敗しました');
+      return payload.data;
     },
     onSuccess: (payload) => {
       toast.success(`テスト実行完了: ${payload.alerts.length}件のアラート`);

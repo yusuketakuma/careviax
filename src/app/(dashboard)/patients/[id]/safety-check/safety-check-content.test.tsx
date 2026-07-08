@@ -435,7 +435,7 @@ describe('SafetyCheckContent url/header convergence', () => {
     } as Response);
     fetchMock.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ alerts: [] }),
+      json: async () => ({ data: { alerts: [] } }),
     } as Response);
     vi.stubGlobal('fetch', fetchMock);
 

@@ -524,7 +524,7 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
           // 500 は form が明示ハンドリング済みの経路(retryable warning)。pack:null は crash する。
           return new Response(JSON.stringify({ message: 'skip' }), { status: 500 });
         }
-        return new Response(JSON.stringify({ alerts: [] }), { status: 200 });
+        return new Response(JSON.stringify({ data: { alerts: [] } }), { status: 200 });
       }),
     );
 
