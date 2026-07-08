@@ -41,6 +41,92 @@
 
 ## 直近の作業
 
+- codex: `INBOUND-002-AUDITED-DETAIL-PANEL-001` inbound review panel audited raw detail connection.
+  - commit:
+    Implementation committed as `01cfe28ae`. State record commit pending. Push after state commit.
+  - current task:
+    `STOCK-001-VISIT-UI` は write 有効化が migration / DB integration human gate 後の残scopeで、
+    既存 read-only panel は実装済みだったため、gate を迂回せず次の非 gated candidate として
+    `INBOUND-002-REVIEW-DETAIL` の audited detail panel 接続を実装する。選択だけでは raw を読まず、
+    右 review panel の明示操作「原文を監査付きで表示」後だけ detail API を取得する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `docs/ui-ux-design-guidelines.md`,
+    `/Users/yusuke/.codex/skills/.system/imagegen/SKILL.md`,
+    `src/app/(dashboard)/communications/inbound/page.tsx`,
+    `src/app/(dashboard)/communications/inbound/inbound-content.tsx`,
+    `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`,
+    `src/app/api/communications/inbound/[id]/detail/route.ts`,
+    `src/components/features/visits/visit-medication-stock-observation-panel.tsx`,
+    and `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`.
+  - files changed:
+    `Plans.md`,
+    `src/app/(dashboard)/communications/inbound/inbound-content.tsx`,
+    `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`,
+    and `ops/refactor/STATE.md`.
+  - implementation:
+    Added an explicit audited-detail area to the existing `/communications/inbound` selected review
+    panel. The panel keeps list/summary raw-free by default, then calls
+    `/api/communications/inbound/:id/detail?purpose=care_coordination&read_reason=review_inbound_detail&request_id=inbound_review:<eventId>`
+    only after the user presses "原文を監査付きで表示". It shows audit request id, coded read reason,
+    sender role/name/org, sender contact, attachment count, and raw_text inside the review panel
+    after the detail query succeeds. Selection/filter changes and inbound registration success reset
+    the detail request state so raw detail is not carried across events. Tests lock that raw is absent
+    before the explicit action and that the detail query uses org headers, coded purpose/reason, a
+    request_id, and `retry: false`.
+  - imagegen:
+    Used built-in `image_gen` with a PHI/secret-free `gpt-image-2` design-reference prompt for a
+    dense three-column inbound review shell and mobile stacked variant. Generated preview:
+    `/Users/yusuke/.codex/generated_images/019f4092-692b-7733-bc51-3fa9d1686c41/ig_0e6474257cd40816016a4e266e03a08191912fc9175660d590.png`.
+    The implementation translated the reference into the existing PH-OS review panel rather than
+    replacing the page with a new visual system.
+  - Next.js docs:
+    Not required for this slice. It consumes the existing detail route and does not add or modify
+    Next.js route handler behavior.
+  - Oracle:
+    Not re-consulted for this UI-only connection. The immediately preceding Oracle consult for
+    `INBOUND-002-RAW-DETAIL-API-001` already required the detail route, raw omission, purpose/read
+    reason/request id, no-store, and PHI read audit boundary; this slice stays within that advised
+    design and does not change auth/RLS/audit semantics.
+  - bugs found:
+    The inbound review page still told users to use a detail screen but had no in-page consumer for
+    the new audited detail API. Without an explicit action, a future implementation could either
+    reintroduce raw into list DTOs or auto-fetch raw on selection. The new state gate prevents both.
+  - security risks reduced:
+    Raw detail remains hidden until a deliberate UI action triggers the reauthorized detail API.
+    The frontend sends coded `read_reason`, fixed operational `purpose`, and a request id, and does
+    not place free-text reasons or raw content in request bodies. Raw detail state resets on selection
+    and filter changes.
+  - performance issues improved:
+    No eager detail fetch is added. The detail query is disabled until explicit user action and is
+    scoped to the selected inbound event. Existing inbox and signal list queries remain unchanged.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md src/app/(dashboard)/communications/inbound/inbound-content.tsx src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`;
+    `pnpm exec vitest run src/app/(dashboard)/communications/inbound/inbound-content.test.tsx --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint src/app/(dashboard)/communications/inbound/inbound-content.tsx src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`;
+    `pnpm exec prettier --check Plans.md src/app/(dashboard)/communications/inbound/inbound-content.tsx src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`;
+    `pnpm plans:active:check`;
+    `git diff --check -- Plans.md src/app/(dashboard)/communications/inbound/inbound-content.tsx src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm format:check`.
+  - validation results:
+    Focused inbound Vitest passed 1 file / 11 tests. Scoped ESLint passed. Targeted Prettier check
+    passed. Plans active board check passed. Targeted diff-check passed. Full typecheck passed after
+    changing `ErrorState` headingLevel from 5 to the supported level 4. Full `pnpm format:check`
+    still fails only on unrelated pre-existing untracked Markdown under `projects/careviax/**`
+    (`medication-stock-visit-observation-context-sidecar` and several review notes), not on owned
+    files.
+  - remaining work:
+    `INBOUND-002-REVIEW-DETAIL` remains Partial for the broader 3-column shell and review action
+    lifecycle workspace: MedicationStock apply allowed/forbidden UX, richer task/record-only/reject
+    state transitions, and mobile stacked review workflow. `STOCK-001-VISIT-UI` write enablement
+    remains blocked behind migration/DB integration human gate.
+  - next action:
+    Commit this state record, push the audited detail panel slice, record the push result here, then
+    continue the goal loop with the next safe non-gated item.
+
 - codex: `INBOUND-002-RAW-DETAIL-API-001` inbound raw detail reauthorization and dashboard raw omission.
   - commit:
     Implementation committed as `fb20ad7ac`; state record committed as `ec6dd5278`; pushed to
