@@ -28506,3 +28506,100 @@ responses`) and pushed to `origin/main`.
   Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
   then continue the next API response envelope cleanup from
   `src/app/api/dispense-tasks/[id]/verify-barcode/route.ts` unless redirected.
+
+## 2026-07-09 - API-CONTRACT-001AX dispense task barcode verification envelope cleanup
+
+- current task:
+  Continue `API-CONTRACT-001` public response envelope burn-down without legacy
+  compatibility fields. Move `POST /api/dispense-tasks/:id/verify-barcode`
+  success responses to the current `data` envelope.
+- files inspected:
+  `git status --short --branch --untracked-files=all`;
+  `ops/refactor/STATE.md`; `Plans.md`;
+  `tools/api-response-shape-allowlist.json`;
+  `src/app/api/dispense-tasks/[id]/verify-barcode/route.ts`;
+  `src/app/api/dispense-tasks/[id]/verify-barcode/route.test.ts`;
+  `src/components/features/dispense-workbench/dispensing-workbench.adapter.ts`;
+  `src/components/features/dispense-workbench/dispensing-workbench.write-types.ts`;
+  protected route smoke searches; and
+  `gbrain search "API-CONTRACT verify-barcode dispense-tasks response envelope barcode secret"`.
+- files changed:
+  `Plans.md`; `tools/api-response-shape-allowlist.json`;
+  `src/app/api/dispense-tasks/[id]/verify-barcode/route.ts`;
+  `src/app/api/dispense-tasks/[id]/verify-barcode/route.test.ts`;
+  `src/components/features/dispense-workbench/dispensing-workbench.write-types.ts`;
+  `ops/refactor/STATE.md`.
+- bugs found:
+  `POST /api/dispense-tasks/:id/verify-barcode` returned `match`,
+  `decoded`, `expected`, and `warnings` at the public response root. The
+  dispense workbench write type also described the barcode verification result
+  as raw root fields.
+- bugs fixed:
+  Barcode verification success now returns `success({ data: ... })`. Route
+  tests assert `payload.data.match` and `payload.data.warnings`, and the
+  workbench write type now exposes a `VerifyDispenseBarcodeResponse` with the
+  current `data` envelope. No legacy root fallback remains. Response-shape debt
+  dropped from 146 to 145 allowlisted violations.
+- security risks found:
+  No auth, authorization, assignment scoping, org scoping, route parameter
+  validation, body validation, prescription-line scoping, barcode parsing,
+  expected drug lookup, PHI-safe error logging, or no-store behavior changed.
+- security risks reduced:
+  Removed another raw success response shape from the barcode verification API
+  while preserving the existing fail-closed scope checks and sanitized 500 log
+  metadata.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this is response contract cleanup. Existing barcode parsing and lookup
+  behavior is unchanged.
+- UI/UX note:
+  No UI/UX change. This was API/type/test contract work only, so image
+  generation was not applicable.
+- Oracle note:
+  Oracle consultation remains paused per current user instruction, so no
+  Oracle/GPT-5.5 Pro consult was run. The slice stayed mechanical and avoided
+  changing barcode verification semantics.
+- validation commands:
+  `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/dispense-tasks/[id]/verify-barcode/route.ts src/app/api/dispense-tasks/[id]/verify-barcode/route.test.ts src/components/features/dispense-workbench/dispensing-workbench.write-types.ts`;
+  `pnpm vitest run src/app/api/dispense-tasks/[id]/verify-barcode/route.test.ts`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint src/app/api/dispense-tasks/[id]/verify-barcode/route.ts src/app/api/dispense-tasks/[id]/verify-barcode/route.test.ts src/components/features/dispense-workbench/dispensing-workbench.write-types.ts`;
+  `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/dispense-tasks/[id]/verify-barcode/route.ts src/app/api/dispense-tasks/[id]/verify-barcode/route.test.ts src/components/features/dispense-workbench/dispensing-workbench.write-types.ts`;
+  `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/dispense-tasks/[id]/verify-barcode/route.ts src/app/api/dispense-tasks/[id]/verify-barcode/route.test.ts src/components/features/dispense-workbench/dispensing-workbench.write-types.ts`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `pnpm format:check`.
+- validation results:
+  Prettier passed. `dispense-tasks/[id]/verify-barcode` route tests passed 1
+  file / 8 tests. There is no protected-route smoke entry for this route name
+  in the current protected GET/POST route tests. `api-response-shape:check`
+  passed with 145 allowlisted violations and 0 new violations.
+  `plans:active:check` passed. Scoped ESLint, scoped Prettier check, scoped
+  diff check, and typecheck passed. `pnpm format:check` still fails only on
+  unrelated pre-existing untracked Markdown files:
+  `projects/careviax/implementation-decision/medication-stock-visit-observation-context-sidecar-v1-2026-07-08.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-doc-001.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-evidence-001.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-integrity-001.md`,
+  `projects/careviax/reviews/2026-07-08/patient-board-read-001.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003a-003d.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003e.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-guard.md`, and
+  `skills/_candidates.md`.
+- commit:
+  Barcode verification response envelope migration, route test, workbench write
+  type update, allowlist cleanup, and Plans sync committed as
+  `c2dc388561f6b0517178b1d83b6c3385f21dcd7f`
+  (`fix(api): envelope dispense task barcode verification`). Push is pending
+  this ledger update.
+- remaining work:
+  `API-CONTRACT-001` remains Partial. Next allowlist head is
+  `src/app/api/dispense-tasks/[id]/workbench/route.ts` with two expected
+  legacy response shape violations, followed by
+  `src/app/api/dispense-tasks/route.ts`. Existing unrelated dirty/untracked
+  memory/docs files remain unstaged.
+- next action:
+  Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
+  then continue the next API response envelope cleanup from
+  `src/app/api/dispense-tasks/[id]/workbench/route.ts` unless redirected.
