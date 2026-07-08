@@ -344,6 +344,7 @@ async function authenticatedPOST(req: NextRequest) {
               intakeId: intakeResult.intake.id,
               patientId: careCase.patient.id,
               orgId: ctx.orgId,
+              userId: ctx.userId,
               lines: intakeResult.intake.lines,
               prescriberName: prescriber_name ?? null,
               sourceType: source_type,

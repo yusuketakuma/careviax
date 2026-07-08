@@ -1025,6 +1025,7 @@ export const POST = withAuthContext(
         intakeId: qrResult.intake.id,
         patientId: qrResult.cycle.patient_id,
         orgId: ctx.orgId,
+        userId: ctx.userId,
         lines: qrResult.hookLines,
         prescriberName: intakeInput.prescriber_name ?? null,
         sourceType: source_type,

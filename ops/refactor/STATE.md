@@ -41,6 +41,103 @@
 
 ## 直近の land（本日・要点）
 
+- codex: `STOCK-001-PRESCRIPTION` Medication Stock prescription supply adapter v1。
+  - current task:
+    `Plans.md` の未実装/Partial分類に残っていた `STOCK-001-PRESCRIPTION` を実装し、処方作成後の
+    best-effort hook から Medication Stock Ledger へ安全に供給イベントを反映する。Oracle/GPT-5.5 Pro
+    へ GitHub context 付きで相談し、完全一致以外を自動反映しない条件付きGo方針を採用した。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `prisma/schema/medication.prisma`,
+    `prisma/schema/drug.prisma`,
+    `prisma/schema/prescription.prisma`,
+    `src/modules/pharmacy/medication-stock/application/apply-inbound-medication-stock-signal.ts`,
+    `src/modules/pharmacy/medication-stock/domain/medication-equivalence.ts`,
+    `src/modules/pharmacy/medication-stock/domain/stockout-forecast.ts`,
+    `src/lib/pharmacy/drug-identity-resolution.ts`,
+    `src/server/services/prescription-intake-service.ts`,
+    `src/app/api/prescription-intakes/route.ts`,
+    `src/app/api/prescription-intakes/facility-batch/route.ts`,
+    `src/app/api/qr-scan-drafts/[id]/confirm/route.ts`,
+    `src/server/services/operational-tasks.ts`,
+    `src/lib/tasks/task-registry.ts`,
+    focused medication-stock and prescription-intake tests.
+  - Oracle:
+    Consulted Oracle/GPT-5.5 Pro in Browser mode using slug `stock-prescripti-supply-review`.
+    The prompt required GPT-5.5 Pro to access GitHub and included current repo context
+    (`https://github.com/yusuketakuma/careviax`, branch `main`, commit
+    `e1d424185c4ac96b0b57a0761e7bda8a9adb7603`). Oracle returned conditional Go:
+    implement a post-commit best-effort application service, do not run this inside
+    `createPrescriptionIntakeInTx`, auto-apply only exact existing stock item + exact unit +
+    positive quantity + exact drug identity, treat GS1/GTIN/JAN/package-only/name-only/ambiguous/no-item
+    cases as pharmacist review tasks, and keep task metadata free of drug names, patient names,
+    dose/frequency free text, raw QR/JAHIS, or provider raw payloads.
+  - files changed:
+    `src/modules/pharmacy/medication-stock/application/stock-snapshot.ts`,
+    `src/modules/pharmacy/medication-stock/application/apply-inbound-medication-stock-signal.ts`,
+    `src/modules/pharmacy/medication-stock/application/apply-prescription-supply.ts`,
+    `src/modules/pharmacy/medication-stock/application/apply-prescription-supply.test.ts`,
+    `src/server/services/prescription-intake-service.ts`,
+    `src/app/api/prescription-intakes/route.ts`,
+    `src/app/api/prescription-intakes/facility-batch/route.ts`,
+    `src/app/api/qr-scan-drafts/[id]/confirm/route.ts`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Extracted shared `recalculateMedicationStockSnapshot()` into `stock-snapshot.ts` so inbound apply
+    and prescription supply share append-only snapshot recalculation. Added
+    `applyPrescriptionSupplyForIntake()` under `modules/pharmacy/medication-stock/application`.
+    It loads committed prescription lines, resolves exact DrugMaster identity by `drug_master_id`,
+    YJ, receipt, or HOT, finds exactly one active existing `PatientMedicationStockItem`, verifies unit
+    and positive quantity, appends a `MedicationStockEvent(event_type='prescription_supply')` with
+    line-level idempotency, and recalculates `MedicationStockSnapshot`. Non-exact cases create
+    `pharmacy.medication_stock_unlinked_prescription_supply` tasks with PHI-minimized metadata.
+    `runPrescriptionIntakePostCreateHooks()` now calls this service best-effort after intake commit;
+    normal create, QR draft confirmation, and facility batch paths pass the current user id.
+    `Plans.md` now classifies `STOCK-001-PRESCRIPTION` as Partial/v1 implemented and records
+    `STOCK-001-PRESCRIPTION-FOLLOWUP` for manual retry API, DrugPackage/GS1 quantity conversion,
+    and review-task apply flow.
+  - bugs found:
+    `Plans.md` still classified prescription supply as not started even though Medication Stock base
+    was otherwise implemented. The existing snapshot recalculation was local to inbound apply, which
+    would have duplicated ledger folding logic for prescription supply.
+  - security risks reduced:
+    Avoided automatic stock item creation without a uniqueness/advisory-lock contract. GS1/GTIN/JAN
+    package-only evidence and name-only evidence are review-only, not auto-applied. Review task metadata
+    is limited to ids, reason code, candidate count, and boolean evidence axes; tests assert drug name,
+    dose, and frequency text are not persisted there. No migration, live DB operation, external send,
+    destructive operation, production data mutation, or deploy was performed.
+  - performance issues improved:
+    DrugMaster resolution batches candidate codes per intake instead of per line, and prescription supply
+    uses the existing line-level idempotency/index path. No broad scan or migration was introduced.
+    Remaining DB read-speed work stays tracked in `PERF-DB-*` / `QUERY-SHAPE-*`.
+  - validation commands:
+    `pnpm vitest run src/modules/pharmacy/medication-stock/application/apply-prescription-supply.test.ts src/modules/pharmacy/medication-stock/application/apply-inbound-medication-stock-signal.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm vitest run src/server/services/prescription-intake-service.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec prettier --write <changed files>`;
+    `pnpm exec eslint <changed files>`;
+    `pnpm vitest run src/modules/pharmacy/medication-stock/application/apply-prescription-supply.test.ts src/modules/pharmacy/medication-stock/application/apply-inbound-medication-stock-signal.test.ts src/server/services/prescription-intake-service.test.ts --reporter=dot --testTimeout=30000`;
+    `git diff --check`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Focused medication-stock suite passed `2` files / `15` tests. Existing prescription-intake service
+    suite passed `1` file / `36` tests. Combined focused suite passed `3` files / `51` tests. Scoped
+    ESLint passed after removing an unused helper. Diff whitespace check passed. Full typecheck passed.
+  - gbrain:
+    `projects/careviax/implementation-decision/medication-stock-prescription-supply-v1-2026-07-08`
+    (`ImplementationDecision`) に PHI-free で exact-only prescription supply apply、Oracle review
+    outcome、PHI-minimized task metadata、validation、follow-up tasks を保存した。gbrain write-through
+    で生成された未追跡 mirror file は既存の memory/docs mirror 群と同じくこの scoped commit には含めない。
+  - remaining:
+    `STOCK-001-PRESCRIPTION-FOLLOWUP` remains for manual retry API, DrugPackage/GS1 quantity conversion,
+    review-task apply UI/API, and route-level integration tests. `STOCK-001-VISIT`, usage/refill,
+    equivalence review UI, VisitBrief/Schedule/Report/Share downstream, and full stock risk provider
+    integration remain open.
+  - next action:
+    Record PHI-free gbrain memory, then scoped commit and push only the owned implementation/plan/state
+    paths. Large unrelated untracked memory/docs mirror files remain outside this slice.
+
 - codex: `OPS-RECOVERY-DOC-001` root recovery runbook least-privilege cleanup / Plans active backlog 整理。
   - current task:
     ユーザー指示の「既存Plans.md内を整理。実装済み、未実装を分類。未実装はPlanを拡充。

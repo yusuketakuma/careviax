@@ -37,6 +37,10 @@ import {
   resolveMedicationCode,
   type PrescriptionDrugCodeSystem,
 } from '@/lib/pharmacy/drug-identity-resolution';
+import {
+  applyPrescriptionSupplyForIntake,
+  type ApplyPrescriptionSupplyForIntakeResult,
+} from '@/modules/pharmacy/medication-stock/application/apply-prescription-supply';
 import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
 
 export interface CreateIntakeLineInput {
@@ -226,6 +230,7 @@ export type CreateIntakeServiceResult =
       cycle: UpdatedCycle;
       medicationChanges: MedicationChange[];
       profileSyncResult: ProfileSyncResult | null;
+      prescriptionSupplyResult: ApplyPrescriptionSupplyForIntakeResult | null;
     }
   | { ok: false; error: 'cycle_not_found' }
   | { ok: false; error: 'invalid_refill_remaining_count' }
@@ -1426,15 +1431,17 @@ export async function createPrescriptionIntake(
 
   // ── Post-creation hooks (best-effort, non-blocking) ──
 
-  const { medicationChanges, profileSyncResult } = await runPrescriptionIntakePostCreateHooks({
-    cycleId: cycle.id,
-    intakeId: intake.id,
-    patientId: cycle.patient_id,
-    orgId,
-    lines: intake.lines,
-    prescriberName: input.prescriber_name ?? null,
-    sourceType: input.source_type,
-  });
+  const { medicationChanges, profileSyncResult, prescriptionSupplyResult } =
+    await runPrescriptionIntakePostCreateHooks({
+      cycleId: cycle.id,
+      intakeId: intake.id,
+      patientId: cycle.patient_id,
+      orgId,
+      userId,
+      lines: intake.lines,
+      prescriberName: input.prescriber_name ?? null,
+      sourceType: input.source_type,
+    });
 
   try {
     await notifyWebhookEventForOrg(orgId, 'prescription.created', {
@@ -1454,6 +1461,7 @@ export async function createPrescriptionIntake(
     cycle,
     medicationChanges,
     profileSyncResult,
+    prescriptionSupplyResult,
   };
 }
 
@@ -1462,6 +1470,7 @@ export async function runPrescriptionIntakePostCreateHooks(args: {
   intakeId: string;
   patientId: string;
   orgId: string;
+  userId?: string | null;
   lines: Array<{
     drug_name: string;
     drug_master_id?: string | null;
@@ -1476,9 +1485,11 @@ export async function runPrescriptionIntakePostCreateHooks(args: {
 }): Promise<{
   medicationChanges: MedicationChange[];
   profileSyncResult: ProfileSyncResult | null;
+  prescriptionSupplyResult: ApplyPrescriptionSupplyForIntakeResult | null;
 }> {
   let medicationChanges: MedicationChange[] = [];
   let profileSyncResult: ProfileSyncResult | null = null;
+  let prescriptionSupplyResult: ApplyPrescriptionSupplyForIntakeResult | null = null;
 
   try {
     const [changes, syncResult] = await Promise.all([
@@ -1497,7 +1508,20 @@ export async function runPrescriptionIntakePostCreateHooks(args: {
     // Post-processing errors should not fail the intake creation
   }
 
-  return { medicationChanges, profileSyncResult };
+  try {
+    prescriptionSupplyResult = await withOrgContext(args.orgId, (tx) =>
+      applyPrescriptionSupplyForIntake(tx, {
+        orgId: args.orgId,
+        userId: args.userId ?? 'system',
+        intakeId: args.intakeId,
+        patientId: args.patientId,
+      }),
+    );
+  } catch {
+    // Medication stock linkage is best-effort and must not fail a committed intake.
+  }
+
+  return { medicationChanges, profileSyncResult, prescriptionSupplyResult };
 }
 
 // ────────────────────────────────────────────────────────────────────────────
