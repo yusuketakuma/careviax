@@ -41,6 +41,109 @@
 
 ## 直近の作業
 
+- codex: `STOCK-VISIT-DOWNSTREAM-RISK-001` MedicationStockSnapshot Case Risk Cockpit provider。
+  - commit:
+    Implementation committed as `ad1529a2a`.
+  - current task:
+    `Plans.md` の `STOCK-001-VISIT-DOWNSTREAM` から、OperationalTask fan-out の次に安全に実装できる
+    downstream slice として、`MedicationStockSnapshot` の `urgent` / `shortage_expected` を
+    Case Risk Cockpit の controlled risk finding として表示・task bridge 連携できるようにする。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `git log --oneline -15`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/core/risk/provider-registry.ts`,
+    `src/lib/risk/risk-finding.ts`,
+    `src/lib/risk/risk-finding.test.ts`,
+    `src/lib/tasks/task-registry.ts`,
+    `src/server/risk/case-risk-provider-types.ts`,
+    `src/server/risk/active-case-risk-registry.ts`,
+    `src/server/risk/active-case-risk-registry.test.ts`,
+    `src/server/services/case-risk-cockpit.ts`,
+    `src/server/services/case-risk-cockpit.test.ts`,
+    `src/server/services/risk-task-bridge.ts`,
+    `src/server/services/risk-task-bridge.test.ts`,
+    `src/modules/pharmacy/risk/case-risk-providers.ts`,
+    `src/modules/pharmacy/medication-stock/application/medication-stock-risk-adapter.ts`,
+    `src/modules/pharmacy/medication-stock/application/medication-stock-risk-adapter.test.ts`,
+    `src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.ts`,
+    `src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.ts`,
+    and `prisma/schema/medication.prisma`.
+  - files changed:
+    `Plans.md`,
+    `src/server/risk/case-risk-provider-types.ts`,
+    `src/server/risk/active-case-risk-registry.ts`,
+    `src/server/risk/active-case-risk-registry.test.ts`,
+    `src/server/services/case-risk-cockpit.ts`,
+    `src/server/services/case-risk-cockpit.test.ts`,
+    `src/server/services/risk-task-bridge.test.ts`,
+    `src/modules/pharmacy/risk/case-risk-providers.ts`,
+    `src/modules/pharmacy/medication-stock/application/medication-stock-risk-adapter.ts`,
+    `src/modules/pharmacy/medication-stock/application/medication-stock-risk-adapter.test.ts`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Added a pure pharmacy risk provider `pharmacy.medication_stock_snapshot` and active registry wiring.
+    `getCaseRiskCockpit` now loads bounded, same-case `MedicationStockSnapshot` rows for
+    `urgent` / `shortage_expected` using a safelisted select and passes them to providers. The new
+    adapter emits generic medication-domain findings with stable keys shaped for the existing
+    `risk-task-bridge`, severity `urgent` for urgent snapshots and `warning` for shortage expected,
+    related entity `medication_stock_item`, due date from `estimated_stockout_date`, and a relative
+    patient medication-stock anchor. `Plans.md` marks the downstream parent as Partial with
+    OperationalTask fan-out and Case Risk Cockpit provider complete while preserving residual
+    VisitBrief / Schedule / Movement scope.
+  - imagegen:
+    Omitted. This is backend/provider/risk plumbing and plan hygiene only; no UI/visual reconstruction
+    was changed or needed.
+  - Oracle:
+    Consulted Oracle/GPT-5.5 Pro before implementation because this touches patient/pharmacy risk
+    surfacing. The first full-context consult `stock-risk-provider` failed with a browser
+    `setTypeOfService EINVAL` disconnect, and restart `stock-risk-provider-2` failed because
+    attachments did not finish uploading before timeout. A reduced consult `stock-risk-provider-small`
+    completed; Oracle reported GitHub access succeeded and recommended keeping DB reads in the cockpit
+    aggregation service, keeping providers pure, querying only same-case snapshot rows, using a
+    safelisted select, emitting generic PHI-minimized findings, preserving the bridge-compatible
+    `medication_stock:...:` key shape, and relying on the existing risk-task bridge rather than direct
+    task writes.
+  - bugs found:
+    Medication stock snapshots could already generate follow-up tasks from the visit write path, but
+    Case Risk Cockpit still had no provider for current `urgent` / `shortage_expected` snapshot state,
+    leaving a visibility gap in the risk cockpit and its existing task synchronization path.
+  - security risks reduced:
+    The cockpit query selects only snapshot ids, stock item id, patient/case ids, risk level,
+    stockout date, days-until-stockout, and calculation time. It does not select or serialize
+    stock quantities, units, drug names, raw risk reasons, idempotency hashes, request fingerprints,
+    or joined medication item records. Findings use generic wording and relative patient URLs.
+  - performance issues improved:
+    The cockpit lookup is bounded with `take: 50`, scoped by org/patient/case/risk level, ordered for
+    stable urgency, avoids joins and extra writes, and keeps provider mapping pure/in-memory.
+  - validation commands:
+    `pnpm exec vitest run src/modules/pharmacy/medication-stock/application/medication-stock-risk-adapter.test.ts src/server/services/case-risk-cockpit.test.ts src/server/risk/active-case-risk-registry.test.ts src/server/services/risk-task-bridge.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint src/server/risk/case-risk-provider-types.ts src/server/risk/active-case-risk-registry.ts src/server/risk/active-case-risk-registry.test.ts src/server/services/case-risk-cockpit.ts src/server/services/case-risk-cockpit.test.ts src/server/services/risk-task-bridge.test.ts src/modules/pharmacy/risk/case-risk-providers.ts src/modules/pharmacy/medication-stock/application/medication-stock-risk-adapter.ts src/modules/pharmacy/medication-stock/application/medication-stock-risk-adapter.test.ts`;
+    `pnpm plans:active:check`;
+    `pnpm boundaries:check`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm exec prettier --write Plans.md src/server/risk/case-risk-provider-types.ts src/server/risk/active-case-risk-registry.ts src/server/risk/active-case-risk-registry.test.ts src/server/services/case-risk-cockpit.ts src/server/services/case-risk-cockpit.test.ts src/server/services/risk-task-bridge.test.ts src/modules/pharmacy/risk/case-risk-providers.ts src/modules/pharmacy/medication-stock/application/medication-stock-risk-adapter.ts src/modules/pharmacy/medication-stock/application/medication-stock-risk-adapter.test.ts`.
+    `pnpm exec prettier --write Plans.md ops/refactor/STATE.md src/server/risk/case-risk-provider-types.ts src/server/risk/active-case-risk-registry.ts src/server/risk/active-case-risk-registry.test.ts src/server/services/case-risk-cockpit.ts src/server/services/case-risk-cockpit.test.ts src/server/services/risk-task-bridge.test.ts src/modules/pharmacy/risk/case-risk-providers.ts src/modules/pharmacy/medication-stock/application/medication-stock-risk-adapter.ts src/modules/pharmacy/medication-stock/application/medication-stock-risk-adapter.test.ts`;
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/server/risk/case-risk-provider-types.ts src/server/risk/active-case-risk-registry.ts src/server/risk/active-case-risk-registry.test.ts src/server/services/case-risk-cockpit.ts src/server/services/case-risk-cockpit.test.ts src/server/services/risk-task-bridge.test.ts src/modules/pharmacy/risk/case-risk-providers.ts src/modules/pharmacy/medication-stock/application/medication-stock-risk-adapter.ts src/modules/pharmacy/medication-stock/application/medication-stock-risk-adapter.test.ts`;
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/server/risk/case-risk-provider-types.ts src/server/risk/active-case-risk-registry.ts src/server/risk/active-case-risk-registry.test.ts src/server/services/case-risk-cockpit.ts src/server/services/case-risk-cockpit.test.ts src/server/services/risk-task-bridge.test.ts src/modules/pharmacy/risk/case-risk-providers.ts src/modules/pharmacy/medication-stock/application/medication-stock-risk-adapter.ts src/modules/pharmacy/medication-stock/application/medication-stock-risk-adapter.test.ts`;
+    `pnpm format:check`.
+  - validation results:
+    Focused risk/cockpit/bridge tests passed 4 files / 36 tests. Scoped ESLint passed. Plans active
+    board check passed. Module boundary check passed with 0 new violations and 0 allowlisted debt.
+    Full typecheck passed with `NODE_OPTIONS=--max-old-space-size=8192`. Targeted Prettier write
+    completed for owned code, plan, and ledger files. Targeted Prettier check passed. Targeted
+    diff-check passed. `pnpm format:check` still fails only on unrelated pre-existing untracked
+    Markdown under `projects/careviax/**`, not on this slice's owned files.
+  - remaining work:
+    Parent `STOCK-001-VISIT-DOWNSTREAM` remains Partial. Residual scope is VisitBrief ordering/provider,
+    Schedule candidate reason, Patient Movement occurrence, and future close/resolve behavior for
+    medication-stock shortage tasks. `STOCK-001-VISIT-CONTEXT-APPLY` and
+    `STOCK-001-VISIT-DB-INTEGRATION` remain human-gated.
+  - next action:
+    Run final formatting/diff validation, commit and push this slice, then continue with the next safe
+    Plans priority.
+
 - codex: `STOCK-VISIT-DOWNSTREAM-TASK-001` visit stock shortage OperationalTask fan-out。
   - commit:
     Implementation committed as `a73cf69e3`.
