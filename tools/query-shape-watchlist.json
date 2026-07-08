@@ -71,6 +71,11 @@
       "reason": "Patient timeline API is a critical PHI read entrypoint and must stay delegated to bounded scoped timeline services."
     },
     {
+      "path": "src/app/api/patients/[id]/movement-timeline/route.ts",
+      "owner": "PERF-DB-001",
+      "reason": "Patient movement timeline API is a critical PHI read entrypoint and must stay delegated to the bounded scoped timeline handler."
+    },
+    {
       "path": "src/app/api/patients/[id]/timeline/[eventId]/route.ts",
       "owner": "PERF-DB-001",
       "reason": "Patient timeline event detail resolver must avoid direct broad reads and keep detail fetches scoped."

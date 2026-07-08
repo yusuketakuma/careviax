@@ -84,7 +84,7 @@ function readPayloadBudgets() {
     if (budgetBytes === undefined) {
       fail(`could not parse payload budget for ${family}: ${budgetExpression}`);
     }
-    entries.set(family, {
+    entries.set(routeMetricsKey(method, route), {
       family,
       method,
       route,
@@ -95,7 +95,7 @@ function readPayloadBudgets() {
   return entries;
 }
 
-function validateEntry(entry, index, payloadBudgetByFamily) {
+function validateEntry(entry, index, payloadBudgetByRoute) {
   const label = `${SLO_PATH}:entries[${index}]`;
   if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
     fail(`${label} must be an object`);
@@ -137,12 +137,18 @@ function validateEntry(entry, index, payloadBudgetByFamily) {
     assertString(value, `${label}.expected_indexes[${expectedIndex}]`);
   }
 
-  const payloadBudget = payloadBudgetByFamily.get(entry.family);
+  const payloadBudget = payloadBudgetByRoute.get(routeMetricsKey(entry.method, entry.route));
   if (!payloadBudget) {
-    fail(`${label}.family is not configured in ${PAYLOAD_BUDGETS_PATH}`);
+    fail(`${label}.route is not configured in ${PAYLOAD_BUDGETS_PATH}`);
   }
   if (payloadBudget.budget_bytes == null) {
     fail(`${label}.family points to an unconfigured payload budget`);
+  }
+  if (entry.family !== payloadBudget.family) {
+    fail(`${label}.family does not match route payload budget`, [
+      `expected ${payloadBudget.family}`,
+      `actual ${entry.family}`,
+    ]);
   }
   if (entry.method !== payloadBudget.method) {
     fail(`${label}.method does not match route payload budget`, [
@@ -164,17 +170,14 @@ function validateEntry(entry, index, payloadBudgetByFamily) {
   }
 }
 
-export function checkReadPathSlo(slo, payloadBudgetByFamily) {
+export function checkReadPathSlo(slo, payloadBudgetByRoute) {
   if (!slo || !Array.isArray(slo.entries)) {
     fail(`${SLO_PATH} must contain an entries array`);
   }
 
-  const seenFamilies = new Set();
   const seenRoutes = new Set();
   for (const [index, entry] of slo.entries.entries()) {
-    validateEntry(entry, index, payloadBudgetByFamily);
-    if (seenFamilies.has(entry.family)) fail(`duplicate read SLO family: ${entry.family}`);
-    seenFamilies.add(entry.family);
+    validateEntry(entry, index, payloadBudgetByRoute);
 
     const routeKey = routeMetricsKey(entry.method, entry.route);
     if (seenRoutes.has(routeKey)) fail(`duplicate read SLO route: ${routeKey}`);
@@ -182,9 +185,11 @@ export function checkReadPathSlo(slo, payloadBudgetByFamily) {
   }
 
   const missingFamilies = [];
-  for (const [family, definition] of payloadBudgetByFamily.entries()) {
+  for (const definition of payloadBudgetByRoute.values()) {
     if (definition.method !== 'GET' || definition.budget_bytes == null) continue;
-    if (!seenFamilies.has(family)) missingFamilies.push(family);
+    const routeKey = routeMetricsKey(definition.method, definition.route);
+    if (!seenRoutes.has(routeKey))
+      missingFamilies.push(`${definition.family} (${definition.route})`);
   }
   if (missingFamilies.length > 0) {
     fail(

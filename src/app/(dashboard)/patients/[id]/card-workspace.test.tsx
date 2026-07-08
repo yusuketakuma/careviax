@@ -4204,7 +4204,7 @@ describe('CardWorkspace', () => {
     }
   });
 
-  it('fetches the patient timeline from an encoded patient path with a bounded initial limit and org headers', async () => {
+  it('fetches the patient movement timeline from an encoded patient path with a bounded initial limit and org headers', async () => {
     const hostileId = 'pt/1?x=y#z';
     const getConfig = captureWorkspaceQueryConfig('patient-timeline', hostileId);
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
@@ -4223,8 +4223,8 @@ describe('CardWorkspace', () => {
       await config?.queryFn?.();
 
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-      expect(buildPatientApiPath).toHaveBeenCalledWith(hostileId, '/timeline');
-      expect(url).toBe(`/api/patients/${encodeURIComponent(hostileId)}/timeline?limit=5`);
+      expect(buildPatientApiPath).toHaveBeenCalledWith(hostileId, '/movement-timeline');
+      expect(url).toBe(`/api/patients/${encodeURIComponent(hostileId)}/movement-timeline?limit=5`);
       expect(url).not.toContain('?x=y');
       expect(url).not.toContain('#z');
       expect(url).not.toContain('%25');

@@ -156,4 +156,50 @@ describe('check-read-path-slo', () => {
 
     expect(() => runCheck(root)).toThrow(/p99_target_ms/);
   });
+
+  it('allows the same family to cover compatibility and canonical route aliases', () => {
+    const root = createFixtureRepo(
+      {
+        entries: [
+          entry(),
+          entry({
+            family: 'foo',
+            route: '/api/foo-alias',
+            expected_indexes: ['same query path as foo'],
+          }),
+          entry({
+            family: 'bar',
+            route: '/api/bar',
+            payload_budget_bytes: 2048,
+            expected_indexes: ['bar scoped by org_id'],
+          }),
+        ],
+      },
+      `
+        const KIB = 1024;
+        export const CRITICAL_ROUTE_PAYLOAD_BUDGETS = [
+          {
+            method: 'GET',
+            route: '/api/foo',
+            family: 'foo',
+            budget_bytes: 10 * KIB,
+          },
+          {
+            method: 'GET',
+            route: '/api/foo-alias',
+            family: 'foo',
+            budget_bytes: 10 * KIB,
+          },
+          {
+            method: 'GET',
+            route: '/api/bar',
+            family: 'bar',
+            budget_bytes: 2048,
+          },
+        ];
+      `,
+    );
+
+    expect(runCheck(root)).toContain('Read path SLO check passed');
+  });
 });

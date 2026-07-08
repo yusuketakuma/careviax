@@ -21338,3 +21338,108 @@ date`, and active statuses only, then pass that date key into snapshot recalcula
 - next action:
   Commit and push this backend/API slice with only owned paths staged, then
   continue with the next `Plans.md` backend item.
+
+## 2026-07-08 MOV-001 movement timeline standalone API path
+
+- current task:
+  Implement the first non-human-gated `MOV-001-API` slice from `Plans.md`:
+  expose a standalone patient movement timeline read path without weakening the
+  existing PHI, auth, RLS, no-store, payload, rate-limit, or query-shape
+  guardrails.
+- files inspected:
+  `git status --short --branch --untracked-files=all`, `Plans.md`,
+  `ops/refactor/STATE.md`, `src/app/api/patients/[id]/timeline/route.ts`,
+  `src/app/api/patients/[id]/timeline/route.test.ts`,
+  `src/app/api/patients/[id]/timeline/[eventId]/route.test.ts`,
+  `src/server/services/patient-detail.ts`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+  `src/lib/utils/route-payload-budgets.ts`,
+  `tools/read-path-slo.json`, `tools/query-shape-watchlist.json`,
+  `src/lib/api/rate-limit.ts`, `tools/scripts/check-read-path-slo.mjs`,
+  and related performance/rate-limit/perf-smoke tests.
+- Oracle / GPT-5.5 Pro review:
+  Consulted Oracle in browser mode with local repo/GitHub context because this
+  adds a patient/PHI read API. Advice was accepted in the safe subset: add
+  `/api/patients/:id/movement-timeline` as a thin shared-handler facade, keep
+  `/api/patients/:id/timeline` as compatibility, keep a distinct PHI audit
+  view, share the same rate-limit bucket, and add payload/read-SLO/query-shape
+  guardrails. Cursor/date/category/include filtering and formal source parity
+  remain future slices.
+- files changed:
+  `Plans.md`, `ops/refactor/STATE.md`,
+  `src/app/api/patients/[id]/timeline-route-handler.ts`,
+  `src/app/api/patients/[id]/timeline/route.ts`,
+  `src/app/api/patients/[id]/movement-timeline/route.ts`,
+  `src/app/api/patients/[id]/movement-timeline/route.test.ts`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+  `src/lib/api/rate-limit.ts`, `src/lib/api/rate-limit.test.ts`,
+  `src/lib/utils/route-payload-budgets.ts`,
+  `src/lib/utils/performance.test.ts`,
+  `tools/query-shape-watchlist.json`, `tools/read-path-slo.json`,
+  `tools/scripts/check-read-path-slo.mjs`,
+  `tools/scripts/check-read-path-slo.test.ts`, and
+  `tools/scripts/perf-smoke.test.ts`.
+- implementation:
+  Extracted the existing patient timeline GET logic into
+  `createPatientTimelineGET()`, preserving `withAuthContext(canVisit)`,
+  `withSensitiveNoStore`, `normalizeRequiredRouteParam`, bounded `limit`,
+  `createScopedTxRunner(ctx.orgId)`, `getPatientTimelineData()`, measured JSON
+  responses, and fail-closed patient visibility handling. Added
+  `/api/patients/:id/movement-timeline` with `patient_movement_timeline` PHI
+  read audit view, switched the patient detail movement tab fetch to the new
+  path, kept `/api/patients/:id/timeline` as compatibility, and added route
+  tests for the new path.
+- technical debt reduced:
+  The previous route had duplicated endpoint concerns in a single file. The new
+  shared handler makes canonical movement and compatibility timeline paths use
+  one bounded implementation. `Plans.md` now classifies `MOV-001-API` as
+  partial, records `MOV-001-API-PATH-001` as completed, and leaves only
+  cursor/date/category filters, map-less UX polish, formal inbound/stock/safety
+  sources, and deep-link coverage as residual scope.
+- bugs found:
+  The read-path SLO checker assumed `family` uniquely identified a route. The
+  movement route intentionally shares the `patient-movement-timeline-list`
+  family with the compatibility `/timeline` route, so the checker was fixed to
+  validate payload budgets by `METHOD route` while still asserting family and
+  budget consistency.
+- security risks reduced:
+  No new unauthenticated or unscoped patient read was introduced. The canonical
+  movement path uses the same `canVisit` permission, org-scoped RLS runner,
+  no-store response, route parameter validation, bounded limit, and measured
+  JSON response as the existing timeline path. Rate limiting canonicalizes
+  movement and compatibility routes to the same read bucket so the alias cannot
+  double the patient timeline read budget.
+- performance issues improved:
+  The new critical read path is covered by route payload budget, read-path SLO,
+  query-shape watchlist, perf-smoke default path matrix, and performance tests.
+  The SLO checker now supports compatibility/canonical aliases without losing
+  per-route budget validation.
+- validation commands:
+  `pnpm db:read-slo:check`;
+  `pnpm db:query-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm route-auth-wrapper:check`;
+  `pnpm exec vitest run tools/scripts/check-read-path-slo.test.ts --reporter=dot --testTimeout=30000`;
+  `pnpm exec vitest run 'src/app/api/patients/[id]/timeline/route.test.ts' 'src/app/api/patients/[id]/movement-timeline/route.test.ts' 'src/app/api/patients/[id]/timeline/[eventId]/route.test.ts' src/lib/api/rate-limit.test.ts src/lib/utils/performance.test.ts tools/scripts/perf-smoke.test.ts --reporter=dot --testTimeout=30000`;
+  scoped `pnpm exec eslint ...`;
+  scoped `pnpm exec prettier --check ...`;
+  `git diff --check -- ...`.
+- validation results:
+  Read SLO check passed. Query-shape check passed with 0 allowlisted and 0 new
+  violations. Plans active board check passed. Route auth wrapper check passed
+  with 0 new routes. SLO checker Vitest passed 1 file / 7 tests. Focused route,
+  rate-limit, performance, and perf-smoke Vitest passed 6 files / 89 tests, with
+  only existing PHI audit mock warnings in legacy timeline/detail tests. Scoped
+  ESLint passed. Prettier passed after formatting. Diff whitespace check passed.
+- remaining work:
+  `MOV-001-API` remains partial for cursor/date/category/include filtering,
+  `meta.next_cursor`, map-less date card UX, formal inbound/MedicationStock/
+  safety sources, safe relative href builder coverage, raw detail reauth UI, and
+  browser/mobile/a11y validation.
+- next action:
+  Commit this explicit owned slice, then continue from the next highest-value
+  `Plans.md` item: `STOCK-001-VISIT-UI`, `STOCK-001-VISIT-DOWNSTREAM`, or
+  `INBOUND-002-REVIEW-DETAIL` depending on whether the migration gate remains
+  blocked.

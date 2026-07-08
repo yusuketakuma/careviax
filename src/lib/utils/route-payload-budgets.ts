@@ -80,6 +80,12 @@ export const CRITICAL_ROUTE_PAYLOAD_BUDGETS: PayloadBudgetDefinition[] = [
   },
   {
     method: 'GET',
+    route: '/api/patients/:id/movement-timeline',
+    family: 'patient-movement-timeline-list',
+    budget_bytes: 250 * KIB,
+  },
+  {
+    method: 'GET',
     route: '/api/patients/:id/medication-stock',
     family: 'patient-medication-stock-summary',
     budget_bytes: 250 * KIB,

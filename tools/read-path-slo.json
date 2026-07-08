@@ -180,6 +180,24 @@
       "notes": "Patient movement timeline list. Source fan-out must stay caller-limit-aware."
     },
     {
+      "family": "patient-movement-timeline-list",
+      "method": "GET",
+      "route": "/api/patients/:id/movement-timeline",
+      "p95_target_ms": 600,
+      "p99_target_ms": 1500,
+      "payload_budget_bytes": 256000,
+      "max_rows": 80,
+      "max_include_depth": 1,
+      "max_query_count": 20,
+      "count_basis": "visible_window",
+      "expected_indexes": [
+        "timeline source tables scoped by org_id, patient_id, and occurred_at",
+        "audit logs scoped by org_id, target_id, and created_at"
+      ],
+      "owner": "PERF-DB-READ-SLO-001",
+      "notes": "Canonical patient movement timeline list path. Uses the same bounded source fan-out as the compatibility /timeline path."
+    },
+    {
       "family": "patient-medication-stock-summary",
       "method": "GET",
       "route": "/api/patients/:id/medication-stock",

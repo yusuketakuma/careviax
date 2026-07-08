@@ -4915,7 +4915,7 @@ export function CardWorkspace({
   } = useQuery<PatientTimelineSnapshot>({
     queryKey: ['patient-timeline', patientId, orgId, timelineLimit],
     queryFn: async () => {
-      const path = `${buildPatientApiPath(patientId, '/timeline')}?${new URLSearchParams({
+      const path = `${buildPatientApiPath(patientId, '/movement-timeline')}?${new URLSearchParams({
         limit: String(timelineLimit),
       }).toString()}`;
       const response = await fetch(path, { headers: buildOrgHeaders(orgId) });

@@ -7,6 +7,7 @@ import {
   RATE_LIMIT_DDB_TIMEOUT_MS,
   RATE_LIMIT_FEATURE_MUTATION_MAX_DEFAULT,
   RATE_LIMIT_FEATURE_SEARCH_MAX_DEFAULT,
+  RATE_LIMIT_READ_MAX,
   SSE_MAX_CONNECTIONS,
   acquireSseConnection,
   canonicalizeRateLimitPath,
@@ -185,6 +186,9 @@ describe('rate-limit', () => {
     expect(canonicalizeRateLimitPath('/api/patients/patient_2/timeline')).toBe(
       '/api/patients/:id/timeline',
     );
+    expect(canonicalizeRateLimitPath('/api/patients/patient_2/movement-timeline')).toBe(
+      '/api/patients/:id/timeline',
+    );
     expect(canonicalizeRateLimitPath('/api/patients/patient_2/medication-stock')).toBe(
       '/api/patients/:id/medication-stock',
     );
@@ -279,6 +283,18 @@ describe('rate-limit', () => {
     expect(canonicalizeRateLimitPath('/api//patients//patient_1')).toBe('/api/patients/:id');
     expect(canonicalizeRateLimitPath('/api/not-real-a')).toBe('/api/__unknown__');
     expect(canonicalizeRateLimitPath('/settings')).toBe('/settings');
+  });
+
+  it('shares the read bucket between legacy and standalone movement timeline routes', async () => {
+    for (let index = 0; index < RATE_LIMIT_READ_MAX; index += 1) {
+      await expect(
+        checkRateLimit('203.0.113.20', '/api/patients/patient_1/timeline', 'GET'),
+      ).resolves.toMatchObject({ allowed: true });
+    }
+
+    await expect(
+      checkRateLimit('203.0.113.20', '/api/patients/patient_1/movement-timeline', 'GET'),
+    ).resolves.toMatchObject({ allowed: false });
   });
 
   it('shares write budget across different ids for the same dynamic route', async () => {

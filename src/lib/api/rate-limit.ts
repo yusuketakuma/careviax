@@ -733,6 +733,7 @@ export const API_ROUTE_TEMPLATES = [
   '/api/patients/:id/medication-calendar/pdf',
   '/api/patients/:id/medication-stock',
   '/api/patients/:id/medications/pdf',
+  '/api/patients/:id/movement-timeline',
   '/api/patients/:id/overview',
   '/api/patients/:id/packaging',
   '/api/patients/:id/prescriptions',
@@ -905,6 +906,10 @@ const compiledApiRouteTemplates: CompiledRouteTemplate[] = API_ROUTE_TEMPLATES.m
   return right.segments.length - left.segments.length;
 });
 
+const RATE_LIMIT_CANONICAL_ROUTE_ALIASES = new Map<string, string>([
+  ['/api/patients/:id/movement-timeline', '/api/patients/:id/timeline'],
+]);
+
 function normalizePathname(pathname: string) {
   const [pathWithoutQuery] = pathname.split('?');
   const collapsed = (pathWithoutQuery || '/').replace(/\/{2,}/g, '/');
@@ -936,7 +941,8 @@ export function canonicalizeRateLimitPath(pathname: string) {
   const matched = compiledApiRouteTemplates.find((template) =>
     routeTemplateMatches(template, pathSegments),
   );
-  return matched?.template ?? UNKNOWN_API_RATE_LIMIT_PATH;
+  if (!matched) return UNKNOWN_API_RATE_LIMIT_PATH;
+  return RATE_LIMIT_CANONICAL_ROUTE_ALIASES.get(matched.template) ?? matched.template;
 }
 
 // ---------------------------------------------------------------------------

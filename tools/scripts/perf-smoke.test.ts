@@ -94,6 +94,7 @@ describe('perf-smoke parseArgs', () => {
         '/api/patients/board',
         '/api/patients/patient_custom_123/overview',
         '/api/patients/patient_custom_123/timeline',
+        '/api/patients/patient_custom_123/movement-timeline',
         '/api/patients/patient_custom_123/medication-stock',
         '/api/communications/inbound',
         '/api/communications/inbound/signals',
