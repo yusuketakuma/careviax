@@ -116,17 +116,21 @@ describe('BillingCandidatesContent', () => {
                   workflow_state: { review_state: 'reviewed', resolution_state: 'confirmed' },
                 },
               ],
-              hasMore: false,
-              summary: {
-                total: 2,
-                pending_review: 1,
-                confirmed: 1,
-                excluded: 0,
-                exported: 0,
-                reviewed: 1,
-                ready_to_close: 1,
-                blocked_from_close: 1,
-                blocker_reasons: [],
+              meta: {
+                limit: 50,
+                has_more: false,
+                next_cursor: null,
+                summary: {
+                  total: 2,
+                  pending_review: 1,
+                  confirmed: 1,
+                  excluded: 0,
+                  exported: 0,
+                  reviewed: 1,
+                  ready_to_close: 1,
+                  blocked_from_close: 1,
+                  blocker_reasons: [],
+                },
               },
             }),
             { status: 200 },
@@ -284,17 +288,21 @@ describe('BillingCandidatesContent', () => {
               workflow_state: { review_state: 'reviewed', resolution_state: 'confirmed' },
             },
           ],
-          hasMore: false,
-          summary: {
-            total: 1,
-            pending_review: 0,
-            confirmed: 1,
-            excluded: 0,
-            exported: 0,
-            reviewed: 1,
-            ready_to_close: 1,
-            blocked_from_close: 0,
-            blocker_reasons: [],
+          meta: {
+            limit: 50,
+            has_more: false,
+            next_cursor: null,
+            summary: {
+              total: 1,
+              pending_review: 0,
+              confirmed: 1,
+              excluded: 0,
+              exported: 0,
+              reviewed: 1,
+              ready_to_close: 1,
+              blocked_from_close: 0,
+              blocker_reasons: [],
+            },
           },
         });
       }
@@ -380,18 +388,21 @@ describe('BillingCandidatesContent', () => {
                   workflow_state: { review_state: 'reviewed', resolution_state: 'confirmed' },
                 },
               ],
-              hasMore: true,
-              nextCursor: 'cursor_1',
-              summary: {
-                total: 1,
-                pending_review: 0,
-                confirmed: 1,
-                excluded: 0,
-                exported: 0,
-                reviewed: 1,
-                ready_to_close: 1,
-                blocked_from_close: 0,
-                blocker_reasons: [],
+              meta: {
+                limit: 50,
+                has_more: true,
+                next_cursor: 'cursor_1',
+                summary: {
+                  total: 1,
+                  pending_review: 0,
+                  confirmed: 1,
+                  excluded: 0,
+                  exported: 0,
+                  reviewed: 1,
+                  ready_to_close: 1,
+                  blocked_from_close: 0,
+                  blocker_reasons: [],
+                },
               },
             }),
             { status: 200 },
@@ -560,6 +571,38 @@ describe('BillingCandidatesContent', () => {
         expected_updated_at: '2026-06-18T00:00:00.000Z',
       });
     });
+  });
+
+  it('reads generation success messages from the data envelope only', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === '/api/billing-candidates' && init?.method === 'POST') {
+        return jsonResponse({
+          message: 'legacy root message must not be read',
+          data: {
+            message: '2026-03-01 の請求候補を生成しました',
+            billing_domain: 'home_care',
+            generated: 1,
+            home_care_generated: 1,
+            pca_rental_generated: 0,
+            confirmed: 0,
+            review_required: 1,
+            excluded: 0,
+          },
+        });
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderBillingCandidatesContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: '医療・介護候補生成' }));
+
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith('2026-03-01 の請求候補を生成しました');
+    });
+    expect(toast.success).not.toHaveBeenCalledWith('legacy root message must not be read');
   });
 
   it('uses the generation fallback when mutation rejection is not an Error', async () => {

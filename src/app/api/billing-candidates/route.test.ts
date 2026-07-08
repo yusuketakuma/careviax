@@ -248,12 +248,6 @@ describe('/api/billing-candidates', () => {
       select: { id: true, name: true },
     });
     await expect(resolvedResponse.json()).resolves.toMatchObject({
-      summary: {
-        total: 2,
-        pending_review: 1,
-        confirmed: 1,
-        ready_to_close: 1,
-      },
       data: [
         {
           status: 'confirmed',
@@ -265,6 +259,14 @@ describe('/api/billing-candidates', () => {
           },
         },
       ],
+      meta: {
+        summary: {
+          total: 2,
+          pending_review: 1,
+          confirmed: 1,
+          ready_to_close: 1,
+        },
+      },
     });
   });
 
@@ -323,7 +325,7 @@ describe('/api/billing-candidates', () => {
     );
 
     const body = await response.json();
-    expect(Object.keys(body)).toEqual(['data', 'hasMore', 'nextCursor', 'summary']);
+    expect(Object.keys(body)).toEqual(['data', 'meta']);
     expect(body).toMatchObject({
       data: [
         {
@@ -331,11 +333,17 @@ describe('/api/billing-candidates', () => {
           patient_name: '佐藤 花子',
         },
       ],
-      hasMore: true,
-      nextCursor: 'candidate_1',
-      summary: null,
+      meta: {
+        limit: 1,
+        has_more: true,
+        next_cursor: 'candidate_1',
+        summary: null,
+      },
     });
     expect(body.data).toHaveLength(1);
+    expect(body).not.toHaveProperty('hasMore');
+    expect(body).not.toHaveProperty('nextCursor');
+    expect(body).not.toHaveProperty('summary');
     expect(JSON.stringify(body)).not.toContain('candidate_2');
   });
 
@@ -609,15 +617,23 @@ describe('/api/billing-candidates', () => {
         billingMonth: new Date('2026-03-01T00:00:00.000Z'),
       },
     );
-    await expect(resolvedResponse.json()).resolves.toMatchObject({
-      billing_domain: 'all',
-      generated: 4,
-      home_care_generated: 3,
-      pca_rental_generated: 1,
-      confirmed: 1,
-      review_required: 2,
-      excluded: 1,
+    const body = await resolvedResponse.json();
+    expect(Object.keys(body)).toEqual(['data']);
+    expect(body).toMatchObject({
+      data: {
+        message: '2026-03-01 の請求候補を生成しました',
+        billing_domain: 'all',
+        generated: 4,
+        home_care_generated: 3,
+        pca_rental_generated: 1,
+        confirmed: 1,
+        review_required: 2,
+        excluded: 1,
+      },
     });
+    expect(body).not.toHaveProperty('message');
+    expect(body).not.toHaveProperty('billing_domain');
+    expect(body).not.toHaveProperty('generated');
   });
 
   it('generates only PCA rental candidates when billing_domain is pca_rental', async () => {
@@ -643,10 +659,12 @@ describe('/api/billing-candidates', () => {
       },
     );
     await expect(resolvedResponse.json()).resolves.toMatchObject({
-      billing_domain: 'pca_rental',
-      generated: 1,
-      home_care_generated: 0,
-      pca_rental_generated: 1,
+      data: {
+        billing_domain: 'pca_rental',
+        generated: 1,
+        home_care_generated: 0,
+        pca_rental_generated: 1,
+      },
     });
   });
 

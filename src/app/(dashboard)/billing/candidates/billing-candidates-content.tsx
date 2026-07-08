@@ -126,9 +126,25 @@ type BillingCandidateSummary = {
 
 type BillingCandidatesResponse = {
   data: BillingCandidate[];
-  hasMore: boolean;
-  nextCursor?: string;
-  summary: BillingCandidateSummary;
+  meta: {
+    limit: number;
+    has_more: boolean;
+    next_cursor: string | null;
+    summary: BillingCandidateSummary;
+  };
+};
+
+type BillingCandidateGenerationResponse = {
+  data: {
+    message: string;
+    billing_domain: BillingDomain | 'all';
+    generated: number;
+    home_care_generated: number;
+    pca_rental_generated: number;
+    confirmed: number;
+    review_required: number;
+    excluded: number;
+  };
 };
 
 type BillingExportPreviewResponse = {
@@ -389,7 +405,7 @@ export function BillingCandidatesContent({
       });
       return readApiJson<BillingCandidatesResponse>(res, '請求候補の取得に失敗しました');
     },
-    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    getNextPageParam: (lastPage) => lastPage.meta.next_cursor ?? undefined,
     initialPageParam: undefined as string | undefined,
     enabled: !!orgId,
   });
@@ -418,7 +434,7 @@ export function BillingCandidatesContent({
   });
 
   const candidates = data?.pages.flatMap((p) => p.data) ?? [];
-  const summary = data?.pages[0]?.summary ?? null;
+  const summary = data?.pages[0]?.meta.summary ?? null;
   const exportPreview = exportPreviewQuery.data?.data ?? null;
   const targetCandidateIndex = targetCandidateId
     ? candidates.findIndex((candidate) => candidate.id === targetCandidateId)
@@ -438,13 +454,10 @@ export function BillingCandidatesContent({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ billing_month: billingMonthStr, billing_domain: billingDomain }),
       });
-      return readApiJson<{ message: string; generated?: number }>(
-        res,
-        '請求候補の生成に失敗しました',
-      );
+      return readApiJson<BillingCandidateGenerationResponse>(res, '請求候補の生成に失敗しました');
     },
     onSuccess: async (result) => {
-      toast.success(result.message);
+      toast.success(result.data.message);
       await queryClient.invalidateQueries({ queryKey: ['billing-candidates', orgId] });
       await queryClient.invalidateQueries({ queryKey: ['billing-stats', orgId] });
     },

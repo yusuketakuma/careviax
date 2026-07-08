@@ -276,7 +276,15 @@ const authenticatedGET = withAuthContext(
 
     const page = buildCursorPage(candidates, limit, (candidate) => candidate.id);
 
-    return success({ ...page, summary: result.summary });
+    return success({
+      data: page.data,
+      meta: {
+        limit,
+        has_more: page.hasMore,
+        next_cursor: page.nextCursor ?? null,
+        summary: result.summary,
+      },
+    });
   },
   {
     permission: 'canManageBilling',
@@ -369,8 +377,10 @@ export const POST = withAuthContext(
     );
 
     return success({
-      message: `${billingMonth.canonical} の請求候補を生成しました`,
-      ...created,
+      data: {
+        message: `${billingMonth.canonical} の請求候補を生成しました`,
+        ...created,
+      },
     });
   },
   {
