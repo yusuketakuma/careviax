@@ -41,6 +41,80 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001Y` password reset confirm success envelope cleanup.
+  - commit:
+    Implementation and Plans/allowlist update committed as `8b3d94634`
+    (`fix(api): envelope password reset confirm`). State record is this entry and will be
+    committed separately before pushing the slice.
+  - current task:
+    Continue `Plans.md` highest-priority implementable work under `API-CONTRACT-001`. Convert
+    `POST /api/auth/password/reset/confirm` success from legacy root `ok` to the new
+    `data: { ok: true }` envelope only.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `ops/refactor/STATE.md`,
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `.agents/skills/oracle-consult/SKILL.md`,
+    `src/app/api/auth/password/reset/confirm/route.ts`,
+    `src/app/api/auth/password/reset/confirm/route.test.ts`,
+    `src/app/(auth)/password/reset/page.tsx`,
+    `src/app/api/auth/password/reset/request/route.ts`,
+    and `src/app/api/auth/password/reset/request/route.test.ts`.
+  - files changed:
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/auth/password/reset/confirm/route.ts`,
+    `src/app/api/auth/password/reset/confirm/route.test.ts`,
+    and this `ops/refactor/STATE.md` ledger entry.
+  - implementation:
+    The confirm route now returns `success({ data: { ok: true } })` after Cognito confirms the
+    reset. The route tests assert the exact new body and prove root `ok` is absent. The password
+    reset page does not read the success body, so no frontend reader change was needed. The allowlist
+    entry for this route was removed, and `Plans.md` records `API-CONTRACT-001Y` with allowlist debt
+    reduced from 188 to 187.
+  - Oracle:
+    User explicitly paused Oracle consultation. No Oracle prompt was sent or restarted. The change
+    was limited to the success response body and verified locally.
+  - imagegen:
+    Not used. This is an auth API response-shape cleanup with no UI/UX reconstruction.
+  - Next.js docs:
+    Re-read `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md` in this
+    API contract run. This slice changes JSON response shape only and does not change route
+    placement, supported methods, runtime behavior, or cache behavior.
+  - bugs found:
+    The password reset confirm route still returned legacy root `{ ok: true }`, keeping the route on
+    the API response shape allowlist and diverging from the new `ApiSuccess<T>` success contract.
+  - security risks reduced:
+    No authentication boundary was weakened. Existing IP rate limiting, payload validation, password
+    strength schema, Cognito `confirmForgotPassword` call, provider error classification, and public
+    page success handling were preserved. The success body no longer exposes an ambiguous root field.
+  - performance issues improved:
+    No DB query, network call, retry behavior, or client request was added. The Cognito call path is
+    unchanged.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json 'src/app/api/auth/password/reset/confirm/route.ts' 'src/app/api/auth/password/reset/confirm/route.test.ts'`;
+    `pnpm exec vitest run 'src/app/api/auth/password/reset/confirm/route.test.ts' --reporter=dot --testTimeout=30000`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint --max-warnings=0 'src/app/api/auth/password/reset/confirm/route.ts' 'src/app/api/auth/password/reset/confirm/route.test.ts'`;
+    `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json 'src/app/api/auth/password/reset/confirm/route.ts' 'src/app/api/auth/password/reset/confirm/route.test.ts'`;
+    `git diff --check -- Plans.md tools/api-response-shape-allowlist.json 'src/app/api/auth/password/reset/confirm/route.ts' 'src/app/api/auth/password/reset/confirm/route.test.ts'`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Targeted Prettier write completed. Focused password reset confirm Vitest passed 1 file / 6
+    tests. API response shape check passed with 187 allowlisted violations and 0 new violations.
+    Plans active board check passed. Scoped ESLint passed. Targeted Prettier check passed.
+    Targeted diff-check passed. Full typecheck passed.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial; the next allowlist candidate is
+    `src/app/api/billing-candidates/close/route.ts`. Unrelated local dirty state remains in
+    `.harness-mem/state/continuity.json` and many untracked memory/docs files and was not staged.
+  - next action:
+    Commit this state entry, push the two commits for this slice to `origin/main`, then continue
+    the `Plans.md` high-priority loop while Oracle consultation remains paused.
+
 - codex: `API-CONTRACT-001X` pharmacist credentials list envelope cleanup.
   - commit:
     Implementation and Plans/allowlist/frontend reader update committed as `375d09c46`
