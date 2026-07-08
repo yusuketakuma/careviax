@@ -41,6 +41,108 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001AQ` conference notes list success envelope cleanup.
+  - commit:
+    Implementation, Plans/allowlist, route tests, protected smoke, and conference reader tests
+    committed as `f75768a69` (`fix(api): envelope conference notes list`). State record is this
+    entry and will be committed separately before pushing the slice.
+  - current task:
+    Continue `Plans.md` highest-priority implementable work under `API-CONTRACT-001`. Remove
+    `src/app/api/conference-notes/route.ts` from the public response-shape allowlist by moving GET
+    list pagination from legacy root `hasMore` / `nextCursor` to `meta.has_more` /
+    `meta.next_cursor`, without compatibility root fallback readers.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `ops/refactor/STATE.md`,
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/conference-notes/route.ts`,
+    `src/app/api/conference-notes/route.test.ts`,
+    `src/app/(dashboard)/conferences/conferences-content.tsx`,
+    `src/app/(dashboard)/conferences/conferences-content.test.tsx`,
+    `src/lib/api/cursor-pagination-client.ts`,
+    `src/app/api/__tests__/protected-get-routes.test.ts`,
+    `src/app/api/__tests__/protected-post-routes.test.ts`,
+    `gbrain search "API-CONTRACT conference-notes response envelope"`,
+    and route/frontend usage search results for `/api/conference-notes`.
+  - files changed:
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/conference-notes/route.ts`,
+    `src/app/api/conference-notes/route.test.ts`,
+    `src/app/(dashboard)/conferences/conferences-content.tsx`,
+    `src/app/(dashboard)/conferences/conferences-content.test.tsx`,
+    and this `ops/refactor/STATE.md` ledger entry.
+  - implementation:
+    `GET /api/conference-notes` now returns `success({ data, meta: { limit, has_more,
+    next_cursor } })`. Existing keyset cursor logic, billing-eligible scan overflow cursor, summary
+    detail redaction, no-store wrapper, POST creation/sync side effects, and sanitized error behavior
+    were not changed. The conferences page now uses `fetchAllMetaCursorPages` for both list and
+    calendar conference-note queries. Route and page tests were updated to reject root pagination
+    fields. The allowlist entry for `src/app/api/conference-notes/route.ts` was removed, and
+    `Plans.md` records `API-CONTRACT-001AQ` with allowlist debt reduced from 160 to 159.
+  - Oracle:
+    User explicitly paused Oracle consultation. No Oracle prompt was sent or restarted. This route is
+    PHI/patient/case adjacent, so the slice stayed strictly mechanical: GET response wrapping,
+    current-shape reader tests, allowlist/plan debt, and ledger updates only.
+  - imagegen:
+    Not used. This is an API contract/static guard cleanup with no visible UI/UX change.
+  - Next.js docs:
+    Re-read `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md` earlier in
+    this API contract run. This slice changes JSON response construction only and does not change
+    route placement, supported methods, runtime behavior, no-store wrapping, or cache behavior.
+  - bugs found:
+    `GET /api/conference-notes` returned a route-local page object directly, leaving legacy root
+    pagination fields (`hasMore`, `nextCursor`) as part of the public response shape. The conferences
+    list and calendar readers also used the legacy root pagination helper for this route.
+  - bugs fixed:
+    Conference note list rows are now under `data`, pagination is under `meta`, route tests reject
+    root pagination fields for normal keyset and scan-overflow cases, the conferences page readers use
+    only the current `data + meta` cursor shape, and `api-response-shape:check` now reports 159
+    allowlisted violations and 0 new violations.
+  - security risks found:
+    None introduced. Existing `canReport` authorization, org RLS, no-store wrapper, summary-detail
+    field omission, and sanitized 500 behavior remain unchanged.
+  - security risks reduced:
+    Removing root pagination fields reduces alternate public list contract surface before
+    request_id/error unification, without weakening PHI minimization boundaries already present in
+    summary list mode.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None. No DB query shape, selected columns, `limit + 1` or scan-overflow pagination math, sort
+    order, case lookup, React query invalidation, or request frequency changed beyond the equivalent
+    response wrapper and current-shape pagination helper.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/conference-notes/route.ts src/app/api/conference-notes/route.test.ts src/app/(dashboard)/conferences/conferences-content.tsx src/app/(dashboard)/conferences/conferences-content.test.tsx`;
+    `pnpm vitest run src/app/api/conference-notes/route.test.ts`;
+    `pnpm vitest run src/app/(dashboard)/conferences/conferences-content.test.tsx`;
+    `pnpm vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "conference-notes GET"`;
+    `pnpm vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "conference-notes POST"`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint --max-warnings=0 src/app/api/conference-notes/route.ts src/app/api/conference-notes/route.test.ts src/app/(dashboard)/conferences/conferences-content.tsx src/app/(dashboard)/conferences/conferences-content.test.tsx`;
+    `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/conference-notes/route.ts src/app/api/conference-notes/route.test.ts src/app/(dashboard)/conferences/conferences-content.tsx src/app/(dashboard)/conferences/conferences-content.test.tsx`;
+    `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/conference-notes/route.ts src/app/api/conference-notes/route.test.ts src/app/(dashboard)/conferences/conferences-content.tsx src/app/(dashboard)/conferences/conferences-content.test.tsx`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm format:check`.
+  - validation results:
+    Prettier write/check passed for all owned changed files. Conference notes route Vitest passed (1
+    file / 45 tests). Conferences content Vitest passed (1 file / 20 tests). Protected GET filtered
+    smoke passed (3 tests, 381 skipped). Protected POST filtered smoke passed (3 tests, 142 skipped).
+    API response shape guard passed (159 allowlisted violations, 0 new violations). Plans active
+    board check passed. Scoped ESLint passed. Targeted Prettier check and scoped `git diff --check`
+    passed. Full typecheck passed. `pnpm format:check` again confirmed owned changed files are
+    formatted, then failed on unrelated pre-existing untracked Markdown files under `projects/` and
+    `skills/`; those user/local files were not modified.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 159 allowlisted response-shape violations. Next immediate
+    allowlist targets are consent-record revoke/detail/collection routes, followed by dashboard
+    workflow and dispense routes.
+  - next action:
+    Commit this STATE entry separately, push `f75768a69` plus the state commit to `origin/main`, then
+    continue with consent-record routes under the same Oracle-paused and no-legacy-root constraints.
+
 - codex: `API-CONTRACT-001AP` community activities list success envelope cleanup.
   - commit:
     Implementation, Plans/allowlist, route test, and conference reader test committed as
