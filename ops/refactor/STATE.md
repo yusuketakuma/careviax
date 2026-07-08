@@ -43,7 +43,8 @@
 
 - codex: `STOCK-VISIT-DOWNSTREAM-MOVEMENT-001` MedicationStockSnapshot Patient Movement occurrence marker。
   - commit:
-    Implementation committed as `99521b01a`.
+    Implementation committed as `99521b01a`; state record committed as `0bac39221`; pushed to
+    `origin/main`.
   - current task:
     `Plans.md` の `STOCK-001-VISIT-DOWNSTREAM` 残スコープから、訪問観測後の
     `MedicationStockSnapshot` `urgent` / `shortage_expected` を Patient Movement timeline の
@@ -156,8 +157,8 @@
     cursor/date/category filters, map-less date card UX, formal inbound/safety sources, and remaining
     source parity.
   - next action:
-    Commit this STATE entry, push the scoped commits, then continue with the next highest non-gated
-    queue item or prepare the human-gated visit context/apply evidence if the user provides approval.
+    Continue with the next highest non-gated queue item or prepare the human-gated visit
+    context/apply evidence if the user provides approval.
 
 - codex: `STOCK-VISIT-DOWNSTREAM-SCHEDULE-001` MedicationStockSnapshot Schedule proposal review context。
   - commit:
