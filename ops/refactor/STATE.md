@@ -24393,6 +24393,99 @@ patient_stats } }`. Tests assert `data` and verify root `month`, `summary`,
   then select the next safe `API-CONTRACT-001` slice from the remaining
   allowlist.
 
+## 2026-07-09 - API-CONTRACT-001U dashboard medication-deadlines envelope cleanup
+
+- current task:
+  Continue `API-CONTRACT-001` by migrating
+  `GET /api/dashboard/medication-deadlines` to the new `data` envelope only.
+  Compatibility with legacy root `total`, `critical`, and `warning` fields was
+  intentionally not kept.
+- files inspected:
+  `git status --short --branch --untracked-files=all`; `Plans.md`;
+  `ops/refactor/STATE.md`; `tools/api-response-shape-allowlist.json`;
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`;
+  `src/app/api/dashboard/medication-deadlines/route.ts`;
+  `src/app/api/dashboard/medication-deadlines/route.test.ts`;
+  `src/app/(dashboard)/search/search-content.tsx`;
+  `src/app/(dashboard)/search/search-content.test.tsx`;
+  `src/lib/search/result-builders.ts`.
+- files changed:
+  `Plans.md`; `tools/api-response-shape-allowlist.json`;
+  `src/app/api/dashboard/medication-deadlines/route.ts`;
+  `src/app/api/dashboard/medication-deadlines/route.test.ts`;
+  `src/app/(dashboard)/search/search-content.tsx`;
+  `src/app/(dashboard)/search/search-content.test.tsx`;
+  `ops/refactor/STATE.md`.
+- advisory gate:
+  Oracle was consulted because the route returns dashboard-authorized
+  medication deadline data with patient names. Oracle returned Go, reported
+  GitHub access was available, and advised: change only the success body to
+  `success({ data: { total, critical, warning } })`; make SearchContent read
+  only `payload.data`; make the search perf item counter ignore root
+  `critical` / `warning`; remove the allowlist entry; preserve auth,
+  `runWithRequestAuthContext`, `withOrgContext` request context, validation,
+  org scoping, schedule status filter, UTC date boundaries, `orderBy`, `take`,
+  selected fields, `withSensitiveNoStore`, `withRoutePerformance`, logging,
+  and error handling.
+- bugs found:
+  `GET /api/dashboard/medication-deadlines` still returned success payload
+  fields at the root, and SearchContent still read root `critical` / `warning`
+  buckets for medication deadline results.
+- bugs fixed:
+  Successful medication deadline responses now return
+  `{ data: { total, critical, warning } }`. Route tests assert the new shape and
+  absence of root fields. SearchContent now reads only `payload.data`, and a
+  regression test injects poisoned legacy root buckets to prove they are
+  ignored.
+- security risks found:
+  No auth, authorization, tenant isolation, PHI selection, no-store behavior,
+  logging, validation, or query shape needed changes.
+- security risks reduced:
+  Removed one PHI-bearing dashboard legacy success shape without adding
+  compatibility fallbacks. The existing bounded select, org scoping, no-store,
+  and sanitized error handling remain in place.
+- performance issues found:
+  The client-side search perf item counter could still count legacy root
+  medication deadline buckets, which would mask stale response-shape drift
+  during `/search` performance tracing.
+- performance issues improved:
+  Search perf item counting now counts medication deadline items only under
+  `payload.data`, matching the new API contract. DB query shape, selected
+  fields, `take`, and sorting are unchanged.
+- UI/UX note:
+  No visible UI/UX layout change. This slice only changed the `/search` data
+  reader contract and tests, so image generation was not applicable.
+- validation commands:
+  `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/dashboard/medication-deadlines/route.ts src/app/api/dashboard/medication-deadlines/route.test.ts 'src/app/(dashboard)/search/search-content.tsx' 'src/app/(dashboard)/search/search-content.test.tsx'`;
+  `pnpm exec vitest run src/app/api/dashboard/medication-deadlines/route.test.ts 'src/app/(dashboard)/search/search-content.test.tsx' --reporter=dot --testTimeout=30000`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint --max-warnings=0 src/app/api/dashboard/medication-deadlines/route.ts src/app/api/dashboard/medication-deadlines/route.test.ts 'src/app/(dashboard)/search/search-content.tsx' 'src/app/(dashboard)/search/search-content.test.tsx'`;
+  `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/dashboard/medication-deadlines/route.ts src/app/api/dashboard/medication-deadlines/route.test.ts 'src/app/(dashboard)/search/search-content.tsx' 'src/app/(dashboard)/search/search-content.test.tsx'`;
+  `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/dashboard/medication-deadlines/route.ts src/app/api/dashboard/medication-deadlines/route.test.ts 'src/app/(dashboard)/search/search-content.tsx' 'src/app/(dashboard)/search/search-content.test.tsx'`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+- validation results:
+  Prettier write/check passed. Focused Vitest passed 2 files / 43 tests.
+  `api-response-shape:check` passed with 191 allowlisted violations and 0 new
+  violations. `plans:active:check` passed. Focused ESLint passed with
+  `--max-warnings=0`. Scoped diff check passed. Full typecheck passed,
+  including Next route type generation, app TypeScript, and service worker
+  TypeScript.
+- commit:
+  Implementation, tests, allowlist, and Plans update committed as
+  `70dca418834c05e873be40c1ee5ad428f1c755dc`
+  (`fix(api): envelope dashboard medication deadlines`) and pushed to
+  `origin/main`.
+- remaining work:
+  `API-CONTRACT-001` remains Partial. The allowlist now has 191 expected legacy
+  response-shape violations. Continue migrating real route shapes without
+  compatibility fallbacks. Higher-risk auth/tenant/PII/medical/dashboard
+  surfaces should continue to use Oracle before implementation/finalization.
+- next action:
+  Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
+  then select the next safe `API-CONTRACT-001` slice from the remaining
+  allowlist.
+
 ## 2026-07-09 - API-CONTRACT-001R drug-alert-rules envelope cleanup
 
 - current task:
