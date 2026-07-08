@@ -251,6 +251,18 @@ describe('/api/cases/[id]', () => {
       (careCaseUpdateMock.mock.calls[0][0].data.required_visit_support as Record<string, unknown>)
         .internal_note,
     ).toBeUndefined();
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: {
+        id: 'case_1',
+        primary_pharmacist_id: null,
+        backup_pharmacist_id: 'pharmacist_2',
+        required_visit_support: { escort: true },
+      },
+    });
+    expect(body).not.toHaveProperty('id');
+    expect(body).not.toHaveProperty('primary_pharmacist_id');
+    expect(body).not.toHaveProperty('required_visit_support');
   });
 
   it('validates both primary and backup pharmacist ids together', async () => {
