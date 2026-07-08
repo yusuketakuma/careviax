@@ -41,6 +41,96 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001AG` case risk-cockpit success envelope cleanup.
+  - commit:
+    Implementation, Plans/allowlist, reader, and focused tests committed as `741a9b078`
+    (`fix(api): envelope case risk cockpit response`). State record is this entry and will be
+    committed separately before pushing the slice.
+  - current task:
+    Continue `Plans.md` highest-priority implementable work under `API-CONTRACT-001`. Remove
+    `src/app/api/cases/[id]/risk-cockpit/route.ts` from the public response-shape allowlist by
+    moving the success body to the current `data` envelope only.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `ops/refactor/STATE.md`,
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/cases/[id]/risk-cockpit/route.ts`,
+    `src/app/api/cases/[id]/risk-cockpit/route.test.ts`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+    `src/lib/api/client-json.ts`,
+    and route/frontend usage search results for `risk-cockpit` / `CaseRiskCockpitResponse`.
+  - files changed:
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/cases/[id]/risk-cockpit/route.ts`,
+    `src/app/api/cases/[id]/risk-cockpit/route.test.ts`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+    and this `ops/refactor/STATE.md` ledger entry.
+  - implementation:
+    The risk-cockpit GET route now returns `success({ data: cockpit })`. Patient workspace reads
+    `readApiJson<{ data: CaseRiskCockpitResponse }>` and returns `payload.data` only, with no legacy
+    root fallback. The route test now rejects root-level `overall`, `sections`, and `next_actions`.
+    The workspace test was updated to the current patient timeline copy/button labels so the focused
+    workspace regression suite reflects the current UI. The allowlist entry for
+    `src/app/api/cases/[id]/risk-cockpit/route.ts` was removed, and `Plans.md` records
+    `API-CONTRACT-001AG` with allowlist debt reduced from 170 to 169.
+  - Oracle:
+    User explicitly paused Oracle consultation. No Oracle prompt was sent or restarted. The slice
+    stayed limited to response construction, reader typing, allowlist/plan debt, and tests; case
+    authorization, org RLS scope, cockpit assembly, NoStore headers, and error sanitization were not
+    changed.
+  - imagegen:
+    Not used. This is an API contract/static guard cleanup and a test expectation sync with no
+    visible UI/UX reconstruction.
+  - Next.js docs:
+    Re-read `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md` earlier in
+    this API contract run. This slice changes JSON response construction only and does not change
+    route placement, supported methods, runtime behavior, or cache behavior.
+  - bugs found:
+    `GET /api/cases/:id/risk-cockpit` returned the cockpit DTO at the success response root via
+    `success(cockpit)`, and the patient workspace reader still treated the response as a raw
+    `CaseRiskCockpitResponse`. The route test did not reject legacy root cockpit fields. Focused
+    workspace validation also exposed stale test expectations for current patient timeline copy and
+    the load-more button label.
+  - bugs fixed:
+    Success response construction and the frontend reader now use the current `data` envelope only.
+    Route assertions reject old root `overall` / `sections` / `next_actions`. The workspace test now
+    matches the current timeline UI labels. `api-response-shape:check` now reports 169 allowlisted
+    violations and 0 new violations.
+  - security risks reduced:
+    No auth, authorization, org context, RLS request context, patient/case data assembly, NoStore
+    behavior, or sanitized error body behavior was weakened. Root cockpit fields are no longer
+    preserved as an alternate public response shape.
+  - performance issues improved:
+    None. No service query, DB access, cache, React query key, request frequency, or serialization
+    volume changed beyond the equivalent response wrapper.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/cases/[id]/risk-cockpit/route.ts src/app/api/cases/[id]/risk-cockpit/route.test.ts src/app/(dashboard)/patients/[id]/card-workspace.tsx src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`;
+    `pnpm exec vitest run src/app/api/cases/[id]/risk-cockpit/route.test.ts src/app/(dashboard)/patients/[id]/card-workspace.test.tsx --reporter=dot --testTimeout=30000`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint --max-warnings=0 src/app/api/cases/[id]/risk-cockpit/route.ts src/app/api/cases/[id]/risk-cockpit/route.test.ts src/app/(dashboard)/patients/[id]/card-workspace.tsx src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`;
+    `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/cases/[id]/risk-cockpit/route.ts src/app/api/cases/[id]/risk-cockpit/route.test.ts src/app/(dashboard)/patients/[id]/card-workspace.tsx src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`;
+    `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/cases/[id]/risk-cockpit/route.ts src/app/api/cases/[id]/risk-cockpit/route.test.ts src/app/(dashboard)/patients/[id]/card-workspace.tsx src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Targeted Prettier write completed. Initial focused Vitest exposed stale workspace test labels;
+    after updating the test to current UI labels, focused risk-cockpit route + patient workspace
+    Vitest passed 2 files / 99 tests. API response shape check passed with 169 allowlisted
+    violations and 0 new violations. Plans active board check passed. Scoped ESLint passed. Targeted
+    Prettier check passed. Targeted diff-check passed. Full typecheck passed.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial; the next allowlist candidate is
+    `src/app/api/cases/[id]/risk-cockpit/tasks/[taskId]/resolution/route.ts`. Unrelated local dirty
+    state remains in `.harness-mem/state/continuity.json` and many untracked memory/docs files and
+    was not staged.
+  - next action:
+    Commit this state entry, push the two commits for this slice to `origin/main`, then continue the
+    `Plans.md` high-priority loop while Oracle consultation remains paused.
+
 - codex: `API-CONTRACT-001AF` generate-from-visit success envelope cleanup.
   - commit:
     Implementation and Plans/allowlist route test update committed as `dba016f1f`
