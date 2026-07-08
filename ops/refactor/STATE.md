@@ -28409,3 +28409,100 @@ responses`) and pushed to `origin/main`.
   Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
   then continue the next API response envelope cleanup from
   `src/app/api/dispense-tasks/[id]/route.ts` unless redirected.
+
+## 2026-07-09 - API-CONTRACT-001AW dispense task detail envelope cleanup
+
+- current task:
+  Continue `API-CONTRACT-001` public response envelope burn-down without legacy
+  compatibility fields. Move `GET /api/dispense-tasks/:id` detail and
+  `PATCH /api/dispense-tasks/:id` update success responses to the current
+  `data` envelope.
+- files inspected:
+  `git status --short --branch --untracked-files=all`;
+  `ops/refactor/STATE.md`; `Plans.md`;
+  `tools/api-response-shape-allowlist.json`;
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`;
+  `src/app/api/dispense-tasks/[id]/route.ts`;
+  `src/app/api/dispense-tasks/[id]/route.test.ts`;
+  `src/app/api/__tests__/protected-get-routes.test.ts`;
+  dispense task/workbench adapter usage search results; and
+  `gbrain search "API-CONTRACT dispense-tasks id response envelope"`.
+- files changed:
+  `Plans.md`; `tools/api-response-shape-allowlist.json`;
+  `src/app/api/dispense-tasks/[id]/route.ts`;
+  `src/app/api/dispense-tasks/[id]/route.test.ts`;
+  `ops/refactor/STATE.md`.
+- bugs found:
+  `GET /api/dispense-tasks/:id` returned the raw task detail object at the
+  public response root, including facility label, site, stock guidance,
+  prefill, and original collection metadata. `PATCH /api/dispense-tasks/:id`
+  returned the raw updated task root object after status/assignee updates.
+- bugs fixed:
+  Detail and update success responses now return `success({ data: ... })`.
+  Route tests assert `payload.data` for detail metadata, fax collection checks,
+  prefill packaging groups, and update results. No raw task root fields or
+  compatibility fallback remain. Response-shape debt dropped from 148 to 146
+  allowlisted violations.
+- security risks found:
+  No auth, authorization, assignment scoping, org scoping, route parameter
+  validation, body validation, status transition checks, transaction boundary,
+  audit logging, workflow notification, or no-store behavior changed.
+- security risks reduced:
+  Removed another PHI-adjacent raw success response shape from dispensing task
+  detail/update APIs, reducing public API ambiguity before broader error and
+  request_id unification.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this is response contract cleanup. Existing task detail query,
+  stock-guidance lookup, prefill generation, update transaction, and workflow
+  notification behavior are unchanged.
+- UI/UX note:
+  No UI/UX change. This was API/test contract work only, so image generation
+  was not applicable.
+- Oracle note:
+  Oracle consultation remains paused per current user instruction, so no
+  Oracle/GPT-5.5 Pro consult was run for this local contract slice.
+- validation commands:
+  `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/dispense-tasks/[id]/route.ts src/app/api/dispense-tasks/[id]/route.test.ts`;
+  `pnpm vitest run src/app/api/dispense-tasks/[id]/route.test.ts`;
+  `pnpm vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "dispense-tasks/\\[id\\] GET"`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint src/app/api/dispense-tasks/[id]/route.ts src/app/api/dispense-tasks/[id]/route.test.ts`;
+  `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/dispense-tasks/[id]/route.ts src/app/api/dispense-tasks/[id]/route.test.ts`;
+  `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/dispense-tasks/[id]/route.ts src/app/api/dispense-tasks/[id]/route.test.ts`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `pnpm format:check`.
+- validation results:
+  Prettier passed. `dispense-tasks/[id]` route tests passed 1 file / 9 tests.
+  Protected GET targeted tests passed 3 tests with 381 skipped.
+  `api-response-shape:check` passed with 146 allowlisted violations and 0 new
+  violations. `plans:active:check` passed. Scoped ESLint, scoped Prettier
+  check, scoped diff check, and typecheck passed. `pnpm format:check` still
+  fails only on unrelated pre-existing untracked Markdown files:
+  `projects/careviax/implementation-decision/medication-stock-visit-observation-context-sidecar-v1-2026-07-08.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-doc-001.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-evidence-001.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-integrity-001.md`,
+  `projects/careviax/reviews/2026-07-08/patient-board-read-001.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003a-003d.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003e.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-guard.md`, and
+  `skills/_candidates.md`.
+- commit:
+  Dispense task detail/update response envelope migration, route tests,
+  allowlist cleanup, and Plans sync committed as
+  `3ce80bfd8c89732cc833ee46d78edfd54fccec94`
+  (`fix(api): envelope dispense task detail responses`). Push is pending this
+  ledger update.
+- remaining work:
+  `API-CONTRACT-001` remains Partial. Next allowlist head is
+  `src/app/api/dispense-tasks/[id]/verify-barcode/route.ts` with one expected
+  legacy response shape violation, followed by
+  `src/app/api/dispense-tasks/[id]/workbench/route.ts`. Existing unrelated
+  dirty/untracked memory/docs files remain unstaged.
+- next action:
+  Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
+  then continue the next API response envelope cleanup from
+  `src/app/api/dispense-tasks/[id]/verify-barcode/route.ts` unless redirected.
