@@ -246,6 +246,7 @@
   - validation commands:
     `pnpm exec prettier --write Plans.md`;
     `pnpm exec prettier --check Plans.md`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check Plans.md ops/refactor/STATE.md .codex/ralph-state.md`;
     `git diff --check -- Plans.md`.
   - validation results:
     Prettier write/check passed. Targeted diff-check passed. No code tests were run because this slice
@@ -671,6 +672,7 @@ date`, and active statuses only, then pass that date key into snapshot recalcula
   - validation commands:
     `pnpm exec prettier --write Plans.md`;
     `pnpm exec prettier --check Plans.md`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check Plans.md ops/refactor/STATE.md .codex/ralph-state.md`;
     `git diff --check -- Plans.md`;
     ``rg -n 'Active Plan Board v5|現在は v5|v5 の queue|この v5|\\| `STOCK-001-VISIT-CONTEXT`' Plans.md``.
   - validation results:
@@ -815,6 +817,7 @@ date`, and active statuses only, then pass that date key into snapshot recalcula
     shared measured JSON helper, and count metadata cleanup.
   - validation commands:
     `pnpm exec prettier --check Plans.md`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check Plans.md ops/refactor/STATE.md .codex/ralph-state.md`;
     `git diff --check -- Plans.md`;
     `rg -n 'Active Plan Board v4|現在は v4|v4 の queue|Active Plan Board v5|STOCK-001-VISIT-CONTEXT|medication-stock-observations' Plans.md`.
   - validation results:
@@ -1140,6 +1143,7 @@ date`, and active statuses only, then pass that date key into snapshot recalcula
     metadata, and perf-smoke evidence.
   - validation commands:
     `pnpm exec prettier --check Plans.md`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check Plans.md ops/refactor/STATE.md .codex/ralph-state.md`;
     `git diff --check -- Plans.md`;
     `pnpm exec prettier --check Plans.md ops/refactor/STATE.md`;
     `git diff --check -- Plans.md ops/refactor/STATE.md`.
@@ -1706,6 +1710,7 @@ date`, and active statuses only, then pass that date key into snapshot recalcula
     watchlist tests.
   - validation commands:
     `pnpm exec prettier --check Plans.md`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check Plans.md ops/refactor/STATE.md .codex/ralph-state.md`;
     `git diff --check -- Plans.md`.
   - validation results:
     Prettier check passed. Diff whitespace check passed.
@@ -2040,6 +2045,7 @@ date`, and active statuses only, then pass that date key into snapshot recalcula
     and human-gated `PERF-DB-006D-INDEX`.
   - validation commands:
     `pnpm exec prettier --check Plans.md`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check Plans.md ops/refactor/STATE.md .codex/ralph-state.md`;
     `git diff --check -- Plans.md`;
     `pnpm exec prettier --check Plans.md ops/refactor/STATE.md`;
     `git diff --check -- Plans.md ops/refactor/STATE.md`.
@@ -2452,6 +2458,7 @@ date`, and active statuses only, then pass that date key into snapshot recalcula
   - validation commands:
     `pnpm exec prettier --write Plans.md`;
     `pnpm exec prettier --check Plans.md`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check Plans.md ops/refactor/STATE.md .codex/ralph-state.md`;
     `git diff --check -- Plans.md`;
     `rg -n "現状は.*赤|PERF-DB-005B.*実装契約|PERF-DB-006 test contract|\(実装済み\).*red test" Plans.md || true`.
   - validation results:
@@ -2681,6 +2688,7 @@ date`, and active statuses only, then pass that date key into snapshot recalcula
     patient search fix first, with keyword scan and delivery summary/index work separated behind tests and EXPLAIN.
   - validation commands:
     `pnpm exec prettier --check Plans.md`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check Plans.md ops/refactor/STATE.md .codex/ralph-state.md`;
     `git diff --check -- Plans.md`;
     `git diff --cached --check`.
   - validation results:
@@ -2729,6 +2737,7 @@ date`, and active statuses only, then pass that date key into snapshot recalcula
     patient master relation includes with bounded `select` / `take` reads.
   - validation commands:
     `pnpm exec prettier --check Plans.md`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check Plans.md ops/refactor/STATE.md .codex/ralph-state.md`;
     `git diff --check -- Plans.md`.
   - validation results:
     Plans.md Prettier check passed after formatting the edited Markdown tables.
@@ -21116,6 +21125,7 @@ date`, and active statuses only, then pass that date key into snapshot recalcula
   oversized list DTOs.
 - validation commands:
   `pnpm exec prettier --check Plans.md`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check Plans.md ops/refactor/STATE.md .codex/ralph-state.md`;
   `rg -n "^#+ .*cc:TODO" Plans.md`;
   `git diff --check -- Plans.md`;
   `pnpm exec prettier --check Plans.md ops/refactor/STATE.md`;
@@ -21443,3 +21453,67 @@ date`, and active statuses only, then pass that date key into snapshot recalcula
   `Plans.md` item: `STOCK-001-VISIT-UI`, `STOCK-001-VISIT-DOWNSTREAM`, or
   `INBOUND-002-REVIEW-DETAIL` depending on whether the migration gate remains
   blocked.
+
+## 2026-07-08 Plans.md active board cleanup
+
+- current task:
+  Organize the existing `Plans.md` so implemented, partial, not-started, and
+  human-gated work are clearly separated, expand unimplemented plans, and add
+  derived tasks discovered while reconciling the plan with live code.
+- files inspected:
+  `git status --short --branch --untracked-files=all`, `Plans.md`,
+  `ops/refactor/STATE.md`, `tools/scripts/check-plans-active-board.mjs`,
+  `package.json`, `docs/ui-ux-design-guidelines.md`, and live code paths for
+  movement timeline, dashboard cockpit, inbound communications, medication
+  stock visit observations, permission matrix, read SLO, and query-shape
+  guardrails.
+- files changed:
+  `Plans.md` and this state file.
+- implementation:
+  Added an explicit live-code reconciliation note to Active Plan Board v8,
+  added execution rules that make the v8 implementation/frontend queues the only
+  active entrypoint, clarified that done rows are not reimplemented, and
+  expanded `STOCK-001-VISIT-UI` so the visit stock panel reads existing
+  MedicationStock summary data but keeps write UI disabled/review-wait until
+  migration and DB integration evidence exist. Added
+  `FRONTEND-ENTRYPOINT-MAP-001` to the pre-implementation sub-slice table and
+  promoted derived residual tasks for plan/detail synchronization, DB-gated
+  visit stock UI, and legacy residual-medication migration. Updated the RX-002
+  reference section so Phase 4a/4b no longer incorrectly say "not implemented";
+  the sidecar and visit observation API are now marked implemented with
+  migration apply / DB integration / UI / downstream as the remaining scope.
+- bugs found:
+  `Plans.md` had stale reference text marking visit observation context and
+  visit observation API as unimplemented even though the route, service,
+  idempotency tests, display-id registry, route catalog, rate limit, and DB
+  contract exist. This could have caused duplicate implementation work.
+- security risks reduced:
+  The updated plan keeps PHI-bearing frontend work behind existing
+  permissioned-display rules and explicitly separates operational UI display
+  from OS notifications, SSE, logs, audit diffs, external share, CSV/PDF export,
+  and public URLs. Human-gated migration/live AWS tasks remain blocked from
+  Codex-only execution.
+- performance issues improved:
+  No runtime performance was changed. The plan now preserves read SLO and
+  query-shape guardrails as implemented work and keeps future patient-board
+  cursor work scoped to bounded selects and payload budgets.
+- validation commands:
+  `pnpm plans:active:check`;
+  `pnpm exec prettier --write Plans.md`;
+  `pnpm exec prettier --check Plans.md`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check Plans.md ops/refactor/STATE.md .codex/ralph-state.md`;
+  `git diff --check -- Plans.md`.
+- validation results:
+  Plans active board check passed. Prettier check passed after formatting.
+  Targeted diff whitespace check passed.
+- commit:
+  `bc5b17b11` (`docs(plans): reconcile active board status`).
+- remaining work:
+  No code implementation was performed in this slice. Next executable work is
+  still the highest-value non-human-gated item from `Plans.md`, likely
+  `STOCK-001-VISIT-UI` after the DB gate strategy is honored, or
+  `INBOUND-002-REVIEW-DETAIL` if visit-stock UI remains blocked by migration
+  evidence.
+- next action:
+  Commit this explicit documentation/planning slice, then continue with the next
+  implementation-ready queue item without touching unrelated untracked files.
