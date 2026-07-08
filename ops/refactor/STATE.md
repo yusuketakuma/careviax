@@ -24432,6 +24432,80 @@ responses`) and pushed to `origin/main`.
   staged, then continue `API-CONTRACT-001` by migrating the next real legacy
   success/error response shape without compatibility fallback bodies.
 
+## 2026-07-09 - API-CONTRACT-001D admin master delete envelope migration
+
+- current task:
+  Continue `API-CONTRACT-001` by migrating the next low-risk admin master
+  DELETE success bodies from legacy `{ ok: true }` to the current
+  `ApiSuccess<T>{ data, meta? }` envelope. Compatibility response bodies were
+  intentionally not preserved.
+- files inspected:
+  `git status --short --untracked-files=all`; `Plans.md`;
+  `ops/refactor/STATE.md`; `tools/api-response-shape-allowlist.json`;
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`;
+  `src/app/api/admin/external-professionals/[id]/route.ts`;
+  `src/app/api/admin/external-professionals/[id]/route.test.ts`;
+  `src/app/api/admin/facilities/[id]/route.ts`;
+  `src/app/api/admin/facilities/[id]/route.test.ts`;
+  `src/app/api/admin/facilities/[id]/units/[unitId]/route.ts`;
+  `src/app/api/admin/facilities/[id]/units/[unitId]/route.test.ts`.
+- files changed:
+  `src/app/api/admin/external-professionals/[id]/route.ts`;
+  `src/app/api/admin/external-professionals/[id]/route.test.ts`;
+  `src/app/api/admin/facilities/[id]/route.ts`;
+  `src/app/api/admin/facilities/[id]/route.test.ts`;
+  `src/app/api/admin/facilities/[id]/units/[unitId]/route.ts`;
+  `src/app/api/admin/facilities/[id]/units/[unitId]/route.test.ts`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `ops/refactor/STATE.md`.
+- bugs found:
+  Admin master DELETE handlers for external professionals, facilities, and
+  facility units still returned legacy `{ ok: true }` success bodies while their
+  GET/PATCH handlers were already on `data` envelopes.
+- bugs fixed:
+  The three DELETE handlers now return `data: { id }` only. Route tests assert
+  the new response bodies, and the three allowlist entries were removed.
+  `api-response-shape:check` debt dropped from 219 to 216 allowlisted
+  violations.
+- security risks found:
+  No auth, authorization, RLS, validation, or audit behavior changed. The routes
+  remain admin-scoped and continue to use their existing conflict/not-found
+  checks.
+- security risks reduced:
+  Removed three legacy public success shapes without adding old-shape fallbacks,
+  lowering response-contract ambiguity for destructive admin operations.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this is response contract cleanup.
+- UI/UX note:
+  No UI/UX change. Existing frontend flows do not rely on the delete response
+  body in this slice.
+- validation commands:
+  `pnpm exec prettier --write src/app/api/admin/external-professionals/[id]/route.ts src/app/api/admin/external-professionals/[id]/route.test.ts src/app/api/admin/facilities/[id]/route.ts src/app/api/admin/facilities/[id]/route.test.ts src/app/api/admin/facilities/[id]/units/[unitId]/route.ts src/app/api/admin/facilities/[id]/units/[unitId]/route.test.ts tools/api-response-shape-allowlist.json Plans.md`;
+  `pnpm vitest run src/app/api/admin/external-professionals/[id]/route.test.ts src/app/api/admin/facilities/[id]/route.test.ts src/app/api/admin/facilities/[id]/units/[unitId]/route.test.ts --reporter=dot --testTimeout=30000`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint src/app/api/admin/external-professionals/[id]/route.ts src/app/api/admin/external-professionals/[id]/route.test.ts src/app/api/admin/facilities/[id]/route.ts src/app/api/admin/facilities/[id]/route.test.ts src/app/api/admin/facilities/[id]/units/[unitId]/route.ts src/app/api/admin/facilities/[id]/units/[unitId]/route.test.ts`;
+  `pnpm exec prettier --check src/app/api/admin/external-professionals/[id]/route.ts src/app/api/admin/external-professionals/[id]/route.test.ts src/app/api/admin/facilities/[id]/route.ts src/app/api/admin/facilities/[id]/route.test.ts src/app/api/admin/facilities/[id]/units/[unitId]/route.ts src/app/api/admin/facilities/[id]/units/[unitId]/route.test.ts tools/api-response-shape-allowlist.json Plans.md`;
+  `git diff --check -- src/app/api/admin/external-professionals/[id]/route.ts src/app/api/admin/external-professionals/[id]/route.test.ts src/app/api/admin/facilities/[id]/route.ts src/app/api/admin/facilities/[id]/route.test.ts src/app/api/admin/facilities/[id]/units/[unitId]/route.ts src/app/api/admin/facilities/[id]/units/[unitId]/route.test.ts tools/api-response-shape-allowlist.json Plans.md`.
+- validation results:
+  Prettier passed. Focused route tests passed 3 files / 30 tests.
+  `api-response-shape:check` passed with 216 allowlisted violations and 0 new
+  violations. `plans:active:check` passed. Focused ESLint passed. Targeted
+  Prettier check passed. Scoped diff check passed.
+- commit:
+  Admin master DELETE envelope migration, route tests, allowlist cleanup, and
+  Plans sync committed as `b0484b13a` (`fix(api): envelope admin master deletes`).
+  Push is pending this ledger hash update.
+- remaining work:
+  `API-CONTRACT-001` remains Partial. Continue migrating real legacy success
+  and error response shapes route by route without compatibility fallbacks.
+- next action:
+  Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
+  then continue `API-CONTRACT-001` by migrating the next real legacy
+  success/error response shape without compatibility fallback bodies.
+
 ## 2026-07-09 - DATE-SLICE-GUARD-001 helper migration
 
 - current task:
