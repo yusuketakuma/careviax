@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 import { allocateDisplayId } from '@/lib/db/display-id';
 import { normalizeMedicationCode } from '@/lib/pharmacy/drug-identity-resolution';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
+import { resolveConfirmedPrescriptionReplenishmentHorizon } from './prescription-replenishment-horizon';
 import {
   decimalToNumber,
   recalculateMedicationStockSnapshot,
@@ -95,7 +96,12 @@ type PrescriptionSupplyLineRow = {
 
 type PrescriptionSupplyIntakeRow = {
   id: string;
+  source_type: string;
   prescribed_date: Date;
+  refill_next_dispense_date: Date | null;
+  split_dispense_total: number | null;
+  split_dispense_current: number | null;
+  split_next_dispense_date: Date | null;
   cycle: {
     id: string;
     patient_id: string;
@@ -118,6 +124,7 @@ type DrugMasterIdentityRow = {
 
 type StockItemRow = MedicationStockSnapshotItem & {
   drug_master_id: string | null;
+  source_type: string;
   unit: string;
 };
 
@@ -371,7 +378,12 @@ async function loadPrescriptionSupplyIntake(
     },
     select: {
       id: true,
+      source_type: true,
       prescribed_date: true,
+      refill_next_dispense_date: true,
+      split_dispense_total: true,
+      split_dispense_current: true,
+      split_next_dispense_date: true,
       cycle: {
         select: {
           id: true,
@@ -470,6 +482,7 @@ async function findExactStockItemCandidates(args: {
       patient_id: true,
       case_id: true,
       drug_master_id: true,
+      source_type: true,
       unit: true,
       default_usage_amount_per_day: true,
       medication_category: true,
@@ -732,12 +745,18 @@ async function applyPrescriptionSupplyLine(args: {
       id: true,
     },
   });
+  const replenishmentHorizon = resolveConfirmedPrescriptionReplenishmentHorizon({
+    intake: args.intake,
+    stockItem,
+    asOf: args.now,
+  });
   const snapshot = await recalculateMedicationStockSnapshot({
     db: args.db,
     orgId: args.orgId,
     stockItem,
     eventId: stockEvent.id,
     asOf: args.now,
+    confirmedReplenishmentDateKey: replenishmentHorizon?.dateKey ?? null,
   });
 
   return {

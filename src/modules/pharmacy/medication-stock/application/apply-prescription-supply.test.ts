@@ -95,21 +95,34 @@ function createExternalLine(overrides: Partial<Record<string, unknown>> = {}) {
   };
 }
 
-function createIntake(line = createExternalLine()) {
+function createIntake(
+  line = createExternalLine(),
+  overrides: Partial<Record<string, unknown>> = {},
+) {
   return {
     id: 'intake_1',
+    source_type: 'paper',
     prescribed_date: new Date('2026-07-07T00:00:00.000Z'),
+    refill_next_dispense_date: null,
+    split_dispense_total: null,
+    split_dispense_current: null,
+    split_next_dispense_date: null,
     cycle: {
       id: 'cycle_1',
       patient_id: 'patient_1',
       case_id: 'case_1',
     },
     lines: [line],
+    ...overrides,
   };
 }
 
-function setupExactIdentity(db: ReturnType<typeof createDb>, line = createExternalLine()) {
-  db.prescriptionIntake.findFirst.mockResolvedValue(createIntake(line));
+function setupExactIdentity(
+  db: ReturnType<typeof createDb>,
+  line = createExternalLine(),
+  intakeOverrides: Partial<Record<string, unknown>> = {},
+) {
+  db.prescriptionIntake.findFirst.mockResolvedValue(createIntake(line, intakeOverrides));
   db.drugMaster.findMany.mockResolvedValue([
     {
       id: 'drug_master_1',
@@ -125,16 +138,21 @@ function setupExactIdentity(db: ReturnType<typeof createDb>, line = createExtern
   ]);
 }
 
-function setupSingleStockItem(db: ReturnType<typeof createDb>) {
+function setupSingleStockItem(
+  db: ReturnType<typeof createDb>,
+  overrides: Partial<Record<string, unknown>> = {},
+) {
   db.patientMedicationStockItem.findMany.mockResolvedValue([
     {
       id: 'stock_item_1',
       patient_id: 'patient_1',
       case_id: 'case_1',
       drug_master_id: 'drug_master_1',
+      source_type: 'prescription',
       unit: 'sheet',
       default_usage_amount_per_day: '1',
       medication_category: 'external',
+      ...overrides,
     },
   ]);
 }
@@ -239,6 +257,154 @@ describe('applyPrescriptionSupplyForIntake', () => {
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
 
+  it('uses a structured future refill date as replenishment horizon only for exact prescription stock items', async () => {
+    const db = createDb();
+    setupExactIdentity(db, createExternalLine({ quantity: 1 }), {
+      source_type: 'refill',
+      refill_next_dispense_date: new Date('2026-07-12T00:00:00.000Z'),
+    });
+    setupSingleStockItem(db, { medication_category: 'regular_leftover' });
+    db.medicationStockEvent.findFirst.mockResolvedValue(null);
+    db.medicationStockEvent.create.mockResolvedValue({ id: 'stock_event_1' });
+    db.medicationStockEvent.findMany.mockResolvedValue([
+      {
+        id: 'observed_1',
+        event_at: new Date('2026-07-06T09:00:00.000Z'),
+        created_at: new Date('2026-07-06T09:00:10.000Z'),
+        quantity_kind: 'observed_absolute',
+        quantity_delta: null,
+        observed_quantity: '1',
+        usage_quantity: null,
+        usage_period_days: null,
+        unit: 'sheet',
+      },
+      {
+        id: 'stock_event_1',
+        event_at: new Date('2026-07-07T00:00:00.000Z'),
+        created_at: new Date('2026-07-07T09:00:10.000Z'),
+        quantity_kind: 'delta',
+        quantity_delta: '1',
+        observed_quantity: null,
+        usage_quantity: null,
+        usage_period_days: null,
+        unit: 'sheet',
+      },
+    ]);
+    db.medicationStockSnapshot.upsert.mockResolvedValue({
+      current_quantity: '2',
+      stock_risk_level: 'shortage_expected',
+      calculated_at: new Date('2026-07-07T09:00:00.000Z'),
+    });
+    allocateDisplayIdMock
+      .mockResolvedValueOnce('msev0000000001')
+      .mockResolvedValueOnce('mss0000000001');
+
+    const result = await applyPrescriptionSupplyForIntake(
+      db as unknown as ApplyPrescriptionSupplyDb,
+      {
+        orgId: 'org_1',
+        userId: 'user_1',
+        intakeId: 'intake_1',
+      },
+    );
+
+    expect(result.results[0]).toMatchObject({
+      kind: 'applied',
+      snapshot: {
+        stock_risk_level: 'shortage_expected',
+      },
+    });
+    expect(db.prescriptionIntake.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          source_type: true,
+          refill_next_dispense_date: true,
+          split_dispense_total: true,
+          split_dispense_current: true,
+          split_next_dispense_date: true,
+        }),
+      }),
+    );
+    expect(db.medicationStockSnapshot.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          estimated_stockout_date: new Date('2026-07-09T00:00:00.000Z'),
+          stock_risk_level: 'shortage_expected',
+        }),
+      }),
+    );
+  });
+
+  it('does not apply prescription replenishment horizons to non-prescription stock items', async () => {
+    const db = createDb();
+    setupExactIdentity(db, createExternalLine({ quantity: 1 }), {
+      source_type: 'refill',
+      refill_next_dispense_date: new Date('2026-07-12T00:00:00.000Z'),
+    });
+    setupSingleStockItem(db, {
+      source_type: 'otc',
+      medication_category: 'regular_leftover',
+    });
+    db.medicationStockEvent.findFirst.mockResolvedValue(null);
+    db.medicationStockEvent.create.mockResolvedValue({ id: 'stock_event_1' });
+    db.medicationStockEvent.findMany.mockResolvedValue([
+      {
+        id: 'observed_1',
+        event_at: new Date('2026-07-06T09:00:00.000Z'),
+        created_at: new Date('2026-07-06T09:00:10.000Z'),
+        quantity_kind: 'observed_absolute',
+        quantity_delta: null,
+        observed_quantity: '1',
+        usage_quantity: null,
+        usage_period_days: null,
+        unit: 'sheet',
+      },
+      {
+        id: 'stock_event_1',
+        event_at: new Date('2026-07-07T00:00:00.000Z'),
+        created_at: new Date('2026-07-07T09:00:10.000Z'),
+        quantity_kind: 'delta',
+        quantity_delta: '1',
+        observed_quantity: null,
+        usage_quantity: null,
+        usage_period_days: null,
+        unit: 'sheet',
+      },
+    ]);
+    db.medicationStockSnapshot.upsert.mockResolvedValue({
+      current_quantity: '2',
+      stock_risk_level: 'watch',
+      calculated_at: new Date('2026-07-07T09:00:00.000Z'),
+    });
+    allocateDisplayIdMock
+      .mockResolvedValueOnce('msev0000000001')
+      .mockResolvedValueOnce('mss0000000001');
+
+    const result = await applyPrescriptionSupplyForIntake(
+      db as unknown as ApplyPrescriptionSupplyDb,
+      {
+        orgId: 'org_1',
+        userId: 'user_1',
+        intakeId: 'intake_1',
+      },
+    );
+
+    expect(result.results[0]).toMatchObject({
+      kind: 'applied',
+      snapshot: {
+        stock_risk_level: 'watch',
+      },
+    });
+    expect(db.medicationStockSnapshot.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          estimated_stockout_date: new Date('2026-07-09T00:00:00.000Z'),
+          stock_risk_level: 'watch',
+        }),
+      }),
+    );
+  });
+
   it('returns idempotent applied result without creating another event', async () => {
     const db = createDb();
     setupExactIdentity(db);
@@ -287,6 +453,7 @@ describe('applyPrescriptionSupplyForIntake', () => {
         patient_id: 'patient_1',
         case_id: 'case_1',
         drug_master_id: 'drug_master_1',
+        source_type: 'prescription',
         unit: 'sheet',
         default_usage_amount_per_day: null,
         medication_category: 'external',
@@ -296,6 +463,7 @@ describe('applyPrescriptionSupplyForIntake', () => {
         patient_id: 'patient_1',
         case_id: null,
         drug_master_id: 'drug_master_1',
+        source_type: 'prescription',
         unit: 'sheet',
         default_usage_amount_per_day: null,
         medication_category: 'external',

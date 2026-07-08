@@ -127,4 +127,51 @@ describe('recalculateMedicationStockSnapshot', () => {
 
     expect(snapshot.stock_risk_level).toBe('ok');
   });
+
+  it('classifies stockout before a confirmed replenishment horizon as shortage_expected', async () => {
+    const db = createDb([observedEvent('3')]);
+
+    const snapshot = await recalculateMedicationStockSnapshot({
+      db: db as unknown as MedicationStockSnapshotDb,
+      orgId: 'org_1',
+      stockItem: stockItem(),
+      eventId: 'stock_event_1',
+      asOf: new Date('2026-07-07T15:30:00.000Z'),
+      confirmedReplenishmentDateKey: '2026-07-12',
+    });
+
+    expect(snapshot.stock_risk_level).toBe('shortage_expected');
+    expect(db.medicationStockSnapshot.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          estimated_stockout_date: new Date('2026-07-11T00:00:00.000Z'),
+          stock_risk_level: 'shortage_expected',
+        }),
+      }),
+    );
+  });
+
+  it('lets a confirmed replenishment horizon suppress a later visit horizon', async () => {
+    const db = createDb([observedEvent('10')]);
+
+    const snapshot = await recalculateMedicationStockSnapshot({
+      db: db as unknown as MedicationStockSnapshotDb,
+      orgId: 'org_1',
+      stockItem: stockItem({ medication_category: 'regular_leftover' }),
+      eventId: 'stock_event_1',
+      asOf: new Date('2026-07-07T15:30:00.000Z'),
+      confirmedReplenishmentDateKey: '2026-07-12',
+      nextVisitDateKey: '2026-07-20',
+    });
+
+    expect(snapshot.stock_risk_level).toBe('ok');
+    expect(db.medicationStockSnapshot.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          estimated_stockout_date: new Date('2026-07-18T00:00:00.000Z'),
+          stock_risk_level: 'ok',
+        }),
+      }),
+    );
+  });
 });

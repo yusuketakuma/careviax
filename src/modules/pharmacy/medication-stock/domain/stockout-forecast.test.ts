@@ -130,4 +130,76 @@ describe('stockout forecast domain', () => {
       }),
     ).toBe('before_next_visit');
   });
+
+  it('uses confirmed replenishment as a stockout horizon when it is strictly future', () => {
+    expect(
+      forecastMedicationStockout({
+        asOfDateKey: '2026-07-06',
+        remainingQuantity: { value: 5, unitKey: 'tablet' },
+        usePattern: { kind: 'scheduled', dailyQuantity: { value: 1, unitKey: 'tablet' } },
+        confirmedReplenishmentDateKey: '2026-07-11',
+      }),
+    ).toMatchObject({
+      kind: 'point_estimate',
+      projectedStockoutDateKey: '2026-07-11',
+      risk: 'before_replenishment_horizon',
+    });
+  });
+
+  it('lets a confirmed replenishment horizon suppress a later visit horizon', () => {
+    expect(
+      forecastMedicationStockout({
+        asOfDateKey: '2026-07-06',
+        remainingQuantity: { value: 10, unitKey: 'tablet' },
+        usePattern: { kind: 'scheduled', dailyQuantity: { value: 1, unitKey: 'tablet' } },
+        confirmedReplenishmentDateKey: '2026-07-12',
+        nextVisitDateKey: '2026-07-20',
+      }),
+    ).toMatchObject({
+      kind: 'point_estimate',
+      projectedStockoutDateKey: '2026-07-16',
+      risk: 'sufficient_until_replenishment_horizon',
+    });
+
+    expect(
+      forecastMedicationStockout({
+        asOfDateKey: '2026-07-06',
+        remainingQuantity: { value: 10, unitKey: 'tablet' },
+        usePattern: { kind: 'scheduled', dailyQuantity: { value: 1, unitKey: 'tablet' } },
+        nextVisitDateKey: '2026-07-20',
+      }),
+    ).toMatchObject({
+      risk: 'before_next_visit',
+    });
+  });
+
+  it('keeps already-out and PRN earliest-stockout behavior ahead of replenishment details', () => {
+    expect(
+      forecastMedicationStockout({
+        asOfDateKey: '2026-07-06',
+        remainingQuantity: { value: 0, unitKey: 'dose' },
+        usePattern: { kind: 'scheduled', dailyQuantity: { value: 1, unitKey: 'dose' } },
+        confirmedReplenishmentDateKey: '2026-07-12',
+      }),
+    ).toMatchObject({
+      risk: 'already_out',
+    });
+
+    expect(
+      forecastMedicationStockout({
+        asOfDateKey: '2026-07-06',
+        remainingQuantity: { value: 12, unitKey: 'dose' },
+        usePattern: {
+          kind: 'prn',
+          typicalDailyQuantity: { value: 1, unitKey: 'dose' },
+          maxDailyQuantity: { value: 3, unitKey: 'dose' },
+        },
+        confirmedReplenishmentDateKey: '2026-07-11',
+      }),
+    ).toMatchObject({
+      kind: 'range_estimate',
+      earliestStockoutDateKey: '2026-07-10',
+      risk: 'before_replenishment_horizon',
+    });
+  });
 });

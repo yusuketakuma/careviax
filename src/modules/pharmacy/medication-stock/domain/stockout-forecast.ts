@@ -37,8 +37,10 @@ export type MedicationUsePattern =
 export type StockoutRisk =
   | 'already_out'
   | 'before_next_visit'
+  | 'before_replenishment_horizon'
   | 'within_buffer'
   | 'sufficient_until_next_visit'
+  | 'sufficient_until_replenishment_horizon'
   | 'unknown';
 
 export type StockoutForecast =
@@ -123,10 +125,19 @@ export function classifyStockoutRisk(input: {
   readonly stockoutDateKey?: DateKey;
   readonly asOfDateKey: DateKey;
   readonly nextVisitDateKey?: DateKey;
+  readonly confirmedReplenishmentDateKey?: DateKey;
   readonly bufferDays?: number;
 }): StockoutRisk {
   if (!input.stockoutDateKey) return 'unknown';
   if (daysBetween(input.asOfDateKey, input.stockoutDateKey) <= 0) return 'already_out';
+  if (
+    input.confirmedReplenishmentDateKey &&
+    daysBetween(input.asOfDateKey, input.confirmedReplenishmentDateKey) > 0
+  ) {
+    return input.stockoutDateKey <= input.confirmedReplenishmentDateKey
+      ? 'before_replenishment_horizon'
+      : 'sufficient_until_replenishment_horizon';
+  }
   if (input.nextVisitDateKey && input.stockoutDateKey <= input.nextVisitDateKey) {
     return 'before_next_visit';
   }
@@ -144,6 +155,7 @@ function buildPointEstimate(input: {
   readonly remainingQuantity: StockQuantity;
   readonly dailyQuantity: StockQuantity;
   readonly nextVisitDateKey?: DateKey;
+  readonly confirmedReplenishmentDateKey?: DateKey;
   readonly bufferDays?: number;
   readonly confidence: Exclude<MatchConfidence, 'exact'>;
   readonly requiresReview: boolean;
@@ -168,6 +180,7 @@ function buildPointEstimate(input: {
       stockoutDateKey: projectedStockoutDateKey,
       asOfDateKey: input.asOfDateKey,
       nextVisitDateKey: input.nextVisitDateKey,
+      confirmedReplenishmentDateKey: input.confirmedReplenishmentDateKey,
       bufferDays: input.bufferDays,
     }),
     confidence: input.confidence,
@@ -182,6 +195,7 @@ export function forecastMedicationStockout(input: {
   readonly usePattern: MedicationUsePattern;
   readonly holdingContext?: StockHoldingContext;
   readonly nextVisitDateKey?: DateKey;
+  readonly confirmedReplenishmentDateKey?: DateKey;
   readonly bufferDays?: number;
 }): StockoutForecast {
   if (!input.remainingQuantity) return notForecastable('missing_quantity');
@@ -205,6 +219,7 @@ export function forecastMedicationStockout(input: {
         remainingQuantity: input.remainingQuantity,
         dailyQuantity: input.usePattern.dailyQuantity,
         nextVisitDateKey: input.nextVisitDateKey,
+        confirmedReplenishmentDateKey: input.confirmedReplenishmentDateKey,
         bufferDays: input.bufferDays,
         confidence: 'high',
         requiresReview: false,
@@ -223,6 +238,7 @@ export function forecastMedicationStockout(input: {
           remainingQuantity: input.remainingQuantity,
           dailyQuantity: singleUse,
           nextVisitDateKey: input.nextVisitDateKey,
+          confirmedReplenishmentDateKey: input.confirmedReplenishmentDateKey,
           bufferDays: input.bufferDays,
           confidence: 'low',
           requiresReview: true,
@@ -248,6 +264,7 @@ export function forecastMedicationStockout(input: {
           stockoutDateKey: earliestStockoutDateKey,
           asOfDateKey: input.asOfDateKey,
           nextVisitDateKey: input.nextVisitDateKey,
+          confirmedReplenishmentDateKey: input.confirmedReplenishmentDateKey,
           bufferDays: input.bufferDays,
         }),
         confidence: 'low',
@@ -262,6 +279,7 @@ export function forecastMedicationStockout(input: {
         remainingQuantity: input.remainingQuantity,
         dailyQuantity: input.usePattern.estimatedDailyQuantity,
         nextVisitDateKey: input.nextVisitDateKey,
+        confirmedReplenishmentDateKey: input.confirmedReplenishmentDateKey,
         bufferDays: input.bufferDays,
         confidence: input.usePattern.estimationBasis === 'measured_weight' ? 'medium' : 'low',
         requiresReview: true,

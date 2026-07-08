@@ -88,16 +88,19 @@ function usagePatternForStockItem(
   return { kind: 'scheduled', dailyQuantity: quantity };
 }
 
-function mapForecastRisk(risk: ReturnType<typeof forecastMedicationStockout>['risk']) {
-  switch (risk) {
+function mapForecastRisk(forecast: ReturnType<typeof forecastMedicationStockout>) {
+  switch (forecast.risk) {
     case 'already_out':
       return 'urgent';
     case 'before_next_visit':
+    case 'before_replenishment_horizon':
       return 'shortage_expected';
     case 'within_buffer':
       return 'watch';
     case 'sufficient_until_next_visit':
       return 'ok';
+    case 'sufficient_until_replenishment_horizon':
+      return forecast.requiresReview ? 'watch' : 'ok';
     case 'unknown':
       return 'unknown';
   }
@@ -154,6 +157,7 @@ export async function recalculateMedicationStockSnapshot(args: {
   eventId: string;
   asOf: Date;
   nextVisitDateKey?: DateKey | null;
+  confirmedReplenishmentDateKey?: DateKey | null;
 }) {
   const events = (await args.db.medicationStockEvent.findMany({
     where: {
@@ -187,6 +191,7 @@ export async function recalculateMedicationStockSnapshot(args: {
     remainingQuantity,
     usePattern: usagePatternForStockItem(args.stockItem, folded.latestDailyUsage),
     nextVisitDateKey: args.nextVisitDateKey ?? undefined,
+    confirmedReplenishmentDateKey: args.confirmedReplenishmentDateKey ?? undefined,
     bufferDays: RISK_BUFFER_DAYS,
   });
   const estimatedDailyUsage =
@@ -237,7 +242,7 @@ export async function recalculateMedicationStockSnapshot(args: {
       usage_confidence: estimatedDailyUsage == null ? 'unknown' : 'medium',
       estimated_stockout_date: estimatedStockoutDate,
       days_until_stockout: daysUntilStockout,
-      stock_risk_level: mapForecastRisk(forecast.risk),
+      stock_risk_level: mapForecastRisk(forecast),
       risk_reason_code: forecast.kind === 'not_forecastable' ? `forecast_${forecast.reason}` : null,
       calculation_version: SNAPSHOT_VERSION,
       calculated_at: args.asOf,
@@ -257,7 +262,7 @@ export async function recalculateMedicationStockSnapshot(args: {
       usage_confidence: estimatedDailyUsage == null ? 'unknown' : 'medium',
       estimated_stockout_date: estimatedStockoutDate,
       days_until_stockout: daysUntilStockout,
-      stock_risk_level: mapForecastRisk(forecast.risk),
+      stock_risk_level: mapForecastRisk(forecast),
       risk_reason_code: forecast.kind === 'not_forecastable' ? `forecast_${forecast.reason}` : null,
       calculation_version: SNAPSHOT_VERSION,
       calculated_at: args.asOf,
