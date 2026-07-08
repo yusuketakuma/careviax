@@ -594,10 +594,12 @@ describe('/api/dispense-results POST', () => {
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
-      task_id: 'task_1',
-      partial: false,
-      idempotent: true,
-      results: [{ id: 'result_1', line_id: 'line_1' }],
+      data: {
+        task_id: 'task_1',
+        partial: false,
+        idempotent: true,
+        results: [{ id: 'result_1', line_id: 'line_1' }],
+      },
     });
     expect(dispenseResultUpsertMock).not.toHaveBeenCalled();
     expect(dispenseResultUpdateMock).not.toHaveBeenCalled();
@@ -784,10 +786,12 @@ describe('/api/dispense-results POST', () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      task_id: 'task_1',
-      partial: false,
-      idempotent: true,
-      results: [{ id: 'result_1', line_id: 'line_1' }],
+      data: {
+        task_id: 'task_1',
+        partial: false,
+        idempotent: true,
+        results: [{ id: 'result_1', line_id: 'line_1' }],
+      },
     });
     expect(dispenseResultUpsertMock).not.toHaveBeenCalled();
     expect(dispenseResultUpdateMock).not.toHaveBeenCalled();
@@ -980,10 +984,12 @@ describe('/api/dispense-results POST', () => {
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
-      task_id: 'task_1',
-      partial: false,
-      idempotent: true,
-      results: [{ id: 'result_1', line_id: 'line_1' }],
+      data: {
+        task_id: 'task_1',
+        partial: false,
+        idempotent: true,
+        results: [{ id: 'result_1', line_id: 'line_1' }],
+      },
     });
     expect(drugMasterFindFirstMock).toHaveBeenCalled();
     expect(dispenseResultUpsertMock).not.toHaveBeenCalled();
@@ -1208,6 +1214,13 @@ describe('/api/dispense-results POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
     expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        task_id: 'task_1',
+        partial: false,
+        results: [{ id: 'result_1', line_id: 'line_1' }],
+      },
+    });
     expect(withOrgContextMock).toHaveBeenCalledWith(
       'org_1',
       expect.any(Function),
@@ -3884,7 +3897,9 @@ describe('/api/dispense-results POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
-    await expect(response.json()).resolves.toMatchObject({ task_id: 'task_1', partial: true });
+    await expect(response.json()).resolves.toMatchObject({
+      data: { task_id: 'task_1', partial: true },
+    });
 
     // Cycle is row-locked to serialize concurrent partial submissions.
     expect(cycleLockQueryRawMock).toHaveBeenCalledTimes(1);
@@ -3932,7 +3947,9 @@ describe('/api/dispense-results POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
-    await expect(response.json()).resolves.toMatchObject({ task_id: 'task_1', partial: true });
+    await expect(response.json()).resolves.toMatchObject({
+      data: { task_id: 'task_1', partial: true },
+    });
 
     // Lock is still acquired, but the existing open exception suppresses a duplicate create.
     expect(cycleLockQueryRawMock).toHaveBeenCalledTimes(1);

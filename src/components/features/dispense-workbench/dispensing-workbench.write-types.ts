@@ -268,6 +268,15 @@ export interface SubmitDispenseResultsInput {
   expected_version: number;
 }
 
+export interface SubmitDispenseResultsResponse {
+  data: {
+    task_id: string;
+    partial: boolean;
+    idempotent?: boolean;
+    results: unknown[];
+  };
+}
+
 export interface VerifyDispenseBarcodeInput {
   taskId: string;
   line_id: string;

@@ -1159,7 +1159,7 @@ async function authenticatedPOST(req: NextRequest) {
       }
     }
 
-    return success(result, 'idempotent' in result ? 200 : 201);
+    return success({ data: result }, 'idempotent' in result ? 200 : 201);
   });
 }
 

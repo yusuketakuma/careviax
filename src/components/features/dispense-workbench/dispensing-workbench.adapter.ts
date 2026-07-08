@@ -53,6 +53,7 @@ import {
   type CalendarMatrixResponse,
   type SetBatchDto,
   type SubmitDispenseResultsInput,
+  type SubmitDispenseResultsResponse,
   type VerifyDispenseBarcodeInput,
   type VerifyDispenseBarcodeResponse,
   type SubmitDispenseAuditInput,
@@ -501,7 +502,7 @@ export async function updatePrescriptionLines(
 /** 調剤完了（POST /api/dispense-results）。OCC は expected_version=cycle.version。 */
 export async function submitDispenseResults(
   input: SubmitDispenseResultsInput,
-): Promise<{ task_id: string } | MockWriteNoop> {
+): Promise<SubmitDispenseResultsResponse | MockWriteNoop> {
   if (USE_MOCK) return MOCK_WRITE_NOOP;
   return mutateJson('/api/dispense-results', 'POST', {
     ...input,
