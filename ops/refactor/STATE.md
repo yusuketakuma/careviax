@@ -22753,11 +22753,13 @@ date`, and active statuses only, then pass that date key into snapshot recalcula
   3 files / 41 tests. Patient movement UI Vitest passed 1 file / 13 tests.
   Scoped ESLint passed. Scoped Prettier check passed. Typecheck passed after
   `next typegen`. Plans active board check passed.
+- commit:
+  `a99d6c72f9443d92efafee1df17642d78491e167`.
+  Message: `feat(patient): preserve movement source event types`.
 - remaining work:
   `MOV-001-API` remains partial for map-less date-card UX, remaining deep-link
   coverage, raw detail reauth, and browser/mobile/a11y validation. Task-specific
   actionBuilder href adoption was intentionally left for a separate slice.
 - next action:
-  Run final formatting/whitespace checks, commit this owned source-parity slice,
-  record the commit hash here, then continue to the next highest-value
+  Commit this ledger update, then continue to the next highest-value
   non-human-gated `Plans.md` item.
