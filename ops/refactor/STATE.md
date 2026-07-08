@@ -41,6 +41,107 @@
 
 ## 直近の作業
 
+- codex: `STOCK-VISIT-DOWNSTREAM-BRIEF-001` MedicationStockSnapshot VisitBrief surfacing。
+  - commit:
+    Implementation committed as `65da90962`.
+  - current task:
+    `Plans.md` の `STOCK-001-VISIT-DOWNSTREAM` 残スコープから、訪問前確認で current
+    `MedicationStockSnapshot` の `urgent` / `shortage_expected` を見落とさないように、VisitBrief
+    へ PHI-minimized な残数不足リスクを接続する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `git log --oneline -8`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `.agents/skills/oracle-consult/SKILL.md`,
+    `src/server/services/visit-brief.ts`,
+    `src/server/services/visit-brief.test.ts`,
+    `src/types/visit-brief.ts`,
+    `src/components/visit-brief/visit-brief-card.tsx`,
+    `src/components/visit-brief/patient-visit-brief-section.tsx`,
+    `src/app/(dashboard)/visits/[id]/brief/visit-brief-review-content.tsx`,
+    `src/app/(dashboard)/patients/[id]/patient-command-center-model.ts`,
+    `src/server/services/case-risk-cockpit.ts`,
+    `src/server/services/case-risk-cockpit.test.ts`,
+    `src/modules/pharmacy/risk/case-risk-providers.ts`,
+    `src/modules/pharmacy/medication-stock/application/medication-stock-risk-adapter.ts`,
+    `src/server/services/risk-task-bridge.ts`,
+    `src/lib/tasks/task-registry.ts`,
+    `src/lib/patient/navigation.ts`,
+    and `prisma/schema/medication.prisma`.
+  - files changed:
+    `Plans.md`,
+    `src/types/visit-brief.ts`,
+    `src/server/services/visit-brief.ts`,
+    `src/server/services/visit-brief.test.ts`,
+    `src/app/(dashboard)/patients/[id]/patient-command-center-model.ts`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `getPatientVisitBrief` now optionally reads `MedicationStockSnapshot` rows for current
+    `urgent` / `shortage_expected` stock risk when the reader exists and the brief has case scope.
+    The query is same-case scoped, bounded with `take: 6`, ordered by stockout date / calculation time
+    / stock item id, and safelists only snapshot ids, stock item id, patient/case ids, risk level,
+    stockout date, days-until-stockout, and calculated time. Returned snapshots are aggregated into
+    one generic `medication_stock` unresolved item, added to must-check/rule-summary sources, and
+    linked to the patient medication-stock anchor. If a direct stock risk item exists, the same
+    `pharmacy.medication_stock_shortage_expected` task type is suppressed from unresolved items to
+    avoid duplicate VisitBrief blockers. `Plans.md` records VisitBrief downstream as complete and
+    leaves Schedule / Movement as the residual downstream scope.
+  - imagegen:
+    Omitted. This is backend VisitBrief data surfacing, type, and plan hygiene only; no UI layout or
+    visual reconstruction changed.
+  - Oracle:
+    Consulted Oracle/GPT-5.5 Pro before implementation because this touches patient/pharmacy VisitBrief
+    risk surfacing. The first full consult `visit-brief-stock-snapshot` failed with
+    `setTypeOfService EINVAL`; restart `visit-brief-stock-snapshot-2` failed while waiting for browser
+    attachment upload. API preflight was unavailable because `OPENAI_API_KEY` is not configured. A
+    final reduced inline consult `visit-brief-stock-min` completed after reattach; Oracle reported
+    GitHub access succeeded and recommended direct bounded snapshot read over tasks-only, optional
+    delegate, same-case scope without `case_id: null`, safelisted select, generic summary, no writes,
+    and duplicate stock-task handling.
+  - bugs found:
+    VisitBrief could include stock shortage tasks after fan-out, but current snapshot risk could still
+    be absent when task fan-out/sync had not happened, when a stock task was closed/stale, or when the
+    task query limit excluded it. That made visit readiness depend on task state rather than current
+    stock risk state.
+  - security risks reduced:
+    The VisitBrief snapshot query does not select stock quantities, units, display/drug names, raw risk
+    reason codes, joined medication item records, idempotency hashes, request fingerprints, or raw
+    inbound text. Tests assert these hostile fields do not appear in unresolved items, must-check,
+    rule summary, or AI summary input. The new item uses generic wording and a relative patient anchor.
+  - performance issues improved:
+    The read is optional, same-case scoped, join-free, safelisted, and capped at 6 rows. It runs inside
+    the existing VisitBrief parallel read group, preserves schedule batch concurrency behavior, and
+    avoids new writes or provider fan-out.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md src/types/visit-brief.ts src/server/services/visit-brief.ts src/server/services/visit-brief.test.ts 'src/app/(dashboard)/patients/[id]/patient-command-center-model.ts'`;
+    `pnpm exec vitest run src/server/services/visit-brief.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint src/types/visit-brief.ts src/server/services/visit-brief.ts src/server/services/visit-brief.test.ts 'src/app/(dashboard)/patients/[id]/patient-command-center-model.ts'`;
+    `pnpm plans:active:check`;
+    `pnpm boundaries:check`;
+    `pnpm db:query-shape:check`;
+    `pnpm db:read-slo:check`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm exec prettier --check Plans.md src/types/visit-brief.ts src/server/services/visit-brief.ts src/server/services/visit-brief.test.ts 'src/app/(dashboard)/patients/[id]/patient-command-center-model.ts'`;
+    `git diff --check -- Plans.md src/types/visit-brief.ts src/server/services/visit-brief.ts src/server/services/visit-brief.test.ts 'src/app/(dashboard)/patients/[id]/patient-command-center-model.ts'`;
+    `pnpm format:check`.
+  - validation results:
+    Focused VisitBrief test passed 1 file / 10 tests. Scoped ESLint passed. Plans active board check
+    passed. Module boundary check passed with 0 new violations and 0 allowlisted debt. Query-shape
+    check passed with 0 allowlisted violations and 0 new violations. Read path SLO check passed.
+    Full typecheck passed with `NODE_OPTIONS=--max-old-space-size=8192`. Targeted Prettier check and
+    targeted diff-check passed. `pnpm format:check` still fails only on unrelated pre-existing
+    untracked Markdown under `projects/careviax/**`, not on this slice's owned files.
+  - remaining work:
+    Parent `STOCK-001-VISIT-DOWNSTREAM` remains Partial. Residual downstream scope is Schedule
+    candidate reason and Patient Movement occurrence. `STOCK-001-VISIT-CONTEXT-APPLY`,
+    `STOCK-001-VISIT-DB-INTEGRATION`, and write-enabled `STOCK-001-VISIT-UI` remain human-gated by
+    migration / DB integration evidence.
+  - next action:
+    Commit and push this VisitBrief slice, then continue with the next safe Plans priority:
+    Schedule candidate reason / Movement occurrence, or `STOCK-001-PRESCRIPTION-HORIZON` if
+    downstream residual requires broader design.
+
 - codex: `STOCK-VISIT-DOWNSTREAM-RISK-001` MedicationStockSnapshot Case Risk Cockpit provider。
   - commit:
     Implementation committed as `ad1529a2a`.
