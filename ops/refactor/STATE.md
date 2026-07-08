@@ -41,6 +41,117 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001AP` community activities list success envelope cleanup.
+  - commit:
+    Implementation, Plans/allowlist, route test, and conference reader test committed as
+    `88ca95a01` (`fix(api): envelope community activities list`). State record is this entry and
+    will be committed separately before pushing the slice.
+  - current task:
+    Continue `Plans.md` highest-priority implementable work under `API-CONTRACT-001`. Remove
+    `src/app/api/community-activities/route.ts` from the public response-shape allowlist by moving
+    GET list pagination from legacy root `hasMore` / `nextCursor` to `meta.has_more` /
+    `meta.next_cursor`, without compatibility root fallback readers.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `ops/refactor/STATE.md`,
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/community-activities/route.ts`,
+    `src/app/api/community-activities/route.test.ts`,
+    `src/app/api/community-activities/[id]/route.ts`,
+    `src/app/(dashboard)/conferences/conferences-content.tsx`,
+    `src/app/(dashboard)/conferences/conferences-content.test.tsx`,
+    `src/app/(dashboard)/external/external-viewer-content.tsx`,
+    `src/app/(dashboard)/external/external-viewer-content.test.tsx`,
+    `src/lib/api/cursor-pagination-client.ts`,
+    `src/app/api/__tests__/protected-get-routes.test.ts`,
+    `src/app/api/__tests__/protected-post-routes.test.ts`,
+    `gbrain search "API-CONTRACT community-activities response envelope"`,
+    and route/frontend usage search results for `/api/community-activities`.
+  - files changed:
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/community-activities/route.ts`,
+    `src/app/api/community-activities/route.test.ts`,
+    `src/app/(dashboard)/conferences/conferences-content.tsx`,
+    `src/app/(dashboard)/conferences/conferences-content.test.tsx`,
+    and this `ops/refactor/STATE.md` ledger entry.
+  - implementation:
+    `GET /api/community-activities` now returns `success({ data, meta: { limit, has_more,
+    next_cursor } })`. The conferences page now uses the current-shape-only
+    `fetchAllMetaCursorPages` helper for community activities. Existing conference-note pagination
+    calls keep their route-specific legacy helper until those routes are migrated. The external viewer
+    already reads only `payload.data`, so it remains compatible with the current envelope without a
+    root fallback. Route and conference reader tests were updated. The allowlist entry for
+    `src/app/api/community-activities/route.ts` was removed, and `Plans.md` records
+    `API-CONTRACT-001AP` with allowlist debt reduced from 161 to 160.
+  - Oracle:
+    User explicitly paused Oracle consultation. No Oracle prompt was sent or restarted. The slice
+    stayed limited to GET response wrapping, current-shape reader coverage, allowlist/plan debt, and
+    ledger updates; auth, org scoping, POST creation, PATCH detail updates, daily follow-up jobs,
+    workflow dashboard queries, and sanitized error handling were not changed.
+  - imagegen:
+    Not used. This is an API contract/static guard cleanup with no visible UI/UX change.
+  - Next.js docs:
+    Re-read `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md` earlier in
+    this API contract run. This slice changes JSON response construction only and does not change
+    route placement, supported methods, runtime behavior, or cache behavior.
+  - bugs found:
+    `GET /api/community-activities` returned `buildCursorPage(...)` directly, leaving legacy root
+    pagination fields (`hasMore`, `nextCursor`) as part of the public response shape. The conferences
+    page also used the legacy root pagination helper for this route.
+  - bugs fixed:
+    Community activity list rows are now under `data`, pagination is under `meta`, route tests reject
+    root pagination fields, the conferences page reader uses only the current `data + meta` cursor
+    shape, and `api-response-shape:check` now reports 160 allowlisted violations and 0 new
+    violations.
+  - security risks found:
+    None in this slice. The route remains behind the existing `canReport` auth wrapper and org-scoped
+    query filter.
+  - security risks reduced:
+    No auth, authorization, org scoping, POST/PATCH mutation semantics, or sanitized error behavior
+    was weakened. Removing root pagination fields reduces alternate public list contract surface
+    before request_id/error unification.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None. No DB query shape, selected columns, `limit + 1` pagination, sort order, org where clause,
+    React query invalidation, external dashboard fetch shape, or request frequency changed beyond the
+    equivalent response wrapper and current-shape pagination helper.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/community-activities/route.ts src/app/api/community-activities/route.test.ts src/app/(dashboard)/conferences/conferences-content.tsx src/app/(dashboard)/conferences/conferences-content.test.tsx`;
+    `pnpm vitest run src/app/api/community-activities/route.test.ts`;
+    `pnpm vitest run src/app/(dashboard)/conferences/conferences-content.test.tsx`;
+    `pnpm vitest run src/app/(dashboard)/external/external-viewer-content.test.tsx`;
+    `pnpm vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "community-activities GET"`;
+    `pnpm vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "community-activities POST"`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint --max-warnings=0 src/app/api/community-activities/route.ts src/app/api/community-activities/route.test.ts src/app/(dashboard)/conferences/conferences-content.tsx src/app/(dashboard)/conferences/conferences-content.test.tsx`;
+    `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/community-activities/route.ts src/app/api/community-activities/route.test.ts src/app/(dashboard)/conferences/conferences-content.tsx src/app/(dashboard)/conferences/conferences-content.test.tsx`;
+    `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/community-activities/route.ts src/app/api/community-activities/route.test.ts src/app/(dashboard)/conferences/conferences-content.tsx src/app/(dashboard)/conferences/conferences-content.test.tsx`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm format:check`.
+  - validation results:
+    Prettier write/check passed for all owned changed files. Community activities route Vitest
+    passed (1 file / 7 tests). Conferences content Vitest passed after correcting the helper default
+    `limit=100` expectation (1 file / 20 tests). External viewer content Vitest passed (1 file / 11
+    tests). Filtered protected GET/POST commands completed but matched no tests for
+    `community-activities` in those matrices, so they were not counted as coverage. API response
+    shape guard passed (160 allowlisted violations, 0 new violations). Plans active board check
+    passed. Scoped ESLint passed. Targeted Prettier check and scoped `git diff --check` passed. Full
+    typecheck passed. `pnpm format:check` again confirmed owned changed files are formatted, then
+    failed on unrelated pre-existing untracked Markdown files under `projects/` and `skills/`; those
+    user/local files were not modified.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 160 allowlisted response-shape violations. Next immediate
+    allowlist target is `src/app/api/conference-notes/route.ts` (expectedCount 1), followed by
+    consent-record and dashboard workflow routes.
+  - next action:
+    Commit this STATE entry separately, push `88ca95a01` plus the state commit to `origin/main`, then
+    continue with `src/app/api/conference-notes/route.ts` under the same Oracle-paused and
+    no-legacy-root constraints.
+
 - codex: `API-CONTRACT-001AO` communication requests list success envelope cleanup.
   - commit:
     Implementation, Plans/allowlist, route/UI reader tests, and meta-cursor helper coverage
