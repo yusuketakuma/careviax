@@ -851,6 +851,147 @@ describe('getPatientVisitBrief', () => {
     expect(serialized).not.toContain('湿布');
     expect(serialized).not.toContain('raw_text');
   });
+
+  it('surfaces medication stock shortage snapshots as generic visit checks without leaking stock details', async () => {
+    const db = {
+      ...buildMinimalBriefDb(),
+      medicationStockSnapshot: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'snapshot_urgent',
+            stock_item_id: 'stock_item_urgent',
+            patient_id: 'patient_1',
+            case_id: 'case_1',
+            stock_risk_level: 'urgent',
+            estimated_stockout_date: new Date('2026-07-10T00:00:00.000Z'),
+            days_until_stockout: 1,
+            calculated_at: new Date('2026-07-08T01:00:00.000Z'),
+            current_quantity: 4,
+            unit: '枚',
+            display_name: '湿布',
+            risk_reason_code: 'raw-risk-reason',
+            idempotency_key_hash: 'hash_secret',
+          },
+          {
+            id: 'snapshot_shortage',
+            stock_item_id: 'stock_item_shortage',
+            patient_id: 'patient_1',
+            case_id: 'case_1',
+            stock_risk_level: 'shortage_expected',
+            estimated_stockout_date: new Date('2026-07-12T00:00:00.000Z'),
+            days_until_stockout: 3,
+            calculated_at: new Date('2026-07-08T02:00:00.000Z'),
+            current_quantity: 1,
+            unit: '包',
+            drug_name: 'カロナール',
+            request_fingerprint_hash: 'fingerprint_secret',
+          },
+        ]),
+      },
+      task: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            task_type: 'pharmacy.medication_stock_shortage_expected',
+            title: '湿布不足 task',
+            description: '湿布 残り4枚 raw-risk-reason hash_secret',
+            priority: 'urgent',
+            related_entity_type: 'patient',
+            related_entity_id: 'patient_1',
+          },
+          {
+            task_type: 'report_delivery_followup',
+            title: '通常フォロー',
+            description: '送付状況を確認',
+            priority: 'high',
+            related_entity_type: 'patient',
+            related_entity_id: 'patient_1',
+          },
+        ]),
+      },
+    };
+
+    const result = await getPatientVisitBrief(db, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      context: 'patient',
+      caseIds: ['case_1'],
+    });
+
+    expect(db.medicationStockSnapshot.findMany).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        case_id: { in: ['case_1'] },
+        stock_risk_level: { in: ['urgent', 'shortage_expected'] },
+      },
+      orderBy: [
+        { estimated_stockout_date: 'asc' },
+        { calculated_at: 'desc' },
+        { stock_item_id: 'asc' },
+      ],
+      take: 6,
+      select: {
+        id: true,
+        stock_item_id: true,
+        patient_id: true,
+        case_id: true,
+        stock_risk_level: true,
+        estimated_stockout_date: true,
+        days_until_stockout: true,
+        calculated_at: true,
+      },
+    });
+    const stockQuery = db.medicationStockSnapshot.findMany.mock.calls[0]?.[0];
+    expect(stockQuery.where.OR).toBeUndefined();
+    expect(stockQuery.select).not.toHaveProperty('current_quantity');
+    expect(stockQuery.select).not.toHaveProperty('unit');
+    expect(stockQuery.select).not.toHaveProperty('display_name');
+    expect(stockQuery.select).not.toHaveProperty('risk_reason_code');
+    expect(stockQuery.select).not.toHaveProperty('idempotency_key_hash');
+    expect(stockQuery.select).not.toHaveProperty('request_fingerprint_hash');
+
+    expect(result.unresolved_items[0]).toEqual(
+      expect.objectContaining({
+        source_type: 'medication_stock',
+        title: '残数不足リスク',
+        severity: 'urgent',
+        href: '/patients/patient_1#medication-stock-events',
+      }),
+    );
+    expect(result.unresolved_items[0]?.summary).toContain('確認対象 2 件');
+    expect(result.unresolved_items[0]?.summary).toContain('最短不足予測日 2026-07-10');
+    expect(result.unresolved_items.some((item) => item.title === '湿布不足 task')).toBe(false);
+    expect(result.unresolved_items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source_type: 'task',
+          title: '通常フォロー',
+        }),
+      ]),
+    );
+    expect(result.must_check_today).toContain('残数不足リスク');
+    expect(result.rule_summary.source_refs).toContain('残数台帳');
+    expect(generateVisitBriefAiSummaryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        unresolved: expect.arrayContaining([
+          expect.stringContaining('残数不足リスク / 残数台帳で不足または不足見込み'),
+        ]),
+      }),
+    );
+
+    const serializedBriefSignals = JSON.stringify({
+      unresolved_items: result.unresolved_items,
+      must_check_today: result.must_check_today,
+      rule_summary: result.rule_summary,
+      ai_input: generateVisitBriefAiSummaryMock.mock.calls[0]?.[0]?.unresolved,
+    });
+    expect(serializedBriefSignals).not.toContain('湿布');
+    expect(serializedBriefSignals).not.toContain('カロナール');
+    expect(serializedBriefSignals).not.toContain('残り4枚');
+    expect(serializedBriefSignals).not.toContain('raw-risk-reason');
+    expect(serializedBriefSignals).not.toContain('hash_secret');
+    expect(serializedBriefSignals).not.toContain('fingerprint_secret');
+  });
 });
 
 describe('getScheduleVisitBriefsForPatients', () => {
@@ -910,6 +1051,7 @@ describe('getScheduleVisitBriefsForPatients', () => {
       visitScheduleContactLog: { findMany: vi.fn().mockResolvedValue([]) },
       task: { findMany: vi.fn().mockResolvedValue([]) },
       medicationIssue: { findMany: vi.fn().mockResolvedValue([]) },
+      medicationStockSnapshot: { findMany: vi.fn().mockResolvedValue([]) },
       inquiryRecord: { findMany: vi.fn().mockResolvedValue([]) },
       visitRecord: { findFirst: vi.fn().mockResolvedValue(null) },
       medicationCycle: { findMany: vi.fn().mockResolvedValue([]) },
@@ -966,6 +1108,7 @@ describe('getScheduleVisitBriefsForPatients', () => {
       visitScheduleContactLog: { findMany: vi.fn().mockResolvedValue([]) },
       task: { findMany: vi.fn().mockResolvedValue([]) },
       medicationIssue: { findMany: vi.fn().mockResolvedValue([]) },
+      medicationStockSnapshot: { findMany: vi.fn().mockResolvedValue([]) },
       inquiryRecord: { findMany: vi.fn().mockResolvedValue([]) },
       visitRecord: { findFirst: vi.fn().mockResolvedValue(null) },
       medicationCycle: { findMany: vi.fn().mockResolvedValue([]) },
@@ -1053,6 +1196,7 @@ describe('getScheduleVisitBriefsForSchedules', () => {
       visitScheduleContactLog: { findMany: vi.fn().mockResolvedValue([]) },
       task: { findMany: vi.fn().mockResolvedValue([]) },
       medicationIssue: { findMany: vi.fn().mockResolvedValue([]) },
+      medicationStockSnapshot: { findMany: vi.fn().mockResolvedValue([]) },
       inquiryRecord: { findMany: vi.fn().mockResolvedValue([]) },
       visitRecord: {
         findMany: vi.fn().mockResolvedValue([]),
@@ -1117,6 +1261,25 @@ describe('getScheduleVisitBriefsForSchedules', () => {
         }),
       }),
     );
+    expect(db.medicationStockSnapshot.findMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          case_id: { in: ['case_1'] },
+          stock_risk_level: { in: ['urgent', 'shortage_expected'] },
+        }),
+      }),
+    );
+    expect(db.medicationStockSnapshot.findMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          case_id: { in: ['case_2'] },
+          stock_risk_level: { in: ['urgent', 'shortage_expected'] },
+        }),
+      }),
+    );
+    expect(db.medicationStockSnapshot.findMany.mock.calls[0]?.[0].where.OR).toBeUndefined();
   });
 
   it('builds independent schedule briefs for the same patient and case scope', async () => {

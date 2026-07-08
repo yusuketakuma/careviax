@@ -121,6 +121,7 @@ type VisitBriefDataReader = BillingEvidenceBlockersReader & {
     priority: string;
     category: string | null;
   }>;
+  medicationStockSnapshot?: FindManyDelegate<VisitBriefMedicationStockSnapshotRow>;
   medicationProfile: FindManyDelegate<{
     drug_name: string;
     dose: string | null;
@@ -281,6 +282,21 @@ const OPEN_SELF_REPORT_STATUSES = ['submitted', 'triaged', 'converted_to_task'] 
 const OPEN_REQUEST_STATUSES = ['draft', 'sent', 'received', 'in_progress', 'escalated'] as const;
 const OPEN_ISSUE_STATUSES = ['open', 'in_progress'] as const;
 const VISIT_BRIEF_LAB_STALE_DAYS = 90;
+const VISIT_BRIEF_MEDICATION_STOCK_RISK_LEVELS = ['urgent', 'shortage_expected'] as const;
+const VISIT_BRIEF_MEDICATION_STOCK_RISK_TASK_TYPE = 'pharmacy.medication_stock_shortage_expected';
+
+type VisitBriefMedicationStockRiskLevel = (typeof VISIT_BRIEF_MEDICATION_STOCK_RISK_LEVELS)[number];
+
+type VisitBriefMedicationStockSnapshotRow = {
+  id: string;
+  stock_item_id: string;
+  patient_id: string;
+  case_id: string | null;
+  stock_risk_level: VisitBriefMedicationStockRiskLevel;
+  estimated_stockout_date: Date | string | null;
+  days_until_stockout: number | null;
+  calculated_at: Date | string;
+};
 
 async function listVisitBriefBillingRefs(
   db: DbClient,
@@ -319,6 +335,49 @@ async function listVisitBriefBillingRefs(
     visitRecordIds: visitRecords.map((item) => item.id),
     cycleIds: cycles.map((item) => item.id),
   };
+}
+
+async function listVisitBriefMedicationStockSnapshots(
+  db: DbClient,
+  args: Pick<BuildVisitBriefArgs, 'orgId' | 'patientId'>,
+  caseIds: string[],
+): Promise<VisitBriefMedicationStockSnapshotRow[]> {
+  const client = (
+    db as unknown as {
+      medicationStockSnapshot?: {
+        findMany?: (
+          args: Record<string, unknown>,
+        ) => Promise<VisitBriefMedicationStockSnapshotRow[]>;
+      };
+    }
+  ).medicationStockSnapshot;
+
+  if (!client?.findMany || caseIds.length === 0) return [];
+
+  return client.findMany({
+    where: {
+      org_id: args.orgId,
+      patient_id: args.patientId,
+      case_id: { in: caseIds },
+      stock_risk_level: { in: [...VISIT_BRIEF_MEDICATION_STOCK_RISK_LEVELS] },
+    },
+    orderBy: [
+      { estimated_stockout_date: 'asc' },
+      { calculated_at: 'desc' },
+      { stock_item_id: 'asc' },
+    ],
+    take: 6,
+    select: {
+      id: true,
+      stock_item_id: true,
+      patient_id: true,
+      case_id: true,
+      stock_risk_level: true,
+      estimated_stockout_date: true,
+      days_until_stockout: true,
+      calculated_at: true,
+    },
+  });
 }
 
 type JahisSupplementalRecordForBrief = {
@@ -761,6 +820,48 @@ function buildCommunicationItems(args: {
   return items.sort(sortCommunications).slice(0, 6);
 }
 
+function medicationStockDateLabel(value: Date | string | null | undefined) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return formatDateKey(date);
+}
+
+function buildMedicationStockUnresolvedItems(args: {
+  patientId: string;
+  snapshots: VisitBriefMedicationStockSnapshotRow[];
+}): VisitBriefUnresolvedItem[] {
+  if (args.snapshots.length === 0) return [];
+
+  const urgentCount = args.snapshots.filter((item) => item.stock_risk_level === 'urgent').length;
+  const shortageExpectedCount = args.snapshots.length - urgentCount;
+  const nearestStockout = args.snapshots
+    .map((item) => {
+      const value = item.estimated_stockout_date;
+      const date = value instanceof Date ? value : value ? new Date(value) : null;
+      return date && !Number.isNaN(date.getTime()) ? date : null;
+    })
+    .filter((date): date is Date => date !== null)
+    .sort((left, right) => left.getTime() - right.getTime())[0];
+  const nearestStockoutLabel = medicationStockDateLabel(nearestStockout);
+
+  return [
+    {
+      source_type: 'medication_stock',
+      title: '残数不足リスク',
+      summary: compactTimelineValues([
+        `残数台帳で不足または不足見込みの管理対象薬があります（確認対象 ${args.snapshots.length} 件）。`,
+        urgentCount > 0 ? `緊急 ${urgentCount} 件` : null,
+        shortageExpectedCount > 0 ? `不足見込み ${shortageExpectedCount} 件` : null,
+        nearestStockoutLabel ? `最短不足予測日 ${nearestStockoutLabel}` : null,
+        '薬剤名・数量は残数台帳で確認してください。',
+      ]).join(' / '),
+      severity: urgentCount > 0 ? 'urgent' : 'high',
+      href: buildPatientHref(args.patientId, '#medication-stock-events'),
+    },
+  ];
+}
+
 function buildUnresolvedItems(args: {
   patientId: string;
   tasks: Array<{
@@ -792,9 +893,15 @@ function buildUnresolvedItems(args: {
     }>;
     validation_notes: string | null;
   }>;
+  medicationStockItems: VisitBriefUnresolvedItem[];
 }): VisitBriefUnresolvedItem[] {
+  const tasks = args.medicationStockItems.length
+    ? args.tasks.filter((item) => item.task_type !== VISIT_BRIEF_MEDICATION_STOCK_RISK_TASK_TYPE)
+    : args.tasks;
+
   return [
-    ...args.tasks.map((item) => {
+    ...args.medicationStockItems,
+    ...tasks.map((item) => {
       const presentation = describeOperationalTask(item);
       return {
         source_type: 'task' as const,
@@ -1021,6 +1128,9 @@ function sourceRefs(args: {
   if (args.communicationItems.length > 0) refs.add('他職種/家族からの更新');
   if (args.jahisSupplementalRecords.length > 0) refs.add('JAHIS補足情報');
   if (args.latestLabs.length > 0) refs.add('最新検査値');
+  if (args.unresolvedItems.some((item) => item.source_type === 'medication_stock')) {
+    refs.add('残数台帳');
+  }
   if (args.unresolvedItems.length > 0) refs.add('未解決タスク・課題');
   return Array.from(refs);
 }
@@ -1185,6 +1295,7 @@ export async function getPatientVisitBrief(
     facilityResidence,
     jahisSupplementalRows,
     latestLabRows,
+    medicationStockSnapshots,
     currentPatientSnapshot,
   ] = await Promise.all([
     db.patient.findFirst({
@@ -1529,6 +1640,7 @@ export async function getPatientVisitBrief(
       orgId: args.orgId,
       patientId: args.patientId,
     }),
+    listVisitBriefMedicationStockSnapshots(db, args, caseIds),
     // patient_changes 用の現在側スナップショット。context==='patient' かつ role/userId が揃う経路のみ。
     // schedule バッチ(role/userId 未指定)は null=差分なしで perf 退行を避ける。snapshot 構築は
     // 既存 Promise.all に同居させ直列レイテンシ増を避ける。
@@ -1662,12 +1774,17 @@ export async function getPatientVisitBrief(
       | 'post_inquiry'
       | 'pre_issuance',
   }));
+  const medicationStockItems = buildMedicationStockUnresolvedItems({
+    patientId: args.patientId,
+    snapshots: medicationStockSnapshots,
+  });
   const unresolvedItems = buildUnresolvedItems({
     patientId: args.patientId,
     tasks,
     medicationIssues,
     inquiries: unresolvedInquiries,
     blockedBillingEvidence,
+    medicationStockItems,
   });
   const mustCheckToday = buildMustCheckToday({
     medicationChanges,

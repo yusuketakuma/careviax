@@ -139,7 +139,7 @@ export type VisitBriefLatestLab = {
 };
 
 export type VisitBriefUnresolvedItem = {
-  source_type: 'task' | 'issue' | 'inquiry' | 'billing';
+  source_type: 'task' | 'issue' | 'inquiry' | 'billing' | 'medication_stock';
   title: string;
   summary: string;
   severity: VisitBriefSeverity;
