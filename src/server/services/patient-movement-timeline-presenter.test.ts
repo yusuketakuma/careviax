@@ -166,4 +166,47 @@ describe('patient-movement-timeline-presenter', () => {
     expect(serialized).not.toContain('カロナール500mg');
     expect(serialized).not.toContain('服薬カレンダー本文');
   });
+
+  it('projects medication stock snapshot markers without raw stock details', () => {
+    const movement = toPatientMovementTimelineEvent(
+      baseEvent({
+        id: 'medication_stock_snapshot:snapshot_1',
+        event_type: 'medication_stock_snapshot',
+        category: 'medication_stock',
+        title: '残数不足リスクを検出',
+        summary: 'カロナール500mg 10錠 / stock_item_1 / 不足理由 raw_reason',
+        href: '/patients/patient_1#card-prescription-section',
+        action_label: '残数を確認',
+        status: 'urgent',
+        status_label: '至急',
+        metadata: ['stock_item_1', '薬剤名 カロナール', '数量 10錠', '理由 raw_reason'],
+      }),
+      { patientId: 'patient_1' },
+    );
+
+    expect(movement).toMatchObject({
+      id: 'medication_stock_snapshot:snapshot_1',
+      event_type: 'medication_stock_snapshot',
+      category: 'medication_stock',
+      title: '残数不足リスクを検出',
+      summary: '現在の残数予測で不足リスクがあります。内容は薬剤・訪問で確認してください。',
+      href: '/patients/patient_1#card-prescription-section',
+      action_label: '残数を確認',
+      status: 'urgent',
+      status_label: '至急',
+      related_entity_type: 'medication_stock_snapshot',
+      related_entity_id: 'snapshot_1',
+      severity: 'urgent',
+      badges: [{ label: '至急', tone: 'warning' }],
+      metadata: [],
+      privacy_level: 'summary',
+      raw_available: false,
+    });
+
+    const serialized = JSON.stringify(movement);
+    expect(serialized).not.toContain('カロナール');
+    expect(serialized).not.toContain('10錠');
+    expect(serialized).not.toContain('stock_item_1');
+    expect(serialized).not.toContain('raw_reason');
+  });
 });

@@ -197,6 +197,12 @@ export type ResidualMedicationTimelineSource = {
   };
 };
 
+export type MedicationStockSnapshotTimelineSource = {
+  id: string;
+  stock_risk_level: string;
+  calculated_at: Date;
+};
+
 export type SelfReportTimelineSource = {
   id: string;
   category: string | null;
@@ -290,6 +296,7 @@ export type BuildPatientTimelineEventsInput = {
   partnerVisitRecords: readonly PartnerVisitRecordTimelineSource[];
   operationalTasks: readonly OperationalTaskTimelineSource[];
   residualMedications: readonly ResidualMedicationTimelineSource[];
+  medicationStockSnapshots: readonly MedicationStockSnapshotTimelineSource[];
   selfReports: readonly SelfReportTimelineSource[];
   externalShares: readonly ExternalShareTimelineSource[];
   inquiryRecords: readonly InquiryTimelineSource[];
@@ -772,6 +779,7 @@ export function buildPatientTimelineEvents(
     partnerVisitRecords,
     operationalTasks,
     residualMedications,
+    medicationStockSnapshots,
     selfReports,
     externalShares,
     inquiryRecords,
@@ -798,6 +806,7 @@ export function buildPatientTimelineEvents(
     partnerVisitRecords,
     operationalTasks,
     residualMedications,
+    medicationStockSnapshots,
     selfReports,
     externalShares,
     inquiryRecords,

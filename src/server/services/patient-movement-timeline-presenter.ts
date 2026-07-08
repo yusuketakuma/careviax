@@ -14,6 +14,8 @@ const GENERIC_DETAIL_SUMMARIES = {
   prescription: '処方登録または処方変更がありました。内容は処方詳細で確認してください。',
   visit: '訪問予定または訪問記録が登録されました。内容は訪問詳細で確認してください。',
   document: '文書登録または文書状態の更新がありました。本文は詳細画面で確認してください。',
+  medicationStockSnapshot:
+    '現在の残数予測で不足リスクがあります。内容は薬剤・訪問で確認してください。',
 } as const;
 
 const VISIT_EVENT_TYPES = new Set(['visit_schedule', 'visit_record']);
@@ -81,6 +83,11 @@ function movementTypeOf(event: TimelineEvent): PatientMovementEventType {
 }
 
 function severityOf(event: TimelineEvent): PatientMovementSeverity {
+  if (event.event_type === 'medication_stock_snapshot') {
+    if (event.status === 'urgent') return 'urgent';
+    if (event.status === 'shortage_expected') return 'warning';
+  }
+
   const status = event.status.toLowerCase();
   const statusLabel = event.status_label.toLowerCase();
   if (
@@ -111,6 +118,9 @@ function statusBadgeTone(
 }
 
 function summaryOf(event: TimelineEvent) {
+  if (event.event_type === 'medication_stock_snapshot') {
+    return GENERIC_DETAIL_SUMMARIES.medicationStockSnapshot;
+  }
   if (event.category === 'prescription') return GENERIC_DETAIL_SUMMARIES.prescription;
   if (event.category === 'visit') return GENERIC_DETAIL_SUMMARIES.visit;
   if (event.category === 'document') return GENERIC_DETAIL_SUMMARIES.document;
@@ -118,6 +128,7 @@ function summaryOf(event: TimelineEvent) {
 }
 
 function metadataOf(event: TimelineEvent) {
+  if (event.event_type === 'medication_stock_snapshot') return [];
   if (
     event.category === 'prescription' ||
     event.category === 'visit' ||

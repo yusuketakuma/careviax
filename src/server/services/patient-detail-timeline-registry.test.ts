@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   careReportsSource,
+  medicationStockSnapshotsSource,
   operationalTasksSource,
   selfReportsSource,
   visitRecordsSource,
@@ -30,6 +31,7 @@ function createDb() {
     patientMcsMessage: findManyDelegate(),
     partnerVisitRecord: findManyDelegate(),
     residualMedication: findManyDelegate(),
+    medicationStockSnapshot: findManyDelegate(),
     task: findManyDelegate(),
     prescriptionIntake: findManyDelegate(),
     visitRecord: findManyDelegate(),
@@ -144,5 +146,101 @@ describe('patient-detail-timeline-registry query shapes', () => {
         take: 5,
       }),
     );
+  });
+
+  it('keeps medication stock snapshot source bounded, case scoped, and PHI-minimized', async () => {
+    const db = createDb();
+
+    await medicationStockSnapshotsSource.fetch(createCtx(db));
+
+    expect(db.medicationStockSnapshot.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          patient_id: 'patient_1',
+          case_id: { in: ['case_1'] },
+          stock_risk_level: { in: ['urgent', 'shortage_expected'] },
+        },
+        orderBy: [
+          { estimated_stockout_date: 'asc' },
+          { days_until_stockout: 'asc' },
+          { calculated_at: 'desc' },
+          { id: 'asc' },
+        ],
+        take: 5,
+        select: {
+          id: true,
+          stock_risk_level: true,
+          calculated_at: true,
+        },
+      }),
+    );
+    const query = vi.mocked(db.medicationStockSnapshot.findMany).mock.calls[0]?.[0];
+    expect(query).not.toHaveProperty('include');
+    expect(JSON.stringify(query)).not.toContain('stock_item_id');
+    expect(JSON.stringify(query)).not.toContain('current_quantity');
+    expect(JSON.stringify(query)).not.toContain('risk_reason_code');
+  });
+
+  it('does not read medication stock snapshots without visible case scope', async () => {
+    const db = createDb();
+
+    await medicationStockSnapshotsSource.fetch({
+      ...createCtx(db),
+      caseIds: [],
+    });
+
+    expect(db.medicationStockSnapshot.findMany).not.toHaveBeenCalled();
+  });
+
+  it('projects medication stock snapshots as generic movement markers', () => {
+    const [event] = medicationStockSnapshotsSource.toEvents(
+      [
+        {
+          id: 'snapshot_1',
+          stock_risk_level: 'urgent',
+          calculated_at: new Date('2026-07-08T01:00:00.000Z'),
+          stock_item_id: 'stock_item_1',
+          current_quantity: '12',
+          unit: 'tablet',
+          risk_reason_code: 'raw_reason',
+        } as never,
+      ],
+      {
+        patientId: 'patient_1',
+        actorNameMap: new Map(),
+        firstVisitDocumentActions: new Map(),
+        hrefs: {
+          patientDetailHref: '/patients/patient_1',
+          patientMedicationHref: '/patients/patient_1#card-prescription-section',
+          patientDocumentsHref: '/patients/patient_1#patient-documents',
+          patientManagementPlanHref: '/patients/patient_1/management-plan',
+          patientMcsHref: '/patients/patient_1/mcs',
+          patientCollaborationHref: '/patients/patient_1/collaboration',
+          patientShareHref: '/patients/patient_1/share',
+          patientBillingCandidatesHref: '/billing/candidates?patient_id=patient_1',
+          patientConferencesHref: '/conferences?patient_id=patient_1',
+        },
+      },
+    );
+
+    expect(event).toMatchObject({
+      id: 'medication_stock_snapshot:snapshot_1',
+      event_type: 'medication_stock_snapshot',
+      category: 'medication_stock',
+      title: '残数不足リスクを検出',
+      summary: '現在の残数予測で不足リスクがあります。内容は薬剤・訪問で確認してください。',
+      href: '/patients/patient_1#card-prescription-section',
+      action_label: '残数を確認',
+      status: 'urgent',
+      status_label: '至急',
+      actor_name: null,
+      metadata: [],
+    });
+    const serialized = JSON.stringify(event);
+    expect(serialized).not.toContain('stock_item_1');
+    expect(serialized).not.toContain('current_quantity');
+    expect(serialized).not.toContain('tablet');
+    expect(serialized).not.toContain('raw_reason');
   });
 });

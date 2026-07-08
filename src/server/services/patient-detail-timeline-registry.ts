@@ -31,6 +31,7 @@ import {
   type PartnerVisitRecordTimelineSource,
   type OperationalTaskTimelineSource,
   type ResidualMedicationTimelineSource,
+  type MedicationStockSnapshotTimelineSource,
   type PatientMcsMessageTimelineSource,
   type BillingCandidateTimelineSource,
   type CareReportTimelineSource,
@@ -72,6 +73,7 @@ export type PatientTimelineRegistryDb = {
   patientMcsMessage: Pick<Prisma.TransactionClient['patientMcsMessage'], 'findMany'>;
   partnerVisitRecord: Pick<Prisma.TransactionClient['partnerVisitRecord'], 'findMany'>;
   residualMedication: Pick<Prisma.TransactionClient['residualMedication'], 'findMany'>;
+  medicationStockSnapshot: Pick<Prisma.TransactionClient['medicationStockSnapshot'], 'findMany'>;
   task: Pick<Prisma.TransactionClient['task'], 'findMany'>;
   prescriptionIntake: Pick<Prisma.TransactionClient['prescriptionIntake'], 'findMany'>;
   visitRecord: Pick<Prisma.TransactionClient['visitRecord'], 'findMany'>;
@@ -139,6 +141,11 @@ const MEDICATION_STOCK_SIGNAL_TASK_TYPES = new Set([
   'pharmacy.inbound_medication_stock_signal_review_required',
   'pharmacy.inbound_low_stock_unquantified_report',
 ]);
+const MEDICATION_STOCK_SNAPSHOT_RISK_LEVELS = ['urgent', 'shortage_expected'] as const;
+const MEDICATION_STOCK_SNAPSHOT_RISK_LABELS: Record<string, string> = {
+  urgent: '至急',
+  shortage_expected: '不足見込み',
+};
 const SAFETY_SIGNAL_TASK_TYPES = new Set(['pharmacy.inbound_medication_safety_review_required']);
 const INBOUND_COMMUNICATION_TASK_TYPES = new Set(['core.inbound_communication_review_required']);
 const INBOUND_COMMUNICATION_EVENT_TYPE_BY_CHANNEL: Record<string, string> = {
@@ -749,6 +756,56 @@ export const residualMedicationsSource = defineTimelineSource<
   },
 });
 
+// --- medicationStockSnapshots ----------------------------------------------
+export const medicationStockSnapshotsSource = defineTimelineSource<
+  'medicationStockSnapshots',
+  MedicationStockSnapshotTimelineSource
+>({
+  key: 'medicationStockSnapshots',
+  emptyFallback: EMPTY,
+  fetch: (ctx) => {
+    const { db, orgId, patientId, caseIds } = ctx;
+    return caseIds.length === 0
+      ? Promise.resolve([])
+      : db.medicationStockSnapshot.findMany({
+          where: {
+            org_id: orgId,
+            patient_id: patientId,
+            case_id: { in: caseIds },
+            stock_risk_level: { in: [...MEDICATION_STOCK_SNAPSHOT_RISK_LEVELS] },
+          },
+          orderBy: [
+            { estimated_stockout_date: 'asc' },
+            { days_until_stockout: 'asc' },
+            { calculated_at: 'desc' },
+            { id: 'asc' },
+          ],
+          take: resolveTimelineSourceTake(ctx, 8),
+          select: {
+            id: true,
+            stock_risk_level: true,
+            calculated_at: true,
+          },
+        });
+  },
+  toEvents: (rows, { hrefs }) =>
+    rows.map((item) => ({
+      id: `medication_stock_snapshot:${item.id}`,
+      event_type: 'medication_stock_snapshot',
+      category: 'medication_stock',
+      occurred_at: item.calculated_at,
+      title: '残数不足リスクを検出',
+      summary: '現在の残数予測で不足リスクがあります。内容は薬剤・訪問で確認してください。',
+      href: hrefs.patientMedicationHref,
+      action_label: '残数を確認',
+      status: item.stock_risk_level,
+      status_label:
+        MEDICATION_STOCK_SNAPSHOT_RISK_LABELS[item.stock_risk_level] ?? item.stock_risk_level,
+      actor_name: null,
+      metadata: [],
+    })),
+});
+
 // --- selfReports ------------------------------------------------------------
 export const selfReportsSource = defineTimelineSource<'selfReports', SelfReportTimelineSource>({
   key: 'selfReports',
@@ -1266,6 +1323,7 @@ export const TIMELINE_SOURCES = [
   partnerVisitRecordsSource,
   operationalTasksSource,
   residualMedicationsSource,
+  medicationStockSnapshotsSource,
   selfReportsSource,
   externalSharesSource,
   inquiryRecordsSource,
