@@ -153,6 +153,7 @@ import { GET as GETComments } from './comments/route';
 import { GET as GETInbound } from './inbound/route';
 import { GET as GETReportBilling } from './report-billing/route';
 import { GET as GETStockRisks } from './stock-risks/route';
+import { buildDashboardUrgentSourceLinks } from '@/server/services/dashboard-cockpit';
 
 function createRequest(search = '', path = '/api/dashboard/cockpit') {
   return new NextRequest(`http://localhost${path}${search}`, {
@@ -623,6 +624,7 @@ describe('/api/dashboard/cockpit', () => {
         source: 'audit',
         label: '監査待ち',
         total_count: 2,
+        count_basis: 'source_total',
         visible_count: 2,
         hidden_count: 0,
         href: '/audit?filter=dashboard_urgent',
@@ -631,6 +633,7 @@ describe('/api/dashboard/cockpit', () => {
         source: 'inbound',
         label: '他職種受信',
         total_count: 1,
+        count_basis: 'source_total',
         visible_count: 1,
         hidden_count: 0,
         href: '/communications/inbound?status=needs_review',
@@ -639,14 +642,20 @@ describe('/api/dashboard/cockpit', () => {
         source: 'task',
         label: 'タスク',
         total_count: 2,
+        count_basis: 'source_total',
         visible_count: 2,
         hidden_count: 0,
-        href: '/tasks?status=&context=dashboard_home',
+        href: '/tasks?status=open&context=dashboard_home',
       },
     ]);
     expect(
       json.data.urgent_source_links.every(
         (link: { href: string }) => link.href.startsWith('/') && !link.href.startsWith('//'),
+      ),
+    ).toBe(true);
+    expect(
+      json.data.urgent_source_links.every(
+        (link: { count_basis: string }) => link.count_basis === 'source_total',
       ),
     ).toBe(true);
     expect(json.data.urgent_items[1]).toMatchObject({
@@ -676,6 +685,122 @@ describe('/api/dashboard/cockpit', () => {
       expect.objectContaining({ carryover_count: 2 }),
       15_000,
     );
+  });
+
+  it('builds source drilldown links with source-total count basis and app-relative hrefs', () => {
+    const links = buildDashboardUrgentSourceLinks({
+      urgentItems: [
+        {
+          id: 'audit:1',
+          source: 'audit',
+          source_id: '1',
+          source_label: '監査',
+          reference_label: null,
+          patient_id: null,
+          patient_name: null,
+          title: '監査',
+          summary: '監査',
+          severity: 'warning',
+          due_at: null,
+          waiting_since: null,
+          badges: [],
+          action_href: '/audit',
+          action_label: '開く',
+        },
+        {
+          id: 'task:1',
+          source: 'task',
+          source_id: '1',
+          source_label: 'タスク',
+          reference_label: null,
+          patient_id: null,
+          patient_name: null,
+          title: 'タスク',
+          summary: 'タスク',
+          severity: 'warning',
+          due_at: null,
+          waiting_since: null,
+          badges: [],
+          action_href: '/tasks',
+          action_label: '開く',
+        },
+      ],
+      sourceTotals: {
+        audit: 2,
+        inbound: 1,
+        medication_stock: 3,
+        visit_preparation: 0,
+        report: 1,
+        callback: 0,
+        billing: 1,
+        task: 4,
+      },
+    });
+
+    expect(links).toEqual([
+      {
+        source: 'audit',
+        label: '監査待ち',
+        total_count: 2,
+        count_basis: 'source_total',
+        visible_count: 1,
+        hidden_count: 1,
+        href: '/audit?filter=dashboard_urgent',
+      },
+      {
+        source: 'inbound',
+        label: '他職種受信',
+        total_count: 1,
+        count_basis: 'source_total',
+        visible_count: 0,
+        hidden_count: 1,
+        href: '/communications/inbound?status=needs_review',
+      },
+      {
+        source: 'medication_stock',
+        label: '残数・薬剤',
+        total_count: 3,
+        count_basis: 'source_total',
+        visible_count: 0,
+        hidden_count: 3,
+        href: '/communications/inbound?domain=medication_stock&status=needs_review',
+      },
+      {
+        source: 'report',
+        label: '報告書',
+        total_count: 1,
+        count_basis: 'source_total',
+        visible_count: 0,
+        hidden_count: 1,
+        href: '/reports?focus=delivery&delivery_status=failed&context=dashboard_home',
+      },
+      {
+        source: 'billing',
+        label: '請求',
+        total_count: 1,
+        count_basis: 'source_total',
+        visible_count: 0,
+        hidden_count: 1,
+        href: '/billing/candidates?status=candidate&filter=dashboard_urgent',
+      },
+      {
+        source: 'task',
+        label: 'タスク',
+        total_count: 4,
+        count_basis: 'source_total',
+        visible_count: 1,
+        hidden_count: 3,
+        href: '/tasks?status=open&context=dashboard_home',
+      },
+    ]);
+    expect(
+      links.every(
+        (link) =>
+          link.count_basis === 'source_total' &&
+          link.href.startsWith('/') &&
+          !link.href.startsWith('//'),
+      ),
+    ).toBe(true);
   });
 
   it('adds generic operational tasks to the unified urgent queue without duplicating inbound task sources', async () => {

@@ -24,7 +24,7 @@ export function buildMyDayHref(args?: {
 }
 
 export type TasksAssignedFilter = 'all' | 'me';
-export type TasksStatusFilter = '' | 'pending' | 'in_progress' | 'completed' | 'cancelled';
+export type TasksStatusFilter = '' | 'open' | 'pending' | 'in_progress' | 'completed' | 'cancelled';
 export type TasksPriorityFilter = '' | 'urgent' | 'high' | 'normal' | 'low';
 
 export function buildTasksHref(args?: {

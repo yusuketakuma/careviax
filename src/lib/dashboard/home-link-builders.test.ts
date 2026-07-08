@@ -29,6 +29,13 @@ describe('home-link-builders', () => {
         context: 'dashboard_home',
       }),
     ).toBe('/tasks?assigned=me&status=pending&context=dashboard_home');
+
+    expect(
+      buildTasksHref({
+        status: 'open',
+        context: 'dashboard_home',
+      }),
+    ).toBe('/tasks?status=open&context=dashboard_home');
   });
 
   it('builds Tasks hrefs with related entity filters and an all-status seed', () => {

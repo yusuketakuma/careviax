@@ -30,6 +30,7 @@ import type {
   DashboardCockpitSummaryResponse,
   DashboardCockpitTeamResponse,
   DashboardUrgentItem,
+  DashboardUrgentSourceLink,
 } from '@/types/dashboard-cockpit';
 import type { DashboardFocusRole } from './dashboard-role-focus';
 import {
@@ -370,9 +371,11 @@ function UrgentNowCard({ item, isPrimary }: { item: DashboardUrgentItem; isPrima
 
 function UrgentNowSection({
   items,
+  sourceLinks,
   totalCount,
 }: {
   items: DashboardUrgentItem[];
+  sourceLinks: DashboardUrgentSourceLink[];
   totalCount: number;
 }) {
   const cards = items.slice(0, 3);
@@ -408,6 +411,36 @@ function UrgentNowSection({
           ))}
         </div>
       )}
+      {sourceLinks.length > 0 ? (
+        <div
+          aria-label="今すぐ対応の種別別リンク"
+          className="mt-3 flex flex-wrap gap-2"
+          data-testid="dashboard-urgent-source-links"
+        >
+          {sourceLinks.map((link) => {
+            const countLabel =
+              link.hidden_count > 0
+                ? `全${link.total_count}件 / 表示候補${link.visible_count}件 / 未読込${link.hidden_count}件`
+                : `全${link.total_count}件`;
+            return (
+              <Link
+                key={link.source}
+                href={link.href}
+                className={cn(
+                  'inline-flex min-h-11 items-center gap-2 rounded-full border border-border/70 bg-card px-3 py-2 text-xs font-semibold text-foreground transition hover:border-primary/50 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                )}
+                aria-label={`${link.label}を開く。${countLabel}`}
+                data-count-basis={link.count_basis}
+              >
+                <span>{link.label}</span>
+                <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                  {countLabel}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -1317,6 +1350,7 @@ export function DashboardCockpit({ focusRole = 'common' }: { focusRole?: Dashboa
                 <>
                   <UrgentNowSection
                     items={viewModel.urgentItems}
+                    sourceLinks={viewModel.urgentSourceLinks}
                     totalCount={viewModel.urgentTotalCount}
                   />
                   <TodayFlowSection

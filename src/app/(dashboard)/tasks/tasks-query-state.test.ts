@@ -25,6 +25,13 @@ describe('tasks-query-state', () => {
     });
   });
 
+  it('reads the open task filter used by dashboard drilldown links', () => {
+    expect(readTasksState({ status: 'open', context: 'dashboard_home' })).toMatchObject({
+      initialStatus: 'open',
+      initialContext: 'dashboard_home',
+    });
+  });
+
   it('ignores unsupported values', () => {
     expect(
       readTasksState({

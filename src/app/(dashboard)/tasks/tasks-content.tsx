@@ -123,6 +123,7 @@ type StaffWorkload = {
 
 const STATUS_OPTIONS = [
   { value: '', label: 'すべて' },
+  { value: 'open', label: '未完了' },
   { value: 'pending', label: '未着手' },
   { value: 'in_progress', label: '進行中' },
   { value: 'completed', label: '完了' },

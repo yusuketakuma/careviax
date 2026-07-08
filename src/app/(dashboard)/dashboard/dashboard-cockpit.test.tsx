@@ -175,6 +175,7 @@ function buildFixture(): DashboardCockpitResponse {
         source: 'audit',
         label: '監査待ち',
         total_count: 4,
+        count_basis: 'source_total',
         visible_count: 2,
         hidden_count: 2,
         href: '/audit?filter=dashboard_urgent',
@@ -183,6 +184,7 @@ function buildFixture(): DashboardCockpitResponse {
         source: 'inbound',
         label: '他職種受信',
         total_count: 1,
+        count_basis: 'source_total',
         visible_count: 1,
         hidden_count: 0,
         href: '/communications/inbound?status=needs_review',
@@ -191,9 +193,10 @@ function buildFixture(): DashboardCockpitResponse {
         source: 'task',
         label: 'タスク',
         total_count: 3,
+        count_basis: 'source_total',
         visible_count: 1,
         hidden_count: 2,
-        href: '/tasks?status=&context=dashboard_home',
+        href: '/tasks?status=open&context=dashboard_home',
       },
     ],
     urgent_total_count: 8,
@@ -696,6 +699,33 @@ describe('DashboardCockpit', () => {
     expect(within(section).getByText('今すぐ対応')).toBeTruthy();
     expect(within(section).getByText('表示 3/8件')).toBeTruthy();
     expect(within(section).getByText('全8件のうち、期限が近い3件を表示しています。')).toBeTruthy();
+    const sourceLinks = within(section).getByTestId('dashboard-urgent-source-links');
+    expect(
+      within(sourceLinks)
+        .getByRole('link', {
+          name: '監査待ちを開く。全4件 / 表示候補2件 / 未読込2件',
+        })
+        .getAttribute('href'),
+    ).toBe('/audit?filter=dashboard_urgent');
+    expect(
+      within(sourceLinks)
+        .getByRole('link', {
+          name: '他職種受信を開く。全1件',
+        })
+        .getAttribute('href'),
+    ).toBe('/communications/inbound?status=needs_review');
+    expect(
+      within(sourceLinks)
+        .getByRole('link', {
+          name: 'タスクを開く。全3件 / 表示候補1件 / 未読込2件',
+        })
+        .getAttribute('href'),
+    ).toBe('/tasks?status=open&context=dashboard_home');
+    expect(
+      within(sourceLinks)
+        .getAllByRole('link')
+        .every((link) => link.getAttribute('data-count-basis') === 'source_total'),
+    ).toBe(true);
 
     const cards = within(section).getAllByTestId('dashboard-urgent-card');
     expect(cards).toHaveLength(3);

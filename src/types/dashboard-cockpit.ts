@@ -158,6 +158,8 @@ export type DashboardUrgentSourceLink = {
   source: DashboardUrgentItem['source'];
   label: string;
   total_count: number;
+  count_basis: 'source_total';
+  /** Materialized urgent items for this source in the current details payload, not the top-card render count. */
   visible_count: number;
   hidden_count: number;
   href: string;

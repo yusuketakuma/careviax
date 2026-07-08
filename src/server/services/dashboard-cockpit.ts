@@ -543,14 +543,14 @@ function compareDashboardUrgentItems(
   return left.id.localeCompare(right.id);
 }
 
-function buildDashboardUrgentSourceHref(source: DashboardUrgentItem['source']) {
+export function buildDashboardUrgentSourceHref(source: DashboardUrgentItem['source']) {
   switch (source) {
     case 'audit':
       return '/audit?filter=dashboard_urgent';
     case 'inbound':
       return '/communications/inbound?status=needs_review';
     case 'medication_stock':
-      return '/communications/inbound?status=reviewed_pending_action&priority=high';
+      return '/communications/inbound?domain=medication_stock&status=needs_review';
     case 'visit_preparation':
       return '/schedules?date=today&status=preparation&filter=dashboard_urgent';
     case 'report':
@@ -560,11 +560,11 @@ function buildDashboardUrgentSourceHref(source: DashboardUrgentItem['source']) {
     case 'billing':
       return '/billing/candidates?status=candidate&filter=dashboard_urgent';
     case 'task':
-      return buildTasksHref({ status: '', context: 'dashboard_home' });
+      return buildTasksHref({ status: 'open', context: 'dashboard_home' });
   }
 }
 
-function buildDashboardUrgentSourceLinks(args: {
+export function buildDashboardUrgentSourceLinks(args: {
   urgentItems: DashboardUrgentItem[];
   sourceTotals: Record<DashboardUrgentItem['source'], number>;
 }): DashboardUrgentSourceLink[] {
@@ -593,6 +593,7 @@ function buildDashboardUrgentSourceLinks(args: {
       source,
       label: DASHBOARD_URGENT_SOURCE_LABELS[source],
       total_count: totalCount,
+      count_basis: 'source_total',
       visible_count: visibleCount,
       hidden_count: Math.max(totalCount - visibleCount, 0),
       href: buildDashboardUrgentSourceHref(source),

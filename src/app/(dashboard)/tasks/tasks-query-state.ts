@@ -40,6 +40,7 @@ export function readTasksState(params: SearchParamRecord): TasksInitialState {
   return {
     initialAssigned: assigned === 'me' || assigned === 'all' ? assigned : undefined,
     initialStatus:
+      status === 'open' ||
       status === 'pending' ||
       status === 'in_progress' ||
       status === 'completed' ||

@@ -11,6 +11,7 @@ import type {
   DashboardCockpitSummaryResponse,
   DashboardCockpitTeamResponse,
   DashboardUrgentItem,
+  DashboardUrgentSourceLink,
 } from '@/types/dashboard-cockpit';
 import type {
   BlockedReason,
@@ -31,6 +32,7 @@ const VIEW_SCOPE_LABELS: Record<DashboardCockpitScope, string> = {
 
 const EMPTY_VISITS: CockpitVisit[] = [];
 const EMPTY_URGENT_ITEMS: DashboardUrgentItem[] = [];
+const EMPTY_URGENT_SOURCE_LINKS: DashboardUrgentSourceLink[] = [];
 
 function buildDashboardNextAction(
   topUrgent: DashboardUrgentItem | null,
@@ -76,6 +78,7 @@ export type DashboardCockpitViewModel = {
   nextAction: NextActionPanelProps;
   teamHandoffSuggestion: string | null;
   urgentItems: DashboardUrgentItem[];
+  urgentSourceLinks: DashboardUrgentSourceLink[];
   urgentTotalCount: number;
   commentsHiddenCount: number;
   inboundHiddenCount: number;
@@ -102,6 +105,7 @@ export function useDashboardCockpitViewModel({
   const scopeLabel = VIEW_SCOPE_LABELS[appliedScope] ?? VIEW_SCOPE_LABELS.mine;
   const todayVisits = details?.today_visits ?? EMPTY_VISITS;
   const urgentItems = details?.urgent_items ?? EMPTY_URGENT_ITEMS;
+  const urgentSourceLinks = details?.urgent_source_links ?? EMPTY_URGENT_SOURCE_LINKS;
 
   const processTiles = useMemo(
     () => (summary ? buildProcessNowTiles(summary.cycle_status_counts) : []),
@@ -154,6 +158,7 @@ export function useDashboardCockpitViewModel({
     nextAction,
     teamHandoffSuggestion,
     urgentItems,
+    urgentSourceLinks,
     urgentTotalCount: details?.urgent_total_count ?? 0,
     commentsHiddenCount: comments?.comments_hidden_count ?? 0,
     inboundHiddenCount: inbound?.inbound_hidden_count ?? 0,
