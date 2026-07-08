@@ -73,11 +73,13 @@ async function authenticatedGET(req: NextRequest) {
     ]);
 
     return success({
-      summary: {
-        unrecorded_visits: unrecordedVisitCount,
-        unsent_reports: unsentReportCount,
-        overdue_tasks: overdueTaskCount,
-        total: unrecordedVisitCount + unsentReportCount + overdueTaskCount,
+      data: {
+        summary: {
+          unrecorded_visits: unrecordedVisitCount,
+          unsent_reports: unsentReportCount,
+          overdue_tasks: overdueTaskCount,
+          total: unrecordedVisitCount + unsentReportCount + overdueTaskCount,
+        },
       },
     });
   });

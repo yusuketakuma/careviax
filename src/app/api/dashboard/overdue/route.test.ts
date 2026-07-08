@@ -195,14 +195,18 @@ describe('/api/dashboard/overdue GET', () => {
       }),
     );
     const json = await response.json();
+    expect(Object.keys(json)).toEqual(['data']);
     expect(json).toMatchObject({
-      summary: {
-        unrecorded_visits: 1,
-        unsent_reports: 1,
-        overdue_tasks: 1,
-        total: 3,
+      data: {
+        summary: {
+          unrecorded_visits: 1,
+          unsent_reports: 1,
+          overdue_tasks: 1,
+          total: 3,
+        },
       },
     });
+    expect(json).not.toHaveProperty('summary');
     expect(json).not.toHaveProperty('unrecorded_visits');
     expect(json).not.toHaveProperty('unsent_reports');
     expect(json).not.toHaveProperty('overdue_tasks');
@@ -254,11 +258,13 @@ describe('/api/dashboard/overdue GET', () => {
       }),
     );
     await expect(response.json()).resolves.toMatchObject({
-      summary: {
-        unrecorded_visits: 4,
-        unsent_reports: 5,
-        overdue_tasks: 6,
-        total: 15,
+      data: {
+        summary: {
+          unrecorded_visits: 4,
+          unsent_reports: 5,
+          overdue_tasks: 6,
+          total: 15,
+        },
       },
     });
   });
@@ -313,11 +319,13 @@ describe('/api/dashboard/overdue GET', () => {
       }),
     );
     await expect(response.json()).resolves.toMatchObject({
-      summary: {
-        unrecorded_visits: 0,
-        unsent_reports: 0,
-        overdue_tasks: 0,
-        total: 0,
+      data: {
+        summary: {
+          unrecorded_visits: 0,
+          unsent_reports: 0,
+          overdue_tasks: 0,
+          total: 0,
+        },
       },
     });
   });
