@@ -84,7 +84,6 @@ export type CockpitInboundSignalItem = {
   id: string;
   signal_domain: string;
   signal_type: string;
-  extracted_text: string | null;
   extracted_medication_name: string | null;
   extracted_quantity: number | null;
   extracted_unit: string | null;
@@ -107,10 +106,8 @@ export type CockpitInboundItem = {
   sender_name: string | null;
   sender_role: string | null;
   sender_organization_name: string | null;
-  sender_contact: string | null;
   title: string;
   summary: string;
-  raw_text: string;
   normalized_summary: string | null;
   received_at: string;
   occurred_at: string | null;

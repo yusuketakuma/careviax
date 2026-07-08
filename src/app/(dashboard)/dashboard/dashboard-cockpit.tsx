@@ -1342,7 +1342,7 @@ function InboundFeedPanel({
                         ? ` ${signal.extracted_quantity}${signal.extracted_unit}`
                         : ''
                     }`
-                  : signal.extracted_text,
+                  : null,
               )
               .filter((value): value is string => Boolean(value))
               .slice(0, 2)
@@ -1372,7 +1372,7 @@ function InboundFeedPanel({
                   {item.patient_name ? `${item.patient_name} 様` : '患者未紐づけ'}
                 </p>
                 <p className="mt-1 line-clamp-2 text-sm leading-5 text-foreground">
-                  {item.raw_text}
+                  {item.summary}
                 </p>
                 {signalSummary ? (
                   <p className="mt-1 text-xs font-medium leading-5 text-state-confirm">

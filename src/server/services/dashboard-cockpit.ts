@@ -253,7 +253,6 @@ type DashboardMedicationStockSignalRow = {
   case_id: string | null;
   inbound_event_id: string;
   signal_type: string;
-  extracted_text: string | null;
   extracted_medication_name: string | null;
   extracted_quantity: number | null;
   extracted_unit: string | null;
@@ -649,7 +648,6 @@ function buildInboundUrgentItem(item: CockpitInboundItem): DashboardUrgentItem |
         primarySignal.extracted_quantity != null && primarySignal.extracted_unit
           ? `${primarySignal.extracted_quantity}${primarySignal.extracted_unit}`
           : null,
-        primarySignal.extracted_text,
       ]
         .filter(Boolean)
         .join(' / ')
@@ -665,7 +663,7 @@ function buildInboundUrgentItem(item: CockpitInboundItem): DashboardUrgentItem |
     patient_id: item.patient_id,
     patient_name: item.patient_name,
     title: item.title,
-    summary: signalSummary || item.raw_text,
+    summary: signalSummary || item.summary,
     due_at: item.due_at,
     waiting_since: item.received_at,
     badges: [
@@ -1976,6 +1974,30 @@ function buildInboundTitle(args: {
   return `${args.channelLabel}連絡を受信`;
 }
 
+function buildInboundControlledSummary(args: {
+  normalizedSummary: string | null;
+  hasMedicationStockSignal: boolean;
+  hasPatientSafetySignal: boolean;
+  hasScheduleSignal: boolean;
+  hasReportSignal: boolean;
+}) {
+  const normalized = args.normalizedSummary?.trim();
+  if (normalized) return normalized;
+  if (args.hasPatientSafetySignal) {
+    return '安全確認が必要な受信情報があります。詳細画面で確認してください。';
+  }
+  if (args.hasMedicationStockSignal) {
+    return '残数・薬剤に関する受信情報があります。詳細画面で確認してください。';
+  }
+  if (args.hasScheduleSignal) {
+    return '日程調整に関する受信情報があります。詳細画面で確認してください。';
+  }
+  if (args.hasReportSignal) {
+    return '報告書候補に関する受信情報があります。詳細画面で確認してください。';
+  }
+  return '他職種または関係者からの受信情報があります。詳細画面で確認してください。';
+}
+
 function buildDashboardMedicationStockSignalWhere(args: {
   orgId: string;
   assignmentScope: DashboardAssignmentScope;
@@ -2034,7 +2056,6 @@ function mapDashboardMedicationStockSignalRiskRow(
     case_id: row.case_id,
     inbound_event_id: row.inbound_event_id,
     signal_type: row.signal_type,
-    extracted_text: row.extracted_text,
     extracted_medication_name: row.extracted_medication_name,
     extracted_quantity: row.extracted_quantity,
     extracted_unit: row.extracted_unit,
@@ -2188,7 +2209,12 @@ function buildMedicationStockRiskItem(args: {
   const quantityLabel = formatMedicationStockQuantity(signal);
   const channel = String(signal.inbound_event.source_channel);
   const sourceLabel = INBOUND_CHANNEL_LABELS[channel] ?? '受信';
-  const sourceText = signal.extracted_text ?? signal.inbound_event.normalized_summary ?? null;
+  const sourceText =
+    signal.inbound_event.normalized_summary?.trim() ||
+    [signal.extracted_medication_name, quantityLabel, medicationStockRiskLabel(riskLevel)]
+      .filter(Boolean)
+      .join(' / ') ||
+    null;
 
   return {
     id: `medication_stock_signal:${signal.id}`,
@@ -2461,11 +2487,9 @@ async function readDashboardInbound(args: {
         sender_name: true,
         sender_role: true,
         sender_organization_name: true,
-        sender_contact: true,
         event_type: true,
         received_at: true,
         occurred_at: true,
-        raw_text: true,
         normalized_summary: true,
         attachment_count: true,
         has_medication_stock_signal: true,
@@ -2500,7 +2524,6 @@ async function readDashboardInbound(args: {
             inbound_event_id: true,
             signal_domain: true,
             signal_type: true,
-            extracted_text: true,
             extracted_medication_name: true,
             extracted_quantity: true,
             extracted_unit: true,
@@ -2554,14 +2577,18 @@ async function readDashboardInbound(args: {
       sender_name: event.sender_name,
       sender_role: String(event.sender_role),
       sender_organization_name: event.sender_organization_name,
-      sender_contact: event.sender_contact,
       title: buildInboundTitle({
         channelLabel,
         hasMedicationStockSignal: event.has_medication_stock_signal,
         hasPatientSafetySignal: event.has_patient_safety_signal,
       }),
-      summary: event.normalized_summary ?? event.raw_text,
-      raw_text: event.raw_text,
+      summary: buildInboundControlledSummary({
+        normalizedSummary: event.normalized_summary,
+        hasMedicationStockSignal: event.has_medication_stock_signal,
+        hasPatientSafetySignal: event.has_patient_safety_signal,
+        hasScheduleSignal: event.has_schedule_signal,
+        hasReportSignal: event.has_report_signal,
+      }),
       normalized_summary: event.normalized_summary,
       received_at: event.received_at.toISOString(),
       occurred_at: event.occurred_at?.toISOString() ?? null,
@@ -2575,7 +2602,6 @@ async function readDashboardInbound(args: {
         id: signal.id,
         signal_domain: String(signal.signal_domain),
         signal_type: String(signal.signal_type),
-        extracted_text: signal.extracted_text,
         extracted_medication_name: signal.extracted_medication_name,
         extracted_quantity: signal.extracted_quantity,
         extracted_unit: signal.extracted_unit,
@@ -2638,7 +2664,6 @@ async function readDashboardMedicationStockUrgents(args: {
             case_id: true,
             inbound_event_id: true,
             signal_type: true,
-            extracted_text: true,
             extracted_medication_name: true,
             extracted_quantity: true,
             extracted_unit: true,

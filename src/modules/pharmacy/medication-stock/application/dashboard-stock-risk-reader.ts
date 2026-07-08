@@ -53,7 +53,6 @@ export type DashboardMedicationStockSignalRiskRow = {
   case_id: string | null;
   inbound_event_id: string;
   signal_type: string;
-  extracted_text: string | null;
   extracted_medication_name: string | null;
   extracted_quantity: number | null;
   extracted_unit: string | null;
@@ -183,7 +182,6 @@ export async function readDashboardMedicationStockSignalRisks(
       signal."case_id",
       signal."inbound_event_id",
       signal."signal_type"::text AS signal_type,
-      signal."extracted_text",
       signal."extracted_medication_name",
       signal."extracted_quantity",
       signal."extracted_unit",

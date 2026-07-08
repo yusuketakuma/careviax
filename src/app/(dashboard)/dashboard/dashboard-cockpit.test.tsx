@@ -75,7 +75,7 @@ function buildUrgentFixture(): DashboardUrgentItem[] {
       patient_id: 'patient_1',
       patient_name: '田中 一郎',
       title: 'MCS受信: 安全確認が必要',
-      summary: '湿布 / 4sheet / 湿布は残り4枚',
+      summary: '湿布 / 4sheet',
       due_at: localIso(9, 18),
       waiting_since: localIso(9, 18),
       badges: [
@@ -393,10 +393,8 @@ function buildInboundFixture(data = buildFixture()): DashboardCockpitInboundResp
         sender_name: '山田 花子',
         sender_role: 'nurse',
         sender_organization_name: '訪問看護ステーションA',
-        sender_contact: '090-0000-0000',
         title: 'MCS受信: 安全確認が必要',
         summary: '湿布残数4枚と使用増加の報告',
-        raw_text: '湿布は残り4枚です。痛みが強く使用頻度が増えています。',
         normalized_summary: '湿布残数4枚と使用増加の報告',
         received_at: localIso(9, 18),
         occurred_at: localIso(9, 10),
@@ -413,7 +411,6 @@ function buildInboundFixture(data = buildFixture()): DashboardCockpitInboundResp
             id: 'signal_1',
             signal_domain: 'medication_stock',
             signal_type: 'observed_quantity',
-            extracted_text: '湿布は残り4枚',
             extracted_medication_name: '湿布',
             extracted_quantity: 4,
             extracted_unit: 'sheet',
@@ -771,7 +768,7 @@ describe('DashboardCockpit', () => {
     // 2枚目: 他職種受信も監査と同じ urgent queue に並ぶ
     expect(within(cards[1]).getByText('MCS')).toBeTruthy();
     expect(within(cards[1]).getByText('安全確認')).toBeTruthy();
-    expect(within(cards[1]).getByText('湿布 / 4sheet / 湿布は残り4枚')).toBeTruthy();
+    expect(within(cards[1]).getByText('湿布 / 4sheet')).toBeTruthy();
     expect(within(cards[1]).getByRole('link', { name: '受信情報を確認' })).toBeTruthy();
 
     // 3枚目: WorkflowException 由来の詰まりも task source として並ぶ
@@ -913,9 +910,8 @@ describe('DashboardCockpit', () => {
     expect(within(inbound).getByText('MCS')).toBeTruthy();
     expect(within(inbound).getByText('安全確認')).toBeTruthy();
     expect(within(inbound).getByText('田中 一郎 様')).toBeTruthy();
-    expect(
-      within(inbound).getByText('湿布は残り4枚です。痛みが強く使用頻度が増えています。'),
-    ).toBeTruthy();
+    expect(within(inbound).getByText('湿布残数4枚と使用増加の報告')).toBeTruthy();
+    expect(within(inbound).queryByText(/湿布は残り4枚です/)).toBeNull();
     expect(within(inbound).getByText('湿布 4sheet')).toBeTruthy();
     expect(within(inbound).getByText('nurse / 山田 花子 / 訪問看護ステーションA')).toBeTruthy();
     expect(within(inbound).getByRole('link', { name: '受信情報を確認' })).toBeTruthy();

@@ -85,6 +85,36 @@ describe('recordPhiReadAudit', () => {
     });
   });
 
+  it('records target-only PHI reads when no patient is linked yet', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'audit_target_only' });
+
+    await recordPhiReadAudit(
+      { auditLog: { create } },
+      { orgId: 'org_1', userId: 'user_1' },
+      {
+        patientId: null,
+        view: 'inbound_communication_detail',
+        targetType: 'inbound_communication_event',
+        targetId: 'event_1',
+        purpose: 'care_coordination',
+        metadata: { request_id: 'req_1', read_reason_code: 'review_inbound_detail' },
+      },
+    );
+
+    expect(create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        patient_id: undefined,
+        target_type: 'inbound_communication_event',
+        target_id: 'event_1',
+        changes: {
+          view: 'inbound_communication_detail',
+          purpose: 'care_coordination',
+          metadata: { request_id: 'req_1', read_reason_code: 'review_inbound_detail' },
+        },
+      }),
+    });
+  });
+
   it('never records PHI body fields (only view/purpose/metadata in changes)', async () => {
     const create = vi.fn().mockResolvedValue({ id: 'audit_3' });
 

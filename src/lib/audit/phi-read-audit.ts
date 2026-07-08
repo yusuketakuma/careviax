@@ -34,8 +34,8 @@ type PhiReadAuditActor = {
 };
 
 type PhiReadAuditInput = {
-  /** 閲覧対象の患者 ID。 */
-  patientId: string;
+  /** 閲覧対象の患者 ID。未紐づけ PHI detail では null/undefined を許可する。 */
+  patientId?: string | null;
   /**
    * 閲覧された PHI 画面/エンドポイントの識別子（例: 'patient_detail'）。
    * changes.view に格納され、どの route 経由の閲覧かを後から追跡できるようにする。
@@ -73,10 +73,10 @@ export async function recordPhiReadAudit(
         actor_id: actor.userId,
         actor_pharmacy_id: actor.actorPharmacyId ?? actor.orgId,
         actor_site_id: actor.actorSiteId,
-        patient_id: input.patientId,
+        patient_id: input.patientId ?? undefined,
         action: PHI_READ_AUDIT_ACTION,
         target_type: input.targetType ?? 'patient',
-        target_id: input.targetId ?? input.patientId,
+        target_id: input.targetId ?? input.patientId ?? 'unknown',
         changes: changes as Prisma.InputJsonValue,
         ip_address: actor.ipAddress,
         user_agent: actor.userAgent,
@@ -91,7 +91,7 @@ export async function recordPhiReadAudit(
         orgId: actor.orgId,
         actorId: actor.userId,
         entityType: input.targetType ?? 'patient',
-        entityId: input.patientId,
+        entityId: input.targetId ?? input.patientId ?? 'unknown',
       },
       error,
     );
@@ -150,7 +150,7 @@ export function recordPhiReadAuditForRequest(
         orgId: ctx.orgId,
         actorId: ctx.userId,
         entityType: input.targetType ?? 'patient',
-        entityId: input.patientId,
+        entityId: input.targetId ?? input.patientId ?? 'unknown',
       },
       error,
     );

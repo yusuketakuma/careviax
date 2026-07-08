@@ -570,6 +570,7 @@ export const API_ROUTE_TEMPLATES = [
   '/api/communication-requests/:id/responses',
   '/api/communication-requests/export',
   '/api/communications/inbound',
+  '/api/communications/inbound/:id/detail',
   '/api/communications/inbound/mcs',
   '/api/communications/inbound/phone',
   '/api/communications/inbound/signals',
