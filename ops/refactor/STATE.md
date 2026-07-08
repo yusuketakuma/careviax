@@ -41,6 +41,80 @@
 
 ## 直近の作業（未コミット）
 
+- codex: `DASH-P1-005B-URGENT-SOURCE-LINKS` Dashboard urgent source drilldown。
+  - current task:
+    `Plans.md` v8 の未実装queueから、Dashboard Unified Urgent の source別 drilldown を実装する。
+    既存BFFを作り直さず、`urgent_source_links` をUIへ通し、audit/inbound/stock/report/billing/task が
+    既存画面のfilter付き相対URLへ進むようにする。`visible_count` / `hidden_count` の意味を
+    `count_basis` で固定する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/types/dashboard-cockpit.ts`,
+    `src/server/services/dashboard-cockpit.ts`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+    `src/app/(dashboard)/dashboard/use-dashboard-cockpit-view-model.ts`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`,
+    `src/app/api/dashboard/cockpit/route.test.ts`,
+    `src/lib/dashboard/home-link-builders.ts`,
+    `src/app/(dashboard)/tasks/tasks-query-state.ts`,
+    `src/app/(dashboard)/tasks/tasks-content.tsx`,
+    and the existing `/communications/inbound`, `/tasks`, report, billing, schedule route surfaces.
+  - files changed:
+    `Plans.md`,
+    `src/types/dashboard-cockpit.ts`,
+    `src/server/services/dashboard-cockpit.ts`,
+    `src/app/(dashboard)/dashboard/use-dashboard-cockpit-view-model.ts`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`,
+    `src/app/api/dashboard/cockpit/route.test.ts`,
+    `src/lib/dashboard/home-link-builders.ts`,
+    `src/lib/dashboard/home-link-builders.test.ts`,
+    `src/app/(dashboard)/tasks/tasks-query-state.ts`,
+    `src/app/(dashboard)/tasks/tasks-query-state.test.ts`,
+    `src/app/(dashboard)/tasks/tasks-content.tsx`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Added `count_basis: 'source_total'` to `DashboardUrgentSourceLink` and surfaced
+    `urgent_source_links` through the Dashboard view model into `UrgentNowSection`.
+    The dashboard now renders source drilldown pills under `今すぐ対応`, with labels that distinguish
+    source total, materialized details-payload candidates, and not-yet-materialized hidden counts.
+    Source hrefs remain app-relative and point to existing filtered surfaces:
+    audit, inbound, medication-stock inbound signal filter, reports delivery failures, billing candidates,
+    and open tasks. The `/tasks` page now accepts `status=open` as an initial filter, matching the
+    existing `/api/tasks?status=open` contract.
+  - bugs found:
+    `urgent_source_links` existed in the Dashboard details DTO but was not rendered, so users could see
+    only the top three urgent cards and had no source-level drilldown. The task source link also used
+    `status=` instead of a meaningful filter, even though the task API already supports `status=open`.
+  - security risks reduced:
+    Source drilldown hrefs are fixed to app-relative URLs and tested against protocol-relative/external
+    escape. No authorization or PHI exposure was widened; this only exposes already-authenticated
+    dashboard source navigation.
+  - performance issues improved:
+    No new BFF fetches or DB queries were added. The UI consumes the existing details segment and
+    avoids rebuilding dashboard source totals client-side.
+  - validation commands:
+    `pnpm exec prettier --write ...`;
+    `pnpm exec vitest run src/app/api/dashboard/cockpit/route.test.ts src/app/'(dashboard)'/dashboard/dashboard-cockpit.test.tsx src/lib/dashboard/home-link-builders.test.ts src/app/'(dashboard)'/tasks/tasks-query-state.test.ts`;
+    `pnpm exec eslint ...`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm exec prettier --check ...`;
+    `git diff --check`.
+  - validation results:
+    Focused tests passed (`67` tests). Targeted ESLint passed. Full typecheck passed.
+    Prettier check passed after formatting `Plans.md`. `git diff --check` passed.
+  - remaining work:
+    `DASH-P1-005C-CARRYOVER-LINKS` remains for carryover / hidden queue / comments drilldown.
+    `DASH-P1-010-RAIL` remains for the left Summary Rail. Browser screenshot verification was not run
+    because this slice adds compact source drilldown pills to an existing section without breakpoint redesign.
+  - commit:
+    Implementation committed as `ecd3a4cc1`.
+  - next action:
+    Continue from `DASH-P1-005C-CARRYOVER-LINKS` or `DASH-P1-010-RAIL`, preserving the same relative
+    URL and count semantics.
+
 - codex: `DASH-P1-005A-PROCESS-TILE-LINKS` Dashboard process tile drilldown。
   - current task:
     `Plans.md` v8 の未実装queueから、Dashboard `ProcessNowSection` の9工程tileを相対URLリンク化する。
