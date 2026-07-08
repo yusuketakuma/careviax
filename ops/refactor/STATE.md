@@ -23724,12 +23724,15 @@ visit_request/unknown`, `action_status='not_linked'`, and
   Implementation, tests, Plans update, and initial ledger entry committed as
   `aa24b7e52b82c8aa4a1a56aca845bdc901ea34d9`
   (`fix(movement): harden timeline deep links`) and pushed to `origin/main`.
-  This ledger hash update is pending commit.
+  Ledger hash update committed as
+  `9b96218027b43513e2bead3784744263cfbc7fa3`
+  (`docs(state): record movement link guard push`) and pushed to `origin/main`.
 - remaining work:
   `MOV-001-API` still has raw detail reauthorization and browser/mobile/a11y
   validation. The old list alias and old page detail shell remain intentionally
   unsupported. `STOCK-001-VISIT-CONTEXT-APPLY` and related DB integration remain
   human-gated.
 - next action:
-  Commit and push this ledger hash update, then continue the next non-human-gated
-  Plans item.
+  Continue the next non-human-gated Plans item. `MOV-001-API` raw detail
+  reauthorization is the next MOV residual, while stock migration/DB integration
+  remains human-gated.
