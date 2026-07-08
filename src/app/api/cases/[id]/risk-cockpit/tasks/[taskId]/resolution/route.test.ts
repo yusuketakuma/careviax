@@ -154,14 +154,19 @@ describe('/api/cases/[id]/risk-cockpit/tasks/[taskId]/resolution', () => {
     );
     const body = await response.json();
     expect(body).toEqual({
-      task_id: 'task_1',
-      display_id: 'tsk0000000001',
-      case_id: 'case_1',
-      resolution_state: 'waived',
-      task_status: 'cancelled',
-      updated_count: 1,
-      audit_logged: true,
+      data: {
+        task_id: 'task_1',
+        display_id: 'tsk0000000001',
+        case_id: 'case_1',
+        resolution_state: 'waived',
+        task_status: 'cancelled',
+        updated_count: 1,
+        audit_logged: true,
+      },
     });
+    expect(body).not.toHaveProperty('task_id');
+    expect(body).not.toHaveProperty('case_id');
+    expect(body).not.toHaveProperty('updated_count');
     expect(JSON.stringify(body)).not.toContain('dedupe');
     expect(JSON.stringify(body)).not.toContain('metadata');
     expect(JSON.stringify(body)).not.toContain('薬剤師確認により免除');

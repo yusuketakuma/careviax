@@ -5289,10 +5289,11 @@ export function CardWorkspace({
           reason_code: input.reasonCode,
         }),
       });
-      return readApiJson<CaseRiskTaskResolutionUiResult>(
+      const payload = await readApiJson<{ data: CaseRiskTaskResolutionUiResult }>(
         response,
         'リスクタスク免除に失敗しました',
       );
+      return payload.data;
     },
     onSuccess: async (result) => {
       setRiskTaskWaiverDrafts((previous) => {

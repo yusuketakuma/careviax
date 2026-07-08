@@ -532,16 +532,8 @@ function mockPatientQuery(
           }) => {
             riskTaskWaiverMutate(input);
             try {
-              await mutationOptions?.mutationFn?.(input);
-              await mutationOptions?.onSuccess?.({
-                task_id: input.taskId,
-                display_id: 'tsk0000000001',
-                case_id: input.caseId,
-                resolution_state: 'waived',
-                task_status: 'cancelled',
-                updated_count: 1,
-                audit_logged: true,
-              });
+              const result = await mutationOptions?.mutationFn?.(input);
+              await mutationOptions?.onSuccess?.(result);
             } catch (error) {
               mutationOptions?.onError?.(error as Error);
             }
@@ -1670,13 +1662,15 @@ describe('CardWorkspace', () => {
       capturedRequestInit = init;
       return new Response(
         JSON.stringify({
-          task_id: 'task_1',
-          display_id: 'tsk0000000001',
-          case_id: 'case_1',
-          resolution_state: 'waived',
-          task_status: 'cancelled',
-          updated_count: 1,
-          audit_logged: true,
+          data: {
+            task_id: 'task_1',
+            display_id: 'tsk0000000001',
+            case_id: 'case_1',
+            resolution_state: 'waived',
+            task_status: 'cancelled',
+            updated_count: 1,
+            audit_logged: true,
+          },
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       );

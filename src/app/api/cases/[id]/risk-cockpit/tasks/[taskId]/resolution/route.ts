@@ -91,13 +91,15 @@ async function authenticatedPOST(
   }
 
   return success({
-    task_id: result.task_id,
-    display_id: result.display_id,
-    case_id: result.case_id,
-    resolution_state: 'waived',
-    task_status: 'cancelled',
-    updated_count: result.updated_task_count,
-    audit_logged: true,
+    data: {
+      task_id: result.task_id,
+      display_id: result.display_id,
+      case_id: result.case_id,
+      resolution_state: 'waived',
+      task_status: 'cancelled',
+      updated_count: result.updated_task_count,
+      audit_logged: true,
+    },
   });
 }
 
