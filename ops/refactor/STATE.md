@@ -23953,3 +23953,108 @@ visit_request/unknown`, `action_status='not_linked'`, and
   Continue the next non-human-gated plan item: prepare `FRONTEND-CONTRACT-001`
   or `QUERY-SHAPE-WATCHLIST-003-FOLLOW`. Do not apply stock/visit migrations
   without explicit human approval, rollback plan, and staging evidence.
+
+## 2026-07-09 - FRONTEND-CONTRACT-001 screen contract
+
+- current task:
+  Complete the seven-screen frontend contract artifact before implementing the
+  next PH-OS UI slice, honoring the latest user instruction that compatibility
+  is not required and only the new current contract should remain.
+- files inspected:
+  `Plans.md`; `ops/refactor/STATE.md`; `docs/ui-ux-design-guidelines.md`;
+  `docs/compliance/access-control-policy.md`; `docs/frontend-brushup-plan.md`;
+  `docs/seed-frontend-coverage-audit.md`; `package.json`;
+  representative current entrypoints, components, API routes, and tests for
+  patient list, patient detail, dispensing workbench, schedule, visit record,
+  reports, and inbound communications.
+- files changed:
+  `docs/frontend-screen-contracts.md`;
+  `tools/scripts/check-frontend-contract.mjs`; `package.json`; `Plans.md`;
+  `ops/refactor/STATE.md`.
+- Oracle / GPT-5.5 Pro safety gate:
+  First session `frontend-contract-phi-boundary` failed before review because
+  browser attachments timed out while uploading large `Plans.md`. Retried with
+  inline minimal files as `frontend-contract-phi-min`; Oracle returned
+  "NO-GO as-is / minimal fixes then GO." Accepted the safety edits for
+  server-enforced authorization, server-authorized DTOs, no client-hidden PHI,
+  mock/sample production exclusion, external export / Oracle prompt boundaries,
+  and fail-closed legacy removal. Rejected only the date change advice because
+  this Codex run's JST environment date is 2026-07-09.
+- bugs found:
+  The new contract initially allowed unsafe interpretations: authorized display
+  could be read as client-side authorization, "hidden address" could be read as
+  client-hidden PHI payload, mock/sample data could appear production-like, and
+  new-only removal did not explicitly require fail-closed behavior for removed
+  legacy routes/actions. The checker also searched exact token strings and
+  failed when Markdown wrapped `role-specific capability` across lines.
+- bugs fixed:
+  Added `docs/frontend-screen-contracts.md` as the active FE implementation
+  contract for patient list, patient detail, dispensing workbench, schedule,
+  visit record, reports, and inbound communications. Added exact current route,
+  primary component, BFF/API, shared component/type, existing validation, next
+  boundary, state matrix, PHI/output boundary, validation list, and stop
+  conditions. Added explicit new-only/no-compatibility rules: no legacy movement
+  aliases, classic shells, legacy response/action shapes, compatibility shims,
+  or dual UI paths. Added fail-closed 404/410/403 or authorized redirect with no
+  PHI payload and no write side effect. Added `frontend-contract:check` and made
+  the checker validate required tokens, exactly seven FE screen rows, state
+  matrix rows, and PHI boundary rows with whitespace-normalized token matching.
+- security risks found:
+  A PHI-facing frontend contract can accidentally broaden disclosure if
+  operational dashboard display is not tied to server-enforced capability,
+  tenant/org/RLS, assignment/case scope, consent, support session, purpose, OCC
+  or precondition where applicable, and audit/read-reason gates. New-only
+  removal can also be unsafe if old handlers remain with PHI payloads or write
+  side effects.
+- security risks reduced:
+  The contract now requires server-authorized DTOs before PHI display, forbids
+  client-hidden PHI/search-index payloads, keeps OS notifications, SSE, logs,
+  audit diffs, public URLs, Oracle/GPT prompts, and external share/CSV/PDF
+  export on separate minimized boundaries, and stops any design that lacks
+  explicit user action, scope, recipient/purpose, consent where required,
+  minimization, and audit. Sample/mock data is limited to PHI-free dev/test/demo
+  fixtures and cannot enable save/send/confirm/apply/complete actions or appear
+  as saved production/org state.
+- performance issues found:
+  None in production code.
+- performance issues improved:
+  The checker gives a lightweight ratchet for future FE slices, so drift in the
+  seven-screen contract, state matrix, PHI boundary rows, and high-risk stop
+  wording is caught without running full UI/browser suites for docs-only
+  changes.
+- UI/UX note:
+  Read `docs/ui-ux-design-guidelines.md`. Image generation was intentionally
+  omitted because this was docs/checker/Plans contract work and did not create a
+  visual reconstruction or layout concept.
+- validation commands:
+  `pnpm exec prettier --write docs/frontend-screen-contracts.md tools/scripts/check-frontend-contract.mjs Plans.md package.json`;
+  `node --check tools/scripts/check-frontend-contract.mjs`;
+  `pnpm frontend-contract:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint tools/scripts/check-frontend-contract.mjs`;
+  `git diff --check -- Plans.md docs/frontend-screen-contracts.md tools/scripts/check-frontend-contract.mjs package.json`;
+  `rg -n "server-enforced|server-authorized DTOs|role-specific capability|Client-hidden address|Sample/mock|Oracle/GPT|fail closed|404/410/403|no PHI payload|no write side effect" docs/frontend-screen-contracts.md tools/scripts/check-frontend-contract.mjs`;
+  `pnpm date-slices:check`.
+- validation results:
+  Prettier passed. `node --check` passed. `frontend-contract:check` passed.
+  `plans:active:check` passed. Scoped ESLint passed. Scoped `git diff --check`
+  passed. Safety-token `rg` found the required contract/checker terms.
+  `pnpm date-slices:check` failed on existing direct ISO date slices in
+  `src/app/api/communications/inbound/signals/route.ts`,
+  `src/app/api/communications/inbound/signals/tasks/route.ts`,
+  `src/modules/pharmacy/medication-stock/domain/stockout-forecast.ts`,
+  `src/server/services/dashboard-cockpit.ts`,
+  `tools/scripts/backfill-drug-price-versions.ts`, and
+  `tools/scripts/backup-recovery-check.ts`, plus one stale allowlist needle in
+  `tools/date-slice-allowlist.json`. Those paths were not changed in this
+  slice; keep this as a separate validation hygiene follow-up.
+- remaining work:
+  `STOCK-001-VISIT-CONTEXT-APPLY`, stock write-enabled visit UI, live AWS
+  recovery evidence, DB/index human-gated work, and the unrelated date-slice
+  guard cleanup remain. The next non-human-gated Plans item is
+  `QUERY-SHAPE-WATCHLIST-003-FOLLOW` unless date-slice validation cleanup is
+  selected as the next validation hygiene slice.
+- next action:
+  Commit and push the frontend contract slice with only owned files staged.
+  Then continue the active plan queue without applying migrations, live AWS
+  actions, production mutations, deploys, or destructive operations.
