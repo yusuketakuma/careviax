@@ -132,22 +132,30 @@ describe('/api/dashboard/medication-deadlines', () => {
       requestContext: authContext,
     });
     expect(successMock).toHaveBeenCalledWith({
-      total: 2,
-      critical: {
-        count: 1,
-        items: [expect.objectContaining({ id: 'schedule_1' })],
-      },
-      warning: {
-        count: 1,
-        items: [expect.objectContaining({ id: 'schedule_2' })],
+      data: {
+        total: 2,
+        critical: {
+          count: 1,
+          items: [expect.objectContaining({ id: 'schedule_1' })],
+        },
+        warning: {
+          count: 1,
+          items: [expect.objectContaining({ id: 'schedule_2' })],
+        },
       },
     });
     expectSensitiveNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
-      total: 2,
-      critical: { count: 1 },
-      warning: { count: 1 },
+    const json = await response.json();
+    expect(json).toMatchObject({
+      data: {
+        total: 2,
+        critical: { count: 1 },
+        warning: { count: 1 },
+      },
     });
+    expect(json).not.toHaveProperty('total');
+    expect(json).not.toHaveProperty('critical');
+    expect(json).not.toHaveProperty('warning');
     expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({

@@ -77,6 +77,13 @@ type SearchContentProps = {
   initialCategory?: SearchCategory;
 };
 
+type MedicationDeadlineSearchResponse = {
+  data?: {
+    critical?: { items?: MedicationDeadlineSearchItem[] };
+    warning?: { items?: MedicationDeadlineSearchItem[] };
+  };
+};
+
 function perfNow() {
   return typeof performance !== 'undefined' ? performance.now() : Date.now();
 }
@@ -110,18 +117,28 @@ function countSearchPayloadItems(payload: unknown) {
   const data = (payload as { data?: unknown }).data;
   if (Array.isArray(data)) return data.length;
 
-  const medicationDeadlinePayload = payload as {
-    critical?: { items?: unknown[] };
-    warning?: { items?: unknown[] };
-  };
-  if (medicationDeadlinePayload.critical || medicationDeadlinePayload.warning) {
+  const medicationDeadlineData = data as
+    | {
+        critical?: { items?: unknown[] };
+        warning?: { items?: unknown[] };
+      }
+    | undefined;
+  if (medicationDeadlineData?.critical || medicationDeadlineData?.warning) {
     return (
-      (medicationDeadlinePayload.critical?.items?.length ?? 0) +
-      (medicationDeadlinePayload.warning?.items?.length ?? 0)
+      (medicationDeadlineData.critical?.items?.length ?? 0) +
+      (medicationDeadlineData.warning?.items?.length ?? 0)
     );
   }
 
   return 0;
+}
+
+function readMedicationDeadlineItems(payload: MedicationDeadlineSearchResponse | null) {
+  const medicationDeadlineData = payload?.data;
+  return [
+    ...(medicationDeadlineData?.critical?.items ?? []),
+    ...(medicationDeadlineData?.warning?.items ?? []),
+  ].slice(0, SEARCH_RESULT_LIMIT);
 }
 
 function estimateSearchPayloadBytes(payload: unknown) {
@@ -407,14 +424,11 @@ export function SearchContent({
         );
         const prescriptionData = prescriptionPayload?.data ?? [];
 
-        const medicationDeadlinePayload = await readSearchJson<{
-          critical?: { items?: MedicationDeadlineSearchItem[] };
-          warning?: { items?: MedicationDeadlineSearchItem[] };
-        }>('medicationDeadline', medicationDeadlineRes);
-        const medicationDeadlineData = [
-          ...(medicationDeadlinePayload?.critical?.items ?? []),
-          ...(medicationDeadlinePayload?.warning?.items ?? []),
-        ].slice(0, SEARCH_RESULT_LIMIT);
+        const medicationDeadlinePayload = await readSearchJson<MedicationDeadlineSearchResponse>(
+          'medicationDeadline',
+          medicationDeadlineRes,
+        );
+        const medicationDeadlineData = readMedicationDeadlineItems(medicationDeadlinePayload);
 
         const drugPayload = await readSearchJson<{ data: DrugSearchItem[] }>('drug', drugRes);
         const drugData = drugPayload?.data ?? [];

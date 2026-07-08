@@ -166,9 +166,11 @@ async function authenticatedGET(req: NextRequest) {
     );
 
     return success({
-      total: schedules.length,
-      critical: { count: critical.length, items: critical },
-      warning: { count: warning.length, items: warning },
+      data: {
+        total: schedules.length,
+        critical: { count: critical.length, items: critical },
+        warning: { count: warning.length, items: warning },
+      },
     });
   });
 }

@@ -95,7 +95,8 @@ function setupFetchMocks(overrides: Partial<Record<string, unknown>> = {}) {
     if (url.includes('/api/dashboard/medication-deadlines')) {
       return Promise.resolve({
         ok: true,
-        json: () => Promise.resolve(overrides.medicationDeadlines ?? MEDICATION_DEADLINE_RESULTS),
+        json: () =>
+          Promise.resolve(overrides.medicationDeadlines ?? { data: MEDICATION_DEADLINE_RESULTS }),
       });
     }
     if (url.includes('/api/prescription-intakes')) {
@@ -364,6 +365,54 @@ describe('SearchContent', () => {
     expect(medicationDeadlineUrls.at(-1)).toContain('within_days=3');
     expect(medicationDeadlineUrls.at(-1)).toContain('q=%E7%94%B0%E4%B8%AD');
     expect(medicationDeadlineUrls.at(-1)).toContain('limit=8');
+  });
+
+  it('ignores legacy root medication deadline buckets', async () => {
+    setupFetchMocks({
+      medicationDeadlines: {
+        data: MEDICATION_DEADLINE_RESULTS,
+        total: 1,
+        critical: {
+          count: 1,
+          items: [
+            {
+              id: 'legacy_root_poison',
+              case_id: 'case_legacy',
+              scheduled_date: '2026-06-18T00:00:00.000Z',
+              medication_end_date: '2026-06-20T00:00:00.000Z',
+              visit_type: 'regular',
+              pharmacist_id: 'user_legacy',
+              case_: { patient: { id: 'patient_legacy', name: 'Root Poison' } },
+            },
+          ],
+        },
+        warning: { count: 0, items: [] },
+      },
+    });
+    render(<SearchContent />);
+    await triggerSearch('田中');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '詳しく絞り込む' }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('combobox')[4]);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('option', { name: '3日以内' }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'この条件で探す' }));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /薬切れ/ }));
+    });
+
+    expect(screen.getByText('田中 一郎 様の薬切れ予定')).toBeTruthy();
+    expect(screen.queryByText('Root Poison 様の薬切れ予定')).toBeNull();
   });
 
   it('opens advanced filter modal when 詳しく絞り込む is clicked', async () => {
