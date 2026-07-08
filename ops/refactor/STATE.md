@@ -23719,12 +23719,17 @@ visit_request/unknown`, `action_status='not_linked'`, and
   Full typecheck passed after `next typegen`. Static route/raw searches matched
   only expected tests, existing inbound raw-detail surfaces, external-share
   unsupported raw scope tests, and the existing `/api/patients/:id/timeline/:eventId`
-  detail resolver. Commit and push are pending.
+  detail resolver. `git diff --check` and `git diff --cached --check` passed.
+- commit:
+  Implementation, tests, Plans update, and initial ledger entry committed as
+  `aa24b7e52b82c8aa4a1a56aca845bdc901ea34d9`
+  (`fix(movement): harden timeline deep links`) and pushed to `origin/main`.
+  This ledger hash update is pending commit.
 - remaining work:
   `MOV-001-API` still has raw detail reauthorization and browser/mobile/a11y
   validation. The old list alias and old page detail shell remain intentionally
   unsupported. `STOCK-001-VISIT-CONTEXT-APPLY` and related DB integration remain
   human-gated.
 - next action:
-  Run final diff checks, commit the scoped MOV link-guard slice, push it, then
-  update this ledger with the commit and push hashes.
+  Commit and push this ledger hash update, then continue the next non-human-gated
+  Plans item.
