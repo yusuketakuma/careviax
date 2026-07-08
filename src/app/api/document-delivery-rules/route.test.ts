@@ -124,28 +124,28 @@ describe('/api/document-delivery-rules', () => {
     });
     expectOrgContextBoundToRequestContext();
     const body = await response.json();
-    expect(Object.keys(body)).toEqual([
-      'data',
-      'total_count',
-      'visible_count',
-      'hidden_count',
-      'truncated',
-      'count_basis',
-      'filters_applied',
-      'limit',
-    ]);
+    expect(Object.keys(body)).toEqual(['data', 'meta']);
     expect(body).toMatchObject({
       data: [{ id: 'rule_1' }],
-      total_count: 1,
-      visible_count: 1,
-      hidden_count: 0,
-      truncated: false,
-      count_basis: 'document_delivery_rules',
-      filters_applied: {
-        document_type: null,
+      meta: {
+        total_count: 1,
+        visible_count: 1,
+        hidden_count: 0,
+        truncated: false,
+        count_basis: 'document_delivery_rules',
+        filters_applied: {
+          document_type: null,
+        },
+        limit: 100,
       },
-      limit: 100,
     });
+    expect(body).not.toHaveProperty('total_count');
+    expect(body).not.toHaveProperty('visible_count');
+    expect(body).not.toHaveProperty('hidden_count');
+    expect(body).not.toHaveProperty('truncated');
+    expect(body).not.toHaveProperty('count_basis');
+    expect(body).not.toHaveProperty('filters_applied');
+    expect(body).not.toHaveProperty('limit');
   });
 
   it('bounds list size and trims document_type query filters', async () => {
@@ -173,10 +173,12 @@ describe('/api/document-delivery-rules', () => {
       },
     });
     await expect(response.json()).resolves.toMatchObject({
-      filters_applied: {
-        document_type: 'care_report',
+      meta: {
+        filters_applied: {
+          document_type: 'care_report',
+        },
+        limit: 5,
       },
-      limit: 5,
     });
   });
 
@@ -193,7 +195,9 @@ describe('/api/document-delivery-rules', () => {
       }),
     );
     await expect(response.json()).resolves.toMatchObject({
-      limit: 200,
+      meta: {
+        limit: 200,
+      },
     });
   });
 
@@ -207,11 +211,13 @@ describe('/api/document-delivery-rules', () => {
     expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: [{ id: 'rule_1' }, { id: 'rule_2' }],
-      total_count: 5,
-      visible_count: 2,
-      hidden_count: 3,
-      truncated: true,
-      count_basis: 'document_delivery_rules',
+      meta: {
+        total_count: 5,
+        visible_count: 2,
+        hidden_count: 3,
+        truncated: true,
+        count_basis: 'document_delivery_rules',
+      },
     });
   });
 
@@ -249,6 +255,7 @@ describe('/api/document-delivery-rules', () => {
       }),
     });
     expectOrgContextBoundToRequestContext();
+    await expect(response.json()).resolves.toEqual({ data: { id: 'rule_2' } });
   });
 
   it('rejects non-object create payloads before opening an org transaction', async () => {

@@ -71,14 +71,21 @@ export async function GET(req: NextRequest) {
         ]),
       { requestContext: ctx },
     );
+    const list = buildCountedListEnvelope(rules, totalCount);
     return withSensitiveNoStore(
       success({
-        ...buildCountedListEnvelope(rules, totalCount),
-        count_basis: DOCUMENT_DELIVERY_RULE_COUNT_BASIS,
-        filters_applied: {
-          document_type: parsedDocumentType?.success ? parsedDocumentType.data : null,
+        data: list.data,
+        meta: {
+          total_count: list.total_count,
+          visible_count: list.visible_count,
+          hidden_count: list.hidden_count,
+          truncated: list.truncated,
+          count_basis: DOCUMENT_DELIVERY_RULE_COUNT_BASIS,
+          filters_applied: {
+            document_type: parsedDocumentType?.success ? parsedDocumentType.data : null,
+          },
+          limit,
         },
-        limit,
       }),
     );
   } catch (err) {

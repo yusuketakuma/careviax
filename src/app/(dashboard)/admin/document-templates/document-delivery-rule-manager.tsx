@@ -47,15 +47,21 @@ type DocumentDeliveryRuleRow = {
 
 type DocumentDeliveryRulesResponse = {
   data: DocumentDeliveryRuleRow[];
-  total_count?: number;
-  visible_count?: number;
-  hidden_count?: number;
-  truncated?: boolean;
-  count_basis?: 'document_delivery_rules';
-  filters_applied?: {
-    document_type?: string | null;
+  meta: {
+    total_count: number;
+    visible_count: number;
+    hidden_count: number;
+    truncated: boolean;
+    count_basis: 'document_delivery_rules';
+    filters_applied: {
+      document_type: string | null;
+    };
+    limit: number;
   };
-  limit?: number;
+};
+
+type DocumentDeliveryRuleDeleteResponse = {
+  data: { id: string };
 };
 
 const DOCUMENT_TYPE_OPTIONS = [
@@ -221,7 +227,10 @@ export function DocumentDeliveryRuleManager() {
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });
-      await readApiJson<unknown>(res, '文書送達ルールの削除に失敗しました');
+      await readApiJson<DocumentDeliveryRuleDeleteResponse>(
+        res,
+        '文書送達ルールの削除に失敗しました',
+      );
     },
     onSuccess: async (_data, ruleId) => {
       toast.success('文書送達ルールを削除しました');
@@ -238,13 +247,10 @@ export function DocumentDeliveryRuleManager() {
 
   const rulesResponse = rulesQuery.data;
   const rules = rulesResponse?.data ?? [];
-  const visibleRuleCount = rulesResponse?.visible_count ?? rules.length;
-  const totalRuleCount = rulesResponse?.total_count ?? visibleRuleCount;
-  const hiddenRuleCount = Math.max(
-    rulesResponse?.hidden_count ?? totalRuleCount - visibleRuleCount,
-    0,
-  );
-  const isRuleListTruncated = Boolean(rulesResponse?.truncated ?? hiddenRuleCount > 0);
+  const visibleRuleCount = rulesResponse?.meta.visible_count ?? rules.length;
+  const totalRuleCount = rulesResponse?.meta.total_count ?? visibleRuleCount;
+  const hiddenRuleCount = Math.max(rulesResponse?.meta.hidden_count ?? 0, 0);
+  const isRuleListTruncated = Boolean(rulesResponse?.meta.truncated || hiddenRuleCount > 0);
   const ruleCountLabel = isRuleListTruncated
     ? `先頭${visibleRuleCount}件を表示 / 他${hiddenRuleCount}件`
     : `登録${totalRuleCount}件`;

@@ -113,7 +113,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       { requestContext: ctx },
     );
 
-    return withSensitiveNoStore(success({ message: '文書送達ルールを削除しました' }));
+    return withSensitiveNoStore(success({ data: { id: existing.id } }));
   } catch (err) {
     unstable_rethrow(err);
     logger.error(

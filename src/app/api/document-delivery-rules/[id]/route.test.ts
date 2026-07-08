@@ -137,6 +137,13 @@ describe('/api/document-delivery-rules/[id]', () => {
         },
       });
       expectOrgContextBoundToRequestContext();
+      await expect(response.json()).resolves.toEqual({
+        data: {
+          id: 'rule_1',
+          channel: 'fax',
+          is_active: true,
+        },
+      });
     });
 
     it('rejects malformed JSON update payloads before loading the delivery rule', async () => {
@@ -257,6 +264,9 @@ describe('/api/document-delivery-rules/[id]', () => {
       expect(response.status).toBe(200);
       expectNoStore(response);
       expectOrgContextBoundToRequestContext();
+      const body = await response.json();
+      expect(body).toEqual({ data: { id: 'rule_1' } });
+      expect(body).not.toHaveProperty('message');
     });
 
     it('rejects blank route ids before loading the delivery rule', async () => {

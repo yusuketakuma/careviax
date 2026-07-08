@@ -36,6 +36,26 @@ function renderManager() {
   return render(<DocumentDeliveryRuleManager />, { wrapper: createQueryClientWrapper() });
 }
 
+function buildDocumentDeliveryRulesMeta(
+  overrides: Partial<{
+    total_count: number;
+    visible_count: number;
+    hidden_count: number;
+    truncated: boolean;
+    limit: number;
+  }> = {},
+) {
+  return {
+    total_count: overrides.total_count ?? 1,
+    visible_count: overrides.visible_count ?? 1,
+    hidden_count: overrides.hidden_count ?? 0,
+    truncated: overrides.truncated ?? false,
+    count_basis: 'document_delivery_rules',
+    filters_applied: { document_type: null },
+    limit: overrides.limit ?? 100,
+  };
+}
+
 describe('DocumentDeliveryRuleManager', () => {
   beforeEach(() => {
     orgIdMock.value = 'org_1';
@@ -65,15 +85,17 @@ describe('DocumentDeliveryRuleManager', () => {
                   is_active: true,
                 },
               ],
+              meta: buildDocumentDeliveryRulesMeta({
+                total_count: 2,
+                visible_count: 2,
+              }),
             }),
             { status: 200 },
           );
         }
 
         if (url === '/api/document-delivery-rules/rule_1' && init?.method === 'DELETE') {
-          return new Response(JSON.stringify({ message: '文書送達ルールを削除しました' }), {
-            status: 200,
-          });
+          return new Response(JSON.stringify({ data: { id: 'rule_1' } }), { status: 200 });
         }
 
         return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
@@ -142,6 +164,7 @@ describe('DocumentDeliveryRuleManager', () => {
                   is_active: true,
                 },
               ],
+              meta: buildDocumentDeliveryRulesMeta(),
             }),
             { status: 200 },
           );
@@ -254,7 +277,13 @@ describe('DocumentDeliveryRuleManager', () => {
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
         if (url === '/api/document-delivery-rules' && !init?.method) {
-          return new Response(JSON.stringify({ data: [] }), { status: 200 });
+          return new Response(
+            JSON.stringify({
+              data: [],
+              meta: buildDocumentDeliveryRulesMeta({ total_count: 0, visible_count: 0 }),
+            }),
+            { status: 200 },
+          );
         }
         if (url === '/api/document-delivery-rules' && init?.method === 'POST') {
           return new Response(JSON.stringify({ error: '文書送達ルールの作成権限がありません' }), {
@@ -291,6 +320,7 @@ describe('DocumentDeliveryRuleManager', () => {
                   is_active: true,
                 },
               ],
+              meta: buildDocumentDeliveryRulesMeta(),
             }),
             { status: 200 },
           );
@@ -366,13 +396,13 @@ describe('DocumentDeliveryRuleManager', () => {
                   is_active: true,
                 },
               ],
-              total_count: 3,
-              visible_count: 1,
-              hidden_count: 2,
-              truncated: true,
-              count_basis: 'document_delivery_rules',
-              filters_applied: { document_type: null },
-              limit: 1,
+              meta: buildDocumentDeliveryRulesMeta({
+                total_count: 3,
+                visible_count: 1,
+                hidden_count: 2,
+                truncated: true,
+                limit: 1,
+              }),
             }),
             { status: 200 },
           );
@@ -408,7 +438,13 @@ describe('DocumentDeliveryRuleManager', () => {
             { status: 500 },
           );
         }
-        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+        return new Response(
+          JSON.stringify({
+            data: [],
+            meta: buildDocumentDeliveryRulesMeta({ total_count: 0, visible_count: 0 }),
+          }),
+          { status: 200 },
+        );
       }),
     );
     renderManager();
@@ -455,7 +491,14 @@ describe('DocumentDeliveryRuleManager', () => {
     // pending-but-not-fetching (isPending true, isLoading false). The empty-state must not show.
     orgIdMock.value = '';
     const fetchMock = vi.fn(
-      async () => new Response(JSON.stringify({ data: [] }), { status: 200 }),
+      async () =>
+        new Response(
+          JSON.stringify({
+            data: [],
+            meta: buildDocumentDeliveryRulesMeta({ total_count: 0, visible_count: 0 }),
+          }),
+          { status: 200 },
+        ),
     );
     vi.stubGlobal('fetch', fetchMock);
     renderManager();
