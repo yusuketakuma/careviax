@@ -105,14 +105,20 @@ type EscalationRulesResponse = {
 };
 
 type NotificationRulesResponse = {
-  data?: NotificationRule[];
-  total_count?: number;
-  visible_count?: number;
-  hidden_count?: number;
-  truncated?: boolean;
-  count_basis?: string;
-  filters_applied?: Record<string, unknown>;
-  limit?: number;
+  data: NotificationRule[];
+  meta: {
+    total_count: number;
+    visible_count: number;
+    hidden_count: number;
+    truncated: boolean;
+    count_basis: string;
+    filters_applied: Record<string, unknown>;
+    limit: number;
+  };
+};
+
+type NotificationRuleResponse = {
+  data: NotificationRule;
 };
 
 type EscalationListMeta = {
@@ -381,22 +387,15 @@ export function NotificationSettingsContent() {
       })
       .then((payload) => {
         if (!active) return;
-        const rows = payload.data ?? [];
-        const totalCount =
-          typeof payload.total_count === 'number' ? payload.total_count : rows.length;
-        const visibleCount =
-          typeof payload.visible_count === 'number' ? payload.visible_count : rows.length;
-        const hiddenCount =
-          typeof payload.hidden_count === 'number'
-            ? payload.hidden_count
-            : Math.max(totalCount - visibleCount, 0);
+        const rows = payload.data;
+        const meta = payload.meta;
         setRules(rows);
         setRulesListMeta({
-          totalCount,
-          visibleCount,
-          hiddenCount,
-          truncated: payload.truncated ?? hiddenCount > 0,
-          limit: typeof payload.limit === 'number' ? payload.limit : null,
+          totalCount: meta.total_count,
+          visibleCount: meta.visible_count,
+          hiddenCount: meta.hidden_count,
+          truncated: meta.truncated,
+          limit: meta.limit,
         });
         setRulesLoadError(false);
         setRulesLoadedOrgId(orgId);
@@ -524,12 +523,11 @@ export function NotificationSettingsContent() {
             ),
           },
         );
-        const payload = await readApiJson<{ data?: NotificationRule } | NotificationRule>(
+        const payload = await readApiJson<NotificationRuleResponse>(
           response,
           '通知設定の保存に失敗しました',
         );
-        const nextRule =
-          'data' in payload && payload.data ? payload.data : (payload as NotificationRule);
+        const nextRule = payload.data;
         setRules((prev) => {
           if (!existing) {
             return [nextRule, ...prev];

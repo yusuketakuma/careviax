@@ -76,6 +76,12 @@ describe('/api/notification-rules/[id]', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      data: {
+        id: 'rule_1',
+        enabled: true,
+      },
+    });
   });
 
   it('rejects blank GET route ids before loading the notification rule', async () => {
@@ -114,6 +120,12 @@ describe('/api/notification-rules/[id]', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      data: {
+        id: 'rule_1',
+        enabled: false,
+      },
+    });
     expect(notificationRuleUpdateMock).toHaveBeenCalledWith({
       where: { id: 'rule_1' },
       data: expect.objectContaining({
@@ -191,6 +203,9 @@ describe('/api/notification-rules/[id]', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      data: { id: 'rule_1' },
+    });
     expect(notificationRuleDeleteMock).toHaveBeenCalledWith({
       where: { id: 'rule_1' },
     });

@@ -49,11 +49,19 @@ async function authenticatedGET(req: NextRequest) {
       }),
     ]),
   );
+  const list = buildCountedListEnvelope(rules, totalCount);
+
   return success({
-    ...buildCountedListEnvelope(rules, totalCount),
-    count_basis: 'notification_rules',
-    filters_applied: {},
-    limit,
+    data: list.data,
+    meta: {
+      total_count: list.total_count,
+      visible_count: list.visible_count,
+      hidden_count: list.hidden_count,
+      truncated: list.truncated,
+      count_basis: 'notification_rules',
+      filters_applied: {},
+      limit,
+    },
   });
 }
 
@@ -94,7 +102,7 @@ async function authenticatedPOST(req: NextRequest) {
     }),
   );
 
-  return success(rule, 201);
+  return success({ data: rule }, 201);
 }
 
 export async function POST(req: NextRequest) {

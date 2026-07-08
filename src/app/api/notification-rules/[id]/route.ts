@@ -41,7 +41,7 @@ async function authenticatedGET(req: NextRequest, { params }: NotificationRuleRo
 
   if (!rule) return notFound('通知ルールが見つかりません');
 
-  return success(rule);
+  return success({ data: rule });
 }
 
 export async function GET(req: NextRequest, routeContext: NotificationRuleRouteContext) {
@@ -87,7 +87,7 @@ async function authenticatedPATCH(req: NextRequest, { params }: NotificationRule
     }),
   );
 
-  return success(updated);
+  return success({ data: updated });
 }
 
 export async function PATCH(req: NextRequest, routeContext: NotificationRuleRouteContext) {
@@ -115,7 +115,7 @@ async function authenticatedDELETE(req: NextRequest, { params }: NotificationRul
 
   await withOrgContext(ctx.orgId, (tx) => tx.notificationRule.delete({ where: { id: ruleId } }));
 
-  return success({ message: '通知ルールを削除しました' });
+  return success({ data: { id: ruleId } });
 }
 
 export async function DELETE(req: NextRequest, routeContext: NotificationRuleRouteContext) {

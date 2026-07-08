@@ -54,6 +54,19 @@ vi.mock('sonner', () => ({
   },
 }));
 
+const EMPTY_NOTIFICATION_RULES_RESPONSE = {
+  data: [],
+  meta: {
+    total_count: 0,
+    visible_count: 0,
+    hidden_count: 0,
+    truncated: false,
+    count_basis: 'notification_rules',
+    filters_applied: {},
+    limit: 100,
+  },
+};
+
 describe('NotificationSettingsContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -66,13 +79,15 @@ describe('NotificationSettingsContent', () => {
           return new Response(
             JSON.stringify({
               data: [],
-              total_count: 0,
-              visible_count: 0,
-              hidden_count: 0,
-              truncated: false,
-              count_basis: 'notification_rules',
-              filters_applied: {},
-              limit: 100,
+              meta: {
+                total_count: 0,
+                visible_count: 0,
+                hidden_count: 0,
+                truncated: false,
+                count_basis: 'notification_rules',
+                filters_applied: {},
+                limit: 100,
+              },
             }),
             { status: 200 },
           );
@@ -203,13 +218,15 @@ describe('NotificationSettingsContent', () => {
                   created_at: '2026-06-19T10:00:00.000Z',
                 },
               ],
-              total_count: 1,
-              visible_count: 1,
-              hidden_count: 0,
-              truncated: false,
-              count_basis: 'notification_rules',
-              filters_applied: {},
-              limit: 100,
+              meta: {
+                total_count: 1,
+                visible_count: 1,
+                hidden_count: 0,
+                truncated: false,
+                count_basis: 'notification_rules',
+                filters_applied: {},
+                limit: 100,
+              },
             }),
             { status: 200 },
           );
@@ -271,7 +288,7 @@ describe('NotificationSettingsContent', () => {
         const url = String(input);
 
         if (url === '/__test__/notification-rules' && !init?.method) {
-          return new Response(JSON.stringify({ data: [] }), { status: 200 });
+          return new Response(JSON.stringify(EMPTY_NOTIFICATION_RULES_RESPONSE), { status: 200 });
         }
 
         if (url === '/__test__/escalation-rules' && !init?.method) {
@@ -441,7 +458,7 @@ describe('NotificationSettingsContent', () => {
         const url = String(input);
 
         if (url === '/__test__/notification-rules' && !init?.method) {
-          return new Response(JSON.stringify({ data: [] }), { status: 200 });
+          return new Response(JSON.stringify(EMPTY_NOTIFICATION_RULES_RESPONSE), { status: 200 });
         }
 
         if (url === '/__test__/escalation-rules' && !init?.method) {
@@ -506,13 +523,15 @@ describe('NotificationSettingsContent', () => {
                   created_at: '2026-06-19T10:00:00.000Z',
                 },
               ],
-              total_count: 4,
-              visible_count: 1,
-              hidden_count: 3,
-              truncated: true,
-              count_basis: 'notification_rules',
-              filters_applied: {},
-              limit: 1,
+              meta: {
+                total_count: 4,
+                visible_count: 1,
+                hidden_count: 3,
+                truncated: true,
+                count_basis: 'notification_rules',
+                filters_applied: {},
+                limit: 1,
+              },
             }),
             { status: 200 },
           );

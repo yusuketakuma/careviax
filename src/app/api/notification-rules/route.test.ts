@@ -78,26 +78,22 @@ describe('/api/notification-rules', () => {
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
     const body = await response.json();
-    expect(Object.keys(body)).toEqual([
-      'data',
-      'total_count',
-      'visible_count',
-      'hidden_count',
-      'truncated',
-      'count_basis',
-      'filters_applied',
-      'limit',
-    ]);
+    expect(Object.keys(body)).toEqual(['data', 'meta']);
     expect(body).toMatchObject({
       data: [{ id: 'rule_1' }],
-      total_count: 1,
-      visible_count: 1,
-      hidden_count: 0,
-      truncated: false,
-      count_basis: 'notification_rules',
-      filters_applied: {},
-      limit: 100,
+      meta: {
+        total_count: 1,
+        visible_count: 1,
+        hidden_count: 0,
+        truncated: false,
+        count_basis: 'notification_rules',
+        filters_applied: {},
+        limit: 100,
+      },
     });
+    expect(body).not.toHaveProperty('total_count');
+    expect(body).not.toHaveProperty('visible_count');
+    expect(body).not.toHaveProperty('hidden_count');
     expect(notificationRuleCountMock).toHaveBeenCalledWith({
       where: { org_id: 'org_1' },
     });
@@ -134,13 +130,15 @@ describe('/api/notification-rules', () => {
     expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: [{ id: 'rule_1' }],
-      total_count: 3,
-      visible_count: 1,
-      hidden_count: 2,
-      truncated: true,
-      count_basis: 'notification_rules',
-      filters_applied: {},
-      limit: 1,
+      meta: {
+        total_count: 3,
+        visible_count: 1,
+        hidden_count: 2,
+        truncated: true,
+        count_basis: 'notification_rules',
+        filters_applied: {},
+        limit: 1,
+      },
     });
   });
 
@@ -175,6 +173,9 @@ describe('/api/notification-rules', () => {
 
     expect(response.status).toBe(201);
     expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      data: { id: 'rule_2' },
+    });
     expect(notificationRuleCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         org_id: 'org_1',
