@@ -24506,6 +24506,79 @@ responses`) and pushed to `origin/main`.
   then continue `API-CONTRACT-001` by migrating the next real legacy
   success/error response shape without compatibility fallback bodies.
 
+## 2026-07-09 - API-CONTRACT-001E facility-standards list envelope migration
+
+- current task:
+  Continue `API-CONTRACT-001` by migrating `GET /api/admin/facility-standards`
+  from legacy top-level count metadata to the current `data` / `meta` envelope.
+  Compatibility top-level count fields were intentionally not preserved.
+- files inspected:
+  `git status --short --untracked-files=all`; `Plans.md`;
+  `ops/refactor/STATE.md`; `tools/api-response-shape-allowlist.json`;
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`;
+  `src/lib/api/list-envelope.ts`;
+  `src/app/api/admin/facility-standards/route.ts`;
+  `src/app/api/admin/facility-standards/route.test.ts`;
+  `src/app/(dashboard)/admin/facility-standards/facility-standards-content.tsx`;
+  `src/app/(dashboard)/admin/facility-standards/facility-standards-content.test.tsx`.
+- files changed:
+  `src/app/api/admin/facility-standards/route.ts`;
+  `src/app/api/admin/facility-standards/route.test.ts`;
+  `src/app/(dashboard)/admin/facility-standards/facility-standards-content.tsx`;
+  `src/app/(dashboard)/admin/facility-standards/facility-standards-content.test.tsx`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `ops/refactor/STATE.md`.
+- bugs found:
+  `GET /api/admin/facility-standards` spread counted-list metadata at the
+  response top level, leaving a real legacy success shape in the allowlist.
+  The admin facility-standards page also read those top-level count fields.
+- bugs fixed:
+  The route now returns `data` plus `meta` containing total/visible/hidden
+  counts, truncation state, count basis, applied filters, and limit. The
+  frontend reader now consumes `payload.meta` only, and route/component tests
+  were updated to assert the new shape. Response-shape debt dropped from 216
+  to 215 allowlisted violations.
+- security risks found:
+  No auth, authorization, org scoping, validation, PHI, or audit behavior
+  changed. The route remains admin-only and keeps the existing org-filtered
+  query.
+- security risks reduced:
+  Removed another legacy public list response shape without fallback fields,
+  reducing ambiguity for list consumers before request_id/error unification.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this is response contract cleanup. Existing bounded `limit` and
+  counted query behavior are unchanged.
+- UI/UX note:
+  No visible UI/UX change. The facility-standards page layout and interaction
+  behavior are unchanged; only response metadata reading moved to `meta`.
+- validation commands:
+  `pnpm exec prettier --write src/app/api/admin/facility-standards/route.ts src/app/api/admin/facility-standards/route.test.ts src/app/(dashboard)/admin/facility-standards/facility-standards-content.tsx src/app/(dashboard)/admin/facility-standards/facility-standards-content.test.tsx tools/api-response-shape-allowlist.json Plans.md`;
+  `pnpm vitest run src/app/api/admin/facility-standards/route.test.ts src/app/(dashboard)/admin/facility-standards/facility-standards-content.test.tsx --reporter=dot --testTimeout=30000`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint src/app/api/admin/facility-standards/route.ts src/app/api/admin/facility-standards/route.test.ts src/app/(dashboard)/admin/facility-standards/facility-standards-content.tsx src/app/(dashboard)/admin/facility-standards/facility-standards-content.test.tsx`;
+  `pnpm exec prettier --check src/app/api/admin/facility-standards/route.ts src/app/api/admin/facility-standards/route.test.ts src/app/(dashboard)/admin/facility-standards/facility-standards-content.tsx src/app/(dashboard)/admin/facility-standards/facility-standards-content.test.tsx tools/api-response-shape-allowlist.json Plans.md`;
+  `git diff --check -- src/app/api/admin/facility-standards/route.ts src/app/api/admin/facility-standards/route.test.ts src/app/(dashboard)/admin/facility-standards/facility-standards-content.tsx src/app/(dashboard)/admin/facility-standards/facility-standards-content.test.tsx tools/api-response-shape-allowlist.json Plans.md`.
+- validation results:
+  Prettier passed. Focused route/component tests passed 2 files / 9 tests.
+  `api-response-shape:check` passed with 215 allowlisted violations and 0 new
+  violations. `plans:active:check` passed. Focused ESLint passed. Targeted
+  Prettier check passed. Scoped diff check passed.
+- commit:
+  Facility standards list envelope migration, frontend reader update, route and
+  component tests, allowlist cleanup, and Plans sync committed as `9b3e3a4cd`
+  (`fix(api): envelope facility standards list`). Push is pending this ledger
+  hash update.
+- remaining work:
+  `API-CONTRACT-001` remains Partial. Continue migrating real legacy success
+  and error response shapes route by route without compatibility fallbacks.
+- next action:
+  Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
+  then continue `API-CONTRACT-001` by migrating the next real legacy
+  success/error response shape without compatibility fallback bodies.
+
 ## 2026-07-09 - DATE-SLICE-GUARD-001 helper migration
 
 - current task:
