@@ -19,6 +19,7 @@ import type {
   ManagementPlanRow,
   NotificationRiskRow,
   InboundInterprofessionalCommunicationRiskSummary,
+  MedicationStockSnapshotRiskRow,
   PatientMcsLinkRiskRow,
   PatientShareCaseRiskRow,
   PrescriptionLineRiskRow,
@@ -50,6 +51,7 @@ type CaseRiskCockpitDbReader = {
   careReport: FindManyDelegate<CareReportRow>;
   dispenseTask: FindManyDelegate<DispenseTaskRow>;
   prescriptionLine: FindManyDelegate<PrescriptionLineRiskRow>;
+  medicationStockSnapshot: FindManyDelegate<MedicationStockSnapshotRiskRow>;
   notification: FindManyDelegate<NotificationRiskRow>;
   residence: FindManyDelegate<ResidenceRiskRow>;
   patientMcsLink: FindManyDelegate<PatientMcsLinkRiskRow>;
@@ -224,6 +226,7 @@ export async function getCaseRiskCockpit(
     reports,
     dispenseTasks,
     prescriptionLines,
+    medicationStockSnapshots,
     notifications,
     residences,
     patientMcsLinks,
@@ -369,6 +372,30 @@ export async function getCaseRiskCockpit(
         id: true,
         drug_master_id: true,
         drug_resolution_status: true,
+      },
+    }),
+    db.medicationStockSnapshot.findMany({
+      where: {
+        org_id: args.orgId,
+        patient_id: careCase.patient_id,
+        case_id: careCase.id,
+        stock_risk_level: { in: ['urgent', 'shortage_expected'] },
+      },
+      orderBy: [
+        { estimated_stockout_date: 'asc' },
+        { calculated_at: 'desc' },
+        { stock_item_id: 'asc' },
+      ],
+      take: 50,
+      select: {
+        id: true,
+        stock_item_id: true,
+        patient_id: true,
+        case_id: true,
+        stock_risk_level: true,
+        estimated_stockout_date: true,
+        days_until_stockout: true,
+        calculated_at: true,
       },
     }),
     db.notification.findMany({
@@ -567,6 +594,8 @@ export async function getCaseRiskCockpit(
   const selectedReports = reports as CareReportRow[];
   const selectedDispenseTasks = dispenseTasks as DispenseTaskRow[];
   const selectedPrescriptionLines = prescriptionLines as PrescriptionLineRiskRow[];
+  const selectedMedicationStockSnapshots =
+    medicationStockSnapshots as MedicationStockSnapshotRiskRow[];
   const selectedNotifications = notifications as NotificationRiskRow[];
   const selectedResidences = residences as ResidenceRiskRow[];
   const selectedPatientMcsLinks = patientMcsLinks as PatientMcsLinkRiskRow[];
@@ -674,6 +703,7 @@ export async function getCaseRiskCockpit(
     reports: scopedReports,
     dispenseTasks: selectedDispenseTasks,
     prescriptionLines: selectedPrescriptionLines,
+    medicationStockSnapshots: selectedMedicationStockSnapshots,
     notifications: selectedNotifications,
     residences: selectedResidences,
     patientMcsLinks: selectedPatientMcsLinks,

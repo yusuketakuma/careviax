@@ -1,4 +1,5 @@
 import type { RiskFindingProvider } from '@/core/risk/provider-registry';
+import { adaptMedicationStockSnapshotToRiskFinding } from '@/modules/pharmacy/medication-stock/application/medication-stock-risk-adapter';
 import { describeBillingEvidenceBlockers } from '@/server/services/billing-evidence/core';
 import {
   adaptBillingEvidenceBlockerToRiskFinding,
@@ -53,6 +54,23 @@ const medicationReconciliationRiskProvider: PharmacyCaseRiskProvider = {
   },
 };
 
+const medicationStockSnapshotRiskProvider: PharmacyCaseRiskProvider = {
+  module: 'pharmacy',
+  providerId: 'pharmacy.medication_stock_snapshot',
+  domains: ['medication'],
+  collect(input) {
+    return input.medicationStockSnapshots.flatMap((snapshot) => {
+      const finding = adaptMedicationStockSnapshotToRiskFinding(snapshot, {
+        patientId: input.patientId,
+        caseId: input.caseId,
+        patientHref: input.patientHref,
+      });
+
+      return finding ? [finding] : [];
+    });
+  },
+};
+
 const billingEvidenceRiskProvider: PharmacyCaseRiskProvider = {
   module: 'pharmacy',
   providerId: 'pharmacy.billing_evidence',
@@ -95,6 +113,7 @@ export function createPharmacyCaseRiskProviders() {
     visitPreparationRiskProvider,
     dispensingRiskProvider,
     medicationReconciliationRiskProvider,
+    medicationStockSnapshotRiskProvider,
     billingEvidenceRiskProvider,
   ] as const;
 }

@@ -8,15 +8,23 @@ import type { CaseRiskProviderInput } from './case-risk-provider-types';
 
 const coreProviders = createCoreCaseRiskProviders();
 const pharmacyProviders = createPharmacyCaseRiskProviders();
+const [
+  pharmacyVisitPreparationProvider,
+  pharmacyDispensingProvider,
+  pharmacyMedicationReconciliationProvider,
+  pharmacyMedicationStockSnapshotProvider,
+  pharmacyBillingEvidenceProvider,
+] = pharmacyProviders;
 
 const activeCaseRiskFindingProviders = [
   coreProviders[0],
-  pharmacyProviders[0],
+  pharmacyVisitPreparationProvider,
   coreProviders[1],
-  pharmacyProviders[1],
-  pharmacyProviders[2],
+  pharmacyDispensingProvider,
+  pharmacyMedicationReconciliationProvider,
+  pharmacyMedicationStockSnapshotProvider,
   ...coreProviders.slice(2),
-  pharmacyProviders[3],
+  pharmacyBillingEvidenceProvider,
 ] as const satisfies readonly RiskFindingProvider<CaseRiskProviderInput>[];
 
 export const activeCaseRiskFindingProviderRegistry = createRiskFindingProviderRegistry(

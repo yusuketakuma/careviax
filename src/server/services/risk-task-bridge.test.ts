@@ -208,6 +208,46 @@ describe('risk-task-bridge', () => {
     });
   });
 
+  it('taskifies warning medication stock snapshot findings through the dedicated shortage task type', () => {
+    const stockFinding = createRiskFinding({
+      key: 'medication_stock:medication_stock_urgent_shortage:stock_item:stock_item_1',
+      domain: 'medication',
+      severity: 'warning',
+      title: '外用・頓服の不足リスクがあります',
+      detail: '残数台帳で外用薬・頓服薬の不足または不足見込みが検出されています。',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      related_entity_type: 'medication_stock_item',
+      related_entity_id: 'stock_item_1',
+      action_href: '/patients/patient_1#medication-stock-events',
+      action_label: '残数台帳を確認',
+      source: 'computed',
+    });
+
+    expect(shouldCreateOperationalTaskForRisk(stockFinding)).toBe(true);
+    const input = riskFindingToOperationalTaskInput({ orgId: 'org_1', finding: stockFinding });
+
+    expect(input).toMatchObject({
+      taskType: 'pharmacy.medication_stock_shortage_expected',
+      title: '残数不足見込み',
+      description: '外用薬・頓服薬の不足見込みを確認する。',
+      priority: 'high',
+      relatedEntityType: 'patient',
+      relatedEntityId: 'patient_1',
+      dedupeKey:
+        'risk:medication:medication_stock%3Amedication_stock_urgent_shortage%3Astock_item%3Astock_item_1:case:case_1:medication_stock_item:stock_item_1',
+      metadata: expect.objectContaining({
+        source: 'risk_finding',
+        risk_domain: 'medication',
+        risk_key: 'medication_stock:medication_stock_urgent_shortage:stock_item:stock_item_1',
+        related_entity_type: 'medication_stock_item',
+        related_entity_id: 'stock_item_1',
+      }),
+    });
+    expect(JSON.stringify(input)).not.toContain('raw reason');
+    expect(JSON.stringify(input)).not.toContain('湿布');
+  });
+
   it('drops invalid due dates instead of passing invalid Date objects', () => {
     const input = riskFindingToOperationalTaskInput({
       orgId: 'org_1',

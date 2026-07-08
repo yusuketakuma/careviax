@@ -55,6 +55,17 @@ export type PrescriptionLineRiskRow = {
   drug_resolution_status: string | null;
 };
 
+export type MedicationStockSnapshotRiskRow = {
+  id: string;
+  stock_item_id: string;
+  patient_id: string;
+  case_id: string | null;
+  stock_risk_level: 'urgent' | 'shortage_expected';
+  estimated_stockout_date: Date | null;
+  days_until_stockout: number | null;
+  calculated_at: Date;
+};
+
 export type NotificationRiskRow = {
   id: string;
   type: string;
@@ -141,6 +152,7 @@ export type CaseRiskProviderInput = {
   reports: CareReportRow[];
   dispenseTasks: DispenseTaskRow[];
   prescriptionLines: PrescriptionLineRiskRow[];
+  medicationStockSnapshots: MedicationStockSnapshotRiskRow[];
   notifications: NotificationRiskRow[];
   residences: ResidenceRiskRow[];
   patientMcsLinks: PatientMcsLinkRiskRow[];

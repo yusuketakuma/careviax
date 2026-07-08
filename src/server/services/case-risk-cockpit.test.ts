@@ -24,6 +24,7 @@ function buildDb() {
     careReport: { findMany: vi.fn() },
     dispenseTask: { findMany: vi.fn() },
     prescriptionLine: { findMany: vi.fn() },
+    medicationStockSnapshot: { findMany: vi.fn().mockResolvedValue([]) },
     notification: { findMany: vi.fn() },
     residence: { findMany: vi.fn() },
     patientMcsLink: { findMany: vi.fn() },
@@ -90,6 +91,7 @@ describe('getCaseRiskCockpit', () => {
     expect(db.careReport.findMany).not.toHaveBeenCalled();
     expect(db.dispenseTask.findMany).not.toHaveBeenCalled();
     expect(db.prescriptionLine.findMany).not.toHaveBeenCalled();
+    expect(db.medicationStockSnapshot.findMany).not.toHaveBeenCalled();
     expect(db.notification.findMany).not.toHaveBeenCalled();
     expect(db.residence.findMany).not.toHaveBeenCalled();
     expect(db.patientMcsLink.findMany).not.toHaveBeenCalled();
@@ -670,6 +672,132 @@ describe('getCaseRiskCockpit', () => {
     expect(JSON.stringify(result)).not.toContain('湿布');
     expect(JSON.stringify(result)).not.toContain('090-1234-5678');
     expect(JSON.stringify(result)).not.toContain('raw safety text');
+  });
+
+  it('adds controlled medication stock snapshot risk findings without selecting stock quantities or drug names', async () => {
+    const db = buildDb();
+    db.careCase.findFirst.mockResolvedValue(baseCase());
+    db.consentRecord.findFirst.mockResolvedValue({ id: 'consent_1', expiry_date: null });
+    db.managementPlan.findFirst.mockResolvedValue({
+      id: 'plan_1',
+      next_review_date: new Date('2026-08-01T00:00:00.000Z'),
+    });
+    db.firstVisitDocument.findFirst.mockResolvedValue({
+      id: 'doc_1',
+      delivered_at: new Date('2026-07-01T00:00:00.000Z'),
+    });
+    db.visitSchedule.findMany.mockResolvedValue([]);
+    db.careReport.findMany.mockResolvedValue([]);
+    db.dispenseTask.findMany.mockResolvedValue([]);
+    db.prescriptionLine.findMany.mockResolvedValue([]);
+    db.medicationStockSnapshot.findMany.mockResolvedValue([
+      {
+        id: 'snapshot_urgent',
+        stock_item_id: 'stock_item_urgent',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        stock_risk_level: 'urgent',
+        estimated_stockout_date: new Date('2026-07-08T00:00:00.000Z'),
+        days_until_stockout: 0,
+        calculated_at: new Date('2026-07-07T01:00:00.000Z'),
+        current_quantity: '0',
+        unit: 'sheet',
+        display_name: '湿布',
+        risk_reason_code: 'raw-risk-reason',
+        idempotency_key_hash: 'hash_secret',
+      },
+      {
+        id: 'snapshot_expected',
+        stock_item_id: 'stock_item_expected',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        stock_risk_level: 'shortage_expected',
+        estimated_stockout_date: new Date('2026-07-10T00:00:00.000Z'),
+        days_until_stockout: 2,
+        calculated_at: new Date('2026-07-07T01:00:00.000Z'),
+      },
+    ]);
+    db.notification.findMany.mockResolvedValue([]);
+    db.residence.findMany.mockResolvedValue([]);
+    db.patientMcsLink.findMany.mockResolvedValue([]);
+    db.communicationEvent.findMany.mockResolvedValue([]);
+    db.inboundCommunicationEvent.findMany.mockResolvedValue([]);
+    db.inboundCommunicationSignal.findMany.mockResolvedValue([]);
+    db.patientShareCase.findMany.mockResolvedValue([]);
+    db.task.findMany.mockResolvedValue([]);
+    db.billingEvidence.findMany.mockResolvedValue([]);
+
+    const result = await getCaseRiskCockpit(asDb(db), {
+      orgId: 'org_1',
+      caseId: 'case_1',
+      userId: 'user_1',
+      role: 'pharmacist',
+      now: new Date('2026-07-07T09:00:00.000Z'),
+    });
+
+    const findings = result?.sections.flatMap((section) => section.findings) ?? [];
+    expect(findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: 'medication_stock:medication_stock_urgent_shortage:stock_item:stock_item_urgent',
+          domain: 'medication',
+          severity: 'urgent',
+          related_entity_type: 'medication_stock_item',
+          related_entity_id: 'stock_item_urgent',
+          due_at: '2026-07-08T00:00:00.000Z',
+          action_href: '/patients/patient_1#medication-stock-events',
+          action_label: '残数台帳を確認',
+          source: 'computed',
+        }),
+        expect.objectContaining({
+          key: 'medication_stock:medication_stock_urgent_shortage:stock_item:stock_item_expected',
+          domain: 'medication',
+          severity: 'warning',
+          related_entity_type: 'medication_stock_item',
+          related_entity_id: 'stock_item_expected',
+          due_at: '2026-07-10T00:00:00.000Z',
+        }),
+      ]),
+    );
+    expect(result?.overall).toMatchObject({
+      status: 'attention',
+      urgent_count: 1,
+      warning_count: 1,
+    });
+    expect(db.medicationStockSnapshot.findMany).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        stock_risk_level: { in: ['urgent', 'shortage_expected'] },
+      },
+      orderBy: [
+        { estimated_stockout_date: 'asc' },
+        { calculated_at: 'desc' },
+        { stock_item_id: 'asc' },
+      ],
+      take: 50,
+      select: {
+        id: true,
+        stock_item_id: true,
+        patient_id: true,
+        case_id: true,
+        stock_risk_level: true,
+        estimated_stockout_date: true,
+        days_until_stockout: true,
+        calculated_at: true,
+      },
+    });
+    const selected = db.medicationStockSnapshot.findMany.mock.calls[0]?.[0].select;
+    expect(selected).not.toHaveProperty('current_quantity');
+    expect(selected).not.toHaveProperty('last_observed_quantity');
+    expect(selected).not.toHaveProperty('unit');
+    expect(selected).not.toHaveProperty('estimated_daily_usage');
+    expect(selected).not.toHaveProperty('risk_reason_code');
+    expect(JSON.stringify(result)).not.toContain('湿布');
+    expect(JSON.stringify(result)).not.toContain('sheet');
+    expect(JSON.stringify(result)).not.toContain('raw-risk-reason');
+    expect(JSON.stringify(result)).not.toContain('hash_secret');
   });
 
   it('does not treat converted_to_task formal events as unprocessed inbound risk', async () => {

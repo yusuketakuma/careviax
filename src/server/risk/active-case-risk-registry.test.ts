@@ -9,6 +9,7 @@ describe('activeCaseRiskFindingProviderRegistry', () => {
       'core.report_delivery',
       'pharmacy.dispensing',
       'pharmacy.medication_reconciliation',
+      'pharmacy.medication_stock_snapshot',
       'core.notification',
       'core.data_quality',
       'core.integration',
@@ -23,6 +24,12 @@ describe('activeCaseRiskFindingProviderRegistry', () => {
     expect(activeCaseRiskFindingProviderRegistry.get('pharmacy.dispensing')).toMatchObject({
       module: 'pharmacy',
       domains: ['dispensing'],
+    });
+    expect(
+      activeCaseRiskFindingProviderRegistry.get('pharmacy.medication_stock_snapshot'),
+    ).toMatchObject({
+      module: 'pharmacy',
+      domains: ['medication'],
     });
     expect(activeCaseRiskFindingProviderRegistry.get('core.privacy_security')).toMatchObject({
       module: 'core',

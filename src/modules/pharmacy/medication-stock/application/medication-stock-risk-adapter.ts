@@ -10,6 +10,23 @@ export type MedicationStockStagingRiskContext = {
   readonly dueAt?: string | null;
 };
 
+export type MedicationStockSnapshotRiskInput = {
+  readonly id: string;
+  readonly stock_item_id: string;
+  readonly patient_id: string;
+  readonly case_id: string | null;
+  readonly stock_risk_level: 'ok' | 'watch' | 'shortage_expected' | 'urgent' | 'unknown';
+  readonly estimated_stockout_date: Date | null;
+  readonly days_until_stockout: number | null;
+  readonly calculated_at: Date;
+};
+
+export type MedicationStockSnapshotRiskContext = {
+  readonly patientId?: string | null;
+  readonly caseId?: string | null;
+  readonly patientHref?: string | null;
+};
+
 type MedicationStockRiskDescriptor = {
   readonly code:
     | 'medication_stock_external_observation_review_required'
@@ -28,6 +45,38 @@ const IDENTITY_WARNING_KEYS = new Set([
   'medication_name_only_identity',
   'package_identity_without_clinical_code',
 ]);
+
+export function adaptMedicationStockSnapshotToRiskFinding(
+  snapshot: MedicationStockSnapshotRiskInput,
+  context: MedicationStockSnapshotRiskContext = {},
+): RiskFinding | null {
+  if (snapshot.stock_risk_level !== 'urgent' && snapshot.stock_risk_level !== 'shortage_expected') {
+    return null;
+  }
+
+  const patientId = context.patientId ?? snapshot.patient_id;
+  const caseId = context.caseId ?? snapshot.case_id;
+
+  return createRiskFinding({
+    key: `medication_stock:medication_stock_urgent_shortage:stock_item:${snapshot.stock_item_id}`,
+    domain: 'medication',
+    severity: snapshot.stock_risk_level === 'urgent' ? 'urgent' : 'warning',
+    title: '外用・頓服の不足リスクがあります',
+    detail:
+      '残数台帳で外用薬・頓服薬の不足または不足見込みが検出されています。薬剤師が確認し、必要なら補充・連絡・次アクションへ反映してください。',
+    patient_id: patientId ?? null,
+    case_id: caseId ?? null,
+    related_entity_type: 'medication_stock_item',
+    related_entity_id: snapshot.stock_item_id,
+    due_at: snapshot.estimated_stockout_date?.toISOString() ?? null,
+    action_href: buildMedicationStockReviewHref({
+      patientId,
+      patientHref: context.patientHref,
+    }),
+    action_label: '残数台帳を確認',
+    source: 'computed',
+  });
+}
 
 export function adaptInboundMedicationStockStagingToRiskFindings(
   result: InboundMedicationStockSignalStagingResult,
@@ -145,7 +194,12 @@ function sourceGroupLabel(
   }
 }
 
-function buildMedicationStockReviewHref(context: MedicationStockStagingRiskContext) {
+function buildMedicationStockReviewHref(
+  context: MedicationStockStagingRiskContext & { patientHref?: string | null },
+) {
+  if ('patientHref' in context && typeof context.patientHref === 'string' && context.patientHref) {
+    return `${context.patientHref}#medication-stock-events`;
+  }
   if (context.patientId) {
     return `/patients/${encodeURIComponent(context.patientId)}#medication-stock-events`;
   }

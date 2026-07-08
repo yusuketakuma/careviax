@@ -5,6 +5,8 @@ import { extractInboundCommunicationSignals } from '@/core/interprofessional/inb
 import { stageInboundMedicationStockSignalForReview } from './medication-stock-signal-adapter';
 import {
   adaptInboundMedicationStockStagingToRiskFindings,
+  adaptMedicationStockSnapshotToRiskFinding,
+  type MedicationStockSnapshotRiskInput,
   type MedicationStockStagingRiskContext,
 } from './medication-stock-risk-adapter';
 
@@ -30,6 +32,100 @@ function medicationStockSignal(rawText: string) {
 }
 
 describe('medication stock risk adapter', () => {
+  const stockSnapshot = (
+    overrides: Partial<MedicationStockSnapshotRiskInput> = {},
+  ): MedicationStockSnapshotRiskInput => ({
+    id: overrides.id ?? 'snapshot_1',
+    stock_item_id: overrides.stock_item_id ?? 'stock_item_1',
+    patient_id: overrides.patient_id ?? 'patient_1',
+    case_id: overrides.case_id ?? 'case_1',
+    stock_risk_level: overrides.stock_risk_level ?? 'urgent',
+    estimated_stockout_date:
+      overrides.estimated_stockout_date ?? new Date('2026-07-08T00:00:00.000Z'),
+    days_until_stockout: overrides.days_until_stockout ?? 0,
+    calculated_at: overrides.calculated_at ?? new Date('2026-07-07T01:00:00.000Z'),
+  });
+
+  it('creates a controlled medication stock snapshot finding for urgent stock risk', () => {
+    const finding = adaptMedicationStockSnapshotToRiskFinding(stockSnapshot(), {
+      patientId: 'patient_1',
+      caseId: 'case_1',
+      patientHref: '/patients/patient_1',
+    });
+
+    expect(finding).toMatchObject({
+      key: 'medication_stock:medication_stock_urgent_shortage:stock_item:stock_item_1',
+      domain: 'medication',
+      severity: 'urgent',
+      title: '外用・頓服の不足リスクがあります',
+      detail:
+        '残数台帳で外用薬・頓服薬の不足または不足見込みが検出されています。薬剤師が確認し、必要なら補充・連絡・次アクションへ反映してください。',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      related_entity_type: 'medication_stock_item',
+      related_entity_id: 'stock_item_1',
+      due_at: '2026-07-08T00:00:00.000Z',
+      action_href: '/patients/patient_1#medication-stock-events',
+      action_label: '残数台帳を確認',
+      resolution_state: 'open',
+      source: 'computed',
+    });
+  });
+
+  it('uses warning severity for shortage_expected without changing the bridge key code', () => {
+    const finding = adaptMedicationStockSnapshotToRiskFinding(
+      stockSnapshot({
+        stock_item_id: 'stock_item_expected',
+        stock_risk_level: 'shortage_expected',
+      }),
+      { patientId: 'patient_1', caseId: 'case_1' },
+    );
+
+    expect(finding).toMatchObject({
+      key: 'medication_stock:medication_stock_urgent_shortage:stock_item:stock_item_expected',
+      severity: 'warning',
+      action_href: '/patients/patient_1#medication-stock-events',
+    });
+  });
+
+  it('does not create stock snapshot findings for non-shortage levels', () => {
+    for (const stockRiskLevel of ['ok', 'watch', 'unknown'] as const) {
+      expect(
+        adaptMedicationStockSnapshotToRiskFinding(
+          stockSnapshot({ stock_risk_level: stockRiskLevel }),
+          { patientId: 'patient_1', caseId: 'case_1' },
+        ),
+      ).toBeNull();
+    }
+  });
+
+  it('keeps patient, drug, quantity, unit, raw reason, and idempotency material out of snapshot findings', () => {
+    const hostile = {
+      ...stockSnapshot({ stock_item_id: 'stock_item_1' }),
+      patient_name: '山田太郎',
+      drug_name: '湿布',
+      current_quantity: '4',
+      unit: 'sheet',
+      raw_reason: '訪問看護師の本文',
+      idempotency_key_hash: 'idempotency_secret',
+      request_fingerprint_hash: 'fingerprint_secret',
+    } satisfies MedicationStockSnapshotRiskInput & Record<string, unknown>;
+
+    const finding = adaptMedicationStockSnapshotToRiskFinding(hostile, {
+      patientId: 'patient_1',
+      caseId: 'case_1',
+      patientHref: '/patients/patient_1',
+    });
+
+    const serialized = JSON.stringify(finding);
+    expect(serialized).not.toContain('山田太郎');
+    expect(serialized).not.toContain('湿布');
+    expect(serialized).not.toContain('sheet');
+    expect(serialized).not.toContain('訪問看護師');
+    expect(serialized).not.toContain('idempotency_secret');
+    expect(serialized).not.toContain('fingerprint_secret');
+  });
+
   it('creates a controlled review finding for external remaining quantity reports', () => {
     const staged = stageInboundMedicationStockSignalForReview({
       communication: { sourceChannel: 'mcs', senderRole: 'nurse', occurredAtDateKey: '2026-07-07' },
