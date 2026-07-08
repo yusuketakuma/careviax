@@ -297,7 +297,7 @@ describe('ConferencesContent', () => {
   it('requests summary detail level for the conference calendar query', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ data: [], hasMore: false }),
+      json: async () => ({ data: [], meta: { has_more: false, next_cursor: null } }),
     });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -328,7 +328,7 @@ describe('ConferencesContent', () => {
   it('requests summary detail level for the conference list query', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ data: [], hasMore: false }),
+      json: async () => ({ data: [], meta: { has_more: false, next_cursor: null } }),
     });
     vi.stubGlobal('fetch', fetchMock);
 

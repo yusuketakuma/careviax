@@ -58,7 +58,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { readApiJson } from '@/lib/api/client-json';
-import { fetchAllCursorPages, fetchAllMetaCursorPages } from '@/lib/api/cursor-pagination-client';
+import { fetchAllMetaCursorPages } from '@/lib/api/cursor-pagination-client';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { buildReportHref } from '@/lib/reports/navigation';
 import { sectionTemplatesFor, type StructuredSectionDraft } from './conference-note-templates';
@@ -633,7 +633,7 @@ export function ConferencesContent({
       if (contextCaseId) {
         params.set('case_id', contextCaseId);
       }
-      return fetchAllCursorPages<ConferenceNote>({
+      return fetchAllMetaCursorPages<ConferenceNote>({
         path: '/api/conference-notes',
         params,
         init: {
@@ -715,7 +715,7 @@ export function ConferencesContent({
       if (contextCaseId) {
         params.set('case_id', contextCaseId);
       }
-      return fetchAllCursorPages<ConferenceNote>({
+      return fetchAllMetaCursorPages<ConferenceNote>({
         path: '/api/conference-notes',
         params,
         init: {

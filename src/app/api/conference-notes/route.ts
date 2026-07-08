@@ -301,7 +301,14 @@ const authenticatedGET = withAuthContext(
       };
     });
 
-    return success(notes);
+    return success({
+      data: notes.data,
+      meta: {
+        limit,
+        has_more: notes.hasMore,
+        next_cursor: notes.nextCursor ?? null,
+      },
+    });
   },
   {
     permission: 'canReport',

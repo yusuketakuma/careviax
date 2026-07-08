@@ -569,10 +569,17 @@ describe('/api/conference-notes', () => {
         }),
       }),
     );
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(body).toMatchObject({
       data: [expect.objectContaining({ id: 'note_older' })],
-      hasMore: false,
+      meta: {
+        limit: 20,
+        has_more: false,
+        next_cursor: null,
+      },
     });
+    expect(body).not.toHaveProperty('hasMore');
+    expect(body).not.toHaveProperty('nextCursor');
   });
 
   it('supports conference filters including conference_type and billing_eligible', async () => {
@@ -692,11 +699,17 @@ describe('/api/conference-notes', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expect(conferenceNoteFindManyMock).toHaveBeenCalledWith(expect.objectContaining({ take: 11 }));
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(body).toMatchObject({
       data: [expect.objectContaining({ id: 'note_1', billing_eligible: true })],
-      hasMore: true,
-      nextCursor: 'note_11',
+      meta: {
+        limit: 2,
+        has_more: true,
+        next_cursor: 'note_11',
+      },
     });
+    expect(body).not.toHaveProperty('hasMore');
+    expect(body).not.toHaveProperty('nextCursor');
   });
 
   it('creates a structured conference note and synthesizes summary metadata defaults', async () => {
