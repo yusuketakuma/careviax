@@ -22852,6 +22852,9 @@ status` no PR). Browser session `inbound-stock-selector` failed with
   only expected redacted error-path logs from route tests. Scoped ESLint passed.
   Scoped Prettier check passed. Typecheck passed after `next typegen`. Plans
   active board check passed.
+- commit:
+  `1c479ae69c020d94e68416c84c3297555617b5ab4`.
+  Message: `feat(inbound): add audited stock apply selector`.
 - remaining work:
   `INBOUND-002-REVIEW-DETAIL` remains partial for FAX/email/manual ingestion,
   source mapping UI, and VisitBrief/Schedule/Report/Share downstream
@@ -22860,6 +22863,5 @@ status` no PR). Browser session `inbound-stock-selector` failed with
   high-risk changes should retry consultation before broadening beyond this UI
   control layer.
 - next action:
-  Run final formatting/diff checks including `ops/refactor/STATE.md`, commit
-  this coherent inbound selector slice, push it, then continue to the next
-  highest-value non-human-gated item in `Plans.md`.
+  Commit this ledger update, push the inbound selector slice, then continue to
+  the next highest-value non-human-gated item in `Plans.md`.
