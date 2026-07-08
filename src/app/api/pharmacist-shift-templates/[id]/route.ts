@@ -31,5 +31,5 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     }),
   );
 
-  return success({ message: '削除しました' });
+  return success({ data: { id: templateId } });
 }
