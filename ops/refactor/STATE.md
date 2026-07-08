@@ -41,6 +41,102 @@
 
 ## 直近の作業
 
+- codex: `STOCK-VISIT-DOWNSTREAM-TASK-001` visit stock shortage OperationalTask fan-out。
+  - commit:
+    Pending scoped commit.
+  - current task:
+    `Plans.md` の `STOCK-001-VISIT-DOWNSTREAM` から、migration/human gate を踏まずに実装できる
+    最初の安全な downstream slice として、visit observation ledger write 後の残数不足 follow-up task
+    生成を追加する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `git log --oneline origin/main..HEAD`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `package.json`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `src/modules/pharmacy/medication-stock/application/apply-visit-medication-stock-observation.ts`,
+    `src/modules/pharmacy/medication-stock/application/apply-visit-medication-stock-observation.test.ts`,
+    `src/app/api/visit-records/[id]/medication-stock-observations/route.ts`,
+    `src/app/api/visit-records/[id]/medication-stock-observations/route.test.ts`,
+    `src/modules/pharmacy/medication-stock/application/stock-snapshot.ts`,
+    `src/modules/pharmacy/medication-stock/application/apply-prescription-supply.ts`,
+    `src/modules/pharmacy/medication-stock/application/apply-prescription-supply.test.ts`,
+    `src/server/services/operational-tasks.ts`,
+    `src/server/services/operational-tasks.test.ts`,
+    `src/lib/tasks/task-registry.ts`,
+    `src/lib/tasks/task-registry.test.ts`,
+    `src/server/services/risk-task-bridge.ts`,
+    `src/lib/risk/risk-finding.ts`,
+    `prisma/schema/medication.prisma`,
+    and `prisma/schema/core-task.prisma`.
+  - files changed:
+    `Plans.md`,
+    `src/modules/pharmacy/medication-stock/application/apply-visit-medication-stock-observation.ts`,
+    `src/modules/pharmacy/medication-stock/application/apply-visit-medication-stock-observation.test.ts`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `applyVisitMedicationStockObservations` now tracks only created, non-replay observations and keeps
+    the final recalculated snapshot per stock item for the request. When the final created snapshot is
+    `urgent` or `shortage_expected`, it upserts `pharmacy.medication_stock_shortage_expected` via
+    `upsertOperationalTask` inside the same transaction boundary. The task dedupes by stock item,
+    anchors to the patient, assigns to the scheduled pharmacist, case primary/backup pharmacist, or
+    current user fallback, and leaves the visit observation API response shape unchanged. Replay,
+    conflict, unknown-risk, refill-only, and final-ok requests do not create task side effects.
+    `Plans.md` marks the parent downstream item Partial and records the completed OperationalTask
+    fan-out while preserving the remaining Case Risk Cockpit / VisitBrief / Schedule / Movement scope.
+  - imagegen:
+    Omitted. This is backend/service task fan-out and plan hygiene only; no UI/visual reconstruction
+    was changed or needed.
+  - Oracle:
+    Consulted Oracle/GPT-5.5 Pro with target GitHub context before implementation because this touches
+    patient/medical/pharmacy follow-up behavior. Oracle reported GitHub access succeeded and recommended
+    Option A: implement code-only OperationalTask fan-out now, keep migration/UI/VisitBrief/Schedule/
+    Movement out of scope, trigger only from non-replay created observations, use the final same-item
+    snapshot, fail closed on task write failure, keep response shape unchanged, and whitelist metadata to
+    ids/status/code.
+  - bugs found:
+    The visit stock ledger could record an `urgent` / `shortage_expected` snapshot without creating any
+    operational follow-up, leaving the downstream workflow dependent on manual inspection of stock state.
+  - security risks reduced:
+    Task metadata is intentionally limited to source/schema version, stock item id, stock event id,
+    observation context id, visit record id, case id, stock risk level, and observation kind. It does
+    not store or return patient names, drug names, raw reasons, quantity/unit values, idempotency key
+    hashes, or request fingerprint hashes. Task failures reject the service call instead of returning
+    false success.
+  - performance issues improved:
+    The fan-out uses the same recalculated snapshot already produced by the write path, stores only the
+    latest created candidate per stock item, and avoids duplicate/transient task writes within a single
+    request.
+  - validation commands:
+    `pnpm exec vitest run src/modules/pharmacy/medication-stock/application/apply-visit-medication-stock-observation.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec vitest run 'src/app/api/visit-records/[id]/medication-stock-observations/route.test.ts' --reporter=dot --testTimeout=30000`;
+    `pnpm exec vitest run src/modules/pharmacy/medication-stock/application/apply-visit-medication-stock-observation.test.ts 'src/app/api/visit-records/[id]/medication-stock-observations/route.test.ts' --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint src/modules/pharmacy/medication-stock/application/apply-visit-medication-stock-observation.ts src/modules/pharmacy/medication-stock/application/apply-visit-medication-stock-observation.test.ts 'src/app/api/visit-records/[id]/medication-stock-observations/route.ts' 'src/app/api/visit-records/[id]/medication-stock-observations/route.test.ts'`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm plans:active:check`;
+    `pnpm boundaries:check`;
+    `pnpm exec prettier --write Plans.md ops/refactor/STATE.md src/modules/pharmacy/medication-stock/application/apply-visit-medication-stock-observation.ts src/modules/pharmacy/medication-stock/application/apply-visit-medication-stock-observation.test.ts`;
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/modules/pharmacy/medication-stock/application/apply-visit-medication-stock-observation.ts src/modules/pharmacy/medication-stock/application/apply-visit-medication-stock-observation.test.ts`;
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/modules/pharmacy/medication-stock/application/apply-visit-medication-stock-observation.ts src/modules/pharmacy/medication-stock/application/apply-visit-medication-stock-observation.test.ts`;
+    `pnpm format:check`.
+  - validation results:
+    Focused service test passed 1 file / 9 tests. Focused route test passed 1 file / 7 tests. Combined
+    focused service+route test passed 2 files / 16 tests. Scoped ESLint passed. Full typecheck passed
+    with `NODE_OPTIONS=--max-old-space-size=8192`. Plans active board check passed. Module boundary check
+    passed. Targeted Prettier check and targeted diff-check passed for owned paths. `pnpm format:check`
+    still fails on unrelated pre-existing untracked Markdown under `projects/careviax/**`, not on this
+    slice's owned files.
+  - remaining work:
+    Parent `STOCK-001-VISIT-DOWNSTREAM` remains Partial. Residual scope is Case Risk Cockpit provider,
+    VisitBrief ordering/provider, Schedule candidate reason, Patient Movement occurrence, and a separate
+    future auto-resolve/close behavior for shortage tasks. `STOCK-001-VISIT-CONTEXT-APPLY` and
+    `STOCK-001-VISIT-DB-INTEGRATION` remain human-gated.
+  - next action:
+    Finish final formatting/validation, commit and push this slice, then continue with the next Plans
+    priority: remaining `STOCK-001-VISIT-DOWNSTREAM`, `STOCK-001-PRESCRIPTION-HORIZON`, or
+    `INBOUND-002-REVIEW-DETAIL`.
+
 - codex: `STOCK-VISIT-UI-READONLY-001` 訪問記録フォームの残数管理 read-only panel。
   - commit:
     Implementation committed as `89d51e00a`.

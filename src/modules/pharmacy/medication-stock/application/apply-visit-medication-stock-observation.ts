@@ -4,6 +4,7 @@ import { Prisma, type MedicationStockUnit, type MemberRole } from '@prisma/clien
 
 import { canWriteVisitRecordForSchedule } from '@/lib/auth/visit-schedule-access';
 import { allocateDisplayId } from '@/lib/db/display-id';
+import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import type { DateKey } from '../domain/stockout-forecast';
 import { decimalToNumber, recalculateMedicationStockSnapshot } from './stock-snapshot';
 
@@ -114,6 +115,7 @@ export type ApplyVisitMedicationStockObservationsDb = Pick<
   | 'medicationStockEvent'
   | 'medicationStockObservationContext'
   | 'medicationStockSnapshot'
+  | 'task'
 >;
 
 type VisitRecordRow = {
@@ -160,6 +162,7 @@ type ExistingObservationContextRow = {
 const VISIT_STOCK_WRITE_ROLES: ReadonlySet<MemberRole> = new Set(['owner', 'admin', 'pharmacist']);
 
 const MAX_OBSERVATIONS_PER_REQUEST = 50;
+const VISIT_STOCK_SHORTAGE_TASK_TYPE = 'pharmacy.medication_stock_shortage_expected';
 const ACTIVE_NEXT_VISIT_SCHEDULE_STATUSES = [
   'planned',
   'in_preparation',
@@ -383,6 +386,53 @@ function snapshotDto(snapshot: {
     stock_risk_level: snapshot.stock_risk_level,
     calculated_at: snapshot.calculated_at.toISOString(),
   };
+}
+
+function isShortageTaskRiskLevel(
+  stockRiskLevel: ApplyVisitMedicationStockObservationsSuccess['data']['observations'][number]['snapshot']['stock_risk_level'],
+) {
+  return stockRiskLevel === 'urgent' || stockRiskLevel === 'shortage_expected';
+}
+
+function visitShortageTaskDedupeKey(stockItemId: string) {
+  return `medication-stock:shortage-expected:stock-item:${stockItemId}`;
+}
+
+async function upsertVisitMedicationStockShortageTask(args: {
+  db: ApplyVisitMedicationStockObservationsDb;
+  orgId: string;
+  patientId: string;
+  assignedTo: string | null;
+  stockItemId: string;
+  stockEventId: string;
+  observationContextId: string;
+  visitRecordId: string;
+  caseId: string | null;
+  stockRiskLevel: 'urgent' | 'shortage_expected';
+  observationKind: VisitMedicationStockObservationKind;
+}) {
+  await upsertOperationalTask(args.db, {
+    orgId: args.orgId,
+    taskType: VISIT_STOCK_SHORTAGE_TASK_TYPE,
+    title: '残数不足見込み',
+    description: '外用薬・頓服薬の残数不足見込みを確認してください。',
+    priority: 'urgent',
+    assignedTo: args.assignedTo,
+    dedupeKey: visitShortageTaskDedupeKey(args.stockItemId),
+    relatedEntityType: 'patient',
+    relatedEntityId: args.patientId,
+    metadata: {
+      source: 'visit_medication_stock_observation',
+      schema_version: 1,
+      stock_item_id: args.stockItemId,
+      stock_event_id: args.stockEventId,
+      observation_context_id: args.observationContextId,
+      visit_record_id: args.visitRecordId,
+      case_id: args.caseId,
+      stock_risk_level: args.stockRiskLevel,
+      observation_kind: args.observationKind,
+    },
+  });
 }
 
 function validateSameRequestDuplicates(observations: VisitMedicationStockObservationInput[]) {
@@ -610,6 +660,17 @@ export async function applyVisitMedicationStockObservations(
   const responseObservations: ApplyVisitMedicationStockObservationsSuccess['data']['observations'] =
     [];
   const observationsToCreate: NormalizedObservation[] = [];
+  const latestCreatedCandidateByStockItem = new Map<
+    string,
+    {
+      stockItem: StockItemRow;
+      observation: NormalizedObservation;
+      stockEventId: string;
+      observationContextId: string;
+      stockRiskLevel: 'ok' | 'watch' | 'shortage_expected' | 'urgent' | 'unknown';
+      caseId: string | null;
+    }
+  >();
 
   for (const observation of normalizedObservations) {
     const event = eventByHash.get(observation.idempotencyKeyHash);
@@ -741,6 +802,14 @@ export async function applyVisitMedicationStockObservations(
       asOf: now,
       nextVisitDateKey,
     });
+    latestCreatedCandidateByStockItem.set(observation.stockItemId, {
+      stockItem,
+      observation,
+      stockEventId: stockEvent.id,
+      observationContextId: context.id,
+      stockRiskLevel: snapshot.stock_risk_level,
+      caseId: stockItem.case_id ?? visitCaseId,
+    });
     responseObservations.push({
       client_observation_id: observation.clientObservationId,
       stock_item_id: observation.stockItemId,
@@ -751,6 +820,28 @@ export async function applyVisitMedicationStockObservations(
       quantity_kind: stockEventFields.quantity_kind,
       snapshot,
       idempotent_replay: false,
+    });
+  }
+
+  const assignedTo =
+    visitRecord.schedule.pharmacist_id ??
+    visitRecord.schedule.case_?.primary_pharmacist_id ??
+    visitRecord.schedule.case_?.backup_pharmacist_id ??
+    args.userId;
+  for (const candidate of latestCreatedCandidateByStockItem.values()) {
+    if (!isShortageTaskRiskLevel(candidate.stockRiskLevel)) continue;
+    await upsertVisitMedicationStockShortageTask({
+      db,
+      orgId: args.orgId,
+      patientId: visitRecord.patient_id,
+      assignedTo,
+      stockItemId: candidate.stockItem.id,
+      stockEventId: candidate.stockEventId,
+      observationContextId: candidate.observationContextId,
+      visitRecordId: visitRecord.id,
+      caseId: candidate.caseId,
+      stockRiskLevel: candidate.stockRiskLevel,
+      observationKind: candidate.observation.kind,
     });
   }
 

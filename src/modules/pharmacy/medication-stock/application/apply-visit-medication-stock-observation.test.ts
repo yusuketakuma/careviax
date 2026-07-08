@@ -2,12 +2,17 @@ import { createHash } from 'node:crypto';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { allocateDisplayIdMock } = vi.hoisted(() => ({
+const { allocateDisplayIdMock, upsertOperationalTaskMock } = vi.hoisted(() => ({
   allocateDisplayIdMock: vi.fn(),
+  upsertOperationalTaskMock: vi.fn(),
 }));
 
 vi.mock('@/lib/db/display-id', () => ({
   allocateDisplayId: allocateDisplayIdMock,
+}));
+
+vi.mock('@/server/services/operational-tasks', () => ({
+  upsertOperationalTask: upsertOperationalTaskMock,
 }));
 
 import {
@@ -178,6 +183,8 @@ describe('applyVisitMedicationStockObservations', () => {
     vi.setSystemTime(new Date('2026-07-08T01:40:00.000Z'));
     vi.clearAllMocks();
     allocateDisplayIdMock.mockReset();
+    upsertOperationalTaskMock.mockReset();
+    upsertOperationalTaskMock.mockResolvedValue({ id: 'task_1', display_id: 'task0000000001' });
   });
 
   afterEach(() => {
@@ -279,6 +286,38 @@ describe('applyVisitMedicationStockObservations', () => {
         }),
       }),
     );
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({
+        orgId: 'org_1',
+        taskType: 'pharmacy.medication_stock_shortage_expected',
+        title: '残数不足見込み',
+        priority: 'urgent',
+        assignedTo: 'user_1',
+        dedupeKey: 'medication-stock:shortage-expected:stock-item:stock_item_1',
+        relatedEntityType: 'patient',
+        relatedEntityId: 'patient_1',
+        metadata: {
+          source: 'visit_medication_stock_observation',
+          schema_version: 1,
+          stock_item_id: 'stock_item_1',
+          stock_event_id: 'stock_event_1',
+          observation_context_id: 'context_1',
+          visit_record_id: 'visit_1',
+          case_id: 'case_1',
+          stock_risk_level: 'shortage_expected',
+          observation_kind: 'observed_absolute',
+        },
+      }),
+    );
+    const metadataText = JSON.stringify(upsertOperationalTaskMock.mock.calls[0][1].metadata);
+    expect(metadataText).not.toContain('patient_name');
+    expect(metadataText).not.toContain('drug_name');
+    expect(metadataText).not.toContain('raw_reason');
+    expect(metadataText).not.toContain('idempotency_key_hash');
+    expect(metadataText).not.toContain('request_fingerprint_hash');
+    expect(metadataText).not.toContain('sheet');
+    expect(metadataText).not.toContain('quantity');
   });
 
   it('persists refill_request as a controlled visit observation kind instead of collapsing it', async () => {
@@ -341,6 +380,7 @@ describe('applyVisitMedicationStockObservations', () => {
         }),
       }),
     );
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
 
   it('rejects duplicate idempotency keys with a different clinical fingerprint', async () => {
@@ -400,6 +440,7 @@ describe('applyVisitMedicationStockObservations', () => {
     });
     expect(db.medicationStockEvent.create).not.toHaveBeenCalled();
     expect(db.medicationStockObservationContext.create).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
 
   it('rejects duplicate client observation ids before loading visit data', async () => {
@@ -522,6 +563,226 @@ describe('applyVisitMedicationStockObservations', () => {
     });
     expect(db.medicationStockEvent.create).not.toHaveBeenCalled();
     expect(db.medicationStockObservationContext.create).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+  });
+
+  it('does not create a shortage task when the final same-item snapshot is no longer risky', async () => {
+    const db = createDb();
+    setupBaseDb(db);
+    db.medicationStockEvent.findMany
+      .mockReset()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: 'stock_event_1',
+          event_at: new Date('2026-07-08T01:30:00.000Z'),
+          created_at: new Date('2026-07-08T01:30:05.000Z'),
+          quantity_kind: 'observed_absolute',
+          quantity_delta: null,
+          observed_quantity: '1',
+          usage_quantity: null,
+          usage_period_days: null,
+          unit: 'sheet',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'stock_event_2',
+          event_at: new Date('2026-07-08T01:35:00.000Z'),
+          created_at: new Date('2026-07-08T01:35:05.000Z'),
+          quantity_kind: 'observed_absolute',
+          quantity_delta: null,
+          observed_quantity: '20',
+          usage_quantity: null,
+          usage_period_days: null,
+          unit: 'sheet',
+        },
+      ]);
+    db.medicationStockEvent.create
+      .mockResolvedValueOnce({ id: 'stock_event_1' })
+      .mockResolvedValueOnce({ id: 'stock_event_2' });
+    db.medicationStockObservationContext.create
+      .mockResolvedValueOnce({ id: 'context_1' })
+      .mockResolvedValueOnce({ id: 'context_2' });
+    db.medicationStockSnapshot.upsert
+      .mockResolvedValueOnce({
+        current_quantity: '1',
+        stock_risk_level: 'shortage_expected',
+        calculated_at: new Date('2026-07-08T01:40:00.000Z'),
+      })
+      .mockResolvedValueOnce({
+        current_quantity: '20',
+        stock_risk_level: 'ok',
+        calculated_at: new Date('2026-07-08T01:40:00.000Z'),
+      });
+
+    const result = await applyVisitMedicationStockObservations(
+      db as unknown as ApplyVisitMedicationStockObservationsDb,
+      {
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+        visitRecordId: 'visit_1',
+        idempotencyKey: 'visit-submit-1',
+        observations: [
+          {
+            clientObservationId: 'obs_1',
+            stockItemId: 'stock_item_1',
+            kind: 'observed_absolute',
+            quantity: 1,
+            unit: 'sheet',
+            eventAt: new Date('2026-07-08T01:30:00.000Z'),
+          },
+          {
+            clientObservationId: 'obs_2',
+            stockItemId: 'stock_item_1',
+            kind: 'observed_absolute',
+            quantity: 20,
+            unit: 'sheet',
+            eventAt: new Date('2026-07-08T01:35:00.000Z'),
+          },
+        ],
+      },
+    );
+
+    expect(result).toMatchObject({
+      kind: 'applied',
+      meta: {
+        applied_count: 2,
+        replay_count: 0,
+      },
+    });
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+  });
+
+  it('creates one shortage task using the final same-item risky snapshot', async () => {
+    const db = createDb();
+    setupBaseDb(db);
+    db.medicationStockEvent.findMany
+      .mockReset()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: 'stock_event_1',
+          event_at: new Date('2026-07-08T01:30:00.000Z'),
+          created_at: new Date('2026-07-08T01:30:05.000Z'),
+          quantity_kind: 'observed_absolute',
+          quantity_delta: null,
+          observed_quantity: '20',
+          usage_quantity: null,
+          usage_period_days: null,
+          unit: 'sheet',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'stock_event_2',
+          event_at: new Date('2026-07-08T01:35:00.000Z'),
+          created_at: new Date('2026-07-08T01:35:05.000Z'),
+          quantity_kind: 'observed_absolute',
+          quantity_delta: null,
+          observed_quantity: '1',
+          usage_quantity: null,
+          usage_period_days: null,
+          unit: 'sheet',
+        },
+      ]);
+    db.medicationStockEvent.create
+      .mockResolvedValueOnce({ id: 'stock_event_1' })
+      .mockResolvedValueOnce({ id: 'stock_event_2' });
+    db.medicationStockObservationContext.create
+      .mockResolvedValueOnce({ id: 'context_1' })
+      .mockResolvedValueOnce({ id: 'context_2' });
+    db.medicationStockSnapshot.upsert
+      .mockResolvedValueOnce({
+        current_quantity: '20',
+        stock_risk_level: 'ok',
+        calculated_at: new Date('2026-07-08T01:40:00.000Z'),
+      })
+      .mockResolvedValueOnce({
+        current_quantity: '1',
+        stock_risk_level: 'urgent',
+        calculated_at: new Date('2026-07-08T01:40:00.000Z'),
+      });
+
+    const result = await applyVisitMedicationStockObservations(
+      db as unknown as ApplyVisitMedicationStockObservationsDb,
+      {
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+        visitRecordId: 'visit_1',
+        idempotencyKey: 'visit-submit-1',
+        observations: [
+          {
+            clientObservationId: 'obs_1',
+            stockItemId: 'stock_item_1',
+            kind: 'observed_absolute',
+            quantity: 20,
+            unit: 'sheet',
+            eventAt: new Date('2026-07-08T01:30:00.000Z'),
+          },
+          {
+            clientObservationId: 'obs_2',
+            stockItemId: 'stock_item_1',
+            kind: 'observed_absolute',
+            quantity: 1,
+            unit: 'sheet',
+            eventAt: new Date('2026-07-08T01:35:00.000Z'),
+          },
+        ],
+      },
+    );
+
+    expect(result).toMatchObject({
+      kind: 'applied',
+      meta: {
+        applied_count: 2,
+        replay_count: 0,
+      },
+    });
+    expect(upsertOperationalTaskMock).toHaveBeenCalledTimes(1);
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({
+        dedupeKey: 'medication-stock:shortage-expected:stock-item:stock_item_1',
+        metadata: expect.objectContaining({
+          stock_event_id: 'stock_event_2',
+          observation_context_id: 'context_2',
+          stock_risk_level: 'urgent',
+          observation_kind: 'observed_absolute',
+        }),
+      }),
+    );
+  });
+
+  it('fails closed instead of returning false success when shortage task fan-out fails', async () => {
+    const db = createDb();
+    setupBaseDb(db);
+    upsertOperationalTaskMock.mockRejectedValueOnce(new Error('task storage unavailable'));
+
+    await expect(
+      applyVisitMedicationStockObservations(
+        db as unknown as ApplyVisitMedicationStockObservationsDb,
+        {
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'pharmacist',
+          visitRecordId: 'visit_1',
+          idempotencyKey: 'visit-submit-1',
+          observations: [
+            {
+              clientObservationId: 'obs_1',
+              stockItemId: 'stock_item_1',
+              kind: 'observed_absolute',
+              quantity: 4,
+              unit: 'sheet',
+              eventAt: new Date('2026-07-08T01:30:00.000Z'),
+            },
+          ],
+        },
+      ),
+    ).rejects.toThrow('task storage unavailable');
   });
 
   it('fails closed for non-pharmacist stock writes and stock unit mismatches', async () => {
