@@ -142,15 +142,22 @@ const authenticatedGET = withAuthContext(
       { requestContext: authCtx },
     );
     const listRows = templates.map(omitTemplateContent);
+    const listEnvelope = buildCountedListEnvelope(listRows, totalCount);
 
     return success({
-      ...buildCountedListEnvelope(listRows, totalCount),
-      count_basis: TEMPLATE_COUNT_BASIS,
-      filters_applied: {
-        template_type: parsedTemplateType.data ?? null,
-        target_role: parsedTargetRole?.success ? parsedTargetRole.data : null,
+      data: listEnvelope.data,
+      meta: {
+        total_count: listEnvelope.total_count,
+        visible_count: listEnvelope.visible_count,
+        hidden_count: listEnvelope.hidden_count,
+        truncated: listEnvelope.truncated,
+        count_basis: TEMPLATE_COUNT_BASIS,
+        filters_applied: {
+          template_type: parsedTemplateType.data ?? null,
+          target_role: parsedTargetRole?.success ? parsedTargetRole.data : null,
+        },
+        limit,
       },
-      limit,
     });
   },
   { permission: 'canAdmin', message: '文書テンプレートの閲覧権限がありません' },

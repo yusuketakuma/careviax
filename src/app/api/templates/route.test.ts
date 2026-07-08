@@ -155,8 +155,8 @@ describe('/api/templates', () => {
       },
     });
     const body = await response.json();
-    expect(Object.keys(body)).toEqual([
-      'data',
+    expect(Object.keys(body)).toEqual(['data', 'meta']);
+    expect(Object.keys(body.meta)).toEqual([
       'total_count',
       'visible_count',
       'hidden_count',
@@ -184,16 +184,18 @@ describe('/api/templates', () => {
           updated_at: '2026-06-19T10:30:00.000Z',
         },
       ],
-      total_count: 3,
-      visible_count: 1,
-      hidden_count: 2,
-      truncated: true,
-      count_basis: 'templates',
-      filters_applied: {
-        template_type: 'care_report',
-        target_role: null,
+      meta: {
+        total_count: 3,
+        visible_count: 1,
+        hidden_count: 2,
+        truncated: true,
+        count_basis: 'templates',
+        filters_applied: {
+          template_type: 'care_report',
+          target_role: null,
+        },
+        limit: 100,
       },
-      limit: 100,
     });
   });
 

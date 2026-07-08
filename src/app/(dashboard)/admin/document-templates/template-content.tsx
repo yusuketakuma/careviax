@@ -78,16 +78,18 @@ type DocumentTemplateDetailRow = DocumentTemplateMetadataRow & {
 
 type DocumentTemplatesResponse = {
   data: DocumentTemplateMetadataRow[];
-  total_count?: number;
-  visible_count?: number;
-  hidden_count?: number;
-  truncated?: boolean;
-  count_basis?: 'templates';
-  filters_applied?: {
-    template_type?: TemplateType | null;
-    target_role?: string | null;
+  meta: {
+    total_count: number;
+    visible_count: number;
+    hidden_count: number;
+    truncated: boolean;
+    count_basis: 'templates';
+    filters_applied: {
+      template_type: TemplateType | null;
+      target_role: string | null;
+    };
+    limit: number;
   };
-  limit?: number;
 };
 
 type DocumentTemplateDetailResponse = {
@@ -321,13 +323,11 @@ export function DocumentTemplateContent() {
     enabled: !!orgId,
   });
 
-  const visibleTemplateCount = data?.visible_count ?? data?.data.length ?? 0;
-  const totalTemplateCount = data?.total_count ?? visibleTemplateCount;
-  const hiddenTemplateCount = Math.max(
-    data?.hidden_count ?? totalTemplateCount - visibleTemplateCount,
-    0,
-  );
-  const isTemplateListTruncated = Boolean(data?.truncated ?? hiddenTemplateCount > 0);
+  const visibleTemplateCount = data?.meta.visible_count ?? 0;
+  const totalTemplateCount = data?.meta.total_count ?? 0;
+  const hiddenTemplateCount = data?.meta.hidden_count ?? 0;
+  const isTemplateListTruncated = Boolean(data?.meta.truncated);
+  const templateListLimit = data?.meta.limit ?? visibleTemplateCount;
   const templateListCountLabel = isTemplateListTruncated
     ? `先頭${visibleTemplateCount}件を表示 / 他${hiddenTemplateCount}件`
     : `登録${totalTemplateCount}件`;
@@ -720,8 +720,7 @@ export function DocumentTemplateContent() {
             </CardDescription>
             {isTemplateListTruncated ? (
               <p className="text-xs leading-5 text-state-confirm">
-                表示上限 {data?.limit ?? visibleTemplateCount} 件に達しています。種別で絞り込むと、
-                非表示のテンプレートを確認できます。
+                {`表示上限 ${templateListLimit} 件に達しています。種別で絞り込むと、非表示のテンプレートを確認できます。`}
               </p>
             ) : null}
             <div className="flex flex-wrap gap-2 pt-2">

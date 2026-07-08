@@ -61,6 +61,20 @@ function createDeferredResponse() {
   return { promise, resolve };
 }
 
+function buildTemplateListMeta(visibleCount: number, totalCount = visibleCount, limit = 100) {
+  const hiddenCount = Math.max(totalCount - visibleCount, 0);
+
+  return {
+    total_count: totalCount,
+    visible_count: visibleCount,
+    hidden_count: hiddenCount,
+    truncated: hiddenCount > 0,
+    count_basis: 'templates' as const,
+    filters_applied: { template_type: null, target_role: null },
+    limit,
+  };
+}
+
 describe('DocumentTemplateContent', () => {
   beforeEach(() => {
     vi.stubGlobal(
@@ -86,13 +100,7 @@ describe('DocumentTemplateContent', () => {
                   updated_at: '2026-06-19T10:30:00.000Z',
                 },
               ],
-              total_count: 3,
-              visible_count: 1,
-              hidden_count: 2,
-              truncated: true,
-              count_basis: 'templates',
-              filters_applied: { template_type: null, target_role: null },
-              limit: 1,
+              meta: buildTemplateListMeta(1, 3, 1),
             }),
             { status: 200 },
           );
@@ -199,6 +207,7 @@ describe('DocumentTemplateContent', () => {
                   updated_at: '2026-06-19T10:30:00.000Z',
                 },
               ],
+              meta: buildTemplateListMeta(1),
             }),
             { status: 200 },
           );
@@ -363,7 +372,9 @@ describe('DocumentTemplateContent', () => {
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
         if (url === '/api/templates' && !init?.method) {
-          return new Response(JSON.stringify({ data: [] }), { status: 200 });
+          return new Response(JSON.stringify({ data: [], meta: buildTemplateListMeta(0) }), {
+            status: 200,
+          });
         }
         if (url === '/api/templates' && init?.method === 'POST') {
           return new Response(JSON.stringify({ error: '文書テンプレートの作成権限がありません' }), {
@@ -408,6 +419,7 @@ describe('DocumentTemplateContent', () => {
                   updated_at: '2026-06-19T10:30:00.000Z',
                 },
               ],
+              meta: buildTemplateListMeta(1),
             }),
             { status: 200 },
           );
@@ -536,6 +548,7 @@ describe('DocumentTemplateContent', () => {
                   updated_at: '2026-06-19T10:31:00.000Z',
                 },
               ],
+              meta: buildTemplateListMeta(2),
             }),
             { status: 200 },
           );
@@ -662,6 +675,7 @@ describe('DocumentTemplateContent', () => {
                   updated_at: '2026-06-19T10:30:00.000Z',
                 },
               ],
+              meta: buildTemplateListMeta(1),
             }),
             { status: 200 },
           );
