@@ -28310,3 +28310,102 @@ responses`) and pushed to `origin/main`.
   Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
   then continue the next API response envelope cleanup from
   `src/app/api/dispense-results/route.ts` unless redirected.
+
+## 2026-07-09 - API-CONTRACT-001AV dispense result creation envelope cleanup
+
+- current task:
+  Continue `API-CONTRACT-001` public response envelope burn-down without legacy
+  compatibility fields. Move `POST /api/dispense-results` create and idempotent
+  replay success responses to the current `data` envelope.
+- files inspected:
+  `ops/refactor/STATE.md`; `Plans.md`;
+  `tools/api-response-shape-allowlist.json`;
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`;
+  `src/app/api/dispense-results/route.ts`;
+  `src/app/api/dispense-results/route.test.ts`;
+  `src/components/features/dispense-workbench/dispensing-workbench.adapter.ts`;
+  `src/components/features/dispense-workbench/dispensing-workbench.write-types.ts`;
+  `src/app/api/__tests__/protected-post-routes.test.ts`.
+- files changed:
+  `Plans.md`; `tools/api-response-shape-allowlist.json`;
+  `src/app/api/dispense-results/route.ts`;
+  `src/app/api/dispense-results/route.test.ts`;
+  `src/components/features/dispense-workbench/dispensing-workbench.adapter.ts`;
+  `src/components/features/dispense-workbench/dispensing-workbench.write-types.ts`;
+  `ops/refactor/STATE.md`.
+- bugs found:
+  `POST /api/dispense-results` returned raw result objects for both normal
+  create `201` and idempotent replay `200` responses, leaving `task_id`,
+  `partial`, `idempotent`, and `results` at the public response root. The
+  dispense workbench adapter type still described the submit response as a raw
+  root `task_id` object.
+- bugs fixed:
+  Create and idempotent replay success now return `success({ data: result })`
+  with the original `201` / `200` status split preserved. Route tests assert
+  the `payload.data` contract for full, partial, and idempotent paths. The
+  workbench write adapter now exposes a `SubmitDispenseResultsResponse` with
+  the current `data` envelope, and no legacy root fallback fields remain.
+  Response-shape debt dropped from 149 to 148 allowlisted violations.
+- security risks found:
+  No auth, authorization, assignment scoping, org scoping, validation, OCC,
+  CDS decision handling, barcode result handling, webhook notification, partial
+  dispense workflow, transaction boundary, audit logging, or no-store behavior
+  changed.
+- security risks reduced:
+  Removed another PHI-adjacent raw success response shape from the dispensing
+  create/replay API, reducing public API ambiguity before broader error and
+  request_id unification.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this is response contract cleanup. Existing create transaction,
+  idempotency replay, notification, and workflow side-effect behavior are
+  unchanged.
+- UI/UX note:
+  No UI/UX change. This was API/type/test contract work only, so image
+  generation was not applicable.
+- Oracle note:
+  Oracle consultation remains paused per current user instruction, so no
+  Oracle/GPT-5.5 Pro consult was run for this low-risk local contract slice.
+- validation commands:
+  `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/dispense-results/route.ts src/app/api/dispense-results/route.test.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.ts src/components/features/dispense-workbench/dispensing-workbench.write-types.ts`;
+  `pnpm vitest run src/app/api/dispense-results/route.test.ts`;
+  `pnpm vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "dispense-results POST"`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint src/app/api/dispense-results/route.ts src/app/api/dispense-results/route.test.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.ts src/components/features/dispense-workbench/dispensing-workbench.write-types.ts`;
+  `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/dispense-results/route.ts src/app/api/dispense-results/route.test.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.ts src/components/features/dispense-workbench/dispensing-workbench.write-types.ts`;
+  `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/dispense-results/route.ts src/app/api/dispense-results/route.test.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.ts src/components/features/dispense-workbench/dispensing-workbench.write-types.ts`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `pnpm format:check`.
+- validation results:
+  Prettier passed. `dispense-results` route tests passed 1 file / 45 tests.
+  Protected POST targeted tests passed 3 tests with 142 skipped.
+  `api-response-shape:check` passed with 148 allowlisted violations and 0 new
+  violations. `plans:active:check` passed. Scoped ESLint, scoped Prettier
+  check, scoped diff check, and typecheck passed. `pnpm format:check` still
+  fails only on unrelated pre-existing untracked Markdown files:
+  `projects/careviax/implementation-decision/medication-stock-visit-observation-context-sidecar-v1-2026-07-08.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-doc-001.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-evidence-001.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-integrity-001.md`,
+  `projects/careviax/reviews/2026-07-08/patient-board-read-001.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003a-003d.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003e.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-guard.md`, and
+  `skills/_candidates.md`.
+- commit:
+  Dispense result create/replay response envelope migration, route tests,
+  workbench write type update, allowlist cleanup, and Plans sync committed as
+  `3a9c2728e8a2cfa32d26937ab02c33a92df0202b`
+  (`fix(api): envelope dispense result creation responses`). Push is pending
+  this ledger update.
+- remaining work:
+  `API-CONTRACT-001` remains Partial. Next allowlist head is
+  `src/app/api/dispense-tasks/[id]/route.ts` with two expected legacy response
+  shape violations. Existing unrelated dirty/untracked memory/docs files remain
+  unstaged.
+- next action:
+  Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
+  then continue the next API response envelope cleanup from
+  `src/app/api/dispense-tasks/[id]/route.ts` unless redirected.
