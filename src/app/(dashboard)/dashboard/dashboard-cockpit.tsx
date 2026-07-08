@@ -61,6 +61,9 @@ import { useDashboardCockpitViewModel } from './use-dashboard-cockpit-view-model
  * 文言ルール: ブロッカー→「止まっている理由」/ Next Action→「次にやること」。
  */
 
+const DASHBOARD_COMMENTS_DRILLDOWN_HREF = '/handoff?filter=comments&context=dashboard_home';
+const DASHBOARD_INBOUND_DRILLDOWN_HREF = '/communications/inbound?status=needs_review';
+
 export async function fetchDashboardCockpit(
   orgId: string,
   scope: DashboardCockpitScope = 'mine',
@@ -909,7 +912,10 @@ function TeamConversationPanel({
             </p>
           </div>
         </div>
-        <Link href="/handoff" className="shrink-0 text-xs font-medium text-primary hover:underline">
+        <Link
+          href={DASHBOARD_COMMENTS_DRILLDOWN_HREF}
+          className="shrink-0 text-xs font-medium text-primary hover:underline"
+        >
           すべて見る
         </Link>
       </div>
@@ -959,9 +965,12 @@ function TeamConversationPanel({
         </ul>
       )}
       {hiddenCount > 0 ? (
-        <p className="text-xs leading-5 text-muted-foreground">
-          他{hiddenCount}件はハンドオフで確認できます。
-        </p>
+        <Link
+          href={DASHBOARD_COMMENTS_DRILLDOWN_HREF}
+          className="inline-flex text-xs font-medium leading-5 text-primary hover:underline"
+        >
+          他{hiddenCount}件をハンドオフで見る
+        </Link>
       ) : null}
     </section>
   );
@@ -1068,7 +1077,7 @@ function InboundFeedPanel({
           </div>
         </div>
         <Link
-          href="/communications/inbound"
+          href={DASHBOARD_INBOUND_DRILLDOWN_HREF}
           className="shrink-0 text-xs font-medium text-primary hover:underline"
         >
           すべて見る
@@ -1151,9 +1160,12 @@ function InboundFeedPanel({
         </ul>
       )}
       {hiddenCount > 0 ? (
-        <p className="text-xs leading-5 text-muted-foreground">
-          他{hiddenCount}件は受信インボックスで確認できます。
-        </p>
+        <Link
+          href={DASHBOARD_INBOUND_DRILLDOWN_HREF}
+          className="inline-flex text-xs font-medium leading-5 text-primary hover:underline"
+        >
+          他{hiddenCount}件を受信インボックスで見る
+        </Link>
       ) : null}
     </section>
   );

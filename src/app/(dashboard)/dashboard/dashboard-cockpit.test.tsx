@@ -868,6 +868,11 @@ describe('DashboardCockpit', () => {
     expect(within(evidence).getByText('09:42')).toBeTruthy();
     expect(within(evidence).getByText('昨日からの持ち越し')).toBeTruthy();
     expect(within(evidence).getByText('2件')).toBeTruthy();
+    expect(
+      within(evidence)
+        .getAllByRole('link', { name: /開く/ })
+        .map((link) => link.getAttribute('href')),
+    ).toContain('/tasks?status=open&filter=carryover&context=dashboard_home');
     expect(within(evidence).getAllByRole('button', { name: /開く/ }).length).toBeGreaterThan(0);
 
     // デザイン 01: 右レールは 3 点セットのみ。「私の今日」リストカードは置かない
@@ -885,7 +890,11 @@ describe('DashboardCockpit', () => {
     expect(within(inbound).getByText('湿布 4sheet')).toBeTruthy();
     expect(within(inbound).getByText('nurse / 山田 花子 / 訪問看護ステーションA')).toBeTruthy();
     expect(within(inbound).getByRole('link', { name: '受信情報を確認' })).toBeTruthy();
-    expect(within(inbound).getByText('他2件は受信インボックスで確認できます。')).toBeTruthy();
+    expect(
+      within(inbound)
+        .getByRole('link', { name: '他2件を受信インボックスで見る' })
+        .getAttribute('href'),
+    ).toBe('/communications/inbound?status=needs_review');
 
     const comments = screen.getByTestId('dashboard-comments-panel');
     expect(within(comments).getByRole('heading', { name: 'チームの会話', level: 3 })).toBeTruthy();
@@ -894,8 +903,12 @@ describe('DashboardCockpit', () => {
     expect(within(comments).getByText('監査前に家族連絡の結果だけ確認してください。')).toBeTruthy();
     expect(within(comments).getByText('自分の投稿')).toBeTruthy();
     expect(within(comments).getByText('報告書')).toBeTruthy();
-    expect(within(comments).getByText('他2件はハンドオフで確認できます。')).toBeTruthy();
-    expect(within(comments).getByRole('link', { name: 'すべて見る' })).toBeTruthy();
+    expect(
+      within(comments).getByRole('link', { name: '他2件をハンドオフで見る' }).getAttribute('href'),
+    ).toBe('/handoff?filter=comments&context=dashboard_home');
+    expect(within(comments).getByRole('link', { name: 'すべて見る' }).getAttribute('href')).toBe(
+      '/handoff?filter=comments&context=dashboard_home',
+    );
     expect(within(comments).getAllByRole('link', { name: '開く' })).toHaveLength(2);
   });
 

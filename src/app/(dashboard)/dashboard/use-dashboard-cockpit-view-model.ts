@@ -30,6 +30,8 @@ const VIEW_SCOPE_LABELS: Record<DashboardCockpitScope, string> = {
   team: 'チーム全体',
 };
 
+const DASHBOARD_CARRYOVER_HREF = '/tasks?status=open&filter=carryover&context=dashboard_home';
+
 const EMPTY_VISITS: CockpitVisit[] = [];
 const EMPTY_URGENT_ITEMS: DashboardUrgentItem[] = [];
 const EMPTY_URGENT_SOURCE_LINKS: DashboardUrgentSourceLink[] = [];
@@ -130,7 +132,7 @@ export function useDashboardCockpitViewModel({
         id: 'carryover',
         label: '昨日からの持ち越し',
         meta: `${details?.carryover_count ?? 0}件`,
-        href: '/workflow',
+        href: DASHBOARD_CARRYOVER_HREF,
       },
       {
         id: 'wip-guide',
