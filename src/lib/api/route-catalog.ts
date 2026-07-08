@@ -589,6 +589,13 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'reports',
   },
   {
+    path: '/api/communications/inbound/:id/source-mapping',
+    methods: ['POST'],
+    permission: 'canReport',
+    description: '他職種受信の出所を患者/ケースへreview付きでmapping',
+    area: 'reports',
+  },
+  {
     path: '/api/communications/inbound/phone',
     methods: ['POST'],
     permission: 'canReport',

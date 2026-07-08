@@ -376,6 +376,140 @@ describe('InboundCommunicationsContent', () => {
     );
   });
 
+  it('shows source mapping only after audited detail and submits the new source-mapping payload', async () => {
+    const fetchMock = vi.fn(async (...args: [RequestInfo | URL, RequestInit?]) => {
+      const [input] = args;
+      const url = String(input);
+      if (url.includes('/source-mapping')) {
+        return new Response(
+          JSON.stringify({
+            data: {
+              mapping_id: 'mapping_1',
+              inbound_event_id: 'event_1',
+              patient_id: 'patient_1',
+              case_id: 'case_1',
+              source_system: 'phone',
+              mapping_status: 'needs_review',
+              confidence: 'probable',
+              created_at: '2026-07-08T01:00:00.000Z',
+              reviewed_at: null,
+            },
+            meta: { generated_at: '2026-07-08T01:00:00.000Z' },
+          }),
+          { status: 201, headers: { 'content-type': 'application/json' } },
+        );
+      }
+
+      return new Response(JSON.stringify(buildDetailData()), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<InboundCommunicationsContent />);
+
+    expect(screen.queryByTestId('inbound-source-mapping-panel')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '原文を監査付きで表示' }));
+    const panel = within(screen.getByTestId('inbound-source-mapping-panel'));
+    expect(panel.getByText('出所mapping')).toBeTruthy();
+    expect(panel.getByText(/payload には送信しません/)).toBeTruthy();
+
+    fireEvent.click(panel.getByRole('button', { name: '詳細から候補を入力' }));
+    expect((panel.getByLabelText('mapping患者ID') as HTMLInputElement).value).toBe('patient_1');
+    expect((panel.getByLabelText('mappingケースID') as HTMLInputElement).value).toBe('case_1');
+    expect((panel.getByLabelText('外部連絡者名') as HTMLInputElement).value).toBe('訪問看護師A');
+    expect((panel.getByLabelText('外部職種') as HTMLInputElement).value).toBe('nurse');
+    expect((panel.getByLabelText('外部所属') as HTMLInputElement).value).toBe(
+      '訪問看護ステーションA',
+    );
+
+    fireEvent.change(panel.getByLabelText('MCS thread key'), {
+      target: { value: 'phone:09012345678' },
+    });
+    fireEvent.click(panel.getByRole('button', { name: '出所mappingを保存' }));
+
+    expect(mutateMock).toHaveBeenCalledWith({
+      eventId: 'event_1',
+      form: expect.objectContaining({
+        patientId: 'patient_1',
+        caseId: 'case_1',
+        externalThreadId: 'phone:09012345678',
+        externalContactName: '訪問看護師A',
+        externalContactRole: 'nurse',
+        externalOrganizationName: '訪問看護ステーションA',
+        confidence: 'probable',
+        mappingStatus: 'needs_review',
+      }),
+    });
+
+    const mutationOptions = useMutationMock.mock.calls.find(([options]) =>
+      String(options.mutationFn).includes('source-mapping'),
+    )?.[0] as {
+      mutationFn: (input: {
+        eventId: string;
+        form: {
+          patientId: string;
+          caseId: string;
+          externalPatientLabel: string;
+          externalThreadId: string;
+          externalRoomId: string;
+          externalContactName: string;
+          externalContactRole: string;
+          externalOrganizationName: string;
+          confidence: 'probable';
+          mappingStatus: 'needs_review';
+        };
+      }) => Promise<unknown>;
+    };
+    await mutationOptions.mutationFn({
+      eventId: 'event_1',
+      form: {
+        patientId: 'patient_1',
+        caseId: 'case_1',
+        externalPatientLabel: '',
+        externalThreadId: 'phone:09012345678',
+        externalRoomId: '',
+        externalContactName: '訪問看護師A',
+        externalContactRole: 'nurse',
+        externalOrganizationName: '訪問看護ステーションA',
+        confidence: 'probable',
+        mappingStatus: 'needs_review',
+      },
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/communications/inbound/event_1/source-mapping',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'Content-Type': 'application/json',
+          'x-org-id': 'org_1',
+        }),
+      }),
+    );
+    const requestInit = fetchMock.mock.calls.at(-1)?.[1] as RequestInit;
+    const requestBody = JSON.parse(String(requestInit.body)) as Record<string, unknown>;
+    expect(requestBody).toEqual({
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      external_thread_id: 'phone:09012345678',
+      external_contact_name: '訪問看護師A',
+      external_contact_role: 'nurse',
+      external_organization_name: '訪問看護ステーションA',
+      confidence: 'probable',
+      mapping_status: 'needs_review',
+    });
+    expect(JSON.stringify(requestBody)).not.toContain('湿布は残り4枚です');
+    expect(JSON.stringify(requestBody)).not.toContain('090-1234-5678');
+    expect(JSON.stringify(requestBody)).not.toContain('sender_contact');
+    expect(JSON.stringify(requestBody)).not.toContain('raw_text');
+    expect(JSON.stringify(requestBody)).not.toContain('source_url');
+    expect(JSON.stringify(requestBody)).not.toContain('source_system');
+    expect(JSON.stringify(requestBody)).not.toContain('externalThreadId');
+  });
+
   it('shows signal candidates only for the selected inbound item in the right review panel', () => {
     render(<InboundCommunicationsContent />);
 

@@ -258,6 +258,44 @@ type InboundDetailResponse = {
   };
 };
 
+type InboundSourceMappingConfidence = 'exact' | 'probable' | 'manual' | 'unknown';
+type InboundSourceMappingStatus = 'active' | 'needs_review' | 'inactive';
+
+type InboundSourceMappingFormState = {
+  patientId: string;
+  caseId: string;
+  externalPatientLabel: string;
+  externalThreadId: string;
+  externalRoomId: string;
+  externalContactName: string;
+  externalContactRole: string;
+  externalOrganizationName: string;
+  confidence: InboundSourceMappingConfidence;
+  mappingStatus: InboundSourceMappingStatus;
+};
+
+type SourceMappingMutationInput = {
+  eventId: string;
+  form: InboundSourceMappingFormState;
+};
+
+type InboundSourceMappingResponse = {
+  data: {
+    mapping_id: string;
+    inbound_event_id: string;
+    patient_id: string;
+    case_id: string | null;
+    source_system: string;
+    mapping_status: InboundSourceMappingStatus;
+    confidence: InboundSourceMappingConfidence;
+    created_at: string;
+    reviewed_at: string | null;
+  };
+  meta: {
+    generated_at: string;
+  };
+};
+
 type InboundIntakeFormState = {
   sourceChannel: 'fax' | 'email' | 'manual';
   patientId: string;
@@ -322,6 +360,25 @@ const INTAKE_EVENT_TYPES: Array<{ value: InboundIntakeFormState['eventType']; la
   { value: 'schedule_request', label: '日程相談' },
 ];
 
+const SOURCE_MAPPING_CONFIDENCES: Array<{
+  value: InboundSourceMappingConfidence;
+  label: string;
+}> = [
+  { value: 'probable', label: '推定' },
+  { value: 'exact', label: '一致' },
+  { value: 'manual', label: '手動確認' },
+  { value: 'unknown', label: '不明' },
+];
+
+const SOURCE_MAPPING_STATUSES: Array<{
+  value: InboundSourceMappingStatus;
+  label: string;
+}> = [
+  { value: 'needs_review', label: '要レビュー' },
+  { value: 'active', label: '有効' },
+  { value: 'inactive', label: '無効' },
+];
+
 const INTAKE_SENDER_ROLES: Array<{ value: InboundIntakeFormState['senderRole']; label: string }> = [
   { value: 'unknown', label: '未設定' },
   { value: 'nurse', label: '訪問看護師' },
@@ -353,6 +410,18 @@ const EMPTY_STOCK_APPLY_FORM: StockApplyFormState = {
   quantity: '',
   usagePeriodDays: '',
   unit: '',
+};
+const EMPTY_SOURCE_MAPPING_FORM: InboundSourceMappingFormState = {
+  patientId: '',
+  caseId: '',
+  externalPatientLabel: '',
+  externalThreadId: '',
+  externalRoomId: '',
+  externalContactName: '',
+  externalContactRole: '',
+  externalOrganizationName: '',
+  confidence: 'probable',
+  mappingStatus: 'needs_review',
 };
 
 const channelLabel: Record<string, string> = {
@@ -440,6 +509,57 @@ function buildInboundDetailPath(eventId: string) {
     request_id: `inbound_review:${eventId}`,
   });
   return `/api/communications/inbound/${encodeURIComponent(eventId)}/detail?${params.toString()}`;
+}
+
+function trimmedOrUndefined(value: string) {
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function buildSourceMappingBody(form: InboundSourceMappingFormState) {
+  return {
+    patient_id: form.patientId.trim(),
+    ...(trimmedOrUndefined(form.caseId) ? { case_id: form.caseId.trim() } : {}),
+    ...(trimmedOrUndefined(form.externalPatientLabel)
+      ? { external_patient_label: form.externalPatientLabel.trim() }
+      : {}),
+    ...(trimmedOrUndefined(form.externalThreadId)
+      ? { external_thread_id: form.externalThreadId.trim() }
+      : {}),
+    ...(trimmedOrUndefined(form.externalRoomId)
+      ? { external_room_id: form.externalRoomId.trim() }
+      : {}),
+    ...(trimmedOrUndefined(form.externalContactName)
+      ? { external_contact_name: form.externalContactName.trim() }
+      : {}),
+    ...(trimmedOrUndefined(form.externalContactRole)
+      ? { external_contact_role: form.externalContactRole.trim() }
+      : {}),
+    ...(trimmedOrUndefined(form.externalOrganizationName)
+      ? { external_organization_name: form.externalOrganizationName.trim() }
+      : {}),
+    confidence: form.confidence,
+    mapping_status: form.mappingStatus,
+  };
+}
+
+function sourceMappingSubmitBlocker(args: {
+  form: InboundSourceMappingFormState;
+  rawDetailIncluded: boolean;
+}) {
+  if (!args.rawDetailIncluded) return '監査付き詳細を表示してから保存してください';
+  if (!args.form.patientId.trim()) return '患者IDを入力してください';
+  if (
+    args.form.mappingStatus === 'active' &&
+    args.form.confidence !== 'exact' &&
+    args.form.confidence !== 'manual'
+  ) {
+    return '有効化は一致または手動確認のconfidenceだけで保存できます';
+  }
+  if (args.form.mappingStatus === 'active' && args.form.externalRoomId.trim()) {
+    return '外部room IDは要レビューのmappingで保存してください';
+  }
+  return null;
 }
 
 function formatDateTime(value: string | null) {
@@ -761,6 +881,8 @@ export function InboundCommunicationsContent() {
   const [detailRequestedEventId, setDetailRequestedEventId] = useState<string | null>(null);
   const [intakeForm, setIntakeForm] = useState<InboundIntakeFormState>(EMPTY_INTAKE_FORM);
   const [stockApplyForms, setStockApplyForms] = useState<Record<string, StockApplyFormState>>({});
+  const [sourceMappingForm, setSourceMappingForm] =
+    useState<InboundSourceMappingFormState>(EMPTY_SOURCE_MAPPING_FORM);
 
   const queryPath = buildInboundInboxPath({ channel, priority, status });
   const signalQueryPath = buildInboundSignalPath({ channel });
@@ -823,6 +945,7 @@ export function InboundCommunicationsContent() {
       setIntakeForm(EMPTY_INTAKE_FORM);
       setSelectedId(null);
       setDetailRequestedEventId(null);
+      setSourceMappingForm(EMPTY_SOURCE_MAPPING_FORM);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['communications-inbound', orgId] }),
         queryClient.invalidateQueries({ queryKey: ['communications-inbound-signals', orgId] }),
@@ -985,6 +1108,28 @@ export function InboundCommunicationsContent() {
       toast.error(messageFromError(error, '残数台帳へ反映できませんでした'));
     },
   });
+  const sourceMappingMutation = useMutation({
+    mutationFn: async (input: SourceMappingMutationInput) => {
+      const response = await fetch(
+        `/api/communications/inbound/${encodeURIComponent(input.eventId)}/source-mapping`,
+        {
+          method: 'POST',
+          headers: buildOrgJsonHeaders(orgId),
+          body: JSON.stringify(buildSourceMappingBody(input.form)),
+        },
+      );
+      return readApiJson<InboundSourceMappingResponse>(response, {
+        fallbackMessage: '出所mappingを保存できませんでした',
+      });
+    },
+    onSuccess: () => {
+      toast.success('出所mappingを保存しました');
+      setSourceMappingForm(EMPTY_SOURCE_MAPPING_FORM);
+    },
+    onError: (error) => {
+      toast.error(messageFromError(error, '出所mappingを保存できませんでした'));
+    },
+  });
   const selectedSignalCandidates = useMemo(() => {
     if (!selectedCommunicationEventId || !signalCandidates) return [];
     return signalCandidates.items.filter(
@@ -997,6 +1142,23 @@ export function InboundCommunicationsContent() {
     event.preventDefault();
     if (!intakeForm.rawText.trim() || !orgId || intakeMutation.isPending) return;
     intakeMutation.mutate(intakeForm);
+  };
+
+  const handleSourceMappingSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedCommunicationEventId || !orgId || sourceMappingMutation.isPending) return;
+    const blocker = sourceMappingSubmitBlocker({
+      form: sourceMappingForm,
+      rawDetailIncluded: detailQuery.data?.meta.raw_text_included === true,
+    });
+    if (blocker) {
+      toast.error(blocker);
+      return;
+    }
+    sourceMappingMutation.mutate({
+      eventId: selectedCommunicationEventId,
+      form: sourceMappingForm,
+    });
   };
 
   const updateStockApplyForm = (signalId: string, patch: Partial<StockApplyFormState>) => {
@@ -1290,6 +1452,7 @@ export function InboundCommunicationsContent() {
                         setChannel(filter.value);
                         setSelectedId(null);
                         setDetailRequestedEventId(null);
+                        setSourceMappingForm(EMPTY_SOURCE_MAPPING_FORM);
                       }}
                     >
                       {filter.label}
@@ -1310,6 +1473,7 @@ export function InboundCommunicationsContent() {
                         setPriority(filter.value);
                         setSelectedId(null);
                         setDetailRequestedEventId(null);
+                        setSourceMappingForm(EMPTY_SOURCE_MAPPING_FORM);
                       }}
                     >
                       {filter.label}
@@ -1330,6 +1494,7 @@ export function InboundCommunicationsContent() {
                         setStatus(filter.value);
                         setSelectedId(null);
                         setDetailRequestedEventId(null);
+                        setSourceMappingForm(EMPTY_SOURCE_MAPPING_FORM);
                       }}
                     >
                       {filter.label}
@@ -1358,6 +1523,7 @@ export function InboundCommunicationsContent() {
                         onClick={() => {
                           setSelectedId(item.id);
                           setDetailRequestedEventId(null);
+                          setSourceMappingForm(EMPTY_SOURCE_MAPPING_FORM);
                         }}
                         className={cn(
                           'w-full rounded-lg border px-4 py-3 text-left transition-colors',
@@ -1563,6 +1729,259 @@ export function InboundCommunicationsContent() {
                             {detailQuery.data.data.raw_text}
                           </pre>
                         </div>
+                        {detailQuery.data.meta.raw_text_included ? (
+                          <form
+                            className="space-y-3 rounded-md border border-border bg-background p-3"
+                            data-testid="inbound-source-mapping-panel"
+                            onSubmit={handleSourceMappingSubmit}
+                          >
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                              <div className="space-y-1">
+                                <h4 className="text-sm font-semibold text-foreground">
+                                  出所mapping
+                                </h4>
+                                <p className="text-xs leading-5 text-muted-foreground">
+                                  患者/ケース、confidence、review status
+                                  を保存します。電話/FAX/メールの連絡先 key は API
+                                  が受信イベントから導出し、payload には送信しません。
+                                </p>
+                              </div>
+                              <StateBadge role="confirm">監査後操作</StateBadge>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="min-h-[40px]"
+                                onClick={() =>
+                                  setSourceMappingForm((current) => ({
+                                    ...current,
+                                    patientId:
+                                      detailQuery.data.data.patient_id ?? current.patientId,
+                                    caseId: detailQuery.data.data.case_id ?? current.caseId,
+                                    externalPatientLabel:
+                                      selectedItem.patient_name ?? current.externalPatientLabel,
+                                    externalContactName:
+                                      detailQuery.data.data.sender_name ??
+                                      current.externalContactName,
+                                    externalContactRole:
+                                      detailQuery.data.data.sender_role !== 'unknown'
+                                        ? detailQuery.data.data.sender_role
+                                        : current.externalContactRole,
+                                    externalOrganizationName:
+                                      detailQuery.data.data.sender_organization_name ??
+                                      current.externalOrganizationName,
+                                  }))
+                                }
+                              >
+                                詳細から候補を入力
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="min-h-[40px]"
+                                onClick={() => setSourceMappingForm(EMPTY_SOURCE_MAPPING_FORM)}
+                              >
+                                クリア
+                              </Button>
+                            </div>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              <label className="grid gap-1 text-xs">
+                                <span className="font-medium text-foreground">mapping患者ID</span>
+                                <Input
+                                  value={sourceMappingForm.patientId}
+                                  onChange={(event) =>
+                                    setSourceMappingForm((current) => ({
+                                      ...current,
+                                      patientId: event.target.value,
+                                    }))
+                                  }
+                                  className="min-h-[44px]"
+                                  placeholder="patient_id"
+                                  autoComplete="off"
+                                />
+                              </label>
+                              <label className="grid gap-1 text-xs">
+                                <span className="font-medium text-foreground">mappingケースID</span>
+                                <Input
+                                  value={sourceMappingForm.caseId}
+                                  onChange={(event) =>
+                                    setSourceMappingForm((current) => ({
+                                      ...current,
+                                      caseId: event.target.value,
+                                    }))
+                                  }
+                                  className="min-h-[44px]"
+                                  placeholder="case_id"
+                                  autoComplete="off"
+                                />
+                              </label>
+                            </div>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              <label className="grid gap-1 text-xs">
+                                <span className="font-medium text-foreground">外部患者ラベル</span>
+                                <Input
+                                  value={sourceMappingForm.externalPatientLabel}
+                                  onChange={(event) =>
+                                    setSourceMappingForm((current) => ({
+                                      ...current,
+                                      externalPatientLabel: event.target.value,
+                                    }))
+                                  }
+                                  className="min-h-[44px]"
+                                  placeholder="外部側の表示名"
+                                  autoComplete="off"
+                                />
+                              </label>
+                              <label className="grid gap-1 text-xs">
+                                <span className="font-medium text-foreground">MCS thread key</span>
+                                <Input
+                                  value={sourceMappingForm.externalThreadId}
+                                  onChange={(event) =>
+                                    setSourceMappingForm((current) => ({
+                                      ...current,
+                                      externalThreadId: event.target.value,
+                                    }))
+                                  }
+                                  className="min-h-[44px]"
+                                  placeholder="eventにない場合は要レビュー"
+                                  autoComplete="off"
+                                />
+                              </label>
+                            </div>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              <label className="grid gap-1 text-xs">
+                                <span className="font-medium text-foreground">外部room ID</span>
+                                <Input
+                                  value={sourceMappingForm.externalRoomId}
+                                  onChange={(event) =>
+                                    setSourceMappingForm((current) => ({
+                                      ...current,
+                                      externalRoomId: event.target.value,
+                                    }))
+                                  }
+                                  className="min-h-[44px]"
+                                  placeholder="active では保存不可"
+                                  autoComplete="off"
+                                />
+                              </label>
+                              <label className="grid gap-1 text-xs">
+                                <span className="font-medium text-foreground">外部連絡者名</span>
+                                <Input
+                                  value={sourceMappingForm.externalContactName}
+                                  onChange={(event) =>
+                                    setSourceMappingForm((current) => ({
+                                      ...current,
+                                      externalContactName: event.target.value,
+                                    }))
+                                  }
+                                  className="min-h-[44px]"
+                                  placeholder="氏名"
+                                  autoComplete="off"
+                                />
+                              </label>
+                            </div>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              <label className="grid gap-1 text-xs">
+                                <span className="font-medium text-foreground">外部職種</span>
+                                <Input
+                                  value={sourceMappingForm.externalContactRole}
+                                  onChange={(event) =>
+                                    setSourceMappingForm((current) => ({
+                                      ...current,
+                                      externalContactRole: event.target.value,
+                                    }))
+                                  }
+                                  className="min-h-[44px]"
+                                  placeholder="nurse / care_manager など"
+                                  autoComplete="off"
+                                />
+                              </label>
+                              <label className="grid gap-1 text-xs">
+                                <span className="font-medium text-foreground">外部所属</span>
+                                <Input
+                                  value={sourceMappingForm.externalOrganizationName}
+                                  onChange={(event) =>
+                                    setSourceMappingForm((current) => ({
+                                      ...current,
+                                      externalOrganizationName: event.target.value,
+                                    }))
+                                  }
+                                  className="min-h-[44px]"
+                                  placeholder="事業所・施設"
+                                  autoComplete="off"
+                                />
+                              </label>
+                            </div>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              <label className="grid gap-1 text-xs">
+                                <span className="font-medium text-foreground">confidence</span>
+                                <select
+                                  value={sourceMappingForm.confidence}
+                                  onChange={(event) =>
+                                    setSourceMappingForm((current) => ({
+                                      ...current,
+                                      confidence: event.target
+                                        .value as InboundSourceMappingConfidence,
+                                    }))
+                                  }
+                                  className="min-h-[44px] rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                                >
+                                  {SOURCE_MAPPING_CONFIDENCES.map((item) => (
+                                    <option key={item.value} value={item.value}>
+                                      {item.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label className="grid gap-1 text-xs">
+                                <span className="font-medium text-foreground">review status</span>
+                                <select
+                                  value={sourceMappingForm.mappingStatus}
+                                  onChange={(event) =>
+                                    setSourceMappingForm((current) => ({
+                                      ...current,
+                                      mappingStatus: event.target
+                                        .value as InboundSourceMappingStatus,
+                                    }))
+                                  }
+                                  className="min-h-[44px] rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                                >
+                                  {SOURCE_MAPPING_STATUSES.map((item) => (
+                                    <option key={item.value} value={item.value}>
+                                      {item.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                            </div>
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                              <p className="text-xs leading-5 text-muted-foreground">
+                                {sourceMappingSubmitBlocker({
+                                  form: sourceMappingForm,
+                                  rawDetailIncluded: detailQuery.data.meta.raw_text_included,
+                                }) ??
+                                  '保存しても受信イベントの患者/ケースは変更しません。raw_text、sender_contact、source_url は送信しません。'}
+                              </p>
+                              <Button
+                                type="submit"
+                                size="sm"
+                                className="min-h-[44px]"
+                                disabled={
+                                  sourceMappingMutation.isPending ||
+                                  sourceMappingSubmitBlocker({
+                                    form: sourceMappingForm,
+                                    rawDetailIncluded: detailQuery.data.meta.raw_text_included,
+                                  }) !== null
+                                }
+                              >
+                                {sourceMappingMutation.isPending ? '保存中' : '出所mappingを保存'}
+                              </Button>
+                            </div>
+                          </form>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>

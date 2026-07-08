@@ -23071,3 +23071,118 @@ status` no PR). Browser session `inbound-stock-selector` failed with
 - next action:
   Commit and push this ledger update, then continue to the next highest-value
   non-human-gated item in `Plans.md`.
+
+## 2026-07-08 INBOUND-003 source mapping route/UI
+
+- current task:
+  Continue the highest-value non-human-gated inbound residual by implementing
+  `INBOUND-003-SOURCE-MAPPING-UI` as a new-only source mapping route and
+  audited-detail-gated UI panel. Do not add compatibility aliases, do not
+  mutate `InboundCommunicationEvent.patient_id` / `case_id` in this slice, and
+  do not send raw text, sender contact, source URL, or source-system input from
+  the client.
+- files inspected:
+  `git status --short --untracked-files=all`, `Plans.md`,
+  `ops/refactor/STATE.md`, `.agents/skills/oracle-consult/SKILL.md`,
+  `/Users/yusuke/.codex/skills/.system/imagegen/SKILL.md`,
+  `docs/ui-ux-design-guidelines.md`,
+  `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`,
+  `prisma/schema/communication.prisma`, `prisma/rls-policies.sql`,
+  `src/app/api/communications/inbound/route.ts`,
+  `src/app/api/communications/inbound/route.test.ts`,
+  `src/app/api/communications/inbound/[id]/detail/route.ts`,
+  `src/app/api/communications/inbound/[id]/detail/route.test.ts`,
+  `src/server/services/communication-request-access.ts`,
+  `src/server/services/patient-access.ts`, `src/lib/api/response.ts`,
+  `src/lib/api/route-catalog.ts`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx`, and
+  `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`.
+- files changed:
+  `Plans.md`, `ops/refactor/STATE.md`,
+  `src/app/api/communications/inbound/[id]/source-mapping/route.ts`,
+  `src/app/api/communications/inbound/[id]/source-mapping/route.test.ts`,
+  `src/lib/api/route-catalog.ts`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx`, and
+  `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`.
+- oracle:
+  Required because this slice touches PHI source mapping, tenant/assignment
+  boundaries, and patient/case linkage. Oracle Browser consult
+  `inbound-source-mapping-v2` completed with GPT-5.5 Pro. GitHub context was
+  included (`https://github.com/yusuketakuma/careviax.git`, branch `main`,
+  commit `bf5805ce98c0dd9f501c3c32fa091d852bde6e39`, no PR, tracked tree clean
+  at consult time). Oracle reported GitHub access succeeded and returned
+  conditional GO for option A: create `InboundSourceMapping` only, never mutate
+  the event patient/case in this slice, derive `source_system` from the event,
+  require active mappings to be exact/manual and server-key-backed, verify event
+  assignment visibility plus target patient/case existence/access, reject
+  conflicts, keep response minimal, and gate UI behind audited detail. Adopted
+  the advice.
+- imagegen:
+  Used built-in `image_gen` with a PHI/secret-free prompt for a compact PH-OS
+  source mapping review panel reference. Preview-only asset:
+  `/Users/yusuke/.codex/generated_images/019f4092-692b-7733-bc51-3fa9d1686c41/ig_0a3de0cd4616e287016a4e4e7d9de08191b82ff0ceb17ee981.png`.
+  No generated asset was copied into the repo.
+- implementation:
+  Added `POST /api/communications/inbound/:id/source-mapping` with a strict
+  snake_case body: `patient_id`, optional `case_id`, optional external labels,
+  `confidence`, and `mapping_status`. The route rejects unknown/legacy fields
+  such as `source_system`, `raw_text`, `sender_contact`, and `source_url`; reads
+  the assignment-visible inbound event; derives `source_system` from
+  `event.source_channel`; derives a stable source key from event
+  `external_thread_id`, MCS `external_url`, or phone/fax/email
+  `sender_contact`; verifies target patient/case existence and assignment via
+  `canAccessCaseScopedPatientResource`; rejects event patient/case mismatch;
+  rejects active mappings without exact/manual confidence and without a
+  server-derived source key; rejects active external-room mappings; and rejects
+  active/needs_review duplicate source keys. Response DTO is limited to mapping
+  id, inbound event id, patient/case, source system, mapping status, confidence,
+  created time, and reviewed time.
+  The `/communications/inbound` review panel now shows a source mapping form
+  only after audited raw detail is opened. The prefill button copies only
+  patient/case and sender name/role/org labels from the detail response. The
+  mutation sends only the new source-mapping snake_case payload and does not
+  optimistically rewrite inbox patient display.
+- bugs found:
+  The `InboundSourceMapping` schema/RLS existed, but there was no safe route or
+  operator UI to populate it. Patient-unresolved inbound events therefore could
+  not be reviewed into a durable source mapping without either manual DB work
+  or an unsafe direct event mutation.
+- security risks reduced:
+  The source mapping write path now fails closed for old aliases and raw/source
+  fields, preserves no-store response headers, verifies inbound event visibility
+  and target patient/case access before create, rejects mismatched already-linked
+  events, avoids event patient/case mutation, and keeps raw text/contact/source
+  URL out of mapping request and response payloads.
+- performance issues improved:
+  No broad list read or extra eager detail fetch was added. The form appears
+  only on the already explicit audited-detail path, and the POST performs
+  bounded single-record checks plus one conflict lookup before create.
+- validation commands:
+  `pnpm exec prettier --write 'src/app/api/communications/inbound/[id]/source-mapping/route.ts' 'src/app/api/communications/inbound/[id]/source-mapping/route.test.ts' 'src/app/(dashboard)/communications/inbound/inbound-content.tsx' 'src/app/(dashboard)/communications/inbound/inbound-content.test.tsx' src/lib/api/route-catalog.ts`;
+  `pnpm vitest run 'src/app/api/communications/inbound/[id]/source-mapping/route.test.ts' 'src/app/(dashboard)/communications/inbound/inbound-content.test.tsx' --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint 'src/app/api/communications/inbound/[id]/source-mapping/route.ts' 'src/app/api/communications/inbound/[id]/source-mapping/route.test.ts' 'src/app/(dashboard)/communications/inbound/inbound-content.tsx' 'src/app/(dashboard)/communications/inbound/inbound-content.test.tsx' src/lib/api/route-catalog.ts`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `git diff --check`;
+  `pnpm exec prettier --write Plans.md ops/refactor/STATE.md`;
+  `pnpm plans:active:check`;
+  `pnpm exec prettier --check 'src/app/api/communications/inbound/[id]/source-mapping/route.ts' 'src/app/api/communications/inbound/[id]/source-mapping/route.test.ts' 'src/app/(dashboard)/communications/inbound/inbound-content.tsx' 'src/app/(dashboard)/communications/inbound/inbound-content.test.tsx' src/lib/api/route-catalog.ts Plans.md ops/refactor/STATE.md`;
+  `git diff --check -- 'src/app/api/communications/inbound/[id]/source-mapping/route.ts' 'src/app/api/communications/inbound/[id]/source-mapping/route.test.ts' 'src/app/(dashboard)/communications/inbound/inbound-content.tsx' 'src/app/(dashboard)/communications/inbound/inbound-content.test.tsx' src/lib/api/route-catalog.ts Plans.md ops/refactor/STATE.md`.
+- validation results:
+  Focused source mapping route + inbound UI Vitest passed 2 files / 24 tests.
+  Scoped ESLint passed. Full typecheck passed after `next typegen`. Initial
+  `git diff --check` passed. Plans active board check passed. Final scoped
+  Prettier check passed. Final targeted diff-check passed for owned tracked
+  files.
+- commit:
+  Pending. Record the implementation commit hash after the scoped commit.
+- remaining work:
+  `INBOUND-002-REVIEW-DETAIL` remains partial for VisitBrief/Schedule/Report/
+  Share downstream integration and patient-unresolved source risk surfacing.
+  `STOCK-001-VISIT-CONTEXT-APPLY` and DB integration remain human gates. No
+  migration, source mapping event mutation, MedicationStock ledger write,
+  deployment, production data mutation, or push was performed in the
+  implementation edit step.
+- next action:
+  Run final Plans/format/diff checks, commit the owned slice, record the commit
+  hash in this ledger, then push to `origin/main` and continue the next
+  non-human-gated Plans item.
