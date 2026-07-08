@@ -24312,6 +24312,87 @@ visit_request/unknown`, `action_status='not_linked'`, and
   then select the next safe non-human-gated `API-CONTRACT-001` slice from the
   remaining allowlist.
 
+## 2026-07-09 - API-CONTRACT-001T dashboard monthly-stats envelope cleanup
+
+- current task:
+  Continue `API-CONTRACT-001` by migrating `GET /api/dashboard/monthly-stats`
+  to the new `data` envelope only. Compatibility with legacy root `month`,
+  `summary`, and `patient_stats` fields was intentionally not kept.
+- files inspected:
+  `git status --short --branch --untracked-files=all`; `Plans.md`;
+  `ops/refactor/STATE.md`; `tools/api-response-shape-allowlist.json`;
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`
+  (inspected earlier in this API contract run);
+  `src/app/api/dashboard/monthly-stats/route.ts`;
+  `src/app/api/dashboard/monthly-stats/route.test.ts`.
+- files changed:
+  `Plans.md`; `tools/api-response-shape-allowlist.json`;
+  `src/app/api/dashboard/monthly-stats/route.ts`;
+  `src/app/api/dashboard/monthly-stats/route.test.ts`;
+  `ops/refactor/STATE.md`.
+- advisory gate:
+  Oracle was consulted because the route returns dashboard-authorized patient
+  monthly stats. Oracle returned Go, reported GitHub access was available, and
+  advised: change only the success body to
+  `success({ data: { month, summary, patient_stats } })`; remove the allowlist
+  entry; update tests to `payload.data`; preserve `requireAuthContext`,
+  `runWithRequestAuthContext`, org scoping, `groupBy`, `findMany`, selected
+  fields, JST month range, `withSensitiveNoStore`, `withRoutePerformance`,
+  logging, and error handling; do not add fallback readers or dual shape.
+- bugs found:
+  `GET /api/dashboard/monthly-stats` still returned success payload fields at
+  the root, and route tests still asserted the legacy root shape.
+- bugs fixed:
+  Successful monthly stats responses now return `{ data: { month, summary,
+patient_stats } }`. Tests assert `data` and verify root `month`, `summary`,
+  and `patient_stats` are absent.
+- security risks found:
+  No auth, authorization, tenant isolation, PHI selection, no-store behavior,
+  logging, validation, or query shape needed changes. Patient names remain
+  existing dashboard-authorized DTO fields, and insurance numbers remain
+  selected only for classification and are not added to the response.
+- security risks reduced:
+  Removed one legacy PHI-bearing dashboard success shape without adding
+  compatibility fallbacks. Success payload is now grouped under `data`, while
+  existing no-store and error leak protections remain in place.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; grouping, patient lookup, selected fields, and sort behavior are
+  unchanged.
+- UI/UX note:
+  No visual UI/UX change. This was API contract cleanup only, so image
+  generation was not applicable.
+- validation commands:
+  `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/dashboard/monthly-stats/route.ts src/app/api/dashboard/monthly-stats/route.test.ts`;
+  `pnpm exec vitest run src/app/api/dashboard/monthly-stats/route.test.ts --reporter=dot --testTimeout=30000`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint --max-warnings=0 src/app/api/dashboard/monthly-stats/route.ts src/app/api/dashboard/monthly-stats/route.test.ts`;
+  `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/dashboard/monthly-stats/route.ts src/app/api/dashboard/monthly-stats/route.test.ts`;
+  `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/dashboard/monthly-stats/route.ts src/app/api/dashboard/monthly-stats/route.test.ts`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+- validation results:
+  Prettier write/check passed. Focused Vitest passed 1 file / 10 tests.
+  `api-response-shape:check` passed with 192 allowlisted violations and 0 new
+  violations. `plans:active:check` passed. Focused ESLint passed with
+  `--max-warnings=0`. Scoped diff check passed. Full typecheck passed,
+  including Next route type generation, app TypeScript, and service worker
+  TypeScript.
+- commit:
+  Implementation, tests, allowlist, and Plans update committed as
+  `1563dba305d70982c2e09145782d2c35dcfcf260`
+  (`fix(api): envelope dashboard monthly stats`) and pushed to `origin/main`.
+- remaining work:
+  `API-CONTRACT-001` remains Partial. The allowlist now has 192 expected legacy
+  response-shape violations. Continue migrating real route shapes without
+  compatibility fallbacks. Higher-risk auth/tenant/PII/medical/dashboard
+  surfaces should continue to use Oracle before implementation/finalization.
+- next action:
+  Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
+  then select the next safe `API-CONTRACT-001` slice from the remaining
+  allowlist.
+
 ## 2026-07-09 - API-CONTRACT-001R drug-alert-rules envelope cleanup
 
 - current task:
