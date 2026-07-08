@@ -29,6 +29,7 @@ import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { messageFromError } from '@/lib/utils/error-message';
 import { cn } from '@/lib/utils';
+import type { PatientMedicationStockSummaryResponse } from '@/types/medication-stock';
 import { toast } from 'sonner';
 
 type InboundInboxItem = {
@@ -105,6 +106,59 @@ type InboundSignalReviewResponse = {
     action_status: string;
     reviewed_at: string | null;
     review_task_closure_count?: number;
+  };
+  meta: {
+    generated_at: string;
+  };
+};
+
+type StockApplyObservation =
+  | {
+      kind: 'observed_absolute';
+      quantity: number;
+      unit: string;
+    }
+  | {
+      kind: 'no_stock_observed';
+      unit: string;
+    }
+  | {
+      kind: 'usage_delta';
+      used_quantity: number;
+      unit: string;
+    }
+  | {
+      kind: 'usage_frequency';
+      usage_quantity: number;
+      usage_period_days: number;
+      unit: string;
+    };
+
+type StockApplyMutationInput = {
+  signalId: string;
+  targetStockItemId: string;
+  idempotencyKey: string;
+  observation: StockApplyObservation;
+};
+
+type StockApplyFormState = {
+  targetStockItemId: string;
+  quantity: string;
+  usagePeriodDays: string;
+  unit: string;
+};
+
+type InboundStockApplyResponse = {
+  data: {
+    signal_id: string;
+    inbound_event_id: string;
+    stock_item_id: string;
+    stock_event_id: string;
+    external_observation_id: string | null;
+    review_status: string;
+    action_status: string;
+    review_task_closure_count: number;
+    idempotent_replay: boolean;
   };
   meta: {
     generated_at: string;
@@ -286,6 +340,12 @@ const EMPTY_MCS_FORM: McsFormState = {
   eventType: 'general_note',
   content: '',
 };
+const EMPTY_STOCK_APPLY_FORM: StockApplyFormState = {
+  targetStockItemId: '',
+  quantity: '',
+  usagePeriodDays: '',
+  unit: '',
+};
 
 const channelLabel: Record<string, string> = {
   phone: '電話',
@@ -337,6 +397,13 @@ const stockReviewPriorityLabel: Record<'low' | 'medium' | 'high', string> = {
   low: '優先度 低',
   medium: '優先度 中',
   high: '優先度 高',
+};
+
+const stockApplyKindLabel: Record<StockApplyObservation['kind'], string> = {
+  observed_absolute: '現在残数',
+  no_stock_observed: '在庫なし',
+  usage_delta: '使用量',
+  usage_frequency: '使用頻度',
 };
 
 function buildInboundInboxPath(filters: { channel: string; priority: string; status: string }) {
@@ -479,6 +546,103 @@ function stockObservationCondition(item: InboundSignalCandidateItem) {
   );
 }
 
+function stockApplyObservationKind(item: InboundSignalCandidateItem) {
+  switch (item.signal.type) {
+    case 'observed_quantity':
+      return 'observed_absolute' as const;
+    case 'out_of_stock_text':
+      return 'no_stock_observed' as const;
+    case 'usage_delta':
+      return 'usage_delta' as const;
+    case 'usage_frequency':
+      return 'usage_frequency' as const;
+    default:
+      return null;
+  }
+}
+
+function parseStockQuantity(value: string, allowZero: boolean) {
+  const normalized = value.trim();
+  if (!normalized) return null;
+  const quantity = Number(normalized);
+  if (!Number.isFinite(quantity)) return null;
+  if (allowZero ? quantity < 0 : quantity <= 0) return null;
+  return quantity;
+}
+
+function parseUsagePeriodDays(value: string) {
+  const normalized = value.trim();
+  if (!normalized) return null;
+  const days = Number(normalized);
+  if (!Number.isInteger(days) || days < 1 || days > 366) return null;
+  return days;
+}
+
+function buildStockApplyIdempotencyKey(input: {
+  signalId: string;
+  targetStockItemId: string;
+  observation: StockApplyObservation;
+}) {
+  return [
+    'inbound-stock-apply',
+    'v1',
+    input.signalId,
+    input.targetStockItemId,
+    input.observation.kind,
+    input.observation.unit,
+    'quantity' in input.observation ? input.observation.quantity : '',
+    'used_quantity' in input.observation ? input.observation.used_quantity : '',
+    'usage_quantity' in input.observation ? input.observation.usage_quantity : '',
+    'usage_period_days' in input.observation ? input.observation.usage_period_days : '',
+  ].join(':');
+}
+
+function buildStockApplyInput(args: {
+  item: InboundSignalCandidateItem;
+  form: StockApplyFormState;
+  defaultUnit: string;
+}) {
+  const kind = stockApplyObservationKind(args.item);
+  const targetStockItemId = args.form.targetStockItemId.trim();
+  const unit = (args.form.unit.trim() || args.defaultUnit.trim()).trim();
+
+  if (!kind || !targetStockItemId || !unit) return null;
+
+  let observation: StockApplyObservation | null = null;
+  if (kind === 'observed_absolute') {
+    const quantity = parseStockQuantity(args.form.quantity, true);
+    if (quantity === null) return null;
+    observation = { kind, quantity, unit };
+  } else if (kind === 'usage_delta') {
+    const usedQuantity = parseStockQuantity(args.form.quantity, false);
+    if (usedQuantity === null) return null;
+    observation = { kind, used_quantity: usedQuantity, unit };
+  } else if (kind === 'usage_frequency') {
+    const usageQuantity = parseStockQuantity(args.form.quantity, false);
+    const usagePeriodDays = parseUsagePeriodDays(args.form.usagePeriodDays);
+    if (usageQuantity === null || usagePeriodDays === null) return null;
+    observation = {
+      kind,
+      usage_quantity: usageQuantity,
+      usage_period_days: usagePeriodDays,
+      unit,
+    };
+  } else {
+    observation = { kind, unit };
+  }
+
+  return {
+    signalId: args.item.signal_id,
+    targetStockItemId,
+    observation,
+    idempotencyKey: buildStockApplyIdempotencyKey({
+      signalId: args.item.signal_id,
+      targetStockItemId,
+      observation,
+    }),
+  };
+}
+
 function signalLifecycleSteps(item: InboundSignalCandidateItem) {
   const reviewBadge = signalReviewStatusBadge(item.signal.review_status);
   const actionBadge = signalActionStatusBadge(item.signal.action_status);
@@ -588,6 +752,7 @@ export function InboundCommunicationsContent() {
   const [detailRequestedEventId, setDetailRequestedEventId] = useState<string | null>(null);
   const [phoneForm, setPhoneForm] = useState<PhoneFormState>(EMPTY_PHONE_FORM);
   const [mcsForm, setMcsForm] = useState<McsFormState>(EMPTY_MCS_FORM);
+  const [stockApplyForms, setStockApplyForms] = useState<Record<string, StockApplyFormState>>({});
 
   const queryPath = buildInboundInboxPath({ channel, priority, status });
   const signalQueryPath = buildInboundSignalPath({ channel });
@@ -780,6 +945,73 @@ export function InboundCommunicationsContent() {
     enabled: !!orgId && !!detailQueryPath && selectedDetailRequested,
     retry: false,
   });
+  const stockSummaryPatientId =
+    selectedDetailRequested && detailQuery.data?.data.patient_id
+      ? detailQuery.data.data.patient_id
+      : null;
+  const stockSummaryQuery = useQuery({
+    queryKey: ['patient-medication-stock-summary', orgId, stockSummaryPatientId],
+    queryFn: async () => {
+      if (!stockSummaryPatientId) {
+        throw new Error('患者が紐づいていません');
+      }
+      const response = await fetch(
+        `/api/patients/${encodeURIComponent(
+          stockSummaryPatientId,
+        )}/medication-stock?item_limit=20&event_limit=0`,
+        {
+          headers: buildOrgHeaders(orgId),
+        },
+      );
+      return readApiJson<PatientMedicationStockSummaryResponse>(response, {
+        fallbackMessage: '患者の残数管理候補を取得できませんでした',
+      });
+    },
+    enabled: !!orgId && !!stockSummaryPatientId,
+    retry: false,
+  });
+  const stockApplyMutation = useMutation({
+    mutationFn: async (input: StockApplyMutationInput) => {
+      const response = await fetch(`/api/communications/inbound/signals/${input.signalId}`, {
+        method: 'PATCH',
+        headers: buildOrgJsonHeaders(orgId),
+        body: JSON.stringify({
+          action: 'apply_to_medication_stock',
+          target_stock_item_id: input.targetStockItemId,
+          idempotency_key: input.idempotencyKey,
+          observation: input.observation,
+        }),
+      });
+      return readApiJson<InboundStockApplyResponse>(response, {
+        fallbackMessage: '残数台帳へ反映できませんでした',
+      });
+    },
+    onSuccess: async (response) => {
+      toast.success(
+        response.data.idempotent_replay
+          ? '残数台帳への反映は既に処理済みです'
+          : '残数台帳へ反映しました',
+      );
+      setStockApplyForms((current) => {
+        const next = { ...current };
+        delete next[response.data.signal_id];
+        return next;
+      });
+      const patientId = detailQuery.data?.data.patient_id;
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['communications-inbound', orgId] }),
+        queryClient.invalidateQueries({ queryKey: ['communications-inbound-signals', orgId] }),
+        patientId
+          ? queryClient.invalidateQueries({
+              queryKey: ['patient-medication-stock-summary', orgId, patientId],
+            })
+          : Promise.resolve(),
+      ]);
+    },
+    onError: (error) => {
+      toast.error(messageFromError(error, '残数台帳へ反映できませんでした'));
+    },
+  });
   const selectedSignalCandidates = useMemo(() => {
     if (!selectedCommunicationEventId || !signalCandidates) return [];
     return signalCandidates.items.filter(
@@ -798,6 +1030,17 @@ export function InboundCommunicationsContent() {
     event.preventDefault();
     if (!mcsForm.content.trim() || !orgId || mcsMutation.isPending) return;
     mcsMutation.mutate(mcsForm);
+  };
+
+  const updateStockApplyForm = (signalId: string, patch: Partial<StockApplyFormState>) => {
+    setStockApplyForms((current) => ({
+      ...current,
+      [signalId]: {
+        ...EMPTY_STOCK_APPLY_FORM,
+        ...(current[signalId] ?? {}),
+        ...patch,
+      },
+    }));
   };
 
   return (
@@ -1360,6 +1603,43 @@ export function InboundCommunicationsContent() {
                           </div>
                         </dl>
                         <div className="rounded-md border border-border bg-muted/20 p-3">
+                          <p className="mb-2 text-xs font-semibold text-foreground">出所詳細</p>
+                          <dl className="grid gap-2 text-xs sm:grid-cols-2">
+                            <div>
+                              <dt className="text-muted-foreground">受信チャネル / 種別</dt>
+                              <dd className="font-medium text-foreground">
+                                {channelLabel[detailQuery.data.data.source_channel] ??
+                                  detailQuery.data.data.source_channel}{' '}
+                                / {detailQuery.data.data.event_type}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt className="text-muted-foreground">処理状態</dt>
+                              <dd className="font-medium text-foreground">
+                                {detailQuery.data.data.processing_status}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt className="text-muted-foreground">発生日時</dt>
+                              <dd className="font-medium text-foreground">
+                                {formatDateTime(detailQuery.data.data.occurred_at)}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt className="text-muted-foreground">受信日時</dt>
+                              <dd className="font-medium text-foreground">
+                                {formatDateTime(detailQuery.data.data.received_at)}
+                              </dd>
+                            </div>
+                            <div className="sm:col-span-2">
+                              <dt className="text-muted-foreground">正規化要約</dt>
+                              <dd className="font-medium text-foreground">
+                                {detailQuery.data.data.normalized_summary ?? '未設定'}
+                              </dd>
+                            </div>
+                          </dl>
+                        </div>
+                        <div className="rounded-md border border-border bg-muted/20 p-3">
                           <p className="mb-2 text-xs font-medium text-muted-foreground">
                             原文（監査記録済み）
                           </p>
@@ -1395,6 +1675,24 @@ export function InboundCommunicationsContent() {
                           const actionBadge = signalActionStatusBadge(item.signal.action_status);
                           const lifecycleSteps = signalLifecycleSteps(item);
                           const stockConditions = medicationStockApplyConditions(item);
+                          const stockApplyForm =
+                            stockApplyForms[item.signal_id] ?? EMPTY_STOCK_APPLY_FORM;
+                          const stockItems = stockSummaryQuery.data?.data.items ?? [];
+                          const selectedStockItem =
+                            stockItems.find(
+                              (stockItem) => stockItem.id === stockApplyForm.targetStockItemId,
+                            ) ?? null;
+                          const stockApplyKind = stockApplyObservationKind(item);
+                          const defaultStockApplyUnit =
+                            stockApplyForm.unit ||
+                            selectedStockItem?.unit ||
+                            item.signal.unit ||
+                            '';
+                          const stockApplyInput = buildStockApplyInput({
+                            item,
+                            form: stockApplyForm,
+                            defaultUnit: defaultStockApplyUnit,
+                          });
                           const showStockApplyPolicy =
                             item.signal.domain === 'medication_stock' &&
                             item.signal.stock_review != null;
@@ -1545,16 +1843,196 @@ export function InboundCommunicationsContent() {
                                       })}
                                     </dl>
                                     <p className="rounded-md border border-dashed border-border bg-background px-3 py-2 text-xs leading-5 text-muted-foreground">
-                                      この画面では候補の確認、記録、却下、タスク化までを扱います。
                                       `target_stock_item_id` と観測値の明示入力が揃うまでは
-                                      `apply_to_medication_stock` を呼びません。
+                                      `apply_to_medication_stock`
+                                      を呼びません。原文確認が必要な場合は
+                                      監査付き詳細を開いてから反映先を選択します。
                                     </p>
                                   </div>
                                 ) : null}
                                 {showAcceptedPendingStockLink ? (
-                                  <p className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-2 text-xs leading-5 text-muted-foreground">
-                                    薬剤師レビューは完了しています。残数台帳への反映は、残数管理の明示操作で行います。
-                                  </p>
+                                  <div
+                                    className="space-y-3 rounded-md border border-border bg-muted/20 p-3"
+                                    data-testid={`stock-apply-selector-${item.signal_id}`}
+                                  >
+                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                      <div className="space-y-1">
+                                        <h5 className="text-xs font-semibold text-foreground">
+                                          残数台帳へ反映
+                                        </h5>
+                                        <p className="text-xs leading-5 text-muted-foreground">
+                                          対象薬剤と観測値を薬剤師が明示してから、既存の監査付き
+                                          apply API を呼びます。
+                                        </p>
+                                      </div>
+                                      <StateBadge role="confirm">明示操作</StateBadge>
+                                    </div>
+                                    {!selectedDetailRequested ? (
+                                      <p className="rounded-md border border-dashed border-border bg-background px-3 py-2 text-xs leading-5 text-muted-foreground">
+                                        原文・出所を監査付きで確認すると、反映先候補を取得できます。
+                                      </p>
+                                    ) : !stockSummaryPatientId ? (
+                                      <p className="rounded-md border border-dashed border-border bg-background px-3 py-2 text-xs leading-5 text-muted-foreground">
+                                        患者未紐づけのため、残数台帳へ反映できません。
+                                      </p>
+                                    ) : stockSummaryQuery.isLoading ? (
+                                      <div
+                                        role="status"
+                                        aria-label="残数管理候補を読み込み中"
+                                        aria-live="polite"
+                                        className="rounded-md border border-dashed border-border bg-background px-3 py-3"
+                                      >
+                                        <SkeletonRows rows={1} cols={2} status={false} />
+                                      </div>
+                                    ) : stockSummaryQuery.isError ? (
+                                      <ErrorState
+                                        variant="server"
+                                        size="inline"
+                                        title="残数管理候補を取得できません"
+                                        cause={messageFromError(
+                                          stockSummaryQuery.error,
+                                          '残数管理候補の取得に失敗しました',
+                                        )}
+                                        nextAction="権限、患者担当範囲、通信状態を確認して再試行してください。"
+                                        onRetry={() => void stockSummaryQuery.refetch()}
+                                        retryLabel="候補を再取得"
+                                        retryVariant="outline"
+                                        headingLevel={4}
+                                      />
+                                    ) : stockItems.length === 0 ? (
+                                      <p className="rounded-md border border-dashed border-border bg-background px-3 py-2 text-xs leading-5 text-muted-foreground">
+                                        この患者の残数管理対象薬剤が見つかりません。残数管理画面で対象薬剤を作成してから反映します。
+                                      </p>
+                                    ) : !stockApplyKind ? (
+                                      <p className="rounded-md border border-dashed border-border bg-background px-3 py-2 text-xs leading-5 text-muted-foreground">
+                                        この候補は数量/在庫なしとして安全に構造化できません。タスク化して薬剤師確認に回してください。
+                                      </p>
+                                    ) : (
+                                      <div className="space-y-3">
+                                        <label className="grid gap-1 text-xs">
+                                          <span className="font-medium text-foreground">
+                                            対象薬剤
+                                          </span>
+                                          <select
+                                            className="min-h-[44px] rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                                            value={stockApplyForm.targetStockItemId}
+                                            onChange={(event) =>
+                                              updateStockApplyForm(item.signal_id, {
+                                                targetStockItemId: event.target.value,
+                                              })
+                                            }
+                                          >
+                                            <option value="">選択してください</option>
+                                            {stockItems.map((stockItem) => (
+                                              <option key={stockItem.id} value={stockItem.id}>
+                                                {stockItem.display_name} / {stockItem.unit}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </label>
+                                        <div className="grid gap-2 sm:grid-cols-2">
+                                          <label className="grid gap-1 text-xs">
+                                            <span className="font-medium text-foreground">
+                                              観測種別
+                                            </span>
+                                            <Input
+                                              value={stockApplyKindLabel[stockApplyKind]}
+                                              readOnly
+                                              className="min-h-[44px]"
+                                            />
+                                          </label>
+                                          <label className="grid gap-1 text-xs">
+                                            <span className="font-medium text-foreground">
+                                              単位
+                                            </span>
+                                            <Input
+                                              value={defaultStockApplyUnit}
+                                              onChange={(event) =>
+                                                updateStockApplyForm(item.signal_id, {
+                                                  unit: event.target.value,
+                                                })
+                                              }
+                                              className="min-h-[44px]"
+                                              placeholder="錠、枚、包など"
+                                            />
+                                          </label>
+                                        </div>
+                                        {stockApplyKind === 'observed_absolute' ||
+                                        stockApplyKind === 'usage_delta' ||
+                                        stockApplyKind === 'usage_frequency' ? (
+                                          <div className="grid gap-2 sm:grid-cols-2">
+                                            <label className="grid gap-1 text-xs">
+                                              <span className="font-medium text-foreground">
+                                                {stockApplyKind === 'observed_absolute'
+                                                  ? '現在残数'
+                                                  : '使用量'}
+                                              </span>
+                                              <Input
+                                                type="number"
+                                                min={
+                                                  stockApplyKind === 'observed_absolute'
+                                                    ? '0'
+                                                    : '0.000001'
+                                                }
+                                                step="0.01"
+                                                value={stockApplyForm.quantity}
+                                                onChange={(event) =>
+                                                  updateStockApplyForm(item.signal_id, {
+                                                    quantity: event.target.value,
+                                                  })
+                                                }
+                                                className="min-h-[44px]"
+                                                placeholder="明示入力"
+                                              />
+                                            </label>
+                                            {stockApplyKind === 'usage_frequency' ? (
+                                              <label className="grid gap-1 text-xs">
+                                                <span className="font-medium text-foreground">
+                                                  使用期間（日）
+                                                </span>
+                                                <Input
+                                                  type="number"
+                                                  min="1"
+                                                  max="366"
+                                                  step="1"
+                                                  value={stockApplyForm.usagePeriodDays}
+                                                  onChange={(event) =>
+                                                    updateStockApplyForm(item.signal_id, {
+                                                      usagePeriodDays: event.target.value,
+                                                    })
+                                                  }
+                                                  className="min-h-[44px]"
+                                                  placeholder="例: 7"
+                                                />
+                                              </label>
+                                            ) : null}
+                                          </div>
+                                        ) : null}
+                                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                          <p className="text-xs leading-5 text-muted-foreground">
+                                            原文や送信者情報は送信しません。送信するのは signal、
+                                            target、観測値、idempotency key だけです。
+                                          </p>
+                                          <Button
+                                            type="button"
+                                            variant="default"
+                                            size="sm"
+                                            className="min-h-[44px]"
+                                            disabled={
+                                              stockApplyMutation.isPending || !stockApplyInput
+                                            }
+                                            onClick={() => {
+                                              if (stockApplyInput) {
+                                                stockApplyMutation.mutate(stockApplyInput);
+                                              }
+                                            }}
+                                          >
+                                            残数台帳へ反映
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
                                 ) : null}
                                 <div className="flex justify-end">
                                   <div className="flex flex-wrap justify-end gap-2">

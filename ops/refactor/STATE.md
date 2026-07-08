@@ -22763,3 +22763,103 @@ date`, and active statuses only, then pass that date key into snapshot recalcula
 - next action:
   Commit this ledger update, then continue to the next highest-value
   non-human-gated `Plans.md` item.
+
+## 2026-07-08 INBOUND-002 audited stock apply selector
+
+- current task:
+  Complete the non-legacy `INBOUND-002-REVIEW-DETAIL` residual slice for
+  `/communications/inbound`: add source detail layout and an actual
+  MedicationStock apply target selector without weakening raw detail, audit, or
+  ledger-write boundaries.
+- files inspected:
+  `git status --short --untracked-files=all`, `Plans.md`,
+  `ops/refactor/STATE.md`, `.agents/skills/oracle-consult/SKILL.md`,
+  `docs/ui-ux-design-guidelines.md`,
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+  `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`,
+  `src/app/api/communications/inbound/[id]/detail/route.ts`,
+  `src/app/api/communications/inbound/[id]/detail/route.test.ts`,
+  `src/app/api/communications/inbound/signals/[id]/route.ts`,
+  `src/app/api/communications/inbound/signals/[id]/route.test.ts`,
+  `src/app/api/patients/[id]/medication-stock/route.ts`,
+  `src/app/api/patients/[id]/medication-stock/route.test.ts`,
+  `src/types/medication-stock.ts`, and
+  `src/modules/pharmacy/medication-stock/application/apply-inbound-medication-stock-signal.ts`.
+- files changed:
+  `Plans.md`, `ops/refactor/STATE.md`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx`, and
+  `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`.
+- oracle:
+  Oracle consult was required because this slice touches PHI/raw detail and
+  MedicationStock apply UI. The consult could not be completed after bounded
+  attempts. `npx -y @steipete/oracle --help` succeeded and target GitHub
+  context was inspected (`origin` GitHub URL, branch `main`, commit
+  `985a7d91c4344bc7dc48222768f82201ec43d98e`, tracked tree clean, `gh pr
+status` no PR). Browser session `inbound-stock-selector` failed with
+  `chrome-disconnected` after a Node `setTypeOfService EINVAL` crash. Restart
+  session `inbound-stock-selector-2` failed with attachment upload timeout.
+  Reduced-file session `inbound-stock-selector-min` also failed with attachment
+  upload timeout. API engine preflight failed because `OPENAI_API_KEY` is
+  missing. Proceeded conservatively with no API/service/database changes, no
+  raw field expansion, existing audited routes only, and focused tests for the
+  main PHI/apply boundaries.
+- implementation:
+  The audited detail panel now includes a source detail layout for source
+  channel, event type, processing status, occurred/received timestamps, and
+  normalized summary while keeping raw text in the existing audited raw block.
+  Accepted/not-linked MedicationStock signals now show an apply selector only
+  behind the audited detail gate. The selector fetches
+  `/api/patients/:id/medication-stock?item_limit=20&event_limit=0` only from
+  the audited detail `patient_id`, lets the pharmacist choose a stock item,
+  requires explicit numeric input for `observed_quantity`, `usage_delta`, and
+  `usage_frequency`, and sends a minimal `apply_to_medication_stock` PATCH to
+  the existing signal route. The mutation payload contains only signal id,
+  `target_stock_item_id`, idempotency key, and structured observation. It does
+  not include raw text, sender, contact, attachment, or source URL values.
+- imagegen:
+  Omitted. This is a compact operational panel/control enhancement inside the
+  existing PH-OS review surface. It does not require visual reconstruction,
+  new page structure, brand direction, or a design reference; the UI guideline
+  was read and existing dense operational patterns were retained.
+- bugs found:
+  The UI had an already-implemented backend apply action but no safe operator
+  surface for providing the required `target_stock_item_id` and explicit
+  observation values. That left accepted inbound MedicationStock signals stuck
+  as reviewed-but-unlinked even when the existing route could apply them safely.
+- security risks reduced:
+  The apply path remains gated by audited detail, existing patient medication
+  stock PHI read audit, existing PATCH auth/org/assignment/idempotency service,
+  and UI tests that prove no apply button is shown before the audited gate and
+  no raw/sender/contact/source fields enter the mutation payload.
+- performance issues improved:
+  No broad list read was added. Stock candidates are fetched only after an
+  explicit audited detail action, with `item_limit=20` and `event_limit=0`;
+  normal inbox and signal lists do not fetch medication stock summaries.
+- validation commands:
+  `pnpm exec prettier --write 'src/app/(dashboard)/communications/inbound/inbound-content.tsx' 'src/app/(dashboard)/communications/inbound/inbound-content.test.tsx'`;
+  `pnpm exec vitest run 'src/app/(dashboard)/communications/inbound/inbound-content.test.tsx' --reporter=dot --testTimeout=30000`;
+  `pnpm exec vitest run 'src/app/(dashboard)/communications/inbound/inbound-content.test.tsx' 'src/app/api/communications/inbound/signals/[id]/route.test.ts' 'src/app/api/patients/[id]/medication-stock/route.test.ts' src/modules/pharmacy/medication-stock/application/apply-inbound-medication-stock-signal.test.ts --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint 'src/app/(dashboard)/communications/inbound/inbound-content.tsx' 'src/app/(dashboard)/communications/inbound/inbound-content.test.tsx'`;
+  `pnpm exec prettier --check 'src/app/(dashboard)/communications/inbound/inbound-content.tsx' 'src/app/(dashboard)/communications/inbound/inbound-content.test.tsx'`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `pnpm exec prettier --write Plans.md`;
+  `pnpm plans:active:check`.
+- validation results:
+  Focused inbound UI Vitest passed 1 file / 13 tests after the selector tests
+  were added. Focused UI/API/service regression passed 4 files / 42 tests with
+  only expected redacted error-path logs from route tests. Scoped ESLint passed.
+  Scoped Prettier check passed. Typecheck passed after `next typegen`. Plans
+  active board check passed.
+- remaining work:
+  `INBOUND-002-REVIEW-DETAIL` remains partial for FAX/email/manual ingestion,
+  source mapping UI, and VisitBrief/Schedule/Report/Share downstream
+  integration. `STOCK-001-VISIT-CONTEXT-APPLY` and DB integration remain human
+  gates. Oracle/GPT-5.5 Pro was unavailable for this slice, so future
+  high-risk changes should retry consultation before broadening beyond this UI
+  control layer.
+- next action:
+  Run final formatting/diff checks including `ops/refactor/STATE.md`, commit
+  this coherent inbound selector slice, push it, then continue to the next
+  highest-value non-human-gated item in `Plans.md`.

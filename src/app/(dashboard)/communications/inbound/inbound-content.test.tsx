@@ -195,6 +195,59 @@ function buildDetailData() {
   };
 }
 
+function buildMedicationStockData() {
+  return {
+    data: {
+      patient_id: 'patient_1',
+      summary: {
+        total_item_count: 1,
+        visible_item_count: 1,
+        active_item_count: 1,
+        urgent_count: 0,
+        shortage_expected_count: 0,
+        watch_count: 0,
+        unknown_risk_count: 0,
+        usage_unknown_count: 0,
+        equivalence_review_count: 0,
+        pending_external_observation_count: 0,
+        last_observed_at: null,
+      },
+      items: [
+        {
+          id: 'stock_item_1',
+          display_id: 'MS-001',
+          patient_id: 'patient_1',
+          case_id: 'case_1',
+          display_name: '経皮鎮痛貼付剤',
+          normalized_name: '経皮鎮痛貼付剤',
+          ingredient_name: null,
+          strength: null,
+          dosage_form: '貼付剤',
+          route: 'external',
+          unit: '枚',
+          source_type: 'manual',
+          medication_category: 'topical',
+          managing_party: 'pharmacy',
+          equivalence_review_status: 'not_required',
+          equivalence_confidence: null,
+          active: true,
+          snapshot: null,
+        },
+      ],
+      recent_events: [],
+    },
+    meta: {
+      generated_at: '2026-07-07T03:00:00.000Z',
+      item_limit: 20,
+      event_limit: 0,
+      visible_count: 1,
+      hidden_count: 0,
+      count_basis: 'limited_items',
+      partial_failures: [],
+    },
+  };
+}
+
 describe('InboundCommunicationsContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -213,6 +266,16 @@ describe('InboundCommunicationsContent', () => {
       if (options.queryKey[0] === 'communications-inbound-signals') {
         return {
           data: buildSignalData(),
+          isLoading: false,
+          isError: false,
+          isFetching: false,
+          refetch: vi.fn(),
+        };
+      }
+
+      if (options.queryKey[0] === 'patient-medication-stock-summary') {
+        return {
+          data: buildMedicationStockData(),
           isLoading: false,
           isError: false,
           isFetching: false,
@@ -289,6 +352,9 @@ describe('InboundCommunicationsContent', () => {
     expect(screen.getByText(/storageKey=secret/)).toBeTruthy();
     expect(screen.getByText('監査ID')).toBeTruthy();
     expect(screen.getByText('inbound_review:event_1')).toBeTruthy();
+    expect(screen.getByText('出所詳細')).toBeTruthy();
+    expect(screen.getByText('正規化要約')).toBeTruthy();
+    expect(screen.getByText('外用薬の残数確認')).toBeTruthy();
 
     const detailQueryCalls = useQueryMock.mock.calls.filter(
       ([options]) => options.queryKey[0] === 'communications-inbound-detail',
@@ -359,6 +425,170 @@ describe('InboundCommunicationsContent', () => {
     expect(reviewPanelText).not.toContain('target_stock_item_id:');
     expect(reviewPanelText).not.toContain('湿布は残り4枚です');
     expect(screen.queryByRole('button', { name: /台帳.*反映|残数.*反映/ })).toBeNull();
+  });
+
+  it('enables MedicationStock apply selector only after audited detail and explicit target quantity', async () => {
+    const signalData = buildSignalData();
+    signalData.data.items[0].signal.review_status = 'accepted';
+    signalData.data.items[0].signal.stock_review!.has_medication_identity = true;
+    const fetchMock = vi.fn(async (...args: [RequestInfo | URL, RequestInit?]) => {
+      const [input] = args;
+      const url = String(input);
+      if (url.includes('/medication-stock?item_limit=20&event_limit=0')) {
+        return new Response(JSON.stringify(buildMedicationStockData()), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+
+      return new Response(
+        JSON.stringify({
+          data: {
+            signal_id: 'signal_1',
+            inbound_event_id: 'event_1',
+            stock_item_id: 'stock_item_1',
+            stock_event_id: 'stock_event_1',
+            external_observation_id: 'external_observation_1',
+            review_status: 'accepted',
+            action_status: 'linked_to_stock_event',
+            review_task_closure_count: 0,
+            idempotent_replay: false,
+          },
+          meta: { generated_at: '2026-07-07T03:00:00.000Z' },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    useQueryMock.mockImplementation((options: { queryKey: unknown[] }) => {
+      if (options.queryKey[0] === 'communications-inbound-detail') {
+        return {
+          data: buildDetailData(),
+          isLoading: false,
+          isError: false,
+          isFetching: false,
+          refetch: vi.fn(),
+        };
+      }
+
+      if (options.queryKey[0] === 'communications-inbound-signals') {
+        return {
+          data: signalData,
+          isLoading: false,
+          isError: false,
+          isFetching: false,
+          refetch: vi.fn(),
+        };
+      }
+
+      if (options.queryKey[0] === 'patient-medication-stock-summary') {
+        return {
+          data: buildMedicationStockData(),
+          isLoading: false,
+          isError: false,
+          isFetching: false,
+          refetch: vi.fn(),
+        };
+      }
+
+      return {
+        data: buildInboxData(),
+        isLoading: false,
+        isError: false,
+        isFetching: false,
+        refetch: vi.fn(),
+      };
+    });
+
+    render(<InboundCommunicationsContent />);
+
+    const selectorBeforeDetail = within(screen.getByTestId('stock-apply-selector-signal_1'));
+    expect(selectorBeforeDetail.getByText(/原文・出所を監査付きで確認/)).toBeTruthy();
+    expect(selectorBeforeDetail.queryByRole('button', { name: '残数台帳へ反映' })).toBeNull();
+    const stockQueryBeforeDetail = useQueryMock.mock.calls
+      .filter(([options]) => options.queryKey[0] === 'patient-medication-stock-summary')
+      .at(-1)?.[0] as { enabled: boolean };
+    expect(stockQueryBeforeDetail.enabled).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: '原文を監査付きで表示' }));
+
+    const selector = within(screen.getByTestId('stock-apply-selector-signal_1'));
+    expect(selector.getByText('対象薬剤')).toBeTruthy();
+    expect(selector.getByDisplayValue('現在残数')).toBeTruthy();
+    const stockQueryAfterDetail = useQueryMock.mock.calls
+      .filter(([options]) => options.queryKey[0] === 'patient-medication-stock-summary')
+      .at(-1)?.[0] as {
+      enabled: boolean;
+      queryFn: () => Promise<unknown>;
+    };
+    expect(stockQueryAfterDetail.enabled).toBe(true);
+
+    fireEvent.change(selector.getByRole('combobox'), {
+      target: { value: 'stock_item_1' },
+    });
+    fireEvent.change(selector.getByPlaceholderText('明示入力'), {
+      target: { value: '4' },
+    });
+
+    const applyButton = selector.getByRole('button', { name: '残数台帳へ反映' });
+    expect((applyButton as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(applyButton);
+
+    expect(mutateMock).toHaveBeenCalledWith({
+      signalId: 'signal_1',
+      targetStockItemId: 'stock_item_1',
+      idempotencyKey: 'inbound-stock-apply:v1:signal_1:stock_item_1:observed_absolute:枚:4:::',
+      observation: {
+        kind: 'observed_absolute',
+        quantity: 4,
+        unit: '枚',
+      },
+    });
+
+    const mutationOptions = useMutationMock.mock.calls.find(([options]) =>
+      String(options.mutationFn).includes('apply_to_medication_stock'),
+    )?.[0] as {
+      mutationFn: (input: {
+        signalId: string;
+        targetStockItemId: string;
+        idempotencyKey: string;
+        observation: { kind: 'observed_absolute'; quantity: number; unit: string };
+      }) => Promise<unknown>;
+    };
+    await mutationOptions.mutationFn({
+      signalId: 'signal_1',
+      targetStockItemId: 'stock_item_1',
+      idempotencyKey: 'inbound-stock-apply:v1:signal_1:stock_item_1:observed_absolute:枚:4:::',
+      observation: { kind: 'observed_absolute', quantity: 4, unit: '枚' },
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/communications/inbound/signals/signal_1',
+      expect.objectContaining({
+        method: 'PATCH',
+        headers: expect.objectContaining({ 'x-org-id': 'org_1' }),
+      }),
+    );
+    const requestInit = fetchMock.mock.calls.at(-1)?.[1] as RequestInit;
+    const requestBody = JSON.parse(String(requestInit.body));
+    expect(requestBody).toEqual({
+      action: 'apply_to_medication_stock',
+      target_stock_item_id: 'stock_item_1',
+      idempotency_key: 'inbound-stock-apply:v1:signal_1:stock_item_1:observed_absolute:枚:4:::',
+      observation: { kind: 'observed_absolute', quantity: 4, unit: '枚' },
+    });
+    expect(JSON.stringify(requestBody)).not.toContain('湿布は残り4枚です');
+    expect(JSON.stringify(requestBody)).not.toContain('訪問看護師A');
+    expect(JSON.stringify(requestBody)).not.toContain('090-1234-5678');
+    expect(JSON.stringify(requestBody)).not.toContain('storageKey');
+
+    await stockQueryAfterDetail.queryFn();
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/patients/patient_1/medication-stock?item_limit=20&event_limit=0',
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'x-org-id': 'org_1' }),
+      }),
+    );
   });
 
   it('creates a pharmacist review task from the selected signal candidate key only', async () => {
@@ -531,9 +761,7 @@ describe('InboundCommunicationsContent', () => {
     expect(reviewPanel.getAllByText('確認済み').length).toBeGreaterThan(0);
     expect(reviewPanel.getAllByText('未反映').length).toBeGreaterThan(0);
     expect(
-      reviewPanel.getByText(
-        '薬剤師レビューは完了しています。残数台帳への反映は、残数管理の明示操作で行います。',
-      ),
+      reviewPanel.getByText(/原文・出所を監査付きで確認すると、反映先候補を取得できます/),
     ).toBeTruthy();
 
     expect(
