@@ -41,6 +41,91 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001AE` care report send response-shape cleanup.
+  - commit:
+    Implementation and Plans/allowlist route test update committed as `c6f7339de`
+    (`fix(api): envelope care report send responses`). State record is this entry and will be
+    committed separately before pushing the slice.
+  - current task:
+    Continue `Plans.md` highest-priority implementable work under `API-CONTRACT-001`. Remove
+    `src/app/api/care-reports/[id]/send/route.ts` from the public response-shape allowlist without
+    changing send side effects, idempotency semantics, masking, or frontend readers.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `ops/refactor/STATE.md`,
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `src/app/api/care-reports/[id]/send/route.ts`,
+    `src/app/api/care-reports/[id]/send/route.test.ts`,
+    `src/lib/api/response.ts`,
+    `src/lib/api/client-json.ts`,
+    `src/lib/reports/care-report-send-validation.ts`,
+    `src/app/(dashboard)/reports/[id]/page.tsx`,
+    and related care-report send/idempotency test references.
+  - files changed:
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/care-reports/[id]/send/route.ts`,
+    `src/app/api/care-reports/[id]/send/route.test.ts`,
+    and this `ops/refactor/STATE.md` ledger entry.
+  - implementation:
+    The send route no longer calls `success(variable)` for idempotency replay, conflict replay,
+    external-send failure replay, or final send replay bodies. Those paths now use a route-local
+    `careReportSendJsonResponse` so the stored idempotency body is returned exactly as persisted,
+    while normal successful sends remain `data`-enveloped. The route test now rejects root-level
+    `report` and `deliveries` on the completed keyed send response. The allowlist entry for
+    `src/app/api/care-reports/[id]/send/route.ts` was removed, and `Plans.md` records
+    `API-CONTRACT-001AE` with allowlist debt reduced from 178 to 171.
+  - Oracle:
+    User explicitly paused Oracle consultation. No Oracle prompt was sent or restarted. This route
+    is PHI/send-adjacent, so the slice intentionally avoided changing external email sending,
+    DeliveryRecord state transitions, AuditLog writes, idempotency claim/completion logic,
+    authorization, recipient validation, source freshness checks, or frontend behavior.
+  - imagegen:
+    Not used. This is an API contract/static guard cleanup with no visible UI/UX change.
+  - Next.js docs:
+    Re-read `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md` earlier in
+    this API contract run. This slice changes JSON response construction only and does not change
+    route placement, supported methods, runtime behavior, or cache behavior.
+  - bugs found:
+    `POST /api/care-reports/:id/send` still had seven `success(variable)` calls for stored replay
+    bodies and non-2xx replay bodies, keeping the route in the static response-shape allowlist even
+    though successful client payloads were already `data`-enveloped.
+  - bugs fixed:
+    Removed all seven static response-shape violations for the send route and added a route test
+    assertion that completed send responses do not expose legacy root `report` / `deliveries`.
+    `api-response-shape:check` now reports 171 allowlisted violations and 0 new violations.
+  - security risks reduced:
+    No auth, authorization, org scope, recipient/source validation, external provider behavior,
+    audit logging, masking, idempotency storage, or NoStore behavior was weakened. The stored replay
+    body remains the minimized/masked body, and tests continue to reject raw recipient contact,
+    patient id, source provenance, provider raw errors, and PDF URL leakage.
+  - performance issues improved:
+    None. No DB query, transaction, external request, idempotency lookup, audit write, or frontend
+    request path changed.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/care-reports/'[id]'/send/route.ts src/app/api/care-reports/'[id]'/send/route.test.ts`;
+    `pnpm exec vitest run src/app/api/care-reports/'[id]'/send/route.test.ts src/app/'(dashboard)'/reports/'[id]'/page.test.tsx --reporter=dot --testTimeout=30000`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint --max-warnings=0 src/app/api/care-reports/'[id]'/send/route.ts src/app/api/care-reports/'[id]'/send/route.test.ts src/app/'(dashboard)'/reports/'[id]'/page.tsx`;
+    `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/care-reports/'[id]'/send/route.ts src/app/api/care-reports/'[id]'/send/route.test.ts src/app/'(dashboard)'/reports/'[id]'/page.tsx`;
+    `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/care-reports/'[id]'/send/route.ts src/app/api/care-reports/'[id]'/send/route.test.ts src/app/'(dashboard)'/reports/'[id]'/page.tsx`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Targeted Prettier write completed. Focused send route + report detail page Vitest passed 2 files
+    / 103 tests. API response shape check passed with 171 allowlisted violations and 0 new
+    violations. Plans active board check passed. Scoped ESLint passed. Targeted Prettier check
+    passed. Targeted diff-check passed. Full typecheck passed.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial; the next allowlist candidate is
+    `src/app/api/care-reports/generate-from-visit/route.ts`. Unrelated local dirty state remains in
+    `.harness-mem/state/continuity.json` and many untracked memory/docs files and was not staged.
+  - next action:
+    Commit this state entry, push the two commits for this slice to `origin/main`, then continue
+    the `Plans.md` high-priority loop while Oracle consultation remains paused.
+
 - codex: `API-CONTRACT-001AD` care report print-audit success envelope cleanup.
   - commit:
     Implementation and Plans/allowlist route test update committed as `9f0724dae`
