@@ -41,6 +41,52 @@
 
 ## 直近の作業（未コミット）
 
+- codex: `PLANS-ACTIVE-CLASSIFICATION-001` Plans.md active board 整理。
+  - current task:
+    `Plans.md` の先頭 Active Board を実装入口として整理し、実装済み / Partial / 未実装 /
+    Human gate の分類を保ったまま、未実装タスクを次PRへ切れる粒度へ拡充する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `docs/ui-ux-design-guidelines.md`,
+    `docs/compliance/access-control-policy.md`,
+    `src/lib/auth/permission-matrix.ts`,
+    and the current route/component/service/type file inventory for dashboard, patients, dispense,
+    schedules, visits, reports, and inbound communications.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Removed completed `DASH-P1-010-RAIL` from the active implementation-ready queue, kept Summary
+    Rail in Done/frozen, added a "未実装Plan拡充" table for next-PR slices, and expanded the frontend
+    implementation queue with real entrypoints, existing contracts, validation, and stopping
+    conditions. Added derived frontend tasks for entrypoint mapping, imagegen reference handling,
+    right-rail coverage, and state-matrix fixtures.
+  - bugs found:
+    `Plans.md` still had a completed dashboard Summary Rail row in the active queue, which could cause
+    reimplementation. Frontend tasks were too high-level to be directly actionable without re-checking
+    entrypoints and existing contracts.
+  - security risks reduced:
+    The plan now distinguishes authenticated in-app PHI display from external output boundaries and
+    keeps raw text/detail work behind re-auth/read-audit requirements. No runtime code or permissions
+    were changed.
+  - performance issues improved:
+    No runtime performance changed. The plan now keeps DB read-speed follow-up as query-shape/SLO work
+    rather than blind index or broad include changes.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md`;
+    `pnpm exec prettier --check Plans.md`;
+    `git diff --check -- Plans.md`.
+  - validation results:
+    Prettier write/check passed. Targeted diff-check passed. No code tests were run because this slice
+    only changes plan documentation.
+  - remaining work:
+    Commit this plan hygiene slice, then continue from the highest-priority active queue item or a
+    human-gated migration/recovery preparation task.
+  - next action:
+    Scoped commit of `Plans.md` and this state entry.
+
 - codex: `DASH-P1-010-RAIL` Dashboard Summary Rail。
   - current task:
     `Plans.md` v8 の未実装queueから、Dashboard Summary Rail を既存 segment だけで追加する。
