@@ -41,6 +41,86 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001AB` billing rule detail success envelope cleanup.
+  - commit:
+    Implementation and Plans/allowlist/frontend reader update committed as `353c72f1d`
+    (`fix(api): envelope billing rule detail`). State record is this entry and will be committed
+    separately before pushing the slice.
+  - current task:
+    Continue `Plans.md` highest-priority implementable work under `API-CONTRACT-001`. Convert
+    `GET/PATCH/DELETE /api/billing-rules/:id` success responses from legacy root rule/delete
+    message bodies to new `data` envelopes only.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `ops/refactor/STATE.md`,
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `src/app/api/billing-rules/[id]/route.ts`,
+    `src/app/api/billing-rules/[id]/route.test.ts`,
+    `src/app/(dashboard)/admin/billing-rules/page.tsx`,
+    `src/app/(dashboard)/admin/billing-rules/page.test.tsx`,
+    `src/lib/billing-rules/api-paths.ts`,
+    and `gbrain search "billing-rules route envelope ApiSuccess meta"`.
+  - files changed:
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/billing-rules/[id]/route.ts`,
+    `src/app/api/billing-rules/[id]/route.test.ts`,
+    `src/app/(dashboard)/admin/billing-rules/page.tsx`,
+    `src/app/(dashboard)/admin/billing-rules/page.test.tsx`,
+    and this `ops/refactor/STATE.md` ledger entry.
+  - implementation:
+    Billing rule detail GET/PATCH now return `success({ data: serializeRule(...) })`, and DELETE
+    returns `success({ data: { id } })`. The admin billing-rules page now reads update responses
+    from `payload.data` and accepts the delete `data.id` envelope. Route/UI tests prove legacy root
+    rule fields and delete `message` are not required or returned. The allowlist entry for
+    `src/app/api/billing-rules/[id]/route.ts` was removed, and `Plans.md` records
+    `API-CONTRACT-001AB` with allowlist debt reduced from 184 to 181.
+  - Oracle:
+    User explicitly paused Oracle consultation. No Oracle prompt was sent or restarted. The change
+    was limited to success response shape and frontend readers; admin permission, tenant scoping,
+    stale-version protection, system-rule guards, audit writes, validation, and DB mutations were
+    not changed.
+  - imagegen:
+    Not used. This is an API contract and frontend reader cleanup with no visual reconstruction.
+  - Next.js docs:
+    Re-read `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md` earlier in
+    this API contract run. This slice changes JSON response shape only and does not change route
+    placement, supported methods, runtime behavior, or cache behavior.
+  - bugs found:
+    `GET/PATCH /api/billing-rules/:id` still returned billing rule fields at the response root, and
+    `DELETE /api/billing-rules/:id` still returned a root `message`, keeping the route on the API
+    response shape allowlist and making the admin screen accept legacy root detail responses.
+  - security risks reduced:
+    No admin permission, tenant, audit, stale-write, or system-rule boundary was weakened. Existing
+    `canAdmin`, `withOrgContext`, `expected_updated_at`, guarded `updateMany`/`deleteMany`, audit
+    log writes, and no-store behavior were preserved while removing ambiguous root success fields.
+  - performance issues improved:
+    No DB query, transaction, audit write, or client request was added. The same route work now
+    returns the existing payload under `data`.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/billing-rules/'[id]'/route.ts src/app/api/billing-rules/'[id]'/route.test.ts 'src/app/(dashboard)/admin/billing-rules/page.tsx' 'src/app/(dashboard)/admin/billing-rules/page.test.tsx'`;
+    `pnpm exec vitest run src/app/api/billing-rules/'[id]'/route.test.ts 'src/app/(dashboard)/admin/billing-rules/page.test.tsx' --reporter=dot --testTimeout=30000`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint --max-warnings=0 src/app/api/billing-rules/'[id]'/route.ts src/app/api/billing-rules/'[id]'/route.test.ts 'src/app/(dashboard)/admin/billing-rules/page.tsx' 'src/app/(dashboard)/admin/billing-rules/page.test.tsx'`;
+    `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/billing-rules/'[id]'/route.ts src/app/api/billing-rules/'[id]'/route.test.ts 'src/app/(dashboard)/admin/billing-rules/page.tsx' 'src/app/(dashboard)/admin/billing-rules/page.test.tsx'`;
+    `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/billing-rules/'[id]'/route.ts src/app/api/billing-rules/'[id]'/route.test.ts 'src/app/(dashboard)/admin/billing-rules/page.tsx' 'src/app/(dashboard)/admin/billing-rules/page.test.tsx'`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Targeted Prettier write completed. Focused billing rule detail route + admin billing-rules page
+    Vitest passed 2 files / 40 tests. API response shape check passed with 181 allowlisted
+    violations and 0 new violations. Plans active board check passed. Scoped ESLint passed.
+    Targeted Prettier check passed. Targeted diff-check passed. Full typecheck passed.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial; the next allowlist candidate is
+    `src/app/api/billing-rules/route.ts`. Unrelated local dirty state remains in
+    `.harness-mem/state/continuity.json` and many untracked memory/docs files and was not staged.
+  - next action:
+    Commit this state entry, push the two commits for this slice to `origin/main`, then continue
+    the `Plans.md` high-priority loop while Oracle consultation remains paused.
+
 - codex: `API-CONTRACT-001AA` billing candidates list/generation success envelope cleanup.
   - commit:
     Implementation and Plans/allowlist/frontend reader update committed as `17cb95a9e`
