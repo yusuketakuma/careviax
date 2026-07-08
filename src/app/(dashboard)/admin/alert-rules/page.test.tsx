@@ -135,6 +135,26 @@ function renderPage() {
   return render(<AlertRulesPage />, { wrapper: createQueryClientWrapper() });
 }
 
+function buildDrugAlertRulesMeta(
+  overrides: Partial<{
+    total_count: number;
+    visible_count: number;
+    hidden_count: number;
+    truncated: boolean;
+    limit: number;
+  }> = {},
+) {
+  return {
+    total_count: overrides.total_count ?? 1,
+    visible_count: overrides.visible_count ?? 1,
+    hidden_count: overrides.hidden_count ?? 0,
+    truncated: overrides.truncated ?? false,
+    count_basis: 'drug_alert_rules',
+    filters_applied: { alert_type: null },
+    limit: overrides.limit ?? 200,
+  };
+}
+
 describe('AlertRulesPage', () => {
   beforeEach(() => {
     vi.stubGlobal(
@@ -157,15 +177,14 @@ describe('AlertRulesPage', () => {
                   updated_at: '2026-06-19T10:00:00.000Z',
                 },
               ],
+              meta: buildDrugAlertRulesMeta(),
             }),
             { status: 200 },
           );
         }
 
         if (url === '/api/drug-alert-rules/rule_1' && init?.method === 'DELETE') {
-          return new Response(JSON.stringify({ message: '処方安全アラートルールを削除しました' }), {
-            status: 200,
-          });
+          return new Response(JSON.stringify({ data: { id: 'rule_1' } }), { status: 200 });
         }
 
         if (url === '/api/drug-alert-rules' && init?.method === 'POST') {
@@ -274,7 +293,16 @@ describe('AlertRulesPage', () => {
   it('shows true-empty only when no rules are returned (and no error)', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => new Response(JSON.stringify({ data: [] }), { status: 200 })),
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              data: [],
+              meta: buildDrugAlertRulesMeta({ total_count: 0, visible_count: 0 }),
+            }),
+            { status: 200 },
+          ),
+      ),
     );
     renderPage();
 
@@ -302,12 +330,12 @@ describe('AlertRulesPage', () => {
                   updated_at: '2026-06-19T10:00:00.000Z',
                 },
               ],
-              total_count: 3,
-              visible_count: 1,
-              hidden_count: 2,
-              truncated: true,
-              count_basis: 'drug_alert_rules',
-              filters_applied: { alert_type: null },
+              meta: buildDrugAlertRulesMeta({
+                total_count: 3,
+                visible_count: 1,
+                hidden_count: 2,
+                truncated: true,
+              }),
             }),
             { status: 200 },
           );
@@ -489,6 +517,7 @@ describe('AlertRulesPage', () => {
                   updated_at: '2026-06-19T10:00:00.000Z',
                 },
               ],
+              meta: buildDrugAlertRulesMeta(),
             }),
             { status: 200 },
           );
@@ -530,6 +559,7 @@ describe('AlertRulesPage', () => {
                 updated_at: '2026-06-19T10:00:00.000Z',
               },
             ],
+            meta: buildDrugAlertRulesMeta(),
           }),
           { status: 200 },
         );
@@ -573,6 +603,7 @@ describe('AlertRulesPage', () => {
                 updated_at: '2026-06-19T10:00:00.000Z',
               },
             ],
+            meta: buildDrugAlertRulesMeta(),
           }),
           { status: 200 },
         );

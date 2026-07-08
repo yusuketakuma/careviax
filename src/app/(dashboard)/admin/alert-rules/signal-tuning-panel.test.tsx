@@ -66,7 +66,18 @@ function stubFetch(
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url === '/api/drug-alert-rules' && !init?.method) {
-      return new Response(JSON.stringify({ data: rules, ...metadata }), { status: 200 });
+      return new Response(
+        JSON.stringify({
+          data: rules,
+          meta: {
+            total_count: metadata.total_count ?? rules.length,
+            visible_count: metadata.visible_count ?? rules.length,
+            hidden_count: metadata.hidden_count ?? 0,
+            truncated: metadata.truncated ?? false,
+          },
+        }),
+        { status: 200 },
+      );
     }
     return new Response(JSON.stringify({}), { status: 200 });
   });

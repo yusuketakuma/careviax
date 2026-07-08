@@ -38,11 +38,13 @@ const TAG_TONE_CLASSES: Record<string, string> = {
 };
 
 type DrugAlertRulesResponse = {
-  data?: SignalTuningRule[];
-  total_count?: number;
-  visible_count?: number;
-  hidden_count?: number;
-  truncated?: boolean;
+  data: SignalTuningRule[];
+  meta: {
+    total_count: number;
+    visible_count: number;
+    hidden_count: number;
+    truncated: boolean;
+  };
 };
 
 export function SignalTuningPanel() {
@@ -53,11 +55,7 @@ export function SignalTuningPanel() {
     queryKey: ['drug-alert-rules', orgId],
     queryFn: async () => {
       const res = await fetch(DRUG_ALERT_RULES_API_PATH, { headers: buildOrgHeaders(orgId) });
-      const json = await readApiJson<DrugAlertRulesResponse>(
-        res,
-        'アラートルールの取得に失敗しました',
-      );
-      return { ...json, data: json.data ?? [] };
+      return readApiJson<DrugAlertRulesResponse>(res, 'アラートルールの取得に失敗しました');
     },
     enabled: !!orgId,
   });
@@ -132,11 +130,9 @@ export function SignalTuningPanel() {
   const strongItems = SIGNAL_TUNING_ITEMS.filter((item) => desired[item.alertType]);
   const diff = diffSignalTuning(currentState, desired);
   const changedCount = diff.create.length + diff.activate.length + diff.deactivate.length;
-  const visibleRuleCount = rulesQuery.data?.visible_count ?? rulesQuery.data?.data?.length ?? 0;
-  const totalRuleCount = rulesQuery.data?.total_count ?? visibleRuleCount;
-  const hiddenRuleCount =
-    rulesQuery.data?.hidden_count ?? Math.max(totalRuleCount - visibleRuleCount, 0);
-  const isRuleListTruncated = Boolean(rulesQuery.data?.truncated || hiddenRuleCount > 0);
+  const visibleRuleCount = rulesQuery.data?.meta.visible_count ?? rulesQuery.data?.data.length ?? 0;
+  const hiddenRuleCount = rulesQuery.data?.meta.hidden_count ?? 0;
+  const isRuleListTruncated = Boolean(rulesQuery.data?.meta.truncated || hiddenRuleCount > 0);
 
   if (rulesQuery.isError) {
     // A failed fetch must not render every safety signal as 標準 (a false default that

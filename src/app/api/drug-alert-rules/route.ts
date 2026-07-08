@@ -68,13 +68,20 @@ export async function GET(req: NextRequest) {
       tx.drugAlertRule.count({ where }),
     ]),
   );
+  const list = buildCountedListEnvelope(rules, totalCount);
   return success({
-    ...buildCountedListEnvelope(rules, totalCount),
-    count_basis: DRUG_ALERT_RULE_COUNT_BASIS,
-    filters_applied: {
-      alert_type: alertType?.data ?? null,
+    data: list.data,
+    meta: {
+      total_count: list.total_count,
+      visible_count: list.visible_count,
+      hidden_count: list.hidden_count,
+      truncated: list.truncated,
+      count_basis: DRUG_ALERT_RULE_COUNT_BASIS,
+      filters_applied: {
+        alert_type: alertType?.data ?? null,
+      },
+      limit,
     },
-    limit,
   });
 }
 

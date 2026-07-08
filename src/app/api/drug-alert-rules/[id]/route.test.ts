@@ -98,6 +98,13 @@ describe('/api/drug-alert-rules/[id]', () => {
           },
         }),
       });
+      await expect(response.json()).resolves.toEqual({
+        data: {
+          id: 'rule_1',
+          severity: 'warning',
+          is_active: true,
+        },
+      });
     });
 
     it('rejects malformed JSON update payloads before loading the alert rule', async () => {
@@ -170,6 +177,7 @@ describe('/api/drug-alert-rules/[id]', () => {
       ))!;
 
       expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ data: { id: 'rule_1' } });
     });
 
     it('rejects blank route ids before loading the alert rule', async () => {

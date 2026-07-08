@@ -88,26 +88,26 @@ describe('/api/drug-alert-rules', () => {
       },
     });
     const body = await response.json();
-    expect(Object.keys(body)).toEqual([
-      'data',
-      'total_count',
-      'visible_count',
-      'hidden_count',
-      'truncated',
-      'count_basis',
-      'filters_applied',
-      'limit',
-    ]);
+    expect(Object.keys(body)).toEqual(['data', 'meta']);
     expect(body).toMatchObject({
       data: [{ id: 'rule_1' }],
-      total_count: 1,
-      visible_count: 1,
-      hidden_count: 0,
-      truncated: false,
-      count_basis: 'drug_alert_rules',
-      filters_applied: { alert_type: null },
-      limit: 200,
+      meta: {
+        total_count: 1,
+        visible_count: 1,
+        hidden_count: 0,
+        truncated: false,
+        count_basis: 'drug_alert_rules',
+        filters_applied: { alert_type: null },
+        limit: 200,
+      },
     });
+    expect(body).not.toHaveProperty('total_count');
+    expect(body).not.toHaveProperty('visible_count');
+    expect(body).not.toHaveProperty('hidden_count');
+    expect(body).not.toHaveProperty('truncated');
+    expect(body).not.toHaveProperty('count_basis');
+    expect(body).not.toHaveProperty('filters_applied');
+    expect(body).not.toHaveProperty('limit');
   });
 
   it.each([
@@ -155,13 +155,15 @@ describe('/api/drug-alert-rules', () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       data: [{ id: 'rule_1' }],
-      total_count: 3,
-      visible_count: 1,
-      hidden_count: 2,
-      truncated: true,
-      count_basis: 'drug_alert_rules',
-      filters_applied: { alert_type: 'interaction' },
-      limit: 1,
+      meta: {
+        total_count: 3,
+        visible_count: 1,
+        hidden_count: 2,
+        truncated: true,
+        count_basis: 'drug_alert_rules',
+        filters_applied: { alert_type: 'interaction' },
+        limit: 1,
+      },
     });
   });
 
@@ -202,6 +204,7 @@ describe('/api/drug-alert-rules', () => {
         is_active: true,
       }),
     });
+    await expect(response.json()).resolves.toEqual({ data: { id: 'rule_2' } });
   });
 
   it('rejects non-object create payloads before opening an org transaction', async () => {

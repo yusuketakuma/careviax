@@ -90,5 +90,5 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   await withOrgContext(ctx.orgId, (tx) => tx.drugAlertRule.delete({ where: { id: ruleId } }));
 
-  return success({ message: '処方安全アラートルールを削除しました' });
+  return success({ data: { id: existing.id } });
 }

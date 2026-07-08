@@ -52,13 +52,19 @@ type DrugAlertRule = {
 
 type DrugAlertRulesResponse = {
   data: DrugAlertRule[];
-  total_count?: number;
-  visible_count?: number;
-  hidden_count?: number;
-  truncated?: boolean;
-  count_basis?: 'drug_alert_rules';
-  filters_applied?: Record<string, unknown>;
-  limit?: number;
+  meta: {
+    total_count: number;
+    visible_count: number;
+    hidden_count: number;
+    truncated: boolean;
+    count_basis: 'drug_alert_rules';
+    filters_applied: { alert_type: string | null };
+    limit: number;
+  };
+};
+
+type DrugAlertRuleDeleteResponse = {
+  data: { id: string };
 };
 
 type AlertRuleForm = {
@@ -266,7 +272,10 @@ export default function AlertRulesPage() {
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('削除に失敗しました');
+      return readApiJson<DrugAlertRuleDeleteResponse>(
+        res,
+        '処方安全アラートルールの削除に失敗しました',
+      );
     },
     onSuccess: async (_data, deletedId) => {
       toast.success('処方安全アラートルールを削除しました');
@@ -302,11 +311,10 @@ export default function AlertRulesPage() {
   });
 
   const rules = rulesQuery.data?.data ?? [];
-  const totalRuleCount = rulesQuery.data?.total_count ?? rules.length;
-  const visibleRuleCount = rulesQuery.data?.visible_count ?? rules.length;
-  const hiddenRuleCount =
-    rulesQuery.data?.hidden_count ?? Math.max(totalRuleCount - rules.length, 0);
-  const isRuleListTruncated = Boolean(rulesQuery.data?.truncated || hiddenRuleCount > 0);
+  const totalRuleCount = rulesQuery.data?.meta.total_count ?? rules.length;
+  const visibleRuleCount = rulesQuery.data?.meta.visible_count ?? rules.length;
+  const hiddenRuleCount = rulesQuery.data?.meta.hidden_count ?? 0;
+  const isRuleListTruncated = Boolean(rulesQuery.data?.meta.truncated || hiddenRuleCount > 0);
 
   return (
     <PageScaffold>
