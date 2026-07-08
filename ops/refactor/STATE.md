@@ -41,6 +41,63 @@
 
 ## 直近の作業（未コミット）
 
+- codex: `DASH-P1-005C-CARRYOVER-LINKS` Dashboard carryover / hidden queue drilldown。
+  - current task:
+    `Plans.md` v8 の未実装queueから、right rail の carryover / hidden inbound / hidden comments を
+    条件付き相対URLへ統一する。既存BFFは作り直さず、件数表示だけで終わる行を実際の作業一覧へ接続する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+    `src/app/(dashboard)/dashboard/use-dashboard-cockpit-view-model.ts`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`,
+    `src/components/features/workspace/action-rail.tsx`,
+    `src/app/api/communications/inbound/route.ts`,
+    `src/app/(dashboard)/tasks/tasks-query-state.ts`,
+    and existing tasks / inbound / handoff route surfaces.
+  - files changed:
+    `Plans.md`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+    `src/app/(dashboard)/dashboard/use-dashboard-cockpit-view-model.ts`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Changed the carryover evidence href from `/workflow` to
+    `/tasks?status=open&filter=carryover&context=dashboard_home`. Converted hidden inbound and
+    hidden team-conversation text into links: inbound goes to
+    `/communications/inbound?status=needs_review`, comments goes to
+    `/handoff?filter=comments&context=dashboard_home`. `Plans.md` moved
+    `DASH-P1-005C-CARRYOVER-LINKS` out of the active implementation queue and records the dashboard
+    hidden-link slice as Done/frozen.
+  - bugs found:
+    The dashboard displayed hidden/carryover counts as informational text or a broad workflow link, so
+    operators could see remaining work without a direct route to the corresponding queue.
+  - security risks reduced:
+    New drilldowns are app-relative URLs only and do not expose raw text, signed URLs, storage keys, or
+    external destinations. Existing route-level permission checks remain the authority.
+  - performance issues improved:
+    No DB/runtime performance changed. The slice adds no fetches and consumes existing count fields.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md src/app/'(dashboard)'/dashboard/dashboard-cockpit.tsx src/app/'(dashboard)'/dashboard/dashboard-cockpit.test.tsx src/app/'(dashboard)'/dashboard/use-dashboard-cockpit-view-model.ts`;
+    `pnpm exec vitest run src/app/'(dashboard)'/dashboard/dashboard-cockpit.test.tsx`;
+    `pnpm exec eslint src/app/'(dashboard)'/dashboard/dashboard-cockpit.tsx src/app/'(dashboard)'/dashboard/dashboard-cockpit.test.tsx src/app/'(dashboard)'/dashboard/use-dashboard-cockpit-view-model.ts`;
+    `pnpm exec prettier --check Plans.md src/app/'(dashboard)'/dashboard/dashboard-cockpit.tsx src/app/'(dashboard)'/dashboard/dashboard-cockpit.test.tsx src/app/'(dashboard)'/dashboard/use-dashboard-cockpit-view-model.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `git diff --check`.
+  - validation results:
+    Focused dashboard component tests passed (`18` tests). Targeted ESLint passed.
+    Prettier check passed. Full typecheck passed. `git diff --check` passed.
+  - remaining work:
+    `DASH-P1-010-RAIL` remains the next dashboard UI task. Quick actions, density/semantic tone, and
+    visual regression remain active residual dashboard work. Browser screenshot verification was not run
+    because this slice changes existing text/links without layout or breakpoint redesign.
+  - commit:
+    Implementation committed as `b82ef26d1`.
+  - next action:
+    Continue from `DASH-P1-010-RAIL` or return to the higher-priority medication-stock visit UI/downstream
+    tracks in `Plans.md`.
+
 - codex: `DASH-P1-005B-URGENT-SOURCE-LINKS` Dashboard urgent source drilldown。
   - current task:
     `Plans.md` v8 の未実装queueから、Dashboard Unified Urgent の source別 drilldown を実装する。
