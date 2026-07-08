@@ -41,6 +41,85 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001AC` billing rules collection success envelope cleanup.
+  - commit:
+    Implementation and Plans/allowlist/frontend reader update committed as `5afc54e6b`
+    (`fix(api): envelope billing rules collection`). State record is this entry and will be
+    committed separately before pushing the slice.
+  - current task:
+    Continue `Plans.md` highest-priority implementable work under `API-CONTRACT-001`. Convert
+    `GET/POST /api/billing-rules` success responses from legacy root source/summary, seed message,
+    and raw created rule bodies to new `data + meta` / `data` envelopes only.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `ops/refactor/STATE.md`,
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `src/app/api/billing-rules/route.ts`,
+    `src/app/api/billing-rules/route.test.ts`,
+    `src/app/(dashboard)/admin/billing-rules/page.tsx`,
+    `src/app/(dashboard)/admin/billing-rules/page.test.tsx`,
+    and related billing-rules API path tests.
+  - files changed:
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/billing-rules/route.ts`,
+    `src/app/api/billing-rules/route.test.ts`,
+    `src/app/(dashboard)/admin/billing-rules/page.tsx`,
+    `src/app/(dashboard)/admin/billing-rules/page.test.tsx`,
+    and this `ops/refactor/STATE.md` ledger entry.
+  - implementation:
+    Billing rules collection GET now returns `success({ data: rules, meta: { source, summary } })`.
+    SSOT seed POST returns `success({ data: { message, ...seeded } }, 201)`, and custom rule create
+    POST returns `success({ data: serializeRule(rule) }, 201)`. The admin billing-rules page now
+    reads `payload.meta.source`, `payload.meta.summary`, and mutation `payload.data` only. Route/UI
+    tests prove legacy root `source`, `summary`, `message`, seed count, and created rule fields are
+    not required or returned. The allowlist entry for `src/app/api/billing-rules/route.ts` was
+    removed, and `Plans.md` records `API-CONTRACT-001AC` with allowlist debt reduced from 181 to 179.
+  - Oracle:
+    User explicitly paused Oracle consultation. No Oracle prompt was sent or restarted. The change
+    was limited to success response shape and frontend readers; admin permission, SSOT sync,
+    tenant scoping, create validation, audit writes, and DB mutations were not changed.
+  - imagegen:
+    Not used. This is an API contract and frontend reader cleanup with no visual reconstruction.
+  - Next.js docs:
+    Re-read `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md` earlier in
+    this API contract run. This slice changes JSON response shape only and does not change route
+    placement, supported methods, runtime behavior, or cache behavior.
+  - bugs found:
+    `GET /api/billing-rules` still exposed SSOT `source` and `summary` at the response root, SSOT
+    seed POST still returned root `message`/seed counts, and create POST still returned the created
+    rule directly at the root. The admin screen still read those legacy shapes.
+  - security risks reduced:
+    No admin permission, tenant, SSOT sync, validation, audit, or DB boundary was weakened. Existing
+    `canAdmin`, `withOrgContext`, SSOT seeding, create validation, audit log writes, and no-store
+    behavior were preserved while removing ambiguous root success fields.
+  - performance issues improved:
+    No DB query, SSOT sync call, audit write, or client request was added. Existing metadata is
+    moved into `meta` without changing the query path.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/billing-rules/route.ts src/app/api/billing-rules/route.test.ts 'src/app/(dashboard)/admin/billing-rules/page.tsx' 'src/app/(dashboard)/admin/billing-rules/page.test.tsx'`;
+    `pnpm exec vitest run src/app/api/billing-rules/route.test.ts 'src/app/(dashboard)/admin/billing-rules/page.test.tsx' --reporter=dot --testTimeout=30000`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint --max-warnings=0 src/app/api/billing-rules/route.ts src/app/api/billing-rules/route.test.ts 'src/app/(dashboard)/admin/billing-rules/page.tsx' 'src/app/(dashboard)/admin/billing-rules/page.test.tsx'`;
+    `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/billing-rules/route.ts src/app/api/billing-rules/route.test.ts 'src/app/(dashboard)/admin/billing-rules/page.tsx' 'src/app/(dashboard)/admin/billing-rules/page.test.tsx'`;
+    `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/billing-rules/route.ts src/app/api/billing-rules/route.test.ts 'src/app/(dashboard)/admin/billing-rules/page.tsx' 'src/app/(dashboard)/admin/billing-rules/page.test.tsx'`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Targeted Prettier write completed. Focused billing rules collection route + admin billing-rules
+    page Vitest passed 2 files / 27 tests. API response shape check passed with 179 allowlisted
+    violations and 0 new violations. Plans active board check passed. Scoped ESLint passed.
+    Targeted Prettier check passed. Targeted diff-check passed. Full typecheck passed.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial; the next allowlist candidate is
+    `src/app/api/care-reports/[id]/print-audit/route.ts`. Unrelated local dirty state remains in
+    `.harness-mem/state/continuity.json` and many untracked memory/docs files and was not staged.
+  - next action:
+    Commit this state entry, push the two commits for this slice to `origin/main`, then continue
+    the `Plans.md` high-priority loop while Oracle consultation remains paused.
+
 - codex: `API-CONTRACT-001AB` billing rule detail success envelope cleanup.
   - commit:
     Implementation and Plans/allowlist/frontend reader update committed as `353c72f1d`
