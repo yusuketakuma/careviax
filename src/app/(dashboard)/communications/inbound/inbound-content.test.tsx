@@ -333,6 +333,34 @@ describe('InboundCommunicationsContent', () => {
     expect(html).not.toContain('storageKey');
   });
 
+  it('shows the review lifecycle and keeps MedicationStock apply blocked without an explicit stock target', () => {
+    render(<InboundCommunicationsContent />);
+
+    const lifecycle = within(screen.getByTestId('signal-lifecycle-signal_1'));
+    expect(lifecycle.getByText('作業ライフサイクル')).toBeTruthy();
+    expect(lifecycle.getByText('受信')).toBeTruthy();
+    expect(lifecycle.getByText('初期評価')).toBeTruthy();
+    expect(lifecycle.getByText('レビュー')).toBeTruthy();
+    expect(lifecycle.getByText('反映/クローズ')).toBeTruthy();
+    expect(lifecycle.getByText('要レビュー')).toBeTruthy();
+    expect(lifecycle.getAllByText('未完了').length).toBeGreaterThan(0);
+
+    const policy = within(screen.getByTestId('stock-apply-policy-signal_1'));
+    expect(policy.getByText('MedicationStock 適用条件')).toBeTruthy();
+    expect(policy.getByText('台帳直書き不可')).toBeTruthy();
+    expect(policy.getByText('患者/ケース')).toBeTruthy();
+    expect(policy.getByText('対象薬剤')).toBeTruthy();
+    expect(policy.getByText('観測内容')).toBeTruthy();
+    expect(policy.getByText('薬剤師レビュー')).toBeTruthy();
+    expect(policy.getByText('対象薬剤未確定。薬剤師が残数管理で明示選択します')).toBeTruthy();
+    expect(policy.getByText(/apply_to_medication_stock/)).toBeTruthy();
+
+    const reviewPanelText = screen.getByTestId('selected-inbound-review-panel').textContent ?? '';
+    expect(reviewPanelText).not.toContain('target_stock_item_id:');
+    expect(reviewPanelText).not.toContain('湿布は残り4枚です');
+    expect(screen.queryByRole('button', { name: /台帳.*反映|残数.*反映/ })).toBeNull();
+  });
+
   it('creates a pharmacist review task from the selected signal candidate key only', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
@@ -501,7 +529,7 @@ describe('InboundCommunicationsContent', () => {
 
     const reviewPanel = within(screen.getByTestId('selected-inbound-review-panel'));
     expect(reviewPanel.getAllByText('確認済み').length).toBeGreaterThan(0);
-    expect(reviewPanel.getByText('未反映')).toBeTruthy();
+    expect(reviewPanel.getAllByText('未反映').length).toBeGreaterThan(0);
     expect(
       reviewPanel.getByText(
         '薬剤師レビューは完了しています。残数台帳への反映は、残数管理の明示操作で行います。',

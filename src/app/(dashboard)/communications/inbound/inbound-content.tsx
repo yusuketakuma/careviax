@@ -5,10 +5,12 @@ import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BellRing,
+  CheckCircle2,
   Clock,
   FileText,
   Inbox,
   Phone,
+  PackageSearch,
   RadioTower,
   ShieldCheck,
   TriangleAlert,
@@ -452,6 +454,103 @@ function stockWarningDisplayLabel(code: string) {
   if (stockWarningLabel[code]) return stockWarningLabel[code];
   if (code.startsWith('ignored_signal:')) return '対象外候補';
   return '薬剤師確認';
+}
+
+function isSignalReviewClosed(status: string) {
+  return status === 'accepted' || status === 'auto_accepted';
+}
+
+function isSignalReviewTerminal(status: string) {
+  return status === 'record_only' || status === 'rejected' || status === 'superseded';
+}
+
+function stockConditionStatus(ok: boolean) {
+  return ok
+    ? { role: 'done' as const, label: '充足' }
+    : { role: 'confirm' as const, label: '未充足' };
+}
+
+function stockObservationCondition(item: InboundSignalCandidateItem) {
+  const stockReview = item.signal.stock_review;
+  return (
+    stockReview?.has_observed_quantity === true ||
+    stockReview?.has_usage_quantity === true ||
+    stockReview?.observation_kind === 'no_stock_observed'
+  );
+}
+
+function signalLifecycleSteps(item: InboundSignalCandidateItem) {
+  const reviewBadge = signalReviewStatusBadge(item.signal.review_status);
+  const actionBadge = signalActionStatusBadge(item.signal.action_status);
+  const reviewDone =
+    isSignalReviewClosed(item.signal.review_status) ||
+    isSignalReviewTerminal(item.signal.review_status);
+  const downstreamDone = item.signal.action_status !== 'not_linked';
+
+  return [
+    {
+      label: '受信',
+      detail: `${channelLabel[item.channel] ?? item.channel} / ${formatDateTime(item.occurred_at)}`,
+      badge: { role: 'done' as const, label: '取得済み' },
+    },
+    {
+      label: '初期評価',
+      detail: `${signalDomainLabel[item.signal.domain] ?? item.signal.domain} / ${
+        signalTypeLabel[item.signal.type] ?? item.signal.type
+      }`,
+      badge: {
+        role: item.signal.requires_pharmacist_review ? ('confirm' as const) : ('info' as const),
+        label: item.signal.requires_pharmacist_review ? '要レビュー' : '記録候補',
+      },
+    },
+    {
+      label: 'レビュー',
+      detail: reviewBadge.label,
+      badge: reviewDone
+        ? { role: reviewBadge.role, label: '完了' }
+        : { role: 'confirm' as const, label: '未完了' },
+    },
+    {
+      label: '反映/クローズ',
+      detail: actionBadge.label,
+      badge: downstreamDone
+        ? { role: actionBadge.role, label: '処理済み' }
+        : { role: reviewDone ? ('confirm' as const) : ('readonly' as const), label: '未処理' },
+    },
+  ];
+}
+
+function medicationStockApplyConditions(item: InboundSignalCandidateItem) {
+  const stockReview = item.signal.stock_review;
+  const reviewDone = isSignalReviewClosed(item.signal.review_status);
+  const hasMedicationIdentity = stockReview?.has_medication_identity === true;
+  const hasObservation = stockObservationCondition(item);
+
+  return [
+    {
+      label: '患者/ケース',
+      detail:
+        item.patient_linked && item.case_linked ? '紐づけ済み' : '患者またはケースの紐づけが必要',
+      ok: item.patient_linked && item.case_linked,
+    },
+    {
+      label: '対象薬剤',
+      detail: hasMedicationIdentity
+        ? '薬剤 identity あり'
+        : '対象薬剤未確定。薬剤師が残数管理で明示選択します',
+      ok: hasMedicationIdentity,
+    },
+    {
+      label: '観測内容',
+      detail: hasObservation ? '残数/使用量の構造化候補あり' : '観測値または未確認理由が必要',
+      ok: hasObservation,
+    },
+    {
+      label: '薬剤師レビュー',
+      detail: reviewDone ? 'レビュー済み' : 'レビュー未完了',
+      ok: reviewDone,
+    },
+  ];
 }
 
 function SummaryTile({
@@ -1294,6 +1393,11 @@ export function InboundCommunicationsContent() {
                         {selectedSignalCandidates.map((item) => {
                           const reviewBadge = signalReviewStatusBadge(item.signal.review_status);
                           const actionBadge = signalActionStatusBadge(item.signal.action_status);
+                          const lifecycleSteps = signalLifecycleSteps(item);
+                          const stockConditions = medicationStockApplyConditions(item);
+                          const showStockApplyPolicy =
+                            item.signal.domain === 'medication_stock' &&
+                            item.signal.stock_review != null;
                           const showAcceptedPendingStockLink =
                             item.signal.review_status === 'accepted' &&
                             item.signal.action_status === 'not_linked' &&
@@ -1366,6 +1470,87 @@ export function InboundCommunicationsContent() {
                                     <StateBadge role="info">ケース未紐づけ</StateBadge>
                                   ) : null}
                                 </div>
+                                <div
+                                  className="space-y-2 rounded-md border border-border bg-muted/20 p-3"
+                                  data-testid={`signal-lifecycle-${item.signal_id}`}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <CheckCircle2
+                                      className="size-4 text-muted-foreground"
+                                      aria-hidden="true"
+                                    />
+                                    <h5 className="text-xs font-semibold text-foreground">
+                                      作業ライフサイクル
+                                    </h5>
+                                  </div>
+                                  <ol className="grid gap-2 text-xs sm:grid-cols-2">
+                                    {lifecycleSteps.map((step) => (
+                                      <li
+                                        key={step.label}
+                                        className="rounded-md border border-border bg-background px-2.5 py-2"
+                                      >
+                                        <div className="flex items-center justify-between gap-2">
+                                          <span className="font-medium text-foreground">
+                                            {step.label}
+                                          </span>
+                                          <StateBadge role={step.badge.role}>
+                                            {step.badge.label}
+                                          </StateBadge>
+                                        </div>
+                                        <p className="mt-1 text-muted-foreground">{step.detail}</p>
+                                      </li>
+                                    ))}
+                                  </ol>
+                                </div>
+                                {showStockApplyPolicy ? (
+                                  <div
+                                    className="space-y-2 rounded-md border border-border bg-muted/20 p-3"
+                                    data-testid={`stock-apply-policy-${item.signal_id}`}
+                                  >
+                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                      <div className="flex items-center gap-2">
+                                        <PackageSearch
+                                          className="size-4 text-muted-foreground"
+                                          aria-hidden="true"
+                                        />
+                                        <h5 className="text-xs font-semibold text-foreground">
+                                          MedicationStock 適用条件
+                                        </h5>
+                                      </div>
+                                      <StateBadge role="readonly">台帳直書き不可</StateBadge>
+                                    </div>
+                                    <dl className="grid gap-2 text-xs sm:grid-cols-2">
+                                      {stockConditions.map((condition) => {
+                                        const status = stockConditionStatus(condition.ok);
+                                        return (
+                                          <div
+                                            key={condition.label}
+                                            className="rounded-md border border-border bg-background px-2.5 py-2"
+                                          >
+                                            <div className="flex items-center justify-between gap-2">
+                                              <dt className="font-medium text-foreground">
+                                                {condition.label}
+                                              </dt>
+                                              <dd>
+                                                <StateBadge role={status.role}>
+                                                  {status.label}
+                                                </StateBadge>
+                                              </dd>
+                                            </div>
+                                            <dd className="mt-1 text-muted-foreground">
+                                              {condition.detail}
+                                            </dd>
+                                          </div>
+                                        );
+                                      })}
+                                    </dl>
+                                    <p className="rounded-md border border-dashed border-border bg-background px-3 py-2 text-xs leading-5 text-muted-foreground">
+                                      この画面では候補の確認、記録、却下、タスク化までを扱います。
+                                      `target_stock_item_id` と観測値の明示入力が揃うまでは
+                                      `apply_to_medication_stock` を呼びません。
+                                    </p>
+                                  </div>
+                                ) : null}
                                 {showAcceptedPendingStockLink ? (
                                   <p className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-2 text-xs leading-5 text-muted-foreground">
                                     薬剤師レビューは完了しています。残数台帳への反映は、残数管理の明示操作で行います。
@@ -1377,7 +1562,7 @@ export function InboundCommunicationsContent() {
                                       type="button"
                                       variant="outline"
                                       size="sm"
-                                      className="min-h-[36px]"
+                                      className="min-h-[44px]"
                                       disabled={
                                         reviewMutation.isPending || signalReviewButtonDisabled(item)
                                       }
@@ -1394,7 +1579,7 @@ export function InboundCommunicationsContent() {
                                       type="button"
                                       variant="outline"
                                       size="sm"
-                                      className="min-h-[36px]"
+                                      className="min-h-[44px]"
                                       disabled={
                                         reviewMutation.isPending || signalReviewButtonDisabled(item)
                                       }
@@ -1411,7 +1596,7 @@ export function InboundCommunicationsContent() {
                                       type="button"
                                       variant="outline"
                                       size="sm"
-                                      className="min-h-[36px]"
+                                      className="min-h-[44px]"
                                       disabled={
                                         reviewMutation.isPending || signalReviewButtonDisabled(item)
                                       }
@@ -1428,7 +1613,7 @@ export function InboundCommunicationsContent() {
                                       type="button"
                                       variant="outline"
                                       size="sm"
-                                      className="min-h-[36px]"
+                                      className="min-h-[44px]"
                                       disabled={
                                         taskMutation.isPending || signalTaskButtonDisabled(item)
                                       }
