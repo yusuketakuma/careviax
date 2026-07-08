@@ -23497,6 +23497,10 @@ visit_request/unknown`, `action_status='not_linked'`, and
   Implementation, tests, Plans update, and initial ledger entry committed as
   `d33735fc6b7709314a4f6e2f0dc606170cc72a221`
   (`feat(schedules): surface inbound schedule signals`).
+  Ledger hash update committed as
+  `f5c112e8df19ec6986b0dedaf30ff8ccc4f7a443`
+  (`docs(state): record schedule inbound commit`). Both commits were pushed to
+  `origin/main`.
 - remaining work:
   `INBOUND-002-REVIEW-DETAIL` remains partial only for Share downstream. Future
   accepted-signal conversion into a concrete schedule/proposal target must be a
@@ -23505,6 +23509,4 @@ visit_request/unknown`, `action_status='not_linked'`, and
   production data mutation, or push was performed in the implementation edit
   step.
 - next action:
-  Run final ledger formatting/diff checks, commit this ledger hash update, push
-  both commits to `origin/main`, then continue the next non-human-gated Plans
-  item.
+  Continue the next non-human-gated Plans item.
