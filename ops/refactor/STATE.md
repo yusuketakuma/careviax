@@ -41,6 +41,92 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001AA` billing candidates list/generation success envelope cleanup.
+  - commit:
+    Implementation and Plans/allowlist/frontend reader update committed as `17cb95a9e`
+    (`fix(api): envelope billing candidates`). State record is this entry and will be committed
+    separately before pushing the slice.
+  - current task:
+    Continue `Plans.md` highest-priority implementable work under `API-CONTRACT-001`. Convert
+    `GET/POST /api/billing-candidates` success responses from legacy root pagination/summary and
+    generation fields to new `data + meta` / `data` envelopes only.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `ops/refactor/STATE.md`,
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `tools/scripts/check-api-response-shape.mjs`,
+    `src/lib/api/response.ts`,
+    `src/lib/api/pagination.ts`,
+    `src/lib/api/client-json.ts`,
+    `src/app/api/billing-candidates/route.ts`,
+    `src/app/api/billing-candidates/route.test.ts`,
+    `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`,
+    `src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx`,
+    and `gbrain search "billing-candidates route envelope ApiSuccess meta"`.
+  - files changed:
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/billing-candidates/route.ts`,
+    `src/app/api/billing-candidates/route.test.ts`,
+    `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`,
+    `src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx`,
+    and this `ops/refactor/STATE.md` ledger entry.
+  - implementation:
+    The billing candidates list route now returns `success({ data: page.data, meta: { limit,
+has_more, next_cursor, summary } })`. The generation route now returns
+    `success({ data: { message, billing_domain, generated, home_care_generated,
+pca_rental_generated, confirmed, review_required, excluded } })`. The billing candidates screen
+    now reads `payload.meta.next_cursor`, `payload.meta.summary`, and `payload.data.message` only.
+    Route/UI tests prove legacy root `hasMore`, `nextCursor`, `summary`, `message`, and generation
+    count fields are not required or returned. The allowlist entry for
+    `src/app/api/billing-candidates/route.ts` was removed, and `Plans.md` records
+    `API-CONTRACT-001AA` with allowlist debt reduced from 186 to 184.
+  - Oracle:
+    User explicitly paused Oracle consultation. No Oracle prompt was sent or restarted. The change
+    was limited to success response shape and frontend readers; billing generation/list semantics,
+    permissions, tenant scoping, validation, and DB work were not changed.
+  - imagegen:
+    Not used. This is an API contract and frontend reader cleanup with no visual reconstruction.
+  - Next.js docs:
+    Re-read `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md` in this
+    API contract run. This slice changes JSON response shape only and does not change route
+    placement, supported methods, runtime behavior, or cache behavior.
+  - bugs found:
+    `GET /api/billing-candidates` still returned `hasMore`, `nextCursor`, and `summary` at the
+    response root, and `POST /api/billing-candidates` still returned generation `message` and count
+    fields at the response root. The billing screen still depended on those legacy root fields.
+  - security risks reduced:
+    No billing permission, tenant, PHI, validation, audit, or authorization boundary was weakened.
+    Existing `canManageBilling`, strict month/domain validation, `withOrgContext`, and sensitive
+    no-store behavior were preserved while removing ambiguous root success fields from a billing
+    route.
+  - performance issues improved:
+    No DB query, pagination size, service call, or client request was added. Pagination metadata is
+    moved into `meta` without changing the existing query path.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/billing-candidates/route.ts src/app/api/billing-candidates/route.test.ts 'src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx' 'src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx'`;
+    `pnpm exec vitest run 'src/app/api/billing-candidates/route.test.ts' 'src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx' --reporter=dot --testTimeout=30000`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint --max-warnings=0 src/app/api/billing-candidates/route.ts src/app/api/billing-candidates/route.test.ts 'src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx' 'src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx'`;
+    `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/billing-candidates/route.ts src/app/api/billing-candidates/route.test.ts 'src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx' 'src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx'`;
+    `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/billing-candidates/route.ts src/app/api/billing-candidates/route.test.ts 'src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx' 'src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx'`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Targeted Prettier write completed. Focused billing candidates route + UI Vitest passed 2 files /
+    52 tests. API response shape check passed with 184 allowlisted violations and 0 new violations.
+    Plans active board check passed. Scoped ESLint passed. Targeted Prettier check passed. Targeted
+    diff-check passed. Full typecheck passed.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial; the next allowlist candidate is
+    `src/app/api/billing-rules/[id]/route.ts`. Unrelated local dirty state remains in
+    `.harness-mem/state/continuity.json` and many untracked memory/docs files and was not staged.
+  - next action:
+    Commit this state entry, push the two commits for this slice to `origin/main`, then continue
+    the `Plans.md` high-priority loop while Oracle consultation remains paused.
+
 - codex: `API-CONTRACT-001Z` billing candidate close success envelope cleanup.
   - commit:
     Implementation and Plans/allowlist/frontend reader update committed as `ae057ba5a`
