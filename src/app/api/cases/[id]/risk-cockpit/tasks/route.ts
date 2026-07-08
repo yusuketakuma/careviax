@@ -36,7 +36,7 @@ async function authenticatedPOST(
   );
   if (!result) return notFound('ケースが見つかりません');
 
-  return success(result);
+  return success({ data: result });
 }
 
 export async function POST(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {

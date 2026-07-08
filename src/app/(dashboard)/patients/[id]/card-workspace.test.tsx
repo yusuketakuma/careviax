@@ -498,17 +498,8 @@ function mockPatientQuery(
           mutate: async (input: string) => {
             riskTaskSyncMutate(input);
             try {
-              await mutationOptions?.mutationFn?.(input);
-              await mutationOptions?.onSuccess?.({
-                generated_at: '2026-07-06T00:00:00.000Z',
-                case_id: input,
-                patient_id: 'patient_1',
-                overall_status: 'blocked',
-                taskable_finding_count: 2,
-                skipped_finding_count: 3,
-                upserted_task_count: 2,
-                resolved_stale_task_count: 1,
-              });
+              const result = await mutationOptions?.mutationFn?.(input);
+              await mutationOptions?.onSuccess?.(result);
             } catch (error) {
               mutationOptions?.onError?.(error as Error);
             }
@@ -1562,16 +1553,18 @@ describe('CardWorkspace', () => {
       async () =>
         new Response(
           JSON.stringify({
-            generated_at: '2026-07-06T00:00:00.000Z',
-            case_id: 'case_1',
-            patient_id: 'patient_1',
-            overall_status: 'blocked',
-            taskable_finding_count: 2,
-            skipped_finding_count: 3,
-            upserted_task_count: 2,
-            resolved_stale_task_count: 1,
-            upserted_tasks: [{ id: 'task_1', display_id: 'tsk0000000001' }],
-            resolved_stale_tasks: [{ id: 'task_9', display_id: 'tsk0000000009' }],
+            data: {
+              generated_at: '2026-07-06T00:00:00.000Z',
+              case_id: 'case_1',
+              patient_id: 'patient_1',
+              overall_status: 'blocked',
+              taskable_finding_count: 2,
+              skipped_finding_count: 3,
+              upserted_task_count: 2,
+              resolved_stale_task_count: 1,
+              upserted_tasks: [{ id: 'task_1', display_id: 'tsk0000000001' }],
+              resolved_stale_tasks: [{ id: 'task_9', display_id: 'tsk0000000009' }],
+            },
           }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         ),

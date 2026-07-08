@@ -5255,7 +5255,11 @@ export function CardWorkspace({
         method: 'POST',
         headers: buildOrgJsonHeaders(orgId),
       });
-      return readApiJson<CaseRiskTaskSyncUiResult>(response, 'リスクタスク同期に失敗しました');
+      const payload = await readApiJson<{ data: CaseRiskTaskSyncUiResult }>(
+        response,
+        'リスクタスク同期に失敗しました',
+      );
+      return payload.data;
     },
     onSuccess: async (result) => {
       setRiskTaskSyncResult(result);

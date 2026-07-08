@@ -101,15 +101,20 @@ describe('/api/cases/[id]/risk-cockpit/tasks', () => {
     );
     const body = await response.json();
     expect(body).toMatchObject({
-      case_id: 'case_1',
-      patient_id: 'patient_1',
-      taskable_finding_count: 2,
-      upserted_task_count: 2,
-      resolved_stale_task_count: 1,
+      data: {
+        case_id: 'case_1',
+        patient_id: 'patient_1',
+        taskable_finding_count: 2,
+        upserted_task_count: 2,
+        resolved_stale_task_count: 1,
+      },
     });
-    expect(body.upserted_tasks).toEqual(
+    expect(body.data.upserted_tasks).toEqual(
       expect.arrayContaining([{ id: 'task_1', display_id: 'tsk0000000001' }]),
     );
+    expect(body).not.toHaveProperty('case_id');
+    expect(body).not.toHaveProperty('upserted_tasks');
+    expect(body).not.toHaveProperty('resolved_stale_tasks');
   });
 
   it('rejects forbidden roles before syncing risk tasks', async () => {
