@@ -691,6 +691,35 @@ describe('DashboardCockpit', () => {
     expect(within(banner).getByText('根拠を見る →')).toBeTruthy();
   });
 
+  it('renders the dashboard summary rail from existing cockpit segments', () => {
+    render(<DashboardCockpit />);
+
+    const rail = screen.getByTestId('dashboard-summary-rail');
+    expect(within(rail).getByRole('heading', { name: '今日のサマリー', level: 2 })).toBeTruthy();
+    expect(within(rail).getByText('既存の運用segmentから合成しています')).toBeTruthy();
+    expect(within(rail).getByText('通常運用')).toBeTruthy();
+    expect(within(rail).getByText('101')).toBeTruthy();
+    expect(within(rail).getByText('要対応')).toBeTruthy();
+    expect(within(rail).getByText('確認待ち')).toBeTruthy();
+    expect(within(rail).getByText('7')).toBeTruthy();
+    expect(
+      within(rail).getByRole('link', { name: '監査待ちを開く。6件' }).getAttribute('href'),
+    ).toBe('/audit?filter=dashboard_urgent');
+    expect(
+      within(rail).getByRole('link', { name: '本日の訪問を開く。2件' }).getAttribute('href'),
+    ).toBe('/schedules?date=today');
+    expect(
+      within(rail).getByRole('link', { name: '他職種受信を開く。1件' }).getAttribute('href'),
+    ).toBe('/communications/inbound?status=needs_review');
+    expect(
+      within(rail).getByRole('link', { name: '持ち越しを開く。2件' }).getAttribute('href'),
+    ).toBe('/tasks?status=open&filter=carryover&context=dashboard_home');
+    expect(within(rail).getByText('チーム状況')).toBeTruthy();
+    expect(within(rail).getByText('201分')).toBeTruthy();
+    expect(within(rail).getByText('山田さんの余白が少ない')).toBeTruthy();
+    expect(within(rail).getByText('09:42')).toBeTruthy();
+  });
+
   it('renders 今すぐ対応 cards with hazard tags and a single primary action', () => {
     render(<DashboardCockpit />);
 

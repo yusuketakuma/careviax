@@ -63,6 +63,7 @@ import { useDashboardCockpitViewModel } from './use-dashboard-cockpit-view-model
 
 const DASHBOARD_COMMENTS_DRILLDOWN_HREF = '/handoff?filter=comments&context=dashboard_home';
 const DASHBOARD_INBOUND_DRILLDOWN_HREF = '/communications/inbound?status=needs_review';
+const DASHBOARD_CARRYOVER_HREF = '/tasks?status=open&filter=carryover&context=dashboard_home';
 
 export async function fetchDashboardCockpit(
   orgId: string,
@@ -711,6 +712,243 @@ function TeamCapacityCard({
   );
 }
 
+// ---------------------------------------------------------------------------
+// 左サマリーレール
+// ---------------------------------------------------------------------------
+
+type DashboardSummaryRailTask = {
+  key: string;
+  label: string;
+  count: number;
+  tone: 'normal' | 'warning' | 'urgent' | 'info';
+  href: string;
+};
+
+function sourceLinkCount(
+  sourceLinks: DashboardUrgentSourceLink[],
+  source: DashboardUrgentSourceLink['source'],
+) {
+  return sourceLinks.find((link) => link.source === source)?.total_count ?? 0;
+}
+
+function sourceLinkHref(
+  sourceLinks: DashboardUrgentSourceLink[],
+  source: DashboardUrgentSourceLink['source'],
+  fallback: string,
+) {
+  return sourceLinks.find((link) => link.source === source)?.href ?? fallback;
+}
+
+function buildDashboardSummaryRailTasks({
+  summary,
+  details,
+  inbound,
+  sourceLinks,
+}: {
+  summary: DashboardCockpitSummaryResponse;
+  details: DashboardCockpitDetailsResponse | null;
+  inbound: DashboardCockpitInboundResponse | null;
+  sourceLinks: DashboardUrgentSourceLink[];
+}): DashboardSummaryRailTask[] {
+  const inboundCount =
+    inbound?.inbound_needs_review_count ?? sourceLinkCount(sourceLinks, 'inbound');
+  const stockCount = sourceLinkCount(sourceLinks, 'medication_stock');
+  const reportCount = sourceLinkCount(sourceLinks, 'report');
+  const billingCount = sourceLinkCount(sourceLinks, 'billing');
+
+  return [
+    {
+      key: 'audit',
+      label: '監査待ち',
+      count: summary.audit_queue_total_count ?? summary.audit_pending_count,
+      tone: summary.narcotic_audit_count > 0 ? 'urgent' : 'warning',
+      href: sourceLinkHref(sourceLinks, 'audit', '/audit?filter=dashboard_urgent'),
+    },
+    {
+      key: 'visit',
+      label: '本日の訪問',
+      count: summary.today_visit_count,
+      tone: 'info',
+      href: '/schedules?date=today',
+    },
+    {
+      key: 'inbound',
+      label: '他職種受信',
+      count: inboundCount,
+      tone: inboundCount > 0 ? 'warning' : 'normal',
+      href: DASHBOARD_INBOUND_DRILLDOWN_HREF,
+    },
+    {
+      key: 'stock',
+      label: '残数リスク',
+      count: stockCount,
+      tone: stockCount > 0 ? 'warning' : 'normal',
+      href: sourceLinkHref(sourceLinks, 'medication_stock', '/patients?filter=medication_stock'),
+    },
+    {
+      key: 'report',
+      label: '報告・請求',
+      count: reportCount + billingCount,
+      tone: reportCount + billingCount > 0 ? 'warning' : 'normal',
+      href:
+        reportCount > 0
+          ? sourceLinkHref(sourceLinks, 'report', '/reports?status=pending')
+          : sourceLinkHref(sourceLinks, 'billing', '/billing?status=pending'),
+    },
+    {
+      key: 'carryover',
+      label: '持ち越し',
+      count: details?.carryover_count ?? 0,
+      tone: (details?.carryover_count ?? 0) > 0 ? 'warning' : 'normal',
+      href: DASHBOARD_CARRYOVER_HREF,
+    },
+  ];
+}
+
+function DashboardSummaryRail({
+  summary,
+  details,
+  team,
+  inbound,
+  sourceLinks,
+}: {
+  summary: DashboardCockpitSummaryResponse;
+  details: DashboardCockpitDetailsResponse | null;
+  team: DashboardCockpitTeamResponse | null;
+  inbound: DashboardCockpitInboundResponse | null;
+  sourceLinks: DashboardUrgentSourceLink[];
+}) {
+  const waitingReviewCount =
+    (summary.audit_queue_total_count ?? summary.audit_pending_count) +
+    (inbound?.inbound_needs_review_count ?? sourceLinkCount(sourceLinks, 'inbound'));
+  const attentionCount = Math.max((details?.urgent_total_count ?? 0) - waitingReviewCount, 0);
+  const stableCount = Math.max(
+    Object.values(summary.cycle_status_counts).reduce((total, count) => total + count, 0) -
+      waitingReviewCount -
+      attentionCount,
+    0,
+  );
+  const taskSummary = buildDashboardSummaryRailTasks({
+    summary,
+    details,
+    inbound,
+    sourceLinks,
+  });
+  const workingMembers = team?.team_capacity.filter((member) => member.status === 'working') ?? [];
+  const totalSlackMinutes =
+    workingMembers.length > 0
+      ? workingMembers.reduce((total, member) => total + (member.slack_minutes ?? 0), 0)
+      : null;
+  const tightestMember = workingMembers
+    .filter((member) => member.slack_minutes != null)
+    .sort((left, right) => (left.slack_minutes ?? 0) - (right.slack_minutes ?? 0))[0];
+  const bottleneckLabel =
+    tightestMember && (tightestMember.slack_minutes ?? 0) < TEAM_SLACK_CRITICAL_MINUTES
+      ? `${tightestMember.name.split(/[\s　]+/)[0]}さんの余白が少ない`
+      : null;
+
+  return (
+    <aside
+      aria-labelledby="dashboard-summary-rail-heading"
+      className="rounded-lg border border-border/70 bg-card p-4 xl:sticky xl:top-4"
+      data-testid="dashboard-summary-rail"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 id="dashboard-summary-rail-heading" className="text-base font-bold text-foreground">
+            今日のサマリー
+          </h2>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            既存の運用segmentから合成しています
+          </p>
+        </div>
+        <DashboardGeneratedAtMeta generatedAt={summary.generated_at} />
+      </div>
+
+      <div className="-mx-1 mt-4 flex gap-2 overflow-x-auto px-1 pb-1 xl:grid xl:grid-cols-3 xl:overflow-visible xl:pb-0">
+        {[
+          { label: '通常運用', value: stableCount, tone: 'bg-state-done/10 text-state-done' },
+          {
+            label: '要対応',
+            value: attentionCount,
+            tone: 'bg-state-confirm/10 text-state-confirm',
+          },
+          {
+            label: '確認待ち',
+            value: waitingReviewCount,
+            tone: 'bg-tag-hazard/10 text-tag-hazard',
+          },
+        ].map((item) => (
+          <div
+            key={item.label}
+            className="min-w-28 rounded-md border border-border/70 bg-background px-3 py-2"
+          >
+            <p className="text-xs font-medium text-muted-foreground">{item.label}</p>
+            <p
+              className={cn(
+                'mt-1 text-2xl font-bold leading-8 tabular-nums',
+                item.value > 0 ? item.tone : 'text-foreground',
+              )}
+            >
+              {item.value}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-5">
+        <h3 className="text-sm font-semibold text-foreground">主なタスク</h3>
+        <ul className="mt-2 space-y-1.5" role="list">
+          {taskSummary.map((task) => (
+            <li key={task.key}>
+              <Link
+                href={task.href}
+                className="flex min-h-11 items-center justify-between gap-3 rounded-md border border-border/70 bg-background px-3 py-2 text-sm transition hover:border-primary/50 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                aria-label={`${task.label}を開く。${task.count}件`}
+              >
+                <span className="min-w-0 truncate font-medium">{task.label}</span>
+                <span
+                  className={cn(
+                    'rounded-full px-2 py-0.5 text-xs font-bold tabular-nums',
+                    task.tone === 'urgent'
+                      ? 'bg-tag-hazard/10 text-tag-hazard'
+                      : task.tone === 'warning'
+                        ? 'bg-state-confirm/10 text-state-confirm'
+                        : task.tone === 'info'
+                          ? 'bg-tag-info/10 text-tag-info'
+                          : 'bg-muted text-muted-foreground',
+                  )}
+                >
+                  {task.count}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="mt-5 rounded-md border border-border/70 bg-background px-3 py-3">
+        <h3 className="text-sm font-semibold text-foreground">チーム状況</h3>
+        <p className="mt-2 text-sm leading-5 text-muted-foreground">
+          {totalSlackMinutes == null ? (
+            'チーム余白を読み込み中'
+          ) : (
+            <>
+              合計余白{' '}
+              <span className="font-bold tabular-nums text-foreground">{totalSlackMinutes}分</span>
+            </>
+          )}
+        </p>
+        {bottleneckLabel ? (
+          <p className="mt-2 rounded border border-state-confirm/30 bg-state-confirm/10 px-2 py-1.5 text-xs font-semibold text-state-confirm">
+            {bottleneckLabel}
+          </p>
+        ) : null}
+      </div>
+    </aside>
+  );
+}
+
 function DashboardDetailsLoading({
   auditCount,
   visitCount,
@@ -1356,83 +1594,94 @@ export function DashboardCockpit({ focusRole = 'common' }: { focusRole?: Dashboa
                 }}
               />
             ) : null}
-            <div className="min-w-0 space-y-4">
-              <ConditionBanner data={summary} />
-              {detailsReady ? (
-                <>
-                  <UrgentNowSection
-                    items={viewModel.urgentItems}
-                    sourceLinks={viewModel.urgentSourceLinks}
-                    totalCount={viewModel.urgentTotalCount}
+            <div className="grid min-w-0 gap-4 xl:grid-cols-[280px_minmax(0,1fr)_minmax(300px,360px)]">
+              <DashboardSummaryRail
+                summary={summary}
+                details={details}
+                team={team}
+                inbound={inbound}
+                sourceLinks={viewModel.urgentSourceLinks}
+              />
+              <div className="min-w-0 space-y-4">
+                <ConditionBanner data={summary} />
+                {detailsReady ? (
+                  <>
+                    <UrgentNowSection
+                      items={viewModel.urgentItems}
+                      sourceLinks={viewModel.urgentSourceLinks}
+                      totalCount={viewModel.urgentTotalCount}
+                    />
+                    <TodayFlowSection
+                      visits={viewModel.todayVisits}
+                      auditCount={summary.audit_pending_count}
+                      narcoticAuditCount={summary.narcotic_audit_count}
+                      reportCount={summary.cycle_status_counts['visit_completed'] ?? 0}
+                    />
+                  </>
+                ) : detailsInitialError ? (
+                  <DashboardDetailsError
+                    error={detailsQuery.error}
+                    onRetry={() => void detailsQuery.refetch()}
                   />
-                  <TodayFlowSection
-                    visits={viewModel.todayVisits}
+                ) : detailsInitialLoading ? (
+                  <DashboardDetailsLoading
                     auditCount={summary.audit_pending_count}
-                    narcoticAuditCount={summary.narcotic_audit_count}
-                    reportCount={summary.cycle_status_counts['visit_completed'] ?? 0}
+                    visitCount={summary.today_visit_count}
                   />
-                </>
-              ) : detailsInitialError ? (
-                <DashboardDetailsError
-                  error={detailsQuery.error}
-                  onRetry={() => void detailsQuery.refetch()}
-                />
-              ) : detailsInitialLoading ? (
-                <DashboardDetailsLoading
-                  auditCount={summary.audit_pending_count}
-                  visitCount={summary.today_visit_count}
-                />
-              ) : null}
-              <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]">
-                <ProcessNowSection tiles={viewModel.processTiles} />
-                {teamReady ? (
-                  <TeamCapacityCard
-                    team={team.team_capacity ?? []}
-                    suggestion={viewModel.teamHandoffSuggestion}
-                  />
-                ) : teamInitialError ? (
-                  <TeamCapacityError
-                    error={teamQuery.error}
-                    onRetry={() => void teamQuery.refetch()}
-                  />
-                ) : teamInitialLoading ? (
-                  <TeamCapacityLoading />
                 ) : null}
+                <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]">
+                  <ProcessNowSection tiles={viewModel.processTiles} />
+                  {teamReady ? (
+                    <TeamCapacityCard
+                      team={team.team_capacity ?? []}
+                      suggestion={viewModel.teamHandoffSuggestion}
+                    />
+                  ) : teamInitialError ? (
+                    <TeamCapacityError
+                      error={teamQuery.error}
+                      onRetry={() => void teamQuery.refetch()}
+                    />
+                  ) : teamInitialLoading ? (
+                    <TeamCapacityLoading />
+                  ) : null}
+                </div>
+              </div>
+              {/*
+               * 右レールはデザイン 01 の 3 点セットに、横断コメント feed を
+               * TeamConversationPanel として fail-soft に追加する。
+               */}
+              <div className="min-w-0">
+                {detailsReady ? (
+                  <WorkspaceActionRail
+                    nextAction={viewModel.nextAction}
+                    blockedReasons={viewModel.blockedReasons}
+                    blockedReasonsEmptyLabel="止まっている作業はありません"
+                    evidence={evidence}
+                    evidenceOpenLabel="開く"
+                  >
+                    <InboundFeedPanel
+                      items={inbound?.inbound_items ?? []}
+                      hiddenCount={viewModel.inboundHiddenCount}
+                      needsReviewCount={viewModel.inboundNeedsReviewCount}
+                      isLoading={inboundInitialLoading}
+                      isError={inboundInitialError}
+                      error={inboundQuery.error}
+                      onRetry={() => void inboundQuery.refetch()}
+                    />
+                    <TeamConversationPanel
+                      comments={comments?.comments ?? []}
+                      hiddenCount={viewModel.commentsHiddenCount}
+                      isLoading={commentsInitialLoading}
+                      isError={commentsInitialError}
+                      error={commentsQuery.error}
+                      onRetry={() => void commentsQuery.refetch()}
+                    />
+                  </WorkspaceActionRail>
+                ) : detailsInitialError ? null : (
+                  <ActionRailLoading />
+                )}
               </div>
             </div>
-            {/*
-             * 右レールはデザイン 01 の 3 点セットに、横断コメント feed を
-             * TeamConversationPanel として fail-soft に追加する。
-             */}
-            {detailsReady ? (
-              <WorkspaceActionRail
-                nextAction={viewModel.nextAction}
-                blockedReasons={viewModel.blockedReasons}
-                blockedReasonsEmptyLabel="止まっている作業はありません"
-                evidence={evidence}
-                evidenceOpenLabel="開く"
-              >
-                <InboundFeedPanel
-                  items={inbound?.inbound_items ?? []}
-                  hiddenCount={viewModel.inboundHiddenCount}
-                  needsReviewCount={viewModel.inboundNeedsReviewCount}
-                  isLoading={inboundInitialLoading}
-                  isError={inboundInitialError}
-                  error={inboundQuery.error}
-                  onRetry={() => void inboundQuery.refetch()}
-                />
-                <TeamConversationPanel
-                  comments={comments?.comments ?? []}
-                  hiddenCount={viewModel.commentsHiddenCount}
-                  isLoading={commentsInitialLoading}
-                  isError={commentsInitialError}
-                  error={commentsQuery.error}
-                  onRetry={() => void commentsQuery.refetch()}
-                />
-              </WorkspaceActionRail>
-            ) : detailsInitialError ? null : (
-              <ActionRailLoading />
-            )}
           </div>
         )}
       </div>
