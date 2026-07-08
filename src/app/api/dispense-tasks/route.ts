@@ -139,7 +139,15 @@ const authenticatedGET = withAuthContext(async (req, ctx) => {
     include: cycleInclude,
   });
 
-  return success(buildCursorPage(tasks, limit, (task) => task.id));
+  const page = buildCursorPage(tasks, limit, (task) => task.id);
+  return success({
+    data: page.data,
+    meta: {
+      limit,
+      has_more: page.hasMore,
+      next_cursor: page.nextCursor ?? null,
+    },
+  });
 });
 
 export const GET: typeof authenticatedGET = async (req, routeContext) =>
@@ -271,7 +279,7 @@ export const POST = withAuthContext(
       return task;
     });
 
-    return success(created, 201);
+    return success({ data: created }, 201);
   },
   {
     permission: 'canDispense',

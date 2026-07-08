@@ -175,8 +175,11 @@ describe('/api/dispense-tasks GET', () => {
     );
     await expect(response.json()).resolves.toMatchObject({
       data: [{ id: 'task_1' }],
-      hasMore: true,
-      nextCursor: 'task_1',
+      meta: {
+        limit: 1,
+        has_more: true,
+        next_cursor: 'task_1',
+      },
     });
   });
 
@@ -366,6 +369,11 @@ describe('/api/dispense-tasks POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: taskId,
+      },
+    });
     expect(membershipFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -520,6 +528,11 @@ describe('/api/dispense-tasks POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: 'task_2',
+      },
+    });
     expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
   });
 });
