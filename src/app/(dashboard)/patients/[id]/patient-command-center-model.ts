@@ -98,6 +98,7 @@ const UNRESOLVED_CATEGORY_LABELS: Record<VisitBriefUnresolvedItem['source_type']
   inquiry: '医療機関',
   billing: '事務',
   medication_stock: '残数',
+  inbound_communication_signal: '他職種受信',
 };
 
 /** 当日は HH:mm、それ以外は M/d 表示(06_card 直近の動きの時刻表記) */

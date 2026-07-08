@@ -113,6 +113,7 @@ type VisitBriefDataReader = BillingEvidenceBlockersReader & {
     residual_adjustment?: boolean | null;
     change_detail?: string | null;
   }>;
+  inboundCommunicationSignal?: FindManyDelegate<VisitBriefInboundCommunicationSignalRow>;
   medicationCycle: FindManyDelegate<{ id: string }>;
   medicationIssue: FindManyDelegate<{
     id: string;
@@ -284,8 +285,46 @@ const OPEN_ISSUE_STATUSES = ['open', 'in_progress'] as const;
 const VISIT_BRIEF_LAB_STALE_DAYS = 90;
 const VISIT_BRIEF_MEDICATION_STOCK_RISK_LEVELS = ['urgent', 'shortage_expected'] as const;
 const VISIT_BRIEF_MEDICATION_STOCK_RISK_TASK_TYPE = 'pharmacy.medication_stock_shortage_expected';
+const VISIT_BRIEF_INBOUND_SIGNAL_DOMAINS = [
+  'medication_safety',
+  'medication_stock',
+  'adherence',
+  'schedule',
+  'urgent',
+] as const;
+const VISIT_BRIEF_INBOUND_SIGNAL_REVIEW_STATUSES = [
+  'needs_review',
+  'auto_accepted',
+  'accepted',
+  'record_only',
+] as const;
+const VISIT_BRIEF_INBOUND_SIGNAL_ACTION_STATUSES = ['not_linked'] as const;
+const VISIT_BRIEF_INBOUND_EVENT_PROCESSING_STATUSES = [
+  'unprocessed',
+  'signals_extracted',
+  'reviewed',
+] as const;
 
 type VisitBriefMedicationStockRiskLevel = (typeof VISIT_BRIEF_MEDICATION_STOCK_RISK_LEVELS)[number];
+type VisitBriefInboundSignalDomain = (typeof VISIT_BRIEF_INBOUND_SIGNAL_DOMAINS)[number];
+
+type VisitBriefInboundCommunicationSignalRow = {
+  id: string;
+  patient_id: string | null;
+  case_id: string | null;
+  inbound_event_id: string;
+  signal_domain: VisitBriefInboundSignalDomain;
+  signal_type: string;
+  source_confidence: string;
+  review_status: string;
+  action_status: string;
+  created_at: Date | string;
+  inbound_event: {
+    source_channel: string;
+    received_at: Date | string;
+    processing_status: string;
+  };
+};
 
 type VisitBriefMedicationStockSnapshotRow = {
   id: string;
@@ -376,6 +415,64 @@ async function listVisitBriefMedicationStockSnapshots(
       estimated_stockout_date: true,
       days_until_stockout: true,
       calculated_at: true,
+    },
+  });
+}
+
+async function listVisitBriefInboundCommunicationSignals(
+  db: DbClient,
+  args: Pick<BuildVisitBriefArgs, 'orgId' | 'patientId'>,
+  caseIds: string[],
+): Promise<VisitBriefInboundCommunicationSignalRow[]> {
+  const client = (
+    db as unknown as {
+      inboundCommunicationSignal?: {
+        findMany?: (
+          args: Record<string, unknown>,
+        ) => Promise<VisitBriefInboundCommunicationSignalRow[]>;
+      };
+    }
+  ).inboundCommunicationSignal;
+
+  if (!client?.findMany || caseIds.length === 0) return [];
+
+  return client.findMany({
+    where: {
+      org_id: args.orgId,
+      patient_id: args.patientId,
+      case_id: { in: caseIds },
+      signal_domain: { in: [...VISIT_BRIEF_INBOUND_SIGNAL_DOMAINS] },
+      review_status: { in: [...VISIT_BRIEF_INBOUND_SIGNAL_REVIEW_STATUSES] },
+      action_status: { in: [...VISIT_BRIEF_INBOUND_SIGNAL_ACTION_STATUSES] },
+      inbound_event: {
+        is: {
+          org_id: args.orgId,
+          patient_id: args.patientId,
+          case_id: { in: caseIds },
+          processing_status: { in: [...VISIT_BRIEF_INBOUND_EVENT_PROCESSING_STATUSES] },
+        },
+      },
+    },
+    orderBy: [{ created_at: 'desc' }, { id: 'asc' }],
+    take: 12,
+    select: {
+      id: true,
+      patient_id: true,
+      case_id: true,
+      inbound_event_id: true,
+      signal_domain: true,
+      signal_type: true,
+      source_confidence: true,
+      review_status: true,
+      action_status: true,
+      created_at: true,
+      inbound_event: {
+        select: {
+          source_channel: true,
+          received_at: true,
+          processing_status: true,
+        },
+      },
     },
   });
 }
@@ -716,8 +813,186 @@ function sortCommunications(left: VisitBriefCommunicationItem, right: VisitBrief
   return rightTime - leftTime;
 }
 
+function dateTimeToIso(value: Date | string | null | undefined) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+const VISIT_BRIEF_INBOUND_DOMAIN_LABELS: Record<VisitBriefInboundSignalDomain, string> = {
+  medication_safety: '服薬安全',
+  medication_stock: '残数',
+  adherence: '服薬継続',
+  schedule: '訪問予定',
+  urgent: '緊急確認',
+};
+
+const VISIT_BRIEF_INBOUND_SIGNAL_TYPE_LABELS: Record<string, string> = {
+  observed_quantity: '残数確認',
+  usage_delta: '使用量確認',
+  usage_frequency: '使用頻度確認',
+  low_stock_text: '残数不足確認',
+  out_of_stock_text: '在庫切れ確認',
+  refill_request: '補充依頼確認',
+  side_effect_suspected: '副作用疑い確認',
+  medication_not_taken: '服薬困難確認',
+  medication_overuse: '過量服用確認',
+  medication_lost: '薬剤紛失確認',
+  storage_issue: '保管状況確認',
+  schedule_change_request: '日程変更確認',
+  visit_request: '訪問依頼確認',
+  urgent_review_required: '緊急確認',
+  unknown: '受信内容確認',
+};
+
+const VISIT_BRIEF_INBOUND_CHANNEL_LABELS: Record<string, string> = {
+  mcs: 'MCS',
+  phone: '電話',
+  fax: 'FAX',
+  email: 'メール',
+  in_person: '対面',
+  patient_family: '患者・家族',
+  facility_note: '施設記録',
+  external_api: '外部連携',
+  manual: '手入力',
+  unknown: '受信連絡',
+};
+
+function inboundSignalDomainLabel(domain: VisitBriefInboundSignalDomain) {
+  return VISIT_BRIEF_INBOUND_DOMAIN_LABELS[domain] ?? '他職種受信';
+}
+
+function inboundSignalTypeLabel(type: string) {
+  return VISIT_BRIEF_INBOUND_SIGNAL_TYPE_LABELS[type] ?? '受信内容確認';
+}
+
+function inboundSignalChannelLabel(channel: string) {
+  return VISIT_BRIEF_INBOUND_CHANNEL_LABELS[channel] ?? '受信連絡';
+}
+
+function buildInboundSignalReviewHref(signalId: string) {
+  return `/communications/inbound?signal=${encodeURIComponent(signalId)}`;
+}
+
+function rankInboundSignal(row: VisitBriefInboundCommunicationSignalRow) {
+  if (row.inbound_event.processing_status === 'unprocessed') return 0;
+  if (row.review_status === 'needs_review') return 1;
+  if (row.signal_domain === 'medication_safety' || row.signal_domain === 'urgent') return 2;
+  if (row.signal_domain === 'medication_stock') return 3;
+  if (row.signal_domain === 'adherence') return 4;
+  if (row.signal_domain === 'schedule') return 5;
+  return 9;
+}
+
+function severityFromInboundSignal(
+  row: VisitBriefInboundCommunicationSignalRow,
+): VisitBriefSeverity {
+  if (
+    row.inbound_event.processing_status === 'unprocessed' ||
+    row.signal_domain === 'urgent' ||
+    row.signal_domain === 'medication_safety'
+  ) {
+    return 'urgent';
+  }
+  if (row.review_status === 'needs_review') return 'high';
+  return row.signal_domain === 'schedule' ? 'normal' : 'high';
+}
+
+function sortInboundSignals(
+  left: VisitBriefInboundCommunicationSignalRow,
+  right: VisitBriefInboundCommunicationSignalRow,
+) {
+  const rankDelta = rankInboundSignal(left) - rankInboundSignal(right);
+  if (rankDelta !== 0) return rankDelta;
+
+  const leftTime = dateTimeToIso(left.inbound_event.received_at ?? left.created_at);
+  const rightTime = dateTimeToIso(right.inbound_event.received_at ?? right.created_at);
+  const leftMs = leftTime ? new Date(leftTime).getTime() : 0;
+  const rightMs = rightTime ? new Date(rightTime).getTime() : 0;
+  if (leftMs !== rightMs) return rightMs - leftMs;
+  return left.id.localeCompare(right.id);
+}
+
+function buildInboundSignalCommunicationItems(
+  signals: VisitBriefInboundCommunicationSignalRow[],
+): VisitBriefCommunicationItem[] {
+  return [...signals]
+    .sort(sortInboundSignals)
+    .slice(0, 4)
+    .map((signal) => {
+      const domainLabel = inboundSignalDomainLabel(signal.signal_domain);
+      const typeLabel = inboundSignalTypeLabel(signal.signal_type);
+      const channelLabel = inboundSignalChannelLabel(signal.inbound_event.source_channel);
+      return {
+        source_type: 'inbound_communication' as const,
+        title: `${domainLabel}に関する受信連絡の確認`,
+        summary: compactTimelineValues([
+          `${channelLabel}由来の${typeLabel}があります。`,
+          signal.inbound_event.processing_status === 'unprocessed'
+            ? '未処理の受信情報です。'
+            : '薬剤師確認または反映待ちの受信情報です。',
+          '原文・薬剤名・数量・連絡先は受信インボックスで確認してください。',
+        ]).join(' / '),
+        occurred_at: dateTimeToIso(signal.inbound_event.received_at ?? signal.created_at),
+        counterpart: null,
+        severity: severityFromInboundSignal(signal),
+        action_href: buildInboundSignalReviewHref(signal.id),
+        action_label: '受信連絡を確認',
+      };
+    });
+}
+
+function buildInboundSignalUnresolvedItems(
+  signals: VisitBriefInboundCommunicationSignalRow[],
+): VisitBriefUnresolvedItem[] {
+  const signalsByDomain = new Map<
+    VisitBriefInboundSignalDomain,
+    VisitBriefInboundCommunicationSignalRow[]
+  >();
+  for (const signal of [...signals].sort(sortInboundSignals)) {
+    const current = signalsByDomain.get(signal.signal_domain) ?? [];
+    current.push(signal);
+    signalsByDomain.set(signal.signal_domain, current);
+  }
+
+  return Array.from(signalsByDomain.entries())
+    .map(([domain, domainSignals]) => {
+      const first = domainSignals[0];
+      const urgentCount = domainSignals.filter(
+        (signal) => severityFromInboundSignal(signal) === 'urgent',
+      ).length;
+      const severity: VisitBriefSeverity = domainSignals.some(
+        (signal) => severityFromInboundSignal(signal) === 'urgent',
+      )
+        ? 'urgent'
+        : 'high';
+      return {
+        source_type: 'inbound_communication_signal' as const,
+        title: `${inboundSignalDomainLabel(domain)}に関する受信連絡`,
+        summary: compactTimelineValues([
+          `未処理または要確認の受信シグナル ${domainSignals.length} 件。`,
+          urgentCount > 0 ? `緊急確認 ${urgentCount} 件` : null,
+          '原文・薬剤名・数量・連絡先は受信インボックスで確認してください。',
+        ]).join(' / '),
+        severity,
+        href: first ? buildInboundSignalReviewHref(first.id) : '/communications/inbound',
+      };
+    })
+    .sort((left, right) => {
+      const rank: Record<VisitBriefSeverity, number> = {
+        urgent: 0,
+        high: 1,
+        normal: 2,
+        low: 3,
+      };
+      return rank[left.severity] - rank[right.severity];
+    })
+    .slice(0, 4);
+}
+
 function buildCommunicationItems(args: {
   communicationQueueItems: CommunicationQueueItem[];
+  inboundSignals: VisitBriefInboundCommunicationSignalRow[];
   selfReports: Array<{
     subject: string;
     category: string;
@@ -760,6 +1035,7 @@ function buildCommunicationItems(args: {
     (item) => item.queue_type === 'inbound_communication',
   );
   const items: VisitBriefCommunicationItem[] = [
+    ...buildInboundSignalCommunicationItems(args.inboundSignals),
     ...inboundQueueItems.map((item) => ({
       source_type: 'inbound_communication' as const,
       title: item.title,
@@ -894,6 +1170,7 @@ function buildUnresolvedItems(args: {
     validation_notes: string | null;
   }>;
   medicationStockItems: VisitBriefUnresolvedItem[];
+  inboundSignalItems: VisitBriefUnresolvedItem[];
 }): VisitBriefUnresolvedItem[] {
   const tasks = args.medicationStockItems.length
     ? args.tasks.filter((item) => item.task_type !== VISIT_BRIEF_MEDICATION_STOCK_RISK_TASK_TYPE)
@@ -901,6 +1178,7 @@ function buildUnresolvedItems(args: {
 
   return [
     ...args.medicationStockItems,
+    ...args.inboundSignalItems,
     ...tasks.map((item) => {
       const presentation = describeOperationalTask(item);
       return {
@@ -1131,6 +1409,9 @@ function sourceRefs(args: {
   if (args.unresolvedItems.some((item) => item.source_type === 'medication_stock')) {
     refs.add('残数台帳');
   }
+  if (args.unresolvedItems.some((item) => item.source_type === 'inbound_communication_signal')) {
+    refs.add('他職種受信シグナル');
+  }
   if (args.unresolvedItems.length > 0) refs.add('未解決タスク・課題');
   return Array.from(refs);
 }
@@ -1296,6 +1577,7 @@ export async function getPatientVisitBrief(
     jahisSupplementalRows,
     latestLabRows,
     medicationStockSnapshots,
+    inboundCommunicationSignals,
     currentPatientSnapshot,
   ] = await Promise.all([
     db.patient.findFirst({
@@ -1641,6 +1923,7 @@ export async function getPatientVisitBrief(
       patientId: args.patientId,
     }),
     listVisitBriefMedicationStockSnapshots(db, args, caseIds),
+    listVisitBriefInboundCommunicationSignals(db, args, caseIds),
     // patient_changes 用の現在側スナップショット。context==='patient' かつ role/userId が揃う経路のみ。
     // schedule バッチ(role/userId 未指定)は null=差分なしで perf 退行を避ける。snapshot 構築は
     // 既存 Promise.all に同居させ直列レイテンシ増を避ける。
@@ -1760,6 +2043,7 @@ export async function getPatientVisitBrief(
   });
   const communicationItems = buildCommunicationItems({
     communicationQueueItems: communicationQueue.items,
+    inboundSignals: inboundCommunicationSignals,
     selfReports,
     communicationEvents,
     communicationRequests,
@@ -1778,6 +2062,7 @@ export async function getPatientVisitBrief(
     patientId: args.patientId,
     snapshots: medicationStockSnapshots,
   });
+  const inboundSignalItems = buildInboundSignalUnresolvedItems(inboundCommunicationSignals);
   const unresolvedItems = buildUnresolvedItems({
     patientId: args.patientId,
     tasks,
@@ -1785,6 +2070,7 @@ export async function getPatientVisitBrief(
     inquiries: unresolvedInquiries,
     blockedBillingEvidence,
     medicationStockItems,
+    inboundSignalItems,
   });
   const mustCheckToday = buildMustCheckToday({
     medicationChanges,

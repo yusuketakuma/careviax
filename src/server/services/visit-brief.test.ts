@@ -852,6 +852,212 @@ describe('getPatientVisitBrief', () => {
     expect(serialized).not.toContain('raw_text');
   });
 
+  it('surfaces formal inbound communication signals as controlled visit checks without leaking raw or extracted fields', async () => {
+    const db = {
+      ...buildMinimalBriefDb(),
+      inboundCommunicationSignal: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'signal_safety',
+            patient_id: 'patient_1',
+            case_id: 'case_1',
+            inbound_event_id: 'event_safety',
+            signal_domain: 'medication_safety',
+            signal_type: 'side_effect_suspected',
+            source_confidence: 'text_parsed_high',
+            review_status: 'needs_review',
+            action_status: 'not_linked',
+            created_at: new Date('2026-07-08T01:00:00.000Z'),
+            extracted_text: '湿布でかぶれた raw_text',
+            extracted_medication_name: '湿布',
+            extracted_quantity: 4,
+            extracted_unit: '枚',
+            structured_payload: { raw: 'mcs.example/thread' },
+            inbound_event: {
+              source_channel: 'mcs',
+              received_at: new Date('2026-07-08T01:00:00.000Z'),
+              processing_status: 'unprocessed',
+              raw_text: '湿布でかぶれた',
+              normalized_summary: '薬剤名入り normalized_summary',
+              external_url: 'https://mcs.example/thread',
+              sender_name: '山田太郎',
+              sender_contact: 'sender@example.test',
+              sender_organization_name: '訪看ステーション',
+              attachment_count: 1,
+              attachments: [{ file_asset_id: 'file_asset_secret' }],
+            },
+          },
+          {
+            id: 'signal_stock',
+            patient_id: 'patient_1',
+            case_id: 'case_1',
+            inbound_event_id: 'event_stock',
+            signal_domain: 'medication_stock',
+            signal_type: 'low_stock_text',
+            source_confidence: 'text_parsed_low',
+            review_status: 'accepted',
+            action_status: 'not_linked',
+            created_at: new Date('2026-07-08T02:00:00.000Z'),
+            extracted_text: 'カロナール 残り4錠',
+            extracted_medication_name: 'カロナール',
+            extracted_quantity: 4,
+            extracted_unit: '錠',
+            inbound_event: {
+              source_channel: 'phone',
+              received_at: new Date('2026-07-08T02:00:00.000Z'),
+              processing_status: 'signals_extracted',
+              raw_text: 'カロナール 残り4錠',
+              sender_contact: '090-0000-0000',
+            },
+          },
+          {
+            id: 'signal_adherence',
+            patient_id: 'patient_1',
+            case_id: 'case_1',
+            inbound_event_id: 'event_adherence',
+            signal_domain: 'adherence',
+            signal_type: 'medication_not_taken',
+            source_confidence: 'manual',
+            review_status: 'record_only',
+            action_status: 'not_linked',
+            created_at: new Date('2026-07-08T03:00:00.000Z'),
+            extracted_text: '飲めていない',
+            inbound_event: {
+              source_channel: 'manual',
+              received_at: new Date('2026-07-08T03:00:00.000Z'),
+              processing_status: 'reviewed',
+            },
+          },
+        ]),
+      },
+    };
+
+    const result = await getPatientVisitBrief(db, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      context: 'patient',
+      caseIds: ['case_1'],
+    });
+
+    expect(db.inboundCommunicationSignal.findMany).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        case_id: { in: ['case_1'] },
+        signal_domain: {
+          in: ['medication_safety', 'medication_stock', 'adherence', 'schedule', 'urgent'],
+        },
+        review_status: { in: ['needs_review', 'auto_accepted', 'accepted', 'record_only'] },
+        action_status: { in: ['not_linked'] },
+        inbound_event: {
+          is: {
+            org_id: 'org_1',
+            patient_id: 'patient_1',
+            case_id: { in: ['case_1'] },
+            processing_status: { in: ['unprocessed', 'signals_extracted', 'reviewed'] },
+          },
+        },
+      },
+      orderBy: [{ created_at: 'desc' }, { id: 'asc' }],
+      take: 12,
+      select: {
+        id: true,
+        patient_id: true,
+        case_id: true,
+        inbound_event_id: true,
+        signal_domain: true,
+        signal_type: true,
+        source_confidence: true,
+        review_status: true,
+        action_status: true,
+        created_at: true,
+        inbound_event: {
+          select: {
+            source_channel: true,
+            received_at: true,
+            processing_status: true,
+          },
+        },
+      },
+    });
+    const signalQuery = db.inboundCommunicationSignal.findMany.mock.calls[0]?.[0];
+    expect(signalQuery.select).not.toHaveProperty('extracted_text');
+    expect(signalQuery.select).not.toHaveProperty('extracted_medication_name');
+    expect(signalQuery.select).not.toHaveProperty('extracted_quantity');
+    expect(signalQuery.select).not.toHaveProperty('extracted_unit');
+    expect(signalQuery.select).not.toHaveProperty('structured_payload');
+    expect(signalQuery.select.inbound_event.select).not.toHaveProperty('raw_text');
+    expect(signalQuery.select.inbound_event.select).not.toHaveProperty('normalized_summary');
+    expect(signalQuery.select.inbound_event.select).not.toHaveProperty('external_url');
+    expect(signalQuery.select.inbound_event.select).not.toHaveProperty('sender_name');
+    expect(signalQuery.select.inbound_event.select).not.toHaveProperty('sender_contact');
+    expect(signalQuery.select.inbound_event.select).not.toHaveProperty('sender_organization_name');
+    expect(signalQuery.select.inbound_event.select).not.toHaveProperty('attachments');
+    expect(signalQuery.select.inbound_event.select).not.toHaveProperty('attachment_count');
+
+    expect(result.multidisciplinary_updates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source_type: 'inbound_communication',
+          title: '服薬安全に関する受信連絡の確認',
+          summary: expect.stringContaining('MCS由来の副作用疑い確認'),
+          severity: 'urgent',
+          action_href: '/communications/inbound?signal=signal_safety',
+        }),
+        expect.objectContaining({
+          title: '服薬継続に関する受信連絡の確認',
+          summary: expect.stringContaining('手入力由来の服薬困難確認'),
+        }),
+      ]),
+    );
+    expect(result.unresolved_items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source_type: 'inbound_communication_signal',
+          title: '服薬安全に関する受信連絡',
+          severity: 'urgent',
+          href: '/communications/inbound?signal=signal_safety',
+        }),
+        expect.objectContaining({
+          source_type: 'inbound_communication_signal',
+          title: '残数に関する受信連絡',
+          href: '/communications/inbound?signal=signal_stock',
+        }),
+      ]),
+    );
+    expect(result.must_check_today).toContain('服薬安全に関する受信連絡の確認');
+    expect(result.rule_summary.source_refs).toContain('他職種受信シグナル');
+    expect(generateVisitBriefAiSummaryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        multidisciplinary: expect.arrayContaining([
+          expect.stringContaining('服薬安全に関する受信連絡の確認'),
+        ]),
+        unresolved: expect.arrayContaining([expect.stringContaining('服薬安全に関する受信連絡')]),
+      }),
+    );
+
+    const serialized = JSON.stringify({
+      multidisciplinary_updates: result.multidisciplinary_updates,
+      unresolved_items: result.unresolved_items,
+      must_check_today: result.must_check_today,
+      rule_summary: result.rule_summary,
+      ai_input: generateVisitBriefAiSummaryMock.mock.calls[0]?.[0],
+    });
+    expect(serialized).not.toContain('raw_text');
+    expect(serialized).not.toContain('normalized_summary');
+    expect(serialized).not.toContain('extracted_text');
+    expect(serialized).not.toContain('湿布');
+    expect(serialized).not.toContain('カロナール');
+    expect(serialized).not.toContain('残り4');
+    expect(serialized).not.toContain('https://');
+    expect(serialized).not.toContain('mcs.example');
+    expect(serialized).not.toContain('sender@example');
+    expect(serialized).not.toContain('090-0000-0000');
+    expect(serialized).not.toContain('file_asset_secret');
+    expect(serialized).not.toContain('山田太郎');
+    expect(serialized).not.toContain('訪看ステーション');
+  });
+
   it('surfaces medication stock shortage snapshots as generic visit checks without leaking stock details', async () => {
     const db = {
       ...buildMinimalBriefDb(),
@@ -1197,6 +1403,7 @@ describe('getScheduleVisitBriefsForSchedules', () => {
       task: { findMany: vi.fn().mockResolvedValue([]) },
       medicationIssue: { findMany: vi.fn().mockResolvedValue([]) },
       medicationStockSnapshot: { findMany: vi.fn().mockResolvedValue([]) },
+      inboundCommunicationSignal: { findMany: vi.fn().mockResolvedValue([]) },
       inquiryRecord: { findMany: vi.fn().mockResolvedValue([]) },
       visitRecord: {
         findMany: vi.fn().mockResolvedValue([]),
@@ -1280,6 +1487,36 @@ describe('getScheduleVisitBriefsForSchedules', () => {
       }),
     );
     expect(db.medicationStockSnapshot.findMany.mock.calls[0]?.[0].where.OR).toBeUndefined();
+    expect(db.inboundCommunicationSignal.findMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          patient_id: 'patient_1',
+          case_id: { in: ['case_1'] },
+          inbound_event: {
+            is: expect.objectContaining({
+              patient_id: 'patient_1',
+              case_id: { in: ['case_1'] },
+            }),
+          },
+        }),
+      }),
+    );
+    expect(db.inboundCommunicationSignal.findMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          patient_id: 'patient_1',
+          case_id: { in: ['case_2'] },
+          inbound_event: {
+            is: expect.objectContaining({
+              patient_id: 'patient_1',
+              case_id: { in: ['case_2'] },
+            }),
+          },
+        }),
+      }),
+    );
   });
 
   it('builds independent schedule briefs for the same patient and case scope', async () => {
