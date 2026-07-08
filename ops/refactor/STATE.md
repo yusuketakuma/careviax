@@ -22562,3 +22562,111 @@ date`, and active statuses only, then pass that date key into snapshot recalcula
 - next action:
   Commit this explicit documentation/planning slice, then continue with the next
   implementation-ready queue item without touching unrelated untracked files.
+
+## 2026-07-08 MOV-001 movement timeline standalone-only filters
+
+- current task:
+  Implement the next non-human-gated `MOV-001-API` slice: make the patient
+  movement timeline list the only current list API, add bounded cursor/date/
+  category filtering, and remove the legacy `/api/patients/:id/timeline` list
+  alias per latest user instruction that compatibility is unnecessary.
+- files inspected:
+  `git status --short --untracked-files=all`, `Plans.md`,
+  `ops/refactor/STATE.md`, `docs/ui-ux-design-guidelines.md`,
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+  `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`,
+  `src/app/api/patients/[id]/timeline-route-handler.ts`,
+  `src/app/api/patients/[id]/movement-timeline/route.ts`,
+  `src/app/api/patients/[id]/timeline/route.ts`,
+  `src/app/api/patients/[id]/timeline/[eventId]/route.ts`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+  `src/app/(dashboard)/patients/[id]/patient-detail.types.ts`,
+  `src/lib/api/rate-limit.ts`, `src/lib/utils/route-payload-budgets.ts`,
+  `tools/read-path-slo.json`, `tools/query-shape-watchlist.json`, and
+  `tools/scripts/perf-smoke.test.ts`.
+- files changed:
+  `Plans.md`, `ops/refactor/STATE.md`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+  `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+  `src/app/(dashboard)/patients/[id]/patient-detail.types.ts`,
+  `src/app/api/patients/[id]/detail-slices.test.ts`,
+  `src/app/api/patients/[id]/movement-timeline/route.ts`,
+  `src/app/api/patients/[id]/movement-timeline/route.test.ts`,
+  `src/app/api/patients/[id]/timeline-route-handler.ts`,
+  deleted `src/app/api/patients/[id]/timeline/route.ts`,
+  deleted `src/app/api/patients/[id]/timeline/route.test.ts`,
+  `src/lib/api/rate-limit.ts`, `src/lib/api/rate-limit.test.ts`,
+  `src/lib/utils/performance.test.ts`,
+  `src/lib/utils/route-payload-budgets.ts`,
+  `src/lib/visits/query-invalidations.ts`,
+  `tools/query-shape-watchlist.json`, `tools/read-path-slo.json`, and
+  `tools/scripts/perf-smoke.test.ts`.
+- implementation:
+  Converted the movement timeline handler to a movement-only GET factory. The
+  list API now always reads a fixed bounded latest window of 40 movement events
+  through the org-scoped runner, validates `limit` 1..40, validates one
+  `category`, validates `date_from` / `date_to` as Japan business date keys,
+  rejects reversed date ranges, and returns a non-PHI base64url cursor tied to
+  version, window limit, occurred_at, event id, and normalized filter hash. The
+  response shape is movement-only: `movement_events`, `meta`, and optional
+  `partial_failures`; it no longer returns legacy `timeline_events` or
+  `self_reports`. Patient detail now uses only `patient-movement-timeline` /
+  `/movement-timeline` for both Command excerpt and Movement tab. The old
+  `/api/patients/:id/timeline` list route and route test were removed; the
+  `/api/patients/:id/timeline/:eventId` safe detail resolver remains.
+- imagegen:
+  Omitted. This slice changes API/DTO contract and client data source only; no
+  new visual reconstruction, layout, grouping, borders, spacing, or heading
+  hierarchy was introduced. The existing PH-OS UI patterns and 44px controls
+  remain unchanged.
+- bugs found:
+  The earlier standalone API plan still preserved `/timeline` as a compatibility
+  alias, which conflicted with the latest user instruction and left two list
+  contracts alive. `.next` generated route types also retained stale imports
+  after deleting the route; removing the generated `.next` route type cache and
+  rerunning `next typegen` fixed typecheck.
+- security risks reduced:
+  Removed the duplicate patient movement list entrypoint, so PHI-bearing list
+  reads have one canonical path, one rate-limit bucket, one read-SLO row, and
+  one query-shape watchlist row. Cursor metadata contains no patient name,
+  phone, SOAP body, self-report text, or raw source text and is rejected when
+  malformed or mismatched to filters.
+- performance issues improved:
+  Filtered pages are produced from a fixed bounded latest-window read instead of
+  allowing response `limit` to shrink the source window. Payload budgets,
+  read-SLO, perf-smoke matrix, and route performance tests now track only the
+  canonical `/api/patients/:id/movement-timeline` list path.
+- validation commands:
+  `pnpm exec prettier --write Plans.md tools/read-path-slo.json tools/query-shape-watchlist.json tools/scripts/perf-smoke.test.ts 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-detail.types.ts' 'src/app/api/patients/[id]/detail-slices.test.ts' 'src/app/api/patients/[id]/movement-timeline/route.ts' 'src/app/api/patients/[id]/movement-timeline/route.test.ts' 'src/app/api/patients/[id]/timeline-route-handler.ts' src/lib/api/rate-limit.ts src/lib/api/rate-limit.test.ts src/lib/utils/performance.test.ts src/lib/utils/route-payload-budgets.ts src/lib/visits/query-invalidations.ts`;
+  `pnpm exec vitest run 'src/app/api/patients/[id]/movement-timeline/route.test.ts' 'src/app/api/patients/[id]/timeline/[eventId]/route.test.ts' 'src/app/api/patients/[id]/detail-slices.test.ts' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' src/lib/api/rate-limit.test.ts src/lib/utils/performance.test.ts tools/scripts/perf-smoke.test.ts --reporter=dot --testTimeout=30000`;
+  scoped `pnpm exec eslint ...`;
+  scoped `pnpm exec prettier --check ...`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `pnpm db:query-shape:check`;
+  `pnpm db:read-slo:check`;
+  `pnpm plans:active:check`;
+  `git diff --check -- ...`;
+  `pnpm format:check`;
+  `pnpm test -- --runInBand`.
+- validation results:
+  Focused Vitest passed 7 files / 239 tests with only existing PHI audit mock
+  warnings. Scoped ESLint passed. Scoped Prettier check passed. Typecheck
+  passed after clearing stale `.next` generated route types. Query-shape check
+  passed with 0 allowlisted and 0 new violations. Read-SLO check passed. Plans
+  active board check passed. Diff whitespace check passed. `pnpm format:check`
+  failed only on unrelated pre-existing untracked Markdown files under
+  `projects/careviax/**`. Full `pnpm test -- --runInBand` failed 16 tests in
+  unrelated suites (`rls-policy-contract`, `patient-detail` medication stock
+  snapshot mocks, `pdf-bulk-export`, data explorer catalog, dashboard workflow
+  snapshot, protected dashboard cockpit details, workflow prescription-to-report,
+  and visit capture context); the one route-matrix failure related to the old
+  `/timeline` expected path was fixed and the focused perf-smoke suite now
+  passes.
+- remaining work:
+  `MOV-001-API` remains partial for map-less date-card UX, formal inbound/stock/
+  safety source parity, remaining deep-link coverage, and raw detail reauth UI.
+  Broad full-suite failures remain outside this movement API slice and should be
+  handled as their own focused slices.
+- next action:
+  Commit this explicit owned slice, then continue with the next highest-value
+  non-human-gated `Plans.md` item.

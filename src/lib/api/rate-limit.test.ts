@@ -183,11 +183,11 @@ describe('rate-limit', () => {
 
   it('canonicalizes dynamic route segments while preserving static siblings', () => {
     expect(canonicalizeRateLimitPath('/api/patients/patient_1')).toBe('/api/patients/:id');
-    expect(canonicalizeRateLimitPath('/api/patients/patient_2/timeline')).toBe(
-      '/api/patients/:id/timeline',
-    );
     expect(canonicalizeRateLimitPath('/api/patients/patient_2/movement-timeline')).toBe(
-      '/api/patients/:id/timeline',
+      '/api/patients/:id/movement-timeline',
+    );
+    expect(canonicalizeRateLimitPath('/api/patients/patient_2/timeline/event_1')).toBe(
+      '/api/patients/:id/timeline/:id',
     );
     expect(canonicalizeRateLimitPath('/api/patients/patient_2/medication-stock')).toBe(
       '/api/patients/:id/medication-stock',
@@ -285,10 +285,10 @@ describe('rate-limit', () => {
     expect(canonicalizeRateLimitPath('/settings')).toBe('/settings');
   });
 
-  it('shares the read bucket between legacy and standalone movement timeline routes', async () => {
+  it('uses the standalone movement timeline read bucket', async () => {
     for (let index = 0; index < RATE_LIMIT_READ_MAX; index += 1) {
       await expect(
-        checkRateLimit('203.0.113.20', '/api/patients/patient_1/timeline', 'GET'),
+        checkRateLimit('203.0.113.20', '/api/patients/patient_1/movement-timeline', 'GET'),
       ).resolves.toMatchObject({ allowed: true });
     }
 

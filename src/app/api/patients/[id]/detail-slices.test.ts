@@ -76,7 +76,7 @@ import { GET as visitsGet } from './visits/route';
 import { GET as communicationsGet } from './communications/route';
 import { GET as documentsGet } from './documents/route';
 import { GET as homeOperationsGet } from './home-operations/route';
-import { GET as timelineGet } from './timeline/route';
+import { GET as movementTimelineGet } from './movement-timeline/route';
 import { GET as readinessGet } from './readiness/route';
 import { GET as workflowPreviewGet } from './workflow-preview/route';
 
@@ -159,19 +159,39 @@ const sliceRoutes = [
     },
   },
   {
-    name: 'timeline',
-    path: 'timeline',
-    get: timelineGet,
+    name: 'movementTimeline',
+    path: 'movement-timeline',
+    get: movementTimelineGet,
     serviceMock: getPatientTimelineDataMock,
     successData: {
       timeline_events: [],
+      movement_events: [],
       self_reports: [],
+      partial_failures: [
+        {
+          source: 'communicationEvents',
+          message: '一部のタイムライン情報を取得できませんでした',
+        },
+      ],
     },
     expectedBody: {
-      timeline_events: [],
-      self_reports: [],
+      movement_events: [],
+      meta: {
+        next_cursor: null,
+        has_more: false,
+        returned_count: 0,
+        count_basis: 'bounded_latest_window',
+        filters: { category: null, date_from: null, date_to: null },
+        window_limit: 40,
+      },
+      partial_failures: [
+        {
+          source: 'communicationEvents',
+          message: '一部のタイムライン情報を取得できませんでした',
+        },
+      ],
     },
-    // F-003 Cycle C: the timeline route injects a ScopedTxRunner (a function),
+    // F-003 Cycle C: the movement timeline route injects a ScopedTxRunner (a function),
     // not the global prisma client, so its first service arg is a function.
     expectedFirstArg: expect.any(Function),
   },
@@ -538,9 +558,10 @@ describe('patient detail slice routes', () => {
     });
   });
 
-  it('returns patient timeline data', async () => {
+  it('returns patient movement timeline data', async () => {
     getPatientTimelineDataMock.mockResolvedValue({
       timeline_events: [],
+      movement_events: [],
       self_reports: [],
       partial_failures: [
         {
@@ -550,16 +571,23 @@ describe('patient detail slice routes', () => {
       ],
     });
 
-    const response = await timelineGet(
-      createRequest('http://localhost/api/patients/patient_1/timeline?limit=5'),
+    const response = await movementTimelineGet(
+      createRequest('http://localhost/api/patients/patient_1/movement-timeline?limit=5'),
       { params: Promise.resolve({ id: 'patient_1' }) },
     );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      timeline_events: [],
-      self_reports: [],
+      movement_events: [],
+      meta: {
+        next_cursor: null,
+        has_more: false,
+        returned_count: 0,
+        count_basis: 'bounded_latest_window',
+        filters: { category: null, date_from: null, date_to: null },
+        window_limit: 40,
+      },
       partial_failures: [
         {
           source: 'communicationEvents',
@@ -572,7 +600,7 @@ describe('patient detail slice routes', () => {
       patientId: 'patient_1',
       role: 'pharmacist',
       userId: 'user_1',
-      timelineLimit: 5,
+      timelineLimit: 40,
     });
   });
 
@@ -669,7 +697,7 @@ describe('patient detail slice routes', () => {
         patientId: 'patient_custom',
         role: 'admin',
         userId: 'user_custom',
-        ...(routeCase.name === 'timeline' ? { timelineLimit: 40 } : {}),
+        ...(routeCase.name === 'movementTimeline' ? { timelineLimit: 40 } : {}),
       },
     );
   });

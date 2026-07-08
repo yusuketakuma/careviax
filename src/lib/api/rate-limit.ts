@@ -744,7 +744,6 @@ export const API_ROUTE_TEMPLATES = [
   '/api/patients/:id/readiness',
   '/api/patients/:id/restore',
   '/api/patients/:id/structured-care',
-  '/api/patients/:id/timeline',
   '/api/patients/:id/timeline/:id',
   '/api/patients/:id/visit-brief',
   '/api/patients/:id/visit-constraints',
@@ -907,9 +906,7 @@ const compiledApiRouteTemplates: CompiledRouteTemplate[] = API_ROUTE_TEMPLATES.m
   return right.segments.length - left.segments.length;
 });
 
-const RATE_LIMIT_CANONICAL_ROUTE_ALIASES = new Map<string, string>([
-  ['/api/patients/:id/movement-timeline', '/api/patients/:id/timeline'],
-]);
+const RATE_LIMIT_CANONICAL_ROUTE_ALIASES = new Map<string, string>();
 
 function normalizePathname(pathname: string) {
   const [pathWithoutQuery] = pathname.split('?');

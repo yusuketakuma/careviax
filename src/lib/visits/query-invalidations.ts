@@ -17,7 +17,7 @@ export function getPatientCareQueryKeys(args: PatientQueryArgs): QueryKey[] {
     ['patient-overview', args.patientId, args.orgId],
     ['patient-communications', args.patientId, args.orgId],
     ['patient-documents', args.patientId, args.orgId],
-    ['patient-timeline', args.patientId, args.orgId],
+    ['patient-movement-timeline', args.patientId, args.orgId],
     ['patient-readiness', args.patientId, args.orgId],
     ['patient-contacts', args.patientId, args.orgId],
     ['patients', args.orgId],

@@ -79,9 +79,8 @@ import {
 } from '@/lib/patient/home-visit-intake';
 import type {
   PatientDocumentsSnapshot,
+  PatientMovementTimelineSnapshot,
   PatientOverview,
-  PatientTimelineEvent,
-  PatientTimelineSnapshot,
   PatientWorkspaceActivity,
   PatientWorkspacePrescriptionLine,
   PatientWorkspaceTodayTask,
@@ -336,7 +335,6 @@ const PATIENT_DETAIL_HASH_TABS: Record<string, PatientDetailTab> = {
   'card-prescription-section': 'medication',
   'patient-visit-preparation': 'medication',
   'patient-movement': 'movement',
-  'patient-timeline': 'movement',
   'inbound-communications': 'movement',
   'inbound-signals': 'movement',
   'medication-stock-events': 'movement',
@@ -4039,7 +4037,7 @@ function PatientCommandCenterPanel({
   evidence: EvidenceItem[];
   recentActivities: PatientCommandRecentActivityItem[];
   timelineExcerpt: {
-    events: PatientTimelineEvent[];
+    events: PatientMovementTimelineSnapshot['movement_events'];
     isLoading: boolean;
     error: boolean;
     onRetry: () => void;
@@ -4120,7 +4118,7 @@ function CommandTimelineExcerptPanel({
   error,
   onRetry,
 }: {
-  events: PatientTimelineEvent[];
+  events: PatientMovementTimelineSnapshot['movement_events'];
   isLoading: boolean;
   error: boolean;
   onRetry: () => void;
@@ -4907,19 +4905,22 @@ export function CardWorkspace({
   });
 
   const {
-    data: timelineSnapshot,
-    isLoading: timelineLoading,
-    isFetching: timelineFetching,
-    isError: timelineError,
-    refetch: refetchTimeline,
-  } = useQuery<PatientTimelineSnapshot>({
-    queryKey: ['patient-timeline', patientId, orgId, timelineLimit],
+    data: movementTimelineSnapshot,
+    isLoading: movementTimelineLoading,
+    isFetching: movementTimelineFetching,
+    isError: movementTimelineError,
+    refetch: refetchMovementTimeline,
+  } = useQuery<PatientMovementTimelineSnapshot>({
+    queryKey: ['patient-movement-timeline', patientId, orgId, timelineLimit],
     queryFn: async () => {
       const path = `${buildPatientApiPath(patientId, '/movement-timeline')}?${new URLSearchParams({
         limit: String(timelineLimit),
       }).toString()}`;
       const response = await fetch(path, { headers: buildOrgHeaders(orgId) });
-      return readApiJson<PatientTimelineSnapshot>(response, '患者履歴の取得に失敗しました');
+      return readApiJson<PatientMovementTimelineSnapshot>(
+        response,
+        '患者の動きの取得に失敗しました',
+      );
     },
     enabled: Boolean(
       orgId && patient && (isDetailTabMounted('command') || isDetailTabMounted('movement')),
@@ -5338,15 +5339,11 @@ export function CardWorkspace({
   // patient が存在する場合は、背景 refetch が失敗(error)していてもワークスペースを維持して表示する
   // (react-query v5 は cached/initialData がある状態で error をセットしても data を保持する)。
 
-  const renderPatientTimelinePanel = (mode: 'activity' | 'movement' = 'activity') => {
-    if (timelineLoading) {
+  const renderPatientTimelinePanel = () => {
+    if (movementTimelineLoading) {
       return (
         <SegmentLoading
-          label={
-            mode === 'movement'
-              ? '患者の動きを読み込み中'
-              : '患者アクションタイムラインを読み込み中'
-          }
+          label="患者の動きを読み込み中"
           description="訪問、処方、文書、連絡の発生履歴を部分取得しています。"
           rows={3}
           cols={2}
@@ -5354,34 +5351,26 @@ export function CardWorkspace({
       );
     }
 
-    if (timelineError) {
+    if (movementTimelineError) {
       return (
         <SegmentError
-          title={
-            mode === 'movement'
-              ? '患者の動きを表示できません'
-              : '患者アクションタイムラインを表示できません'
-          }
-          cause="患者履歴の取得に失敗しました。"
+          title="患者の動きを表示できません"
+          cause="患者の動きの取得に失敗しました。"
           nextAction="通信状態または権限を確認して再試行してください。"
-          onRetry={() => void refetchTimeline()}
-          retryLabel="患者履歴を再取得"
+          onRetry={() => void refetchMovementTimeline()}
+          retryLabel="患者の動きを再取得"
         />
       );
     }
 
     return (
       <PatientMovementTimelinePanel
-        timelineEvents={
-          mode === 'movement'
-            ? (timelineSnapshot?.movement_events ?? timelineSnapshot?.timeline_events ?? [])
-            : (timelineSnapshot?.timeline_events ?? [])
-        }
-        selfReports={timelineSnapshot?.self_reports ?? []}
+        timelineEvents={movementTimelineSnapshot?.movement_events ?? []}
+        selfReports={[]}
         isPartial={timelineLimit < PATIENT_TIMELINE_FULL_LIMIT}
         fullLimit={PATIENT_TIMELINE_FULL_LIMIT}
-        isLoadingFull={timelineFetching && timelineLimit >= PATIENT_TIMELINE_FULL_LIMIT}
-        partialFailures={timelineSnapshot?.partial_failures}
+        isLoadingFull={movementTimelineFetching && timelineLimit >= PATIENT_TIMELINE_FULL_LIMIT}
+        partialFailures={movementTimelineSnapshot?.partial_failures}
         onLoadFull={() => setTimelineRequest({ patientId, limit: PATIENT_TIMELINE_FULL_LIMIT })}
       />
     );
@@ -5578,10 +5567,10 @@ export function CardWorkspace({
     onWaive: waiveRiskTaskMutation.mutate,
   };
   const commandTimelineExcerptProps = {
-    events: timelineSnapshot?.timeline_events ?? [],
-    isLoading: timelineLoading,
-    error: timelineError,
-    onRetry: () => void refetchTimeline(),
+    events: movementTimelineSnapshot?.movement_events ?? [],
+    isLoading: movementTimelineLoading,
+    error: movementTimelineError,
+    onRetry: () => void refetchMovementTimeline(),
   };
 
   const renderHomeOperationsPanel = (
@@ -5710,7 +5699,7 @@ export function CardWorkspace({
             <TabsContent value="movement" keepMounted className="space-y-4">
               <div id="patient-movement" data-testid="patient-movement-panel" className="space-y-4">
                 <h2 className="text-lg font-bold text-foreground">患者の動き</h2>
-                {renderPatientTimelinePanel('movement')}
+                {renderPatientTimelinePanel()}
               </div>
             </TabsContent>
           ) : null}
@@ -5896,7 +5885,7 @@ export function CardWorkspace({
                   className="space-y-4"
                 >
                   <h2 className="text-lg font-bold text-foreground">患者の動き</h2>
-                  {renderPatientTimelinePanel('movement')}
+                  {renderPatientTimelinePanel()}
                 </div>
               </TabsContent>
             ) : null}

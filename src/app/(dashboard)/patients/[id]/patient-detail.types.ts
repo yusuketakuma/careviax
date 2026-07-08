@@ -1,5 +1,8 @@
 import type { HomeCareFeatureSummary } from '@/types/home-care';
-import type { PatientMovementTimelineEvent } from '@/types/patient-movement-timeline';
+import type {
+  PatientMovementCategory,
+  PatientMovementTimelineEvent,
+} from '@/types/patient-movement-timeline';
 import type { VisitBrief } from '@/types/visit-brief';
 import type { AllergyEntry } from '@/lib/validations/patient-allergy';
 import type { JahisSupplementalRecordDbView } from '@/lib/pharmacy/jahis-supplemental-records-view';
@@ -544,53 +547,20 @@ export type PatientDocumentsSnapshot = {
   }>;
 };
 
-export type PatientTimelineEvent = {
-  id: string;
-  event_type:
-    | 'visit_schedule'
-    | 'visit_record'
-    | 'prescription_intake'
-    | 'dispense_result'
-    | 'inquiry'
-    | 'care_report'
-    | 'delivery_record'
-    | 'management_plan'
-    | 'first_visit_document'
-    | 'conference_note'
-    | 'billing_candidate'
-    | 'operation_history'
-    | 'self_report'
-    | 'communication'
-    | 'external_share';
-  category: 'visit' | 'prescription' | 'billing' | 'document' | 'communication';
-  occurred_at: string;
-  title: string;
-  summary: string | null;
-  href: string;
-  action_label: string;
-  status: string | null;
-  status_label: string | null;
-  actor_name: string | null;
-  metadata: string[];
-};
-
-export type PatientTimelineSnapshot = {
-  timeline_events: PatientTimelineEvent[];
-  movement_events?: PatientMovementTimelineEvent[];
-  self_reports: Array<{
-    id: string;
-    category: string;
-    relation: string | null;
-    status: string;
-    requested_callback: boolean;
-    preferred_contact_time: string | null;
-    created_at: string;
-  }>;
-  /**
-   * Surfaced when one or more timeline sources degrade (per-source query
-   * failure / op_history fail-soft / actor-name fail-soft). Additive: omitted
-   * when every source succeeded. `source` is the failing source key.
-   */
+export type PatientMovementTimelineSnapshot = {
+  movement_events: PatientMovementTimelineEvent[];
+  meta?: {
+    next_cursor: string | null;
+    has_more: boolean;
+    returned_count: number;
+    count_basis: 'bounded_latest_window';
+    filters: {
+      category: PatientMovementCategory | null;
+      date_from: string | null;
+      date_to: string | null;
+    };
+    window_limit: number;
+  };
   partial_failures?: { source: string; message: string }[];
 };
 

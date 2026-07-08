@@ -58,6 +58,43 @@ function expectMeasuredJsonContentLength(response: Response, body: unknown) {
   );
 }
 
+function movementEvent(
+  overrides: Partial<{
+    id: string;
+    category: string;
+    occurred_at: string;
+    title: string;
+    summary: string | null;
+  }> = {},
+) {
+  return {
+    id: overrides.id ?? 'visit_b',
+    event_type: 'visit_event',
+    category: overrides.category ?? 'visit',
+    occurred_at: overrides.occurred_at ?? '2026-06-18T00:00:00.000Z',
+    recorded_at: null,
+    title: overrides.title ?? '訪問記録を保存',
+    summary:
+      overrides.summary ??
+      '訪問予定または訪問記録が登録されました。内容は訪問詳細で確認してください。',
+    href: '/visits/visit_b',
+    action_label: '訪問記録へ',
+    status: 'completed',
+    status_label: '完了',
+    actor_name: null,
+    actor_role: null,
+    source_channel: null,
+    source_label: null,
+    related_entity_type: 'visit_record',
+    related_entity_id: overrides.id ?? 'visit_b',
+    severity: 'normal',
+    badges: [],
+    metadata: [],
+    privacy_level: 'summary',
+    raw_available: false,
+  };
+}
+
 describe('GET /api/patients/[id]/movement-timeline', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -98,16 +135,24 @@ describe('GET /api/patients/[id]/movement-timeline', () => {
     const json = await response.json();
     expectMeasuredJsonContentLength(response, json);
     expect(json).toMatchObject({
-      timeline_events: [],
       movement_events: [],
-      self_reports: [],
+      meta: {
+        next_cursor: null,
+        has_more: false,
+        returned_count: 0,
+        count_basis: 'bounded_latest_window',
+        filters: { category: null, date_from: null, date_to: null },
+        window_limit: 40,
+      },
     });
+    expect(json).not.toHaveProperty('timeline_events');
+    expect(json).not.toHaveProperty('self_reports');
   });
 
-  it('passes a bounded limit to the existing timeline service', async () => {
+  it('uses the fixed latest-window source read even when the response page limit is smaller', async () => {
     getPatientTimelineDataMock.mockResolvedValue({
       timeline_events: [],
-      movement_events: [],
+      movement_events: [movementEvent({ id: 'visit_b' }), movementEvent({ id: 'visit_a' })],
       self_reports: [],
     });
 
@@ -124,8 +169,109 @@ describe('GET /api/patients/[id]/movement-timeline', () => {
       patientId: 'patient_1',
       role: 'pharmacist',
       userId: 'user_1',
-      timelineLimit: 5,
+      timelineLimit: 40,
     });
+    const json = await response.json();
+    expect(json.movement_events).toHaveLength(2);
+    expect(json.meta).toMatchObject({
+      has_more: false,
+      returned_count: 2,
+      window_limit: 40,
+    });
+  });
+
+  it('filters by category and JST date, pages with a non-PHI cursor, and omits legacy payload fields', async () => {
+    getPatientTimelineDataMock.mockResolvedValue({
+      timeline_events: [
+        {
+          id: 'unsafe_timeline_1',
+          title: 'SOAP本文と患者電話番号090-0000-0000',
+        },
+      ],
+      movement_events: [
+        movementEvent({ id: 'visit_a', occurred_at: '2026-06-18T00:00:00.000Z' }),
+        movementEvent({ id: 'visit_b', occurred_at: '2026-06-18T00:00:00.000Z' }),
+        movementEvent({
+          id: 'document_a',
+          category: 'document',
+          occurred_at: '2026-06-18T01:00:00.000Z',
+          title: '報告書を作成',
+        }),
+        movementEvent({
+          id: 'visit_next_day',
+          occurred_at: '2026-06-18T16:00:00.000Z',
+          title: '翌営業日の訪問',
+        }),
+      ],
+      self_reports: [
+        {
+          id: 'self_report_1',
+          category: 'symptom',
+          relation: '本人 090-0000-0000',
+          status: 'submitted',
+        },
+      ],
+    });
+
+    const firstResponse = await GET(
+      createRequest(
+        'http://localhost/api/patients/patient_1/movement-timeline?limit=1&category=visit&date_from=2026-06-18&date_to=2026-06-18',
+      ),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    );
+
+    expect(firstResponse.status).toBe(200);
+    const firstJson = await firstResponse.json();
+    expect(firstJson.movement_events.map((event: { id: string }) => event.id)).toEqual(['visit_b']);
+    expect(firstJson.meta).toMatchObject({
+      has_more: true,
+      returned_count: 1,
+      count_basis: 'bounded_latest_window',
+      filters: { category: 'visit', date_from: '2026-06-18', date_to: '2026-06-18' },
+      window_limit: 40,
+    });
+    expect(typeof firstJson.meta.next_cursor).toBe('string');
+    expect(JSON.stringify(firstJson.meta)).not.toContain('090-0000-0000');
+    expect(JSON.stringify(firstJson.meta)).not.toContain('SOAP本文');
+    expect(JSON.stringify(firstJson)).not.toContain('timeline_events');
+    expect(JSON.stringify(firstJson)).not.toContain('self_reports');
+    expect(JSON.stringify(firstJson)).not.toContain('090-0000-0000');
+    expect(JSON.stringify(firstJson)).not.toContain('SOAP本文');
+
+    const secondResponse = await GET(
+      createRequest(
+        `http://localhost/api/patients/patient_1/movement-timeline?limit=1&category=visit&date_from=2026-06-18&date_to=2026-06-18&cursor=${firstJson.meta.next_cursor}`,
+      ),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    );
+
+    expect(secondResponse.status).toBe(200);
+    const secondJson = await secondResponse.json();
+    expect(secondJson.movement_events.map((event: { id: string }) => event.id)).toEqual([
+      'visit_a',
+    ]);
+    expect(secondJson.meta).toMatchObject({ has_more: false, returned_count: 1 });
+  });
+
+  it.each([
+    ['invalid category', '?category=raw_text'],
+    ['duplicate category', '?category=visit&category=document'],
+    ['invalid date_from', '?date_from=2026-6-18'],
+    ['reversed date range', '?date_from=2026-06-19&date_to=2026-06-18'],
+    ['invalid cursor', '?cursor=not-a-cursor'],
+  ])('rejects %s before building the scoped runner', async (_label, query) => {
+    const response = await GET(
+      createRequest(`http://localhost/api/patients/patient_1/movement-timeline${query}`),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    expect(response.status).toBe(400);
+    expect(createScopedTxRunnerMock).not.toHaveBeenCalled();
+    expect(getPatientTimelineDataMock).not.toHaveBeenCalled();
   });
 
   it('rejects invalid limits before building the scoped runner', async () => {

@@ -1,3 +1,3 @@
-import { createPatientTimelineGET } from '../timeline-route-handler';
+import { createPatientMovementTimelineGET } from '../timeline-route-handler';
 
-export const GET = createPatientTimelineGET({ auditView: 'patient_movement_timeline' });
+export const GET = createPatientMovementTimelineGET();
