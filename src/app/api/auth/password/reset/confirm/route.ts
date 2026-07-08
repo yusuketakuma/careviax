@@ -87,5 +87,5 @@ export async function POST(req: Request) {
     );
   }
 
-  return success({ ok: true });
+  return success({ data: { ok: true } });
 }

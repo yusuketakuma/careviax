@@ -54,6 +54,7 @@ describe('/api/auth/password/reset/confirm POST', () => {
     );
 
     expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ data: { ok: true } });
     expect(confirmForgotPasswordMock).toHaveBeenCalledWith({
       email: 'user@example.com',
       code: '123456',
@@ -71,6 +72,9 @@ describe('/api/auth/password/reset/confirm POST', () => {
     );
 
     expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toEqual({ data: { ok: true } });
+    expect(body).not.toHaveProperty('ok');
     expect(confirmForgotPasswordMock).toHaveBeenCalledWith({
       email: 'user@example.com',
       code: '123456',
