@@ -22952,3 +22952,122 @@ status` no PR). Browser session `inbound-stock-selector` failed with
 - next action:
   Commit this ledger update, push the movement date-card slice, then continue
   to the next highest-value non-human-gated item in `Plans.md`.
+
+## 2026-07-08 INBOUND-002 FAX/email/manual canonical intake
+
+- current task:
+  Continue the highest-value non-human-gated `INBOUND-002-REVIEW-DETAIL`
+  residual by adding a new-only canonical intake path for FAX/email/manual. Do
+  not add compatibility aliases, do not broaden phone/MCS into the new endpoint,
+  and do not expose raw inbound text outside the existing audited detail API.
+- files inspected:
+  `git status --short --untracked-files=all`, `Plans.md`,
+  `ops/refactor/STATE.md`, `.agents/skills/oracle-consult/SKILL.md`,
+  `/Users/yusuke/.codex/skills/.system/imagegen/SKILL.md`,
+  `docs/ui-ux-design-guidelines.md`,
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+  `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`,
+  `prisma/schema/communication.prisma`,
+  `src/app/api/communications/inbound/route.ts`,
+  `src/app/api/communications/inbound/route.test.ts`,
+  `src/app/api/communications/inbound/phone/route.ts`,
+  `src/app/api/communications/inbound/phone/route.test.ts`,
+  `src/app/api/communications/inbound/mcs/route.ts`,
+  `src/app/api/communications/inbound/signals/route.ts`,
+  `src/app/api/communications/inbound/signals/tasks/route.ts`,
+  `src/server/services/communication-queue.ts`,
+  `src/app/api/care-reports/today-workspace/route.ts`,
+  `src/lib/api/route-catalog.ts`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx`, and
+  `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`.
+- files changed:
+  `Plans.md`, `ops/refactor/STATE.md`,
+  `src/app/api/communications/inbound/route.ts`,
+  `src/app/api/communications/inbound/route.test.ts`,
+  `src/app/api/communications/inbound/signals/route.ts`,
+  `src/app/api/communications/inbound/signals/route.test.ts`,
+  `src/app/api/communications/inbound/signals/tasks/route.ts`,
+  `src/app/api/communications/inbound/signals/tasks/route.test.ts`,
+  `src/app/api/care-reports/today-workspace/route.ts`,
+  `src/app/api/care-reports/today-workspace/route.test.ts`,
+  `src/lib/api/route-catalog.ts`,
+  `src/server/services/communication-queue.ts`,
+  `src/server/services/communication-queue.test.ts`,
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx`, and
+  `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`.
+- oracle:
+  Required because this slice touches PHI inbound intake and public API
+  contract. Oracle Browser consult `inbound-fax-email-manual` completed with
+  GPT-5.5 Pro. GitHub context was included (`origin` GitHub URL, branch `main`,
+  commit `2dcb4dc018dae9cc67fcbf46251f7f753bafd2fe`, tracked tree clean, no
+  PR). Oracle reported GitHub access succeeded and returned GO for Option A:
+  add only `POST /api/communications/inbound` for `fax|email|manual`, keep
+  create/list channel allowlists separate, reject `phone/mcs` and legacy alias
+  fields on the new endpoint, use strict schema, keep response minimal, add
+  `manual` to list/signal reachability, and avoid DB/schema/source-mapping/
+  ledger changes. Adopted the advice.
+- imagegen:
+  Used built-in `image_gen` with a PHI/secret-free `gpt-image-2` style prompt
+  for a compact PH-OS inbound intake reference. Generated preview:
+  `/Users/yusuke/.codex/generated_images/019f4092-692b-7733-bc51-3fa9d1686c41/ig_0254da71388ffd38016a4e485a39908191b894b49cd858bd5a.png`.
+  The image was preview-only; no generated asset was copied into the repo.
+- implementation:
+  Added strict `POST /api/communications/inbound` create support for
+  `source_channel=fax|email|manual` with canonical `event_type` and `raw_text`.
+  The new endpoint rejects `phone/mcs` and extra legacy/PHI-shaped fields such
+  as `content`, `subject`, `source_url`, and `attachments`. It uses
+  `canReport`, `withSensitiveNoStore`, `withOrgContext(...,{requestContext})`,
+  `canAccessCommunicationRequestRecord`, fixed non-PHI `source_system`, fixed
+  normalized summaries, and a minimal response DTO. It does not return raw
+  text, sender, contact, URL, or attachment names. The `/communications/inbound`
+  input surface was replaced with a single FAX/email/manual form that submits
+  canonical fields to the new endpoint, clears on success, and invalidates
+  inbox/signal queries without optimistic raw list insertion. Added `manual` to
+  inbound list filters/counts, signal candidate read, signal task lookup, and
+  report workspace inbound count so created manual events do not become
+  orphaned.
+- bugs found:
+  `manual` existed in the formal Prisma/domain model but was not included in
+  the active list/signal/task/report allowlists. A manual intake would have
+  been creatable only after this route addition but invisible or partially
+  unreachable without the allowlist updates.
+- security risks reduced:
+  The new intake contract is strict and fails closed for legacy alias fields
+  that could silently carry raw PHI or signed URLs. The response and UI tests
+  lock raw/sender/contact/source omission, no-store responses, assignment
+  checks before create, and no raw optimistic list insertion. The endpoint does
+  not write MedicationStock or source mappings directly.
+- performance issues improved:
+  No new eager read path was added. The UI submit only invalidates existing
+  inbound/signal queries after success. `manual` allowlist updates reuse the
+  existing bounded queue/signal queries and do not add relation includes.
+- validation commands:
+  `pnpm exec prettier --write src/app/(dashboard)/communications/inbound/inbound-content.tsx src/app/(dashboard)/communications/inbound/inbound-content.test.tsx src/app/api/communications/inbound/route.ts src/app/api/communications/inbound/route.test.ts src/app/api/communications/inbound/signals/route.ts src/app/api/communications/inbound/signals/route.test.ts src/app/api/communications/inbound/signals/tasks/route.ts src/app/api/communications/inbound/signals/tasks/route.test.ts src/app/api/care-reports/today-workspace/route.ts src/app/api/care-reports/today-workspace/route.test.ts src/lib/api/route-catalog.ts src/server/services/communication-queue.ts src/server/services/communication-queue.test.ts`;
+  `pnpm exec vitest run src/app/api/communications/inbound/route.test.ts src/app/api/communications/inbound/phone/route.test.ts src/app/api/communications/inbound/mcs/route.test.ts src/app/api/communications/inbound/signals/route.test.ts src/app/api/communications/inbound/signals/tasks/route.test.ts src/server/services/communication-queue.test.ts src/app/(dashboard)/communications/inbound/inbound-content.test.tsx src/app/api/care-reports/today-workspace/route.test.ts --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint src/app/(dashboard)/communications/inbound/inbound-content.tsx src/app/(dashboard)/communications/inbound/inbound-content.test.tsx src/app/api/communications/inbound/route.ts src/app/api/communications/inbound/route.test.ts src/app/api/communications/inbound/signals/route.ts src/app/api/communications/inbound/signals/route.test.ts src/app/api/communications/inbound/signals/tasks/route.ts src/app/api/communications/inbound/signals/tasks/route.test.ts src/app/api/care-reports/today-workspace/route.ts src/app/api/care-reports/today-workspace/route.test.ts src/lib/api/route-catalog.ts src/server/services/communication-queue.ts src/server/services/communication-queue.test.ts`;
+  `pnpm exec prettier --check src/app/(dashboard)/communications/inbound/inbound-content.tsx src/app/(dashboard)/communications/inbound/inbound-content.test.tsx src/app/api/communications/inbound/route.ts src/app/api/communications/inbound/route.test.ts src/app/api/communications/inbound/signals/route.ts src/app/api/communications/inbound/signals/route.test.ts src/app/api/communications/inbound/signals/tasks/route.ts src/app/api/communications/inbound/signals/tasks/route.test.ts src/app/api/care-reports/today-workspace/route.ts src/app/api/care-reports/today-workspace/route.test.ts src/lib/api/route-catalog.ts src/server/services/communication-queue.ts src/server/services/communication-queue.test.ts`;
+  `git diff --check -- <owned paths>`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `pnpm exec prettier --write Plans.md ops/refactor/STATE.md`;
+  `pnpm plans:active:check`;
+  `pnpm exec prettier --check <owned code paths> Plans.md ops/refactor/STATE.md`;
+  `git diff --check -- <owned paths> Plans.md ops/refactor/STATE.md`.
+- validation results:
+  Focused Vitest passed 8 files / 108 tests. Scoped ESLint passed. Scoped
+  Prettier check passed. Targeted diff-check passed. Full typecheck passed
+  after `next typegen`. Plans active board check passed. Final Prettier check
+  and final targeted diff-check passed for the owned implementation files,
+  `Plans.md`, and `ops/refactor/STATE.md`.
+- commit:
+  Implementation and Plans update committed as
+  `9ddad9d12e805daa61d111e075cb8fddff8a640d`
+  (`feat(inbound): add canonical manual intake`) and pushed to `origin/main`.
+- remaining work:
+  `INBOUND-002-REVIEW-DETAIL` remains partial for source mapping UI and
+  VisitBrief/Schedule/Report/Share downstream integration. Usage-delta /
+  frequency / refill request MedicationStock expansion remains outside this
+  slice. No migration, source mapping write, ledger write, deployment, or
+  production data mutation was performed.
+- next action:
+  Commit and push this ledger update, then continue to the next highest-value
+  non-human-gated item in `Plans.md`.
