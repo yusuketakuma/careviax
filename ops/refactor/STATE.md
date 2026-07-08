@@ -41,6 +41,89 @@
 
 ## 直近の作業
 
+- codex: `INBOUND-002-REVIEW-LIFECYCLE-001` inbound review lifecycle and MedicationStock apply policy.
+  - commit:
+    Implementation and Plans update committed as `6d87dac41` (`feat(inbound): add review lifecycle policy`).
+  - current task:
+    Continue `INBOUND-002-REVIEW-DETAIL` without bypassing stock apply safety. The raw detail API
+    and audited raw panel already exist, so this slice adds candidate-level review lifecycle and
+    MedicationStock apply allowed/forbidden UX to the existing selected review panel. It does not
+    add a direct ledger write button because the current signal candidate DTO intentionally omits
+    `target_stock_item_id` and explicit observation input.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `docs/ui-ux-design-guidelines.md`,
+    `/Users/yusuke/.codex/skills/.system/imagegen/SKILL.md`,
+    `src/app/(dashboard)/communications/inbound/inbound-content.tsx`,
+    `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`,
+    `src/app/api/communications/inbound/signals/route.ts`,
+    `src/app/api/communications/inbound/signals/[id]/route.ts`,
+    and MedicationStock apply/search references under `src/modules/pharmacy/**`.
+  - files changed:
+    `Plans.md`,
+    `src/app/(dashboard)/communications/inbound/inbound-content.tsx`,
+    `src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`,
+    and `ops/refactor/STATE.md`.
+  - implementation:
+    Added review lifecycle helpers and UI for selected inbound signal candidates:
+    received -> initial evaluation -> review -> downstream close. MedicationStock candidates now
+    show the conditions required for apply: patient/case link, medication identity, structured
+    observation, and pharmacist review. The policy area explicitly marks "台帳直書き不可" and states
+    that this surface will not call `apply_to_medication_stock` until `target_stock_item_id` and
+    explicit observation input exist. Review action buttons were raised to 44px minimum height.
+    Tests lock the lifecycle, the apply-forbidden state, absence of raw text, and absence of a
+    ledger-apply button.
+  - imagegen:
+    Used built-in `image_gen` with a PHI/secret-free `gpt-image-2` design-reference prompt for an
+    inbound review workspace with lifecycle and MedicationStock apply policy. Generated preview:
+    `/Users/yusuke/.codex/generated_images/019f4092-692b-7733-bc51-3fa9d1686c41/ig_0e418b77be88acb0016a4e2953fb048191baa1a97b60b90407.png`.
+    The implementation translated the reference into the existing PH-OS component structure.
+  - Next.js docs:
+    Not required for this slice. No Next.js route handler or framework API was added or modified.
+  - Oracle:
+    Not re-consulted. This is a UI-only safety/policy display inside the already advised inbound
+    raw-detail boundary and does not change auth, RLS, PHI audit, DB schema, or ledger write
+    semantics.
+  - bugs found:
+    The existing candidate card exposed review/task buttons but did not show the lifecycle state or
+    why MedicationStock apply could not be performed from the queue. That left room for a future
+    UI to add a false "apply" action without the stock target and explicit observation contract.
+  - security risks reduced:
+    The UI now makes the PHI/raw boundary and stock ledger boundary explicit: raw detail stays behind
+    the audited detail action, and external inbound signals are not represented as ledger-writable
+    from list data. The new test asserts no raw text appears in the selected candidate panel and no
+    stock apply button is rendered without a target stock item.
+  - performance issues improved:
+    No new network request, route, DB query, or eager detail fetch was added. The lifecycle and apply
+    policy are derived from the already-loaded signal candidate DTO.
+  - validation commands:
+    `pnpm exec prettier --write src/app/(dashboard)/communications/inbound/inbound-content.tsx src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`;
+    `pnpm exec vitest run src/app/(dashboard)/communications/inbound/inbound-content.test.tsx --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint src/app/(dashboard)/communications/inbound/inbound-content.tsx src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`;
+    `pnpm exec prettier --check src/app/(dashboard)/communications/inbound/inbound-content.tsx src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`;
+    `pnpm exec prettier --write Plans.md`;
+    `pnpm plans:active:check`;
+    `pnpm exec prettier --check Plans.md src/app/(dashboard)/communications/inbound/inbound-content.tsx src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`;
+    `git diff --check -- Plans.md src/app/(dashboard)/communications/inbound/inbound-content.tsx src/app/(dashboard)/communications/inbound/inbound-content.test.tsx`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm format:check`.
+  - validation results:
+    Focused inbound Vitest passed 1 file / 12 tests. Scoped ESLint passed. Targeted Prettier checks
+    passed. Plans active board check passed. Targeted diff-check passed. Full typecheck passed. Full
+    `pnpm format:check` still fails only on unrelated pre-existing untracked Markdown under
+    `projects/careviax/**` (`medication-stock-visit-observation-context-sidecar` and several review /
+    query-shape notes), not on owned files.
+  - remaining work:
+    `INBOUND-002-REVIEW-DETAIL` remains Partial for source detail layout, actual MedicationStock
+    apply target selector with explicit observation input, FAX/email/manual intake expansion, source
+    mapping UI, and VisitBrief/Schedule/Report/Share downstream connections. `STOCK-001-VISIT-UI`
+    write enablement remains blocked behind migration/DB integration human gate.
+  - next action:
+    Commit this state record, push the explicit owned commits, then continue from the next safe
+    non-human-gated item in `Plans.md`.
+
 - codex: `INBOUND-002-AUDITED-DETAIL-PANEL-001` inbound review panel audited raw detail connection.
   - commit:
     Implementation committed as `01cfe28ae`; state record committed as `76224d4cf`; pushed to
