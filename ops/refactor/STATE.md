@@ -41,6 +41,61 @@
 
 ## 直近の作業（未コミット）
 
+- codex: `DASH-P1-005A-PROCESS-TILE-LINKS` Dashboard process tile drilldown。
+  - current task:
+    `Plans.md` v8 の未実装queueから、Dashboard `ProcessNowSection` の9工程tileを相対URLリンク化する。
+    新BFFは作らず、既存routeだけを使い、0件でも該当一覧へ遷移できるようにする。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `docs/ui-ux-design-guidelines.md`,
+    `package.json`,
+    `src/lib/prescription/cycle-workspace.ts`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.helpers.ts`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.helpers.test.ts`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`,
+    and existing dashboard/schedule/report/billing route paths.
+  - files changed:
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.helpers.ts`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.helpers.test.ts`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Added `PROCESS_STEP_HREFS`, `buildProcessStepHref()`, and `assertDashboardRelativeHref()` to keep
+    process-tile drilldown URLs in one helper and fail closed on external/protocol-relative hrefs.
+    `ProcessNowTile` now carries `href` and `ariaLabel`; `ProcessNowSection` renders each process tile
+    as a focusable `Link` with the existing tone classes, WIP count, and 44px minimum target. `Plans.md`
+    moved `DASH-P1-005A-PROCESS-TILE-LINKS` from active queue to Done/frozen evidence and leaves
+    `DASH-P1-005B` / `DASH-P1-005C` as the remaining dashboard drilldown work.
+  - bugs found:
+    `ProcessNowSection` displayed process counts but did not let users drill into the corresponding
+    worklist, so the dashboard highlighted WIP bottlenecks without a direct operational path.
+  - security risks reduced:
+    Dashboard process action hrefs are constrained to relative app URLs by helper tests. No PHI output,
+    authorization, or external URL behavior was widened.
+  - performance issues improved:
+    No DB/runtime performance changed. The slice uses existing route targets and does not add BFF fetches
+    or new dashboard queries.
+  - validation commands:
+    `pnpm exec prettier --write src/app/'(dashboard)'/dashboard/dashboard-cockpit.helpers.ts src/app/'(dashboard)'/dashboard/dashboard-cockpit.tsx src/app/'(dashboard)'/dashboard/dashboard-cockpit.helpers.test.ts src/app/'(dashboard)'/dashboard/dashboard-cockpit.test.tsx`;
+    `pnpm exec vitest run src/app/'(dashboard)'/dashboard/dashboard-cockpit.helpers.test.ts src/app/'(dashboard)'/dashboard/dashboard-cockpit.test.tsx`;
+    `pnpm exec eslint src/app/'(dashboard)'/dashboard/dashboard-cockpit.helpers.ts src/app/'(dashboard)'/dashboard/dashboard-cockpit.tsx src/app/'(dashboard)'/dashboard/dashboard-cockpit.helpers.test.ts src/app/'(dashboard)'/dashboard/dashboard-cockpit.test.tsx`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Focused dashboard tests passed (`41` tests). Targeted ESLint passed. Full typecheck passed after
+    updating test fixtures for the expanded `ProcessNowTile` type.
+  - remaining work:
+    `DASH-P1-010-RAIL`, `DASH-P1-005B-URGENT-SOURCE-LINKS`, and
+    `DASH-P1-005C-CARRYOVER-LINKS` remain active. Visual/browser screenshot verification was not run
+    because this slice changes existing cards into links without layout or breakpoint redesign.
+  - next action:
+    Run final docs formatting/diff checks, scoped commit this implementation slice, then continue from
+    `DASH-P1-010-RAIL` or `DASH-P1-005B-URGENT-SOURCE-LINKS`.
+
 - codex: `PLANS-HYGIENE-007` Plans.md active board v8 cleanup。
   - current task:
     既存 `Plans.md` 内を、直近の実装済みコードと `ops/refactor/STATE.md` に合わせて再整理する。

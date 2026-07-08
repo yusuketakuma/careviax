@@ -155,9 +155,34 @@ export type ProcessNowTile = {
   label: string;
   count: number;
   guide: number;
+  href: string;
+  ariaLabel: string;
   /** over=目安超過(赤) / near=接近(橙) / normal */
   tone: 'over' | 'near' | 'normal';
 };
+
+export const PROCESS_STEP_HREFS: Record<ProcessStepKey, string> = {
+  intake: '/prescriptions/intake?from=dashboard&status=intake_received',
+  entry: '/prescriptions/intake?from=dashboard&status=structuring',
+  decision: '/communications/requests?from=dashboard&status=sent',
+  dispense: '/dispense?from=dashboard',
+  audit: '/audit?from=dashboard',
+  set: '/set?from=dashboard',
+  visit: '/schedules?from=dashboard&date=today',
+  report: '/reports?from=dashboard&status=pending',
+  billing: '/billing?from=dashboard&status=pending',
+};
+
+export function buildProcessStepHref(key: ProcessStepKey): string {
+  return PROCESS_STEP_HREFS[key];
+}
+
+export function assertDashboardRelativeHref(href: string): string {
+  if (!href.startsWith('/') || href.startsWith('//')) {
+    throw new Error(`Dashboard process href must be a relative app URL: ${href}`);
+  }
+  return href;
+}
 
 /** MedicationCycle.overall_status の件数マップ → 9工程タイル。 */
 export function buildProcessNowTiles(statusCounts: Record<string, number>): ProcessNowTile[] {
@@ -166,7 +191,16 @@ export function buildProcessNowTiles(statusCounts: Record<string, number>): Proc
     const guide = PROCESS_WIP_GUIDES[step.key];
     const tone: ProcessNowTile['tone'] =
       count >= guide * 1.2 ? 'over' : count > guide ? 'near' : 'normal';
-    return { key: step.key, label: step.label, count, guide, tone };
+    const href = assertDashboardRelativeHref(buildProcessStepHref(step.key));
+    return {
+      key: step.key,
+      label: step.label,
+      count,
+      guide,
+      href,
+      ariaLabel: `${step.label}工程を開く。現在${count}件、目安${guide}件。`,
+      tone,
+    };
   });
 }
 

@@ -777,6 +777,21 @@ describe('DashboardCockpit', () => {
     expect(within(section).getByText('24')).toBeTruthy();
     expect(within(section).getByText('目安14')).toBeTruthy();
     expect(
+      within(section)
+        .getByRole('link', { name: '取込工程を開く。現在4件、目安10件。' })
+        .getAttribute('href'),
+    ).toBe('/prescriptions/intake?from=dashboard&status=intake_received');
+    expect(
+      within(section)
+        .getByRole('link', { name: '監査工程を開く。現在24件、目安14件。' })
+        .getAttribute('href'),
+    ).toBe('/audit?from=dashboard');
+    expect(
+      within(section)
+        .getByRole('link', { name: '算定工程を開く。現在9件、目安20件。' })
+        .getAttribute('href'),
+    ).toBe('/billing?from=dashboard&status=pending');
+    expect(
       within(section).getByText(
         '詰まりは判断と監査。上流の工程を今増やしても、今日は速くなりません。',
       ),

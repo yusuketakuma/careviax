@@ -31,9 +31,9 @@
 
 | Bucket                   | Count | 入口                                                                                                    |
 | ------------------------ | ----: | ------------------------------------------------------------------------------------------------------- |
-| Done / frozen            |    10 | 下の Done 表。active backlog ではなく、回帰防止・docs参照・watchlist対象として扱う。                    |
+| Done / frozen            |    11 | 下の Done 表。active backlog ではなく、回帰防止・docs参照・watchlist対象として扱う。                    |
 | Partial / residual track |     8 | 下の Partial 表。既存土台は再作成せず、残スコープだけ implementation queue へ切る。                     |
-| Implementation queue     |    37 | `Implementation-ready queue`。次PRに切れる backend/platform/ops/API タスク。Human gate を含む。         |
+| Implementation queue     |    36 | `Implementation-ready queue`。次PRに切れる backend/platform/ops/API タスク。Human gate を含む。         |
 | Frontend queue           |     9 | `Frontend implementation queue`。7画面UI改善は実在BFF/API/state matrixに基づく slice として扱う。       |
 | Archive / reference      |     - | `Archived Plan Board v3` 以下。背景・受入条件・旧証跡。未チェックboxをそのまま backlog として数えない。 |
 
@@ -43,7 +43,7 @@
 2. `STOCK-001-VISIT-UI`: 訪問記録フォームから push済み API へ接続する大きい入力UI。
 3. `STOCK-001-VISIT-DOWNSTREAM`: risk/task/brief/schedule/movement への業務連動。
 4. `STOCK-001-PRESCRIPTION-HORIZON`: 次回処方/補充予定を不足予測horizonに使う正本sourceを設計する。`refill_request` だけから予定日を推定しない。
-5. `DASH-P1-010-RAIL` + `DASH-P1-005A-PROCESS-TILE-LINKS`: 既存Dashboard BFFを再作成せず、Summary Rail と最小drilldownから足す。
+5. `DASH-P1-010-RAIL` + `DASH-P1-005B-URGENT-SOURCE-LINKS`: 既存Dashboard BFFを再作成せず、Summary Rail と urgent source drilldown を足す。
 6. `INBOUND-002-REVIEW-DETAIL`: 3カラム review shell と raw detail 再認可。
 7. `MOV-001-API` + `MOV-002-SOURCE-PARITY`: standalone movement API と formal source parity。
 8. `FRONTEND-CONTRACT-001`: 7画面UI改善を entrypoint/BFF/state/mobile/validation の契約に落とす。
@@ -64,6 +64,7 @@
 | Area                     | 実装済みとみなす範囲                                                                                                                                                                             | 今後の扱い                                                                                                                    |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
 | Dashboard backend        | lightweight summary、segment-specific invalidation、Unified Urgent主要source、inbound / stock-risks / report-billing segments、ViewModel hook、Clock Island、segment payload budget。            | BFF/APIを再作成しない。残は Summary Rail、drilldown、quick actions、visual QA。                                               |
+| Dashboard process links  | `ProcessNowSection` の9工程tileが相対URLリンクを持ち、0件でも各既存一覧へ遷移できる。工程名・件数・WIP目安は `aria-label` で固定し、external/protocol-relative href は helper test で拒否する。  | 再実装しない。残drilldownは urgent source と carryover/hidden queue の count semantics 固定へ進む。                           |
 | Inbound core             | `InboundCommunicationEvent` / `InboundCommunicationSignal` schema、RLS、phone/MCS登録、inbox、signal materialize、task bridge、risk bridge、MedicationStock accepted-signal apply。              | 正本DB/APIは固定。残は review detail UX、raw再認可、FAX/email/manual、source mapping UI、VisitBrief/Schedule/Report/Share。   |
 | Medication Stock base    | schema、RLS/index、append-only event、snapshot、summary API、stockout/equivalence helper、accepted inbound signal apply、処方供給adapter v1。                                                    | 残は処方供給follow-up、訪問観測migration適用/UI/downstream、処方/補充horizon、usage/refill、equivalence review UI。           |
 | Stock visit context      | `MedicationStockObservationContext` sidecar model、migration candidate、RLS、append-only trigger、DB contract test、Oracle review。                                                              | API実装前提として固定。migration適用は `STOCK-001-VISIT-CONTEXT-APPLY` human gate。                                           |
@@ -78,7 +79,7 @@
 
 | Track           | 実装済み土台                                                                                                                                                    | 未実装の残スコープ                                                                                                                                                                                                                                             |
 | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DASH-OPS`      | DashboardCockpit segments、urgent DTO/source、role priority、payload budget。                                                                                   | `DASH-P1-010-RAIL`、`DASH-P1-005A-PROCESS-TILE-LINKS`、`DASH-P1-005B-URGENT-SOURCE-LINKS`、`DASH-P1-005C-CARRYOVER-LINKS`、quick actions、density/semantic tone、visual regression。                                                                           |
+| `DASH-OPS`      | DashboardCockpit segments、urgent DTO/source、role priority、payload budget、工程tile相対URLリンク。                                                            | `DASH-P1-010-RAIL`、`DASH-P1-005B-URGENT-SOURCE-LINKS`、`DASH-P1-005C-CARRYOVER-LINKS`、quick actions、density/semantic tone、visual regression。                                                                                                              |
 | `INB-001/002`   | Formal inbound schema/API/inbox/signals/task/risk/stock apply。                                                                                                 | 3カラム review shell、raw_text再認可detail、FAX/email/manual、source mapping UI、VisitBrief/Schedule/Report/Share。                                                                                                                                            |
 | `RX-002/STOCK`  | MedicationStock ledger base、accepted inbound signal apply、prescription supply adapter v1、visit observation API、訪問観測後の次回訪問/JST stockout forecast。 | prescription supply follow-up、visit context migration apply、visit observation UI/downstream、処方/補充horizon、usage_delta/frequency/refill、equivalence review UI、stock risk provider完全統合。完了済みforecastを再作成せず、補充horizonだけ別IDで進める。 |
 | `MOV-001`       | Movement tab/DTO/resolver/occurrence marker。                                                                                                                   | standalone API、日付カードUX、formal inbound/stock/safety sources、relative href builder、raw再認可detail。                                                                                                                                                    |
@@ -92,7 +93,6 @@
 | ID                                 | Status      | Priority | Lane              | Plan / DoD                                                                                                                                                                                                                                                         | Validation / Stop                                                                                                                                      |
 | ---------------------------------- | ----------- | -------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `DASH-P1-010-RAIL`                 | Not started | P1       | Dashboard UI      | 既存 segments から左Summary Railを合成する。専用BFFは必要になるまで作らない。狭幅では上部横スクロールカードへ変形。                                                                                                                                                | dashboard component tests、mobile snapshot。summary/details重複fetch復活なら停止。                                                                     |
-| `DASH-P1-005A-PROCESS-TILE-LINKS`  | Not started | P1       | Dashboard routing | `ProcessNowSection` の9工程tileを相対URLリンク化する。0件でも該当空一覧へ遷移でき、工程名・件数を `aria-label` に含める。初期は既存routeだけを使い、新BFFは作らない。                                                                                              | dashboard component tests、helper href allowlist、relative URL tests。signed/storage/external URLをaction hrefに入れるなら停止。                       |
 | `DASH-P1-005B-URGENT-SOURCE-LINKS` | Not started | P1       | Dashboard routing | Unified Urgent source links を source別drilldownへ揃える。audit/inbound/stock/report/billing/task が既存一覧のfilter付きURLへ進み、visible_count と hidden_count の意味を混同しない。                                                                              | urgent source link tests、count_basis assertions。詳細がないsourceを外部URLへ逃がすなら停止。                                                          |
 | `DASH-P1-005C-CARRYOVER-LINKS`     | Not started | P1       | Dashboard routing | carryover / hidden queue / comments の「残りN件を見る」を条件付きURLへ統一する。持ち越しは `/tasks?filter=carryover`、未処理受信は `/communications/inbound?status=unprocessed` など、既存routeへ相対URLで接続する。                                               | dashboard component tests、relative URL tests、0件/hidden_count mismatch tests。総件数を表示件数として扱うなら停止。                                   |
 | `INBOUND-002-REVIEW-DETAIL`        | Partial     | P0/P1    | Inbound UI/API    | 3カラム review shell。左=原文/添付/送信者/日時、中央=signal候補、右=反映先/Task/Record-only/Reject/MedicationStock。raw_textはdetail再認可とread audit経由。                                                                                                       | raw omission snapshots、review lifecycle、read-reason/audit tests。raw_textをlist/通知/監査changesへ流すなら停止。                                     |
@@ -160,6 +160,7 @@
 - `STOCK-VISIT-IDEMPOTENCY-001`: visit record id、stock item id、client observation id、payload fingerprint による idempotent replay / 409 conflict は API/service test で固定済み。raw `Idempotency-Key` は保存・返却しない。
 - `STOCK-VISIT-ROUTE-CONTRACT-001`: `POST /api/visit-records/:id/medication-stock-observations`、route auth、rate limit、route catalog、display-id registry、module boundary、response shape allowlist整合は commit `af38c8e42` で完了済み。
 - `STOCK-VISIT-FORECAST-CONTEXT-001`: 訪問観測後の snapshot 再計算に Asia/Tokyo civil date と active future `VisitSchedule` 由来の次回訪問日を渡す実装は commit `ddd3c5bf5` で完了済み。次回処方/補充予定horizonは `STOCK-001-PRESCRIPTION-HORIZON` に分離済み。
+- `DASH-PROCESS-TILE-LINKS-001`: `ProcessNowSection` の9工程tileを相対URLリンク化し、0件でも既存の該当一覧へ遷移できるようにした。`ProcessNowTile` は `href` / `ariaLabel` を持ち、helper test で外部URLと protocol-relative URLを拒否する。残drilldownは `DASH-P1-005B` / `DASH-P1-005C` へ分離済み。
 
 **今回昇格した派生タスク（未実装 / 残スコープ）**:
 
@@ -186,7 +187,7 @@
 2. `STOCK-001-VISIT-UI`: visit record form を push済み observation API へ接続する。
 3. `STOCK-001-VISIT-DOWNSTREAM`: snapshot/risk/task/brief/schedule/movement の業務連動を実装する。
 4. `STOCK-001-PRESCRIPTION-HORIZON`: 次回処方/補充予定を stockout horizon に使う正本sourceを決める。
-5. `DASH-P1-010-RAIL` + `DASH-P1-005A-PROCESS-TILE-LINKS`: Dashboard Summary Rail と工程tile drilldown。既存BFFを再作成しない。
+5. `DASH-P1-010-RAIL` + `DASH-P1-005B-URGENT-SOURCE-LINKS`: Dashboard Summary Rail と urgent source drilldown。既存BFFを再作成しない。
 6. `INBOUND-002-REVIEW-DETAIL`: 3カラムreview shell + raw再認可detail。
 7. `MOV-001-API` + `MOV-002-SOURCE-PARITY`: movement API と formal source。
 8. `FRONTEND-CONTRACT-001`: 7画面UI改善のslice contract / state matrix。

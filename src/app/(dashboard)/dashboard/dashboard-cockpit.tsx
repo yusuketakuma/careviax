@@ -535,24 +535,26 @@ function ProcessNowSection({ tiles }: { tiles: ProcessNowTile[] }) {
       </div>
       <ol className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5 xl:grid-cols-9">
         {tiles.map((tile) => (
-          <li
-            key={tile.key}
-            data-tone={tile.tone}
-            className={cn(
-              'rounded-md border px-2 py-2 text-center',
-              PROCESS_TILE_TONE_CLASSES[tile.tone].tile,
-            )}
-          >
-            <p className="text-xs font-medium text-muted-foreground">{tile.label}</p>
-            <p
+          <li key={tile.key} data-tone={tile.tone}>
+            <Link
+              href={tile.href}
+              aria-label={tile.ariaLabel}
               className={cn(
-                'text-xl font-bold tabular-nums leading-7',
-                PROCESS_TILE_TONE_CLASSES[tile.tone].count,
+                'block min-h-11 rounded-md border px-2 py-2 text-center transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                PROCESS_TILE_TONE_CLASSES[tile.tone].tile,
               )}
             >
-              {tile.count}
-            </p>
-            <p className="text-xs text-muted-foreground">目安{tile.guide}</p>
+              <p className="text-xs font-medium text-muted-foreground">{tile.label}</p>
+              <p
+                className={cn(
+                  'text-xl font-bold tabular-nums leading-7',
+                  PROCESS_TILE_TONE_CLASSES[tile.tone].count,
+                )}
+              >
+                {tile.count}
+              </p>
+              <p className="text-xs text-muted-foreground">目安{tile.guide}</p>
+            </Link>
           </li>
         ))}
       </ol>

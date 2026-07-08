@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { CockpitVisit } from '@/types/dashboard-cockpit';
 import {
+  assertDashboardRelativeHref,
   buildBottleneckNote,
   buildConditionSummary,
   buildProcessNowTiles,
+  buildProcessStepHref,
   buildTeamHandoffSuggestion,
   buildTimelineBlocks,
   formatAgeLabel,
@@ -156,6 +158,40 @@ describe('buildProcessNowTiles', () => {
   it('returns no bottleneck note when nothing exceeds the guides', () => {
     expect(buildBottleneckNote(buildProcessNowTiles({ intake_received: 1 }))).toBeNull();
   });
+
+  it('builds relative drilldown hrefs for every process step', () => {
+    const tiles = buildProcessNowTiles({});
+
+    expect(tiles.map((tile) => [tile.key, tile.href])).toEqual([
+      ['intake', '/prescriptions/intake?from=dashboard&status=intake_received'],
+      ['entry', '/prescriptions/intake?from=dashboard&status=structuring'],
+      ['decision', '/communications/requests?from=dashboard&status=sent'],
+      ['dispense', '/dispense?from=dashboard'],
+      ['audit', '/audit?from=dashboard'],
+      ['set', '/set?from=dashboard'],
+      ['visit', '/schedules?from=dashboard&date=today'],
+      ['report', '/reports?from=dashboard&status=pending'],
+      ['billing', '/billing?from=dashboard&status=pending'],
+    ]);
+    for (const tile of tiles) {
+      expect(tile.href).toBe(buildProcessStepHref(tile.key));
+      expect(tile.href.startsWith('/')).toBe(true);
+      expect(tile.href.startsWith('//')).toBe(false);
+      expect(tile.ariaLabel).toContain(`${tile.label}工程を開く`);
+      expect(tile.ariaLabel).toContain(`現在${tile.count}件`);
+      expect(tile.ariaLabel).toContain(`目安${tile.guide}件`);
+    }
+  });
+
+  it('rejects external or protocol-relative dashboard process hrefs', () => {
+    expect(() => assertDashboardRelativeHref('https://example.com/audit')).toThrow(
+      'Dashboard process href must be a relative app URL',
+    );
+    expect(() => assertDashboardRelativeHref('//example.com/audit')).toThrow(
+      'Dashboard process href must be a relative app URL',
+    );
+    expect(assertDashboardRelativeHref('/audit?from=dashboard')).toBe('/audit?from=dashboard');
+  });
 });
 
 describe('minutesOfDay', () => {
@@ -304,14 +340,21 @@ describe('formatTimeOfDay', () => {
 });
 
 describe('buildTeamHandoffSuggestion', () => {
+  const tileFixture = (
+    tile: { label: string; count: number; guide: number; tone: 'over' | 'normal' },
+    index: number,
+  ) => ({
+    key: `step_${index}` as never,
+    label: tile.label,
+    count: tile.count,
+    guide: tile.guide,
+    href: `/test/process-${index}`,
+    ariaLabel: `${tile.label}工程を開く。現在${tile.count}件、目安${tile.guide}件。`,
+    tone: tile.tone,
+  });
+
   const tiles = (over: Array<{ label: string; count: number; guide: number }>) =>
-    over.map((tile, index) => ({
-      key: `step_${index}` as never,
-      label: tile.label,
-      count: tile.count,
-      guide: tile.guide,
-      tone: 'over' as const,
-    }));
+    over.map((tile, index) => tileFixture({ ...tile, tone: 'over' }, index));
 
   it('combines the worst over tile with the most slack working member', () => {
     const suggestion = buildTeamHandoffSuggestion(
@@ -320,7 +363,7 @@ describe('buildTeamHandoffSuggestion', () => {
           { label: '判断', count: 18, guide: 12 },
           { label: '監査', count: 24, guide: 14 },
         ]),
-        { key: 'visit' as never, label: '訪問', count: 3, guide: 8, tone: 'normal' },
+        tileFixture({ label: '訪問', count: 3, guide: 8, tone: 'normal' }, 99),
       ],
       [
         { name: '山田 太郎', status: 'working', slack_minutes: 11 },
@@ -335,7 +378,7 @@ describe('buildTeamHandoffSuggestion', () => {
   it('returns null without an over tile or without a member with 30+ minutes of slack', () => {
     expect(
       buildTeamHandoffSuggestion(
-        [{ key: 'visit' as never, label: '訪問', count: 3, guide: 8, tone: 'normal' }],
+        [tileFixture({ label: '訪問', count: 3, guide: 8, tone: 'normal' }, 0)],
         [{ name: '鈴木', status: 'working', slack_minutes: 120 }],
       ),
     ).toBeNull();
