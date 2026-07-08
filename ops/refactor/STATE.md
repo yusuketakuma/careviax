@@ -23590,7 +23590,8 @@ visit_request/unknown`, `action_status='not_linked'`, and
 - validation commands:
   `pnpm vitest run src/server/services/external-access.test.ts 'src/app/shared/[token]/shared-viewer-content.test.tsx' 'src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx' --reporter=dot --testTimeout=30000`;
   `pnpm exec prettier --write src/server/services/external-access.ts src/server/services/external-access-scope-registry.ts src/server/services/external-access.test.ts 'src/app/(dashboard)/patients/[id]/share/external-share-content.tsx' 'src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx' 'src/app/shared/[token]/shared-viewer-content.tsx' 'src/app/shared/[token]/shared-viewer-content.test.tsx'`;
-  `pnpm exec prettier --check src/server/services/external-access.ts src/server/services/external-access-scope-registry.ts src/server/services/external-access.test.ts 'src/app/(dashboard)/patients/[id]/share/external-share-content.tsx' 'src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx' 'src/app/shared/[token]/shared-viewer-content.tsx' 'src/app/shared/[token]/shared-viewer-content.test.tsx'`;
+  `pnpm exec prettier --write Plans.md`;
+  `pnpm exec prettier --check src/server/services/external-access.ts src/server/services/external-access-scope-registry.ts src/server/services/external-access.test.ts 'src/app/(dashboard)/patients/[id]/share/external-share-content.tsx' 'src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx' 'src/app/shared/[token]/shared-viewer-content.tsx' 'src/app/shared/[token]/shared-viewer-content.test.tsx' Plans.md ops/refactor/STATE.md`;
   `pnpm exec eslint src/server/services/external-access.ts src/server/services/external-access-scope-registry.ts src/server/services/external-access.test.ts 'src/app/(dashboard)/patients/[id]/share/external-share-content.tsx' 'src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx' 'src/app/shared/[token]/shared-viewer-content.tsx' 'src/app/shared/[token]/shared-viewer-content.test.tsx'`;
   `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
   `pnpm plans:active:check`;
@@ -23598,11 +23599,18 @@ visit_request/unknown`, `action_status='not_linked'`, and
 - validation results:
   Focused External Share / shared viewer / server Vitest passed 3 files / 65
   tests. Scoped Prettier check for changed source/test files passed after
-  formatting the owned files. Scoped ESLint passed. Full typecheck passed.
-  `pnpm plans:active:check` and `git diff --check` are being rerun after this
-  ledger update before commit. Full `pnpm format:check` was attempted earlier
-  and failed only on unrelated untracked memory/review Markdown files outside
-  this owned slice; owned source/test Prettier check passed.
+  formatting the owned files. `Plans.md` needed a targeted Prettier write after
+  the active-board edit, and the final scoped Prettier check including
+  `Plans.md` and this ledger passed. Scoped ESLint passed. Full typecheck
+  passed. `pnpm plans:active:check`, `git diff --check`, and
+  `git diff --cached --check` passed. Full `pnpm format:check` was attempted
+  earlier and failed only on unrelated untracked memory/review Markdown files
+  outside this owned slice.
+- commit:
+  Implementation, tests, Plans update, and initial ledger entry committed as
+  `1a3faa5a6c0042e4b14d82afd9770fc71e055642`
+  (`feat(external-share): add inbound summary scope`). Push and ledger hash
+  update are pending.
 - remaining work:
   `inbound_communication_detail` and `inbound_communication_raw_text` external
   share scopes remain intentionally unsupported until a separate high-risk slice
@@ -23611,5 +23619,5 @@ visit_request/unknown`, `action_status='not_linked'`, and
   Next non-human-gated Plans work is `MOV-001-API` or another queue item that
   does not require migration/live AWS approval.
 - next action:
-  Rerun active Plans/diff checks, commit this coherent External Share slice,
-  push it to `origin/main`, then record the commit hash in this ledger.
+  Commit this ledger hash update, push the External Share commits to
+  `origin/main`, then record push completion.
