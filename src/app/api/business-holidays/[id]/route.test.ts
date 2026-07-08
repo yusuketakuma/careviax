@@ -208,6 +208,9 @@ describe('/api/business-holidays/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      data: { id: 'holiday_1' },
+    });
     expect(holidayDeleteMock).toHaveBeenCalledWith({
       where: { id: 'holiday_1' },
     });

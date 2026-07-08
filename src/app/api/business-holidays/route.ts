@@ -153,7 +153,7 @@ export const POST = withAuthContext(
       return validationError('同じ日の休日設定が既に存在します');
     }
 
-    return success(result.holiday, 201);
+    return success({ data: result.holiday }, 201);
   },
   {
     permission: 'canAdmin',

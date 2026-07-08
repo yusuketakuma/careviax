@@ -24282,6 +24282,77 @@ positives`) and pushed to `origin/main`.
   staged, then continue `API-CONTRACT-001` by migrating real legacy public
   route envelopes without compatibility aliases or legacy fallback shapes.
 
+## 2026-07-09 - API-CONTRACT-001B business-holidays envelope migration
+
+- current task:
+  Continue `API-CONTRACT-001` by migrating a small non-PHI admin master route
+  from legacy success payloads to the current `ApiSuccess<T>{ data, meta? }`
+  envelope.
+- files inspected:
+  `git status --short --branch --untracked-files=all`; `Plans.md`;
+  `ops/refactor/STATE.md`; `src/lib/api/response.ts`;
+  `src/lib/api/client-json.ts`; `tools/scripts/check-api-response-shape.mjs`;
+  `tools/api-response-shape-allowlist.json`;
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`;
+  `src/app/api/business-holidays/route.ts`;
+  `src/app/api/business-holidays/[id]/route.ts`;
+  `src/app/api/business-holidays/route.test.ts`;
+  `src/app/api/business-holidays/[id]/route.test.ts`;
+  `src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx`;
+  `src/app/(dashboard)/admin/shifts/shifts-content.tsx`.
+- files changed:
+  `src/app/api/business-holidays/route.ts`;
+  `src/app/api/business-holidays/[id]/route.ts`;
+  `src/app/api/business-holidays/route.test.ts`;
+  `src/app/api/business-holidays/[id]/route.test.ts`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `ops/refactor/STATE.md`.
+- bugs found:
+  `POST /api/business-holidays` still returned `success(result.holiday, 201)`
+  and `DELETE /api/business-holidays/:id` still returned `success({ ok: true })`,
+  leaving two real legacy success payloads in the response-shape allowlist.
+- bugs fixed:
+  `POST /api/business-holidays` now returns a `data` envelope containing the
+  created holiday. `DELETE /api/business-holidays/:id` now returns a `data`
+  envelope containing the deleted holiday id. Route tests assert the new body
+  shape and the allowlist entries were removed, reducing
+  `api-response-shape:check` debt from 223 to 221 allowlisted violations.
+- security risks found:
+  No auth, authorization, audit metadata, or PHI behavior changed. The route
+  remains admin-only and still uses the existing validation, org reference,
+  dedupe, RLS transaction, and audit log paths.
+- security risks reduced:
+  Reduced public legacy success shapes without adding compatibility aliases,
+  lowering ambiguity for frontend readers and future API contract enforcement.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this is API contract cleanup.
+- UI/UX note:
+  No UI/UX change. The existing business-holidays and shifts clients either
+  read the existing `data` list envelope or ignore mutation response bodies.
+- validation commands:
+  `pnpm exec prettier --write src/app/api/business-holidays/route.ts src/app/api/business-holidays/[id]/route.ts src/app/api/business-holidays/route.test.ts src/app/api/business-holidays/[id]/route.test.ts tools/api-response-shape-allowlist.json Plans.md ops/refactor/STATE.md`;
+  `pnpm vitest run src/app/api/business-holidays/route.test.ts src/app/api/business-holidays/[id]/route.test.ts --reporter=dot --testTimeout=30000`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint src/app/api/business-holidays/route.ts src/app/api/business-holidays/[id]/route.ts src/app/api/business-holidays/route.test.ts src/app/api/business-holidays/[id]/route.test.ts`;
+  `git diff --check -- src/app/api/business-holidays/route.ts src/app/api/business-holidays/[id]/route.ts src/app/api/business-holidays/route.test.ts src/app/api/business-holidays/[id]/route.test.ts tools/api-response-shape-allowlist.json Plans.md ops/refactor/STATE.md`.
+- validation results:
+  Prettier passed. Focused route tests passed 2 files / 16 tests.
+  `api-response-shape:check` passed with 221 allowlisted violations and 0 new
+  violations. `plans:active:check` passed. Focused ESLint passed. Scoped diff
+  check passed.
+- commit:
+  Pending.
+- remaining work:
+  `API-CONTRACT-001` remains Partial. Continue migrating real legacy success
+  and error payloads route by route; do not add old-shape compatibility
+  fallbacks.
+- next action:
+  Run focused lint, Plans check, response-shape check, route tests, and scoped
+  diff check; then commit and push the business-holidays envelope slice.
+
 ## 2026-07-09 - DATE-SLICE-GUARD-001 helper migration
 
 - current task:

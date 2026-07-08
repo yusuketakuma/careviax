@@ -232,6 +232,9 @@ describe('/api/business-holidays', () => {
     ))!;
 
     expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toEqual({
+      data: { id: 'holiday_2', name: '臨時休業' },
+    });
     expect(advisoryLockMock).toHaveBeenCalled();
     expect(businessHolidayCreateMock).toHaveBeenCalled();
     expect(auditLogCreateMock).toHaveBeenCalled();
