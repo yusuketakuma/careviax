@@ -1,0 +1,293 @@
+{
+  "entries": [
+    {
+      "family": "dashboard-summary",
+      "method": "GET",
+      "route": "/api/dashboard/cockpit/summary",
+      "p95_target_ms": 250,
+      "p99_target_ms": 800,
+      "payload_budget_bytes": 51200,
+      "max_rows": 120,
+      "max_include_depth": 1,
+      "max_query_count": 8,
+      "count_basis": "database_total",
+      "expected_indexes": [
+        "workflow/cycle status counts scoped by org_id and status",
+        "visit schedules scoped by org_id and scheduled_date"
+      ],
+      "owner": "PERF-DB-READ-SLO-001",
+      "notes": "Lightweight dashboard first paint segment. Must not hydrate patient names or row detail."
+    },
+    {
+      "family": "dashboard-details",
+      "method": "GET",
+      "route": "/api/dashboard/cockpit/details",
+      "p95_target_ms": 600,
+      "p99_target_ms": 1500,
+      "payload_budget_bytes": 307200,
+      "max_rows": 180,
+      "max_include_depth": 2,
+      "max_query_count": 16,
+      "count_basis": "source_total",
+      "expected_indexes": [
+        "audit/dispense queue scoped by org_id and due_at",
+        "visit schedules scoped by org_id and scheduled_date"
+      ],
+      "owner": "PERF-DB-READ-SLO-001",
+      "notes": "Detailed dashboard queue segment. Keep top visible queues bounded and hidden counts explicit."
+    },
+    {
+      "family": "dashboard-team",
+      "method": "GET",
+      "route": "/api/dashboard/cockpit/team",
+      "p95_target_ms": 350,
+      "p99_target_ms": 1000,
+      "payload_budget_bytes": 122880,
+      "max_rows": 80,
+      "max_include_depth": 1,
+      "max_query_count": 10,
+      "count_basis": "visible_window",
+      "expected_indexes": [
+        "pharmacist shifts scoped by org_id and shift_date",
+        "visit schedules scoped by org_id and pharmacist_id"
+      ],
+      "owner": "PERF-DB-READ-SLO-001",
+      "notes": "Team capacity segment. Member row counts must remain bounded."
+    },
+    {
+      "family": "dashboard-comments",
+      "method": "GET",
+      "route": "/api/dashboard/cockpit/comments",
+      "p95_target_ms": 300,
+      "p99_target_ms": 900,
+      "payload_budget_bytes": 81920,
+      "max_rows": 40,
+      "max_include_depth": 1,
+      "max_query_count": 6,
+      "count_basis": "source_total",
+      "expected_indexes": ["comments scoped by org_id, related_entity_type, and created_at"],
+      "owner": "PERF-DB-READ-SLO-001",
+      "notes": "Short team conversation excerpt. Raw long comments stay in detail surfaces."
+    },
+    {
+      "family": "dashboard-inbound",
+      "method": "GET",
+      "route": "/api/dashboard/cockpit/inbound",
+      "p95_target_ms": 500,
+      "p99_target_ms": 1300,
+      "payload_budget_bytes": 163840,
+      "max_rows": 80,
+      "max_include_depth": 1,
+      "max_query_count": 10,
+      "count_basis": "database_total",
+      "expected_indexes": [
+        "inbound communication events scoped by org_id, processing_status, and received_at",
+        "inbound signals scoped by org_id, review_status, and created_at"
+      ],
+      "owner": "PERF-DB-READ-SLO-001",
+      "notes": "Dashboard inbound segment. List payload uses summary/signal metadata, not raw_text."
+    },
+    {
+      "family": "dashboard-stock-risks",
+      "method": "GET",
+      "route": "/api/dashboard/cockpit/stock-risks",
+      "p95_target_ms": 500,
+      "p99_target_ms": 1300,
+      "payload_budget_bytes": 163840,
+      "max_rows": 80,
+      "max_include_depth": 1,
+      "max_query_count": 10,
+      "count_basis": "database_total",
+      "expected_indexes": [
+        "medication stock snapshots scoped by org_id and stock_risk_level",
+        "medication stock items scoped by org_id and active"
+      ],
+      "owner": "PERF-DB-READ-SLO-001",
+      "notes": "Medication stock dashboard segment. Keep item detail links out of the list payload."
+    },
+    {
+      "family": "dashboard-report-billing",
+      "method": "GET",
+      "route": "/api/dashboard/cockpit/report-billing",
+      "p95_target_ms": 500,
+      "p99_target_ms": 1300,
+      "payload_budget_bytes": 163840,
+      "max_rows": 100,
+      "max_include_depth": 1,
+      "max_query_count": 12,
+      "count_basis": "database_total",
+      "expected_indexes": [
+        "care reports scoped by org_id and status",
+        "billing candidates scoped by org_id, billing_month, and status"
+      ],
+      "owner": "PERF-DB-READ-SLO-001",
+      "notes": "Dashboard report/billing segment. Use issue excerpts plus drilldown links."
+    },
+    {
+      "family": "patients-board",
+      "method": "GET",
+      "route": "/api/patients/board",
+      "p95_target_ms": 700,
+      "p99_target_ms": 1800,
+      "payload_budget_bytes": 307200,
+      "max_rows": 80,
+      "max_include_depth": 2,
+      "max_query_count": 18,
+      "count_basis": "filtered_result_exact",
+      "expected_indexes": [
+        "patients scoped by org_id and archived_at",
+        "care cases scoped by org_id, patient_id, and status",
+        "visit schedules scoped by org_id, case_id, and scheduled_date"
+      ],
+      "owner": "PERF-DB-READ-SLO-001",
+      "notes": "Patient board remains a cursor redesign target. Do not add deeper all-patient relation includes."
+    },
+    {
+      "family": "patient-detail-initial",
+      "method": "GET",
+      "route": "/api/patients/:id/overview",
+      "p95_target_ms": 700,
+      "p99_target_ms": 1800,
+      "payload_budget_bytes": 256000,
+      "max_rows": 160,
+      "max_include_depth": 2,
+      "max_query_count": 18,
+      "count_basis": "single_patient_detail",
+      "expected_indexes": [
+        "patient lookup scoped by org_id and id",
+        "care cases scoped by org_id and patient_id",
+        "visit schedules scoped by org_id and case_id"
+      ],
+      "owner": "PERF-DB-READ-SLO-001",
+      "notes": "Initial patient detail BFF. Broad detail panels should lazy-load outside this path."
+    },
+    {
+      "family": "patient-movement-timeline-list",
+      "method": "GET",
+      "route": "/api/patients/:id/timeline",
+      "p95_target_ms": 600,
+      "p99_target_ms": 1500,
+      "payload_budget_bytes": 256000,
+      "max_rows": 80,
+      "max_include_depth": 1,
+      "max_query_count": 20,
+      "count_basis": "visible_window",
+      "expected_indexes": [
+        "timeline source tables scoped by org_id, patient_id, and occurred_at",
+        "audit logs scoped by org_id, target_id, and created_at"
+      ],
+      "owner": "PERF-DB-READ-SLO-001",
+      "notes": "Patient movement timeline list. Source fan-out must stay caller-limit-aware."
+    },
+    {
+      "family": "patient-medication-stock-summary",
+      "method": "GET",
+      "route": "/api/patients/:id/medication-stock",
+      "p95_target_ms": 500,
+      "p99_target_ms": 1300,
+      "payload_budget_bytes": 256000,
+      "max_rows": 120,
+      "max_include_depth": 1,
+      "max_query_count": 12,
+      "count_basis": "single_patient_detail",
+      "expected_indexes": [
+        "medication stock items scoped by org_id, patient_id, and active",
+        "medication stock snapshots scoped by org_id and stock_item_id"
+      ],
+      "owner": "PERF-DB-READ-SLO-001",
+      "notes": "Patient stock summary. Event history stays paged or detail-only."
+    },
+    {
+      "family": "communications-inbound-inbox",
+      "method": "GET",
+      "route": "/api/communications/inbound",
+      "p95_target_ms": 500,
+      "p99_target_ms": 1300,
+      "payload_budget_bytes": 163840,
+      "max_rows": 80,
+      "max_include_depth": 1,
+      "max_query_count": 10,
+      "count_basis": "database_total",
+      "expected_indexes": [
+        "inbound communication events scoped by org_id, processing_status, and received_at",
+        "inbound communication events scoped by org_id and patient_id"
+      ],
+      "owner": "PERF-DB-READ-SLO-001",
+      "notes": "Inbound inbox list. Raw text is detail-only with re-authorization."
+    },
+    {
+      "family": "communications-inbound-signals",
+      "method": "GET",
+      "route": "/api/communications/inbound/signals",
+      "p95_target_ms": 500,
+      "p99_target_ms": 1300,
+      "payload_budget_bytes": 163840,
+      "max_rows": 80,
+      "max_include_depth": 1,
+      "max_query_count": 10,
+      "count_basis": "database_total",
+      "expected_indexes": [
+        "inbound communication signals scoped by org_id, review_status, and created_at",
+        "inbound communication signals scoped by org_id, signal_domain, and action_status"
+      ],
+      "owner": "PERF-DB-READ-SLO-001",
+      "notes": "Inbound signal list. Structured payload previews must remain bounded."
+    },
+    {
+      "family": "reports-today-workspace",
+      "method": "GET",
+      "route": "/api/care-reports/today-workspace",
+      "p95_target_ms": 700,
+      "p99_target_ms": 1800,
+      "payload_budget_bytes": 256000,
+      "max_rows": 180,
+      "max_include_depth": 2,
+      "max_query_count": 22,
+      "count_basis": "mixed_database_and_derived",
+      "expected_indexes": [
+        "visit schedules scoped by org_id and scheduled_date",
+        "care reports scoped by org_id and updated_at",
+        "delivery records scoped by org_id, status, and sent_at"
+      ],
+      "owner": "PERF-DB-READ-SLO-001",
+      "notes": "Report workspace remains an aggregate cleanup target. Avoid adding more same-delegate count fan-out."
+    },
+    {
+      "family": "care-reports-list-search",
+      "method": "GET",
+      "route": "/api/care-reports",
+      "p95_target_ms": 650,
+      "p99_target_ms": 1600,
+      "payload_budget_bytes": 256000,
+      "max_rows": 80,
+      "max_include_depth": 1,
+      "max_query_count": 14,
+      "count_basis": "database_total",
+      "expected_indexes": [
+        "care reports scoped by org_id, updated_at, and id",
+        "patient search scoped by org_id and normalized name keys"
+      ],
+      "owner": "PERF-DB-READ-SLO-001",
+      "notes": "Care report list/search. Keep patient search bounded before report lookup."
+    },
+    {
+      "family": "visit-preparation",
+      "method": "GET",
+      "route": "/api/visits/today-preparation",
+      "p95_target_ms": 650,
+      "p99_target_ms": 1600,
+      "payload_budget_bytes": 204800,
+      "max_rows": 120,
+      "max_include_depth": 2,
+      "max_query_count": 18,
+      "count_basis": "visible_window",
+      "expected_indexes": [
+        "visit schedules scoped by org_id and scheduled_date",
+        "visit preparations scoped by org_id and schedule_id",
+        "care cases scoped by org_id and patient_id"
+      ],
+      "owner": "PERF-DB-READ-SLO-001",
+      "notes": "Visit preparation list. Detail brief and batch brief stay separately guarded."
+    }
+  ]
+}

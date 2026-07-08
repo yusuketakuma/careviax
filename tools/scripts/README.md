@@ -7,6 +7,7 @@
 - `backfill-webhook-registration-secrets.ts` : WebhookRegistration signing-secret encrypted-field dry-run/backfill helper
 - `check-care-report-duplicates.ts` : CareReport unique-index migration precheck
 - `check-visit-route-order-conflicts.ts` : VisitSchedule / VisitScheduleProposal route-order conflict precheck
+- `check-read-path-slo.mjs` : 主要GET read pathのSLO registryを検査し、payload budget registryとのroute/family/budget不整合やSLO欠落を拒否する
 - `explain-care-report-index-candidates.ts` : SELECT-only care-report index candidate EXPLAIN artifact capture; supports `--json-output` and `--markdown-output`
 - `external-access-case-boundary-audit.ts` : legacy ExternalAccessGrant case-boundary audit/backfill
 - `handoff-confirmation-task-inventory.ts` : PHI-minimized read-only inventory for historical unassigned `handoff_confirmation` tasks

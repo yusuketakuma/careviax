@@ -41,6 +41,66 @@
 
 ## 直近の作業（未コミット）
 
+- codex: `PERF-DB-READ-SLO-001A` read-path SLO registry guard。
+  - current task:
+    主要 GET read path の p95/p99 target、payload budget、max rows、include depth、
+    query count、expected index guidance を機械可読 registry と lint で固定し、SLO未定義のまま
+    新しい広域 read API を追加できないようにする。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `package.json`,
+    `src/lib/utils/route-payload-budgets.ts`,
+    `tools/scripts/perf-smoke.ts`,
+    `tools/scripts/perf-smoke.test.ts`,
+    `tools/scripts/check-query-shape.mjs`,
+    `tools/scripts/README.md`,
+    `src/app/api/care-reports/today-workspace/route.ts`,
+    and `src/app/api/care-reports/today-workspace/route.test.ts`.
+  - files changed:
+    `Plans.md`,
+    `package.json`,
+    `tools/scripts/README.md`,
+    `tools/read-path-slo.json`,
+    `tools/scripts/check-read-path-slo.mjs`,
+    `tools/scripts/check-read-path-slo.test.ts`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Added `tools/read-path-slo.json` covering every concrete GET payload-budget family currently
+    registered in `src/lib/utils/route-payload-budgets.ts`. Added `pnpm db:read-slo:check`, which
+    rejects route/family/payload drift, missing GET-family SLO entries, unsafe route forms, p99 below
+    p95, missing bounded row/include/query fields, and empty expected-index guidance. Added fixture
+    tests for pass, missing family, payload drift, unsafe route, missing index guidance, and p99/p95
+    ordering. `Plans.md` now records the guard as completed derived work while keeping the parent
+    open for live/seeded perf-smoke evidence and route metrics dashboard integration.
+  - bugs found:
+    No runtime bug was changed. The gap was that payload budgets existed without an explicit
+    route-level read SLO contract for latency targets, row bounds, include depth, query count, and
+    expected index guidance.
+  - security risks reduced:
+    No auth/authorization or PHI display behavior changed. The guard reduces the chance of adding
+    broad sensitive list/detail read paths without explicit payload and index expectations.
+  - performance issues improved:
+    Runtime query behavior is unchanged in this slice. Performance governance improved by making
+    SLO coverage mandatory for all concrete GET payload-budget families and by pinning route-level
+    budgets to the existing payload registry.
+  - validation commands:
+    `pnpm plans:active:check`;
+    `pnpm db:read-slo:check`;
+    `pnpm exec vitest run tools/scripts/check-read-path-slo.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec prettier --write Plans.md package.json tools/scripts/README.md tools/read-path-slo.json tools/scripts/check-read-path-slo.mjs tools/scripts/check-read-path-slo.test.ts ops/refactor/STATE.md`;
+    `pnpm exec prettier --check Plans.md package.json tools/scripts/README.md tools/read-path-slo.json tools/scripts/check-read-path-slo.mjs tools/scripts/check-read-path-slo.test.ts ops/refactor/STATE.md`;
+    `git diff --check -- Plans.md package.json tools/scripts/README.md tools/read-path-slo.json tools/scripts/check-read-path-slo.mjs tools/scripts/check-read-path-slo.test.ts ops/refactor/STATE.md`.
+  - validation results:
+    Plans active board check passed. Read-path SLO check passed. Vitest passed 1 file / 6 tests.
+    Prettier write/check passed. Targeted diff-check passed.
+  - remaining work:
+    Commit explicit owned paths. Parent `PERF-DB-READ-SLO-001` remains open for runtime or seeded
+    perf-smoke evidence, route metrics dashboard connection, patients board cursor redesign, and
+    human-gated index migration evidence.
+  - next action:
+    Commit this scoped SLO guard slice.
+
 - codex: `QUERY-SHAPE-WATCHLIST-003F` patient timeline / visit brief route-shell ratchet。
   - current task:
     DB read-speed follow-up として、すでに bounded service へ委譲している read API shell を
