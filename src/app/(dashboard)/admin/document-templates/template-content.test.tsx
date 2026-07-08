@@ -121,7 +121,7 @@ describe('DocumentTemplateContent', () => {
         }
 
         if (url === '/api/templates/template_1' && init?.method === 'DELETE') {
-          return new Response(JSON.stringify({ message: 'テンプレートを削除しました' }), {
+          return new Response(JSON.stringify({ data: { id: 'template_1' } }), {
             status: 200,
           });
         }

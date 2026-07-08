@@ -218,7 +218,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       { requestContext: ctx },
     );
 
-    return withSensitiveNoStore(success({ message: '削除しました' }));
+    return withSensitiveNoStore(success({ data: { id: templateId } }));
   } catch (err) {
     unstable_rethrow(err);
     logger.error(

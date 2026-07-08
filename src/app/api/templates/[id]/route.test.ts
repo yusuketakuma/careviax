@@ -347,6 +347,7 @@ describe('/api/templates/[id]', () => {
     expect(templateDeleteMock).toHaveBeenCalledWith({
       where: { id: 'template_1' },
     });
+    await expect(response.json()).resolves.toEqual({ data: { id: 'template_1' } });
   });
 
   it('returns a no-store not-found response for missing template updates', async () => {
