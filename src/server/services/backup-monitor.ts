@@ -18,6 +18,7 @@ export type BackupMonitorLogger = {
 
 type BackupMonitorOptions = {
   logger?: BackupMonitorLogger;
+  strict?: boolean;
 };
 
 type BackupMonitorOperation =
@@ -26,6 +27,7 @@ type BackupMonitorOperation =
   | 'rds_instance_backup_configuration_check'
   | 'rds_snapshot_check'
   | 's3_versioning_check'
+  | 's3_object_lock_configuration_check'
   | 'audit_archive_lifecycle_check'
   | 'cognito_advanced_security_check';
 
@@ -116,10 +118,26 @@ type S3LifecycleResponse = {
   }>;
 };
 
+type S3ObjectLockResponse = {
+  ObjectLockConfiguration?: {
+    ObjectLockEnabled?: string;
+    Rule?: {
+      DefaultRetention?: {
+        Mode?: string;
+        Days?: number;
+        Years?: number;
+      };
+    };
+  };
+};
+
 type S3Module = {
-  S3Client: new (config: AwsClientConfig) => AwsClient<S3VersioningResponse | S3LifecycleResponse>;
+  S3Client: new (
+    config: AwsClientConfig,
+  ) => AwsClient<S3VersioningResponse | S3LifecycleResponse | S3ObjectLockResponse>;
   GetBucketVersioningCommand: new (input: { Bucket: string }) => unknown;
   GetBucketLifecycleConfigurationCommand: new (input: { Bucket: string }) => unknown;
+  GetObjectLockConfigurationCommand: new (input: { Bucket: string }) => unknown;
 };
 
 type CognitoResponse = {
@@ -144,7 +162,10 @@ const backupClients = new Map<
   string,
   AwsClient<BackupRecoveryPointsResponse | BackupVaultResponse>
 >();
-const s3Clients = new Map<string, AwsClient<S3VersioningResponse | S3LifecycleResponse>>();
+const s3Clients = new Map<
+  string,
+  AwsClient<S3VersioningResponse | S3LifecycleResponse | S3ObjectLockResponse>
+>();
 const cognitoClients = new Map<string, AwsClient<CognitoResponse>>();
 const BACKUP_MODULE_LOAD_FAILED_MESSAGE =
   'Unable to load @aws-sdk/client-backup for AWS Backup monitoring';
@@ -156,6 +177,7 @@ const RDS_INSTANCE_BACKUP_CONFIGURATION_CHECK_FAILED_MESSAGE =
   'RDS instance backup configuration check failed';
 const RDS_SNAPSHOT_CHECK_FAILED_MESSAGE = 'RDS snapshot check failed';
 const S3_VERSIONING_CHECK_FAILED_MESSAGE = 'S3 versioning check failed';
+const S3_OBJECT_LOCK_CHECK_FAILED_MESSAGE = 'S3 Object Lock configuration check failed';
 const AUDIT_ARCHIVE_CHECK_FAILED_MESSAGE = 'Audit archive lifecycle check failed';
 const COGNITO_ADVANCED_SECURITY_CHECK_FAILED_MESSAGE = 'Cognito Advanced Security check failed';
 
@@ -274,6 +296,24 @@ function readPositiveNumberEnv(name: string, fallback: number) {
   if (!raw) return fallback;
   const parsed = Number(raw);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function isStrictBackupMonitorMode(options: BackupMonitorOptions | undefined) {
+  return options?.strict === true || process.env.BACKUP_MONITOR_STRICT === 'true';
+}
+
+function isObjectLockConfigurationMissingError(err: unknown) {
+  if (!err || typeof err !== 'object') return false;
+  const candidate = err as {
+    name?: string;
+    code?: string;
+    Code?: string;
+  };
+  return (
+    candidate.name === 'ObjectLockConfigurationNotFoundError' ||
+    candidate.code === 'ObjectLockConfigurationNotFoundError' ||
+    candidate.Code === 'ObjectLockConfigurationNotFoundError'
+  );
 }
 
 /**
@@ -647,6 +687,108 @@ export async function checkS3Versioning(
 }
 
 /**
+ * Check that S3 Object Lock is enabled for the configured PHI file bucket.
+ * The result intentionally omits the bucket name and any object keys; callers
+ * only need to know whether Object Lock is enabled and which default retention
+ * policy, if any, applies at the bucket level.
+ */
+export async function checkS3ObjectLockConfiguration(
+  options: BackupMonitorOptions = {},
+): Promise<BackupCheckResult> {
+  const bucketName = process.env.S3_OBJECT_LOCK_BUCKET_NAME ?? process.env.S3_BUCKET_NAME;
+  const region =
+    process.env.S3_OBJECT_LOCK_BUCKET_REGION ??
+    process.env.S3_BUCKET_REGION ??
+    process.env.AWS_REGION ??
+    'ap-northeast-1';
+
+  if (!bucketName) {
+    return {
+      status: 'skipped',
+      message: 'S3_OBJECT_LOCK_BUCKET_NAME or S3_BUCKET_NAME not configured',
+    };
+  }
+
+  try {
+    const { GetObjectLockConfigurationCommand } = await loadS3Module();
+    const client = await getS3Client(region);
+    const response = (await client.send(
+      new GetObjectLockConfigurationCommand({ Bucket: bucketName }),
+    )) as S3ObjectLockResponse;
+
+    const configuration = response.ObjectLockConfiguration;
+    const enabled = configuration?.ObjectLockEnabled === 'Enabled';
+    const defaultRetention = configuration?.Rule?.DefaultRetention;
+    const retentionMode = defaultRetention?.Mode ?? null;
+    const retentionDays = defaultRetention?.Days ?? null;
+    const retentionYears = defaultRetention?.Years ?? null;
+    const details = {
+      enabled,
+      defaultRetentionMode: retentionMode,
+      defaultRetentionDays: retentionDays,
+      defaultRetentionYears: retentionYears,
+    };
+
+    if (!enabled) {
+      return {
+        status: 'warning',
+        message: 'S3 Object Lock is not enabled',
+        details,
+      };
+    }
+
+    const hasDefaultRetention = Boolean(
+      retentionMode || retentionDays != null || retentionYears != null,
+    );
+    const hasExactlyOnePeriod =
+      Number(retentionDays != null) + Number(retentionYears != null) === 1;
+    if (
+      hasDefaultRetention &&
+      ((retentionMode !== 'GOVERNANCE' && retentionMode !== 'COMPLIANCE') || !hasExactlyOnePeriod)
+    ) {
+      return {
+        status: 'warning',
+        message: 'S3 Object Lock default retention is incomplete',
+        details,
+      };
+    }
+
+    return {
+      status: 'ok',
+      message: hasDefaultRetention
+        ? 'S3 Object Lock is enabled with bucket default retention'
+        : 'S3 Object Lock is enabled without bucket default retention',
+      details,
+    };
+  } catch (err) {
+    if (isObjectLockConfigurationMissingError(err)) {
+      return {
+        status: 'warning',
+        message: 'S3 Object Lock configuration is not present',
+        details: {
+          enabled: false,
+          defaultRetentionMode: null,
+          defaultRetentionDays: null,
+          defaultRetentionYears: null,
+        },
+      };
+    }
+
+    const message = getSafeBackupMonitorMessage(err, S3_OBJECT_LOCK_CHECK_FAILED_MESSAGE);
+    logBackupMonitorError(
+      options,
+      '[backup-monitor] S3 Object Lock configuration check failed:',
+      new Error(message),
+      's3_object_lock_configuration_check',
+    );
+    return {
+      status: 'error',
+      message,
+    };
+  }
+}
+
+/**
  * Check that the audit log archive bucket has an active lifecycle rule
  * transitioning audit logs to Glacier/Deep Archive and retaining them for 5 years.
  */
@@ -787,12 +929,14 @@ export async function runBackupMonitorChecks(options: BackupMonitorOptions = {})
   overall: 'ok' | 'warning' | 'error';
   checks: Record<string, BackupCheckResult>;
 }> {
+  const strict = isStrictBackupMonitorMode(options);
   const [
     awsBackupVault,
     awsBackupRecoveryPoint,
     rdsInstanceBackupConfiguration,
     rdsSnapshot,
     s3Versioning,
+    s3ObjectLock,
     auditArchive,
     cognitoAdvancedSecurity,
   ] = await Promise.all([
@@ -801,19 +945,22 @@ export async function runBackupMonitorChecks(options: BackupMonitorOptions = {})
     checkRdsInstanceBackupConfiguration(options),
     checkRdsSnapshot(options),
     checkS3Versioning(options),
+    checkS3ObjectLockConfiguration(options),
     checkAuditLogArchivePolicy(options),
     checkCognitoAdvancedSecurity(options),
   ]);
 
-  const checks: Record<string, BackupCheckResult> = {
+  const rawChecks: Record<string, BackupCheckResult> = {
     awsBackupVault,
     awsBackupRecoveryPoint,
     rdsInstanceBackupConfiguration,
     rdsSnapshot,
     s3Versioning,
+    s3ObjectLock,
     auditArchive,
     cognitoAdvancedSecurity,
   };
+  const checks = strict ? applyStrictSkippedCheckPolicy(rawChecks) : rawChecks;
 
   let overall: 'ok' | 'warning' | 'error' = 'ok';
   for (const result of Object.values(checks)) {
@@ -827,4 +974,20 @@ export async function runBackupMonitorChecks(options: BackupMonitorOptions = {})
   }
 
   return { overall, checks };
+}
+
+function applyStrictSkippedCheckPolicy(checks: Record<string, BackupCheckResult>) {
+  return Object.fromEntries(
+    Object.entries(checks).map(([key, result]) => {
+      if (result.status !== 'skipped') return [key, result];
+      return [
+        key,
+        {
+          status: 'warning',
+          message: `${result.message}; strict backup monitor mode requires this check`,
+          details: { strictRequired: true },
+        } satisfies BackupCheckResult,
+      ];
+    }),
+  );
 }

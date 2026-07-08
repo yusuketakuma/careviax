@@ -7,7 +7,7 @@ import { runBackupMonitorChecks } from '@/server/services/backup-monitor';
 
 const BACKUP_MONITOR_FAILED_MESSAGE = 'backup monitor failed';
 const BACKUP_HEALTH_FORBIDDEN_KEY_RE =
-  /(arn|account|identifier|endpoint|subnet|securitygroup|security_group|kms|secret|password|token|resourceid|resource_id|masteruser|master_user)/i;
+  /(arn|account|identifier|endpoint|subnet|securitygroup|security_group|kms|secret|password|token|resourceid|resource_id|masteruser|master_user|backupvaultname|vaultname|bucketname|^bucket$|snapshotid|snapshotidentifier|userpoolid|user_pool_id)/i;
 const BACKUP_HEALTH_FORBIDDEN_VALUE_RE =
   /(arn:aws:|\b\d{12}\b|token=|password|secret|db_password|-----BEGIN|\.rds\.amazonaws\.com|sg-[0-9a-f-]+|subnet-[0-9a-f-]+)/i;
 

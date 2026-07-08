@@ -137,6 +137,24 @@ describe('/api/health GET', () => {
             subnets: ['subnet-secret'],
           },
         },
+        s3Versioning: {
+          status: 'warning',
+          details: {
+            bucket: 'ph-os-prod-files',
+            bucketName: 'ph-os-prod-files-2',
+            versioningStatus: 'Suspended',
+          },
+        },
+        s3ObjectLock: {
+          status: 'ok',
+          details: {
+            bucketName: 'ph-os-prod-files',
+            enabled: true,
+            defaultRetentionMode: 'COMPLIANCE',
+            defaultRetentionYears: 5,
+            snapshotId: 'snapshot-secret',
+          },
+        },
       },
     });
 
@@ -145,17 +163,34 @@ describe('/api/health GET', () => {
     const payload = await response.json();
 
     expect(payload.checks.backups.details.awsBackupVault.details).toMatchObject({
-      backupVaultName: 'ph-os-prod-rds-backup-vault',
       vaultState: 'AVAILABLE',
     });
+    expect(payload.checks.backups.details.awsBackupVault.details).not.toHaveProperty(
+      'backupVaultName',
+    );
     expect(payload.checks.backups.details.rdsInstanceBackupConfiguration.details).toMatchObject({
       status: 'available',
       storageEncrypted: true,
     });
+    expect(payload.checks.backups.details.s3ObjectLock.details).toMatchObject({
+      enabled: true,
+      defaultRetentionMode: 'COMPLIANCE',
+      defaultRetentionYears: 5,
+    });
+    expect(payload.checks.backups.details.s3ObjectLock.details).not.toHaveProperty('bucketName');
+    expect(payload.checks.backups.details.s3ObjectLock.details).not.toHaveProperty('snapshotId');
+    expect(payload.checks.backups.details.s3Versioning.details).toMatchObject({
+      versioningStatus: 'Suspended',
+    });
+    expect(payload.checks.backups.details.s3Versioning.details).not.toHaveProperty('bucket');
+    expect(payload.checks.backups.details.s3Versioning.details).not.toHaveProperty('bucketName');
 
     const serialized = JSON.stringify(payload);
     expect(serialized).not.toContain('arn:aws:');
     expect(serialized).not.toContain('111122223333');
+    expect(serialized).not.toContain('ph-os-prod-rds-backup-vault');
+    expect(serialized).not.toContain('ph-os-prod-files');
+    expect(serialized).not.toContain('ph-os-prod-files-2');
     expect(serialized).not.toContain('cluster-secret');
     expect(serialized).not.toContain('sg-secret');
     expect(serialized).not.toContain('subnet-secret');

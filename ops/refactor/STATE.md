@@ -41,6 +41,106 @@
 
 ## 直近の land（本日・要点）
 
+- codex: `OPS-RECOVERY-MONITOR-003` S3 Object Lock read-only monitor / strict skipped-check。
+  - current task:
+    ユーザー指示の「DBバックアップ機能を追加。障害時に復旧できるようにする。AWSサービスを使用」
+    に対する Recovery / AWS lane の次段として、runtime restore API や AWS write/delete 権限を追加せず、
+    既存 backup monitor に S3 Object Lock の read-only 監視と production/recovery evidence 用 strict
+    skipped-check behavior を追加した。併せて `Plans.md` では `OPS-RECOVERY-MONITOR-003`
+    を未実装キューから実装済みへ移し、残りを root runbook cleanup と live AWS human gate に整理した。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `git log --oneline -5`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `src/server/services/backup-monitor.ts`,
+    `src/server/services/backup-monitor.test.ts`,
+    `src/app/api/health/route.ts`,
+    `src/app/api/health/route.test.ts`,
+    `docs/compliance/backup-recovery-drill.md`,
+    `docs/env-catalog.md`,
+    `src/server/services/file-storage.ts`,
+    `tools/infra/prescription-object-lock.json`,
+    `tools/scripts/aws-deployment-readiness.ts`,
+    AWS official docs for S3 `GetObjectLockConfiguration` / Object Lock configuration / AWS CLI.
+  - Oracle:
+    Consulted Oracle/GPT-5.5 Pro with GitHub context
+    (`https://github.com/yusuketakuma/careviax`, branch `main`, base commit
+    `154d2ad946d6c0c1d904dc055c7a895d449398e4`). First Oracle run
+    `s3-object-lock-monitor-review` failed because attachments did not finish uploading before timeout.
+    Second run `s3-object-lock-monitor-review-2` was reattached after a Node `setTypeOfService EINVAL`
+    crash and completed. Oracle returned `No-go as-is` and the blockers were accepted:
+    generic S3 404 must not be treated as missing Object Lock configuration, non-object thrown values
+    must fail soft, and health sanitizer must prove it drops both `bucket` and `bucketName`.
+  - files changed:
+    `src/server/services/backup-monitor.ts`,
+    `src/server/services/backup-monitor.test.ts`,
+    `src/app/api/health/route.ts`,
+    `src/app/api/health/route.test.ts`,
+    `docs/compliance/backup-recovery-drill.md`,
+    `docs/env-catalog.md`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Added `checkS3ObjectLockConfiguration()` using S3 `GetObjectLockConfigurationCommand` through the
+    existing read-only AWS monitor seam. The check uses `S3_OBJECT_LOCK_BUCKET_NAME` / `S3_BUCKET_NAME`
+    and region fallbacks, returns only `enabled`, `defaultRetentionMode`, `defaultRetentionDays`,
+    and `defaultRetentionYears`, maps the AWS-specific `ObjectLockConfigurationNotFoundError` to a
+    fixed warning, and redacts raw provider errors. Bucket-level default retention is not required
+    when Object Lock is enabled because PH-OS prescription/original uploads can be governed by
+    per-object retention headers. Added `BACKUP_MONITOR_STRICT` / `options.strict` so skipped backup
+    checks become warnings in production/recovery evidence mode while local/dev missing AWS inputs
+    remain graceful skips. `/api/health` backup detail sanitizer now removes bucket/vault/snapshot/user
+    pool identifiers, including both `bucket` and `bucketName`, while retaining safe Object Lock state.
+    Recovery docs and env catalog were updated with Object Lock monitor envs, strict mode, read-only
+    IAM permission, and safe response fields. `Plans.md` now classifies this monitor as implemented.
+  - bugs found:
+    The pre-final Object Lock missing-error helper treated any HTTP 404 as missing Object Lock
+    configuration and could throw on `null`/non-object errors. Health redaction had implementation
+    coverage for `bucket`, but no regression test proving existing `s3Versioning.details.bucket`
+    could not leak through admin health.
+  - security risks reduced:
+    The admin backup health path no longer exposes bucket names, vault names, snapshot identifiers,
+    user pool identifiers, raw ARNs, account IDs, endpoints, subnet/security group IDs, KMS identifiers,
+    or provider raw errors. Generic S3 404 and null provider failures now fail closed as fixed monitor
+    errors rather than being misclassified as harmless missing Object Lock configuration. No restore,
+    delete, secret write, migration, production DB mutation, deploy, or live AWS call was performed.
+  - performance issues improved:
+    No application DB read path changed in this slice. Backup assurance gained one bounded read-only
+    AWS API check and strict skipped-check classification. Existing DB read-speed work remains tracked
+    separately in `PERF-DB-*` / `QUERY-SHAPE-*`.
+  - validation commands:
+    `npx -y @steipete/oracle --help`;
+    `npx -y @steipete/oracle --dry-run summary --files-report ...`;
+    `npx -y @steipete/oracle --engine browser --model gpt-5.5-pro ...`;
+    `npx -y @steipete/oracle session s3-object-lock-monitor-review-2`;
+    `pnpm exec vitest run src/server/services/backup-monitor.test.ts src/app/api/health/route.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint src/server/services/backup-monitor.ts src/server/services/backup-monitor.test.ts src/app/api/health/route.ts src/app/api/health/route.test.ts`;
+    `pnpm exec prettier --check src/server/services/backup-monitor.ts src/server/services/backup-monitor.test.ts src/app/api/health/route.ts src/app/api/health/route.test.ts docs/compliance/backup-recovery-drill.md docs/env-catalog.md Plans.md`;
+    `pnpm backup:drill:check`;
+    `pnpm aws:rds-backup:template:validate`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `git diff --check -- <changed files>`.
+  - validation results:
+    Oracle reattach completed and accepted blockers were implemented. Focused Vitest passed `2` files /
+    `32` tests. Scoped ESLint passed. Prettier check passed after formatting `Plans.md`. Backup drill
+    preflight passed and correctly reports local `DATABASE_URL` / `AWS_REGION` missing with
+    `ready_for_live_drill=false`. AWS RDS backup template validator passed `12 pass / 0 warn / 0 fail /
+1 live AWS skip`. Full typecheck passed. Diff whitespace check passed.
+  - gbrain:
+    `projects/careviax/reviews/2026-07-08/ops-recovery-monitor-003`
+    (`SecurityFinding`) に PHI-free で S3 Object Lock read-only monitor、Oracle review outcome、
+    strict skipped-check behavior、health identifier redaction、generic 404 / non-object throw hardening
+    を保存した。gbrain write-through で生成された未追跡 mirror file は既存の memory/docs mirror 群と同じく
+    この scoped commit には含めない。
+  - remaining:
+    `OPS-RECOVERY-DOC-001` root runbook least-privilege cleanup and `OPS-RECOVERY-LIVE-001` live AWS
+    strict validation / restore drill evidence collection remain. Actual live AWS validation requires
+    credentials and human approval. Large unrelated untracked memory/docs files remain outside this slice.
+  - next action:
+    Run final focused formatting/diff checks after this STATE update, then scoped commit and push this
+    recovery monitor slice.
+
 - codex: `PLANS-HYGIENE-003` Active Plan Board v3 / 実装済み・未実装分類の整理。
   - current task:
     ユーザー指示の「既存Plans.md内を整理。実装済み、未実装を分類。未実装はPlanを拡充。

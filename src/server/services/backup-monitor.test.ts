@@ -6,6 +6,7 @@ import {
   checkCognitoAdvancedSecurity,
   checkRdsInstanceBackupConfiguration,
   checkRdsSnapshot,
+  checkS3ObjectLockConfiguration,
   checkS3Versioning,
   runBackupMonitorChecks,
 } from './backup-monitor';
@@ -22,6 +23,7 @@ const {
   s3ClientMock,
   s3SendMock,
   getBucketVersioningCommandMock,
+  getObjectLockConfigurationCommandMock,
   cognitoClientMock,
   cognitoSendMock,
   describeUserPoolCommandMock,
@@ -37,6 +39,7 @@ const {
   s3ClientMock: vi.fn(),
   s3SendMock: vi.fn(),
   getBucketVersioningCommandMock: vi.fn(),
+  getObjectLockConfigurationCommandMock: vi.fn(),
   cognitoClientMock: vi.fn(),
   cognitoSendMock: vi.fn(),
   describeUserPoolCommandMock: vi.fn(),
@@ -120,6 +123,11 @@ vi.mock('@aws-sdk/client-s3', () => ({
   GetBucketLifecycleConfigurationCommand: class GetBucketLifecycleConfigurationCommand {
     constructor() {}
   },
+  GetObjectLockConfigurationCommand: class GetObjectLockConfigurationCommand {
+    constructor(input: unknown) {
+      getObjectLockConfigurationCommandMock(input);
+    }
+  },
 }));
 
 vi.mock('@aws-sdk/client-cognito-identity-provider', () => ({
@@ -150,10 +158,13 @@ describe('backup-monitor', () => {
     delete process.env.AWS_BACKUP_RDS_RESOURCE_ARN;
     delete process.env.AWS_BACKUP_RECOVERY_POINT_MAX_AGE_HOURS;
     delete process.env.S3_BUCKET_NAME;
+    delete process.env.S3_OBJECT_LOCK_BUCKET_NAME;
+    delete process.env.S3_OBJECT_LOCK_BUCKET_REGION;
     delete process.env.AUDIT_LOG_ARCHIVE_BUCKET_NAME;
     delete process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID;
     delete process.env.AWS_REGION;
     delete process.env.S3_BUCKET_REGION;
+    delete process.env.BACKUP_MONITOR_STRICT;
     backupSendMock.mockResolvedValue({
       BackupVaultName: 'ph-os-prod-rds-backup-vault',
       VaultState: 'AVAILABLE',
@@ -547,6 +558,12 @@ describe('backup-monitor', () => {
     });
 
     s3SendMock.mockRejectedValueOnce(rawFailure);
+    await expect(checkS3ObjectLockConfiguration({ logger })).resolves.toMatchObject({
+      status: 'error',
+      message: 'S3 Object Lock configuration check failed',
+    });
+
+    s3SendMock.mockRejectedValueOnce(rawFailure);
     await expect(checkAuditLogArchivePolicy({ logger })).resolves.toMatchObject({
       status: 'error',
       message: 'Audit archive lifecycle check failed',
@@ -558,7 +575,7 @@ describe('backup-monitor', () => {
       message: 'Cognito Advanced Security check failed',
     });
 
-    expect(logger.error).toHaveBeenCalledTimes(7);
+    expect(logger.error).toHaveBeenCalledTimes(8);
     for (const [, loggedError] of logger.error.mock.calls) {
       expect(loggedError).toBeInstanceOf(Error);
       expect(String(loggedError)).not.toContain('token=secret');
@@ -612,6 +629,12 @@ describe('backup-monitor', () => {
     });
 
     s3SendMock.mockRejectedValueOnce(rawFailure);
+    await expect(checkS3ObjectLockConfiguration()).resolves.toMatchObject({
+      status: 'error',
+      message: 'S3 Object Lock configuration check failed',
+    });
+
+    s3SendMock.mockRejectedValueOnce(rawFailure);
     await expect(checkAuditLogArchivePolicy()).resolves.toMatchObject({
       status: 'error',
       message: 'Audit archive lifecycle check failed',
@@ -623,7 +646,7 @@ describe('backup-monitor', () => {
       message: 'Cognito Advanced Security check failed',
     });
 
-    expect(consoleErrorMock).toHaveBeenCalledTimes(7);
+    expect(consoleErrorMock).toHaveBeenCalledTimes(8);
     const entries = consoleErrorMock.mock.calls.map(([line]) => {
       return JSON.parse(String(line)) as Record<string, unknown>;
     });
@@ -633,6 +656,7 @@ describe('backup-monitor', () => {
       'rds_instance_backup_configuration_check',
       'rds_snapshot_check',
       's3_versioning_check',
+      's3_object_lock_configuration_check',
       'audit_archive_lifecycle_check',
       'cognito_advanced_security_check',
     ]);
@@ -681,6 +705,119 @@ describe('backup-monitor', () => {
     });
   });
 
+  it('skips the S3 Object Lock check when no object lock bucket is configured', async () => {
+    await expect(checkS3ObjectLockConfiguration()).resolves.toMatchObject({
+      status: 'skipped',
+      message: 'S3_OBJECT_LOCK_BUCKET_NAME or S3_BUCKET_NAME not configured',
+    });
+  });
+
+  it('checks S3 Object Lock configuration without exposing the bucket name or object keys', async () => {
+    process.env.S3_OBJECT_LOCK_BUCKET_NAME = 'ph-os-prod-files';
+    s3SendMock.mockResolvedValueOnce({
+      ObjectLockConfiguration: {
+        ObjectLockEnabled: 'Enabled',
+        Rule: {
+          DefaultRetention: {
+            Mode: 'COMPLIANCE',
+            Years: 5,
+          },
+        },
+      },
+    });
+
+    const result = await checkS3ObjectLockConfiguration();
+
+    expect(result).toMatchObject({
+      status: 'ok',
+      message: 'S3 Object Lock is enabled with bucket default retention',
+      details: {
+        enabled: true,
+        defaultRetentionMode: 'COMPLIANCE',
+        defaultRetentionYears: 5,
+      },
+    });
+    expect(getObjectLockConfigurationCommandMock).toHaveBeenCalledWith({
+      Bucket: 'ph-os-prod-files',
+    });
+    expect(JSON.stringify(result)).not.toContain('ph-os-prod-files');
+    expect(JSON.stringify(result)).not.toContain('arn:aws:');
+  });
+
+  it('allows per-object retention buckets without bucket-level default retention', async () => {
+    process.env.S3_BUCKET_NAME = 'ph-os-files';
+    s3SendMock.mockResolvedValueOnce({
+      ObjectLockConfiguration: {
+        ObjectLockEnabled: 'Enabled',
+      },
+    });
+
+    await expect(checkS3ObjectLockConfiguration()).resolves.toMatchObject({
+      status: 'ok',
+      message: 'S3 Object Lock is enabled without bucket default retention',
+      details: {
+        enabled: true,
+        defaultRetentionMode: null,
+        defaultRetentionDays: null,
+        defaultRetentionYears: null,
+      },
+    });
+  });
+
+  it('warns when S3 Object Lock is missing or has incomplete default retention', async () => {
+    process.env.S3_BUCKET_NAME = 'ph-os-files';
+    s3SendMock.mockRejectedValueOnce({
+      name: 'ObjectLockConfigurationNotFoundError',
+      message: 'bucket ph-os-files has no object lock token=secret',
+    });
+
+    await expect(checkS3ObjectLockConfiguration()).resolves.toMatchObject({
+      status: 'warning',
+      message: 'S3 Object Lock configuration is not present',
+      details: { enabled: false },
+    });
+
+    s3SendMock.mockResolvedValueOnce({
+      ObjectLockConfiguration: {
+        ObjectLockEnabled: 'Enabled',
+        Rule: {
+          DefaultRetention: {
+            Mode: 'COMPLIANCE',
+          },
+        },
+      },
+    });
+
+    await expect(checkS3ObjectLockConfiguration()).resolves.toMatchObject({
+      status: 'warning',
+      message: 'S3 Object Lock default retention is incomplete',
+    });
+  });
+
+  it('does not treat generic S3 404 errors as missing Object Lock configuration', async () => {
+    process.env.S3_BUCKET_NAME = 'ph-os-files';
+    s3SendMock.mockRejectedValueOnce({
+      name: 'NoSuchBucket',
+      $metadata: { httpStatusCode: 404 },
+      message: 'bucket ph-os-files has no object lock token=secret',
+    });
+
+    await expect(checkS3ObjectLockConfiguration()).resolves.toMatchObject({
+      status: 'error',
+      message: 'S3 Object Lock configuration check failed',
+    });
+  });
+
+  it('keeps S3 Object Lock check fail-soft for non-object thrown values', async () => {
+    process.env.S3_BUCKET_NAME = 'ph-os-files';
+    s3SendMock.mockRejectedValueOnce(null);
+
+    await expect(checkS3ObjectLockConfiguration()).resolves.toMatchObject({
+      status: 'error',
+      message: 'S3 Object Lock configuration check failed',
+    });
+  });
+
   it('skips the audit log archive check when the archive bucket is not configured', async () => {
     await expect(checkAuditLogArchivePolicy()).resolves.toMatchObject({
       status: 'skipped',
@@ -707,6 +844,7 @@ describe('backup-monitor', () => {
         awsBackupRecoveryPoint: { status: 'skipped' },
         rdsInstanceBackupConfiguration: { status: 'skipped' },
         s3Versioning: { status: 'skipped' },
+        s3ObjectLock: { status: 'skipped' },
         auditArchive: { status: 'skipped' },
         cognitoAdvancedSecurity: { status: 'skipped' },
       },
@@ -811,5 +949,30 @@ describe('backup-monitor', () => {
     });
     expect(getBucketVersioningCommandMock).toHaveBeenCalledWith({ Bucket: 'ph-os-files' });
     expect(describeUserPoolCommandMock).toHaveBeenCalledWith({ UserPoolId: 'pool_1' });
+  });
+
+  it('treats skipped backup checks as warning in strict monitor mode', async () => {
+    await expect(runBackupMonitorChecks({ strict: true })).resolves.toMatchObject({
+      overall: 'warning',
+      checks: {
+        awsBackupVault: {
+          status: 'warning',
+          details: { strictRequired: true },
+        },
+        s3ObjectLock: {
+          status: 'warning',
+          message: expect.stringContaining('strict backup monitor mode requires this check'),
+        },
+      },
+    });
+
+    process.env.BACKUP_MONITOR_STRICT = 'true';
+    await expect(runBackupMonitorChecks()).resolves.toMatchObject({
+      overall: 'warning',
+      checks: {
+        rdsSnapshot: { status: 'warning' },
+        cognitoAdvancedSecurity: { status: 'warning' },
+      },
+    });
   });
 });
