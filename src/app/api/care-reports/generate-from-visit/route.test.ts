@@ -90,7 +90,9 @@ describe('/api/care-reports/generate-from-visit', () => {
     expect(response.status).toBe(201);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(response.headers.get('Pragma')).toBe('no-cache');
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(body).not.toHaveProperty('reports');
+    expect(body).toMatchObject({
       data: [
         {
           id: 'report_1',

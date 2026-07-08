@@ -108,14 +108,15 @@ const authenticatedPOST = withAuthContext(
       throw err;
     }
 
-    const responseBody = {
-      data: result.reports.map((report) => ({
-        ...report,
-        updated_at: report.updated_at.toISOString(),
-      })),
-    } satisfies GeneratedCareReportFromVisitResponse;
-
-    return success(responseBody, 201);
+    return success(
+      {
+        data: result.reports.map((report) => ({
+          ...report,
+          updated_at: report.updated_at.toISOString(),
+        })),
+      } satisfies GeneratedCareReportFromVisitResponse,
+      201,
+    );
   },
   {
     permission: 'canAuthorReport',
