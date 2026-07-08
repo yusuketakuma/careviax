@@ -22941,12 +22941,14 @@ status` no PR). Browser session `inbound-stock-selector` failed with
   Focused movement UI + route regression passed 2 files / 25 tests. Scoped
   Prettier check passed. Typecheck passed after `next typegen`. Plans active
   board check passed.
+- commit:
+  `e4654ac9265090bf1e01b3e26387e61d8beffc51`.
+  Message: `feat(patient): refine movement date cards`.
 - remaining work:
   `MOV-001-API` remains partial for remaining deep-link coverage, raw detail
   reauth, and browser/mobile/a11y validation. `STOCK-001-VISIT-CONTEXT-APPLY`
   and DB integration remain human gates. No legacy compatibility path was
   restored.
 - next action:
-  Run final formatting/diff checks including `ops/refactor/STATE.md`, commit
-  this coherent movement date-card slice, push it, then continue to the next
-  highest-value non-human-gated item in `Plans.md`.
+  Commit this ledger update, push the movement date-card slice, then continue
+  to the next highest-value non-human-gated item in `Plans.md`.
