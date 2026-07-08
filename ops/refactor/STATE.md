@@ -39,6 +39,60 @@
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
+## 直近の作業（未コミット）
+
+- codex: `PLANS-HYGIENE-004` Plans.md active board v4 cleanup。
+  - current task:
+    既存 `Plans.md` 内の実装済み/未実装を現行コードと既存計画に合わせて分類し、実装済みタスクを active
+    backlog から外し、未実装/Partial の残スコープだけを拡充する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `docs/ui-ux-design-guidelines.md`,
+    current repo paths found by `rg` for Dashboard, InboundCommunication, MedicationStock,
+    PatientMovement, query-shape, payload budgets, and backup/recovery.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Added `Active Plan Board v4` as the only active implementation entry in `Plans.md`.
+    Classified done/frozen work for Dashboard backend, Inbound core, Medication Stock base,
+    Patient Movement base, DB read-speed guardrails, AWS recovery base, and permission SSOT.
+    Converted the previous v3/v2 plan boards and duplicate queues to archive/reference language.
+    Expanded active unimplemented/Partial queues with DoD, validation, and stopping conditions for
+    dashboard rail/drilldowns, inbound review, medication stock visit/prescription follow-up,
+    movement API/source parity, DB read-speed follow-ups, API contracts, durable events, file lifecycle,
+    recovery human gate, and frontend slice contracts. Added derived tasks for active-plan linting,
+    route link builders, payload budget follow-up, route performance measurement, count metadata,
+    right-rail action consistency, raw detail reauthorization, access matrix coverage, and permissioned
+    clinical display.
+  - bugs found:
+    `Plans.md` had multiple active-looking entry points (`Active Plan Board v3`, `Active Execution Board v2`,
+    and duplicate implementation/frontend queues), so implemented work could be re-picked as backlog.
+    Some old archive text still claimed the old registry was the implementation entrance.
+  - security risks reduced:
+    Clarified that authenticated business surfaces may show permissioned patient/medical information,
+    while OS notifications, SSE payloads, logs, audit diffs, exports, external share, and public URLs remain
+    separate output boundaries. Reinforced raw detail reauthorization and read audit as a follow-up task.
+  - performance issues improved:
+    Consolidated DB read-speed residual work into concrete tasks instead of broad rework:
+    patients board cursor/bounded include, query-shape watchlist follow-up, human-gated care-report index,
+    shared measured JSON helper, and count metadata cleanup.
+  - validation commands:
+    `pnpm exec prettier --check Plans.md`;
+    `git diff --check -- Plans.md`;
+    `rg -n 'Active Plan Board v3|Active Execution Board|この registry を \`Plans\\.md\` の入口|Plan Status Registry.*Active|Implementation-ready queue.*Active|Frontend implementation queue.\*Active' Plans.md`.
+  - validation results:
+    `pnpm exec prettier --check Plans.md` passed after formatting.
+    `git diff --check -- Plans.md` passed.
+    The rg check only returns the expected v4 active queue table plus archived text that explicitly says v4 is the current entrance.
+  - remaining work:
+    `PLAN-ARCHIVE-001` to physically move long reference specs into archive docs, `PLANS-ACTIVE-LINT-001`
+    to automate the active-backlog check, and the implementation queue items listed under `Active Plan Board v4`.
+  - next action:
+    Use `Active Plan Board v4` as the first `Plans.md` section for the next implementation slice.
+
 ## 直近の land（本日・要点）
 
 - codex: `STOCK-001-PRESCRIPTION` Medication Stock prescription supply adapter v1。
