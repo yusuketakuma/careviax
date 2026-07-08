@@ -41,6 +41,93 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001AM` comment delete success envelope cleanup.
+  - commit:
+    Implementation, Plans/allowlist, and focused route/UI tests committed as `e399a556d`
+    (`fix(api): envelope comment delete response`). State record is this entry and will be
+    committed separately before pushing the slice.
+  - current task:
+    Continue `Plans.md` highest-priority implementable work under `API-CONTRACT-001`. Remove
+    `src/app/api/comments/[id]/route.ts` from the public response-shape allowlist by moving comment
+    DELETE success to `data.deleted` only.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `ops/refactor/STATE.md`,
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/comments/[id]/route.ts`,
+    `src/app/api/comments/[id]/route.test.ts`,
+    `src/components/features/comments/comment-thread.tsx`,
+    `src/components/features/comments/comment-thread.test.tsx`,
+    `src/app/api/__tests__/protected-patch-delete-routes.test.ts`,
+    `src/lib/api/response.ts`,
+    `src/test/fetch-test-utils.ts`,
+    and route/frontend usage search results for `/api/comments/:id`.
+  - files changed:
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/comments/[id]/route.ts`,
+    `src/app/api/comments/[id]/route.test.ts`,
+    `src/components/features/comments/comment-thread.test.tsx`,
+    and this `ops/refactor/STATE.md` ledger entry.
+  - implementation:
+    `DELETE /api/comments/:id` now returns `success({ data: { deleted: true } })`. The route test
+    asserts the current envelope and rejects root `deleted`. The comment thread delete mutation does
+    not depend on the response value, so production reader code stayed as `readApiJson(... )`; the
+    test fixture was updated to the current envelope. The allowlist entry for
+    `src/app/api/comments/[id]/route.ts` was removed, and `Plans.md` records `API-CONTRACT-001AM`
+    with allowlist debt reduced from 164 to 163.
+  - Oracle:
+    User explicitly paused Oracle consultation. No Oracle prompt was sent or restarted. The slice
+    stayed limited to response construction, tests, allowlist/plan debt, and ledger updates; comment
+    ownership check, org scoping, delete transaction, realtime broadcast, auth wrapper, and not-found
+    error behavior were not changed.
+  - imagegen:
+    Not used. This is an API contract/static guard cleanup with no visible UI/UX change.
+  - Next.js docs:
+    Re-read `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md` earlier in
+    this API contract run. This slice changes JSON response construction only and does not change
+    route placement, supported methods, runtime behavior, or cache behavior.
+  - bugs found:
+    `DELETE /api/comments/:id` returned `deleted` at the response root, and the route test accepted
+    that legacy public shape.
+  - bugs fixed:
+    Comment delete success is now under `data.deleted` only, test fixtures use the current envelope,
+    and `api-response-shape:check` now reports 163 allowlisted violations and 0 new violations.
+  - security risks reduced:
+    No auth, authorization, org scoping, ownership check, PHI handling, or realtime event behavior
+    was weakened. Removing the root delete flag reduces alternate public response contract surface.
+  - performance issues improved:
+    None. No DB query shape, delete transaction, realtime broadcast, React query invalidation, or
+    request frequency changed beyond the equivalent response wrapper and test fixture.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/comments/[id]/route.ts src/app/api/comments/[id]/route.test.ts src/components/features/comments/comment-thread.test.tsx`;
+    `pnpm vitest run src/app/api/comments/[id]/route.test.ts`;
+    `pnpm vitest run src/components/features/comments/comment-thread.test.tsx`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint --max-warnings=0 src/app/api/comments/[id]/route.ts src/app/api/comments/[id]/route.test.ts src/components/features/comments/comment-thread.test.tsx`;
+    `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/comments/[id]/route.ts src/app/api/comments/[id]/route.test.ts src/components/features/comments/comment-thread.test.tsx`;
+    `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/comments/[id]/route.ts src/app/api/comments/[id]/route.test.ts src/components/features/comments/comment-thread.test.tsx`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm format:check`.
+  - validation results:
+    Prettier write passed. Focused comments route Vitest passed (1 file / 2 tests). Comment thread
+    component Vitest passed (1 file / 9 tests). API response shape guard passed (163 allowlisted
+    violations, 0 new violations). Plans active board check passed. Scoped ESLint passed. Targeted
+    Prettier check and scoped `git diff --check` passed. Full typecheck passed. `pnpm format:check`
+    again confirmed owned changed files are formatted, then failed on unrelated pre-existing
+    untracked Markdown files under `projects/` and `skills/`; those user/local files were not
+    modified.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 163 allowlisted response-shape violations. Next immediate
+    allowlist target is `src/app/api/communication-events/route.ts` (expectedCount 1), followed by
+    communication requests and community activity routes.
+  - next action:
+    Commit this STATE entry separately, push `e399a556d` plus the state commit to `origin/main`, then
+    continue with `src/app/api/communication-events/route.ts` under the same Oracle-paused and
+    no-legacy-root constraints.
+
 - codex: `API-CONTRACT-001AL` CDS check success envelope cleanup.
   - commit:
     Implementation, Plans/allowlist, reader updates, and focused tests committed as `218df4633`
