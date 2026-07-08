@@ -41,6 +41,62 @@
 
 ## 直近の作業（未コミット）
 
+- codex: `PLANS-HYGIENE-007` Plans.md active board v8 cleanup。
+  - current task:
+    既存 `Plans.md` 内を、直近の実装済みコードと `ops/refactor/STATE.md` に合わせて再整理する。
+    実装済みタスクは active backlog から外し、未実装/Partial/Human gate の残スコープだけを
+    next PR に切れる粒度へ拡充する。派生タスクが見つかれば active queue へ昇格する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `git log --oneline -15`,
+    `package.json`,
+    and current code/schema/test paths for Dashboard cockpit, InboundCommunication,
+    MedicationStock visit observation/forecast, Patient Movement, DB read-speed guardrails, and AWS recovery.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Promoted the active entrance from `Active Plan Board v7` to `Active Plan Board v8`.
+    Moved the completed `STOCK-001-VISIT-FORECAST` next-visit/JST shortage classification into
+    Done/frozen evidence using commit `ddd3c5bf5`, and removed it from the active implementation queue.
+    Kept the unimplemented next prescription/refill horizon as `STOCK-001-PRESCRIPTION-HORIZON`.
+    Split broad dashboard drilldown work from `DASH-P1-005-LINKS` into
+    `DASH-P1-005A-PROCESS-TILE-LINKS`, `DASH-P1-005B-URGENT-SOURCE-LINKS`, and
+    `DASH-P1-005C-CARRYOVER-LINKS` with concrete DoD and stopping conditions. Promoted
+    `PLAN-ARCHIVE-001` and `PLANS-ACTIVE-LINT-001` into the implementation-ready queue instead of
+    leaving them as loose derived notes. Updated current-entry references in archive sections to point
+    to v8 while preserving older tables as `cc:REFERENCE` evidence.
+  - bugs found:
+    `Plans.md` still treated the completed visit forecast slice as Partial active work, which could lead
+    to reimplementation. The dashboard drilldown item was too broad for a safe first PR and mixed process
+    links, urgent source links, and carryover/hidden-count semantics in one row.
+  - security risks reduced:
+    No product security behavior changed. The plan now keeps route/action href work constrained to relative
+    URLs and separates authenticated business-screen PHI display from external output, notification, log,
+    audit-diff, and export boundaries.
+  - performance issues improved:
+    No runtime performance changed. The plan now keeps DB read-speed work tracked as SLO/query-shape/payload
+    tasks rather than ad hoc migration/index work.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md ops/refactor/STATE.md`;
+    `rg -n 'Active Plan Board v7|v7 の queue|現在は v7|Implementation queue     \|    35|Done / frozen            \|     9' Plans.md`;
+    implementation queue row-count check with `awk`;
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md`;
+    `git diff --check -- Plans.md ops/refactor/STATE.md`;
+    stale active queue check for v7 pointers, stale counts, and active `STOCK-001-VISIT-FORECAST` rows.
+  - validation results:
+    Prettier write/check passed. Stale v7 active pointer/count check returned no matches. The active
+    implementation queue row count is `37`, matching the v8 summary. Diff whitespace check passed.
+    The final stale-active check returned no matches for v7, stale counts, or active
+    `STOCK-001-VISIT-FORECAST` queue rows.
+  - remaining work:
+    `PLAN-ARCHIVE-001` and `PLANS-ACTIVE-LINT-001` remain implementation-ready. Migration application,
+    live AWS restore evidence, and live DB integration remain human-gated.
+  - next action:
+    Docs slice committed as `b11a693ea`; amend once to record the final hash in this ledger entry.
+
 - codex: `STOCK-001-VISIT-FORECAST` Medication Stock visit forecast context。
   - current task:
     `Plans.md` v7 の active queue から、訪問観測後の stockout 判定へ次回訪問日と
