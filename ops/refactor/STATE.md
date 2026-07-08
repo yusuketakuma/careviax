@@ -23845,12 +23845,16 @@ visit_request/unknown`, `action_status='not_linked'`, and
   initial ledger entry committed as
   `a12a7e34fdc2f2071e2824a16a2afd0b75fa1051`
   (`feat(movement): require timeline detail reauth`) and pushed to
-  `origin/main`. This ledger hash update is pending commit.
+  `origin/main`. Ledger hash update committed as
+  `242440648f683ba83f8554de12704897ced219c4`
+  (`docs(state): record movement detail reauth push`) and pushed to
+  `origin/main`.
 - remaining work:
   `MOV-001-API` now only has browser/mobile/a11y validation. Stock migration and
   DB integration remain human-gated. Generic `RAW-DETAIL-REAUDIT-001` remains a
   broader future helper/task for source-specific raw chat/phone/attachment
   detail surfaces outside this movement-safe resolver.
 - next action:
-  Commit and push this ledger hash update, then continue the next
-  non-human-gated Plans item.
+  Continue the next non-human-gated Plans item. `MOV-001-API` now only needs
+  browser/mobile/a11y validation, while stock migration/DB integration remains
+  human-gated.
