@@ -41,6 +41,83 @@
 
 ## 直近の作業（未コミット）
 
+- codex: `STOCK-001-VISIT-CONTEXT` Medication Stock visit observation context contract。
+  - current task:
+    `Plans.md` の active board v5 に残る `STOCK-001-VISIT-CONTEXT` を、訪問観測 API の前提になる
+    DB contract / migration candidate として実装する。`event_at` を最終使用日や未確認理由の代用にせず、
+    `MedicationStockEvent` は append-only 正本のまま維持し、訪問由来の非数量contextは 1:1 sidecar
+    `MedicationStockObservationContext` に逃がす。migration適用は human gate のまま。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `prisma/schema/medication.prisma`,
+    `prisma/schema/visit.prisma`,
+    `prisma/migrations/20260707090000_add_medication_stock_ledger/migration.sql`,
+    `src/modules/pharmacy/medication-stock/domain/medication-stock-db-contract.test.ts`,
+    and the read-only DB/API/medical-safety review summaries for visit stock observations.
+  - Oracle:
+    Consulted Oracle/GPT-5.5 Pro Browser mode with slug `stock-visit-context`, requiring GitHub context and attaching
+    minimal stock/schema/service/test files. Oracle confirmed GitHub access and returned: context contract is Go,
+    but POST `/api/visit-records/:id/medication-stock-observations` is still No-Go until the persistence contract is
+    fixed. Oracle recommended a 1:1 `MedicationStockObservationContext` sidecar instead of adding visit-only columns
+    to `MedicationStockEvent`. That advice was accepted.
+  - files changed:
+    `Plans.md`,
+    `prisma/schema/medication.prisma`,
+    `prisma/rls-policies.sql`,
+    `prisma/migrations/20260708093000_add_medication_stock_visit_observation_context/migration.sql`,
+    `src/modules/pharmacy/medication-stock/domain/medication-stock-db-contract.test.ts`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Added `MedicationStockObservationContextKind` and `MedicationStockUnobservedReasonCode` enums plus the
+    `MedicationStockObservationContext` sidecar model. The sidecar is tenant-scoped, display-id ready, 1:1 unique on
+    `(org_id, stock_event_id)`, idempotency-key unique, indexed by visit/kind/reason, and contains controlled
+    `observed_date_key_jst`, `last_used_at`, `last_used_date_key_jst`, `last_used_precision`,
+    `unobserved_reason_code`, `source_confidence`, `source_context_code`, and `confirmation_level`.
+    The expand-only migration candidate creates the sidecar table, FKs to `MedicationStockEvent(id, org_id)` and
+    `VisitRecord(id, org_id)`, CHECK constraints for visit context, append-only update/delete rejection triggers,
+    and FORCE RLS. `prisma/rls-policies.sql` now includes the same sidecar tenant isolation policy.
+    Extended the stock DB contract test to pin the sidecar fields, indexes, RLS, append-only trigger, and forbidden
+    free-text/raw reason columns, and to assert `MedicationStockEvent` does not grow visit-only context columns.
+    Updated `Plans.md` so `STOCK-001-VISIT-CONTEXT` is Partial rather than Not started, with migration application
+    still human-gated.
+  - bugs found:
+    The pre-existing stock event contract could not persist `last_used_at`, controlled unobserved reason, source
+    confidence, or a visit-record FK, which would push the future API toward unsafe `event_at` overloading or
+    context loss. The first local draft added visit-only columns to `MedicationStockEvent`; Oracle identified that
+    as weaker for ledger canonicality and audit separation, so the design was replaced with a sidecar table.
+  - security risks reduced:
+    Free-text reason/raw note columns are explicitly forbidden in stock tables. Future visit stock writes must use
+    controlled codes and PHI-minimized source context, keeping raw visit notes or other professional messages out of
+    ledger metadata and action hrefs. The sidecar is protected by FORCE RLS and append-only triggers.
+  - performance issues improved:
+    Added sidecar indexes for visit-record, context-kind recency, and reason-code review lookups, while avoiding
+    broader relation includes or runtime DB work. No migration was applied to a database.
+  - validation commands:
+    `pnpm exec prettier --write src/modules/pharmacy/medication-stock/domain/medication-stock-db-contract.test.ts`;
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/modules/pharmacy/medication-stock/domain/medication-stock-db-contract.test.ts`;
+    `pnpm vitest run src/modules/pharmacy/medication-stock/domain/medication-stock-db-contract.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec prisma validate --schema=prisma/schema`;
+    `pnpm exec eslint src/modules/pharmacy/medication-stock/domain/medication-stock-db-contract.test.ts`;
+    `git diff --check -- Plans.md ops/refactor/STATE.md prisma/schema/medication.prisma prisma/rls-policies.sql prisma/migrations/20260708093000_add_medication_stock_visit_observation_context/migration.sql src/modules/pharmacy/medication-stock/domain/medication-stock-db-contract.test.ts`.
+  - validation results:
+    `Plans.md` Prettier check passed. Medication Stock DB contract test passed after the sidecar rewrite.
+    Prisma schema validation passed. Diff whitespace check passed. A broad `prettier --write` invocation against
+    `.prisma` and `.sql` reported no parser inferred for those file types, so those files are validated via
+    Prisma validation, contract tests, and whitespace check rather than Prettier.
+  - gbrain:
+    `projects/careviax/implementation-decision/medication-stock-visit-observation-context-sidecar-v1-2026-07-08`
+    (`ImplementationDecision`) に PHI-free で sidecar table 採用、Oracle review outcome、RLS/append-only
+    contract、validation、残タスクを保存した。gbrain write-through で生成された未追跡 mirror file は既存の
+    memory/docs mirror 群と同じくこの scoped commit には含めない。
+  - remaining work:
+    `STOCK-001-VISIT-API`, `STOCK-001-VISIT-FORECAST`, `STOCK-001-VISIT-UI`, and downstream
+    risk/task/brief/schedule/report connections remain open. The migration candidate is not applied without human
+    approval.
+  - next action:
+    Run final focused validation, then scoped commit/push the owned files if still valid.
+
 - codex: `PLANS-HYGIENE-005` Plans.md active board v5 cleanup。
   - current task:
     既存 `Plans.md` 内の実装済み/未実装を現行コードと既存計画に合わせて分類し、実装済みタスクを active

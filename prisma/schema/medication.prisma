@@ -144,6 +144,22 @@ enum MedicationStockSourceConfidence {
   unknown
 }
 
+enum MedicationStockObservationContextKind {
+  visit_observation
+}
+
+enum MedicationStockUnobservedReasonCode {
+  patient_refused
+  caregiver_unavailable
+  storage_inaccessible
+  medication_not_present
+  identity_uncertain
+  visit_time_limited
+  safety_priority
+  other_institution_unconfirmed
+  unknown
+}
+
 enum ExternalMedicationStockObservationReviewState {
   pending_pharmacist_review
   applied
@@ -282,6 +298,35 @@ model MedicationStockEvent {
   @@index([org_id, source_signal_id])
   @@index([org_id, external_observation_id])
   @@index([org_id, supersedes_event_id])
+}
+
+model MedicationStockObservationContext {
+  id                       String                              @id @default(cuid())
+  org_id                   String
+  display_id               String?
+  stock_event_id           String
+  context_kind             MedicationStockObservationContextKind @default(visit_observation)
+  visit_record_id          String?
+  observed_date_key_jst    String?                             @db.VarChar(10)
+  last_used_at             DateTime?
+  last_used_date_key_jst   String?                             @db.VarChar(10)
+  last_used_precision      String?                             @db.VarChar(16)
+  unobserved_reason_code   MedicationStockUnobservedReasonCode?
+  source_confidence        MedicationStockSourceConfidence      @default(unknown)
+  source_context_code      String?                             @db.VarChar(48)
+  confirmation_level       String?                             @db.VarChar(48)
+  idempotency_key_hash     String
+  request_fingerprint_hash String
+  created_at               DateTime                            @default(now())
+
+  @@unique([org_id, display_id])
+  @@unique([id, org_id])
+  @@unique([org_id, stock_event_id])
+  @@unique([org_id, idempotency_key_hash])
+  @@index([org_id])
+  @@index([org_id, visit_record_id], map: "MedicationStockObservationContext_org_visit_idx")
+  @@index([org_id, context_kind, created_at(sort: Desc)], map: "MedicationStockObservationContext_org_kind_created_idx")
+  @@index([org_id, unobserved_reason_code], map: "MedicationStockObservationContext_org_reason_idx")
 }
 
 model MedicationStockSnapshot {

@@ -312,6 +312,13 @@ CREATE POLICY tenant_isolation ON "MedicationStockEvent"
   WITH CHECK ("org_id" = public.app_enforced_org_id());
 ALTER TABLE "MedicationStockEvent" FORCE ROW LEVEL SECURITY;
 
+ALTER TABLE "MedicationStockObservationContext" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "MedicationStockObservationContext";
+CREATE POLICY tenant_isolation ON "MedicationStockObservationContext"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "MedicationStockObservationContext" FORCE ROW LEVEL SECURITY;
+
 ALTER TABLE "MedicationStockSnapshot" ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS tenant_isolation ON "MedicationStockSnapshot";
 CREATE POLICY tenant_isolation ON "MedicationStockSnapshot"
