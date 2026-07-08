@@ -24275,7 +24275,10 @@ visit_request/unknown`, `action_status='not_linked'`, and
   ISO date slices. Scoped ESLint passed. Focused tests passed 7 files / 78
   tests. Scoped diff check passed.
 - commit:
-  Pending.
+  Date-key helper migration, allowlist cleanup, validation evidence, and
+  initial ledger entry committed as
+  `a9bb385cfc2b3aad77b2ef68f018203d8713473e`
+  (`chore(dates): use date-key helpers`) and pushed to `origin/main`.
 - remaining work:
   `QUERY-SHAPE-WATCHLIST-003-FOLLOW` remains Partial. Remaining read-speed
   cleanup targets are patients board main cursor, day-board, report workspace
@@ -24283,5 +24286,5 @@ visit_request/unknown`, `action_status='not_linked'`, and
   and contact profiles. Human-gated stock migration, live AWS recovery, and
   index migration tasks remain gated.
 - next action:
-  Commit and push this validation hygiene slice with only owned files staged,
-  then record the commit hash in this ledger.
+  Commit and push this ledger hash update with only `ops/refactor/STATE.md`
+  staged, then continue with the next non-human-gated read-speed cleanup.
