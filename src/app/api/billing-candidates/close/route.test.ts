@@ -131,13 +131,21 @@ describe('/api/billing-candidates/close POST', () => {
       billingDomain: 'home_care',
       exportedCount: 12,
     });
-    await expect(response.json()).resolves.toMatchObject({
-      billing_domain: 'home_care',
-      exported_count: 12,
-      summary: {
-        exported: 12,
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: {
+        billing_domain: 'home_care',
+        exported_count: 12,
+        summary: {
+          exported: 12,
+        },
       },
     });
+    expect(body).not.toHaveProperty('message');
+    expect(body).not.toHaveProperty('billing_domain');
+    expect(body).not.toHaveProperty('exported_count');
+    expect(body).not.toHaveProperty('summary');
+    expect(body).not.toHaveProperty('claims_export');
   });
 
   it('closes PCA rental billing candidates when billing_domain is pca_rental', async () => {
@@ -178,8 +186,10 @@ describe('/api/billing-candidates/close POST', () => {
       exportedCount: 2,
     });
     await expect(response.json()).resolves.toMatchObject({
-      billing_domain: 'pca_rental',
-      exported_count: 2,
+      data: {
+        billing_domain: 'pca_rental',
+        exported_count: 2,
+      },
     });
   });
 
@@ -307,13 +317,16 @@ describe('/api/billing-candidates/close POST', () => {
     });
     const body = await response.json();
     expect(body).toMatchObject({
-      exported_count: 1,
-      claims_export: {
-        transmitted: true,
-        recordCount: 1,
+      data: {
+        exported_count: 1,
+        claims_export: {
+          transmitted: true,
+          recordCount: 1,
+        },
       },
     });
     expect(body).not.toHaveProperty('exported_candidate_ids');
+    expect(body.data).not.toHaveProperty('exported_candidate_ids');
   });
 
   it('keeps close successful but records claims export attempt when configured transmission fails', async () => {
@@ -374,9 +387,11 @@ describe('/api/billing-candidates/close POST', () => {
       }),
     });
     await expect(response.json()).resolves.toMatchObject({
-      claims_export: {
-        transmitted: false,
-        reason: 'failed',
+      data: {
+        claims_export: {
+          transmitted: false,
+          reason: 'failed',
+        },
       },
     });
   });
@@ -429,9 +444,11 @@ describe('/api/billing-candidates/close POST', () => {
     expect(createClaimsExportAdapterMock).not.toHaveBeenCalled();
     expect(exportClaimsMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
-      claims_export: {
-        transmitted: false,
-        reason: 'failed',
+      data: {
+        claims_export: {
+          transmitted: false,
+          reason: 'failed',
+        },
       },
     });
   });
@@ -483,9 +500,11 @@ describe('/api/billing-candidates/close POST', () => {
     expect(createClaimsExportAdapterMock).not.toHaveBeenCalled();
     expect(exportClaimsMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
-      claims_export: {
-        transmitted: false,
-        reason: 'missing_site_id',
+      data: {
+        claims_export: {
+          transmitted: false,
+          reason: 'missing_site_id',
+        },
       },
     });
   });
@@ -546,9 +565,11 @@ describe('/api/billing-candidates/close POST', () => {
     expect(createClaimsExportAdapterMock).not.toHaveBeenCalled();
     expect(exportClaimsMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
-      claims_export: {
-        transmitted: false,
-        reason: 'multiple_site_ids',
+      data: {
+        claims_export: {
+          transmitted: false,
+          reason: 'multiple_site_ids',
+        },
       },
     });
   });
@@ -579,10 +600,12 @@ describe('/api/billing-candidates/close POST', () => {
     expect(createClaimsExportAdapterMock).not.toHaveBeenCalled();
     expect(exportClaimsMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
-      exported_count: 0,
-      claims_export: {
-        transmitted: false,
-        reason: 'no_records',
+      data: {
+        exported_count: 0,
+        claims_export: {
+          transmitted: false,
+          reason: 'no_records',
+        },
       },
     });
   });

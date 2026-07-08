@@ -23,16 +23,29 @@ vi.mock('sonner', async () => {
 
 setupDomTestEnv();
 
-function renderBillingCandidatesContent(options: { initialPatientId?: string | null } = {}) {
+function renderBillingCandidatesContent(
+  options: {
+    initialPatientId?: string | null;
+    initialCandidateId?: string | null;
+    initialWorkflowFrom?: string | null;
+    initialVisitRecordId?: string | null;
+  } = {},
+) {
   return render(
     <BillingCandidatesContent
       initialBillingMonth="2026-03-01"
       initialPatientId={
         options.initialPatientId === undefined ? 'patient_1' : options.initialPatientId
       }
-      initialCandidateId="candidate_target"
-      initialWorkflowFrom="visit_record"
-      initialVisitRecordId="record_1"
+      initialCandidateId={
+        options.initialCandidateId === undefined ? 'candidate_target' : options.initialCandidateId
+      }
+      initialWorkflowFrom={
+        options.initialWorkflowFrom === undefined ? 'visit_record' : options.initialWorkflowFrom
+      }
+      initialVisitRecordId={
+        options.initialVisitRecordId === undefined ? 'record_1' : options.initialVisitRecordId
+      }
     />,
     { wrapper: createQueryClientWrapper() },
   );
@@ -234,6 +247,98 @@ describe('BillingCandidatesContent', () => {
     expect(closeButton).toHaveProperty('disabled', true);
     expect(closeButton.getAttribute('aria-describedby')).toBe(closeReason.id);
     expect(closeReason.textContent).not.toMatch(/patient_1|山田|太郎/);
+  });
+
+  it('reads monthly close success messages from the data envelope only', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith('/api/billing-candidates?')) {
+        return jsonResponse({
+          data: [
+            {
+              id: 'candidate_ready',
+              patient_id: 'patient_1',
+              patient_name: '山田 太郎',
+              billing_domain: 'home_care',
+              billing_target_type: 'patient',
+              billing_target_id: 'patient_1',
+              billing_target_label: '山田 太郎',
+              billing_month: '2026-03-01T00:00:00.000Z',
+              billing_code: 'MED_HOME_VISIT_SINGLE',
+              billing_name: '在宅患者訪問薬剤管理指導料',
+              points: 3240,
+              quantity: 1,
+              status: 'confirmed',
+              exclusion_reason: null,
+              updated_at: '2026-06-18T00:01:00.000Z',
+              calculation_breakdown: { amount_yen: 3240 },
+              source_snapshot: {
+                billing_scope: 'home_care_ssot',
+                selection_mode: 'auto',
+                validation_layers: {
+                  evidence: { label: '証跡', state: 'passed', message: 'OK' },
+                },
+              },
+              workflow_state: { review_state: 'reviewed', resolution_state: 'confirmed' },
+            },
+          ],
+          hasMore: false,
+          summary: {
+            total: 1,
+            pending_review: 0,
+            confirmed: 1,
+            excluded: 0,
+            exported: 0,
+            reviewed: 1,
+            ready_to_close: 1,
+            blocked_from_close: 0,
+            blocker_reasons: [],
+          },
+        });
+      }
+      if (url === '/api/billing-candidates/close' && init?.method === 'POST') {
+        return jsonResponse({
+          message: 'legacy root message must not be read',
+          data: {
+            message: '2026-03 を月次締めしました',
+            billing_domain: 'home_care',
+            exported_count: 1,
+          },
+        });
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderBillingCandidatesContent({
+      initialPatientId: null,
+      initialCandidateId: null,
+      initialWorkflowFrom: null,
+      initialVisitRecordId: null,
+    });
+
+    const closeButton = await screen.findByRole('button', { name: '医療・介護月次締め' });
+    await waitFor(() => {
+      expect(closeButton).toHaveProperty('disabled', false);
+    });
+    fireEvent.click(closeButton);
+
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith('2026-03 を月次締めしました');
+    });
+    expect(toast.success).not.toHaveBeenCalledWith('legacy root message must not be read');
+    const closeCall = vi
+      .mocked(fetch)
+      .mock.calls.find(
+        ([input, init]) =>
+          String(input) === '/api/billing-candidates/close' && init?.method === 'POST',
+      );
+    expect(closeCall).toBeTruthy();
+    expect(JSON.parse(closeCall![1]?.body as string)).toEqual({
+      billing_month: '2026-03-01',
+      billing_domain: 'home_care',
+    });
   });
 
   it('uses a billing-specific label while loading the next candidates page', async () => {

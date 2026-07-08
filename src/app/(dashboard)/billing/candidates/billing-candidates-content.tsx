@@ -487,13 +487,15 @@ export function BillingCandidatesContent({
         body: JSON.stringify({ billing_month: billingMonthStr, billing_domain: billingDomain }),
       });
       return readApiJson<{
-        message: string;
-        exported_count?: number;
-        billing_domain?: BillingDomain;
+        data: {
+          message: string;
+          exported_count?: number;
+          billing_domain?: BillingDomain;
+        };
       }>(res, '月次締めに失敗しました');
     },
     onSuccess: async (result) => {
-      toast.success(result.message);
+      toast.success(result.data.message);
       await queryClient.invalidateQueries({ queryKey: ['billing-candidates', orgId] });
       await queryClient.invalidateQueries({ queryKey: ['billing-stats', orgId] });
     },

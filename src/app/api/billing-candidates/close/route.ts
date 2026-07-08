@@ -271,10 +271,12 @@ export async function POST(req: NextRequest) {
   });
 
   return success({
-    message: `${parsedBillingMonth.canonical} を月次締めしました`,
-    billing_domain: billingDomain,
-    exported_count: result.exported_count,
-    summary: result.summary,
-    claims_export: claimsExport,
+    data: {
+      message: `${parsedBillingMonth.canonical} を月次締めしました`,
+      billing_domain: billingDomain,
+      exported_count: result.exported_count,
+      summary: result.summary,
+      claims_export: claimsExport,
+    },
   });
 }
