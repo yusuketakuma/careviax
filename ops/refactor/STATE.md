@@ -24269,16 +24269,18 @@ visit_request/unknown`, `action_status='not_linked'`, and
   violations. `plans:active:check` passed. Focused ESLint passed. Scoped diff
   check passed.
 - commit:
-  Pending.
+  Response-shape guard ratchet, allowlist cleanup, Plans sync, and validation
+  evidence committed as `e4c86836d` (`chore(api): reduce response shape false
+positives`) and pushed to `origin/main`.
 - remaining work:
   `API-CONTRACT-001` remains Partial. Remaining work is real route envelope
   migration, standardized ApiError/request_id propagation, frontend reader
   alignment, and further allowlist burn-down. Compatibility aliases or legacy
   public response fallbacks should not be added.
 - next action:
-  Run focused formatting, tests, response-shape guard, plans active check,
-  ESLint, and diff check; then commit and push this coherent tooling slice with
-  only owned files staged.
+  Commit and push this ledger hash update with only `ops/refactor/STATE.md`
+  staged, then continue `API-CONTRACT-001` by migrating real legacy public
+  route envelopes without compatibility aliases or legacy fallback shapes.
 
 ## 2026-07-09 - DATE-SLICE-GUARD-001 helper migration
 
