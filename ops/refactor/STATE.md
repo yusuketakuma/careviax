@@ -28603,3 +28603,106 @@ responses`) and pushed to `origin/main`.
   Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
   then continue the next API response envelope cleanup from
   `src/app/api/dispense-tasks/[id]/workbench/route.ts` unless redirected.
+
+## 2026-07-09 - API-CONTRACT-001AY dispense task workbench envelope cleanup
+
+- current task:
+  Continue `API-CONTRACT-001` public response envelope burn-down without legacy
+  compatibility fields. Move `GET /api/dispense-tasks/:id/workbench` and
+  `POST /api/dispense-tasks/:id/workbench` interrupt success responses to the
+  current `data` envelope.
+- files inspected:
+  `git status --short --branch --untracked-files=all`;
+  `ops/refactor/STATE.md`; `Plans.md`;
+  `tools/api-response-shape-allowlist.json`;
+  `src/app/api/dispense-tasks/[id]/workbench/route.ts`;
+  `src/app/api/dispense-tasks/[id]/workbench/route.test.ts`;
+  `src/components/features/dispense-workbench/dispensing-workbench.adapter.ts`;
+  `src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts`;
+  `src/lib/dispensing/dispense-workbench-shared.ts`;
+  `src/app/api/__tests__/protected-get-routes.test.ts`; workbench usage search
+  results; and `gbrain search "API-CONTRACT dispense-tasks workbench response envelope"`.
+- files changed:
+  `Plans.md`; `tools/api-response-shape-allowlist.json`;
+  `src/app/api/dispense-tasks/[id]/workbench/route.ts`;
+  `src/app/api/dispense-tasks/[id]/workbench/route.test.ts`;
+  `src/components/features/dispense-workbench/dispensing-workbench.adapter.ts`;
+  `src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts`;
+  `ops/refactor/STATE.md`.
+- bugs found:
+  `GET /api/dispense-tasks/:id/workbench` returned the raw workbench projection
+  root object, and `POST /api/dispense-tasks/:id/workbench` returned the raw
+  workflow exception root object after interrupt creation. The real-data
+  workbench adapter still read the route as raw `DispenseWorkbenchData`.
+- bugs fixed:
+  Workbench read and interrupt success now return `success({ data: ... })`.
+  Route tests assert `payload.data` for projection and interrupt responses.
+  The real-data workbench adapter now reads `{ data: DispenseWorkbenchData }`,
+  and adapter fixtures use the current envelope. No legacy root fallback
+  remains. Response-shape debt dropped from 145 to 143 allowlisted violations.
+- security risks found:
+  No auth, authorization, assignment scoping, org scoping, route parameter
+  validation, interrupt reason validation, transaction boundary, audit logging,
+  workflow notification, no-store behavior, or workbench projection query shape
+  changed.
+- security risks reduced:
+  Removed raw PHI-adjacent workbench projection and interrupt exception success
+  shapes from the public API surface while preserving existing read and write
+  gates.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this is response contract cleanup. Existing workbench read query fanout,
+  previous-intake lookup, name resolution, and interrupt transaction behavior
+  are unchanged.
+- UI/UX note:
+  No visible UI/UX change. This was API/adapter/test contract work only, so
+  image generation was not applicable.
+- Oracle note:
+  Oracle consultation remains paused per current user instruction, so no
+  Oracle/GPT-5.5 Pro consult was run. The slice stayed mechanical and avoided
+  changing workbench semantics.
+- validation commands:
+  `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/dispense-tasks/[id]/workbench/route.ts src/app/api/dispense-tasks/[id]/workbench/route.test.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts`;
+  `pnpm vitest run src/app/api/dispense-tasks/[id]/workbench/route.test.ts`;
+  `pnpm vitest run src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts`;
+  `pnpm vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "dispense-tasks/\\[id\\]/workbench GET"`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint src/app/api/dispense-tasks/[id]/workbench/route.ts src/app/api/dispense-tasks/[id]/workbench/route.test.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts`;
+  `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/dispense-tasks/[id]/workbench/route.ts src/app/api/dispense-tasks/[id]/workbench/route.test.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts`;
+  `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/dispense-tasks/[id]/workbench/route.ts src/app/api/dispense-tasks/[id]/workbench/route.test.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `pnpm format:check`.
+- validation results:
+  Prettier passed. Workbench route tests passed 1 file / 9 tests. Workbench
+  adapter tests passed 1 file / 29 tests. Protected GET targeted tests passed
+  3 tests with 381 skipped. `api-response-shape:check` passed with 143
+  allowlisted violations and 0 new violations. `plans:active:check` passed.
+  Scoped ESLint, scoped Prettier check, scoped diff check, and typecheck
+  passed. `pnpm format:check` still fails only on unrelated pre-existing
+  untracked Markdown files:
+  `projects/careviax/implementation-decision/medication-stock-visit-observation-context-sidecar-v1-2026-07-08.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-doc-001.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-evidence-001.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-integrity-001.md`,
+  `projects/careviax/reviews/2026-07-08/patient-board-read-001.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003a-003d.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003e.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-guard.md`, and
+  `skills/_candidates.md`.
+- commit:
+  Workbench read/interrupt response envelope migration, route tests, adapter
+  reader fixtures, allowlist cleanup, and Plans sync committed as
+  `8df2ba84433ba6a3c12d938edd2f994db7ae3175`
+  (`fix(api): envelope dispense task workbench responses`). Push is pending
+  this ledger update.
+- remaining work:
+  `API-CONTRACT-001` remains Partial. Next allowlist head is
+  `src/app/api/dispense-tasks/route.ts` with two expected legacy response shape
+  violations, followed by `src/app/api/drug-masters/[id]/generic-recommendations/route.ts`.
+  Existing unrelated dirty/untracked memory/docs files remain unstaged.
+- next action:
+  Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
+  then continue the next API response envelope cleanup from
+  `src/app/api/dispense-tasks/route.ts` unless redirected.
