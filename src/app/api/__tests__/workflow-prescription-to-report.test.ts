@@ -875,7 +875,7 @@ describe('Workflow: prescription intake to care report', () => {
   /* ---------------------------------------------------------------------- */
 
   it('step 7: generates care report from visit record', async () => {
-    // The care-reports GET route reads from prisma directly.
+    // The care-reports GET route reads through withOrgContext.
     prismaCareReportFindManyMock.mockResolvedValue([
       {
         id: IDS.careReport,
@@ -903,6 +903,16 @@ describe('Workflow: prescription intake to care report', () => {
     prismaDeliveryRecordCountMock.mockResolvedValue(0);
     prismaDeliveryRecordGroupByMock.mockResolvedValue([]);
     prismaDeliveryRecordFindManyMock.mockResolvedValue([]);
+    withOrgContextMock.mockImplementation(async (_orgId: string, callback: TxCallback) =>
+      callback({
+        careReport: {
+          findMany: prismaCareReportFindManyMock,
+        },
+        patient: {
+          findMany: prismaPatientFindManyMock,
+        },
+      }),
+    );
 
     const response = await getCareReports(
       Object.assign(

@@ -867,9 +867,11 @@ describe('/api/dispense-audits POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      id: 'audit_existing',
-      result: 'approved',
-      idempotent: true,
+      data: {
+        id: 'audit_existing',
+        result: 'approved',
+        idempotent: true,
+      },
     });
     expect(dispenseResultFindManyMock).not.toHaveBeenCalled();
     expect(dispenseAuditCreateMock).not.toHaveBeenCalled();
@@ -976,8 +978,10 @@ describe('/api/dispense-audits POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toMatchObject({
-      id: 'audit_reapproved',
-      result: 'approved',
+      data: {
+        id: 'audit_reapproved',
+        result: 'approved',
+      },
     });
     expect(dispenseAuditCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({

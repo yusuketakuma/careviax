@@ -980,7 +980,7 @@ async function authenticatedPOST(req: NextRequest) {
       return validationError(auditError.error);
     }
     if (isIdempotentDispenseAuditReplay(auditResult)) {
-      return success(auditResult);
+      return success({ data: auditResult });
     }
 
     await notifyWorkflowMutation({
@@ -989,7 +989,7 @@ async function authenticatedPOST(req: NextRequest) {
       payload: { source: 'dispense_audits', task_id },
     });
 
-    return success(auditResult, 201);
+    return success({ data: auditResult }, 201);
   });
 }
 
