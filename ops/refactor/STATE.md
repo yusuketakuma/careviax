@@ -23494,7 +23494,9 @@ visit_request/unknown`, `action_status='not_linked'`, and
   board check passed. Full typecheck passed after `next typegen`. Initial
   targeted diff check passed.
 - commit:
-  Pending.
+  Implementation, tests, Plans update, and initial ledger entry committed as
+  `d33735fc6b7709314a4f6e2f0dc606170cc72a221`
+  (`feat(schedules): surface inbound schedule signals`).
 - remaining work:
   `INBOUND-002-REVIEW-DETAIL` remains partial only for Share downstream. Future
   accepted-signal conversion into a concrete schedule/proposal target must be a
@@ -23503,6 +23505,6 @@ visit_request/unknown`, `action_status='not_linked'`, and
   production data mutation, or push was performed in the implementation edit
   step.
 - next action:
-  Run final Plans/format/diff checks, commit the owned slice, record the commit
-  hash in this ledger, push to `origin/main`, then continue the next
-  non-human-gated Plans item.
+  Run final ledger formatting/diff checks, commit this ledger hash update, push
+  both commits to `origin/main`, then continue the next non-human-gated Plans
+  item.
