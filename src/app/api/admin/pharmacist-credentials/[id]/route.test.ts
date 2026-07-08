@@ -335,6 +335,9 @@ describe('/api/admin/pharmacist-credentials/[id]', () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    const body = await response.json();
+    expect(body).toEqual({ data: { id: 'cred_1' } });
+    expect(body).not.toHaveProperty('message');
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function));
     expect(pharmacistCredentialDeleteMock).toHaveBeenCalledWith({
       where: { id: 'cred_1' },

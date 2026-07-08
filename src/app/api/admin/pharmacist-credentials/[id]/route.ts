@@ -131,7 +131,7 @@ const authenticatedDELETE = withAuthContext<{ id: string }>(
           expiry_date: true,
         },
       });
-      if (!existing) return false;
+      if (!existing) return null;
 
       await tx.pharmacistCredential.delete({
         where: { id: credentialId },
@@ -148,11 +148,11 @@ const authenticatedDELETE = withAuthContext<{ id: string }>(
         },
       });
 
-      return true;
+      return { id: existing.id };
     });
     if (!deleted) return notFound('薬剤師認定情報が見つかりません');
 
-    return success({ message: '薬剤師認定情報を削除しました' });
+    return success({ data: { id: deleted.id } });
   },
   {
     permission: 'canAdmin',
