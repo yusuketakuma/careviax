@@ -436,22 +436,24 @@ const authenticatedGET = withAuthContext(async (_req, ctx, { params }) => {
   );
 
   return success({
-    ...task,
-    facility_label: facilityLabel,
-    site,
-    stock_guidance: stockGuidance,
-    prefill,
-    original_collection_check: intake
-      ? {
-          required: intake.source_type === 'fax',
-          collected: intake.original_collected_at != null,
-          collected_at: intake.original_collected_at,
-        }
-      : {
-          required: false,
-          collected: false,
-          collected_at: null,
-        },
+    data: {
+      ...task,
+      facility_label: facilityLabel,
+      site,
+      stock_guidance: stockGuidance,
+      prefill,
+      original_collection_check: intake
+        ? {
+            required: intake.source_type === 'fax',
+            collected: intake.original_collected_at != null,
+            collected_at: intake.original_collected_at,
+          }
+        : {
+            required: false,
+            collected: false,
+            collected_at: null,
+          },
+    },
   });
 });
 
@@ -570,5 +572,5 @@ export const PATCH = withAuthContext(async (req, ctx, { params }) => {
     },
   });
 
-  return success(updated);
+  return success({ data: updated });
 });

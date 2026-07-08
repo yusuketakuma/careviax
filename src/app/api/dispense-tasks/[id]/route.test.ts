@@ -236,26 +236,28 @@ describe('/api/dispense-tasks/[id]', () => {
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
-      facility_label: 'facility_a',
-      site: {
-        id: 'site_1',
-        name: '本店',
+      data: {
+        facility_label: 'facility_a',
+        site: {
+          id: 'site_1',
+          name: '本店',
+        },
+        original_collection_check: {
+          required: false,
+          collected: false,
+          collected_at: null,
+        },
+        stock_guidance: [
+          expect.objectContaining({
+            line_id: 'line_1',
+            prescribed_drug_name: 'アムロジピンベシル酸塩錠',
+            prescribed_drug_code: null,
+            stock_status: 'preferred_generic',
+            recommended_drug_name: 'アムロジピンOD錠5mg',
+            recommended_drug_code: '222',
+          }),
+        ],
       },
-      original_collection_check: {
-        required: false,
-        collected: false,
-        collected_at: null,
-      },
-      stock_guidance: [
-        expect.objectContaining({
-          line_id: 'line_1',
-          prescribed_drug_name: 'アムロジピンベシル酸塩錠',
-          prescribed_drug_code: null,
-          stock_status: 'preferred_generic',
-          recommended_drug_name: 'アムロジピンOD錠5mg',
-          recommended_drug_code: '222',
-        }),
-      ],
     });
     expect(generateDispensePrefillMock).toHaveBeenCalledWith('cycle_1', 'org_1', 'site_1');
     expect(dispenseTaskFindFirstMock).toHaveBeenCalledWith(
@@ -331,10 +333,12 @@ describe('/api/dispense-tasks/[id]', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      original_collection_check: {
-        required: true,
-        collected: false,
-        collected_at: null,
+      data: {
+        original_collection_check: {
+          required: true,
+          collected: false,
+          collected_at: null,
+        },
       },
     });
   });
@@ -483,13 +487,15 @@ describe('/api/dispense-tasks/[id]', () => {
 
     if (!response) throw new Error('response is required');
     await expect(response.json()).resolves.toMatchObject({
-      prefill: {
-        packagingGroups: [
-          expect.objectContaining({
-            lineId: 'line_1',
-            groupId: 'group_1',
-          }),
-        ],
+      data: {
+        prefill: {
+          packagingGroups: [
+            expect.objectContaining({
+              lineId: 'line_1',
+              groupId: 'group_1',
+            }),
+          ],
+        },
       },
     });
   });
@@ -532,6 +538,13 @@ describe('/api/dispense-tasks/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: 'task_1',
+        status: 'in_progress',
+        assigned_to: 'user_1',
+      },
+    });
     expect(dispenseTaskFindFirstMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
