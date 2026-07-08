@@ -24344,14 +24344,17 @@ positives`) and pushed to `origin/main`.
   violations. `plans:active:check` passed. Focused ESLint passed. Scoped diff
   check passed.
 - commit:
-  Pending.
+  Business-holidays envelope migration, route tests, allowlist cleanup, Plans
+  sync, and validation evidence committed as `957d0f1b4` (`fix(api): envelope
+business holiday mutations`) and pushed to `origin/main`.
 - remaining work:
   `API-CONTRACT-001` remains Partial. Continue migrating real legacy success
   and error payloads route by route; do not add old-shape compatibility
   fallbacks.
 - next action:
-  Run focused lint, Plans check, response-shape check, route tests, and scoped
-  diff check; then commit and push the business-holidays envelope slice.
+  Commit and push this ledger hash update with only `ops/refactor/STATE.md`
+  staged, then continue `API-CONTRACT-001` by migrating the next real legacy
+  success/error response shape without compatibility fallback bodies.
 
 ## 2026-07-09 - DATE-SLICE-GUARD-001 helper migration
 
