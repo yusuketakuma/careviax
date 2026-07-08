@@ -24217,6 +24217,103 @@ visit_request/unknown`, `action_status='not_linked'`, and
   Commit and push this ledger hash update with only `ops/refactor/STATE.md`
   staged, then continue with the next non-human-gated read-speed cleanup.
 
+## 2026-07-09 - API-CONTRACT-001N vehicle-resource list envelope migration
+
+- current task:
+  Continue `API-CONTRACT-001` by migrating `GET /api/visit-vehicle-resources`
+  from legacy top-level list metadata to the new-only `data + meta` success
+  envelope.
+- files inspected:
+  `git status --short --branch --untracked-files=all`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `src/app/api/visit-vehicle-resources/route.ts`;
+  `src/app/api/visit-vehicle-resources/route.test.ts`;
+  `src/types/api/visit-vehicle-resources.ts`;
+  `src/app/(dashboard)/admin/vehicles/vehicles-content.tsx`;
+  `src/app/(dashboard)/admin/vehicles/vehicles-content.test.tsx`;
+  `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx`;
+  `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx`;
+  `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx`;
+  `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx`;
+  related schedule-day vehicle resource readers/tests; `ops/refactor/STATE.md`.
+- files changed:
+  `src/app/api/visit-vehicle-resources/route.ts`;
+  `src/app/api/visit-vehicle-resources/route.test.ts`;
+  `src/types/api/visit-vehicle-resources.ts`;
+  `src/app/(dashboard)/admin/vehicles/vehicles-content.tsx`;
+  `src/app/(dashboard)/admin/vehicles/vehicles-content.test.tsx`;
+  `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx`;
+  `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx`;
+  `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx`;
+  `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  this `ops/refactor/STATE.md` ledger entry.
+- bugs found:
+  `GET /api/visit-vehicle-resources` still emitted list metadata as top-level
+  `total_count` / `visible_count` / `hidden_count` / `truncated` /
+  `count_basis` / `filters_applied` / `limit`. The shared vehicle resource
+  response type and admin vehicle / schedule proposal readers still allowed or
+  read that legacy shape.
+- bugs fixed:
+  The route now returns only `data` and `meta`. Shared vehicle resource response
+  types require `meta`, and the admin vehicle, weekly optimizer, and schedule
+  proposals readers consume `payload.meta` instead of deriving from top-level
+  legacy fields. Test fixtures were updated to the new envelope without adding
+  runtime compatibility fallback. The old allowlist entry for
+  `src/app/api/visit-vehicle-resources/route.ts` was removed, reducing
+  response-shape debt from 205 to 204.
+- security risks found:
+  No auth, authorization, tenant filtering, audit logging, mutation behavior,
+  external sharing, billing, or patient/PHI payload selection was changed. The
+  route remains org-scoped and no-store.
+- security risks reduced:
+  Response-contract drift is reduced for an authenticated operational route, and
+  the existing route tests continue to cover auth failure, validation, reference
+  checks, no-store behavior, and unsafe error logging boundaries.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this is a response contract migration. The existing bounded `take`,
+  count query, and reader query behavior are unchanged.
+- UI/UX note:
+  No visible layout or interaction change. This was a response reader contract
+  update, so image generation was not applicable.
+- Next.js docs:
+  Route-handler docs were already inspected earlier in this `API-CONTRACT-001`
+  continuation before editing Next.js route handler code.
+- Oracle:
+  Not used. This slice did not change auth/authorization, tenant isolation,
+  PHI/PII selection, DB schema/migration, billing, external sharing, or
+  production data behavior; it only moved existing vehicle list metadata under
+  `meta`.
+- validation commands:
+  `pnpm exec prettier --write src/app/api/visit-vehicle-resources/route.ts src/app/api/visit-vehicle-resources/route.test.ts src/types/api/visit-vehicle-resources.ts src/app/(dashboard)/admin/vehicles/vehicles-content.tsx src/app/(dashboard)/admin/vehicles/vehicles-content.test.tsx src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx tools/api-response-shape-allowlist.json Plans.md`;
+  `pnpm vitest run src/app/api/visit-vehicle-resources/route.test.ts src/app/(dashboard)/admin/vehicles/vehicles-content.test.tsx src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx --reporter=dot --testTimeout=30000`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint src/app/api/visit-vehicle-resources/route.ts src/app/api/visit-vehicle-resources/route.test.ts src/types/api/visit-vehicle-resources.ts src/app/(dashboard)/admin/vehicles/vehicles-content.tsx src/app/(dashboard)/admin/vehicles/vehicles-content.test.tsx src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `pnpm exec prettier --check src/app/api/visit-vehicle-resources/route.ts src/app/api/visit-vehicle-resources/route.test.ts src/types/api/visit-vehicle-resources.ts src/app/(dashboard)/admin/vehicles/vehicles-content.tsx src/app/(dashboard)/admin/vehicles/vehicles-content.test.tsx src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx tools/api-response-shape-allowlist.json Plans.md`;
+  `git diff --check -- src/app/api/visit-vehicle-resources/route.ts src/app/api/visit-vehicle-resources/route.test.ts src/types/api/visit-vehicle-resources.ts src/app/(dashboard)/admin/vehicles/vehicles-content.tsx src/app/(dashboard)/admin/vehicles/vehicles-content.test.tsx src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx tools/api-response-shape-allowlist.json Plans.md`.
+- validation results:
+  Prettier passed. Focused route/component tests passed 4 files / 79 tests.
+  `api-response-shape:check` passed with 204 allowlisted violations and 0 new
+  violations. `plans:active:check` passed. Focused ESLint passed. Full
+  typecheck passed. Targeted Prettier check passed. Scoped diff check passed.
+- commit:
+  Vehicle-resource list envelope migration, shared type update, frontend reader
+  updates, tests, allowlist cleanup, and Plans sync committed as `51fc9e707`
+  (`fix(api): envelope vehicle resource list`). Push is pending this ledger
+  hash update.
+- remaining work:
+  `API-CONTRACT-001` remains Partial. Continue migrating real legacy success
+  and error response shapes route by route without compatibility fallbacks.
+  Higher-risk auth/authorization, PHI/PII, patient, billing, external sharing,
+  and migration slices still require the project safety gates.
+- next action:
+  Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
+  then continue with the next safe `API-CONTRACT-001` envelope migration.
+
 ## 2026-07-09 - API-CONTRACT-001M document-template list envelope migration
 
 - current task:
