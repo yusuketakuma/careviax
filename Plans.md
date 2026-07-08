@@ -31,9 +31,9 @@
 
 | Bucket                   | Count | 入口                                                                                                    |
 | ------------------------ | ----: | ------------------------------------------------------------------------------------------------------- |
-| Done / frozen            |    14 | 下の Done 表。active backlog ではなく、回帰防止・docs参照・watchlist対象として扱う。                    |
+| Done / frozen            |    15 | 下の Done 表。active backlog ではなく、回帰防止・docs参照・watchlist対象として扱う。                    |
 | Partial / residual track |     8 | 下の Partial 表。既存土台は再作成せず、残スコープだけ implementation queue へ切る。                     |
-| Implementation queue     |    33 | `Implementation-ready queue`。次PRに切れる backend/platform/ops/API タスク。Human gate を含む。         |
+| Implementation queue     |    32 | `Implementation-ready queue`。次PRに切れる backend/platform/ops/API タスク。Human gate を含む。         |
 | Frontend queue           |     9 | `Frontend implementation queue`。7画面UI改善は実在BFF/API/state matrixに基づく slice として扱う。       |
 | Archive / reference      |     - | `Archived Plan Board v3` 以下。背景・受入条件・旧証跡。未チェックboxをそのまま backlog として数えない。 |
 
@@ -76,6 +76,7 @@
 | DB read-speed guardrails | care-report bounded patient/keyword search、delivery summary page-basis、payload budgets、SELECT-only EXPLAIN tool、query-shape watchlist guard、patients board nested relation bounds。                                                 | 残は patients board main cursor redesign、day-board/detail surfaces cleanup、index migration human gate、perf-smoke運用証跡。 |
 | Recovery / AWS base      | AWS Backup/RDS read-only monitor、S3 Object Lock read-only monitor、strict skipped-check degradation、template validator、redacted drill evidence、SELECT-only restored DB integrity audit。                                             | runtime restore APIは作らない。残は live AWS drill evidence の human gate。                                                   |
 | Permission SSOT base     | `docs/compliance/access-control-policy.md` と `src/lib/auth/permission-matrix.ts` の基本 capability matrix。                                                                                                                             | 新account種別やsupport mode導入時に docs/code/tests/RLS/audit を同時更新する。                                                |
+| Plans active board guard | `plans:active:check` と `tools/scripts/check-plans-active-board.mjs` で Active Plan Board v8 の分類件数、active queue、完了済み派生ID、archive/reference境界を検査する。                                                                 | 再実装しない。active board 更新時はこの lint と fixture test を通す。                                                         |
 
 **Partial — 残スコープだけを実装するもの**:
 
@@ -126,7 +127,6 @@
 | `FRONTEND-CONTRACT-001`            | Not started | P1       | Frontend          | 7画面の entrypoint、BFF/API、state matrix、PHI表示方針、mobile構成、validationを1ページ contract化。                                                                                                                                                               | docs diff、state matrix。実在しないAPIを前提にしたUI実装なら停止。                                                                                     |
 | `FRONTEND-PHI-DISPLAY-001`         | Not started | P1       | Frontend/security | 認証済み業務画面では権限内の患者名、薬剤名、訪問内容、処方内容、MCS/電話本文、残数、報告/請求の具体情報を表示してよい、という方針を各画面contractに反映する。外部共有、OS通知、SSE、ログ、監査差分、CSV/PDF export は別境界として扱う。                            | UI snapshot、permission tests、external/export/log omission tests。業務画面の表示制限を通知/外部共有境界へ誤って流用するなら停止。                     |
 | `PLAN-ARCHIVE-001`                 | Not started | P2       | Plan hygiene      | 後段の長大なプロンプト型仕様を active backlog から分離し、reference spec として `docs/plans-archive.md` または専用docsへリンク化する。内容を失わず、active入口には status と残scopeだけを残す。                                                                    | markdown link check、active board diff review。仕様を削除して証跡を失うなら停止。                                                                      |
-| `PLANS-ACTIVE-LINT-001`            | Not started | P2       | Plan hygiene      | `Plans.md` の active ID は `Active Plan Board v8` と implementation/frontend queue に存在するものだけとし、`cc:REFERENCE` / `cc:WIP` の未チェックboxを backlog 件数に数えない軽量lintまたは `rg` 手順を作る。                                                      | lint scriptまたはdocumented command、fixture test。archiveの未チェックboxをactive backlog扱いするなら停止。                                            |
 
 **未実装Plan拡充 — 次PRへ切るサブスライス**:
 
@@ -178,6 +178,7 @@
 - `DASH-URGENT-SOURCE-LINKS-001`: `DashboardUrgentSourceLink` に `count_basis='source_total'` を追加し、`今すぐ対応` 下に source別 drilldown を表示した。audit/inbound/stock/report/billing/task は既存UI routeのfilter付き相対URLへ進み、外部URLへ逃がさない。`visible_count` は top3表示件数ではなく details payload に materialize されたsource内件数として固定済み。
 - `DASH-HIDDEN-CARRYOVER-LINKS-001`: 右レールの「昨日からの持ち越し」、他職種受信hidden、チーム会話hiddenを条件付き相対URLへ接続済み。hidden/carryoverは件数表示だけで終わらせず、既存の tasks / inbound / handoff 画面へ進める。
 - `DASH-SUMMARY-RAIL-001`: `DashboardCockpit` に左Summary Railを追加済み。専用BFFは作らず、既存 summary/details/team/inbound/source links から今日のサマリー、主なタスク、チーム状況、最終更新を合成する。狭幅では上部カードとして表示し、dashboard component test で主要リンクと件数を固定した。
+- `PLANS-ACTIVE-LINT-001`: `plans:active:check` と fixture test を追加済み。Active Plan Board v8 の分類件数、active queue、完了済み派生ID、Archived Plan Boardの非active境界を検査し、archive/referenceの未チェックboxをactive backlog扱いしない。
 
 **今回昇格した派生タスク（未実装 / 残スコープ）**:
 

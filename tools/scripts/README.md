@@ -11,6 +11,7 @@
 - `external-access-case-boundary-audit.ts` : legacy ExternalAccessGrant case-boundary audit/backfill
 - `handoff-confirmation-task-inventory.ts` : PHI-minimized read-only inventory for historical unassigned `handoff_confirmation` tasks
 - `link-prisma-client.mjs` : Prisma client の postinstall 補助
+- `check-plans-active-board.mjs` : `Plans.md` の Active Plan Board v8 件数・active queue・archive/reference 境界を検査
 - `perf-smoke.ts` : API performance smoke test
 - `build-phos-lambda-artifact.ts` : PH-OS Lambda artifact builder for deploy proof
 - `validate-phos-deploy-template.ts` : PH-OS CloudFormation template export + external validation report

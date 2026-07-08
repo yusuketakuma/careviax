@@ -41,6 +41,59 @@
 
 ## 直近の作業（未コミット）
 
+- codex: `PLANS-ACTIVE-LINT-001` Plans.md active board guard。
+  - current task:
+    `Plans.md` の Active Plan Board v8 を唯一の実装入口として保つため、分類件数・active
+    queue・完了済み派生ID・archive/reference 境界を検査する軽量lintを追加する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `package.json`,
+    `tools/scripts/README.md`,
+    existing script/test patterns under `tools/scripts`,
+    and previous `Plans.md` classification state in this ledger.
+  - files changed:
+    `Plans.md`,
+    `package.json`,
+    `tools/scripts/README.md`,
+    `tools/scripts/check-plans-active-board.mjs`,
+    `tools/scripts/check-plans-active-board.test.ts`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Added `pnpm plans:active:check`, backed by `tools/scripts/check-plans-active-board.mjs`.
+    The check verifies Active Plan Board v8 summary counts against the actual Done / Partial /
+    Implementation / Frontend tables, rejects completed derived IDs in active queues, rejects the old
+    completed `DASH-P1-010-RAIL` active ID, and requires the Archived Plan Board to explicitly state
+    that it is not counted as active backlog. `Plans.md` now moves `PLANS-ACTIVE-LINT-001` into
+    Done/frozen and removes it from the implementation queue.
+  - bugs found:
+    `Plans.md` relied on manual count updates and narrative archive boundaries. Without an executable
+    guard, future edits could reintroduce stale completed IDs or count archived unchecked rows as
+    active backlog.
+  - security risks reduced:
+    No runtime security behavior changed. The guard helps prevent plan drift that could cause
+    reimplementation of PHI/raw-detail or migration-adjacent tasks outside their intended gates.
+  - performance issues improved:
+    No runtime performance changed. Plan hygiene now protects DB read-speed backlog accounting from
+    archived/reference tasks being counted as live implementation work.
+  - validation commands:
+    `pnpm plans:active:check`;
+    `pnpm exec vitest run tools/scripts/check-plans-active-board.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec prettier --write Plans.md package.json tools/scripts/README.md tools/scripts/check-plans-active-board.mjs tools/scripts/check-plans-active-board.test.ts`;
+    `pnpm exec prettier --write ops/refactor/STATE.md`;
+    `pnpm exec prettier --check Plans.md package.json tools/scripts/README.md tools/scripts/check-plans-active-board.mjs tools/scripts/check-plans-active-board.test.ts ops/refactor/STATE.md`;
+    `git diff --check -- Plans.md package.json tools/scripts/README.md tools/scripts/check-plans-active-board.mjs tools/scripts/check-plans-active-board.test.ts ops/refactor/STATE.md`;
+    `git diff --cached --check`.
+  - validation results:
+    `plans:active:check` passed against the real `Plans.md`. The new fixture test passed 5 tests after
+    fixing the `Archive / reference` non-numeric count handling. Prettier write/check passed for all
+    touched files. Working-tree and staged diff whitespace checks passed.
+  - remaining work:
+    Run final Prettier check and `git diff --check`, then commit this scoped plan hygiene slice.
+    Broader `PLAN-ARCHIVE-001` physical archive extraction remains open.
+  - next action:
+    Validate and commit explicit owned paths only.
+
 - codex: `PLANS-ACTIVE-CLASSIFICATION-001` Plans.md active board 整理。
   - current task:
     `Plans.md` の先頭 Active Board を実装入口として整理し、実装済み / Partial / 未実装 /
