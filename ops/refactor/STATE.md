@@ -41,6 +41,72 @@
 
 ## 直近の land（本日・要点）
 
+- codex: `OPS-RECOVERY-DOC-001` root recovery runbook least-privilege cleanup / Plans active backlog 整理。
+  - current task:
+    ユーザー指示の「既存Plans.md内を整理。実装済み、未実装を分類。未実装はPlanを拡充。
+    派生タスクが見つかったら追記」に対する継続として、`Plans.md` の Recovery/AWS lane から
+    完了済みの root runbook cleanup を active 未実装queueから外し、残スコープを
+    `OPS-RECOVERY-LIVE-001` の human gate に絞った。同時に root
+    `docs/backup-recovery-drill.md` を compliance SSOT と整合させ、least-privilege /
+    non-destructive / synthetic-drill-only の detailed historical runbook へ安全化した。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `docs/backup-recovery-drill.md`,
+    `docs/compliance/backup-recovery-drill.md`,
+    `ops/refactor/STATE.md`.
+  - files changed:
+    `Plans.md`,
+    `docs/backup-recovery-drill.md`,
+    `docs/compliance/backup-recovery-drill.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `docs/backup-recovery-drill.md` now explicitly defers to
+    `docs/compliance/backup-recovery-drill.md` as the recovery SSOT, avoids broad AWS managed policy
+    prerequisites, uses dedicated private recovery network/placeholders instead of live identifiers,
+    keeps application role Secrets Manager writes out of the normal path, and treats production
+    connection switching / migration apply / service restart / DB rename as real-incident change-managed
+    operations rather than standard drills. RDS verification now points to SELECT-only
+    `backup:drill:integrity`. S3 drills are synthetic/drill-prefix only; production object delete-marker
+    removal or version overwrite remains break-glass incident work. `Plans.md` now classifies
+    `OPS-RECOVERY-DOC-001` as implemented in active and archive tables, removes it from the top
+    Not-started backlog, and keeps only `OPS-RECOVERY-LIVE-001` as the Recovery/AWS residual human gate.
+    The compliance env example for `S3_OBJECT_LOCK_BUCKET_NAME` was changed to a placeholder to avoid
+    training docs carrying bucket-like identifiers.
+  - bugs found:
+    `Plans.md` still had several contradictory rows classifying `OPS-RECOVERY-DOC-001` as Not started
+    even after the root runbook cleanup was implemented. The root runbook still contained normal-looking
+    broad AWS permission, migration apply, app cutover, and production S3 object examples that could be
+    misread as standard drill steps.
+  - security risks reduced:
+    Recovery documentation no longer teaches broad AWS privileges, app-role secret writes, production
+    object key handling, unapproved migration apply, production connection switching, or destructive S3
+    operations as routine drills. Evidence guidance remains PHI/secret/ARN/endpoint/key redacted.
+    No live AWS call, restore job, DB migration, Secrets write, production data mutation, deploy, or
+    destructive operation was performed.
+  - performance issues improved:
+    No runtime read path changed in this docs-only slice. Planning quality improved by keeping Recovery/AWS
+    done work out of active backlog and leaving live evidence as a human-gated ops task.
+  - validation commands:
+    `rg -n "AdministratorAccess|AmazonRDSFullAccess|ph-os-prod-files|prescriptions/2026|example\\.pdf|db:migrate:deploy|production object key|本番オブジェクトキー" docs/backup-recovery-drill.md docs/compliance/backup-recovery-drill.md Plans.md`;
+    `pnpm exec prettier --check docs/backup-recovery-drill.md docs/compliance/backup-recovery-drill.md Plans.md`;
+    `pnpm backup:drill:check`;
+    `pnpm aws:rds-backup:template:validate`;
+    `git diff --check -- docs/backup-recovery-drill.md docs/compliance/backup-recovery-drill.md Plans.md`.
+  - validation results:
+    Unsafe phrase scan returned no matches after wording cleanup. Prettier check passed after formatting
+    `Plans.md`. `pnpm backup:drill:check` passed and correctly reports local `DATABASE_URL` /
+    `AWS_REGION` missing with `ready_for_live_drill=false`. AWS RDS backup template validator passed
+    `12 pass / 0 warn / 0 fail / 1 live AWS skip`. Diff whitespace check passed.
+  - remaining:
+    `OPS-RECOVERY-LIVE-001` still requires credentials and human approval for live AWS strict validation,
+    admin health evidence, restore drill record, and RTO/RPO evidence. Other active queues remain Dashboard
+    UX, Inbound review, Medication Stock prescription/visit, Movement API, API contract, Durable backend,
+    and Frontend contract.
+  - next action:
+    Record a PHI-free gbrain memory for this documentation slice, then scoped commit and push only the
+    owned docs/plan/state files.
+
 - codex: `OPS-RECOVERY-MONITOR-003` S3 Object Lock read-only monitor / strict skipped-check。
   - current task:
     ユーザー指示の「DBバックアップ機能を追加。障害時に復旧できるようにする。AWSサービスを使用」

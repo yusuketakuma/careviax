@@ -74,7 +74,7 @@ AWS_BACKUP_RDS_RESOURCE_ARN=arn:aws:rds:ap-northeast-1:<account-id>:db:ph-os-pro
 AWS_BACKUP_RECOVERY_POINT_MAX_AGE_HOURS=26
 RDS_DB_INSTANCE_ID=ph-os-prod
 RDS_BACKUP_MIN_RETENTION_DAYS=7
-S3_OBJECT_LOCK_BUCKET_NAME=ph-os-prod-files
+S3_OBJECT_LOCK_BUCKET_NAME=<object-lock-bucket-name>
 S3_OBJECT_LOCK_BUCKET_REGION=ap-northeast-1
 BACKUP_MONITOR_STRICT=true # production / recovery evidence mode only
 ```
