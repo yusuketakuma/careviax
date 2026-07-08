@@ -112,30 +112,28 @@ function buildResponse(args: {
   canEdit: boolean;
 }) {
   return {
-    data: {
-      generated_at: new Date().toISOString(),
-      pharmacy_label: args.pharmacyLabel,
-      can_edit: args.canEdit,
-      policy: args.policy,
-      locked_items: LOCKED_ITEMS,
-      /** WIP目安の改定メタ(目安マスタ未実装のため年度改定の固定表示) */
-      wip_revision_label: '4/1改定',
-      change_log_count_this_month: args.changeLogCount,
-    },
+    generated_at: new Date().toISOString(),
+    pharmacy_label: args.pharmacyLabel,
+    can_edit: args.canEdit,
+    policy: args.policy,
+    locked_items: LOCKED_ITEMS,
+    /** WIP目安の改定メタ(目安マスタ未実装のため年度改定の固定表示) */
+    wip_revision_label: '4/1改定',
+    change_log_count_this_month: args.changeLogCount,
   };
 }
 
 export const GET = withAuthContext(
   async (_req, ctx) => {
     const context = await loadPolicyContext(ctx.orgId, ctx.userId);
-    return success(
-      buildResponse({
+    return success({
+      data: buildResponse({
         pharmacyLabel: context.pharmacyLabel,
         policy: context.policy,
         changeLogCount: context.changeLogCount,
         canEdit: hasPermission(ctx.role, 'canAdmin'),
       }),
-    );
+    });
   },
   {
     permission: 'canViewDashboard',
@@ -194,14 +192,14 @@ export const PATCH = withAuthContext(
       });
     });
 
-    return success(
-      buildResponse({
+    return success({
+      data: buildResponse({
         pharmacyLabel: context.pharmacyLabel,
         policy: nextPolicy,
         changeLogCount: context.changeLogCount + 1,
         canEdit: true,
       }),
-    );
+    });
   },
   {
     permission: 'canAdmin',

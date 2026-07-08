@@ -1033,14 +1033,6 @@
       "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
     },
     {
-      "path": "src/app/api/settings/operational-policy/route.ts",
-      "expectedCount": 2,
-      "owner": "API-CONTRACT-001",
-      "debtId": "API-RESPONSE-SHAPE-001",
-      "reason": "Existing route still returns a legacy success/error response shape instead of ApiSuccess/ApiError.",
-      "plannedAction": "Move this route to success({ data, meta? }) and standardized ApiError, then reduce this expectedCount."
-    },
-    {
       "path": "src/app/api/tasks/bulk/route.ts",
       "expectedCount": 1,
       "owner": "API-CONTRACT-001",

@@ -71,7 +71,13 @@ vi.mock('@/lib/audit/audit-entry', () => ({
   createAuditLogEntry: createAuditLogEntryMock,
 }));
 
-import { PATCH } from './route';
+import { GET, PATCH } from './route';
+
+function createGetRequest() {
+  return new NextRequest('http://localhost/api/settings/operational-policy', {
+    method: 'GET',
+  });
+}
 
 function createPatchRequest(body: unknown) {
   return new NextRequest('http://localhost/api/settings/operational-policy', {
@@ -81,7 +87,7 @@ function createPatchRequest(body: unknown) {
   });
 }
 
-describe('/api/settings/operational-policy PATCH', () => {
+describe('/api/settings/operational-policy', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     denyAuthMock.mockReturnValue(false);
@@ -101,6 +107,25 @@ describe('/api/settings/operational-policy PATCH', () => {
         },
       }),
     );
+  });
+
+  it('returns the operational policy in an explicit data envelope', async () => {
+    const response = await GET(createGetRequest(), {
+      params: Promise.resolve({}),
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(Object.keys(body)).toEqual(['data']);
+    expect(body.data).toMatchObject({
+      pharmacy_label: 'PH-OS薬局 本店',
+      can_edit: true,
+      policy: expect.objectContaining({
+        safety_sign_sensitivity: 'standard',
+        quiet_hours: true,
+      }),
+      change_log_count_this_month: 0,
+    });
   });
 
   it('requires admin permission and returns 403 when permission is denied', async () => {
@@ -129,6 +154,15 @@ describe('/api/settings/operational-policy PATCH', () => {
     });
 
     expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        can_edit: true,
+        policy: expect.objectContaining({
+          quiet_hours: false,
+        }),
+        change_log_count_this_month: 1,
+      },
+    });
     expect(settingCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
