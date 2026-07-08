@@ -171,8 +171,10 @@ export async function GET(req: NextRequest) {
     return withSensitiveNoStore(
       success({
         data: result.rules.map((rule) => serializeRule(rule)),
-        source: result.source,
-        summary: result.summary,
+        meta: {
+          source: result.source,
+          summary: result.summary,
+        },
       }),
     );
   } catch (err) {
@@ -222,8 +224,10 @@ export async function POST(req: NextRequest) {
       return withSensitiveNoStore(
         success(
           {
-            message: '在宅請求 SSOT の公式算定ルールを同期しました',
-            ...seeded,
+            data: {
+              message: '在宅請求 SSOT の公式算定ルールを同期しました',
+              ...seeded,
+            },
           },
           201,
         ),
@@ -274,7 +278,7 @@ export async function POST(req: NextRequest) {
       { requestContext: ctx },
     );
 
-    return withSensitiveNoStore(success(serializeRule(rule), 201));
+    return withSensitiveNoStore(success({ data: serializeRule(rule) }, 201));
   } catch (err) {
     unstable_rethrow(err);
     logger.error(

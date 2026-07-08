@@ -111,12 +111,14 @@ vi.mock('@tanstack/react-query', () => ({
             updated_at: '2026-06-19T00:00:00.000Z',
           },
         ],
-        source: {
-          source_of_truth: 'local',
-          sync_direction: 'push',
-          recovery_procedure: null,
+        meta: {
+          source: {
+            source_of_truth: 'local',
+            sync_direction: 'push',
+            recovery_procedure: null,
+          },
+          summary: { ssot_rule_count: 0, custom_rule_count: 1 },
         },
-        summary: { ssot_rule_count: 0, custom_rule_count: 1 },
       },
       isLoading: false,
     };
@@ -230,7 +232,7 @@ describe('BillingRulesPage', () => {
     queryStateMock.isError = false;
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => new Response(JSON.stringify({ data: [], message: 'ok' }), { status: 200 })),
+      vi.fn(async () => new Response(JSON.stringify({ data: { message: 'ok' } }), { status: 200 })),
     );
   });
 
@@ -340,9 +342,18 @@ describe('BillingRulesPage', () => {
   });
 
   it('SSOT sync POST uses the collection API path and preserves the seed action body', async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          message: 'legacy root sync message must not be read',
+          data: { message: 'SSOT sync done', seeded: 16 },
+        }),
+        { status: 201 },
+      ),
+    );
     render(<BillingRulesPage />);
 
-    await mutationFnAt(0)();
+    const result = await mutationFnAt(0)();
 
     expect(global.fetch).toHaveBeenCalledWith(
       BILLING_RULES_API_PATH,
@@ -352,6 +363,8 @@ describe('BillingRulesPage', () => {
         body: JSON.stringify({ action: 'seed_home_care_ssot' }),
       }),
     );
+    expect(result).toMatchObject({ message: 'SSOT sync done' });
+    expect(result).not.toMatchObject({ message: 'legacy root sync message must not be read' });
   });
 
   it('uses the SSOT sync fallback when mutation rejection is not an Error', async () => {
@@ -390,9 +403,18 @@ describe('BillingRulesPage', () => {
       amount: 120,
       is_active: true,
     };
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: 'legacy_root_rule_must_not_be_read',
+          data: { id: 'created_rule', conditions: {}, evidence_requirements: {} },
+        }),
+        { status: 201 },
+      ),
+    );
     render(<BillingRulesPage />);
 
-    await mutationFnAt(1)(payload);
+    const result = await mutationFnAt(1)(payload);
 
     expect(global.fetch).toHaveBeenCalledWith(
       BILLING_RULES_API_PATH,
@@ -402,6 +424,8 @@ describe('BillingRulesPage', () => {
         body: JSON.stringify(payload),
       }),
     );
+    expect(result).toMatchObject({ id: 'created_rule' });
+    expect(result).not.toMatchObject({ id: 'legacy_root_rule_must_not_be_read' });
   });
 
   it('keeps server error envelopes and fallbacks for billing rule creation failures', async () => {

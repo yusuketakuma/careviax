@@ -70,14 +70,23 @@ type BillingRule = {
 
 type BillingRulesResponse = {
   data: BillingRule[];
-  source: {
-    source_of_truth: string;
-    sync_direction: string | null;
-    recovery_procedure: string | null;
-  } | null;
-  summary: {
-    ssot_rule_count: number;
-    custom_rule_count: number;
+  meta: {
+    source: {
+      source_of_truth: string;
+      sync_direction: string | null;
+      recovery_procedure: string | null;
+    } | null;
+    summary: {
+      ssot_rule_count: number;
+      custom_rule_count: number;
+    };
+  };
+};
+
+type BillingSsotSyncResponse = {
+  data: {
+    message: string;
+    seeded?: number;
   };
 };
 
@@ -112,7 +121,8 @@ async function syncBillingSsot(): Promise<{ message: string }> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'seed_home_care_ssot' }),
   });
-  return readApiJson<{ message: string }>(res, 'Failed to sync billing SSOT');
+  const payload = await readApiJson<BillingSsotSyncResponse>(res, 'Failed to sync billing SSOT');
+  return payload.data;
 }
 
 async function createBillingRule(body: object): Promise<BillingRule> {
@@ -121,7 +131,8 @@ async function createBillingRule(body: object): Promise<BillingRule> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  return readApiJson<BillingRule>(res, 'Failed to create billing rule');
+  const payload = await readApiJson<{ data: BillingRule }>(res, 'Failed to create billing rule');
+  return payload.data;
 }
 
 async function updateBillingRule(
@@ -549,14 +560,14 @@ export default function BillingRulesPage() {
           >
             <span className="font-medium text-foreground">公式SSOTと任意ルールを照合</span>
             <Badge variant="secondary">
-              公式 {isError ? '—' : (data?.summary.ssot_rule_count ?? 0)}
+              公式 {isError ? '—' : (data?.meta.summary.ssot_rule_count ?? 0)}
             </Badge>
             <Badge variant="outline">
-              任意 {isError ? '—' : (data?.summary.custom_rule_count ?? 0)}
+              任意 {isError ? '—' : (data?.meta.summary.custom_rule_count ?? 0)}
             </Badge>
-            {data?.source ? (
+            {data?.meta.source ? (
               <span>
-                {data.source.source_of_truth} / {data.source.sync_direction ?? 'push'}
+                {data.meta.source.source_of_truth} / {data.meta.source.sync_direction ?? 'push'}
               </span>
             ) : null}
           </div>

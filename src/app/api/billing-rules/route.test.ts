@@ -169,17 +169,22 @@ describe('/api/billing-rules', () => {
     expect(resolvedResponse.status).toBe(200);
     expectNoStore(resolvedResponse);
     expect(ensureHomeCareBillingSsotMock).toHaveBeenCalledWith(expect.anything(), 'org_1');
-    await expect(resolvedResponse.json()).resolves.toMatchObject({
+    const body = await resolvedResponse.json();
+    expect(body).toMatchObject({
       data: [
         {
           billing_scope: 'home_care_ssot',
           code: 'MED_HOME_VISIT_SINGLE',
         },
       ],
-      summary: {
-        ssot_rule_count: 16,
+      meta: {
+        summary: {
+          ssot_rule_count: 16,
+        },
       },
     });
+    expect(body).not.toHaveProperty('source');
+    expect(body).not.toHaveProperty('summary');
   });
 
   it('normalizes malformed rule JSON fields to empty objects on GET', async () => {
@@ -317,10 +322,15 @@ describe('/api/billing-rules', () => {
         }),
       }),
     );
-    await expect(resolvedResponse.json()).resolves.toMatchObject({
-      message: '在宅請求 SSOT の公式算定ルールを同期しました',
-      seeded: 16,
+    const body = await resolvedResponse.json();
+    expect(body).toMatchObject({
+      data: {
+        message: '在宅請求 SSOT の公式算定ルールを同期しました',
+        seeded: 16,
+      },
     });
+    expect(body).not.toHaveProperty('message');
+    expect(body).not.toHaveProperty('seeded');
   });
 
   it('creates a custom billing rule', async () => {
@@ -360,6 +370,15 @@ describe('/api/billing-rules', () => {
         }),
       }),
     );
+    const body = await resolvedResponse.json();
+    expect(body).toMatchObject({
+      data: {
+        id: 'custom_1',
+        conditions: {},
+        evidence_requirements: {},
+      },
+    });
+    expect(body).not.toHaveProperty('id');
   });
 
   it('returns a sanitized no-store 500 when POST create throws unexpectedly', async () => {
