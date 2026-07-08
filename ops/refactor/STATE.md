@@ -41,6 +41,120 @@
 
 ## 直近の作業
 
+- codex: `STOCK-VISIT-DOWNSTREAM-SCHEDULE-001` MedicationStockSnapshot Schedule proposal review context。
+  - commit:
+    Pending scoped commit.
+  - current task:
+    `Plans.md` の `STOCK-001-VISIT-DOWNSTREAM` 残スコープから、訪問観測後の
+    `MedicationStockSnapshot` `urgent` / `shortage_expected` を VisitScheduleProposal
+    の候補理由・薬剤師レビュー診断へ PHI-minimized に接続する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `.agents/skills/oracle-consult/SKILL.md`,
+    `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`,
+    `node_modules/next/dist/docs/01-app/03-api-reference/04-functions/unstable_rethrow.md`,
+    `src/server/services/visit-schedule-planner.ts`,
+    `src/server/services/visit-schedule-planner.test.ts`,
+    `src/lib/visit-schedule-proposals/diagnostics.ts`,
+    `src/app/api/visit-schedule-proposals/route.ts`,
+    `src/app/api/visit-schedule-proposals/route.test.ts`,
+    `src/app/api/visit-schedules/[id]/route.test.ts`,
+    `src/server/services/visit-schedule-service.ts`,
+    `prisma/schema/visit.prisma`,
+    and `prisma/schema/medication.prisma`.
+  - files changed:
+    `Plans.md`,
+    `src/server/services/visit-schedule-planner.ts`,
+    `src/server/services/visit-schedule-planner.test.ts`,
+    `src/lib/visit-schedule-proposals/diagnostics.ts`,
+    `src/lib/visit-schedule-proposals/diagnostics.test.ts`,
+    `src/app/api/visit-schedule-proposals/route.ts`,
+    `src/app/api/visit-schedule-proposals/route.test.ts`,
+    `src/app/api/visit-schedules/[id]/route.test.ts`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    `generateVisitScheduleProposalDrafts` now reads same-org / same-patient / exact-case
+    `MedicationStockSnapshot` rows for `urgent` / `shortage_expected` using a bounded, safelisted
+    select with no joins. The planner aggregates rows immediately into count, risk levels, nearest
+    stockout date, and non-negative minimum days until stockout. Selected proposal candidates get one
+    generic `proposal_reason` line requiring pharmacist review before schedule finalization; candidate
+    score, priority, auto-confirmation, and `VisitSchedule` creation are unchanged. Planner
+    `review_candidates` now carry a sanitized `medication_stock_shortage_risk` diagnostic. The
+    proposal route merges planner review candidates with existing specialty review candidates for
+    response/audit normalization. `diagnostics.ts` allowlists only stock risk levels, count, date, and
+    rounded days for this reason code. `Plans.md` records Schedule candidate reason as complete and
+    leaves Patient Movement as the residual downstream scope. A stale schedule-time test expectation
+    was aligned with the current bounded vehicle route-duration query (`take` and stable `orderBy`).
+  - imagegen:
+    Omitted. This is backend planner/API diagnostics, test, and plan hygiene only; no UI layout or
+    visual reconstruction changed.
+  - Next.js docs:
+    Checked local Next.js docs before route handler edits. `route.md` confirms App Router route
+    handlers use Web `Request` / `Response` and `NextRequest`; `unstable_rethrow.md` confirms the
+    existing catch/rethrow pattern for framework-controlled exceptions. This slice only merges
+    diagnostics and does not change route handler semantics.
+  - Oracle:
+    Consulted Oracle/GPT-5.5 Pro before implementation because this touches patient/pharmacy schedule
+    review context. Oracle CLI v0.15.1 was confirmed with `npx -y @steipete/oracle --help`. GitHub
+    context was inspected: `https://github.com/yusuketakuma/careviax.git`, branch `main`, current
+    commit `f90340bc51937e320dde9d4f4059591e9365c714`, tracked tree clean, no PR for `main`. Oracle
+    session `schedule-stock-reason` completed, reported GitHub access succeeded, and recommended a
+    constrained direct snapshot read: exact org/patient/case, no `case_id: null` fallback, no schema
+    migration, no priority/selection/auto-confirm changes, no `stock_item_id` select, generic
+    `proposal_reason`, sanitized `review_candidates`, and focused planner/diagnostics/route tests.
+  - bugs found:
+    Schedule proposals could miss current medication stock shortage risk even after the Task/Risk/
+    VisitBrief downstream slices, because proposal generation did not read current snapshots and route
+    diagnostics dropped planner-provided review candidates. `pnpm test:schedule-time:tz` also exposed
+    a pre-existing stale expectation in `src/app/api/visit-schedules/[id]/route.test.ts` that no longer
+    matched the current bounded vehicle route-duration query.
+  - security risks reduced:
+    The new snapshot read selects only `stock_risk_level`, `estimated_stockout_date`,
+    `days_until_stockout`, and `calculated_at`; it does not select or expose stock item ids, drug
+    names, quantities, units, raw risk reasons, idempotency hashes, request fingerprints, display ids,
+    or medication item joins. Sanitizer tests assert malicious raw stock fields are omitted from API
+    diagnostics and audit changes. The query is exact-case scoped and has no patient-only or
+    `case_id: null` fallback.
+  - performance issues improved:
+    The Schedule connection is read-only, join-free, bounded with `take: 20`, stable ordered, and
+    aggregate-only after the query. It does not add writes, task fan-out, route recalculation,
+    candidate rejection, or priority escalation.
+  - validation commands:
+    `pnpm exec prettier --write src/server/services/visit-schedule-planner.ts src/server/services/visit-schedule-planner.test.ts src/lib/visit-schedule-proposals/diagnostics.ts src/lib/visit-schedule-proposals/diagnostics.test.ts src/app/api/visit-schedule-proposals/route.ts src/app/api/visit-schedule-proposals/route.test.ts`;
+    `pnpm exec vitest run src/server/services/visit-schedule-planner.test.ts src/lib/visit-schedule-proposals/diagnostics.test.ts src/app/api/visit-schedule-proposals/route.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint src/server/services/visit-schedule-planner.ts src/server/services/visit-schedule-planner.test.ts src/lib/visit-schedule-proposals/diagnostics.ts src/lib/visit-schedule-proposals/diagnostics.test.ts src/app/api/visit-schedule-proposals/route.ts src/app/api/visit-schedule-proposals/route.test.ts`;
+    `pnpm plans:active:check`;
+    `pnpm boundaries:check`;
+    `pnpm db:query-shape:check`;
+    `pnpm db:read-slo:check`;
+    `pnpm exec prettier --check src/server/services/visit-schedule-planner.ts src/server/services/visit-schedule-planner.test.ts src/lib/visit-schedule-proposals/diagnostics.ts src/lib/visit-schedule-proposals/diagnostics.test.ts src/app/api/visit-schedule-proposals/route.ts src/app/api/visit-schedule-proposals/route.test.ts`;
+    `git diff --check -- src/server/services/visit-schedule-planner.ts src/server/services/visit-schedule-planner.test.ts src/lib/visit-schedule-proposals/diagnostics.ts src/lib/visit-schedule-proposals/diagnostics.test.ts src/app/api/visit-schedule-proposals/route.ts src/app/api/visit-schedule-proposals/route.test.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm test:schedule-time:tz`;
+    `pnpm exec prettier --write src/app/api/visit-schedules/[id]/route.test.ts`;
+    `pnpm exec eslint src/server/services/visit-schedule-planner.ts src/server/services/visit-schedule-planner.test.ts src/lib/visit-schedule-proposals/diagnostics.ts src/lib/visit-schedule-proposals/diagnostics.test.ts src/app/api/visit-schedule-proposals/route.ts src/app/api/visit-schedule-proposals/route.test.ts src/app/api/visit-schedules/[id]/route.test.ts`;
+    `pnpm exec prettier --check src/server/services/visit-schedule-planner.ts src/server/services/visit-schedule-planner.test.ts src/lib/visit-schedule-proposals/diagnostics.ts src/lib/visit-schedule-proposals/diagnostics.test.ts src/app/api/visit-schedule-proposals/route.ts src/app/api/visit-schedule-proposals/route.test.ts src/app/api/visit-schedules/[id]/route.test.ts`;
+    `git diff --check -- src/server/services/visit-schedule-planner.ts src/server/services/visit-schedule-planner.test.ts src/lib/visit-schedule-proposals/diagnostics.ts src/lib/visit-schedule-proposals/diagnostics.test.ts src/app/api/visit-schedule-proposals/route.ts src/app/api/visit-schedule-proposals/route.test.ts src/app/api/visit-schedules/[id]/route.test.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Focused planner/diagnostics/proposal-route Vitest passed 3 files / 145 tests. Scoped ESLint
+    passed. Plans active board check passed. Module boundary check passed with 0 new violations and 0
+    allowlisted debt. Query-shape check passed with 0 allowlisted violations and 0 new violations.
+    Read path SLO check passed. Targeted Prettier and targeted diff-check passed. Full typecheck
+    passed. The first `pnpm test:schedule-time:tz` run failed on a stale expectation in
+    `src/app/api/visit-schedules/[id]/route.test.ts`; after aligning the expectation with the current
+    bounded route-duration query, rerun passed 31 files / 540 tests.
+  - remaining work:
+    Parent `STOCK-001-VISIT-DOWNSTREAM` remains Partial. Residual downstream scope is Patient Movement
+    occurrence. `STOCK-001-VISIT-CONTEXT-APPLY`, `STOCK-001-VISIT-DB-INTEGRATION`, and write-enabled
+    `STOCK-001-VISIT-UI` remain human-gated by migration / DB integration evidence.
+  - next action:
+    Run final format check, commit/push the Schedule slice, record commit hash, then continue with
+    Patient Movement occurrence or `STOCK-001-PRESCRIPTION-HORIZON` if Movement requires broader
+    source-design work.
+
 - codex: `STOCK-VISIT-DOWNSTREAM-BRIEF-001` MedicationStockSnapshot VisitBrief surfacing。
   - commit:
     Implementation committed as `65da90962`.

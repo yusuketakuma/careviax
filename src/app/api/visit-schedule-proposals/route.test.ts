@@ -2522,6 +2522,26 @@ describe('/api/visit-schedule-proposals', () => {
             value: '患者A',
           },
         ],
+        review_candidates: [
+          {
+            code: 'review_required_candidate',
+            reason_code: 'medication_stock_shortage_risk',
+            pharmacist_id: 'user_2',
+            site_id: 'site_1',
+            proposed_date: '2026-04-03',
+            stock_risk_levels: ['urgent', 'shortage_expected', 'unknown', 'urgent'],
+            affected_snapshot_count: 2,
+            nearest_stockout_date: '2026-04-02',
+            minimum_days_until_stockout: 0,
+            stock_item_id: 'stock_item_secret',
+            current_quantity: '999',
+            unit: 'tablet',
+            risk_reason_code: 'raw_shortage_reason',
+            idempotency_hash: 'hash_secret',
+            request_fingerprint: 'fingerprint_secret',
+            drug_name: 'ワルファリン',
+          },
+        ],
       },
     });
     visitScheduleProposalCreateMock.mockImplementationOnce(({ data }) =>
@@ -2576,7 +2596,7 @@ describe('/api/visit-schedule-proposals', () => {
             date_key: '2026-04-10',
           }),
         ],
-        review_candidates: [
+        review_candidates: expect.arrayContaining([
           expect.objectContaining({
             code: 'review_required_candidate',
             reason_code: 'specialty_coverage_unmatched',
@@ -2584,7 +2604,17 @@ describe('/api/visit-schedule-proposals', () => {
             proposed_date: '2026-04-03',
             missing_label_count: 1,
           }),
-        ],
+          expect.objectContaining({
+            code: 'review_required_candidate',
+            reason_code: 'medication_stock_shortage_risk',
+            pharmacist_id: 'user_2',
+            proposed_date: '2026-04-03',
+            stock_risk_levels: ['urgent', 'shortage_expected'],
+            affected_snapshot_count: 2,
+            nearest_stockout_date: '2026-04-02',
+            minimum_days_until_stockout: 0,
+          }),
+        ]),
       },
     });
     expect(JSON.stringify(body.diagnostics)).not.toContain('患者A');
@@ -2593,6 +2623,13 @@ describe('/api/visit-schedule-proposals', () => {
     expect(JSON.stringify(body.diagnostics)).not.toContain('継続薬');
     expect(JSON.stringify(body.diagnostics)).not.toContain('玄関暗証番号1234');
     expect(JSON.stringify(body.diagnostics)).not.toContain('TPN');
+    expect(JSON.stringify(body.diagnostics)).not.toContain('stock_item_secret');
+    expect(JSON.stringify(body.diagnostics)).not.toContain('999');
+    expect(JSON.stringify(body.diagnostics)).not.toContain('tablet');
+    expect(JSON.stringify(body.diagnostics)).not.toContain('raw_shortage_reason');
+    expect(JSON.stringify(body.diagnostics)).not.toContain('hash_secret');
+    expect(JSON.stringify(body.diagnostics)).not.toContain('fingerprint_secret');
+    expect(JSON.stringify(body.diagnostics)).not.toContain('ワルファリン');
     expect(body.diagnostics.deadline_policy[3]).not.toHaveProperty('value');
     expect(auditLogCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -2627,7 +2664,7 @@ describe('/api/visit-schedule-proposals', () => {
                   value: 2,
                 }),
               ]),
-              review_candidates: [
+              review_candidates: expect.arrayContaining([
                 expect.objectContaining({
                   code: 'review_required_candidate',
                   reason_code: 'specialty_coverage_unmatched',
@@ -2635,7 +2672,17 @@ describe('/api/visit-schedule-proposals', () => {
                   proposed_date: '2026-04-03',
                   missing_label_count: 1,
                 }),
-              ],
+                expect.objectContaining({
+                  code: 'review_required_candidate',
+                  reason_code: 'medication_stock_shortage_risk',
+                  pharmacist_id: 'user_2',
+                  proposed_date: '2026-04-03',
+                  stock_risk_levels: ['urgent', 'shortage_expected'],
+                  affected_snapshot_count: 2,
+                  nearest_stockout_date: '2026-04-02',
+                  minimum_days_until_stockout: 0,
+                }),
+              ]),
               medication_readiness: [],
             },
           }),
@@ -2651,6 +2698,13 @@ describe('/api/visit-schedule-proposals', () => {
     expect(JSON.stringify(auditChanges)).not.toContain('secret-token');
     expect(JSON.stringify(auditChanges)).not.toContain('継続薬');
     expect(JSON.stringify(auditChanges)).not.toContain('TPN');
+    expect(JSON.stringify(auditChanges)).not.toContain('stock_item_secret');
+    expect(JSON.stringify(auditChanges)).not.toContain('999');
+    expect(JSON.stringify(auditChanges)).not.toContain('tablet');
+    expect(JSON.stringify(auditChanges)).not.toContain('raw_shortage_reason');
+    expect(JSON.stringify(auditChanges)).not.toContain('hash_secret');
+    expect(JSON.stringify(auditChanges)).not.toContain('fingerprint_secret');
+    expect(JSON.stringify(auditChanges)).not.toContain('ワルファリン');
   });
 
   it('returns sanitized deadline diagnostics when planner generates no drafts', async () => {

@@ -3,12 +3,14 @@ type JsonRecord = Record<string, unknown>;
 const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const VISIT_ROUTE_TRAVEL_MODES = new Set(['DRIVE', 'BICYCLE', 'WALK', 'TWO_WHEELER']);
-const REVIEW_CANDIDATE_REASON_CODES = new Set([
+const SPECIALTY_REVIEW_CANDIDATE_REASON_CODES = new Set([
   'specialty_coverage_unmatched',
   'specialty_coverage_unknown',
 ]);
+const MEDICATION_STOCK_REVIEW_CANDIDATE_REASON_CODE = 'medication_stock_shortage_risk';
 const REVIEW_CANDIDATE_MATCH_STATUS = new Set(['unmatched', 'unknown']);
 const REVIEW_CANDIDATE_COUNT_MAX = 100;
+const MEDICATION_STOCK_RISK_LEVELS = new Set(['urgent', 'shortage_expected']);
 const MEDICATION_READINESS_CODES = new Set(['medication_not_ready']);
 const MEDICATION_CYCLE_STATUSES = new Set([
   'intake_received',
@@ -90,6 +92,10 @@ export type SafeProposalReviewCandidateDiagnostic = {
   missing_label_count?: number;
   unknown_procedure_count?: number;
   required_label_count?: number;
+  stock_risk_levels?: ('urgent' | 'shortage_expected')[];
+  affected_snapshot_count?: number;
+  nearest_stockout_date?: string;
+  minimum_days_until_stockout?: number;
 };
 
 export type SafeProposalMedicationReadinessDiagnostic = {
@@ -163,6 +169,19 @@ function readNumberMap(record: JsonRecord, key: string) {
     (entry): entry is [string, number] => typeof entry[1] === 'number' && Number.isFinite(entry[1]),
   );
   return entries.length > 0 ? Object.fromEntries(entries) : {};
+}
+
+function readMedicationStockRiskLevels(record: JsonRecord, key: string) {
+  const value = record[key];
+  if (!Array.isArray(value)) return [];
+  return Array.from(
+    new Set(
+      value.filter(
+        (item): item is 'urgent' | 'shortage_expected' =>
+          typeof item === 'string' && MEDICATION_STOCK_RISK_LEVELS.has(item),
+      ),
+    ),
+  );
 }
 
 function readScalarDiagnosticValue(record: JsonRecord, key: string) {
@@ -307,9 +326,39 @@ function normalizeReviewCandidateDiagnostic(
   const reasonCode = readString(value, 'reason_code');
   const proposedDate = readDateKey(value, 'proposed_date');
   if (code !== 'review_required_candidate' || !reasonCode || !proposedDate) return null;
+
+  if (reasonCode === MEDICATION_STOCK_REVIEW_CANDIDATE_REASON_CODE) {
+    const affectedSnapshotCount = readNonNegativeInteger(value, 'affected_snapshot_count', {
+      max: REVIEW_CANDIDATE_COUNT_MAX,
+    });
+    const stockRiskLevels = readMedicationStockRiskLevels(value, 'stock_risk_levels');
+    if (!affectedSnapshotCount || stockRiskLevels.length === 0) return null;
+
+    const normalized: SafeProposalReviewCandidateDiagnostic = {
+      code,
+      reason_code: reasonCode,
+      site_id: readNullableString(value, 'site_id'),
+      proposed_date: proposedDate,
+      stock_risk_levels: stockRiskLevels,
+      affected_snapshot_count: affectedSnapshotCount,
+    };
+    const pharmacistId = readString(value, 'pharmacist_id');
+    if (pharmacistId) normalized.pharmacist_id = pharmacistId;
+    const nearestStockoutDate = readDateKey(value, 'nearest_stockout_date');
+    if (nearestStockoutDate) normalized.nearest_stockout_date = nearestStockoutDate;
+    const minimumDaysUntilStockout = readNonNegativeInteger(value, 'minimum_days_until_stockout', {
+      max: 3650,
+    });
+    if (minimumDaysUntilStockout != null) {
+      normalized.minimum_days_until_stockout = minimumDaysUntilStockout;
+    }
+
+    return normalized;
+  }
+
   const matchStatus = readString(value, 'match_status');
   if (
-    !REVIEW_CANDIDATE_REASON_CODES.has(reasonCode) ||
+    !SPECIALTY_REVIEW_CANDIDATE_REASON_CODES.has(reasonCode) ||
     !matchStatus ||
     !REVIEW_CANDIDATE_MATCH_STATUS.has(matchStatus)
   ) {

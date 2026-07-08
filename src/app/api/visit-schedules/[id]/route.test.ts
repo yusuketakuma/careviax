@@ -1429,6 +1429,8 @@ describe('/api/visit-schedules/[id] GET', () => {
           },
         },
       },
+      take: 9,
+      orderBy: [{ route_order: 'asc' }, { time_window_start: 'asc' }, { id: 'asc' }],
     });
     expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();

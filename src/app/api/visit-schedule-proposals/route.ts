@@ -1159,8 +1159,18 @@ const authenticatedPOST = withAuthContext(
             formatUtcDateKey(draft.proposed_date) === item.proposed_date,
         ),
       ) ?? [];
-    const reviewCandidateDiagnostics =
-      buildReviewCandidateDiagnosticsFromAccepted(acceptedDiagnostics);
+    const plannerReviewCandidateDiagnostics =
+      plannerDiagnostics?.review_candidates?.filter((item) =>
+        validDrafts.some(
+          (draft) =>
+            draft.proposed_pharmacist_id === item.pharmacist_id &&
+            formatUtcDateKey(draft.proposed_date) === item.proposed_date,
+        ),
+      ) ?? [];
+    const reviewCandidateDiagnostics = [
+      ...buildReviewCandidateDiagnosticsFromAccepted(acceptedDiagnostics),
+      ...plannerReviewCandidateDiagnostics,
+    ];
     const responseDiagnostics = normalizeProposalGenerationDiagnostics(
       buildProposalDiagnosticsInput({
         accepted: acceptedDiagnostics,
@@ -1386,7 +1396,14 @@ const authenticatedPOST = withAuthContext(
                 rejected: [...(plannerDiagnostics?.rejected ?? []), ...rejectedByBilling],
                 deadlinePolicy: plannerDiagnostics?.deadline_policy,
                 reviewCandidates: acceptedDiagnostic
-                  ? buildReviewCandidateDiagnosticsFromAccepted([acceptedDiagnostic])
+                  ? [
+                      ...buildReviewCandidateDiagnosticsFromAccepted([acceptedDiagnostic]),
+                      ...(plannerDiagnostics?.review_candidates?.filter(
+                        (item) =>
+                          item.pharmacist_id === proposal.proposed_pharmacist_id &&
+                          item.proposed_date === formatUtcDateKey(proposal.proposed_date),
+                      ) ?? []),
+                    ]
                   : [],
                 medicationReadiness: plannerDiagnostics?.medication_readiness,
               }),

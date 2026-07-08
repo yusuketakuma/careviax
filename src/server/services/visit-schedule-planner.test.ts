@@ -10,6 +10,7 @@ const {
   visitScheduleFindManyMock,
   visitVehicleResourceFindManyMock,
   visitRecordFindFirstMock,
+  medicationStockSnapshotFindManyMock,
   evaluateVisitWorkflowGateMock,
 } = vi.hoisted(() => ({
   careCaseFindFirstMock: vi.fn(),
@@ -20,6 +21,7 @@ const {
   visitScheduleFindManyMock: vi.fn(),
   visitVehicleResourceFindManyMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
+  medicationStockSnapshotFindManyMock: vi.fn(),
   evaluateVisitWorkflowGateMock: vi.fn(),
 }));
 
@@ -48,6 +50,9 @@ vi.mock('@/lib/db/client', () => ({
     },
     visitRecord: {
       findFirst: visitRecordFindFirstMock,
+    },
+    medicationStockSnapshot: {
+      findMany: medicationStockSnapshotFindManyMock,
     },
   },
 }));
@@ -204,6 +209,7 @@ describe('generateVisitScheduleProposalDrafts', () => {
       ok: true,
       issues: [],
     });
+    medicationStockSnapshotFindManyMock.mockResolvedValue([]);
   });
 
   it('prefers the primary pharmacist and explains the care-first decision', async () => {
@@ -223,6 +229,93 @@ describe('generateVisitScheduleProposalDrafts', () => {
     });
     expect(result.drafts[0].proposal_reason).toContain('主担当薬剤師を優先');
     expect(result.diagnostics.accepted[0]?.pharmacist_id).toBe('pharmacist_primary');
+  });
+
+  it('adds medication stock risk review context to selected candidates without leaking stock details', async () => {
+    medicationStockSnapshotFindManyMock.mockResolvedValueOnce([
+      {
+        stock_risk_level: 'urgent',
+        estimated_stockout_date: new Date('2026-03-29T00:00:00.000Z'),
+        days_until_stockout: -2,
+        calculated_at: new Date('2026-03-27T09:00:00.000Z'),
+        stock_item_id: 'stock_item_secret',
+        current_quantity: '999',
+        unit: 'tablet',
+        risk_reason_code: 'raw_shortage_reason',
+        idempotency_hash: 'hash_secret',
+        request_fingerprint: 'fingerprint_secret',
+        drug_name: 'アムロジピン',
+      },
+      {
+        stock_risk_level: 'shortage_expected',
+        estimated_stockout_date: new Date('2026-04-01T00:00:00.000Z'),
+        days_until_stockout: 4,
+        calculated_at: new Date('2026-03-27T08:00:00.000Z'),
+        stock_item_id: 'stock_item_other_secret',
+        unit: '包',
+        risk_reason_code: 'raw_expected_reason',
+      },
+    ]);
+
+    const result = await generateVisitScheduleProposalDrafts({
+      orgId: 'org_1',
+      caseId: 'case_1',
+      visitType: 'regular',
+      priority: 'normal',
+      candidateCount: 1,
+      startDate: new Date('2026-03-27T00:00:00.000Z'),
+    });
+
+    expect(medicationStockSnapshotFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        stock_risk_level: { in: ['urgent', 'shortage_expected'] },
+      },
+      orderBy: [
+        { estimated_stockout_date: 'asc' },
+        { days_until_stockout: 'asc' },
+        { calculated_at: 'desc' },
+        { id: 'asc' },
+      ],
+      take: 20,
+      select: {
+        stock_risk_level: true,
+        estimated_stockout_date: true,
+        days_until_stockout: true,
+        calculated_at: true,
+      },
+    });
+    expect(result.drafts).toHaveLength(1);
+    expect(result.drafts[0]?.proposal_reason).toContain(
+      '残薬不足リスクがあるため、日程確定前に薬剤師レビュー対象として扱う',
+    );
+    expect(result.diagnostics.review_candidates).toEqual([
+      {
+        code: 'review_required_candidate',
+        reason_code: 'medication_stock_shortage_risk',
+        pharmacist_id: 'pharmacist_primary',
+        site_id: 'site_1',
+        proposed_date: '2026-03-28',
+        stock_risk_levels: ['urgent', 'shortage_expected'],
+        affected_snapshot_count: 2,
+        nearest_stockout_date: '2026-03-29',
+        minimum_days_until_stockout: 0,
+      },
+    ]);
+
+    const serialized = JSON.stringify({
+      proposal_reason: result.drafts[0]?.proposal_reason,
+      diagnostics: result.diagnostics,
+    });
+    expect(serialized).not.toContain('stock_item_secret');
+    expect(serialized).not.toContain('999');
+    expect(serialized).not.toContain('tablet');
+    expect(serialized).not.toContain('raw_shortage_reason');
+    expect(serialized).not.toContain('hash_secret');
+    expect(serialized).not.toContain('fingerprint_secret');
+    expect(serialized).not.toContain('アムロジピン');
   });
 
   it('rejects proposal generation before medication is set audited', async () => {
@@ -252,6 +345,7 @@ describe('generateVisitScheduleProposalDrafts', () => {
     ]);
     expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
     expect(pharmacistShiftFindManyMock).not.toHaveBeenCalled();
+    expect(medicationStockSnapshotFindManyMock).not.toHaveBeenCalled();
   });
 
   it('prioritizes pharmacists whose visit specialties match required special procedures', async () => {

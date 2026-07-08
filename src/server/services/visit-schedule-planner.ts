@@ -1,6 +1,7 @@
 import { addDays, differenceInCalendarDays, getDay } from 'date-fns';
 import type {
   MedicationCycleStatus,
+  MedicationStockRiskLevel,
   Prisma,
   VisitPriority,
   VisitType,
@@ -54,6 +55,12 @@ const SPECIALTY_MISMATCH_PER_REQUIREMENT_PENALTY = 20;
 const MAX_SPECIALTY_MISMATCH_PENALTY = 60;
 const DEFAULT_PLANNER_CANDIDATE_EVALUATION_CONCURRENCY = 8;
 const MAX_PLANNER_CANDIDATE_EVALUATION_CONCURRENCY = 16;
+const SCHEDULE_MEDICATION_STOCK_RISK_LEVELS = [
+  'urgent',
+  'shortage_expected',
+] as const satisfies readonly MedicationStockRiskLevel[];
+const SCHEDULE_MEDICATION_STOCK_RISK_LIMIT = 20;
+const SCHEDULE_MEDICATION_STOCK_REVIEW_REASON_CODE = 'medication_stock_shortage_risk';
 
 function normalizePlannerCandidateEvaluationConcurrency(value: unknown) {
   return normalizeConcurrencyLimit(value, {
@@ -145,6 +152,18 @@ export type SpecialtyCoverageDiagnostic = {
   unknown_procedure_count: number;
   match_status: SpecialtyCoverageMatchStatus;
   source: 'user_visit_specialties_free_text';
+};
+
+export type MedicationStockScheduleReviewDiagnostic = {
+  code: 'review_required_candidate';
+  reason_code: typeof SCHEDULE_MEDICATION_STOCK_REVIEW_REASON_CODE;
+  pharmacist_id: string;
+  site_id: string | null;
+  proposed_date: string;
+  stock_risk_levels: (typeof SCHEDULE_MEDICATION_STOCK_RISK_LEVELS)[number][];
+  affected_snapshot_count: number;
+  nearest_stockout_date?: string;
+  minimum_days_until_stockout?: number;
 };
 
 type SpecialtyRequirement = {
@@ -343,6 +362,7 @@ export type GenerateVisitScheduleProposalResult = {
     rejected: ProposalCandidateDiagnostic[];
     deadline_policy?: ProposalDeadlinePolicyDiagnostic[];
     medication_readiness?: ProposalMedicationReadinessDiagnostic[];
+    review_candidates?: MedicationStockScheduleReviewDiagnostic[];
   };
 };
 
@@ -417,6 +437,85 @@ function buildMedicationReadinessDiagnostic(
     status,
     required_statuses: [...VISIT_SCHEDULABLE_MEDICATION_STATUSES],
   };
+}
+
+type MedicationStockScheduleRiskRow = {
+  stock_risk_level: MedicationStockRiskLevel;
+  estimated_stockout_date: Date | string | null;
+  days_until_stockout: number | null;
+  calculated_at: Date | string;
+};
+
+type MedicationStockScheduleReviewContext = {
+  affectedSnapshotCount: number;
+  riskLevels: (typeof SCHEDULE_MEDICATION_STOCK_RISK_LEVELS)[number][];
+  nearestStockoutDateKey: string | null;
+  minimumDaysUntilStockout: number | null;
+};
+
+function toValidDate(value: Date | string | null | undefined) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function buildMedicationStockScheduleReviewContext(
+  rows: MedicationStockScheduleRiskRow[],
+): MedicationStockScheduleReviewContext | null {
+  if (rows.length === 0) return null;
+
+  const riskLevels = SCHEDULE_MEDICATION_STOCK_RISK_LEVELS.filter((level) =>
+    rows.some((row) => row.stock_risk_level === level),
+  );
+  const nearestStockoutDate = rows
+    .map((row) => toValidDate(row.estimated_stockout_date))
+    .filter((date): date is Date => date !== null)
+    .sort((left, right) => left.getTime() - right.getTime())[0];
+  const minimumDaysUntilStockout = rows
+    .map((row) =>
+      typeof row.days_until_stockout === 'number' && Number.isFinite(row.days_until_stockout)
+        ? Math.max(0, Math.trunc(row.days_until_stockout))
+        : null,
+    )
+    .filter((value): value is number => value !== null)
+    .sort((left, right) => left - right)[0];
+
+  return {
+    affectedSnapshotCount: rows.length,
+    riskLevels,
+    nearestStockoutDateKey: nearestStockoutDate ? toDateKey(nearestStockoutDate) : null,
+    minimumDaysUntilStockout: minimumDaysUntilStockout ?? null,
+  };
+}
+
+async function loadMedicationStockScheduleReviewContext(args: {
+  orgId: string;
+  patientId: string;
+  caseId: string;
+}) {
+  const rows = await prisma.medicationStockSnapshot.findMany({
+    where: {
+      org_id: args.orgId,
+      patient_id: args.patientId,
+      case_id: args.caseId,
+      stock_risk_level: { in: [...SCHEDULE_MEDICATION_STOCK_RISK_LEVELS] },
+    },
+    orderBy: [
+      { estimated_stockout_date: 'asc' },
+      { days_until_stockout: 'asc' },
+      { calculated_at: 'desc' },
+      { id: 'asc' },
+    ],
+    take: SCHEDULE_MEDICATION_STOCK_RISK_LIMIT,
+    select: {
+      stock_risk_level: true,
+      estimated_stockout_date: true,
+      days_until_stockout: true,
+      calculated_at: true,
+    },
+  });
+
+  return buildMedicationStockScheduleReviewContext(rows);
 }
 
 function operatingDayRejectionDetail(reason: 'holiday' | 'regular_closed') {
@@ -1503,6 +1602,12 @@ export async function generateVisitScheduleProposalDrafts(
     };
   }
 
+  const medicationStockReviewContext = await loadMedicationStockScheduleReviewContext({
+    orgId: params.orgId,
+    patientId: careCase.patient_id,
+    caseId: params.caseId,
+  });
+
   const latestVisitSuggestion = await prisma.visitRecord.findFirst({
     where: {
       org_id: params.orgId,
@@ -2363,6 +2468,9 @@ export async function generateVisitScheduleProposalDrafts(
         ...(candidate.scoreBreakdown.cadencePenalty > 0
           ? ['算定間隔・回数制限に近いため後方候補として評価']
           : ['算定間隔・回数上は提案可能日']),
+        ...(medicationStockReviewContext
+          ? ['残薬不足リスクがあるため、日程確定前に薬剤師レビュー対象として扱う']
+          : []),
         ...(candidate.specialtyCoverage.unknownProcedureCount > 0
           ? ['専門対応 未定義手技は要確認のため後方評価']
           : candidate.specialtyCoverage.missingLabels.length > 0
@@ -2431,6 +2539,25 @@ export async function generateVisitScheduleProposalDrafts(
     }),
   );
 
+  const stockReviewCandidateDiagnostics: MedicationStockScheduleReviewDiagnostic[] =
+    medicationStockReviewContext
+      ? selectedCandidatesWithRouteOrder.map(({ candidate }) => ({
+          code: 'review_required_candidate',
+          reason_code: SCHEDULE_MEDICATION_STOCK_REVIEW_REASON_CODE,
+          pharmacist_id: candidate.shift.user_id,
+          site_id: candidate.shift.site_id ?? null,
+          proposed_date: toDateKey(candidate.shift.date),
+          stock_risk_levels: medicationStockReviewContext.riskLevels,
+          affected_snapshot_count: medicationStockReviewContext.affectedSnapshotCount,
+          ...(medicationStockReviewContext.nearestStockoutDateKey
+            ? { nearest_stockout_date: medicationStockReviewContext.nearestStockoutDateKey }
+            : {}),
+          ...(medicationStockReviewContext.minimumDaysUntilStockout != null
+            ? { minimum_days_until_stockout: medicationStockReviewContext.minimumDaysUntilStockout }
+            : {}),
+        }))
+      : [];
+
   const rejectedDiagnostics = [
     ...evaluatedCandidates
       .filter(
@@ -2455,6 +2582,9 @@ export async function generateVisitScheduleProposalDrafts(
       accepted: acceptedDiagnostics,
       rejected: rejectedDiagnostics,
       deadline_policy: Array.from(deadlinePolicyDiagnostics.values()),
+      ...(stockReviewCandidateDiagnostics.length > 0
+        ? { review_candidates: stockReviewCandidateDiagnostics }
+        : {}),
     },
   };
 }
