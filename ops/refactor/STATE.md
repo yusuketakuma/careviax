@@ -41,6 +41,93 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001AJ` case detail PATCH success envelope cleanup.
+  - commit:
+    Implementation, Plans, allowlist, and focused route tests committed as `311fe90ae`
+    (`fix(api): envelope case patch response`). State record is this entry and will be committed
+    separately before pushing the slice.
+  - current task:
+    Continue `Plans.md` highest-priority implementable work under `API-CONTRACT-001`. Remove
+    `src/app/api/cases/[id]/route.ts` from the public response-shape allowlist by moving the case
+    detail PATCH success body to the current `data` envelope only.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `ops/refactor/STATE.md`,
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/cases/[id]/route.ts`,
+    `src/app/api/cases/[id]/route.test.ts`,
+    `src/lib/api/response.ts`,
+    `src/app/(dashboard)/patients/[id]/management-plan/print/page.tsx`,
+    `package.json`,
+    and route/frontend usage search results for `/api/cases/:id` PATCH.
+  - files changed:
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/cases/[id]/route.ts`,
+    `src/app/api/cases/[id]/route.test.ts`,
+    and this `ops/refactor/STATE.md` ledger entry.
+  - implementation:
+    The case detail PATCH route now returns `success({ data: careCase })`. No legacy root fallback
+    reader was added. Usage search found no frontend PATCH reader for `/api/cases/:id`; the existing
+    management-plan print GET reader already consumes `payload.data` and was left unchanged. The
+    route test now asserts the PATCH body under `data` and rejects root-level `id`,
+    `primary_pharmacist_id`, and `required_visit_support`. The allowlist entry for
+    `src/app/api/cases/[id]/route.ts` was removed, and `Plans.md` records `API-CONTRACT-001AJ` with
+    allowlist debt reduced from 167 to 166.
+  - Oracle:
+    User explicitly paused Oracle consultation. No Oracle prompt was sent or restarted. The slice
+    stayed limited to response construction, route contract tests, allowlist/plan debt, and ledger
+    updates; visit permission, org RLS scope, assignment/reference validation, update data mapping,
+    NoStore GET headers, and error sanitization were not changed.
+  - imagegen:
+    Not used. This is an API contract/static guard cleanup with no visible UI/UX change.
+  - Next.js docs:
+    Re-read `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md` earlier in
+    this API contract run. This slice changes JSON response construction only and does not change
+    route placement, supported methods, runtime behavior, or cache behavior.
+  - bugs found:
+    `PATCH /api/cases/:id` returned the updated case at the success response root via
+    `success(careCase)`, and the route test did not reject legacy root case fields.
+  - bugs fixed:
+    Success response construction now uses the current `data` envelope only. Route assertions reject
+    old root `id` / `primary_pharmacist_id` / `required_visit_support`. `api-response-shape:check`
+    now reports 166 allowlisted violations and 0 new violations.
+  - security risks reduced:
+    No auth, authorization, org RLS context, assignment scoping, org reference validation, update
+    field normalization, NoStore GET behavior, or sanitized error body behavior was weakened. Root
+    case fields are no longer preserved as an alternate public PATCH response shape.
+  - performance issues improved:
+    None. No DB access pattern, transaction/RLS context, assignment lookup, validation call, or
+    request frequency changed beyond the equivalent response wrapper.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/cases/[id]/route.ts src/app/api/cases/[id]/route.test.ts`;
+    `pnpm vitest run src/app/api/cases/[id]/route.test.ts`;
+    `pnpm api-response-shape:check`;
+    `pnpm vitest run src/app/api/__tests__/protected-patch-delete-routes.test.ts`;
+    `pnpm plans:active:check`;
+    `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/cases/[id]/route.ts src/app/api/cases/[id]/route.test.ts`;
+    `pnpm exec eslint --max-warnings=0 src/app/api/cases/[id]/route.ts src/app/api/cases/[id]/route.test.ts`;
+    `pnpm format:check`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/cases/[id]/route.ts src/app/api/cases/[id]/route.test.ts`.
+  - validation results:
+    Prettier write passed. Focused route Vitest passed (1 file / 15 tests). API response shape guard
+    passed (166 allowlisted violations, 0 new violations). Protected PATCH/DELETE smoke passed (1 file
+    / 80 tests). Plans active board check passed. Scoped `git diff --check` passed. Scoped ESLint
+    passed. Full typecheck passed. Targeted Prettier check for owned files passed. `pnpm format:check`
+    failed only after confirming owned changed files were formatted, because unrelated pre-existing
+    untracked Markdown files under `projects/`, `skills/`, and related local memory docs are not
+    Prettier-formatted; those user/local files were not modified.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 166 allowlisted response-shape violations. Next immediate
+    allowlist target is `src/app/api/cases/route.ts` (expectedCount 1), followed by
+    `src/app/api/cds/check/route.ts` and comments/communication routes. Do not preserve legacy root
+    response compatibility for new slices.
+  - next action:
+    Commit this STATE entry separately, push `311fe90ae` plus the state commit to `origin/main`, then
+    continue with `src/app/api/cases/route.ts` under the same Oracle-paused constraint.
+
 - codex: `API-CONTRACT-001AI` case risk task sync success envelope cleanup.
   - commit:
     Implementation, Plans/allowlist, reader, and focused tests committed as `f1136db93`
