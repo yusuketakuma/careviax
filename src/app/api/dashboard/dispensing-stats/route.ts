@@ -67,10 +67,12 @@ async function authenticatedGET(req: NextRequest) {
     ]);
 
     return success({
-      pendingTasks,
-      auditPendingTasks: completedWithNoAudit,
-      completedToday,
-      prescriptionRegisteredWithoutDispenseTasks,
+      data: {
+        pendingTasks,
+        auditPendingTasks: completedWithNoAudit,
+        completedToday,
+        prescriptionRegisteredWithoutDispenseTasks,
+      },
     });
   });
 }

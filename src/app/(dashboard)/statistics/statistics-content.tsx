@@ -23,8 +23,6 @@ import { Skeleton } from '@/components/ui/loading';
 // permission-gated (canViewDashboard), and returns aggregate counts only (no PHI).
 const DISPENSING_STATS_URL = '/api/dashboard/dispensing-stats';
 
-// NOTE: success() = NextResponse.json(data) (src/lib/api/response.ts) returns the RAW object,
-// NOT a { data } envelope. So the schema validates the raw success body directly.
 // The backing route emits Prisma count()/grouped-count values, so the counts MUST be
 // non-negative integers — fail closed (render ErrorState) on impossible negative/decimal payloads
 // rather than showing a fabricated KPI.
@@ -33,6 +31,9 @@ const dispensingStatsSchema = z.object({
   pendingTasks: nonNegativeCount,
   auditPendingTasks: nonNegativeCount,
   completedToday: nonNegativeCount,
+});
+const dispensingStatsEnvelopeSchema = z.object({
+  data: dispensingStatsSchema,
 });
 
 type DispensingKpiResult =
@@ -50,10 +51,10 @@ function DispensingKpiStrip() {
         // 403 = no permission for this org: render a locked state, not a false-empty zero.
         if (res.status === 403) return { locked: true };
         const payload = await readApiJson(res, {
-          schema: dispensingStatsSchema,
+          schema: dispensingStatsEnvelopeSchema,
           fallbackMessage: '調剤指標を取得できませんでした。',
         });
-        return { locked: false, data: payload };
+        return { locked: false, data: payload.data };
       },
       enabled: !!orgId,
     });

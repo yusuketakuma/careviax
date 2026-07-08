@@ -119,13 +119,16 @@ describe('/api/dashboard/dispensing-stats', () => {
     );
     expectSensitiveNoStore(response);
     const json = await response.json();
+    expect(Object.keys(json)).toEqual(['data']);
     expect(json).toMatchObject({
-      pendingTasks: 3,
-      auditPendingTasks: 2,
-      completedToday: 5,
-      prescriptionRegisteredWithoutDispenseTasks: 1,
+      data: {
+        pendingTasks: 3,
+        auditPendingTasks: 2,
+        completedToday: 5,
+        prescriptionRegisteredWithoutDispenseTasks: 1,
+      },
     });
-    expect(json).not.toHaveProperty('completedLast7Days');
+    expect(json.data).not.toHaveProperty('completedLast7Days');
     expect(dispenseTaskCountMock).toHaveBeenCalledTimes(3);
     expect(dispenseTaskCountMock).toHaveBeenNthCalledWith(1, {
       where: {

@@ -25,15 +25,14 @@ setupDomTestEnv();
 
 const DISPENSING_STATS_URL = '/api/dashboard/dispensing-stats';
 
-// The real /api/dashboard/dispensing-stats returns RAW success fields (success() =
-// NextResponse.json(data) — NO { data } envelope). The mock MUST mirror that raw shape,
-// otherwise the test passes against a payload the production route never emits.
 function dispensingSuccess() {
   return new Response(
     JSON.stringify({
-      pendingTasks: 5,
-      auditPendingTasks: 2,
-      completedToday: 7,
+      data: {
+        pendingTasks: 5,
+        auditPendingTasks: 2,
+        completedToday: 7,
+      },
     }),
     { status: 200 },
   );
@@ -148,11 +147,12 @@ describe('StatisticsContent', () => {
   });
 
   it('fails closed on a malformed 2xx (no KPI numbers, category links still render)', async () => {
-    // 200 OK but the raw body is missing required numeric fields -> readApiJson schema fails -> ErrorState.
-    // (A wrong { data } envelope would also fail, which is exactly how the rev7 bug went unnoticed.)
+    // 200 OK but the envelope is missing required numeric fields -> readApiJson schema fails -> ErrorState.
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => new Response(JSON.stringify({ pendingTasks: 5 }), { status: 200 })),
+      vi.fn(
+        async () => new Response(JSON.stringify({ data: { pendingTasks: 5 } }), { status: 200 }),
+      ),
     );
 
     renderContent();
@@ -174,9 +174,11 @@ describe('StatisticsContent', () => {
         async () =>
           new Response(
             JSON.stringify({
-              pendingTasks: -5,
-              auditPendingTasks: 2.5,
-              completedToday: 7,
+              data: {
+                pendingTasks: -5,
+                auditPendingTasks: 2.5,
+                completedToday: 7,
+              },
             }),
             { status: 200 },
           ),
@@ -192,21 +194,16 @@ describe('StatisticsContent', () => {
     expect(document.querySelector('a[href="/admin/metrics"]')).toBeTruthy();
   });
 
-  it('rejects a { data } enveloped 2xx as malformed (the route returns RAW fields, not an envelope)', async () => {
-    // Locks the rev7 regression: the client previously wrapped the schema with apiDataSchema and
-    // read payload.data, so a REAL raw success was treated as malformed. If anyone reintroduces the
-    // envelope, this enveloped body would render KPI numbers — and this test would fail.
+  it('rejects raw 2xx fields as malformed because the route returns a data envelope', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(
         async () =>
           new Response(
             JSON.stringify({
-              data: {
-                pendingTasks: 5,
-                auditPendingTasks: 2,
-                completedToday: 7,
-              },
+              pendingTasks: 5,
+              auditPendingTasks: 2,
+              completedToday: 7,
             }),
             { status: 200 },
           ),
