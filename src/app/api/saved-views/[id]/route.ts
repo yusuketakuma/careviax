@@ -151,5 +151,5 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     });
   });
 
-  return success({ ok: true });
+  return success({ data: { id: viewId } });
 }

@@ -386,6 +386,6 @@ describe('/api/saved-views', () => {
         changes: { name: '朝の確認', scope: 'schedules' },
       }),
     });
-    await expect(response.json()).resolves.toEqual({ ok: true });
+    await expect(response.json()).resolves.toEqual({ data: { id: 'view_1' } });
   });
 });
