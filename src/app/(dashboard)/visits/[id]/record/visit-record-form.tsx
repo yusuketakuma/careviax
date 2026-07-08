@@ -88,6 +88,7 @@ import {
   resolveMobileVisitStepHeading,
 } from './visit-mode-mobile.shared';
 import { ResidualMedicationForm } from '@/components/features/visits/residual-medication-form';
+import { VisitMedicationStockObservationPanel } from '@/components/features/visits/visit-medication-stock-observation-panel';
 import { SoapVoiceFieldToggle } from '@/components/features/visits/soap-voice-field-toggle';
 import { VoiceSoapAssist } from '@/components/features/visits/voice-soap-assist';
 import { FacilityVisitRecordSwitcher } from '@/components/features/visits/facility-visit-record-switcher';
@@ -2642,7 +2643,8 @@ export function VisitRecordForm({
                   mobileVisitStepSectionClassName(mobileStepId, ['visit-step-residual']),
                 )}
               >
-                <CardContent className="pt-4">
+                <CardContent className="space-y-4 pt-4">
+                  <VisitMedicationStockObservationPanel patientId={schedule?.patient_id ?? null} />
                   <ResidualMedicationForm
                     onImmediateDraftSave={() => flushCurrentDraftSnapshot({ force: true })}
                   />

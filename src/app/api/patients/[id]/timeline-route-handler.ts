@@ -1,4 +1,5 @@
 import { unstable_rethrow } from 'next/navigation';
+import type { NextRequest } from 'next/server';
 
 import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import {
@@ -55,7 +56,7 @@ export function createPatientTimelineGET(options: PatientTimelineRouteOptions) {
     },
   );
 
-  return async function GET(req: Request, routeContext: PatientTimelineRouteContext) {
+  return async function GET(req: NextRequest, routeContext: PatientTimelineRouteContext) {
     try {
       return withSensitiveNoStore(await authenticatedGET(req, routeContext));
     } catch (err) {

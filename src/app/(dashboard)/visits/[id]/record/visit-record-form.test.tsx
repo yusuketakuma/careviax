@@ -29,6 +29,7 @@ const {
   toastInfoMock,
   fetchUrls,
   cdsAlertPanelCalls,
+  medicationStockPanelCalls,
 } = vi.hoisted(() => ({
   routerBackMock: vi.fn(),
   routerPushMock: vi.fn(),
@@ -54,6 +55,7 @@ const {
   toastInfoMock: vi.fn(),
   fetchUrls: [] as string[],
   cdsAlertPanelCalls: [] as Array<{ isUnavailable?: boolean; isLoading?: boolean }>,
+  medicationStockPanelCalls: [] as Array<{ patientId: string | null | undefined }>,
 }));
 
 vi.mock('next/navigation', () => ({
@@ -198,6 +200,17 @@ vi.mock('@/components/features/visits/visit-medication-management-section', () =
   VisitMedicationManagementSection: () => <div data-testid="medication-management-section" />,
 }));
 
+vi.mock('@/components/features/visits/visit-medication-stock-observation-panel', () => ({
+  VisitMedicationStockObservationPanel: ({
+    patientId,
+  }: {
+    patientId: string | null | undefined;
+  }) => {
+    medicationStockPanelCalls.push({ patientId });
+    return <div data-testid="visit-medication-stock-observation-panel" />;
+  },
+}));
+
 vi.mock('@/components/features/visits/patient-care-team-source-panel', () => ({
   PatientCareTeamSourcePanel: () => null,
 }));
@@ -262,6 +275,7 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
     offlineStoreState.lastSyncedAt = '2026-07-07T00:00:00.000Z';
     listEvidenceDraftSummariesForScheduleMock.mockResolvedValue([]);
     cdsAlertPanelCalls.length = 0;
+    medicationStockPanelCalls.length = 0;
     visitRecordPostBodies.length = 0;
     fetchUrls.length = 0;
 
@@ -912,6 +926,29 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('mounts the medication stock reference panel without adding stock observations to visit submit payload', async () => {
+    renderVisitRecordForm();
+
+    await waitFor(() => {
+      expect((document.querySelector('input[name="patient_id"]') as HTMLInputElement)?.value).toBe(
+        'patient_1',
+      );
+    });
+
+    expect(screen.getByTestId('visit-medication-stock-observation-panel')).toBeTruthy();
+    expect(medicationStockPanelCalls.some((call) => call.patientId === 'patient_1')).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: '延期' }));
+    fireEvent.submit(document.querySelector('form')!);
+
+    await waitFor(() => {
+      expect(visitRecordPostBodies).toHaveLength(1);
+    });
+    expect(visitRecordPostBodies[0]).not.toHaveProperty('medication_stock_observations');
+    expect(visitRecordPostBodies[0]).not.toHaveProperty('stock_observations');
+    expect(fetchUrls.some((url) => url.includes('/medication-stock-observations'))).toBe(false);
   });
 
   it('flushes the current draft immediately when an attachment is selected', async () => {
