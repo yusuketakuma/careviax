@@ -41,6 +41,60 @@
 
 ## 直近の作業（未コミット）
 
+- codex: `PLANS-HYGIENE-006` Plans.md active board v6 cleanup。
+  - current task:
+    既存 `Plans.md` 内を再整理し、実装済み / Partial / 未実装 / Human gate を先頭の active board に集約する。
+    実装済みタスクは active backlog から外し、未実装は DoD / validation / stop condition 付きで拡充する。
+    派生タスクが見つかれば active queue または derived task として追記する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `git log --oneline -25`,
+    current route/service/type/test paths for Dashboard cockpit, InboundCommunication, MedicationStock,
+    Patient Movement timeline, query-shape/read-speed guardrails, AWS backup/recovery, and permission matrix.
+  - files changed:
+    `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Promoted the active entrance from `Active Plan Board v5` to `Active Plan Board v6`.
+    Added a count summary and explicit next implementation order at the top of `Plans.md`.
+    Moved the already-landed `MedicationStockObservationContext` sidecar contract into Done/frozen,
+    and replaced its active implementation row with `STOCK-001-VISIT-CONTEXT-APPLY` as a human-gated
+    migration application task. Kept `STOCK-001-VISIT-API` as the next real implementation slice using the
+    sidecar contract. Added/expanded derived tasks for DB read-path SLOs, AWS restore drill evidence, and
+    permissioned PHI display in authenticated business screens. Added frontend quality rules requiring
+    contract-first implementation, no mock completion, right-rail action clarity, mobile parity, and separate
+    PHI boundary tests for notifications/logs/exports/external shares.
+  - bugs found:
+    `Plans.md` still had stale v5 active-entry references after the previous cleanup. The stock visit context
+    contract was implemented and committed, but the active queue still showed the context work as a Partial
+    implementation task instead of separating the human-gated migration application from the remaining API work.
+  - security risks found:
+    Reinforced the product decision that authenticated, permissioned business screens may display the concrete
+    patient/medical information users need to decide, while OS notifications, SSE payloads, server logs, audit
+    diffs, external shares, public/signed URLs, and CSV/PDF exports remain separate output boundaries that need
+    omission or reauthorization tests.
+  - performance issues found:
+    Added `PERF-DB-READ-SLO-001` so DB read-speed improvements are tracked as read-path SLOs and query/payload
+    budgets instead of ad hoc index additions.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md`;
+    `pnpm exec prettier --check Plans.md`;
+    `git diff --check -- Plans.md`;
+    ``rg -n 'Active Plan Board v5|現在は v5|v5 の queue|この v5|\\| `STOCK-001-VISIT-CONTEXT`' Plans.md``.
+  - validation results:
+    Prettier check passed after formatting. Diff whitespace check passed. The stale v5 active-entry check returned
+    no v5 matches; the only remaining `STOCK-001-VISIT-CONTEXT` reference is in a lower `cc:REFERENCE` archive row,
+    not an active implementation row.
+  - remaining work:
+    `PLAN-ARCHIVE-001` still needs physical extraction/linking of long reference specs if the team wants a shorter
+    `Plans.md`. `PLANS-ACTIVE-LINT-001` should automate the active-backlog check. Implementation remains open for
+    `STOCK-001-VISIT-API`, `STOCK-001-VISIT-FORECAST`, dashboard rail/drilldown, inbound review detail, movement
+    API/source parity, DB read SLOs, and AWS live restore evidence.
+  - next action:
+    Commit this docs/ledger slice, then continue with `STOCK-001-VISIT-API` or the next user-selected active queue item.
+
 - codex: `STOCK-001-VISIT-CONTEXT` Medication Stock visit observation context contract。
   - current task:
     `Plans.md` の active board v5 に残る `STOCK-001-VISIT-CONTEXT` を、訪問観測 API の前提になる
