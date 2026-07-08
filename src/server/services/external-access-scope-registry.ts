@@ -6,6 +6,7 @@ export const EXTERNAL_ACCESS_SUPPORTED_SCOPE_KEYS = [
   'medication_list',
   'visit_schedule',
   'care_reports',
+  'inbound_communication_summary',
 ] as const;
 
 export const LEGACY_EXTERNAL_ACCESS_SCOPE_KEYS = ['self_report_history'] as const;
@@ -46,6 +47,33 @@ export const externalAccessShareScopeDefinitions = [
     requiredPermission: 'canSendCareReport',
     requiresCaseBoundary: true,
     requiresReportBoundary: true,
+    outputRisk: 'high',
+  },
+  {
+    key: 'inbound_communication_summary',
+    module: 'core',
+    label: '受信連絡サマリー',
+    description: '共有対象ケースに紐づく受信連絡を、外部共有用の集計として共有します。',
+    requiredPermission: 'canVisit',
+    requiresCaseBoundary: true,
+    outputRisk: 'high',
+  },
+  {
+    key: 'inbound_communication_detail',
+    module: 'core',
+    label: '受信連絡詳細',
+    description: '未実装の外部共有 scope です。現在は公開しません。',
+    requiredPermission: 'canVisit',
+    requiresCaseBoundary: true,
+    outputRisk: 'high',
+  },
+  {
+    key: 'inbound_communication_raw_text',
+    module: 'core',
+    label: '受信連絡原文',
+    description: '未実装の外部共有 scope です。原文共有には明示理由と監査が必要です。',
+    requiredPermission: 'canVisit',
+    requiresCaseBoundary: true,
     outputRisk: 'high',
   },
   {

@@ -23510,3 +23510,106 @@ visit_request/unknown`, `action_status='not_linked'`, and
   step.
 - next action:
   Continue the next non-human-gated Plans item.
+
+## 2026-07-08 - INBOUND-002 External Share summary-only downstream
+
+- current task:
+  Complete the External Share downstream residual for formal inbound
+  communication data using only the new summary scope. Do not add legacy aliases,
+  camelCase compatibility, raw-detail compatibility, or fallback payload paths.
+- files inspected:
+  `Plans.md`; `ops/refactor/STATE.md`; `docs/ui-ux-design-guidelines.md`;
+  `.agents/skills/oracle-consult/SKILL.md`;
+  `src/server/services/external-access.ts`;
+  `src/server/services/external-access-scope-registry.ts`;
+  `src/server/services/external-access.test.ts`;
+  `src/app/(dashboard)/patients/[id]/share/external-share-content.tsx`;
+  `src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx`;
+  `src/app/shared/[token]/shared-viewer-content.tsx`;
+  `src/app/shared/[token]/shared-viewer-content.test.tsx`;
+  inbound communication Prisma schema references.
+- files changed:
+  `src/server/services/external-access.ts`;
+  `src/server/services/external-access-scope-registry.ts`;
+  `src/server/services/external-access.test.ts`;
+  `src/app/(dashboard)/patients/[id]/share/external-share-content.tsx`;
+  `src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx`;
+  `src/app/shared/[token]/shared-viewer-content.tsx`;
+  `src/app/shared/[token]/shared-viewer-content.test.tsx`;
+  `Plans.md`; `ops/refactor/STATE.md`.
+- Oracle safety gate:
+  Consulted Oracle/GPT-5.5 Pro before finalizing this high-risk external-share /
+  PHI boundary change. Target repo context was included:
+  `https://github.com/yusuketakuma/careviax.git`, branch `main`, commit
+  `69b76fb11cbfe8d792c750f5169f82695bc59332`, no active PR for `main`.
+  First Oracle run (`inbound-share-scope`) failed in local Node/undici with
+  `setTypeOfService EINVAL` and had no rendered answer. A smaller follow-up
+  consult (`inbound-share-scope-min`) completed and gave conditional GO for
+  supporting only `inbound_communication_summary`, keeping
+  `inbound_communication_detail` / `inbound_communication_raw_text` fail-closed,
+  requiring case scope, reviewed-only records, bounded rows, safe selects, and no
+  raw/free-text/identifier/contact/attachment payload.
+- bugs found:
+  The active Plans queue still treated External Share as the final open inbound
+  downstream residual after VisitBrief, Schedule, and Report were already done.
+  The product lacked a supported external-share path for reviewed inbound signal
+  context, while detail/raw scopes had not been explicitly registered as
+  unsupported.
+- bugs fixed:
+  Added `inbound_communication_summary` as the only supported inbound external
+  share scope, rendered it in the share creation UI, and displayed it as a
+  separate external viewer section. Registered `inbound_communication_detail`
+  and `inbound_communication_raw_text` as known unsupported scopes so grant
+  creation rejects them and public payload stripping removes them.
+- security risks found:
+  External Share is a high-risk PHI boundary. Raw inbound content, normalized
+  summaries, extracted signal text, sender contact data, external URLs,
+  attachment/file IDs, event/signal IDs, display IDs, medication names, and
+  quantities must not leak into public share payloads.
+- security risks reduced:
+  The new summary path requires stored `allowed_case_ids`, fails closed before
+  patient lookup when the case boundary is missing, uses formal
+  `InboundCommunicationEvent` / `InboundCommunicationSignal` records only, limits
+  records to human-reviewed status allowlists, strips unsupported detail/raw
+  scopes from public payloads, and selects only controlled labels, booleans,
+  dates, and counts. Tests assert forbidden select fields and `LEAK_` sentinels
+  are absent from server payload and viewer text.
+- performance issues found:
+  An external summary query could become unbounded if it reused the full inbound
+  inbox/detail shape.
+- performance issues improved:
+  The summary uses a 30-day window, `take: 200` row bounds, a 10-row recent event
+  cap, narrow Prisma `select` validators, and count aggregation in memory over
+  bounded rows. It does not join raw detail, attachment, sender contact, or
+  extracted payload data.
+- UI/UX note:
+  Read `docs/ui-ux-design-guidelines.md`. Image generation was intentionally
+  omitted because this was not a visual reconstruction or new layout concept; it
+  adds one existing checkbox option and one existing card-pattern summary section
+  without using PHI/secret prompts.
+- validation commands:
+  `pnpm vitest run src/server/services/external-access.test.ts 'src/app/shared/[token]/shared-viewer-content.test.tsx' 'src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx' --reporter=dot --testTimeout=30000`;
+  `pnpm exec prettier --write src/server/services/external-access.ts src/server/services/external-access-scope-registry.ts src/server/services/external-access.test.ts 'src/app/(dashboard)/patients/[id]/share/external-share-content.tsx' 'src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx' 'src/app/shared/[token]/shared-viewer-content.tsx' 'src/app/shared/[token]/shared-viewer-content.test.tsx'`;
+  `pnpm exec prettier --check src/server/services/external-access.ts src/server/services/external-access-scope-registry.ts src/server/services/external-access.test.ts 'src/app/(dashboard)/patients/[id]/share/external-share-content.tsx' 'src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx' 'src/app/shared/[token]/shared-viewer-content.tsx' 'src/app/shared/[token]/shared-viewer-content.test.tsx'`;
+  `pnpm exec eslint src/server/services/external-access.ts src/server/services/external-access-scope-registry.ts src/server/services/external-access.test.ts 'src/app/(dashboard)/patients/[id]/share/external-share-content.tsx' 'src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx' 'src/app/shared/[token]/shared-viewer-content.tsx' 'src/app/shared/[token]/shared-viewer-content.test.tsx'`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `pnpm plans:active:check`;
+  `git diff --check`.
+- validation results:
+  Focused External Share / shared viewer / server Vitest passed 3 files / 65
+  tests. Scoped Prettier check for changed source/test files passed after
+  formatting the owned files. Scoped ESLint passed. Full typecheck passed.
+  `pnpm plans:active:check` and `git diff --check` are being rerun after this
+  ledger update before commit. Full `pnpm format:check` was attempted earlier
+  and failed only on unrelated untracked memory/review Markdown files outside
+  this owned slice; owned source/test Prettier check passed.
+- remaining work:
+  `inbound_communication_detail` and `inbound_communication_raw_text` external
+  share scopes remain intentionally unsupported until a separate high-risk slice
+  defines explicit external-share reason/request_id/audit/redaction fields.
+  `STOCK-001-VISIT-CONTEXT-APPLY` and related DB integration remain human-gated.
+  Next non-human-gated Plans work is `MOV-001-API` or another queue item that
+  does not require migration/live AWS approval.
+- next action:
+  Rerun active Plans/diff checks, commit this coherent External Share slice,
+  push it to `origin/main`, then record the commit hash in this ledger.

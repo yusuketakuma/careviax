@@ -128,6 +128,7 @@ describe('ExternalShareContent', () => {
       screen.getByRole('heading', { level: 2, name: '共有済みリンクと連絡文脈' }).tagName,
     ).toBe('H2');
     expect(screen.getByRole('button', { name: /共有リンクを発行/ })).toBeTruthy();
+    expect(screen.getByRole('checkbox', { name: /他職種受信サマリー/ })).toBeTruthy();
     expect(screen.getByText('田中ケアマネジャー')).toBeTruthy();
     expect(screen.getByText('疼痛の相談')).toBeTruthy();
   });

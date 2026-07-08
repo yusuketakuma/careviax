@@ -192,6 +192,11 @@ const SCOPE_ITEMS: ScopeItem[] = [
   { key: 'medication_list', label: '服薬情報', description: '処方薬・用法・用量の一覧' },
   { key: 'visit_schedule', label: '訪問スケジュール', description: '直近の訪問予定' },
   { key: 'care_reports', label: '服薬指導報告書', description: '直近3件の報告書' },
+  {
+    key: 'inbound_communication_summary',
+    label: '他職種受信サマリー',
+    description: '確認済み受信連絡の件数・種別',
+  },
   { key: 'allergy_info', label: 'アレルギー情報', description: '登録済みアレルギー' },
 ];
 

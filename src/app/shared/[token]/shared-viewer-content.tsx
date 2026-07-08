@@ -70,6 +70,46 @@ type ExternalPayload = {
     created_at: string;
     triaged_at: string | null;
   }>;
+  inbound_communication_summary?: {
+    version: number;
+    window: {
+      from: string;
+      to: string;
+      days: number;
+    };
+    totals: {
+      event_count: number;
+      signal_count: number;
+      safety_event_count: number;
+      medication_stock_event_count: number;
+      schedule_event_count: number;
+      report_event_count: number;
+      urgent_signal_count: number;
+      truncated: boolean;
+    };
+    latest_received_at: string | null;
+    event_type_counts: Array<{ event_type: string; label: string; count: number }>;
+    signal_domain_counts: Array<{ signal_domain: string; label: string; count: number }>;
+    signal_type_counts: Array<{ signal_type: string; label: string; count: number }>;
+    source_channel_counts: Array<{ source_channel: string; label: string; count: number }>;
+    recent_events: Array<{
+      received_at: string;
+      event_type: string;
+      event_type_label: string;
+      source_channel: string;
+      source_channel_label: string;
+      sender_role: string;
+      sender_role_label: string;
+      flags: {
+        medication_stock: boolean;
+        patient_safety: boolean;
+        schedule: boolean;
+        report: boolean;
+      };
+      signal_domains: Array<{ signal_domain: string; label: string }>;
+      signal_types: Array<{ signal_type: string; label: string }>;
+    }>;
+  };
   shared_summary?: {
     headline: string;
     bullets: string[];
@@ -117,6 +157,7 @@ const SCOPE_DISPLAY_NAMES: Record<string, string> = {
   visit_schedule: '訪問予定',
   visit_schedules: '訪問予定',
   care_reports: '訪問報告書',
+  inbound_communication_summary: '他職種受信サマリー',
   self_report_history: '自己申告履歴',
   shared_summary: 'AIサマリー',
   lab_summary: '検査値サマリー',
@@ -550,6 +591,109 @@ export function SharedViewerContent({ token }: { token: string }) {
                     </Badge>
                   ) : null}
                 </div>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {data.inbound_communication_summary ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <HeartHandshake className="size-4 text-muted-foreground" aria-hidden="true" />
+                  他職種受信サマリー
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4 text-sm">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div>
+                    <p className="text-xs text-muted-foreground">確認済み連絡</p>
+                    <p className="text-lg font-semibold tabular-nums">
+                      {data.inbound_communication_summary.totals.event_count}件
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">確認済みシグナル</p>
+                    <p className="text-lg font-semibold tabular-nums">
+                      {data.inbound_communication_summary.totals.signal_count}件
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">最新受信</p>
+                    <p className="font-medium">
+                      {data.inbound_communication_summary.latest_received_at
+                        ? format(
+                            new Date(data.inbound_communication_summary.latest_received_at),
+                            'M月d日 HH:mm',
+                            { locale: ja },
+                          )
+                        : '対象なし'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {data.inbound_communication_summary.source_channel_counts.map((item) => (
+                    <Badge key={item.source_channel} variant="outline">
+                      {item.label} {item.count}件
+                    </Badge>
+                  ))}
+                  {data.inbound_communication_summary.signal_domain_counts.map((item) => (
+                    <Badge key={item.signal_domain} variant="secondary">
+                      {item.label} {item.count}件
+                    </Badge>
+                  ))}
+                </div>
+
+                {data.inbound_communication_summary.recent_events.length > 0 ? (
+                  <div className="divide-y rounded-md border">
+                    {data.inbound_communication_summary.recent_events.map((item) => {
+                      const flagLabels = [
+                        item.flags.patient_safety ? '安全' : null,
+                        item.flags.medication_stock ? '残薬' : null,
+                        item.flags.schedule ? '日程' : null,
+                        item.flags.report ? '報告' : null,
+                      ].filter((value): value is string => Boolean(value));
+
+                      return (
+                        <div
+                          key={`${item.received_at}:${item.event_type}:${item.source_channel}`}
+                          className="space-y-2 p-3"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="outline">{item.source_channel_label}</Badge>
+                            <span className="font-medium">{item.event_type_label}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {item.sender_role_label} /{' '}
+                              {format(new Date(item.received_at), 'M月d日 HH:mm', {
+                                locale: ja,
+                              })}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {flagLabels.map((label) => (
+                              <Badge key={label} variant="secondary">
+                                {label}
+                              </Badge>
+                            ))}
+                            {item.signal_domains.map((domain) => (
+                              <Badge key={domain.signal_domain} variant="outline">
+                                {domain.label}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground">共有対象の確認済み受信連絡はありません。</p>
+                )}
+
+                {data.inbound_communication_summary.totals.truncated ? (
+                  <p className="text-xs text-muted-foreground">
+                    表示は共有対象期間の上限件数で集計されています。
+                  </p>
+                ) : null}
               </CardContent>
             </Card>
           ) : null}

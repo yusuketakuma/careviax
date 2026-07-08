@@ -12,6 +12,8 @@ const { prismaMock } = vi.hoisted(() => ({
     visitSchedule: { findMany: vi.fn() },
     careReport: { findMany: vi.fn() },
     patientSelfReport: { findMany: vi.fn() },
+    inboundCommunicationEvent: { findMany: vi.fn() },
+    inboundCommunicationSignal: { findMany: vi.fn() },
     externalAccessGrant: { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     auditLog: { create: vi.fn() },
   },
@@ -58,6 +60,24 @@ describe('external access scope validation', () => {
       requiresReportBoundary: true,
       outputRisk: 'high',
     });
+    expect(externalAccessShareScopeRegistry.get('inbound_communication_summary')).toMatchObject({
+      module: 'core',
+      requiredPermission: 'canVisit',
+      requiresCaseBoundary: true,
+      outputRisk: 'high',
+    });
+    expect(externalAccessShareScopeRegistry.get('inbound_communication_detail')).toMatchObject({
+      module: 'core',
+      requiredPermission: 'canVisit',
+      requiresCaseBoundary: true,
+      outputRisk: 'high',
+    });
+    expect(externalAccessShareScopeRegistry.get('inbound_communication_raw_text')).toMatchObject({
+      module: 'core',
+      requiredPermission: 'canVisit',
+      requiresCaseBoundary: true,
+      outputRisk: 'high',
+    });
     expect(externalAccessShareScopeRegistry.get('attachments')).toMatchObject({
       module: 'core',
       requiredPermission: 'canSendCareReport',
@@ -97,6 +117,8 @@ describe('external access scope validation', () => {
         'patient_summary',
         'prescription_summary',
         'residual_medications',
+        'inbound_communication_detail',
+        'inbound_communication_raw_text',
         'self_report_history',
       ]),
     );
@@ -107,6 +129,8 @@ describe('external access scope validation', () => {
         patient_summary: true,
         prescription_summary: true,
         residual_medications: true,
+        inbound_communication_detail: true,
+        inbound_communication_raw_text: true,
       },
       'pharmacist' as MemberRole,
     );
@@ -117,6 +141,8 @@ describe('external access scope validation', () => {
       message: 'この共有範囲は現在サポートされていません',
       details: {
         unsupported_scope_keys: [
+          'inbound_communication_detail',
+          'inbound_communication_raw_text',
           'attachments',
           'patient_summary',
           'prescription_summary',
@@ -243,6 +269,36 @@ describe('external access scope validation', () => {
     });
   });
 
+  it('supports inbound communication summary while keeping detail and raw text fail-closed', () => {
+    const summaryResult = validateExternalAccessScopeForRole(
+      { inbound_communication_summary: true },
+      'pharmacist' as MemberRole,
+    );
+    const detailResult = validateExternalAccessScopeForRole(
+      { inbound_communication_detail: true },
+      'pharmacist' as MemberRole,
+    );
+    const rawResult = validateExternalAccessScopeForRole(
+      { inbound_communication_raw_text: true },
+      'pharmacist' as MemberRole,
+    );
+
+    expect(summaryResult).toMatchObject({
+      ok: true,
+      scope: { inbound_communication_summary: true },
+    });
+    expect(detailResult).toMatchObject({
+      ok: false,
+      kind: 'validation',
+      details: { unsupported_scope_keys: ['inbound_communication_detail'] },
+    });
+    expect(rawResult).toMatchObject({
+      ok: false,
+      kind: 'validation',
+      details: { unsupported_scope_keys: ['inbound_communication_raw_text'] },
+    });
+  });
+
   it('rejects self-report history sharing until it has a case-scoped data model', () => {
     const result = validateExternalAccessScopeForRole(
       {
@@ -282,6 +338,9 @@ describe('external access scope validation', () => {
       attachments: true,
       prescription_summary: true,
       residual_medications: true,
+      inbound_communication_summary: true,
+      inbound_communication_detail: true,
+      inbound_communication_raw_text: true,
       allowed_case_ids: ['case_1', 'case_1', 'case_2'],
       allowed_report_ids: ['report_1', 'report_1', 'report_2'],
     });
@@ -294,12 +353,16 @@ describe('external access scope validation', () => {
         attachments: true,
         prescription_summary: true,
         residual_medications: true,
+        inbound_communication_summary: true,
+        inbound_communication_detail: true,
+        inbound_communication_raw_text: true,
         allowed_case_ids: ['case_1', 'case_2'],
         allowed_report_ids: ['report_1', 'report_2'],
       },
     });
     expect(toPublicExternalAccessScope(result.ok ? result.scope : null)).toEqual({
       care_reports: true,
+      inbound_communication_summary: true,
     });
     expect(externalAccessGrantVisibleForCaseIds(result.ok ? result.scope : null, ['case_2'])).toBe(
       true,
@@ -411,6 +474,7 @@ describe('external access scope validation', () => {
               OR: expect.arrayContaining([
                 { scope: { path: ['visit_schedule'], equals: true } },
                 { scope: { path: ['care_reports'], equals: true } },
+                { scope: { path: ['inbound_communication_summary'], equals: true } },
                 { scope: { path: ['self_report_history'], equals: true } },
               ]),
             }),
@@ -476,6 +540,8 @@ describe('buildExternalAccessPayload', () => {
     prismaMock.careCase.findMany.mockResolvedValue([]);
     prismaMock.careReport.findMany.mockResolvedValue([]);
     prismaMock.patientSelfReport.findMany.mockResolvedValue([]);
+    prismaMock.inboundCommunicationEvent.findMany.mockResolvedValue([]);
+    prismaMock.inboundCommunicationSignal.findMany.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -664,6 +730,8 @@ describe('buildExternalAccessPayload', () => {
         patient_summary: true,
         prescription_summary: true,
         residual_medications: true,
+        inbound_communication_detail: true,
+        inbound_communication_raw_text: true,
         allowed_case_ids: ['case_1'],
         allowed_report_ids: ['report_1'],
       },
@@ -672,6 +740,23 @@ describe('buildExternalAccessPayload', () => {
     expect(payload).toBeNull();
     expect(prismaMock.patient.findFirst).not.toHaveBeenCalled();
     expect(prismaMock.careReport.findMany).not.toHaveBeenCalled();
+  });
+
+  it('fails closed for inbound communication summary grants without a stored case boundary', async () => {
+    const payload = await buildExternalAccessPayload({
+      id: 'grant_inbound_without_case_boundary',
+      org_id: 'org_1',
+      patient_id: 'patient_1',
+      otp_hash: 'otp_hash',
+      expires_at: new Date('2026-04-01T00:00:00.000Z'),
+      revoked_at: null,
+      scope: { inbound_communication_summary: true },
+    });
+
+    expect(payload).toBeNull();
+    expect(prismaMock.patient.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.inboundCommunicationEvent.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.inboundCommunicationSignal.findMany).not.toHaveBeenCalled();
   });
 
   it('fails closed for malformed stored grant scope roots before patient lookup', async () => {
@@ -833,6 +918,162 @@ describe('buildExternalAccessPayload', () => {
     ]);
     expect(payload?.scope).toEqual({ care_reports: true });
     expect(JSON.stringify(payload)).not.toContain('allowed_report_ids');
+  });
+
+  it('builds a case-scoped inbound communication summary from formal reviewed records only', async () => {
+    prismaMock.inboundCommunicationEvent.findMany.mockResolvedValue([
+      {
+        received_at: new Date('2026-03-29T09:30:00.000Z'),
+        source_channel: 'mcs',
+        sender_role: 'nurse',
+        event_type: 'care_coordination',
+        has_medication_stock_signal: false,
+        has_patient_safety_signal: true,
+        has_schedule_signal: false,
+        has_report_signal: true,
+        raw_text: 'LEAK_RAW_TEXT',
+        normalized_summary: 'LEAK_NORMALIZED_SUMMARY',
+        sender_contact: 'LEAK_SENDER_CONTACT',
+        external_url: 'LEAK_EXTERNAL_URL',
+        display_id: 'LEAK_DISPLAY_ID',
+        signals: [
+          {
+            signal_domain: 'report',
+            signal_type: 'report_inclusion_candidate',
+            extracted_text: 'LEAK_EXTRACTED_TEXT',
+            extracted_quantity: 123,
+            structured_payload: { leak: 'LEAK_STRUCTURED_PAYLOAD' },
+          },
+          {
+            signal_domain: 'urgent',
+            signal_type: 'urgent_review_required',
+          },
+        ],
+        attachments: [{ file_asset_id: 'LEAK_FILE_ASSET_ID' }],
+      },
+    ]);
+    prismaMock.inboundCommunicationSignal.findMany.mockResolvedValue([
+      {
+        signal_domain: 'report',
+        signal_type: 'report_inclusion_candidate',
+        action_status: 'linked_to_report',
+        extracted_text: 'LEAK_EXTRACTED_TEXT',
+        extracted_quantity: 123,
+      },
+      {
+        signal_domain: 'urgent',
+        signal_type: 'urgent_review_required',
+        action_status: 'linked_to_task',
+      },
+    ]);
+
+    const payload = await buildExternalAccessPayload({
+      id: 'grant_inbound_summary',
+      org_id: 'org_1',
+      patient_id: 'patient_1',
+      otp_hash: 'otp_hash',
+      expires_at: new Date('2026-04-01T00:00:00.000Z'),
+      revoked_at: null,
+      scope: {
+        inbound_communication_summary: true,
+        inbound_communication_raw_text: true,
+        allowed_case_ids: ['case_allowed'],
+      },
+    });
+
+    const eventQuery = prismaMock.inboundCommunicationEvent.findMany.mock.calls[0]?.[0];
+    const signalQuery = prismaMock.inboundCommunicationSignal.findMany.mock.calls[0]?.[0];
+
+    expect(eventQuery).toMatchObject({
+      where: {
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        case_id: { in: ['case_allowed'] },
+        direction: 'inbound',
+        reviewed_at: { not: null },
+        processing_status: { in: ['reviewed', 'converted_to_task', 'linked_to_workflow'] },
+      },
+      take: 200,
+    });
+    expect(signalQuery).toMatchObject({
+      where: {
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        case_id: { in: ['case_allowed'] },
+        reviewed_at: { not: null },
+        review_status: { in: ['accepted', 'record_only'] },
+        action_status: {
+          in: [
+            'linked_to_stock_event',
+            'linked_to_task',
+            'linked_to_schedule',
+            'linked_to_report',
+            'linked_to_visit_brief',
+          ],
+        },
+        inbound_event: expect.objectContaining({
+          org_id: 'org_1',
+          patient_id: 'patient_1',
+          case_id: { in: ['case_allowed'] },
+          direction: 'inbound',
+          reviewed_at: { not: null },
+          processing_status: { in: ['reviewed', 'converted_to_task', 'linked_to_workflow'] },
+        }),
+      },
+      take: 200,
+    });
+
+    const eventSelect = JSON.stringify(eventQuery?.select ?? {});
+    const signalSelect = JSON.stringify(signalQuery?.select ?? {});
+    for (const forbiddenField of [
+      'id',
+      'display_id',
+      'raw_text',
+      'normalized_summary',
+      'sender_contact',
+      'external_url',
+      'extracted_text',
+      'extracted_medication_name',
+      'extracted_quantity',
+      'structured_payload',
+      'file_asset_id',
+    ]) {
+      expect(eventSelect).not.toContain(forbiddenField);
+      expect(signalSelect).not.toContain(forbiddenField);
+    }
+
+    expect(payload?.scope).toEqual({ inbound_communication_summary: true });
+    expect(payload?.inbound_communication_summary).toMatchObject({
+      version: 1,
+      totals: {
+        event_count: 1,
+        signal_count: 2,
+        safety_event_count: 1,
+        report_event_count: 1,
+        urgent_signal_count: 1,
+        truncated: false,
+      },
+      event_type_counts: [{ event_type: 'care_coordination', label: '連携事項', count: 1 }],
+      source_channel_counts: [{ source_channel: 'mcs', label: 'MCS', count: 1 }],
+      signal_domain_counts: expect.arrayContaining([
+        { signal_domain: 'report', label: '報告', count: 1 },
+        { signal_domain: 'urgent', label: '至急', count: 1 },
+      ]),
+      recent_events: [
+        expect.objectContaining({
+          event_type: 'care_coordination',
+          event_type_label: '連携事項',
+          source_channel: 'mcs',
+          source_channel_label: 'MCS',
+          sender_role: 'nurse',
+          sender_role_label: '看護師',
+        }),
+      ],
+    });
+    const serialized = JSON.stringify(payload);
+    expect(serialized).not.toContain('LEAK_');
+    expect(serialized).not.toContain('allowed_case_ids');
+    expect(serialized).not.toContain('inbound_communication_raw_text');
   });
 });
 

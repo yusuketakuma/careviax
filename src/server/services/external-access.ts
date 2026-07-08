@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from 'crypto';
 import bcrypt from 'bcryptjs';
-import type { MemberRole, Prisma } from '@prisma/client';
+import { Prisma, type MemberRole } from '@prisma/client';
 import { decode, encode } from 'next-auth/jwt';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { hasPermission } from '@/lib/auth/permissions';
@@ -632,6 +632,311 @@ function buildExternalAccessViewAuditInput(grant: ExternalGrantRecord, viewedAt:
   };
 }
 
+const EXTERNAL_INBOUND_SUMMARY_WINDOW_DAYS = 30;
+const EXTERNAL_INBOUND_SUMMARY_MAX_ROWS = 200;
+const EXTERNAL_INBOUND_SUMMARY_RECENT_EVENT_LIMIT = 10;
+
+const EXTERNAL_INBOUND_EVENT_PROCESSING_STATUSES = [
+  'reviewed',
+  'converted_to_task',
+  'linked_to_workflow',
+] as const;
+const EXTERNAL_INBOUND_SIGNAL_REVIEW_STATUSES = ['accepted', 'record_only'] as const;
+const EXTERNAL_INBOUND_SIGNAL_ACTION_STATUSES = [
+  'linked_to_stock_event',
+  'linked_to_task',
+  'linked_to_schedule',
+  'linked_to_report',
+  'linked_to_visit_brief',
+] as const;
+
+const INBOUND_SOURCE_CHANNEL_LABELS: Record<string, string> = {
+  mcs: 'MCS',
+  phone: '電話',
+  fax: 'FAX',
+  email: 'メール',
+  postal_mail: '郵送',
+  in_person: '対面',
+  manual: '手入力',
+  unknown: '不明',
+};
+
+const INBOUND_SENDER_ROLE_LABELS: Record<string, string> = {
+  nurse: '看護師',
+  care_manager: 'ケアマネ',
+  physician: '医師',
+  dentist: '歯科医師',
+  facility_staff: '施設職員',
+  family: '家族',
+  patient: '患者',
+  pharmacist_external: '外部薬剤師',
+  admin: '事務',
+  unknown: '不明',
+};
+
+const INBOUND_EVENT_TYPE_LABELS: Record<string, string> = {
+  medication_stock_report: '残薬報告',
+  medication_usage_report: '服薬状況',
+  medication_question: '薬剤相談',
+  symptom_report: '症状報告',
+  adverse_event_report: '副作用疑い',
+  visit_schedule_request: '訪問日程相談',
+  refill_request: '補充依頼',
+  care_coordination: '連携事項',
+  urgent_contact: '至急連絡',
+  general_note: '一般連絡',
+};
+
+const INBOUND_SIGNAL_DOMAIN_LABELS: Record<string, string> = {
+  medication_stock: '残薬',
+  medication_safety: '薬剤安全',
+  adherence: '服薬',
+  symptom: '症状',
+  schedule: '日程',
+  report: '報告',
+  refill_request: '補充',
+  task: 'タスク',
+  urgent: '至急',
+  other: 'その他',
+};
+
+const INBOUND_SIGNAL_TYPE_LABELS: Record<string, string> = {
+  observed_quantity: '数量報告',
+  usage_delta: '使用量変化',
+  usage_frequency: '使用頻度',
+  low_stock_text: '残薬不足',
+  refill_request: '補充希望',
+  medication_name_unresolved: '薬剤未紐づけ',
+  adherence_issue: '服薬課題',
+  side_effect_suspected: '副作用疑い',
+  safety_concern: '安全確認',
+  schedule_change_request: '日程変更希望',
+  visit_request: '訪問希望',
+  report_inclusion_candidate: '報告書候補',
+  task_request: 'タスク依頼',
+  urgent_review_required: '至急確認',
+  unknown: '不明',
+};
+
+function labelFromMap(map: Record<string, string>, key: string) {
+  return map[key] ?? key;
+}
+
+function incrementCount(counts: Map<string, number>, key: string) {
+  counts.set(key, (counts.get(key) ?? 0) + 1);
+}
+
+function toCountRows(
+  counts: Map<string, number>,
+  keyName: string,
+  labelMap: Record<string, string>,
+) {
+  return Array.from(counts.entries())
+    .sort(
+      ([leftKey, leftCount], [rightKey, rightCount]) =>
+        rightCount - leftCount || leftKey.localeCompare(rightKey),
+    )
+    .map(([key, count]) => ({
+      [keyName]: key,
+      label: labelFromMap(labelMap, key),
+      count,
+    }));
+}
+
+function toUniqueLabelRows(
+  values: readonly string[],
+  keyName: string,
+  labelMap: Record<string, string>,
+) {
+  return Array.from(new Set(values))
+    .sort()
+    .map((key) => ({
+      [keyName]: key,
+      label: labelFromMap(labelMap, key),
+    }));
+}
+
+const inboundCommunicationExternalSummaryEventSelect =
+  Prisma.validator<Prisma.InboundCommunicationEventSelect>()({
+    received_at: true,
+    source_channel: true,
+    sender_role: true,
+    event_type: true,
+    has_medication_stock_signal: true,
+    has_patient_safety_signal: true,
+    has_schedule_signal: true,
+    has_report_signal: true,
+    signals: {
+      where: {
+        review_status: { in: [...EXTERNAL_INBOUND_SIGNAL_REVIEW_STATUSES] },
+        reviewed_at: { not: null },
+      },
+      select: {
+        signal_domain: true,
+        signal_type: true,
+      },
+      orderBy: [{ created_at: 'desc' }],
+      take: 20,
+    },
+  });
+
+const inboundCommunicationExternalSummarySignalSelect =
+  Prisma.validator<Prisma.InboundCommunicationSignalSelect>()({
+    signal_domain: true,
+    signal_type: true,
+  });
+
+async function buildInboundCommunicationExternalSummary(args: {
+  grant: ExternalGrantRecord;
+  allowedCaseIds: readonly string[];
+}) {
+  if (args.allowedCaseIds.length === 0) return null;
+
+  const now = new Date();
+  const windowFrom = new Date(
+    now.getTime() - EXTERNAL_INBOUND_SUMMARY_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+  );
+  const allowedCaseIds = [...args.allowedCaseIds];
+  const sharedInboundEventWhere = {
+    org_id: args.grant.org_id,
+    patient_id: args.grant.patient_id,
+    case_id: { in: allowedCaseIds },
+    reviewed_at: { not: null },
+  } satisfies Prisma.InboundCommunicationEventWhereInput;
+  const sharedInboundSignalWhere = {
+    org_id: args.grant.org_id,
+    patient_id: args.grant.patient_id,
+    case_id: { in: allowedCaseIds },
+    reviewed_at: { not: null },
+  } satisfies Prisma.InboundCommunicationSignalWhereInput;
+
+  const eventRows = await prisma.inboundCommunicationEvent.findMany({
+    where: {
+      ...sharedInboundEventWhere,
+      direction: 'inbound',
+      received_at: {
+        gte: windowFrom,
+        lte: now,
+      },
+      processing_status: { in: [...EXTERNAL_INBOUND_EVENT_PROCESSING_STATUSES] },
+    },
+    select: inboundCommunicationExternalSummaryEventSelect,
+    orderBy: [{ received_at: 'desc' }],
+    take: EXTERNAL_INBOUND_SUMMARY_MAX_ROWS,
+  });
+
+  const signalRows = await prisma.inboundCommunicationSignal.findMany({
+    where: {
+      ...sharedInboundSignalWhere,
+      created_at: {
+        gte: windowFrom,
+        lte: now,
+      },
+      review_status: { in: [...EXTERNAL_INBOUND_SIGNAL_REVIEW_STATUSES] },
+      action_status: { in: [...EXTERNAL_INBOUND_SIGNAL_ACTION_STATUSES] },
+      inbound_event: {
+        ...sharedInboundEventWhere,
+        direction: 'inbound',
+        received_at: {
+          gte: windowFrom,
+          lte: now,
+        },
+        processing_status: { in: [...EXTERNAL_INBOUND_EVENT_PROCESSING_STATUSES] },
+      },
+    },
+    select: inboundCommunicationExternalSummarySignalSelect,
+    orderBy: [{ created_at: 'desc' }],
+    take: EXTERNAL_INBOUND_SUMMARY_MAX_ROWS,
+  });
+
+  const eventTypeCounts = new Map<string, number>();
+  const sourceChannelCounts = new Map<string, number>();
+  let safetyEventCount = 0;
+  let medicationStockEventCount = 0;
+  let scheduleEventCount = 0;
+  let reportEventCount = 0;
+
+  for (const event of eventRows) {
+    incrementCount(eventTypeCounts, event.event_type);
+    incrementCount(sourceChannelCounts, event.source_channel);
+    if (event.has_patient_safety_signal) safetyEventCount += 1;
+    if (event.has_medication_stock_signal) medicationStockEventCount += 1;
+    if (event.has_schedule_signal) scheduleEventCount += 1;
+    if (event.has_report_signal) reportEventCount += 1;
+  }
+
+  const signalDomainCounts = new Map<string, number>();
+  const signalTypeCounts = new Map<string, number>();
+  let urgentSignalCount = 0;
+
+  for (const signal of signalRows) {
+    incrementCount(signalDomainCounts, signal.signal_domain);
+    incrementCount(signalTypeCounts, signal.signal_type);
+    if (signal.signal_domain === 'urgent' || signal.signal_type === 'urgent_review_required') {
+      urgentSignalCount += 1;
+    }
+  }
+
+  return {
+    version: 1,
+    window: {
+      from: windowFrom.toISOString(),
+      to: now.toISOString(),
+      days: EXTERNAL_INBOUND_SUMMARY_WINDOW_DAYS,
+    },
+    totals: {
+      event_count: eventRows.length,
+      signal_count: signalRows.length,
+      safety_event_count: safetyEventCount,
+      medication_stock_event_count: medicationStockEventCount,
+      schedule_event_count: scheduleEventCount,
+      report_event_count: reportEventCount,
+      urgent_signal_count: urgentSignalCount,
+      truncated:
+        eventRows.length >= EXTERNAL_INBOUND_SUMMARY_MAX_ROWS ||
+        signalRows.length >= EXTERNAL_INBOUND_SUMMARY_MAX_ROWS,
+    },
+    latest_received_at: eventRows[0]?.received_at.toISOString() ?? null,
+    event_type_counts: toCountRows(eventTypeCounts, 'event_type', INBOUND_EVENT_TYPE_LABELS),
+    signal_domain_counts: toCountRows(
+      signalDomainCounts,
+      'signal_domain',
+      INBOUND_SIGNAL_DOMAIN_LABELS,
+    ),
+    signal_type_counts: toCountRows(signalTypeCounts, 'signal_type', INBOUND_SIGNAL_TYPE_LABELS),
+    source_channel_counts: toCountRows(
+      sourceChannelCounts,
+      'source_channel',
+      INBOUND_SOURCE_CHANNEL_LABELS,
+    ),
+    recent_events: eventRows.slice(0, EXTERNAL_INBOUND_SUMMARY_RECENT_EVENT_LIMIT).map((event) => ({
+      received_at: event.received_at.toISOString(),
+      event_type: event.event_type,
+      event_type_label: labelFromMap(INBOUND_EVENT_TYPE_LABELS, event.event_type),
+      source_channel: event.source_channel,
+      source_channel_label: labelFromMap(INBOUND_SOURCE_CHANNEL_LABELS, event.source_channel),
+      sender_role: event.sender_role,
+      sender_role_label: labelFromMap(INBOUND_SENDER_ROLE_LABELS, event.sender_role),
+      flags: {
+        medication_stock: event.has_medication_stock_signal,
+        patient_safety: event.has_patient_safety_signal,
+        schedule: event.has_schedule_signal,
+        report: event.has_report_signal,
+      },
+      signal_domains: toUniqueLabelRows(
+        event.signals.map((signal) => signal.signal_domain),
+        'signal_domain',
+        INBOUND_SIGNAL_DOMAIN_LABELS,
+      ),
+      signal_types: toUniqueLabelRows(
+        event.signals.map((signal) => signal.signal_type),
+        'signal_type',
+        INBOUND_SIGNAL_TYPE_LABELS,
+      ),
+    })),
+  };
+}
+
 function formatShareDate(value: Date) {
   return new Intl.DateTimeFormat('ja-JP', {
     year: 'numeric',
@@ -827,6 +1132,17 @@ export async function buildExternalAccessPayload(grant: ExternalGrantRecord) {
           });
   }
 
+  let inboundCommunicationSummary = null;
+  if (scope.inbound_communication_summary === true) {
+    inboundCommunicationSummary =
+      allowedCaseIds?.length === 0
+        ? null
+        : await buildInboundCommunicationExternalSummary({
+            grant,
+            allowedCaseIds: allowedCaseIds ?? [],
+          });
+  }
+
   let selfReportHistory: Array<Record<string, unknown>> = [];
   if (scope.self_report_history === true) {
     selfReportHistory = allowedCaseIds
@@ -860,6 +1176,9 @@ export async function buildExternalAccessPayload(grant: ExternalGrantRecord) {
     ...(medicationProfiles !== null ? { medication_profiles: medicationProfiles } : {}),
     ...(visitSchedules !== null ? { visit_schedules: visitSchedules } : {}),
     ...(careReports !== null ? { care_reports: careReports } : {}),
+    ...(inboundCommunicationSummary !== null
+      ? { inbound_communication_summary: inboundCommunicationSummary }
+      : {}),
     self_report_history: selfReportHistory,
     shared_summary: buildExternalSharedSummary({
       patientName: patient.name,

@@ -91,6 +91,108 @@ describe('SharedViewerContent self report', () => {
     );
   });
 
+  it('renders inbound communication summary as controlled counts and labels', async () => {
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/external-access/token_1') {
+        return new Response(
+          JSON.stringify({
+            data: {
+              patient: {
+                id: 'patient_1',
+                name: '山田太郎',
+                birth_date: '1950-01-01',
+                gender: 'male',
+                archive: { status: 'active', archived: false, archived_at: null },
+              },
+              scope: {
+                inbound_communication_summary: true,
+              },
+              expires_at: '2026-06-18T09:00:00.000Z',
+              self_report_history: [],
+              inbound_communication_summary: {
+                version: 1,
+                window: {
+                  from: '2026-05-19T09:00:00.000Z',
+                  to: '2026-06-18T09:00:00.000Z',
+                  days: 30,
+                },
+                totals: {
+                  event_count: 1,
+                  signal_count: 2,
+                  safety_event_count: 1,
+                  medication_stock_event_count: 0,
+                  schedule_event_count: 0,
+                  report_event_count: 1,
+                  urgent_signal_count: 1,
+                  truncated: false,
+                },
+                latest_received_at: '2026-06-18T08:30:00.000Z',
+                event_type_counts: [
+                  { event_type: 'care_coordination', label: '連携事項', count: 1 },
+                ],
+                signal_domain_counts: [
+                  { signal_domain: 'report', label: '報告', count: 1 },
+                  { signal_domain: 'urgent', label: '至急', count: 1 },
+                ],
+                signal_type_counts: [
+                  { signal_type: 'report_inclusion_candidate', label: '報告書候補', count: 1 },
+                ],
+                source_channel_counts: [{ source_channel: 'mcs', label: 'MCS', count: 1 }],
+                recent_events: [
+                  {
+                    received_at: '2026-06-18T08:30:00.000Z',
+                    event_type: 'care_coordination',
+                    event_type_label: '連携事項',
+                    source_channel: 'mcs',
+                    source_channel_label: 'MCS',
+                    sender_role: 'nurse',
+                    sender_role_label: '看護師',
+                    flags: {
+                      medication_stock: false,
+                      patient_safety: true,
+                      schedule: false,
+                      report: true,
+                    },
+                    signal_domains: [
+                      { signal_domain: 'report', label: '報告' },
+                      { signal_domain: 'urgent', label: '至急' },
+                    ],
+                    signal_types: [
+                      { signal_type: 'report_inclusion_candidate', label: '報告書候補' },
+                    ],
+                    raw_text: 'LEAK_RAW_TEXT',
+                    normalized_summary: 'LEAK_NORMALIZED_SUMMARY',
+                    sender_contact: 'LEAK_SENDER_CONTACT',
+                  },
+                ],
+              },
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ message: `Unhandled request: ${url}` }), {
+        status: 500,
+      });
+    });
+
+    const { container } = renderSharedViewerContent();
+
+    fireEvent.change(screen.getByLabelText('OTP'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: /閲覧する/ }));
+
+    await screen.findAllByText('他職種受信サマリー');
+
+    expect(screen.getAllByText('他職種受信サマリー').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('確認済み連絡')).toBeTruthy();
+    expect(screen.getByText('確認済みシグナル')).toBeTruthy();
+    expect(screen.getByText('MCS 1件')).toBeTruthy();
+    expect(screen.getByText('連携事項')).toBeTruthy();
+    expect(screen.getByText(/看護師/)).toBeTruthy();
+    expect(container.textContent).not.toContain('LEAK_');
+  });
+
   it('sends self reports with an Idempotency-Key header without putting OTP or idempotency data in the body', async () => {
     renderSharedViewerContent();
 
