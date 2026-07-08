@@ -284,17 +284,19 @@ export interface VerifyDispenseBarcodeInput {
 }
 
 export interface VerifyDispenseBarcodeResponse {
-  match: boolean;
-  decoded: {
-    gtin?: string;
-    expiryDate?: string;
-    lotNumber?: string;
+  data: {
+    match: boolean;
+    decoded: {
+      gtin?: string;
+      expiryDate?: string;
+      lotNumber?: string;
+    };
+    expected: {
+      drug_code: string | null;
+      drug_name: string;
+    };
+    warnings: string[];
   };
-  expected: {
-    drug_code: string | null;
-    drug_name: string;
-  };
-  warnings: string[];
 }
 
 export interface SubmitDispenseAuditInput {

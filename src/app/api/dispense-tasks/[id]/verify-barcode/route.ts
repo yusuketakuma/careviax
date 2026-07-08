@@ -78,10 +78,12 @@ async function authenticatedPOST(req: NextRequest, routeContext: AuthRouteContex
     });
 
     return success({
-      match: verification.match,
-      decoded: verification.decoded,
-      expected: verification.expected,
-      warnings: verification.warnings,
+      data: {
+        match: verification.match,
+        decoded: verification.decoded,
+        expected: verification.expected,
+        warnings: verification.warnings,
+      },
     });
   });
 }

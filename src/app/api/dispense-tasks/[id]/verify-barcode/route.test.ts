@@ -133,8 +133,10 @@ describe('/api/dispense-tasks/[id]/verify-barcode', () => {
       },
     });
     await expect(response.json()).resolves.toMatchObject({
-      match: true,
-      warnings: [],
+      data: {
+        match: true,
+        warnings: [],
+      },
     });
   });
 
