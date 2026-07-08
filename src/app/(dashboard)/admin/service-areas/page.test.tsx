@@ -157,11 +157,6 @@ describe('ServiceAreasPage', () => {
         if (url === '/api/service-areas' && !init?.method) {
           return new Response(
             JSON.stringify({
-              total_count: 1,
-              visible_count: 1,
-              hidden_count: 0,
-              truncated: false,
-              count_basis: 'service_areas',
               data: [
                 {
                   id: 'area_1',
@@ -173,13 +168,22 @@ describe('ServiceAreasPage', () => {
                   site: { id: 'site_1', name: '本店' },
                 },
               ],
+              meta: {
+                total_count: 1,
+                visible_count: 1,
+                hidden_count: 0,
+                truncated: false,
+                count_basis: 'service_areas',
+                filters_applied: { site_id: null },
+                limit: 100,
+              },
             }),
             { status: 200 },
           );
         }
 
         if (url === '/api/service-areas/area_1' && init?.method === 'DELETE') {
-          return new Response(JSON.stringify({ message: '訪問エリアを削除しました' }), {
+          return new Response(JSON.stringify({ data: { id: 'area_1' } }), {
             status: 200,
           });
         }
@@ -302,11 +306,15 @@ describe('ServiceAreasPage', () => {
                   site: { id: 'site_1', name: '本店' },
                 },
               ],
-              total_count: 3,
-              visible_count: 1,
-              hidden_count: 2,
-              truncated: true,
-              count_basis: 'service_areas',
+              meta: {
+                total_count: 3,
+                visible_count: 1,
+                hidden_count: 2,
+                truncated: true,
+                count_basis: 'service_areas',
+                filters_applied: { site_id: null },
+                limit: 100,
+              },
             }),
             { status: 200 },
           );
@@ -348,11 +356,6 @@ describe('ServiceAreasPage', () => {
       if (url === '/api/service-areas' && !init?.method) {
         return new Response(
           JSON.stringify({
-            total_count: 1,
-            visible_count: 1,
-            hidden_count: 0,
-            truncated: false,
-            count_basis: 'service_areas',
             data: [
               {
                 id: areaId,
@@ -364,6 +367,15 @@ describe('ServiceAreasPage', () => {
                 site: { id: 'site_1', name: '本店' },
               },
             ],
+            meta: {
+              total_count: 1,
+              visible_count: 1,
+              hidden_count: 0,
+              truncated: false,
+              count_basis: 'service_areas',
+              filters_applied: { site_id: null },
+              limit: 100,
+            },
           }),
           { status: 200 },
         );
@@ -522,11 +534,6 @@ describe('ServiceAreasPage', () => {
       if (url === '/api/service-areas' && !init?.method) {
         return new Response(
           JSON.stringify({
-            total_count: 1,
-            visible_count: 1,
-            hidden_count: 0,
-            truncated: false,
-            count_basis: 'service_areas',
             data: [
               {
                 id: 'area_1',
@@ -538,6 +545,15 @@ describe('ServiceAreasPage', () => {
                 site: { id: 'site_1', name: '本店' },
               },
             ],
+            meta: {
+              total_count: 1,
+              visible_count: 1,
+              hidden_count: 0,
+              truncated: false,
+              count_basis: 'service_areas',
+              filters_applied: { site_id: null },
+              limit: 100,
+            },
           }),
           { status: 200 },
         );

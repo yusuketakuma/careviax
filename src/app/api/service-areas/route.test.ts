@@ -81,25 +81,18 @@ describe('/api/service-areas', () => {
 
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(Object.keys(body)).toEqual([
-      'data',
-      'total_count',
-      'visible_count',
-      'hidden_count',
-      'truncated',
-      'count_basis',
-      'filters_applied',
-      'limit',
-    ]);
+    expect(Object.keys(body)).toEqual(['data', 'meta']);
     expect(body).toMatchObject({
       data: [{ id: 'area_1' }],
-      total_count: 1,
-      visible_count: 1,
-      hidden_count: 0,
-      truncated: false,
-      count_basis: 'service_areas',
-      filters_applied: { site_id: null },
-      limit: 100,
+      meta: {
+        total_count: 1,
+        visible_count: 1,
+        hidden_count: 0,
+        truncated: false,
+        count_basis: 'service_areas',
+        filters_applied: { site_id: null },
+        limit: 100,
+      },
     });
     expect(serviceAreaCountMock).toHaveBeenCalledWith({
       where: {
@@ -159,13 +152,15 @@ describe('/api/service-areas', () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      total_count: 205,
-      visible_count: 200,
-      hidden_count: 5,
-      truncated: true,
-      count_basis: 'service_areas',
-      filters_applied: { site_id: null },
-      limit: 200,
+      meta: {
+        total_count: 205,
+        visible_count: 200,
+        hidden_count: 5,
+        truncated: true,
+        count_basis: 'service_areas',
+        filters_applied: { site_id: null },
+        limit: 200,
+      },
     });
   });
 

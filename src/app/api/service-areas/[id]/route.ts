@@ -84,5 +84,5 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   if (!existing) return notFound('訪問エリアが見つかりません');
 
   await withOrgContext(ctx.orgId, (tx) => tx.serviceArea.delete({ where: { id: serviceAreaId } }));
-  return success({ message: '訪問エリアを削除しました' });
+  return success({ data: { id: serviceAreaId } });
 }

@@ -72,13 +72,21 @@ export async function GET(req: NextRequest) {
     ]),
   );
 
+  const list = buildCountedListEnvelope(serviceAreas, totalCount);
+
   return success({
-    ...buildCountedListEnvelope(serviceAreas, totalCount),
-    count_basis: 'service_areas',
-    filters_applied: {
-      site_id: parsedSiteId?.success ? parsedSiteId.data : null,
+    data: list.data,
+    meta: {
+      total_count: list.total_count,
+      visible_count: list.visible_count,
+      hidden_count: list.hidden_count,
+      truncated: list.truncated,
+      count_basis: 'service_areas',
+      filters_applied: {
+        site_id: parsedSiteId?.success ? parsedSiteId.data : null,
+      },
+      limit,
     },
-    limit,
   });
 }
 

@@ -177,6 +177,7 @@ describe('/api/service-areas/[id]', () => {
       const req = createRequest('http://localhost/api/service-areas/area_1');
       const res = await DELETE(req, { params: Promise.resolve({ id: 'area_1' }) });
       expect(res!.status).toBe(200);
+      await expect(res!.json()).resolves.toEqual({ data: { id: 'area_1' } });
     });
 
     it('rejects blank route ids before loading the service area', async () => {

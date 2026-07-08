@@ -50,11 +50,17 @@ type ServiceArea = {
 
 type ServiceAreasResponse = {
   data: ServiceArea[];
-  total_count?: number;
-  visible_count?: number;
-  hidden_count?: number;
-  truncated?: boolean;
-  count_basis?: 'service_areas';
+  meta: {
+    total_count: number;
+    visible_count: number;
+    hidden_count: number;
+    truncated: boolean;
+    count_basis: 'service_areas';
+    filters_applied: {
+      site_id: string | null;
+    };
+    limit: number;
+  };
 };
 
 type ServiceAreaForm = {
@@ -262,12 +268,13 @@ export default function ServiceAreasPage() {
 
   const sites = sitesQuery.data?.data ?? [];
   const serviceAreas = areasQuery.data?.data ?? [];
-  const totalServiceAreaCount = areasQuery.data?.total_count ?? serviceAreas.length;
-  const visibleServiceAreaCount = areasQuery.data?.visible_count ?? serviceAreas.length;
+  const serviceAreasMeta = areasQuery.data?.meta;
+  const totalServiceAreaCount = serviceAreasMeta?.total_count ?? serviceAreas.length;
+  const visibleServiceAreaCount = serviceAreasMeta?.visible_count ?? serviceAreas.length;
   const hiddenServiceAreaCount =
-    areasQuery.data?.hidden_count ?? Math.max(totalServiceAreaCount - serviceAreas.length, 0);
+    serviceAreasMeta?.hidden_count ?? Math.max(totalServiceAreaCount - serviceAreas.length, 0);
   const serviceAreaListSummary = areasQuery.data
-    ? areasQuery.data.truncated || hiddenServiceAreaCount > 0
+    ? serviceAreasMeta?.truncated || hiddenServiceAreaCount > 0
       ? `先頭${visibleServiceAreaCount.toLocaleString()}件を表示 / 他${hiddenServiceAreaCount.toLocaleString()}件`
       : `登録済み ${totalServiceAreaCount.toLocaleString()}件`
     : null;
