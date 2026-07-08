@@ -43,7 +43,8 @@
 
 - codex: `INBOUND-002-RAW-DETAIL-API-001` inbound raw detail reauthorization and dashboard raw omission.
   - commit:
-    Implementation committed as `fb20ad7ac`. State record commit pending. Push after state commit.
+    Implementation committed as `fb20ad7ac`; state record committed as `ec6dd5278`; pushed to
+    `origin/main`.
   - current task:
     `Plans.md` の `INBOUND-002-REVIEW-DETAIL` から、先行 sub-slice として raw detail API
     boundary を固定する。raw_text / sender_contact は list/dashboard/urgent/stock-risk DTO へ出さず、
@@ -171,8 +172,7 @@
     review shell, review action lifecycle UI, and MedicationStock apply allowed/forbidden UX tests.
     FAX/email/manual intake and source mapping UI remain separate active items.
   - next action:
-    Commit this state record, push the raw detail API slice, record the push result here, then
-    continue the goal loop with the next highest safe non-gated item.
+    Continue the goal loop with the next highest safe non-gated item.
 
 - codex: `STOCK-001-PRESCRIPTION-HORIZON` PrescriptionIntake structured replenishment horizon。
   - commit:
