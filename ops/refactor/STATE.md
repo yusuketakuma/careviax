@@ -41,6 +41,63 @@
 
 ## 直近の作業（未コミット）
 
+- codex: `DASH-P1-010-RAIL` Dashboard Summary Rail。
+  - current task:
+    `Plans.md` v8 の未実装queueから、Dashboard Summary Rail を既存 segment だけで追加する。
+    専用rail BFFは作らず、summary/details/team/inbound/urgent source links を合成して
+    今日のサマリー、主なタスク、チーム状況、最終更新を表示する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `docs/ui-ux-design-guidelines.md`,
+    `src/types/dashboard-cockpit.ts`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+    `src/app/(dashboard)/dashboard/use-dashboard-cockpit-view-model.ts`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`,
+    and existing dashboard right-rail / urgent source link surfaces.
+  - files changed:
+    `Plans.md`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`,
+    `ops/refactor/STATE.md`.
+  - implementation:
+    Added `DashboardSummaryRail` to `DashboardCockpit`. It renders as the first dashboard column on
+    wide screens and as a top card on narrower screens. The rail shows `通常運用` / `要対応` /
+    `確認待ち`, task links for audit, visits, inbound, stock, report/billing, and carryover, plus
+    team slack and latest generated timestamp. It uses only existing dashboard segments and existing
+    source-link URLs; no new BFF/API fetch was introduced. `Plans.md` moved the Summary Rail slice
+    from active implementation queues into Done/frozen and removed stale completed dashboard link rows.
+  - bugs found:
+    Dashboard plan state still had stale active rows for completed dashboard drilldown work, and the
+    actual dashboard lacked the planned left summary/navigation rail.
+  - security risks reduced:
+    The rail uses fixed app-relative links and existing route-level permission checks. It does not add
+    raw PHI transport, external URLs, signed URLs, storage keys, or new API surfaces.
+  - performance issues improved:
+    No DB read or network fetch was added. The UI consumes already-loaded dashboard segments and keeps
+    the lightweight summary/details split intact.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md src/app/'(dashboard)'/dashboard/dashboard-cockpit.tsx src/app/'(dashboard)'/dashboard/dashboard-cockpit.test.tsx`;
+    `pnpm exec vitest run src/app/'(dashboard)'/dashboard/dashboard-cockpit.test.tsx`;
+    `pnpm exec eslint src/app/'(dashboard)'/dashboard/dashboard-cockpit.tsx src/app/'(dashboard)'/dashboard/dashboard-cockpit.test.tsx`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm exec prettier --check Plans.md src/app/'(dashboard)'/dashboard/dashboard-cockpit.tsx src/app/'(dashboard)'/dashboard/dashboard-cockpit.test.tsx`;
+    `git diff --check`.
+  - validation results:
+    Focused dashboard component tests passed (`19` tests). Targeted ESLint passed. Full typecheck
+    passed. Prettier check passed. `git diff --check` passed. Browser/mobile screenshot was not run;
+    the slice is covered by focused component/link assertions, but visual regression remains in the
+    residual dashboard queue.
+  - remaining work:
+    Dashboard quick actions, density/semantic tone, visual regression, and role-based layout remain.
+    Higher-priority stock visit UI/downstream and inbound review detail remain in `Plans.md`.
+  - commit:
+    Implementation committed as `52b29ebb0`.
+  - next action:
+    Continue from `INBOUND-002-REVIEW-DETAIL`, `MOV-001-API`, or the higher-priority medication-stock
+    visit UI/downstream tracks in `Plans.md`.
+
 - codex: `DASH-P1-005C-CARRYOVER-LINKS` Dashboard carryover / hidden queue drilldown。
   - current task:
     `Plans.md` v8 の未実装queueから、right rail の carryover / hidden inbound / hidden comments を
