@@ -64,8 +64,12 @@ type ConsentRecord = {
 
 type ConsentListResponse = {
   data: ConsentRecord[];
-  hasMore: boolean;
-  totalCount: number;
+  meta: {
+    limit: number;
+    has_more: boolean;
+    next_cursor: string | null;
+    total_count: number;
+  };
 };
 
 type ConsentTemplateListResponse = {
@@ -373,11 +377,7 @@ function CreateConsentDialog({
           ...(documentFileId ? { document_file_id: documentFileId } : {}),
         }),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.message ?? '同意記録の登録に失敗しました');
-      }
-      return res.json();
+      return readApiJson<{ data: ConsentRecord }>(res, '同意記録の登録に失敗しました');
     },
     onSuccess: async () => {
       toast.success('同意記録を登録しました');
@@ -604,11 +604,7 @@ function EditConsentDialog({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(body),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.message ?? '同意記録の更新に失敗しました');
-      }
-      return res.json();
+      return readApiJson<{ data: ConsentRecord }>(res, '同意記録の更新に失敗しました');
     },
     onSuccess: async () => {
       toast.success('同意記録を更新しました');
@@ -698,11 +694,7 @@ function RevokeConsentDialog({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ reason: reason || undefined }),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.message ?? '同意撤回に失敗しました');
-      }
-      return res.json();
+      return readApiJson<{ data: ConsentRecord }>(res, '同意撤回に失敗しました');
     },
     onSuccess: async () => {
       toast.success('同意を撤回しました');

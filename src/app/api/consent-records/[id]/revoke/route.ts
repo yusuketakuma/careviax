@@ -264,7 +264,7 @@ export const POST = withAuthContext<{ id: string }>(
       return notFound('同意記録が見つかりません');
     }
 
-    return success(serializeConsentRecordDocumentUrl(result.record));
+    return success({ data: serializeConsentRecordDocumentUrl(result.record) });
   },
   { permission: 'canVisit' },
 );

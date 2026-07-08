@@ -140,9 +140,13 @@ describe('/api/consent-records/[id]', () => {
 
     expect(response.status).toBe(200);
     expectNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
-      id: 'consent_1',
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: {
+        id: 'consent_1',
+      },
     });
+    expect(body).not.toHaveProperty('id');
     expect(consentRecordFindFirstMock).toHaveBeenNthCalledWith(1, {
       where: { id: 'consent_1', org_id: 'org_1' },
       select: { id: true, patient_id: true, case_id: true },
@@ -320,6 +324,16 @@ describe('/api/consent-records/[id]', () => {
         changedFields: ['expiry_date', 'document_url'],
       },
     );
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: {
+        id: 'consent_1',
+        document_url: '/api/files/file_1/download',
+        has_document_url: true,
+        document_url_redacted: false,
+      },
+    });
+    expect(body).not.toHaveProperty('id');
   });
 
   it('updates the document url from a validated consent document file id', async () => {

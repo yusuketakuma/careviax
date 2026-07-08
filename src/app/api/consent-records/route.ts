@@ -211,7 +211,15 @@ async function authenticatedGET(req: NextRequest) {
       })),
     });
 
-    return success({ data, nextCursor: page.nextCursor, hasMore: page.hasMore, totalCount });
+    return success({
+      data,
+      meta: {
+        limit,
+        has_more: page.hasMore,
+        next_cursor: page.nextCursor ?? null,
+        total_count: totalCount,
+      },
+    });
   });
 }
 
@@ -379,7 +387,7 @@ async function authenticatedPOST(req: NextRequest) {
       });
     }
 
-    return success(serializeConsentRecordDocumentUrl(record), 201);
+    return success({ data: serializeConsentRecordDocumentUrl(record) }, 201);
   });
 }
 

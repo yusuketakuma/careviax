@@ -223,7 +223,16 @@ describe('/api/consent-records', () => {
           document_url_redacted: true,
         },
       ],
+      meta: {
+        limit: 50,
+        has_more: false,
+        next_cursor: null,
+        total_count: 1,
+      },
     });
+    expect(body).not.toHaveProperty('hasMore');
+    expect(body).not.toHaveProperty('nextCursor');
+    expect(body).not.toHaveProperty('totalCount');
     expect(JSON.stringify(body)).not.toContain('legacy-consent.pdf');
     expect(recordConsentRecordsViewedAuditMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -294,10 +303,16 @@ describe('/api/consent-records', () => {
           document_url_redacted: true,
         },
       ],
-      nextCursor: 'consent_1',
-      hasMore: true,
-      totalCount: 2,
+      meta: {
+        limit: 1,
+        has_more: true,
+        next_cursor: 'consent_1',
+        total_count: 2,
+      },
     });
+    expect(body).not.toHaveProperty('hasMore');
+    expect(body).not.toHaveProperty('nextCursor');
+    expect(body).not.toHaveProperty('totalCount');
     expect(body.data).toHaveLength(1);
     expect(JSON.stringify(body)).not.toContain('hidden-consent.pdf');
     expect(recordConsentRecordsViewedAuditMock).toHaveBeenCalledWith(
@@ -447,6 +462,14 @@ describe('/api/consent-records', () => {
         document_file_id: null,
       }),
     );
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: 'consent_2',
+        document_url: null,
+        has_document_url: false,
+        document_url_redacted: false,
+      },
+    });
   });
 
   it('creates a consent record with a validated consent document file asset', async () => {
@@ -489,9 +512,11 @@ describe('/api/consent-records', () => {
     });
     expect(recordConsentRecordCreatedAuditMock).toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
-      document_url: '/api/files/file_1/download',
-      has_document_url: true,
-      document_url_redacted: false,
+      data: {
+        document_url: '/api/files/file_1/download',
+        has_document_url: true,
+        document_url_redacted: false,
+      },
     });
   });
 

@@ -240,12 +240,16 @@ describe('/api/consent-records/[id]/revoke', () => {
         }),
       }),
     });
-    await expect(response.json()).resolves.toMatchObject({
-      id: 'consent_1',
-      document_url: null,
-      has_document_url: true,
-      document_url_redacted: true,
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: {
+        id: 'consent_1',
+        document_url: null,
+        has_document_url: true,
+        document_url_redacted: true,
+      },
     });
+    expect(body).not.toHaveProperty('id');
   });
 
   it('scopes workflow review cycles to the consent case when present', async () => {

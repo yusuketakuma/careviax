@@ -140,7 +140,7 @@ const authenticatedGET = withAuthContext<{ id: string }>(
 
     await recordConsentRecordViewedAudit(prisma, ctx, visibleRecord);
 
-    return success(serializeConsentRecordDocumentUrl(visibleRecord));
+    return success({ data: serializeConsentRecordDocumentUrl(visibleRecord) });
   },
   { permission: 'canVisit' },
 );
@@ -286,7 +286,7 @@ export const PATCH = withAuthContext<{ id: string }>(
       return notFound('同意記録が見つかりません');
     }
 
-    return success(serializeConsentRecordDocumentUrl(result.record));
+    return success({ data: serializeConsentRecordDocumentUrl(result.record) });
   },
   { permission: 'canVisit' },
 );

@@ -116,20 +116,25 @@ const defaultConsentRecord: TestConsentRecord = {
   created_at: '2026-06-19T00:00:00.000Z',
 };
 
+function buildConsentListResponse(records: TestConsentRecord[]) {
+  return {
+    data: records,
+    meta: {
+      limit: 50,
+      has_more: false,
+      next_cursor: null,
+      total_count: records.length,
+    },
+  };
+}
+
 function stubFetch(records: TestConsentRecord[] = [defaultConsentRecord]) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url === '/api/consent-records?patient_id=patient_1') {
-      return new Response(
-        JSON.stringify({
-          data: records,
-          hasMore: false,
-          totalCount: records.length,
-        }),
-        {
-          status: 200,
-        },
-      );
+      return new Response(JSON.stringify(buildConsentListResponse(records)), {
+        status: 200,
+      });
     }
     if (url === '/api/templates?template_type=consent_form') {
       return new Response(JSON.stringify({ data: [] }), { status: 200 });
@@ -160,10 +165,10 @@ function stubFetch(records: TestConsentRecord[] = [defaultConsentRecord]) {
       );
     }
     if (url === '/api/consent-records') {
-      return new Response(JSON.stringify({ id: 'consent_1' }), { status: 201 });
+      return new Response(JSON.stringify({ data: { id: 'consent_1' } }), { status: 201 });
     }
     if (url === '/api/consent-records/consent_1' && init?.method === 'PATCH') {
-      return new Response(JSON.stringify({ id: 'consent_1' }), { status: 200 });
+      return new Response(JSON.stringify({ data: { id: 'consent_1' } }), { status: 200 });
     }
     return new Response('not found', { status: 404 });
   });
@@ -313,14 +318,9 @@ describe('ConsentRecordsContent', () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/consent-records?patient_id=patient_1') {
-        return new Response(
-          JSON.stringify({
-            data: [defaultConsentRecord],
-            hasMore: false,
-            totalCount: 1,
-          }),
-          { status: 200 },
-        );
+        return new Response(JSON.stringify(buildConsentListResponse([defaultConsentRecord])), {
+          status: 200,
+        });
       }
       if (url === '/api/templates?template_type=consent_form') {
         return new Response(JSON.stringify({ data: [] }), { status: 200 });
