@@ -43,7 +43,8 @@
 
 - codex: `STOCK-001-PRESCRIPTION-HORIZON` PrescriptionIntake structured replenishment horizon。
   - commit:
-    Implementation committed as `da997bef8`; state record committed locally, push pending.
+    Implementation committed as `da997bef8`; state record committed as `f7fa47641`; pushed to
+    `origin/main`.
   - current task:
     `Plans.md` の `STOCK-001-PRESCRIPTION-HORIZON`。次回処方/補充予定を
     stockout forecast horizon に使う正本sourceを決め、false negative を作らない条件で
@@ -156,9 +157,8 @@
     `STOCK-001-VISIT-DB-INTEGRATION` human gates, write-enabled `STOCK-001-VISIT-UI`, prescription
     supply follow-up, usage/refill handling, and equivalence review UI.
   - next action:
-    Record this state commit, push both commits to `origin/main`, then continue with the next
-    highest non-gated item or prepare visit context/apply human-gate evidence if the user provides
-    approval.
+    Continue with the next highest non-gated item or prepare visit context/apply human-gate
+    evidence if the user provides approval.
 
 - codex: `STOCK-VISIT-DOWNSTREAM-MOVEMENT-001` MedicationStockSnapshot Patient Movement occurrence marker。
   - commit:
