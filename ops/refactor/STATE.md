@@ -28108,3 +28108,113 @@ responses`) and pushed to `origin/main`.
 - next action:
   Commit and push this ledger hash update with only `ops/refactor/STATE.md`
   staged, then continue with the next non-human-gated read-speed cleanup.
+
+## 2026-07-09 - API-CONTRACT-001AT dispense audit envelope cleanup
+
+- current task:
+  Continue `API-CONTRACT-001` public response envelope burn-down without legacy
+  compatibility fields. Move `dispense-audits` POST success responses to the
+  current `data` envelope and remove its response-shape allowlist debt.
+- files inspected:
+  `ops/refactor/STATE.md`; `Plans.md`;
+  `tools/api-response-shape-allowlist.json`;
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`;
+  `src/app/api/dispense-audits/route.ts`;
+  `src/app/api/dispense-audits/route.test.ts`;
+  `src/components/features/dispense-workbench/dispensing-workbench.adapter.ts`;
+  `src/components/features/dispense-workbench/use-workbench-mutations.ts`;
+  `src/app/api/__tests__/workflow-full-cycle.test.ts`;
+  `src/app/api/__tests__/workflow-prescription-to-report.test.ts`;
+  `src/app/api/care-reports/route.ts`;
+  `src/server/services/care-report-access.ts`;
+  `src/lib/auth/visit-schedule-access.ts`.
+- files changed:
+  `Plans.md`; `tools/api-response-shape-allowlist.json`;
+  `src/app/api/dispense-audits/route.ts`;
+  `src/app/api/dispense-audits/route.test.ts`;
+  `src/app/api/__tests__/workflow-prescription-to-report.test.ts`;
+  `ops/refactor/STATE.md`.
+- bugs found:
+  `POST /api/dispense-audits` still returned raw audit objects for idempotent
+  replay and normal create success (`success(auditResult)` /
+  `success(auditResult, 201)`), leaving two legacy public success shapes. While
+  validating the related workflow, `workflow-prescription-to-report.test.ts`
+  was also stale: its care-report GET fixture still assumed direct prisma reads
+  and did not provide the current `withOrgContext` DB delegate.
+- bugs fixed:
+  `dispense-audits` idempotent replay and create success now return
+  `success({ data: auditResult })` with the same status codes. Route tests now
+  assert `payload.data` only; no raw root audit fields or compatibility fallback
+  remain. The workflow fixture now passes care-report/patient delegates through
+  `withOrgContext`, matching the current care-report route. Response-shape debt
+  dropped from 153 to 151 allowlisted violations.
+- security risks found:
+  No auth, authorization, org scoping, idempotency, self-audit, double-count,
+  audit log, notification, workflow exception, or transaction behavior changed.
+  The workflow test fixture fix is test-only and does not alter runtime PHI
+  access.
+- security risks reduced:
+  Removed another PHI-adjacent raw success response shape from a dispensing
+  audit mutation, narrowing public API ambiguity before broader error and
+  request_id unification.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this is response contract and test-fixture cleanup. Existing bounded
+  reads and workflow mutation side effects are unchanged.
+- UI/UX note:
+  No UI/UX change. This was API/test contract work only, so image generation was
+  not applicable.
+- Oracle note:
+  Oracle consultation is intentionally paused per current user instruction, so
+  no Oracle/GPT-5.5 Pro consult was run for this low-risk local contract slice.
+- validation commands:
+  `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/dispense-audits/route.ts src/app/api/dispense-audits/route.test.ts`;
+  `pnpm exec prettier --write src/app/api/__tests__/workflow-prescription-to-report.test.ts`;
+  `pnpm vitest run src/app/api/dispense-audits/route.test.ts`;
+  `pnpm vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "dispense-audits GET"`;
+  `pnpm vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "dispense-audits POST"`;
+  `pnpm vitest run src/app/api/__tests__/workflow-full-cycle.test.ts`;
+  `pnpm vitest run src/app/api/__tests__/workflow-prescription-to-report.test.ts`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint src/app/api/dispense-audits/route.ts src/app/api/dispense-audits/route.test.ts src/app/api/__tests__/workflow-prescription-to-report.test.ts`;
+  `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/dispense-audits/route.ts src/app/api/dispense-audits/route.test.ts src/app/api/__tests__/workflow-prescription-to-report.test.ts`;
+  `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/dispense-audits/route.ts src/app/api/dispense-audits/route.test.ts src/app/api/__tests__/workflow-prescription-to-report.test.ts`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `pnpm format:check`.
+- validation results:
+  Prettier passed. `dispense-audits` route tests passed 1 file / 27 tests.
+  Protected GET tests passed 3 tests with 381 skipped. Protected POST tests
+  passed 3 tests with 142 skipped. `workflow-full-cycle.test.ts` passed 1 file
+  / 2 tests. Initial `workflow-prescription-to-report.test.ts` failed at the
+  care-report GET step with 500 due to the stale `withOrgContext` fixture; after
+  the test fixture update, it passed 1 file / 7 tests. `api-response-shape:check`
+  passed with 151 allowlisted violations and 0 new violations.
+  `plans:active:check` passed. Scoped ESLint, scoped Prettier check, scoped
+  diff check, and typecheck passed. `pnpm format:check` still fails only on
+  unrelated pre-existing untracked Markdown files:
+  `projects/careviax/implementation-decision/medication-stock-visit-observation-context-sidecar-v1-2026-07-08.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-doc-001.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-evidence-001.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-integrity-001.md`,
+  `projects/careviax/reviews/2026-07-08/patient-board-read-001.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003a-003d.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003e.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-guard.md`, and
+  `skills/_candidates.md`.
+- commit:
+  Dispense audit response envelope migration, route/workflow test updates,
+  allowlist cleanup, and Plans sync committed as
+  `0f777d31e191599d8fc5413c3e50fc835c7413f6`
+  (`fix(api): envelope dispense audit responses`). Push is pending this ledger
+  update.
+- remaining work:
+  `API-CONTRACT-001` remains Partial. Next allowlist head is
+  `src/app/api/dispense-results/[id]/route.ts` with two expected legacy
+  response-shape violations, followed by `src/app/api/dispense-results/route.ts`.
+  Existing unrelated dirty/untracked memory/docs files remain unstaged.
+- next action:
+  Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
+  then continue the next API response envelope cleanup from
+  `src/app/api/dispense-results/[id]/route.ts` unless redirected.
