@@ -41,6 +41,110 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001AK` case collection list/create success envelope cleanup.
+  - commit:
+    Implementation, Plans/allowlist, reader typing, and focused tests committed as `68e3a1a7e`
+    (`fix(api): envelope case collection responses`). State record is this entry and will be
+    committed separately before pushing the slice.
+  - current task:
+    Continue `Plans.md` highest-priority implementable work under `API-CONTRACT-001`. Remove
+    `src/app/api/cases/route.ts` from the public response-shape allowlist by moving collection GET
+    pagination to `meta` and create POST success to the current `data` envelope only.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `ops/refactor/STATE.md`,
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `tools/scripts/check-api-response-shape.mjs`,
+    `src/app/api/cases/route.ts`,
+    `src/app/api/cases/route.test.ts`,
+    `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx`,
+    `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx`,
+    `src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.tsx`,
+    relevant component tests, protected route tests, and dashboard cockpit protected GET failure
+    context.
+  - files changed:
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/cases/route.ts`,
+    `src/app/api/cases/route.test.ts`,
+    `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx`,
+    `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx`,
+    `src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.tsx`,
+    and this `ops/refactor/STATE.md` ledger entry.
+  - implementation:
+    `GET /api/cases` now returns `{ data, meta: { limit, has_more, next_cursor } }` with
+    `next_cursor: null` when there is no next page. `POST /api/cases` now returns
+    `success({ data: careCase }, 201)`. The route test rejects legacy root `hasMore` /
+    `nextCursor` and root create case fields. Weekly optimizer, schedule proposals, and QR draft
+    case readers now type the response as `data + meta` while continuing to consume `payload.data`
+    only. No old root list pagination or root case DTO compatibility was kept. The allowlist entry
+    for `src/app/api/cases/route.ts` was removed, and `Plans.md` records `API-CONTRACT-001AK` with
+    allowlist debt reduced from 166 to 165.
+  - Oracle:
+    User explicitly paused Oracle consultation. No Oracle prompt was sent or restarted. The slice
+    stayed limited to response construction, reader typing, route/component tests, allowlist/plan
+    debt, and ledger updates; visit permission, org RLS context, patient assignment scope,
+    create validation, pharmacist-name enrichment, NoStore wrappers, and error sanitization were not
+    changed.
+  - imagegen:
+    Not used. This is an API contract/static guard cleanup with no visible UI/UX change.
+  - Next.js docs:
+    Re-read `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md` earlier in
+    this API contract run. This slice changes JSON response construction only and does not change
+    route placement, supported methods, runtime behavior, or cache behavior.
+  - bugs found:
+    `GET /api/cases` still exposed root pagination fields (`hasMore`, `nextCursor`) and
+    `POST /api/cases` returned the created case at the response root via `success(careCase, 201)`.
+    Route tests did not reject those legacy root fields.
+  - bugs fixed:
+    Collection read pagination is now under `meta`, create response is under `data`, frontend
+    readers are typed for the current shape, and route tests reject legacy root pagination/case
+    fields. `api-response-shape:check` now reports 165 allowlisted violations and 0 new violations.
+  - security risks reduced:
+    No auth, authorization, org RLS context, patient assignment scope, org reference behavior,
+    NoStore wrappers, or sanitized error behavior was weakened. Root case DTO fields and list
+    pagination fields are no longer preserved as alternate public response shapes.
+  - performance issues improved:
+    None. No DB query shape, pagination limit, pharmacist enrichment query, patient lookup, create
+    transaction, React query key, or request frequency changed beyond the equivalent response
+    wrapper and static reader types.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/cases/route.ts src/app/api/cases/route.test.ts src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.tsx`;
+    `pnpm vitest run src/app/api/cases/route.test.ts`;
+    `pnpm vitest run src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.test.tsx`;
+    `pnpm api-response-shape:check`;
+    `pnpm vitest run src/app/api/__tests__/protected-get-routes.test.ts src/app/api/__tests__/protected-post-routes.test.ts`;
+    `pnpm vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "dashboard/cockpit/details GET returns 200 when role has permission"`;
+    `pnpm vitest run src/app/api/__tests__/protected-get-routes.test.ts`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint --max-warnings=0 src/app/api/cases/route.ts src/app/api/cases/route.test.ts src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.tsx`;
+    `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/cases/route.ts src/app/api/cases/route.test.ts src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.tsx`;
+    `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/cases/route.ts src/app/api/cases/route.test.ts src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.tsx`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm format:check`.
+  - validation results:
+    Prettier write passed. Focused cases route Vitest passed (1 file / 20 tests). Reader component
+    Vitest passed (3 files / 63 tests). API response shape guard passed (165 allowlisted violations,
+    0 new violations). Plans active board check passed. Scoped ESLint passed. Targeted Prettier
+    check and scoped `git diff --check` passed. Full typecheck passed. Protected GET/POST smoke ran
+    529 tests with protected POST passing, but protected GET failed only on
+    `dashboard/cockpit/details GET returns 200 when role has permission` with a caught TypeError
+    returning 500; the same dashboard details test passes when run alone, which points to unrelated
+    protected matrix mock/order leakage rather than this `cases` contract slice. `pnpm format:check`
+    again confirmed owned changed files are formatted, then failed on unrelated pre-existing
+    untracked Markdown files under `projects/`, `skills/`, and related local memory docs; those
+    user/local files were not modified.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 165 allowlisted response-shape violations. Next immediate
+    allowlist target is `src/app/api/cds/check/route.ts` (expectedCount 1), followed by comments and
+    communication routes. Separately, the protected GET matrix should be hardened against the
+    dashboard cockpit details mock/order leak if that smoke is required as a full gate.
+  - next action:
+    Commit this STATE entry separately, push `68e3a1a7e` plus the state commit to `origin/main`, then
+    continue with `src/app/api/cds/check/route.ts` under the same Oracle-paused and no-legacy-root
+    constraints.
+
 - codex: `API-CONTRACT-001AJ` case detail PATCH success envelope cleanup.
   - commit:
     Implementation, Plans, allowlist, and focused route tests committed as `311fe90ae`
