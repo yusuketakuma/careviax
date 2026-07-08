@@ -127,25 +127,18 @@ describe('/api/packaging-methods', () => {
       },
     });
     const body = await response.json();
-    expect(Object.keys(body)).toEqual([
-      'data',
-      'total_count',
-      'visible_count',
-      'hidden_count',
-      'truncated',
-      'count_basis',
-      'filters_applied',
-      'limit',
-    ]);
+    expect(Object.keys(body)).toEqual(['data', 'meta']);
     expect(body).toMatchObject({
       data: [{ id: 'method_1', name: '一包化' }],
-      total_count: 1,
-      visible_count: 1,
-      hidden_count: 0,
-      truncated: false,
-      count_basis: 'packaging_methods',
-      filters_applied: {},
-      limit: 5,
+      meta: {
+        total_count: 1,
+        visible_count: 1,
+        hidden_count: 0,
+        truncated: false,
+        count_basis: 'packaging_methods',
+        filters_applied: {},
+        limit: 5,
+      },
     });
   });
 
@@ -200,13 +193,15 @@ describe('/api/packaging-methods', () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       data: [{ id: 'method_1' }, { id: 'method_2' }],
-      total_count: 5,
-      visible_count: 2,
-      hidden_count: 3,
-      truncated: true,
-      count_basis: 'packaging_methods',
-      filters_applied: {},
-      limit: 2,
+      meta: {
+        total_count: 5,
+        visible_count: 2,
+        hidden_count: 3,
+        truncated: true,
+        count_basis: 'packaging_methods',
+        filters_applied: {},
+        limit: 2,
+      },
     });
   });
 

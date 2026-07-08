@@ -44,11 +44,19 @@ export const GET = withAuthContext(
       ]),
     );
 
+    const list = buildCountedListEnvelope(methods, totalCount);
+
     return success({
-      ...buildCountedListEnvelope(methods, totalCount),
-      count_basis: PACKAGING_METHOD_COUNT_BASIS,
-      filters_applied: {},
-      limit,
+      data: list.data,
+      meta: {
+        total_count: list.total_count,
+        visible_count: list.visible_count,
+        hidden_count: list.hidden_count,
+        truncated: list.truncated,
+        count_basis: PACKAGING_METHOD_COUNT_BASIS,
+        filters_applied: {},
+        limit,
+      },
     });
   },
   {

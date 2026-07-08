@@ -79,7 +79,18 @@ function latestMutationFn() {
 }
 
 function stubFetchOk() {
-  return stubJsonFetch({ data: [METHOD] });
+  return stubJsonFetch({
+    data: [METHOD],
+    meta: {
+      total_count: 1,
+      visible_count: 1,
+      hidden_count: 0,
+      truncated: false,
+      count_basis: 'packaging_methods',
+      filters_applied: {},
+      limit: 100,
+    },
+  });
 }
 
 beforeEach(() => {
@@ -88,11 +99,15 @@ beforeEach(() => {
   useQueryMock.mockReturnValue({
     data: {
       data: [METHOD],
-      total_count: 1,
-      visible_count: 1,
-      hidden_count: 0,
-      truncated: false,
-      count_basis: 'packaging_methods',
+      meta: {
+        total_count: 1,
+        visible_count: 1,
+        hidden_count: 0,
+        truncated: false,
+        count_basis: 'packaging_methods',
+        filters_applied: {},
+        limit: 100,
+      },
     },
   });
   useMutationMock.mockReturnValue({ mutate: mutateMock, isPending: false });
@@ -127,7 +142,16 @@ describe('PackagingMethodsContent', () => {
     const fetchMock = stubFetchOk();
     render(<PackagingMethodsContent />);
 
-    await expect(latestQueryFn()()).resolves.toEqual({ data: [METHOD] });
+    await expect(latestQueryFn()()).resolves.toMatchObject({
+      data: [METHOD],
+      meta: {
+        total_count: 1,
+        visible_count: 1,
+        hidden_count: 0,
+        truncated: false,
+        count_basis: 'packaging_methods',
+      },
+    });
 
     expect(buildOrgHeadersMock).toHaveBeenCalledWith('org_1');
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -238,11 +262,15 @@ describe('PackagingMethodsContent', () => {
     useQueryMock.mockReturnValue({
       data: {
         data: [METHOD],
-        total_count: 4,
-        visible_count: 1,
-        hidden_count: 3,
-        truncated: true,
-        count_basis: 'packaging_methods',
+        meta: {
+          total_count: 4,
+          visible_count: 1,
+          hidden_count: 3,
+          truncated: true,
+          count_basis: 'packaging_methods',
+          filters_applied: {},
+          limit: 100,
+        },
       },
     });
 

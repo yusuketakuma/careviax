@@ -35,13 +35,15 @@ type PackagingMethodRow = {
 
 type PackagingMethodsResponse = {
   data: PackagingMethodRow[];
-  total_count?: number;
-  visible_count?: number;
-  hidden_count?: number;
-  truncated?: boolean;
-  count_basis?: 'packaging_methods';
-  filters_applied?: Record<string, unknown>;
-  limit?: number;
+  meta: {
+    total_count: number;
+    visible_count: number;
+    hidden_count: number;
+    truncated: boolean;
+    count_basis: 'packaging_methods';
+    filters_applied: Record<string, unknown>;
+    limit: number;
+  };
 };
 
 const packagingMethodFormSchema = z.object({
@@ -143,11 +145,12 @@ export function PackagingMethodsContent() {
   });
 
   const methods = methodsQuery.data?.data ?? [];
-  const totalMethodCount = methodsQuery.data?.total_count ?? methods.length;
-  const visibleMethodCount = methodsQuery.data?.visible_count ?? methods.length;
+  const methodsMeta = methodsQuery.data?.meta;
+  const totalMethodCount = methodsMeta?.total_count ?? methods.length;
+  const visibleMethodCount = methodsMeta?.visible_count ?? methods.length;
   const hiddenMethodCount =
-    methodsQuery.data?.hidden_count ?? Math.max(totalMethodCount - methods.length, 0);
-  const isMethodListTruncated = Boolean(methodsQuery.data?.truncated || hiddenMethodCount > 0);
+    methodsMeta?.hidden_count ?? Math.max(totalMethodCount - methods.length, 0);
+  const isMethodListTruncated = Boolean(methodsMeta?.truncated || hiddenMethodCount > 0);
 
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(22rem,0.42fr)_minmax(0,1fr)]">
