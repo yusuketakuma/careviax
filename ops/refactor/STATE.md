@@ -41,6 +41,88 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001AD` care report print-audit success envelope cleanup.
+  - commit:
+    Implementation and Plans/allowlist route test update committed as `9f0724dae`
+    (`fix(api): envelope care report print audit`). State record is this entry and will be
+    committed separately before pushing the slice.
+  - current task:
+    Continue `Plans.md` highest-priority implementable work under `API-CONTRACT-001`. Remove
+    `src/app/api/care-reports/[id]/print-audit/route.ts` from the public response-shape allowlist by
+    making the success body statically explicit as the current `data` envelope only.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `ops/refactor/STATE.md`,
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `src/app/api/care-reports/[id]/print-audit/route.ts`,
+    `src/app/api/care-reports/[id]/print-audit/route.test.ts`,
+    `src/lib/reports/care-report-print-audit-contract.ts`,
+    `src/app/(dashboard)/reports/[id]/print/page.tsx`,
+    `src/app/(dashboard)/reports/print/print-hub-content.tsx`,
+    and related print-audit route/UI test references.
+  - files changed:
+    `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/care-reports/[id]/print-audit/route.ts`,
+    `src/app/api/care-reports/[id]/print-audit/route.test.ts`,
+    and this `ops/refactor/STATE.md` ledger entry.
+  - implementation:
+    The print-audit route now returns the success body directly as
+    `success({ data: { audited, report } })`, keeping the existing runtime response contract while
+    making the envelope visible to `api-response-shape:check`. The route test now asserts that
+    `audited` and `report` are not present at the response root. The allowlist entry for
+    `src/app/api/care-reports/[id]/print-audit/route.ts` was removed, and `Plans.md` records
+    `API-CONTRACT-001AD` with allowlist debt reduced from 179 to 178.
+  - Oracle:
+    User explicitly paused Oracle consultation. No Oracle prompt was sent or restarted. The change
+    was limited to success response shape/static guard readability; print audit persistence,
+    confirmed report checks, access rechecks, stale `updated_at` fail-closed behavior, error
+    sanitization, NoStore headers, and frontend readers were not changed.
+  - imagegen:
+    Not used. This is an API contract/static guard cleanup with no visual reconstruction or UI/UX
+    layout change.
+  - Next.js docs:
+    Re-read `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md` earlier in
+    this API contract run. This slice changes JSON response body construction only and does not
+    change route placement, supported methods, runtime behavior, or cache behavior.
+  - bugs found:
+    Runtime response shape was already `data`, but the route passed a typed `responseBody` variable
+    to `success(responseBody)`, leaving the public route in the static response-shape allowlist. The
+    previous route test did not explicitly reject root-level `audited` / `report`.
+  - bugs fixed:
+    Success response construction is now directly visible as the current envelope, and the focused
+    test rejects legacy root fields. The response-shape allowlist dropped from 179 to 178 violations
+    with 0 new violations.
+  - security risks reduced:
+    No auth, authorization, org scope, report access, print audit, PHI body validation, or error
+    sanitization behavior was weakened. Removing ambiguous root success fields keeps the PHI-bearing
+    print route on the same new-only client contract as the print page and print hub.
+  - performance issues improved:
+    None. No DB query, audit write, access check, or client request path changed.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/care-reports/'[id]'/print-audit/route.ts src/app/api/care-reports/'[id]'/print-audit/route.test.ts src/app/'(dashboard)'/reports/'[id]'/print/page.tsx src/app/'(dashboard)'/reports/print/print-hub-content.tsx`;
+    `pnpm exec vitest run src/app/api/care-reports/'[id]'/print-audit/route.test.ts src/app/'(dashboard)'/reports/'[id]'/print/page.test.tsx src/app/'(dashboard)'/reports/print/print-hub-content.test.tsx --reporter=dot --testTimeout=30000`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint --max-warnings=0 src/app/api/care-reports/'[id]'/print-audit/route.ts src/app/api/care-reports/'[id]'/print-audit/route.test.ts src/app/'(dashboard)'/reports/'[id]'/print/page.tsx src/app/'(dashboard)'/reports/print/print-hub-content.tsx`;
+    `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/care-reports/'[id]'/print-audit/route.ts src/app/api/care-reports/'[id]'/print-audit/route.test.ts src/app/'(dashboard)'/reports/'[id]'/print/page.tsx src/app/'(dashboard)'/reports/print/print-hub-content.tsx`;
+    `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/care-reports/'[id]'/print-audit/route.ts src/app/api/care-reports/'[id]'/print-audit/route.test.ts src/app/'(dashboard)'/reports/'[id]'/print/page.tsx src/app/'(dashboard)'/reports/print/print-hub-content.tsx`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Targeted Prettier write completed. Focused print-audit route + print page + print hub Vitest
+    passed 3 files / 68 tests. API response shape check passed with 178 allowlisted violations and
+    0 new violations. Plans active board check passed. Scoped ESLint passed. Targeted Prettier check
+    passed. Targeted diff-check passed. Full typecheck passed.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial; the next allowlist candidate is
+    `src/app/api/care-reports/[id]/send/route.ts`. Unrelated local dirty state remains in
+    `.harness-mem/state/continuity.json` and many untracked memory/docs files and was not staged.
+  - next action:
+    Commit this state entry, push the two commits for this slice to `origin/main`, then continue
+    the `Plans.md` high-priority loop while Oracle consultation remains paused.
+
 - codex: `API-CONTRACT-001AC` billing rules collection success envelope cleanup.
   - commit:
     Implementation and Plans/allowlist/frontend reader update committed as `5afc54e6b`
