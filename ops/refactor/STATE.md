@@ -24203,7 +24203,10 @@ visit_request/unknown`, `action_status='not_linked'`, and
   allowlisted violations and 0 new violations. Plans active board check passed.
   Scoped diff check passed.
 - commit:
-  Pending.
+  Implementation, tests, Plans cleanup, and initial ledger entry committed as
+  `6410647f72423b3a323f266376c2221feb978608`
+  (`fix(reports): stabilize today workspace reads`) and pushed to
+  `origin/main`.
 - remaining work:
   `QUERY-SHAPE-WATCHLIST-003-FOLLOW` remains Partial. Remaining read-speed
   cleanup targets are patients board main cursor, day-board, report workspace
@@ -24211,5 +24214,5 @@ visit_request/unknown`, `action_status='not_linked'`, and
   and contact profiles. Human-gated stock migration, live AWS recovery, and
   index migration tasks remain gated.
 - next action:
-  Run Plans validation, commit and push this stable-read slice with only owned
-  files staged, then record the commit hash in this ledger.
+  Commit and push this ledger hash update with only `ops/refactor/STATE.md`
+  staged, then continue with the next non-human-gated read-speed cleanup.
