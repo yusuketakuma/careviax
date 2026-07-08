@@ -24217,6 +24217,82 @@ visit_request/unknown`, `action_status='not_linked'`, and
   Commit and push this ledger hash update with only `ops/refactor/STATE.md`
   staged, then continue with the next non-human-gated read-speed cleanup.
 
+## 2026-07-09 - API-CONTRACT-001P dashboard overdue envelope
+
+- current task:
+  Continue `API-CONTRACT-001` by migrating `GET /api/dashboard/overdue` from
+  legacy root `summary` response to the current `data` envelope. Compatibility
+  root `summary` fields were intentionally not preserved.
+- files inspected:
+  `git status --short --branch --untracked-files=all`; `Plans.md`;
+  `ops/refactor/STATE.md`; `tools/api-response-shape-allowlist.json`;
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`;
+  `src/app/api/dashboard/overdue/route.ts`;
+  `src/app/api/dashboard/overdue/route.test.ts`;
+  response-shape allowlist and focused diff output for the overdue dashboard
+  route.
+- files changed:
+  `src/app/api/dashboard/overdue/route.ts`;
+  `src/app/api/dashboard/overdue/route.test.ts`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `ops/refactor/STATE.md`.
+- bugs found:
+  `GET /api/dashboard/overdue` returned aggregate overdue counts under a legacy
+  root `summary` key, keeping the route on the public response-shape allowlist.
+- bugs fixed:
+  The route now returns `data.summary` only. Route tests assert the root object
+  is exactly `data`, reject legacy root `summary`, and keep the existing JST
+  business-date and empty-scope count coverage. Response-shape debt dropped from
+  203 to 202 allowlisted violations.
+- security risks found:
+  No auth, authorization, org scoping, validation, or audit behavior changed.
+  This selected slice is aggregate-only and does not expose patient-specific PHI
+  or PII in the changed response body.
+- security risks reduced:
+  Removed another legacy public response shape without fallback fields, reducing
+  ambiguity before broader request_id/error unification.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this is response contract cleanup. Existing counted queries, org
+  scoping, and date-window logic are unchanged.
+- UI/UX note:
+  No visible UI/UX change. This is a route response contract slice, so image
+  generation was not applicable.
+- Oracle note:
+  Oracle was not consulted because this is a narrow aggregate-only envelope
+  migration with focused passing tests and no auth/authorization, PHI/PII
+  selection, DB schema, migration, billing, external sharing, or destructive
+  behavior change.
+- validation commands:
+  `pnpm exec prettier --write src/app/api/dashboard/overdue/route.ts src/app/api/dashboard/overdue/route.test.ts tools/api-response-shape-allowlist.json Plans.md`;
+  `pnpm vitest run src/app/api/dashboard/overdue/route.test.ts --reporter=dot --testTimeout=30000`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint src/app/api/dashboard/overdue/route.ts src/app/api/dashboard/overdue/route.test.ts`;
+  `pnpm exec prettier --check src/app/api/dashboard/overdue/route.ts src/app/api/dashboard/overdue/route.test.ts tools/api-response-shape-allowlist.json Plans.md`;
+  `git diff --check -- src/app/api/dashboard/overdue/route.ts src/app/api/dashboard/overdue/route.test.ts tools/api-response-shape-allowlist.json Plans.md`.
+- validation results:
+  Prettier passed. Focused route tests passed 1 file / 6 tests.
+  `api-response-shape:check` passed with 202 allowlisted violations and 0 new
+  violations. `plans:active:check` passed. Focused ESLint passed. Targeted
+  Prettier check passed. Scoped diff check passed.
+- commit:
+  Dashboard overdue envelope migration, route test update, allowlist cleanup,
+  and Plans sync committed as `985431e0df38d1379447a7df9f629ddd162a3ee6`
+  (`fix(api): envelope dashboard overdue`). Push is pending this ledger hash
+  update.
+- remaining work:
+  `API-CONTRACT-001` remains Partial. Continue migrating real legacy success
+  and error response shapes route by route with new-only readers/responses and
+  no compatibility fallbacks.
+- next action:
+  Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
+  then continue `API-CONTRACT-001` against the next low-risk non-PHI aggregate
+  or admin configuration response-shape candidate. Patient, medication,
+  billing, external-share, auth, and tenant-isolation routes remain
+  Oracle-gated unless handled as explicit high-risk slices.
+
 ## 2026-07-09 - API-CONTRACT-001N vehicle-resource list envelope migration
 
 - current task:
