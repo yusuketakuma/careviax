@@ -301,7 +301,16 @@ const authenticatedGET = withAuthContext(
       });
     }
 
-    return success(buildCursorPage(requests, limit, (request) => request.id));
+    const page = buildCursorPage(requests, limit, (request) => request.id);
+
+    return success({
+      data: page.data,
+      meta: {
+        limit,
+        has_more: page.hasMore,
+        next_cursor: page.nextCursor ?? null,
+      },
+    });
   },
   {
     permission: 'canReport',

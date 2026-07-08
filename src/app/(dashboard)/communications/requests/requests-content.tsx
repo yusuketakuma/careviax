@@ -19,7 +19,7 @@ import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildCommunicationRequestResolveFollowupApiPath } from '@/lib/communications/api-paths';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
+import { fetchAllMetaCursorPages } from '@/lib/api/cursor-pagination-client';
 import {
   buildCommunicationRequestsHref,
   resolveCommunicationEntityLink,
@@ -229,13 +229,7 @@ export function CommunicationRequestsContent({
       if (patientFilter) params.set('patient_id', patientFilter);
       if (relatedEntityTypeFilter) params.set('related_entity_type', relatedEntityTypeFilter);
       if (relatedEntityIdFilter) params.set('related_entity_id', relatedEntityIdFilter);
-      return fetchAllCursorPages<
-        CommunicationRequestRow,
-        {
-          data: CommunicationRequestRow[];
-          hasMore: boolean;
-        }
-      >({
+      return fetchAllMetaCursorPages<CommunicationRequestRow>({
         path: '/api/communication-requests',
         params,
         init: { headers: buildOrgHeaders(orgId) },

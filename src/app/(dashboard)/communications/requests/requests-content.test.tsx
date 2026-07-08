@@ -13,10 +13,10 @@ const useQueryClientMock = vi.hoisted(() => vi.fn());
 const useRouterMock = vi.hoisted(() => vi.fn());
 const usePathnameMock = vi.hoisted(() => vi.fn());
 const useSearchParamsMock = vi.hoisted(() => vi.fn());
-const fetchAllCursorPagesMock = vi.hoisted(() => vi.fn());
+const fetchAllMetaCursorPagesMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/api/cursor-pagination-client', () => ({
-  fetchAllCursorPages: fetchAllCursorPagesMock,
+  fetchAllMetaCursorPages: fetchAllMetaCursorPagesMock,
 }));
 
 vi.mock('@/lib/api/org-headers', async (importActual) => {
@@ -70,7 +70,7 @@ describe('CommunicationRequestsContent', () => {
       isError: false,
       refetch: vi.fn(),
     });
-    fetchAllCursorPagesMock.mockResolvedValue({ data: [], hasMore: false });
+    fetchAllMetaCursorPagesMock.mockResolvedValue({ data: [], hasMore: false });
   });
 
   afterEach(() => {
@@ -530,7 +530,7 @@ describe('CommunicationRequestsContent', () => {
     // queryFn を実行し、API へ渡る patient_id が生の hostile id のまま(encode/正規化されない)ことを locking。
     // (queryKey だけでなく queryFn 内の URLSearchParams も生 identity であることを保証。)
     await queryArg.queryFn();
-    const fetchArg = fetchAllCursorPagesMock.mock.calls.at(-1)?.[0] as {
+    const fetchArg = fetchAllMetaCursorPagesMock.mock.calls.at(-1)?.[0] as {
       path: string;
       params: URLSearchParams;
       init: RequestInit;

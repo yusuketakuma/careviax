@@ -213,11 +213,17 @@ describe('/api/communication-requests', () => {
         orderBy: [{ requested_at: 'desc' }, { id: 'desc' }],
       }),
     );
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(body).toMatchObject({
       data: [{ id: 'request_2' }],
-      hasMore: true,
-      nextCursor: 'request_2',
+      meta: {
+        limit: 1,
+        has_more: true,
+        next_cursor: 'request_2',
+      },
     });
+    expect(body).not.toHaveProperty('hasMore');
+    expect(body).not.toHaveProperty('nextCursor');
   });
 
   it('returns a validation error for a stale pagination cursor', async () => {

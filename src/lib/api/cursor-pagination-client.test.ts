@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { CURSOR_PAGINATION_PAGE_LIMIT, fetchAllCursorPages } from './cursor-pagination-client';
+import {
+  CURSOR_PAGINATION_PAGE_LIMIT,
+  fetchAllCursorPages,
+  fetchAllMetaCursorPages,
+} from './cursor-pagination-client';
 import { jsonResponse } from '@/test/fetch-test-utils';
 
 describe('cursor-pagination-client', () => {
@@ -203,5 +207,62 @@ describe('cursor-pagination-client', () => {
     expect(payload.data).toEqual([{ id: 'row_1' }, { id: 'row_2' }]);
     expect(payload.hasMore).toBe(true);
     expect(payload.nextCursor).toBe('cursor_2');
+  });
+
+  it('follows meta next_cursor for current data/meta cursor pages', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [{ id: 'row_1' }],
+          meta: {
+            has_more: true,
+            next_cursor: 'cursor_1',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [{ id: 'row_2' }],
+          meta: {
+            has_more: false,
+            next_cursor: null,
+          },
+        }),
+      );
+
+    const payload = await fetchAllMetaCursorPages<{ id: string }>({
+      path: '/api/example',
+      errorMessage: 'failed',
+      fetchImpl,
+      limit: 1,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl.mock.calls[1][0]).toBe('/api/example?limit=1&cursor=cursor_1');
+    expect(payload).toEqual({
+      data: [{ id: 'row_1' }, { id: 'row_2' }],
+      hasMore: false,
+    });
+  });
+
+  it('rejects meta cursor pages that report has_more without next_cursor', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({
+        data: [{ id: 'row_1' }],
+        meta: {
+          has_more: true,
+          next_cursor: null,
+        },
+      }),
+    );
+
+    await expect(
+      fetchAllMetaCursorPages({
+        path: '/api/example',
+        errorMessage: 'failed',
+        fetchImpl,
+      }),
+    ).rejects.toThrow('failed');
   });
 });
