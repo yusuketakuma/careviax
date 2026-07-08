@@ -23375,6 +23375,10 @@ status` no PR). Browser session `inbound-stock-selector` failed with
 - validation results:
   Focused report workspace API + signal PATCH + UI Vitest passed 3 files / 77
   tests. Scoped ESLint passed. Full typecheck passed after `next typegen`.
+- commit:
+  Implementation, tests, Plans update, and initial ledger entry committed as
+  `56c8835107e3338296038b17e7608c3c217a3235`
+  (`feat(reports): add inbound report candidates`).
 - remaining work:
   The future report editor insertion/link step remains separate: only a
   pharmacist-selected normalized summary/signal should be inserted into a
