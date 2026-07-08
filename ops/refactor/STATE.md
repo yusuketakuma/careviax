@@ -41,6 +41,101 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001AS` dashboard workflow success envelope cleanup.
+  - commit:
+    Implementation, Plans/allowlist, and route snapshot update committed as `d034ec09b` (`fix(api):
+envelope dashboard workflow cache responses`). State record is this entry and will be committed
+    separately before pushing the slice.
+  - current task:
+    Continue `Plans.md` highest-priority implementable work under `API-CONTRACT-001`. Remove
+    `src/app/api/dashboard/workflow/route.ts` from the public response-shape allowlist by making both
+    cache hit and cache miss paths statically explicit `success({ data })` responses, without adding
+    a legacy root fallback.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`, `ops/refactor/STATE.md`, `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `src/app/api/dashboard/workflow/route.ts`,
+    `src/app/api/dashboard/workflow/route.test.ts`,
+    `src/app/api/dashboard/workflow/__snapshots__/route.test.ts.snap`,
+    `src/types/api/workflow-dashboard.ts`, `src/lib/api/response.ts`,
+    `src/app/api/__tests__/protected-get-routes.test.ts`, dashboard workflow usage search results,
+    and `gbrain search "API-CONTRACT dashboard workflow response envelope"`.
+  - files changed:
+    `Plans.md`, `tools/api-response-shape-allowlist.json`,
+    `src/app/api/dashboard/workflow/route.ts`,
+    `src/app/api/dashboard/workflow/__snapshots__/route.test.ts.snap`, and this ledger.
+  - implementation:
+    `GET /api/dashboard/workflow` now stores the workflow dashboard data object in the route-local
+    cache, then returns `success({ data })` on both cache miss and cache hit. The public response
+    remains `{ data: workflowDashboard }`; cache key construction, assignment-scope fingerprinting,
+    view parsing, query selection, no-store wrapper, performance wrapper, and sanitized error behavior
+    were not changed. The route snapshot was refreshed to match current explicit assertions for
+    inbound communication workbench data. The `dashboard/workflow` allowlist entry was removed, and
+    `Plans.md` records `API-CONTRACT-001AS` with allowlist debt reduced from 155 to 153.
+  - Oracle:
+    User explicitly paused Oracle consultation. No Oracle prompt was sent or restarted. This route is
+    dashboard/PHI-adjacent, so the slice stayed strictly mechanical: cache payload shape, explicit
+    success wrapper, current snapshot, allowlist/plan debt, and ledger updates only.
+  - imagegen:
+    Not used. This is an API contract/static guard cleanup with no visible UI/UX reconstruction.
+  - Next.js docs:
+    Re-read `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md` earlier in
+    this run. This slice changes JSON response construction only and does not change route placement,
+    supported methods, runtime behavior, no-store wrapping, or cache behavior.
+  - bugs found:
+    `GET /api/dashboard/workflow` returned route-local variables through `success(variable)` on cache
+    hit/miss, leaving the static response-shape guard unable to prove the public success envelope.
+    The route snapshot was also stale relative to the test's explicit inbound communication
+    assertions.
+  - bugs fixed:
+    Cache hit/miss responses are statically explicit `data` envelopes, the public route snapshot now
+    includes inbound communication aggregate data already asserted by the test, and
+    `api-response-shape:check` now reports 153 allowlisted violations and 0 new violations.
+  - security risks found:
+    None introduced.
+  - security risks reduced:
+    Removing `success(variable)` reduces unproved public response-shape surface while preserving
+    dashboard assignment-scope cache isolation, no-store headers, and sanitized error logging.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None. Cache key/TTL semantics and DB query selection remain unchanged; only the cached value shape
+    changed from `{ data }` wrapper to the data object itself.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/dashboard/workflow/route.ts src/app/api/dashboard/workflow/route.test.ts`;
+    `pnpm vitest run src/app/api/dashboard/workflow/route.test.ts`;
+    `pnpm vitest run src/app/api/dashboard/workflow/route.test.ts -u`;
+    `pnpm vitest run src/app/api/dashboard/workflow/route.test.ts`;
+    `pnpm vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "dashboard/workflow GET"`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint --max-warnings=0 src/app/api/dashboard/workflow/route.ts src/app/api/dashboard/workflow/route.test.ts`;
+    `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/dashboard/workflow/route.ts src/app/api/dashboard/workflow/route.test.ts src/app/api/dashboard/workflow/__snapshots__/route.test.ts.snap`;
+    `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/dashboard/workflow/route.ts src/app/api/dashboard/workflow/route.test.ts`;
+    `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/dashboard/workflow/route.ts src/app/api/dashboard/workflow/route.test.ts src/app/api/dashboard/workflow/__snapshots__/route.test.ts.snap`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm format:check`.
+  - validation results:
+    Prettier write passed for owned Markdown/JSON/TS files. First dashboard workflow route Vitest
+    run failed only on a stale snapshot; the same test already asserted the new inbound communication
+    fields, so the snapshot was updated and the normal rerun passed (1 file / 21 tests). Protected GET
+    filtered smoke passed (3 tests, 381 skipped). API response shape guard passed (153 allowlisted
+    violations, 0 new violations). Plans active board check passed. Scoped ESLint passed. The Prettier
+    check that included `.snap` failed because Prettier could not infer a parser for that file; the
+    corrected scoped Prettier check excluding `.snap` passed, and scoped `git diff --check` passed for
+    the snapshot too. Full typecheck passed. `pnpm format:check` again confirmed owned changed files
+    are formatted, then failed on unrelated pre-existing untracked Markdown files under `projects/`
+    and `skills/`; those user/local files were not modified.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 153 allowlisted response-shape violations. Next immediate
+    allowlist targets start with `src/app/api/dispense-audits/route.ts`, followed by dispense result
+    and dispense task routes.
+  - next action:
+    Commit this STATE entry separately, push `d034ec09b` plus the state commit to `origin/main`, then
+    continue with `src/app/api/dispense-audits/route.ts` under the same Oracle-paused and
+    no-legacy-root constraints.
+
 - codex: `API-CONTRACT-001AR` consent records success envelope cleanup.
   - commit:
     Implementation, Plans/allowlist, consent route tests, protected smoke, and patient consent tab
