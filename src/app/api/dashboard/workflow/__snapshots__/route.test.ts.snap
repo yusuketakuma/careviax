@@ -40,6 +40,7 @@ exports[`/api/dashboard/workflow GET > returns unified workflow/workbench data 1
         "callback_followups": 1,
         "delivery_backlog": 1,
         "expiring_external_shares": 0,
+        "inbound_communications": 1,
         "open_requests": 1,
         "overdue_count": 1,
         "pending_count": 2,
@@ -305,7 +306,7 @@ exports[`/api/dashboard/workflow GET > returns unified workflow/workbench data 1
       "buckets": [
         {
           "action_href": "/workflow?focus=workbench",
-          "communication_items": 2,
+          "communication_items": 3,
           "label": "薬剤師 inbox",
           "open_items": 7,
           "role": "pharmacist",
@@ -457,6 +458,22 @@ exports[`/api/dashboard/workflow GET > returns unified workflow/workbench data 1
         "queue_label": "処方受付",
         "summary": "1件の処方が候補生成または架電フローへ未接続です。",
         "title": "訪問導線に未接続の処方受付があります",
+      },
+      {
+        "action_href": "/communications/requests",
+        "action_label": "受信情報を確認",
+        "badges": [
+          "inbound_communication",
+        ],
+        "due_at": null,
+        "id": "aggregate:inbound_communications",
+        "item_type": "aggregate",
+        "owner_name": null,
+        "patient_name": null,
+        "priority": "high",
+        "queue_label": "他職種受信",
+        "summary": "1件が確認待ちです。",
+        "title": "他職種からの受信情報があります",
       },
       {
         "action_href": "/reports?focus=delivery&delivery_status=response_waiting",

@@ -29,8 +29,10 @@ import { resolveDashboardAssignmentScope } from '@/server/services/dashboard-ass
 import { logger } from '@/lib/utils/logger';
 import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { withRoutePerformance } from '@/lib/utils/performance';
+import type { WorkflowDashboardResponse } from '@/types/api/workflow-dashboard';
 
 const ROUTE = '/api/dashboard/workflow';
+type WorkflowDashboardData = WorkflowDashboardResponse['data'];
 
 type WorkflowViewQuery =
   | { ok: true; view: WorkflowDashboardView }
@@ -92,9 +94,9 @@ async function authenticatedGET(req: NextRequest) {
       buildWorkflowAssignmentScopeFingerprint(assignmentScope),
       view,
     );
-    const cachedData = serverCache.get<Record<string, unknown>>(cacheKey);
+    const cachedData = serverCache.get<WorkflowDashboardData>(cacheKey);
     if (cachedData) {
-      return success(cachedData);
+      return success({ data: cachedData });
     }
 
     const upcomingWindow = addUtcDays(today, UPCOMING_WINDOW_DAYS);
@@ -134,18 +136,16 @@ async function authenticatedGET(req: NextRequest) {
         ? await fetchWorkflowPhaseDependentData(prisma, ctx.orgId, core)
         : await fetchWorkflowDependentData(prisma, ctx.orgId, today, core, assignmentScope);
 
-    const responsePayload = {
-      data: buildWorkflowDashboardData({
-        core,
-        dependent,
-        currentRole: ctx.role,
-        sevenDaysFromNow,
-        upcomingWindow,
-      }),
-    };
+    const data = buildWorkflowDashboardData({
+      core,
+      dependent,
+      currentRole: ctx.role,
+      sevenDaysFromNow,
+      upcomingWindow,
+    });
 
-    serverCache.set(cacheKey, responsePayload, WORKFLOW_CACHE_TTL_MS);
-    return success(responsePayload);
+    serverCache.set(cacheKey, data, WORKFLOW_CACHE_TTL_MS);
+    return success({ data });
   });
 }
 
