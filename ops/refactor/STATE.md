@@ -41,6 +41,139 @@
 
 ## 直近の作業
 
+- codex: `INBOUND-002-RAW-DETAIL-API-001` inbound raw detail reauthorization and dashboard raw omission.
+  - commit:
+    Implementation committed as `fb20ad7ac`. State record commit pending. Push after state commit.
+  - current task:
+    `Plans.md` の `INBOUND-002-REVIEW-DETAIL` から、先行 sub-slice として raw detail API
+    boundary を固定する。raw_text / sender_contact は list/dashboard/urgent/stock-risk DTO へ出さず、
+    `GET /api/communications/inbound/:id/detail` の再認可、purpose、coded read_reason、
+    request_id、read audit、no-store 経由だけで返す。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `Plans.md`,
+    `ops/refactor/STATE.md`,
+    `.agents/skills/oracle-consult/SKILL.md`,
+    `docs/ui-ux-design-guidelines.md`,
+    `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `prisma/schema/communication.prisma`,
+    `src/app/api/communications/inbound/route.ts`,
+    `src/app/api/communications/inbound/signals/route.ts`,
+    `src/app/api/communications/inbound/signals/[id]/route.ts`,
+    `src/server/services/communication-request-access.ts`,
+    `src/server/services/dashboard-cockpit.ts`,
+    `src/types/dashboard-cockpit.ts`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+    `src/app/api/dashboard/cockpit/route.test.ts`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`,
+    `src/lib/audit/phi-read-audit.ts`,
+    `src/lib/audit/phi-read-audit.test.ts`,
+    `src/lib/api/route-catalog.ts`,
+    `src/lib/api/rate-limit.ts`,
+    and `src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.ts`.
+  - files changed:
+    `Plans.md`,
+    `src/app/api/communications/inbound/[id]/detail/route.ts`,
+    `src/app/api/communications/inbound/[id]/detail/route.test.ts`,
+    `src/server/services/dashboard-cockpit.ts`,
+    `src/types/dashboard-cockpit.ts`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`,
+    `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`,
+    `src/app/api/dashboard/cockpit/route.test.ts`,
+    `src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.ts`,
+    `src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.test.ts`,
+    `src/lib/audit/phi-read-audit.ts`,
+    `src/lib/audit/phi-read-audit.test.ts`,
+    `src/lib/api/route-catalog.ts`,
+    `src/lib/api/rate-limit.ts`,
+    and `ops/refactor/STATE.md`.
+  - implementation:
+    Added `GET /api/communications/inbound/:id/detail` with `canReport`, org/RLS-scoped
+    `buildInboundCommunicationEventAssignmentWhere`, unified 404 for not found/out-of-scope,
+    required `purpose`, required coded `read_reason`, optional/generated safe `request_id`,
+    `X-Request-Id`, measured JSON, and sensitive no-store. The route returns raw_text and sender
+    detail only on this detail surface. Successful reads record `phi_read` with target
+    `inbound_communication_event`; audit metadata uses request id, coded reason, route, case id,
+    has_patient flag, source channel, and attachment count only. Free-text read reasons are
+    intentionally not accepted to avoid putting PHI in URL/query logs or audit metadata.
+    Dashboard inbound and urgent DTOs no longer select or return `raw_text`, `sender_contact`, or
+    signal `extracted_text`; controlled summaries now use `normalized_summary` or fixed operational
+    fallback text. Medication stock dashboard risk/urgent surfaces no longer select or expose
+    inbound signal `extracted_text`; they use normalized summary or structured medication/quantity
+    labels. `recordPhiReadAudit` now accepts target-only PHI reads for inbound events without a
+    linked patient. Route catalog and rate-limit templates include the new detail route.
+    `Plans.md` records the raw detail API as done/frozen and keeps the remaining
+    `INBOUND-002-REVIEW-DETAIL` scope as detail drawer + 3-column review shell.
+  - imagegen:
+    Omitted. This slice is an API/data-boundary, DTO, test, and plan-hygiene change; no visual
+    reconstruction, page layout, or new UI composition was implemented. The dashboard text
+    substitution removes sensitive text but does not alter layout structure.
+  - Next.js docs:
+    Read local Next.js route handler/file convention docs before adding the route. Confirmed App
+    Router route handler shape, Promise params convention, and explicit dynamic/no-store handling
+    expectations for sensitive GET routes.
+  - Oracle:
+    Consulted Oracle/GPT-5.5 Pro because this touches PHI/raw inbound communication data and audit
+    boundaries. Oracle CLI v0.15.1 was confirmed. GitHub context was inspected for
+    `https://github.com/yusuketakuma/careviax.git`, branch `main`, commit
+    `7e765ebf7cc8f0f260216b167dc591c4a21d7b52`, dirty tree state, and lack of active PR context.
+    First consult failed with `chrome-disconnected`; restart failed on attachment upload timeout.
+    A smaller consult `inbound-raw-detail-min` completed, reported GitHub access succeeded, and
+    recommended Option B: fix dashboard raw leak in the same security slice, add
+    `GET /api/communications/inbound/[id]/detail`, require purpose/read reason/request id, use
+    `withAuthContext(canReport)`, `withOrgContext`, assignment scoping, `withSensitiveNoStore`, and
+    PHI read audit, return 404 for not found/org/scope, and avoid raw_text/summary/sender/contact in
+    audit metadata.
+  - bugs found:
+    Dashboard inbound and unified urgent payloads selected/returned `raw_text` and signal
+    `extracted_text`; the React dashboard rendered `item.raw_text`. Medication stock dashboard risk
+    items used signal `extracted_text` as `source_text`. `recordPhiReadAudit` previously required a
+    patient id, which blocked auditing an inbound event detail read before patient/case mapping is
+    known.
+  - security risks reduced:
+    raw inbound content and sender contact are now removed from dashboard list/urgent/stock-risk
+    DTOs and UI. Raw detail reads require authentication, `canReport`, tenant/RLS scope,
+    assignment/case/patient scope, purpose, coded read reason, no-store, request id, and success-only
+    PHI read audit. Audit metadata avoids raw_text, normalized summary, sender/contact details,
+    patient names, and free-text reasons.
+  - performance issues improved:
+    Dashboard inbound reads no longer select `raw_text` / `sender_contact`, signal list reads no
+    longer select `extracted_text`, and medication stock risk SQL no longer selects signal
+    `extracted_text`. No new dashboard join, batch job, migration, or broad read path was added.
+  - validation commands:
+    `npx -y @steipete/oracle --help`;
+    `npx -y @steipete/oracle ... --slug "inbound-raw-detail-min" ...`;
+    `pnpm exec prettier --write Plans.md src/app/(dashboard)/dashboard/dashboard-cockpit.tsx src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx src/app/api/communications/inbound/[id]/detail/route.ts src/app/api/communications/inbound/[id]/detail/route.test.ts src/app/api/dashboard/cockpit/route.test.ts src/lib/api/rate-limit.ts src/lib/api/route-catalog.ts src/lib/audit/phi-read-audit.ts src/lib/audit/phi-read-audit.test.ts src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.ts src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.test.ts src/server/services/dashboard-cockpit.ts src/types/dashboard-cockpit.ts`;
+    `pnpm exec vitest run src/app/api/communications/inbound/[id]/detail/route.test.ts src/app/api/dashboard/cockpit/route.test.ts src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx src/lib/audit/phi-read-audit.test.ts src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint src/app/api/communications/inbound/[id]/detail/route.ts src/app/api/communications/inbound/[id]/detail/route.test.ts src/app/(dashboard)/dashboard/dashboard-cockpit.tsx src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx src/app/api/dashboard/cockpit/route.test.ts src/lib/api/rate-limit.ts src/lib/api/route-catalog.ts src/lib/audit/phi-read-audit.ts src/lib/audit/phi-read-audit.test.ts src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.ts src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.test.ts src/server/services/dashboard-cockpit.ts src/types/dashboard-cockpit.ts`;
+    `pnpm exec prettier --check Plans.md src/app/(dashboard)/dashboard/dashboard-cockpit.tsx src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx src/app/api/communications/inbound/[id]/detail/route.ts src/app/api/communications/inbound/[id]/detail/route.test.ts src/app/api/dashboard/cockpit/route.test.ts src/lib/api/rate-limit.ts src/lib/api/route-catalog.ts src/lib/audit/phi-read-audit.ts src/lib/audit/phi-read-audit.test.ts src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.ts src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.test.ts src/server/services/dashboard-cockpit.ts src/types/dashboard-cockpit.ts`;
+    `git diff --check -- <owned files>`;
+    `pnpm route-auth-wrapper:check`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm boundaries:check`;
+    `pnpm db:read-slo:check`;
+    `pnpm db:query-shape:check`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm format:check`.
+  - validation results:
+    Focused Vitest passed 5 files / 78 tests. Scoped ESLint passed with 0 warnings after fixing one
+    unused mock argument. Targeted Prettier check passed. Targeted diff-check passed.
+    Route-auth-wrapper check passed. API response shape check passed. Plans active board check
+    passed. Module boundary check passed with 0 new violations and 0 allowlisted debt imports.
+    Read path SLO check passed. Query shape check passed. Full typecheck passed after Next route
+    typegen. Full `pnpm format:check` still fails only on unrelated pre-existing untracked Markdown
+    under `projects/careviax/**` (`medication-stock-visit-observation-context-sidecar` and several
+    `projects/careviax/reviews/2026-07-08/*` notes), not on owned files.
+  - remaining work:
+    `INBOUND-002-REVIEW-DETAIL` remains Partial for the UI half: detail drawer connection, 3-column
+    review shell, review action lifecycle UI, and MedicationStock apply allowed/forbidden UX tests.
+    FAX/email/manual intake and source mapping UI remain separate active items.
+  - next action:
+    Commit this state record, push the raw detail API slice, record the push result here, then
+    continue the goal loop with the next highest safe non-gated item.
+
 - codex: `STOCK-001-PRESCRIPTION-HORIZON` PrescriptionIntake structured replenishment horizon。
   - commit:
     Implementation committed as `da997bef8`; state record committed as `f7fa47641`; pushed to
