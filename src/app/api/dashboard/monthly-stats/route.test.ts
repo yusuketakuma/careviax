@@ -66,6 +66,15 @@ function createRequest(url: string, headers?: Record<string, string>) {
   });
 }
 
+async function expectMonthlyStatsData(response: Response, expected: Record<string, unknown>) {
+  const body = await response.json();
+  expect(body).toMatchObject({ data: expected });
+  expect(body).not.toHaveProperty('month');
+  expect(body).not.toHaveProperty('summary');
+  expect(body).not.toHaveProperty('patient_stats');
+  return body;
+}
+
 describe('/api/dashboard/monthly-stats GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -175,7 +184,7 @@ describe('/api/dashboard/monthly-stats GET', () => {
         }),
       }),
     );
-    await expect(response.json()).resolves.toMatchObject({
+    await expectMonthlyStatsData(response, {
       month: '2026-04',
       summary: { total_patients: 0 },
       patient_stats: [],
@@ -203,7 +212,7 @@ describe('/api/dashboard/monthly-stats GET', () => {
         }),
       }),
     );
-    await expect(response.json()).resolves.toMatchObject({
+    await expectMonthlyStatsData(response, {
       month: '2026-07',
       summary: { total_patients: 0 },
       patient_stats: [],
@@ -273,7 +282,7 @@ describe('/api/dashboard/monthly-stats GET', () => {
         care_insurance_number: true,
       },
     });
-    await expect(response.json()).resolves.toMatchObject({
+    await expectMonthlyStatsData(response, {
       month: '2026-03',
       summary: {
         total_patients: 2,

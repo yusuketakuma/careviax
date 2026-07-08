@@ -155,14 +155,16 @@ async function authenticatedGET(req: NextRequest) {
       });
 
     return success({
-      month: monthLabel,
-      summary: {
-        total_patients: patient_stats.length,
-        over_limit_count: patient_stats.filter((item) => item.status === 'over_limit').length,
-        within_limit_count: patient_stats.filter((item) => item.status === 'within_limit').length,
-        under_limit_count: patient_stats.filter((item) => item.status === 'under_limit').length,
+      data: {
+        month: monthLabel,
+        summary: {
+          total_patients: patient_stats.length,
+          over_limit_count: patient_stats.filter((item) => item.status === 'over_limit').length,
+          within_limit_count: patient_stats.filter((item) => item.status === 'within_limit').length,
+          under_limit_count: patient_stats.filter((item) => item.status === 'under_limit').length,
+        },
+        patient_stats,
       },
-      patient_stats,
     });
   });
 }
