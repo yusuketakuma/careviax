@@ -93,7 +93,7 @@
     `DASH-P1-005C-CARRYOVER-LINKS` remain active. Visual/browser screenshot verification was not run
     because this slice changes existing cards into links without layout or breakpoint redesign.
   - next action:
-    Run final docs formatting/diff checks, scoped commit this implementation slice, then continue from
+    Implementation committed as `1e4bca39a`; next implementation slice should continue from
     `DASH-P1-010-RAIL` or `DASH-P1-005B-URGENT-SOURCE-LINKS`.
 
 - codex: `PLANS-HYGIENE-007` Plans.md active board v8 cleanup。
