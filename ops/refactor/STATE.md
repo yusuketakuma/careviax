@@ -24217,6 +24217,101 @@ visit_request/unknown`, `action_status='not_linked'`, and
   Commit and push this ledger hash update with only `ops/refactor/STATE.md`
   staged, then continue with the next non-human-gated read-speed cleanup.
 
+## 2026-07-09 - API-CONTRACT-001S document-delivery-rules envelope cleanup
+
+- current task:
+  Continue `API-CONTRACT-001` by migrating `document-delivery-rules` response
+  shapes to the new `data` / `data + meta` contract only. Compatibility with
+  legacy top-level count fields and delete message bodies was intentionally not
+  kept.
+- files inspected:
+  `git status --short --branch --untracked-files=all`; `Plans.md`;
+  `ops/refactor/STATE.md`; `tools/api-response-shape-allowlist.json`;
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`
+  (inspected earlier in this API contract run);
+  `src/app/api/document-delivery-rules/route.ts`;
+  `src/app/api/document-delivery-rules/[id]/route.ts`;
+  `src/app/api/document-delivery-rules/route.test.ts`;
+  `src/app/api/document-delivery-rules/[id]/route.test.ts`;
+  `src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.tsx`;
+  `src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx`.
+- files changed:
+  `Plans.md`; `tools/api-response-shape-allowlist.json`;
+  `src/app/api/document-delivery-rules/route.ts`;
+  `src/app/api/document-delivery-rules/[id]/route.ts`;
+  `src/app/api/document-delivery-rules/route.test.ts`;
+  `src/app/api/document-delivery-rules/[id]/route.test.ts`;
+  `src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.tsx`;
+  `src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx`;
+  `ops/refactor/STATE.md`.
+- advisory gate:
+  Oracle was consulted because document delivery settings are external
+  delivery/PHI-boundary adjacent. Oracle returned Go for a strict mechanical
+  migration, reported GitHub access was available, and advised: move list count
+  fields under `meta`, return `{ data: { id } }` for DELETE, update the manager
+  to `payload.meta` only, remove both allowlist entries, preserve
+  `withSensitiveNoStore`, auth, validation, `where`, `orderBy`, `take`, count,
+  `withOrgContext(... { requestContext: ctx })`, logging events, and mutation
+  semantics, and avoid touching `resolveDocumentDeliveryRule`.
+- bugs found:
+  `GET /api/document-delivery-rules` still returned counted list metadata at
+  the response root, and `DELETE /api/document-delivery-rules/:id` still
+  returned a success message body. The document delivery rule manager still read
+  root count metadata and test fixtures still accepted old GET/DELETE shapes.
+- bugs fixed:
+  `GET /api/document-delivery-rules` now returns root keys only `data` and
+  `meta`. Count metadata, count basis, filters, and limit are under `meta`.
+  `DELETE /api/document-delivery-rules/:id` now returns `{ data: { id } }`.
+  The document delivery rule manager consumes `payload.meta` only and tests
+  were updated to the new shape. Route tests assert old root count fields and
+  delete message bodies are absent.
+- security risks found:
+  No auth, authorization, tenant isolation, RLS, validation schema,
+  `withSensitiveNoStore`, request-context binding, logging, query ordering, or
+  mutation side effects needed changes. The slice stayed limited to response
+  shape and reader contract on an external-delivery-adjacent surface.
+- security risks reduced:
+  DELETE responses no longer return route-local success text or full rule data;
+  only the deleted id is returned. List metadata is grouped in `meta`, reducing
+  ambiguity for external delivery candidate UI and avoiding false root fields.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; bounded `take`, count query, ordering, and org-scoped transaction
+  behavior are unchanged.
+- UI/UX note:
+  No visual UI/UX change. This was API reader contract cleanup only, so image
+  generation was not applicable.
+- validation commands:
+  `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/document-delivery-rules/route.ts 'src/app/api/document-delivery-rules/[id]/route.ts' src/app/api/document-delivery-rules/route.test.ts 'src/app/api/document-delivery-rules/[id]/route.test.ts' 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.tsx' 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx'`;
+  `pnpm exec vitest run src/app/api/document-delivery-rules/route.test.ts 'src/app/api/document-delivery-rules/[id]/route.test.ts' 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx' --reporter=dot --testTimeout=30000`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint --max-warnings=0 src/app/api/document-delivery-rules/route.ts 'src/app/api/document-delivery-rules/[id]/route.ts' src/app/api/document-delivery-rules/route.test.ts 'src/app/api/document-delivery-rules/[id]/route.test.ts' 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.tsx' 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx'`;
+  `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/document-delivery-rules/route.ts 'src/app/api/document-delivery-rules/[id]/route.ts' src/app/api/document-delivery-rules/route.test.ts 'src/app/api/document-delivery-rules/[id]/route.test.ts' 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.tsx' 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx'`;
+  `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/document-delivery-rules/route.ts 'src/app/api/document-delivery-rules/[id]/route.ts' src/app/api/document-delivery-rules/route.test.ts 'src/app/api/document-delivery-rules/[id]/route.test.ts' 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.tsx' 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx'`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+- validation results:
+  Prettier write/check passed. Focused Vitest passed 3 files / 37 tests.
+  `api-response-shape:check` passed with 193 allowlisted violations and 0 new
+  violations. `plans:active:check` passed. Focused ESLint passed with
+  `--max-warnings=0`. Scoped diff check passed. Full typecheck passed,
+  including Next route type generation, app TypeScript, and service worker
+  TypeScript.
+- commit:
+  Implementation, tests, allowlist, and Plans update committed as
+  `2d5366315d85892420bea5c0442e5d2346ce8425`
+  (`fix(api): envelope document delivery rules`) and pushed to `origin/main`.
+- remaining work:
+  `API-CONTRACT-001` remains Partial. The allowlist now has 193 expected legacy
+  response-shape violations. Continue migrating real route shapes without
+  compatibility fallbacks. Higher-risk auth/tenant/PII/medical/external-sharing
+  surfaces should continue to use Oracle before implementation/finalization.
+- next action:
+  Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
+  then select the next safe non-human-gated `API-CONTRACT-001` slice from the
+  remaining allowlist.
+
 ## 2026-07-09 - API-CONTRACT-001R drug-alert-rules envelope cleanup
 
 - current task:
