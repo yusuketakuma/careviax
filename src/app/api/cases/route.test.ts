@@ -172,7 +172,7 @@ describe('/api/cases', () => {
       }),
     );
     const body = await response.json();
-    expect(Object.keys(body)).toEqual(['data', 'hasMore', 'nextCursor']);
+    expect(Object.keys(body)).toEqual(['data', 'meta']);
     expect(body).toMatchObject({
       data: [
         expect.objectContaining({
@@ -185,9 +185,14 @@ describe('/api/cases', () => {
           primary_pharmacist_name: '担当薬剤師',
         }),
       ],
-      hasMore: true,
-      nextCursor: 'case_1',
+      meta: {
+        limit: 1,
+        has_more: true,
+        next_cursor: 'case_1',
+      },
     });
+    expect(body).not.toHaveProperty('hasMore');
+    expect(body).not.toHaveProperty('nextCursor');
     expect(body.data).toHaveLength(1);
     expect(body.data[0].id).toBe('case_1');
     expect(body.data[0].display_id).not.toBe(body.data[0].id);
@@ -204,11 +209,16 @@ describe('/api/cases', () => {
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
     const body = await response.json();
-    expect(Object.keys(body)).toEqual(['data', 'hasMore']);
+    expect(Object.keys(body)).toEqual(['data', 'meta']);
     expect(body).toMatchObject({
       data: [expect.objectContaining({ id: 'case_1' })],
-      hasMore: false,
+      meta: {
+        limit: 1,
+        has_more: false,
+        next_cursor: null,
+      },
     });
+    expect(body).not.toHaveProperty('hasMore');
     expect(body).not.toHaveProperty('nextCursor');
     expect(body.data).toHaveLength(1);
     expect(careCaseFindManyMock).toHaveBeenCalledWith(expect.objectContaining({ take: 2 }));
@@ -301,6 +311,19 @@ describe('/api/cases', () => {
         notes: '初回相談',
       }),
     });
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: {
+        id: 'case_2',
+        display_id: 'cc0000000002',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        referral_source: '病院A',
+      },
+    });
+    expect(body).not.toHaveProperty('id');
+    expect(body).not.toHaveProperty('display_id');
+    expect(body).not.toHaveProperty('referral_source');
   });
 
   it('rejects non-object create payloads before loading the patient', async () => {

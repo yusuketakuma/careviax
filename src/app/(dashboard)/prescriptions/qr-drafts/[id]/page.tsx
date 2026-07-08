@@ -174,6 +174,15 @@ interface CaseOption {
   status: string;
 }
 
+interface CaseListResponse {
+  data: CaseOption[];
+  meta: {
+    limit: number;
+    has_more: boolean;
+    next_cursor: string | null;
+  };
+}
+
 type DraftFormState = {
   draftId: string | null;
   lines: DraftLine[] | null;
@@ -403,7 +412,7 @@ export default function QrDraftReviewPage() {
       const res = await fetch(`/api/cases?${params.toString()}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: CaseOption[] }>(res, 'ケースの取得に失敗しました');
+      return readApiJson<CaseListResponse>(res, 'ケースの取得に失敗しました');
     },
     enabled: !!orgId && !!draft?.patient_id,
   });

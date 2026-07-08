@@ -97,6 +97,15 @@ type PharmacistShift = {
   } | null;
 };
 
+type CaseListResponse = {
+  data: CaseOption[];
+  meta: {
+    limit: number;
+    has_more: boolean;
+    next_cursor: string | null;
+  };
+};
+
 type WeeklyOptimizerProps = {
   initialDate?: string | null;
   initialCaseId?: string | null;
@@ -527,7 +536,7 @@ export function ScheduleWeeklyOptimizer({
       const response = await fetch(`/api/cases?${params}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: CaseOption[] }>(response, 'ケース一覧の取得に失敗しました');
+      return readApiJson<CaseListResponse>(response, 'ケース一覧の取得に失敗しました');
     },
     enabled: !!orgId,
   });
@@ -542,7 +551,7 @@ export function ScheduleWeeklyOptimizer({
       const response = await fetch(`/api/cases?${params}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: CaseOption[] }>(response, 'ケース候補の取得に失敗しました');
+      return readApiJson<CaseListResponse>(response, 'ケース候補の取得に失敗しました');
     },
     enabled: !!orgId && deferredCaseSearchInput.length >= 2,
   });

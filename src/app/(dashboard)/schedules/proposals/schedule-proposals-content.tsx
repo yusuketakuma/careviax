@@ -255,7 +255,14 @@ type CreateProposalResponse = {
   diagnostics?: ProposalGenerationDiagnostics;
 };
 type ProposalMutationResponse = { data: unknown };
-type CaseSearchResponse = { data: CaseOption[] };
+type CaseSearchResponse = {
+  data: CaseOption[];
+  meta: {
+    limit: number;
+    has_more: boolean;
+    next_cursor: string | null;
+  };
+};
 type ContactOutcome = 'attempted' | 'declined' | 'change_requested' | 'unreachable' | 'confirmed';
 type ContactMethod = 'phone' | 'fax' | 'email';
 

@@ -221,7 +221,14 @@ const authenticatedGET = withAuthContext(
         : null,
     }));
 
-    return success({ data, hasMore: page.hasMore, nextCursor: page.nextCursor });
+    return success({
+      data,
+      meta: {
+        limit: query.limit,
+        has_more: page.hasMore,
+        next_cursor: page.nextCursor ?? null,
+      },
+    });
   },
   {
     permission: 'canVisit',
@@ -261,7 +268,7 @@ const authenticatedPOST = withAuthContext(
       });
     });
 
-    return success(careCase, 201);
+    return success({ data: careCase }, 201);
   },
   {
     permission: 'canVisit',
