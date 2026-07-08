@@ -52,39 +52,47 @@ export const GET = withAuthContext(
         take: limit,
       }),
     ]);
-    return success({
-      ...buildCountedListEnvelope(
-        standards.map((item) => {
-          const requirementsStatus = readRequirementsStatus(item.requirements_status);
-          // 空の requirements_status ({}) は「要件が一件も検証されていない」状態。
-          // Object.values({}).every(Boolean) は vacuously true になり 'claimable'
-          // と誤判定されるため（fail-open で過大算定リスク）、要件が 1 件も
-          // 無い場合は明示的に 'unknown'（要確認）へ倒す。
-          const hasRecordedRequirements =
-            requirementsStatus != null && Object.keys(requirementsStatus).length > 0;
+    const list = buildCountedListEnvelope(
+      standards.map((item) => {
+        const requirementsStatus = readRequirementsStatus(item.requirements_status);
+        // 空の requirements_status ({}) は「要件が一件も検証されていない」状態。
+        // Object.values({}).every(Boolean) は vacuously true になり 'claimable'
+        // と誤判定されるため（fail-open で過大算定リスク）、要件が 1 件も
+        // 無い場合は明示的に 'unknown'（要確認）へ倒す。
+        const hasRecordedRequirements =
+          requirementsStatus != null && Object.keys(requirementsStatus).length > 0;
 
-          return {
-            id: item.id,
-            standard_type: item.standard_type,
-            filed_date: item.filed_date.toISOString(),
-            effective_date: item.effective_date?.toISOString() ?? null,
-            expiry_date: item.expiry_date?.toISOString() ?? null,
-            renewal_alert_date: item.renewal_alert_date?.toISOString() ?? null,
-            requirements_status: requirementsStatus,
-            claim_status: hasRecordedRequirements
-              ? Object.values(requirementsStatus).every(Boolean)
-                ? 'claimable'
-                : 'blocked'
-              : 'unknown',
-            site_id: item.site.id,
-            site_name: item.site.name,
-          };
-        }),
-        totalCount,
-      ),
-      count_basis: 'facility_standards',
-      filters_applied: {},
-      limit,
+        return {
+          id: item.id,
+          standard_type: item.standard_type,
+          filed_date: item.filed_date.toISOString(),
+          effective_date: item.effective_date?.toISOString() ?? null,
+          expiry_date: item.expiry_date?.toISOString() ?? null,
+          renewal_alert_date: item.renewal_alert_date?.toISOString() ?? null,
+          requirements_status: requirementsStatus,
+          claim_status: hasRecordedRequirements
+            ? Object.values(requirementsStatus).every(Boolean)
+              ? 'claimable'
+              : 'blocked'
+            : 'unknown',
+          site_id: item.site.id,
+          site_name: item.site.name,
+        };
+      }),
+      totalCount,
+    );
+
+    return success({
+      data: list.data,
+      meta: {
+        total_count: list.total_count,
+        visible_count: list.visible_count,
+        hidden_count: list.hidden_count,
+        truncated: list.truncated,
+        count_basis: 'facility_standards',
+        filters_applied: {},
+        limit,
+      },
     });
   },
   {

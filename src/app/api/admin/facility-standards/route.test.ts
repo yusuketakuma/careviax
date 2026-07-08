@@ -104,16 +104,7 @@ describe('/api/admin/facility-standards GET', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(Object.keys(body)).toEqual([
-      'data',
-      'total_count',
-      'visible_count',
-      'hidden_count',
-      'truncated',
-      'count_basis',
-      'filters_applied',
-      'limit',
-    ]);
+    expect(Object.keys(body)).toEqual(['data', 'meta']);
     expect(body).toMatchObject({
       data: [
         expect.objectContaining({
@@ -133,13 +124,15 @@ describe('/api/admin/facility-standards GET', () => {
           requirements_status: null,
         }),
       ],
-      total_count: 2,
-      visible_count: 2,
-      hidden_count: 0,
-      truncated: false,
-      count_basis: 'facility_standards',
-      filters_applied: {},
-      limit: 5,
+      meta: {
+        total_count: 2,
+        visible_count: 2,
+        hidden_count: 0,
+        truncated: false,
+        count_basis: 'facility_standards',
+        filters_applied: {},
+        limit: 5,
+      },
     });
     expect(facilityStandardCountMock).toHaveBeenCalledWith({
       where: {
@@ -185,13 +178,15 @@ describe('/api/admin/facility-standards GET', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      total_count: 3,
-      visible_count: 1,
-      hidden_count: 2,
-      truncated: true,
-      count_basis: 'facility_standards',
-      filters_applied: {},
-      limit: 1,
+      meta: {
+        total_count: 3,
+        visible_count: 1,
+        hidden_count: 2,
+        truncated: true,
+        count_basis: 'facility_standards',
+        filters_applied: {},
+        limit: 1,
+      },
     });
   });
 

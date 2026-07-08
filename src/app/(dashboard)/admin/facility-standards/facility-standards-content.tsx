@@ -35,13 +35,15 @@ type FacilityStandard = {
 
 type FacilityStandardsResponse = {
   data: FacilityStandard[];
-  total_count?: number;
-  visible_count?: number;
-  hidden_count?: number;
-  truncated?: boolean;
-  count_basis?: 'facility_standards';
-  filters_applied?: Record<string, never>;
-  limit?: number;
+  meta: {
+    total_count: number;
+    visible_count: number;
+    hidden_count: number;
+    truncated: boolean;
+    count_basis: 'facility_standards';
+    filters_applied: Record<string, never>;
+    limit: number;
+  };
 };
 
 // --- Helpers ---
@@ -152,16 +154,17 @@ export function FacilityStandardsContent() {
   });
 
   const standards = useMemo(() => data?.data ?? [], [data?.data]);
+  const standardsMeta = data?.meta;
   const criteriaRows = useMemo(() => buildFacilityCriteriaRows(standards), [standards]);
   const criteriaSummary = useMemo(
     () => summarizeFacilityCriteriaRows(criteriaRows),
     [criteriaRows],
   );
-  const totalStandardsCount = data?.total_count ?? standards.length;
-  const visibleStandardsCount = data?.visible_count ?? standards.length;
+  const totalStandardsCount = standardsMeta?.total_count ?? standards.length;
+  const visibleStandardsCount = standardsMeta?.visible_count ?? standards.length;
   const hiddenStandardsCount =
-    data?.hidden_count ?? Math.max(totalStandardsCount - standards.length, 0);
-  const isStandardsTruncated = Boolean(data?.truncated || hiddenStandardsCount > 0);
+    standardsMeta?.hidden_count ?? Math.max(totalStandardsCount - standards.length, 0);
+  const isStandardsTruncated = Boolean(standardsMeta?.truncated || hiddenStandardsCount > 0);
   const standardsListSummary = data
     ? isStandardsTruncated
       ? `先頭${visibleStandardsCount.toLocaleString()}件を表示 / 他${hiddenStandardsCount.toLocaleString()}件`

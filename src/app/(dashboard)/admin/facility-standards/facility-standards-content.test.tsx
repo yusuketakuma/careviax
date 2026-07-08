@@ -52,11 +52,15 @@ const SUCCESS_DATA = {
         claim_status: 'claimable',
       },
     ],
-    total_count: 1,
-    visible_count: 1,
-    hidden_count: 0,
-    truncated: false,
-    count_basis: 'facility_standards',
+    meta: {
+      total_count: 1,
+      visible_count: 1,
+      hidden_count: 0,
+      truncated: false,
+      count_basis: 'facility_standards',
+      filters_applied: {},
+      limit: 100,
+    },
   },
   isLoading: false,
   isError: false,
@@ -88,11 +92,15 @@ describe('FacilityStandardsContent', () => {
         new Response(
           JSON.stringify({
             data: SUCCESS_DATA.data.data,
-            total_count: 1,
-            visible_count: 1,
-            hidden_count: 0,
-            truncated: false,
-            count_basis: 'facility_standards',
+            meta: {
+              total_count: 1,
+              visible_count: 1,
+              hidden_count: 0,
+              truncated: false,
+              count_basis: 'facility_standards',
+              filters_applied: {},
+              limit: 100,
+            },
           }),
           { status: 200 },
         ),
@@ -107,11 +115,13 @@ describe('FacilityStandardsContent', () => {
     expect(queryOptions?.queryKey).toEqual(['facility-standards', 'org_1']);
     await expect(queryOptions?.queryFn()).resolves.toMatchObject({
       data: SUCCESS_DATA.data.data,
-      total_count: 1,
-      visible_count: 1,
-      hidden_count: 0,
-      truncated: false,
-      count_basis: 'facility_standards',
+      meta: {
+        total_count: 1,
+        visible_count: 1,
+        hidden_count: 0,
+        truncated: false,
+        count_basis: 'facility_standards',
+      },
     });
     expect(fetchMock).toHaveBeenCalledWith('/api/admin/facility-standards', {
       headers: { 'x-org-id': 'org_1' },
@@ -123,10 +133,13 @@ describe('FacilityStandardsContent', () => {
       ...SUCCESS_DATA,
       data: {
         ...SUCCESS_DATA.data,
-        total_count: 3,
-        visible_count: 1,
-        hidden_count: 2,
-        truncated: true,
+        meta: {
+          ...SUCCESS_DATA.data.meta,
+          total_count: 3,
+          visible_count: 1,
+          hidden_count: 2,
+          truncated: true,
+        },
       },
     });
 
