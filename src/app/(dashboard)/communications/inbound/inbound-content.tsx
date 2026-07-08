@@ -9,8 +9,10 @@ import {
   Clock,
   FileText,
   Inbox,
+  Mail,
   Phone,
   PackageSearch,
+  Printer,
   RadioTower,
   ShieldCheck,
   TriangleAlert,
@@ -52,7 +54,7 @@ type InboundInboxData = {
     needs_review_count: number;
     reviewed_pending_action_count: number;
     urgent_count: number;
-    channel_counts: Record<'phone' | 'fax' | 'email' | 'mcs', number>;
+    channel_counts: Record<'phone' | 'fax' | 'email' | 'mcs' | 'manual', number>;
   };
   items: InboundInboxItem[];
   filters: {
@@ -71,9 +73,11 @@ type InboundInboxResponse = {
   };
 };
 
-type InboundPhoneResponse = {
+type InboundCreateResponse = {
   data: {
     id: string;
+    channel: 'fax' | 'email' | 'manual';
+    event_type: string;
     status: string;
     action_href: string;
   };
@@ -81,8 +85,6 @@ type InboundPhoneResponse = {
     generated_at: string;
   };
 };
-
-type InboundMcsResponse = InboundPhoneResponse;
 
 type InboundSignalTaskResponse = {
   data: {
@@ -169,7 +171,7 @@ type InboundSignalCandidateItem = {
   candidate_key: string;
   inbound_event_id: string;
   signal_id: string;
-  channel: 'phone' | 'fax' | 'email' | 'mcs';
+  channel: 'phone' | 'fax' | 'email' | 'mcs' | 'manual';
   occurred_at: string;
   patient_linked: boolean;
   case_linked: boolean;
@@ -256,32 +258,27 @@ type InboundDetailResponse = {
   };
 };
 
-type PhoneFormState = {
-  patientId: string;
-  caseId: string;
-  counterpartName: string;
-  counterpartContact: string;
-  eventType:
-    | 'general_note'
-    | 'medication_stock_report'
-    | 'medication_safety_report'
-    | 'schedule_request';
-  content: string;
-};
-
-type McsFormState = {
+type InboundIntakeFormState = {
+  sourceChannel: 'fax' | 'email' | 'manual';
   patientId: string;
   caseId: string;
   senderName: string;
-  senderRole: string;
-  senderOrganization: string;
-  sourceUrl: string;
-  eventType:
-    | 'general_note'
-    | 'medication_stock_report'
-    | 'medication_safety_report'
-    | 'schedule_request';
-  content: string;
+  senderRole:
+    | 'unknown'
+    | 'nurse'
+    | 'care_manager'
+    | 'physician'
+    | 'dentist'
+    | 'therapist'
+    | 'facility_staff'
+    | 'family'
+    | 'patient'
+    | 'pharmacist'
+    | 'admin';
+  senderOrganizationName: string;
+  senderContact: string;
+  eventType: 'general_note' | 'medication_stock_report' | 'side_effect_report' | 'schedule_request';
+  rawText: string;
 };
 
 const CHANNEL_FILTERS = [
@@ -290,6 +287,7 @@ const CHANNEL_FILTERS = [
   { value: 'fax', label: 'FAX' },
   { value: 'email', label: 'メール' },
   { value: 'mcs', label: 'MCS' },
+  { value: 'manual', label: '手入力' },
 ] as const;
 
 const PRIORITY_FILTERS = [
@@ -307,38 +305,48 @@ const STATUS_FILTERS = [
   { value: '', label: 'すべて' },
 ] as const;
 
-const PHONE_EVENT_TYPES: Array<{ value: PhoneFormState['eventType']; label: string }> = [
+const INTAKE_CHANNELS: Array<{
+  value: InboundIntakeFormState['sourceChannel'];
+  label: string;
+  caption: string;
+}> = [
+  { value: 'fax', label: 'FAX', caption: '紙/FAX原本から入力' },
+  { value: 'email', label: 'メール', caption: 'メール本文を転記' },
+  { value: 'manual', label: '手入力', caption: '窓口/紙メモを入力' },
+];
+
+const INTAKE_EVENT_TYPES: Array<{ value: InboundIntakeFormState['eventType']; label: string }> = [
   { value: 'general_note', label: '一般メモ' },
   { value: 'medication_stock_report', label: '残数報告' },
-  { value: 'medication_safety_report', label: '薬剤安全' },
+  { value: 'side_effect_report', label: '薬剤安全' },
   { value: 'schedule_request', label: '日程相談' },
 ];
 
-const MCS_EVENT_TYPES: Array<{ value: McsFormState['eventType']; label: string }> = [
-  { value: 'general_note', label: '一般投稿' },
-  { value: 'medication_stock_report', label: '残数報告' },
-  { value: 'medication_safety_report', label: '薬剤安全' },
-  { value: 'schedule_request', label: '日程相談' },
+const INTAKE_SENDER_ROLES: Array<{ value: InboundIntakeFormState['senderRole']; label: string }> = [
+  { value: 'unknown', label: '未設定' },
+  { value: 'nurse', label: '訪問看護師' },
+  { value: 'care_manager', label: 'ケアマネ' },
+  { value: 'physician', label: '医師' },
+  { value: 'dentist', label: '歯科' },
+  { value: 'therapist', label: '療法士' },
+  { value: 'facility_staff', label: '施設職員' },
+  { value: 'family', label: '家族' },
+  { value: 'patient', label: '患者' },
+  { value: 'pharmacist', label: '薬剤師' },
+  { value: 'admin', label: '事務' },
 ];
 
 const EMPTY_ITEMS: InboundInboxItem[] = [];
-const EMPTY_PHONE_FORM: PhoneFormState = {
-  patientId: '',
-  caseId: '',
-  counterpartName: '',
-  counterpartContact: '',
-  eventType: 'general_note',
-  content: '',
-};
-const EMPTY_MCS_FORM: McsFormState = {
+const EMPTY_INTAKE_FORM: InboundIntakeFormState = {
+  sourceChannel: 'fax',
   patientId: '',
   caseId: '',
   senderName: '',
-  senderRole: '',
-  senderOrganization: '',
-  sourceUrl: '',
+  senderRole: 'unknown',
+  senderOrganizationName: '',
+  senderContact: '',
   eventType: 'general_note',
-  content: '',
+  rawText: '',
 };
 const EMPTY_STOCK_APPLY_FORM: StockApplyFormState = {
   targetStockItemId: '',
@@ -352,6 +360,7 @@ const channelLabel: Record<string, string> = {
   fax: 'FAX',
   email: 'メール',
   mcs: 'MCS',
+  manual: '手入力',
 };
 
 const signalDomainLabel: Record<string, string> = {
@@ -750,8 +759,7 @@ export function InboundCommunicationsContent() {
   const [status, setStatus] = useState('needs_review');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailRequestedEventId, setDetailRequestedEventId] = useState<string | null>(null);
-  const [phoneForm, setPhoneForm] = useState<PhoneFormState>(EMPTY_PHONE_FORM);
-  const [mcsForm, setMcsForm] = useState<McsFormState>(EMPTY_MCS_FORM);
+  const [intakeForm, setIntakeForm] = useState<InboundIntakeFormState>(EMPTY_INTAKE_FORM);
   const [stockApplyForms, setStockApplyForms] = useState<Record<string, StockApplyFormState>>({});
 
   const queryPath = buildInboundInboxPath({ channel, priority, status });
@@ -786,68 +794,33 @@ export function InboundCommunicationsContent() {
     enabled: !!orgId,
   });
 
-  const phoneMutation = useMutation({
-    mutationFn: async (input: PhoneFormState) => {
-      const body = {
-        ...(input.patientId.trim() ? { patient_id: input.patientId.trim() } : {}),
-        ...(input.caseId.trim() ? { case_id: input.caseId.trim() } : {}),
-        ...(input.counterpartName.trim() ? { counterpart_name: input.counterpartName.trim() } : {}),
-        ...(input.counterpartContact.trim()
-          ? { counterpart_contact: input.counterpartContact.trim() }
-          : {}),
-        event_type: input.eventType,
-        content: input.content.trim(),
-      };
-      const response = await fetch('/api/communications/inbound/phone', {
-        method: 'POST',
-        headers: buildOrgJsonHeaders(orgId),
-        body: JSON.stringify(body),
-      });
-      return readApiJson<InboundPhoneResponse>(response, {
-        fallbackMessage: '電話メモを登録できませんでした',
-      });
-    },
-    onSuccess: async () => {
-      toast.success('電話メモを受信キューに登録しました');
-      setPhoneForm(EMPTY_PHONE_FORM);
-      setSelectedId(null);
-      setDetailRequestedEventId(null);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['communications-inbound', orgId] }),
-        queryClient.invalidateQueries({ queryKey: ['communications-inbound-signals', orgId] }),
-      ]);
-    },
-    onError: (error) => {
-      toast.error(messageFromError(error, '電話メモを登録できませんでした'));
-    },
-  });
-
-  const mcsMutation = useMutation({
-    mutationFn: async (input: McsFormState) => {
+  const intakeMutation = useMutation({
+    mutationFn: async (input: InboundIntakeFormState) => {
       const body = {
         ...(input.patientId.trim() ? { patient_id: input.patientId.trim() } : {}),
         ...(input.caseId.trim() ? { case_id: input.caseId.trim() } : {}),
         ...(input.senderName.trim() ? { sender_name: input.senderName.trim() } : {}),
-        ...(input.senderRole.trim() ? { sender_role: input.senderRole.trim() } : {}),
-        ...(input.senderOrganization.trim()
-          ? { sender_organization: input.senderOrganization.trim() }
+        ...(input.senderRole !== 'unknown' ? { sender_role: input.senderRole } : {}),
+        ...(input.senderOrganizationName.trim()
+          ? { sender_organization_name: input.senderOrganizationName.trim() }
           : {}),
-        ...(input.sourceUrl.trim() ? { source_url: input.sourceUrl.trim() } : {}),
+        ...(input.senderContact.trim() ? { sender_contact: input.senderContact.trim() } : {}),
+        source_channel: input.sourceChannel,
         event_type: input.eventType,
-        content: input.content.trim(),
+        raw_text: input.rawText.trim(),
       };
-      const response = await fetch('/api/communications/inbound/mcs', {
+      const response = await fetch('/api/communications/inbound', {
         method: 'POST',
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(body),
       });
-      return readApiJson<InboundMcsResponse>(response, {
-        fallbackMessage: 'MCS投稿を登録できませんでした',
+      return readApiJson<InboundCreateResponse>(response, {
+        fallbackMessage: '受信情報を登録できませんでした',
       });
     },
     onSuccess: async () => {
-      toast.success('MCS投稿を受信キューに登録しました');
-      setMcsForm(EMPTY_MCS_FORM);
+      toast.success('受信情報をレビューキューに登録しました');
+      setIntakeForm(EMPTY_INTAKE_FORM);
       setSelectedId(null);
       setDetailRequestedEventId(null);
       await Promise.all([
@@ -856,7 +829,7 @@ export function InboundCommunicationsContent() {
       ]);
     },
     onError: (error) => {
-      toast.error(messageFromError(error, 'MCS投稿を登録できませんでした'));
+      toast.error(messageFromError(error, '受信情報を登録できませんでした'));
     },
   });
 
@@ -1020,16 +993,10 @@ export function InboundCommunicationsContent() {
   }, [selectedCommunicationEventId, signalCandidates]);
   const isInitialLoading = isLoading && !inbox;
 
-  const handlePhoneSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleIntakeSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!phoneForm.content.trim() || !orgId || phoneMutation.isPending) return;
-    phoneMutation.mutate(phoneForm);
-  };
-
-  const handleMcsSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!mcsForm.content.trim() || !orgId || mcsMutation.isPending) return;
-    mcsMutation.mutate(mcsForm);
+    if (!intakeForm.rawText.trim() || !orgId || intakeMutation.isPending) return;
+    intakeMutation.mutate(intakeForm);
   };
 
   const updateStockApplyForm = (signalId: string, patch: Partial<StockApplyFormState>) => {
@@ -1101,28 +1068,68 @@ export function InboundCommunicationsContent() {
               caption="通話由来"
             />
             <SummaryTile
+              icon={Printer}
+              label="FAX"
+              value={inbox?.summary.channel_counts.fax ?? 0}
+              caption="原本転記"
+            />
+            <SummaryTile
+              icon={Mail}
+              label="メール"
+              value={inbox?.summary.channel_counts.email ?? 0}
+              caption="本文転記"
+            />
+            <SummaryTile
               icon={RadioTower}
               label="MCS"
               value={inbox?.summary.channel_counts.mcs ?? 0}
               caption="貼り付け/連携"
+            />
+            <SummaryTile
+              icon={FileText}
+              label="手入力"
+              value={inbox?.summary.channel_counts.manual ?? 0}
+              caption="紙メモ/窓口"
             />
           </div>
         )}
       </PageSection>
 
       <PageSection
-        title="電話メモを登録"
-        description="電話で受けた他職種情報を、確認待ちの受信情報として登録します。登録後の一覧には本文を表示しません。"
+        title="FAX・メール・手入力を登録"
+        description="FAX、メール、紙メモから転記した受信情報だけを新しい単一契約で登録します。登録後の一覧には本文を表示しません。"
         tone="subtle"
       >
-        <form className="space-y-4" onSubmit={handlePhoneSubmit}>
+        <form className="space-y-4" data-testid="inbound-intake-form" onSubmit={handleIntakeSubmit}>
+          <div className="space-y-2">
+            <span className="text-sm font-medium text-foreground">取込チャネル</span>
+            <div className="grid gap-2 md:grid-cols-3">
+              {INTAKE_CHANNELS.map((item) => (
+                <Button
+                  key={item.value}
+                  type="button"
+                  variant={intakeForm.sourceChannel === item.value ? 'default' : 'outline'}
+                  className="min-h-[44px] justify-start"
+                  onClick={() =>
+                    setIntakeForm((current) => ({ ...current, sourceChannel: item.value }))
+                  }
+                >
+                  <span className="text-left">
+                    <span className="block text-sm font-semibold">{item.label}</span>
+                    <span className="block text-xs opacity-80">{item.caption}</span>
+                  </span>
+                </Button>
+              ))}
+            </div>
+          </div>
+
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <label className="space-y-1 text-sm">
               <span className="font-medium text-foreground">患者ID</span>
               <Input
-                value={phoneForm.patientId}
+                value={intakeForm.patientId}
                 onChange={(event) =>
-                  setPhoneForm((current) => ({ ...current, patientId: event.target.value }))
+                  setIntakeForm((current) => ({ ...current, patientId: event.target.value }))
                 }
                 placeholder="未確定なら空欄"
                 autoComplete="off"
@@ -1131,36 +1138,75 @@ export function InboundCommunicationsContent() {
             <label className="space-y-1 text-sm">
               <span className="font-medium text-foreground">ケースID</span>
               <Input
-                value={phoneForm.caseId}
+                value={intakeForm.caseId}
                 onChange={(event) =>
-                  setPhoneForm((current) => ({ ...current, caseId: event.target.value }))
+                  setIntakeForm((current) => ({ ...current, caseId: event.target.value }))
                 }
                 placeholder="任意"
                 autoComplete="off"
               />
             </label>
             <label className="space-y-1 text-sm">
-              <span className="font-medium text-foreground">相手</span>
+              <span className="font-medium text-foreground">送信者</span>
               <Input
-                value={phoneForm.counterpartName}
+                value={intakeForm.senderName}
                 onChange={(event) =>
-                  setPhoneForm((current) => ({ ...current, counterpartName: event.target.value }))
+                  setIntakeForm((current) => ({ ...current, senderName: event.target.value }))
                 }
-                placeholder="職種・氏名"
+                placeholder="氏名"
                 autoComplete="off"
               />
             </label>
             <label className="space-y-1 text-sm">
-              <span className="font-medium text-foreground">連絡先</span>
-              <Input
-                value={phoneForm.counterpartContact}
+              <span className="font-medium text-foreground">職種</span>
+              <select
+                value={intakeForm.senderRole}
                 onChange={(event) =>
-                  setPhoneForm((current) => ({
+                  setIntakeForm((current) => ({
                     ...current,
-                    counterpartContact: event.target.value,
+                    senderRole: event.target.value as InboundIntakeFormState['senderRole'],
                   }))
                 }
-                placeholder="必要時のみ"
+                className="min-h-[44px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+              >
+                {INTAKE_SENDER_ROLES.map((role) => (
+                  <option key={role.value} value={role.value}>
+                    {role.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="space-y-1 text-sm">
+              <span className="font-medium text-foreground">所属</span>
+              <Input
+                value={intakeForm.senderOrganizationName}
+                onChange={(event) =>
+                  setIntakeForm((current) => ({
+                    ...current,
+                    senderOrganizationName: event.target.value,
+                  }))
+                }
+                placeholder="事業所・施設"
+                autoComplete="off"
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="font-medium text-foreground">送信元連絡先</span>
+              <Input
+                value={intakeForm.senderContact}
+                onChange={(event) =>
+                  setIntakeForm((current) => ({ ...current, senderContact: event.target.value }))
+                }
+                placeholder={
+                  intakeForm.sourceChannel === 'email'
+                    ? 'メールアドレス'
+                    : intakeForm.sourceChannel === 'fax'
+                      ? 'FAX番号'
+                      : '必要時のみ'
+                }
                 autoComplete="off"
               />
             </label>
@@ -1170,14 +1216,14 @@ export function InboundCommunicationsContent() {
             <div className="space-y-2">
               <span className="text-sm font-medium text-foreground">種別</span>
               <div className="flex flex-wrap gap-2">
-                {PHONE_EVENT_TYPES.map((item) => (
+                {INTAKE_EVENT_TYPES.map((item) => (
                   <Button
                     key={item.value}
                     type="button"
-                    variant={phoneForm.eventType === item.value ? 'default' : 'outline'}
-                    className="min-h-[40px]"
+                    variant={intakeForm.eventType === item.value ? 'default' : 'outline'}
+                    className="min-h-[44px]"
                     onClick={() =>
-                      setPhoneForm((current) => ({ ...current, eventType: item.value }))
+                      setIntakeForm((current) => ({ ...current, eventType: item.value }))
                     }
                   >
                     {item.label}
@@ -1186,147 +1232,17 @@ export function InboundCommunicationsContent() {
               </div>
             </div>
             <div className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-3 text-xs leading-5 text-muted-foreground">
-              登録レスポンスと一覧には本文・連絡先・添付名を返しません。詳細確認は再認可後の画面で行います。
+              API は `source_channel`、`event_type`、`raw_text` だけを必須とする新契約です。旧
+              alias、URL、添付名は受け付けません。
             </div>
           </div>
 
           <label className="space-y-1 text-sm">
-            <span className="font-medium text-foreground">電話メモ本文</span>
+            <span className="font-medium text-foreground">受信本文</span>
             <Textarea
-              value={phoneForm.content}
+              value={intakeForm.rawText}
               onChange={(event) =>
-                setPhoneForm((current) => ({ ...current, content: event.target.value }))
-              }
-              placeholder="例: 湿布は残り4枚です。来週の訪問時間を変更したいとの連絡。"
-              className="min-h-24"
-            />
-          </label>
-
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs text-muted-foreground">
-              患者が未確定でも登録できます。未紐づけの受信情報としてレビューキューに残します。
-            </p>
-            <Button
-              type="submit"
-              className="min-h-[44px]"
-              disabled={!phoneForm.content.trim() || phoneMutation.isPending}
-            >
-              {phoneMutation.isPending ? '登録中' : '電話メモを登録'}
-            </Button>
-          </div>
-        </form>
-      </PageSection>
-
-      <PageSection
-        title="MCS投稿を貼り付け"
-        description="MCSで受けた他職種投稿を確認待ちの受信情報として登録します。API連携ではなく手入力の短期ブリッジです。"
-        tone="subtle"
-      >
-        <form className="space-y-4" onSubmit={handleMcsSubmit}>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <label className="space-y-1 text-sm">
-              <span className="font-medium text-foreground">患者ID</span>
-              <Input
-                value={mcsForm.patientId}
-                onChange={(event) =>
-                  setMcsForm((current) => ({ ...current, patientId: event.target.value }))
-                }
-                placeholder="未確定なら空欄"
-                autoComplete="off"
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="font-medium text-foreground">ケースID</span>
-              <Input
-                value={mcsForm.caseId}
-                onChange={(event) =>
-                  setMcsForm((current) => ({ ...current, caseId: event.target.value }))
-                }
-                placeholder="任意"
-                autoComplete="off"
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="font-medium text-foreground">投稿者</span>
-              <Input
-                value={mcsForm.senderName}
-                onChange={(event) =>
-                  setMcsForm((current) => ({ ...current, senderName: event.target.value }))
-                }
-                placeholder="氏名"
-                autoComplete="off"
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="font-medium text-foreground">職種</span>
-              <Input
-                value={mcsForm.senderRole}
-                onChange={(event) =>
-                  setMcsForm((current) => ({ ...current, senderRole: event.target.value }))
-                }
-                placeholder="訪問看護師など"
-                autoComplete="off"
-              />
-            </label>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="space-y-1 text-sm">
-              <span className="font-medium text-foreground">所属</span>
-              <Input
-                value={mcsForm.senderOrganization}
-                onChange={(event) =>
-                  setMcsForm((current) => ({
-                    ...current,
-                    senderOrganization: event.target.value,
-                  }))
-                }
-                placeholder="事業所・施設"
-                autoComplete="off"
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="font-medium text-foreground">MCSスレッドURL</span>
-              <Input
-                value={mcsForm.sourceUrl}
-                onChange={(event) =>
-                  setMcsForm((current) => ({ ...current, sourceUrl: event.target.value }))
-                }
-                placeholder="https://www.medical-care.net/..."
-                autoComplete="off"
-              />
-            </label>
-          </div>
-
-          <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_14rem]">
-            <div className="space-y-2">
-              <span className="text-sm font-medium text-foreground">種別</span>
-              <div className="flex flex-wrap gap-2">
-                {MCS_EVENT_TYPES.map((item) => (
-                  <Button
-                    key={item.value}
-                    type="button"
-                    variant={mcsForm.eventType === item.value ? 'default' : 'outline'}
-                    className="min-h-[40px]"
-                    onClick={() => setMcsForm((current) => ({ ...current, eventType: item.value }))}
-                  >
-                    {item.label}
-                  </Button>
-                ))}
-              </div>
-            </div>
-            <div className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-3 text-xs leading-5 text-muted-foreground">
-              登録レスポンス、一覧、シグナル候補には本文・投稿者・URLを返しません。MCS URL
-              は許可ホストだけ保存します。
-            </div>
-          </div>
-
-          <label className="space-y-1 text-sm">
-            <span className="font-medium text-foreground">MCS投稿本文</span>
-            <Textarea
-              value={mcsForm.content}
-              onChange={(event) =>
-                setMcsForm((current) => ({ ...current, content: event.target.value }))
+                setIntakeForm((current) => ({ ...current, rawText: event.target.value }))
               }
               placeholder="例: 湿布は残り4枚です。痛み止めの使用が増えています。"
               className="min-h-28"
@@ -1335,14 +1251,14 @@ export function InboundCommunicationsContent() {
 
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs text-muted-foreground">
-              患者が未確定でも登録できます。正式なMCS API連携は後続フェーズで扱います。
+              患者が未確定でも登録できます。本文・送信者・連絡先は一覧や登録レスポンスには返さず、監査付き詳細で確認します。
             </p>
             <Button
               type="submit"
               className="min-h-[44px]"
-              disabled={!mcsForm.content.trim() || mcsMutation.isPending}
+              disabled={!intakeForm.rawText.trim() || intakeMutation.isPending}
             >
-              {mcsMutation.isPending ? '登録中' : 'MCS投稿を登録'}
+              {intakeMutation.isPending ? '登録中' : '受信情報を登録'}
             </Button>
           </div>
         </form>

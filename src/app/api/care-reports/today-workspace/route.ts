@@ -65,7 +65,7 @@ const OPEN_ISSUE_SEVERITY_RANK: Record<ReportOpenIssue['severity'], number> = {
   warning: 1,
   info: 2,
 };
-const REPORT_WORKSPACE_INBOUND_CHANNELS = ['phone', 'fax', 'email', 'mcs'] as const;
+const REPORT_WORKSPACE_INBOUND_CHANNELS = ['phone', 'fax', 'email', 'mcs', 'manual'] as const;
 
 type ReportWorkspaceInboundCountReader = {
   inboundCommunicationEvent?: {

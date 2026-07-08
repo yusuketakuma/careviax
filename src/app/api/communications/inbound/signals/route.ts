@@ -20,7 +20,7 @@ const DEFAULT_LIMIT = 24;
 const MAX_LIMIT = 50;
 const CLASSIFIER_VERSION = 'inbound_signal_classifier_v1';
 
-const CHANNELS = ['phone', 'fax', 'email', 'mcs'] as const;
+const CHANNELS = ['phone', 'fax', 'email', 'mcs', 'manual'] as const;
 const SIGNAL_DOMAINS = [
   'medication_stock',
   'medication_safety',
@@ -307,7 +307,7 @@ const authenticatedGET = withAuthContext(
                   org_id: ctx.orgId,
                   source_channel: channel
                     ? { equals: channel }
-                    : { in: ['phone', 'fax', 'email', 'mcs'] },
+                    : { in: ['phone', 'fax', 'email', 'mcs', 'manual'] },
                 },
                 ...(assignmentWhere ? [assignmentWhere] : []),
               ],

@@ -288,6 +288,7 @@ const INBOUND_COMMUNICATION_CHANNEL_LABELS: Record<string, string> = {
   fax: 'FAX',
   email: 'メール',
   mcs: 'MCS',
+  manual: '手入力',
 };
 
 const INBOUND_COMMUNICATION_QUEUE_CHANNELS = Object.keys(INBOUND_COMMUNICATION_CHANNEL_LABELS);

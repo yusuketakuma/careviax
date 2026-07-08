@@ -234,7 +234,7 @@ describe('listCommunicationQueue', () => {
         where: expect.objectContaining({
           org_id: 'org-1',
           patient_id: patientId,
-          source_channel: { in: ['phone', 'fax', 'email', 'mcs'] },
+          source_channel: { in: ['phone', 'fax', 'email', 'mcs', 'manual'] },
           AND: [{ OR: [{ case_id: null }, { case_id: { in: ['case-1'] } }] }],
         }),
         select: {
@@ -829,7 +829,7 @@ describe('listCommunicationQueue', () => {
         where: expect.objectContaining({
           patient_id: 'p-1',
           AND: [caseScope],
-          source_channel: { in: ['phone', 'fax', 'email', 'mcs'] },
+          source_channel: { in: ['phone', 'fax', 'email', 'mcs', 'manual'] },
         }),
       }),
     );
@@ -917,7 +917,7 @@ describe('listCommunicationQueue', () => {
         where: expect.objectContaining({
           ...patientScope,
           AND: [caseScope],
-          source_channel: { in: ['phone', 'fax', 'email', 'mcs'] },
+          source_channel: { in: ['phone', 'fax', 'email', 'mcs', 'manual'] },
         }),
       }),
     );

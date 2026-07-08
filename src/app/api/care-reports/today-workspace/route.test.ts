@@ -249,7 +249,7 @@ describe('/api/care-reports/today-workspace', () => {
       where: {
         org_id: 'org_1',
         source_channel: {
-          in: ['phone', 'fax', 'email', 'mcs'],
+          in: ['phone', 'fax', 'email', 'mcs', 'manual'],
         },
       },
     });

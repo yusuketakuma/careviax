@@ -576,9 +576,9 @@ export const routeCatalog: RouteCatalogEntry[] = [
   },
   {
     path: '/api/communications/inbound',
-    methods: ['GET'],
+    methods: ['GET', 'POST'],
     permission: 'canReport',
-    description: '他職種から薬局への受信情報インボックス',
+    description: '他職種から薬局への受信情報インボックスとFAX/メール/手入力登録',
     area: 'reports',
   },
   {

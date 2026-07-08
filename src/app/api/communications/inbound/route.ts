@@ -1,18 +1,28 @@
 import { unstable_rethrow } from 'next/navigation';
+import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
-import { successWithMeasuredJsonPayload, validationError, internalError } from '@/lib/api/response';
+import {
+  success,
+  successWithMeasuredJsonPayload,
+  validationError,
+  internalError,
+} from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { prisma } from '@/lib/db/client';
+import { withOrgContext } from '@/lib/db/rls';
 import {
   listCommunicationQueue,
   type CommunicationQueueItem,
 } from '@/server/services/communication-queue';
+import { canAccessCommunicationRequestRecord } from '@/server/services/communication-request-access';
 import { logger } from '@/lib/utils/logger';
 
 const ROUTE = '/api/communications/inbound';
 const DEFAULT_LIMIT = 24;
 const MAX_LIMIT = 50;
-const CHANNELS = ['phone', 'fax', 'email', 'mcs'] as const;
+const LIST_CHANNELS = ['phone', 'fax', 'email', 'mcs', 'manual'] as const;
+const CREATE_CHANNELS = ['fax', 'email', 'manual'] as const;
 const STATUSES = [
   'needs_review',
   'reviewed_pending_action',
@@ -20,10 +30,65 @@ const STATUSES = [
   'task_completed',
 ] as const;
 const PRIORITIES = ['urgent', 'high', 'normal'] as const;
+const CREATE_EVENT_TYPES = [
+  'general_note',
+  'medication_stock_report',
+  'side_effect_report',
+  'schedule_request',
+] as const;
 
-type InboundChannel = (typeof CHANNELS)[number];
+const CREATE_EVENT_LABELS: Record<(typeof CREATE_EVENT_TYPES)[number], string> = {
+  general_note: '一般メモ',
+  medication_stock_report: '残数報告',
+  side_effect_report: '薬剤安全確認',
+  schedule_request: '日程相談',
+};
+
+const CREATE_CHANNEL_LABELS: Record<(typeof CREATE_CHANNELS)[number], string> = {
+  fax: 'FAX受信',
+  email: 'メール受信',
+  manual: '手入力',
+};
+
+type InboundChannel = (typeof LIST_CHANNELS)[number];
 type InboundStatus = (typeof STATUSES)[number];
 type InboundPriority = (typeof PRIORITIES)[number];
+
+const optionalTrimmedString = (maxLength: number) =>
+  z.preprocess((value) => {
+    if (typeof value !== 'string') return value;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }, z.string().max(maxLength).optional());
+
+const createInboundCommunicationSchema = z
+  .object({
+    source_channel: z.enum(CREATE_CHANNELS),
+    patient_id: optionalTrimmedString(100),
+    case_id: optionalTrimmedString(100),
+    event_type: z.enum(CREATE_EVENT_TYPES),
+    raw_text: z.string().trim().min(1, '本文は必須です').max(4000),
+    occurred_at: z.string().datetime().optional(),
+    sender_name: optionalTrimmedString(120),
+    sender_contact: optionalTrimmedString(120),
+    sender_role: z
+      .enum([
+        'nurse',
+        'care_manager',
+        'physician',
+        'dentist',
+        'therapist',
+        'facility_staff',
+        'family',
+        'patient',
+        'pharmacist',
+        'admin',
+        'unknown',
+      ])
+      .optional(),
+    sender_organization_name: optionalTrimmedString(160),
+  })
+  .strict();
 
 function parseEnumParam<T extends string>(
   searchParams: URLSearchParams,
@@ -85,6 +150,25 @@ function toInboundInboxItem(item: CommunicationQueueItem) {
   };
 }
 
+function hasMedicationStockSignal(eventType: (typeof CREATE_EVENT_TYPES)[number]) {
+  return eventType === 'medication_stock_report';
+}
+
+function hasPatientSafetySignal(eventType: (typeof CREATE_EVENT_TYPES)[number]) {
+  return eventType === 'side_effect_report';
+}
+
+function hasScheduleSignal(eventType: (typeof CREATE_EVENT_TYPES)[number]) {
+  return eventType === 'schedule_request';
+}
+
+function buildNormalizedSummary(input: {
+  sourceChannel: (typeof CREATE_CHANNELS)[number];
+  eventType: (typeof CREATE_EVENT_TYPES)[number];
+}) {
+  return `${CREATE_CHANNEL_LABELS[input.sourceChannel]}: ${CREATE_EVENT_LABELS[input.eventType]}`;
+}
+
 const authenticatedGET = withAuthContext(
   async (req, ctx) => {
     try {
@@ -92,7 +176,7 @@ const authenticatedGET = withAuthContext(
       const limitResult = parseLimit(searchParams);
       if (!limitResult.ok) return withSensitiveNoStore(limitResult.response);
 
-      const channelResult = parseEnumParam(searchParams, 'channel', CHANNELS);
+      const channelResult = parseEnumParam(searchParams, 'channel', LIST_CHANNELS);
       if (!channelResult.ok) return withSensitiveNoStore(channelResult.response);
 
       const statusResult = parseEnumParam(searchParams, 'status', STATUSES);
@@ -131,12 +215,12 @@ const authenticatedGET = withAuthContext(
                 (item) => item.status === 'reviewed_pending_action',
               ).length,
               urgent_count: overview.items.filter((item) => item.priority === 'urgent').length,
-              channel_counts: CHANNELS.reduce<Record<InboundChannel, number>>(
+              channel_counts: LIST_CHANNELS.reduce<Record<InboundChannel, number>>(
                 (acc, current) => {
                   acc[current] = overview.items.filter((item) => item.channel === current).length;
                   return acc;
                 },
-                { phone: 0, fax: 0, email: 0, mcs: 0 },
+                { phone: 0, fax: 0, email: 0, mcs: 0, manual: 0 },
               ),
             },
             items: filteredItems.map(toInboundInboxItem),
@@ -179,6 +263,105 @@ const authenticatedGET = withAuthContext(
   },
 );
 
+const authenticatedPOST = withAuthContext(
+  async (req, ctx) => {
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) {
+      return withSensitiveNoStore(validationError('リクエストボディが不正です'));
+    }
+
+    const parsed = createInboundCommunicationSchema.safeParse(payload);
+    if (!parsed.success) {
+      return withSensitiveNoStore(
+        validationError('入力値が不正です', parsed.error.flatten().fieldErrors),
+      );
+    }
+
+    const input = parsed.data;
+    const eventResult = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        if (
+          !(await canAccessCommunicationRequestRecord({
+            db: tx,
+            orgId: ctx.orgId,
+            patientId: input.patient_id,
+            caseId: input.case_id,
+            accessContext: ctx,
+          }))
+        ) {
+          return {
+            ok: false as const,
+            response: validationError('患者またはケースの割当権限がありません'),
+          };
+        }
+
+        const created = await tx.inboundCommunicationEvent.create({
+          data: {
+            org_id: ctx.orgId,
+            patient_id: input.patient_id,
+            case_id: input.case_id,
+            source_channel: input.source_channel,
+            source_system: 'ph_os_manual_intake',
+            direction: 'inbound',
+            sender_name: input.sender_name,
+            sender_contact: input.sender_contact,
+            sender_role: input.sender_role ?? 'unknown',
+            sender_organization_name: input.sender_organization_name,
+            event_type: input.event_type,
+            raw_text: input.raw_text,
+            normalized_summary: buildNormalizedSummary({
+              sourceChannel: input.source_channel,
+              eventType: input.event_type,
+            }),
+            attachment_count: 0,
+            has_medication_stock_signal: hasMedicationStockSignal(input.event_type),
+            has_patient_safety_signal: hasPatientSafetySignal(input.event_type),
+            has_schedule_signal: hasScheduleSignal(input.event_type),
+            confidence: 'high',
+            processing_status: 'unprocessed',
+            created_by: ctx.userId,
+            ...(input.occurred_at ? { occurred_at: new Date(input.occurred_at) } : {}),
+          },
+          select: {
+            id: true,
+            event_type: true,
+            source_channel: true,
+          },
+        });
+
+        return { ok: true as const, event: created };
+      },
+      { requestContext: ctx },
+    );
+
+    if (!eventResult.ok) return withSensitiveNoStore(eventResult.response);
+
+    const event = eventResult.event;
+    return withSensitiveNoStore(
+      success(
+        {
+          data: {
+            id: event.id,
+            event_type: event.event_type,
+            channel: event.source_channel,
+            status: 'needs_review',
+            action_href: '/communications/inbound',
+          },
+          meta: {
+            generated_at: new Date().toISOString(),
+          },
+        },
+        201,
+      ),
+    );
+  },
+  {
+    permission: 'canReport',
+    message: '他職種受信の登録権限がありません',
+  },
+);
+
 export const GET: typeof authenticatedGET = async (req, routeContext) => {
   try {
     return await authenticatedGET(req, routeContext);
@@ -187,6 +370,24 @@ export const GET: typeof authenticatedGET = async (req, routeContext) => {
     logger.error(
       {
         event: 'inbound_communications_get_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+      },
+      err,
+    );
+    return withSensitiveNoStore(internalError());
+  }
+};
+
+export const POST: typeof authenticatedPOST = async (req, routeContext) => {
+  try {
+    return await authenticatedPOST(req, routeContext);
+  } catch (err) {
+    unstable_rethrow(err);
+    logger.error(
+      {
+        event: 'inbound_communications_post_unhandled_error',
         route: ROUTE,
         method: req.method,
         status: 500,

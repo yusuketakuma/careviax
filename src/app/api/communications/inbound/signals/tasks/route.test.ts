@@ -143,7 +143,7 @@ describe('/api/communications/inbound/signals/tasks', () => {
             inbound_event: {
               is: {
                 org_id: 'org_1',
-                source_channel: { in: ['phone', 'fax', 'email', 'mcs'] },
+                source_channel: { in: ['phone', 'fax', 'email', 'mcs', 'manual'] },
               },
             },
           },

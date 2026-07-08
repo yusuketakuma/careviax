@@ -303,7 +303,7 @@ const authenticatedPOST = withAuthContext(
                       inbound_event: {
                         is: {
                           org_id: ctx.orgId,
-                          source_channel: { in: ['phone', 'fax', 'email', 'mcs'] },
+                          source_channel: { in: ['phone', 'fax', 'email', 'mcs', 'manual'] },
                         },
                       },
                     },
@@ -343,7 +343,7 @@ const authenticatedPOST = withAuthContext(
                     {
                       id: parsedKey.inboundEventId,
                       org_id: ctx.orgId,
-                      source_channel: { in: ['phone', 'fax', 'email', 'mcs'] },
+                      source_channel: { in: ['phone', 'fax', 'email', 'mcs', 'manual'] },
                     },
                     ...(assignmentWhere ? [assignmentWhere] : []),
                   ],

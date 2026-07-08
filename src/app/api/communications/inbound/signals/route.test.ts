@@ -187,7 +187,7 @@ describe('/api/communications/inbound/signals', () => {
         AND: [
           {
             org_id: 'org_1',
-            source_channel: { in: ['phone', 'fax', 'email', 'mcs'] },
+            source_channel: { in: ['phone', 'fax', 'email', 'mcs', 'manual'] },
           },
           {
             OR: [{ patient_id: { in: ['patient_1'] } }, { patient_id: null }],

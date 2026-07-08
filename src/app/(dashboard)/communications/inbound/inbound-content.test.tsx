@@ -44,7 +44,7 @@ function buildInboxData() {
         needs_review_count: 2,
         reviewed_pending_action_count: 0,
         urgent_count: 1,
-        channel_counts: { phone: 1, fax: 1, email: 0, mcs: 0 },
+        channel_counts: { phone: 1, fax: 1, email: 0, mcs: 0, manual: 0 },
       },
       items: [
         {
@@ -614,7 +614,7 @@ describe('InboundCommunicationsContent', () => {
 
     expect(mutateMock).toHaveBeenCalledWith('inbound_signal:signal_1');
 
-    const mutationOptions = useMutationMock.mock.calls[2]?.[0] as {
+    const mutationOptions = useMutationMock.mock.calls[1]?.[0] as {
       mutationFn: (candidateKey: string) => Promise<unknown>;
       onSuccess: () => Promise<void>;
     };
@@ -680,7 +680,7 @@ describe('InboundCommunicationsContent', () => {
       action: 'accept',
     });
 
-    const mutationOptions = useMutationMock.mock.calls[3]?.[0] as {
+    const mutationOptions = useMutationMock.mock.calls[2]?.[0] as {
       mutationFn: (input: { signalId: string; action: 'accept' }) => Promise<unknown>;
       onSuccess: (response: {
         data: {
@@ -849,12 +849,14 @@ describe('InboundCommunicationsContent', () => {
     );
   });
 
-  it('submits a structured phone memo through the inbound phone endpoint', async () => {
+  it('submits a canonical fax/email/manual intake through the unified inbound endpoint', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
           data: {
-            id: 'event_1',
+            id: 'event_fax_1',
+            channel: 'email',
+            event_type: 'side_effect_report',
             status: 'needs_review',
             action_href: '/communications/inbound',
           },
@@ -867,163 +869,111 @@ describe('InboundCommunicationsContent', () => {
 
     render(<InboundCommunicationsContent />);
 
-    fireEvent.change(screen.getAllByLabelText('患者ID')[0], { target: { value: 'patient_1' } });
-    fireEvent.change(screen.getByLabelText('相手'), { target: { value: '訪問看護師A' } });
-    fireEvent.click(screen.getAllByRole('button', { name: '残数報告' })[0]);
-    fireEvent.change(screen.getByLabelText('電話メモ本文'), {
+    const intakeForm = within(screen.getByTestId('inbound-intake-form'));
+    expect(intakeForm.getByRole('button', { name: /FAX/ })).toBeTruthy();
+    expect(intakeForm.getByRole('button', { name: /メール/ })).toBeTruthy();
+    expect(intakeForm.getByRole('button', { name: /手入力/ })).toBeTruthy();
+    expect(intakeForm.queryByRole('button', { name: '電話' })).toBeNull();
+    expect(intakeForm.queryByRole('button', { name: 'MCS' })).toBeNull();
+
+    fireEvent.click(intakeForm.getByRole('button', { name: /メール/ }));
+    fireEvent.change(intakeForm.getByLabelText('患者ID'), { target: { value: 'patient_1' } });
+    fireEvent.change(intakeForm.getByLabelText('送信者'), { target: { value: '訪問看護師A' } });
+    fireEvent.change(intakeForm.getByLabelText('職種'), { target: { value: 'nurse' } });
+    fireEvent.change(intakeForm.getByLabelText('所属'), {
+      target: { value: '訪問看護ステーションA' },
+    });
+    fireEvent.change(intakeForm.getByLabelText('送信元連絡先'), {
+      target: { value: 'nurse@example.test' },
+    });
+    fireEvent.click(intakeForm.getByRole('button', { name: '薬剤安全' }));
+    fireEvent.change(intakeForm.getByLabelText('受信本文'), {
       target: { value: '湿布は残り4枚です。' },
     });
-    fireEvent.click(screen.getByRole('button', { name: '電話メモを登録' }));
+    fireEvent.click(intakeForm.getByRole('button', { name: '受信情報を登録' }));
 
     expect(mutateMock).toHaveBeenCalledWith(
       expect.objectContaining({
+        sourceChannel: 'email',
         patientId: 'patient_1',
-        counterpartName: '訪問看護師A',
-        eventType: 'medication_stock_report',
-        content: '湿布は残り4枚です。',
+        senderName: '訪問看護師A',
+        senderRole: 'nurse',
+        senderOrganizationName: '訪問看護ステーションA',
+        senderContact: 'nurse@example.test',
+        eventType: 'side_effect_report',
+        rawText: '湿布は残り4枚です。',
       }),
     );
 
     const mutationOptions = useMutationMock.mock.calls[0]?.[0] as {
       mutationFn: (input: {
-        patientId: string;
-        caseId: string;
-        counterpartName: string;
-        counterpartContact: string;
-        eventType: string;
-        content: string;
-      }) => Promise<unknown>;
-      onSuccess: () => Promise<void>;
-    };
-    await mutationOptions.mutationFn({
-      patientId: 'patient_1',
-      caseId: '',
-      counterpartName: '訪問看護師A',
-      counterpartContact: '',
-      eventType: 'medication_stock_report',
-      content: '湿布は残り4枚です。',
-    });
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/communications/inbound/phone',
-      expect.objectContaining({
-        method: 'POST',
-        headers: expect.objectContaining({
-          'Content-Type': 'application/json',
-          'x-org-id': 'org_1',
-        }),
-        body: JSON.stringify({
-          patient_id: 'patient_1',
-          counterpart_name: '訪問看護師A',
-          event_type: 'medication_stock_report',
-          content: '湿布は残り4枚です。',
-        }),
-      }),
-    );
-
-    await act(async () => {
-      await mutationOptions.onSuccess();
-    });
-    expect(toastSuccessMock).toHaveBeenCalledWith('電話メモを受信キューに登録しました');
-    expect(invalidateQueriesMock).toHaveBeenCalledWith({
-      queryKey: ['communications-inbound', 'org_1'],
-    });
-    expect(invalidateQueriesMock).toHaveBeenCalledWith({
-      queryKey: ['communications-inbound-signals', 'org_1'],
-    });
-  });
-
-  it('submits an MCS pasted post through the inbound mcs endpoint', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          data: {
-            id: 'event_mcs_1',
-            status: 'needs_review',
-            action_href: '/patients/patient_1/mcs',
-          },
-          meta: { generated_at: '2026-07-07T03:00:00.000Z' },
-        }),
-        { status: 201, headers: { 'content-type': 'application/json' } },
-      ),
-    );
-    vi.stubGlobal('fetch', fetchMock);
-
-    render(<InboundCommunicationsContent />);
-
-    fireEvent.change(screen.getAllByLabelText('患者ID')[1], { target: { value: 'patient_1' } });
-    fireEvent.change(screen.getByLabelText('投稿者'), { target: { value: '訪問看護師A' } });
-    fireEvent.change(screen.getByLabelText('職種'), { target: { value: '訪問看護師' } });
-    fireEvent.change(screen.getByLabelText('所属'), { target: { value: '訪看ステーション' } });
-    fireEvent.change(screen.getByLabelText('MCSスレッドURL'), {
-      target: { value: 'https://www.medical-care.net/projects/medical/57886227' },
-    });
-    fireEvent.click(screen.getAllByRole('button', { name: '残数報告' })[1]);
-    fireEvent.change(screen.getByLabelText('MCS投稿本文'), {
-      target: { value: 'カロナールは残り6錠です。' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'MCS投稿を登録' }));
-
-    expect(mutateMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        patientId: 'patient_1',
-        senderName: '訪問看護師A',
-        senderRole: '訪問看護師',
-        senderOrganization: '訪看ステーション',
-        sourceUrl: 'https://www.medical-care.net/projects/medical/57886227',
-        eventType: 'medication_stock_report',
-        content: 'カロナールは残り6錠です。',
-      }),
-    );
-
-    const mutationOptions = useMutationMock.mock.calls[1]?.[0] as {
-      mutationFn: (input: {
+        sourceChannel: 'email';
         patientId: string;
         caseId: string;
         senderName: string;
-        senderRole: string;
-        senderOrganization: string;
-        sourceUrl: string;
+        senderRole: 'nurse';
+        senderOrganizationName: string;
+        senderContact: string;
         eventType: string;
-        content: string;
+        rawText: string;
       }) => Promise<unknown>;
       onSuccess: () => Promise<void>;
     };
     await mutationOptions.mutationFn({
+      sourceChannel: 'email',
       patientId: 'patient_1',
       caseId: '',
       senderName: '訪問看護師A',
-      senderRole: '訪問看護師',
-      senderOrganization: '訪看ステーション',
-      sourceUrl: 'https://www.medical-care.net/projects/medical/57886227',
-      eventType: 'medication_stock_report',
-      content: 'カロナールは残り6錠です。',
+      senderRole: 'nurse',
+      senderOrganizationName: '訪問看護ステーションA',
+      senderContact: 'nurse@example.test',
+      eventType: 'side_effect_report',
+      rawText: '湿布は残り4枚です。',
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/communications/inbound/mcs',
+      '/api/communications/inbound',
       expect.objectContaining({
         method: 'POST',
         headers: expect.objectContaining({
           'Content-Type': 'application/json',
           'x-org-id': 'org_1',
         }),
-        body: JSON.stringify({
-          patient_id: 'patient_1',
-          sender_name: '訪問看護師A',
-          sender_role: '訪問看護師',
-          sender_organization: '訪看ステーション',
-          source_url: 'https://www.medical-care.net/projects/medical/57886227',
-          event_type: 'medication_stock_report',
-          content: 'カロナールは残り6錠です。',
-        }),
       }),
     );
+    const requestBody = JSON.parse(String(fetchMock.mock.calls[0][1]?.body)) as Record<
+      string,
+      unknown
+    >;
+    expect(Object.keys(requestBody).sort()).toEqual([
+      'event_type',
+      'patient_id',
+      'raw_text',
+      'sender_contact',
+      'sender_name',
+      'sender_organization_name',
+      'sender_role',
+      'source_channel',
+    ]);
+    expect(requestBody).toMatchObject({
+      source_channel: 'email',
+      patient_id: 'patient_1',
+      sender_name: '訪問看護師A',
+      sender_role: 'nurse',
+      sender_organization_name: '訪問看護ステーションA',
+      sender_contact: 'nurse@example.test',
+      event_type: 'side_effect_report',
+      raw_text: '湿布は残り4枚です。',
+    });
+    expect(JSON.stringify(requestBody)).not.toContain('content');
+    expect(JSON.stringify(requestBody)).not.toContain('subject');
+    expect(JSON.stringify(requestBody)).not.toContain('source_url');
+    expect(JSON.stringify(requestBody)).not.toContain('attachment');
 
     await act(async () => {
       await mutationOptions.onSuccess();
     });
-    expect(toastSuccessMock).toHaveBeenCalledWith('MCS投稿を受信キューに登録しました');
+    expect(toastSuccessMock).toHaveBeenCalledWith('受信情報をレビューキューに登録しました');
     expect(invalidateQueriesMock).toHaveBeenCalledWith({
       queryKey: ['communications-inbound', 'org_1'],
     });
