@@ -98,25 +98,33 @@ export const GET = withAuthContext(
       }
     }
 
+    const list = buildCountedListEnvelope(
+      credentials.map((item) => ({
+        id: item.id,
+        user_id: item.user.id,
+        user_name: item.user.name,
+        certification_type: item.certification_type,
+        certification_number: item.certification_number,
+        issued_date: item.issued_date?.toISOString() ?? null,
+        expiry_date: item.expiry_date?.toISOString() ?? null,
+        tenure_years: item.tenure_years,
+        weekly_work_hours: item.weekly_work_hours,
+        consented_patients: consentedPatientsByPharmacist.get(item.user.id) ?? [],
+      })),
+      totalCount,
+    );
+
     return success({
-      ...buildCountedListEnvelope(
-        credentials.map((item) => ({
-          id: item.id,
-          user_id: item.user.id,
-          user_name: item.user.name,
-          certification_type: item.certification_type,
-          certification_number: item.certification_number,
-          issued_date: item.issued_date?.toISOString() ?? null,
-          expiry_date: item.expiry_date?.toISOString() ?? null,
-          tenure_years: item.tenure_years,
-          weekly_work_hours: item.weekly_work_hours,
-          consented_patients: consentedPatientsByPharmacist.get(item.user.id) ?? [],
-        })),
-        totalCount,
-      ),
-      count_basis: 'pharmacist_credentials',
-      filters_applied: {},
-      limit,
+      data: list.data,
+      meta: {
+        total_count: list.total_count,
+        visible_count: list.visible_count,
+        hidden_count: list.hidden_count,
+        truncated: list.truncated,
+        count_basis: 'pharmacist_credentials',
+        filters_applied: {},
+        limit,
+      },
     });
   },
   {

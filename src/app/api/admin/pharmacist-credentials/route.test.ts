@@ -227,17 +227,8 @@ describe('/api/admin/pharmacist-credentials GET', () => {
       },
     });
     const body = await response.json();
-    expect(Object.keys(body)).toEqual([
-      'data',
-      'total_count',
-      'visible_count',
-      'hidden_count',
-      'truncated',
-      'count_basis',
-      'filters_applied',
-      'limit',
-    ]);
-    expect(body).toMatchObject({
+    expect(Object.keys(body)).toEqual(['data', 'meta']);
+    expect(body).toEqual({
       data: [
         expect.objectContaining({
           id: 'cred_1',
@@ -247,14 +238,23 @@ describe('/api/admin/pharmacist-credentials GET', () => {
           consented_patients: [{ id: 'patient_1', name: '田中 花子' }],
         }),
       ],
-      total_count: 1,
-      visible_count: 1,
-      hidden_count: 0,
-      truncated: false,
-      count_basis: 'pharmacist_credentials',
-      filters_applied: {},
-      limit: 5,
+      meta: {
+        total_count: 1,
+        visible_count: 1,
+        hidden_count: 0,
+        truncated: false,
+        count_basis: 'pharmacist_credentials',
+        filters_applied: {},
+        limit: 5,
+      },
     });
+    expect(body).not.toHaveProperty('total_count');
+    expect(body).not.toHaveProperty('visible_count');
+    expect(body).not.toHaveProperty('hidden_count');
+    expect(body).not.toHaveProperty('truncated');
+    expect(body).not.toHaveProperty('count_basis');
+    expect(body).not.toHaveProperty('filters_applied');
+    expect(body).not.toHaveProperty('limit');
   });
 
   it('returns counted metadata for truncated credential lists without exposing hidden rows', async () => {
@@ -292,13 +292,15 @@ describe('/api/admin/pharmacist-credentials GET', () => {
     );
     await expect(response.json()).resolves.toMatchObject({
       data: [expect.objectContaining({ id: 'cred_1' })],
-      total_count: 3,
-      visible_count: 1,
-      hidden_count: 2,
-      truncated: true,
-      count_basis: 'pharmacist_credentials',
-      filters_applied: {},
-      limit: 1,
+      meta: {
+        total_count: 3,
+        visible_count: 1,
+        hidden_count: 2,
+        truncated: true,
+        count_basis: 'pharmacist_credentials',
+        filters_applied: {},
+        limit: 1,
+      },
     });
   });
 
@@ -328,13 +330,15 @@ describe('/api/admin/pharmacist-credentials GET', () => {
     expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       data: [],
-      total_count: 0,
-      visible_count: 0,
-      hidden_count: 0,
-      truncated: false,
-      count_basis: 'pharmacist_credentials',
-      filters_applied: {},
-      limit: expectedTake,
+      meta: {
+        total_count: 0,
+        visible_count: 0,
+        hidden_count: 0,
+        truncated: false,
+        count_basis: 'pharmacist_credentials',
+        filters_applied: {},
+        limit: expectedTake,
+      },
     });
   });
 

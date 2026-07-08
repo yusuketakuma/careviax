@@ -69,13 +69,15 @@ type PharmacistOption = {
 
 type PharmacistCredentialListResponse = {
   data: PharmacistCredential[];
-  total_count?: number;
-  visible_count?: number;
-  hidden_count?: number;
-  truncated?: boolean;
-  count_basis?: 'pharmacist_credentials';
-  filters_applied?: Record<string, never>;
-  limit?: number;
+  meta: {
+    total_count: number;
+    visible_count: number;
+    hidden_count: number;
+    truncated: boolean;
+    count_basis: 'pharmacist_credentials';
+    filters_applied: Record<string, never>;
+    limit: number;
+  };
 };
 
 type CredentialForm = {
@@ -344,12 +346,13 @@ export function PharmacistCredentialsContent() {
   });
 
   const credentials = data?.data ?? [];
-  const totalCredentialCount = data?.total_count ?? credentials.length;
-  const visibleCredentialCount = data?.visible_count ?? credentials.length;
+  const credentialListMeta = data?.meta;
+  const totalCredentialCount = credentialListMeta?.total_count ?? credentials.length;
+  const visibleCredentialCount = credentialListMeta?.visible_count ?? credentials.length;
   const hiddenCredentialCount =
-    data?.hidden_count ?? Math.max(totalCredentialCount - credentials.length, 0);
+    credentialListMeta?.hidden_count ?? Math.max(totalCredentialCount - credentials.length, 0);
   const credentialsListSummary =
-    hiddenCredentialCount > 0 || data?.truncated
+    hiddenCredentialCount > 0 || credentialListMeta?.truncated
       ? `先頭${visibleCredentialCount.toLocaleString()}件を表示 / 他${hiddenCredentialCount.toLocaleString()}件`
       : `登録${totalCredentialCount.toLocaleString()}件`;
   const pharmacistOptions = pharmacistsQuery.data?.data ?? [];
