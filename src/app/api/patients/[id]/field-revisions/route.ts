@@ -50,7 +50,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
     limit: parsedQuery.data.limit,
   });
 
-  return success(revisions);
+  return success({ data: revisions.data, meta: revisions.meta });
 }
 
 export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {

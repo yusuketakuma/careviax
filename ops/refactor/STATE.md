@@ -41,6 +41,76 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001CJ` patient field revisions response envelope cleanup.
+  - current task:
+    `GET /api/patients/:id/field-revisions` の counted field revision page success を
+    `success(revisions)` から明示 `{ data: revisions.data, meta: revisions.meta }`
+    envelope へ移行し、response-shape allowlist / Plans を同期する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `ops/refactor/STATE.md`,
+    `gbrain search "API-CONTRACT-001 field-revisions response shape allowlist"`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/patients/[id]/field-revisions/route.ts`,
+    `src/app/api/patients/[id]/field-revisions/route.test.ts`,
+    `src/components/features/patients/patient-field-revision-timeline.tsx`,
+    `src/components/features/patients/patient-field-revision-timeline.test.tsx`,
+    `src/server/services/patient-field-revision-list.ts`, `Plans.md`, and
+    `docs/plans-archive.md`.
+  - files changed:
+    `Plans.md`, `docs/plans-archive.md`, `ops/refactor/STATE.md`,
+    `tools/api-response-shape-allowlist.json`, and
+    `src/app/api/patients/[id]/field-revisions/route.ts`.
+  - bugs found:
+    The patient field revisions route returned the counted page through
+    `success(revisions)`, keeping one API response-shape allowlist entry alive even though
+    the runtime body already contained `data` and `meta`.
+  - bugs fixed:
+    GET success now calls `success({ data: revisions.data, meta: revisions.meta })`, making
+    the route-local envelope explicit for the static response-shape guard. The existing
+    patient field revision timeline reader already consumes `payload.data` / `payload.meta`,
+    so consumer behavior remains unchanged. Response-shape debt dropped from 94 to 93.
+  - security risks found:
+    No visit permission check, patient id/query validation, assignment-scope patient lookup,
+    no-store wrapper, not-found response, or sanitized internal-error response changed.
+  - security risks reduced:
+    Removed the route-local `success(revisions)` path from the public response contract.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None; this is response contract cleanup.
+  - UI/UX note:
+    No visible UI/UX layout or interaction change. The existing timeline reader was already
+    on the `data` / `meta` contract, so image generation was not applicable.
+  - Oracle note:
+    No Oracle consult was run for this slice per the allowlist-debt concentration directive
+    and the repeated envelope-only local pattern. Validation covered route/frontend tests,
+    contract ratchet, scoped lint/format, and full typecheck.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/field-revisions/route.ts'`;
+    `pnpm vitest run 'src/app/api/patients/[id]/field-revisions/route.test.ts' --reporter=dot`;
+    `pnpm vitest run src/components/features/patients/patient-field-revision-timeline.test.tsx --reporter=dot --testTimeout=30000`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint 'src/app/api/patients/[id]/field-revisions/route.ts' 'src/app/api/patients/[id]/field-revisions/route.test.ts' src/components/features/patients/patient-field-revision-timeline.tsx src/components/features/patients/patient-field-revision-timeline.test.tsx`;
+    `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/field-revisions/route.ts'`;
+    `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/field-revisions/route.ts'`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Prettier passed. Patient field revisions route tests passed 1 file / 6 tests. Patient
+    field revision timeline tests passed 1 file / 6 tests. `api-response-shape:check`
+    passed with 93 allowlisted violations and 0 new violations. `plans:active:check`
+    passed. Scoped ESLint, scoped Prettier check, scoped diff check, and full typecheck
+    passed.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 93 allowlisted response-shape violations.
+    Next recommended response-shape slice is the current allowlist head:
+    `src/app/api/patients/[id]/header-summary/route.ts`.
+  - next action:
+    Commit this patient field revisions envelope slice with explicit owned paths only, then
+    continue allowlist debt burn-down from the next allowlist head.
+
 - codex: `API-CONTRACT-001CI` patient documents response envelope cleanup.
   - current task:
     `GET /api/patients/:id/documents` の documents snapshot success response を
