@@ -41,6 +41,87 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001BV` physician report draft response envelope cleanup.
+  - current task:
+    `POST /api/partner-visit-records/[id]/physician-report-draft` の success response を
+    legacy root payload から `{ data: ... }` envelope へ移行し、薬局間連携ワークフローの
+    reader と response-shape allowlist を同期する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`, `Plans.md`,
+    `docs/plans-archive.md`, `tools/api-response-shape-allowlist.json`,
+    `src/app/api/partner-visit-records/[id]/physician-report-draft/route.ts`,
+    `src/app/api/partner-visit-records/[id]/physician-report-draft/route.test.ts`,
+    `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`,
+    `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`,
+    `src/lib/api/client-json.ts`, `src/lib/api/response.ts`, and this ledger.
+  - files changed:
+    `Plans.md`, `docs/plans-archive.md`, `tools/api-response-shape-allowlist.json`,
+    `src/app/api/partner-visit-records/[id]/physician-report-draft/route.ts`,
+    `src/app/api/partner-visit-records/[id]/physician-report-draft/route.test.ts`,
+    `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`,
+    `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`,
+    and this ledger.
+  - bugs found:
+    The physician-report draft route still returned success fields at the public response root:
+    `message`, `reused_existing_draft`, and `report`. That kept the route on the
+    API response-shape allowlist and would force frontend consumers to keep a legacy parser
+    for one PHI-adjacent workflow action.
+  - bugs fixed:
+    The route now returns `success({ data: { message, reused_existing_draft, report } })`.
+    Route snapshots assert the current envelope for both create and reused-draft success.
+    The pharmacy cooperation workflow reader validates `{ data: ... }` and unwraps
+    `payload.data` before updating UI state. The malformed response fixture remains malformed
+    inside the `data` envelope so schema rejection is still covered. The response-shape
+    allowlist entry for this route was removed; measured allowlist debt is now 108.
+  - security risks found:
+    No auth context, partner visit record scoping, draft reuse/create semantics, no-store
+    wrapper, validation error, not-found, conflict, or internal error response was changed.
+    No secrets or raw PHI/PII were sent to Oracle; only source files and tests were attached.
+  - security risks reduced:
+    Removed PHI-adjacent report draft fields from the success response root and kept the
+    frontend on a single explicit `data` reader contract. This reduces accidental legacy
+    shape handling while preserving the existing authorized payload.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None; this is response contract cleanup.
+  - UI/UX note:
+    No visual UI/UX layout or interaction change. This is an API/frontend reader contract
+    slice, so image generation was not applicable.
+  - Oracle note:
+    Ran the required Oracle preflight context: `npx -y @steipete/oracle --dry-run summary --files-report`,
+    `git remote -v`, branch `main`, commit `9ccc9047d0a6f0645d762d87558116e1d12937d8`,
+    and `gh pr status` showing no current PR. The browser consult session
+    `api-contract-physician-report-draft` initially exited with Node/undici
+    `setTypeOfService EINVAL` after archiving; `npx -y @steipete/oracle session api-contract-physician-report-draft --render`
+    reattached and marked it completed. Transcript artifact:
+    `/Users/yusuke/.oracle/sessions/api-contract-physician-report-draft/artifacts/transcript-2.md`.
+    Oracle's answer was minimal and did not explicitly confirm GitHub access; it called out
+    the reader and ratchet coverage as the key compatibility focus. Local validation below
+    covers both and found no blocker.
+  - validation commands:
+    `pnpm vitest run 'src/app/api/partner-visit-records/[id]/physician-report-draft/route.test.ts' --reporter=dot`;
+    `pnpm vitest run 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=30000`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint 'src/app/api/partner-visit-records/[id]/physician-report-draft/route.ts' 'src/app/api/partner-visit-records/[id]/physician-report-draft/route.test.ts' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`;
+    `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/partner-visit-records/[id]/physician-report-draft/route.ts' 'src/app/api/partner-visit-records/[id]/physician-report-draft/route.test.ts' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`;
+    `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/partner-visit-records/[id]/physician-report-draft/route.ts' 'src/app/api/partner-visit-records/[id]/physician-report-draft/route.test.ts' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Route test passed 1 file / 7 tests. Pharmacy cooperation workflow component test passed
+    1 file / 31 tests. `api-response-shape:check` passed with 108 allowlisted violations
+    and 0 new violations. `plans:active:check` passed. Scoped ESLint, scoped Prettier
+    check, scoped diff check, and full typecheck passed.
+  - commit:
+    Pending explicit scoped commit for this implementation slice.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 108 allowlisted response-shape violations.
+    Existing unrelated dirty/untracked memory/config/docs files remain unstaged.
+  - next action:
+    Commit and push this implementation slice, then record the commit hash/push result in
+    this ledger before selecting the next allowlist head.
+
 - codex: `PATIENT-BOARD-LASTVISIT-JST-001` patient list last-visit DateTime boundary fix.
   - commit:
     Implementation, Plans cleanup, and ledger evidence committed as `794d833b7`

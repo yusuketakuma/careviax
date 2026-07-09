@@ -457,6 +457,10 @@ const reportDraftResultSchema = z.object({
   }),
 });
 
+const reportDraftResponseSchema = z.object({
+  data: reportDraftResultSchema,
+});
+
 const patientShareCaseStatusCountsSchema = z.object({
   draft: z.number().int().nonnegative(),
   consent_pending: z.number().int().nonnegative(),
@@ -3394,7 +3398,7 @@ export function PharmacyCooperationWorkflowContent() {
       });
       return readApiJson<ReportDraftResult>(response, {
         fallbackMessage: '報告書ドラフトの作成に失敗しました',
-        schema: reportDraftResultSchema,
+        schema: reportDraftResponseSchema.transform((payload) => payload.data),
       });
     },
     onSuccess: async (result) => {

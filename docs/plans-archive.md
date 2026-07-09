@@ -6790,7 +6790,6 @@ flowchart LR
   S --> N
 ```
 
-
 ---
 
 ## Active Plan Board v8 完了派生タスク詳細（2026-07-09 v9 圧縮時に移管、再実装しない）
@@ -6889,6 +6888,7 @@ flowchart LR
 - `API-CONTRACT-001BS`: `medication-profiles` の GET success を `data + meta` envelope へ移行済み。旧 root `hasMore` / `nextCursor` は残さず、inaccessible patient の空 list も同じ envelope で返す。POST create の既存 `data` envelope、auth context、patient access、DrugMaster validation、RLS create、PHI-safe logging は変更しない。allowlist debt は 115 → 114。
 - `API-CONTRACT-001BT`: `notifications` の GET list success と PATCH mark-read success を `data + meta` / `data` envelope へ移行済み。summary GET の既存 `data.unreadCount` は維持し、旧 root `hasMore` / `nextCursor` / `message` は残さない。通知ベル、通知一覧、管理 realtime の成功 fixture は current envelope のみを使う。auth context、admin user scope、RLS update、no-store、PHI-safe logging は変更しない。allowlist debt は 114 → 111。
 - `API-CONTRACT-001BU`: `partner-pharmacies` の GET list success と POST create success を `data + meta` / `data` envelope へ移行済み。薬局間連携セットアップ画面は partner pharmacy list だけ `payload.meta.has_more` / `payload.meta.next_cursor` を parse し、POST create は `payload.data` のみを読む。旧 root `hasMore` / `nextCursor` / raw partner pharmacy fields は残さない。auth/permission、status filter validation、RLS create、audit metadata は変更しない。allowlist debt は 111 → 109。
+- `API-CONTRACT-001BV`: `partner-visit-records/:id/physician-report-draft` の POST success を `data` envelope へ移行済み。薬局間連携ワークフローのドラフト作成 reader は `payload.data` のみを読み、旧 root `message` / `reused_existing_draft` / raw report は残さない。auth context、partner visit record scope、draft reuse/create semantics、no-store/error response は変更しない。allowlist debt は 109 → 108。
 - `PERF-DB-READ-SLO-001A`: `tools/read-path-slo.json` と `db:read-slo:check` を追加済み。configured GET payload budget family は read SLO entry 必須とし、route/family/payload bytes の registry drift、p95/p99不整合、max rows/include depth/query count欠落、expected index guidance欠落をfixture testで拒否する。
 - `MOV-001-API-FILTER-001`: `GET /api/patients/:id/movement-timeline` を standalone-only の movement list API とし、旧 `/api/patients/:id/timeline` list alias を削除済み。bounded latest-window source read、limit/cursor/category/date_from/date_to filter、movement-only DTO、meta.next_cursor、no-store/measured JSON、PHI read audit、payload budget、read-path SLO、query-shape watchlist、rate-limit bucket、patient detail UI fetch path、route testsで固定した。raw detail reauth は `MOV-001-RAW-DETAIL-REAUTH-001` で完了済み。
 - `MOV-001-DEEPLINK-GUARD-001`: Movement presenter と UI が `/api`、`/api?`、`/api/...`、旧 `/patients/:id/timeline` list alias、旧 `/patients/:id/timeline/:eventId` detail shell を action href として出さない。presenter payload は安全な `/patients/:id#patient-movement` へ fallback し、UI は直渡しの unsafe href を disabled 表示にする。movement list route test は `timeline_events` / `self_reports` / `raw_text` / `event_detail_href` / SOAP/OCR/pdf名を返さない新契約だけを固定する。
@@ -6927,4 +6927,3 @@ flowchart LR
 - `PLAN-DETAIL-SYNC-001`: active board と後段 `cc:REFERENCE` の詳細phase表が矛盾しないように、実装済みAPI/route/schema/testが見つかった場合は reference 側も「実装済み / Human gate / 残scope」に更新する。古い「未実装」表記だけを根拠に再実装しない。
 - `STOCK-VISIT-DB-GATE-UI-001`: visit observation UI は `MedicationStockObservationContext` migration の適用状態と DB integration evidence を検知できるまで、write可能UIとread-only/review待ちUIを明確に分ける。保存不可時は必ず false success を防ぐ。
 - `STOCK-LEGACY-RESIDUAL-MIGRATION-001`: 既存 `ResidualMedication` と新 `MedicationStockLedger` の dual-read / dual-write / backfill / cutoff 条件を別計画に切る。既存訪問記録の残薬表示を壊さず、正本移行後に legacy field を段階縮小する。
-

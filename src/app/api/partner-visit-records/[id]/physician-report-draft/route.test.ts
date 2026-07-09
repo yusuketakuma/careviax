@@ -104,12 +104,14 @@ describe('/api/partner-visit-records/[id]/physician-report-draft POST', () => {
       { partnerVisitRecordId: 'partner_visit_record_1' },
     );
     await expect(response.json()).resolves.toMatchObject({
-      message: '医師向け報告書ドラフトを作成しました',
-      reused_existing_draft: false,
-      report: {
-        id: 'report_1',
-        partner_visit_record_id: 'partner_visit_record_1',
-        has_content: true,
+      data: {
+        message: '医師向け報告書ドラフトを作成しました',
+        reused_existing_draft: false,
+        report: {
+          id: 'report_1',
+          partner_visit_record_id: 'partner_visit_record_1',
+          has_content: true,
+        },
       },
     });
   });
@@ -134,9 +136,11 @@ describe('/api/partner-visit-records/[id]/physician-report-draft POST', () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      message: '既存の医師向け報告書ドラフトを返しました',
-      reused_existing_draft: true,
-      report: { id: 'report_existing' },
+      data: {
+        message: '既存の医師向け報告書ドラフトを返しました',
+        reused_existing_draft: true,
+        report: { id: 'report_existing' },
+      },
     });
   });
 

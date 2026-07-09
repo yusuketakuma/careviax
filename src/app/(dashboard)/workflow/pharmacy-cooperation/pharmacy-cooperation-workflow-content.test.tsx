@@ -642,9 +642,11 @@ describe('PharmacyCooperationWorkflowContent', () => {
         if (url === '/api/partner-visit-records/partner_record_confirmed/physician-report-draft') {
           return new Response(
             JSON.stringify({
-              message: '医師向け報告書ドラフトを作成しました',
-              reused_existing_draft: false,
-              report: { id: 'care_report_1', status: 'draft', report_type: 'physician' },
+              data: {
+                message: '医師向け報告書ドラフトを作成しました',
+                reused_existing_draft: false,
+                report: { id: 'care_report_1', status: 'draft', report_type: 'physician' },
+              },
             }),
             { status: 201 },
           );
@@ -740,9 +742,11 @@ describe('PharmacyCooperationWorkflowContent', () => {
       if (url === '/api/partner-visit-records/partner_record_confirmed/physician-report-draft') {
         return new Response(
           JSON.stringify({
-            message: '医師向け報告書ドラフトを作成しました',
-            reused_existing_draft: false,
-            report: { id: 'care_report_1', status: 'draft' },
+            data: {
+              message: '医師向け報告書ドラフトを作成しました',
+              reused_existing_draft: false,
+              report: { id: 'care_report_1', status: 'draft' },
+            },
           }),
           { status: 201 },
         );

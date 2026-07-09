@@ -70,11 +70,13 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
       return withSensitiveNoStore(
         success(
           {
-            message: result.reused
-              ? '既存の医師向け報告書ドラフトを返しました'
-              : '医師向け報告書ドラフトを作成しました',
-            reused_existing_draft: result.reused,
-            report: result.report,
+            data: {
+              message: result.reused
+                ? '既存の医師向け報告書ドラフトを返しました'
+                : '医師向け報告書ドラフトを作成しました',
+              reused_existing_draft: result.reused,
+              report: result.report,
+            },
           },
           result.reused ? 200 : 201,
         ),
