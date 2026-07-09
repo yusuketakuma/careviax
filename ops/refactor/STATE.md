@@ -119,13 +119,17 @@
     `api-response-shape:check` passed with 104 allowlisted violations and 0 new violations.
     `plans:active:check` passed. Scoped ESLint, scoped Prettier check, scoped diff check,
     and full typecheck passed.
+  - commit:
+    Implementation, tests, allowlist cleanup, Plans/archive sync, Oracle follow-up, and
+    ledger evidence committed as `d2e30d4aa`
+    (`fix(api): envelope patient share case activation response`) and pushed to `origin/main`.
   - remaining work:
     `API-CONTRACT-001` remains Partial with 104 allowlisted response-shape violations.
     Next recommended response-shape slice is the current allowlist head:
     `src/app/api/patient-share-cases/[id]/consents/[consentId]/revoke/route.ts`.
   - next action:
-    Commit and push this activation envelope slice with explicit owned paths only, then
-    record the implementation commit hash and push result in this ledger.
+    Commit and push this ledger-only evidence update, then continue with the current
+    response-shape allowlist head.
 
 - codex: `API-CONTRACT-001BY` partner visit records draft save response envelope cleanup.
   - current task:
