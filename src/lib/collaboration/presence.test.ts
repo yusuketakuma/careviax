@@ -56,6 +56,19 @@ describe('presence collaboration contract', () => {
     ]);
   });
 
+  it('rejects the legacy raw-array response shape', () => {
+    expect(
+      readPresenceUsersResponse([
+        {
+          user_id: 'user_1',
+          display_name: '田中',
+          active_field: null,
+          updated_at: '2026-06-18T00:00:00.000Z',
+        },
+      ]),
+    ).toEqual([]);
+  });
+
   it('builds stable query keys and encoded URLs', () => {
     expect(buildPresenceQueryKey('visit record', 'patient/1', 'org_1')).toEqual([
       'presence',
@@ -170,6 +183,43 @@ describe('presence collaboration contract', () => {
       await expect(
         fetchPresenceUsers({ orgId: 'org_1', entityType: 'patient', entityId: 'missing' }),
       ).resolves.toEqual([]);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it('restores authorized presence users from the API envelope', async () => {
+    const originalFetch = global.fetch;
+    try {
+      global.fetch = vi.fn(async () =>
+        Response.json({
+          data: [
+            {
+              user_id: ' user_1 ',
+              display_name: ' 田中 ',
+              active_field: ' note ',
+              updated_at: ' 2026-06-18T00:00:00.000Z ',
+            },
+          ],
+        }),
+      ) as typeof fetch;
+
+      await expect(
+        fetchPresenceUsers({ orgId: 'org_1', entityType: 'patient', entityId: 'patient_1' }),
+      ).resolves.toEqual([
+        {
+          user_id: 'user_1',
+          display_name: '田中',
+          active_field: 'note',
+          updated_at: '2026-06-18T00:00:00.000Z',
+        },
+      ]);
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/presence?entity_type=patient&entity_id=patient_1',
+        {
+          headers: { 'x-org-id': 'org_1' },
+        },
+      );
     } finally {
       global.fetch = originalFetch;
     }

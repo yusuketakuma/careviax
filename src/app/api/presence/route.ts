@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
       );
     });
 
-  return success({ ok: true });
+  return success({ data: { ok: true } });
 }
 
 export async function GET(req: NextRequest) {
@@ -106,5 +106,5 @@ export async function GET(req: NextRequest) {
 
   const entries = getPresence(ctx.orgId, parsed.data.entity_type, parsed.data.entity_id);
 
-  return success(entries);
+  return success({ data: entries });
 }

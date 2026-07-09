@@ -89,6 +89,28 @@ describe('/api/presence', () => {
   });
 
   describe('POST', () => {
+    it('short-circuits unauthenticated requests before parsing or side effects', async () => {
+      requireAuthContextMock.mockResolvedValueOnce({
+        response: Response.json(
+          { code: 'AUTH_UNAUTHENTICATED', message: '認証が必要です' },
+          { status: 401 },
+        ),
+      });
+
+      const res = await POST(createMalformedPostRequest());
+
+      expect(res.status).toBe(401);
+      expect(await res.json()).toEqual({
+        code: 'AUTH_UNAUTHENTICATED',
+        message: '認証が必要です',
+      });
+      expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+      expect(dispenseTaskFindFirstMock).not.toHaveBeenCalled();
+      expect(userFindUniqueMock).not.toHaveBeenCalled();
+      expect(setPresenceMock).not.toHaveBeenCalled();
+      expect(broadcastStatusUpdateMock).not.toHaveBeenCalled();
+    });
+
     it('returns 200 on valid presence update', async () => {
       userFindUniqueMock.mockResolvedValue({ name: 'Taro' });
       broadcastStatusUpdateMock.mockResolvedValue(undefined);
@@ -100,6 +122,7 @@ describe('/api/presence', () => {
       });
       const res = await POST(req);
       expect(res!.status).toBe(200);
+      expect(await res!.json()).toEqual({ data: { ok: true } });
       expect(visitRecordFindFirstMock).toHaveBeenCalledWith({
         where: {
           id: 'vr_1',
@@ -241,6 +264,7 @@ describe('/api/presence', () => {
           entity_id: 'vr_1',
         }),
       );
+      expect(await res!.json()).toEqual({ data: { ok: true } });
     });
 
     it('logs safe warning metadata when realtime broadcast fails', async () => {
@@ -275,8 +299,37 @@ describe('/api/presence', () => {
   });
 
   describe('GET', () => {
+    it('short-circuits unauthenticated requests before entity or presence reads', async () => {
+      requireAuthContextMock.mockResolvedValueOnce({
+        response: Response.json(
+          { code: 'AUTH_UNAUTHENTICATED', message: '認証が必要です' },
+          { status: 401 },
+        ),
+      });
+
+      const res = await GET(
+        createRequest('http://localhost/api/presence?entity_type=visit_record&entity_id=vr_1'),
+      );
+
+      expect(res.status).toBe(401);
+      expect(await res.json()).toEqual({
+        code: 'AUTH_UNAUTHENTICATED',
+        message: '認証が必要です',
+      });
+      expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+      expect(dispenseTaskFindFirstMock).not.toHaveBeenCalled();
+      expect(getPresenceMock).not.toHaveBeenCalled();
+    });
+
     it('returns 200 with presence entries', async () => {
-      const entries = [{ user_id: 'user_1', display_name: 'Taro' }];
+      const entries = [
+        {
+          user_id: 'user_1',
+          display_name: 'Taro',
+          active_field: 'soap_plan',
+          updated_at: '2026-07-10T00:00:00.000Z',
+        },
+      ];
       getPresenceMock.mockReturnValue(entries);
 
       const req = createRequest(
@@ -285,7 +338,7 @@ describe('/api/presence', () => {
       const res = await GET(req);
       expect(res!.status).toBe(200);
       const json = await res!.json();
-      expect(json).toHaveLength(1);
+      expect(json).toEqual({ data: entries });
       expect(visitRecordFindFirstMock).toHaveBeenCalledWith({
         where: {
           id: 'vr_1',
