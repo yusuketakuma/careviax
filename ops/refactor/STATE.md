@@ -33586,3 +33586,82 @@ has_more, next_cursor } })`. The route test asserts the `data + meta`
   Commit this ledger update with only `ops/refactor/STATE.md` staged, then
   continue the next allowlist cleanup from `src/app/api/pharmacist-shifts/route.ts`
   unless redirected.
+
+## 2026-07-09 API-CONTRACT-001CY — pharmacist-shifts POST success envelope
+
+- current task:
+  `API-CONTRACT-001` allowlist debt reduction focused on
+  `src/app/api/pharmacist-shifts/route.ts` POST success.
+- files inspected:
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`;
+  `src/app/api/pharmacist-shifts/route.ts`;
+  `src/app/api/pharmacist-shifts/route.test.ts`;
+  `src/app/(dashboard)/admin/shifts/shifts-content.tsx`;
+  `src/app/(dashboard)/admin/shifts/shifts-content.test.tsx`;
+  `src/app/api/__tests__/protected-get-routes.test.ts`;
+  `src/app/api/__tests__/protected-post-routes.test.ts`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `docs/plans-archive.md`.
+- files changed:
+  `src/app/api/pharmacist-shifts/route.ts`;
+  `src/app/api/pharmacist-shifts/route.test.ts`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `docs/plans-archive.md`; `ops/refactor/STATE.md`.
+- bugs found:
+  `POST /api/pharmacist-shifts` returned the upserted shift at the response
+  root, keeping one response-shape allowlist violation.
+- bugs fixed:
+  POST upsert success now returns `success({ data: shift }, 201)`, and the
+  route test fixes the current envelope. The admin shifts UI does not consume
+  the POST success body, so no reader change was needed.
+- security risks found:
+  No new auth/authz, tenant isolation, PHI, validation, or logging issue in
+  this slice. Existing visit permission, org reference validation, RLS request
+  context, time normalization, route performance wrapper, no-store, and
+  sanitized error handling remain in place.
+- security risks reduced:
+  Removed one legacy public mutation success root from the shift management
+  endpoint without changing authorization or validation behavior.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this was a response contract cleanup. Existing upsert and GET query
+  behavior are unchanged.
+- UI/UX note:
+  No visible layout or interaction change. This was API response contract work
+  only, so image generation was not applicable.
+- Oracle note:
+  No Oracle/GPT-5.5 Pro consult was run. This was a bounded allowlist envelope
+  migration following the established local pattern, with focused tests and
+  contract gates available.
+- validation commands:
+  `pnpm exec prettier --write Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json src/app/api/pharmacist-shifts/route.ts src/app/api/pharmacist-shifts/route.test.ts`;
+  `pnpm vitest run src/app/api/pharmacist-shifts/route.test.ts --reporter=dot --testTimeout=30000`;
+  `pnpm vitest run src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testNamePattern 'pharmacist-shifts GET' --testTimeout=30000`;
+  `pnpm vitest run src/app/api/__tests__/protected-post-routes.test.ts --reporter=dot --testNamePattern 'pharmacist-shifts POST' --testTimeout=30000`;
+  `pnpm api-response-shape:check`; `pnpm plans:active:check`;
+  `pnpm exec eslint src/app/api/pharmacist-shifts/route.ts src/app/api/pharmacist-shifts/route.test.ts`;
+  `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json src/app/api/pharmacist-shifts/route.ts src/app/api/pharmacist-shifts/route.test.ts`;
+  `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json src/app/api/pharmacist-shifts/route.ts src/app/api/pharmacist-shifts/route.test.ts`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+- validation results:
+  Prettier write/check passed. Pharmacist shifts route tests passed 1 file / 18
+  tests. Protected GET `pharmacist-shifts GET` passed 3 tests with 381 skipped;
+  protected POST `pharmacist-shifts POST` passed 3 tests with 142 skipped;
+  expected audit mock stderr was emitted. Scoped ESLint,
+  `api-response-shape:check` (75 allowlisted violations, 0 new),
+  `plans:active:check`, scoped diff check, and typecheck passed.
+- commit:
+  Implementation, route test, allowlist cleanup, and Plans/archive sync were
+  committed as `880fb237a59fdb5ca636c9b59d87a6c7e81fdb96`
+  (`fix(api): envelope pharmacist shift mutation response`). Push not
+  performed.
+- remaining work:
+  `API-CONTRACT-001` remains Partial with 75 allowlisted violations. Next
+  allowlist head is `src/app/api/pharmacists/route.ts` with one expected legacy
+  response shape violation. Existing unrelated dirty/untracked memory/docs and
+  `.codex`/`.harness-mem` files remain unstaged.
+- next action:
+  Commit this ledger update with only `ops/refactor/STATE.md` staged, then
+  continue the next allowlist cleanup from `src/app/api/pharmacists/route.ts`
+  unless redirected.
