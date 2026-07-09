@@ -51,6 +51,50 @@
 
 ## 直近の作業
 
+- codex: `P2-6` billing candidates export-preview false-zero prevention.
+  - commit:
+    pending scoped commit after this ledger update.
+  - current task:
+    月次請求候補のCSV出力前確認で、preview 初回読込中/初回失敗を `0点/0円/0件` の実測値として
+    見せない。取得失敗は再試行可能な共通状態表示へ寄せ、CSV出力はPHI-safeな理由つきで停止する。
+  - files inspected:
+    `docs/ui-ux-design-guidelines.md`,
+    `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`,
+    `src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx`,
+    `src/lib/hooks/use-stale-after-refetch-error.ts`,
+    `src/components/ui/segment-state.tsx`, and `src/components/ui/loading.tsx`.
+  - files changed:
+    `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx` and
+    `src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx`.
+  - bugs found / fixed:
+    The export-preview panel previously rendered missing preview aggregates with nullish
+    fallbacks, so first-load failure could look like real `0点/0円/0件` data and a raw one-line
+    destructive error. The panel now distinguishes initial loading, initial error, stale
+    refetch error with cached data, and valid preview data. Loading uses `Skeleton`, initial
+    failure uses `SegmentError` with retry, stale refetch uses `SegmentStaleBanner`, and CSV
+    export is disabled until preview is available.
+  - security/privacy:
+    Provider/API error details are not echoed into the panel or disabled reason; tests pin that
+    raw patient/token-like error text is not shown. The CSV disabled reason remains PHI-safe and
+    no route/auth/DB boundary changed.
+  - performance:
+    Reuses the existing TanStack Query state and shared stale-refetch helper. No additional
+    network request, polling, or unbounded render work was introduced.
+  - validation:
+    `pnpm vitest run 'src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed 1 file / 14 tests; exact-path ESLint passed; Prettier check passed;
+    `git diff --check` passed for the two touched files; and
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit --pretty false --incremental false --skipLibCheck`
+    passed. `pnpm build` / Next typegen gates were not started because the current shared-worktree
+    coordination explicitly asked not to start another build.
+  - UI/imagegen:
+    `imagegen` was intentionally omitted because this was a state-contract correction on an
+    existing billing panel, not a visual reconstruction or new screen design. The PH-OS UI/UX
+    SSOT was read and applied for loading/error/false-empty handling.
+  - remaining / next action:
+    Commit this billing slice with explicit paths only. `src/components/ui/error-state*` is
+    Claude's non-overlapping lane and must not be staged with this billing commit.
+
 - codex: repo-wide PH-OS all-screen UI/UX direction reference.
   - commit:
     `53b611e3a docs(design): add all-screen UI direction`
@@ -36709,3 +36753,41 @@ GET` passed 3 tests with 381 skipped; expected audit mock stderr was emitted.
   dashboard lane, Codex owns billing false-zero and subsequent typography/state work. Preserve the
   build and browser evidence gaps until a safe build/runtime environment is available. No migration,
   deployment, production mutation, secret change, or destructive cache cleanup was performed.
+
+## 2026-07-10 UI-INVENTORY-128 — live paired-contract audit matrix
+
+- current task:
+  Reconcile the historical 2026-06-20 114-screen audit with the live App Router tree and the user's
+  requirement that frontend and backend capabilities must never be completed independently.
+- commit:
+  `8681844e2 docs(ui): refresh 128-screen paired audit matrix`.
+- files inspected:
+  every live `src/app/**/page.tsx`, `loading.tsx`, `error.tsx`, and `not-found.tsx` path;
+  `.agent-loop/UI_AUDIT_MATRIX.md`; `docs/ui-ux-design-guidelines.md`;
+  `docs/frontend-screen-contracts.md`; current route/API/static checks; and active UI wave evidence.
+- files changed:
+  `.agent-loop/UI_AUDIT_MATRIX.md`.
+- findings / changes:
+  The audit header still described 114 reachable screens and a task-local presentational-only policy.
+  Live inventory is 128 page entrypoints: auth 7, dashboard admin 39, dashboard operational 74,
+  legal 2, platform 2, and one each for shared public access, offline, dashboard preview, and root.
+  The tree has 60 loading, 22 error, and 1 not-found leaf files; the matrix now states that inherited
+  App Router boundaries must be evaluated before treating a missing leaf as a defect. It adds the
+  current paired-completion columns: frontend entry, BFF/API/service or explicit N/A, authorization
+  and PHI boundary, DTO/write contract, complete state model, accessibility/mobile evidence,
+  frontend+backend tests, release gate, and browser/runtime proof or blocker.
+- security/privacy:
+  The matrix now requires tenant/org, assignment/case, consent/purpose, PHI audit, external/public
+  minimization, and server-only release gates in the same screen slice. Static/legal/redirect routes
+  must carry an explicit backend N/A reason instead of being mistaken for missing integration.
+- performance:
+  Documentation only; no runtime, dependency, render, query, or build behavior changed.
+- validation:
+  Live counts were obtained from the filesystem; Prettier write/check and scoped `git diff --check`
+  passed. The historical audit remains preserved and is explicitly labeled as a snapshot.
+- remaining work / next action:
+  Route inventory is complete, but per-route implementation/runtime evidence is not. Execute the
+  five recorded waves, updating code and the single STATE ledger rather than counting cosmetic file
+  edits as completion. Browser/mobile and full build proof remain blocked by the current local
+  runtime/resource constraints; no migration, deploy, production mutation, or destructive action was
+  performed.
