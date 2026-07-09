@@ -21,7 +21,95 @@ function buildSoap(): StructuredSoap {
   };
 }
 
+function buildLocallyReadySoap(): StructuredSoap {
+  return {
+    ...buildSoap(),
+    home_visit_2026: {
+      medication_review_completed: true,
+      residual_medication_checked: true,
+      adverse_event_checked: true,
+      polypharmacy_reviewed: true,
+      after_hours_contact_confirmed: true,
+    },
+  };
+}
+
 describe('VisitMedicationManagementSection', () => {
+  it('does not collapse a loading preparation pack into false-empty source summaries', () => {
+    render(
+      <VisitMedicationManagementSection
+        structuredSoap={buildSoap()}
+        preparationSourceStatus="loading"
+        onChange={vi.fn()}
+      />,
+    );
+
+    const loadingStatus = screen.getByRole('status', { name: '訪問準備情報を読み込み中' });
+    expect(loadingStatus).toBeTruthy();
+    expect(loadingStatus.getAttribute('aria-live')).toBe('polite');
+    expect(screen.queryByText('変化なし')).toBeNull();
+    expect(screen.queryByText('記録なし')).toBeNull();
+    expect(screen.queryByText('共有なし')).toBeNull();
+    expect(screen.getByRole('checkbox', { name: /服薬状況を確認した/ })).toBeTruthy();
+  });
+
+  it('keeps clinical checks usable while a preparation error is visible and retryable', () => {
+    const onRetryPreparation = vi.fn();
+    const onChange = vi.fn();
+    render(
+      <VisitMedicationManagementSection
+        structuredSoap={buildLocallyReadySoap()}
+        preparationSourceStatus="error"
+        onRetryPreparation={onRetryPreparation}
+        onChange={onChange}
+      />,
+    );
+
+    expect(screen.getByText('訪問準備情報を読み込めませんでした')).toBeTruthy();
+    expect(screen.queryByText('変化なし')).toBeNull();
+    expect(screen.getByText('必須判定を保留')).toBeTruthy();
+    expect(screen.queryByText('この訪問で必要な確認は揃っています。')).toBeNull();
+    expect(screen.getByText(/必須項目が揃ったとは判断しません/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(onRetryPreparation).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /服薬状況を確認した/ }));
+    expect(onChange).toHaveBeenCalled();
+  });
+
+  it('retains cached source details behind an explicit stale warning', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 5, 15, 10, 15));
+    try {
+      const onRetryPreparation = vi.fn();
+      render(
+        <VisitMedicationManagementSection
+          structuredSoap={buildSoap()}
+          preparationSourceStatus="stale"
+          preparationSourceUpdatedAt={new Date(2026, 5, 15, 9, 30).getTime()}
+          onRetryPreparation={onRetryPreparation}
+          prescriptionChanges={{
+            current_prescribed_date: '2026-06-15',
+            previous_prescribed_date: '2026-06-01',
+            source_type: 'fax',
+            added: ['酸化マグネシウム錠'],
+            changed: [],
+            removed: [],
+          }}
+          onChange={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByText('前回取得した訪問準備情報を表示中')).toBeTruthy();
+      expect(screen.getByText(/45分前のデータ（最終取得: 2026\/06\/15 09:30）/)).toBeTruthy();
+      expect(screen.getAllByText('追加 1').length).toBeGreaterThan(0);
+      fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+      expect(onRetryPreparation).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('surfaces previous visit and cross-professional context as an onsite listening brief', () => {
     const onChange = vi.fn();
 

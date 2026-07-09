@@ -37,9 +37,11 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useSpeechRecognition } from '@/lib/hooks/use-speech-recognition';
 import { useSoapDraft } from '@/lib/hooks/use-soap-draft';
 import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
+import { useStaleAfterRefetchError } from '@/lib/hooks/use-stale-after-refetch-error';
 import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
 import { downscaleImage } from '@/lib/files/downscale-image';
 import { isOfflineEncryptionUnavailableError } from '@/lib/offline/crypto';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { listEvidenceDraftSummariesForSchedule } from '@/lib/offline/evidence-drafts';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import {
@@ -98,16 +100,11 @@ import { VoiceSoapAssist } from '@/components/features/visits/voice-soap-assist'
 import { FacilityVisitRecordSwitcher } from '@/components/features/visits/facility-visit-record-switcher';
 import {
   VisitMedicationManagementSection,
-  type VisitConferenceContext,
-  type VisitMedicationPeriod,
-  type VisitPrescriptionChanges,
   type VisitOutsideMed,
   type VisitPreviousStructuredReuse,
+  type VisitPreparationSourceStatus,
 } from '@/components/features/visits/visit-medication-management-section';
-import {
-  PatientCareTeamSourcePanel,
-  type PatientCareTeamSourceContact,
-} from '@/components/features/visits/patient-care-team-source-panel';
+import { PatientCareTeamSourcePanel } from '@/components/features/visits/patient-care-team-source-panel';
 import {
   VisitReportReadinessPanel,
   type VisitReportReadinessItem,
@@ -129,7 +126,6 @@ import {
   buildHomeVisit2026ReadinessItems,
   getMissingHomeVisit2026CompletionItems,
   isHomeVisit2026CompletionOutcome,
-  type HomeVisit2026BillingBlocker,
 } from '@/lib/visits/home-visit-2026-evidence';
 import {
   captureVisitGeoPoint,
@@ -320,74 +316,189 @@ type PendingMedicationStockSubmission = {
   idempotencyKey: string;
 };
 
-type VisitPreparationSnapshot = {
-  data: {
-    pack: {
-      care_team: PatientCareTeamSourceContact[];
-      billing_blockers: HomeVisit2026BillingBlocker[];
-      conference_context: VisitConferenceContext[];
-      medication_period?: VisitMedicationPeriod | null;
-      prescription_changes?: VisitPrescriptionChanges | null;
-      outside_meds?: VisitOutsideMed[] | null;
-      previous_visit?: {
-        summary?: string | null;
-        structured_reuse?: VisitPreviousStructuredReuse | null;
-      } | null;
-      facility_parallel_context?: {
-        batch_id: string | null;
-        label: string | null;
-        place_kind: 'facility' | 'home_group' | 'address' | null;
-        site_name: string | null;
-        common_notes: string | null;
-        current_schedule_id: string;
-        patients: Array<{
-          schedule_id: string;
-          patient_id: string;
-          patient_name: string;
-          patient_name_kana: string | null;
-          patient_birth_date: string | null;
-          patient_gender: string | null;
-          unit_name: string | null;
-          route_order: number | null;
-          schedule_status: string;
-          medication_start_date: string | null;
-          medication_end_date: string | null;
-          preparation_blockers_count: number;
-          visit_record_id: string | null;
-          visit_outcome_status: string | null;
-        }>;
-      } | null;
-      intake_context?: {
-        initial_transition_management_expected?: boolean | null;
-      };
-      billing_collection_context?: {
-        candidate_id: string | null;
-        billing_month: string | null;
-        billing_name: string | null;
-        candidate_status: string | null;
-        current_billed_amount: number | null;
-        current_collection_amount: number | null;
-        previous_unpaid_amount: number | null;
-        total_collection_amount: number | null;
-        collected_amount: number | null;
-        payer_name: string | null;
-        payer_relation: string | null;
-        collection_method: string | null;
-        collection_method_label: string | null;
-        collection_timing: string | null;
-        collection_timing_label: string | null;
-        scheduled_collection_at: string | null;
-        collected_at: string | null;
-        receipt_issue: string | null;
-        receipt_issue_label: string | null;
-        receipt_issue_status: string | null;
-        receipt_issue_status_label: string | null;
-        receipt_number: string | null;
-        collector_user_id: string | null;
-      } | null;
-    };
-  };
-};
+const nullableStringSchema = z.string().nullable();
+
+const visitPreviousStructuredReuseSchema = z.object({
+  source_visit_record_id: z.string(),
+  source_visit_record_version: z.number().int().nullable(),
+  source_visit_record_updated_at: nullableStringSchema,
+  subjective: z.array(z.string()),
+  objective: z.array(z.string()),
+  assessment: z.array(z.string()),
+  plan: z.array(z.string()),
+  handoff: z.object({
+    next_check_items: z.array(z.string()),
+    ongoing_monitoring: z.array(z.string()),
+    decision_rationale: nullableStringSchema,
+  }),
+  carry_forward_items: z.array(z.string()),
+});
+
+const visitPreparationSnapshotSchema = z.object({
+  data: z.object({
+    pack: z
+      .object({
+        care_team: z.array(
+          z.object({
+            id: z.string(),
+            role: z.string(),
+            name: z.string(),
+            organization_name: nullableStringSchema,
+            phone: nullableStringSchema,
+          }),
+        ),
+        billing_blockers: z.array(
+          z.object({
+            key: z.string(),
+            reason: z.string(),
+            severity: z.enum(['urgent', 'high', 'normal']).optional(),
+          }),
+        ),
+        conference_context: z.array(
+          z.object({
+            id: z.string(),
+            note_type: z.enum(['pre_discharge', 'service_manager']),
+            title: z.string(),
+            conference_date: z.string(),
+            participants: z.array(
+              z.object({
+                name: nullableStringSchema,
+                role: nullableStringSchema,
+              }),
+            ),
+            highlights: z.array(z.string()),
+            action_items: z.array(z.string()),
+            sync_summary: z
+              .object({
+                billing_candidate_id: nullableStringSchema.optional(),
+                visit_proposal_id: nullableStringSchema.optional(),
+                report_draft_ids: z.array(z.string()).optional(),
+                tasks_created: z.number().optional(),
+                medication_issues_created: z.number().optional(),
+              })
+              .nullable()
+              .optional(),
+          }),
+        ),
+        medication_period: z
+          .object({
+            schedule_start_date: nullableStringSchema,
+            schedule_end_date: nullableStringSchema,
+            prescription_start_date: nullableStringSchema,
+            prescription_end_date: nullableStringSchema,
+          })
+          .nullable()
+          .optional(),
+        prescription_changes: z
+          .object({
+            current_prescribed_date: z.string(),
+            previous_prescribed_date: nullableStringSchema,
+            source_type: z.string(),
+            added: z.array(z.string()),
+            changed: z.array(
+              z.object({
+                drug_name: z.string(),
+                reasons: z.array(z.string()),
+              }),
+            ),
+            removed: z.array(z.string()),
+          })
+          .nullable()
+          .optional(),
+        outside_meds: z
+          .array(
+            z.object({
+              line_id: z.string(),
+              drug_name: z.string(),
+              outside_med_kind: z.string(),
+              outside_med_label: z.string(),
+            }),
+          )
+          .nullable()
+          .optional(),
+        previous_visit: z
+          .object({
+            summary: nullableStringSchema.optional(),
+            structured_reuse: visitPreviousStructuredReuseSchema.nullable().optional(),
+          })
+          .nullable()
+          .optional(),
+        facility_parallel_context: z
+          .object({
+            batch_id: nullableStringSchema,
+            label: nullableStringSchema,
+            place_kind: z.enum(['facility', 'home_group', 'address']).nullable(),
+            site_name: nullableStringSchema,
+            common_notes: nullableStringSchema,
+            current_schedule_id: z.string(),
+            patients: z.array(
+              z.object({
+                schedule_id: z.string(),
+                patient_id: z.string(),
+                patient_name: z.string(),
+                patient_name_kana: nullableStringSchema,
+                patient_birth_date: nullableStringSchema,
+                patient_gender: nullableStringSchema,
+                unit_name: nullableStringSchema,
+                route_order: z.number().int().nullable(),
+                schedule_status: z.string(),
+                medication_start_date: nullableStringSchema,
+                medication_end_date: nullableStringSchema,
+                preparation_blockers_count: z.number().int().nonnegative(),
+                visit_record_id: nullableStringSchema,
+                visit_outcome_status: nullableStringSchema,
+              }),
+            ),
+          })
+          .nullable()
+          .optional(),
+        intake_context: z
+          .object({
+            initial_transition_management_expected: z.boolean().nullable().optional(),
+          })
+          .passthrough()
+          .optional(),
+        billing_collection_context: z
+          .object({
+            candidate_id: nullableStringSchema,
+            billing_month: nullableStringSchema,
+            billing_name: nullableStringSchema,
+            candidate_status: nullableStringSchema,
+            current_billed_amount: z.number().nullable(),
+            current_collection_amount: z.number().nullable(),
+            previous_unpaid_amount: z.number().nullable(),
+            total_collection_amount: z.number().nullable(),
+            collected_amount: z.number().nullable(),
+            payer_name: nullableStringSchema,
+            payer_relation: nullableStringSchema,
+            collection_method: nullableStringSchema,
+            collection_method_label: nullableStringSchema,
+            collection_timing: nullableStringSchema,
+            collection_timing_label: nullableStringSchema,
+            scheduled_collection_at: nullableStringSchema,
+            collected_at: nullableStringSchema,
+            receipt_issue: nullableStringSchema,
+            receipt_issue_label: nullableStringSchema,
+            receipt_issue_status: nullableStringSchema,
+            receipt_issue_status_label: nullableStringSchema,
+            receipt_number: nullableStringSchema,
+            collector_user_id: nullableStringSchema,
+          })
+          .nullable()
+          .optional(),
+      })
+      .passthrough(),
+  }),
+});
+
+type VisitPreparationSnapshot = z.infer<typeof visitPreparationSnapshotSchema>;
+
+class VisitPreparationNonRetryableError extends Error {
+  constructor() {
+    super('訪問準備情報を表示できません');
+    this.name = 'VisitPreparationNonRetryableError';
+  }
+}
 
 function VisitRecordWorkflowSection({
   title,
@@ -615,6 +726,7 @@ export function VisitRecordForm({
   const isNetworkOnline = useNetworkOnline();
   const isBootstrappingOrg = !orgId;
   const queryClient = useQueryClient();
+  const schedulePathId = encodePathSegment(id);
   const [draftHydrated, setDraftHydrated] = useState(false);
   // p0_23 モバイルウィザード(<md)の現在ステップ。md 以上はスクロール準拠のまま
   const [mobileStepId, setMobileStepId] = useState<VisitRecordStepId>('visit-step-readiness');
@@ -668,7 +780,7 @@ export function VisitRecordForm({
   } = useQuery<ScheduleDetail>({
     queryKey: ['schedule', id, orgId],
     queryFn: async () => {
-      const res = await fetch(`/api/visit-schedules/${id}`, {
+      const res = await fetch(`/api/visit-schedules/${schedulePathId}`, {
         headers: buildOrgHeaders(orgId),
       });
       return readApiJson<ScheduleDetail>(res, 'スケジュール情報の取得に失敗しました');
@@ -718,20 +830,38 @@ export function VisitRecordForm({
     enabled: !!orgId,
   });
 
+  const visitPreparationQueryKey = ['visit-preparation-care-team', id, orgId] as const;
   const {
     data: visitPreparationSnapshot,
     isLoading: visitPreparationLoading,
     isError: visitPreparationError,
+    isRefetchError: visitPreparationRefetchError,
+    error: visitPreparationQueryError,
+    dataUpdatedAt: visitPreparationDataUpdatedAt,
     refetch: refetchVisitPreparation,
-  } = useQuery<VisitPreparationSnapshot>({
-    queryKey: ['visit-preparation-care-team', id, orgId],
+  } = useQuery<VisitPreparationSnapshot | null>({
+    queryKey: visitPreparationQueryKey,
     queryFn: async () => {
-      const res = await fetch(`/api/visit-preparations/${id}`, {
+      const res = await fetch(`/api/visit-preparations/${schedulePathId}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<VisitPreparationSnapshot>(res, '訪問準備情報の取得に失敗しました');
+      if (res.status >= 400 && res.status < 500 && ![408, 429].includes(res.status)) {
+        queryClient.setQueryData<VisitPreparationSnapshot | null>(visitPreparationQueryKey, null);
+        throw new VisitPreparationNonRetryableError();
+      }
+      return readApiJson<VisitPreparationSnapshot>(res, {
+        fallbackMessage: '訪問準備情報の取得に失敗しました',
+        schema: visitPreparationSnapshotSchema,
+      });
     },
     enabled: !!orgId && !!schedule?.id,
+    retry: false,
+  });
+  const visitPreparationState = useStaleAfterRefetchError({
+    data: visitPreparationSnapshot,
+    isLoading: visitPreparationLoading,
+    isError: visitPreparationError,
+    isRefetchError: visitPreparationRefetchError,
   });
 
   // 訪問日/受領日時の既定は国内業務日(JST)を正本にする(SSOT 2.8)。format(new Date(),...) は
@@ -1311,8 +1441,22 @@ export function VisitRecordForm({
     } satisfies UploadedVisitAttachment;
   }
 
-  const visitPreparationPack = visitPreparationSnapshot?.data.pack;
-  const patientCareTeamContacts = visitPreparationSnapshot?.data.pack.care_team ?? [];
+  const hasNonRetryableVisitPreparationError =
+    visitPreparationQueryError instanceof VisitPreparationNonRetryableError;
+  const visitPreparationPack = hasNonRetryableVisitPreparationError
+    ? null
+    : (visitPreparationSnapshot?.data.pack ?? null);
+  const visitPreparationSourceStatus: VisitPreparationSourceStatus =
+    visitPreparationState.isInitialLoading
+      ? 'loading'
+      : hasNonRetryableVisitPreparationError ||
+          visitPreparationState.isInitialError ||
+          !visitPreparationPack
+        ? 'error'
+        : visitPreparationState.isStaleAfterRefetchError
+          ? 'stale'
+          : 'ready';
+  const patientCareTeamContacts = visitPreparationPack?.care_team ?? [];
   const billingBlockers = visitPreparationPack?.billing_blockers ?? [];
   const conferenceContext = visitPreparationPack?.conference_context ?? [];
   const medicationPeriod = visitPreparationPack?.medication_period ?? null;
@@ -1930,13 +2074,17 @@ export function VisitRecordForm({
       key: 'medication_management',
       label: '訪問薬剤管理の確認',
       description:
-        missingHomeVisit2026Items.length === 0
-          ? '服薬状況、残薬、副作用、連携、該当時の加算根拠が揃っています。'
-          : `未確認: ${missingHomeVisit2026Items
-              .slice(0, 4)
-              .map((item) => item.label)
-              .join(' / ')}`,
-      done: completedHomeVisit2026Count === requiredHomeVisit2026Items.length,
+        visitPreparationSourceStatus !== 'ready'
+          ? '訪問準備情報が最新でないため、必須項目の判定を保留しています。'
+          : missingHomeVisit2026Items.length === 0
+            ? '服薬状況、残薬、副作用、連携、該当時の加算根拠が揃っています。'
+            : `未確認: ${missingHomeVisit2026Items
+                .slice(0, 4)
+                .map((item) => item.label)
+                .join(' / ')}`,
+      done:
+        visitPreparationSourceStatus === 'ready' &&
+        completedHomeVisit2026Count === requiredHomeVisit2026Items.length,
       required: true,
     },
   ];
@@ -1961,6 +2109,9 @@ export function VisitRecordForm({
       outsideMeds={outsideMeds}
       previousVisitSummary={previousVisitSummary}
       previousVisitStructuredReuse={previousVisitStructuredReuse}
+      preparationSourceStatus={visitPreparationSourceStatus}
+      preparationSourceUpdatedAt={visitPreparationDataUpdatedAt || undefined}
+      onRetryPreparation={() => void refetchVisitPreparation()}
       onChange={handleStructuredSoapChange}
     />
   );
@@ -2054,38 +2205,10 @@ export function VisitRecordForm({
             >
               {medicationManagementSection}
 
-              {!visitPreparationLoading ? (
+              {visitPreparationSourceStatus === 'ready' ||
+              visitPreparationSourceStatus === 'stale' ? (
                 <PatientCareTeamSourcePanel contacts={patientCareTeamContacts} compact />
               ) : null}
-
-              {visitPreparationError && (
-                // 取得失敗を「準備情報なし(=処方変更/その他薬/前回記録なし)」に潰さない。
-                // 記録入力自体は準備パックを必須としないため notification-only(再読込導線つき)。
-                <Card
-                  className="border-l-4 border-border/70 border-l-state-confirm bg-card"
-                  role="alert"
-                >
-                  <CardHeader className="pb-3">
-                    <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium text-state-confirm">
-                      <AlertTriangle className="h-5 w-5" aria-hidden="true" />
-                      訪問準備情報を読み込めませんでした
-                    </h3>
-                  </CardHeader>
-                  <CardContent className="space-y-3 text-sm text-state-confirm">
-                    <p>
-                      処方変更・その他薬・前回記録・他職種連携などの準備コンテキストが表示されていない可能性があります。「該当なし」ではなく取得エラーです。
-                    </p>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void refetchVisitPreparation()}
-                    >
-                      再読み込み
-                    </Button>
-                  </CardContent>
-                </Card>
-              )}
 
               {carryItemsWarning && (
                 <Card className="border-l-4 border-border/70 border-l-state-blocked bg-card">

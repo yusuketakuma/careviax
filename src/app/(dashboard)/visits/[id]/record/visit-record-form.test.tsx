@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { VisitRecordForm, fetchVisitRecordCdsAlerts } from './visit-record-form';
 import type {
@@ -33,7 +34,10 @@ const {
   toastInfoMock,
   fetchUrls,
   cdsAlertPanelCalls,
+  medicationManagementSectionCalls,
+  patientCareTeamSourcePanelCalls,
   medicationStockPanelCalls,
+  visitReportReadinessPanelCalls,
   submitVisitMedicationStockObservationsMock,
 } = vi.hoisted(() => ({
   routerBackMock: vi.fn(),
@@ -60,6 +64,18 @@ const {
   toastInfoMock: vi.fn(),
   fetchUrls: [] as string[],
   cdsAlertPanelCalls: [] as Array<{ isUnavailable?: boolean; isLoading?: boolean }>,
+  medicationManagementSectionCalls: [] as Array<{
+    preparationSourceStatus?: 'loading' | 'error' | 'stale' | 'ready';
+    preparationSourceUpdatedAt?: number;
+    onRetryPreparation?: () => void;
+    prescriptionChanges?: { added: string[] } | null;
+  }>,
+  patientCareTeamSourcePanelCalls: [] as Array<{
+    contacts: Array<{ id: string; name: string }>;
+  }>,
+  visitReportReadinessPanelCalls: [] as Array<{
+    items: Array<{ key: string; description: string; done: boolean }>;
+  }>,
   medicationStockPanelCalls: [] as Array<{
     patientId: string | null | undefined;
     writeEnabled?: boolean;
@@ -211,7 +227,32 @@ vi.mock('@/components/features/visits/facility-visit-record-switcher', () => ({
 }));
 
 vi.mock('@/components/features/visits/visit-medication-management-section', () => ({
-  VisitMedicationManagementSection: () => <div data-testid="medication-management-section" />,
+  VisitMedicationManagementSection: (props: {
+    preparationSourceStatus?: 'loading' | 'error' | 'stale' | 'ready';
+    preparationSourceUpdatedAt?: number;
+    onRetryPreparation?: () => void;
+    prescriptionChanges?: { added: string[] } | null;
+  }) => {
+    medicationManagementSectionCalls.push(props);
+    return (
+      <div data-testid="medication-management-section">
+        <span data-testid="medication-management-preparation-status">
+          {props.preparationSourceStatus ?? 'ready'}
+        </span>
+        <span data-testid="medication-management-prescription-changes">
+          {props.prescriptionChanges?.added.join(' / ') ?? ''}
+        </span>
+        {props.preparationSourceStatus === 'error' ? (
+          <div role="alert">
+            訪問準備情報を読み込めませんでした
+            <button type="button" onClick={props.onRetryPreparation}>
+              再読み込み
+            </button>
+          </div>
+        ) : null}
+      </div>
+    );
+  },
 }));
 
 vi.mock('@/components/features/visits/visit-medication-stock-observation-panel', () => ({
@@ -275,11 +316,19 @@ vi.mock('@/lib/visits/medication-stock-observation', async (importActual) => {
 });
 
 vi.mock('@/components/features/visits/patient-care-team-source-panel', () => ({
-  PatientCareTeamSourcePanel: () => null,
+  PatientCareTeamSourcePanel: (props: { contacts: Array<{ id: string; name: string }> }) => {
+    patientCareTeamSourcePanelCalls.push(props);
+    return <div data-testid="patient-care-team-source-panel">{props.contacts[0]?.name ?? ''}</div>;
+  },
 }));
 
 vi.mock('@/components/features/visits/visit-report-readiness-panel', () => ({
-  VisitReportReadinessPanel: () => null,
+  VisitReportReadinessPanel: (props: {
+    items: Array<{ key: string; description: string; done: boolean }>;
+  }) => {
+    visitReportReadinessPanelCalls.push(props);
+    return null;
+  },
 }));
 
 vi.mock('@/components/features/visits/visit-attachments-field', () => ({
@@ -317,11 +366,12 @@ vi.mock('./visit-completion-readiness-warning', () => ({
 setupDomTestEnv();
 
 function renderVisitRecordForm({
+  id = 'schedule_partial',
   medicationStockObservationWriteEnabled = false,
-}: { medicationStockObservationWriteEnabled?: boolean } = {}) {
+}: { id?: string; medicationStockObservationWriteEnabled?: boolean } = {}) {
   return render(
     <VisitRecordForm
-      id="schedule_partial"
+      id={id}
       facilityVisitContext={null}
       medicationStockObservationWriteEnabled={medicationStockObservationWriteEnabled}
     />,
@@ -377,7 +427,10 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
     offlineStoreState.lastSyncedAt = '2026-07-07T00:00:00.000Z';
     listEvidenceDraftSummariesForScheduleMock.mockResolvedValue([]);
     cdsAlertPanelCalls.length = 0;
+    medicationManagementSectionCalls.length = 0;
+    patientCareTeamSourcePanelCalls.length = 0;
     medicationStockPanelCalls.length = 0;
+    visitReportReadinessPanelCalls.length = 0;
     visitRecordPostBodies.length = 0;
     fetchUrls.length = 0;
 
@@ -444,7 +497,7 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
                     },
                   },
                   facility_parallel_context: null,
-                  intake_context: null,
+                  intake_context: { initial_transition_management_expected: null },
                   billing_collection_context: {
                     candidate_id: 'candidate_current',
                     billing_month: '2026-03-01T00:00:00.000Z',
@@ -580,6 +633,377 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
     expect(visitTimeLabels.length).toBeGreaterThan(0);
     expect(await screen.findByText('訪問準備情報を読み込めませんでした')).toBeTruthy();
     expect(screen.getByRole('button', { name: '再読み込み' })).toBeTruthy();
+    expect(medicationManagementSectionCalls.at(-1)?.preparationSourceStatus).toBe('error');
+    expect(
+      visitReportReadinessPanelCalls
+        .at(-1)
+        ?.items.find((item) => item.key === 'medication_management'),
+    ).toMatchObject({
+      done: false,
+      description: '訪問準備情報が最新でないため、必須項目の判定を保留しています。',
+    });
+  });
+
+  it('fails visibly when a successful preparation response omits required pack collections', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        fetchUrls.push(url);
+        if (url === '/api/visit-schedules/schedule_partial') {
+          return new Response(
+            JSON.stringify({
+              id: 'schedule_partial',
+              patient_id: 'patient_1',
+              cycle_id: null,
+              scheduled_date: '2026-04-09',
+              time_window_start: '1970-01-01T09:00:00.000Z',
+              schedule_status: 'ready',
+              visit_type: 'regular',
+              carry_items_status: 'ready',
+              recurrence_rule: null,
+            }),
+            { status: 200 },
+          );
+        }
+        if (url === '/api/visit-preparations/schedule_partial') {
+          return new Response(JSON.stringify({ data: { pack: {} } }), { status: 200 });
+        }
+        if (url.endsWith('/header-summary')) {
+          return new Response(
+            JSON.stringify({
+              data: { safety: { visible_safety_tags: [], hidden_safety_tag_count: 0 } },
+            }),
+            { status: 200 },
+          );
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+      }),
+    );
+
+    renderVisitRecordForm();
+
+    expect(await screen.findByText('訪問準備情報を読み込めませんでした')).toBeTruthy();
+    expect(medicationManagementSectionCalls.at(-1)?.preparationSourceStatus).toBe('error');
+  });
+
+  it.each([
+    {
+      label: 'facility patient collection',
+      pack: {
+        care_team: [],
+        billing_blockers: [],
+        conference_context: [],
+        facility_parallel_context: {},
+      },
+    },
+    {
+      label: 'prescription change collections',
+      pack: {
+        care_team: [],
+        billing_blockers: [],
+        conference_context: [],
+        prescription_changes: {
+          current_prescribed_date: '2026-04-09',
+          previous_prescribed_date: null,
+          source_type: 'fax',
+        },
+      },
+    },
+  ])('fails visibly when a successful response has malformed $label', async ({ pack }) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        fetchUrls.push(url);
+        if (url === '/api/visit-schedules/schedule_partial') {
+          return new Response(
+            JSON.stringify({
+              id: 'schedule_partial',
+              patient_id: 'patient_1',
+              cycle_id: null,
+              scheduled_date: '2026-04-09',
+              time_window_start: '1970-01-01T09:00:00.000Z',
+              schedule_status: 'ready',
+              visit_type: 'regular',
+              carry_items_status: 'ready',
+              recurrence_rule: null,
+            }),
+            { status: 200 },
+          );
+        }
+        if (url === '/api/visit-preparations/schedule_partial') {
+          return new Response(JSON.stringify({ data: { pack } }), { status: 200 });
+        }
+        if (url.endsWith('/header-summary')) {
+          return new Response(
+            JSON.stringify({
+              data: { safety: { visible_safety_tags: [], hidden_safety_tag_count: 0 } },
+            }),
+            { status: 200 },
+          );
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+      }),
+    );
+
+    renderVisitRecordForm();
+
+    expect(await screen.findByText('訪問準備情報を読み込めませんでした')).toBeTruthy();
+    expect(medicationManagementSectionCalls.at(-1)?.preparationSourceStatus).toBe('error');
+  });
+
+  it('retains authorized cached preparation details after a refetch failure', async () => {
+    let preparationRequestCount = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        fetchUrls.push(url);
+        if (url === '/api/visit-schedules/schedule_partial') {
+          return new Response(
+            JSON.stringify({
+              id: 'schedule_partial',
+              patient_id: 'patient_1',
+              cycle_id: null,
+              scheduled_date: '2026-04-09',
+              time_window_start: '1970-01-01T09:00:00.000Z',
+              schedule_status: 'ready',
+              visit_type: 'regular',
+              carry_items_status: 'ready',
+              recurrence_rule: null,
+            }),
+            { status: 200 },
+          );
+        }
+        if (url === '/api/visit-preparations/schedule_partial') {
+          preparationRequestCount += 1;
+          if (preparationRequestCount > 1) {
+            return new Response(JSON.stringify({ message: 'provider detail must stay hidden' }), {
+              status: 500,
+            });
+          }
+          return new Response(
+            JSON.stringify({
+              data: {
+                pack: {
+                  care_team: [
+                    {
+                      id: 'care_team_1',
+                      role: 'physician',
+                      name: '佐藤医師',
+                      organization_name: '在宅クリニック',
+                      phone: null,
+                    },
+                  ],
+                  billing_blockers: [],
+                  conference_context: [],
+                  prescription_changes: {
+                    current_prescribed_date: '2026-04-09',
+                    previous_prescribed_date: '2026-03-25',
+                    source_type: 'fax',
+                    added: ['酸化マグネシウム錠'],
+                    changed: [],
+                    removed: [],
+                  },
+                },
+              },
+            }),
+            { status: 200 },
+          );
+        }
+        if (url.endsWith('/header-summary')) {
+          return new Response(
+            JSON.stringify({
+              data: { safety: { visible_safety_tags: [], hidden_safety_tag_count: 0 } },
+            }),
+            { status: 200 },
+          );
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+      }),
+    );
+
+    renderVisitRecordForm();
+
+    await waitFor(() => {
+      expect(medicationManagementSectionCalls.at(-1)?.preparationSourceStatus).toBe('ready');
+    });
+    expect(screen.getByTestId('medication-management-prescription-changes').textContent).toContain(
+      '酸化マグネシウム錠',
+    );
+    expect(patientCareTeamSourcePanelCalls.at(-1)?.contacts[0]?.name).toBe('佐藤医師');
+
+    act(() => medicationManagementSectionCalls.at(-1)?.onRetryPreparation?.());
+
+    await waitFor(() => {
+      expect(medicationManagementSectionCalls.at(-1)?.preparationSourceStatus).toBe('stale');
+    });
+    expect(medicationManagementSectionCalls.at(-1)?.preparationSourceUpdatedAt).toBeGreaterThan(0);
+    expect(medicationManagementSectionCalls.at(-1)?.prescriptionChanges?.added).toContain(
+      '酸化マグネシウム錠',
+    );
+    expect(patientCareTeamSourcePanelCalls.at(-1)?.contacts[0]?.name).toBe('佐藤医師');
+    expect(
+      visitReportReadinessPanelCalls
+        .at(-1)
+        ?.items.find((item) => item.key === 'medication_management')?.done,
+    ).toBe(false);
+  });
+
+  it('hides cached preparation PHI when a refetch reports revoked access', async () => {
+    let preparationRequestCount = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        fetchUrls.push(url);
+        if (url === '/api/visit-schedules/schedule_partial') {
+          return new Response(
+            JSON.stringify({
+              id: 'schedule_partial',
+              patient_id: 'patient_1',
+              cycle_id: null,
+              scheduled_date: '2026-04-09',
+              time_window_start: '1970-01-01T09:00:00.000Z',
+              schedule_status: 'ready',
+              visit_type: 'regular',
+              carry_items_status: 'ready',
+              recurrence_rule: null,
+            }),
+            { status: 200 },
+          );
+        }
+        if (url === '/api/visit-preparations/schedule_partial') {
+          preparationRequestCount += 1;
+          if (preparationRequestCount > 1) {
+            return new Response(
+              JSON.stringify({ message: 'patient token raw detail must stay hidden' }),
+              { status: 403 },
+            );
+          }
+          return new Response(
+            JSON.stringify({
+              data: {
+                pack: {
+                  care_team: [
+                    {
+                      id: 'care_team_1',
+                      role: 'physician',
+                      name: '佐藤医師',
+                      organization_name: '在宅クリニック',
+                      phone: null,
+                    },
+                  ],
+                  billing_blockers: [],
+                  conference_context: [],
+                  prescription_changes: {
+                    current_prescribed_date: '2026-04-09',
+                    previous_prescribed_date: '2026-03-25',
+                    source_type: 'fax',
+                    added: ['酸化マグネシウム錠'],
+                    changed: [],
+                    removed: [],
+                  },
+                },
+              },
+            }),
+            { status: 200 },
+          );
+        }
+        if (url.endsWith('/header-summary')) {
+          return new Response(
+            JSON.stringify({
+              data: { safety: { visible_safety_tags: [], hidden_safety_tag_count: 0 } },
+            }),
+            { status: 200 },
+          );
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+      }),
+    );
+
+    renderVisitRecordForm();
+
+    await waitFor(() => {
+      expect(medicationManagementSectionCalls.at(-1)?.preparationSourceStatus).toBe('ready');
+    });
+    expect(screen.getByTestId('patient-care-team-source-panel').textContent).toContain('佐藤医師');
+    expect(screen.getByTestId('medication-management-prescription-changes').textContent).toContain(
+      '酸化マグネシウム錠',
+    );
+
+    act(() => medicationManagementSectionCalls.at(-1)?.onRetryPreparation?.());
+
+    await waitFor(() => {
+      expect(medicationManagementSectionCalls.at(-1)?.preparationSourceStatus).toBe('error');
+    });
+    expect(preparationRequestCount).toBe(2);
+    expect(medicationManagementSectionCalls.at(-1)?.prescriptionChanges).toBeNull();
+    expect(screen.queryByTestId('patient-care-team-source-panel')).toBeNull();
+    expect(screen.queryByText('佐藤医師')).toBeNull();
+    expect(screen.queryByText('酸化マグネシウム錠')).toBeNull();
+    expect(screen.queryByText('patient token raw detail must stay hidden')).toBeNull();
+    expect(
+      visitReportReadinessPanelCalls
+        .at(-1)
+        ?.items.find((item) => item.key === 'medication_management')?.done,
+    ).toBe(false);
+  });
+
+  it('encodes the route schedule id as one segment for schedule and preparation APIs', async () => {
+    const hostileScheduleId = 'schedule/../../outside';
+    const encodedScheduleId = encodePathSegment(hostileScheduleId);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        fetchUrls.push(url);
+        if (url === `/api/visit-schedules/${encodedScheduleId}`) {
+          return new Response(
+            JSON.stringify({
+              id: hostileScheduleId,
+              patient_id: 'patient_1',
+              cycle_id: null,
+              scheduled_date: '2026-04-09',
+              time_window_start: '1970-01-01T09:00:00.000Z',
+              schedule_status: 'ready',
+              visit_type: 'regular',
+              carry_items_status: 'ready',
+              recurrence_rule: null,
+            }),
+            { status: 200 },
+          );
+        }
+        if (url === `/api/visit-preparations/${encodedScheduleId}`) {
+          return new Response(
+            JSON.stringify({
+              data: {
+                pack: { care_team: [], billing_blockers: [], conference_context: [] },
+              },
+            }),
+            { status: 200 },
+          );
+        }
+        if (url.endsWith('/header-summary')) {
+          return new Response(
+            JSON.stringify({
+              data: { safety: { visible_safety_tags: [], hidden_safety_tag_count: 0 } },
+            }),
+            { status: 200 },
+          );
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+      }),
+    );
+
+    renderVisitRecordForm({ id: hostileScheduleId });
+
+    expect(await screen.findByTestId('medication-management-section')).toBeTruthy();
+    expect(fetchUrls).toContain(`/api/visit-schedules/${encodedScheduleId}`);
+    expect(fetchUrls).toContain(`/api/visit-preparations/${encodedScheduleId}`);
+    expect(fetchUrls).not.toContain(`/api/visit-schedules/${hostileScheduleId}`);
+    expect(fetchUrls).not.toContain(`/api/visit-preparations/${hostileScheduleId}`);
   });
 
   it('pins the allergy safety tag in the visit mode headers (SSOT 4.1)', async () => {

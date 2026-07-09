@@ -17,6 +17,8 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/loading';
+import { SegmentError, SegmentStaleBanner } from '@/components/ui/segment-state';
 import {
   Select,
   SelectContent,
@@ -27,6 +29,8 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { formatDateTimeLabel } from '@/lib/ui/date-format';
+import { formatElapsedLabel } from '@/lib/ui/relative-time';
 import { cn } from '@/lib/utils';
 import {
   buildHomeVisit2026ReadinessItems,
@@ -47,8 +51,13 @@ type VisitMedicationManagementSectionProps = {
   outsideMeds?: VisitOutsideMed[] | null;
   previousVisitSummary?: string | null;
   previousVisitStructuredReuse?: VisitPreviousStructuredReuse | null;
+  preparationSourceStatus?: VisitPreparationSourceStatus;
+  preparationSourceUpdatedAt?: number;
+  onRetryPreparation?: () => void;
   onChange: (next: StructuredSoap) => void;
 };
+
+export type VisitPreparationSourceStatus = 'loading' | 'error' | 'stale' | 'ready';
 
 type QuickCaptureTarget = 'subjective' | 'objective' | 'assessment' | 'plan';
 
@@ -150,12 +159,10 @@ function EvidenceCheckbox({
         onCheckedChange={(value) => onCheckedChange(value === true)}
         className="mt-0.5"
       />
-      <div className="space-y-1">
-        <Label htmlFor={id} className="cursor-pointer text-sm font-medium text-foreground">
-          {label}
-        </Label>
-        <p className="text-xs leading-5 text-muted-foreground">{description}</p>
-      </div>
+      <Label htmlFor={id} className="min-h-11 flex-1 cursor-pointer space-y-1">
+        <span className="block text-sm font-medium text-foreground">{label}</span>
+        <span className="block text-xs leading-5 text-muted-foreground">{description}</span>
+      </Label>
     </div>
   );
 }
@@ -218,7 +225,7 @@ function SourceList({ items }: { items: string[] }) {
 function SourceSection({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <p className="text-xs font-semibold text-muted-foreground">{label}</p>
+      <h4 className="text-xs font-semibold text-muted-foreground">{label}</h4>
       {children}
     </div>
   );
@@ -237,10 +244,10 @@ function QuickCapturePanel({
 }) {
   return (
     <div className="space-y-3 rounded-lg border border-cyan-200 bg-cyan-50/70 p-3">
-      <div className="flex items-center gap-2 text-xs font-semibold text-cyan-950">
+      <h4 className="flex items-center gap-2 text-xs font-semibold text-cyan-950">
         <MessageSquareText className="size-3.5 text-cyan-800" aria-hidden="true" />
         {title}
-      </div>
+      </h4>
       <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
         <ul className="space-y-1 text-xs leading-5 text-cyan-950">
           {prompts.map((prompt) => (
@@ -258,7 +265,7 @@ function QuickCapturePanel({
                 type="button"
                 variant="outline"
                 size="sm"
-                className="justify-start bg-white text-xs"
+                className="min-h-11 justify-start bg-white text-xs sm:min-h-11"
                 onClick={() => onQuickCapture(action)}
               >
                 <PenLine className="size-3.5" aria-hidden="true" />
@@ -363,6 +370,34 @@ function PreviousStructuredReusePanel({
   );
 }
 
+function InformationSourceShell({ children }: { children: ReactNode }) {
+  return (
+    <section className="space-y-3 rounded-xl border border-cyan-200 bg-cyan-50/50 p-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="space-y-1">
+          <h3 className="text-sm font-semibold text-cyan-950">今日の聞き取りブリーフ</h3>
+          <p className="text-xs leading-5 text-cyan-900/80">
+            情報ソースを切り替えて、患者へ向き合う前に今日拾う話題だけを確認します。
+          </p>
+        </div>
+        <Badge variant="outline" className="w-fit border-cyan-300 bg-white text-cyan-900">
+          情報ソース別
+        </Badge>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function formatPreparationSourceFreshness(value: number | undefined) {
+  if (!value) return '取得時刻不明';
+  const updatedAt = new Date(value);
+  if (Number.isNaN(updatedAt.getTime())) return '取得時刻不明';
+  const elapsedMinutes = Math.max(0, Math.floor((Date.now() - updatedAt.getTime()) / 60_000));
+  const absoluteLabel = formatDateTimeLabel(updatedAt.toISOString(), { fallback: '不明' });
+  return `${formatElapsedLabel(elapsedMinutes)}前のデータ（最終取得: ${absoluteLabel}）`;
+}
+
 function VisitInformationSourceTabs({
   structuredSoap,
   medicationPeriod,
@@ -370,6 +405,9 @@ function VisitInformationSourceTabs({
   previousVisitSummary,
   previousVisitStructuredReuse,
   conferenceContext,
+  sourceStatus,
+  sourceUpdatedAt,
+  onRetry,
   onQuickCapture,
 }: {
   structuredSoap: StructuredSoap;
@@ -378,8 +416,47 @@ function VisitInformationSourceTabs({
   previousVisitSummary?: string | null;
   previousVisitStructuredReuse?: VisitPreviousStructuredReuse | null;
   conferenceContext: VisitConferenceContext[];
+  sourceStatus: VisitPreparationSourceStatus;
+  sourceUpdatedAt?: number;
+  onRetry?: () => void;
   onQuickCapture?: (action: QuickCaptureAction) => void;
 }) {
+  if (sourceStatus === 'loading') {
+    return (
+      <InformationSourceShell>
+        <div
+          role="status"
+          aria-label="訪問準備情報を読み込み中"
+          aria-live="polite"
+          className="space-y-3 rounded-lg border border-cyan-200 bg-white/70 p-3"
+        >
+          <div className="grid gap-2 sm:grid-cols-4">
+            {Array.from({ length: 4 }, (_, index) => (
+              <Skeleton key={index} className="h-14 w-full rounded-lg" />
+            ))}
+          </div>
+          <Skeleton className="h-11 w-full rounded-lg" />
+          <Skeleton className="h-28 w-full rounded-lg" />
+        </div>
+      </InformationSourceShell>
+    );
+  }
+
+  if (sourceStatus === 'error') {
+    return (
+      <InformationSourceShell>
+        <SegmentError
+          headingLevel={4}
+          title="訪問準備情報を読み込めませんでした"
+          cause="処方変更・その他薬・前回記録・他職種連携を確認できません。"
+          nextAction="「該当なし」とは判断せず、通信状態を確認して再読み込みしてください。"
+          onRetry={onRetry}
+          className="[&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-11"
+        />
+      </InformationSourceShell>
+    );
+  }
+
   const startDate =
     medicationPeriod?.schedule_start_date ?? medicationPeriod?.prescription_start_date ?? null;
   const endDate =
@@ -445,28 +522,25 @@ function VisitInformationSourceTabs({
   const hasHandoffAttention = handoffLines.length > 0 || conferenceActionLines.length > 0;
 
   return (
-    <section className="space-y-3 rounded-xl border border-cyan-200 bg-cyan-50/50 p-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-1">
-          <h3 className="text-sm font-semibold text-cyan-950">今日の聞き取りブリーフ</h3>
-          <p className="text-xs leading-5 text-cyan-900/80">
-            情報ソースを切り替えて、患者へ向き合う前に今日拾う話題だけを確認します。
-          </p>
-        </div>
-        <Badge variant="outline" className="w-fit border-cyan-300 bg-white text-cyan-900">
-          情報ソース別
-        </Badge>
-      </div>
+    <InformationSourceShell>
+      {sourceStatus === 'stale' ? (
+        <SegmentStaleBanner
+          title="前回取得した訪問準備情報を表示中"
+          description={`処方変更・前回記録・他職種連携が古い可能性があります。${formatPreparationSourceFreshness(sourceUpdatedAt)}。最新情報を再取得してください。`}
+          onRetry={onRetry}
+          className="[&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-11"
+        />
+      ) : null}
 
       <div className="grid gap-2 sm:grid-cols-4">
         <div className="rounded-lg border border-cyan-200 bg-white/70 px-3 py-2">
-          <p className="text-[11px] font-semibold text-cyan-950">処方</p>
+          <p className="text-xs font-semibold text-cyan-950">処方</p>
           <p className="mt-1 text-xs text-cyan-900">
             {hasPrescriptionAttention ? prescriptionChangeSummary(prescriptionChanges) : '変化なし'}
           </p>
         </div>
         <div className="rounded-lg border border-cyan-200 bg-white/70 px-3 py-2">
-          <p className="text-[11px] font-semibold text-cyan-950">前回</p>
+          <p className="text-xs font-semibold text-cyan-950">前回</p>
           <p className="mt-1 text-xs text-cyan-900">
             {previousStructuredAvailable
               ? `構造化 ${previousCarryForwardItems.length || 1}件`
@@ -476,13 +550,13 @@ function VisitInformationSourceTabs({
           </p>
         </div>
         <div className="rounded-lg border border-cyan-200 bg-white/70 px-3 py-2">
-          <p className="text-[11px] font-semibold text-cyan-950">他職種</p>
+          <p className="text-xs font-semibold text-cyan-950">他職種</p>
           <p className="mt-1 text-xs text-cyan-900">
             {hasTeamAttention ? `${conferenceContext.length}件` : '共有なし'}
           </p>
         </div>
         <div className="rounded-lg border border-cyan-200 bg-white/70 px-3 py-2">
-          <p className="text-[11px] font-semibold text-cyan-950">申し送り</p>
+          <p className="text-xs font-semibold text-cyan-950">申し送り</p>
           <p className="mt-1 text-xs text-cyan-900">
             {hasHandoffAttention
               ? `${handoffLines.length + conferenceActionLines.length}件`
@@ -503,11 +577,11 @@ function VisitInformationSourceTabs({
               <TabsTrigger
                 key={tab.value}
                 value={tab.value}
-                className="min-w-0 flex-none gap-1.5 rounded-none px-2 py-2 text-xs sm:min-w-fit sm:gap-2 sm:px-3"
+                className="min-h-11 min-w-0 flex-none gap-1.5 rounded-none px-2 py-2 text-xs sm:min-h-11 sm:min-w-fit sm:gap-2 sm:px-3"
               >
                 <Icon className="size-4" aria-hidden="true" />
                 {tab.label}
-                <Badge variant="outline" className="ml-0.5 h-5 rounded-full px-1.5 text-[10px]">
+                <Badge variant="outline" className="ml-0.5 h-5 rounded-full px-1.5 text-xs">
                   {tab.count}
                 </Badge>
               </TabsTrigger>
@@ -639,7 +713,7 @@ function VisitInformationSourceTabs({
                       </div>
                       <Link
                         href={`/conferences?note_type=${note.note_type}&focus=notes`}
-                        className="inline-flex min-h-8 items-center rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-foreground hover:bg-muted"
+                        className="inline-flex min-h-11 items-center rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-foreground hover:bg-muted"
                       >
                         会議一覧
                       </Link>
@@ -697,7 +771,7 @@ function VisitInformationSourceTabs({
           <span>{conferenceHighlightLines[0]}</span>
         </div>
       ) : null}
-    </section>
+    </InformationSourceShell>
   );
 }
 
@@ -721,6 +795,7 @@ function FieldText({
       </Label>
       <Input
         id={id}
+        className="min-h-11 sm:min-h-11"
         value={value ?? ''}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value || undefined)}
@@ -749,6 +824,7 @@ function FieldTextarea({
       </Label>
       <Textarea
         id={id}
+        className="min-h-11 sm:min-h-11"
         value={value ?? ''}
         placeholder={placeholder}
         rows={3}
@@ -817,6 +893,9 @@ export function VisitMedicationManagementSection({
   outsideMeds,
   previousVisitSummary,
   previousVisitStructuredReuse,
+  preparationSourceStatus = 'ready',
+  preparationSourceUpdatedAt,
+  onRetryPreparation,
   onChange,
 }: VisitMedicationManagementSectionProps) {
   const evidence = readHomeVisit2026Evidence(structuredSoap);
@@ -831,7 +910,8 @@ export function VisitMedicationManagementSection({
   const requiredItems = readinessItems.filter((item) => item.required);
   const completedRequiredItems = requiredItems.filter((item) => item.done);
   const missingItems = requiredItems.filter((item) => !item.done);
-  const isReady = requiredItems.length === completedRequiredItems.length;
+  const readinessVerified = preparationSourceStatus === 'ready';
+  const isReady = readinessVerified && requiredItems.length === completedRequiredItems.length;
 
   function updateEvidence(patch: Partial<HomeVisit2026Evidence>) {
     onChange({
@@ -942,7 +1022,9 @@ export function VisitMedicationManagementSection({
             </p>
           </div>
           <Badge variant={isReady ? 'default' : 'outline'} className="w-fit">
-            必須 {completedRequiredItems.length}/{requiredItems.length}
+            {readinessVerified
+              ? `必須 ${completedRequiredItems.length}/${requiredItems.length}`
+              : '必須判定を保留'}
           </Badge>
         </div>
         <div
@@ -955,21 +1037,31 @@ export function VisitMedicationManagementSection({
           role="status"
           aria-live="polite"
         >
-          {isReady
-            ? 'この訪問で必要な確認は揃っています。'
-            : `次に確認: ${missingItems
-                .slice(0, 3)
-                .map((item) => item.label)
-                .join(' / ')}`}
+          {preparationSourceStatus === 'loading'
+            ? '訪問準備情報の読込後に、必須項目の充足を確定します。'
+            : preparationSourceStatus === 'error'
+              ? '訪問準備情報を確認できないため、必須項目が揃ったとは判断しません。'
+              : preparationSourceStatus === 'stale'
+                ? '前回取得時点の必須項目を表示しています。最新情報で再確認してください。'
+                : isReady
+                  ? 'この訪問で必要な確認は揃っています。'
+                  : `次に確認: ${missingItems
+                      .slice(0, 3)
+                      .map((item) => item.label)
+                      .join(' / ')}`}
         </div>
         <div className="rounded-lg border border-border/70 bg-muted/10 px-3 py-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm font-medium text-foreground">訪問中に見る不足</p>
             <Badge variant="outline" className="w-fit">
-              未確認 {missingItems.length}件
+              {readinessVerified ? '未確認' : '暫定未確認'} {missingItems.length}件
             </Badge>
           </div>
-          {missingItems.length === 0 ? (
+          {!readinessVerified ? (
+            <p className="mt-2 text-xs leading-5 text-muted-foreground">
+              表示中の不足件数は暫定です。訪問準備情報を再取得してから最終確認してください。
+            </p>
+          ) : missingItems.length === 0 ? (
             <p className="mt-2 text-xs leading-5 text-muted-foreground">
               必須項目は揃っています。下の各項目は必要時の追記として確認できます。
             </p>
@@ -1003,6 +1095,9 @@ export function VisitMedicationManagementSection({
           previousVisitSummary={previousVisitSummary}
           previousVisitStructuredReuse={previousVisitStructuredReuse}
           conferenceContext={conferenceContext}
+          sourceStatus={preparationSourceStatus}
+          sourceUpdatedAt={preparationSourceUpdatedAt}
+          onRetry={onRetryPreparation}
           onQuickCapture={handleQuickCapture}
         />
         {outsideMedItems.length > 0 ? (
@@ -1235,7 +1330,7 @@ export function VisitMedicationManagementSection({
                     })
                   }
                 >
-                  <SelectTrigger id="multi-staff-reason">
+                  <SelectTrigger id="multi-staff-reason" className="w-full min-h-11 sm:min-h-11">
                     <SelectValue placeholder="理由を選択" />
                   </SelectTrigger>
                   <SelectContent>
