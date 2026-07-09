@@ -17,6 +17,10 @@ import { type RequestAuthContext } from '@/lib/auth/request-context';
 import { readJsonObject, toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { FHIR_R4_VERSION, JP_CORE_VERSION } from '@/server/adapters/fhir';
+import {
+  assessClinicalFhirValidation,
+  toValidationErrorsJson,
+} from '@/server/services/standard-clinical-fhir-validation';
 
 const DEFAULT_YRESE_SYSTEM_KEY = 'yrese';
 const DEFAULT_SCHEMA_VERSION = '1.0.0';
@@ -538,6 +542,15 @@ async function writeFhirResourceCache(args: {
   readonly input: FhirCacheImportResourceInput;
 }) {
   const { tx, orgId, externalSystemId, externalReferenceId, resource, input } = args;
+  const validationAssessment = assessClinicalFhirValidation({
+    resource: input.resource,
+    resourceType: resource.resourceType,
+    profileUrls: resource.profileUrls,
+    requestedStatus: input.validationStatus,
+    requestedErrors: input.validationErrors,
+  });
+  const validationErrors = toValidationErrorsJson(validationAssessment);
+
   await tx.clinicalFhirResourceCache.updateMany({
     where: {
       org_id: orgId,
@@ -575,11 +588,8 @@ async function writeFhirResourceCache(args: {
       last_modified_at: resource.lastModifiedAt,
       fetched_at: new Date(),
       is_current: true,
-      validation_status: input.validationStatus ?? ClinicalFhirValidationStatus.not_validated,
-      validation_errors:
-        input.validationErrors && input.validationErrors.length > 0
-          ? toPrismaJsonInput(input.validationErrors)
-          : undefined,
+      validation_status: validationAssessment.status,
+      validation_errors: validationErrors ? toPrismaJsonInput(validationErrors) : undefined,
     },
     update: {
       external_reference_id: externalReferenceId,
@@ -592,11 +602,8 @@ async function writeFhirResourceCache(args: {
       last_modified_at: resource.lastModifiedAt,
       fetched_at: new Date(),
       is_current: true,
-      validation_status: input.validationStatus ?? ClinicalFhirValidationStatus.not_validated,
-      validation_errors:
-        input.validationErrors && input.validationErrors.length > 0
-          ? toPrismaJsonInput(input.validationErrors)
-          : undefined,
+      validation_status: validationAssessment.status,
+      validation_errors: validationErrors ? toPrismaJsonInput(validationErrors) : undefined,
     },
     select: { id: true },
   });

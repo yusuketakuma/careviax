@@ -176,6 +176,18 @@ describe('FhirAdapter', () => {
         },
       }),
     ).toBeNull();
+    expect(
+      normalizeFhirMedicationRequest({
+        ...validMedicationRequest,
+        medicationCodeableConcept: {
+          coding: [{ system: 'urn:system', code: '1234567890' }],
+        },
+      }),
+    ).toMatchObject({
+      medicationCodeableConcept: {
+        coding: [{ system: 'urn:system', code: '1234567890' }],
+      },
+    });
   });
 
   it('normalizes MedicationDispense separately from requests and statements', () => {

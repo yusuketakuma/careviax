@@ -434,6 +434,106 @@
     still require an explicit environment target: DB migration apply, secret configuration, deploy,
     and external yrese/FHIR connectivity tests.
 
+- codex: `FHIR-READY-VALIDATION-001` JP Core/FHIR cache validation gate.
+  - current task:
+    yrese webhook/FHIR cache import service の次段として、FHIR cache row が `valid` として
+    業務タイムラインへ投影される条件を厳格化する。外部入力の `validationStatus: valid` を
+    そのまま信用せず、PH-OS側のR4 JSON形状チェック、対応JP Core profile URL、既存FHIR
+    normalizerを通した場合だけ `ClinicalFhirValidationStatus.valid` を保存し、未検証・unsupported・
+    invalidのFHIR cacheをMedicationTimelineへ流さない。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`, `ops/refactor/STATE.md`,
+    `src/server/services/standard-clinical-integration-import.ts`,
+    `src/server/services/standard-clinical-sync-queue.ts`,
+    `src/server/adapters/fhir/index.ts`, related tests, `package.json`, and the standard
+    clinical integration Prisma schema/migration. Official references rechecked on 2026-07-10:
+    HL7 FHIR JP Core ImplementationGuide v1.2.0
+    `https://jpfhir.jp/fhir/core/1.2.0/index.html`, JP Core Patient / MedicationRequest /
+    MedicationDispense / MedicationStatement profile pages, and FHIR R4 JSON
+    `https://hl7.org/fhir/R4/json.html`.
+  - files changed:
+    `src/server/services/standard-clinical-fhir-validation.ts`,
+    `src/server/services/standard-clinical-fhir-validation.test.ts`,
+    `src/server/services/standard-clinical-integration-import.ts`,
+    `src/server/services/standard-clinical-integration-import.test.ts`,
+    `src/server/services/standard-clinical-sync-queue.ts`,
+    `src/server/services/standard-clinical-sync-queue.test.ts`,
+    `src/server/adapters/fhir/index.ts`, and `src/server/adapters/fhir/index.test.ts`.
+  - bugs found:
+    `FhirCacheImportResourceInput.validationStatus` could previously mark a cache row as
+    `valid` without a PH-OS-side check that the resource had the expected JP Core profile URL
+    or even passed the local R4 normalizer. The queue worker also projected medication resources
+    to `MedicationTimelineItem` without checking `ClinicalFhirResourceCache.validation_status`.
+    While wiring that gate, the existing FHIR adapter was found to require `Coding.display`,
+    although FHIR coding display is optional and yrese/JPCore medication coding may carry only
+    system/code.
+  - bugs fixed:
+    Added `assessClinicalFhirValidation()` with a JP Core v1.2.0 profile registry for Patient,
+    MedicationRequest, MedicationDispense, and MedicationStatement. Import now stores `valid`
+    only when the resource is structurally valid, the local normalizer accepts it, the expected
+    JP Core profile URL is present, and the caller supplied a valid external validation result.
+    Missing/mismatched profiles become `unsupported_profile`; malformed FHIR JSON becomes
+    `invalid`; unsupported resource profiles never become JP Core valid. The sync queue now
+    conflicts medication projections with `FHIR_PROFILE_VALIDATION_REQUIRED` unless the cache
+    row is `valid`. FHIR `Coding.display` is now optional in the adapter.
+  - security risks found:
+    Treating caller-supplied validation status as authoritative could let malformed or
+    non-JP-Core resources enter patient medication timelines as trusted operational data.
+    Persisting raw external validator details could also leak PHI/PII.
+  - security risks reduced:
+    Validation errors are stored as minimized codes/path/expected profile metadata only; raw
+    validator detail is replaced with `EXTERNAL_VALIDATOR_ERRORS_REDACTED`. Unvalidated,
+    unsupported, or invalid FHIR cache rows are blocked from medication timeline projection
+    and routed to conflict review instead of silently becoming synced clinical facts.
+  - performance issues found:
+    None severe. Validation is bounded to one resource object during import and one enum check
+    during queue projection.
+  - performance issues improved:
+    The queue now rejects invalid/unvalidated cache rows before reading normalized medication
+    summary fields or upserting timeline/provenance rows.
+  - validation commands:
+    `pnpm exec prettier --write src/server/adapters/fhir/index.ts src/server/adapters/fhir/index.test.ts src/server/services/standard-clinical-fhir-validation.ts src/server/services/standard-clinical-fhir-validation.test.ts src/server/services/standard-clinical-integration-import.ts src/server/services/standard-clinical-integration-import.test.ts src/server/services/standard-clinical-sync-queue.ts src/server/services/standard-clinical-sync-queue.test.ts`;
+    `pnpm vitest run src/server/adapters/fhir/index.test.ts src/server/services/standard-clinical-fhir-validation.test.ts src/server/services/standard-clinical-integration-import.test.ts src/server/services/standard-clinical-sync-queue.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint src/server/adapters/fhir/index.ts src/server/adapters/fhir/index.test.ts src/server/services/standard-clinical-fhir-validation.ts src/server/services/standard-clinical-fhir-validation.test.ts src/server/services/standard-clinical-integration-import.ts src/server/services/standard-clinical-integration-import.test.ts src/server/services/standard-clinical-sync-queue.ts src/server/services/standard-clinical-sync-queue.test.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused`;
+    `pnpm db:raw-read-org-guard:check`;
+    `pnpm db:query-shape:check`;
+    `pnpm dto-direct-prisma-return:check`;
+    `pnpm api-response-shape:check`;
+    `pnpm vitest run src/server/services/standard-clinical-integration-db-contract.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec prettier --check src/server/adapters/fhir/index.ts src/server/adapters/fhir/index.test.ts src/server/services/standard-clinical-fhir-validation.ts src/server/services/standard-clinical-fhir-validation.test.ts src/server/services/standard-clinical-integration-import.ts src/server/services/standard-clinical-integration-import.test.ts src/server/services/standard-clinical-sync-queue.ts src/server/services/standard-clinical-sync-queue.test.ts`;
+    `git diff --check`.
+  - validation results:
+    Focused FHIR adapter/validation/import/queue tests passed 23/23 after correcting test data
+    that had used `meta.profile: []` (invalid FHIR JSON empty array) instead of an absent profile.
+    Standard clinical DB contract tests passed 5/5. ESLint, `typecheck`, `typecheck:no-unused`,
+    raw-read org guard, query-shape guard, DTO direct Prisma return guard, API response shape guard,
+    Prettier check, and `git diff --check` passed.
+  - oracle review:
+    `npx -y @steipete/oracle --help` confirmed Oracle CLI v0.15.1. GitHub context was inspected
+    with `git remote -v`, branch/commit/status, and `gh pr status`. The first browser consult
+    `fhir-validation-gate-review` failed because attachments did not finish uploading before
+    timeout. The reduced inline consult `fhir-validation-min-review` completed with conditional
+    No-Go: the design was directionally correct, but `assessClinicalFhirValidation()` needed to
+    derive JP Core profile trust from `resource.meta.profile` instead of trusting caller-provided
+    `profileUrls`. Accepted and implemented that required fix, added spoof/undefined tests, and
+    reran the validation commands above successfully.
+  - imagegen:
+    Omitted because this was a backend-only validation/import/queue slice with no UI/UX visual
+    reconstruction.
+  - remaining work:
+    No live DB migration was applied, no deploy was run, no secret configuration was changed, and
+    no external yrese/FHIR endpoint was called. This service is still a local gate plus external
+    validation-result consumer; a real JP Core profile validator runtime/sandbox, terminology /
+    ConceptMap checks, retention purge, review UI for blocked FHIR cache rows, and environment
+    migration/deploy/connectivity proof remain.
+  - next action:
+    Commit this validation gate slice with explicit path staging, then continue with either a
+    review surface for `FHIR_PROFILE_VALIDATION_REQUIRED` / identity conflicts or a retention purge
+    job. DB migration apply, deploy, secret changes, and external yrese/FHIR sends still require an
+    explicit target environment and current authorization.
+
 - codex: `API-CONTRACT-001DQ` pharmacy site insurance config response envelope cleanup.
   - current task:
     `PATCH /api/pharmacy-sites/:id/insurance-configs/:configId` の success DTO を明示化し、

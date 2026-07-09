@@ -268,6 +268,39 @@ describe('importYreseClinicalWebhook', () => {
     expect(serializedCalls).toContain('sha256:');
   });
 
+  it('does not store externally valid FHIR cache rows as valid when JP Core profile validation cannot be proven', async () => {
+    const tx = createMockTx();
+    const input = baseInput();
+
+    await importWithMockTx(
+      {
+        ...input,
+        fhirResources: input.fhirResources?.map((item) => ({
+          ...item,
+          resource: {
+            ...(item.resource as Record<string, unknown>),
+            meta: { versionId: 'v1' },
+          },
+          validationStatus: ClinicalFhirValidationStatus.valid,
+        })),
+      },
+      tx,
+    );
+
+    expect(tx.clinicalFhirResourceCache.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          validation_status: ClinicalFhirValidationStatus.unsupported_profile,
+          validation_errors: expect.arrayContaining([
+            expect.objectContaining({
+              code: 'JP_CORE_PROFILE_URL_REQUIRED_FOR_VALID_STATUS',
+            }),
+          ]),
+        }),
+      }),
+    );
+  });
+
   it('uses a content hash as a deterministic version when a FHIR meta.versionId is absent', () => {
     const parsed = standardClinicalIntegrationInternals.parseFhirResource({
       resourceType: 'Patient',

@@ -1,4 +1,5 @@
 import {
+  ClinicalFhirValidationStatus,
   ClinicalFhirResourceType,
   ClinicalIntegrationDirection,
   ClinicalLocalResourceType,
@@ -55,6 +56,7 @@ type CacheRecord = {
   external_reference_id: string | null;
   normalized_summary: Prisma.JsonValue;
   content_hash: string;
+  validation_status: ClinicalFhirValidationStatus;
 };
 
 export interface DrainYreseClinicalSyncQueueOptions {
@@ -274,6 +276,11 @@ async function projectMedicationTimeline(args: {
     return 'conflict' as const;
   }
 
+  if (cache.validation_status !== ClinicalFhirValidationStatus.valid) {
+    await markQueueConflict(tx, queue, now, 'FHIR_PROFILE_VALIDATION_REQUIRED');
+    return 'conflict' as const;
+  }
+
   const summary = readJsonObject(cache.normalized_summary) ?? {};
   const authoredAt = readDate(summary.authored_at);
   const effectiveAt = readDate(summary.effective_at);
@@ -365,6 +372,7 @@ async function processQueueItem(args: {
       external_reference_id: true,
       normalized_summary: true,
       content_hash: true,
+      validation_status: true,
     },
   });
   if (!cache) {

@@ -1,4 +1,5 @@
 import {
+  ClinicalFhirValidationStatus,
   ClinicalFhirResourceType,
   ClinicalIntegrationDirection,
   ClinicalLocalResourceType,
@@ -57,6 +58,7 @@ const cacheRecord = {
   version_id: 'v1',
   external_reference_id: 'external_reference_1',
   content_hash: 'sha256:resource',
+  validation_status: ClinicalFhirValidationStatus.valid,
   normalized_summary: {
     resource_type: 'MedicationRequest',
     resource_id: 'medreq_1',
@@ -188,6 +190,32 @@ describe('drainYreseClinicalSyncQueue', () => {
         data: expect.objectContaining({
           status: ClinicalQueueStatus.conflict_requires_review,
           last_error_code: 'PATIENT_ID_REQUIRED_FOR_TIMELINE_PROJECTION',
+        }),
+      }),
+    );
+  });
+
+  it('keeps unvalidated medication FHIR cache rows out of the medication timeline', async () => {
+    const tx = createMockTx();
+    tx.clinicalSyncQueueItem.findMany.mockResolvedValue([queueRecord]);
+    tx.clinicalFhirResourceCache.findFirst.mockResolvedValue({
+      ...cacheRecord,
+      validation_status: ClinicalFhirValidationStatus.not_validated,
+    });
+
+    const result = await drainWithTx(tx);
+
+    expect(result).toMatchObject({
+      processedCount: 1,
+      conflictCount: 1,
+      succeededCount: 0,
+    });
+    expect(tx.medicationTimelineItem.upsert).not.toHaveBeenCalled();
+    expect(tx.clinicalSyncQueueItem.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: ClinicalQueueStatus.conflict_requires_review,
+          last_error_code: 'FHIR_PROFILE_VALIDATION_REQUIRED',
         }),
       }),
     );

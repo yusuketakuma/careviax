@@ -7,7 +7,7 @@ export const FHIR_R4_VERSION = '4.0.1';
 export interface FhirCoding {
   system: string;
   code: string;
-  display: string;
+  display?: string;
 }
 
 export interface FhirIdentifier {
@@ -152,10 +152,10 @@ function readCoding(value: unknown): FhirCoding | null {
 
   const system = readNonEmptyString(object.system);
   const code = readNonEmptyString(object.code);
-  const display = readNonEmptyString(object.display);
-  if (!system || !code || !display) return null;
+  const display = readNonEmptyString(object.display) ?? undefined;
+  if (!system || !code) return null;
 
-  return { system, code, display };
+  return { system, code, ...(display ? { display } : {}) };
 }
 
 function readCodingArray(value: unknown): FhirCoding[] | null {
