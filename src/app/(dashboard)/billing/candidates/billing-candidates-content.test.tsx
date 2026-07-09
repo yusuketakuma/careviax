@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { jsonResponse } from '@/test/fetch-test-utils';
-import { createQueryClientWrapper } from '@/test/query-client-test-utils';
+import { createQueryClientWrapper, createTestQueryClient } from '@/test/query-client-test-utils';
 import {
   BillingCandidatesContent,
   getBillingCloseDisabledReason,
@@ -30,6 +30,7 @@ function renderBillingCandidatesContent(
     initialWorkflowFrom?: string | null;
     initialVisitRecordId?: string | null;
   } = {},
+  queryClient = createTestQueryClient(),
 ) {
   return render(
     <BillingCandidatesContent
@@ -47,7 +48,7 @@ function renderBillingCandidatesContent(
         options.initialVisitRecordId === undefined ? 'record_1' : options.initialVisitRecordId
       }
     />,
-    { wrapper: createQueryClientWrapper() },
+    { wrapper: createQueryClientWrapper(queryClient) },
   );
 }
 
@@ -471,19 +472,31 @@ describe('BillingCandidatesContent', () => {
     expect(
       getBillingCsvExportDisabledReason({
         exportableCount: 1,
-        isPreviewLoading: true,
+        previewState: 'loading',
       }),
     ).toBe('出力前確認を読み込んでいます。');
     expect(
       getBillingCsvExportDisabledReason({
         exportableCount: 0,
-        isPreviewLoading: false,
+        previewState: 'unavailable',
+      }),
+    ).toBe('出力前確認を取得できないためCSV出力できません。');
+    expect(
+      getBillingCsvExportDisabledReason({
+        exportableCount: 0,
+        previewState: 'refresh_required',
+      }),
+    ).toBe('最新の出力前確認を取得してからCSV出力してください。');
+    expect(
+      getBillingCsvExportDisabledReason({
+        exportableCount: 0,
+        previewState: 'ready',
       }),
     ).toBe('CSV出力できる確定または締め済み候補がありません。');
     expect(
       getBillingCsvExportDisabledReason({
         exportableCount: 1,
-        isPreviewLoading: false,
+        previewState: 'ready',
       }),
     ).toBeNull();
 
@@ -500,7 +513,7 @@ describe('BillingCandidatesContent', () => {
       }),
       getBillingCsvExportDisabledReason({
         exportableCount: 0,
-        isPreviewLoading: false,
+        previewState: 'ready',
       }),
     ].join(' ');
     expect(allReasons).not.toMatch(/patient_1|山田|太郎|candidate_/);
@@ -592,6 +605,118 @@ describe('BillingCandidatesContent', () => {
         ).length,
       ).toBeGreaterThanOrEqual(2);
     });
+  });
+
+  it('prioritizes preview failure over true-zero wording when the candidate list is empty', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith('/api/billing-candidates?')) {
+        return jsonResponse({
+          data: [],
+          meta: {
+            limit: 50,
+            has_more: false,
+            next_cursor: null,
+            summary: {
+              total: 0,
+              pending_review: 0,
+              confirmed: 0,
+              excluded: 0,
+              exported: 0,
+              reviewed: 0,
+              ready_to_close: 0,
+              blocked_from_close: 0,
+              blocker_reasons: [],
+            },
+          },
+        });
+      }
+      if (url.startsWith('/api/billing-candidates/export?') && url.includes('preview=1')) {
+        return jsonResponse({ message: 'preview failed patient_name=山田 token=secret' }, 500);
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderBillingCandidatesContent({
+      initialPatientId: null,
+      initialCandidateId: null,
+      initialWorkflowFrom: null,
+      initialVisitRecordId: null,
+    });
+
+    const preview = await screen.findByTestId('billing-export-preview');
+    await waitFor(() => {
+      expect(within(preview).getByText('出力前確認を表示できません')).toBeTruthy();
+    });
+    expect(screen.getByRole('button', { name: 'CSV出力' })).toHaveProperty('disabled', true);
+    expect(screen.getByText('出力前確認を取得できないためCSV出力できません。')).toBeTruthy();
+    expect(screen.queryByText('CSV出力できる確定または締め済み候補がありません。')).toBeNull();
+    expect(document.body.textContent).not.toContain('patient_name=山田');
+    expect(document.body.textContent).not.toContain('token=secret');
+  });
+
+  it('keeps stale preview totals visible but disables CSV export after preview refetch fails', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    const queryClient = createTestQueryClient();
+    let previewRequests = 0;
+    const fetchMock = vi.fn<typeof fetch>(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith('/api/billing-candidates/export?') && url.includes('preview=1')) {
+        previewRequests += 1;
+        if (previewRequests === 1) {
+          return jsonResponse({
+            data: {
+              billing_month: '2026-03-01',
+              billing_domain: 'home_care',
+              total_count: 2,
+              exportable_count: 1,
+              total_points: 3240,
+              total_amount_yen: 0,
+              status_counts: {
+                candidate: 1,
+                confirmed: 1,
+              },
+              insurance_type_counts: {
+                medical: 1,
+                care: 0,
+                self: 0,
+              },
+              exclusion_reasons: [],
+              generated_at: '2026-06-18T00:00:00.000Z',
+            },
+          });
+        }
+        return jsonResponse({ message: 'stale preview patient_name=山田 token=secret' }, 500);
+      }
+      return originalFetch!(input, init);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderBillingCandidatesContent(undefined, queryClient);
+
+    const preview = await screen.findByTestId('billing-export-preview');
+    await waitFor(() => {
+      const normalizedText = preview.textContent?.replace(/\s/g, '') ?? '';
+      expect(normalizedText).toContain('合計点数3,240点');
+    });
+
+    await queryClient.invalidateQueries({
+      queryKey: ['billing-candidates-export-preview', 'org_1'],
+    });
+
+    await waitFor(() => {
+      expect(within(preview).getByText('前回取得した出力前確認を表示中')).toBeTruthy();
+    });
+    const normalizedText = preview.textContent?.replace(/\s/g, '') ?? '';
+    expect(normalizedText).toContain('合計点数3,240点');
+    expect(normalizedText).toContain('金額候補0円');
+    expect(screen.getByRole('button', { name: 'CSV出力' })).toHaveProperty('disabled', true);
+    expect(screen.getByText('最新の出力前確認を取得してからCSV出力してください。')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('patient_name=山田');
+    expect(document.body.textContent).not.toContain('token=secret');
+    expect(previewRequests).toBeGreaterThanOrEqual(2);
   });
 
   it('does not expose loaded-row client CSV export for billing candidates', async () => {

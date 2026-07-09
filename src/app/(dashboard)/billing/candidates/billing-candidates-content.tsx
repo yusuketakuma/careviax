@@ -196,6 +196,8 @@ const BILLING_DOMAIN_OPTIONS: Array<{ value: BillingDomain; label: string; short
   { value: 'pca_rental', label: 'PCAレンタル請求', shortLabel: 'PCAレンタル' },
 ];
 
+type BillingCsvPreviewState = 'ready' | 'loading' | 'unavailable' | 'refresh_required';
+
 export function getBillingCloseDisabledReason({
   closeBlocked,
   closeReady,
@@ -213,12 +215,15 @@ export function getBillingCloseDisabledReason({
 
 export function getBillingCsvExportDisabledReason({
   exportableCount,
-  isPreviewLoading,
+  previewState,
 }: {
   exportableCount: number;
-  isPreviewLoading: boolean;
+  previewState: BillingCsvPreviewState;
 }) {
-  if (isPreviewLoading) return '出力前確認を読み込んでいます。';
+  if (previewState === 'loading') return '出力前確認を読み込んでいます。';
+  if (previewState === 'unavailable') return '出力前確認を取得できないためCSV出力できません。';
+  if (previewState === 'refresh_required')
+    return '最新の出力前確認を取得してからCSV出力してください。';
   if (exportableCount <= 0) return 'CSV出力できる確定または締め済み候補がありません。';
   return null;
 }
@@ -830,11 +835,17 @@ export function BillingCandidatesContent({
     closeReady,
     patientIdFilter,
   });
-  const csvExportDisabledReason =
-    getBillingCsvExportDisabledReason({
-      exportableCount,
-      isPreviewLoading: exportPreviewState.isInitialLoading,
-    }) ?? (exportPreviewUnavailable ? '出力前確認を取得できないためCSV出力できません。' : null);
+  const csvPreviewState: BillingCsvPreviewState = exportPreviewState.isInitialLoading
+    ? 'loading'
+    : exportPreviewUnavailable
+      ? 'unavailable'
+      : exportPreviewQuery.isFetching || exportPreviewState.isStaleAfterRefetchError
+        ? 'refresh_required'
+        : 'ready';
+  const csvExportDisabledReason = getBillingCsvExportDisabledReason({
+    exportableCount,
+    previewState: csvPreviewState,
+  });
   const canExportCsv = !isExporting && !csvExportDisabledReason;
 
   return (
