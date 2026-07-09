@@ -41,7 +41,7 @@ export const POST = withAuthContext(
       take: 1000,
     });
     if (targetStocks.length === 0) {
-      return success({ site, reviewedCount: 0 });
+      return success({ data: { site, reviewedCount: 0 } });
     }
 
     const reviewedAt = new Date();
@@ -72,9 +72,11 @@ export const POST = withAuthContext(
     });
 
     return success({
-      site,
-      reviewedCount: result.count,
-      reviewedAt: reviewedAt.toISOString(),
+      data: {
+        site,
+        reviewedCount: result.count,
+        reviewedAt: reviewedAt.toISOString(),
+      },
     });
   },
   { permission: 'canAdmin' },

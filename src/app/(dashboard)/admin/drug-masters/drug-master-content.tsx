@@ -1152,7 +1152,11 @@ function DrugMasterOperationalContent({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ site_id: effectiveSelectedSiteId }),
       });
-      return readApiJson<{ reviewedCount: number }>(res, '採用薬レビューの記録に失敗しました');
+      const body = await readApiJson<{ data: { reviewedCount: number } }>(
+        res,
+        '採用薬レビューの記録に失敗しました',
+      );
+      return body.data;
     },
     onSuccess: async (result) => {
       toast.success(`採用薬レビューを記録しました（${result.reviewedCount.toLocaleString()}件）`);

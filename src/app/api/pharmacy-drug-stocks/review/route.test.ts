@@ -44,6 +44,23 @@ function createMalformedJsonRequest() {
   });
 }
 
+type ReviewPayload = {
+  site: { id: string; name: string };
+  reviewedCount: number;
+  reviewedAt?: string;
+};
+
+async function readReviewPayload(response: Response): Promise<ReviewPayload> {
+  const payload: unknown = await response.json();
+  expect(payload).toMatchObject({
+    data: {
+      site: expect.objectContaining({ id: expect.any(String) }),
+      reviewedCount: expect.any(Number),
+    },
+  });
+  return (payload as { data: ReviewPayload }).data;
+}
+
 describe('/api/pharmacy-drug-stocks/review', () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -130,7 +147,8 @@ describe('/api/pharmacy-drug-stocks/review', () => {
         user_agent: undefined,
       },
     });
-    await expect(response.json()).resolves.toEqual({
+    const json = await readReviewPayload(response);
+    expect(json).toEqual({
       site: { id: 'site_1', name: '本店' },
       reviewedCount: 2,
       reviewedAt: '2026-04-09T03:04:05.000Z',
@@ -156,7 +174,8 @@ describe('/api/pharmacy-drug-stocks/review', () => {
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
     expect(prismaMock.pharmacyDrugStock.updateMany).not.toHaveBeenCalled();
     expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
-    await expect(response.json()).resolves.toEqual({
+    const json = await readReviewPayload(response);
+    expect(json).toEqual({
       site: { id: 'site_1', name: '本店' },
       reviewedCount: 0,
     });
