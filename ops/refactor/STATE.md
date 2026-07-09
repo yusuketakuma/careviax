@@ -51,6 +51,66 @@
 
 ## 直近の作業
 
+- codex: schedule team-board readable timeline and independent stale API states.
+  - current task:
+    `/schedules` の全員チームボードを、UI SSOT の12px下限・44px再試行・API部分成功契約へ
+    揃える。日次ボードとコックピットの初回失敗をブロッキング表示し、キャッシュ取得後の
+    再取得失敗は古い可能性を明示したうえで業務データを保持する。
+  - files inspected:
+    `docs/ui-ux-design-guidelines.md`, `docs/frontend-screen-contracts.md`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md`,
+    `src/lib/hooks/use-stale-after-refetch-error.ts`, `src/components/ui/segment-state.tsx`,
+    `src/components/features/workspace/action-rail.tsx`,
+    `src/app/api/visit-schedules/day-board/route.ts` + tests,
+    `src/app/api/dashboard/cockpit/route.ts`,
+    `src/server/services/dashboard-cockpit.ts` + route tests, and the changed schedule files below.
+  - files changed:
+    `.agent-loop/UI_AUDIT_MATRIX.md`, `docs/frontend-screen-contracts.md`,
+    `src/app/(dashboard)/schedules/schedule-team-board.tsx`,
+    `src/app/(dashboard)/schedules/schedule-team-board.test.tsx`, and
+    `src/app/(dashboard)/schedules/schedule-team-board-typography.test.ts`.
+  - bugs found / fixed:
+    A background refetch failure previously discarded a valid cached day board and showed the full
+    initial-error state. The cockpit path similarly set cached data to `null`, hiding known risk,
+    next-action, and blocked-reason facts. Both queries now distinguish initial loading/error from
+    stale-after-refetch error; cached data stays visible behind separate PHI-safe stale banners with
+    44px retry actions. Initial errors still fail visibly and never become false healthy/empty states.
+    Thirteen 10/11px timeline, archive, patient-safety, preparation, vehicle, hour, and inbound labels
+    now meet the 12px minimum. The live repo count moved from 40 files / 100 occurrences to
+    39 files / 87 occurrences, protected by a schedule family ratchet.
+  - frontend/backend parity:
+    The main board continues to consume `GET /api/visit-schedules/day-board` (`canVisit`, org/RLS,
+    validated Japan date key, sensitive no-store); the risk/action rail consumes
+    `GET /api/dashboard/cockpit` (`canViewDashboard`, org/assignment scope, sensitive no-store).
+    Because these capabilities can fail independently, the UI now preserves the successful side and
+    labels only the failed/stale side. Existing status/task/vehicle mutation payloads, OCC expectations,
+    confirmation flow, and proposal-vs-confirmed distinction are unchanged.
+  - security/privacy:
+    Error objects, patient names embedded in provider failures, tokens, and route details are not
+    rendered. Cached operational PHI remains visible only after the original authorized query
+    succeeded; no broader DTO, hidden payload, auth, authorization, RLS, audit, export, or external
+    sharing boundary changed.
+  - performance:
+    Reuses React Query's existing 30-second cache and the shared stale-state derivation. No request,
+    polling, effect, dependency, or unbounded computation was added; avoiding blank replacement on
+    refetch failure also reduces disruptive rerender churn.
+  - validation:
+    Schedule frontend + typography suites passed 2 files / 34 tests. Paired day-board and cockpit API
+    suites passed 2 files / 65 tests. Exact-path ESLint, Prettier, `git diff --check`,
+    `pnpm frontend-contract:check`, `pnpm colors:check`, `pnpm api-response-shape:check`,
+    `pnpm route-auth-wrapper:check`, `pnpm db:raw-read-org-guard:check`, and
+    `pnpm client-phi-log:check` passed. Full
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit --pretty false --incremental false --skipLibCheck`
+    and `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed.
+  - UI/imagegen:
+    `imagegen` was intentionally omitted because this is a state/readability correction within the
+    committed all-screen non-PHI direction, not a new layout reconstruction.
+  - remaining / next action:
+    Schedule calendar/offline/day-section surfaces still contain sub-12 labels and need their own
+    responsive/state pass. Browser/mobile visual proof remains blocked by the missing compatible
+    local app/database runtime; Next build is not claimed green. No deploy, migration, production
+    mutation, route write, external send, or destructive cache action ran.
+
 - codex: patient prescription/history readable typography and independent FE/API states.
   - commit:
     `2e6e95fca fix(patients): align history states and readability`.

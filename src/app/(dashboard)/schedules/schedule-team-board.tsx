@@ -12,7 +12,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
-import { SegmentError } from '@/components/ui/segment-state';
+import { SegmentError, SegmentStaleBanner } from '@/components/ui/segment-state';
 import { StateBadge } from '@/components/ui/state-badge';
 import { SCHEDULE_STATUS_ROLE } from '@/lib/constants/status-labels';
 import type { StatusRole } from '@/lib/constants/status-tokens';
@@ -26,6 +26,7 @@ import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { useStaleAfterRefetchError } from '@/lib/hooks/use-stale-after-refetch-error';
 import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
 import { buildWorkRequestHref } from '@/lib/tasks/work-request-navigation';
 import { buildDailyOpsBlockedReasons } from '@/lib/workspace/daily-ops-rail';
@@ -323,7 +324,7 @@ function PatientArchiveBadge({
 }) {
   if (!archive?.archived) return null;
   return (
-    <StateBadge role="readonly" className={cn('shrink-0 text-[11px] font-bold', className)}>
+    <StateBadge role="readonly" className={cn('shrink-0 text-xs font-bold', className)}>
       アーカイブ中
     </StateBadge>
   );
@@ -375,10 +376,7 @@ function PatientOperationalSummaryBadges({
         {badges.map((badge) => (
           <span
             key={badge.key}
-            className={cn(
-              'shrink-0 rounded bg-white/20 px-1 py-0.5 text-[10px] leading-none',
-              className,
-            )}
+            className={cn('shrink-0 rounded bg-white/20 px-1 py-0.5 text-xs leading-4', className)}
           >
             {badge.label}
           </span>
@@ -390,7 +388,7 @@ function PatientOperationalSummaryBadges({
   return (
     <div className={cn('flex flex-wrap items-center gap-1', className)}>
       {badges.map((badge) => (
-        <StateBadge key={badge.key} role={badge.role} className="text-[11px] font-bold">
+        <StateBadge key={badge.key} role={badge.role} className="text-xs font-bold">
           {badge.label}
         </StateBadge>
       ))}
@@ -436,19 +434,19 @@ function GanttBlock({ block }: { block: BoardBlock }) {
       title={block.label}
       aria-label={preparationLabel ? `${block.label}、${preparationLabel}` : block.label}
       className={cn(
-        'absolute inset-y-1.5 flex items-center gap-1 overflow-hidden whitespace-nowrap rounded px-1.5 text-[11px] font-medium',
+        'absolute inset-y-1.5 flex items-center gap-1 overflow-hidden whitespace-nowrap rounded px-1.5 text-xs font-medium',
         blockClassName(block),
       )}
       style={{ left: `${left}%`, width: `${width}%` }}
     >
       {block.locked ? <Lock className="size-3 shrink-0" aria-hidden="true" /> : null}
       {block.kind === 'visit' ? (
-        <span className="shrink-0 rounded bg-white/20 px-1 py-0.5 text-[10px] leading-none">
+        <span className="shrink-0 rounded bg-white/20 px-1 py-0.5 text-xs leading-4">
           {isAggregateVisit ? '施設一括' : scheduleStatusLabel(block.status)}
         </span>
       ) : null}
       {block.patientArchive?.archived ? (
-        <span className="shrink-0 rounded bg-white/20 px-1 py-0.5 text-[10px] leading-none">
+        <span className="shrink-0 rounded bg-white/20 px-1 py-0.5 text-xs leading-4">
           アーカイブ中
         </span>
       ) : null}
@@ -540,7 +538,7 @@ function ScheduleStatusControlPanel({
                       </p>
                       <StateBadge
                         role={resolveScheduleStatusRole(status)}
-                        className="mt-1 text-[11px] font-bold"
+                        className="mt-1 text-xs font-bold"
                       >
                         {scheduleStatusLabel(status)}
                       </StateBadge>
@@ -939,7 +937,7 @@ function VehicleRoutePanel({
                   </p>
                   <span
                     className={cn(
-                      'rounded px-1.5 py-0.5 text-[11px] font-bold',
+                      'rounded px-1.5 py-0.5 text-xs font-bold',
                       vehicle.available && vehicle.remaining_stops > 0
                         ? 'bg-state-done/10 text-state-done'
                         : 'bg-state-confirm/10 text-state-confirm',
@@ -1197,7 +1195,7 @@ function PreparationSummaryChip({
     <span
       className={cn(
         'inline-flex max-w-full items-center gap-1 rounded border px-1.5 py-0.5 font-semibold leading-4',
-        compact ? 'h-5 shrink-0 text-[10px]' : 'mt-1 text-[11px]',
+        compact ? 'h-5 shrink-0 text-xs' : 'mt-1 text-xs',
         ready
           ? 'border-state-done/30 bg-state-done/10 text-state-done'
           : 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm',
@@ -1293,10 +1291,7 @@ function TeamGanttCard({
         <div className="mt-4">
           <div className="grid grid-cols-[88px_minmax(0,1fr)_92px] gap-2">
             <span aria-hidden="true" />
-            <div
-              aria-hidden="true"
-              className="flex justify-between text-[10px] text-muted-foreground"
-            >
+            <div aria-hidden="true" className="flex justify-between text-xs text-muted-foreground">
               {hourLabels.map((label, index) => (
                 // モバイルは中央列が狭く全時刻だと潰れるため、奇数時刻はレイアウト幅を保ったまま隠す
                 <span key={label} className={index % 2 === 1 ? 'max-sm:invisible' : undefined}>
@@ -1560,13 +1555,13 @@ function InboundScheduleRequestsCard({
                 </span>
                 <StateBadge
                   role={INBOUND_SCHEDULE_REVIEW_ROLES[request.review_status]}
-                  className="text-[11px] font-bold"
+                  className="text-xs font-bold"
                 >
                   {reviewLabel}
                 </StateBadge>
                 <StateBadge
                   role={request.patient_linked ? 'info' : 'confirm'}
-                  className="text-[11px] font-bold"
+                  className="text-xs font-bold"
                 >
                   {linkedLabel}
                 </StateBadge>
@@ -1891,6 +1886,8 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
     enabled: Boolean(orgId) && activeView === 'list',
     staleTime: 30_000,
   });
+  const boardState = useStaleAfterRefetchError(boardQuery);
+  const cockpitState = useStaleAfterRefetchError(cockpitQuery);
   const statusMutation = useMutation({
     mutationFn: (payload: StatusChangePayload) => updateVisitScheduleStatus({ orgId, ...payload }),
     onSuccess: async () => {
@@ -1956,7 +1953,7 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
   });
 
   const board = boardQuery.data ?? null;
-  const cockpit = cockpitQuery.isError ? null : (cockpitQuery.data ?? null);
+  const cockpit = cockpitQuery.data ?? null;
   const operationalTasks = board?.operational_tasks ?? [];
 
   const blockedReasons: BlockedReason[] = buildDailyOpsBlockedReasons(cockpit);
@@ -1976,8 +1973,8 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
   ];
   const actionRail = (
     <GuardedWorkspaceActionRail
-      isLoading={cockpitQuery.isLoading}
-      isError={cockpitQuery.isError}
+      isLoading={cockpitState.isInitialLoading}
+      isError={cockpitState.isInitialError}
       onRetry={() => void cockpitQuery.refetch()}
       loadingTestId="schedule-action-rail-loading"
       loadingAriaLabel="稼働状況を読み込み中"
@@ -2012,9 +2009,9 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
 
       {activeView !== 'list' ? null : (
         <div className="mt-4">
-          {!orgId || boardQuery.isLoading ? (
+          {!orgId || boardState.isInitialLoading ? (
             <BoardSkeleton />
-          ) : boardQuery.isError || !board ? (
+          ) : boardState.isInitialError || !board ? (
             <div className="rounded-lg border border-border/70 bg-card p-4">
               <SegmentError
                 title="スケジュールを表示できません"
@@ -2026,13 +2023,29 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
             </div>
           ) : (
             <div className="space-y-4">
+              {boardState.isStaleAfterRefetchError ? (
+                <SegmentStaleBanner
+                  title="前回取得したスケジュールを表示中"
+                  description="最新の全員スケジュールを取得できませんでした。表示内容が古い可能性があります。"
+                  onRetry={() => void boardQuery.refetch()}
+                  className="[&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-11"
+                />
+              ) : null}
+              {cockpitState.isStaleAfterRefetchError ? (
+                <SegmentStaleBanner
+                  title="前回取得した稼働状況を表示中"
+                  description="最新のリスク、次にやること、止まっている理由を取得できませんでした。表示内容が古い可能性があります。"
+                  onRetry={() => void cockpitQuery.refetch()}
+                  className="[&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-11"
+                />
+              ) : null}
               <div className="min-w-0 space-y-4">
                 <ScheduleDaySummaryStrip board={board} dateLabel={dateLabel} />
                 <TeamGanttCard
                   board={board}
                   cockpit={cockpit}
-                  cockpitLoading={cockpitQuery.isLoading}
-                  cockpitError={cockpitQuery.isError}
+                  cockpitLoading={cockpitState.isInitialLoading}
+                  cockpitError={cockpitState.isInitialError}
                   dateLabel={dateLabel}
                   now={now}
                   onStatusChange={(payload) => statusMutation.mutate(payload)}

@@ -449,7 +449,9 @@ type QueryConfig = {
 type QueryMockResult = {
   data: unknown;
   isLoading: boolean;
+  isPending?: boolean;
   isError: boolean;
+  isRefetchError?: boolean;
   error: Error | null;
   refetch: ReturnType<typeof vi.fn>;
 };
@@ -828,6 +830,30 @@ describe('ScheduleTeamBoard', () => {
     expect(boardRefetch).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps cached schedule data visible and labels it stale after a refetch failure', () => {
+    const boardRefetch = vi.fn();
+    mockQueries({
+      boardQueryOverride: {
+        data: buildBoardFixture(),
+        isLoading: false,
+        isError: true,
+        isRefetchError: true,
+        error: new Error('患者: 伊藤 キヨ token=secret'),
+        refetch: boardRefetch,
+      },
+    });
+
+    render(<ScheduleTeamBoard initialDate={TODAY_KEY} activeView="list" />);
+
+    expect(screen.getByText('前回取得したスケジュールを表示中')).toBeTruthy();
+    expect(screen.getByTestId('schedule-team-gantt')).toBeTruthy();
+    expect(screen.queryByText('スケジュールを表示できません')).toBeNull();
+    expect(document.body.textContent).not.toContain('token=secret');
+
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(boardRefetch).toHaveBeenCalledOnce();
+  });
+
   it('encodes dynamic PATCH ids and preserves raw mutation payloads', async () => {
     const mutationConfigs: MutationConfig[] = [];
     const orgJsonHeaders = {
@@ -1198,7 +1224,7 @@ describe('ScheduleTeamBoard', () => {
     const refetch = vi.fn();
     mockQueries({
       cockpitQueryOverride: {
-        data: buildCockpitFixture(),
+        data: undefined,
         isError: true,
         error: new Error('cockpit failed'),
         refetch,
@@ -1219,6 +1245,32 @@ describe('ScheduleTeamBoard', () => {
       fireEvent.click(button);
     });
     expect(refetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps cached cockpit risk and action data visible while labeling it stale', () => {
+    const refetch = vi.fn();
+    mockQueries({
+      cockpitQueryOverride: {
+        data: buildCockpitFixture(),
+        isLoading: false,
+        isError: true,
+        isRefetchError: true,
+        error: new Error('patient=田中 一郎 token=secret'),
+        refetch,
+      },
+    });
+
+    render(<ScheduleTeamBoard initialDate={TODAY_KEY} activeView="list" />);
+
+    expect(screen.getByText('前回取得した稼働状況を表示中')).toBeTruthy();
+    expect(screen.getByTestId('schedule-risk-banner')).toBeTruthy();
+    expect(screen.getByRole('link', { name: '麻薬監査を開始 — 12:00期限' })).toBeTruthy();
+    expect(screen.queryByText('リスク情報を取得できませんでした')).toBeNull();
+    expect(screen.queryByText('稼働状況を取得できませんでした')).toBeNull();
+    expect(document.body.textContent).not.toContain('token=secret');
+
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(refetch).toHaveBeenCalledOnce();
   });
 
   it('surfaces archived patient badges on visits and pending proposals', () => {
