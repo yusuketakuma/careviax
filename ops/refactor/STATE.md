@@ -29566,3 +29566,96 @@ responses`) and pushed to `origin/main`.
   Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
   then continue the next API response envelope cleanup from
   `src/app/api/first-visit-documents/route.ts` unless redirected.
+
+## 2026-07-09 - API-CONTRACT-001BI first visit documents list envelope cleanup
+
+- current task:
+  Continue `API-CONTRACT-001` public response envelope burn-down without legacy
+  compatibility fields. Move `GET /api/first-visit-documents` list success to a
+  `data + meta` envelope.
+- files inspected:
+  `git status --short --branch --untracked-files=all`;
+  `ops/refactor/STATE.md`; `Plans.md`;
+  `tools/api-response-shape-allowlist.json`;
+  `src/app/api/first-visit-documents/route.ts`;
+  `src/app/api/first-visit-documents/route.test.ts`;
+  `src/app/api/first-visit-documents/response.ts`;
+  `src/lib/api/pagination.ts`;
+  `src/app/(dashboard)/patients/[id]/patient-documents-panel.tsx`;
+  first visit document usage search results; and
+  `gbrain search "API-CONTRACT first-visit-documents response envelope"`.
+- files changed:
+  `Plans.md`; `tools/api-response-shape-allowlist.json`;
+  `src/app/api/first-visit-documents/route.ts`;
+  `src/app/api/first-visit-documents/route.test.ts`;
+  `ops/refactor/STATE.md`.
+- bugs found:
+  `GET /api/first-visit-documents` returned the cursor page object directly via
+  `success(buildCursorPage(...))`, leaving legacy pagination fields
+  `hasMore` and `nextCursor` at the public response root.
+- bugs fixed:
+  GET list success now returns `success({ data: page.data, meta: { limit,
+has_more, next_cursor } })`. The route test asserts the `data + meta`
+  envelope and rejects legacy root `hasMore` / `nextCursor`. POST already used
+  the current mutation `data` envelope and was not changed. Response-shape debt
+  dropped from 128 to 127 allowlisted violations.
+- security risks found:
+  No canVisit permission, assignment/case access filtering, org scoping,
+  request validation, writable-patient guard, audit log creation, error
+  sanitization, or no-store behavior changed.
+- security risks reduced:
+  Removed legacy pagination fields from the public API root while preserving
+  first visit document list authorization, PHI minimization, and mutation audit
+  behavior.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this is response contract cleanup. Existing cursor query, order,
+  limit+1 fetch, and assignment filtering behavior are unchanged.
+- UI/UX note:
+  No visible UI/UX change. This was API/test contract work only, so image
+  generation was not applicable.
+- Oracle note:
+  Oracle consultation remains paused per current user instruction, so no
+  Oracle/GPT-5.5 Pro consult was run. The slice stayed mechanical and avoided
+  changing first visit document access or mutation semantics.
+- validation commands:
+  `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/first-visit-documents/route.ts src/app/api/first-visit-documents/route.test.ts`;
+  `pnpm vitest run src/app/api/first-visit-documents/route.test.ts`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint src/app/api/first-visit-documents/route.ts src/app/api/first-visit-documents/route.test.ts`;
+  `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/first-visit-documents/route.ts src/app/api/first-visit-documents/route.test.ts`;
+  `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/first-visit-documents/route.ts src/app/api/first-visit-documents/route.test.ts`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `pnpm format:check`.
+- validation results:
+  Prettier passed. First visit documents route tests passed 1 file / 26 tests.
+  `api-response-shape:check` passed with 127 allowlisted violations and 0 new
+  violations. `plans:active:check` passed. Scoped ESLint, scoped Prettier
+  check, scoped diff check, and typecheck passed. `pnpm format:check` still
+  fails only on unrelated pre-existing untracked Markdown files:
+  `projects/careviax/implementation-decision/medication-stock-visit-observation-context-sidecar-v1-2026-07-08.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-doc-001.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-evidence-001.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-integrity-001.md`,
+  `projects/careviax/reviews/2026-07-08/patient-board-read-001.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003a-003d.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003e.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-guard.md`, and
+  `skills/_candidates.md`.
+- commit:
+  First visit documents GET list response envelope migration, route tests,
+  allowlist cleanup, and Plans sync committed as
+  `129d0f65a65706216c2c67ec4b4a60b4352d7463`
+  (`fix(api): envelope first visit document list`). Push is pending this ledger
+  update.
+- remaining work:
+  `API-CONTRACT-001` remains Partial. Next allowlist head is
+  `src/app/api/inquiry-records/[id]/route.ts` with one expected legacy response
+  shape violation, followed by `src/app/api/interventions/route.ts`. Existing
+  unrelated dirty/untracked memory/docs files remain unstaged.
+- next action:
+  Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
+  then continue the next API response envelope cleanup from
+  `src/app/api/inquiry-records/[id]/route.ts` unless redirected.
