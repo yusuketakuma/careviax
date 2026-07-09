@@ -98,12 +98,12 @@ describe('/api/patients/check-duplicate GET', () => {
       take: 10,
     });
     const body = await response.json();
-    expect(body.duplicates[0]).toMatchObject({
+    expect(body.data.duplicates[0]).toMatchObject({
       id: 'patient_1',
       name: '山田 太郎',
       gender: 'male',
     });
-    expect(body.duplicates[0]).not.toHaveProperty('name_kana');
+    expect(body.data.duplicates[0]).not.toHaveProperty('name_kana');
   });
 
   it('adds sensitive no-store headers to auth failures', async () => {

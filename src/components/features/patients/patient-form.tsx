@@ -448,13 +448,13 @@ export function PatientForm({
           signal,
         });
         if (res.ok) {
-          const data = await readApiJson<{ duplicates?: DuplicatePatient[] }>(
+          const payload = await readApiJson<{ data?: { duplicates?: DuplicatePatient[] } }>(
             res,
             '重複候補の確認に失敗しました',
           );
           // 解決済みレスポンスの json parse 中に abort された場合、古い結果での上書きを防ぐ
           if (signal?.aborted) return;
-          setDuplicates(data.duplicates ?? []);
+          setDuplicates(payload.data?.duplicates ?? []);
         }
       } catch {
         // Silently ignore duplicate check errors (incl. AbortError for superseded requests)

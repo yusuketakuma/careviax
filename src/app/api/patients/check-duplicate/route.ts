@@ -134,7 +134,7 @@ const authenticatedGET = withAuthContext(
       },
     });
 
-    return success({ duplicates: duplicates.map(toDuplicateCheckCandidate) });
+    return success({ data: { duplicates: duplicates.map(toDuplicateCheckCandidate) } });
   },
   {
     permission: 'canVisit',

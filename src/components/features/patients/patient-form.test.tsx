@@ -875,15 +875,17 @@ describe('PatientForm', () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
-        duplicates: [
-          {
-            id: 'patient_existing',
-            name: '山田 太郎',
-            name_kana: 'ヤマダ タロウ',
-            birth_date: '1950-01-01T00:00:00.000Z',
-            gender: 'male',
-          },
-        ],
+        data: {
+          duplicates: [
+            {
+              id: 'patient_existing',
+              name: '山田 太郎',
+              name_kana: 'ヤマダ タロウ',
+              birth_date: '1950-01-01T00:00:00.000Z',
+              gender: 'male',
+            },
+          ],
+        },
       }),
     );
 
@@ -964,15 +966,17 @@ describe('PatientForm', () => {
         resolveFirst?.({
           ok: true,
           json: async () => ({
-            duplicates: [
-              {
-                id: 'patient_stale',
-                name: '山田 太郎',
-                name_kana: 'ヤマダ タロウ',
-                birth_date: '1950-01-01T00:00:00.000Z',
-                gender: 'male',
-              },
-            ],
+            data: {
+              duplicates: [
+                {
+                  id: 'patient_stale',
+                  name: '山田 太郎',
+                  name_kana: 'ヤマダ タロウ',
+                  birth_date: '1950-01-01T00:00:00.000Z',
+                  gender: 'male',
+                },
+              ],
+            },
           }),
         } as Response);
         vi.advanceTimersByTime(0);
