@@ -23,6 +23,7 @@ import { formatUtcDateKey } from '@/lib/date-key';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { usePrescriptionDraft } from '@/lib/hooks/use-prescription-draft';
+import { useStaleAfterRefetchError } from '@/lib/hooks/use-stale-after-refetch-error';
 import { isOfflineEncryptionUnavailableError } from '@/lib/offline/crypto';
 import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
 import { messageFromError } from '@/lib/utils/error-message';
@@ -30,14 +31,17 @@ import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { formatDisplayEntityLabel } from '@/lib/display-id/display-labels';
 import { buildDrugMastersApiPath } from '@/lib/drug-masters/api-paths';
+import { buildPrescriberInstitutionsApiPath } from '@/lib/prescriber-institutions/api-paths';
 import { downscaleImage } from '@/lib/files/downscale-image';
 import { buildFileDownloadHref } from '@/lib/files/navigation';
 import { PatientMcsSummarySection } from '@/components/patient-mcs/patient-mcs-summary-section';
+import { PatientHeader } from '@/components/features/patients/patient-header';
 import { JahisSupplementalRecordsCard } from '@/components/features/prescriptions/jahis-supplemental-records-card';
-import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { DrugSuggest, type DrugSelection } from '@/components/features/pharmacy/drug-suggest';
 import { ErrorState } from '@/components/ui/error-state';
+import { SegmentError, SegmentLoading, SegmentStaleBanner } from '@/components/ui/segment-state';
+import { StateBadge } from '@/components/ui/state-badge';
 import {
   extractPackagingInstructionTags,
   PACKAGING_INSTRUCTION_TAG_LABELS,
@@ -56,6 +60,7 @@ import {
 import {
   buildActiveCasesForPatientApiUrl,
   buildPreviousPrescriptionsApiUrl,
+  buildQrDraftApiUrl,
   buildSelectedPatientApiUrl,
 } from './prescription-intake-urls';
 import {
@@ -212,7 +217,7 @@ function GenericCandidatePanel({
 }) {
   const orgId = useOrgId();
 
-  const { data, isLoading, isError, refetch } = useQuery({
+  const { data, isLoading, isError, isRefetchError, refetch } = useQuery({
     queryKey: ['generic-candidates', orgId, query],
     queryFn: async () => {
       const params = new URLSearchParams({
@@ -229,24 +234,26 @@ function GenericCandidatePanel({
     enabled: !!orgId && enabled && query.trim().length >= 2,
     staleTime: 30_000,
   });
+  const candidatesState = useStaleAfterRefetchError({
+    data,
+    isLoading,
+    isError,
+    isRefetchError,
+  });
 
-  const candidatesWithPriceDiff = useMemo(
-    () =>
-      (data?.data ?? []).map((candidate) => {
-        const lowestPrice = candidate.generic_price_comparison?.lowest_price
-          ? Number(candidate.generic_price_comparison.lowest_price)
-          : null;
-        const priceDiff =
-          candidate.drug_price != null && lowestPrice != null
-            ? Number(candidate.drug_price) - lowestPrice
-            : null;
-        return { ...candidate, _lowestPrice: lowestPrice, _priceDiff: priceDiff };
-      }),
-    [data?.data],
-  );
+  const candidatesWithPriceDiff = (data?.data ?? []).map((candidate) => {
+    const lowestPrice = candidate.generic_price_comparison?.lowest_price
+      ? Number(candidate.generic_price_comparison.lowest_price)
+      : null;
+    const priceDiff =
+      candidate.drug_price != null && lowestPrice != null
+        ? Number(candidate.drug_price) - lowestPrice
+        : null;
+    return { ...candidate, _lowestPrice: lowestPrice, _priceDiff: priceDiff };
+  });
 
   if (!enabled) return null;
-  if (isLoading) {
+  if (candidatesState.isInitialLoading) {
     return (
       <div className="rounded-md border border-tag-info/20 bg-tag-info/10 px-3 py-2 text-xs text-tag-info">
         後発候補を検索中...
@@ -254,16 +261,30 @@ function GenericCandidatePanel({
     );
   }
 
-  if (isError) {
+  if (candidatesState.isInitialError) {
     // 取得失敗を空状態に潰さず、再試行導線つきの ErrorState を出す。
     return (
       <ErrorState
         variant="server"
         size="inline"
+        headingLevel={3}
         title="後発候補を取得できませんでした"
         description="時間をおいて再読み込みしてください。"
         onRetry={() => void refetch()}
         retryLabel="再読み込み"
+        retryVariant="outline"
+        className="gap-3 px-4 py-5 [&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-11"
+      />
+    );
+  }
+
+  if (candidatesState.isStaleAfterRefetchError && candidatesWithPriceDiff.length === 0) {
+    return (
+      <SegmentStaleBanner
+        title="前回取得時は後発候補なし"
+        description="最新の候補と薬価情報を取得できていないため、現在も候補なしとは確定できません。再読み込みしてください。"
+        onRetry={() => void refetch()}
+        className="bg-background/80 [&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-11"
       />
     );
   }
@@ -278,9 +299,17 @@ function GenericCandidatePanel({
 
   return (
     <div className="space-y-2 rounded-md border border-tag-info/20 bg-tag-info/10 px-3 py-3">
+      {candidatesState.isStaleAfterRefetchError ? (
+        <SegmentStaleBanner
+          title="前回取得した後発候補を表示中"
+          description="最新の候補と薬価情報を取得できませんでした。選択前に再読み込みしてください。"
+          onRetry={() => void refetch()}
+          className="bg-background/80 [&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-11"
+        />
+      ) : null}
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-semibold uppercase tracking-wide text-tag-info">後発候補</p>
-        <span className="text-[11px] text-tag-info">候補を選ぶと YJ コードを記録します</span>
+        <span className="text-xs text-tag-info">候補を選ぶと YJ コードを記録します</span>
       </div>
       <div className="space-y-2">
         {candidatesWithPriceDiff.map((candidate) => (
@@ -288,7 +317,7 @@ function GenericCandidatePanel({
             key={candidate.id}
             type="button"
             onClick={() => onSelect(candidate)}
-            className="flex w-full items-start justify-between gap-3 rounded-md border border-tag-info/20 bg-background px-3 py-2 text-left hover:bg-tag-info/10"
+            className="flex min-h-11 w-full items-start justify-between gap-3 rounded-md border border-tag-info/20 bg-background px-3 py-2 text-left hover:bg-tag-info/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <div className="min-w-0">
               <p className="text-sm font-medium text-foreground">{candidate.drug_name}</p>
@@ -304,14 +333,14 @@ function GenericCandidatePanel({
                   : '薬価未設定'}
               </p>
               {candidate._lowestPrice != null ? (
-                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                <p className="mt-0.5 text-xs text-muted-foreground">
                   同規格最安 ¥{candidate._lowestPrice.toFixed(1)}
                   {candidate._priceDiff != null
                     ? ` / 差額 ${candidate._priceDiff >= 0 ? '+' : ''}¥${candidate._priceDiff.toFixed(1)}`
                     : ''}
                 </p>
               ) : null}
-              <p className="mt-0.5 text-[11px] text-muted-foreground">{candidate.yj_code}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{candidate.yj_code}</p>
             </div>
           </button>
         ))}
@@ -639,7 +668,9 @@ export function PrescriptionIntakeForm() {
   // Fetch patients for search
   const {
     data: patientsData,
+    isLoading: isPatientsLoading,
     isError: isPatientsError,
+    isRefetchError: isPatientsRefetchError,
     refetch: refetchPatients,
   } = useQuery({
     queryKey: ['patients-search', orgId, debouncedPatientSearch],
@@ -659,8 +690,20 @@ export function PrescriptionIntakeForm() {
     },
     enabled: !!orgId && debouncedPatientSearch.length >= 1,
   });
+  const patientsState = useStaleAfterRefetchError({
+    data: patientsData,
+    isLoading: isPatientsLoading,
+    isError: isPatientsError,
+    isRefetchError: isPatientsRefetchError,
+  });
 
-  const { data: selectedPatientData } = useQuery({
+  const {
+    data: selectedPatientData,
+    isLoading: isSelectedPatientLoading,
+    isError: isSelectedPatientError,
+    isRefetchError: isSelectedPatientRefetchError,
+    refetch: refetchSelectedPatient,
+  } = useQuery({
     queryKey: ['selected-patient', orgId, selectedPatientId],
     queryFn: async () => {
       const payload = await fetchOrgJson<{ data: SelectedPatientDetail }>({
@@ -682,11 +725,19 @@ export function PrescriptionIntakeForm() {
       (!selectedPatientName || !selectedPatientNameKana || !selectedPatientBirthDate),
     staleTime: 30_000,
   });
+  const selectedPatientState = useStaleAfterRefetchError({
+    data: selectedPatientData,
+    isLoading: isSelectedPatientLoading,
+    isError: isSelectedPatientError,
+    isRefetchError: isSelectedPatientRefetchError,
+  });
 
   // Fetch cases for selected patient
   const {
     data: casesData,
+    isLoading: isCasesLoading,
     isError: isCasesError,
+    isRefetchError: isCasesRefetchError,
     refetch: refetchCases,
   } = useQuery({
     queryKey: ['patient-cases', orgId, selectedPatientId],
@@ -699,10 +750,18 @@ export function PrescriptionIntakeForm() {
     },
     enabled: !!orgId && !!selectedPatientId,
   });
+  const casesState = useStaleAfterRefetchError({
+    data: casesData,
+    isLoading: isCasesLoading,
+    isError: isCasesError,
+    isRefetchError: isCasesRefetchError,
+  });
 
   const {
     data: previousPrescriptionsData,
+    isLoading: isPreviousPrescriptionsLoading,
     isError: isPreviousPrescriptionsError,
+    isRefetchError: isPreviousPrescriptionsRefetchError,
     refetch: refetchPreviousPrescriptions,
   } = useQuery({
     queryKey: ['patient-prescriptions', orgId, selectedPatientId, selectedCaseId],
@@ -715,6 +774,12 @@ export function PrescriptionIntakeForm() {
     },
     enabled: !!orgId && !!selectedPatientId && !!selectedCaseId,
   });
+  const previousPrescriptionsState = useStaleAfterRefetchError({
+    data: previousPrescriptionsData,
+    isLoading: isPreviousPrescriptionsLoading,
+    isError: isPreviousPrescriptionsError,
+    isRefetchError: isPreviousPrescriptionsRefetchError,
+  });
   const latestPreviousIntake = previousPrescriptionsData?.data?.[0] ?? null;
   const selectedCaseOption =
     casesData?.data.find((candidate) => candidate.id === selectedCaseId) ?? null;
@@ -725,31 +790,55 @@ export function PrescriptionIntakeForm() {
       })
     : '未選択';
 
-  const { data: qrDraftData } = useQuery({
+  const {
+    data: qrDraftData,
+    isLoading: isQrDraftLoading,
+    isError: isQrDraftError,
+    isRefetchError: isQrDraftRefetchError,
+    refetch: refetchQrDraft,
+  } = useQuery({
     queryKey: ['qr-draft-import', orgId, initialQrDraftId],
     queryFn: async () =>
       fetchOrgJson<QrDraftImportData>({
-        url: `/api/qr-scan-drafts/${initialQrDraftId}`,
+        url: buildQrDraftApiUrl(initialQrDraftId),
         orgId,
         errorMessage: 'QR下書きの取得に失敗しました',
       }),
     enabled: !!orgId && !!initialQrDraftId,
     staleTime: 30_000,
   });
+  const qrDraftState = useStaleAfterRefetchError({
+    data: qrDraftData,
+    isLoading: isQrDraftLoading,
+    isError: isQrDraftError,
+    isRefetchError: isQrDraftRefetchError,
+  });
 
-  const { data: prescriberInstitutionsData } = useQuery({
+  const {
+    data: prescriberInstitutionsData,
+    isLoading: isPrescriberInstitutionsLoading,
+    isError: isPrescriberInstitutionsError,
+    isRefetchError: isPrescriberInstitutionsRefetchError,
+    refetch: refetchPrescriberInstitutions,
+  } = useQuery({
     queryKey: ['prescriber-institutions', orgId, debouncedPrescriberInstitution],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (debouncedPrescriberInstitution) params.set('q', debouncedPrescriberInstitution);
       return fetchOrgJson<{ data: PrescriberInstitutionOption[] }>({
-        url: `/api/prescriber-institutions?${params.toString()}`,
+        url: buildPrescriberInstitutionsApiPath(params),
         orgId,
         errorMessage: '医療機関マスターの取得に失敗しました',
       });
     },
     enabled: !!orgId,
     staleTime: 30_000,
+  });
+  const prescriberInstitutionsState = useStaleAfterRefetchError({
+    data: prescriberInstitutionsData,
+    isLoading: isPrescriberInstitutionsLoading,
+    isError: isPrescriberInstitutionsError,
+    isRefetchError: isPrescriberInstitutionsRefetchError,
   });
 
   useEffect(() => {
@@ -1364,12 +1453,51 @@ export function PrescriptionIntakeForm() {
     setPreviousPrescriptionConfirmOpen(true);
   }, [latestPreviousIntake]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setSubmitAttempted(true);
+  const needsSelectedPatientHydration = Boolean(
+    selectedPatientId &&
+    (!selectedPatientName || !selectedPatientNameKana || !selectedPatientBirthDate),
+  );
+  const hasResolvedPatientIdentity = Boolean(
+    selectedPatientId &&
+    selectedPatientName &&
+    selectedPatientNameKana &&
+    (selectedPatientBirthDate || selectedPatientState.hasData),
+  );
+  const lookupSubmitBlockers: string[] = [];
 
-    const submitBlockers = getPrescriptionSubmitBlockers({
+  if (needsSelectedPatientHydration && selectedPatientState.isInitialLoading) {
+    lookupSubmitBlockers.push('患者情報の読み込み完了をお待ちください');
+  } else if (needsSelectedPatientHydration && selectedPatientState.isInitialError) {
+    lookupSubmitBlockers.push('患者情報を再読み込みしてから登録してください');
+  }
+
+  if (selectedPatientId && casesState.isInitialLoading) {
+    lookupSubmitBlockers.push('患者のケース情報の読み込み完了をお待ちください');
+  } else if (selectedPatientId && casesState.isInitialError) {
+    lookupSubmitBlockers.push('患者のケース情報を再読み込みしてから登録してください');
+  } else if (selectedCaseId && casesState.hasData && !selectedCaseOption) {
+    lookupSubmitBlockers.push(
+      '選択したケースをこの患者の有効なケースとして確認できません。ケースを選び直してください',
+    );
+  }
+
+  if (initialQrDraftId) {
+    if (qrDraftState.isInitialLoading) {
+      lookupSubmitBlockers.push('QR下書きの読み込み完了をお待ちください');
+    } else if (qrDraftState.isInitialError) {
+      lookupSubmitBlockers.push('QR下書きを再読み込みするか、手入力に切り替えてください');
+    } else if (!appliedQrDraftId) {
+      lookupSubmitBlockers.push('QR下書きのフォーム反映完了をお待ちください');
+    } else if (!selectedPatientName || !selectedPatientNameKana || !selectedPatientBirthDate) {
+      lookupSubmitBlockers.push(
+        'QRの患者照合に必要な氏名・カナ・生年月日を患者情報で確認してください',
+      );
+    }
+  }
+
+  const submitBlockers = [
+    ...lookupSubmitBlockers,
+    ...getPrescriptionSubmitBlockers({
       sourceType,
       selectedPatientId,
       selectedCaseId,
@@ -1380,7 +1508,13 @@ export function PrescriptionIntakeForm() {
       inquiryReason,
       inquiryToPhysician,
       inquiryContent,
-    });
+    }),
+  ];
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSubmitAttempted(true);
 
     if (sourceType === 'facility_batch') {
       if (submitBlockers.length > 0) {
@@ -1509,35 +1643,10 @@ export function PrescriptionIntakeForm() {
     };
   }, [latestPreviousIntake, lines]);
   const filledLineCount = lines.filter((line) => line.drug_name.trim().length > 0).length;
-  const isPatientReady = Boolean(selectedPatientId && selectedCaseId);
-  const isDocumentReady = Boolean(originalDocumentUrl);
-  const submitBlockers = useMemo(
-    () =>
-      getPrescriptionSubmitBlockers({
-        sourceType,
-        selectedPatientId,
-        selectedCaseId,
-        prescriptionCategory,
-        emergencyCategory,
-        lines,
-        facilityBatchEntryCount: facilityBatchEntries.length,
-        inquiryReason,
-        inquiryToPhysician,
-        inquiryContent,
-      }),
-    [
-      facilityBatchEntries.length,
-      emergencyCategory,
-      inquiryContent,
-      inquiryReason,
-      inquiryToPhysician,
-      lines,
-      prescriptionCategory,
-      selectedCaseId,
-      selectedPatientId,
-      sourceType,
-    ],
+  const isPatientReady = Boolean(
+    hasResolvedPatientIdentity && selectedCaseId && selectedCaseOption,
   );
+  const isDocumentReady = Boolean(originalDocumentUrl);
   const canSubmit = submitBlockers.length === 0 && !isSubmitting;
   const qrSupplementalRecords = normalizeJahisSupplementalRecords(
     qrDraftData?.parsed_data.supplementalRecords,
@@ -1574,6 +1683,16 @@ export function PrescriptionIntakeForm() {
           {error}
         </div>
       )}
+
+      {hasResolvedPatientIdentity ? (
+        <PatientHeader
+          name={selectedPatientName}
+          kana={selectedPatientNameKana}
+          birthDate={selectedPatientBirthDate}
+          sticky
+          className="top-2"
+        />
+      ) : null}
 
       <section className="rounded-xl border border-border/70 bg-card/70 p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1615,14 +1734,14 @@ export function PrescriptionIntakeForm() {
           <div className="flex flex-wrap gap-2">
             <Link
               href="/qr-scan"
-              className="inline-flex min-h-[44px] sm:h-9 sm:min-h-0 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent"
+              className="inline-flex min-h-11 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent"
             >
               <QrCode className="size-4" aria-hidden="true" />
               QRスキャン
             </Link>
             <Link
               href="/prescriptions/qr-drafts"
-              className="inline-flex min-h-[44px] sm:h-9 sm:min-h-0 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent"
+              className="inline-flex min-h-11 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent"
             >
               <QrCode className="size-4" aria-hidden="true" />
               QR下書き一覧
@@ -1630,18 +1749,40 @@ export function PrescriptionIntakeForm() {
           </div>
         </div>
 
+        {previousPrescriptionsState.isStaleAfterRefetchError ? (
+          <SegmentStaleBanner
+            title="前回取得した処方履歴を表示中"
+            description="最新の処方履歴を取得できませんでした。引用前に表示内容が古い可能性を確認してください。"
+            onRetry={() => void refetchPreviousPrescriptions()}
+            className="[&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-11"
+          />
+        ) : null}
+
         {initialQrDraftId ? (
           <div className="rounded-lg border border-tag-info/20 bg-tag-info/10 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <p className="text-sm font-medium text-tag-info">QR下書き取込</p>
-                  <Badge
-                    variant="outline"
-                    className="border-tag-info/30 bg-background text-tag-info"
+                  <StateBadge
+                    role={
+                      qrDraftState.isInitialError
+                        ? 'blocked'
+                        : qrDraftState.isStaleAfterRefetchError
+                          ? 'confirm'
+                          : appliedQrDraftId
+                            ? 'done'
+                            : 'info'
+                    }
                   >
-                    {appliedQrDraftId ? '取込済み' : '読込中'}
-                  </Badge>
+                    {qrDraftState.isInitialError
+                      ? '取込失敗'
+                      : qrDraftState.isStaleAfterRefetchError
+                        ? '再取得失敗'
+                        : appliedQrDraftId
+                          ? '取込済み'
+                          : '読込中'}
+                  </StateBadge>
                 </div>
                 <p className="text-xs text-tag-info/80">
                   QR下書き `{initialQrDraftId.slice(0, 8)}` を処方登録フォームへ反映します。
@@ -1712,13 +1853,49 @@ export function PrescriptionIntakeForm() {
                 <button
                   type="button"
                   onClick={requestLatestPreviousPrescription}
-                  className="inline-flex min-h-[44px] sm:h-9 sm:min-h-0 items-center gap-2 rounded-md border border-tag-info/30 bg-background px-3 text-sm font-medium text-tag-info hover:bg-tag-info/10"
+                  className="inline-flex min-h-11 items-center gap-2 rounded-md border border-tag-info/30 bg-background px-3 text-sm font-medium text-tag-info hover:bg-tag-info/10"
                 >
                   <ClipboardCopy className="size-4" aria-hidden="true" />
                   前回処方を引用
                 </button>
               ) : null}
             </div>
+
+            {qrDraftState.isInitialLoading ? (
+              <SegmentLoading
+                label="QR下書きを読み込み中"
+                description="患者情報と処方明細を安全に反映する準備をしています。"
+                rows={2}
+                cols={2}
+                size="compact"
+                className="mt-3 bg-background/80"
+              />
+            ) : qrDraftState.isInitialError ? (
+              <ErrorState
+                variant="server"
+                size="inline"
+                headingLevel={3}
+                title="QR下書きを取り込めませんでした"
+                cause="QR下書きの患者情報と処方明細はフォームへ反映されていません。"
+                nextAction="再読み込みするか、QR取込を中止して手入力へ切り替えてください。"
+                onRetry={() => void refetchQrDraft()}
+                retryLabel="再読み込み"
+                retryVariant="outline"
+                secondaryAction={{
+                  label: '手入力に切り替える',
+                  href: '/prescriptions/new',
+                  variant: 'outline',
+                }}
+                className="mt-3 gap-3 bg-background/80 px-4 py-5 [&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-11"
+              />
+            ) : qrDraftState.isStaleAfterRefetchError ? (
+              <SegmentStaleBanner
+                title="前回取得したQR下書きを表示中"
+                description="最新状態を再取得できませんでした。登録時にはサーバー側でも下書き状態と患者一致を再確認します。"
+                onRetry={() => void refetchQrDraft()}
+                className="mt-3 bg-background/80 [&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-11"
+              />
+            ) : null}
 
             {qrDraftData?.parse_errors?.length ? (
               <div className="mt-3 rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-xs text-state-confirm">
@@ -1816,22 +1993,33 @@ export function PrescriptionIntakeForm() {
             <button
               type="button"
               onClick={requestLatestPreviousPrescription}
-              className="inline-flex min-h-[44px] sm:h-9 sm:min-h-0 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent"
+              className="inline-flex min-h-11 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent"
             >
               <ClipboardCopy className="size-4" aria-hidden="true" />
               前回処方を引用
             </button>
           </div>
-        ) : isPreviousPrescriptionsError ? (
-          <div className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-3">
-            <ErrorState
-              variant="server"
-              size="inline"
-              title="前回処方を取得できませんでした"
-              description="「前回処方なし」ではなく取得エラーです。引用が必要な場合は再読み込みしてください。"
-              onRetry={() => void refetchPreviousPrescriptions()}
-              retryLabel="再読み込み"
-            />
+        ) : previousPrescriptionsState.isInitialLoading ? (
+          <SegmentLoading
+            label="前回処方を確認中"
+            description="引用できる直近の処方明細を確認しています。"
+            rows={2}
+            cols={2}
+            size="compact"
+          />
+        ) : previousPrescriptionsState.isInitialError ? (
+          <SegmentError
+            title="前回処方を取得できませんでした"
+            cause="前回処方の有無と明細を確認できていません。"
+            nextAction="引用が必要な場合は再読み込みしてください。"
+            onRetry={() => void refetchPreviousPrescriptions()}
+            retryLabel="再読み込み"
+            headingLevel={3}
+            className="[&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-11"
+          />
+        ) : selectedPatientId && selectedCaseId && previousPrescriptionsState.hasData ? (
+          <div className="rounded-lg border border-dashed border-border/70 bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+            引用できる前回処方はありません。今回の処方明細を入力してください。
           </div>
         ) : null}
 
@@ -1898,13 +2086,25 @@ export function PrescriptionIntakeForm() {
                 ? 'patient-search-error'
                 : undefined
             }
-            className={`min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border bg-background px-3 text-sm ${submitAttempted && !selectedPatientId && sourceType !== 'facility_batch' ? 'border-destructive' : 'border-input'}`}
+            className={`min-h-11 w-full rounded-md border bg-background px-3 text-sm ${submitAttempted && !selectedPatientId && sourceType !== 'facility_batch' ? 'border-destructive' : 'border-input'}`}
           />
           {submitAttempted && !selectedPatientId && sourceType !== 'facility_batch' && (
             <p id="patient-search-error" className="mt-1 text-xs text-destructive">
               患者を選択してください
             </p>
           )}
+          {!selectedPatientId &&
+          debouncedPatientSearch.length >= 1 &&
+          patientsState.isInitialLoading ? (
+            <SegmentLoading
+              label="患者を検索中"
+              description="氏名・フリガナに一致する患者を確認しています。"
+              rows={2}
+              cols={2}
+              size="compact"
+              className="mt-2"
+            />
+          ) : null}
           {patientsData?.data && patientsData.data.length > 0 && !selectedPatientId && (
             <ul className="mt-1 max-h-40 overflow-y-auto rounded-md border bg-popover text-sm shadow-md">
               {patientsData.data.map((p) => (
@@ -1937,7 +2137,7 @@ export function PrescriptionIntakeForm() {
                         updateDocument({ originalDocumentUrl: '', originalDocumentName: '' });
                       }
                     }}
-                    className="w-full px-3 py-2 text-left hover:bg-accent"
+                    className="min-h-11 w-full px-3 py-2 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     {p.name}
                     <span className="ml-1 text-muted-foreground">({p.name_kana})</span>
@@ -1946,21 +2146,80 @@ export function PrescriptionIntakeForm() {
               ))}
             </ul>
           )}
-          {isPatientsError && !selectedPatientId && debouncedPatientSearch.length >= 1 && (
+          {patientsState.isInitialError &&
+          !selectedPatientId &&
+          debouncedPatientSearch.length >= 1 ? (
             <div className="mt-1">
               <ErrorState
                 variant="server"
                 size="inline"
+                headingLevel={3}
                 title="患者検索に失敗しました"
                 description="「該当なし」ではなく取得エラーです。誤った患者で登録しないよう、再読み込みしてください。"
                 onRetry={() => void refetchPatients()}
                 retryLabel="再読み込み"
+                retryVariant="outline"
+                className="gap-3 px-4 py-5 [&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-11"
               />
             </div>
-          )}
+          ) : null}
+          {patientsState.isStaleAfterRefetchError && !selectedPatientId ? (
+            <SegmentStaleBanner
+              title="前回の患者検索結果を表示中"
+              description="最新の検索結果を取得できませんでした。選択前に再読み込みしてください。"
+              onRetry={() => void refetchPatients()}
+              className="mt-2 [&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-11"
+            />
+          ) : null}
+          {!selectedPatientId &&
+          debouncedPatientSearch.length >= 1 &&
+          patientsState.hasData &&
+          patientsData?.data.length === 0 ? (
+            <div className="mt-2 rounded-md border border-dashed border-border/70 bg-muted/20 px-3 py-3 text-sm text-muted-foreground">
+              一致する患者はいません。氏名またはフリガナを確認してください。
+            </div>
+          ) : null}
+
+          {selectedPatientId && selectedPatientState.isInitialLoading ? (
+            <SegmentLoading
+              label="患者情報を読み込み中"
+              description="登録対象の氏名・フリガナ・生年月日を確認しています。"
+              rows={1}
+              cols={3}
+              size="compact"
+              className="mt-2"
+            />
+          ) : selectedPatientId && selectedPatientState.isInitialError ? (
+            <SegmentError
+              title="患者情報を取得できませんでした"
+              cause="登録対象の患者情報を確認できていません。"
+              nextAction="再読み込みするか、患者を検索し直してください。"
+              onRetry={() => void refetchSelectedPatient()}
+              retryLabel="再読み込み"
+              headingLevel={3}
+              className="mt-2 [&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-11"
+            />
+          ) : selectedPatientId && selectedPatientState.isStaleAfterRefetchError ? (
+            <SegmentStaleBanner
+              title="前回取得した患者情報を表示中"
+              description="最新の患者情報を取得できませんでした。登録対象を再確認してください。"
+              onRetry={() => void refetchSelectedPatient()}
+              className="mt-2 [&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-11"
+            />
+          ) : null}
         </div>
 
-        {selectedPatientId && casesData?.data && (
+        {selectedPatientId && casesState.isInitialLoading ? (
+          <SegmentLoading
+            label="ケースを読み込み中"
+            description="この患者に紐づく有効なケースを確認しています。"
+            rows={1}
+            cols={2}
+            size="compact"
+          />
+        ) : null}
+
+        {selectedPatientId && casesData?.data && casesData.data.length > 0 && (
           <div>
             <label htmlFor="case-select" className="mb-1 block text-sm font-medium">
               ケース
@@ -1979,7 +2238,7 @@ export function PrescriptionIntakeForm() {
                   ? 'case-select-error'
                   : undefined
               }
-              className={`min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border bg-background px-3 text-sm ${submitAttempted && !selectedCaseId && sourceType !== 'facility_batch' ? 'border-destructive' : 'border-input'}`}
+              className={`min-h-11 w-full rounded-md border bg-background px-3 text-sm ${submitAttempted && !selectedCaseId && sourceType !== 'facility_batch' ? 'border-destructive' : 'border-input'}`}
             >
               <option value="">ケースを選択</option>
               {casesData.data.map((c) => (
@@ -1996,25 +2255,35 @@ export function PrescriptionIntakeForm() {
           </div>
         )}
 
-        {selectedPatientId && isCasesError && (
-          <div>
-            <ErrorState
-              variant="server"
-              size="inline"
-              title="ケースを取得できませんでした"
-              description="この患者の既存ケースを表示できていません。「ケースなし」と取り違えて登録しないよう、再読み込みしてください。"
-              onRetry={() => void refetchCases()}
-              retryLabel="再読み込み"
-            />
+        {selectedPatientId && casesState.isInitialError ? (
+          <SegmentError
+            title="ケースを取得できませんでした"
+            cause="この患者の有効なケースを確認できていません。"
+            nextAction="「ケースなし」と取り違えないよう、再読み込みしてください。"
+            onRetry={() => void refetchCases()}
+            retryLabel="再読み込み"
+            headingLevel={3}
+            className="[&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-11"
+          />
+        ) : selectedPatientId && casesState.isStaleAfterRefetchError ? (
+          <SegmentStaleBanner
+            title="前回取得したケースを表示中"
+            description="最新のケース一覧を取得できませんでした。選択内容が現在も有効か確認してください。"
+            onRetry={() => void refetchCases()}
+            className="[&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-11"
+          />
+        ) : selectedPatientId && casesState.hasData && casesData?.data.length === 0 ? (
+          <div className="rounded-md border border-dashed border-border/70 bg-muted/20 px-3 py-3 text-sm text-muted-foreground">
+            この患者に選択できる有効なケースはありません。患者またはケースの状態を確認してください。
           </div>
-        )}
+        ) : null}
       </fieldset>
 
       {/* Prescription Info */}
       <fieldset className="space-y-3">
         <legend className="text-sm font-semibold text-foreground">処方箋情報</legend>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label htmlFor="source-type" className="mb-1 block text-sm font-medium">
               ソースタイプ
@@ -2024,7 +2293,7 @@ export function PrescriptionIntakeForm() {
               data-testid="prescription-source-type"
               value={sourceType}
               onChange={(e) => updatePrescriptionMeta({ sourceType: e.target.value })}
-              className="min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border border-input bg-background px-3 text-sm"
+              className="min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
             >
               {SOURCE_CONFIG.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -2044,13 +2313,13 @@ export function PrescriptionIntakeForm() {
               type="date"
               value={prescribedDate}
               onChange={(e) => updatePrescriptionMeta({ prescribedDate: e.target.value })}
-              className="min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border border-input bg-background px-3 text-sm"
+              className="min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
               required
             />
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label htmlFor="prescription-category" className="mb-1 block text-sm font-medium">
               処方区分
@@ -2066,7 +2335,7 @@ export function PrescriptionIntakeForm() {
                   emergencyCategory: value === 'regular' ? '' : emergencyCategory,
                 });
               }}
-              className="min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border border-input bg-background px-3 text-sm"
+              className="min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
             >
               <option value="regular">定期処方</option>
               <option value="emergency">緊急処方</option>
@@ -2093,7 +2362,7 @@ export function PrescriptionIntakeForm() {
                     ? 'emergency-category-error'
                     : undefined
                 }
-                className={`min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border bg-background px-3 text-sm ${submitAttempted && prescriptionCategory === 'emergency' && !emergencyCategory ? 'border-destructive' : 'border-input'}`}
+                className={`min-h-11 w-full rounded-md border bg-background px-3 text-sm ${submitAttempted && prescriptionCategory === 'emergency' && !emergencyCategory ? 'border-destructive' : 'border-input'}`}
               >
                 <option value="">選択してください</option>
                 <option value="planned_disease_exacerbation">
@@ -2111,7 +2380,7 @@ export function PrescriptionIntakeForm() {
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label htmlFor="prescriber-name" className="mb-1 block text-sm font-medium">
               処方医名
@@ -2121,7 +2390,7 @@ export function PrescriptionIntakeForm() {
               type="text"
               value={prescriberName}
               onChange={(e) => updatePrescriptionMeta({ prescriberName: e.target.value })}
-              className="min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border border-input bg-background px-3 text-sm"
+              className="min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
             />
           </div>
           <div>
@@ -2134,6 +2403,17 @@ export function PrescriptionIntakeForm() {
             <select
               id="prescriber-institution-master"
               value={selectedPrescriberInstitutionId || '__free__'}
+              disabled={
+                prescriberInstitutionsState.isInitialLoading ||
+                prescriberInstitutionsState.isInitialError
+              }
+              aria-describedby={
+                prescriberInstitutionsState.isInitialLoading ||
+                prescriberInstitutionsState.isInitialError ||
+                prescriberInstitutionsState.isStaleAfterRefetchError
+                  ? 'prescriber-institution-master-status'
+                  : undefined
+              }
               onChange={(e) => {
                 const value = e.target.value;
                 if (value === '__free__') {
@@ -2146,9 +2426,15 @@ export function PrescriptionIntakeForm() {
                   ...(selected ? { prescriberInstitution: selected.name } : {}),
                 });
               }}
-              className="mb-3 min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border border-input bg-background px-3 text-sm"
+              className="mb-3 min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
             >
-              <option value="__free__">手入力 / 未選択</option>
+              <option value="__free__">
+                {prescriberInstitutionsState.isInitialLoading
+                  ? '医療機関マスターを読込中'
+                  : prescriberInstitutionsState.isInitialError
+                    ? 'マスター取得エラー / 手入力可'
+                    : '手入力 / 未選択'}
+              </option>
               {prescriberInstitutions.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name}
@@ -2156,6 +2442,38 @@ export function PrescriptionIntakeForm() {
                 </option>
               ))}
             </select>
+            {prescriberInstitutionsState.isInitialLoading ? (
+              <div id="prescriber-institution-master-status" className="mb-3">
+                <SegmentLoading
+                  label="医療機関マスターを読み込み中"
+                  description="登録済みの処方元候補を確認しています。"
+                  rows={1}
+                  cols={2}
+                  size="compact"
+                />
+              </div>
+            ) : prescriberInstitutionsState.isInitialError ? (
+              <div id="prescriber-institution-master-status" className="mb-3">
+                <SegmentError
+                  title="医療機関マスターを取得できませんでした"
+                  cause="登録済みの医療機関候補を表示できていません。"
+                  nextAction="再読み込みするか、下の処方元機関へ手入力してください。"
+                  onRetry={() => void refetchPrescriberInstitutions()}
+                  retryLabel="再読み込み"
+                  headingLevel={3}
+                  className="[&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-11"
+                />
+              </div>
+            ) : prescriberInstitutionsState.isStaleAfterRefetchError ? (
+              <div id="prescriber-institution-master-status" className="mb-3">
+                <SegmentStaleBanner
+                  title="前回取得した医療機関候補を表示中"
+                  description="最新の医療機関マスターを取得できませんでした。候補を選ぶ前に名称を確認してください。"
+                  onRetry={() => void refetchPrescriberInstitutions()}
+                  className="[&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-11"
+                />
+              </div>
+            ) : null}
             <label htmlFor="prescriber-institution" className="mb-1 block text-sm font-medium">
               処方元機関
             </label>
@@ -2171,7 +2489,7 @@ export function PrescriptionIntakeForm() {
                   selectedPrescriberInstitutionId: matched?.id ?? '',
                 });
               }}
-              className="min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border border-input bg-background px-3 text-sm"
+              className="min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
             />
           </div>
         </div>
@@ -2191,7 +2509,7 @@ export function PrescriptionIntakeForm() {
                 min={0}
                 value={refillRemainingCount}
                 onChange={(e) => updatePrescriptionMeta({ refillRemainingCount: e.target.value })}
-                className="min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border border-input bg-background px-3 text-sm"
+                className="min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
               />
             </div>
             <div>
@@ -2203,7 +2521,7 @@ export function PrescriptionIntakeForm() {
                 type="date"
                 value={refillNextDispenseDate}
                 onChange={(e) => updatePrescriptionMeta({ refillNextDispenseDate: e.target.value })}
-                className="min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border border-input bg-background px-3 text-sm"
+                className="min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
               />
             </div>
           </div>
@@ -2221,7 +2539,7 @@ export function PrescriptionIntakeForm() {
               value={splitDispenseTotal}
               onChange={(e) => updatePrescriptionMeta({ splitDispenseTotal: e.target.value })}
               placeholder="例: 3"
-              className="min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border border-input bg-background px-3 text-sm"
+              className="min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
             />
           </div>
           <div>
@@ -2235,7 +2553,7 @@ export function PrescriptionIntakeForm() {
               value={splitDispenseCurrent}
               onChange={(e) => updatePrescriptionMeta({ splitDispenseCurrent: e.target.value })}
               placeholder="例: 1"
-              className="min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border border-input bg-background px-3 text-sm"
+              className="min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
             />
           </div>
           <div>
@@ -2247,7 +2565,7 @@ export function PrescriptionIntakeForm() {
               type="date"
               value={splitNextDispenseDate}
               onChange={(e) => updatePrescriptionMeta({ splitNextDispenseDate: e.target.value })}
-              className="min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border border-input bg-background px-3 text-sm"
+              className="min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
             />
           </div>
         </div>
@@ -2292,7 +2610,7 @@ export function PrescriptionIntakeForm() {
               type="button"
               disabled={!selectedPatientId || documentUploading}
               onClick={() => cameraInputRef.current?.click()}
-              className="inline-flex min-h-[44px] sm:h-9 sm:min-h-0 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex min-h-11 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Camera className="size-4" aria-hidden="true" />
               {documentUploading ? '撮影を準備中...' : '処方箋を撮影'}
@@ -2301,7 +2619,7 @@ export function PrescriptionIntakeForm() {
               type="button"
               disabled={!selectedPatientId || documentUploading}
               onClick={() => fileInputRef.current?.click()}
-              className="inline-flex min-h-[44px] sm:h-9 sm:min-h-0 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex min-h-11 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Upload className="size-4" aria-hidden="true" />
               ファイルを選択
@@ -2353,7 +2671,7 @@ export function PrescriptionIntakeForm() {
           <button
             type="button"
             onClick={addLine}
-            className="inline-flex min-h-[44px] sm:h-7 sm:min-h-0 items-center gap-1 rounded-md bg-secondary px-2 text-xs font-medium text-secondary-foreground hover:bg-secondary/80"
+            className="inline-flex min-h-11 items-center gap-1 rounded-md bg-secondary px-2 text-xs font-medium text-secondary-foreground hover:bg-secondary/80"
           >
             <Plus className="size-3.5" aria-hidden="true" />
             行追加
@@ -2369,10 +2687,10 @@ export function PrescriptionIntakeForm() {
                   <button
                     type="button"
                     onClick={() => removeLine(index)}
-                    className="text-muted-foreground hover:text-destructive"
+                    className="inline-flex size-11 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     aria-label={`明細行 ${index + 1} を削除`}
                   >
-                    <Trash2 className="size-3.5" />
+                    <Trash2 className="size-4" aria-hidden="true" />
                   </button>
                 )}
               </div>
@@ -2395,7 +2713,7 @@ export function PrescriptionIntakeForm() {
                   {buildLineBadges(line).map((badge) => (
                     <span
                       key={`${index}-${badge.label}`}
-                      className={`rounded-full border px-2 py-1 text-[11px] font-medium ${badgeClassName(badge.tone)}`}
+                      className={`rounded-full border px-2 py-1 text-xs font-medium ${badgeClassName(badge.tone)}`}
                     >
                       {badge.label}
                     </span>
@@ -2458,7 +2776,7 @@ export function PrescriptionIntakeForm() {
                   onChange={(e) => updateLine(index, 'dose', e.target.value)}
                   placeholder="用量 *"
                   aria-label={`明細行 ${index + 1} の用量`}
-                  className="min-h-[44px] sm:h-8 sm:min-h-0 rounded-md border border-input bg-background px-2 text-sm"
+                  className="min-h-11 rounded-md border border-input bg-background px-2 text-sm"
                   required
                 />
                 <input
@@ -2467,7 +2785,7 @@ export function PrescriptionIntakeForm() {
                   onChange={(e) => updateLine(index, 'frequency', e.target.value)}
                   placeholder="用法 *"
                   aria-label={`明細行 ${index + 1} の用法`}
-                  className="min-h-[44px] sm:h-8 sm:min-h-0 rounded-md border border-input bg-background px-2 text-sm"
+                  className="min-h-11 rounded-md border border-input bg-background px-2 text-sm"
                   required
                 />
                 <input
@@ -2477,7 +2795,7 @@ export function PrescriptionIntakeForm() {
                   placeholder="日数 *"
                   min={1}
                   aria-label={`明細行 ${index + 1} の日数`}
-                  className="min-h-[44px] sm:h-8 sm:min-h-0 rounded-md border border-input bg-background px-2 text-sm"
+                  className="min-h-11 rounded-md border border-input bg-background px-2 text-sm"
                   required
                 />
               </div>
@@ -2486,7 +2804,7 @@ export function PrescriptionIntakeForm() {
                 <select
                   value={line.route ?? ''}
                   onChange={(e) => updateLine(index, 'route', e.target.value || undefined)}
-                  className="min-h-[44px] sm:h-8 sm:min-h-0 rounded-md border border-input bg-background px-2 text-sm"
+                  className="min-h-11 rounded-md border border-input bg-background px-2 text-sm"
                   aria-label={`明細行 ${index + 1} の投与経路`}
                 >
                   <option value="">投与経路</option>
@@ -2501,7 +2819,7 @@ export function PrescriptionIntakeForm() {
                   onChange={(e) =>
                     updateLine(index, 'dispensing_method', e.target.value || undefined)
                   }
-                  className="min-h-[44px] sm:h-8 sm:min-h-0 rounded-md border border-input bg-background px-2 text-sm"
+                  className="min-h-11 rounded-md border border-input bg-background px-2 text-sm"
                   aria-label={`明細行 ${index + 1} の調剤方法`}
                 >
                   <option value="">調剤方法</option>
@@ -2517,13 +2835,13 @@ export function PrescriptionIntakeForm() {
                   onChange={(e) => updateLine(index, 'dosage_form', e.target.value || undefined)}
                   placeholder="剤形（錠剤等）"
                   aria-label={`明細行 ${index + 1} の剤形`}
-                  className="min-h-[44px] sm:h-8 sm:min-h-0 rounded-md border border-input bg-background px-2 text-sm"
+                  className="min-h-11 rounded-md border border-input bg-background px-2 text-sm"
                 />
                 <input
                   type="date"
                   value={line.start_date ?? ''}
                   onChange={(e) => updateLine(index, 'start_date', e.target.value || undefined)}
-                  className="min-h-[44px] sm:h-8 sm:min-h-0 rounded-md border border-input bg-background px-2 text-sm"
+                  className="min-h-11 rounded-md border border-input bg-background px-2 text-sm"
                   aria-label={`明細行 ${index + 1} の服用開始日`}
                 />
               </div>
@@ -2536,7 +2854,7 @@ export function PrescriptionIntakeForm() {
                 }
                 placeholder="包装指示（一包化指示、粉砕指示等）"
                 aria-label={`明細行 ${index + 1} の包装指示`}
-                className="min-h-[44px] sm:h-8 sm:min-h-0 w-full rounded-md border border-input bg-background px-2 text-sm"
+                className="min-h-11 w-full rounded-md border border-input bg-background px-2 text-sm"
               />
               <input
                 type="text"
@@ -2544,9 +2862,9 @@ export function PrescriptionIntakeForm() {
                 onChange={(e) => updateLine(index, 'notes', e.target.value || undefined)}
                 placeholder="備考（分包しない、PTPのまま、外用部位など）"
                 aria-label={`明細行 ${index + 1} の備考`}
-                className="min-h-[44px] sm:h-8 sm:min-h-0 w-full rounded-md border border-input bg-background px-2 text-sm"
+                className="min-h-11 w-full rounded-md border border-input bg-background px-2 text-sm"
               />
-              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              <label className="flex min-h-11 items-center gap-2 rounded-md px-1 text-xs text-muted-foreground">
                 <input
                   type="checkbox"
                   checked={line.is_generic}
@@ -2555,7 +2873,7 @@ export function PrescriptionIntakeForm() {
                 />
                 後発医薬品
               </label>
-              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              <label className="flex min-h-11 items-center gap-2 rounded-md px-1 text-xs text-muted-foreground">
                 <input
                   type="checkbox"
                   checked={line.is_generic_name_prescription ?? false}
@@ -2623,7 +2941,7 @@ export function PrescriptionIntakeForm() {
                 type="button"
                 onClick={addCurrentFacilityBatchEntry}
                 disabled={!selectedCaseId}
-                className="inline-flex min-h-[44px] sm:h-9 sm:min-h-0 items-center gap-2 rounded-md border border-tag-info/30 bg-tag-info/10 px-3 text-sm font-medium text-tag-info hover:bg-tag-info/20 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex min-h-11 items-center gap-2 rounded-md border border-tag-info/30 bg-tag-info/10 px-3 text-sm font-medium text-tag-info hover:bg-tag-info/20 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Plus className="size-4" aria-hidden="true" />
                 一括リストへ追加
@@ -2674,7 +2992,7 @@ export function PrescriptionIntakeForm() {
                         type="button"
                         aria-label={`施設一括登録${index + 1}件目を削除`}
                         onClick={() => removeFacilityBatchEntry(entry.case_id)}
-                        className="inline-flex min-h-[44px] sm:h-8 sm:min-h-0 items-center gap-1 rounded-md border border-input bg-background px-2 text-xs font-medium hover:bg-accent"
+                        className="inline-flex min-h-11 items-center gap-1 rounded-md border border-input bg-background px-2 text-xs font-medium hover:bg-accent"
                       >
                         <Trash2 className="size-3.5" aria-hidden="true" />
                         削除
@@ -2712,7 +3030,7 @@ export function PrescriptionIntakeForm() {
                   id="inquiry-reason"
                   value={inquiryReason}
                   onChange={(e) => updateInquiry({ inquiryReason: e.target.value })}
-                  className="min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  className="min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
                 >
                   <option value="">照会理由を選択</option>
                   {INQUIRY_REASON_OPTIONS.map((option) => (
@@ -2733,7 +3051,7 @@ export function PrescriptionIntakeForm() {
                   value={inquiryToPhysician}
                   onChange={(e) => updateInquiry({ inquiryToPhysician: e.target.value })}
                   placeholder="例: 山田 太郎 先生"
-                  className="min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  className="min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
                 />
               </div>
 
@@ -2759,7 +3077,7 @@ export function PrescriptionIntakeForm() {
                   type="date"
                   value={inquiryDueDate}
                   onChange={(e) => updateInquiry({ inquiryDueDate: e.target.value })}
-                  className="min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  className="min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
                 />
               </div>
 
@@ -2775,14 +3093,14 @@ export function PrescriptionIntakeForm() {
                       proposalOrigin: e.target.value as 'post_inquiry' | 'pre_issuance',
                     })
                   }
-                  className="min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  className="min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
                 >
                   <option value="post_inquiry">照会後変更</option>
                   <option value="pre_issuance">事前提案反映</option>
                 </select>
               </div>
 
-              <label className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-sm md:mt-7">
+              <label className="flex min-h-11 items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-sm md:mt-7">
                 <input
                   type="checkbox"
                   checked={residualAdjustment}
@@ -2856,7 +3174,7 @@ export function PrescriptionIntakeForm() {
                             {line.dose} / {line.frequency} / {line.days}日分
                           </p>
                           {line.start_date ? (
-                            <p className="mt-1 text-[11px] text-state-done/80">
+                            <p className="mt-1 text-xs text-state-done/80">
                               開始日 {line.start_date}
                             </p>
                           ) : null}
@@ -2865,7 +3183,7 @@ export function PrescriptionIntakeForm() {
                               {buildLineBadges(line).map((badge) => (
                                 <span
                                   key={`${line.drug_name}-${badge.label}`}
-                                  className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${badgeClassName(badge.tone)}`}
+                                  className={`rounded-full border px-2 py-0.5 text-xs font-medium ${badgeClassName(badge.tone)}`}
                                 >
                                   {badge.label}
                                 </span>
@@ -2905,7 +3223,7 @@ export function PrescriptionIntakeForm() {
                               {buildLineBadges(current).map((badge) => (
                                 <span
                                   key={`${current.drug_name}-${badge.label}`}
-                                  className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${badgeClassName(badge.tone)}`}
+                                  className={`rounded-full border px-2 py-0.5 text-xs font-medium ${badgeClassName(badge.tone)}`}
                                 >
                                   {badge.label}
                                 </span>
@@ -2941,7 +3259,7 @@ export function PrescriptionIntakeForm() {
                             {line.dose} / {line.frequency} / {line.days}日分
                           </p>
                           {line.start_date ? (
-                            <p className="mt-1 text-[11px] text-state-blocked/80">
+                            <p className="mt-1 text-xs text-state-blocked/80">
                               開始日 {line.start_date}
                             </p>
                           ) : null}
@@ -2950,7 +3268,7 @@ export function PrescriptionIntakeForm() {
                               {buildLineBadges(line).map((badge) => (
                                 <span
                                   key={`${line.id}-${badge.label}`}
-                                  className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${badgeClassName(badge.tone)}`}
+                                  className={`rounded-full border px-2 py-0.5 text-xs font-medium ${badgeClassName(badge.tone)}`}
                                 >
                                   {badge.label}
                                 </span>
@@ -3056,7 +3374,7 @@ export function PrescriptionIntakeForm() {
             disabled={!canSubmit}
             data-testid="prescription-submit-primary"
             aria-describedby={submitBlockers.length > 0 ? submitBlockersId : undefined}
-            className="inline-flex min-h-[44px] sm:h-10 sm:min-h-0 items-center justify-center rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            className="inline-flex min-h-11 items-center justify-center rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             {isSubmitting
               ? '登録中...'
@@ -3067,7 +3385,7 @@ export function PrescriptionIntakeForm() {
           <button
             type="button"
             onClick={() => router.push('/prescriptions')}
-            className="inline-flex min-h-[44px] sm:h-10 sm:min-h-0 items-center justify-center rounded-lg border border-input bg-background px-4 text-sm font-medium hover:bg-accent"
+            className="inline-flex min-h-11 items-center justify-center rounded-lg border border-input bg-background px-4 text-sm font-medium hover:bg-accent"
           >
             キャンセル
           </button>

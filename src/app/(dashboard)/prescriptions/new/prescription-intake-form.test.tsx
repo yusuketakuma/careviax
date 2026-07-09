@@ -32,7 +32,9 @@ vi.mock('@/lib/hooks/use-debounced-value', () => ({
 
 vi.mock('@/lib/hooks/use-prescription-draft', () => ({
   usePrescriptionDraft: () => ({
-    loadDraft: vi.fn().mockResolvedValue(null),
+    // This suite does not exercise draft hydration. Keep the promise pending so the
+    // mount effect cannot schedule an unrelated state update outside each assertion's act scope.
+    loadDraft: vi.fn(() => new Promise<null>(() => undefined)),
     saveDraft: vi.fn().mockResolvedValue(undefined),
     clearDraft: vi.fn(),
   }),
@@ -111,17 +113,23 @@ import { PrescriptionIntakeForm } from './prescription-intake-form';
 
 setupDomTestEnv();
 
-type QueryStub = { data?: unknown; isError?: boolean };
+type QueryStub = {
+  data?: unknown;
+  isError?: boolean;
+  isLoading?: boolean;
+  isRefetchError?: boolean;
+};
 type QueryConfig = { queryKey: unknown[]; queryFn?: () => Promise<unknown> };
 
 const queryConfigs: QueryConfig[] = [];
 
 function setupQueries(stubs: Record<string, QueryStub>) {
   const refetchSpies: Record<string, ReturnType<typeof vi.fn>> = {};
+  const mutateAsync = vi.fn();
   useOrgIdMock.mockReturnValue('org_1');
   useMutationMock.mockReturnValue({
     mutate: vi.fn(),
-    mutateAsync: vi.fn(),
+    mutateAsync,
     isPending: false,
   });
   queryConfigs.length = 0;
@@ -132,11 +140,23 @@ function setupQueries(stubs: Record<string, QueryStub>) {
     const refetch = (refetchSpies[key] ??= vi.fn());
     const stub = stubs[key];
     if (stub) {
-      return { data: stub.data, isError: Boolean(stub.isError), isLoading: false, refetch };
+      return {
+        data: stub.data,
+        isError: Boolean(stub.isError),
+        isLoading: Boolean(stub.isLoading),
+        isRefetchError: Boolean(stub.isRefetchError),
+        refetch,
+      };
     }
-    return { data: undefined, isError: false, isLoading: false, refetch };
+    return {
+      data: undefined,
+      isError: false,
+      isLoading: false,
+      isRefetchError: false,
+      refetch,
+    };
   });
-  return { refetchSpies };
+  return { refetchSpies, mutateAsync };
 }
 
 beforeEach(() => {
@@ -171,6 +191,24 @@ describe('PrescriptionIntakeForm secondary-lookup fetch-error handling', () => {
     expect(refetchSpies['patient-cases']).toHaveBeenCalled();
   });
 
+  it('shows independent loading states for deep-linked patient, cases, and previous prescriptions', () => {
+    searchParamsGet.mockImplementation((key: string) =>
+      key === 'patient_id' ? 'patient_1' : key === 'case_id' ? 'case_1' : '',
+    );
+    setupQueries({
+      'selected-patient': { data: undefined, isLoading: true },
+      'patient-cases': { data: undefined, isLoading: true },
+      'patient-prescriptions': { data: undefined, isLoading: true },
+    });
+
+    render(<PrescriptionIntakeForm />);
+
+    expect(screen.getByText('患者情報を読み込み中')).toBeTruthy();
+    expect(screen.getByText('ケースを読み込み中')).toBeTruthy();
+    expect(screen.getByText('前回処方を確認中')).toBeTruthy();
+    expect(screen.queryByTestId('patient-header')).toBeNull();
+  });
+
   it('surfaces a retryable error when the patient search fetch fails so it is not read as no-match', () => {
     const { refetchSpies } = setupQueries({
       'patients-search': { data: undefined, isError: true },
@@ -200,6 +238,127 @@ describe('PrescriptionIntakeForm secondary-lookup fetch-error handling', () => {
     expect(screen.getByText(/前回処方を取得できませんでした/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
     expect(refetchSpies['patient-prescriptions']).toHaveBeenCalled();
+  });
+
+  it('blocks registration and exposes retry when a deep-linked patient cannot be hydrated', () => {
+    searchParamsGet.mockImplementation((key: string) =>
+      key === 'patient_id' ? 'patient_1' : key === 'case_id' ? 'case_1' : '',
+    );
+    const { refetchSpies, mutateAsync } = setupQueries({
+      'selected-patient': { data: undefined, isError: true },
+      'patient-cases': {
+        data: { data: [{ id: 'case_1', display_id: 'cc0000000123', status: 'active' }] },
+      },
+      'patient-prescriptions': { data: { data: [] } },
+    });
+
+    render(<PrescriptionIntakeForm />);
+
+    expect(screen.getByText('患者情報を取得できませんでした')).toBeTruthy();
+    expect(screen.getByText(/患者情報を再読み込みしてから登録してください/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(refetchSpies['selected-patient']).toHaveBeenCalled();
+    expect((screen.getByTestId('prescription-submit-primary') as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    fireEvent.submit(screen.getByLabelText('処方受付フォーム'));
+    expect(mutateAsync).not.toHaveBeenCalled();
+    expect(
+      screen.getAllByText(/患者情報を再読み込みしてから登録してください/).length,
+    ).toBeGreaterThanOrEqual(2);
+  });
+
+  it('shows QR import loading and blocks registration until the draft is applied', () => {
+    searchParamsGet.mockImplementation((key: string) => (key === 'qr_draft_id' ? 'draft_1' : ''));
+    setupQueries({
+      'qr-draft-import': { data: undefined, isLoading: true },
+    });
+
+    render(<PrescriptionIntakeForm />);
+
+    expect(screen.getByText('QR下書きを読み込み中')).toBeTruthy();
+    expect(screen.getByText('読込中')).toBeTruthy();
+    expect(screen.getByText(/QR下書きの読み込み完了をお待ちください/)).toBeTruthy();
+    expect((screen.getByTestId('prescription-submit-primary') as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+  });
+
+  it('replaces the stuck QR loading label with a retryable failure and manual-entry path', () => {
+    searchParamsGet.mockImplementation((key: string) => (key === 'qr_draft_id' ? 'draft_1' : ''));
+    const { refetchSpies } = setupQueries({
+      'qr-draft-import': { data: undefined, isError: true },
+    });
+
+    render(<PrescriptionIntakeForm />);
+
+    expect(screen.getByText('取込失敗')).toBeTruthy();
+    expect(screen.getByText('QR下書きを取り込めませんでした')).toBeTruthy();
+    expect(screen.queryByText('読込中')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(refetchSpies['qr-draft-import']).toHaveBeenCalled();
+    expect(screen.getByRole('link', { name: '手入力に切り替える' }).getAttribute('href')).toBe(
+      '/prescriptions/new',
+    );
+    expect(screen.getByText(/QR下書きを再読み込みするか、手入力に切り替えてください/)).toBeTruthy();
+  });
+
+  it('distinguishes patient search loading and a confirmed no-match result', () => {
+    setupQueries({
+      'patients-search': { data: undefined, isLoading: true },
+    });
+    const { rerender } = render(<PrescriptionIntakeForm />);
+
+    fireEvent.change(screen.getByLabelText('患者検索'), { target: { value: 'やまだ' } });
+    expect(screen.getByText('患者を検索中')).toBeTruthy();
+
+    setupQueries({
+      'patients-search': { data: { data: [] } },
+    });
+    rerender(<PrescriptionIntakeForm />);
+    expect(
+      screen.getByText('一致する患者はいません。氏名またはフリガナを確認してください。'),
+    ).toBeTruthy();
+  });
+
+  it('shows an optional institution-master failure while keeping manual entry available', () => {
+    const { refetchSpies } = setupQueries({
+      'prescriber-institutions': { data: undefined, isError: true },
+    });
+
+    render(<PrescriptionIntakeForm />);
+
+    expect(screen.getByText('医療機関マスターを取得できませんでした')).toBeTruthy();
+    expect((screen.getByLabelText('医療機関マスター') as HTMLSelectElement).disabled).toBe(true);
+    expect((screen.getByLabelText('処方元機関') as HTMLInputElement).disabled).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(refetchSpies['prescriber-institutions']).toHaveBeenCalled();
+  });
+
+  it('preserves cached institution options and marks them stale after a refetch failure', () => {
+    setupQueries({
+      'prescriber-institutions': {
+        data: {
+          data: [
+            {
+              id: 'institution_1',
+              name: '在宅クリニック',
+              institution_code: '1234567',
+              phone: null,
+              fax: null,
+            },
+          ],
+        },
+        isError: true,
+        isRefetchError: true,
+      },
+    });
+
+    render(<PrescriptionIntakeForm />);
+
+    expect(screen.getByRole('option', { name: '在宅クリニック (1234567)' })).toBeTruthy();
+    expect(screen.getByText('前回取得した医療機関候補を表示中')).toBeTruthy();
+    expect((screen.getByLabelText('医療機関マスター') as HTMLSelectElement).disabled).toBe(false);
   });
 
   it('keeps the API message when generic candidate lookup fetch fails', async () => {
@@ -250,6 +409,42 @@ describe('PrescriptionIntakeForm secondary-lookup fetch-error handling', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it('preserves cached generic candidates and warns when their refetch fails', () => {
+    setupQueries({
+      'generic-candidates': {
+        data: {
+          data: [
+            {
+              id: 'drug_generic_1',
+              yj_code: '2171014F1020',
+              drug_name: 'アムロジピン錠5mg「後発」',
+              generic_name: 'アムロジピンベシル酸塩',
+              dosage_form: '錠',
+              drug_price: 9.8,
+              unit: '錠',
+              is_generic: true,
+              generic_price_comparison: {
+                lowest_price: '8.7',
+              },
+            },
+          ],
+        },
+        isError: true,
+        isRefetchError: true,
+      },
+    });
+
+    render(<PrescriptionIntakeForm />);
+    fireEvent.change(screen.getByLabelText('明細行 1 の薬剤名'), {
+      target: { value: 'アムロ' },
+    });
+    fireEvent.click(screen.getByLabelText('一般名処方'));
+
+    expect(screen.getByText('前回取得した後発候補を表示中')).toBeTruthy();
+    expect(screen.getByText('アムロジピン錠5mg「後発」')).toBeTruthy();
+    expect(screen.getByText(/同規格最安 ¥8.7/)).toBeTruthy();
   });
 
   it('keeps the selected drug master id in the prescription submit payload', async () => {
@@ -342,6 +537,8 @@ describe('PrescriptionIntakeForm secondary-lookup fetch-error handling', () => {
     await waitFor(() =>
       expect(screen.getByDisplayValue('田中 一郎 (タナカ イチロウ)')).toBeTruthy(),
     );
+    expect(screen.getByTestId('patient-header')).toBeTruthy();
+    expect(screen.getByText('田中 一郎 様')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('ソースタイプ'), {
       target: { value: 'facility_batch' },
     });

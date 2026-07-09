@@ -51,6 +51,121 @@
 
 ## 直近の作業
 
+- codex: prescription intake patient-safety states, touch/readability, and paired API convergence.
+  - commit:
+    pending scoped commit (this entry will be amended with the hash after validation-backed commit).
+  - current task:
+    `/prescriptions/new` の患者・ケース・前回処方・QR下書き・医療機関・後発候補を、UI SSOT の
+    loading/empty/data/error/stale 分離、12px 下限、全 breakpoint 44px、患者識別、frontend/backend
+    同時完了ルールへ揃える。
+  - files inspected:
+    `docs/ui-ux-design-guidelines.md`, `docs/frontend-screen-contracts.md`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md`,
+    `src/lib/hooks/use-stale-after-refetch-error.ts`, `src/components/ui/segment-state.tsx`,
+    `src/components/ui/error-state.tsx`, `src/components/features/patients/patient-header.tsx`,
+    prescription intake form/helpers/tests, and paired patient/case/prescription/QR/institution/intake
+    API routes + tests.
+  - files changed:
+    `.agent-loop/UI_AUDIT_MATRIX.md`,
+    `src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx`,
+    `src/app/(dashboard)/prescriptions/new/prescription-intake-form.test.tsx`,
+    `src/app/(dashboard)/prescriptions/new/prescription-intake-form.ui-contract.test.ts`,
+    `src/app/(dashboard)/prescriptions/new/prescription-intake-urls.ts`,
+    `src/app/(dashboard)/prescriptions/new/prescription-intake-urls.test.ts`, and this state file.
+  - bugs found / fixed:
+    A failed QR import stayed labeled `読込中` indefinitely and still left the manual form looking
+    usable without making the missing import explicit. It now renders semantic loading, blocked
+    failure, retry, hand-entry escape, cached-stale warning, and a submit blocker until the draft is
+    applied. Deep-linked patient detail and case queries previously failed silently while IDs alone
+    could make the form appear ready; both now have shape-matched loading/error/stale states and block
+    registration until the patient/case contract resolves. Patient search now distinguishes loading,
+    confirmed no-match, initial failure, and cached stale results. Previous prescriptions no longer
+    look absent while loading or failed, and the optional institution master shows load/failure/stale
+    state while preserving manual entry. Generic candidates also retain authorized cached rows behind
+    an explicit stale-price warning instead of collapsing to a false error/empty result. The selected
+    patient is rendered through shared sticky `PatientHeader` only after canonical identity resolves.
+    QR IDs now pass through a guarded single-segment URL builder; institution queries use the shared
+    collection helper. Nine 10/11px price/YJ/safety/diff labels were raised to 12px,
+    all desktop shrink-below-44 overrides were removed, the line-delete and checkbox targets are
+    44px, and three forced two-column mobile groups now stack before `sm`.
+  - frontend/backend parity:
+    The UI reads `GET /api/patients/:id`, `GET /api/cases`,
+    `GET /api/patients/:id/prescriptions`, `GET /api/qr-scan-drafts/:id`,
+    `GET /api/prescriber-institutions`, and `GET /api/drug-masters`, then writes only through
+    `POST /api/prescription-intakes` or `POST /api/prescription-intakes/facility-batch`. The paired
+    route suites prove auth/org scope, active case and patient boundaries, QR pending-state and
+    patient-identity matching, institution reference validation, sensitive no-store responses, and
+    atomic/intended write behavior. No frontend capability was invented and no backend action is
+    left without a reachable UI state.
+  - security/privacy:
+    Hostile QR draft IDs are encoded as one path segment and exact dot segments fail closed. Provider
+    error objects, PHI-bearing raw failures, tokens, storage details, and hidden DTO fields are not
+    rendered. Cached operational PHI remains visible only after an authorized response and is marked
+    stale. Existing server authorization, org/RLS, assignment/case, QR identity, audit, export, and
+    external-sharing boundaries are unchanged and covered by paired tests. The known repository-wide
+    PHI read-audit consistency gap remains tracked separately; this slice does not claim it closed.
+  - performance:
+    No query, polling interval, effect, or dependency was added. Existing React Query requests and
+    cache are reused; transient refetch failures retain authorized data rather than replacing the
+    form with a false empty state. The bounded five-row generic-candidate mapping no longer uses
+    memo bookkeeping.
+  - validation:
+    The full prescription-new directory passed 7 files / 54 tests, including 25 form/UI/URL tests.
+    Paired backend suites passed 7 files / 192 tests. Exact-path ESLint passed with zero warnings;
+    Prettier and `git diff --check` passed. `pnpm frontend-contract:check`,
+    `pnpm plans:active:check`, `pnpm colors:check`, `pnpm api-response-shape:check`,
+    `pnpm route-auth-wrapper:check`, `pnpm db:raw-read-org-guard:check`, and
+    `pnpm client-phi-log:check` passed. Full
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit --pretty false --incremental false --skipLibCheck`
+    and `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed serially.
+    Claude checker independently reviewed query-state separation, submit blocking, canonical patient
+    header timing, guarded URLs, typography/touch ratchets, reran 7 files / 54 tests, and approved.
+  - UI/imagegen:
+    `imagegen` was intentionally omitted for this slice because it applies state, safety, responsive,
+    and accessibility corrections within the already committed all-screen non-PHI visual direction;
+    it does not introduce a new layout concept.
+  - remaining / next action:
+    The live sub-12 count is now 37 files / 73 occurrences. Prescription intake's final mutation
+    alert can still converge on the shared state primitive in a later focused slice. Browser/mobile
+    visual proof remains blocked by the missing compatible local app/database runtime, and Next build
+    is not claimed green because the existing `.next/cache/webpack` resource envelope has produced
+    exit 137/termination without a safe non-destructive build path. Continue visit/schedule/print
+    family burn-down. No deploy, migration, production mutation, external send, cache deletion, or
+    destructive operation ran.
+
+- claude maker + codex checker: shared offline sync state roles and neutral summary tiles.
+  - commits:
+    `05d57a74e feat(ui): add shared SyncStateBadge for offline sync row states` and
+    `f7855e312 fix(offline-sync): stop full-fill status tiles and raw destructive text`.
+  - files changed:
+    `docs/ui-ux-design-guidelines.md`, `src/lib/constants/status-labels.ts`,
+    `src/components/ui/sync-state-badge.tsx`,
+    `src/components/ui/sync-state-badge.test.tsx`, and
+    `src/app/(dashboard)/offline-sync/offline-sync-content.tsx`.
+  - bugs found / fixed:
+    Offline row states had a local three-state role map and no shared representation for the full
+    saved-locally/queued/failed/synced/conflict contract. `OFFLINE_SYNC_STATUS_ROLE` and
+    `SyncStateBadge` now keep failed=`blocked`, conflict=`confirm`, synced=`done`, and local/queued
+    informational states in one exhaustive family map. Summary tiles no longer fill entire cards
+    with state colors; they keep a neutral card surface, semantic left accent, and value color.
+    Failed summary text now uses the same blocked role as failed row badges instead of raw
+    destructive styling.
+  - frontend/backend parity:
+    Existing offline DTO status/display labels and retry/conflict actions are preserved. This slice
+    changes their shared semantic presentation only; it does not invent a sync result, mutate queue
+    behavior, weaken encrypted storage, or open a backend action.
+  - security/performance:
+    No PHI payload, raw sync error, storage key, request, effect, dependency, or polling behavior
+    changed. Replacing duplicate role mappings reduces drift without adding runtime work.
+  - validation:
+    Maker/checker gates passed. Root independently reran offline sync + shared badge at 3 files /
+    16 tests, exact ESLint, Prettier including the SSOT, full TypeScript/no-unused, colors and global
+    contract guards; all passed.
+  - UI/imagegen / remaining:
+    `imagegen` was omitted because this is state-token convergence within the committed visual
+    direction. Conflict resolution still needs a dedicated shared diff/confirmation pass; browser
+    proof remains in the repo-wide runtime blocker.
+
 - codex: schedule calendar stale-state, safe-navigation, touch-target, and typography alignment.
   - commit:
     `6deda8a0d fix(schedules): harden calendar states and navigation`.

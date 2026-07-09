@@ -1,4 +1,5 @@
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
+import { encodePathSegment } from '@/lib/http/path-segment';
 
 export function buildSelectedPatientApiUrl(patientId: string): string {
   return buildPatientApiPath(patientId);
@@ -16,4 +17,8 @@ export function buildActiveCasesForPatientApiUrl(patientId: string): string {
 export function buildPreviousPrescriptionsApiUrl(patientId: string, caseId: string): string {
   const params = new URLSearchParams({ limit: '5', case_id: caseId });
   return `${buildPatientApiPath(patientId, '/prescriptions')}?${params.toString()}`;
+}
+
+export function buildQrDraftApiUrl(qrDraftId: string): string {
+  return `/api/qr-scan-drafts/${encodePathSegment(qrDraftId)}`;
 }

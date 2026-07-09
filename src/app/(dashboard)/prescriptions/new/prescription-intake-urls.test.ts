@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildActiveCasesForPatientApiUrl,
   buildPreviousPrescriptionsApiUrl,
+  buildQrDraftApiUrl,
   buildSelectedPatientApiUrl,
 } from './prescription-intake-urls';
 
@@ -31,5 +32,17 @@ describe('prescription intake URL builders', () => {
   it.each(['.', '..'])('fails closed for exact dot-segment patient ids (%s)', (patientId) => {
     expect(() => buildSelectedPatientApiUrl(patientId)).toThrow(RangeError);
     expect(() => buildPreviousPrescriptionsApiUrl(patientId, 'case_1')).toThrow(RangeError);
+  });
+
+  it('encodes QR draft ids as a single path segment', () => {
+    const qrDraftId = 'draft/1?patient_id=evil#fragment';
+
+    expect(buildQrDraftApiUrl(qrDraftId)).toBe(
+      `/api/qr-scan-drafts/${encodeURIComponent(qrDraftId)}`,
+    );
+  });
+
+  it.each(['.', '..'])('fails closed for exact dot-segment QR draft ids (%s)', (qrDraftId) => {
+    expect(() => buildQrDraftApiUrl(qrDraftId)).toThrow(RangeError);
   });
 });
