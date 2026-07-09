@@ -247,6 +247,9 @@ const partnerPharmacyResponseSchema = apiDataSchema(partnerPharmacyRowSchema).tr
 );
 const pharmacyPartnershipPageSchema = cursorPaginatedPageSchema(pharmacyPartnershipRowSchema);
 const pharmacyContractPageSchema = cursorPaginatedPageSchema(pharmacyContractRowSchema);
+const pharmacyContractResponseSchema = apiDataSchema(pharmacyContractRowSchema).transform(
+  ({ data }) => data,
+);
 const contractTemplatesResponseSchema = apiDataSchema(z.array(contractTemplateRowSchema));
 const contractDocumentsResponseSchema = apiDataSchema(z.array(contractDocumentRowSchema));
 const contractDocumentPreviewResponseSchema = apiDataSchema(
@@ -1127,7 +1130,7 @@ export function PharmacyCooperationSetupContent() {
       });
       return readApiJson<PharmacyContractRow>(response, {
         fallbackMessage: '薬局間契約の登録に失敗しました',
-        schema: pharmacyContractRowSchema,
+        schema: pharmacyContractResponseSchema,
       });
     },
     onSuccess: async () => {

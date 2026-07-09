@@ -403,7 +403,7 @@ export const POST = withAuthContext(
     });
 
     if ('response' in result) return result.response ?? validationError('入力値が不正です');
-    return success(toSafeContract(result.contract), 201);
+    return success({ data: toSafeContract(result.contract) }, 201);
   },
   {
     permission: 'canManagePatientSharing',

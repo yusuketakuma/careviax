@@ -259,17 +259,19 @@ describe('/api/pharmacy-contracts POST', () => {
     const auditText = JSON.stringify(createAuditLogEntryMock.mock.calls);
     expect(auditText).not.toContain('base-partner agreement text');
     const body = await response.json();
-    expect(pharmacyContractRowSchema.safeParse(body).success).toBe(true);
+    expect(pharmacyContractRowSchema.safeParse(body.data).success).toBe(true);
     expect(body).toMatchObject({
-      id: 'contract_1',
-      has_payment_due_rule: true,
-      latest_version: {
-        id: 'contract_version_1',
-        has_terms_snapshot: true,
-        active_fee_rule: {
-          id: 'fee_rule_1',
-          billing_model: 'fixed_per_visit',
-          unit_price: 5500,
+      data: {
+        id: 'contract_1',
+        has_payment_due_rule: true,
+        latest_version: {
+          id: 'contract_version_1',
+          has_terms_snapshot: true,
+          active_fee_rule: {
+            id: 'fee_rule_1',
+            billing_model: 'fixed_per_visit',
+            unit_price: 5500,
+          },
         },
       },
     });

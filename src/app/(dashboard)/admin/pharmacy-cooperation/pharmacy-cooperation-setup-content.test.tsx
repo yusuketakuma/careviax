@@ -234,27 +234,29 @@ describe('PharmacyCooperationSetupContent', () => {
         if (url === '/api/pharmacy-contracts' && init?.method === 'POST') {
           return new Response(
             JSON.stringify({
-              id: 'contract_2',
-              status: 'active',
-              effective_from: '2026-06-01T00:00:00.000Z',
-              effective_to: null,
-              partnership: {
-                id: 'partnership_active',
+              data: {
+                id: 'contract_2',
                 status: 'active',
-                base_site: { id: 'site_1', name: '基幹薬局' },
-                partner_pharmacy: {
-                  id: 'partner_pharmacy_1',
-                  name: '協力薬局',
+                effective_from: '2026-06-01T00:00:00.000Z',
+                effective_to: null,
+                partnership: {
+                  id: 'partnership_active',
                   status: 'active',
+                  base_site: { id: 'site_1', name: '基幹薬局' },
+                  partner_pharmacy: {
+                    id: 'partner_pharmacy_1',
+                    name: '協力薬局',
+                    status: 'active',
+                  },
                 },
-              },
-              latest_version: {
-                version_no: 1,
-                status: 'active',
-                active_fee_rule: {
-                  billing_model: 'fixed_per_visit',
-                  unit_price: 5500,
-                  tax_category: 'tax_pending',
+                latest_version: {
+                  version_no: 1,
+                  status: 'active',
+                  active_fee_rule: {
+                    billing_model: 'fixed_per_visit',
+                    unit_price: 5500,
+                    tax_category: 'tax_pending',
+                  },
                 },
               },
             }),
