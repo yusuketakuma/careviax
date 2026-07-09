@@ -36626,3 +36626,86 @@ GET` passed 3 tests with 381 skipped; expected audit mock stderr was emitted.
   Commit this STATE ledger update with only `ops/refactor/STATE.md` staged,
   notify checker with commit and validation evidence, then proceed to the next
   non-conflicting UI/UX item.
+
+## 2026-07-10 UI-P1-1B — capture frontend/backend authorization parity
+
+- current task:
+  Complete the visit evidence capture slice as a matched frontend/backend contract after the first
+  patient-safety gate commit. Close the checker-found SSR permission/audit gap, make safety loading
+  and malformed responses fail closed, keep the shared patient-header query cache shape compatible,
+  and pin the Japan date/time basis.
+- commits:
+  `3008f6bba fix(visits): align capture safety auth contract` follows
+  `41cd3d8e0 fix(visits): gate capture by patient safety context`.
+- files inspected:
+  `docs/ui-ux-design-guidelines.md`; `docs/frontend-screen-contracts.md`;
+  Next.js bundled server/client and memory guidance;
+  `src/app/(dashboard)/visits/[id]/capture/*`;
+  `src/app/(dashboard)/visits/[id]/record/visit-step-nav.tsx`;
+  `src/app/api/visit-schedules/[id]/route.ts`;
+  `src/app/api/patients/[id]/header-summary/route.ts`;
+  `src/lib/auth/permissions.ts`; `src/lib/auth/visit-schedule-access.ts`;
+  `src/lib/audit/phi-read-audit.ts`; `src/lib/date-key.ts`;
+  `src/lib/utils/date-boundary.ts`; `src/lib/visits/time-of-day.ts`;
+  `src/lib/offline/evidence-drafts.ts`; and the related tests.
+- files changed:
+  `docs/frontend-screen-contracts.md`;
+  `src/app/(dashboard)/visits/[id]/capture/page.tsx`;
+  `src/app/(dashboard)/visits/[id]/capture/page.test.tsx`;
+  `src/app/(dashboard)/visits/[id]/capture/capture-content.tsx`;
+  `src/app/(dashboard)/visits/[id]/capture/capture-content.test.tsx`;
+  `src/app/(dashboard)/visits/[id]/capture/capture.shared.ts`;
+  `src/app/(dashboard)/visits/[id]/capture/capture.shared.test.ts`.
+- bugs found / fixed:
+  The SSR capture page selected patient identity after org lookup but before proving an active
+  membership, `canVisit`, assignment scope, or PHI-read audit. It now checks active membership and
+  `canVisit` before the schedule query, applies `buildVisitScheduleAssignmentWhere` in that query,
+  defense-checks `canAccessVisitScheduleAssignment`, and records the authorized patient read as
+  `visit_evidence_capture`. Denied users receive null initial context without a patient query or
+  audit. Safety-query pending state previously looked like no tags and left capture enabled; loading,
+  fetch failure, and malformed safety shapes now block both the visible shutter and file-input
+  persistence with PHI-safe reasons. The shared `patient-header-summary` React Query key now stores
+  the same full `PatientHeaderSummary` shape as patient/visit screens rather than a capture-only
+  projection, avoiding cross-screen cache corruption. Scheduled `@db.Date`/`@db.Time` values use UTC
+  sentinels, while actual visit timestamps render through `Asia/Tokyo`; invalid scheduled dates fall
+  back to the actual visit timestamp.
+- security/privacy:
+  Frontend SSR and `/api/visit-schedules/:id` now share permission/assignment semantics before PHI
+  disclosure. The capture SSR read has explicit PHI audit evidence, patient/header paths use the
+  shared encoder, header-summary remains `canVisit` + sensitive no-store + audited, and raw provider
+  errors are not rendered. Evidence persistence still requires the resolved org and patient IDs and
+  encrypted offline storage from the first commit.
+- performance:
+  One bounded active-membership lookup and one best-effort PHI audit are added to the SSR boundary.
+  The client uses the established full patient-header query key/shape, so navigation can reuse a
+  valid cache entry instead of maintaining a second incompatible cache. No unbounded work or new
+  dependency was added.
+- UI/UX and image reference:
+  The repo-wide non-PHI reference in `design/generated/` and the PH-OS UI SSOT were used. No second
+  image was generated because this follow-up changes authorization, cache/state classification, and
+  time-basis correctness rather than visual information architecture. The sticky header, shared
+  safety tags, 44px controls, visible disabled reason, and status/alert semantics remain intact.
+- validation commands / results:
+  Focused capture tests passed 4 files / 56 tests;
+  paired backend/auth/audit tests passed 3 files / 86 tests;
+  exact-path ESLint and Prettier passed;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed;
+  full `pnpm lint` passed with two pre-existing warnings in
+  `src/lib/platform/break-glass.test.ts` and no errors;
+  `pnpm format:check`, `pnpm frontend-contract:check`, `pnpm colors:check`,
+  `pnpm client-phi-log:check`, `pnpm boundaries:check`,
+  `pnpm db:raw-read-org-guard:check`, and scoped `git diff --check` passed.
+  Claude checker independently returned APPROVE for the final parity follow-up.
+- build/runtime evidence:
+  `pnpm build` is not green: the local webpack build was stopped after generated
+  `.next/cache/webpack` reached about 10 GiB and disk free space fell to about 8.5 GiB; an earlier
+  attempt exited 137 without a code diagnostic. Next's bundled low-memory flags already enabled in
+  `next.config.ts` were verified. No generated cache was deleted. Browser/mobile runtime proof was
+  not run because no compatible local app/database runtime is active.
+- remaining work / next action:
+  The capture frontend/backend slice is complete at code/test/checker level, but the repo-wide
+  128-screen objective is not complete. Continue the non-overlapping UI waves: Claude owns the
+  dashboard lane, Codex owns billing false-zero and subsequent typography/state work. Preserve the
+  build and browser evidence gaps until a safe build/runtime environment is available. No migration,
+  deployment, production mutation, secret change, or destructive cache cleanup was performed.
