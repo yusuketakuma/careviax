@@ -11,6 +11,7 @@ import {
   findCaptureCategoryOption,
   mimeTypeToExtension,
   resolveCapturePatientContext,
+  resolveCapturePatientSafety,
 } from './capture.shared';
 
 /** ローカルタイムで固定の撮影時刻を作る(タイムゾーン非依存のテストにする) */
@@ -149,6 +150,32 @@ describe('resolveCapturePatientContext', () => {
     });
   });
 
+  it('予定日時がない場合は実訪問開始時刻を Asia/Tokyo で表示する', () => {
+    expect(
+      resolveCapturePatientContext({
+        patient_id: 'patient-1',
+        visit_record: {
+          id: 'record-1',
+          visit_started_at: '2026-04-08T15:30:00.000Z',
+        },
+      }).visitDateTimeLabel,
+    ).toBe('4月9日 00:30');
+  });
+
+  it('不正な予定日を実訪問開始時刻へフォールバックする', () => {
+    expect(
+      resolveCapturePatientContext({
+        patient_id: 'patient-1',
+        scheduled_date: '2026-02-30T00:00:00.000Z',
+        time_window_start: '10:30:00',
+        visit_record: {
+          id: 'record-1',
+          visit_started_at: '2026-04-09T01:00:00.000Z',
+        },
+      }).visitDateTimeLabel,
+    ).toBe('4月9日 10:00');
+  });
+
   it('オブジェクト以外や空文字は安全に null へ落とす', () => {
     expect(resolveCapturePatientContext(null)).toEqual({
       patientId: null,
@@ -174,5 +201,31 @@ describe('resolveCapturePatientContext', () => {
       visitStartedAt: null,
       visitEndedAt: null,
     });
+  });
+});
+
+describe('resolveCapturePatientSafety', () => {
+  it('header-summary の safety contract を表示モデルへ変換する', () => {
+    expect(
+      resolveCapturePatientSafety({
+        data: {
+          safety: {
+            visible_safety_tags: ['allergy', 'renal', 'allergy'],
+            hidden_safety_tag_count: 2,
+          },
+        },
+      }),
+    ).toEqual({ tags: ['allergy', 'renal'], hiddenCount: 2 });
+  });
+
+  it.each([
+    null,
+    {},
+    { data: {} },
+    { data: { safety: { visible_safety_tags: [], hidden_safety_tag_count: -1 } } },
+    { data: { safety: { visible_safety_tags: [''], hidden_safety_tag_count: 0 } } },
+    { data: { safety: { visible_safety_tags: [42], hidden_safety_tag_count: 0 } } },
+  ])('壊れた safety shape を空状態へ丸めず fail-close する', (payload) => {
+    expect(resolveCapturePatientSafety(payload)).toBeNull();
   });
 });

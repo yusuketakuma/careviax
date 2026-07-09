@@ -1,4 +1,6 @@
 import { format } from 'date-fns';
+import { formatUtcDateKey } from '@/lib/date-key';
+import { japanDateKey } from '@/lib/utils/date-boundary';
 import { timeIsoToString } from '@/lib/visits/time-of-day';
 import type { EvidenceCategoryId } from '../../evidence/evidence-gallery.shared';
 
@@ -61,6 +63,11 @@ export type CapturePatientContext = {
   visitRecordVersion: number | null;
   visitStartedAt: string | null;
   visitEndedAt: string | null;
+};
+
+export type CapturePatientSafety = {
+  tags: string[];
+  hiddenCount: number;
 };
 
 export type CaptureStatusSummary = {
@@ -154,10 +161,9 @@ export function resolveCapturePatientContext(payload: unknown): CapturePatientCo
     typeof source.visit_record?.visit_ended_at === 'string'
       ? source.visit_record.visit_ended_at
       : null;
-  const visitDateTimeLabel = formatCaptureVisitDateTimeLabel(
-    scheduledDate ?? visitStartedAt,
-    scheduledDate ? timeWindowStart : undefined,
-  );
+  const visitDateTimeLabel =
+    formatScheduledVisitDateTimeLabel(scheduledDate, timeWindowStart) ??
+    formatActualVisitDateTimeLabel(visitStartedAt);
 
   return {
     patientId,
@@ -170,14 +176,72 @@ export function resolveCapturePatientContext(payload: unknown): CapturePatientCo
   };
 }
 
-function formatCaptureVisitDateTimeLabel(
-  dateOrDateTime: string | null,
-  timeValue?: string | null,
+/**
+ * `header-summary` の safety contract を runtime でも検証する。
+ * 壊れた shape を空配列へ丸めると「安全タグなし」という偽の安全保証になるため null で fail-close する。
+ */
+export function resolveCapturePatientSafety(payload: unknown): CapturePatientSafety | null {
+  if (typeof payload !== 'object' || payload === null) return null;
+  const data = 'data' in payload ? payload.data : payload;
+  if (typeof data !== 'object' || data === null || !('safety' in data)) return null;
+  const safety = data.safety;
+  if (typeof safety !== 'object' || safety === null) return null;
+
+  const source = safety as {
+    visible_safety_tags?: unknown;
+    hidden_safety_tag_count?: unknown;
+  };
+  if (
+    !Array.isArray(source.visible_safety_tags) ||
+    !source.visible_safety_tags.every(
+      (tag): tag is string => typeof tag === 'string' && tag.trim().length > 0,
+    ) ||
+    typeof source.hidden_safety_tag_count !== 'number' ||
+    !Number.isInteger(source.hidden_safety_tag_count) ||
+    source.hidden_safety_tag_count < 0
+  ) {
+    return null;
+  }
+
+  return {
+    tags: Array.from(new Set(source.visible_safety_tags)),
+    hiddenCount: source.hidden_safety_tag_count,
+  };
+}
+
+const TOKYO_TIME_FORMATTER = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Asia/Tokyo',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+});
+
+function formatMonthDay(dateKey: string): string | null {
+  const match = /^\d{4}-(\d{2})-(\d{2})$/.exec(dateKey);
+  if (!match) return null;
+  return `${Number(match[1])}月${Number(match[2])}日`;
+}
+
+function formatScheduledVisitDateTimeLabel(
+  scheduledDate: string | null,
+  timeWindowStart: string | null,
 ): string | null {
-  if (!dateOrDateTime) return null;
-  const parsed = new Date(dateOrDateTime);
+  if (!scheduledDate) return null;
+  const parsed = new Date(scheduledDate);
   if (!Number.isFinite(parsed.getTime())) return null;
-  const dateLabel = format(parsed, 'M月d日');
-  const timeLabel = timeIsoToString(timeValue) ?? timeIsoToString(dateOrDateTime);
+  const dateKey = formatUtcDateKey(parsed);
+  if (scheduledDate.slice(0, 10) !== dateKey) return null;
+  const dateLabel = formatMonthDay(dateKey);
+  if (!dateLabel) return null;
+  const timeLabel = timeIsoToString(timeWindowStart);
   return timeLabel ? `${dateLabel} ${timeLabel}` : dateLabel;
+}
+
+function formatActualVisitDateTimeLabel(visitStartedAt: string | null): string | null {
+  if (!visitStartedAt) return null;
+  const parsed = new Date(visitStartedAt);
+  if (!Number.isFinite(parsed.getTime())) return null;
+  const dateLabel = formatMonthDay(japanDateKey(parsed));
+  if (!dateLabel) return null;
+  return `${dateLabel} ${TOKYO_TIME_FORMATTER.format(parsed)}`;
 }

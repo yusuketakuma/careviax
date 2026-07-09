@@ -1,5 +1,11 @@
 import { Metadata } from 'next';
 import { auth } from '@/lib/auth/config';
+import { hasPermission } from '@/lib/auth/permissions';
+import {
+  buildVisitScheduleAssignmentWhere,
+  canAccessVisitScheduleAssignment,
+} from '@/lib/auth/visit-schedule-access';
+import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { prisma } from '@/lib/db/client';
 import { resolveLocalUserByIdentity } from '@/lib/auth/user-resolution';
 import { EvidenceCaptureContent } from './capture-content';
@@ -22,12 +28,32 @@ async function resolveInitialCapturePatientContext(
   const orgId = localUser?.org_id;
   if (!orgId) return null;
 
+  const membership = await prisma.membership.findFirst({
+    where: { user_id: localUser.id, org_id: orgId, is_active: true },
+    select: { role: true },
+  });
+  if (!membership || !hasPermission(membership.role, 'canVisit')) return null;
+
+  const accessContext = { userId: localUser.id, role: membership.role };
+  const assignmentWhere = buildVisitScheduleAssignmentWhere(accessContext);
+
   const schedule = await prisma.visitSchedule.findFirst({
-    where: { id: visitId, org_id: orgId },
+    where: {
+      id: visitId,
+      org_id: orgId,
+      ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+    },
     select: {
+      pharmacist_id: true,
       scheduled_date: true,
       time_window_start: true,
-      case_: { select: { patient: { select: { id: true, name: true } } } },
+      case_: {
+        select: {
+          primary_pharmacist_id: true,
+          backup_pharmacist_id: true,
+          patient: { select: { id: true, name: true } },
+        },
+      },
       visit_record: {
         select: {
           id: true,
@@ -39,9 +65,23 @@ async function resolveInitialCapturePatientContext(
     },
   });
   if (!schedule) return null;
+  if (!canAccessVisitScheduleAssignment(accessContext, schedule)) return null;
+
+  const patientId = schedule.case_?.patient.id ?? null;
+  if (patientId) {
+    recordPhiReadAuditForRequest(
+      {
+        orgId,
+        userId: localUser.id,
+        role: membership.role,
+        ...(localUser.default_site_id ? { actorSiteId: localUser.default_site_id } : {}),
+      },
+      { patientId, view: 'visit_evidence_capture' },
+    );
+  }
 
   return {
-    patientId: schedule.case_?.patient.id ?? null,
+    patientId,
     patientName: schedule.case_?.patient.name ?? null,
     visitDateTimeLabel: resolveCapturePatientContext({
       scheduled_date: schedule.scheduled_date.toISOString(),

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { messageFromError } from '@/lib/utils/error-message';
+import { readApiJson } from '@/lib/api/client-json';
 import { Button } from '@/components/ui/button';
 import { downscaleImage } from '@/lib/files/downscale-image';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
@@ -16,6 +17,7 @@ import {
 } from '@/lib/offline/evidence-drafts';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { cn } from '@/lib/utils';
+import type { PatientHeaderSummary } from '@/server/services/patient-detail';
 import { VisitHeaderSafetyTags, type VisitHeaderSafety } from '../record/visit-step-nav';
 import { pickVisitPatientId } from '../brief/visit-brief-review.shared';
 import type { EvidenceCategoryId } from '../../evidence/evidence-gallery.shared';
@@ -25,6 +27,7 @@ import {
   buildCaptureStatusSummary,
   buildEvidenceDraftFileName,
   resolveCapturePatientContext,
+  resolveCapturePatientSafety,
   type CapturePatientContext,
 } from './capture.shared';
 
@@ -111,38 +114,20 @@ export function EvidenceCaptureContent({
   });
   const patientContext = patientQuery.data ?? null;
   const resolvedPatientId = patientContext?.patientId ?? null;
-  const patientSafetyQuery = useQuery<{
-    safety: { visible_safety_tags: string[]; hidden_safety_tag_count: number };
-  }>({
-    queryKey: ['visit-capture-patient-safety', resolvedPatientId, orgId],
+  const patientSafetyQuery = useQuery<PatientHeaderSummary>({
+    queryKey: ['patient-header-summary', resolvedPatientId, orgId],
     queryFn: async () => {
       if (!resolvedPatientId) throw new Error('患者IDが未解決です');
       const res = await fetch(buildPatientApiPath(resolvedPatientId, '/header-summary'), {
         headers: buildOrgHeaders(orgId),
       });
-      const payload = await res.json().catch(() => null);
-      if (!res.ok) throw new Error('患者安全タグの取得に失敗しました');
-      const data =
-        payload && typeof payload === 'object' && 'data' in payload ? payload.data : payload;
-      const safety =
-        data && typeof data === 'object' && 'safety' in data
-          ? (data.safety as {
-              visible_safety_tags?: unknown;
-              hidden_safety_tag_count?: unknown;
-            })
-          : null;
-      return {
-        safety: {
-          visible_safety_tags: Array.isArray(safety?.visible_safety_tags)
-            ? safety.visible_safety_tags.filter((tag): tag is string => typeof tag === 'string')
-            : [],
-          hidden_safety_tag_count:
-            typeof safety?.hidden_safety_tag_count === 'number' &&
-            Number.isInteger(safety.hidden_safety_tag_count)
-              ? safety.hidden_safety_tag_count
-              : 0,
-        },
-      };
+      const payload = await readApiJson<{ data: PatientHeaderSummary }>(
+        res,
+        '患者安全タグの取得に失敗しました',
+      );
+      const safety = resolveCapturePatientSafety(payload);
+      if (!safety) throw new Error('患者安全タグの形式が不正です');
+      return payload.data;
     },
     enabled: !!orgId && !!resolvedPatientId,
     retry: false,
@@ -150,17 +135,32 @@ export function EvidenceCaptureContent({
   const patientLoading = !orgId || patientQuery.isPending;
   const patientUnresolved =
     !patientLoading && (patientQuery.isError || !resolvedPatientId || !patientContext?.patientName);
+  const resolvedSafety = resolveCapturePatientSafety(patientSafetyQuery.data);
+  const safetyLoading =
+    !patientUnresolved &&
+    Boolean(orgId) &&
+    Boolean(resolvedPatientId) &&
+    patientSafetyQuery.isPending;
+  const safetyUnavailable =
+    patientSafetyQuery.isError ||
+    (!patientSafetyQuery.isPending && Boolean(patientSafetyQuery.data) && !resolvedSafety) ||
+    (!patientLoading && Boolean(patientContext?.patientName) && !resolvedPatientId);
   const headerSafety: VisitHeaderSafety = {
-    tags: patientSafetyQuery.data?.safety.visible_safety_tags ?? [],
-    hiddenCount: patientSafetyQuery.data?.safety.hidden_safety_tag_count ?? 0,
-    unavailable: patientSafetyQuery.isError,
+    tags: resolvedSafety?.tags ?? [],
+    hiddenCount: resolvedSafety?.hiddenCount ?? 0,
+    unavailable: safetyUnavailable,
   };
+  const safetyDisabledReason = safetyLoading
+    ? '患者安全情報を確認中のため撮影できません。'
+    : safetyUnavailable
+      ? '患者安全情報を確認できないため撮影できません。通信状態を確認して再読み込みしてください。'
+      : null;
   const shutterDisabledReasonId = 'capture-shutter-disabled-reason';
   const shutterDisabledReason = patientLoading
     ? '患者情報を確認中のため撮影できません。'
     : patientUnresolved
       ? '患者情報を確認できないため撮影できません。訪問記録で患者を確認してください。'
-      : null;
+      : safetyDisabledReason;
 
   // 実カメラの起動を試みる(権限なし/非対応はプレースホルダー表示のまま)
   useEffect(() => {
@@ -211,6 +211,10 @@ export function EvidenceCaptureContent({
         toast.error('患者情報を確認できないため撮影できません。訪問記録で患者を確認してください。');
         return;
       }
+      if (safetyDisabledReason) {
+        toast.error(safetyDisabledReason);
+        return;
+      }
       const capturedAt = new Date();
       // 端末保存(=オフライン queue)前に長辺 1600px / JPEG 品質 0.85 へ縮小する(W2-F1)。
       // fail-open: 変換失敗(HEIC 等デコード不能を含む)時は元の Blob をそのまま保存する。
@@ -244,7 +248,7 @@ export function EvidenceCaptureContent({
           });
       }
     },
-    [orgId, resolvedPatientId, selectedCategory, visitId],
+    [orgId, resolvedPatientId, safetyDisabledReason, selectedCategory, visitId],
   );
 
   /** カメラ映像の現フレームを JPEG 化(カメラ非起動時は null) */
@@ -379,7 +383,17 @@ export function EvidenceCaptureContent({
               {patientContext.patientName} 様
               {patientContext.visitDateTimeLabel ? `　${patientContext.visitDateTimeLabel}` : ''}
             </p>
-            <VisitHeaderSafetyTags safety={headerSafety} />
+            {safetyLoading ? (
+              <p
+                role="status"
+                className="text-xs font-medium text-muted-foreground"
+                data-testid="capture-safety-loading"
+              >
+                安全タグを確認中...
+              </p>
+            ) : (
+              <VisitHeaderSafetyTags safety={headerSafety} />
+            )}
           </div>
         ) : (
           <p className="mt-3 text-sm font-bold leading-6 text-state-blocked" role="alert">

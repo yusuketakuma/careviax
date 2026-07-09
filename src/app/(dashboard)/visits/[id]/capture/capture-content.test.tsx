@@ -77,6 +77,7 @@ describe('EvidenceCaptureContent', () => {
     patientContext = capturePatientContext(),
     patientPending = false,
     patientError = false,
+    safetyPending = false,
     safetyError = false,
     safetyTags = ['allergy'],
     hiddenSafetyTagCount = 0,
@@ -84,13 +85,14 @@ describe('EvidenceCaptureContent', () => {
     patientContext?: CapturePatientContext | null;
     patientPending?: boolean;
     patientError?: boolean;
+    safetyPending?: boolean;
     safetyError?: boolean;
     safetyTags?: string[];
     hiddenSafetyTagCount?: number;
   } = {}) {
     useQueryMock.mockImplementation(
       (config: { queryKey?: readonly unknown[]; queryFn?: () => Promise<unknown> }) => {
-        if (config.queryKey?.[0] === 'visit-capture-patient-safety') {
+        if (config.queryKey?.[0] === 'patient-header-summary') {
           return {
             data: safetyError
               ? undefined
@@ -100,7 +102,7 @@ describe('EvidenceCaptureContent', () => {
                     hidden_safety_tag_count: hiddenSafetyTagCount,
                   },
                 },
-            isPending: false,
+            isPending: safetyPending,
             isError: safetyError,
             error: safetyError ? new Error('safety unavailable') : null,
           };
@@ -195,6 +197,50 @@ describe('EvidenceCaptureContent', () => {
     }
   });
 
+  it('keeps the shared patient-header query cache on the full API summary shape', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    setupEvidenceAutoSyncMock.mockReturnValue(undefined);
+    const headerSummary = {
+      patient_id: 'patient_1',
+      name: '田中 一郎',
+      safety: {
+        visible_safety_tags: ['allergy'],
+        hidden_safety_tag_count: 1,
+      },
+    };
+    let safetyQueryFn: (() => Promise<unknown>) | undefined;
+    let safetyQueryKey: readonly unknown[] | undefined;
+    useQueryMock.mockImplementation(
+      (config: { queryKey?: readonly unknown[]; queryFn?: () => Promise<unknown> }) => {
+        if (config.queryKey?.[0] === 'patient-header-summary') {
+          safetyQueryFn = config.queryFn;
+          safetyQueryKey = config.queryKey;
+          return { data: undefined, isPending: true, isError: false, error: null };
+        }
+        return {
+          data: capturePatientContext(),
+          isPending: false,
+          isError: false,
+          error: null,
+        };
+      },
+    );
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async () => jsonResponse({ data: headerSummary })),
+    );
+
+    try {
+      render(<EvidenceCaptureContent visitId="visit_1" />);
+
+      await expect(safetyQueryFn?.()).resolves.toEqual(headerSummary);
+      expect(safetyQueryKey).toEqual(['patient-header-summary', 'patient_1', 'org_1']);
+      expect(buildPatientApiPath).toHaveBeenCalledWith('patient_1', '/header-summary');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('records visit end through PATCH only when the visit record version and start are known', async () => {
     useOrgIdMock.mockReturnValue('org_1');
     setupEvidenceAutoSyncMock.mockReturnValue(undefined);
@@ -256,16 +302,43 @@ describe('EvidenceCaptureContent', () => {
     expect(screen.getByTestId('visit-header-safety-tags').textContent).toContain('+1');
   });
 
-  it('fails closed when safety tags cannot be loaded', () => {
+  it('fails closed while safety tags are loading', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    setupEvidenceAutoSyncMock.mockReturnValue(undefined);
+    mockCaptureQueries({ safetyPending: true });
+
+    render(<EvidenceCaptureContent visitId="visit_1" />);
+
+    expect(screen.getByTestId('capture-safety-loading').textContent).toContain('安全タグを確認中');
+    expect(screen.getByTestId('capture-shutter')).toHaveProperty('disabled', true);
+    expect(screen.getByText(/患者安全情報を確認中のため撮影できません/)).toBeTruthy();
+  });
+
+  it('fails closed when safety tags cannot be loaded', async () => {
     useOrgIdMock.mockReturnValue('org_1');
     setupEvidenceAutoSyncMock.mockReturnValue(undefined);
     mockCaptureQueries({ safetyError: true });
 
-    render(<EvidenceCaptureContent visitId="visit_1" />);
+    const { container } = render(<EvidenceCaptureContent visitId="visit_1" />);
 
     expect(screen.getByTestId('visit-header-safety-unavailable').textContent).toContain(
       '安全タグを取得できません',
     );
+    expect(screen.getByTestId('capture-shutter')).toHaveProperty('disabled', true);
+    expect(screen.getByText(/患者安全情報を確認できないため撮影できません/)).toBeTruthy();
+
+    const input = container.querySelector('input[type="file"]');
+    fireEvent.change(input!, {
+      target: {
+        files: [new File(['photo'], 'visit-photo.jpg', { type: 'image/jpeg' })],
+      },
+    });
+    await waitFor(() => {
+      expect(toastErrorMock).toHaveBeenCalledWith(
+        '患者安全情報を確認できないため撮影できません。通信状態を確認して再読み込みしてください。',
+      );
+    });
+    expect(saveEvidenceDraftMock).not.toHaveBeenCalled();
   });
 
   it('disables the shutter and prevents evidence persistence when the patient is unresolved', () => {
