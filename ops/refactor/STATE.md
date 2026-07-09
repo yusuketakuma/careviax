@@ -41,6 +41,58 @@
 
 ## 直近の作業
 
+- codex: `CI-GATE-V9-CONTRACTS-001` stale Plans queue cleanup.
+  - current task:
+    `Plans.md` では Not started のままだった v9 contract CI gate を live workflow と guard
+    fixture test に照合し、実装済みなら active queue から除外する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`, `Plans.md`, `ops/refactor/STATE.md`,
+    `.github/workflows/ci.yml`, `package.json`, `tools/scripts/check-plans-active-board.mjs`,
+    `tools/scripts/check-plans-active-board.test.ts`, `tools/scripts/check-query-shape.mjs`,
+    `tools/scripts/check-query-shape.test.ts`, `tools/scripts/check-read-path-slo.mjs`,
+    `tools/scripts/check-read-path-slo.test.ts`,
+    `tools/scripts/check-read-path-slo-drift.test.ts`,
+    `tools/scripts/check-frontend-contract.mjs`, and git history for the workflow/guard files.
+  - files changed:
+    `Plans.md` and this ledger.
+  - coordination:
+    No subagent needed; this was a direct live-file reconciliation of an already implemented CI
+    guard row.
+  - implementation:
+    Confirmed `.github/workflows/ci.yml` already runs `plans:active:check`,
+    `db:query-shape:check`, `db:read-slo:check`, and `frontend-contract:check` in the `ci` job.
+    Confirmed repo-local guard scripts and fixture tests exist for the Plans active board,
+    query-shape, and read-SLO gates; the frontend contract script is also wired through
+    `package.json`. Moved `CI-GATE-V9-CONTRACTS-001` from Implementation queue to Done/frozen and
+    updated active counts.
+  - bugs found:
+    `Plans.md` still advertised `CI-GATE-V9-CONTRACTS-001` as Not started even though the workflow
+    already executes the required v9 guard commands.
+  - bugs fixed:
+    Active implementation queue no longer asks Codex to reimplement an already wired CI gate.
+  - security risks found:
+    None.
+  - security risks reduced:
+    None directly. Keeping the active board accurate reduces the chance of bypassing contract drift
+    gates through stale planning data.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None.
+  - validation commands:
+    `pnpm plans:active:check`;
+    `pnpm vitest run tools/scripts/check-plans-active-board.test.ts tools/scripts/check-query-shape.test.ts tools/scripts/check-read-path-slo.test.ts tools/scripts/check-read-path-slo-drift.test.ts --reporter=dot`;
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md`;
+    `git diff --check -- Plans.md ops/refactor/STATE.md`.
+  - validation results:
+    `plans:active:check` passed. Guard fixture tests passed (4 files / 37 tests). Prettier check and
+    scoped `git diff --check` passed.
+  - remaining work:
+    None for `CI-GATE-V9-CONTRACTS-001`. Other active queue items remain.
+  - next action:
+    Commit only `Plans.md` and `ops/refactor/STATE.md`, push `origin/main`, then continue with the
+    next highest-value implementation queue item.
+
 - codex: `STOCK-VISIT-API-CAPABILITY-GUARD-001` visit observation API fail-closed guard.
   - commit:
     Implementation, Plans cleanup, and ledger evidence committed as `f2e7b6e97`
