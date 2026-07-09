@@ -73,17 +73,19 @@ async function readPackageInsertPayload(response: Response): Promise<DrugPackage
   const payload: unknown = await response.json();
 
   expect(payload).toMatchObject({
-    drug: expect.objectContaining({
-      id: expect.any(String),
-      yj_code: expect.any(String),
-      drug_name: expect.any(String),
-    }),
-    version_history: expect.any(Array),
-    interactions: expect.any(Array),
-    applicable_alert_rules: expect.any(Array),
+    data: {
+      drug: expect.objectContaining({
+        id: expect.any(String),
+        yj_code: expect.any(String),
+        drug_name: expect.any(String),
+      }),
+      version_history: expect.any(Array),
+      interactions: expect.any(Array),
+      applicable_alert_rules: expect.any(Array),
+    },
   });
 
-  return payload as DrugPackageInsertResponse;
+  return (payload as { data: DrugPackageInsertResponse }).data;
 }
 
 function requirePackageInsert(body: DrugPackageInsertResponse): DrugPackageInsert {

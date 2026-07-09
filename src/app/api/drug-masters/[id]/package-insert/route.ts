@@ -203,20 +203,22 @@ async function authenticatedGET(req: NextRequest, params: Promise<{ id: string }
           : null;
 
         return success({
-          drug: {
-            ...drug,
-            transitional_expiry_date: drug.transitional_expiry_date?.toISOString() ?? null,
-          },
-          package_insert: latestPackageInsert,
-          version_history: packageInserts.map((pi) => ({
-            id: pi.id,
-            document_version: pi.document_version,
-            revised_at: pi.revised_at?.toISOString() ?? null,
-            source_format: pi.source_format,
-          })),
-          interactions,
-          applicable_alert_rules: applicableRules,
-        } satisfies DrugPackageInsertResponse);
+          data: {
+            drug: {
+              ...drug,
+              transitional_expiry_date: drug.transitional_expiry_date?.toISOString() ?? null,
+            },
+            package_insert: latestPackageInsert,
+            version_history: packageInserts.map((pi) => ({
+              id: pi.id,
+              document_version: pi.document_version,
+              revised_at: pi.revised_at?.toISOString() ?? null,
+              source_format: pi.source_format,
+            })),
+            interactions,
+            applicable_alert_rules: applicableRules,
+          } satisfies DrugPackageInsertResponse,
+        });
       },
       { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
     ),
