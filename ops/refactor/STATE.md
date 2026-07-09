@@ -41,6 +41,57 @@
 
 ## 直近の作業
 
+- codex: `CLINICAL-PROVENANCE-HASH-HARDENING-001` queue/patient linkage provenance hash constraints.
+  - commit:
+    `3a815502f fix(integration): harden clinical provenance hashes`
+  - current task:
+    Requeue fix後の横展開として、`ClinicalProvenanceRecord_input_hash_chk` /
+    `ClinicalProvenanceRecord_output_hash_chk` に実DBで抵触しうる標準clinical provenance writerを
+    追加確認し、IDをhash列へ流用しない形へ揃える。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`, `git log --oneline -8`,
+    `prisma/migrations/20260709170000_rebuild_standard_clinical_integration/migration.sql`,
+    `prisma/schema/standard-clinical-integration.prisma`,
+    `src/server/services/standard-clinical-sync-queue.ts`, its test,
+    `src/server/services/standard-clinical-patient-linkage.ts`, and its test.
+  - files changed:
+    `src/server/services/standard-clinical-sync-queue.ts`,
+    `src/server/services/standard-clinical-sync-queue.test.ts`,
+    `src/server/services/standard-clinical-patient-linkage.ts`, and
+    `src/server/services/standard-clinical-patient-linkage.test.ts`.
+  - bugs found / fixed:
+    `standard-clinical-sync-queue` wrote the queue item ID to `output_hash`, and
+    `standard-clinical-patient-linkage` wrote both the external reference ID to `input_hash` and
+    patient ID to `output_hash`. These values are not guaranteed to satisfy the DB hash-length
+    constraints and also conflate entity IDs with provenance hashes. Queue projection now omits
+    `output_hash` when no persisted output hash exists. Patient linkage now derives a stable
+    `sha256:` input hash from the external reference ID and omits `output_hash`.
+  - security/privacy:
+    Reduces durable audit/provenance leakage of internal IDs in hash fields and avoids CHECK-driven
+    transaction rollback in clinical sync and patient-link confirmation paths. Tests assert
+    `output_hash` is not written and that patient-link `input_hash` is a stable SHA-256-shaped
+    value rather than a raw external reference ID.
+  - reliability:
+    Both writers now use append-only-safe `createMany({ skipDuplicates: true })` instead of
+    create-and-catch-P2002 patterns. This avoids aborting serializable transactions on unique
+    conflicts and avoids `ON CONFLICT DO UPDATE` against the provenance no-update trigger.
+  - validation:
+    `pnpm exec prettier --write ...`; focused Vitest passed 4 files / 23 tests;
+    exact-path ESLint passed; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed;
+    `pnpm api-response-shape:check`, `pnpm route-auth-wrapper:check`,
+    `pnpm db:raw-read-org-guard:check`, `pnpm db:query-shape:check`,
+    `pnpm dto-direct-prisma-return:check`, Prettier check, and `git diff --check` passed.
+    Full `pnpm lint` exited 0 with the pre-existing two warnings in
+    `src/lib/platform/break-glass.test.ts`.
+  - unrelated dirty worktree:
+    `.harness-mem/state/*.json`, visit medication-stock UI/types/helpers, and the newly dirty
+    `Plans.md` remain outside this commit.
+  - remaining / next action:
+    No DB mutation/RLS proof was run because live DB mutation still requires explicit approval.
+    Next high-value candidate from agmsg is `SEC-EVENT-PATH-PII-SANITIZE-001` in
+    `src/lib/auth/security-events.ts` and tests.
+
 - codex + claude checker: `FHIR-READY-VALIDATION-REQUEUE-001` validated conflict requeue API.
   - commit / push:
     `c6ad677a4 feat(integration): requeue validated FHIR conflicts` pushed to `origin/main`.
