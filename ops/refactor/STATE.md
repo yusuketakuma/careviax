@@ -53,7 +53,7 @@
 
 - codex: visit-brief feedback access, resilient states, and readable interaction parity.
   - commit:
-    pending scoped commit.
+    `917e762d9 fix(visit-brief): align feedback UI and access controls`.
   - current task:
     患者詳細の訪問前ブリーフと `POST /api/visit-brief-feedback` を、患者アクセス境界、
     loading/error/stale/malformed-success、永続的な送信失敗、二重監査防止、12px下限、44px操作領域、
