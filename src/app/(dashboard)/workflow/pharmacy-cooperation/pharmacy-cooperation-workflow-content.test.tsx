@@ -462,14 +462,20 @@ describe('PharmacyCooperationWorkflowContent', () => {
           );
         }
         if (url === '/api/patient-share-cases/share_case_1/patient-link') {
-          return new Response(JSON.stringify({ id: 'patient_link_1', match_status: 'pending' }), {
-            status: 200,
-          });
+          return new Response(
+            JSON.stringify({ data: { id: 'patient_link_1', match_status: 'pending' } }),
+            {
+              status: 200,
+            },
+          );
         }
         if (url === '/api/patient-share-cases/share_case_accept_ready/patient-link') {
-          return new Response(JSON.stringify({ id: 'patient_link_2', match_status: 'accepted' }), {
-            status: 200,
-          });
+          return new Response(
+            JSON.stringify({ data: { id: 'patient_link_2', match_status: 'accepted' } }),
+            {
+              status: 200,
+            },
+          );
         }
         if (url === '/api/patient-share-cases/share_case_1/consents' && init?.method === 'POST') {
           return new Response(

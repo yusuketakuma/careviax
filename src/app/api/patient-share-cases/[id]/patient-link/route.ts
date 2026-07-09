@@ -337,7 +337,7 @@ const authenticatedPATCH = withAuthContext<{ id: string }>(
     });
 
     if ('response' in result) return result.response ?? validationError('入力値が不正です');
-    return success(result);
+    return success({ data: result });
   },
   {
     permission: 'canManagePatientSharing',

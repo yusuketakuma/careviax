@@ -138,6 +138,15 @@ describe('/api/patient-share-cases/[id]/patient-link PATCH', () => {
       },
       select: { id: true, status: true, updated_at: true },
     });
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: {
+        patientLink: { id: 'patient_link_1', match_status: 'pending' },
+        shareCase: { id: 'share_case_1', status: 'partner_confirmation_pending' },
+      },
+    });
+    expect(body).not.toHaveProperty('patientLink');
+    expect(body).not.toHaveProperty('shareCase');
   });
 
   it('rejects partner acceptance until base approval is present on both SSOT fields', async () => {
@@ -241,6 +250,16 @@ describe('/api/patient-share-cases/[id]/patient-link PATCH', () => {
     );
     expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain('山田 花子');
     expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain('東京都港区1-2-3');
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: {
+        patientLink: { id: 'patient_link_1', match_status: 'accepted' },
+      },
+    });
+    expect(body).not.toHaveProperty('patientLink');
+    expect(JSON.stringify(body)).not.toContain('partner_patient_1');
+    expect(JSON.stringify(body)).not.toContain('山田 花子');
+    expect(JSON.stringify(body)).not.toContain('東京都港区1-2-3');
   });
 
   it('declines a pending link and closes the share case as declined', async () => {

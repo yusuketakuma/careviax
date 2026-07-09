@@ -1481,8 +1481,10 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
           : 'consent_pending';
       }
       await fulfillJson(route, {
-        id: 'pharmacy_coop_route_patient_link',
-        match_status: state.partnerAccepted ? 'accepted' : 'pending',
+        data: {
+          id: 'pharmacy_coop_route_patient_link',
+          match_status: state.partnerAccepted ? 'accepted' : 'pending',
+        },
       });
     },
   );

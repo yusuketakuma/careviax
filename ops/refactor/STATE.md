@@ -41,6 +41,76 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001CD` patient share patient-link response envelope cleanup.
+  - current task:
+    `PATCH /api/patient-share-cases/:id/patient-link` の success response を legacy root
+    `{ patientLink, shareCase }` から `{ data: { patientLink, shareCase } }` envelope
+    へ移行し、workflow fixtures と response-shape allowlist / Plans を同期する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `src/app/api/patient-share-cases/[id]/patient-link/route.ts`,
+    `src/app/api/patient-share-cases/[id]/patient-link/route.test.ts`,
+    `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`,
+    `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`,
+    `tools/tests/ui-route-mocked-smoke.spec.ts`, `tools/api-response-shape-allowlist.json`,
+    `Plans.md`, `docs/plans-archive.md`, and this ledger.
+  - files changed:
+    `Plans.md`, `docs/plans-archive.md`, `tools/api-response-shape-allowlist.json`,
+    `src/app/api/patient-share-cases/[id]/patient-link/route.ts`,
+    `src/app/api/patient-share-cases/[id]/patient-link/route.test.ts`,
+    `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`,
+    `tools/tests/ui-route-mocked-smoke.spec.ts`, and this ledger.
+  - bugs found:
+    The patient-link route returned `patientLink` and `shareCase` at the public success
+    response root, keeping one API response-shape allowlist entry alive. Workflow and
+    UI-smoke fixtures still modeled the old root mutation success shape.
+  - bugs fixed:
+    PATCH success now returns `success({ data: { patientLink, shareCase } })`. Focused
+    route tests assert `patientLink` / `shareCase` are no longer root fields and that
+    accepted-link success does not serialize raw partner patient id, patient name, or
+    address. Workflow and UI-smoke fixtures now use the current `{ data: ... }` shape.
+    The response-shape allowlist entry for this route was removed and measured debt is 100.
+  - security risks found:
+    No auth permission, org/RLS scope, identity proof validation, OCC `updateMany`,
+    share-case transition, compact audit metadata, no-store wrapper, or sanitized error
+    response changed.
+  - security risks reduced:
+    Removed patient link/share case mutation fields from the response root and added
+    response assertions for partner patient id/name/address non-disclosure.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None; this is response contract cleanup.
+  - UI/UX note:
+    No visible UI/UX layout or interaction change. The workflow mutation ignores the
+    patient-link response body and invalidates/refetches on success; only test/mock
+    response fixtures changed, so image generation was not applicable.
+  - Oracle note:
+    No Oracle consult was run for this slice per the allowlist-debt concentration directive
+    and the repeated envelope-only local pattern. Validation stayed focused on route tests,
+    workflow tests, contract ratchet, scoped lint/format, and full typecheck.
+  - validation commands:
+    `pnpm vitest run 'src/app/api/patient-share-cases/[id]/patient-link/route.test.ts' --reporter=dot`;
+    `pnpm vitest run 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=30000`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint 'src/app/api/patient-share-cases/[id]/patient-link/route.ts' 'src/app/api/patient-share-cases/[id]/patient-link/route.test.ts' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' tools/tests/ui-route-mocked-smoke.spec.ts`;
+    `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patient-share-cases/[id]/patient-link/route.ts' 'src/app/api/patient-share-cases/[id]/patient-link/route.test.ts' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' tools/tests/ui-route-mocked-smoke.spec.ts`;
+    `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patient-share-cases/[id]/patient-link/route.ts' 'src/app/api/patient-share-cases/[id]/patient-link/route.test.ts' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' tools/tests/ui-route-mocked-smoke.spec.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Patient-link route test passed 1 file / 9 tests. Pharmacy cooperation workflow component
+    test passed 1 file / 31 tests. `api-response-shape:check` passed with 100 allowlisted
+    violations and 0 new violations. `plans:active:check` passed. Scoped ESLint, scoped
+    Prettier check, scoped diff check, and full typecheck passed.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 100 allowlisted response-shape violations.
+    Next recommended response-shape slice is the current allowlist head:
+    `src/app/api/patient-share-cases/[id]/route.ts`.
+  - next action:
+    Commit and push this patient-link envelope slice with explicit owned paths only, then
+    continue allowlist debt burn-down from the next allowlist head.
+
 - codex: `API-CONTRACT-001CC` patient share correction requests response envelope cleanup.
   - current task:
     `GET /api/patient-share-cases/:id/correction-requests` の list success を
