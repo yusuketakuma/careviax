@@ -289,5 +289,34 @@
       "owner": "PERF-DB-READ-SLO-001",
       "notes": "Visit preparation list. Detail brief and batch brief stay separately guarded."
     }
+  ],
+  "known_take_drift": [
+    {
+      "route": "/api/patients/board",
+      "method": "GET",
+      "model": "patient",
+      "rule": "slo_take_missing",
+      "expectedCount": 2,
+      "owner": "PERF-DB-SLO-TAKE-LINT-001",
+      "reason": "Patient board main load and its foundation count-basis twin are bounded by org-scoped RLS filters plus post-query application pagination (limit search param), not a query-level take/cursor. Query-level bound enforcement is tracked by the patients-board cursor/take follow-up; until then this is a known declared-vs-implemented gap, not a regression."
+    },
+    {
+      "route": "/api/care-reports/today-workspace",
+      "method": "GET",
+      "model": "visitSchedule",
+      "rule": "slo_take_missing",
+      "expectedCount": 1,
+      "owner": "PERF-DB-SLO-TAKE-LINT-001",
+      "reason": "Today workspace visit schedules are naturally bounded by a single-day org-scoped scheduled_date window (gte today / lt tomorrow) rather than a row-count take. Row count is capped by one org's schedules for one day."
+    },
+    {
+      "route": "/api/visits/today-preparation",
+      "method": "GET",
+      "model": "visitSchedule",
+      "rule": "slo_take_missing",
+      "expectedCount": 1,
+      "owner": "PERF-DB-SLO-TAKE-LINT-001",
+      "reason": "Today preparation visit schedules are naturally bounded by a single-day org-scoped scheduled_date window (todayRange) rather than a row-count take. Row count is capped by one org's schedules for one day."
+    }
   ]
 }
