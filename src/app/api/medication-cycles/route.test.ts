@@ -119,8 +119,10 @@ describe('/api/medication-cycles', () => {
     );
     await expect(response.json()).resolves.toMatchObject({
       data: [{ id: 'cycle_1' }],
-      hasMore: false,
-      totalCount: 1,
+      meta: {
+        has_more: false,
+        total_count: 1,
+      },
     });
   });
 
@@ -159,6 +161,10 @@ describe('/api/medication-cycles', () => {
     );
     const body = await response.json();
     expect(body.data).toEqual([{ id: 'cycle_minimal_1' }]);
+    expect(body.meta).toMatchObject({
+      has_more: false,
+      total_count: 1,
+    });
     expect(body.data[0]).not.toHaveProperty('patient_id');
     expect(body.data[0]).not.toHaveProperty('case_id');
     expect(body.data[0]).not.toHaveProperty('overall_status');
@@ -183,12 +189,15 @@ describe('/api/medication-cycles', () => {
       }),
     );
     const body = await response.json();
-    expect(Object.keys(body)).toEqual(['data', 'hasMore', 'totalCount', 'nextCursor']);
+    expect(Object.keys(body)).toEqual(['data', 'meta']);
     expect(body).toEqual({
       data: [{ id: 'cycle_1' }],
-      hasMore: true,
-      totalCount: 2,
-      nextCursor: '1',
+      meta: {
+        limit: 1,
+        has_more: true,
+        total_count: 2,
+        next_cursor: '1',
+      },
     });
   });
 
@@ -298,6 +307,13 @@ describe('/api/medication-cycles', () => {
         org_id: 'org_1',
         case_id: 'case_1',
         patient_id: 'patient_1',
+        overall_status: 'intake_received',
+        version: 1,
+      },
+    });
+    await expect(response.json()).resolves.toEqual({
+      data: {
+        id: 'cycle_2',
         overall_status: 'intake_received',
         version: 1,
       },

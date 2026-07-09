@@ -106,9 +106,12 @@ const authenticatedGET = withAuthContext(
 
     return success({
       data,
-      hasMore: page.hasMore,
-      totalCount,
-      nextCursor: page.nextCursor,
+      meta: {
+        limit,
+        has_more: page.hasMore,
+        next_cursor: page.nextCursor ?? null,
+        total_count: totalCount,
+      },
     });
   },
   {
@@ -159,7 +162,7 @@ export const POST = withAuthContext(
       });
     });
 
-    return success(cycle, 201);
+    return success({ data: cycle }, 201);
   },
   {
     permission: 'canDispense',
