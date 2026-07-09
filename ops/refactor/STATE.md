@@ -41,6 +41,96 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001BR` medication cycle collection success envelope cleanup.
+  - commit:
+    Implementation, Plans/allowlist, and route test update committed as `7753449ee` (`fix(api):
+    envelope medication cycle collection`). State record is this entry and will be committed
+    separately before pushing the slice.
+  - current task:
+    Continue `Plans.md` highest-priority implementable work under `API-CONTRACT-001`. Remove
+    `src/app/api/medication-cycles/route.ts` from the public response-shape allowlist by moving GET
+    list success to `data + meta` and POST create success to `data`, without keeping legacy root
+    pagination fields or raw cycle fields.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`, `ops/refactor/STATE.md`, `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `src/app/api/medication-cycles/route.ts`, `src/app/api/medication-cycles/route.test.ts`,
+    `src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.tsx`,
+    `src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.test.tsx`,
+    `src/lib/api/pagination.ts`, comparable current list envelope routes, route/reader usage search
+    results, and `gbrain search "API-CONTRACT medication-cycles route response envelope"`.
+  - files changed:
+    `Plans.md`, `tools/api-response-shape-allowlist.json`,
+    `src/app/api/medication-cycles/route.ts`, `src/app/api/medication-cycles/route.test.ts`, and
+    this ledger.
+  - implementation:
+    `GET /api/medication-cycles` now returns `success({ data, meta: { limit, has_more, next_cursor,
+    total_count } })`; `POST /api/medication-cycles` now returns `success({ data: cycle }, 201)`.
+    Route tests assert the new list/create shapes and reject old root pagination fields. The
+    safety-check cycle lookup already consumes `payload.data` only, so no reader change was needed.
+    Existing auth, query validation, case assignment scope, org reference validation, case access
+    check, RLS create, selected list columns, and no-store GET wrapper were not changed. The
+    medication-cycles allowlist entry was removed, and `Plans.md` records `API-CONTRACT-001BR` with
+    allowlist debt reduced from 116 to 115.
+  - Oracle:
+    User explicitly paused Oracle consultation. No Oracle prompt was sent or restarted. This slice is
+    a mechanical response-envelope/test/allowlist cleanup.
+  - imagegen:
+    Not used. This is an API contract/static guard cleanup with no visible UI/UX reconstruction.
+  - Next.js docs:
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md` was read earlier in
+    this run. This slice changes JSON response construction only and does not change route placement,
+    supported methods, runtime behavior, or transaction semantics.
+  - bugs found:
+    Medication cycle list success still returned `hasMore`, `totalCount`, and `nextCursor` at the
+    response root, and create success returned raw cycle fields at the response root.
+  - bugs fixed:
+    Medication cycle list success now uses `data + meta`, create success uses `data`, route tests
+    cover the new shape, and `api-response-shape:check` now reports 115 allowlisted violations and 0
+    new violations.
+  - security risks found:
+    None.
+  - security risks reduced:
+    Removing legacy root success fields reduces public response-contract drift while preserving auth,
+    assignment scoping, org reference validation, and case access checks.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None. No query shape, count query, pagination limits, selected columns, or transaction work
+    changed.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/medication-cycles/route.ts src/app/api/medication-cycles/route.test.ts src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.tsx src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.test.tsx`;
+    `pnpm vitest run src/app/api/medication-cycles/route.test.ts`;
+    `pnpm vitest run src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.test.tsx -t "medication-cycles GET"`;
+    `pnpm vitest run src/app/api/__tests__/protected-get-routes.test.ts -t medication-cycles`;
+    `pnpm vitest run src/app/api/__tests__/protected-post-routes.test.ts -t medication-cycles`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint src/app/api/medication-cycles/route.ts src/app/api/medication-cycles/route.test.ts src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.tsx src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.test.tsx`;
+    `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/medication-cycles/route.ts src/app/api/medication-cycles/route.test.ts src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.tsx src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.test.tsx`;
+    `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/medication-cycles/route.ts src/app/api/medication-cycles/route.test.ts src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.tsx src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.test.tsx`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm format:check`.
+  - validation results:
+    Prettier write passed for owned files and inspected safety-check files. Medication cycle route
+    test passed (1 file / 25 tests). Safety-check filtered test passed (3 passed, 22 skipped).
+    Protected GET smoke for medication-cycles passed (3 passed, 381 skipped). Protected POST smoke
+    has no medication-cycles case, so the filtered run skipped the file; route POST create behavior is
+    covered by the route test. API response shape guard passed (115 allowlisted violations, 0 new
+    violations). Plans active board check passed. Scoped ESLint passed. Scoped Prettier check passed.
+    Scoped `git diff --check` passed. Full typecheck passed. `pnpm format:check` again confirmed
+    owned changed files are formatted, then failed on unrelated pre-existing untracked Markdown files
+    under `projects/` and `skills/`; those files were not modified or staged.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 115 allowlisted response-shape violations. Next immediate
+    allowlist targets start with `src/app/api/medication-profiles/route.ts`, followed by
+    `src/app/api/notifications/route.ts`.
+  - next action:
+    Commit this STATE entry separately, push `7753449ee` plus the state commit to `origin/main`, then
+    continue with `src/app/api/medication-profiles/route.ts` under the same Oracle-paused and
+    no-legacy-root constraints.
+
 - codex: `API-CONTRACT-001BQ` medication cycle transition success envelope cleanup.
   - commit:
     Implementation, Plans/allowlist, and route test update committed as `0b4a92fc8` (`fix(api):
