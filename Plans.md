@@ -264,7 +264,7 @@
 - `RIGHT-RAIL-ACTION-002`: dashboard、患者一覧、患者詳細、調剤、スケジュール、訪問、報告、他職種の右レール/下部CTAに「次に何をするか」と「止まっている理由」を必ず持たせる。
 - `RAW-DETAIL-REAUDIT-001`: raw chat text、電話原文、添付、連絡先詳細を表示する場合の `purpose`、再認可、read audit、request_id を共通helper/testへ寄せる。
 - `ACCESS-MATRIX-COVERAGE-001`: `docs/compliance/access-control-policy.md` と `src/lib/auth/permission-matrix.ts` の capability差分を検査し、新機能PRがdocs/code/testsの片側更新で終わらないようにする。
-- `ROUTE-AUTHZ-COVERAGE-001`: route 実装、auth wrapper、permission capability、no-store、read audit、export/log boundary を route matrix として固定する。docs/code の matrix だけでは完了扱いにしない。
+- `ROUTE-AUTHZ-COVERAGE-001`: route 実装、auth wrapper、permission capability、no-store、read audit、export/log boundary を route matrix として固定する。authorized PHI detail GET を棚卸しし、各 route で read-audit 必須または明示 N/A を決める。現在の確認対象に `GET /api/prescription-intakes/:id`（`canVisit` + org/assignment + no-store は実装済み、明示 read-audit は未実装）を含める。docs/code の matrix だけでは完了扱いにせず、route test と監査イベント証跡を DoD にする。
 - `SERVER-LOG-PHI-SAFE-001`: server route / job / webhook / Sentry / audit-adjacent logging の raw Error、provider message、request/response body、薬剤名・患者名混入を棚卸し、coded reason + request_id + compact metadata へ寄せる。
 - `EXP-SURFACE-REGISTRY-001`: CSV/PDF/export/public/signed URL/external share の出口を registry 化し、業務画面DTOをそのまま外部出力へ流用しない。patient CSV は direct identifier profile と最小化profileを分ける。
 - `PLATFORM-SUPPORT-PHI-SCOPE-001`: break-glass / platform support / data explorer の tenant横断 PHI access を、support session、purpose、case/org scope、step-up、read audit、MFA failure lockout/risk event で再確認する。
