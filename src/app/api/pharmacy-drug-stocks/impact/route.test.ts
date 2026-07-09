@@ -73,14 +73,16 @@ type ImpactPayload = {
 async function readImpactPayload(response: Response): Promise<ImpactPayload> {
   const payload: unknown = await response.json();
   expect(payload).toMatchObject({
-    selected_queue: {
-      key: expect.any(String),
-      total_count: expect.any(Number),
-      rows: expect.any(Array),
+    data: {
+      selected_queue: {
+        key: expect.any(String),
+        total_count: expect.any(Number),
+        rows: expect.any(Array),
+      },
+      totals: expect.any(Object),
     },
-    totals: expect.any(Object),
   });
-  return payload as ImpactPayload;
+  return (payload as { data: ImpactPayload }).data;
 }
 
 describe('/api/pharmacy-drug-stocks/impact', () => {
@@ -173,7 +175,8 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
     expect(prismaMock.pharmacyDrugStock.count).not.toHaveBeenCalled();
     expect(prismaMock.$queryRaw).toHaveBeenCalledTimes(1);
     expect(prismaMock.pharmacyDrugStock.findMany).toHaveBeenCalledTimes(9);
-    await expect(response.json()).resolves.toMatchObject({
+    const json = await readImpactPayload(response);
+    expect(json).toMatchObject({
       site: { id: 'site_1' },
       selected_queue: {
         key: 'action_required',
@@ -295,7 +298,8 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
+    const json = await readImpactPayload(response);
+    expect(json).toMatchObject({
       selected_queue: {
         key: 'recently_changed',
         total_count: 1,

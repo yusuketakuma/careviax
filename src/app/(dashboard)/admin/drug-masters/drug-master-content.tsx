@@ -467,7 +467,11 @@ function DrugMasterOperationalContent({
       const res = await fetch(buildPharmacyDrugStockImpactApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<FormularyImpactResponse>(res, '採用薬影響レビューの取得に失敗しました');
+      const body = await readApiJson<{ data: FormularyImpactResponse }>(
+        res,
+        '採用薬影響レビューの取得に失敗しました',
+      );
+      return body.data;
     },
     enabled: variant === 'formulary' && !!orgId && !!effectiveSelectedSiteId,
     staleTime: 60_000,

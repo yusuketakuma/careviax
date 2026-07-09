@@ -3249,7 +3249,9 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
       if (url.includes('/generic-recommendations')) return jsonResponse(recommendationsBody, 200);
       if (url.includes('/ingredient-group')) return jsonResponse(ingredientGroupBody, 200);
       if (url.includes('/pharmacy-drug-stocks/history')) return jsonResponse(stockHistoryBody, 200);
-      if (url.includes('/pharmacy-drug-stocks/impact')) return jsonResponse(impactBody, 200);
+      if (url.includes('/pharmacy-drug-stocks/impact')) {
+        return jsonResponse({ data: impactBody }, 200);
+      }
       if (url.includes('/pharmacy-drug-stocks/usage-mismatch')) {
         return jsonResponse(usageMismatchBody, 200);
       }

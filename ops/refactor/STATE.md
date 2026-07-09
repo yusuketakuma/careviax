@@ -34433,3 +34433,82 @@ GET` passed 3 tests with 381 skipped; expected audit mock stderr was emitted.
   Commit this implementation/ledger slice with only owned paths staged, then
   continue allowlist cleanup from
   `src/app/api/pharmacy-drug-stocks/impact/route.ts` unless redirected.
+
+## 2026-07-09 API-CONTRACT-001DI — pharmacy drug stocks impact envelope
+
+- current task:
+  `API-CONTRACT-001` allowlist debt reduction focused on
+  `src/app/api/pharmacy-drug-stocks/impact/route.ts` GET success response.
+- files inspected:
+  `git status --short --untracked-files=all`;
+  `ops/refactor/STATE.md`;
+  `tools/api-response-shape-allowlist.json`;
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`;
+  `src/app/api/pharmacy-drug-stocks/impact/route.ts`;
+  `src/app/api/pharmacy-drug-stocks/impact/route.test.ts`;
+  `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`;
+  `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`;
+  `src/lib/pharmacy-drug-stocks/api-paths.ts`; `Plans.md`;
+  `docs/plans-archive.md`.
+- files changed:
+  `src/app/api/pharmacy-drug-stocks/impact/route.ts`;
+  `src/app/api/pharmacy-drug-stocks/impact/route.test.ts`;
+  `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`;
+  `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `docs/plans-archive.md`; `ops/refactor/STATE.md`.
+- bugs found:
+  `GET /api/pharmacy-drug-stocks/impact` returned impact review fields at the
+  response root, keeping one response-shape allowlist violation.
+- bugs fixed:
+  GET success now returns `success({ data: ... })`. The drug master formulary
+  impact query unwraps `payload.data` before feeding existing impact queue,
+  master change report, price impact, follow-up summary, and sample UI state.
+  Route/UI tests now assert the current success envelope.
+- security risks found:
+  No new auth/authz, tenant isolation, validation, logging, or PHI
+  minimization issue in this slice. Existing admin permission, same-org site
+  lookup, bounded query params, sensitive no-store wrapper, not-found response,
+  and sanitized unexpected-error response remain in place.
+- security risks reduced:
+  Removed one legacy public success root from the formulary impact endpoint
+  without changing authorization, validation, count aggregation, bounded sample
+  queries, price-impact draft scan, or no-store behavior.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this was a response contract cleanup. Existing aggregate query,
+  bounded queue samples, and bounded draft scan behavior are unchanged.
+- UI/UX note:
+  No visible layout or interaction change. This was API response contract and
+  reader schema work only, so image generation was not applicable.
+- Oracle note:
+  No Oracle/GPT-5.5 Pro consult was run. This was a bounded allowlist envelope
+  migration following the established local pattern, with focused route/UI
+  tests and contract gates available.
+- validation commands:
+  `pnpm exec prettier --write Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-drug-stocks/impact/route.ts' 'src/app/api/pharmacy-drug-stocks/impact/route.test.ts' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`;
+  `pnpm vitest run 'src/app/api/pharmacy-drug-stocks/impact/route.test.ts' --reporter=dot --testTimeout=30000`;
+  `pnpm vitest run 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' --reporter=dot --testTimeout=30000`;
+  `pnpm api-response-shape:check`; `pnpm plans:active:check`;
+  `rg -n "pharmacy-drug-stocks/impact" src/app/api/__tests__/protected-post-routes.test.ts src/app/api/__tests__/protected-get-routes.test.ts`;
+  `pnpm exec eslint 'src/app/api/pharmacy-drug-stocks/impact/route.ts' 'src/app/api/pharmacy-drug-stocks/impact/route.test.ts' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`;
+  `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-drug-stocks/impact/route.ts' 'src/app/api/pharmacy-drug-stocks/impact/route.test.ts' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`;
+  `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-drug-stocks/impact/route.ts' 'src/app/api/pharmacy-drug-stocks/impact/route.test.ts' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+- validation results:
+  Prettier write/check passed. Pharmacy drug stocks impact route tests passed 1
+  file / 7 tests. Drug master content tests passed 1 file / 97 tests. The route
+  is not present in the protected GET/POST route matrices by name, so no matrix
+  subset was available for this slice. Scoped ESLint,
+  `api-response-shape:check` (60 allowlisted violations, 0 new),
+  `plans:active:check`, scoped diff check, and typecheck passed.
+- remaining work:
+  `API-CONTRACT-001` remains Partial with 60 allowlisted violations. Next
+  allowlist head is `src/app/api/pharmacy-drug-stocks/review/route.ts` with two
+  expected legacy response shape violations. Existing unrelated dirty/untracked
+  memory/docs and `.codex`/`.harness-mem` files remain unstaged.
+- next action:
+  Commit this implementation/ledger slice with only owned paths staged, then
+  continue allowlist cleanup from
+  `src/app/api/pharmacy-drug-stocks/review/route.ts` unless redirected.
