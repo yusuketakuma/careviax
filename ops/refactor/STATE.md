@@ -29846,3 +29846,101 @@ has_more, next_cursor } })`. The route test asserts the `data + meta`
   Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
   then continue the next API response envelope cleanup from
   `src/app/api/jobs/[jobType]/route.ts` unless redirected.
+
+## 2026-07-09 API-CONTRACT-001BL job execution envelope
+
+- current task:
+  `API-CONTRACT-001BL` response-shape cleanup for
+  `POST /api/jobs/:jobType`.
+- files inspected:
+  `Plans.md`; `tools/api-response-shape-allowlist.json`;
+  `src/app/api/jobs/[jobType]/route.ts`;
+  `src/app/api/jobs/[jobType]/route.test.ts`;
+  `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`;
+  `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`;
+  `src/app/(dashboard)/admin/jobs/jobs-dashboard-content.test.tsx`;
+  `tools/tests/ui-route-mocked-smoke.spec.ts`; `ops/refactor/STATE.md`;
+  `git status --short --branch --untracked-files=all`.
+- files changed:
+  `Plans.md`; `tools/api-response-shape-allowlist.json`;
+  `src/app/api/jobs/[jobType]/route.ts`;
+  `src/app/api/jobs/[jobType]/route.test.ts`;
+  `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`;
+  `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`;
+  `src/app/(dashboard)/admin/jobs/jobs-dashboard-content.test.tsx`;
+  `tools/tests/ui-route-mocked-smoke.spec.ts`; `ops/refactor/STATE.md`.
+- bugs found:
+  `POST /api/jobs/:jobType` returned job execution results directly through
+  `success(...)`, leaving raw root `jobType`, `processedCount`, `scannedCount`,
+  and `errorCount` fields on the public success response across four static
+  branches.
+- bugs fixed:
+  All job execution success branches now return `success({ data: ... })`.
+  Route tests assert the current `data` envelope and reject root `jobType` /
+  `processedCount` for success responses. Drug master auto-refresh and
+  freshness-check readers now read `payload.data.processedCount` only. Job
+  management and route-mocked smoke fixtures were updated to the current
+  envelope. Response-shape debt dropped from 125 to 121 allowlisted
+  violations.
+- security risks found:
+  No API key/session auth, canAdmin permission, authenticated org scoping,
+  cross-org API-key execution behavior, job handler dispatch, provider error
+  sanitization, PHI omission, or error response behavior changed.
+- security risks reduced:
+  Removed raw job execution fields from the public response root while keeping
+  existing sanitized job result DTOs and error redaction intact.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this is response contract cleanup. Existing job dispatch and handler
+  execution behavior are unchanged.
+- UI/UX note:
+  No visible UI/UX change. This was API/frontend reader contract work only, so
+  image generation was not applicable.
+- Oracle note:
+  Oracle consultation remains paused per current user instruction, so no
+  Oracle/GPT-5.5 Pro consult was run.
+- validation commands:
+  `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/jobs/[jobType]/route.ts src/app/api/jobs/[jobType]/route.test.ts src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx src/app/(dashboard)/admin/jobs/jobs-dashboard-content.test.tsx tools/tests/ui-route-mocked-smoke.spec.ts`;
+  `pnpm vitest run src/app/api/jobs/[jobType]/route.test.ts`;
+  `pnpm vitest run src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`;
+  `pnpm vitest run src/app/(dashboard)/admin/jobs/jobs-dashboard-content.test.tsx`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint src/app/api/jobs/[jobType]/route.ts src/app/api/jobs/[jobType]/route.test.ts src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx src/app/(dashboard)/admin/jobs/jobs-dashboard-content.test.tsx tools/tests/ui-route-mocked-smoke.spec.ts`;
+  `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/jobs/[jobType]/route.ts src/app/api/jobs/[jobType]/route.test.ts src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx src/app/(dashboard)/admin/jobs/jobs-dashboard-content.test.tsx tools/tests/ui-route-mocked-smoke.spec.ts`;
+  `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/jobs/[jobType]/route.ts src/app/api/jobs/[jobType]/route.test.ts src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx src/app/(dashboard)/admin/jobs/jobs-dashboard-content.test.tsx tools/tests/ui-route-mocked-smoke.spec.ts`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `pnpm format:check`.
+- validation results:
+  Prettier passed. Job execution route tests passed 1 file / 30 tests.
+  Drug master content tests passed 1 file / 97 tests. Jobs dashboard content
+  tests passed 1 file / 10 tests. `api-response-shape:check` passed with 121
+  allowlisted violations and 0 new violations. `plans:active:check` passed.
+  Scoped ESLint, scoped Prettier check, scoped diff check, and typecheck
+  passed. `pnpm format:check` still fails only on unrelated pre-existing
+  untracked Markdown files:
+  `projects/careviax/implementation-decision/medication-stock-visit-observation-context-sidecar-v1-2026-07-08.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-doc-001.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-evidence-001.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-integrity-001.md`,
+  `projects/careviax/reviews/2026-07-08/patient-board-read-001.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003a-003d.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003e.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-guard.md`, and
+  `skills/_candidates.md`.
+- commit:
+  Job execution response envelope migration, reader updates, tests, allowlist
+  cleanup, and Plans sync committed as
+  `02f092030d322a3e06ed75ccc6af8366aa345a2d`
+  (`fix(api): envelope job execution responses`). Push is pending this ledger
+  update.
+- remaining work:
+  `API-CONTRACT-001` remains Partial. Next allowlist head is
+  `src/app/api/me/logout-all/route.ts` with one expected legacy response shape
+  violation, followed by `src/app/api/me/mfa/verify/route.ts`. Existing
+  unrelated dirty/untracked memory/docs files remain unstaged.
+- next action:
+  Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
+  then continue the next API response envelope cleanup from
+  `src/app/api/me/logout-all/route.ts` unless redirected.
