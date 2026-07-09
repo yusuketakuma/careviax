@@ -1,24 +1,29 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { authMock, prismaMock, withOrgContextMock, loggerErrorMock } = vi.hoisted(() => ({
-  authMock: vi.fn(),
-  withOrgContextMock: vi.fn(),
-  loggerErrorMock: vi.fn(),
-  prismaMock: {
-    auditLog: { create: vi.fn() },
-    membership: { findFirst: vi.fn() },
-    pharmacySite: { findFirst: vi.fn() },
-    qrScanDraft: { findMany: vi.fn() },
-    pharmacyDrugStock: { findMany: vi.fn() },
-    drugMaster: { findMany: vi.fn() },
-  },
-}));
+const { authMock, prismaMock, withOrgContextMock, loggerErrorMock, logSecurityEventMock } =
+  vi.hoisted(() => ({
+    authMock: vi.fn(),
+    withOrgContextMock: vi.fn(),
+    loggerErrorMock: vi.fn(),
+    logSecurityEventMock: vi.fn(),
+    prismaMock: {
+      auditLog: { create: vi.fn() },
+      membership: { findFirst: vi.fn() },
+      pharmacySite: { findFirst: vi.fn() },
+      qrScanDraft: { findMany: vi.fn() },
+      pharmacyDrugStock: { findMany: vi.fn() },
+      drugMaster: { findMany: vi.fn() },
+    },
+  }));
 
 vi.mock('@/lib/auth/config', () => ({ auth: authMock }));
 vi.mock('@/lib/db/client', () => ({ prisma: prismaMock }));
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+vi.mock('@/lib/auth/security-events', () => ({
+  logSecurityEvent: logSecurityEventMock,
 }));
 vi.mock('@/lib/utils/logger', () => ({
   logger: { error: loggerErrorMock },
@@ -33,6 +38,12 @@ function createRequest(
   return new NextRequest(url, {
     headers: { 'x-org-id': 'org_1' },
   });
+}
+
+async function readUsageMismatchPayload(response: Response) {
+  const body = await response.json();
+  expect(body).toHaveProperty('data');
+  return body.data;
 }
 
 describe('/api/pharmacy-drug-stocks/usage-mismatch', () => {
@@ -134,7 +145,8 @@ describe('/api/pharmacy-drug-stocks/usage-mismatch', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await readUsageMismatchPayload(response);
+    expect(body).toMatchObject({
       site: { id: 'site_1' },
       totals: {
         scanned_draft_count: 2,
@@ -237,13 +249,15 @@ describe('/api/pharmacy-drug-stocks/usage-mismatch', () => {
     expect(prismaMock.qrScanDraft.findMany).not.toHaveBeenCalled();
     expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();
     expect(prismaMock.drugMaster.findMany).not.toHaveBeenCalled();
-    expect(prismaMock.auditLog.create).toHaveBeenCalledWith(
+    expect(logSecurityEventMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
-          action: 'security:auth_failure',
-        }),
+        event_type: 'auth_failure',
+        path: '/api/pharmacy-drug-stocks/usage-mismatch',
+        method: 'GET',
+        details: expect.objectContaining({ reason: 'no_user_identity' }),
       }),
     );
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
   });
 
   it('ignores non-object medication entries in QR parsed_data', async () => {
@@ -272,7 +286,8 @@ describe('/api/pharmacy-drug-stocks/usage-mismatch', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await readUsageMismatchPayload(response);
+    expect(body).toMatchObject({
       totals: {
         scanned_draft_count: 1,
         used_drug_count: 1,
@@ -343,7 +358,8 @@ describe('/api/pharmacy-drug-stocks/usage-mismatch', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await readUsageMismatchPayload(response);
+    expect(body).toMatchObject({
       totals: {
         used_drug_count: 1,
         medication_line_count: 1,
@@ -402,7 +418,8 @@ describe('/api/pharmacy-drug-stocks/usage-mismatch', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await readUsageMismatchPayload(response);
+    expect(body).toMatchObject({
       totals: {
         used_drug_count: 2,
         medication_line_count: 2,
@@ -491,7 +508,7 @@ describe('/api/pharmacy-drug-stocks/usage-mismatch', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = await readUsageMismatchPayload(response);
     expect(body).toMatchObject({
       totals: {
         used_drug_count: 2,
@@ -628,7 +645,7 @@ describe('/api/pharmacy-drug-stocks/usage-mismatch', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = await readUsageMismatchPayload(response);
     expect(body).toMatchObject({
       totals: {
         matched_drug_count: 1,
@@ -723,7 +740,7 @@ describe('/api/pharmacy-drug-stocks/usage-mismatch', () => {
 
       if (!response) throw new Error('response is required');
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readUsageMismatchPayload(response);
       return body.frequent_unstocked.find(
         (row: { drug_code: string | null }) => row.drug_code === '987654321',
       );
@@ -804,7 +821,8 @@ describe('/api/pharmacy-drug-stocks/usage-mismatch', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await readUsageMismatchPayload(response);
+    expect(body).toMatchObject({
       totals: {
         matched_drug_count: 0,
         unmatched_drug_count: 1,
@@ -875,7 +893,8 @@ describe('/api/pharmacy-drug-stocks/usage-mismatch', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await readUsageMismatchPayload(response);
+    expect(body).toMatchObject({
       totals: {
         unmatched_drug_count: 2,
         frequent_unstocked_count: 2,

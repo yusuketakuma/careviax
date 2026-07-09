@@ -34677,3 +34677,88 @@ GET` passed 3 tests with 381 skipped; expected audit mock stderr was emitted.
   Commit this implementation/ledger slice with only owned paths staged, then
   continue allowlist cleanup from
   `src/app/api/pharmacy-drug-stocks/usage-mismatch/route.ts` unless redirected.
+
+## 2026-07-09 API-CONTRACT-001DL — pharmacy drug stocks usage mismatch envelope
+
+- current task:
+  `API-CONTRACT-001` allowlist debt reduction focused on
+  `src/app/api/pharmacy-drug-stocks/usage-mismatch/route.ts` GET success
+  response.
+- files inspected:
+  `git status --short --untracked-files=all`;
+  `ops/refactor/STATE.md`;
+  `tools/api-response-shape-allowlist.json`;
+  `src/app/api/pharmacy-drug-stocks/usage-mismatch/route.ts`;
+  `src/app/api/pharmacy-drug-stocks/usage-mismatch/route.test.ts`;
+  `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`;
+  `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`;
+  `src/app/api/pharmacy-drug-stocks/bulk/route.test.ts`;
+  `src/lib/auth/context.ts`; `src/lib/auth/security-events.ts`;
+  `src/lib/pharmacy-drug-stocks/api-paths.ts`; `src/lib/api/rate-limit.ts`;
+  `Plans.md`; `docs/plans-archive.md`.
+- files changed:
+  `src/app/api/pharmacy-drug-stocks/usage-mismatch/route.ts`;
+  `src/app/api/pharmacy-drug-stocks/usage-mismatch/route.test.ts`;
+  `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`;
+  `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `docs/plans-archive.md`; `ops/refactor/STATE.md`.
+- bugs found:
+  `GET /api/pharmacy-drug-stocks/usage-mismatch` returned site/totals/list
+  rows at the response root, keeping one response-shape allowlist violation.
+  The route test also carried an obsolete auth-failure audit expectation
+  against `auditLog.create` even though current `requireAuthContext` emits
+  `logSecurityEvent` fire-and-forget events.
+- bugs fixed:
+  Usage mismatch success now returns `success({ data: ... })`. The drug master
+  formulary usage-mismatch query unwraps `body.data` before rendering existing
+  mismatch data. Route tests now assert the `data` success envelope and current
+  `logSecurityEvent` auth-failure boundary.
+- security risks found:
+  No new auth/authz, tenant isolation, validation, audit, or PHI minimization
+  issue in this slice. Existing admin permission, same-org site lookup, QR draft
+  scope, YJ/receipt/HOT resolution behavior, ambiguous candidate metadata,
+  sanitized 500 response, and no-store wrapping remain in place.
+- security risks reduced:
+  Removed one legacy public success root from the usage-mismatch endpoint and
+  aligned the auth-failure regression assertion with the centralized security
+  event helper.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this was a response contract cleanup. Existing draft/stock parallel
+  reads, draft limit, list limit, and bounded list-count behavior are unchanged.
+- UI/UX note:
+  No visible layout or interaction change. This was API response contract and
+  reader schema work only, so image generation was not applicable.
+- Oracle note:
+  No Oracle/GPT-5.5 Pro consult was run. This was a bounded allowlist envelope
+  migration following the established local pattern, with focused route/UI
+  tests and contract gates available.
+- validation commands:
+  `pnpm exec prettier --write Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-drug-stocks/usage-mismatch/route.ts' 'src/app/api/pharmacy-drug-stocks/usage-mismatch/route.test.ts' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`;
+  `pnpm vitest run 'src/app/api/pharmacy-drug-stocks/usage-mismatch/route.test.ts' --reporter=dot --testTimeout=30000`;
+  `pnpm vitest run 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' --reporter=dot --testTimeout=30000`;
+  `pnpm api-response-shape:check`; `pnpm plans:active:check`;
+  `rg -n "pharmacy-drug-stocks/usage-mismatch" src/app/api/__tests__/protected-get-routes.test.ts src/app/api/__tests__/protected-post-routes.test.ts`;
+  `pnpm exec eslint 'src/app/api/pharmacy-drug-stocks/usage-mismatch/route.ts' 'src/app/api/pharmacy-drug-stocks/usage-mismatch/route.test.ts' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`;
+  `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-drug-stocks/usage-mismatch/route.ts' 'src/app/api/pharmacy-drug-stocks/usage-mismatch/route.test.ts' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`;
+  `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-drug-stocks/usage-mismatch/route.ts' 'src/app/api/pharmacy-drug-stocks/usage-mismatch/route.test.ts' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+- validation results:
+  Prettier write/check passed. Pharmacy drug stocks usage-mismatch route tests
+  passed 1 file / 13 tests after updating the stale auth-failure audit
+  assertion. Drug master content tests passed 1 file / 97 tests. The route is
+  not present in the protected GET/POST route matrices by name, so no matrix
+  subset was available for this slice. Scoped ESLint,
+  `api-response-shape:check` (55 allowlisted violations, 0 new),
+  `plans:active:check`, scoped diff check, and typecheck passed.
+- remaining work:
+  `API-CONTRACT-001` remains Partial with 55 allowlisted violations. Next
+  allowlist head is `src/app/api/pharmacy-invoices/[id]/route.ts` with one
+  expected legacy response shape violation. Existing unrelated dirty/untracked
+  memory/docs and `.codex`/`.harness-mem` files remain unstaged.
+- next action:
+  Commit this implementation/ledger slice with only owned paths staged, then
+  continue allowlist cleanup from
+  `src/app/api/pharmacy-invoices/[id]/route.ts` unless redirected.

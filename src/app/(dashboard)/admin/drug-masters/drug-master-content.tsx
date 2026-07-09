@@ -489,10 +489,11 @@ function DrugMasterOperationalContent({
       const res = await fetch(buildPharmacyDrugStockUsageMismatchApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<FormularyUsageMismatchResponse>(
+      const body = await readApiJson<{ data: FormularyUsageMismatchResponse }>(
         res,
         '処方・採用品不一致の取得に失敗しました',
       );
+      return body.data;
     },
     enabled: variant === 'formulary' && !!orgId && !!effectiveSelectedSiteId,
     staleTime: 60_000,

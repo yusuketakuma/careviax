@@ -3253,7 +3253,7 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
         return jsonResponse({ data: impactBody }, 200);
       }
       if (url.includes('/pharmacy-drug-stocks/usage-mismatch')) {
-        return jsonResponse(usageMismatchBody, 200);
+        return jsonResponse({ data: usageMismatchBody }, 200);
       }
       if (url.includes('/pharmacy-drug-stock-requests')) return jsonResponse(requestsBody, 200);
       if (url.includes('/pharmacy-drug-stock-templates')) return jsonResponse(templatesBody, 200);
