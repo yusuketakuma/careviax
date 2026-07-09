@@ -41,6 +41,92 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001BO` current organization success envelope cleanup.
+  - commit:
+    Implementation, Plans/allowlist, route test, and print page readers committed as `96006d240`
+    (`fix(api): envelope current organization response`). State record is this entry and will be
+    committed separately before pushing the slice.
+  - current task:
+    Continue `Plans.md` highest-priority implementable work under `API-CONTRACT-001`. Remove
+    `src/app/api/me/org/route.ts` from the public response-shape allowlist by moving the current
+    organization success body to the required `data` envelope, without keeping a legacy root `name`.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`, `ops/refactor/STATE.md`, `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `src/app/api/me/org/route.ts`, `src/app/api/me/org/route.test.ts`,
+    `src/app/(dashboard)/patients/[id]/visit-records/print/page.tsx`,
+    `src/app/(dashboard)/patients/[id]/visit-records/print/page.test.tsx`,
+    `src/app/(dashboard)/patients/[id]/medications/print/page.tsx`,
+    `src/app/(dashboard)/patients/[id]/medications/print/page.test.tsx`,
+    and `src/lib/api/response.ts`.
+  - files changed:
+    `Plans.md`, `tools/api-response-shape-allowlist.json`,
+    `src/app/api/me/org/route.ts`, `src/app/api/me/org/route.test.ts`,
+    `src/app/(dashboard)/patients/[id]/visit-records/print/page.tsx`,
+    `src/app/(dashboard)/patients/[id]/visit-records/print/page.test.tsx`,
+    `src/app/(dashboard)/patients/[id]/medications/print/page.tsx`, and this ledger.
+  - implementation:
+    `GET /api/me/org` now returns `success({ data: { name } })`. The patient visit-record and
+    medication print page readers now unwrap `payload.data` only. The route test asserts the new
+    exact response body for both found and missing organization cases, and the print test fixture now
+    supplies the current envelope. Existing auth context resolution, organization lookup, no-store
+    behavior, and error behavior were not changed. The `me/org` allowlist entry was removed, and
+    `Plans.md` records `API-CONTRACT-001BO` with allowlist debt reduced from 119 to 118.
+  - Oracle:
+    User explicitly paused Oracle consultation. No Oracle prompt was sent or restarted. This slice is
+    a mechanical response-envelope/readers/test/allowlist cleanup.
+  - imagegen:
+    Not used. This is an API contract/static guard cleanup with no visible UI/UX reconstruction.
+  - Next.js docs:
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md` was read earlier in
+    this run. This slice changes JSON response construction only and does not change route placement,
+    supported methods, runtime behavior, or caching semantics.
+  - bugs found:
+    `GET /api/me/org` still returned `name` at the response root, and the print page organization
+    readers consumed the old root shape.
+  - bugs fixed:
+    Current organization success now uses the required `data` envelope, print readers no longer
+    accept the legacy root `name`, tests cover the new shape, and `api-response-shape:check` now
+    reports 118 allowlisted violations and 0 new violations.
+  - security risks found:
+    None.
+  - security risks reduced:
+    Removing the legacy root success field reduces public response-contract drift while preserving the
+    existing authenticated organization scope.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None. No query shape, selected fields, cache settings, or React query timing changed.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/me/org/route.ts src/app/api/me/org/route.test.ts src/app/(dashboard)/patients/[id]/visit-records/print/page.tsx src/app/(dashboard)/patients/[id]/visit-records/print/page.test.tsx src/app/(dashboard)/patients/[id]/medications/print/page.tsx`;
+    `pnpm vitest run src/app/api/me/org/route.test.ts`;
+    `pnpm vitest run src/app/(dashboard)/patients/[id]/visit-records/print/page.test.tsx`;
+    `pnpm vitest run src/app/(dashboard)/patients/[id]/medications/print/page.test.tsx`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint src/app/api/me/org/route.ts src/app/api/me/org/route.test.ts src/app/(dashboard)/patients/[id]/visit-records/print/page.tsx src/app/(dashboard)/patients/[id]/visit-records/print/page.test.tsx src/app/(dashboard)/patients/[id]/medications/print/page.tsx src/app/(dashboard)/patients/[id]/medications/print/page.test.tsx`;
+    `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/me/org/route.ts src/app/api/me/org/route.test.ts src/app/(dashboard)/patients/[id]/visit-records/print/page.tsx src/app/(dashboard)/patients/[id]/visit-records/print/page.test.tsx src/app/(dashboard)/patients/[id]/medications/print/page.tsx src/app/(dashboard)/patients/[id]/medications/print/page.test.tsx`;
+    `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/me/org/route.ts src/app/api/me/org/route.test.ts src/app/(dashboard)/patients/[id]/visit-records/print/page.tsx src/app/(dashboard)/patients/[id]/visit-records/print/page.test.tsx src/app/(dashboard)/patients/[id]/medications/print/page.tsx src/app/(dashboard)/patients/[id]/medications/print/page.test.tsx`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm format:check`.
+  - validation results:
+    Prettier write passed for owned files. Route test passed (1 file / 2 tests). Visit-record print
+    page test passed (1 file / 9 tests). Medication print page test passed (1 file / 4 tests). API
+    response shape guard passed (118 allowlisted violations, 0 new violations). Plans active board
+    check passed. Scoped ESLint passed. Scoped Prettier check passed. Scoped `git diff --check`
+    passed. Full typecheck passed. `pnpm format:check` again confirmed owned changed files are
+    formatted, then failed on unrelated pre-existing untracked Markdown files under `projects/` and
+    `skills/`; those files were not modified or staged.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 118 allowlisted response-shape violations. Next immediate
+    allowlist targets start with `src/app/api/medication-cycles/[id]/history/route.ts`, followed by
+    `src/app/api/medication-cycles/[id]/transition/route.ts`.
+  - next action:
+    Commit this STATE entry separately, push `96006d240` plus the state commit to `origin/main`, then
+    continue with `src/app/api/medication-cycles/[id]/history/route.ts` under the same Oracle-paused
+    and no-legacy-root constraints.
+
 - codex: `API-CONTRACT-001AS` dashboard workflow success envelope cleanup.
   - commit:
     Implementation, Plans/allowlist, and route snapshot update committed as `d034ec09b` (`fix(api):
