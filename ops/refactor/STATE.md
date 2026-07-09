@@ -34095,3 +34095,92 @@ GET` passed 3 tests with 381 skipped; expected audit mock stderr was emitted.
   Commit this ledger update with only `ops/refactor/STATE.md` staged, then
   continue the next allowlist cleanup from
   `src/app/api/pharmacy-drug-stock-requests/[id]/route.ts` unless redirected.
+
+## 2026-07-09 API-CONTRACT-001DE — pharmacy drug stock request decision envelope
+
+- current task:
+  `API-CONTRACT-001` allowlist debt reduction focused on
+  `src/app/api/pharmacy-drug-stock-requests/[id]/route.ts` PATCH decision
+  success.
+- files inspected:
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`;
+  `package.json`;
+  `src/app/api/pharmacy-drug-stock-requests/[id]/route.ts`;
+  `src/app/api/pharmacy-drug-stock-requests/[id]/route.test.ts`;
+  `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`;
+  `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`;
+  `src/app/api/__tests__/protected-get-routes.test.ts`;
+  `src/app/api/__tests__/protected-post-routes.test.ts`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `docs/plans-archive.md`.
+- files changed:
+  `src/app/api/pharmacy-drug-stock-requests/[id]/route.ts`;
+  `src/app/api/pharmacy-drug-stock-requests/[id]/route.test.ts`;
+  `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`;
+  `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `docs/plans-archive.md`; `ops/refactor/STATE.md`.
+- bugs found:
+  `PATCH /api/pharmacy-drug-stock-requests/:id` returned approval/rejection
+  result fields at the response root, keeping one response-shape allowlist
+  violation.
+- bugs fixed:
+  PATCH decision success now returns
+  `success({ data: { request, stock } })`. The drug master formulary decision
+  mutation unwraps `payload.data` before using `request.status` for the existing
+  approval/rejection toast and query invalidation flow.
+- security risks found:
+  No new auth/authz, tenant isolation, validation, audit, or PHI minimization
+  issue in this slice. Existing admin permission, org-scoped request lookup,
+  pending-only optimistic claim, approval payload validation, preferred generic
+  validation, stock upsert, audit minimization, and conflict/error behavior
+  remain in place.
+- security risks reduced:
+  Removed one legacy public success root from the drug stock request decision
+  endpoint without changing authorization, validation, concurrency, audit, or
+  stock mutation behavior.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this was a response contract cleanup. Existing transaction and upsert
+  behavior are unchanged.
+- UI/UX note:
+  No visible layout or interaction change. This was API response contract and
+  reader schema work only, so image generation was not applicable.
+- Oracle note:
+  No Oracle/GPT-5.5 Pro consult was run. This was a bounded allowlist envelope
+  migration following the established local pattern, with focused route/UI tests
+  and contract gates available.
+- validation commands:
+  `pnpm exec prettier --write Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-drug-stock-requests/[id]/route.ts' 'src/app/api/pharmacy-drug-stock-requests/[id]/route.test.ts' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`;
+  `pnpm vitest run 'src/app/api/pharmacy-drug-stock-requests/[id]/route.test.ts' --reporter=dot --testTimeout=30000`;
+  `pnpm vitest run 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' --reporter=dot --testTimeout=30000`;
+  `pnpm api-response-shape:check`; `pnpm plans:active:check`;
+  `pnpm exec eslint 'src/app/api/pharmacy-drug-stock-requests/[id]/route.ts' 'src/app/api/pharmacy-drug-stock-requests/[id]/route.test.ts' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`;
+  `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-drug-stock-requests/[id]/route.ts' 'src/app/api/pharmacy-drug-stock-requests/[id]/route.test.ts' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`;
+  `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-drug-stock-requests/[id]/route.ts' 'src/app/api/pharmacy-drug-stock-requests/[id]/route.test.ts' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+- validation results:
+  Prettier write/check passed. Pharmacy drug stock request decision route tests
+  passed 1 file / 9 tests. Drug master content tests passed 1 file / 97 tests
+  after fixing a local variable-name collision in the reader change. The route
+  is not present in the protected GET/POST route matrices by name, so no matrix
+  subset was available for this slice. Scoped ESLint,
+  `api-response-shape:check` (67 allowlisted violations, 0 new),
+  `plans:active:check`, scoped diff check, and typecheck passed.
+- commit:
+  Implementation, reader/schema updates, tests, allowlist cleanup, and
+  Plans/archive sync were committed as
+  `51e4e70082baee7bfcc3f60b90d249675a3197db`
+  (`fix(api): envelope drug stock request decision`). Push not performed.
+- remaining work:
+  `API-CONTRACT-001` remains Partial with 67 allowlisted violations. Next
+  allowlist head is
+  `src/app/api/pharmacy-drug-stock-templates/[id]/apply/route.ts` with two
+  expected legacy response shape violations. Existing unrelated dirty/untracked
+  memory/docs and `.codex`/`.harness-mem` files remain unstaged.
+- next action:
+  Commit this ledger update with only `ops/refactor/STATE.md` staged, then
+  continue the next allowlist cleanup from
+  `src/app/api/pharmacy-drug-stock-templates/[id]/apply/route.ts` unless
+  redirected.
