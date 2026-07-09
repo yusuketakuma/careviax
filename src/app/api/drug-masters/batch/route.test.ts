@@ -99,16 +99,48 @@ describe('/api/drug-masters/batch', () => {
       }),
     );
     await expect(response.json()).resolves.toMatchObject({
-      '1111111A': expect.objectContaining({
-        drug_name: 'アセトアミノフェン',
-        tall_man_name: 'acetAMINOPHEN',
-      }),
-      by_drug_master_id: {
-        drug_1: expect.objectContaining({
-          yj_code: '1111111A',
+      data: {
+        '1111111A': expect.objectContaining({
+          drug_name: 'アセトアミノフェン',
+          tall_man_name: 'acetAMINOPHEN',
         }),
+        by_drug_master_id: {
+          drug_1: expect.objectContaining({
+            yj_code: '1111111A',
+          }),
+        },
       },
     });
+  });
+
+  it('returns cached drug master batch results in a data envelope', async () => {
+    const body = { yj_codes: ['1111111A'] };
+
+    const first = await POST(createRequest(body));
+    expect(first.status).toBe(200);
+    expectNoStore(first);
+    await expect(first.json()).resolves.toMatchObject({
+      data: {
+        '1111111A': expect.objectContaining({ drug_name: 'アセトアミノフェン' }),
+        by_drug_master_id: {
+          drug_1: expect.objectContaining({ yj_code: '1111111A' }),
+        },
+      },
+    });
+
+    drugMasterFindManyMock.mockClear();
+    const second = await POST(createRequest(body));
+    expect(second.status).toBe(200);
+    expectNoStore(second);
+    await expect(second.json()).resolves.toMatchObject({
+      data: {
+        '1111111A': expect.objectContaining({ drug_name: 'アセトアミノフェン' }),
+        by_drug_master_id: {
+          drug_1: expect.objectContaining({ yj_code: '1111111A' }),
+        },
+      },
+    });
+    expect(drugMasterFindManyMock).not.toHaveBeenCalled();
   });
 
   it('keeps a valid lookup miss as an empty success instead of a false error', async () => {
@@ -118,7 +150,7 @@ describe('/api/drug-masters/batch', () => {
 
     expect(response.status).toBe(200);
     expectNoStore(response);
-    await expect(response.json()).resolves.toEqual({ by_drug_master_id: {} });
+    await expect(response.json()).resolves.toEqual({ data: { by_drug_master_id: {} } });
   });
 
   it('deduplicates over the combined lookup keys before enforcing the 200 key limit', async () => {
@@ -189,13 +221,15 @@ describe('/api/drug-masters/batch', () => {
       select: expect.any(Object),
     });
     await expect(response.json()).resolves.toMatchObject({
-      YJ_SELECTED: expect.objectContaining({ id: 'drug_master_selected' }),
-      by_drug_master_id: {
-        drug_master_selected: expect.objectContaining({
-          id: 'drug_master_selected',
-          yj_code: 'YJ_SELECTED',
-          tall_man_name: 'selectedTALL',
-        }),
+      data: {
+        YJ_SELECTED: expect.objectContaining({ id: 'drug_master_selected' }),
+        by_drug_master_id: {
+          drug_master_selected: expect.objectContaining({
+            id: 'drug_master_selected',
+            yj_code: 'YJ_SELECTED',
+            tall_man_name: 'selectedTALL',
+          }),
+        },
       },
     });
   });
@@ -217,9 +251,11 @@ describe('/api/drug-masters/batch', () => {
       select: expect.any(Object),
     });
     await expect(response.json()).resolves.toMatchObject({
-      '1111111A': expect.objectContaining({ id: 'drug_1' }),
-      by_drug_master_id: {
-        drug_1: expect.objectContaining({ yj_code: '1111111A' }),
+      data: {
+        '1111111A': expect.objectContaining({ id: 'drug_1' }),
+        by_drug_master_id: {
+          drug_1: expect.objectContaining({ yj_code: '1111111A' }),
+        },
       },
     });
   });

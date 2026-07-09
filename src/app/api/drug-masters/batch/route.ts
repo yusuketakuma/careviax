@@ -101,7 +101,7 @@ async function authenticatedPOST(req: NextRequest) {
   const cacheKey = buildDrugMasterBatchCacheKey(yjCodes, drugMasterIds);
   const cached = drugMasterDetailCache.get<DrugMasterBatchResponseBody>(cacheKey);
   if (cached !== undefined) {
-    return success(cached);
+    return success({ data: cached });
   }
 
   const responseBody = await runWithRequestAuthContext(ctx, () =>
@@ -109,7 +109,7 @@ async function authenticatedPOST(req: NextRequest) {
   );
   drugMasterDetailCache.set(cacheKey, responseBody, DRUG_MASTER_DETAIL_CACHE_TTL_MS);
 
-  return success(responseBody);
+  return success({ data: responseBody });
 }
 
 export async function POST(req: NextRequest) {

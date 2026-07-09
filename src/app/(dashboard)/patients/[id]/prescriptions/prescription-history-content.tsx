@@ -1488,7 +1488,11 @@ export function PrescriptionHistoryContent() {
       });
       // 取得失敗を黙って {} に潰さず error 状態へ。エンリッチは補助なので画面全体は止めず、
       // timeline 上部に非ブロッキング通知を出して「薬剤情報が欠けている可能性」を可視化する。
-      return readApiJson<DrugMasterBatchResponse>(res, '薬剤マスタの取得に失敗しました');
+      const payload = await readApiJson<{ data: DrugMasterBatchResponse }>(
+        res,
+        '薬剤マスタの取得に失敗しました',
+      );
+      return payload.data;
     },
     enabled: !!orgId && (allDrugCodes.length > 0 || allDrugMasterIds.length > 0),
     staleTime: 5 * 60_000,

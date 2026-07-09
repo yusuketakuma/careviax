@@ -1590,7 +1590,7 @@ describe('PrescriptionHistoryContent url/header convergence', () => {
         }),
       ],
     });
-    const fetchMock = stubFetch({});
+    const fetchMock = stubFetch({ data: {} });
     try {
       await queryConfigs.get('drug-masters-batch')!.queryFn();
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
