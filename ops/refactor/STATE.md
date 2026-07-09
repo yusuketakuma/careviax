@@ -42,6 +42,10 @@
 ## 直近の作業
 
 - codex: `STOCK-VISIT-API-CAPABILITY-GUARD-001` visit observation API fail-closed guard.
+  - commit:
+    Implementation, Plans cleanup, and ledger evidence committed as `f2e7b6e97`
+    (`fix(stock): fail closed when visit observation tables are unavailable`) and pushed to
+    `origin/main`.
   - current task:
     `STOCK-001-VISIT-UI` の前段 safety slice として、
     `POST /api/visit-records/:id/medication-stock-observations` が migration/table missing を
