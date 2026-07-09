@@ -7,6 +7,7 @@ import {
 } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  getClinicalSyncFhirValidationDetail,
   listClinicalSyncConflicts,
   type ClinicalSyncReviewConflictCode,
 } from './standard-clinical-sync-conflict-review';
@@ -14,12 +15,14 @@ import {
 function createMockDb() {
   return {
     clinicalSyncQueueItem: {
+      findFirst: vi.fn(),
       findMany: vi.fn(),
     },
     clinicalExternalReference: {
       findMany: vi.fn(),
     },
     clinicalFhirResourceCache: {
+      findFirst: vi.fn(),
       findMany: vi.fn(),
     },
   };
@@ -192,5 +195,154 @@ describe('listClinicalSyncConflicts', () => {
       }),
     ).rejects.toThrow('Unsupported clinical sync review conflict code');
     expect(db.clinicalSyncQueueItem.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('getClinicalSyncFhirValidationDetail', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns capped validation diagnostics without exposing internal IDs, hashes, or raw summaries', async () => {
+    const db = createMockDb();
+    db.clinicalSyncQueueItem.findFirst.mockResolvedValue(
+      createQueueRow({
+        display_id: 'csq0000000001',
+        fhir_resource_cache_id: 'cache_1',
+        last_error_code: 'FHIR_PROFILE_VALIDATION_REQUIRED',
+      }),
+    );
+    db.clinicalFhirResourceCache.findFirst.mockResolvedValue({
+      resource_type: ClinicalFhirResourceType.medication_request,
+      resource_id: 'SHOULD_NOT_LEAK_RESOURCE_ID',
+      version_id: 'SHOULD_NOT_LEAK_VERSION_ID',
+      profile_urls: [
+        'http://jpfhir.jp/fhir/core/StructureDefinition/JP_MedicationRequest',
+        `https://example.test/${'x'.repeat(600)}`,
+      ],
+      validation_status: ClinicalFhirValidationStatus.unsupported_profile,
+      validation_errors: [
+        {
+          code: 'JP_CORE_PROFILE_URL_REQUIRED_FOR_VALID_STATUS',
+          path: '$.meta.profile',
+          expected: `http://example.test/${'y'.repeat(600)}`,
+          detail: 'SHOULD_NOT_LEAK_RAW_DETAIL',
+        },
+        {
+          code: 'EXTERNAL_VALIDATOR_ERRORS_REDACTED',
+          path: '$',
+          raw_patient_id: 'SHOULD_NOT_LEAK_PATIENT_ID',
+        },
+      ],
+      fetched_at: new Date('2026-07-09T01:00:00.000Z'),
+      last_modified_at: new Date('2026-07-09T00:00:00.000Z'),
+      updated_at: new Date('2026-07-09T02:00:00.000Z'),
+      content_hash: 'SHOULD_NOT_LEAK_CONTENT_HASH',
+      identifier_summary: 'SHOULD_NOT_LEAK_IDENTIFIER_SUMMARY',
+      normalized_summary: 'SHOULD_NOT_LEAK_NORMALIZED_SUMMARY',
+    });
+
+    const detail = await getClinicalSyncFhirValidationDetail(db as never, {
+      orgId: 'org_1',
+      queueDisplayId: 'csq0000000001',
+    });
+
+    expect(detail).toMatchObject({
+      queue_display_id: 'csq0000000001',
+      conflict_kind: 'fhir_profile_validation_required',
+      profile_validation_review_required: true,
+      fhir_resource: {
+        resource_type: ClinicalFhirResourceType.medication_request,
+        resource_id_available: true,
+        version_id_available: true,
+        validation_status: ClinicalFhirValidationStatus.unsupported_profile,
+        fetched_at: '2026-07-09T01:00:00.000Z',
+        last_modified_at: '2026-07-09T00:00:00.000Z',
+        updated_at: '2026-07-09T02:00:00.000Z',
+      },
+      validation_diagnostics: {
+        issue_count: 2,
+        returned_issue_count: 2,
+        truncated: false,
+        issues: [
+          {
+            code: 'JP_CORE_PROFILE_URL_REQUIRED_FOR_VALID_STATUS',
+            path: '$.meta.profile',
+          },
+          {
+            code: 'EXTERNAL_VALIDATOR_ERRORS_REDACTED',
+            path: '$',
+            expected: null,
+          },
+        ],
+      },
+    });
+    expect(detail?.fhir_resource?.profile_urls[1]?.length).toBe(500);
+    expect(detail?.validation_diagnostics.issues[0]?.expected?.length).toBe(500);
+    expect(JSON.stringify(detail)).not.toContain('SHOULD_NOT_LEAK');
+    expect(JSON.stringify(detail)).not.toContain('cache_1');
+  });
+
+  it('uses queue_display_id and FHIR validation conflict conditions before reading the cache', async () => {
+    const db = createMockDb();
+    db.clinicalSyncQueueItem.findFirst.mockResolvedValue(null);
+
+    const detail = await getClinicalSyncFhirValidationDetail(db as never, {
+      orgId: 'org_1',
+      queueDisplayId: 'csq0000000001',
+    });
+
+    expect(detail).toBeNull();
+    expect(db.clinicalSyncQueueItem.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          display_id: 'csq0000000001',
+          direction: ClinicalIntegrationDirection.inbound,
+          status: ClinicalQueueStatus.conflict_requires_review,
+          operation: { startsWith: 'yrese.' },
+          last_error_code: 'FHIR_PROFILE_VALIDATION_REQUIRED',
+        }),
+      }),
+    );
+    expect(
+      JSON.stringify(db.clinicalSyncQueueItem.findFirst.mock.calls[0]?.[0]?.select),
+    ).not.toContain('idempotency_key_hash');
+    expect(db.clinicalFhirResourceCache.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('caps returned validation issues', async () => {
+    const db = createMockDb();
+    db.clinicalSyncQueueItem.findFirst.mockResolvedValue(
+      createQueueRow({
+        display_id: 'csq0000000001',
+        fhir_resource_cache_id: 'cache_1',
+        last_error_code: 'FHIR_PROFILE_VALIDATION_REQUIRED',
+      }),
+    );
+    db.clinicalFhirResourceCache.findFirst.mockResolvedValue({
+      resource_type: ClinicalFhirResourceType.medication_request,
+      resource_id: 'medreq_1',
+      version_id: null,
+      profile_urls: [],
+      validation_status: ClinicalFhirValidationStatus.invalid,
+      validation_errors: Array.from({ length: 55 }, (_, index) => ({
+        code: `ISSUE_${index}`,
+      })),
+      fetched_at: new Date('2026-07-09T01:00:00.000Z'),
+      last_modified_at: null,
+      updated_at: new Date('2026-07-09T02:00:00.000Z'),
+    });
+
+    const detail = await getClinicalSyncFhirValidationDetail(db as never, {
+      orgId: 'org_1',
+      queueDisplayId: 'csq0000000001',
+    });
+
+    expect(detail?.validation_diagnostics).toMatchObject({
+      issue_count: 55,
+      returned_issue_count: 50,
+      truncated: true,
+    });
   });
 });
