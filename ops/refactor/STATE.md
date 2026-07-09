@@ -52,6 +52,8 @@
 ## 直近の作業
 
 - codex: patient prescription/history readable typography and independent FE/API states.
+  - commit:
+    `2e6e95fca fix(patients): align history states and readability`.
   - current task:
     `/patients/[id]/prescriptions` と処方詳細内の共通過去歴サマリー/クイックリンクを、
     UI SSOT の12px下限・44px操作・原因+次行動・partial/stale stateへ揃え、既存の患者処方GETと
