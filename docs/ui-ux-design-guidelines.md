@@ -958,6 +958,20 @@ PWA + Dexie のオフライン訪問業務、および AWS 依存サービスの
 | change_requested | confirm | 変更要望=要確認 |
 | unreachable      | blocked | 連絡不能        |
 
+### オフライン同期状態 — `OFFLINE_SYNC_STATUS_ROLE`
+
+「6.6」のレコード同期 4 状態バッジ（+ 競合）。実装正本は共通 `SyncStateBadge`
+（`src/components/ui/sync-state-badge.tsx`、2026-07-10 追加）。画面ローカルの role マップ
+再実装は禁止。送信失敗は常時表示から外さない（false-success 防止「2.7」）。
+
+| value         | role    | 備考                                                                   |
+| ------------- | ------- | ---------------------------------------------------------------------- |
+| saved_locally | info    | 端末保存済（行動ベース文言「6.6」）                                    |
+| queued        | info    | 送信待ち。waiting（紫=別の人の確認待ち）をシステム応答待ちに流用しない |
+| failed        | blocked | 送信失敗。4 状態中最も目立たせ、再試行導線必須                         |
+| synced        | done    | 同期済み                                                               |
+| conflict      | confirm | 競合＝要確認（p0_35 競合解消画面へ）                                   |
+
 ### PatientStatusIcon — `PATIENT_STATUS_ICON_ROLE`
 
 患者ステータスアイコン（dashboard / my-day の患者カード）。旧実装の raw Tailwind 12色

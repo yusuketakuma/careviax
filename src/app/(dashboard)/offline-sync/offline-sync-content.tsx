@@ -6,7 +6,7 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { DataTable, type DataTableColumnMeta } from '@/components/ui/data-table';
-import { StateBadge } from '@/components/ui/state-badge';
+import { SyncStateBadge } from '@/components/ui/sync-state-badge';
 import { decryptOfflinePayload } from '@/lib/offline/crypto';
 import { OUTCOME_LABELS } from '@/lib/constants/visit';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -20,7 +20,6 @@ import {
   resetFailedSyncQueueRetries,
 } from '@/lib/stores/sync-engine';
 import { parseCachedVisitBriefCardPayload } from '@/lib/visits/visit-brief-cache';
-import type { StatusRole } from '@/lib/constants/status-tokens';
 import {
   buildOfflineSyncConflictView,
   buildOfflineSyncRows,
@@ -30,7 +29,6 @@ import {
   getOfflineSyncRetryAllDisabledReason,
   type OfflineSyncConflictView,
   type OfflineSyncRow,
-  type OfflineSyncRowStatusKey,
 } from './offline-sync.shared';
 import { seedOfflineSyncDemoData } from './offline-sync.demo';
 
@@ -40,12 +38,6 @@ import { seedOfflineSyncDemoData } from './offline-sync.demo';
  * (最新を使う / 自分の入力で上書き)をこの画面に集約する。
  */
 
-// 同期キューの行状態 → 6軸セマンティックロール。競合=要確認、失敗=止まっている理由、送信待ち=情報(待ち)。
-const STATUS_ROLE: Record<OfflineSyncRowStatusKey, StatusRole> = {
-  conflict: 'confirm',
-  failed: 'blocked',
-  queued: 'info',
-};
 const OFFLINE_SYNC_LOCAL_OVERWRITE_DISABLED_REASON_ID =
   'offline-sync-local-overwrite-disabled-reason';
 const OFFLINE_SYNC_RETRY_ALL_DISABLED_REASON_ID = 'offline-sync-retry-all-disabled-reason';
@@ -240,9 +232,7 @@ export function OfflineSyncContent() {
         exportValue: (row) => row.statusLabel,
       } satisfies DataTableColumnMeta<OfflineSyncRow>,
       cell: ({ row }) => (
-        <StateBadge role={STATUS_ROLE[row.original.statusKey]}>
-          {row.original.statusLabel}
-        </StateBadge>
+        <SyncStateBadge status={row.original.statusKey}>{row.original.statusLabel}</SyncStateBadge>
       ),
     },
     {

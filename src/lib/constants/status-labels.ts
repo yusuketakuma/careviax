@@ -292,6 +292,31 @@ export const PATIENT_CONTACT_STATUS_ROLE: Record<string, StatusRoleOrNeutral> = 
   unreachable: 'blocked',
 };
 
+/**
+ * オフライン同期の行内状態(SSOT 6.6 の 4 状態バッジ + 競合)。写像は 6.6 で確定:
+ * 端末保存済=info、送信待ち=info(システム応答待ちに waiting(紫)を流用しない — waiting は
+ * 「別の人の確認待ち」専用)、送信失敗=blocked(4 状態中最も目立たせ、再試行導線必須。
+ * 常時表示から外さない=false-success 防止 2.7)、同期済み=done、競合=confirm。
+ */
+export type OfflineSyncStatus = 'saved_locally' | 'queued' | 'failed' | 'synced' | 'conflict';
+
+export const OFFLINE_SYNC_STATUS_ROLE = {
+  saved_locally: 'info',
+  queued: 'info',
+  failed: 'blocked',
+  synced: 'done',
+  conflict: 'confirm',
+} as const satisfies Record<OfflineSyncStatus, StatusRoleOrNeutral>;
+
+/** 行動ベース文言(6.6): 技術用語でなく利用者が取る行動/状態が分かる語。 */
+export const OFFLINE_SYNC_STATUS_LABELS: Record<OfflineSyncStatus, string> = {
+  saved_locally: '端末保存済',
+  queued: '送信待ち',
+  failed: '送信失敗',
+  synced: '同期済み',
+  conflict: '競合',
+};
+
 /** PatientStatusIcon(患者ステータスアイコン、dashboard/my-day 患者カード).
  * stable は意図的に neutral(旧「安定=緑」不採用、CASE active=neutral と同じ判断)。
  * urgent(リスク最上位 level=high/score>=7)=blocked、overdue_visit=confirm(まだ動ける
