@@ -197,7 +197,7 @@ const authenticatedDELETE = withAuthContext(
       payload: { source: 'facility_visit_batch_delete' },
     });
 
-    return success({ deleted: true });
+    return success({ data: { deleted: true } });
   },
   {
     permission: 'canVisit',
@@ -408,7 +408,7 @@ const authenticatedPATCH = withAuthContext(
       payload: { source: 'facility_visit_batch_reorder' },
     });
 
-    return success(result);
+    return success({ data: result });
   },
   {
     permission: 'canVisit',

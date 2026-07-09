@@ -323,7 +323,7 @@ describe('/api/facility-visit-batches/[id]', () => {
       const response = await DELETE(createRequest(), routeContext('batch_1'));
 
       expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toEqual({ deleted: true });
+      await expect(response.json()).resolves.toEqual({ data: { deleted: true } });
       expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function));
       expect(facilityVisitBatchFindFirstMock).toHaveBeenCalledWith({
         where: { id: 'batch_1', org_id: 'org_1' },
@@ -503,7 +503,7 @@ describe('/api/facility-visit-batches/[id]', () => {
       const response = await DELETE(createRequest(), routeContext('batch_1'));
 
       expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toEqual({ deleted: true });
+      await expect(response.json()).resolves.toEqual({ data: { deleted: true } });
       // org-wide ロールは担当アクセス突合(count)を一切行わずに削除できる
       expect(visitScheduleCountMock).not.toHaveBeenCalled();
       expectDeleteScheduleUnlinkWrites();
@@ -528,7 +528,7 @@ describe('/api/facility-visit-batches/[id]', () => {
       const response = await DELETE(createRequest(), routeContext('batch_1'));
 
       expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toEqual({ deleted: true });
+      await expect(response.json()).resolves.toEqual({ data: { deleted: true } });
       expect(visitScheduleCountMock).not.toHaveBeenCalled();
       expect(facilityVisitBatchDeleteMock).toHaveBeenCalledWith({
         where: { id: 'batch_1' },
@@ -836,8 +836,10 @@ describe('/api/facility-visit-batches/[id]', () => {
       expect(response.status).toBe(200);
       expectSensitiveNoStore(response);
       await expect(response.json()).resolves.toEqual({
-        updated: true,
-        order: ['schedule_2', 'schedule_1'],
+        data: {
+          updated: true,
+          order: ['schedule_2', 'schedule_1'],
+        },
       });
       // org-wide ロールは担当アクセス突合(count)を行わずに並び替えできる
       expect(visitScheduleCountMock).not.toHaveBeenCalled();
@@ -898,8 +900,10 @@ describe('/api/facility-visit-batches/[id]', () => {
 
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toEqual({
-        updated: true,
-        order: ['schedule_2', 'schedule_1'],
+        data: {
+          updated: true,
+          order: ['schedule_2', 'schedule_1'],
+        },
       });
       expect(facilityVisitBatchFindFirstMock).toHaveBeenCalledWith({
         where: { id: 'batch_1', org_id: 'org_1' },
