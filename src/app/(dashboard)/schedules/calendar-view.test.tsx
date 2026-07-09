@@ -2,7 +2,7 @@
 
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createQueryClientWrapper } from '@/test/query-client-test-utils';
+import { createQueryClientWrapper, createTestQueryClient } from '@/test/query-client-test-utils';
 
 // useMonthSchedules は useRealtimeQuery 経由。これをモックして取得状態(error/empty)を制御する。
 const { realtimeQueryMock, refetchMock, orgIdMock } = vi.hoisted(() => ({
@@ -16,8 +16,8 @@ vi.mock('@/lib/hooks/use-realtime-query', () => ({ useRealtimeQuery: realtimeQue
 
 import { CalendarView } from './calendar-view';
 
-function renderCalendar() {
-  return render(<CalendarView />, { wrapper: createQueryClientWrapper() });
+function renderCalendar(queryClient = createTestQueryClient()) {
+  return render(<CalendarView />, { wrapper: createQueryClientWrapper(queryClient) });
 }
 
 function latestRealtimeQueryOptions() {
@@ -84,6 +84,28 @@ describe('CalendarView false-empty', () => {
     // 取得成功・0件は ErrorState を出さず、通常の空カレンダー(日セル)を描画する。
     expect(screen.queryByText('スケジュールを取得できませんでした')).toBeNull();
     expect(screen.getAllByRole('button', { name: DAY_CELL_NAME }).length).toBeGreaterThan(0);
+  });
+
+  it('keeps cached month data visible and labels it stale after a refetch failure', () => {
+    realtimeQueryMock.mockReturnValue({
+      data: [],
+      isLoading: false,
+      isError: true,
+      isRefetchError: true,
+      error: new Error('patient=山田 太郎 token=secret'),
+      refetch: refetchMock,
+      connected: true,
+    });
+
+    renderCalendar();
+
+    expect(screen.getByText('前回取得した月間スケジュールを表示中')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: DAY_CELL_NAME }).length).toBeGreaterThan(0);
+    expect(screen.queryByText('スケジュールを取得できませんでした')).toBeNull();
+    expect(document.body.textContent).not.toContain('token=secret');
+
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(refetchMock).toHaveBeenCalledOnce();
   });
 
   it('uses schedule-scoped realtime invalidation for the monthly schedule query', () => {
@@ -203,6 +225,92 @@ describe('CalendarView false-empty', () => {
     expect(fetchMock).toHaveBeenCalled();
   });
 
+  it('shows billing preview loading instead of temporarily implying there are no warnings', () => {
+    realtimeQueryMock.mockReturnValue({
+      data: [
+        {
+          id: 'sch_1',
+          scheduled_date: currentDateKey(),
+          schedule_status: 'planned',
+          visit_type: 'regular',
+          pharmacist_id: 'ph_1',
+          case_id: 'case_1',
+          cycle_id: null,
+          case_: { patient: { id: 'p1', name: '患者 太郎' } },
+        },
+      ],
+      isLoading: false,
+      isError: false,
+      refetch: refetchMock,
+      connected: true,
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>(() => undefined)),
+    );
+
+    renderCalendar();
+
+    expect(screen.getByRole('status', { name: '算定プレビューを確認中' })).toBeTruthy();
+    expect(screen.queryByText('算定プレビューを読み込めませんでした')).toBeNull();
+  });
+
+  it('keeps cached billing preview visible and labels it stale after refresh failure', async () => {
+    const dateKey = currentDateKey();
+    const schedule = {
+      id: 'sch_1',
+      scheduled_date: dateKey,
+      schedule_status: 'planned' as const,
+      visit_type: 'regular',
+      pharmacist_id: 'ph_1',
+      case_id: 'case_1',
+      cycle_id: null,
+      case_: { patient: { id: 'p1', name: '患者 太郎' } },
+    };
+    realtimeQueryMock.mockReturnValue({
+      data: [schedule],
+      isLoading: false,
+      isError: false,
+      refetch: refetchMock,
+      connected: true,
+    });
+    const queryClient = createTestQueryClient();
+    queryClient.setQueryData(
+      [
+        'calendar-billing-preview-map',
+        'org_1',
+        [
+          {
+            key: 'sch_1',
+            case_id: 'case_1',
+            proposed_date: dateKey,
+            pharmacist_id: 'ph_1',
+            visit_type: 'regular',
+          },
+        ],
+      ],
+      new Map([
+        [
+          'sch_1',
+          {
+            alerts: [],
+            cadence: { next_billable_date: null },
+          },
+        ],
+      ]),
+    );
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify({}), { status: 500 }))),
+    );
+
+    renderCalendar(queryClient);
+
+    expect(await screen.findByText('前回取得した算定プレビューを表示中')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: DAY_CELL_NAME }).length).toBeGreaterThan(0);
+    expect(screen.queryByText('算定プレビューを読み込めませんでした')).toBeNull();
+  });
+
   it('shows patient operational summary chips in the selected day panel', () => {
     const todayKey = currentDateKey();
     realtimeQueryMock.mockReturnValue({
@@ -270,6 +378,69 @@ describe('CalendarView false-empty', () => {
     expect(screen.getByText('アレルギー')).toBeTruthy();
     expect(screen.getByText('検査値要確認')).toBeTruthy();
     expect(screen.getByText('保険未確認')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '閉じる' }).className).toContain('size-11');
+    expect(screen.getByRole('link', { name: '患者詳細' }).className).toContain('min-h-11');
+    expect(screen.getByRole('link', { name: '訪問記録' }).className).toContain('min-h-11');
+  });
+
+  it('uses encoded shared navigation helpers for patient and visit record links', () => {
+    const todayKey = currentDateKey();
+    const patientId = 'patient/1?tab=x#frag';
+    const scheduleId = 'schedule/1?tab=x#frag';
+    realtimeQueryMock.mockReturnValue({
+      data: [
+        {
+          id: scheduleId,
+          scheduled_date: todayKey,
+          schedule_status: 'planned',
+          visit_type: 'regular',
+          pharmacist_id: 'ph_1',
+          case_id: 'case_1',
+          cycle_id: null,
+          case_: { patient: { id: patientId, name: '患者 太郎' } },
+        },
+      ],
+      isLoading: false,
+      isError: false,
+      refetch: refetchMock,
+      connected: true,
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(Response.json({ data: {} }))),
+    );
+
+    renderCalendar();
+
+    const today = new Date();
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: `${today.getMonth() + 1}月${today.getDate()}日 1件`,
+      }),
+    );
+
+    expect(screen.getByRole('link', { name: '患者詳細' }).getAttribute('href')).toBe(
+      `/patients/${encodeURIComponent(patientId)}`,
+    );
+    expect(screen.getByRole('link', { name: '訪問記録' }).getAttribute('href')).toBe(
+      `/visits/${encodeURIComponent(scheduleId)}/record`,
+    );
+  });
+
+  it('keeps month navigation controls at the 44px touch target', () => {
+    realtimeQueryMock.mockReturnValue({
+      data: [],
+      isLoading: false,
+      isError: false,
+      refetch: refetchMock,
+      connected: true,
+    });
+
+    renderCalendar();
+
+    expect(screen.getByRole('button', { name: '前月' }).className).toContain('size-11');
+    expect(screen.getByRole('button', { name: '今月' }).className).toContain('min-h-11');
+    expect(screen.getByRole('button', { name: '翌月' }).className).toContain('size-11');
   });
 });
 

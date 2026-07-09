@@ -51,6 +51,130 @@
 
 ## 直近の作業
 
+- codex: schedule calendar stale-state, safe-navigation, touch-target, and typography alignment.
+  - current task:
+    `/schedules` 月カレンダーの主スケジュールと算定プレビューを独立した loading/error/stale
+    状態へ揃え、患者/訪問導線、月移動、日詳細、7列内ラベルを安全かつ読みやすくする。
+  - files inspected:
+    `docs/ui-ux-design-guidelines.md`, `docs/frontend-screen-contracts.md`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md`,
+    `src/lib/hooks/use-realtime-query.ts`, `src/lib/hooks/use-stale-after-refetch-error.ts`,
+    patient/visit navigation helpers, `src/app/api/visit-schedules/route.ts` + tests,
+    `src/app/api/visit-schedule-proposals/billing-preview-batch/route.ts` + tests,
+    calendar fetch/helpers + tests, and the changed files below.
+  - files changed:
+    `.agent-loop/UI_AUDIT_MATRIX.md`, `docs/frontend-screen-contracts.md`,
+    `src/app/(dashboard)/schedules/calendar-view.tsx`,
+    `src/app/(dashboard)/schedules/calendar-view.test.tsx`, and
+    `src/app/(dashboard)/schedules/schedule-calendar-typography.test.ts`.
+  - bugs found / fixed:
+    A monthly realtime refetch failure previously replaced valid cached schedules with the full
+    initial error. Billing-preview initial loading temporarily looked like “no billing warning,” and
+    a preview refetch failure did not distinguish cached from current data. Both query families now
+    expose independent shape-matched loading, retryable initial error, and cached stale banners while
+    preserving usable authorized data. Patient and visit-record links now use shared single-segment
+    encoders instead of raw ID interpolation. Previous/this/next month, detail close, patient detail,
+    and visit record controls now keep 44px targets. Five 9/10px status/safety/billing/overflow labels
+    now meet the 12px minimum; the live count is 38 files / 82 occurrences with a static ratchet.
+  - frontend/backend parity:
+    The monthly list remains `GET /api/visit-schedules` and the supplementary cadence check remains
+    bounded `POST /api/visit-schedule-proposals/billing-preview-batch`; both require `canVisit`,
+    validate request inputs, run under org/RLS scope, and return sensitive no-store responses. The UI
+    no longer presents missing preview data as warning-free and does not invent a new write/action.
+  - security/privacy:
+    Hostile patient/schedule IDs are encoded as one path segment through `buildPatientHref` and
+    `buildVisitRecordHref`. Provider errors, patient names embedded in errors, tokens, and storage
+    details are not rendered. Cached PHI is retained only after a previously authorized response;
+    auth, RLS, assignment, audit, export, and external-sharing boundaries are unchanged.
+  - performance:
+    No request or polling interval was added. The existing realtime schedule query and one batch
+    preview query are reused; a module-level empty array keeps memo dependencies stable and avoids
+    rerender churn. Cached-data preservation avoids blank calendar replacement during transient
+    refetch failure.
+  - validation:
+    Calendar UI/helpers/typography passed 3 files / 22 tests. Paired monthly schedule,
+    billing-preview, and fetch-helper suites passed 3 files / 51 tests. Exact-path ESLint passed with
+    zero warnings; Prettier, `git diff --check`, `pnpm frontend-contract:check`, `pnpm colors:check`,
+    `pnpm api-response-shape:check`, `pnpm route-auth-wrapper:check`,
+    `pnpm db:raw-read-org-guard:check`, and `pnpm client-phi-log:check` passed. Full
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit --pretty false --incremental false --skipLibCheck`
+    and `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed.
+  - UI/imagegen:
+    `imagegen` was intentionally omitted because this is a state, accessibility, and responsive
+    density correction within the committed all-screen direction, not a new layout reconstruction.
+  - remaining / next action:
+    Schedule offline/day-section and optimizer surfaces still need family passes. Browser/mobile
+    visual proof remains blocked by the missing compatible local app/database runtime; Next build is
+    not claimed green. No deploy, migration, production mutation, external send, or destructive
+    cache action ran.
+
+- claude maker + codex checker: workflow dashboard ratified state-role convergence.
+  - commit:
+    `3a7dde7c6 fix(workflow): map dashboard badges to ratified state roles`.
+  - files changed:
+    `src/app/(dashboard)/workflow/workflow-dashboard-view.tsx`.
+  - bugs found / fixed:
+    Communication urgency used destructive red despite the ratified `urgent=confirm` role;
+    callback-request badges also used destructive red for a non-blocking action. Patient high-risk
+    now uses the shared blocked role, callback and urgent communication use confirm, and routine
+    queue counts no longer turn orange merely because the normal work queue is nonzero. Existing
+    `priorityClass` / `roleBadgeClass` / `STATUS_TOKENS` helpers remain the single mapping path.
+  - frontend/backend parity:
+    This is a presentation-role correction over unchanged workflow DTOs and actions. No server
+    capability, mutation, enum, auth, authorization, or data contract changed; visible roles now
+    match the same semantic values already returned by the backend.
+  - security/performance:
+    No PHI field, error, request, dependency, effect, or computation changed. Red-signal fatigue is
+    reduced without hiding blocked patient risk.
+  - validation:
+    Workflow suites passed 6 files / 50 tests; exact ESLint, Prettier, `git diff --check`, and
+    `pnpm colors:check` passed. Codex checker reviewed the four role decisions and approved the
+    single-file scoped commit.
+  - UI/imagegen:
+    `imagegen` was intentionally omitted because this is a semantic token correction, not visual
+    reconstruction.
+  - remaining / next action:
+    Continue remaining workflow/admin state-color audit; browser proof remains in the repo-wide
+    runtime blocker.
+
+- claude maker + codex checker: shared two-tier `ExpiryBadge` SSOT convergence.
+  - commit:
+    `bf336881f fix(ui): enforce two-tier expiry thresholds on the shared ExpiryBadge`.
+  - current task:
+    SSOT 7.3 の期限切れ/30日以内=`blocked`、31〜90日=`confirm`、以遠=中立を共通部品へ実装し、
+    資格/施設基準の画面ローカル期限表示を共通化する。
+  - files changed:
+    `docs/ui-ux-design-guidelines.md`, `src/components/ui/expiry-badge.tsx`,
+    `src/components/ui/expiry-badge.test.tsx`,
+    `src/app/(dashboard)/admin/facility-standards/facility-standards-content.tsx`, and
+    `src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx`.
+  - bugs found / fixed:
+    The shared component had only one warning tier and was orphaned while two admin screens carried
+    duplicate local 30/90 implementations. The component now has exhaustive expired/critical/soon/
+    ok/unset/invalid roles, Japan-business-date calculation and display, and `showDate` integration
+    for both consumers. Review caught and removed a runtime-TZ display mismatch and `hideWhenOk`
+    escape hatch. Threshold overrides may only widen urgency windows: 30/90 are enforced floors,
+    invalid values fall back safely, and warn cannot fall below critical.
+  - frontend/backend parity:
+    This is a pure presentation/derived-state contract over already authorized expiry date fields;
+    no endpoint, DTO, write, auth, or database capability was added. Far-future values remain visible
+    as neutral rather than disappearing or being mislabeled done.
+  - security/performance:
+    No PHI value, raw error, network request, effect, dependency, or unbounded work was added. One
+    shared classifier replaces duplicate calculations and is runtime-timezone independent.
+  - validation:
+    Maker/checker suite passed 6 files / 50 tests; root independently reran the shared component and
+    two consumer suites at 3 files / 41 tests after the first review fixes. Exact ESLint, Prettier,
+    `git diff --check`, `pnpm colors:check`, and full TypeScript checks passed. Codex checker rejected
+    two earlier revisions until JST display, always-visible neutral expiry, and 30/90 floor tests were
+    present, then approved the final scoped commit.
+  - UI/imagegen:
+    `imagegen` was intentionally omitted because this is a token/state-component correction, not a
+    screen reconstruction.
+  - remaining / next action:
+    No backend or deployment action remains for this component slice. Consumer browser proof remains
+    part of the broader admin visual sweep.
+
 - codex: schedule team-board readable timeline and independent stale API states.
   - commit:
     `77d8b3533 fix(schedules): preserve stale team board context`.

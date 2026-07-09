@@ -17,11 +17,14 @@ import {
 } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
-import { SegmentError, SegmentLoading } from '@/components/ui/segment-state';
+import { SegmentError, SegmentLoading, SegmentStaleBanner } from '@/components/ui/segment-state';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
+import { useStaleAfterRefetchError } from '@/lib/hooks/use-stale-after-refetch-error';
+import { buildPatientHref } from '@/lib/patient/navigation';
+import { buildVisitRecordHref } from '@/lib/visits/navigation';
 import {
   fetchCalendarSchedules,
   formatCalendarTimeRange,
@@ -57,6 +60,7 @@ const STATUS_CONFIG: Record<ScheduleStatus, { label: string; className: string }
 };
 
 const WEEKDAY_LABELS = ['月', '火', '水', '木', '金', '土', '日'];
+const EMPTY_CALENDAR_SCHEDULES: CalendarVisitSchedule[] = [];
 const SCHEDULE_CALENDAR_WORKFLOW_SOURCES = [
   'visit_schedules_create',
   'visit_schedules_update',
@@ -118,7 +122,7 @@ function ScheduleBadge({ schedule }: { schedule: CalendarVisitSchedule }) {
   const timeLabel = formatCalendarTimeRange(schedule);
   return (
     <span
-      className={`block truncate rounded px-1 py-0.5 text-[10px] font-medium leading-tight ${config.className}`}
+      className={`block truncate rounded px-1 py-0.5 text-xs font-medium leading-4 ${config.className}`}
       title={timeLabel ? `${config.label} / ${timeLabel}` : config.label}
     >
       {timeLabel ? `${timeLabel} ${config.label}` : config.label}
@@ -177,7 +181,7 @@ function PatientSummaryChips({ schedule }: { schedule: CalendarVisitSchedule }) 
       {chips.map((chip) => (
         <span
           key={chip.key}
-          className={`rounded border px-1.5 py-0.5 text-[10px] font-medium leading-tight ${chip.className}`}
+          className={`rounded border px-1.5 py-0.5 text-xs font-medium leading-4 ${chip.className}`}
         >
           {chip.label}
         </span>
@@ -204,8 +208,9 @@ function DayPanel({
           {format(date, 'yyyy年M月d日(E)', { locale: ja })} のスケジュール
         </h3>
         <button
+          type="button"
           onClick={onClose}
-          className="rounded p-1 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="inline-flex size-11 items-center justify-center rounded hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label="閉じる"
         >
           <X className="size-4" aria-hidden="true" />
@@ -242,15 +247,15 @@ function DayPanel({
                 <div className="flex flex-wrap gap-2 text-xs">
                   {patient?.id ? (
                     <Link
-                      href={`/patients/${patient.id}`}
-                      className="rounded border px-2 py-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                      href={buildPatientHref(patient.id)}
+                      className="inline-flex min-h-11 items-center rounded border px-3 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                     >
                       患者詳細
                     </Link>
                   ) : null}
                   <Link
-                    href={`/visits/${schedule.id}/record`}
-                    className="rounded border px-2 py-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                    href={buildVisitRecordHref(schedule.id)}
+                    className="inline-flex min-h-11 items-center rounded border px-3 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                   >
                     訪問記録
                   </Link>
@@ -275,16 +280,13 @@ export function CalendarView() {
   const year = currentMonth.getFullYear();
   const month = currentMonth.getMonth();
 
-  const {
-    data: schedules = [],
-    isLoading,
-    isError,
-    refetch,
-  } = useMonthSchedules(orgId, year, month);
-  const isCalendarLoading = isBootstrappingOrg || isLoading;
+  const schedulesQuery = useMonthSchedules(orgId, year, month);
+  const schedules = schedulesQuery.data ?? EMPTY_CALENDAR_SCHEDULES;
+  const calendarState = useStaleAfterRefetchError(schedulesQuery);
+  const isCalendarLoading = isBootstrappingOrg || calendarState.isInitialLoading;
   // 取得失敗は空月表示(false-empty)に潰さず、再読み込み導線つきの ErrorState を出す。
   // org bootstrap 中(orgId 未確定)は loading 扱いで error にしない。
-  const isCalendarError = isError && !isBootstrappingOrg;
+  const isCalendarError = calendarState.isInitialError && !isBootstrappingOrg;
 
   // Build calendar grid: Mon–Sun weeks covering the full month
   const monthStart = startOfMonth(currentMonth);
@@ -307,11 +309,7 @@ export function CalendarView() {
       })),
     [schedules],
   );
-  const {
-    data: schedulePreviewMap,
-    isError: isSchedulePreviewError,
-    refetch: refetchSchedulePreview,
-  } = useQuery({
+  const schedulePreviewQuery = useQuery({
     queryKey: ['calendar-billing-preview-map', orgId, schedulePreviewRequests],
     queryFn: async () => {
       if (schedulePreviewRequests.length === 0) return new Map();
@@ -333,6 +331,8 @@ export function CalendarView() {
     },
     enabled: Boolean(orgId) && schedulePreviewRequests.length > 0,
   });
+  const schedulePreviewMap = schedulePreviewQuery.data;
+  const schedulePreviewState = useStaleAfterRefetchError(schedulePreviewQuery);
 
   const schedulesForDay = (day: Date) => schedulesByDate.get(format(day, 'yyyy-MM-dd')) ?? [];
 
@@ -359,30 +359,33 @@ export function CalendarView() {
         </h2>
         <div className="flex gap-1">
           <button
+            type="button"
             onClick={() => {
               setCurrentMonth((m) => subMonths(m, 1));
               setSelectedDate(null);
             }}
-            className="rounded-md p-2 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex size-11 items-center justify-center rounded-md hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="前月"
           >
             <ChevronLeft className="size-4" aria-hidden="true" />
           </button>
           <button
+            type="button"
             onClick={() => {
               setCurrentMonth(new Date());
               setSelectedDate(null);
             }}
-            className="rounded-md px-3 py-1.5 text-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="min-h-11 rounded-md px-3 text-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             今月
           </button>
           <button
+            type="button"
             onClick={() => {
               setCurrentMonth((m) => addMonths(m, 1));
               setSelectedDate(null);
             }}
-            className="rounded-md p-2 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex size-11 items-center justify-center rounded-md hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="翌月"
           >
             <ChevronRight className="size-4" aria-hidden="true" />
@@ -390,7 +393,25 @@ export function CalendarView() {
         </div>
       </div>
 
-      {isSchedulePreviewError ? (
+      {calendarState.isStaleAfterRefetchError && !isBootstrappingOrg ? (
+        <SegmentStaleBanner
+          title="前回取得した月間スケジュールを表示中"
+          description="最新の月間スケジュールを取得できませんでした。表示内容が古い可能性があります。"
+          onRetry={() => void schedulesQuery.refetch()}
+          className="mb-3 [&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-11"
+        />
+      ) : null}
+
+      {schedulePreviewRequests.length > 0 && schedulePreviewState.isInitialLoading ? (
+        <SegmentLoading
+          label="算定プレビューを確認中"
+          description="請求サイクルの注意と次回算定日を確認しています。"
+          rows={1}
+          cols={1}
+          size="compact"
+          className="mb-3"
+        />
+      ) : schedulePreviewState.isInitialError ? (
         // 算定プレビューの取得失敗を空表示に潰さない。失敗を黙ると請求サイクル警告
         // (hasCadenceWarning) や次回算定日マーカーが「警告なし」と誤読される false-negative。
         <div className="mb-3">
@@ -398,10 +419,18 @@ export function CalendarView() {
             title="算定プレビューを読み込めませんでした"
             cause="請求サイクルの警告や次回算定日の表示が一部欠落している可能性があります。"
             nextAction="再読み込みしてください。"
-            onRetry={() => void refetchSchedulePreview()}
+            onRetry={() => void schedulePreviewQuery.refetch()}
             retryLabel="再読み込み"
+            className="[&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-11"
           />
         </div>
+      ) : schedulePreviewState.isStaleAfterRefetchError ? (
+        <SegmentStaleBanner
+          title="前回取得した算定プレビューを表示中"
+          description="最新の請求サイクル注意を取得できませんでした。表示内容が古い可能性があります。"
+          onRetry={() => void schedulePreviewQuery.refetch()}
+          className="mb-3 [&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-11"
+        />
       ) : null}
 
       {/* Calendar grid */}
@@ -429,8 +458,9 @@ export function CalendarView() {
               title="スケジュールを取得できませんでした"
               cause="スケジュールを取得できませんでした。"
               nextAction="通信状態を確認し、再読み込みしてください。"
-              onRetry={() => void refetch()}
+              onRetry={() => void schedulesQuery.refetch()}
               retryLabel="再読み込み"
+              className="[&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-11"
             />
           </div>
         ) : (
@@ -461,6 +491,7 @@ export function CalendarView() {
 
               return (
                 <button
+                  type="button"
                   key={day.toISOString()}
                   onClick={() => handleDayClick(day)}
                   className={[
@@ -487,12 +518,18 @@ export function CalendarView() {
                     {(hasCadenceWarning || hasNextBillable) && (
                       <div className="mb-0.5 flex flex-wrap gap-1">
                         {hasCadenceWarning ? (
-                          <span className="rounded bg-state-confirm/10 px-1 py-0.5 text-[9px] font-medium text-state-confirm">
+                          <span
+                            className="max-w-full rounded bg-state-confirm/10 px-1 py-0.5 text-xs font-medium leading-4 text-state-confirm"
+                            title="算定注意"
+                          >
                             算定注意
                           </span>
                         ) : null}
                         {hasNextBillable ? (
-                          <span className="rounded bg-state-done/10 px-1 py-0.5 text-[9px] font-medium text-state-done">
+                          <span
+                            className="max-w-full rounded bg-state-done/10 px-1 py-0.5 text-xs font-medium leading-4 text-state-done"
+                            title="次回算定可"
+                          >
                             次回算定可
                           </span>
                         ) : null}
@@ -502,7 +539,7 @@ export function CalendarView() {
                       <ScheduleBadge key={s.id} schedule={s} />
                     ))}
                     {overflow > 0 && (
-                      <span className="text-[10px] text-muted-foreground">+{overflow}件</span>
+                      <span className="text-xs text-muted-foreground">+{overflow}件</span>
                     )}
                   </div>
                 </button>
