@@ -41,6 +41,81 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001CU` patient visits response envelope cleanup.
+  - current task:
+    `GET /api/patients/:id/visits` の patient visits snapshot success response を
+    legacy raw visits snapshot root から `{ data: visits }` envelope へ移行し、route
+    slice test、response-shape allowlist、Plans / archive を同期する。
+  - commit:
+    `7a932d33d fix(api): envelope patient visits response`
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/patients/[id]/visits/route.ts`,
+    `src/app/api/patients/[id]/detail-slices.test.ts`,
+    `src/app/api/__tests__/protected-get-routes.test.ts`,
+    `src/server/services/patient-detail.ts`,
+    `src/components/features/patients/patient-history-summary.tsx`,
+    `Plans.md`, `docs/plans-archive.md`, and `ops/refactor/STATE.md`.
+  - files changed:
+    `Plans.md`, `docs/plans-archive.md`, `ops/refactor/STATE.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/patients/[id]/visits/route.ts`, and
+    `src/app/api/patients/[id]/detail-slices.test.ts`.
+  - bugs found:
+    The patient visits snapshot route returned `monthly_visit_count`,
+    `visit_schedules`, `visit_records`, and `home_care_feature_summary` at the
+    public success response root, keeping one API response-shape allowlist entry
+    alive. No direct frontend reader dependency on this route was found.
+  - bugs fixed:
+    GET success now returns `success({ data: visits })`. The patient detail slice
+    route tests assert the current envelope. The stale allowlist entry was removed.
+    Response-shape debt dropped from 83 to 82.
+  - security risks found:
+    No visit permission check, patient id validation, assignment-scope service read,
+    no-store wrapper, not-found response, or sanitized internal-error response
+    changed.
+  - security risks reduced:
+    Removed visits snapshot fields from the response root.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None; this is response contract cleanup.
+  - UI/UX note:
+    No visible UI/UX layout or interaction change and no direct frontend reader was
+    found, so image generation was not applicable.
+  - Oracle note:
+    No Oracle consult was run for this slice per the allowlist-debt concentration
+    directive and the repeated envelope-only local pattern. Validation covered route
+    tests, scoped protected auth check, contract ratchet, scoped lint/format, and full
+    typecheck.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/visits/route.ts' 'src/app/api/patients/[id]/detail-slices.test.ts'`;
+    `pnpm vitest run 'src/app/api/patients/[id]/detail-slices.test.ts' --reporter=dot --testTimeout=30000`;
+    `pnpm vitest run 'src/app/api/__tests__/protected-get-routes.test.ts' --reporter=dot --testNamePattern 'patients/\\[id\\]/visits GET' --testTimeout=30000`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint 'src/app/api/patients/[id]/visits/route.ts' 'src/app/api/patients/[id]/detail-slices.test.ts'`;
+    `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/visits/route.ts' 'src/app/api/patients/[id]/detail-slices.test.ts'`;
+    `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/visits/route.ts' 'src/app/api/patients/[id]/detail-slices.test.ts'`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Patient detail slice tests passed 1 file / 56 tests. Scoped protected auth route
+    check for `patients/[id]/visits GET` passed 3 tests with 381 skipped in the
+    shared matrix file. A broader protected-get-routes run still has an unrelated
+    pre-existing `dashboard/cockpit/details GET` 500 failure, so it was not used as
+    completion evidence for this slice. `api-response-shape:check` passed with 82
+    allowlisted violations and 0 new violations. `plans:active:check` passed. Scoped
+    ESLint, scoped Prettier check, scoped diff check, and full typecheck passed.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 82 allowlisted response-shape violations.
+    Next recommended response-shape slice is the current allowlist head:
+    `src/app/api/patients/[id]/workflow-preview/route.ts`.
+  - next action:
+    Continue allowlist debt burn-down from the next allowlist head:
+    `src/app/api/patients/[id]/workflow-preview/route.ts`.
+
 - codex: `API-CONTRACT-001CT` patient detail response envelope cleanup.
   - current task:
     `GET /api/patients/:id` の patient detail success response を legacy raw patient
