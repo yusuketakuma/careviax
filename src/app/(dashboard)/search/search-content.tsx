@@ -406,11 +406,11 @@ export function SearchContent({
         noteFailure('report', reportRes);
         noteFailure('contact', contactRes);
 
-        const patientPayload = await readSearchJson<{ data: PatientSearchItem[] }>(
+        const patientPayload = await readSearchJson<{ data: { data: PatientSearchItem[] } }>(
           'patient',
           patientRes,
         );
-        const patientData = patientPayload?.data ?? [];
+        const patientData = patientPayload?.data.data ?? [];
 
         const proposalPayload = await readSearchJson<{ data: ScheduleProposalSearchItem[] }>(
           'proposal',

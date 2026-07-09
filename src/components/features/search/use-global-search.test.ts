@@ -8,7 +8,7 @@ import { resolveEnabledCategories, useGlobalSearch } from './use-global-search';
 const ORG = 'org_1';
 
 function okBody(url: string): unknown {
-  if (url.startsWith('/api/patients')) return { data: [{ id: 'p1', name: '山田 太郎' }] };
+  if (url.startsWith('/api/patients')) return { data: { data: [{ id: 'p1', name: '山田 太郎' }] } };
   if (url.startsWith('/api/visit-schedule-proposals'))
     return { data: [{ id: 'pr1', proposal_status: 'pending', proposed_date: '2026-06-20' }] };
   if (url.startsWith('/api/prescription-intakes'))

@@ -147,8 +147,8 @@ export default function QRScanPage() {
           },
         );
         if (!res.ok) throw new Error('患者検索に失敗しました');
-        const json = await res.json();
-        const matched: PatientMatch[] = json.data ?? [];
+        const json = (await res.json()) as { data?: { data?: PatientMatch[] } };
+        const matched: PatientMatch[] = json.data?.data ?? [];
 
         // 生年月日が一致する患者を優先
         if (data.patient.birthDate) {

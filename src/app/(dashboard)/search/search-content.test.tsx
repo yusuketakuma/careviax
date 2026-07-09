@@ -87,7 +87,7 @@ function setupFetchMocks(overrides: Partial<Record<string, unknown>> = {}) {
   fetchMock.mockImplementation((url: string) => {
     if (url.includes('/api/pharmacists')) return makeJsonResponse([]);
     if (url.includes('/api/patients')) {
-      return makeJsonResponse(overrides.patients ?? PATIENT_RESULTS);
+      return makeJsonResponse({ data: overrides.patients ?? PATIENT_RESULTS });
     }
     if (url.includes('/api/visit-schedule-proposals')) {
       return makeJsonResponse(overrides.proposals ?? []);

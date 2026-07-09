@@ -99,10 +99,10 @@ describe('palette category registry (F-009 MVP)', () => {
     );
   });
 
-  // --- raw wire-shape schemas: success() = NextResponse.json(data) (no { data } auto-envelope) ---
+  // --- wire-shape schemas: patient is ApiSuccess-wrapped, other categories keep raw list bodies. ---
 
   const validRaw: Record<PaletteCategoryId, unknown> = {
-    patient: { data: [{ id: 'p1', name: '山田 太郎' }] },
+    patient: { data: { data: [{ id: 'p1', name: '山田 太郎' }] } },
     proposal: { data: [{ id: 'pr1', proposal_status: 'pending', proposed_date: '2026-06-20' }] },
     prescription: { data: [{ id: 'rx1' }] },
     drug: { data: [{ id: 'd1', drug_name: 'ロキソニン錠' }] },
@@ -112,7 +112,7 @@ describe('palette category registry (F-009 MVP)', () => {
     contact: { data: [{ id: 'c1', name: '田中薬局' }] },
   };
 
-  it('accepts the real raw { data: [...] } body and normalizes to the items array', () => {
+  it('accepts the real category wire body and normalizes to the items array', () => {
     for (const category of PALETTE_CATEGORIES) {
       const parsed = category.schema.safeParse(validRaw[category.id]);
       expect(parsed.success, `${category.id} should accept valid raw`).toBe(true);
@@ -124,24 +124,38 @@ describe('palette category registry (F-009 MVP)', () => {
     }
   });
 
-  it('fails closed on a wrong { data } envelope wrapping (data.data) and on non-array data', () => {
+  it('fails closed on wrong list envelope shapes and on non-array data', () => {
     for (const category of PALETTE_CATEGORIES) {
-      // accidental double envelope: { data: { data: [...] } }
-      expect(
-        category.schema.safeParse({ data: validRaw[category.id] }).success,
-        `${category.id} double-envelope must fail`,
-      ).toBe(false);
-      // data is not an array
-      expect(category.schema.safeParse({ data: {} }).success, `${category.id} non-array data`).toBe(
-        false,
-      );
+      if (category.id === 'patient') {
+        expect(
+          category.schema.safeParse({ data: [{ id: 'p1', name: '山田 太郎' }] }).success,
+          'patient raw root list must fail',
+        ).toBe(false);
+        expect(
+          category.schema.safeParse({ data: { data: {} } }).success,
+          'patient non-array inner data',
+        ).toBe(false);
+      } else {
+        // accidental double envelope: { data: { data: [...] } }
+        expect(
+          category.schema.safeParse({ data: validRaw[category.id] }).success,
+          `${category.id} double-envelope must fail`,
+        ).toBe(false);
+        // data is not an array
+        expect(
+          category.schema.safeParse({ data: {} }).success,
+          `${category.id} non-array data`,
+        ).toBe(false);
+      }
       // missing data entirely
       expect(category.schema.safeParse({}).success, `${category.id} missing data`).toBe(false);
     }
   });
 
   it('rejects items missing required fields (e.g. patient.name, drug.drug_name)', () => {
-    expect(byId('patient').schema.safeParse({ data: [{ id: 'p1' }] }).success).toBe(false);
+    expect(byId('patient').schema.safeParse({ data: { data: [{ id: 'p1' }] } }).success).toBe(
+      false,
+    );
     expect(byId('drug').schema.safeParse({ data: [{ id: 'd1' }] }).success).toBe(false);
     expect(
       byId('report').schema.safeParse({ data: [{ id: 'r1', report_type: 'monthly' }] }).success,
@@ -152,9 +166,17 @@ describe('palette category registry (F-009 MVP)', () => {
     // endpoint は limit=PALETTE_RESULT_LIMIT を要求する。backend が無視して上限超を返した場合、
     // schema.max が safeParse を失敗させ、fetch 層で当該カテゴリを failed(rows=0)化する。
     for (const category of PALETTE_CATEGORIES) {
-      const item = (validRaw[category.id] as { data: unknown[] }).data[0];
-      const overLimit = { data: Array.from({ length: PALETTE_RESULT_LIMIT + 1 }, () => item) };
-      const atLimit = { data: Array.from({ length: PALETTE_RESULT_LIMIT }, () => item) };
+      const items =
+        category.id === 'patient'
+          ? (validRaw.patient as { data: { data: unknown[] } }).data.data
+          : (validRaw[category.id] as { data: unknown[] }).data;
+      const item = items[0];
+      const overLimitItems = Array.from({ length: PALETTE_RESULT_LIMIT + 1 }, () => item);
+      const atLimitItems = Array.from({ length: PALETTE_RESULT_LIMIT }, () => item);
+      const overLimit =
+        category.id === 'patient' ? { data: { data: overLimitItems } } : { data: overLimitItems };
+      const atLimit =
+        category.id === 'patient' ? { data: { data: atLimitItems } } : { data: atLimitItems };
       expect(category.schema.safeParse(overLimit).success, `${category.id} >limit must fail`).toBe(
         false,
       );

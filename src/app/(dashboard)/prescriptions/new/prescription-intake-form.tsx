@@ -650,11 +650,12 @@ export function PrescriptionIntakeForm() {
         limit: '10',
       });
       if (debouncedPatientSearch) params.set('q', debouncedPatientSearch);
-      return fetchOrgJson<{ data: PatientOption[] }>({
+      const payload = await fetchOrgJson<{ data: { data: PatientOption[] } }>({
         url: `/api/patients?${params}`,
         orgId,
         errorMessage: '患者検索に失敗しました',
       });
+      return payload.data;
     },
     enabled: !!orgId && debouncedPatientSearch.length >= 1,
   });

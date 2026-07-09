@@ -213,7 +213,7 @@ const authenticatedGET = withAuthContext(
         userId: ctx.userId,
         role: ctx.role,
       });
-      return success(result);
+      return success({ data: result });
     }
 
     if (parsed.data.view === 'search') {
@@ -237,7 +237,7 @@ const authenticatedGET = withAuthContext(
         userId: ctx.userId,
         role: ctx.role,
       });
-      return success(result);
+      return success({ data: result });
     }
 
     if (parsed.data.view === 'match') {
@@ -265,14 +265,14 @@ const authenticatedGET = withAuthContext(
         userId: ctx.userId,
         role: ctx.role,
       });
-      return success(result);
+      return success({ data: result });
     }
 
     const result = await listPatients(prisma, ctx.orgId, ctx.role, parsed.data, {
       userId: ctx.userId,
       role: ctx.role,
     });
-    return success(result);
+    return success({ data: result });
   },
   {
     permission: 'canVisit',

@@ -8,8 +8,8 @@
  * 「どの URL を叩くか」「生レスポンスの zod スキーマ(fail-closed)」
  * 「正規化(items 抽出)」「結果行 build」を自己完結で持つ。
  *
- * スキーマは API が `NextResponse.json(data)` で返す生の形(= `{ data: [...] }`)
- * を検証する。`{data}` 自動エンベロープ前提ではない。余分なキーは zod が strip する。
+ * スキーマはカテゴリごとの wire shape を検証する。patient は outer
+ * `ApiSuccess` envelope の内側 list payload を読む。余分なキーは zod が strip する。
  */
 
 import { z } from 'zod';
@@ -89,19 +89,21 @@ function buildPaletteEndpoint(
 // ---------------------------------------------------------------------------
 
 const patientSchema = z.object({
-  data: z
-    .array(
-      z.object({
-        id: z.string(),
-        name: z.string(),
-        name_kana: z.string().nullish(),
-        conditions: z
-          .array(z.object({ name: z.string(), is_primary: z.boolean().optional() }))
-          .optional(),
-        visit_schedules: z.array(z.object({ scheduled_date: z.string() })).optional(),
-      }),
-    )
-    .max(PALETTE_RESULT_LIMIT),
+  data: z.object({
+    data: z
+      .array(
+        z.object({
+          id: z.string(),
+          name: z.string(),
+          name_kana: z.string().nullish(),
+          conditions: z
+            .array(z.object({ name: z.string(), is_primary: z.boolean().optional() }))
+            .optional(),
+          visit_schedules: z.array(z.object({ scheduled_date: z.string() })).optional(),
+        }),
+      )
+      .max(PALETTE_RESULT_LIMIT),
+  }),
 });
 
 const proposalSchema = z.object({
@@ -190,6 +192,8 @@ const contactSchema = z.object({
 
 type WithData = { data: unknown[] };
 const dataItems = (parsed: unknown): unknown[] => (parsed as WithData).data;
+const patientItems = (parsed: unknown): unknown[] =>
+  (parsed as { data: { data: unknown[] } }).data.data;
 
 // ---------------------------------------------------------------------------
 // レジストリ(表示順 = この配列順)
@@ -201,7 +205,7 @@ export const PALETTE_CATEGORIES: PaletteCategory[] = [
     label: SEARCH_CATEGORY_LABELS.patient,
     requiredPermission: 'canVisit',
     orgScoped: true,
-    // view=palette で F-012 の最小投影({id,name,name_kana})を消費する。
+    // view=palette で F-012 の最小投影({id,name,name_kana})を outer envelope 越しに消費する。
     // これを付けないと full list 分岐に当たり phone/住所/保険等の over-wide payload が
     // ブラウザへ届く(UI zod の strip は fetch 後＝転送は発生済)。bounded/minimal 契約を守る。
     endpoint: (query) =>
@@ -210,7 +214,7 @@ export const PALETTE_CATEGORIES: PaletteCategory[] = [
         archive_status: 'active',
       }),
     schema: patientSchema,
-    normalize: dataItems,
+    normalize: patientItems,
     build: (item) => buildPatientResult(item as Parameters<typeof buildPatientResult>[0]),
   },
   {

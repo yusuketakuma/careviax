@@ -206,6 +206,11 @@ function createMalformedJsonRequest(auth?: { orgId: string; userId: string; role
   );
 }
 
+async function readSuccessData<T>(response: Response) {
+  const payload = (await response.json()) as { data: T };
+  return payload.data;
+}
+
 describe('/api/patients GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -479,7 +484,7 @@ describe('/api/patients GET', () => {
     );
     expect(String(queryRawMock.mock.calls[0]?.[0])).toContain('INNER JOIN "CareCase"');
 
-    const payload = (await response.json()) as {
+    const payload = await readSuccessData<{
       data: Array<{
         id: string;
         facility_mode: 'facility' | 'home';
@@ -541,7 +546,7 @@ describe('/api/patients GET', () => {
         missing_consent_count: number;
         by_risk: Record<'stable' | 'watch' | 'high', number>;
       };
-    };
+    }>(response);
 
     expect(payload.data).toHaveLength(1);
     expect(payload.data[0]).toMatchObject({
@@ -659,14 +664,14 @@ describe('/api/patients GET', () => {
         }),
       }),
     );
-    const payload = (await response.json()) as {
+    const payload = await readSuccessData<{
       data: Array<{
         id: string;
         archived_at: string | null;
         archive: { status: 'active' | 'archived'; archived: boolean; archived_at: string | null };
       }>;
       summary: { total: number; active_count: number; archived_count: number };
-    };
+    }>(response);
 
     expect(payload.data).toHaveLength(1);
     expect(payload.data[0]).toMatchObject({
@@ -765,7 +770,14 @@ describe('/api/patients GET', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
-    const body = await response.json();
+    const body = await readSuccessData<{
+      data: Array<{
+        id: string;
+        name: string;
+        name_kana: string | null;
+      }>;
+      hasMore: boolean;
+    }>(response);
     expect(body).toEqual({
       data: [
         {
@@ -853,7 +865,16 @@ describe('/api/patients GET', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
-    const body = await response.json();
+    const body = await readSuccessData<{
+      data: Array<{
+        id: string;
+        name: string;
+        name_kana: string | null;
+        conditions: Array<{ name: string; is_primary: boolean }>;
+        visit_schedules: Array<{ scheduled_date: string }>;
+      }>;
+      hasMore: boolean;
+    }>(response);
     expect(body).toEqual({
       data: [
         {
@@ -977,7 +998,16 @@ describe('/api/patients GET', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
-    const body = await response.json();
+    const body = await readSuccessData<{
+      data: Array<{
+        id: string;
+        name: string;
+        name_kana: string | null;
+        birth_date: string;
+        gender: string;
+      }>;
+      hasMore: boolean;
+    }>(response);
     expect(body).toEqual({
       data: [
         {
@@ -1141,10 +1171,10 @@ describe('/api/patients GET', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
 
-    const payload = (await response.json()) as {
+    const payload = await readSuccessData<{
       data: Array<{ id: string }>;
       summary: { total: number };
-    };
+    }>(response);
 
     expect(payload.data).toHaveLength(1);
     expect(payload.data[0]).toMatchObject({ id: 'patient_1' });
@@ -1172,10 +1202,10 @@ describe('/api/patients GET', () => {
     ))!;
 
     expect(response.status).toBe(200);
-    const payload = (await response.json()) as {
+    const payload = await readSuccessData<{
       data: Array<{ id: string; latest_visit?: { visit_date: string } | null }>;
       summary: { total: number };
-    };
+    }>(response);
 
     expect(payload.data.map((patient) => patient.id)).toEqual(['patient_1']);
     expect(payload.summary.total).toBe(1);
@@ -1241,10 +1271,10 @@ describe('/api/patients GET', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
 
-    const payload = (await response.json()) as {
+    const payload = await readSuccessData<{
       data: Array<{ id: string }>;
       summary: { total: number };
-    };
+    }>(response);
 
     expect(payload.data).toHaveLength(1);
     expect(payload.data[0]).toMatchObject({ id: 'patient_1' });
@@ -1263,13 +1293,13 @@ describe('/api/patients GET', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
 
-    const payload = (await response.json()) as {
+    const payload = await readSuccessData<{
       data: Array<{
         id: string;
         readiness: { has_primary_physician: boolean };
       }>;
       summary: { total: number };
-    };
+    }>(response);
 
     expect(payload.data).toHaveLength(1);
     expect(payload.data[0]).toMatchObject({
@@ -1291,14 +1321,14 @@ describe('/api/patients GET', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
 
-    const payload = (await response.json()) as {
+    const payload = await readSuccessData<{
       data: Array<{
         id: string;
         medical_insurance_number: string | null;
         care_insurance_number: string | null;
       }>;
       summary: { total: number };
-    };
+    }>(response);
 
     expect(payload.data).toHaveLength(1);
     expect(payload.data[0]).toMatchObject({
@@ -1315,10 +1345,10 @@ describe('/api/patients GET', () => {
     ))!;
 
     expect(response.status).toBe(200);
-    const payload = (await response.json()) as {
+    const payload = await readSuccessData<{
       data: Array<{ id: string }>;
       summary: { total: number };
-    };
+    }>(response);
 
     expect(payload.data.map((patient) => patient.id)).toEqual(['patient_2']);
     expect(payload.summary.total).toBe(1);
@@ -1437,10 +1467,10 @@ describe('/api/patients GET', () => {
     ))!;
 
     expect(response.status).toBe(200);
-    const payload = (await response.json()) as {
+    const payload = await readSuccessData<{
       data: Array<{ id: string }>;
       summary: { total: number };
-    };
+    }>(response);
 
     expect(payload.data.map((patient) => patient.id)).toEqual(['patient_2']);
     expect(payload.summary.total).toBe(1);
@@ -1512,7 +1542,7 @@ describe('/api/patients GET', () => {
     ))!;
 
     if (!response) throw new Error('response is required');
-    const payload = (await response.json()) as {
+    const payload = await readSuccessData<{
       data: Array<{
         id: string;
         phone: string | null;
@@ -1523,7 +1553,7 @@ describe('/api/patients GET', () => {
         address_fields_masked: boolean;
         can_view_detail: boolean;
       };
-    };
+    }>(response);
 
     expect(payload.privacy.sensitive_fields_masked).toBe(true);
     expect(payload.privacy.address_fields_masked).toBe(false);
@@ -1545,7 +1575,7 @@ describe('/api/patients GET', () => {
     ))!;
 
     if (!response) throw new Error('response is required');
-    const payload = (await response.json()) as {
+    const payload = await readSuccessData<{
       data: Array<{
         id: string;
         phone: string | null;
@@ -1557,7 +1587,7 @@ describe('/api/patients GET', () => {
         address_fields_masked: boolean;
         can_view_detail: boolean;
       };
-    };
+    }>(response);
 
     expect(payload.privacy).toMatchObject({
       sensitive_fields_masked: true,
