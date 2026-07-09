@@ -428,23 +428,27 @@ export function OfflineSyncContent() {
       </div>
 
       <div className="grid gap-2 sm:grid-cols-3" aria-label="同期状態の内訳">
+        {/* 状態は左ボーダー+値の文字色で示し、タイル全面塗りしない(SSOT 3.2)。失敗=blocked(raw destructive 不使用 §7.3)。 */}
         <SyncSummaryCard
           label="競合"
           value={summaryValue(summary.conflict)}
           description="他スタッフの更新あり"
-          tone="border-state-confirm/30 bg-state-confirm/10 text-state-confirm"
+          accentClassName="border-l-state-confirm"
+          valueClassName="text-state-confirm"
         />
         <SyncSummaryCard
           label="失敗"
           value={summaryValue(summary.failed)}
           description="再送が必要"
-          tone="border-destructive/30 bg-destructive/10 text-destructive"
+          accentClassName="border-l-state-blocked"
+          valueClassName="text-state-blocked"
         />
         <SyncSummaryCard
           label="送信待ち"
           value={summaryValue(summary.queued)}
           description="通信復帰で自動送信"
-          tone="border-tag-info/30 bg-tag-info/10 text-tag-info"
+          accentClassName="border-l-tag-info"
+          valueClassName="text-tag-info"
         />
       </div>
 
@@ -472,7 +476,8 @@ export function OfflineSyncContent() {
 
         <aside className="h-fit rounded-lg border border-border/70 bg-card p-4" aria-label="注意">
           <h2 className="text-sm font-bold text-foreground">注意</h2>
-          <p className="mt-3 text-sm font-medium leading-6 text-destructive">
+          {/* 止まる理由=blocked トークン(raw destructive 不使用 §7.3/§3.1)。 */}
+          <p className="mt-3 text-sm font-medium leading-6 text-state-blocked">
             未同期のデータが残っている間は、訪問完了にできません。
           </p>
           {isOffline ? (
@@ -509,20 +514,25 @@ function SyncSummaryCard({
   label,
   value,
   description,
-  tone,
+  accentClassName,
+  valueClassName,
 }: {
   label: string;
   value: number | string;
   description: string;
-  tone: string;
+  /** 状態を示す左ボーダー(border-l-4)の色トークン。背景は中立 bg-card 固定(SSOT 3.2)。 */
+  accentClassName: string;
+  valueClassName: string;
 }) {
   return (
-    <article className={`rounded-lg border px-3 py-2.5 ${tone}`}>
+    <article
+      className={`rounded-lg border border-border/70 border-l-4 bg-card px-3 py-2.5 ${accentClassName}`}
+    >
       <div className="flex items-baseline justify-between gap-2">
-        <p className="text-xs font-semibold">{label}</p>
-        <p className="text-2xl font-bold tabular-nums">{value}</p>
+        <p className="text-xs font-semibold text-foreground">{label}</p>
+        <p className={`text-2xl font-bold tabular-nums ${valueClassName}`}>{value}</p>
       </div>
-      <p className="mt-1 text-xs opacity-80">{description}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{description}</p>
     </article>
   );
 }
