@@ -62,14 +62,17 @@ const VARIANT_META = {
     title: 'ネットワークに接続できません',
     description:
       '接続を確認してから再読み込みしてください。オフライン中は一部の画面のみ利用できます。',
-    iconClassName: 'bg-state-confirm/10 text-state-confirm',
+    // 6軸状態色(SSOT 3.1): 通信なし=blocked。confirm(橙)は「行動すれば直る要対応」の
+    // 希少資源なので通信断に流用しない(SSOT 7.5)。
+    iconClassName: 'bg-state-blocked/10 text-state-blocked',
   },
   forbidden: {
     icon: Ban,
     title: 'この画面へのアクセス権限がありません',
     description:
       '組織またはロールの権限設定を確認してください。RLS 制約により表示できない場合があります。',
-    iconClassName: 'bg-state-confirm/10 text-state-confirm',
+    // 6軸状態色(SSOT 3.1): 権限なし/閲覧のみ=readonly(灰)。
+    iconClassName: 'bg-state-readonly/10 text-state-readonly',
   },
   unauthorized: {
     icon: LockKeyhole,

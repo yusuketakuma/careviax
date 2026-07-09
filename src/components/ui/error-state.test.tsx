@@ -22,6 +22,26 @@ describe('ErrorState', () => {
     expect(screen.queryByRole('status')).toBeNull();
   });
 
+  // 6軸状態色(SSOT 3.1): 通信なし=blocked(赤)、権限なし=readonly(灰)。
+  // confirm(橙)は「要対応」の希少資源なので誤写像への回帰を DOM で固定する(SSOT 7.5)。
+  it('maps the network variant to the blocked state token', () => {
+    const { container } = render(<ErrorState variant="network" />);
+
+    const icon = container.querySelector('.bg-state-blocked\\/10');
+    expect(icon).toBeTruthy();
+    expect(icon?.className).toContain('text-state-blocked');
+    expect(container.querySelector('.text-state-confirm')).toBeNull();
+  });
+
+  it('maps the forbidden variant to the readonly state token', () => {
+    const { container } = render(<ErrorState variant="forbidden" />);
+
+    const icon = container.querySelector('.bg-state-readonly\\/10');
+    expect(icon).toBeTruthy();
+    expect(icon?.className).toContain('text-state-readonly');
+    expect(container.querySelector('.text-state-confirm')).toBeNull();
+  });
+
   it('uses h1 for page-sized errors and allows inline heading overrides', () => {
     const { rerender } = render(<ErrorState size="page" title="ページエラー" />);
 
