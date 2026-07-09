@@ -33477,7 +33477,7 @@ has_more, next_cursor } })`. The route test asserts the `data + meta`
 - validation results:
   Prettier write/check passed. Focused route + patient form tests passed 2
   files / 38 tests. Protected GET auth matrix for `patients/check-duplicate
-  GET` passed 3 tests with 381 skipped; expected audit mock stderr was emitted.
+GET` passed 3 tests with 381 skipped; expected audit mock stderr was emitted.
   `api-response-shape:check` passed with 80 allowlisted violations and 0 new
   violations. `plans:active:check` passed after syncing stale count references.
   Scoped ESLint, scoped diff check, and typecheck passed.
@@ -33665,3 +33665,94 @@ has_more, next_cursor } })`. The route test asserts the `data + meta`
   Commit this ledger update with only `ops/refactor/STATE.md` staged, then
   continue the next allowlist cleanup from `src/app/api/pharmacists/route.ts`
   unless redirected.
+
+## 2026-07-09 API-CONTRACT-001CZ — pharmacists responses envelope
+
+- current task:
+  `API-CONTRACT-001` allowlist debt reduction focused on
+  `src/app/api/pharmacists/route.ts` GET list and POST create success
+  responses.
+- files inspected:
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`;
+  `src/app/api/pharmacists/route.ts`;
+  `src/app/api/pharmacists/route.test.ts`;
+  `src/app/(dashboard)/admin/users/users-content.tsx`;
+  `src/app/(dashboard)/admin/users/users-content.test.tsx`;
+  `src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx`;
+  `src/app/(dashboard)/admin/shifts/shifts-content.tsx`;
+  `src/app/(dashboard)/schedules/conflicts/conflict-resolution-content.tsx`;
+  `src/app/(dashboard)/search/search-content.tsx`;
+  `src/app/api/__tests__/protected-get-routes.test.ts`;
+  `src/app/api/__tests__/protected-post-routes.test.ts`;
+  `src/lib/api/response.ts`; `src/lib/api/list-envelope.ts`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `docs/plans-archive.md`.
+- files changed:
+  `src/app/api/pharmacists/route.ts`;
+  `src/app/api/pharmacists/route.test.ts`;
+  `src/app/(dashboard)/admin/users/users-content.tsx`;
+  `src/app/(dashboard)/admin/users/users-content.test.tsx`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `docs/plans-archive.md`; `ops/refactor/STATE.md`.
+- bugs found:
+  `GET /api/pharmacists` returned list metadata at the response root, and
+  `POST /api/pharmacists` returned the created user at the response root,
+  keeping one response-shape allowlist violation for the route.
+- bugs fixed:
+  GET list success now returns `success({ data, meta })`, POST create success
+  returns `success({ data: pharmacist }, 201)`, route tests fix both envelope
+  contracts, and the admin users screen now reads list count metadata from
+  `payload.meta`.
+- security risks found:
+  No new auth/authz, tenant isolation, PHI, validation, logging, or Cognito
+  rollback issue in this slice. Existing visit/admin permission checks,
+  collaborator permission guard, site_id validation, RLS request context,
+  no-store wrapper, and sanitized internal-error handling remain in place.
+- security risks reduced:
+  Removed legacy public success root fields from the staff/pharmacist
+  management endpoint without changing authorization or validation behavior.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this was a response contract cleanup. Existing membership queries,
+  monthly visit aggregation, and list limit bounds are unchanged.
+- UI/UX note:
+  No visible layout or interaction change. This was API response contract and
+  reader metadata work only, so image generation was not applicable.
+- Oracle note:
+  No Oracle/GPT-5.5 Pro consult was run. This was a bounded allowlist envelope
+  migration following the established local pattern, with focused tests and
+  contract gates available.
+- validation commands:
+  `pnpm exec prettier --write Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json src/app/api/pharmacists/route.ts src/app/api/pharmacists/route.test.ts 'src/app/(dashboard)/admin/users/users-content.tsx' 'src/app/(dashboard)/admin/users/users-content.test.tsx'`;
+  `pnpm vitest run src/app/api/pharmacists/route.test.ts --reporter=dot --testTimeout=30000`;
+  `pnpm vitest run 'src/app/(dashboard)/admin/users/users-content.test.tsx' --reporter=dot --testTimeout=30000`;
+  `pnpm vitest run src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testNamePattern 'pharmacists GET' --testTimeout=30000`;
+  `pnpm vitest run src/app/api/__tests__/protected-post-routes.test.ts --reporter=dot --testNamePattern 'pharmacists POST' --testTimeout=30000`;
+  `pnpm api-response-shape:check`; `pnpm plans:active:check`;
+  `pnpm exec eslint src/app/api/pharmacists/route.ts src/app/api/pharmacists/route.test.ts 'src/app/(dashboard)/admin/users/users-content.tsx' 'src/app/(dashboard)/admin/users/users-content.test.tsx'`;
+  `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json src/app/api/pharmacists/route.ts src/app/api/pharmacists/route.test.ts 'src/app/(dashboard)/admin/users/users-content.tsx' 'src/app/(dashboard)/admin/users/users-content.test.tsx'`;
+  `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json src/app/api/pharmacists/route.ts src/app/api/pharmacists/route.test.ts 'src/app/(dashboard)/admin/users/users-content.tsx' 'src/app/(dashboard)/admin/users/users-content.test.tsx'`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+- validation results:
+  Prettier write/check passed. Pharmacists route tests passed 1 file / 26
+  tests. Admin users content tests passed 1 file / 15 tests. Protected GET
+  `pharmacists GET` passed 3 tests with 381 skipped; protected POST
+  `pharmacists POST` passed 3 tests with 142 skipped; expected audit mock
+  stderr was emitted. Scoped ESLint, `api-response-shape:check` (74
+  allowlisted violations, 0 new), `plans:active:check`, scoped diff check, and
+  typecheck passed.
+- commit:
+  Implementation, reader/test updates, allowlist cleanup, and Plans/archive sync
+  were committed as `26f12df01bde6b1234a071444d3a39316f169d1b4`
+  (`fix(api): envelope pharmacists responses`). Push not performed.
+- remaining work:
+  `API-CONTRACT-001` remains Partial with 74 allowlisted violations. Next
+  allowlist head is `src/app/api/pharmacy-contracts/[id]/documents/route.ts`
+  with two expected legacy response shape violations. Existing unrelated
+  dirty/untracked memory/docs and `.codex`/`.harness-mem` files remain
+  unstaged.
+- next action:
+  Commit this ledger update with only `ops/refactor/STATE.md` staged, then
+  continue the next allowlist cleanup from
+  `src/app/api/pharmacy-contracts/[id]/documents/route.ts` unless redirected.
