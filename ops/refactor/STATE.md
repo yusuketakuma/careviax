@@ -42,6 +42,10 @@
 ## 直近の作業
 
 - codex: `FE-PHI-SAFE-CLIENT-LOG-001` console/raw-error minimization and CI guard.
+  - commit:
+    Implementation, Plans cleanup, CI wiring, and ledger evidence committed as
+    `5f7958b1d` (`fix(frontend): guard client PHI-safe error logging`) and pushed to
+    `origin/main` with prior guard commits `4f7472dc8` and `84cc789f1`.
   - current task:
     `Plans.md` v9 の高優先 security/frontend 残スコープから、client observability の raw Error /
     componentStack console leakage を削減し、local-only にならない guard を追加する。併せて未pushの
