@@ -487,7 +487,9 @@ describe('PharmacyCooperationWorkflowContent', () => {
           init?.method === 'POST'
         ) {
           return new Response(
-            JSON.stringify({ id: 'share_consent_1', revoked_at: '2026-06-19T00:00:00.000Z' }),
+            JSON.stringify({
+              data: { id: 'share_consent_1', revoked_at: '2026-06-19T00:00:00.000Z' },
+            }),
             { status: 200 },
           );
         }

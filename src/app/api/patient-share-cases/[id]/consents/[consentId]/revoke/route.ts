@@ -135,9 +135,11 @@ const authenticatedPOST = withAuthContext<{ id: string; consentId: string }>(
     }
     return withSensitiveNoStore(
       success({
-        consent: toSafeRevokedConsent(result.consent),
-        share_case_status: result.shareCaseStatus,
-        already_revoked: result.alreadyRevoked,
+        data: {
+          consent: toSafeRevokedConsent(result.consent),
+          share_case_status: result.shareCaseStatus,
+          already_revoked: result.alreadyRevoked,
+        },
       }),
     );
   },

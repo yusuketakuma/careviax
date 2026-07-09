@@ -142,11 +142,18 @@ describe('/api/patient-share-cases/[id]/consents/[consentId]/revoke POST', () =>
       }),
     );
     expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain('山田花子');
-    await expect(response.json()).resolves.toMatchObject({
-      share_case_status: 'revoked',
-      already_revoked: false,
-      consent: { id: 'share_consent_1', revoked_by: 'user_1' },
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: {
+        share_case_status: 'revoked',
+        already_revoked: false,
+        consent: { id: 'share_consent_1', revoked_by: 'user_1' },
+      },
     });
+    expect(body).not.toHaveProperty('consent');
+    expect(body).not.toHaveProperty('share_case_status');
+    expect(body).not.toHaveProperty('already_revoked');
+    expect(JSON.stringify(body)).not.toContain('山田花子');
   });
 
   it('returns already-revoked consent without duplicate audit or share-case writes', async () => {
@@ -166,11 +173,17 @@ describe('/api/patient-share-cases/[id]/consents/[consentId]/revoke POST', () =>
     expect(patientShareConsentUpdateManyMock).not.toHaveBeenCalled();
     expect(patientShareCaseUpdateMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
-    await expect(response.json()).resolves.toMatchObject({
-      share_case_status: 'revoked',
-      already_revoked: true,
-      consent: { id: 'share_consent_1', revoked_by: 'user_2' },
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: {
+        share_case_status: 'revoked',
+        already_revoked: true,
+        consent: { id: 'share_consent_1', revoked_by: 'user_2' },
+      },
     });
+    expect(body).not.toHaveProperty('consent');
+    expect(body).not.toHaveProperty('share_case_status');
+    expect(body).not.toHaveProperty('already_revoked');
   });
 
   it('returns a sanitized no-store 500 when consent revocation fails unexpectedly', async () => {
