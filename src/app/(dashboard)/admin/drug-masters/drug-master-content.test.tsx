@@ -3198,7 +3198,7 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
     }
   });
 
-  it('preserves nonstandard success envelopes from drug-detail and formulary read queries', async () => {
+  it('preserves success envelopes from drug-detail and formulary read queries', async () => {
     queuePendingFormularyRequest();
     detailDataMock.current = buildGenericDetail();
     const detailBody = { ...buildGenericDetail(), drug_name: '成功詳細薬' };
@@ -3249,7 +3249,7 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
       if (url.includes('/pharmacy-drug-stock-templates')) return jsonResponse(templatesBody, 200);
       if (url.includes('/pharmacy-drug-stocks?')) return jsonResponse(stockConfigBody, 200);
       if (url.includes('/drug-masters?')) return jsonResponse(genericCandidatesBody, 200);
-      if (url.includes('/drug-masters/')) return jsonResponse(detailBody, 200);
+      if (url.includes('/drug-masters/')) return jsonResponse({ data: detailBody }, 200);
       return jsonResponse({ message: `unexpected fetch: ${url}` }, 500);
     });
     vi.stubGlobal('fetch', fetchMock);

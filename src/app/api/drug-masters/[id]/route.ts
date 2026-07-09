@@ -88,7 +88,7 @@ async function authenticatedGET(req: NextRequest, params: Promise<{ id: string }
     const cacheKey = buildDrugMasterDetailCacheKey(id);
     const cached = drugMasterDetailCache.get<DrugMasterDetail>(cacheKey);
     if (cached !== undefined) {
-      return success(cached);
+      return success({ data: cached });
     }
 
     const drug = await fetchDrugMasterDetail(id);
@@ -96,7 +96,7 @@ async function authenticatedGET(req: NextRequest, params: Promise<{ id: string }
 
     drugMasterDetailCache.set(cacheKey, drug, DRUG_MASTER_DETAIL_CACHE_TTL_MS);
 
-    return success(drug);
+    return success({ data: drug });
   });
 }
 

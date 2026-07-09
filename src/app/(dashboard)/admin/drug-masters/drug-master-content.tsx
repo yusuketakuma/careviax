@@ -365,7 +365,11 @@ function DrugMasterOperationalContent({
       const res = await fetch(buildDrugMasterApiPath(selectedDrugId), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<DrugMasterDetail>(res, '医薬品詳細の取得に失敗しました');
+      const payload = await readApiJson<{ data: DrugMasterDetail }>(
+        res,
+        '医薬品詳細の取得に失敗しました',
+      );
+      return payload.data;
     },
     enabled: !!orgId && !!selectedDrugId,
     staleTime: 300_000,

@@ -87,6 +87,32 @@ describe('/api/drug-masters/[id]', () => {
       where: { id: 'drug_1' },
       include: expect.any(Object),
     });
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: 'drug_1',
+        drug_name: 'アセトアミノフェン',
+      },
+    });
+  });
+
+  it('returns cached drug master detail in a data envelope', async () => {
+    const first = await GET(createRequest(), createRouteContext('drug_1'));
+    if (!first) throw new Error('first response is required');
+    expect(first.status).toBe(200);
+    expectNoStore(first);
+    await expect(first.json()).resolves.toMatchObject({
+      data: { id: 'drug_1', drug_name: 'アセトアミノフェン' },
+    });
+
+    drugMasterFindUniqueMock.mockClear();
+    const second = await GET(createRequest(), createRouteContext('drug_1'));
+    if (!second) throw new Error('second response is required');
+    expect(second.status).toBe(200);
+    expectNoStore(second);
+    await expect(second.json()).resolves.toMatchObject({
+      data: { id: 'drug_1', drug_name: 'アセトアミノフェン' },
+    });
+    expect(drugMasterFindUniqueMock).not.toHaveBeenCalled();
   });
 
   it('does not truncate interactions before prioritizing contraindications', async () => {
@@ -147,15 +173,12 @@ describe('/api/drug-masters/[id]', () => {
         }),
       }),
     );
-    expect(body.interactions_as_a.map((interaction: { id: string }) => interaction.id)).toEqual([
-      'interaction_contraindicated',
-      'interaction_caution',
-      'interaction_minor',
-    ]);
-    expect(body.interactions_as_b.map((interaction: { id: string }) => interaction.id)).toEqual([
-      'interaction_b_contraindicated',
-      'interaction_b_minor',
-    ]);
+    expect(
+      body.data.interactions_as_a.map((interaction: { id: string }) => interaction.id),
+    ).toEqual(['interaction_contraindicated', 'interaction_caution', 'interaction_minor']);
+    expect(
+      body.data.interactions_as_b.map((interaction: { id: string }) => interaction.id),
+    ).toEqual(['interaction_b_contraindicated', 'interaction_b_minor']);
   });
 
   it('rejects blank drug master ids before querying safety data', async () => {
