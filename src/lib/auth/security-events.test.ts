@@ -201,4 +201,114 @@ describe('logSecurityEvent', () => {
       'org_b',
     ]);
   });
+
+  it.each([
+    ['/api/auth/callback/john@example.test', '/api/auth/callback/:value', 'john@example.test'],
+    ['/api/patients/090-1234-5678', '/api/patients/:value', '090-1234-5678'],
+    ['/api/auth/secret-token-value', '/api/auth/:value', 'secret-token-value'],
+    ['/api/auth/magic-link-value', '/api/auth/:value', 'magic-link-value'],
+    ['/api/auth/reset-password-value', '/api/auth/:value', 'reset-password-value'],
+    ['/api/auth/api-key-abc', '/api/auth/:value', 'api-key-abc'],
+    ['/api/auth/pharmacist-credentials', '/api/auth/:value', 'pharmacist-credentials'],
+    ['/api/auth/callback/john%40example.test', '/api/auth/callback/:value', 'john%40example.test'],
+    ['/api/auth/callback/123456', '/api/auth/callback/:id', '123456'],
+    ['/shared/abcdefghijklmnop', '/shared/:value', 'abcdefghijklmnop'],
+    [
+      '/api/auth/callback/AbCdEfGhIjKlMnOpQrStUvWx',
+      '/api/auth/callback/:value',
+      'AbCdEfGhIjKlMnOpQrStUvWx',
+    ],
+    [
+      '/api/external-access/abcdefghijklmnop/self-report',
+      '/api/external-access/:value/self-report',
+      'abcdefghijklmnop',
+    ],
+  ])(
+    'redacts a sensitive path segment from the audit target: %s',
+    async (path, targetId, rawSensitiveSegment) => {
+      transactionMock.mockImplementationOnce(async (callback) => callback(tx));
+      executeRawMock.mockResolvedValue(undefined);
+      auditLogCreateMock.mockResolvedValueOnce({ id: 'audit_1' });
+
+      logSecurityEvent({
+        event_type: 'auth_failure',
+        ip_address: '192.0.2.6',
+        org_id: 'org_1',
+        path,
+        method: 'POST',
+      });
+
+      await vi.waitFor(() => expect(auditLogCreateMock).toHaveBeenCalledTimes(1));
+      expect(auditLogCreateMock).toHaveBeenCalledWith({
+        data: expect.objectContaining({ target_id: targetId }),
+      });
+      expect(JSON.stringify(auditLogCreateMock.mock.calls[0])).not.toContain(rawSensitiveSegment);
+    },
+  );
+
+  it.each([
+    '/api/patients/external-clinical-references/verify',
+    '/api/admin/pharmacist-credentials',
+  ])('preserves known static route segments for operational audit value: %s', async (path) => {
+    transactionMock.mockImplementationOnce(async (callback) => callback(tx));
+    executeRawMock.mockResolvedValue(undefined);
+    auditLogCreateMock.mockResolvedValueOnce({ id: 'audit_1' });
+
+    logSecurityEvent({
+      event_type: 'unauthorized_access',
+      ip_address: '192.0.2.7',
+      org_id: 'org_1',
+      path,
+      method: 'POST',
+    });
+
+    await vi.waitFor(() => expect(auditLogCreateMock).toHaveBeenCalledTimes(1));
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        target_id: path,
+      }),
+    });
+  });
+
+  it('does not treat date-like path segments as phone numbers', async () => {
+    transactionMock.mockImplementationOnce(async (callback) => callback(tx));
+    executeRawMock.mockResolvedValue(undefined);
+    auditLogCreateMock.mockResolvedValueOnce({ id: 'audit_1' });
+
+    logSecurityEvent({
+      event_type: 'unauthorized_access',
+      ip_address: '192.0.2.9',
+      org_id: 'org_1',
+      path: '/api/reports/2026-07-09',
+      method: 'GET',
+    });
+
+    await vi.waitFor(() => expect(auditLogCreateMock).toHaveBeenCalledTimes(1));
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        target_id: '/api/reports/2026-07-09',
+      }),
+    });
+  });
+
+  it('deduplicates equivalent redacted paths without retaining raw email segments', async () => {
+    transactionMock.mockImplementation(async (callback) => callback(tx));
+    executeRawMock.mockResolvedValue(undefined);
+    auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
+
+    const baseEvent = {
+      event_type: 'auth_failure' as const,
+      ip_address: '192.0.2.8',
+      org_id: 'org_1',
+      method: 'POST',
+    };
+    logSecurityEvent({ ...baseEvent, path: '/api/auth/callback/alice@example.test' });
+    logSecurityEvent({ ...baseEvent, path: '/api/auth/callback/bob@example.test' });
+
+    await vi.waitFor(() => expect(auditLogCreateMock).toHaveBeenCalledTimes(1));
+    expect(transactionMock).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(auditLogCreateMock.mock.calls[0])).not.toMatch(
+      /alice@example\.test|bob@example\.test/,
+    );
+  });
 });

@@ -27,6 +27,11 @@ const SAFE_APP_ID_PATTERN = /^[a-z][a-z0-9_-]{2,63}$/;
 const SECURITY_EVENT_TX_TIMEOUT_MS = 3000;
 const SECURITY_EVENT_TX_MAX_WAIT_MS = 2000;
 const SAFE_DETAIL_KEYS = new Set(['reason', 'required', 'role', 'reset_at']);
+const PHONE_PATH_SEGMENT_PATTERN = /^(?:\+?\d{1,3}[-.]?)?(?:\d{2,4}[-.]){1,3}\d{2,4}$/;
+const CREDENTIAL_PATH_KEYWORD_PATTERN =
+  /(?:secret|token|password|passwd|bearer|signature|api[-_.:]?key|access[-_.:]?key|otp|reset|magic|credential|session|invite)/i;
+const SENSITIVE_VALUE_PARENT_SEGMENTS = new Set(['external-access', 'shared']);
+const SAFE_ADMIN_ROUTE_LITERALS = new Set(['pharmacist-credentials']);
 
 // ---------------------------------------------------------------------------
 // Fix 3: Deduplication throttle — prevents DoS via log flooding
@@ -79,10 +84,35 @@ function sanitizePathForAudit(path: string): string {
   const segments = collapsed
     .split('/')
     .filter(Boolean)
-    .map((segment) => {
+    .map((segment, index, allSegments) => {
       if (!/^[A-Za-z0-9_.:@-]+$/.test(segment)) return ':value';
+      if (index > 0 && SENSITIVE_VALUE_PARENT_SEGMENTS.has(allSegments[index - 1] ?? '')) {
+        return ':value';
+      }
+      if (
+        index > 0 &&
+        allSegments[index - 1] === 'admin' &&
+        SAFE_ADMIN_ROUTE_LITERALS.has(segment)
+      ) {
+        return segment;
+      }
+      if (segment.includes('@')) return ':value';
+      if (PHONE_PATH_SEGMENT_PATTERN.test(segment) && segment.replace(/\D/g, '').length >= 10) {
+        return ':value';
+      }
+      const separatorCount = (segment.match(/[-_.:]/g) ?? []).length;
+      if (
+        CREDENTIAL_PATH_KEYWORD_PATTERN.test(segment) &&
+        (segment.length >= 16 || separatorCount >= 2 || segment.includes(':'))
+      ) {
+        return ':value';
+      }
       if (/^[0-9a-f]{8,}-[0-9a-f-]{8,}$/i.test(segment)) return ':id';
       if (/^[a-z]+_[A-Za-z0-9_-]{6,}$/.test(segment)) return ':id';
+      if (/^\d{6,15}$/.test(segment)) return ':id';
+      if (segment.length >= 24 && /[a-z]/.test(segment) && /[A-Z]/.test(segment)) {
+        return ':value';
+      }
       if (segment.length >= 16 && /\d/.test(segment)) return ':id';
       return segment;
     });
