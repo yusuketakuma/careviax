@@ -102,8 +102,15 @@ describe('/api/medication-cycles/[id]/history', () => {
       }),
     );
     const json = await res!.json();
-    expect(json).toHaveLength(1);
-    expect(json[0].actor_name).toBe('Taro');
+    expect(json).toEqual({
+      data: [
+        expect.objectContaining({
+          id: 'log_1',
+          actor_name: 'Taro',
+        }),
+      ],
+    });
+    expect(json).not.toHaveProperty('actor_name');
   });
 
   it('rejects blank cycle ids before loading cycle history', async () => {
@@ -132,6 +139,7 @@ describe('/api/medication-cycles/[id]/history', () => {
 
     expect(res!.status).toBe(200);
     expectSensitiveNoStore(res!);
+    await expect(res!.json()).resolves.toEqual({ data: [] });
     expect(medicationCycleFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'cycle_1',

@@ -75,7 +75,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
       created_at: log.created_at,
     }));
 
-    return success(data);
+    return success({ data });
   });
 }
 

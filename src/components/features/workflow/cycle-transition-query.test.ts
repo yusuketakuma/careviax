@@ -15,7 +15,7 @@ vi.mock('@/lib/api/org-headers', () => ({
 
 describe('fetchCycleTransitionLogs', () => {
   it('fetches cycle transition history with the existing URL and org headers', async () => {
-    const payload = [
+    const logs = [
       {
         id: 'log_1',
         from_status: 'dispensing',
@@ -25,13 +25,13 @@ describe('fetchCycleTransitionLogs', () => {
         created_at: '2026-07-04T00:00:00.000Z',
       },
     ];
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(payload));
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ data: logs }));
     vi.stubGlobal('fetch', fetchMock);
 
     try {
       await expect(
         fetchCycleTransitionLogs({ cycleId: 'cycle_1', orgId: 'org_1' }),
-      ).resolves.toEqual(payload);
+      ).resolves.toEqual(logs);
 
       expect(fetchMock).toHaveBeenCalledWith('/api/medication-cycles/cycle_1/history', {
         headers: { 'x-org-id': 'org-header:org_1', 'x-test-helper': 'buildOrgHeaders' },

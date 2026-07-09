@@ -38,5 +38,6 @@ export async function fetchCycleTransitionLogs(args: { cycleId: string; orgId: s
   const res = await fetch(`/api/medication-cycles/${args.cycleId}/history`, {
     headers: buildOrgHeaders(args.orgId),
   });
-  return readApiJson<TransitionLog[]>(res, '履歴の取得に失敗しました');
+  const payload = await readApiJson<{ data: TransitionLog[] }>(res, '履歴の取得に失敗しました');
+  return payload.data;
 }
