@@ -41,6 +41,95 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001BP` medication cycle history success envelope cleanup.
+  - commit:
+    Implementation, Plans/allowlist, route test, and workflow fetcher update committed as
+    `e28d9d0a7` (`fix(api): envelope medication cycle history`). State record is this entry and
+    will be committed separately before pushing the slice.
+  - current task:
+    Continue `Plans.md` highest-priority implementable work under `API-CONTRACT-001`. Remove
+    `src/app/api/medication-cycles/[id]/history/route.ts` from the public response-shape allowlist
+    by moving the cycle transition history success body to the required `data` envelope, without
+    keeping a legacy root array.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`, `ops/refactor/STATE.md`, `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `src/app/api/medication-cycles/[id]/history/route.ts`,
+    `src/app/api/medication-cycles/[id]/history/route.test.ts`,
+    `src/components/features/workflow/cycle-transition-query.ts`,
+    `src/components/features/workflow/cycle-transition-query.test.ts`,
+    `src/components/features/workflow/stage-timeline.tsx`,
+    `src/components/features/workflow/previous-stage-summary.tsx`,
+    `src/lib/api/response.ts`, and
+    `gbrain search "API-CONTRACT medication-cycles history response envelope"`.
+  - files changed:
+    `Plans.md`, `tools/api-response-shape-allowlist.json`,
+    `src/app/api/medication-cycles/[id]/history/route.ts`,
+    `src/app/api/medication-cycles/[id]/history/route.test.ts`,
+    `src/components/features/workflow/cycle-transition-query.ts`,
+    `src/components/features/workflow/cycle-transition-query.test.ts`, and this ledger.
+  - implementation:
+    `GET /api/medication-cycles/:id/history` now returns `success({ data })`. The workflow history
+    fetcher now unwraps `payload.data` only and no longer accepts a root array. Route tests assert the
+    new exact success shape for non-empty and empty history responses, and fetcher tests use the
+    current envelope fixture. Existing auth context, case assignment scope, cycle lookup, transition
+    log selection, user-name mapping, no-store wrapping, and PHI-safe 500 logging were not changed.
+    The `medication-cycles/:id/history` allowlist entry was removed, and `Plans.md` records
+    `API-CONTRACT-001BP` with allowlist debt reduced from 118 to 117.
+  - Oracle:
+    User explicitly paused Oracle consultation. No Oracle prompt was sent or restarted. This slice is
+    a mechanical response-envelope/readers/test/allowlist cleanup.
+  - imagegen:
+    Not used. This is an API contract/static guard cleanup with no visible UI/UX reconstruction.
+  - Next.js docs:
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md` was read earlier in
+    this run. This slice changes JSON response construction only and does not change route placement,
+    supported methods, runtime behavior, or cache/no-store semantics.
+  - bugs found:
+    Cycle history success still returned the transition log array at the response root, and the
+    workflow history fetcher consumed the old root array.
+  - bugs fixed:
+    Cycle transition history now uses the required `data` envelope, the workflow fetcher reads only
+    `payload.data`, tests cover the new shape, and `api-response-shape:check` now reports 117
+    allowlisted violations and 0 new violations.
+  - security risks found:
+    None.
+  - security risks reduced:
+    Removing the legacy root array reduces public response-contract drift while preserving org and
+    assignment scoping plus PHI-safe logging metadata.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None. No query shape, selected columns, ordering, user lookup, or React query invalidation changed.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/medication-cycles/[id]/history/route.ts src/app/api/medication-cycles/[id]/history/route.test.ts src/components/features/workflow/cycle-transition-query.ts src/components/features/workflow/cycle-transition-query.test.ts`;
+    `pnpm vitest run src/app/api/medication-cycles/[id]/history/route.test.ts`;
+    `pnpm vitest run src/components/features/workflow/cycle-transition-query.test.ts`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint src/app/api/medication-cycles/[id]/history/route.ts src/app/api/medication-cycles/[id]/history/route.test.ts src/components/features/workflow/cycle-transition-query.ts src/components/features/workflow/cycle-transition-query.test.ts`;
+    `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/medication-cycles/[id]/history/route.ts src/app/api/medication-cycles/[id]/history/route.test.ts src/components/features/workflow/cycle-transition-query.ts src/components/features/workflow/cycle-transition-query.test.ts`;
+    `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/medication-cycles/[id]/history/route.ts src/app/api/medication-cycles/[id]/history/route.test.ts src/components/features/workflow/cycle-transition-query.ts src/components/features/workflow/cycle-transition-query.test.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm format:check`.
+  - validation results:
+    Prettier write passed for owned files. Medication cycle history route test passed (1 file / 6
+    tests). Workflow transition fetcher test passed (1 file / 2 tests). API response shape guard
+    passed (117 allowlisted violations, 0 new violations). Plans active board check passed. Scoped
+    ESLint passed. Scoped Prettier check passed. Scoped `git diff --check` passed. Full typecheck
+    passed. `pnpm format:check` again confirmed owned changed files are formatted, then failed on
+    unrelated pre-existing untracked Markdown files under `projects/` and `skills/`; those files were
+    not modified or staged.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 117 allowlisted response-shape violations. Next immediate
+    allowlist targets start with `src/app/api/medication-cycles/[id]/transition/route.ts`, followed
+    by `src/app/api/medication-cycles/route.ts`.
+  - next action:
+    Commit this STATE entry separately, push `e28d9d0a7` plus the state commit to `origin/main`, then
+    continue with `src/app/api/medication-cycles/[id]/transition/route.ts` under the same
+    Oracle-paused and no-legacy-root constraints.
+
 - codex: `API-CONTRACT-001BO` current organization success envelope cleanup.
   - commit:
     Implementation, Plans/allowlist, route test, and print page readers committed as `96006d240`
