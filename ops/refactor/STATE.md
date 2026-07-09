@@ -51,6 +51,43 @@
 
 ## 直近の作業
 
+- codex: repo-wide PH-OS all-screen UI/UX direction reference.
+  - commit:
+    `53b611e3a docs(design): add all-screen UI direction`
+  - current task:
+    `docs/ui-ux-design-guidelines.md` を実装SSOTのまま維持し、128 routeの段階的なUI/UX刷新で
+    dashboard / patient list+preview / report workspace / mobile visit record / degraded statesに共通利用する
+    非PHIのvisual directionを固定する。
+  - files inspected:
+    `docs/ui-ux-design-guidelines.md`, `docs/frontend-screen-contracts.md`,
+    `.agent-loop/UI_AUDIT_MATRIX.md`, existing shared UI primitives and protected baseline notes,
+    `node_modules/next/dist/docs/01-app/02-guides/memory-usage.md`, and current dirty tree.
+  - files changed:
+    `design/generated/README.md` and
+    `design/generated/ph-os-all-screen-direction-20260710.png`.
+  - bugs / UX gaps addressed:
+    The full-screen objective previously had route-level artifacts but no single non-PHI cross-screen reference
+    for hierarchy, density, dominant action, mobile continuity, and loading/error/empty/stale/partial/offline/conflict
+    treatment. The new artifact supplies that direction without replacing route/API/auth contracts or the UI SSOT.
+  - security/privacy:
+    The generated reference contains fictional labels only and no patient, prescription, facility, report,
+    contact, insurance, URL, credential, or secret data. It is explicitly documented as a reference rather than
+    a source of truth for PHI disclosure boundaries.
+  - performance:
+    No runtime code or dependency changed. A post-visit-slice `pnpm build` attempt exited 137 without a code
+    diagnostic after `.next/cache/webpack` reached approximately 10 GiB on a 16 GiB machine with 11 GiB disk
+    free. Next's bundled memory guide confirms `webpackMemoryOptimizations` and `preloadEntriesOnStart: false`
+    are already enabled; the build is not recorded as passed and no generated cache was destructively removed.
+  - validation:
+    `file design/generated/ph-os-all-screen-direction-20260710.png` confirmed a 1536x1024 RGB PNG;
+    `shasum -a 256` = `637b27170e28a36a5348a124685aa1de55c53792dd7832834f9907a95dfabc7e`;
+    `git diff --cached --check` passed before the scoped design commit.
+  - remaining / next action:
+    The image is not implementation completion. Continue the route x backend contract x UX-state inventory,
+    protect the already accepted dashboard/dispense/audit/set baselines, and implement coherent frontend+backend
+    waves. Browser/mobile proof remains unavailable until a compatible local app/database runtime is active;
+    no migration, deploy, production mutation, or cache deletion was performed.
+
 - codex + claude checker: `STOCK-001-VISIT-UI` visit medication stock observation write wiring and matched UI/API gate.
   - commit:
     `f5e159c96 feat(visits): gate medication stock observations`
@@ -116,7 +153,7 @@
   - UI/imagegen:
     `imagegen` was intentionally omitted because this slice was not a new visual reconstruction;
     it connected an existing panel and state contract, and the PH-OS UI SSOT was read. The existing
-    repo-wide design artifact under `design/generated/` was left untouched and uncommitted.
+    repo-wide design artifact under `design/generated/` was committed separately as `53b611e3a`.
   - remaining / next action:
     No DB migration/application, live DB mutation, deployment, push, or secret change was
     performed. `STOCK-001-VISIT-DB-INTEGRATION` remains a human gate before enabling
