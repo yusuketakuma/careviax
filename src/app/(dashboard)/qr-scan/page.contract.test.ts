@@ -6,9 +6,23 @@ const SOURCE = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
 describe('QRScanPage accessibility status contract', () => {
   it('announces blocking scan and send errors as alerts', () => {
     expect(SOURCE).toContain('role="alert"');
-    expect(SOURCE).toContain('aria-live="assertive"');
     expect(SOURCE).toContain('{cameraError}');
     expect(SOURCE).toContain('{sendError}');
+  });
+
+  it('never doubles role="alert" with aria-live (SSOT 8.8: iOS VoiceOver double announcement)', () => {
+    // role="alert" は暗黙 assertive。aria-live を重ねると iOS VoiceOver が二重読み上げする。
+    expect(SOURCE).not.toMatch(/role="alert"\s+aria-live=/);
+    expect(SOURCE).not.toMatch(/aria-live="[^"]+"\s+role="alert"/);
+    expect(SOURCE).not.toContain('aria-live="assertive"');
+  });
+
+  it('keeps aria-live="polite" on every role="status" region (SSOT 8.8 compatibility)', () => {
+    // status 側は逆に、互換性のため aria-live="polite" を必ず併記する(SSOT 8.8 逐語)。
+    const statusCount = (SOURCE.match(/role="status"/g) ?? []).length;
+    const politeStatusCount = (SOURCE.match(/role="status"\s+aria-live="polite"/g) ?? []).length;
+    expect(statusCount).toBeGreaterThan(0);
+    expect(politeStatusCount).toBe(statusCount);
   });
 
   it('normalizes send error messages through the shared fallback helper', () => {

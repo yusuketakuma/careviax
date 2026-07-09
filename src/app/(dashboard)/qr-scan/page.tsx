@@ -524,7 +524,6 @@ export default function QRScanPage() {
                 <div
                   className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center"
                   role="alert"
-                  aria-live="assertive"
                 >
                   <CameraOff className="h-12 w-12 text-muted-foreground" aria-hidden="true" />
                   <p className="text-sm text-muted-foreground">{cameraError}</p>
@@ -758,7 +757,6 @@ export default function QRScanPage() {
                   <div
                     className="mt-2 rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-xs text-state-confirm"
                     role="alert"
-                    aria-live="assertive"
                   >
                     <p className="font-medium">解析時の確認事項</p>
                     <ul className="mt-1 space-y-1">
@@ -872,11 +870,7 @@ export default function QRScanPage() {
                   ))}
                 </div>
               ) : matchError ? (
-                <div
-                  className="flex flex-col items-center gap-3 py-4 text-center"
-                  role="alert"
-                  aria-live="assertive"
-                >
+                <div className="flex flex-col items-center gap-3 py-4 text-center" role="alert">
                   <AlertTriangle className="h-8 w-8 text-destructive" aria-hidden="true" />
                   <p className="text-sm text-destructive">
                     患者情報の照合に失敗しました。「該当なし」ではなく取得エラーです。
@@ -886,9 +880,10 @@ export default function QRScanPage() {
               ) : (
                 <div
                   className="flex flex-col items-center gap-3 py-4 text-center"
-                  role="alert"
+                  role="status"
                   aria-live="polite"
                 >
+                  {/* 該当なしは注意喚起でなく検索結果の状態通知 → role=status(暗黙 polite)。alert+polite の矛盾指定を解消(SSOT 8.8)。 */}
                   <AlertTriangle className="h-8 w-8 text-state-confirm" aria-hidden="true" />
                   <p className="text-sm text-muted-foreground">
                     該当する患者が見つかりませんでした。
@@ -960,7 +955,7 @@ export default function QRScanPage() {
 
                     {/* 警告 */}
                     {parseResult.warnings.length > 0 && (
-                      <div className="space-y-1" role="alert" aria-live="assertive">
+                      <div className="space-y-1" role="alert">
                         {parseResult.warnings.map((w, i) => (
                           <div
                             key={i}
@@ -975,7 +970,7 @@ export default function QRScanPage() {
 
                     {/* エラー（パース失敗） */}
                     {!parseResult.success && parseResult.errors.length > 0 && (
-                      <div role="alert" aria-live="assertive" className="space-y-1">
+                      <div role="alert" className="space-y-1">
                         {parseResult.errors.map((e, i) => (
                           <div key={i} className="flex items-start gap-2 text-sm text-destructive">
                             <CircleX className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
@@ -1005,7 +1000,6 @@ export default function QRScanPage() {
               <CardContent
                 className="flex flex-col items-center gap-3 py-8 text-center"
                 role="alert"
-                aria-live="assertive"
               >
                 <AlertTriangle className="h-10 w-10 text-destructive" aria-hidden="true" />
                 <p className="text-sm text-destructive">{sendError}</p>
