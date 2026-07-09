@@ -41,6 +41,100 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001BS` medication profile list success envelope cleanup.
+  - commit:
+    Implementation, Plans/allowlist, and route test update committed as `44f3f195c` (`fix(api):
+    envelope medication profile list`). State record is this entry and will be committed separately
+    before pushing the slice.
+  - current task:
+    Continue `Plans.md` highest-priority implementable work under `API-CONTRACT-001`. Remove
+    `src/app/api/medication-profiles/route.ts` from the public response-shape allowlist by moving GET
+    list success to `data + meta`, without keeping legacy root `hasMore` / `nextCursor` fields.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`, `ops/refactor/STATE.md`, `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `src/app/api/medication-profiles/route.ts`, `src/app/api/medication-profiles/route.test.ts`,
+    `src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.tsx`,
+    `src/app/(dashboard)/patients/[id]/medications/medications-content.tsx`,
+    `src/app/(dashboard)/patients/[id]/medications/print/page.tsx`,
+    `src/app/api/__tests__/protected-get-routes.test.ts`,
+    `src/app/api/__tests__/protected-post-routes.test.ts`, route/reader usage search results, and
+    `gbrain search "API-CONTRACT medication-profiles response envelope"`.
+  - files changed:
+    `Plans.md`, `tools/api-response-shape-allowlist.json`,
+    `src/app/api/medication-profiles/route.ts`,
+    `src/app/api/medication-profiles/route.test.ts`, and this ledger.
+  - implementation:
+    `GET /api/medication-profiles` now returns `success({ data, meta: { limit, has_more,
+    next_cursor } })`, including the inaccessible-patient empty-list path. Existing frontend readers
+    already consume `payload.data` only, so no reader code change was needed. `POST
+    /api/medication-profiles` already used `data` envelope; the route test now asserts that shape.
+    Existing auth, request context, patient access checks, DrugMaster validation, display-id
+    allocation, RLS create, no-store wrapping, withRoutePerformance, and PHI-safe logging were not
+    changed. The medication-profiles allowlist entry was removed, and `Plans.md` records
+    `API-CONTRACT-001BS` with allowlist debt reduced from 115 to 114.
+  - Oracle:
+    User explicitly paused Oracle consultation. No Oracle prompt was sent or restarted. This slice is
+    a mechanical response-envelope/test/allowlist cleanup.
+  - imagegen:
+    Not used. This is an API contract/static guard cleanup with no visible UI/UX reconstruction.
+  - Next.js docs:
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md` was read earlier in
+    this run. This slice changes JSON response construction only and does not change route placement,
+    supported methods, runtime behavior, or transaction semantics.
+  - bugs found:
+    Medication profile list success still returned pagination metadata at the response root on normal
+    and inaccessible-patient empty-list paths.
+  - bugs fixed:
+    Medication profile list success now uses `data + meta`, inaccessible-patient empty list uses the
+    same envelope, tests cover the new shape, and `api-response-shape:check` now reports 114
+    allowlisted violations and 0 new violations.
+  - security risks found:
+    None.
+  - security risks reduced:
+    Removing legacy root list fields reduces public response-contract drift while preserving auth,
+    patient access checks, no-store headers, and PHI-safe error logging.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None. No query shape, pagination limit, selected columns, access check, or transaction work
+    changed.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/medication-profiles/route.ts src/app/api/medication-profiles/route.test.ts src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.tsx src/app/(dashboard)/patients/[id]/medications/medications-content.tsx src/app/(dashboard)/patients/[id]/medications/print/page.tsx`;
+    `pnpm vitest run src/app/api/medication-profiles/route.test.ts`;
+    `pnpm vitest run src/app/(dashboard)/patients/[id]/medications/medications-content.test.tsx -t medication-profiles`;
+    `pnpm vitest run src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.render.test.tsx`;
+    `pnpm vitest run src/app/(dashboard)/patients/[id]/medications/print/page.test.tsx`;
+    `pnpm vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "medication-profiles"`;
+    `pnpm vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "medication-profiles"`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint src/app/api/medication-profiles/route.ts src/app/api/medication-profiles/route.test.ts src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.tsx src/app/(dashboard)/patients/[id]/medications/medications-content.tsx src/app/(dashboard)/patients/[id]/medications/print/page.tsx`;
+    `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/medication-profiles/route.ts src/app/api/medication-profiles/route.test.ts src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.tsx src/app/(dashboard)/patients/[id]/medications/medications-content.tsx src/app/(dashboard)/patients/[id]/medications/print/page.tsx`;
+    `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/medication-profiles/route.ts src/app/api/medication-profiles/route.test.ts src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.tsx src/app/(dashboard)/patients/[id]/medications/medications-content.tsx src/app/(dashboard)/patients/[id]/medications/print/page.tsx`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm format:check`.
+  - validation results:
+    Prettier write passed for owned files and inspected reader files. Medication profiles route test
+    passed (1 file / 20 tests). Medications content filtered reader tests passed (2 passed, 31
+    skipped). Medication calendar render tests passed (5 tests). Medication print page test passed (4
+    tests). Protected GET smoke for medication-profiles passed (3 passed, 381 skipped). Protected
+    POST smoke for medication-profiles passed (3 passed, 142 skipped). API response shape guard
+    passed (114 allowlisted violations, 0 new violations). Plans active board check passed. Scoped
+    ESLint passed. Scoped Prettier check passed. Scoped `git diff --check` passed. Full typecheck
+    passed. `pnpm format:check` again confirmed owned changed files are formatted, then failed on
+    unrelated pre-existing untracked Markdown files under `projects/` and `skills/`; those files were
+    not modified or staged.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 114 allowlisted response-shape violations. Next immediate
+    allowlist targets start with `src/app/api/notifications/route.ts`, followed by
+    `src/app/api/partner-pharmacies/route.ts`.
+  - next action:
+    Commit this STATE entry separately, push `44f3f195c` plus the state commit to `origin/main`, then
+    continue with `src/app/api/notifications/route.ts` under the same Oracle-paused and
+    no-legacy-root constraints.
+
 - codex: `API-CONTRACT-001BR` medication cycle collection success envelope cleanup.
   - commit:
     Implementation, Plans/allowlist, and route test update committed as `7753449ee` (`fix(api):
