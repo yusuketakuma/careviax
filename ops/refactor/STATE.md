@@ -36471,3 +36471,80 @@ GET` passed 3 tests with 381 skipped; expected audit mock stderr was emitted.
 - next action:
   Commit this implementation/ledger slice with only owned paths staged, then
   push the committed allowlist work to `origin/main`.
+
+## 2026-07-10 UI-P1-1 — visit capture patient safety gate
+
+- current task:
+  Close the P1-1 visit evidence capture patient-safety gap from the repo-wide
+  UI/UX audit: patient identity and safety tags must remain visible at capture
+  time, and capture must fail closed when the visit patient cannot be resolved.
+- files inspected:
+  `git status --short --branch --untracked-files=all`;
+  `ops/refactor/STATE.md`; `docs/ui-ux-design-guidelines.md`;
+  `node_modules/next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md`;
+  `src/app/(dashboard)/visits/[id]/capture/page.tsx`;
+  `src/app/(dashboard)/visits/[id]/capture/capture-content.tsx`;
+  `src/app/(dashboard)/visits/[id]/capture/capture-content.test.tsx`;
+  `src/app/(dashboard)/visits/[id]/capture/capture.shared.ts`;
+  `src/app/(dashboard)/visits/[id]/capture/capture.shared.test.ts`;
+  `src/app/(dashboard)/visits/[id]/record/visit-step-nav.tsx`;
+  `src/lib/offline/evidence-drafts.ts`;
+  `src/lib/offline/evidence-drafts.test.ts`;
+  `src/lib/visits/time-of-day.ts`.
+- files changed:
+  `src/app/(dashboard)/visits/[id]/capture/page.tsx`;
+  `src/app/(dashboard)/visits/[id]/capture/capture-content.tsx`;
+  `src/app/(dashboard)/visits/[id]/capture/capture-content.test.tsx`;
+  `src/app/(dashboard)/visits/[id]/capture/capture.shared.ts`;
+  `src/app/(dashboard)/visits/[id]/capture/capture.shared.test.ts`;
+  `src/lib/offline/evidence-drafts.ts`;
+  `ops/refactor/STATE.md`.
+- bugs found:
+  The capture page showed only the patient name and let the shutter remain
+  usable when visit patient resolution failed, allowing offline evidence drafts
+  to be saved without a confirmed patient context. The header also treated
+  unavailable safety tags as visually indistinguishable from no safety tags.
+- bugs fixed:
+  Product commit `41cd3d8e0` adds a sticky capture patient safety header with
+  patient name, visit date/time, and the shared `VisitHeaderSafetyTags`
+  component; loads patient header-summary safety tags fail-closed with the
+  shared unavailable warning; disables the shutter with `aria-describedby`
+  when patient identity is loading or unresolved; and makes
+  `SaveEvidenceDraftInput.patientId` required so evidence persistence cannot
+  silently omit the resolved patient.
+- security risks found:
+  Patient-evidence misassociation risk on the capture path: evidence could be
+  queued without a confirmed patient ID when the visit lookup failed.
+- security risks reduced:
+  Offline evidence draft persistence now requires an org ID and resolved
+  patient ID before writing to the local draft queue, and the UI blocks capture
+  before save with a PHI-safe reason when patient context is unavailable.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this slice intentionally kept fetch and query scope narrow. The added
+  header-summary safety query is enabled only after patient ID resolution.
+- UI/UX note:
+  `docs/ui-ux-design-guidelines.md` was consulted. Image generation was omitted
+  because this was not a visual reconstruction; it reused the existing visit
+  record safety-tag component and added fail-closed state wiring.
+- validation commands:
+  `pnpm vitest run 'src/app/(dashboard)/visits/[id]/capture/capture-content.test.tsx' 'src/app/(dashboard)/visits/[id]/capture/capture.shared.test.ts' src/lib/offline/evidence-drafts.test.ts --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint --max-warnings=0 'src/app/(dashboard)/visits/[id]/capture/page.tsx' 'src/app/(dashboard)/visits/[id]/capture/capture-content.tsx' 'src/app/(dashboard)/visits/[id]/capture/capture-content.test.tsx' 'src/app/(dashboard)/visits/[id]/capture/capture.shared.ts' 'src/app/(dashboard)/visits/[id]/capture/capture.shared.test.ts' src/lib/offline/evidence-drafts.ts src/lib/offline/evidence-drafts.test.ts`;
+  `git diff --check -- 'src/app/(dashboard)/visits/[id]/capture/page.tsx' 'src/app/(dashboard)/visits/[id]/capture/capture-content.tsx' 'src/app/(dashboard)/visits/[id]/capture/capture-content.test.tsx' 'src/app/(dashboard)/visits/[id]/capture/capture.shared.ts' 'src/app/(dashboard)/visits/[id]/capture/capture.shared.test.ts' src/lib/offline/evidence-drafts.ts src/lib/offline/evidence-drafts.test.ts`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused`;
+  `pnpm exec prettier --check 'src/app/(dashboard)/visits/[id]/capture/page.tsx' 'src/app/(dashboard)/visits/[id]/capture/capture-content.tsx' 'src/app/(dashboard)/visits/[id]/capture/capture-content.test.tsx' 'src/app/(dashboard)/visits/[id]/capture/capture.shared.ts' 'src/app/(dashboard)/visits/[id]/capture/capture.shared.test.ts' src/lib/offline/evidence-drafts.ts src/lib/offline/evidence-drafts.test.ts`;
+  `pnpm format:check`.
+- validation results:
+  Focused capture/offline draft tests passed 3 files / 41 tests. Scoped ESLint,
+  scoped diff check, typecheck, no-unused typecheck, scoped Prettier check, and
+  repository changed-files format check passed.
+- remaining work:
+  Product slice committed as `41cd3d8e0`. Existing unrelated dirty files
+  `.codex/config.toml`, `.harness-mem/state/continuity.json`, and
+  `.harness-mem/state/whisper-budget.json` remain unstaged. The next UI/UX
+  audit item is P1-2 stale-after-refetch handling for data-loss false errors.
+- next action:
+  Commit this STATE ledger update, notify the checker with commit/validation
+  evidence, then proceed to P1-2 unless redirected.
