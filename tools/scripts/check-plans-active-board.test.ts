@@ -7,10 +7,14 @@ import { describe, expect, it } from 'vitest';
 
 const SCRIPT_PATH = path.join(process.cwd(), 'tools/scripts/check-plans-active-board.mjs');
 
-function createFixtureRepo(plansContent: string) {
+function createFixtureRepo(plansContent: string, allowlistDebt = 109) {
   const root = mkdtempSync(path.join(tmpdir(), 'phos-plans-board-'));
   mkdirSync(path.join(root, 'tools/scripts'), { recursive: true });
   cpSync(SCRIPT_PATH, path.join(root, 'tools/scripts/check-plans-active-board.mjs'));
+  writeFileSync(
+    path.join(root, 'tools/api-response-shape-allowlist.json'),
+    JSON.stringify({ entries: [{ route: '/api/test', expectedCount: allowlistDebt }] }),
+  );
   writeFileSync(path.join(root, 'Plans.md'), plansContent);
   return root;
 }
@@ -24,7 +28,9 @@ function runCheck(root: string) {
 }
 
 function fixturePlans(
-  overrides: Partial<Record<'counts' | 'implementationRows' | 'archiveNote', string>> = {},
+  overrides: Partial<
+    Record<'counts' | 'implementationRows' | 'archiveNote' | 'debtNote', string>
+  > = {},
 ) {
   const counts =
     overrides.counts ??
@@ -47,9 +53,14 @@ function fixturePlans(
     overrides.archiveNote ??
     `> v3 内の Implementation-ready queue は履歴として残すが、active backlog として数えない。`;
 
+  const debtNote =
+    overrides.debtNote ?? `> 追加照合: \`api-response-shape\` allowlist debt は実測 **109**。`;
+
   return `# PH-OS Pharmacy — Implementation Plan
 
 ### 2026-07-09 Active Plan Board v9 — 実装済み / 未実装分類 \`cc:ACTIVE\`
+
+${debtNote}
 
 **現在の分類サマリー**:
 
@@ -144,6 +155,46 @@ describe('check-plans-active-board', () => {
     );
 
     expect(() => runCheck(root)).toThrow(/DASH-P1-010-RAIL/);
+  });
+
+  it('rejects active-board references to the completed dashboard split task ID', () => {
+    const root = createFixtureRepo(
+      fixturePlans({
+        implementationRows: `| ID | Status | Priority | Lane | Plan / DoD | Validation / Stop |
+| --- | --- | --- | --- | --- | --- |
+| \`DASH-P1-005-SPLIT-001\` | Not started | P1 | Dashboard | stale | tests |
+| \`PLANS-ACTIVE-LINT-001\` | Not started | P2 | Plan hygiene | Check active board | tests |`,
+      }),
+    );
+
+    expect(() => runCheck(root)).toThrow(/DASH-P1-005-SPLIT-001/);
+  });
+
+  it('rejects stale v8 wording inside the active board', () => {
+    const root = createFixtureRepo(
+      fixturePlans({
+        debtNote:
+          '> 追加照合: `api-response-shape` allowlist debt は実測 **109**。Active Plan Board v8 is stale here.',
+      }),
+    );
+
+    expect(() => runCheck(root)).toThrow(/must not describe its active entrypoint as v8/);
+  });
+
+  it('rejects api response allowlist debt drift', () => {
+    const root = createFixtureRepo(
+      fixturePlans({
+        debtNote: '> 追加照合: `api-response-shape` allowlist debt は実測 **108**。',
+      }),
+    );
+
+    expect(() => runCheck(root)).toThrow(/api-response-shape allowlist debt in Plans.md is stale/);
+  });
+
+  it('rejects api response allowlist debt drift when the allowlist changes', () => {
+    const root = createFixtureRepo(fixturePlans(), 110);
+
+    expect(() => runCheck(root)).toThrow(/expected 110/);
   });
 
   it('rejects archived plan boards without an explicit non-active note', () => {

@@ -41,6 +41,81 @@
 
 ## 直近の作業
 
+- codex: `Plans.md` v9 additional multi-lane review hardening.
+  - current task:
+    Review fable5-restructured `Plans.md` v9 tasks with parallel perspectives
+    (spec/API/DB/security/privacy/performance/frontend/test), coordinate through agmsg as `codex`,
+    and fold high-confidence improvements back into the active plan without touching product code.
+  - files inspected:
+    `git status --short --untracked-files=all`, `ops/refactor/STATE.md`, `Plans.md`,
+    `tools/scripts/check-plans-active-board.mjs`,
+    `tools/scripts/check-plans-active-board.test.ts`, `tools/scripts/README.md`,
+    `.github/workflows/ci.yml`, `tools/api-response-shape-allowlist.json`,
+    `tools/read-path-slo.json`, package scripts, and agmsg inbox/team state.
+  - files changed:
+    `Plans.md`, `tools/scripts/check-plans-active-board.mjs`,
+    `tools/scripts/check-plans-active-board.test.ts`, `tools/scripts/README.md`,
+    `.github/workflows/ci.yml`, and this ledger.
+  - coordination:
+    User clarified this session should participate as `codex`. agmsg inbox had no new messages.
+    A lock notice was sent to codex2/codex3/codex4 before editing
+    `Plans.md`, plan guard files, and CI workflow. `opus` was not a visible agmsg team member in
+    the current `phos` team.
+  - implementation:
+    `Plans.md` now records the 2026-07-09 multi-lane review deltas, fixes stale active-board v8
+    wording, removes completed dashboard split re-entry from the active crosswalk, updates the
+    implementation queue count to 35, adds `CI-GATE-V9-CONTRACTS-001`, corrects read-SLO registry
+    family count from 18 to the live 16, promotes `PERF-DB-SLO-TAKE-LINT-001` and
+    `FE-PHI-SAFE-CLIENT-LOG-001` priority, and tightens API/RLS/file lifecycle/DB event/frontend
+    acceptance criteria. The crosswalk now carries route-authz, server-log, export-surface, and
+    platform-support PHI scope follow-ups without counting them as active queue rows.
+    `plans:active:check` now verifies active v9 counts, stale v8 wording, completed dashboard split
+    IDs, archive/reference boundaries, and the `api-response-shape` allowlist debt sum from
+    `tools/api-response-shape-allowlist.json`. CI now runs Plans, DB query-shape, read-SLO, and
+    frontend-contract guards after the API response-shape guard.
+  - bugs found:
+    Active board text still referenced v8, `PERF-DB-READ-SLO-001` claimed 18 registry families while
+    the live registry has 16, `DASH-P1-005-SPLIT-001` reappeared despite its child dashboard tasks
+    being done/frozen, and v9 guard scripts were local-only instead of CI-enforced.
+  - bugs fixed:
+    Corrected the stale plan facts and added guard coverage so v8 wording, stale API allowlist debt,
+    and completed dashboard split re-entry fail `plans:active:check`.
+  - security risks found:
+    Plan coverage under-scoped client/server observability PHI leakage, route authz coverage,
+    platform support PHI scope, export boundaries, and RLS raw-read enforcement.
+  - security risks reduced:
+    Plans now tracks those gaps explicitly and raises the client observability/RLS-related work to
+    P1 where appropriate. No runtime auth/authz behavior was changed in this slice.
+  - performance issues found:
+    Plans overstated read-SLO registry coverage and under-prioritized the SLO declaration vs actual
+    query-bound drift that can miss patients-board full-load regressions.
+  - performance issues improved:
+    The plan now points `PERF-DB-READ-SLO-001` at the live 16-family registry and makes
+    `PERF-DB-SLO-TAKE-LINT-001` P1, with CI guard coverage for existing DB query/SLO checks.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md tools/scripts/check-plans-active-board.mjs tools/scripts/check-plans-active-board.test.ts tools/scripts/README.md .github/workflows/ci.yml`;
+    `pnpm plans:active:check`;
+    `pnpm exec vitest run tools/scripts/check-plans-active-board.test.ts --reporter=dot`;
+    `pnpm api-response-shape:check`;
+    `pnpm db:query-shape:check`;
+    `pnpm db:read-slo:check`;
+    `pnpm frontend-contract:check`;
+    `pnpm exec eslint tools/scripts/check-plans-active-board.mjs tools/scripts/check-plans-active-board.test.ts`;
+    `pnpm exec prettier --check Plans.md tools/scripts/check-plans-active-board.mjs tools/scripts/check-plans-active-board.test.ts tools/scripts/README.md .github/workflows/ci.yml`;
+    `git diff --check -- Plans.md tools/scripts/check-plans-active-board.mjs tools/scripts/check-plans-active-board.test.ts tools/scripts/README.md .github/workflows/ci.yml`.
+  - validation results:
+    All listed commands passed. `api-response-shape:check` reports 109 allowlisted violations and 0
+    new violations. `db:query-shape:check` reports 0 allowlisted and 0 new violations. The first
+    `plans:active:check` run failed because the markdown heading for the crosswalk was indented into
+    the completed-derived list; the heading was separated and the guard then passed.
+  - remaining work:
+    This slice is documentation/guard/CI only. Product implementation remains: RLS raw-read
+    enforcement, stock visit UI/write gate, patients-board cursor/take enforcement, API envelope
+    burn-down, support/export/log PHI boundaries, and live/human-gated AWS/DB evidence.
+  - next action:
+    Commit this scoped plan hardening slice, then resume the highest-priority implementation queue
+    item (`RLS-RAW-READ-GUARD-001` unless user redirects).
+
 - codex: `API-CONTRACT-001BU` partner pharmacy response envelope cleanup.
   - commit:
     Implementation, Plans/allowlist, route test, and setup reader updates committed as

@@ -64,6 +64,18 @@ jobs:
       - name: API response shape check
         run: pnpm api-response-shape:check
 
+      - name: Plans active board check
+        run: pnpm plans:active:check
+
+      - name: DB query shape check
+        run: pnpm db:query-shape:check
+
+      - name: DB read path SLO check
+        run: pnpm db:read-slo:check
+
+      - name: Frontend contract check
+        run: pnpm frontend-contract:check
+
       - name: DTO direct Prisma return check
         run: pnpm dto-direct-prisma-return:check
 

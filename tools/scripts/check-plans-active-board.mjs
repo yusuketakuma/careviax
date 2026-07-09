@@ -9,6 +9,7 @@ import path from 'node:path';
 
 const REPO_ROOT = process.cwd();
 const PLANS_PATH = 'Plans.md';
+const API_RESPONSE_ALLOWLIST_PATH = 'tools/api-response-shape-allowlist.json';
 const ACTIVE_HEADING = '### 2026-07-09 Active Plan Board v9';
 const ARCHIVE_HEADING = '### 2026-07-09 Archived Plan Board';
 
@@ -101,6 +102,41 @@ function readBucketCounts(activeLines) {
   return counts;
 }
 
+function readApiResponseAllowlistDebt() {
+  const allowlistPath = path.join(REPO_ROOT, API_RESPONSE_ALLOWLIST_PATH);
+  let raw;
+  try {
+    raw = readFileSync(allowlistPath, 'utf8');
+  } catch (error) {
+    fail(`${API_RESPONSE_ALLOWLIST_PATH} is missing or unreadable`, [
+      error instanceof Error ? error.message : String(error),
+    ]);
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    fail(`${API_RESPONSE_ALLOWLIST_PATH} is not valid JSON`, [
+      error instanceof Error ? error.message : String(error),
+    ]);
+  }
+
+  if (!Array.isArray(parsed.entries)) {
+    fail(`${API_RESPONSE_ALLOWLIST_PATH} must contain an entries array`);
+  }
+
+  return parsed.entries.reduce((total, entry, index) => {
+    const count = entry?.expectedCount;
+    if (!Number.isSafeInteger(count) || count < 0) {
+      fail(`${API_RESPONSE_ALLOWLIST_PATH} has invalid expectedCount`, [
+        `entries[${index}].expectedCount=${String(count)}`,
+      ]);
+    }
+    return total + count;
+  }, 0);
+}
+
 function readFirstCellIds(lines, heading) {
   return dataRows(extractTableAfterHeading(lines, heading))
     .map((row) => splitTableRow(row)[0])
@@ -151,6 +187,42 @@ function assertNoLegacyActiveDashboardRail(activeLines) {
       'completed Dashboard Summary Rail legacy ID `DASH-P1-010-RAIL` is still present in Active Plan Board v9',
     );
   }
+  if (activeText.includes('`DASH-P1-005-SPLIT-001`')) {
+    fail(
+      'completed Dashboard link split legacy ID `DASH-P1-005-SPLIT-001` is still present in Active Plan Board v9',
+    );
+  }
+}
+
+function assertNoStaleBoardVersion(activeLines) {
+  const staleLines = activeLines
+    .map((line, index) => ({ line, number: index + 1 }))
+    .filter(({ line }) => line.includes('Active Plan Board v8'));
+  if (staleLines.length > 0) {
+    fail(
+      'Active Plan Board v9 must not describe its active entrypoint as v8',
+      staleLines.map(({ line, number }) => `active line ${number}: ${line.trim()}`),
+    );
+  }
+}
+
+function assertApiResponseDebtMatchesAllowlist(activeLines) {
+  const expectedDebt = readApiResponseAllowlistDebt();
+  const debtLine = activeLines.find(
+    (line) => line.includes('api-response-shape') && line.includes('allowlist debt'),
+  );
+  if (!debtLine) {
+    fail('Active Plan Board v9 must record api-response-shape allowlist debt');
+  }
+
+  const boldNumber = debtLine.match(/\*\*(\d+)\*\*/);
+  const actualDebt = boldNumber ? Number.parseInt(boldNumber[1], 10) : NaN;
+  if (actualDebt !== expectedDebt) {
+    fail('api-response-shape allowlist debt in Plans.md is stale', [
+      `expected ${expectedDebt} from ${API_RESPONSE_ALLOWLIST_PATH}`,
+      `actual ${Number.isNaN(actualDebt) ? 'missing bold number' : actualDebt} in Plans.md`,
+    ]);
+  }
 }
 
 function assertArchiveIsReferenceOnly(content) {
@@ -189,6 +261,8 @@ export function checkPlansActiveBoard(content) {
 
   assertNoCompletedIdsInActiveQueues(activeLines);
   assertNoLegacyActiveDashboardRail(activeLines);
+  assertNoStaleBoardVersion(activeLines);
+  assertApiResponseDebtMatchesAllowlist(activeLines);
   assertArchiveIsReferenceOnly(content);
 }
 
