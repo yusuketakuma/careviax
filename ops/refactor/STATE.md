@@ -41,6 +41,83 @@
 
 ## 直近の作業
 
+- codex: `PATIENT-BOARD-LASTVISIT-JST-001` patient list last-visit DateTime boundary fix.
+  - current task:
+    `Plans.md` P2 `PATIENT-BOARD-LASTVISIT-JST-001` を live code に照合し、`/api/patients`
+    の `last_visit_from` / `last_visit_to` post-filter が runtime local midnight で
+    VisitRecord DateTime を比較していた境界ズレを修正する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`, `Plans.md`,
+    `ops/refactor/STATE.md`, local Next.js route-handler docs
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `src/app/api/patients/route.ts`, `src/server/services/patient-service.ts`,
+    `src/app/api/patients/route.test.ts`, `src/lib/utils/date-boundary.ts`,
+    `src/app/api/patients/board/route.ts`, `tools/scripts/check-plans-active-board.mjs`,
+    and read-only patient-board cursor mapping from bounded subagent.
+  - files changed:
+    `src/server/services/patient-service.ts`, `src/app/api/patients/route.test.ts`,
+    `Plans.md`, and this ledger.
+  - coordination:
+    Used a bounded read-only `code_mapper` subagent for `PERF-DB-PATIENT-BOARD-CURSOR`.
+    It confirmed simple `take`/offset cursor changes would be unsafe for derived
+    `priority` / `next_visit` ordering and should not be claimed complete. Main Codex then
+    selected the smaller verified date-boundary bug from the active queue.
+  - implementation:
+    Replaced `startOfDay(parseISO(last_visit_from))` and
+    `endOfDay(parseISO(last_visit_to))` with `japanDayInstantRangeFromDateKey(...).gte/lt`
+    in the patient list post-filter. This treats `VisitRecord.visit_date` as a DateTime
+    instant and compares it to the correct Asia/Tokyo business-day instant range,
+    independent of the server timezone. Added a UTC-runtime route test where
+    `2026-07-08 08:00 JST` (`2026-07-07T23:00:00.000Z`) remains included for
+    `last_visit_from=2026-07-08&last_visit_to=2026-07-08`. Moved
+    `PATIENT-BOARD-LASTVISIT-JST-001` from active queue to Done/frozen in `Plans.md`
+    and updated the active counts.
+  - bugs found:
+    The patient list post-filter used date-fns local-day boundaries for a timestamp column.
+    On UTC production/runtime, visits in the first 9 hours of a JST boundary date could be
+    excluded from `last_visit_from` and related same-day filters, hiding patients from the
+    filtered list/triage surface.
+  - bugs fixed:
+    `last_visit_from` / `last_visit_to` now use JST instant-day ranges for DateTime
+    comparisons and no longer depend on process timezone.
+  - security risks found:
+    No auth, authorization, RLS, PHI payload shape, logging, export, or read-audit
+    boundary weakness was changed in this slice. The affected endpoint still returns the
+    same authorized patient-list DTO.
+  - security risks reduced:
+    None directly; the change reduces an operational safety/correctness risk where an
+    authorized user could miss boundary-day patient visit data.
+  - performance issues found:
+    The separate patients-board main cursor remains unresolved. Subagent recon confirmed
+    that adding a naive top-level `take` would risk hiding high-priority patients because
+    current `priority` and `next_visit` sorts are derived after hydration.
+  - performance issues improved:
+    None; this is a date-boundary correctness fix.
+  - Oracle note:
+    Read the local Oracle consult skill and ran the required first-session Oracle CLI help
+    preflight plus target GitHub context inspection (`origin`, branch `main`, commit
+    `ce5230b4...`). No Oracle model consult was run because this slice followed an
+    existing repo-local date-boundary helper with a direct regression test and did not
+    change authz policy, PHI payload boundaries, schema, migration, or persistence shape.
+  - validation commands:
+    `TZ=UTC pnpm vitest run src/app/api/patients/route.test.ts --reporter=dot`;
+    `pnpm exec eslint src/server/services/patient-service.ts src/app/api/patients/route.test.ts`;
+    `pnpm plans:active:check`;
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md src/server/services/patient-service.ts src/app/api/patients/route.test.ts`;
+    `git diff --check -- Plans.md ops/refactor/STATE.md src/server/services/patient-service.ts src/app/api/patients/route.test.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Focused patient route test passed under `TZ=UTC` (1 file / 50 tests). Scoped ESLint
+    passed. `plans:active:check` passed. Scoped Prettier check and scoped `git diff --check`
+    passed. Full typecheck passed.
+  - remaining work:
+    `PERF-DB-PATIENT-BOARD-CURSOR` remains Not started/blocked on a real cursor design for
+    derived `priority` / `next_visit` ordering; do not mark it complete with a naive
+    top-level `take`. Other active `Plans.md` queue items remain.
+  - next action:
+    Commit and push only the owned paths for this slice, then continue the next safe
+    active-queue item.
+
 - codex: `CDS-CATEGORY-DISABLE-COLLATERAL-001` stale Plans queue cleanup.
   - commit:
     Plans cleanup and ledger evidence committed as `7d080cf27`

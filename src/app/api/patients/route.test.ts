@@ -1151,6 +1151,36 @@ describe('/api/patients GET', () => {
     expect(payload.summary.total).toBe(1);
   });
 
+  it('keeps last-visit date filters anchored to the JST business day under UTC runtime', async () => {
+    queryRawMock
+      .mockReset()
+      .mockResolvedValueOnce([
+        {
+          id: 'visit_early_jst',
+          patient_id: 'patient_1',
+          visit_date: new Date('2026-07-07T23:00:00.000Z'),
+          outcome_status: 'completed',
+          created_at: new Date('2026-07-07T23:30:00.000Z'),
+        },
+      ])
+      .mockResolvedValueOnce([]);
+
+    const response = (await GET(
+      createAuthenticatedRequest(
+        'http://localhost/api/patients?last_visit_from=2026-07-08&last_visit_to=2026-07-08',
+      ),
+    ))!;
+
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as {
+      data: Array<{ id: string; latest_visit?: { visit_date: string } | null }>;
+      summary: { total: number };
+    };
+
+    expect(payload.data.map((patient) => patient.id)).toEqual(['patient_1']);
+    expect(payload.summary.total).toBe(1);
+  });
+
   it('rejects invalid case_status values', async () => {
     const response = (await GET(
       createAuthenticatedRequest('http://localhost/api/patients?case_status=active,invalid_status'),

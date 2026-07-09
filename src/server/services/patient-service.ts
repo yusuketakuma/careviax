@@ -1,4 +1,4 @@
-import { endOfDay, parseISO, startOfDay, subDays } from 'date-fns';
+import { subDays } from 'date-fns';
 import type { Prisma, PrismaClient } from '@prisma/client';
 import type { MemberRole } from '@prisma/client';
 import { buildSearchFilter } from '@/lib/api/search';
@@ -22,6 +22,7 @@ import { toPrismaJsonInput } from '@/lib/db/json';
 import { parseCaseStatusList } from '@/lib/patient/case-status';
 import { createPatientSchema } from '@/lib/validations/patient';
 import { formatDateKey, formatUtcDateKey } from '@/lib/date-key';
+import { japanDayInstantRangeFromDateKey } from '@/lib/utils/date-boundary';
 import { notifyWebhookEventForOrg } from '@/server/services/outbound-webhook';
 import type { z } from 'zod';
 import {
@@ -372,13 +373,15 @@ function matchesPatientPostFilters(
 
   if (
     filters.last_visit_from &&
-    (!latestVisitDate || latestVisitDate < startOfDay(parseISO(filters.last_visit_from)))
+    (!latestVisitDate ||
+      latestVisitDate < japanDayInstantRangeFromDateKey(filters.last_visit_from).gte)
   ) {
     return false;
   }
   if (
     filters.last_visit_to &&
-    (!latestVisitDate || latestVisitDate > endOfDay(parseISO(filters.last_visit_to)))
+    (!latestVisitDate ||
+      latestVisitDate >= japanDayInstantRangeFromDateKey(filters.last_visit_to).lt)
   ) {
     return false;
   }
