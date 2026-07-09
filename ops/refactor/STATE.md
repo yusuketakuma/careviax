@@ -50,7 +50,7 @@
     response-shape allowlist、Plans / archive を同期する。あわせて root POST の
     sensitive no-store と unexpected-error fallback を明示的に補強する。
   - commit:
-    pending feature commit; replace with hash after scoped commit.
+    `904ff6ff0 fix(api): envelope pharmacy partnerships`
   - files inspected:
     `git status --short --untracked-files=all`,
     `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
