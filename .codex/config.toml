@@ -19,7 +19,7 @@ project_doc_fallback_filenames = [
 ]
 [agents]
 max_threads = 32
-max_depth = 1
+max_depth = 2
 job_max_runtime_seconds = 7200
 
 [agents.code_mapper]
