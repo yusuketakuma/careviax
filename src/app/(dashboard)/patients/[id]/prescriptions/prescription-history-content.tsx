@@ -1437,12 +1437,15 @@ export function PrescriptionHistoryContent() {
       const res = await fetch(`${buildPatientApiPath(patientId, '/prescriptions')}?limit=100`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{
-        patient: PatientInfo;
-        data: PrescriptionIntake[];
-        diff_review: DiffReview | null;
-        diff_meta: DiffMeta | null;
+      const payload = await readApiJson<{
+        data: {
+          patient: PatientInfo;
+          data: PrescriptionIntake[];
+          diff_review: DiffReview | null;
+          diff_meta: DiffMeta | null;
+        };
       }>(res, '処方履歴の取得に失敗しました');
+      return payload.data;
     },
     enabled: !!orgId && !!patientId,
   });

@@ -140,10 +140,12 @@ describe('/api/patients/[id]/prescriptions', () => {
       }),
     );
     await expect(response.json()).resolves.toMatchObject({
-      patient: expect.objectContaining({ id: 'patient_1' }),
-      data: [{ id: 'intake_2', cycle_id: 'cycle_2' }],
-      hasMore: true,
-      nextCursor: expect.any(String),
+      data: {
+        patient: expect.objectContaining({ id: 'patient_1' }),
+        data: [{ id: 'intake_2', cycle_id: 'cycle_2' }],
+        hasMore: true,
+        nextCursor: expect.any(String),
+      },
     });
   });
 
@@ -274,7 +276,7 @@ describe('/api/patients/[id]/prescriptions', () => {
 
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body.data[0].lines[0]).toMatchObject({
+    expect(body.data.data[0].lines[0]).toMatchObject({
       drug_master_id: null,
       drug_code: null,
       source_drug_code: 'RC001',
@@ -361,7 +363,7 @@ describe('/api/patients/[id]/prescriptions', () => {
 
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body.diff_review.rows).toEqual([
+    expect(body.data.diff_review.rows).toEqual([
       expect.objectContaining({
         key: 'line_current_evening',
         current_drug_master_id: 'drug_master_metformin',
@@ -384,7 +386,7 @@ describe('/api/patients/[id]/prescriptions', () => {
         current_label: '同じ',
       }),
     ]);
-    expect(body.diff_review.change_count).toBe(1);
+    expect(body.data.diff_review.change_count).toBe(1);
   });
 
   it('matches diff review rows by drug code when names are identical', async () => {
@@ -449,7 +451,7 @@ describe('/api/patients/[id]/prescriptions', () => {
 
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body.diff_review.rows).toContainEqual(
+    expect(body.data.diff_review.rows).toContainEqual(
       expect.objectContaining({
         key: 'line_current_b',
         current_drug_code: 'YJ_B',
@@ -459,7 +461,7 @@ describe('/api/patients/[id]/prescriptions', () => {
         current_label: '2錠 夕食後 28日',
       }),
     );
-    expect(body.diff_review.rows).toContainEqual(
+    expect(body.data.diff_review.rows).toContainEqual(
       expect.objectContaining({
         key: 'removed-line_previous_a',
         current_drug_code: null,
@@ -521,7 +523,7 @@ describe('/api/patients/[id]/prescriptions', () => {
 
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body.diff_review.rows).toContainEqual(
+    expect(body.data.diff_review.rows).toContainEqual(
       expect.objectContaining({
         key: 'line_current_master_b',
         current_drug_master_id: 'drug_master_b',
@@ -531,7 +533,7 @@ describe('/api/patients/[id]/prescriptions', () => {
         change_type: 'added',
       }),
     );
-    expect(body.diff_review.rows).toContainEqual(
+    expect(body.data.diff_review.rows).toContainEqual(
       expect.objectContaining({
         key: 'removed-line_previous_master_a',
         current_drug_master_id: null,
@@ -581,7 +583,7 @@ describe('/api/patients/[id]/prescriptions', () => {
 
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body.diff_review.rows[0]).toEqual(
+    expect(body.data.diff_review.rows[0]).toEqual(
       expect.objectContaining({
         key: 'removed-YJ_REMOVED',
         current_drug_master_id: null,
@@ -591,7 +593,7 @@ describe('/api/patients/[id]/prescriptions', () => {
         change_type: 'removed',
       }),
     );
-    expect(JSON.stringify(body.diff_review.rows)).not.toContain('code:');
+    expect(JSON.stringify(body.data.diff_review.rows)).not.toContain('code:');
   });
 
   it('returns an empty result for inaccessible case filters without loading prescriptions', async () => {
@@ -605,11 +607,13 @@ describe('/api/patients/[id]/prescriptions', () => {
     expectSensitiveNoStore(response);
     expect(prescriptionIntakeFindManyMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
-      patient: expect.objectContaining({ id: 'patient_1' }),
-      data: [],
-      hasMore: false,
-      diff_review: null,
-      diff_meta: null,
+      data: {
+        patient: expect.objectContaining({ id: 'patient_1' }),
+        data: [],
+        hasMore: false,
+        diff_review: null,
+        diff_meta: null,
+      },
     });
   });
 

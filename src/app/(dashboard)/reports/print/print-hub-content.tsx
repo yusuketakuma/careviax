@@ -151,7 +151,11 @@ function usePrintHubData(
       const res = await fetch(`${buildPatientApiPath(patientId, '/prescriptions')}?limit=20`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<PatientPrescriptionsResponse>(res, '処方明細の取得に失敗しました');
+      const payload = await readApiJson<{ data: PatientPrescriptionsResponse }>(
+        res,
+        '処方明細の取得に失敗しました',
+      );
+      return payload.data;
     },
     enabled: !!orgId && !!patientId,
     staleTime: 60_000,

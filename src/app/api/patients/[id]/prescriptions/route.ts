@@ -393,7 +393,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
     );
 
     if (result.type === 'not_found') return notFound('患者が見つかりません');
-    return success(result.body);
+    return success({ data: result.body });
   });
 }
 

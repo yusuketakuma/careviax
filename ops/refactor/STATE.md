@@ -41,6 +41,94 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001CQ` patient prescriptions response envelope cleanup.
+  - current task:
+    `GET /api/patients/:id/prescriptions` の patient prescriptions list success response
+    を legacy root `{ patient, data, hasMore, nextCursor, diff_review, diff_meta }` から
+    `{ data: { ... } }` envelope へ移行し、処方履歴画面、印刷ハブ、直近過去歴サマリーの
+    readers、route/UI tests、response-shape allowlist、Plans / archive を同期する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/patients/[id]/prescriptions/route.ts`,
+    `src/app/api/patients/[id]/prescriptions/route.test.ts`,
+    `src/app/api/__tests__/protected-get-routes.test.ts`,
+    `src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.tsx`,
+    `src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.test.tsx`,
+    `src/app/(dashboard)/reports/print/print-hub-content.tsx`,
+    `src/app/(dashboard)/reports/print/print-hub-content.test.tsx`,
+    `src/components/features/patients/patient-history-summary.tsx`,
+    `src/components/features/patients/patient-history-summary.test.tsx`,
+    `Plans.md`, `docs/plans-archive.md`, and `ops/refactor/STATE.md`.
+  - files changed:
+    `Plans.md`, `docs/plans-archive.md`, `ops/refactor/STATE.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/patients/[id]/prescriptions/route.ts`,
+    `src/app/api/patients/[id]/prescriptions/route.test.ts`,
+    `src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.tsx`,
+    `src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.test.tsx`,
+    `src/app/(dashboard)/reports/print/print-hub-content.tsx`,
+    `src/app/(dashboard)/reports/print/print-hub-content.test.tsx`,
+    `src/components/features/patients/patient-history-summary.tsx`, and
+    `src/components/features/patients/patient-history-summary.test.tsx`.
+  - bugs found:
+    The patient prescriptions list route returned its list payload at the public
+    success response root, keeping one API response-shape allowlist entry alive.
+    Prescription history, print hub, and patient history summary readers consumed the
+    legacy root payload directly.
+  - bugs fixed:
+    GET success now returns `success({ data: result.body })`. The three frontend
+    readers unwrap the outer `payload.data` while preserving the inner `data` list
+    contract. Route and UI fixtures/assertions now use the current envelope. The stale
+    allowlist entry was removed. Response-shape debt dropped from 87 to 86.
+  - security risks found:
+    No visit permission check, patient id validation, `case_id` validation,
+    assignment-scoped patient/case lookup, RLS request context, route performance
+    wrapper, no-store wrapper, not-found response, or sanitized internal-error
+    response changed.
+  - security risks reduced:
+    Removed patient prescription payload fields from the response root and aligned
+    readers to the standardized success envelope.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None; this is response contract cleanup.
+  - UI/UX note:
+    No visible UI/UX layout or interaction change. Existing prescription list data is
+    unwrapped from the new response envelope before rendering, so image generation was
+    not applicable.
+  - Oracle note:
+    No Oracle consult was run for this slice per the allowlist-debt concentration
+    directive and the repeated envelope-only local pattern. Validation covered route
+    and consumer tests, contract ratchet, scoped lint/format, and full typecheck.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/prescriptions/route.ts' 'src/app/api/patients/[id]/prescriptions/route.test.ts' 'src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.tsx' 'src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.test.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' 'src/components/features/patients/patient-history-summary.tsx' 'src/components/features/patients/patient-history-summary.test.tsx'`;
+    `pnpm vitest run 'src/app/api/patients/[id]/prescriptions/route.test.ts' --reporter=dot`;
+    `pnpm vitest run 'src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.test.tsx' --reporter=dot --testTimeout=30000`;
+    `pnpm vitest run 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' --reporter=dot --testTimeout=30000`;
+    `pnpm vitest run 'src/components/features/patients/patient-history-summary.test.tsx' --reporter=dot --testTimeout=30000`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint 'src/app/api/patients/[id]/prescriptions/route.ts' 'src/app/api/patients/[id]/prescriptions/route.test.ts' 'src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.tsx' 'src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.test.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' 'src/components/features/patients/patient-history-summary.tsx' 'src/components/features/patients/patient-history-summary.test.tsx'`;
+    `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/prescriptions/route.ts' 'src/app/api/patients/[id]/prescriptions/route.test.ts' 'src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.tsx' 'src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.test.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' 'src/components/features/patients/patient-history-summary.tsx' 'src/components/features/patients/patient-history-summary.test.tsx'`;
+    `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/prescriptions/route.ts' 'src/app/api/patients/[id]/prescriptions/route.test.ts' 'src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.tsx' 'src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.test.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' 'src/components/features/patients/patient-history-summary.tsx' 'src/components/features/patients/patient-history-summary.test.tsx'`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Patient prescriptions route tests passed 1 file / 18 tests. Prescription history
+    content tests passed 1 file / 29 tests. Print hub tests passed 1 file / 28 tests.
+    Patient history summary tests passed 1 file / 5 tests. `api-response-shape:check`
+    passed with 86 allowlisted violations and 0 new violations.
+    `plans:active:check` passed. Scoped ESLint, scoped Prettier check, scoped diff
+    check, and full typecheck passed.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 86 allowlisted response-shape violations.
+    Next recommended response-shape slice is the current allowlist head:
+    `src/app/api/patients/[id]/readiness/route.ts`.
+  - next action:
+    Commit this patient prescriptions envelope slice with explicit owned paths only,
+    then continue allowlist debt burn-down from the next allowlist head.
+
 - codex: `API-CONTRACT-001CP` patient overview response envelope cleanup.
   - current task:
     `GET /api/patients/:id/overview` の patient overview success response を legacy

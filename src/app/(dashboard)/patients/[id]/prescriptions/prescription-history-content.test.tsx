@@ -1501,7 +1501,9 @@ describe('PrescriptionHistoryContent url/header convergence', () => {
     const sentinel = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
     vi.mocked(buildOrgHeaders).mockReturnValue(sentinel);
     const { queryConfigs } = renderHistory();
-    const fetchMock = stubFetch({ patient: {}, data: [], diff_review: null, diff_meta: null });
+    const fetchMock = stubFetch({
+      data: { patient: {}, data: [], diff_review: null, diff_meta: null },
+    });
     try {
       await queryConfigs.get('patient-prescriptions')!.queryFn();
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -1539,7 +1541,9 @@ describe('PrescriptionHistoryContent url/header convergence', () => {
 
   it('prescriptions GET consumes the shared patient API path helper return value', async () => {
     const { queryConfigs } = renderHistory({ patientId: 'patient_1' });
-    const fetchMock = stubFetch({ patient: {}, data: [], diff_review: null, diff_meta: null });
+    const fetchMock = stubFetch({
+      data: { patient: {}, data: [], diff_review: null, diff_meta: null },
+    });
     vi.mocked(buildPatientApiPath).mockReturnValueOnce('/api/patients/__helper_patient__/rx');
 
     try {

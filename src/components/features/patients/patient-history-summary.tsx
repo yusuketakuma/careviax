@@ -72,7 +72,11 @@ export function PatientHistorySummary({
       const response = await fetch(`${buildPatientApiPath(patientId, '/prescriptions')}?limit=5`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<PatientPrescriptionsResponse>(response, '処方履歴の取得に失敗しました');
+      const payload = await readApiJson<{ data: PatientPrescriptionsResponse }>(
+        response,
+        '処方履歴の取得に失敗しました',
+      );
+      return payload.data;
     },
     enabled: Boolean(orgId && patientId),
   });

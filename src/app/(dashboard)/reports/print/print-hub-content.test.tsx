@@ -169,29 +169,31 @@ function setPlansResponse(patientId: string) {
 
 function prescriptionsResponse(patientId: string) {
   return {
-    patient: { id: patientId, name: '山田 太郎', name_kana: 'ヤマダ タロウ' },
-    data: [
-      {
-        id: 'intake_1',
-        cycle_id: 'cycle_1',
-        prescribed_date: '2026-06-01',
-        prescriber_name: '主治医 一郎',
-        prescriber_institution: '在宅診療所',
-        lines: [
-          {
-            id: 'line_1',
-            line_number: 1,
-            drug_name: 'アムロジピン錠5mg',
-            dose: '1錠',
-            frequency: '1日1回朝食後',
-            days: 28,
-            quantity: 28,
-            unit: '錠',
-            notes: null,
-          },
-        ],
-      },
-    ],
+    data: {
+      patient: { id: patientId, name: '山田 太郎', name_kana: 'ヤマダ タロウ' },
+      data: [
+        {
+          id: 'intake_1',
+          cycle_id: 'cycle_1',
+          prescribed_date: '2026-06-01',
+          prescriber_name: '主治医 一郎',
+          prescriber_institution: '在宅診療所',
+          lines: [
+            {
+              id: 'line_1',
+              line_number: 1,
+              drug_name: 'アムロジピン錠5mg',
+              dose: '1錠',
+              frequency: '1日1回朝食後',
+              days: 28,
+              quantity: 28,
+              unit: '錠',
+              notes: null,
+            },
+          ],
+        },
+      ],
+    },
   };
 }
 

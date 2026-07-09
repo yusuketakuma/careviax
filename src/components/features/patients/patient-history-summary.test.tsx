@@ -166,7 +166,7 @@ describe('PatientHistorySummary', () => {
     });
 
     it('routes the prescriptions summary fetch through the shared patient API path helper', async () => {
-      const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: [] })));
+      const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: { data: [] } })));
       vi.stubGlobal('fetch', fetchMock);
       vi.mocked(buildPatientApiPath).mockReturnValueOnce(
         '/api/patients/__helper_pt__/prescriptions',
