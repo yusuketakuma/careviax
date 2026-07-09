@@ -8,12 +8,11 @@
 
 ## 体制（2026-07-10 最新ユーザー指示）
 
-- 現行は `codex + Claude checker/scout` 連携。agmsg の `phos` team で通信を維持し、
-  Claude は read-only review・新規task探索、codex は計画・編集・validation・台帳更新を担当する。
-- メッセージ待ちの間も停止せず、dirty pathを避けてコードベースをscanし、根拠付きの未登録taskを
-  `Plans.md` に追加する。既存route/service/taskとの重複を確認してからqueueへ入れる。
-- commit / push は codex のみが、owned pathを明示stageして実行する。Claude は編集・commit・pushしない。
-- 下記2026-07-04/05のCodex単独運用記述は履歴であり、現行体制と矛盾する場合はこの節を優先する。
+- 現行は Codex 本体が計画、編集、validation、台帳更新、scoped commit の最終責任を持つ単一制御運用。
+- ユーザーの明示的な再有効化により、bounded な調査・影響範囲特定・計画レビュー・検証には subagent を使う。
+  subagent は原則 read-only とし、編集、統合、台帳更新、commit は Codex 本体だけが行う。
+- agmsg、codex2/codex3/codex4、Claude などの外部 maker/checker 運用は再開しない。
+- 下記2026-07-04/05の運用記述は履歴であり、現行体制と矛盾する場合はこの節を優先する。
 
 ## 旧体制（2026-07-04/05 履歴）
 
@@ -43,13 +42,60 @@
 
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
-- Phase C（実装ループ）: Codex + Claude checker/scout 連携（2026-07-10〜）。
-  2026-07-04〜09のCodex単独運用は履歴とし、編集・validation・commit/pushの最終責任はCodexが維持する。
+- Phase C（実装ループ）: Codex 本体 + bounded read-only subagent 運用（2026-07-10〜）。
+  編集・validation・commit/pushの最終責任は Codex 本体が維持する。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex: push-subscription minimal success-envelope migration and allowlist ratchet.
+  - commit:
+    `ffcf22a2c fix(api): envelope push subscription responses`.
+  - current task:
+    P0 `API-CONTRACT-001DR` として、`POST/DELETE /api/push-subscription` の旧 root-level
+    `{ ok: true }` 応答を PH-OS 標準 `{ data: { ok: true } }` へ移行し、許容リスト負債を 49 から 47 へ削減する。
+  - files inspected:
+    `Plans.md`, `docs/plans-archive.md`, `src/app/api/push-subscription/route.ts`,
+    `src/app/api/push-subscription/route.test.ts`, `src/lib/api/response.ts`,
+    `tools/api-response-shape-allowlist.json`, push-subscription reachability evidence,
+    service-worker push consumer, and repository-wide internal response readers/OpenAPI/SDK references.
+  - files changed:
+    `Plans.md`, `docs/plans-archive.md`, `src/app/api/push-subscription/route.ts`,
+    `src/app/api/push-subscription/route.test.ts`, and `tools/api-response-shape-allowlist.json`.
+  - bugs found / fixed:
+    Both successful mutations bypassed the standard response envelope. They now return exactly
+    `{ data: { ok: true } }`; tests reject a legacy root `ok`, pin authenticated POST/DELETE short-circuiting,
+    exact organization/user scoped upsert data, exact organization/user/endpoint delete scope, and idempotent
+    DELETE behavior when the deletion count is zero. Repository search found no internal client, OpenAPI, or
+    generated SDK reader that requires a dual-shape compatibility period.
+  - security/privacy:
+    Success responses are proven not to expose endpoint, `p256dh`, `auth`, organization/user IDs, secret values,
+    or mutation results. Existing authentication, `withOrgContext`, organization/user mutation scoping, nested
+    error envelope, request ID, sensitive no-store behavior, and database/RLS boundaries are unchanged.
+  - performance:
+    Response serialization only; no query, request count, dependency, retry, polling, or persistence behavior changed.
+  - plan review / Oracle:
+    A read-only API contract reviewer returned conditional GO and its exact-envelope, secret-omission, org/user
+    scope, idempotent-delete, and allowlist-ratchet requirements were implemented. Because this is a public API
+    contract, Oracle was used as the mandatory advisory gate after CLI v0.15.1 and target GitHub context preflight.
+    Browser session `push-subscripti-envelope-review` returned GO for the minimal migration and rejected a legacy
+    dual shape. The public repository/main branch was accessible, while the exact local commit raw URL was not;
+    Oracle therefore used the attached live local files as current truth. No secret, credential, PHI, or PII was sent.
+  - validation:
+    `pnpm exec vitest run src/app/api/push-subscription/route.test.ts` passed 1 file / 13 tests.
+    `pnpm api-response-shape:check` passed at 47 allowlisted / 0 new; `pnpm plans:active:check`,
+    `pnpm route-auth-wrapper:check`, `pnpm db:raw-read-org-guard:check`, exact-path ESLint/Prettier,
+    and `git diff --check` passed. Full
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit --pretty false --incremental false --skipLibCheck`
+    and serial `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed. The independent verifier
+    reran the focused contract/security/gate bundle and returned PASS with no edits or blockers.
+  - remaining / next action:
+    Continue the P0 API response-shape burn-down from the updated 47-entry allowlist. A read-only code mapper is
+    ranking the next bounded route slice before implementation; human/AWS/runtime/browser/DB-mutation-gated work
+    and unrelated dirty communication/config/memory paths remain excluded. No deploy, migration, production
+    mutation, external send, destructive operation, or push ran.
 
 - codex: visit medication preparation states, readable controls, and API path parity.
   - commit:
