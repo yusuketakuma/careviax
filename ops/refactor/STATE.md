@@ -42,6 +42,8 @@
 ## 直近の作業
 
 - codex + claude checker: `FHIR-READY-VALIDATION-REQUEUE-001` validated conflict requeue API.
+  - commit / push:
+    `c6ad677a4 feat(integration): requeue validated FHIR conflicts` pushed to `origin/main`.
   - current task:
     `FHIR_PROFILE_VALIDATION_REQUIRED` で停止した inbound yrese queue itemを、同一orgの
     FHIR cacheが`valid`になった場合だけpublic `queue_display_id`から再queueし、raw FHIR、
@@ -91,10 +93,9 @@
     Visit medication-stock UI/types/helpers and `.harness-mem/state/*.json` remain unrelated WIP
     and are excluded from staging.
   - remaining / next action:
-    Land and push this scoped slice after Claude re-approval. Then add and fix the newly confirmed
-    patient-link provenance constraint/replay defect in
-    `standard-clinical-patient-linkage.ts`; its route already exists, so no duplicate endpoint
-    should be created.
+    Requeue slice is landed. Continue the confirmed provenance hash-constraint audit in the
+    patient-link and queue writers; the patient-link route already exists, so no duplicate endpoint
+    should be created. Preserve the separate visit medication-stock WIP.
 
 - codex: `FHIR-READY-VALIDATION-DETAIL-001` FHIR validation conflict detail API.
   - commit:
