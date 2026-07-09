@@ -9,14 +9,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   getClinicalSyncFhirValidationDetail,
   listClinicalSyncConflicts,
+  requeueClinicalSyncFhirValidationConflict,
   type ClinicalSyncReviewConflictCode,
 } from './standard-clinical-sync-conflict-review';
+
+const VALID_CONTENT_HASH =
+  'sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
 function createMockDb() {
   return {
     clinicalSyncQueueItem: {
       findFirst: vi.fn(),
       findMany: vi.fn(),
+      updateMany: vi.fn(),
     },
     clinicalExternalReference: {
       findMany: vi.fn(),
@@ -25,19 +30,25 @@ function createMockDb() {
       findFirst: vi.fn(),
       findMany: vi.fn(),
     },
+    clinicalProvenanceRecord: {
+      createMany: vi.fn(),
+    },
   };
 }
 
 function createQueueRow(overrides: Record<string, unknown> = {}) {
   return {
+    id: 'sync_queue_1',
     display_id: 'queue_display_1',
     aggregate_type: ClinicalLocalResourceType.none,
+    aggregate_id: null,
     priority: 50,
     attempt_count: 1,
     max_attempts: 8,
     external_reference_id: null,
     fhir_resource_cache_id: null,
     last_error_code: 'PATIENT_ID_REQUIRED_FOR_TIMELINE_PROJECTION',
+    yrese_event_id: 'yrese_event_1',
     created_at: new Date('2026-07-09T00:00:00.000Z'),
     updated_at: new Date('2026-07-09T00:10:00.000Z'),
     metadata: 'SHOULD_NOT_LEAK_METADATA',
@@ -195,6 +206,177 @@ describe('listClinicalSyncConflicts', () => {
       }),
     ).rejects.toThrow('Unsupported clinical sync review conflict code');
     expect(db.clinicalSyncQueueItem.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('requeueClinicalSyncFhirValidationConflict', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('requeues a FHIR validation conflict only after the cache is valid and records provenance', async () => {
+    const db = createMockDb();
+    db.clinicalSyncQueueItem.findFirst.mockResolvedValue(
+      createQueueRow({
+        display_id: 'csq0000000001',
+        aggregate_type: ClinicalLocalResourceType.other,
+        aggregate_id: 'timeline_1',
+        fhir_resource_cache_id: 'cache_1',
+        last_error_code: 'FHIR_PROFILE_VALIDATION_REQUIRED',
+      }),
+    );
+    db.clinicalFhirResourceCache.findFirst.mockResolvedValue({
+      id: 'cache_1',
+      resource_type: ClinicalFhirResourceType.medication_request,
+      validation_status: ClinicalFhirValidationStatus.valid,
+      content_hash: VALID_CONTENT_HASH,
+      content_hash_leak: 'SHOULD_NOT_LEAK_CONTENT_HASH',
+    });
+    db.clinicalSyncQueueItem.updateMany.mockResolvedValue({ count: 1 });
+    db.clinicalProvenanceRecord.createMany.mockResolvedValue({ count: 1 });
+
+    const result = await requeueClinicalSyncFhirValidationConflict(db as never, {
+      orgId: 'org_1',
+      queueDisplayId: 'csq0000000001',
+      reviewedByUserId: 'user_1',
+      now: new Date('2026-07-09T03:00:00.000Z'),
+    });
+
+    expect(result).toEqual({
+      kind: 'requeued',
+      queue_display_id: 'csq0000000001',
+      queue_status: 'pending',
+      validation_status: ClinicalFhirValidationStatus.valid,
+      requeued_queue_item_count: 1,
+      provenance_recorded: true,
+    });
+    expect(db.clinicalSyncQueueItem.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'sync_queue_1',
+        org_id: 'org_1',
+        display_id: 'csq0000000001',
+        status: ClinicalQueueStatus.conflict_requires_review,
+        last_error_code: 'FHIR_PROFILE_VALIDATION_REQUIRED',
+        fhir_resource_cache_id: 'cache_1',
+      },
+      data: expect.objectContaining({
+        status: ClinicalQueueStatus.pending,
+        next_attempt_at: new Date('2026-07-09T03:00:00.000Z'),
+        locked_at: null,
+        locked_by: null,
+        completed_at: null,
+        last_error_code: null,
+      }),
+    });
+    expect(db.clinicalProvenanceRecord.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          org_id: 'org_1',
+          subject_type: ClinicalLocalResourceType.other,
+          subject_id: 'timeline_1',
+          activity: 'clinical_sync_queue.fhir_validation_requeued',
+          fhir_resource_cache_id: 'cache_1',
+          yrese_event_id: 'yrese_event_1',
+          input_hash: VALID_CONTENT_HASH,
+          recorded_by: 'user_1',
+        }),
+        skipDuplicates: true,
+      }),
+    );
+    expect(db.clinicalProvenanceRecord.createMany.mock.calls[0]?.[0]?.data).not.toHaveProperty(
+      'output_hash',
+    );
+    expect(JSON.stringify(result)).not.toContain('cache_1');
+    expect(JSON.stringify(result)).not.toContain(VALID_CONTENT_HASH);
+  });
+
+  it('does not requeue when the FHIR cache validation is not valid', async () => {
+    const db = createMockDb();
+    db.clinicalSyncQueueItem.findFirst.mockResolvedValue(
+      createQueueRow({
+        display_id: 'csq0000000001',
+        fhir_resource_cache_id: 'cache_1',
+        last_error_code: 'FHIR_PROFILE_VALIDATION_REQUIRED',
+      }),
+    );
+    db.clinicalFhirResourceCache.findFirst.mockResolvedValue({
+      id: 'cache_1',
+      resource_type: ClinicalFhirResourceType.medication_request,
+      validation_status: ClinicalFhirValidationStatus.invalid,
+      content_hash: VALID_CONTENT_HASH,
+    });
+
+    const result = await requeueClinicalSyncFhirValidationConflict(db as never, {
+      orgId: 'org_1',
+      queueDisplayId: 'csq0000000001',
+      reviewedByUserId: 'user_1',
+    });
+
+    expect(result).toEqual({
+      kind: 'validation_not_ready',
+      queue_display_id: 'csq0000000001',
+      validation_status: ClinicalFhirValidationStatus.invalid,
+    });
+    expect(db.clinicalSyncQueueItem.updateMany).not.toHaveBeenCalled();
+    expect(db.clinicalProvenanceRecord.createMany).not.toHaveBeenCalled();
+  });
+
+  it('returns stale_conflict when the guarded update loses the race', async () => {
+    const db = createMockDb();
+    db.clinicalSyncQueueItem.findFirst.mockResolvedValue(
+      createQueueRow({
+        display_id: 'csq0000000001',
+        fhir_resource_cache_id: 'cache_1',
+        last_error_code: 'FHIR_PROFILE_VALIDATION_REQUIRED',
+      }),
+    );
+    db.clinicalFhirResourceCache.findFirst.mockResolvedValue({
+      id: 'cache_1',
+      resource_type: ClinicalFhirResourceType.medication_request,
+      validation_status: ClinicalFhirValidationStatus.valid,
+      content_hash: VALID_CONTENT_HASH,
+    });
+    db.clinicalSyncQueueItem.updateMany.mockResolvedValue({ count: 0 });
+
+    const result = await requeueClinicalSyncFhirValidationConflict(db as never, {
+      orgId: 'org_1',
+      queueDisplayId: 'csq0000000001',
+      reviewedByUserId: 'user_1',
+    });
+
+    expect(result).toEqual({
+      kind: 'stale_conflict',
+      queue_display_id: 'csq0000000001',
+    });
+    expect(db.clinicalProvenanceRecord.createMany).not.toHaveBeenCalled();
+  });
+
+  it('uses createMany skipDuplicates so replay cannot abort the transaction on P2002', async () => {
+    const db = createMockDb();
+    db.clinicalSyncQueueItem.findFirst.mockResolvedValue(
+      createQueueRow({
+        display_id: 'csq0000000001',
+        fhir_resource_cache_id: 'cache_1',
+        last_error_code: 'FHIR_PROFILE_VALIDATION_REQUIRED',
+      }),
+    );
+    db.clinicalFhirResourceCache.findFirst.mockResolvedValue({
+      id: 'cache_1',
+      resource_type: ClinicalFhirResourceType.medication_request,
+      validation_status: ClinicalFhirValidationStatus.valid,
+      content_hash: VALID_CONTENT_HASH,
+    });
+    db.clinicalSyncQueueItem.updateMany.mockResolvedValue({ count: 1 });
+    db.clinicalProvenanceRecord.createMany.mockResolvedValue({ count: 0 });
+
+    await expect(
+      requeueClinicalSyncFhirValidationConflict(db as never, {
+        orgId: 'org_1',
+        queueDisplayId: 'csq0000000001',
+        reviewedByUserId: 'user_1',
+      }),
+    ).resolves.toMatchObject({ kind: 'requeued', provenance_recorded: true });
+    expect(db.clinicalProvenanceRecord.createMany).toHaveBeenCalledOnce();
   });
 });
 

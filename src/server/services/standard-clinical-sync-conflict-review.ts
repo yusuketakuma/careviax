@@ -1,4 +1,13 @@
-import { ClinicalIntegrationDirection, ClinicalQueueStatus, type Prisma } from '@prisma/client';
+import {
+  ClinicalFhirValidationStatus,
+  ClinicalIntegrationDirection,
+  ClinicalLocalResourceType,
+  ClinicalQueueStatus,
+  type Prisma,
+  Prisma as PrismaNamespace,
+} from '@prisma/client';
+import { toPrismaJsonInput } from '@/lib/db/json';
+import { FHIR_R4_VERSION, JP_CORE_VERSION } from '@/server/adapters/fhir';
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 100;
@@ -31,22 +40,8 @@ const REVIEW_CONFLICT_DEFINITIONS = {
   }
 >;
 
-type ClinicalSyncConflictReviewDb = {
+type ClinicalSyncConflictListDb = {
   clinicalSyncQueueItem: {
-    findFirst(args: {
-      where: Prisma.ClinicalSyncQueueItemWhereInput;
-      select: {
-        display_id: true;
-        aggregate_type: true;
-        priority: true;
-        attempt_count: true;
-        max_attempts: true;
-        fhir_resource_cache_id: true;
-        last_error_code: true;
-        created_at: true;
-        updated_at: true;
-      };
-    }): Promise<QueueFhirValidationConflictRecord | null>;
     findMany(args: {
       where: Prisma.ClinicalSyncQueueItemWhereInput;
       orderBy: Prisma.ClinicalSyncQueueItemOrderByWithRelationInput[];
@@ -78,20 +73,6 @@ type ClinicalSyncConflictReviewDb = {
     }): Promise<ExternalReferenceRecord[]>;
   };
   clinicalFhirResourceCache: {
-    findFirst(args: {
-      where: Prisma.ClinicalFhirResourceCacheWhereInput;
-      select: {
-        resource_type: true;
-        resource_id: true;
-        version_id: true;
-        profile_urls: true;
-        validation_status: true;
-        validation_errors: true;
-        fetched_at: true;
-        last_modified_at: true;
-        updated_at: true;
-      };
-    }): Promise<FhirResourceCacheValidationDetailRecord | null>;
     findMany(args: {
       where: Prisma.ClinicalFhirResourceCacheWhereInput;
       select: {
@@ -106,9 +87,73 @@ type ClinicalSyncConflictReviewDb = {
   };
 };
 
+type ClinicalSyncFhirValidationDetailDb = {
+  clinicalSyncQueueItem: {
+    findFirst(args: {
+      where: Prisma.ClinicalSyncQueueItemWhereInput;
+      select: {
+        display_id: true;
+        id: true;
+        aggregate_type: true;
+        aggregate_id: true;
+        priority: true;
+        attempt_count: true;
+        max_attempts: true;
+        fhir_resource_cache_id: true;
+        yrese_event_id: true;
+        last_error_code: true;
+        created_at: true;
+        updated_at: true;
+      };
+    }): Promise<QueueFhirValidationConflictRecord | null>;
+  };
+  clinicalFhirResourceCache: {
+    findFirst(args: {
+      where: Prisma.ClinicalFhirResourceCacheWhereInput;
+      select: {
+        resource_type: true;
+        resource_id: true;
+        version_id: true;
+        profile_urls: true;
+        validation_status: true;
+        validation_errors: true;
+        fetched_at: true;
+        last_modified_at: true;
+        updated_at: true;
+      };
+    }): Promise<FhirResourceCacheValidationDetailRecord | null>;
+  };
+};
+
+type ClinicalSyncFhirValidationRequeueDb = {
+  clinicalSyncQueueItem: ClinicalSyncFhirValidationDetailDb['clinicalSyncQueueItem'] & {
+    updateMany(args: {
+      where: Prisma.ClinicalSyncQueueItemWhereInput;
+      data: Prisma.ClinicalSyncQueueItemUpdateManyMutationInput;
+    }): Promise<{ count: number }>;
+  };
+  clinicalFhirResourceCache: {
+    findFirst(args: {
+      where: Prisma.ClinicalFhirResourceCacheWhereInput;
+      select: {
+        id: true;
+        resource_type: true;
+        validation_status: true;
+        content_hash: true;
+      };
+    }): Promise<FhirResourceCacheRequeueRecord | null>;
+  };
+  clinicalProvenanceRecord: {
+    createMany(args: {
+      data: Prisma.ClinicalProvenanceRecordCreateManyInput;
+      skipDuplicates: true;
+    }): Promise<{ count: number }>;
+  };
+};
+
 type QueueConflictBaseRecord = {
   display_id: string | null;
-  aggregate_type: string;
+  aggregate_type: ClinicalLocalResourceType;
   priority: number;
   attempt_count: number;
   max_attempts: number;
@@ -118,7 +163,10 @@ type QueueConflictBaseRecord = {
 };
 
 type QueueFhirValidationConflictRecord = QueueConflictBaseRecord & {
+  id: string;
+  aggregate_id: string | null;
   fhir_resource_cache_id: string | null;
+  yrese_event_id: string | null;
 };
 
 type QueueConflictRecord = QueueConflictBaseRecord & {
@@ -153,6 +201,13 @@ type FhirResourceCacheValidationDetailRecord = {
   fetched_at: Date;
   last_modified_at: Date | null;
   updated_at: Date;
+};
+
+type FhirResourceCacheRequeueRecord = {
+  id: string;
+  resource_type: string;
+  validation_status: ClinicalFhirValidationStatus;
+  content_hash: string;
 };
 
 type ClinicalSyncConflictBaseDto = {
@@ -238,6 +293,31 @@ export interface GetClinicalSyncFhirValidationDetailInput {
   readonly orgId: string;
   readonly queueDisplayId: string;
 }
+
+export interface RequeueClinicalSyncFhirValidationConflictInput {
+  readonly orgId: string;
+  readonly queueDisplayId: string;
+  readonly reviewedByUserId: string;
+  readonly now?: Date;
+}
+
+export type RequeueClinicalSyncFhirValidationConflictResult =
+  | {
+      kind: 'requeued';
+      queue_display_id: string;
+      queue_status: 'pending';
+      validation_status: 'valid';
+      requeued_queue_item_count: 1;
+      provenance_recorded: true;
+    }
+  | { kind: 'not_found' }
+  | { kind: 'cache_missing'; queue_display_id: string }
+  | {
+      kind: 'validation_not_ready';
+      queue_display_id: string;
+      validation_status: ClinicalFhirValidationStatus;
+    }
+  | { kind: 'stale_conflict'; queue_display_id: string };
 
 export function isClinicalSyncReviewConflictCode(
   value: unknown,
@@ -418,7 +498,7 @@ function mapConflictDto(args: {
 }
 
 export async function listClinicalSyncConflicts(
-  db: ClinicalSyncConflictReviewDb,
+  db: ClinicalSyncConflictListDb,
   input: ListClinicalSyncConflictsInput,
 ): Promise<ClinicalSyncConflictDto[]> {
   const errorCode = requireSupportedConflictCode(input.errorCode);
@@ -509,7 +589,7 @@ export async function listClinicalSyncConflicts(
 }
 
 export async function getClinicalSyncFhirValidationDetail(
-  db: ClinicalSyncConflictReviewDb,
+  db: ClinicalSyncFhirValidationDetailDb,
   input: GetClinicalSyncFhirValidationDetailInput,
 ): Promise<ClinicalSyncFhirValidationDetailDto | null> {
   const row = await db.clinicalSyncQueueItem.findFirst({
@@ -522,12 +602,15 @@ export async function getClinicalSyncFhirValidationDetail(
       last_error_code: 'FHIR_PROFILE_VALIDATION_REQUIRED',
     },
     select: {
+      id: true,
       display_id: true,
       aggregate_type: true,
+      aggregate_id: true,
       priority: true,
       attempt_count: true,
       max_attempts: true,
       fhir_resource_cache_id: true,
+      yrese_event_id: true,
       last_error_code: true,
       created_at: true,
       updated_at: true,
@@ -556,4 +639,139 @@ export async function getClinicalSyncFhirValidationDetail(
     : null;
 
   return buildFhirValidationDetailDto({ row, cache });
+}
+
+async function createOrFindFhirValidationRequeueProvenance(args: {
+  readonly db: ClinicalSyncFhirValidationRequeueDb;
+  readonly orgId: string;
+  readonly row: QueueFhirValidationConflictRecord;
+  readonly cache: FhirResourceCacheRequeueRecord;
+  readonly reviewedByUserId: string;
+}) {
+  const subjectId = args.row.id;
+  const activity = 'clinical_sync_queue.fhir_validation_requeued';
+  const provenanceSubjectType = args.row.aggregate_type || ClinicalLocalResourceType.other;
+
+  // The ledger is append-only, so use ON CONFLICT DO NOTHING semantics instead of
+  // an upsert update or a caught P2002 (which would abort the surrounding transaction).
+  return args.db.clinicalProvenanceRecord.createMany({
+    data: {
+      org_id: args.orgId,
+      subject_type: provenanceSubjectType,
+      subject_id: args.row.aggregate_id ?? subjectId,
+      activity,
+      direction: ClinicalIntegrationDirection.inbound,
+      fhir_resource_cache_id: args.cache.id,
+      yrese_event_id: args.row.yrese_event_id,
+      input_hash: args.cache.content_hash,
+      recorded_by: args.reviewedByUserId,
+      adapter_version: 'standard-clinical-sync-conflict-review.v1',
+      jp_core_version: JP_CORE_VERSION,
+      fhir_version: FHIR_R4_VERSION,
+      transformation_summary: toPrismaJsonInput({
+        action: 'requeue_after_fhir_validation',
+        queue_display_id: args.row.display_id,
+        validation_status: args.cache.validation_status,
+        raw_storage: 'not_persisted',
+      }),
+    },
+    skipDuplicates: true,
+  });
+}
+
+export async function requeueClinicalSyncFhirValidationConflict(
+  db: ClinicalSyncFhirValidationRequeueDb,
+  input: RequeueClinicalSyncFhirValidationConflictInput,
+): Promise<RequeueClinicalSyncFhirValidationConflictResult> {
+  const row = await db.clinicalSyncQueueItem.findFirst({
+    where: {
+      org_id: input.orgId,
+      display_id: input.queueDisplayId,
+      direction: ClinicalIntegrationDirection.inbound,
+      status: ClinicalQueueStatus.conflict_requires_review,
+      operation: { startsWith: 'yrese.' },
+      last_error_code: 'FHIR_PROFILE_VALIDATION_REQUIRED',
+    },
+    select: {
+      id: true,
+      display_id: true,
+      aggregate_type: true,
+      aggregate_id: true,
+      priority: true,
+      attempt_count: true,
+      max_attempts: true,
+      fhir_resource_cache_id: true,
+      yrese_event_id: true,
+      last_error_code: true,
+      created_at: true,
+      updated_at: true,
+    },
+  });
+  if (!row?.display_id) return { kind: 'not_found' };
+  if (!row.fhir_resource_cache_id) {
+    return { kind: 'cache_missing', queue_display_id: row.display_id };
+  }
+
+  const cache = await db.clinicalFhirResourceCache.findFirst({
+    where: {
+      org_id: input.orgId,
+      id: row.fhir_resource_cache_id,
+    },
+    select: {
+      id: true,
+      resource_type: true,
+      validation_status: true,
+      content_hash: true,
+    },
+  });
+  if (!cache) {
+    return { kind: 'cache_missing', queue_display_id: row.display_id };
+  }
+  if (cache.validation_status !== ClinicalFhirValidationStatus.valid) {
+    return {
+      kind: 'validation_not_ready',
+      queue_display_id: row.display_id,
+      validation_status: cache.validation_status,
+    };
+  }
+
+  const updated = await db.clinicalSyncQueueItem.updateMany({
+    where: {
+      id: row.id,
+      org_id: input.orgId,
+      display_id: row.display_id,
+      status: ClinicalQueueStatus.conflict_requires_review,
+      last_error_code: 'FHIR_PROFILE_VALIDATION_REQUIRED',
+      fhir_resource_cache_id: cache.id,
+    },
+    data: {
+      status: ClinicalQueueStatus.pending,
+      next_attempt_at: input.now ?? new Date(),
+      locked_at: null,
+      locked_by: null,
+      completed_at: null,
+      last_error_code: null,
+      last_error_metadata: PrismaNamespace.JsonNull,
+    },
+  });
+  if (updated.count !== 1) {
+    return { kind: 'stale_conflict', queue_display_id: row.display_id };
+  }
+
+  await createOrFindFhirValidationRequeueProvenance({
+    db,
+    orgId: input.orgId,
+    row,
+    cache,
+    reviewedByUserId: input.reviewedByUserId,
+  });
+
+  return {
+    kind: 'requeued',
+    queue_display_id: row.display_id,
+    queue_status: 'pending',
+    validation_status: ClinicalFhirValidationStatus.valid,
+    requeued_queue_item_count: 1,
+    provenance_recorded: true,
+  };
 }

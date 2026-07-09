@@ -41,6 +41,61 @@
 
 ## 直近の作業
 
+- codex + claude checker: `FHIR-READY-VALIDATION-REQUEUE-001` validated conflict requeue API.
+  - current task:
+    `FHIR_PROFILE_VALIDATION_REQUIRED` で停止した inbound yrese queue itemを、同一orgの
+    FHIR cacheが`valid`になった場合だけpublic `queue_display_id`から再queueし、raw FHIR、
+    internal queue/cache ID、content hashをresponseへ出さずにprovenanceを残す。
+  - files inspected:
+    `git status --short --untracked-files=all`, `ops/refactor/STATE.md`, `Plans.md`,
+    `prisma/schema/standard-clinical-integration.prisma`, migration
+    `20260709170000_rebuild_standard_clinical_integration`,
+    `src/server/services/standard-clinical-sync-conflict-review.ts`, its tests, and
+    `src/app/api/integration/clinical-sync/conflicts/[displayId]/requeue/*`.
+  - files changed:
+    `src/server/services/standard-clinical-sync-conflict-review.ts`,
+    `src/server/services/standard-clinical-sync-conflict-review.test.ts`,
+    `src/app/api/integration/clinical-sync/conflicts/[displayId]/requeue/route.ts`, and
+    `src/app/api/integration/clinical-sync/conflicts/[displayId]/requeue/route.test.ts`.
+  - bugs found / fixed:
+    Added the missing admin-only, sensitive no-store requeue endpoint with serializable
+    `withOrgContext`, a validation-status precondition, and guarded `updateMany` stale-race
+    detection. Claude checker then found that the draft wrote the 25-character queue cuid to
+    `ClinicalProvenanceRecord.output_hash`, violating the DB `>= 32` hash constraint and causing
+    every real happy path to roll back. `output_hash` is now omitted. Codex additionally replaced
+    `create -> catch P2002 -> findFirst` with append-only-safe
+    `createMany({ skipDuplicates: true })`; PostgreSQL marks a transaction failed after P2002, and
+    an upsert-update would conflict with the provenance no-update trigger.
+  - security/privacy:
+    Route requires `canAdmin`, validates the `ClinicalSyncQueueItem` display-ID prefix, applies
+    request-bound org context, and returns only display ID, queue/validation status, bounded count,
+    and provenance-recorded boolean. Internal IDs, hashes, raw FHIR, validator detail, metadata,
+    and patient identifiers remain omitted. No external yrese/FHIR call is made.
+  - performance:
+    Point lookups and one guarded update remain bounded by org + IDs; provenance replay uses a
+    unique-index-backed conflict skip without exception/retry queries.
+  - collaboration:
+    agmsg monitor is live for `phos/codex`; stale `codex2`-`codex4` roles were removed, leaving
+    `claude + codex`. Claude returned `REQUEST CHANGES` for the hash-constraint defect and is
+    then `APPROVE` after directly re-reading the corrected `createMany(skipDuplicates)` diff,
+    confirming no `output_hash` assignment remains and auth/RLS/stale-race/fail-closed behavior is
+    preserved. Oracle remains disabled by the earlier explicit user instruction, so no Oracle
+    prompt was sent.
+  - validation:
+    Focused service/route/DB-contract Vitest passed 3 files / 21 tests; exact-path ESLint passed;
+    repo-wide `pnpm typecheck` and `pnpm typecheck:no-unused` passed; Prettier write/check state and
+    `git diff --check` passed.
+    Real RLS/DML proof was not run because the active instructions require approval before DB
+    mutation; the migration constraint is covered statically and Claude review is the safety gate.
+  - unrelated dirty worktree:
+    Visit medication-stock UI/types/helpers and `.harness-mem/state/*.json` remain unrelated WIP
+    and are excluded from staging.
+  - remaining / next action:
+    Land and push this scoped slice after Claude re-approval. Then add and fix the newly confirmed
+    patient-link provenance constraint/replay defect in
+    `standard-clinical-patient-linkage.ts`; its route already exists, so no duplicate endpoint
+    should be created.
+
 - codex: `FHIR-READY-VALIDATION-DETAIL-001` FHIR validation conflict detail API.
   - commit:
     `8b4a1ec0f feat(integration): add FHIR validation conflict detail API`
