@@ -51,6 +51,92 @@
 
 ## 直近の作業
 
+- codex: visit medication preparation states, readable controls, and API path parity.
+  - commit:
+    `a65e98b4d fix(visits): fail closed on preparation data states`.
+  - current task:
+    訪問記録の薬剤管理セクションを、訪問準備APIの loading/error/stale/malformed-success、
+    12px下限、全breakpoint 44px、臨床エビデンス入力の継続利用、単一セグメントURL、
+    frontend/backend 同時完了ルールへ揃える。
+  - files inspected:
+    `docs/ui-ux-design-guidelines.md`, `docs/frontend-screen-contracts.md`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md`,
+    shared segment/loading/input/tab/button/checkbox/switch/select primitives,
+    visit medication management section/tests, visit record form/tests,
+    `src/lib/hooks/use-stale-after-refetch-error.ts`,
+    `src/lib/http/path-segment.ts`, home-visit readiness evidence/tests,
+    `GET /api/visit-preparations/[scheduleId]` route/tests, and visit-record POST/PATCH route/tests.
+  - files changed:
+    `.agent-loop/UI_AUDIT_MATRIX.md`,
+    `src/components/features/visits/visit-medication-management-section.tsx`,
+    `src/components/features/visits/visit-medication-management-section.test.tsx`,
+    `src/components/features/visits/visit-medication-management-section.ui-contract.test.ts`,
+    `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`,
+    `src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx`, and this state file.
+  - bugs found / fixed:
+    While the preparation pack was loading or failed, the source brief still received empty defaults
+    and displayed `変化なし` / `記録なし` / `共有なし`, even though the data was unknown. Loading now
+    shows shape-matched skeletons, initial/network and malformed-success responses show a retryable
+    fail-visible error, and refetch failures preserve authorized cached details behind an explicit
+    stale warning. The independent medication-management evidence checkboxes remain usable during a
+    source error instead of blocking clinical documentation. The care-team panel is shown only for a
+    ready or cached-stale pack. A Zod response schema now validates every consumed pack branch, including
+    nested facility patients, prescription changes, outside medications, previous structured reuse,
+    intake flags, and billing context before rendering. Nested malformed-success responses therefore
+    fail visibly instead of throwing during render. Cached 5xx data shows both relative age and absolute
+    last-fetch time; a non-retryable 4xx clears the exact query cache and hides medication/care-team PHI
+    rather than treating revoked access as ordinary stale data. Five 10/11px source labels/counts meet 12px;
+    explicit quick-capture, tab, conference, select, input, textarea, and retry controls stay at least
+    44px on desktop and mobile; evidence labels provide a full-height target; nested content follows
+    h3/h4 hierarchy. Schedule and preparation requests now encode the route ID through the shared
+    single-segment helper instead of raw path interpolation.
+  - frontend/backend parity:
+    The source brief reads only `GET /api/visit-preparations/:scheduleId`, and its error/stale/empty
+    states now match that response lifecycle without inventing absence. Paired route tests prove
+    authentication, assignment scope, sensitive no-store responses, prescription changes, outside
+    medication classification, previous visit reuse, conference context, and medication periods.
+    The form still writes structured evidence through the existing visit-record POST/PATCH contracts;
+    paired readiness tests prove required medication-management evidence is rejected before writes.
+    No production backend change was needed. Runtime URL tests pin schedule/preparation IDs to one path
+    segment even when the raw route ID contains slash/dot sequences.
+  - security/privacy:
+    Provider failures and malformed DTO details are not rendered; source failure uses fixed operational
+    copy. Cached PHI is retained only for retryable/network/5xx failures after an authorized response and
+    is labeled stale with age and timestamp. Authentication/authorization/resource 4xx responses clear
+    the query cache, hide cached source details, and never render raw provider text. Existing
+    canVisit, org/RLS, schedule assignment, clinical finalization, readiness, audit, and sensitive
+    cache boundaries remain intact. Path-segment encoding prevents a hostile decoded route ID from
+    changing the requested API hierarchy.
+  - performance:
+    No request, polling interval, dependency, or query was added. The existing preparation React Query
+    cache is reused during transient refetch failure, while automatic retries are disabled so failure or
+    revoked access is surfaced immediately and no duplicate request is hidden. One bounded Zod parse of
+    the consumed response subset replaces unsafe unchecked nested dereferences.
+  - validation:
+    Frontend medication section/UI contract/form passed 3 files / 55 tests. Paired preparation and
+    visit-record readiness suites passed 4 files / 172 tests. Exact-path ESLint, Prettier, and
+    `git diff --check` passed. Full
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit --pretty false --incremental false --skipLibCheck`
+    and serial `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed.
+    `pnpm frontend-contract:check`, `pnpm plans:active:check`, `pnpm colors:check`,
+    `pnpm api-response-shape:check`, `pnpm route-auth-wrapper:check`,
+    `pnpm db:raw-read-org-guard:check`, and `pnpm client-phi-log:check` all passed. Independent plan review
+    found and the maker closed full nested-schema, stale-age, refetch-integration, live-region, and
+    authorization-revocation gaps; the final verifier returned PASS.
+  - UI/imagegen:
+    `imagegen` was intentionally omitted because this applies state, readability, responsive, and
+    accessibility corrections within the committed non-PHI all-screen direction; it does not add a
+    new layout concept.
+  - remaining / next action:
+    The next highest safe active-board slice is P0 `API-CONTRACT-001`: migrate the push-subscription
+    POST/DELETE success bodies and ratchet response-shape debt from 49 to 47 after the required public
+    contract safety review. The live sub-12 count remains 35 files / 61 occurrences for later UI waves.
+    Browser/mobile
+    visual proof remains blocked by the missing compatible local app/database runtime, and Next build
+    is not claimed green because the existing `.next/cache/webpack` resource envelope has produced
+    exit 137/termination without a safe non-destructive build path. No deploy, migration, production mutation, external send,
+    cache deletion, or destructive operation ran.
+
 - codex integration: shared offline conflict confirmation and exact-version overwrite parity.
   - commit:
     `db6903494 fix(offline-sync): add conflict diff confirmation dialog`.
