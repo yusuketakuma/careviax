@@ -51,6 +51,55 @@
 
 ## 直近の作業
 
+- codex + claude checker: `SEC-EVENT-PATH-PII-SANITIZE-001` security event path segment sanitization.
+  - commit:
+    `d084dccc8 fix(security): sanitize audit path values`
+  - current task:
+    `logSecurityEvent()` が `AuditLog.target_id` と60秒dedup keyへ入れるpathを、
+    query/fragment除去だけでなくpath segment単位でもPII/credential-like値を残さない形へ強化する。
+  - files inspected:
+    `Plans.md`, `src/lib/auth/security-events.ts`, `src/lib/auth/security-events.test.ts`,
+    `git status --short --branch --untracked-files=all`, and Claude checker agmsg reviews.
+  - files changed:
+    `src/lib/auth/security-events.ts` and `src/lib/auth/security-events.test.ts`.
+  - bugs found / fixed:
+    `sanitizePathForAudit()` allowed safe-character path segments such as
+    `john@example.test`, `090-1234-5678`, and `secret-token-value` to pass through raw.
+    The sanitizer now redacts email-like segments, phone-like segments with at least 10 digits,
+    credential-keyword segments, OTP-like numeric values, high-entropy mixed-case token-like
+    values, percent-encoded/non-allowlisted values, and token route positions under
+    `/shared/*` and `/api/external-access/*`. Static operational route names remain readable,
+    with `pharmacist-credentials` scoped only under `/api/admin/*` so `/api/auth/pharmacist-credentials`
+    still redacts to `:value`.
+  - security/privacy:
+    Prevents path-derived email, phone, reset/magic/session/invite/token-like secrets, and shared
+    access tokens from entering long-lived `AuditLog.target_id` or dedup fingerprints. Tests also
+    prove two different raw email paths collapse to a single sanitized dedup key without retaining
+    either raw address.
+  - performance:
+    No meaningful performance change; sanitizer remains bounded per path segment with simple regex
+    checks and no I/O.
+  - validation:
+    `pnpm exec prettier --write src/lib/auth/security-events.ts src/lib/auth/security-events.test.ts`;
+    `pnpm vitest run src/lib/auth/security-events.test.ts --reporter=dot --testTimeout=30000`
+    passed 1 file / 21 tests locally; exact-path ESLint passed;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed;
+    `pnpm api-response-shape:check`, `pnpm db:raw-read-org-guard:check`,
+    `pnpm db:query-shape:check`, `pnpm dto-direct-prisma-return:check`, Prettier check, and
+    `git diff --check` passed.
+  - collaboration:
+    Claude checker independently approved the final sanitizer after a maker/checker loop that
+    closed pure-alpha mixed-case token bypass and the global `pharmacist-credentials` allowlist
+    bypass.
+  - unrelated dirty worktree:
+    `.harness-mem/state/*.json`, visit medication-stock UI/types/helpers remain unrelated WIP
+    and were excluded from staging.
+  - remaining / next action:
+    No DB mutation, deployment, secret rotation, or production data action was performed. Future
+    token-bearing route additions should either match the value heuristics or update
+    `SENSITIVE_VALUE_PARENT_SEGMENTS` with regression tests.
+
 - codex: `CLINICAL-PROVENANCE-HASH-HARDENING-001` queue/patient linkage provenance hash constraints.
   - commit:
     `3a815502f fix(integration): harden clinical provenance hashes`
