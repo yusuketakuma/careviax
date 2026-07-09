@@ -42,6 +42,8 @@
 ## 直近の作業
 
 - codex: `FHIR-READY-DB-001` pre-release destructive-ready yrese / JP Core / FHIR standard integration DB spine.
+  - commit:
+    `e8c52954e feat(db): add standard clinical integration spine`
   - current task:
     未リリース前提で、yrese を SoR、PH-OS を在宅業務 SoW/SoE として分離する
     JP Core/FHIR Ready DB 構造へ作り直す。第一スライスとして、Patient / MedicationRequest /
