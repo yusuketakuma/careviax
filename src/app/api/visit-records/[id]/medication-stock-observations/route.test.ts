@@ -264,4 +264,30 @@ describe('POST /api/visit-records/[id]/medication-stock-observations', () => {
     expect(JSON.stringify(payload)).not.toContain('database unavailable');
     expect(JSON.stringify(payload)).not.toContain('patient name');
   });
+
+  it('fails closed with a capability-unavailable response when the visit observation tables are missing', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError(
+        'Table `MedicationStockObservationContext` does not exist for patient 山田太郎',
+        {
+          code: 'P2021',
+          clientVersion: 'test',
+          meta: { table: 'MedicationStockObservationContext' },
+        },
+      ),
+    );
+
+    const response = await POST(createRequest(createBody()));
+    const payload = await response.json();
+
+    expect(response.status).toBe(503);
+    expectSensitiveNoStore(response);
+    expect(payload).toEqual({
+      code: 'MEDICATION_STOCK_OBSERVATION_UNAVAILABLE',
+      message: '残数観測の登録機能はDB連携確認中です。従来の残薬記録を使用してください。',
+    });
+    expect(JSON.stringify(payload)).not.toContain('MedicationStockObservationContext');
+    expect(JSON.stringify(payload)).not.toContain('山田太郎');
+    expect(applyVisitMedicationStockObservationsMock).not.toHaveBeenCalled();
+  });
 });

@@ -7,6 +7,7 @@ import { withAuthContext } from '@/lib/auth/context';
 import { parseOptionalIdempotencyKey } from '@/lib/api/idempotency-key';
 import {
   conflict,
+  error,
   forbiddenResponse,
   internalError,
   notFound,
@@ -141,8 +142,31 @@ const requestSchema = z.object({
   observations: z.array(observationSchema).min(1).max(50),
 });
 
+function isMedicationStockObservationCapabilityUnavailable(
+  err: unknown,
+): err is Prisma.PrismaClientKnownRequestError {
+  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2021';
+}
+
 function mapObservationWriteException(req: NextRequest, err: unknown) {
   unstable_rethrow(err);
+  if (isMedicationStockObservationCapabilityUnavailable(err)) {
+    logger.warn(
+      {
+        event: 'visit_medication_stock_observation_capability_unavailable',
+        route: ROUTE,
+        method: req.method,
+        status: 503,
+        code: err.code,
+      },
+      err,
+    );
+    return error(
+      'MEDICATION_STOCK_OBSERVATION_UNAVAILABLE',
+      '残数観測の登録機能はDB連携確認中です。従来の残薬記録を使用してください。',
+      503,
+    );
+  }
   if (
     err instanceof Prisma.PrismaClientKnownRequestError &&
     (err.code === 'P2002' || err.code === 'P2034')

@@ -41,6 +41,83 @@
 
 ## 直近の作業
 
+- codex: `STOCK-VISIT-API-CAPABILITY-GUARD-001` visit observation API fail-closed guard.
+  - current task:
+    `STOCK-001-VISIT-UI` の前段 safety slice として、
+    `POST /api/visit-records/:id/medication-stock-observations` が migration/table missing を
+    generic 500 や false success にせず、明示 503 で fail-closed するようにする。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`, `Plans.md`, `ops/refactor/STATE.md`,
+    `docs/ui-ux-design-guidelines.md`, local Next.js docs search under `node_modules/next/dist/docs/`,
+    `src/components/features/visits/visit-medication-stock-observation-panel.tsx`,
+    `src/components/features/visits/visit-medication-stock-observation-panel.test.tsx`,
+    `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`,
+    `src/app/api/visit-records/[id]/medication-stock-observations/route.ts`,
+    `src/app/api/visit-records/[id]/medication-stock-observations/route.test.ts`,
+    and `src/lib/api/response.ts`.
+  - files changed:
+    `src/app/api/visit-records/[id]/medication-stock-observations/route.ts`,
+    `src/app/api/visit-records/[id]/medication-stock-observations/route.test.ts`, `Plans.md`,
+    and this ledger.
+  - coordination:
+    Used bounded read-only `code_mapper` and `medical_safety_reviewer` subagents. `code_mapper`
+    confirmed the safest immediate slice is API P2021 capability detection while keeping the UI
+    disabled. `medical_safety_reviewer` returned CHANGES_REQUESTED for write enablement and set stop
+    conditions: do not enable stock observation writes before DB/migration capability, RLS,
+    append-only/idempotency evidence, strict kind-discriminated payload validation, explicit
+    source/confirmation, and freshness conflict handling are proven. Used `imagegen` with a
+    PHI-free UI reference prompt for future STOCK UI direction; no generated asset was copied into
+    the repo.
+  - implementation:
+    Added `isMedicationStockObservationCapabilityUnavailable()` and mapped Prisma `P2021` from the
+    visit stock observation write path to no-store HTTP 503 with code
+    `MEDICATION_STOCK_OBSERVATION_UNAVAILABLE`. The response omits raw DB table names, raw provider
+    messages, and patient details. The safe server log event carries only coded route/method/status
+    metadata and the Prisma error code. `Plans.md` now moves
+    `STOCK-VISIT-API-CAPABILITY-GUARD-001` out of the active implementation queue and records it as
+    Done/frozen while keeping `STOCK-001-VISIT-UI` blocked on DB integration evidence and stricter
+    write acceptance.
+  - bugs found:
+    If the visit observation sidecar migration/table is missing, Prisma `P2021` previously fell
+    through to the generic unhandled-error branch. The UI is currently disabled, but the API did not
+    expose a stable capability-unavailable contract for future clients or integration probes.
+  - bugs fixed:
+    Missing visit observation tables now return a stable 503 API error instead of a generic 500, and
+    the route test proves raw table/patient strings are not returned.
+  - security risks found:
+    Raw DB/provider errors can include schema/table names and, in worst cases, patient/medication
+    details in exception messages. A generic write failure could also be misinterpreted by a future
+    UI if not modeled as a capability gate.
+  - security risks reduced:
+    The route now fails closed with a PHI-minimized response and coded server telemetry when the
+    DB capability is unavailable.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None.
+  - validation commands:
+    `pnpm vitest run 'src/app/api/visit-records/[id]/medication-stock-observations/route.test.ts' --reporter=dot`;
+    `pnpm exec eslint 'src/app/api/visit-records/[id]/medication-stock-observations/route.ts' 'src/app/api/visit-records/[id]/medication-stock-observations/route.test.ts'`;
+    `pnpm exec prettier --write Plans.md`;
+    `pnpm plans:active:check`;
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md 'src/app/api/visit-records/[id]/medication-stock-observations/route.ts' 'src/app/api/visit-records/[id]/medication-stock-observations/route.test.ts'`;
+    `git diff --check -- Plans.md ops/refactor/STATE.md 'src/app/api/visit-records/[id]/medication-stock-observations/route.ts' 'src/app/api/visit-records/[id]/medication-stock-observations/route.test.ts'`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Focused route test passed (1 file / 8 tests). Targeted ESLint passed. `plans:active:check`,
+    Prettier check, scoped `git diff --check`, and full typecheck passed. The first full typecheck
+    caught the new helper as a non-narrowing boolean (`err` stayed `unknown`); the helper was changed
+    to a Prisma known-request type predicate and typecheck then passed.
+  - remaining work:
+    `STOCK-001-VISIT-UI` remains Partial. Write controls must stay disabled until the DB integration
+    and medical-safety acceptance criteria are satisfied, including strict discriminated route
+    validation, explicit source/confirmation, stale-token 409 handling, offline pending states, RLS
+    proof, append-only proof, idempotency proof, rollback plan, and redacted DB integration
+    evidence.
+  - next action:
+    Commit only the owned paths, push `origin/main`, then continue with the next highest-value
+    implementation queue item.
+
 - codex: `FE-PHI-SAFE-CLIENT-LOG-001` console/raw-error minimization and CI guard.
   - commit:
     Implementation, Plans cleanup, CI wiring, and ledger evidence committed as
