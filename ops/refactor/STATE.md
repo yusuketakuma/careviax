@@ -41,6 +41,95 @@
 
 ## 直近の作業
 
+- codex: `FHIR-READY-DISPLAY-ID-001` clinical sync queue public display ID on import.
+  - commit:
+    `62d5fd9f6 feat(integration): assign clinical sync queue display ids`
+  - current task:
+    yrese webhook / FHIR cache idempotent import service が作成・再利用する
+    `ClinicalSyncQueueItem` に public `display_id` を必ず持たせ、conflict review API が
+    internal queue ID を露出せず後続 detail/review flow の locator にできる状態へ進める。
+    schema/migration、live DB 適用、外部 yrese/FHIR call、deploy は行わない。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`, `git log --oneline -12`,
+    `ops/refactor/STATE.md`, `src/server/services/standard-clinical-integration-import.ts`,
+    `src/server/services/standard-clinical-integration-import.test.ts`,
+    `src/server/services/standard-clinical-sync-conflict-review.ts`,
+    `src/lib/db/display-id.ts`, `src/lib/db/display-id-registry.ts`, and recent
+    yrese webhook / import / conflict-review state entries.
+  - files changed:
+    `src/server/services/standard-clinical-integration-import.ts` and
+    `src/server/services/standard-clinical-integration-import.test.ts`.
+  - bugs found:
+    The conflict review list intentionally exposes `queue_display_id` instead of internal queue IDs,
+    but imported `ClinicalSyncQueueItem` rows were not assigned a display ID. That left new
+    conflict rows without a stable public locator for follow-up step-up/detail review.
+  - bugs fixed:
+    `importYreseClinicalWebhook()` now returns `queueItemDisplayId` and `upsertQueueItem()` selects
+    `{ id, display_id }`. When the upserted row has no display ID, the service allocates a
+    tenant-scoped `ClinicalSyncQueueItem` display ID and fills it with `updateMany` guarded by
+    `id + org_id + display_id: null`; replay paths with an existing display ID do not allocate
+    another sequence value. If a concurrent fill wins first, the service re-reads by `id + org_id`
+    and requires convergence.
+  - security risks found:
+    Using raw queue IDs for clinical conflict review would expose internal database identifiers.
+    Naively allocating on every idempotent replay would also create avoidable sequence churn and
+    make replay behavior harder to reason about.
+  - security risks reduced:
+    Future conflict review flows can rely on opaque `csq...` display IDs while preserving org
+    scoping. The fill path never uses patient data, FHIR resource IDs, raw payloads, hashes, or
+    external identifiers as the public locator; it uses the existing display ID allocator and
+    tenant-scoped `id_sequence`.
+  - performance issues found:
+    None in the runtime hot path beyond a bounded post-upsert display ID fill.
+  - performance issues improved:
+    Idempotent replay with an existing display ID performs no display ID allocation or fill update.
+    New rows pay one sequence allocation and one guarded update so review follow-up can avoid
+    unsafe internal ID exposure later.
+  - Oracle note:
+    Oracle/GPT-5.5 Pro review was attempted before finalization because this touches clinical
+    import / DB / PHI-adjacent boundaries. `clinical-import-display-id` failed before model review
+    due to a ChatGPT Cloudflare challenge, and API fallback preflight failed because
+    `OPENAI_API_KEY` is missing. No Oracle advisory answer was available. The change was kept
+    narrowly scoped to display ID post-fill and verified with local tests/type/lint/guards.
+  - imagegen:
+    Omitted because this was backend-only import service behavior with no UI/UX visual
+    reconstruction.
+  - validation commands:
+    `pnpm exec prettier --write src/server/services/standard-clinical-integration-import.ts src/server/services/standard-clinical-integration-import.test.ts`;
+    `pnpm vitest run src/server/services/standard-clinical-integration-import.test.ts src/server/services/standard-clinical-sync-conflict-review.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint src/server/services/standard-clinical-integration-import.ts src/server/services/standard-clinical-integration-import.test.ts src/server/services/standard-clinical-sync-conflict-review.test.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused`;
+    `pnpm db:raw-read-org-guard:check`;
+    `pnpm db:query-shape:check`;
+    `pnpm dto-direct-prisma-return:check`;
+    `pnpm api-response-shape:check`;
+    `pnpm route-auth-wrapper:check`;
+    `pnpm exec prettier --check src/server/services/standard-clinical-integration-import.ts src/server/services/standard-clinical-integration-import.test.ts`;
+    `pnpm lint`;
+    `git diff --check`;
+    `git diff --cached --check`;
+    `npx -y @steipete/oracle --help`;
+    `git remote -v`; `git branch --show-current`; `git rev-parse HEAD`; `gh pr status`;
+    `npx -y @steipete/oracle --engine browser --model gpt-5.5-pro --browser-manual-login --browser-inline-files --browser-auto-reattach-delay 5s --browser-auto-reattach-interval 3s --browser-auto-reattach-timeout 60s --browser-thinking-time heavy --heartbeat 30 --slug "clinical-import-display-id" ...`;
+    `npx -y @steipete/oracle --engine api --model gpt-5.5-pro --preflight -p "preflight" --file src/server/services/standard-clinical-integration-import.ts`.
+  - validation results:
+    Focused import/conflict tests passed 2 files / 10 tests. Scoped ESLint passed. `typecheck`
+    and `typecheck:no-unused` passed. Raw-read org guard, query-shape guard, DTO direct Prisma
+    return guard, API response shape, route-auth wrapper, Prettier check, unstaged diff check, and
+    staged diff check passed. Full `pnpm lint` exited 0 with two existing warnings in
+    `src/lib/platform/break-glass.test.ts`; no new lint errors.
+  - remaining work:
+    No live DB migration was applied, no deploy was run, no environment secret was changed, no
+    push was performed, and no external yrese/FHIR endpoint was called. Existing rows with null
+    `ClinicalSyncQueueItem.display_id` remain unless reprocessed or backfilled in an explicitly
+    authorized environment. The next safe code step is a backend step-up detail endpoint keyed by
+    `queue_display_id` for capped FHIR validation diagnostics, then UI/review workflow wiring.
+  - next action:
+    Continue with `queue_display_id` keyed FHIR validation detail/review API, still omitting raw
+    FHIR payloads and internal IDs. DB migration apply, deploy, push, secret changes, and external
+    yrese/FHIR sends still require explicit current authorization.
+
 - codex: `FHIR-READY-CONFLICT-REVIEW-001` clinical sync conflict review API.
   - commit:
     `5bf22e49d feat(integration): add clinical sync conflict review API`
