@@ -82,6 +82,9 @@ describe('/api/patients/[id]/restore PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: { id: 'patient_1', archived_at: null, archived_by: null },
+    });
     expect(patientFindFirstMock).toHaveBeenCalledWith({
       where: { id: 'patient_1', org_id: 'org_1' },
       select: { id: true, archived_at: true },
