@@ -1,9 +1,13 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
-import type { SyncQueueItemSummary } from '@/lib/stores/sync-engine';
+import {
+  discardSyncQueueItem,
+  overwriteVisitRecordConflict,
+  type SyncQueueItemSummary,
+} from '@/lib/stores/sync-engine';
 import { OfflineSyncContent } from './offline-sync-content';
 
 setupDomTestEnv();
@@ -22,8 +26,22 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
 }));
 
 vi.mock('@tanstack/react-query', () => ({
-  useMutation: () => ({
-    mutate: mutationMutateMock,
+  // mutationFn を実行し onSuccess/onError へ流す(server/local どちらの解決系
+  // sync-engine 関数が呼ばれたかを検証できるようにする。SSOT 5.7 の配線検証)。
+  useMutation: (options: {
+    mutationFn: (variables?: unknown) => Promise<unknown>;
+    onMutate?: (variables?: unknown) => unknown;
+    onSuccess?: (data: unknown, variables?: unknown) => unknown;
+    onError?: (error: unknown) => unknown;
+  }) => ({
+    mutate: (variables?: unknown) => {
+      mutationMutateMock(variables);
+      options.onMutate?.(variables);
+      void Promise.resolve()
+        .then(() => options.mutationFn(variables))
+        .then((data) => options.onSuccess?.(data, variables))
+        .catch((error) => options.onError?.(error));
+    },
     isPending: false,
   }),
 }));
@@ -150,6 +168,110 @@ describe('OfflineSyncContent', () => {
     fireEvent.click(screen.getAllByRole('button', { name: '内容を確認' })[0]);
     expect(await screen.findByTestId('offline-sync-conflict-view')).toBeTruthy();
     expect(screen.getByText('佐藤花子さんの記録が更新されています')).toBeTruthy();
+  });
+
+  // SSOT 5.7: 不可逆な競合解決は ConflictDiffDialog 経由で、keep/discard の再掲と
+  // server/local で異なる mutation が正しく配線されていることを end-to-end で固定する。
+  function buildConflictItem(): SyncQueueItemSummary {
+    return buildQueueItem({
+      id: 2,
+      conflict_state: 'server_conflict',
+      payload: { patient_id: '佐藤花子', display_kind: '訪問メモ' },
+      conflict: {
+        local: { soap_subjective: '服薬できた', outcome_status: 'completed' },
+        server: {
+          id: 'rec_1',
+          version: 2,
+          patient_id: 'patient_1',
+          visit_date: '2026-06-12',
+          outcome_status: 'completed',
+          soap_subjective: '便秘あり',
+        },
+      },
+    });
+  }
+
+  async function openConflictView() {
+    fireEvent.click(screen.getAllByRole('button', { name: '内容を確認' })[0]);
+    expect(await screen.findByTestId('offline-sync-conflict-view')).toBeTruthy();
+  }
+
+  it('confirms the server choice through the diff dialog and calls only the discard mutation', async () => {
+    renderOfflineSyncContent([buildConflictItem()]);
+    await openConflictView();
+
+    fireEvent.click(screen.getByRole('button', { name: '最新の内容を使う' }));
+
+    // keep=サーバー(最新) / discard=自分の入力 の向きで再掲される。
+    expect(await screen.findByText('最新の内容を残しますか')).toBeTruthy();
+    expect(screen.getAllByText('最新の内容（残す）')).toHaveLength(2);
+    expect(screen.getAllByText('あなたの入力（破棄）')).toHaveLength(2);
+    // モバイル縦積みでも、値の keep/discard 所属を項目ブロック単位で固定する。
+    const memoDefinitions = within(
+      screen.getByRole('region', { name: '訪問メモの差分' }),
+    ).getAllByRole('definition');
+    expect(memoDefinitions[0]?.textContent).toBe('便秘あり');
+    expect(memoDefinitions[1]?.textContent).toBe('服薬できた');
+
+    fireEvent.click(screen.getByRole('button', { name: '最新の内容を残す' }));
+
+    await waitFor(() => expect(discardSyncQueueItem).toHaveBeenCalledWith(2));
+    expect(overwriteVisitRecordConflict).not.toHaveBeenCalled();
+  });
+
+  it('confirms the local choice with reversed keep/discard and calls only the overwrite mutation', async () => {
+    renderOfflineSyncContent([buildConflictItem()]);
+    await openConflictView();
+
+    fireEvent.click(screen.getByRole('button', { name: '自分の入力で上書き' }));
+
+    expect(await screen.findByText('自分の入力で上書きしますか')).toBeTruthy();
+    // keep/discard が反転する(見出しとセル値の両方で固定)。
+    expect(screen.getAllByText('あなたの入力（残す）')).toHaveLength(2);
+    expect(screen.getAllByText('最新の内容（破棄）')).toHaveLength(2);
+    const memoDefinitions = within(
+      screen.getByRole('region', { name: '訪問メモの差分' }),
+    ).getAllByRole('definition');
+    expect(memoDefinitions[0]?.textContent).toBe('服薬できた');
+    expect(memoDefinitions[1]?.textContent).toBe('便秘あり');
+
+    fireEvent.click(screen.getByRole('button', { name: '自分の入力で上書きする' }));
+
+    await waitFor(() => expect(overwriteVisitRecordConflict).toHaveBeenCalledTimes(1));
+    // overwriteVisitRecordConflict(ctx, itemId) — 対象 item id は第2引数。
+    expect(vi.mocked(overwriteVisitRecordConflict).mock.calls[0]?.[1]).toBe(2);
+    expect(discardSyncQueueItem).not.toHaveBeenCalled();
+  });
+
+  it('cancels the diff dialog without firing either resolution mutation', async () => {
+    renderOfflineSyncContent([buildConflictItem()]);
+    await openConflictView();
+
+    fireEvent.click(screen.getByRole('button', { name: '最新の内容を使う' }));
+    expect(await screen.findByText('最新の内容を残しますか')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
+
+    await waitFor(() => expect(screen.queryByText('最新の内容を残しますか')).toBeNull());
+    expect(discardSyncQueueItem).not.toHaveBeenCalled();
+    expect(overwriteVisitRecordConflict).not.toHaveBeenCalled();
+  });
+
+  it('keeps a safe inline error and the selected diff visible when overwrite fails', async () => {
+    vi.mocked(overwriteVisitRecordConflict).mockResolvedValueOnce({
+      ok: false,
+      message: 'サーバー側の記録が更新されました。差分を確認してください',
+    });
+    renderOfflineSyncContent([buildConflictItem()]);
+    await openConflictView();
+
+    fireEvent.click(screen.getByRole('button', { name: '自分の入力で上書き' }));
+    fireEvent.click(screen.getByRole('button', { name: '自分の入力で上書きする' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('競合を解決できませんでした');
+    expect(screen.getByText('自分の入力で上書きしますか')).toBeTruthy();
+    expect(toastErrorMock).toHaveBeenCalled();
   });
 
   it('shows the genuine empty state only when the queue loaded successfully with no rows', async () => {

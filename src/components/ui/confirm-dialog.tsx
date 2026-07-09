@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -31,7 +32,10 @@ interface ConfirmDialogProps {
   /** If set, user must type this exact text before confirming */
   requiredConfirmText?: string;
   confirmDisabled?: boolean;
+  cancelDisabled?: boolean;
   closeOnConfirm?: boolean;
+  /** Optional shared sizing class for both footer actions. */
+  actionClassName?: string;
   /**
    * 開封時に確定操作へフォーカスを寄せ、Enter で確定できるようにする（不可逆 sign-off 用）。
    * `requiredConfirmText` 無し: 確定ボタンへ自動フォーカスし Enter で確定。
@@ -53,7 +57,9 @@ export function ConfirmDialog({
   variant = 'default',
   requiredConfirmText,
   confirmDisabled = false,
+  cancelDisabled = false,
   closeOnConfirm = true,
+  actionClassName,
   autoFocusConfirm = false,
   children,
   onConfirm,
@@ -125,7 +131,9 @@ export function ConfirmDialog({
         )}
 
         <AlertDialogFooter>
-          <AlertDialogCancel>{cancelLabel}</AlertDialogCancel>
+          <AlertDialogCancel disabled={cancelDisabled} className={actionClassName}>
+            {cancelLabel}
+          </AlertDialogCancel>
           <AlertDialogAction
             ref={confirmButtonRef}
             onClick={handleConfirm}
@@ -140,11 +148,12 @@ export function ConfirmDialog({
                 }
               : {})}
             disabled={isConfirmDisabled}
-            className={
+            className={cn(
               variant === 'destructive'
                 ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
-                : undefined
-            }
+                : undefined,
+              actionClassName,
+            )}
           >
             {confirmLabel}
           </AlertDialogAction>

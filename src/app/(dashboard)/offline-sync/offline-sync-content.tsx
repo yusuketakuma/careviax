@@ -6,6 +6,7 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { DataTable, type DataTableColumnMeta } from '@/components/ui/data-table';
+import { ConflictDiffDialog } from '@/components/ui/conflict-diff-dialog';
 import { SyncStateBadge } from '@/components/ui/sync-state-badge';
 import { decryptOfflinePayload } from '@/lib/offline/crypto';
 import { OUTCOME_LABELS } from '@/lib/constants/visit';
@@ -38,10 +39,18 @@ import { seedOfflineSyncDemoData } from './offline-sync.demo';
  * (最新を使う / 自分の入力で上書き)をこの画面に集約する。
  */
 
+/** 競合差分の「結果」表示。未入力は未設定として明示(空文字に潰さない)。 */
+function resolveConflictOutcomeLabel(outcome: string | null): string {
+  if (!outcome) return '—（未入力）';
+  return OUTCOME_LABELS[outcome] ?? outcome;
+}
+
 const OFFLINE_SYNC_LOCAL_OVERWRITE_DISABLED_REASON_ID =
   'offline-sync-local-overwrite-disabled-reason';
 const OFFLINE_SYNC_RETRY_ALL_DISABLED_REASON_ID = 'offline-sync-retry-all-disabled-reason';
 const OFFLINE_SYNC_QUEUE_ERROR_MESSAGE = '未同期データの読み込みに失敗しました';
+const OFFLINE_SYNC_CONFLICT_RESOLUTION_ERROR_MESSAGE =
+  '競合を解決できませんでした。通信状態と最新の内容を確認し、もう一度選択してください。';
 
 /** visitBriefCache から必要な scheduleId だけ患者名の解決マップを作る(ベストエフォート)。 */
 async function loadPatientNameMap(scheduleIds: string[]): Promise<Map<string, string>> {
@@ -76,6 +85,7 @@ export function OfflineSyncContent() {
   const [patientNames, setPatientNames] = React.useState<Map<string, string>>(new Map());
   const [selectedConflictId, setSelectedConflictId] = React.useState<number | null>(null);
   const [confirmingChoice, setConfirmingChoice] = React.useState<'server' | 'local' | null>(null);
+  const [conflictResolutionError, setConflictResolutionError] = React.useState<string | null>(null);
   const [syncQueueError, setSyncQueueError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -162,13 +172,16 @@ export function OfflineSyncContent() {
 
   const useServerMutation = useMutation({
     mutationFn: async (itemId: number) => discardSyncQueueItem(itemId),
+    onMutate: () => setConflictResolutionError(null),
     onSuccess: async () => {
+      setConflictResolutionError(null);
       toast.success('最新の内容を残し、自分の入力を破棄しました');
       setSelectedConflictId(null);
       setConfirmingChoice(null);
       await refreshSyncState();
     },
     onError: (error) => {
+      setConflictResolutionError(OFFLINE_SYNC_CONFLICT_RESOLUTION_ERROR_MESSAGE);
       toast.error(messageFromError(error, '競合の解決に失敗しました'));
     },
   });
@@ -178,13 +191,16 @@ export function OfflineSyncContent() {
       const result = await overwriteVisitRecordConflict({ orgId, endpoints: {} }, itemId);
       if (!result.ok) throw new Error(result.message);
     },
+    onMutate: () => setConflictResolutionError(null),
     onSuccess: async () => {
+      setConflictResolutionError(null);
       toast.success('自分の入力で上書き保存しました');
       setSelectedConflictId(null);
       setConfirmingChoice(null);
       await refreshSyncState();
     },
     onError: async (error) => {
+      setConflictResolutionError(OFFLINE_SYNC_CONFLICT_RESOLUTION_ERROR_MESSAGE);
       toast.error(messageFromError(error, '上書き保存に失敗しました'));
       await refreshSyncState();
     },
@@ -324,7 +340,10 @@ export function OfflineSyncContent() {
                 type="button"
                 className="min-h-11 w-full sm:h-11 sm:min-h-11"
                 disabled={conflictActionPending}
-                onClick={() => setConfirmingChoice('server')}
+                onClick={() => {
+                  setConflictResolutionError(null);
+                  setConfirmingChoice('server');
+                }}
               >
                 最新の内容を使う
               </Button>
@@ -338,7 +357,10 @@ export function OfflineSyncContent() {
                     : undefined
                 }
                 disabled={conflictActionPending || Boolean(localOverwriteDisabledReason)}
-                onClick={() => setConfirmingChoice('local')}
+                onClick={() => {
+                  setConflictResolutionError(null);
+                  setConfirmingChoice('local');
+                }}
               >
                 自分の入力で上書き
               </Button>
@@ -358,50 +380,73 @@ export function OfflineSyncContent() {
                 onClick={() => {
                   setSelectedConflictId(null);
                   setConfirmingChoice(null);
+                  setConflictResolutionError(null);
                 }}
               >
                 あとで決める
               </Button>
             </div>
-            {confirmingChoice ? (
-              <div className="mt-3 space-y-2 rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-3">
-                <p className="text-xs font-medium leading-5 text-state-confirm">
-                  {confirmingChoice === 'server'
-                    ? '自分の入力は破棄され、元に戻せません。最新の内容を残しますか?'
-                    : 'サーバーの最新内容を自分の入力で上書きします。元に戻せません。'}
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={confirmingChoice === 'server' ? 'destructive' : 'default'}
-                    className="min-h-11 sm:h-11 sm:min-h-11"
-                    disabled={conflictActionPending}
-                    onClick={() => {
-                      if (confirmingChoice === 'server') {
-                        useServerMutation.mutate(selectedConflict.itemId);
-                      } else {
-                        useLocalMutation.mutate(selectedConflict.itemId);
-                      }
-                    }}
-                  >
-                    {conflictActionPending ? '処理中...' : '確定する'}
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="min-h-11 sm:h-11 sm:min-h-11"
-                    disabled={conflictActionPending}
-                    onClick={() => setConfirmingChoice(null)}
-                  >
-                    キャンセル
-                  </Button>
-                </div>
-              </div>
-            ) : null}
           </section>
         </div>
+
+        {/* 二択の不可逆確定は差分再掲つき共通確認部品で行う(SSOT 5.7)。bespoke 確認ボックスは廃止。 */}
+        <ConflictDiffDialog
+          open={confirmingChoice !== null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setConfirmingChoice(null);
+              setConflictResolutionError(null);
+            }
+          }}
+          title={
+            confirmingChoice === 'server' ? '最新の内容を残しますか' : '自分の入力で上書きしますか'
+          }
+          irreversibleNote={
+            confirmingChoice === 'server'
+              ? '自分の入力は破棄され、元に戻せません。'
+              : 'サーバーに保存済みの最新内容は上書きされ、元に戻せません。'
+          }
+          keepLabel={confirmingChoice === 'server' ? '最新の内容' : 'あなたの入力'}
+          discardLabel={confirmingChoice === 'server' ? 'あなたの入力' : '最新の内容'}
+          fields={[
+            {
+              label: '訪問メモ',
+              keepValue:
+                confirmingChoice === 'server'
+                  ? selectedConflict.serverText
+                  : selectedConflict.localText,
+              discardValue:
+                confirmingChoice === 'server'
+                  ? selectedConflict.localText
+                  : selectedConflict.serverText,
+            },
+            {
+              label: '結果',
+              keepValue: resolveConflictOutcomeLabel(
+                confirmingChoice === 'server'
+                  ? selectedConflict.serverOutcome
+                  : selectedConflict.localOutcome,
+              ),
+              discardValue: resolveConflictOutcomeLabel(
+                confirmingChoice === 'server'
+                  ? selectedConflict.localOutcome
+                  : selectedConflict.serverOutcome,
+              ),
+            },
+          ]}
+          confirmLabel={
+            confirmingChoice === 'server' ? '最新の内容を残す' : '自分の入力で上書きする'
+          }
+          pending={conflictActionPending}
+          errorMessage={conflictResolutionError ?? undefined}
+          onConfirm={() => {
+            if (confirmingChoice === 'server') {
+              useServerMutation.mutate(selectedConflict.itemId);
+            } else {
+              useLocalMutation.mutate(selectedConflict.itemId);
+            }
+          }}
+        />
       </div>
     );
   }

@@ -232,6 +232,22 @@ function createVisitScheduleFixture(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function createExistingVisitRecordConflictFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'record_existing',
+    version: 3,
+    patient_id: 'patient_1',
+    visit_date: new Date('2026-03-26T00:00:00.000Z'),
+    outcome_status: 'cancelled',
+    soap_subjective: 'サーバー側の記録',
+    soap_objective: null,
+    soap_assessment: null,
+    soap_plan: null,
+    next_visit_suggestion_date: null,
+    ...overrides,
+  };
+}
+
 function createUniqueConstraintError() {
   return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
     code: 'P2002',
@@ -1650,6 +1666,91 @@ describe('/api/visit-records POST', () => {
         },
       },
     });
+    expect(visitRecordCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('overwrites the exact server record version selected by the offline conflict UI', async () => {
+    const existingRecord = createExistingVisitRecordConflictFixture();
+    const updatedRecord = createExistingVisitRecordConflictFixture({
+      version: 4,
+      cancellation_reason: '現地で中止',
+    });
+    visitScheduleFindFirstMock.mockResolvedValue(
+      createVisitScheduleFixture({ schedule_status: 'cancelled', cycle_id: null }),
+    );
+    visitRecordFindFirstMock
+      .mockReset()
+      .mockResolvedValueOnce(existingRecord)
+      .mockResolvedValueOnce(updatedRecord);
+
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          outcome_status: 'cancelled',
+          cancellation_reason: '現地で中止',
+          conflict_resolution: 'overwrite',
+          existing_record_id: 'record_existing',
+          expected_version: 3,
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      record: { id: 'record_existing', version: 4 },
+      conflictResolved: true,
+    });
+    expect(visitRecordUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'record_existing',
+        org_id: 'org_1',
+        version: 3,
+      },
+      data: expect.objectContaining({
+        cancellation_reason: '現地で中止',
+        outcome_status: 'cancelled',
+        version: { increment: 1 },
+      }),
+    });
+    expect(visitRecordCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a no-store conflict without overwriting when the selected server version is stale', async () => {
+    visitScheduleFindFirstMock.mockResolvedValue(
+      createVisitScheduleFixture({ schedule_status: 'cancelled', cycle_id: null }),
+    );
+    visitRecordFindFirstMock.mockResolvedValue(createExistingVisitRecordConflictFixture());
+
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          outcome_status: 'cancelled',
+          cancellation_reason: '現地で中止',
+          conflict_resolution: 'overwrite',
+          existing_record_id: 'record_existing',
+          expected_version: 2,
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: {
+        existing_record: { id: 'record_existing', version: 3 },
+      },
+    });
+    expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
     expect(visitRecordCreateMock).not.toHaveBeenCalled();
   });
 
