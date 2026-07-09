@@ -33494,3 +33494,95 @@ has_more, next_cursor } })`. The route test asserts the `data + meta`
   Commit this ledger update with only `ops/refactor/STATE.md` staged, then
   continue the next allowlist cleanup from `src/app/api/patients/route.ts`
   unless redirected.
+
+## 2026-07-09 API-CONTRACT-001CX — patients GET list/search envelope
+
+- current task:
+  `API-CONTRACT-001` allowlist debt reduction focused on
+  `src/app/api/patients/route.ts` GET success branches.
+- files inspected:
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`;
+  `src/app/api/patients/route.ts`; `src/app/api/patients/route.test.ts`;
+  `src/app/api/__tests__/protected-get-routes.test.ts`;
+  `src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx`;
+  `src/app/(dashboard)/qr-scan/page.tsx`;
+  `src/app/(dashboard)/search/search-content.tsx`;
+  `src/lib/search/categories.ts`;
+  `src/components/features/search/use-global-search.test.ts`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `docs/plans-archive.md`.
+- files changed:
+  `src/app/api/patients/route.ts`; `src/app/api/patients/route.test.ts`;
+  `src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx`;
+  `src/app/(dashboard)/qr-scan/page.tsx`;
+  `src/app/(dashboard)/search/search-content.tsx`;
+  `src/app/(dashboard)/search/search-content.test.tsx`;
+  `src/lib/search/categories.ts`; `src/lib/search/categories.test.ts`;
+  `src/components/features/search/use-global-search.test.ts`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `docs/plans-archive.md`; `ops/refactor/STATE.md`.
+- bugs found:
+  `GET /api/patients` returned list, palette, search, and match success bodies
+  as legacy root objects, keeping four response-shape allowlist violations.
+- bugs fixed:
+  The four GET success branches now return `success({ data: result })`. The
+  inner list payload (`data`, `summary`, `hasMore`, `privacy`) remains intact.
+  Prescription intake patient lookup, QR patient match, search page patient
+  results, and global search patient schema now unwrap the outer `data`
+  envelope. POST patient create success and 409 duplicate conflict were left
+  unchanged for a separate contract slice.
+- security risks found:
+  No new auth/authz, PHI, tenant isolation, rate-limit, or validation issue in
+  this slice. Existing visit permission, feature rate limits, query validation,
+  org/assignment-scoped reads, masking, sensitive no-store, and sanitized
+  internal errors remain in place.
+- security risks reduced:
+  Removed four legacy public success roots from patient list/search endpoints
+  while preserving existing PHI minimization and masking behavior.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this was a response contract cleanup. Existing bounded list/search
+  query limits and minimal palette/search projections are unchanged.
+- UI/UX note:
+  No visible layout or interaction change. This was API/frontend reader/schema
+  contract work only, so image generation was not applicable.
+- Oracle note:
+  No Oracle/GPT-5.5 Pro consult was run. This was a bounded allowlist envelope
+  migration following the established local pattern, with route/component
+  tests, reader tests, and contract gates available.
+- validation commands:
+  `pnpm exec prettier --write Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json src/app/api/patients/route.ts src/app/api/patients/route.test.ts src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx src/app/(dashboard)/qr-scan/page.tsx src/app/(dashboard)/search/search-content.tsx src/app/(dashboard)/search/search-content.test.tsx src/lib/search/categories.ts src/lib/search/categories.test.ts src/components/features/search/use-global-search.test.ts`;
+  `pnpm vitest run src/app/api/patients/route.test.ts --reporter=dot --testTimeout=30000`;
+  `pnpm vitest run src/lib/search/categories.test.ts src/components/features/search/use-global-search.test.ts src/app/(dashboard)/search/search-content.test.tsx --reporter=dot --testTimeout=30000`;
+  `pnpm vitest run src/app/(dashboard)/prescriptions/new/prescription-intake-form.test.tsx src/app/(dashboard)/qr-scan/page.contract.test.ts --reporter=dot --testTimeout=30000`;
+  `pnpm vitest run src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testNamePattern 'patients GET' --testTimeout=30000`;
+  `pnpm api-response-shape:check`; `pnpm plans:active:check`;
+  `pnpm exec eslint src/app/api/patients/route.ts src/app/api/patients/route.test.ts src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx src/app/(dashboard)/qr-scan/page.tsx src/app/(dashboard)/search/search-content.tsx src/app/(dashboard)/search/search-content.test.tsx src/lib/search/categories.ts src/lib/search/categories.test.ts src/components/features/search/use-global-search.test.ts`;
+  `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json src/app/api/patients/route.ts src/app/api/patients/route.test.ts src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx src/app/(dashboard)/qr-scan/page.tsx src/app/(dashboard)/search/search-content.tsx src/app/(dashboard)/search/search-content.test.tsx src/lib/search/categories.ts src/lib/search/categories.test.ts src/components/features/search/use-global-search.test.ts`;
+  `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json src/app/api/patients/route.ts src/app/api/patients/route.test.ts src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx src/app/(dashboard)/qr-scan/page.tsx src/app/(dashboard)/search/search-content.tsx src/app/(dashboard)/search/search-content.test.tsx src/lib/search/categories.ts src/lib/search/categories.test.ts src/components/features/search/use-global-search.test.ts`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+- validation results:
+  Prettier write/check passed. Patient route tests passed 1 file / 50 tests
+  after restoring root error assertions to `response.json()`. Search/category
+  tests passed 3 files / 47 tests, with existing React `act(...)` warning in
+  `use-global-search.test.ts`. Prescription intake + QR contract tests passed 2
+  files / 18 tests, with existing React `act(...)` warnings in prescription
+  intake tests. Protected GET auth matrix pattern `patients GET` passed 12
+  tests with 372 skipped; expected audit mock stderr was emitted. Scoped ESLint,
+  `api-response-shape:check` (76 allowlisted violations, 0 new),
+  `plans:active:check`, scoped diff check, and typecheck passed.
+- commit:
+  Implementation, reader/schema updates, tests, allowlist cleanup, and
+  Plans/archive sync were committed as
+  `0e429eec8848a664e48decdd38ae8d9ab5f330f1`
+  (`fix(api): envelope patient list responses`). Push not performed.
+- remaining work:
+  `API-CONTRACT-001` remains Partial with 76 allowlisted violations. Next
+  allowlist head is `src/app/api/pharmacist-shifts/route.ts` with one expected
+  legacy response shape violation. Existing unrelated dirty/untracked
+  memory/docs and `.codex`/`.harness-mem` files remain unstaged.
+- next action:
+  Commit this ledger update with only `ops/refactor/STATE.md` staged, then
+  continue the next allowlist cleanup from `src/app/api/pharmacist-shifts/route.ts`
+  unless redirected.
