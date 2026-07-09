@@ -667,7 +667,7 @@ const authenticatedPOST = withAuthContext(
       payload: { source: 'facility_visit_batches_upsert' },
     });
 
-    return success(result, 201);
+    return success({ data: result }, 201);
   },
   {
     permission: 'canVisit',

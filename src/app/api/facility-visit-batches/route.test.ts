@@ -388,24 +388,26 @@ describe('/api/facility-visit-batches POST', () => {
     expect(response.status).toBe(201);
     expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
-      batch_id: 'batch_1',
-      facility_label: 'facility_a',
-      patient_count: 2,
-      carry_items_confirmed: true,
-      schedules: [
-        {
-          schedule_id: 'schedule_2',
-          patient_name: '山田 花子',
-          unit_name: '105',
-          route_order: 1,
-        },
-        {
-          schedule_id: 'schedule_1',
-          patient_name: '山田 太郎',
-          unit_name: '201',
-          route_order: 2,
-        },
-      ],
+      data: {
+        batch_id: 'batch_1',
+        facility_label: 'facility_a',
+        patient_count: 2,
+        carry_items_confirmed: true,
+        schedules: [
+          {
+            schedule_id: 'schedule_2',
+            patient_name: '山田 花子',
+            unit_name: '105',
+            route_order: 1,
+          },
+          {
+            schedule_id: 'schedule_1',
+            patient_name: '山田 太郎',
+            unit_name: '201',
+            route_order: 2,
+          },
+        ],
+      },
     });
     expect(batchCreateMock).toHaveBeenCalledTimes(1);
     expect(scheduleUpdateMock).toHaveBeenCalledTimes(2);
@@ -1356,9 +1358,11 @@ describe('/api/facility-visit-batches POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toMatchObject({
-      batch_id: 'batch_local_day',
-      facility_label: 'facility_a',
-      patient_count: 2,
+      data: {
+        batch_id: 'batch_local_day',
+        facility_label: 'facility_a',
+        patient_count: 2,
+      },
     });
     expect(batchCreateMock).toHaveBeenCalledTimes(1);
     expect(scheduleUpdateMock).toHaveBeenCalledTimes(2);
@@ -1529,9 +1533,11 @@ describe('/api/facility-visit-batches POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toMatchObject({
-      batch_id: 'batch_auto_1',
-      facility_label: 'facility_a',
-      patient_count: 2,
+      data: {
+        batch_id: 'batch_auto_1',
+        facility_label: 'facility_a',
+        patient_count: 2,
+      },
     });
     expect(batchCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
