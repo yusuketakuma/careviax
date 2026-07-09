@@ -233,6 +233,14 @@ describe('/api/medication-cycles/[id]/transition', () => {
     expect(notifyPayload).not.toHaveProperty('cycleId');
     expect(notifyPayload).not.toHaveProperty('from');
     expect(notifyPayload).not.toHaveProperty('to');
+    await expect(response.json()).resolves.toEqual({
+      data: {
+        id: 'cycle_1',
+        patient_id: 'patient_1',
+        overall_status: 'dispensing',
+        version: 3,
+      },
+    });
   });
 
   it('keeps transition success when status notification upsert fails', async () => {
@@ -255,6 +263,13 @@ describe('/api/medication-cycles/[id]/transition', () => {
       orgId: 'org_1',
       eventType: 'cycle_transition',
       payload: { source: 'medication_cycles_transition' },
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: 'cycle_1',
+        overall_status: 'dispensing',
+        version: 3,
+      },
     });
   });
 
@@ -359,6 +374,13 @@ describe('/api/medication-cycles/[id]/transition', () => {
         overall_status: 'reported',
         version: { increment: 1 },
       }),
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: 'cycle_1',
+        overall_status: 'reported',
+        version: 3,
+      },
     });
   });
 

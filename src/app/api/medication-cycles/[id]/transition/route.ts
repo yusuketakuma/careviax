@@ -194,5 +194,5 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     payload: { source: 'medication_cycles_transition' },
   });
 
-  return success(updated);
+  return success({ data: updated });
 }
