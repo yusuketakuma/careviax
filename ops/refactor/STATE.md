@@ -64,7 +64,8 @@
     offline-sync content/shared/tests, `src/lib/stores/sync-engine.ts` + tests,
     `src/lib/validations/visit-record.ts`, and `src/app/api/visit-records/route.ts` + tests.
   - files changed:
-    `docs/ui-ux-design-guidelines.md`, `src/components/ui/confirm-dialog.tsx`,
+    `.agent-loop/UI_AUDIT_MATRIX.md`, `docs/ui-ux-design-guidelines.md`,
+    `src/components/ui/confirm-dialog.tsx`,
     `src/components/ui/conflict-diff-dialog.tsx`,
     `src/components/ui/conflict-diff-dialog.test.tsx`,
     `src/app/(dashboard)/offline-sync/offline-sync-content.tsx`,
@@ -103,16 +104,21 @@
     network call. The local overwrite keeps the existing single preflight plus single POST path; the
     responsive diff renders only the bounded conflict fields already held in memory.
   - validation:
-    Focused Vitest passed 4 files / 112 tests:
-    `src/components/ui/confirm-dialog.test.tsx`,
-    `src/components/ui/conflict-diff-dialog.test.tsx`,
-    `src/app/(dashboard)/offline-sync/offline-sync-content.test.tsx`, and
-    `src/app/api/visit-records/route.test.ts`. Exact-path ESLint and Prettier passed for the owned
-    UI/API test paths and SSOT doc; `git diff --check` passed. Claude independent checker returned
-    APPROVE for the working tree. Full `pnpm typecheck` was attempted after the commit but is not
-    claimed green because concurrent peer P3-2 work currently leaves
-    `src/app/(dashboard)/select-mode/select-mode-content.tsx` with a JSX syntax error
-    (TS1005/TS2657). That path was not part of `db6903494` and was left untouched.
+    Shared confirm/conflict UI plus offline-sync passed 4 files / 30 tests. Sync engine passed 1 file /
+    28 tests. Paired visit-record API passed 1 file / 92 tests, including exact-version overwrite and
+    stale-version 409. Exact-path ESLint and Prettier passed for the owned UI/API test paths and SSOT
+    doc; `git diff --check` passed. Full
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit --pretty false --incremental false --skipLibCheck`
+    and serial `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed before the
+    non-owned P3-2 selection-screen WIP entered the shared tree. A current full-tsc rerun is not
+    claimed green because that WIP currently leaves
+    `src/app/(dashboard)/select-site/select-site-content.tsx` with TS1005/TS1128/TS1109 parse errors;
+    it is outside `db6903494`, was left untouched, and the peer was notified.
+    `pnpm frontend-contract:check`, `pnpm plans:active:check`, `pnpm colors:check`,
+    `pnpm api-response-shape:check`, `pnpm route-auth-wrapper:check`,
+    `pnpm db:raw-read-org-guard:check`, and `pnpm client-phi-log:check` all passed. Claude independently
+    reviewed the final mobile diff, action sizing, async lifecycle, keep/discard mapping, mutation/API
+    parity, and exact-version route tests, reran 5 files / 122 tests, and approved.
   - UI/imagegen:
     `imagegen` was intentionally omitted because this is a shared confirmation/state/accessibility
     correction within the committed non-PHI visual direction, not a new screen concept.
@@ -120,8 +126,11 @@
     Re-run full `pnpm typecheck` once the peer P3-2 select-mode/select-site/clerk-support scaffold
     slice is stabilized. Continue visit medication management, then schedule offline/day and print
     families. Browser/mobile visual proof remains blocked by the missing compatible local
-    app/database runtime. No push, deploy, migration, production mutation, external send, cache
-    deletion, or destructive operation ran.
+    app/database runtime. Next build is not claimed green because the existing
+    `.next/cache/webpack` resource envelope has produced exit 137/termination without a safe
+    non-destructive build path. Oracle remains unavailable from the established session preflight.
+    No deploy, migration, production mutation, external send, cache deletion, or destructive
+    operation ran.
 
 - codex: visit-brief feedback access, resilient states, and readable interaction parity.
   - commit:
