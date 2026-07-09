@@ -524,6 +524,76 @@ describe('BillingCandidatesContent', () => {
     expect(String(previewCall?.[0])).toContain('billing_domain=home_care');
   });
 
+  it('does not show false-zero preview totals while export preview is loading', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.startsWith('/api/billing-candidates/export?') && url.includes('preview=1')) {
+          return new Promise<Response>(() => undefined);
+        }
+        return originalFetch!(input, init);
+      }),
+    );
+
+    renderBillingCandidatesContent();
+
+    const preview = await screen.findByTestId('billing-export-preview');
+    await waitFor(() => {
+      expect(within(preview).getByTestId('billing-export-preview-loading')).toBeTruthy();
+    });
+    const normalizedText = preview.textContent?.replace(/\s/g, '') ?? '';
+    expect(normalizedText).not.toContain('0点');
+    expect(normalizedText).not.toContain('0円');
+    expect(normalizedText).not.toContain('0件');
+
+    const csvButton = screen.getByRole('button', { name: 'CSV出力' });
+    expect(csvButton).toHaveProperty('disabled', true);
+    expect(screen.getByText('出力前確認を読み込んでいます。')).toBeTruthy();
+  });
+
+  it('shows a retryable preview error without false-zero totals when export preview fails', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    const fetchMock = vi.fn<typeof fetch>(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith('/api/billing-candidates/export?') && url.includes('preview=1')) {
+        return jsonResponse({ message: 'preview failed patient_name=山田 token=secret' }, 500);
+      }
+      return originalFetch!(input, init);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderBillingCandidatesContent();
+
+    const preview = await screen.findByTestId('billing-export-preview');
+    await waitFor(() => {
+      expect(within(preview).getByText('出力前確認を表示できません')).toBeTruthy();
+    });
+    const normalizedText = preview.textContent?.replace(/\s/g, '') ?? '';
+    expect(normalizedText).not.toContain('0点');
+    expect(normalizedText).not.toContain('0円');
+    expect(normalizedText).not.toContain('0件');
+    expect(document.body.textContent).not.toContain('patient_name=山田');
+    expect(document.body.textContent).not.toContain('token=secret');
+
+    const csvButton = screen.getByRole('button', { name: 'CSV出力' });
+    expect(csvButton).toHaveProperty('disabled', true);
+    expect(screen.getByText('出力前確認を取得できないためCSV出力できません。')).toBeTruthy();
+
+    fireEvent.click(within(preview).getByRole('button', { name: '再読み込み' }));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.filter(([input]) =>
+          String(input).startsWith('/api/billing-candidates/export?'),
+        ).length,
+      ).toBeGreaterThanOrEqual(2);
+    });
+  });
+
   it('does not expose loaded-row client CSV export for billing candidates', async () => {
     const createObjectURL = vi.fn<(object: Blob | MediaSource) => string>(() => 'blob:billing');
     const revokeObjectURL = vi.fn();

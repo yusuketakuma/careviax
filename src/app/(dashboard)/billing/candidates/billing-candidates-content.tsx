@@ -21,6 +21,8 @@ import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
 import { StateBadge } from '@/components/ui/state-badge';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/loading';
+import { SegmentError, SegmentStaleBanner } from '@/components/ui/segment-state';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { PageSection } from '@/components/layout/page-section';
 import { ActionRail } from '@/components/ui/action-rail';
@@ -28,6 +30,7 @@ import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { useStaleAfterRefetchError } from '@/lib/hooks/use-stale-after-refetch-error';
 import { messageFromError } from '@/lib/utils/error-message';
 import {
   BILLING_VALIDATION_LAYER_KEYS,
@@ -436,6 +439,9 @@ export function BillingCandidatesContent({
   const candidates = data?.pages.flatMap((p) => p.data) ?? [];
   const summary = data?.pages[0]?.meta.summary ?? null;
   const exportPreview = exportPreviewQuery.data?.data ?? null;
+  const exportPreviewState = useStaleAfterRefetchError(exportPreviewQuery);
+  const exportPreviewUnavailable =
+    exportPreviewState.isInitialError || (!exportPreviewState.isInitialLoading && !exportPreview);
   const targetCandidateIndex = targetCandidateId
     ? candidates.findIndex((candidate) => candidate.id === targetCandidateId)
     : -1;
@@ -824,10 +830,11 @@ export function BillingCandidatesContent({
     closeReady,
     patientIdFilter,
   });
-  const csvExportDisabledReason = getBillingCsvExportDisabledReason({
-    exportableCount,
-    isPreviewLoading: exportPreviewQuery.isLoading,
-  });
+  const csvExportDisabledReason =
+    getBillingCsvExportDisabledReason({
+      exportableCount,
+      isPreviewLoading: exportPreviewState.isInitialLoading,
+    }) ?? (exportPreviewUnavailable ? '出力前確認を取得できないためCSV出力できません。' : null);
   const canExportCsv = !isExporting && !csvExportDisabledReason;
 
   return (
@@ -1052,39 +1059,77 @@ export function BillingCandidatesContent({
                 CSVに含まれる確定・締め済み候補を全件集計します。
               </p>
             </div>
-            <Badge variant="outline">{exportPreviewQuery.isFetching ? '確認中' : 'CSV対象'}</Badge>
+            <Badge variant="outline">
+              {exportPreviewQuery.isFetching
+                ? '確認中'
+                : exportPreviewUnavailable
+                  ? '要再確認'
+                  : 'CSV対象'}
+            </Badge>
           </div>
-          {exportPreviewQuery.isError ? (
-            <p className="mt-2 text-xs text-destructive">出力前確認を取得できませんでした。</p>
-          ) : (
-            <div className="mt-3 grid gap-2 text-sm sm:grid-cols-4">
-              <div>
-                <p className="text-xs text-muted-foreground">出力対象</p>
-                <p className="font-semibold tabular-nums">{exportableCount}件</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">合計点数</p>
-                <p className="font-semibold tabular-nums">
-                  {(exportPreview?.total_points ?? 0).toLocaleString('ja-JP')}点
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">金額候補</p>
-                <p className="font-semibold tabular-nums">
-                  {(exportPreview?.total_amount_yen ?? 0).toLocaleString('ja-JP')}円
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">未出力候補</p>
-                <p className="font-semibold tabular-nums">
-                  {(
-                    (exportPreview?.status_counts.candidate ?? 0) +
-                    (exportPreview?.status_counts.excluded ?? 0)
-                  ).toLocaleString('ja-JP')}
-                  件
-                </p>
-              </div>
+          {exportPreviewState.isInitialLoading ? (
+            <div
+              className="mt-3 grid gap-2 text-sm sm:grid-cols-4"
+              role="status"
+              aria-label="出力前確認を読み込み中"
+              data-testid="billing-export-preview-loading"
+            >
+              {['出力対象', '合計点数', '金額候補', '未出力候補'].map((label) => (
+                <div key={label}>
+                  <p className="text-xs text-muted-foreground">{label}</p>
+                  <Skeleton className="mt-1 h-5 w-16" />
+                </div>
+              ))}
             </div>
+          ) : exportPreviewState.isInitialError || !exportPreview ? (
+            <div className="mt-3">
+              <SegmentError
+                title="出力前確認を表示できません"
+                cause="CSVに含める候補の集計を取得できませんでした。"
+                nextAction="通信状態を確認して再読み込みしてください。"
+                onRetry={() => void exportPreviewQuery.refetch()}
+                headingLevel={4}
+              />
+            </div>
+          ) : (
+            <>
+              {exportPreviewState.isStaleAfterRefetchError ? (
+                <SegmentStaleBanner
+                  title="前回取得した出力前確認を表示中"
+                  description="最新のCSV対象集計を取得できませんでした。表示中の点数・金額は前回取得時点の情報です。"
+                  onRetry={() => void exportPreviewQuery.refetch()}
+                  className="mt-3"
+                />
+              ) : null}
+              <div className="mt-3 grid gap-2 text-sm sm:grid-cols-4">
+                <div>
+                  <p className="text-xs text-muted-foreground">出力対象</p>
+                  <p className="font-semibold tabular-nums">{exportableCount}件</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">合計点数</p>
+                  <p className="font-semibold tabular-nums">
+                    {exportPreview.total_points.toLocaleString('ja-JP')}点
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">金額候補</p>
+                  <p className="font-semibold tabular-nums">
+                    {exportPreview.total_amount_yen.toLocaleString('ja-JP')}円
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">未出力候補</p>
+                  <p className="font-semibold tabular-nums">
+                    {(
+                      (exportPreview.status_counts.candidate ?? 0) +
+                      (exportPreview.status_counts.excluded ?? 0)
+                    ).toLocaleString('ja-JP')}
+                    件
+                  </p>
+                </div>
+              </div>
+            </>
           )}
           {exportPreview?.exclusion_reasons.length ? (
             <div className="mt-3 border-t border-border/70 pt-2 text-xs text-muted-foreground">
