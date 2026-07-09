@@ -885,12 +885,15 @@ function DrugMasterOperationalContent({
         dry_run: dryRun,
       }),
     });
-    return readApiJson<{
-      importedCount: number;
-      unmatchedRows: Array<{ rowNumber: number; yj_code?: string; drug_name?: string }>;
-      invalidRows: Array<{ rowNumber: number; reason: string }>;
-      preview?: BulkPreviewResponse['preview'];
+    const body = await readApiJson<{
+      data: {
+        importedCount: number;
+        unmatchedRows: Array<{ rowNumber: number; yj_code?: string; drug_name?: string }>;
+        invalidRows: Array<{ rowNumber: number; reason: string }>;
+        preview?: BulkPreviewResponse['preview'];
+      };
     }>(res, '採用薬リストの一括登録に失敗しました');
+    return body.data;
   };
 
   const bulkPreviewMutation = useMutation({

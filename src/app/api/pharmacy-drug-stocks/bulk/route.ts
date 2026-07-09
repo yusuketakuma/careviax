@@ -558,11 +558,13 @@ async function authenticatedPOST(req: NextRequest) {
 
         if (parsed.data.dry_run) {
           return success({
-            site,
-            importedCount: 0,
-            unmatchedRows,
-            invalidRows,
-            preview,
+            data: {
+              site,
+              importedCount: 0,
+              unmatchedRows,
+              invalidRows,
+              preview,
+            },
           });
         }
 
@@ -639,11 +641,13 @@ async function authenticatedPOST(req: NextRequest) {
         });
 
         return success({
-          site,
-          importedCount: imported,
-          unmatchedRows,
-          invalidRows,
-          preview,
+          data: {
+            site,
+            importedCount: imported,
+            unmatchedRows,
+            invalidRows,
+            preview,
+          },
         });
       },
       { requestContext: authCtx, maxWaitMs: 10_000, timeoutMs: 30_000 },

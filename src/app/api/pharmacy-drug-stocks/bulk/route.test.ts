@@ -1,19 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { authMock, prismaMock, withOrgContextMock, loggerErrorMock } = vi.hoisted(() => ({
-  authMock: vi.fn(),
-  withOrgContextMock: vi.fn(),
-  loggerErrorMock: vi.fn(),
-  prismaMock: {
-    membership: { findFirst: vi.fn() },
-    pharmacySite: { findFirst: vi.fn() },
-    drugMaster: { findMany: vi.fn() },
-    pharmacyDrugStock: { findMany: vi.fn(), upsert: vi.fn() },
-    auditLog: { create: vi.fn() },
-    $transaction: vi.fn(),
-  },
-}));
+const { authMock, prismaMock, withOrgContextMock, loggerErrorMock, logSecurityEventMock } =
+  vi.hoisted(() => ({
+    authMock: vi.fn(),
+    withOrgContextMock: vi.fn(),
+    loggerErrorMock: vi.fn(),
+    logSecurityEventMock: vi.fn(),
+    prismaMock: {
+      membership: { findFirst: vi.fn() },
+      pharmacySite: { findFirst: vi.fn() },
+      drugMaster: { findMany: vi.fn() },
+      pharmacyDrugStock: { findMany: vi.fn(), upsert: vi.fn() },
+      auditLog: { create: vi.fn() },
+      $transaction: vi.fn(),
+    },
+  }));
 
 vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
@@ -25,6 +27,10 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/auth/security-events', () => ({
+  logSecurityEvent: logSecurityEventMock,
 }));
 
 vi.mock('@/lib/utils/logger', () => ({
@@ -69,15 +75,17 @@ type BulkPayload = {
 async function readBulkPayload(response: Response): Promise<BulkPayload> {
   const payload: unknown = await response.json();
   expect(payload).toMatchObject({
-    importedCount: expect.any(Number),
-    unmatchedRows: expect.any(Array),
-    invalidRows: expect.any(Array),
-    preview: {
-      summary: expect.any(Object),
-      rows: expect.any(Array),
+    data: {
+      importedCount: expect.any(Number),
+      unmatchedRows: expect.any(Array),
+      invalidRows: expect.any(Array),
+      preview: {
+        summary: expect.any(Object),
+        rows: expect.any(Array),
+      },
     },
   });
-  return payload as BulkPayload;
+  return (payload as { data: BulkPayload }).data;
 }
 
 describe('/api/pharmacy-drug-stocks/bulk', () => {
@@ -129,7 +137,8 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
+    const json = await readBulkPayload(response);
+    expect(json).toMatchObject({
       importedCount: 1,
       unmatchedRows: [{ rowNumber: 3, yj_code: '999999999999' }],
     });
@@ -236,20 +245,15 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
     expect(prismaMock.pharmacySite.findFirst).not.toHaveBeenCalled();
     expect(prismaMock.drugMaster.findMany).not.toHaveBeenCalled();
     expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
-    expect(prismaMock.auditLog.create).toHaveBeenCalledWith(
+    expect(logSecurityEventMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
-          action: 'security:auth_failure',
-        }),
+        event_type: 'auth_failure',
+        path: '/api/pharmacy-drug-stocks/bulk',
+        method: 'POST',
+        details: expect.objectContaining({ reason: 'no_user_identity' }),
       }),
     );
-    expect(prismaMock.auditLog.create).not.toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          action: expect.stringContaining('pharmacy_drug_stock_bulk_import'),
-        }),
-      }),
-    );
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
   });
 
   it('rejects CSV input over 1000 rows instead of silently truncating it', async () => {
@@ -370,7 +374,8 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
     );
 
     if (!response) throw new Error('response is required');
-    await expect(response.json()).resolves.toMatchObject({
+    const json = await readBulkPayload(response);
+    expect(json).toMatchObject({
       importedCount: 0,
       preview: {
         summary: {
@@ -433,7 +438,8 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const json = await readBulkPayload(response);
+    expect(json).toMatchObject({
       importedCount: 0,
       invalidRows: [
         {
@@ -546,7 +552,8 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const json = await readBulkPayload(response);
+    expect(json).toMatchObject({
       importedCount: 0,
       unmatchedRows: [{ rowNumber: 5, yj_code: '999999999999' }],
       preview: {
@@ -756,7 +763,8 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
     );
 
     if (!response) throw new Error('response is required');
-    await expect(response.json()).resolves.toMatchObject({
+    const json = await readBulkPayload(response);
+    expect(json).toMatchObject({
       importedCount: 0,
       invalidRows: [
         {
@@ -1097,7 +1105,8 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const json = await readBulkPayload(response);
+    expect(json).toMatchObject({
       importedCount: 0,
       invalidRows: [
         {
@@ -1139,7 +1148,8 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const json = await readBulkPayload(response);
+    expect(json).toMatchObject({
       importedCount: 0,
       invalidRows: [
         {

@@ -34267,3 +34267,89 @@ GET` passed 3 tests with 381 skipped; expected audit mock stderr was emitted.
   Commit this ledger update with only `ops/refactor/STATE.md` staged, then
   continue the next allowlist cleanup from
   `src/app/api/pharmacy-drug-stocks/bulk/route.ts` unless redirected.
+
+## 2026-07-09 API-CONTRACT-001DG — pharmacy drug stocks bulk envelope
+
+- current task:
+  `API-CONTRACT-001` allowlist debt reduction focused on
+  `src/app/api/pharmacy-drug-stocks/bulk/route.ts` POST dry-run and apply
+  success responses.
+- files inspected:
+  `git status --short --untracked-files=all`;
+  `ops/refactor/STATE.md`;
+  `tools/api-response-shape-allowlist.json`;
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`;
+  `src/app/api/pharmacy-drug-stocks/bulk/route.ts`;
+  `src/app/api/pharmacy-drug-stocks/bulk/route.test.ts`;
+  `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`;
+  `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`;
+  `Plans.md`; `docs/plans-archive.md`;
+  `src/lib/auth/context.ts`; `src/lib/auth/security-events.ts`.
+- files changed:
+  `src/app/api/pharmacy-drug-stocks/bulk/route.ts`;
+  `src/app/api/pharmacy-drug-stocks/bulk/route.test.ts`;
+  `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`;
+  `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `docs/plans-archive.md`; `ops/refactor/STATE.md`.
+- bugs found:
+  `POST /api/pharmacy-drug-stocks/bulk` returned dry-run and apply result
+  fields at the response root, keeping two response-shape allowlist violations.
+  The route test also had a stale synchronous `auditLog.create` assertion for
+  auth failure even though current auth code records auth failures through
+  `logSecurityEvent`.
+- bugs fixed:
+  Dry-run and apply success now return `success({ data: ... })`. The drug
+  master formulary CSV bulk preview/apply mutation unwraps `payload.data` while
+  preserving the existing request-context stamps used by stale-preview guards.
+  Route/UI tests now assert the current success envelope, and the auth-failure
+  assertion checks the current security-event boundary.
+- security risks found:
+  No new auth/authz, tenant isolation, validation, audit, or PHI minimization
+  issue in this slice. Existing admin permission, same-org site lookup,
+  CSV/row validation, YJ code matching, duplicate detection, stock upsert,
+  audit summary, no-store, and sanitized internal-error behavior remain in
+  place.
+- security risks reduced:
+  Removed two legacy public success roots from the CSV bulk formulary endpoint
+  without changing authorization, validation, audit, stock mutation, or
+  stale-preview safety behavior.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this was a response contract cleanup. Existing bulk lookup, preview,
+  and upsert behavior are unchanged.
+- UI/UX note:
+  No visible layout or interaction change. This was API response contract and
+  reader schema work only, so image generation was not applicable.
+- Oracle note:
+  No Oracle/GPT-5.5 Pro consult was run. This was a bounded allowlist envelope
+  migration following the established local pattern, with focused route/UI
+  tests and contract gates available.
+- validation commands:
+  `pnpm exec prettier --write Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-drug-stocks/bulk/route.ts' 'src/app/api/pharmacy-drug-stocks/bulk/route.test.ts' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`;
+  `pnpm vitest run 'src/app/api/pharmacy-drug-stocks/bulk/route.test.ts' --reporter=dot --testTimeout=30000`;
+  `pnpm vitest run 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' --reporter=dot --testTimeout=30000`;
+  `pnpm api-response-shape:check`; `pnpm plans:active:check`;
+  `rg -n "pharmacy-drug-stocks/bulk" src/app/api/__tests__/protected-post-routes.test.ts src/app/api/__tests__/protected-get-routes.test.ts`;
+  `pnpm exec eslint 'src/app/api/pharmacy-drug-stocks/bulk/route.ts' 'src/app/api/pharmacy-drug-stocks/bulk/route.test.ts' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`;
+  `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-drug-stocks/bulk/route.ts' 'src/app/api/pharmacy-drug-stocks/bulk/route.test.ts' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`;
+  `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-drug-stocks/bulk/route.ts' 'src/app/api/pharmacy-drug-stocks/bulk/route.test.ts' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+- validation results:
+  Prettier write/check passed. Pharmacy drug stocks bulk route tests passed 1
+  file / 19 tests after updating the stale auth-failure assertion to current
+  `logSecurityEvent` behavior. Drug master content tests passed 1 file / 97
+  tests. The route is not present in the protected GET/POST route matrices by
+  name, so no matrix subset was available for this slice. Scoped ESLint,
+  `api-response-shape:check` (63 allowlisted violations, 0 new),
+  `plans:active:check`, scoped diff check, and typecheck passed.
+- remaining work:
+  `API-CONTRACT-001` remains Partial with 63 allowlisted violations. Next
+  allowlist head is `src/app/api/pharmacy-drug-stocks/copy/route.ts` with two
+  expected legacy response shape violations. Existing unrelated dirty/untracked
+  memory/docs and `.codex`/`.harness-mem` files remain unstaged.
+- next action:
+  Commit this implementation/ledger slice with only owned paths staged, then
+  continue allowlist cleanup from
+  `src/app/api/pharmacy-drug-stocks/copy/route.ts` unless redirected.

@@ -1494,7 +1494,7 @@ describe('DrugMasterContent formulary select migration (slice4a)', () => {
     });
   });
 
-  // These builders produce the RAW server JSON for a dry-run (no request-context fields). The
+  // These builders produce server JSON for a dry-run without request-context fields. The
   // request-context (`requestTargetSiteId`/`requestSourceSiteId`/`requestTemplateId`/`requestCsv`/
   // `requestOverwrite`) is stamped by the PRODUCTION mutationFn, so tests run the real captured
   // mutationFn (R3) instead of hand-injecting those fields.
@@ -1553,60 +1553,64 @@ describe('DrugMasterContent formulary select migration (slice4a)', () => {
   });
 
   const makeBulkServerResponse = (rowCount = 1) => ({
-    importedCount: 0,
-    unmatchedRows: [] as Array<{ rowNumber: number; yj_code?: string; drug_name?: string }>,
-    invalidRows: [] as Array<{ rowNumber: number; reason: string }>,
-    preview: {
-      summary: {
-        totalRows: rowCount,
-        processableRows: rowCount,
-        createCount: rowCount,
-        updateCount: 0,
-        deactivateCount: 0,
-        noChangeCount: 0,
-        unmatchedCount: 0,
-        invalidCount: 0,
+    data: {
+      importedCount: 0,
+      unmatchedRows: [] as Array<{ rowNumber: number; yj_code?: string; drug_name?: string }>,
+      invalidRows: [] as Array<{ rowNumber: number; reason: string }>,
+      preview: {
+        summary: {
+          totalRows: rowCount,
+          processableRows: rowCount,
+          createCount: rowCount,
+          updateCount: 0,
+          deactivateCount: 0,
+          noChangeCount: 0,
+          unmatchedCount: 0,
+          invalidCount: 0,
+        },
+        rows: Array.from({ length: rowCount }, (_, index) => ({
+          rowNumber: index + 1,
+          status: 'create' as const,
+          yj_code: `2222222222${String(index).padStart(2, '0')}`,
+          drug_name: `CSV薬${index + 1}`,
+        })),
       },
-      rows: Array.from({ length: rowCount }, (_, index) => ({
-        rowNumber: index + 1,
-        status: 'create' as const,
-        yj_code: `2222222222${String(index).padStart(2, '0')}`,
-        drug_name: `CSV薬${index + 1}`,
-      })),
     },
   });
 
   const makeBulkServerResponseWithCandidate = () => ({
-    importedCount: 0,
-    unmatchedRows: [] as Array<{ rowNumber: number; yj_code?: string; drug_name?: string }>,
-    invalidRows: [] as Array<{ rowNumber: number; reason: string }>,
-    preview: {
-      summary: {
-        totalRows: 1,
-        processableRows: 1,
-        createCount: 0,
-        updateCount: 0,
-        deactivateCount: 0,
-        noChangeCount: 0,
-        unmatchedCount: 1,
-        invalidCount: 0,
-      },
-      rows: [
-        {
-          rowNumber: 1,
-          status: 'unmatched' as const,
-          yj_code: '444444444444',
-          drug_name: 'CSV未照合薬',
-          candidates: [
-            {
-              id: 'candidate_1',
-              yj_code: '555555555555',
-              drug_name: '候補薬A',
-              generic_name: 'ロキソプロフェン',
-            },
-          ],
+    data: {
+      importedCount: 0,
+      unmatchedRows: [] as Array<{ rowNumber: number; yj_code?: string; drug_name?: string }>,
+      invalidRows: [] as Array<{ rowNumber: number; reason: string }>,
+      preview: {
+        summary: {
+          totalRows: 1,
+          processableRows: 1,
+          createCount: 0,
+          updateCount: 0,
+          deactivateCount: 0,
+          noChangeCount: 0,
+          unmatchedCount: 1,
+          invalidCount: 0,
         },
-      ],
+        rows: [
+          {
+            rowNumber: 1,
+            status: 'unmatched' as const,
+            yj_code: '444444444444',
+            drug_name: 'CSV未照合薬',
+            candidates: [
+              {
+                id: 'candidate_1',
+                yj_code: '555555555555',
+                drug_name: '候補薬A',
+                generic_name: 'ロキソプロフェン',
+              },
+            ],
+          },
+        ],
+      },
     },
   });
 
