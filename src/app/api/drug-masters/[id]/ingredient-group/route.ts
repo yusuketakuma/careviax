@@ -70,12 +70,14 @@ async function authenticatedGET(req: NextRequest, params: Promise<{ id: string }
         if (!target) return notFound('対象の医薬品が見つかりません');
         if (!target.generic_name) {
           return success({
-            site,
-            target,
-            generic_name: null,
-            summary: null,
-            members: [],
-            reason: 'generic_name_missing',
+            data: {
+              site,
+              target,
+              generic_name: null,
+              summary: null,
+              members: [],
+              reason: 'generic_name_missing',
+            },
           });
         }
 
@@ -120,22 +122,24 @@ async function authenticatedGET(req: NextRequest, params: Promise<{ id: string }
         const stockedCount = stocks.filter((stock) => stock.is_stocked).length;
 
         return success({
-          site,
-          target,
-          generic_name: target.generic_name,
-          summary: {
-            member_count: members.length,
-            brand_count: members.filter((member) => !member.is_generic).length,
-            generic_count: members.filter((member) => member.is_generic).length,
-            stocked_count: stockedCount,
-            unstocked_count: site ? Math.max(members.length - stockedCount, 0) : null,
-            lowest_price: prices.length > 0 ? Math.min(...prices) : null,
-            highest_price: prices.length > 0 ? Math.max(...prices) : null,
+          data: {
+            site,
+            target,
+            generic_name: target.generic_name,
+            summary: {
+              member_count: members.length,
+              brand_count: members.filter((member) => !member.is_generic).length,
+              generic_count: members.filter((member) => member.is_generic).length,
+              stocked_count: stockedCount,
+              unstocked_count: site ? Math.max(members.length - stockedCount, 0) : null,
+              lowest_price: prices.length > 0 ? Math.min(...prices) : null,
+              highest_price: prices.length > 0 ? Math.max(...prices) : null,
+            },
+            members: members.map((member) => ({
+              ...member,
+              site_stock: stockByDrugId.get(member.id) ?? null,
+            })),
           },
-          members: members.map((member) => ({
-            ...member,
-            site_stock: stockByDrugId.get(member.id) ?? null,
-          })),
         });
       },
       { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },

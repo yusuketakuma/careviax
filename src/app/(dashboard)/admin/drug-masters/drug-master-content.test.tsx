@@ -453,7 +453,7 @@ vi.mock('@tanstack/react-query', () => ({
       };
     }
     if (key === 'ingredient-group') {
-      return { data: ingredientGroupDataMock.current, isLoading: false, isError: false };
+      return { data: { data: ingredientGroupDataMock.current }, isLoading: false, isError: false };
     }
     return { data: null, isLoading: false, isError: false };
   },
@@ -3228,10 +3228,12 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
       },
     };
     const ingredientGroupBody = {
-      generic_name: null,
-      summary: null,
-      members: [],
-      reason: 'generic_name_missing',
+      data: {
+        generic_name: null,
+        summary: null,
+        members: [],
+        reason: 'generic_name_missing',
+      },
     };
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {

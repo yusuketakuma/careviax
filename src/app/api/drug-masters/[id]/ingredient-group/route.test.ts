@@ -126,21 +126,23 @@ describe('/api/drug-masters/[id]/ingredient-group', () => {
       }),
     );
     await expect(response.json()).resolves.toMatchObject({
-      site: { id: 'site_1' },
-      generic_name: 'アムロジピンベシル酸塩',
-      summary: {
-        member_count: 2,
-        brand_count: 1,
-        generic_count: 1,
-        stocked_count: 1,
-        unstocked_count: 1,
-        lowest_price: 10,
-        highest_price: 20,
+      data: {
+        site: { id: 'site_1' },
+        generic_name: 'アムロジピンベシル酸塩',
+        summary: {
+          member_count: 2,
+          brand_count: 1,
+          generic_count: 1,
+          stocked_count: 1,
+          unstocked_count: 1,
+          lowest_price: 10,
+          highest_price: 20,
+        },
+        members: [
+          { id: 'brand_1', site_stock: null },
+          { id: 'generic_1', site_stock: { is_stocked: true, reorder_point: 10 } },
+        ],
       },
-      members: [
-        { id: 'brand_1', site_stock: null },
-        { id: 'generic_1', site_stock: { is_stocked: true, reorder_point: 10 } },
-      ],
     });
     expect(prismaMock.pharmacyDrugStock.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -178,10 +180,12 @@ describe('/api/drug-masters/[id]/ingredient-group', () => {
     expect(response.status).toBe(200);
     expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
-      generic_name: null,
-      summary: null,
-      members: [],
-      reason: 'generic_name_missing',
+      data: {
+        generic_name: null,
+        summary: null,
+        members: [],
+        reason: 'generic_name_missing',
+      },
     });
     expect(prismaMock.drugMaster.findMany).not.toHaveBeenCalled();
     expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();

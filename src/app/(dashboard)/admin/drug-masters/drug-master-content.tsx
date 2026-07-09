@@ -591,7 +591,10 @@ function DrugMasterOperationalContent({
       const res = await fetch(buildDrugMasterIngredientGroupApiPath(selectedDrugId, params), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<IngredientGroupResponse>(res, '同一成分グループの取得に失敗しました');
+      return readApiJson<{ data: IngredientGroupResponse }>(
+        res,
+        '同一成分グループの取得に失敗しました',
+      );
     },
     enabled: !!orgId && !!selectedDrugId && !!detailQuery.data?.generic_name,
     staleTime: 300_000,
@@ -1362,7 +1365,7 @@ function DrugMasterOperationalContent({
     return stockConfig?.preferred_generic?.drug_name ?? '保存済みの採用後発薬を確認してください';
   })();
   const genericRecommendations = genericRecommendationsQuery.data?.data.recommendations ?? [];
-  const ingredientGroup = ingredientGroupQuery.data ?? null;
+  const ingredientGroup = ingredientGroupQuery.data?.data ?? null;
   const drugSafetyDisplay = detailQuery.data
     ? buildDrugSafetyDisplayViewModel(detailQuery.data)
     : null;
