@@ -256,18 +256,24 @@ describe('/api/facility-visit-batches/visit-days POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
     expectSensitiveNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
-      facility_label: 'facility_a',
-      patient_count: 2,
-      patient_names: ['山田 太郎', '山田 花子'],
-      preferred_weekdays: [1, 3],
-      preferred_time_from: '09:00',
-      preferred_time_to: '12:00',
-      facility_time_from: '09:30',
-      facility_time_to: '15:30',
-      visit_buffer_minutes: 30,
-      notes: '毎月第1・第3週を優先',
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: {
+        facility_label: 'facility_a',
+        patient_count: 2,
+        patient_names: ['山田 太郎', '山田 花子'],
+        preferred_weekdays: [1, 3],
+        preferred_time_from: '09:00',
+        preferred_time_to: '12:00',
+        facility_time_from: '09:30',
+        facility_time_to: '15:30',
+        visit_buffer_minutes: 30,
+        notes: '毎月第1・第3週を優先',
+      },
     });
+    expect(body).not.toHaveProperty('facility_label');
+    expect(body).not.toHaveProperty('patient_count');
+    expect(body).not.toHaveProperty('patient_names');
     expect(upsertMock).toHaveBeenCalledTimes(2);
     expect(upsertMock).toHaveBeenCalledWith({
       where: {
