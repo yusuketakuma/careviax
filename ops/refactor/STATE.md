@@ -51,6 +51,78 @@
 
 ## 直近の作業
 
+- codex + claude checker: `STOCK-001-VISIT-UI` visit medication stock observation write wiring and matched UI/API gate.
+  - commit:
+    `f5e159c96 feat(visits): gate medication stock observations`
+  - current task:
+    訪問記録フォームの外用・頓服・OTC・他院薬残数観測を、訪問記録保存後の append-only stock
+    observation write として接続する。Claude checker が指摘した「UIだけ無条件 writeEnabled」問題を
+    close するため、visit page と POST route の両方を同一 server-only capability gate
+    `MEDICATION_STOCK_OBSERVATION_ENABLED` に寄せ、既定offで fail-closed にする。
+  - files inspected:
+    `docs/ui-ux-design-guidelines.md`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md`,
+    `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`,
+    `src/app/(dashboard)/visits/[id]/record/page.tsx`,
+    `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`,
+    `src/app/api/visit-records/[id]/medication-stock-observations/route.ts`,
+    `src/components/features/visits/visit-medication-stock-observation-panel.tsx`,
+    `src/lib/visits/medication-stock-observation*.ts`, `.env.example`,
+    `docs/frontend-screen-contracts.md`, and `Plans.md`.
+  - files changed:
+    `.env.example`, `Plans.md`, `docs/frontend-screen-contracts.md`,
+    `src/app/(dashboard)/visits/[id]/record/page.tsx`,
+    `src/app/(dashboard)/visits/[id]/record/page.test.tsx`,
+    `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`,
+    `src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx`,
+    `src/app/api/visit-records/[id]/medication-stock-observations/route.ts`,
+    `src/app/api/visit-records/[id]/medication-stock-observations/route.test.ts`,
+    `src/components/features/visits/visit-medication-stock-observation-panel.tsx`,
+    `src/components/features/visits/visit-medication-stock-observation-panel.test.tsx`,
+    `src/lib/visits/api-paths.ts`, `src/lib/visits/api-paths.test.ts`,
+    `src/lib/visits/medication-stock-observation.ts`,
+    `src/lib/visits/medication-stock-observation.test.ts`,
+    `src/lib/visits/medication-stock-observation-gate.server.ts`,
+    `src/lib/visits/medication-stock-observation-gate.server.test.ts`, and
+    `src/types/medication-stock.ts`.
+  - bugs found / fixed:
+    The visit medication-stock panel had FE write controls and helper code but the parent form did
+    not complete the write contract. The form now builds a strict request from controlled drafts,
+    validates before saving the visit record, blocks stock drafts while offline, saves the visit
+    record first, then POSTs stock observations with a request-level `Idempotency-Key`. If the stock
+    write returns 409/503/error, the visit record is treated as saved but the stock observation stays
+    pending on the same page with retry using the same idempotency key; re-submitting the whole form
+    is blocked to avoid duplicate visit records. Validation errors are keyed by
+    `client_observation_id` to avoid overwriting multiple draft errors for the same stock item.
+    The shared `MEDICATION_STOCK_OBSERVATION_ENABLED` gate is server-only, fail-closed, passed from
+    the visit page to the client form, and enforced at the POST route before DB access.
+  - security/privacy:
+    The capability flag is not `NEXT_PUBLIC` and is not read in client code. The POST route remains
+    `canVisit` protected, sensitive no-store, org-scoped through `withOrgContext`, and does not
+    expose raw idempotency keys or request fingerprints. The UI never reports both visit and stock
+    writes as complete before the stock response succeeds.
+  - performance:
+    No unbounded work added. Client validation is per draft, path construction uses a shared
+    encoder, and the stock write remains a single bounded POST after the visit record save.
+  - validation:
+    `pnpm vitest run 'src/app/(dashboard)/visits/[id]/record/page.test.tsx' 'src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx' 'src/app/api/visit-records/[id]/medication-stock-observations/route.test.ts' src/components/features/visits/visit-medication-stock-observation-panel.test.tsx src/lib/visits/medication-stock-observation.test.ts src/lib/visits/medication-stock-observation-gate.server.test.ts src/lib/visits/api-paths.test.ts --reporter=dot --testTimeout=30000`
+    passed 7 files / 75 tests; exact-path ESLint passed;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed;
+    `pnpm api-response-shape:check`, `pnpm route-auth-wrapper:check`,
+    `pnpm db:raw-read-org-guard:check`, `pnpm db:query-shape:check`,
+    `pnpm dto-direct-prisma-return:check`, Prettier check, `pnpm format:check`, and
+    `git diff --check` passed.
+  - UI/imagegen:
+    `imagegen` was intentionally omitted because this slice was not a new visual reconstruction;
+    it connected an existing panel and state contract, and the PH-OS UI SSOT was read. The existing
+    repo-wide design artifact under `design/generated/` was left untouched and uncommitted.
+  - remaining / next action:
+    No DB migration/application, live DB mutation, deployment, push, or secret change was
+    performed. `STOCK-001-VISIT-DB-INTEGRATION` remains a human gate before enabling
+    `MEDICATION_STOCK_OBSERVATION_ENABLED` in any target environment. Next implementation task is
+    the UI/UX audit P1-1: `visits/[id]/capture` patient safety header reuse and shutter fail-close.
+
 - codex: `PUSH-SUB-ATOMICITY-001` push subscription mutation RLS/atomicity hardening.
   - commit:
     `db63de58a fix(api): scope push subscription mutations`
