@@ -41,6 +41,51 @@
 
 ## 直近の作業
 
+- codex: agent knowledge/config checkpoint publish.
+  - current task:
+    直前指示「全ての変更をコミットしてプッシュ」に従い、現 dirty tree の
+    agent knowledge / harness continuity / Codex config / hook state を checkpoint
+    commit し、push 前の証跡をこの台帳へ記録する。
+  - commit:
+    `e43d89dc2 chore: checkpoint agent knowledge state`
+  - files inspected:
+    `git status -sb --untracked-files=all`, `git remote -v`, `git log --oneline -10`,
+    `gh --version`, `gh auth status`, `git diff --stat`,
+    `git diff -- .codex/config.toml .codex/hooks.json .harness-mem/state/continuity.json`,
+    representative untracked knowledge files, `src/lib/utils/client-log.ts`
+    path status, secret-pattern scan, `git diff --check`, and
+    `git diff --cached --check`.
+  - files changed:
+    128-file checkpoint containing GBrain/OpenClaw-style Markdown knowledge pages,
+    `.codex/config.toml`, `.codex/hooks.json`, and harness continuity/budget state.
+    No product source code was dirty in this checkpoint.
+  - bugs found:
+    None in product code; this was a state/checkpoint publish slice.
+  - bugs fixed:
+    None.
+  - security risks found:
+    No secret-pattern matches were found in the staged untracked/modified files by
+    the focused scan used for this publish slice.
+  - security risks reduced:
+    None; no product or auth/PHI behavior changed.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None.
+  - validation commands:
+    `git diff --check`; focused secret-pattern `rg` scan across untracked and
+    modified checkpoint files; `git diff --cached --check`.
+  - validation results:
+    `git diff --check` and `git diff --cached --check` passed with no output.
+    Secret-pattern scans returned no matches. `gh` is installed and authenticated
+    for `yusuketakuma`; `origin` points to
+    `https://github.com/yusuketakuma/careviax.git`.
+  - remaining work:
+    Commit this ledger entry, push `main` to `origin/main`, and verify final
+    worktree/remote state.
+  - next action:
+    Create the ledger-only commit, then push.
+
 - codex: `API-CONTRACT-001CV` patient workflow preview response envelope cleanup.
   - current task:
     `GET /api/patients/:id/workflow-preview` の patient workflow preview success response
