@@ -12,6 +12,8 @@
 - ユーザーの明示的な再有効化により、bounded な調査・影響範囲特定・計画レビュー・検証には subagent を使う。
   subagent は原則 read-only とし、編集、統合、台帳更新、commit は Codex 本体だけが行う。
 - agmsg、codex2/codex3/codex4、Claude などの外部 maker/checker 運用は再開しない。
+- 2026-07-10 の最新ユーザー指示により、Oracle/GPT-5.5 Pro への相談は行わない。ローカル調査、
+  bounded subagent の計画レビュー、focused/full gate で代替する。
 - 下記2026-07-04/05の運用記述は履歴であり、現行体制と矛盾する場合はこの節を優先する。
 
 ## 旧体制（2026-07-04/05 履歴）
@@ -49,6 +51,59 @@
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex: presence envelope parity and false-empty repair.
+  - commit:
+    `c8eaa56f3 fix(api): align presence response envelopes`.
+  - current task:
+    P0 `API-CONTRACT-001DS` として、`GET/POST /api/presence` を strict `data` envelope へ移行し、
+    allowlist debt を 47 から 45 へ削減すると同時に authorized presence の false-empty を解消する。
+  - files inspected:
+    `Plans.md`, `docs/plans-archive.md`, Next.js 16 route-handler guides,
+    `src/app/api/presence/route.ts` and tests, `src/lib/api/response.ts`,
+    presence API client/contract/hooks/tests, presence store/TTL, collaboration access and realtime policy,
+    route-mocked E2E fixtures, and `tools/api-response-shape-allowlist.json`.
+  - files changed:
+    `Plans.md`, `docs/plans-archive.md`, `src/app/api/presence/route.ts`,
+    `src/app/api/presence/route.test.ts`, `src/lib/collaboration/presence.test.ts`,
+    `tools/api-response-shape-allowlist.json`, and this state file.
+  - bugs found / fixed:
+    GET returned a raw array while the sole frontend parser intentionally accepted only `payload.data`; successful
+    authorized reads therefore normalized to `[]`, making active collaborators disappear on initial load/refetch.
+    GET now returns exact `{ data: entries }`, and client tests prove authorized user restoration while continuing
+    to reject the legacy raw array. POST now returns exact `{ data: { ok: true } }` instead of a root `ok`.
+    GET/POST route tests also pin authentication failure before parsing, entity lookup, presence read/write, user
+    lookup, or broadcast.
+  - security/privacy:
+    Existing `canViewDashboard`, entity/org/assignment access, inaccessible 404, organization/entity/user store key,
+    TTL cleanup, realtime room/channel, and best-effort broadcast behavior are unchanged. POST returns no entity ID,
+    active field, user/display name, organization ID, or broadcast result. GET keeps only the authorized operational
+    `user_id`, `display_name`, `active_field`, and `updated_at`; store-only `expires_at` remains excluded. Safe warning
+    metadata and fail-closed legacy parsing remain intact.
+  - performance:
+    No request, query, polling interval, store traversal, TTL, dependency, or broadcast count changed. The existing
+    GET now becomes usable by its current reader without compatibility parsing or an extra fetch.
+  - plan review:
+    A read-only code mapper compared three candidate route families and selected presence because it removes two P0
+    violations and fixes a live reader mismatch with the smallest blast radius. A second scoped reviewer returned
+    Conditional GO with strict envelope, auth short-circuit, no dual shape, and boundary-preservation conditions.
+    Its interactive `plan-eng-review` workflow could not start because the subagent lacked the required question tool,
+    so it completed the equivalent read-only contract/edge/test review directly. An Oracle browser run was started
+    during preflight but immediately cancelled before advice was consumed when the user instructed not to consult
+    Oracle; no Oracle recommendation influenced this implementation.
+  - validation:
+    Root focused validation passed 4 files / 33 tests; the independent verifier reported PASS and a broader rerun of
+    4 files / 42 tests. `pnpm api-response-shape:check` passed at 45 allowlisted / 0 new;
+    `pnpm plans:active:check`, `pnpm route-auth-wrapper:check`, `pnpm db:raw-read-org-guard:check`,
+    `pnpm client-phi-log:check`, `pnpm dto-direct-prisma-return:check`, exact-path ESLint/Prettier, and
+    `git diff --check` passed. Full `tsc` and `pnpm typecheck:no-unused` were run serially but both stop only at
+    pre-existing user-owned dirty `src/app/(dashboard)/communications/inbound/inbound-content.tsx:2285`
+    (`string | null` is not assignable to `string | undefined`); the failing line is inside that unrelated dirty diff,
+    and the verifier found no owned-diff type or lint regression.
+  - remaining / next action:
+    Full TypeScript green remains externally blocked until the unrelated inbound UI edit is repaired by its owner.
+    Continue the P0 response-envelope burn-down from 45 with another clean, bounded route family after a fresh
+    read-only plan review. No deploy, migration, production mutation, external send, destructive operation, or push ran.
 
 - codex: push-subscription minimal success-envelope migration and allowlist ratchet.
   - commit:
