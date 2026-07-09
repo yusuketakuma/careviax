@@ -29471,3 +29471,98 @@ responses`) and pushed to `origin/main`.
   Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
   then continue the next API response envelope cleanup from
   `src/app/api/facility-visit-batches/visit-days/route.ts` unless redirected.
+
+## 2026-07-09 - API-CONTRACT-001BH facility visit day batch envelope cleanup
+
+- current task:
+  Continue `API-CONTRACT-001` public response envelope burn-down without legacy
+  compatibility fields. Move
+  `POST /api/facility-visit-batches/visit-days` success to a `data` envelope.
+- files inspected:
+  `git status --short --branch --untracked-files=all`;
+  `ops/refactor/STATE.md`; `Plans.md`;
+  `tools/api-response-shape-allowlist.json`;
+  `src/app/api/facility-visit-batches/visit-days/route.ts`;
+  `src/app/api/facility-visit-batches/visit-days/route.test.ts`;
+  `src/app/(dashboard)/schedules/schedule-day-facility-visit-day.ts`;
+  `src/app/(dashboard)/schedules/schedule-day-facility-visit-day.test.ts`;
+  facility visit day usage search results; and
+  `gbrain search "API-CONTRACT facility-visit-batches visit-days response envelope"`.
+- files changed:
+  `Plans.md`; `tools/api-response-shape-allowlist.json`;
+  `src/app/api/facility-visit-batches/visit-days/route.ts`;
+  `src/app/api/facility-visit-batches/visit-days/route.test.ts`;
+  `ops/refactor/STATE.md`.
+- bugs found:
+  `POST /api/facility-visit-batches/visit-days` returned raw facility visit day
+  preference fields at the public response root, including `facility_label`,
+  `patient_count`, and `patient_names`.
+- bugs fixed:
+  Upsert success now returns `success({ data: result }, 201)`. The route test
+  asserts the data envelope and rejects legacy root `facility_label`,
+  `patient_count`, and `patient_names`. No legacy root fallback remains.
+  Response-shape debt dropped from 129 to 128 allowlisted violations.
+- security risks found:
+  No canVisit permission, assignment access filter, org scoping, request body
+  validation, facility consistency validation, patient preference transaction,
+  workflow cache notification, error handling, or no-store behavior changed.
+- security risks reduced:
+  Removed raw facility visit day preference fields from the public API root
+  while preserving existing authorization, validation, and notification
+  behavior.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this is response contract cleanup. Existing schedule lookup,
+  de-duplication, patient preference upsert, and notification behavior are
+  unchanged.
+- UI/UX note:
+  No visible UI/UX change. This was API/test contract work only, so image
+  generation was not applicable.
+- Oracle note:
+  Oracle consultation remains paused per current user instruction, so no
+  Oracle/GPT-5.5 Pro consult was run. The slice stayed mechanical and avoided
+  changing facility visit day preference semantics.
+- validation commands:
+  `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/facility-visit-batches/visit-days/route.ts src/app/api/facility-visit-batches/visit-days/route.test.ts`;
+  `pnpm vitest run src/app/api/facility-visit-batches/visit-days/route.test.ts`;
+  `pnpm vitest run src/app/(dashboard)/schedules/schedule-day-facility-visit-day.test.ts`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint src/app/api/facility-visit-batches/visit-days/route.ts src/app/api/facility-visit-batches/visit-days/route.test.ts src/app/(dashboard)/schedules/schedule-day-facility-visit-day.ts src/app/(dashboard)/schedules/schedule-day-facility-visit-day.test.ts`;
+  `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/facility-visit-batches/visit-days/route.ts src/app/api/facility-visit-batches/visit-days/route.test.ts`;
+  `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/facility-visit-batches/visit-days/route.ts src/app/api/facility-visit-batches/visit-days/route.test.ts`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `pnpm format:check`.
+- validation results:
+  Prettier passed. Facility visit day route tests passed 1 file / 8 tests.
+  Schedule day facility visit day helper tests passed 1 file / 6 tests.
+  `api-response-shape:check` passed with 128 allowlisted violations and 0 new
+  violations. `plans:active:check` passed. Scoped ESLint, scoped Prettier
+  check, scoped diff check, and typecheck passed. `pnpm format:check` still
+  fails only on unrelated pre-existing untracked Markdown files:
+  `projects/careviax/implementation-decision/medication-stock-visit-observation-context-sidecar-v1-2026-07-08.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-doc-001.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-evidence-001.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-integrity-001.md`,
+  `projects/careviax/reviews/2026-07-08/patient-board-read-001.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003a-003d.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003e.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-guard.md`, and
+  `skills/_candidates.md`.
+- commit:
+  Facility visit day batch response envelope migration, route tests, allowlist
+  cleanup, and Plans sync committed as
+  `f2964ce9cf00c32ebc33756cdb24cd1b566e4c99`
+  (`fix(api): envelope facility visit day batch`). Push is pending this ledger
+  update.
+- remaining work:
+  `API-CONTRACT-001` remains Partial. Next allowlist head is
+  `src/app/api/first-visit-documents/route.ts` with one expected legacy
+  response shape violation, followed by
+  `src/app/api/inquiry-records/[id]/route.ts`. Existing unrelated
+  dirty/untracked memory/docs files remain unstaged.
+- next action:
+  Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
+  then continue the next API response envelope cleanup from
+  `src/app/api/first-visit-documents/route.ts` unless redirected.
