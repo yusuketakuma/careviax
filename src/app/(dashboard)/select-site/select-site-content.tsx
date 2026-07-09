@@ -68,11 +68,9 @@ export function SelectSiteContent() {
   const totalVisits = sites.reduce((sum, site) => sum + site.todays_visit_count, 0);
   const homeVisitSiteCount = sites.filter((site) => site.has_home_visit).length;
 
+  // 外側の余白/背景は page.tsx の PageScaffold が担う(SSOT 4.4、二重 padding 回避)。
   return (
-    <div
-      className="mx-auto w-full max-w-6xl space-y-5 px-3 py-4 md:px-6"
-      data-testid="select-site-page"
-    >
+    <div className="mx-auto w-full max-w-6xl space-y-5" data-testid="select-site-page">
       <div className="space-y-1">
         <h1 className="text-2xl font-bold tracking-tight text-foreground">
           使う薬局を選んでください
