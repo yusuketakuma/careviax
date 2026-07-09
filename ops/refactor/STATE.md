@@ -41,6 +41,69 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001CH` patient communications response envelope cleanup.
+  - current task:
+    `GET /api/patients/:id/communications` の communications snapshot success response を
+    legacy root snapshot から `{ data: snapshot }` envelope へ移行し、detail-slices test,
+    response-shape allowlist, Plans を同期する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `src/app/api/patients/[id]/communications/route.ts`,
+    `src/app/api/patients/[id]/detail-slices.test.ts`,
+    `tools/api-response-shape-allowlist.json`, `Plans.md`, `docs/plans-archive.md`, and
+    this ledger.
+  - files changed:
+    `Plans.md`, `docs/plans-archive.md`, `tools/api-response-shape-allowlist.json`,
+    `src/app/api/patients/[id]/communications/route.ts`,
+    `src/app/api/patients/[id]/detail-slices.test.ts`, and this ledger.
+  - bugs found:
+    The patient communications route returned snapshot fields such as
+    `communication_queue` at the public success response root, keeping one API
+    response-shape allowlist entry alive. The shared detail-slices auth-context test still
+    expected the legacy root snapshot shape.
+  - bugs fixed:
+    GET success now returns `success({ data: communications })`. The representative
+    detail-slices test and auth-context table expectation now assert the current envelope.
+    Response-shape debt dropped from 96 to 95.
+  - security risks found:
+    No visit permission check, patient id validation, service-level access filtering,
+    no-store wrapper, not-found response, or sanitized internal-error response changed.
+  - security risks reduced:
+    Removed communications snapshot fields from the response root.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None; this is response contract cleanup.
+  - UI/UX note:
+    No visible UI/UX change. No direct frontend fetcher for this route was found in the
+    current patient card workspace; this was route/test contract cleanup only.
+  - Oracle note:
+    No Oracle consult was run for this slice per the allowlist-debt concentration directive
+    and the repeated envelope-only local pattern. Validation covered detail-slices tests,
+    contract ratchet, scoped lint/format, and full typecheck.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/communications/route.ts' 'src/app/api/patients/[id]/detail-slices.test.ts'`;
+    `pnpm vitest run 'src/app/api/patients/[id]/detail-slices.test.ts' --reporter=dot`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint 'src/app/api/patients/[id]/communications/route.ts' 'src/app/api/patients/[id]/detail-slices.test.ts'`;
+    `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/communications/route.ts' 'src/app/api/patients/[id]/detail-slices.test.ts'`;
+    `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/communications/route.ts' 'src/app/api/patients/[id]/detail-slices.test.ts'`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Prettier passed. Detail-slices route tests passed 1 file / 56 tests; the test run
+    emitted existing PHI audit mock warning logs, but assertions passed. `api-response-shape:check`
+    passed with 95 allowlisted violations and 0 new violations. `plans:active:check`
+    passed. Scoped ESLint, scoped Prettier check, scoped diff check, and full typecheck
+    passed.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 95 allowlisted response-shape violations.
+    Next recommended response-shape slice is the current allowlist head:
+    `src/app/api/patients/[id]/documents/route.ts`.
+  - next action:
+    Commit and push this patient communications envelope slice with explicit owned paths
+    only, then continue allowlist debt burn-down from the next allowlist head.
+
 - codex: `API-CONTRACT-001CG` patient archive response envelope cleanup.
   - current task:
     `PATCH /api/patients/:id/archive` の archive success response を legacy root
