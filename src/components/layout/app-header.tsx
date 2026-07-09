@@ -190,7 +190,7 @@ export function AppHeader() {
           aria-label="PH-OS ダッシュボードへ"
         >
           <span className="text-sm font-bold tracking-tight text-foreground">PH-OS</span>
-          <span className="hidden text-[11px] font-medium text-muted-foreground xl:inline">
+          <span className="hidden text-xs font-medium text-muted-foreground xl:inline">
             在宅薬局Ops
           </span>
         </Link>
@@ -237,7 +237,7 @@ export function AppHeader() {
           <Search className="size-4 shrink-0" aria-hidden="true" />
           <span className="min-w-0 flex-1 truncate text-left">{SEARCH_BOX_LABEL}</span>
           <kbd
-            className="shrink-0 rounded border border-border bg-background px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground"
+            className="shrink-0 rounded border border-border bg-background px-1.5 py-0.5 text-xs font-medium text-muted-foreground"
             aria-hidden="true"
           >
             /
@@ -295,7 +295,7 @@ export function AppHeader() {
               </span>
               {currentUserRole ? (
                 <span
-                  className="text-[11px] leading-tight text-muted-foreground"
+                  className="text-xs leading-tight text-muted-foreground"
                   data-testid="app-header-user-role"
                 >
                   {memberRoleLabel(currentUserRole)}

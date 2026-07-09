@@ -39,7 +39,7 @@ export function PageShortcutLinks({ links }: PageShortcutLinksProps) {
     <div className="flex flex-col gap-3">
       {groups.map((group) => (
         <div key={group.label} className="space-y-1">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             {group.label}
           </p>
           <ShortcutLinkGroup links={group.links} ariaLabel={`${group.label}ショートカット`} />

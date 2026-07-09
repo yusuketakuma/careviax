@@ -68,7 +68,7 @@ function SidebarNavItem({
       {showBadge && (
         <span
           className={cn(
-            'inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold leading-none text-white',
+            'inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-xs font-semibold leading-none text-white',
             item.badgeTone === 'caution' ? 'bg-state-confirm' : 'bg-state-blocked',
           )}
           data-testid={`sidebar-nav-badge-${item.href.replace(/\//g, '-')}`}
@@ -120,7 +120,7 @@ export function Sidebar({ className, closeOnNavigate = false, showToggle = true 
             <span className="text-base font-bold tracking-tight text-sidebar-foreground">
               PH-OS
             </span>
-            <span className="text-[10px] leading-tight text-sidebar-foreground/55">
+            <span className="text-xs leading-tight text-sidebar-foreground/55">
               在宅薬局オペレーション
             </span>
           </Link>
@@ -148,7 +148,7 @@ export function Sidebar({ className, closeOnNavigate = false, showToggle = true 
           <div key={group.label || `group-${groupIndex}`}>
             {groupIndex > 0 && <div className="my-2 border-t border-sidebar-border/60" />}
             {sidebarOpen && group.label && (
-              <p className="mb-0.5 px-3 pt-2 text-[11px] font-medium tracking-wider text-sidebar-foreground/50">
+              <p className="mb-0.5 px-3 pt-2 text-xs font-medium tracking-wider text-sidebar-foreground/50">
                 {group.label}
               </p>
             )}
@@ -184,7 +184,7 @@ export function Sidebar({ className, closeOnNavigate = false, showToggle = true 
               </span>
               {currentUserRole ? (
                 <span
-                  className="block text-[11px] text-sidebar-foreground/55"
+                  className="block text-xs text-sidebar-foreground/55"
                   data-testid="sidebar-current-user-role"
                 >
                   {memberRoleLabel(currentUserRole)}
@@ -196,7 +196,7 @@ export function Sidebar({ className, closeOnNavigate = false, showToggle = true 
                   onClick={() => {
                     if (closeOnNavigate || !sidebarPinned) setSidebarOpen(false);
                   }}
-                  className="block text-[10px] text-sidebar-foreground/45 underline-offset-2 hover:text-sidebar-foreground/70 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+                  className="block text-xs text-sidebar-foreground/45 underline-offset-2 hover:text-sidebar-foreground/70 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
                   data-testid="sidebar-current-user-mode"
                 >
                   {WORK_MODE_LABELS[workMode]}
@@ -211,7 +211,7 @@ export function Sidebar({ className, closeOnNavigate = false, showToggle = true 
             onClick={() => {
               if (closeOnNavigate || !sidebarPinned) setSidebarOpen(false);
             }}
-            className="mb-1 block rounded-md px-3 py-1 text-[11px] text-sidebar-foreground/55 underline-offset-2 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+            className="mb-1 block rounded-md px-3 py-1 text-xs text-sidebar-foreground/55 underline-offset-2 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
             data-testid="sidebar-select-site-link"
           >
             薬局を切り替える

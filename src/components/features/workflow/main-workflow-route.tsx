@@ -129,7 +129,7 @@ function MainWorkflowCard({ step, index }: { step: MainWorkflowStep; index: numb
         <CardContent className="flex h-full flex-col gap-4 p-4">
           <div className="flex items-start justify-between gap-3">
             <div className="space-y-1">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                 Step {step.step}
               </p>
               <p className="text-sm text-muted-foreground">{index + 1}/8 工程</p>
@@ -233,7 +233,7 @@ export function MainWorkflowCompactNav({
         <div className="mt-2 rounded-lg border border-primary/30 bg-primary/[0.06] p-2 md:hidden">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 space-y-1">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
                 現在地
               </p>
               <p className="text-sm font-semibold text-foreground">
@@ -284,12 +284,12 @@ export function MainWorkflowCompactNav({
               >
                 <div className="space-y-1">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                       {step.step}
                     </span>
                     <span
                       className={cn(
-                        'text-[11px] font-medium',
+                        'text-xs font-medium',
                         isActive ? 'text-primary' : 'text-muted-foreground',
                       )}
                     >

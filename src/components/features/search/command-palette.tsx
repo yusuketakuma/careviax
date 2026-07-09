@@ -279,7 +279,7 @@ export function CommandPalette() {
                         >
                           <span>{group.label}</span>
                           {group.bestEffort && group.bestEffortNote ? (
-                            <span className="rounded border border-border bg-muted px-1.5 py-0.5 text-[11px] font-normal text-muted-foreground">
+                            <span className="rounded border border-border bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground">
                               {group.bestEffortNote}
                             </span>
                           ) : null}
@@ -368,10 +368,7 @@ function PaletteOption({
       )}
     >
       <span
-        className={cn(
-          'shrink-0 rounded border px-1.5 py-0.5 text-[11px] font-medium',
-          badgeClassName,
-        )}
+        className={cn('shrink-0 rounded border px-1.5 py-0.5 text-xs font-medium', badgeClassName)}
         aria-hidden="true"
       >
         {badgeLabel}

@@ -93,7 +93,7 @@ export function HelpPopover({
         >
           <span className="block font-semibold text-foreground">{title}</span>
           <span className="mt-1 block text-muted-foreground">{description}</span>
-          <span className="mt-2 block text-[11px] text-muted-foreground sm:hidden">
+          <span className="mt-2 block text-xs text-muted-foreground sm:hidden">
             もう一度 ? をタップして閉じます。
           </span>
         </span>

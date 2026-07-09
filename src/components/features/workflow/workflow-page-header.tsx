@@ -45,7 +45,7 @@ export function WorkflowPageHeader({
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1 space-y-3">
           {eyebrow ? (
-            <p className="inline-flex items-center rounded-full border border-border/70 bg-background/70 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            <p className="inline-flex items-center rounded-full border border-border/70 bg-background/70 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               {eyebrow}
             </p>
           ) : null}

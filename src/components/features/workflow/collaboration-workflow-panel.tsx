@@ -37,8 +37,7 @@ const COLLABORATION_LANES: readonly CollaborationLane[] = [
     key: 'inquiry',
     stage: '処方登録・調剤監査',
     title: '疑義照会と依頼を起点にする',
-    description:
-      '処方差分、残薬調整、医師確認を依頼・照会として残し、回答後に調剤監査へ戻します。',
+    description: '処方差分、残薬調整、医師確認を依頼・照会として残し、回答後に調剤監査へ戻します。',
     href: '/communications/requests',
     actionLabel: '依頼・照会を開く',
     icon: MessagesSquare,
@@ -48,8 +47,7 @@ const COLLABORATION_LANES: readonly CollaborationLane[] = [
     key: 'conference',
     stage: 'スケジュール登録・訪問時',
     title: '訪問前後の論点を共有する',
-    description:
-      'カンファレンス、MCS、申し送りで訪問前の確認点と訪問後の引き継ぎを揃えます。',
+    description: 'カンファレンス、MCS、申し送りで訪問前の確認点と訪問後の引き継ぎを揃えます。',
     href: '/conferences',
     actionLabel: 'カンファレンスを開く',
     icon: UsersRound,
@@ -59,8 +57,7 @@ const COLLABORATION_LANES: readonly CollaborationLane[] = [
     key: 'external-share',
     stage: '訪問時・報告書',
     title: '共有範囲と閲覧状況を管理する',
-    description:
-      '患者単位の外部共有リンク、自己申告、閲覧状況を追い、必要な連絡へ戻します。',
+    description: '患者単位の外部共有リンク、自己申告、閲覧状況を追い、必要な連絡へ戻します。',
     href: '/external',
     actionLabel: '外部連携を開く',
     icon: Share2,
@@ -70,8 +67,7 @@ const COLLABORATION_LANES: readonly CollaborationLane[] = [
     key: 'report-delivery',
     stage: '報告書',
     title: '報告書の送付と返信を閉じる',
-    description:
-      '医師・ケアマネ向け報告書の送達、返信待ち、再送を確認して連携を完了させます。',
+    description: '医師・ケアマネ向け報告書の送達、返信待ち、再送を確認して連携を完了させます。',
     href: '/reports',
     actionLabel: '報告書を開く',
     icon: FileText,
@@ -130,10 +126,15 @@ export function CollaborationWorkflowPanel({
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="space-y-1">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                       {lane.stage}
                     </p>
-                    <p className={cn('text-sm font-semibold', active ? 'text-primary' : 'text-foreground')}>
+                    <p
+                      className={cn(
+                        'text-sm font-semibold',
+                        active ? 'text-primary' : 'text-foreground',
+                      )}
+                    >
                       {lane.title}
                     </p>
                   </div>

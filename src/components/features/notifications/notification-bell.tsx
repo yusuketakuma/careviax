@@ -263,7 +263,7 @@ export function NotificationBell() {
         <span className="hidden md:inline">通知{unreadCount > 0 ? ` ${unreadCount}` : ''}</span>
         {unreadCount > 0 && (
           <span
-            className="absolute right-1 top-1 flex size-4.5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground md:hidden"
+            className="absolute right-0.5 top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-xs font-bold text-destructive-foreground md:hidden"
             aria-hidden="true"
           >
             {unreadCount > 99 ? '99+' : unreadCount}

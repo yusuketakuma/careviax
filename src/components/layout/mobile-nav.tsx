@@ -40,7 +40,7 @@ export function MobileNav() {
                   <Icon className="h-5 w-5" aria-hidden="true" />
                   {item.badge != null && item.badge > 0 && (
                     <span
-                      className="absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-0.5 text-[10px] font-bold text-destructive-foreground"
+                      className="absolute -right-2.5 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-xs font-bold text-destructive-foreground"
                       aria-label={`${item.badge}件の未読通知`}
                     >
                       {item.badge > 99 ? '99+' : item.badge}

@@ -52,7 +52,7 @@ export function OfflineDraftIndicator({
         <span>同期待ち</span>
         {pendingCount > 0 && (
           <Badge
-            className="h-4 min-w-[1.25rem] px-1 text-[10px] bg-state-confirm hover:bg-state-confirm"
+            className="h-5 min-w-5 bg-state-confirm px-1 text-xs hover:bg-state-confirm"
             aria-label={`${pendingCount}件の同期待ちがあります`}
           >
             {pendingCount}

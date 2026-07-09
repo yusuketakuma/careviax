@@ -202,7 +202,7 @@ export function BlockedReasonsPanel({ reasons, emptyLabel, className }: BlockedR
                   {reason.categoryLabel ? (
                     <span
                       className={cn(
-                        'inline-flex shrink-0 items-center rounded px-1.5 py-0.5 text-[11px] font-medium',
+                        'inline-flex shrink-0 items-center rounded px-1.5 py-0.5 text-xs font-medium',
                         tone.chip,
                       )}
                     >

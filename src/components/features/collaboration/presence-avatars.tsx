@@ -31,14 +31,14 @@ export function PresenceAvatars({ entityType, entityId }: PresenceAvatarsProps) 
         <span
           key={user.user_id}
           title={user.display_name}
-          className={`flex size-7 shrink-0 cursor-default items-center justify-center rounded-full text-[11px] font-semibold text-white ring-2 ring-background ${getCollaboratorColorClass(user.user_id)}`}
+          className={`flex size-7 shrink-0 cursor-default items-center justify-center rounded-full text-xs font-semibold text-white ring-2 ring-background ${getCollaboratorColorClass(user.user_id)}`}
           aria-label={user.display_name}
         >
           {user.display_name.charAt(0)}
         </span>
       ))}
       {overflow > 0 && (
-        <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-semibold text-muted-foreground ring-2 ring-background">
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground ring-2 ring-background">
           +{overflow}
         </span>
       )}

@@ -17,7 +17,7 @@ export function FieldLockIndicator({ fieldName, presenceData }: FieldLockIndicat
   const colorClass = getCollaboratorColorClass(user.user_id);
 
   return (
-    <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
       <span className={`inline-block size-2 rounded-full ${colorClass}`} aria-hidden="true" />
       <span>{user.display_name} が編集中</span>
     </span>
