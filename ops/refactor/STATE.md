@@ -107,13 +107,15 @@
     and 0 new violations. `plans:active:check` passed. Scoped ESLint, scoped Prettier
     check, scoped diff check, and full typecheck passed.
   - commit:
-    Pending explicit scoped commit for this implementation slice.
+    Implementation, tests, allowlist cleanup, Plans/archive sync, Oracle note, and ledger
+    evidence committed as `2a415a61d` (`fix(api): envelope partner visit review response`)
+    and pushed to `origin/main`.
   - remaining work:
     `API-CONTRACT-001` remains Partial with 107 allowlisted response-shape violations.
     Existing unrelated dirty/untracked memory/config/docs files remain unstaged.
   - next action:
-    Commit and push this implementation slice, then record the commit hash/push result in
-    this ledger before selecting the next allowlist head.
+    Continue the next safe `API-CONTRACT-001` allowlist head unless a higher-priority
+    `Plans.md` queue item is selected first.
 
 - codex: `API-CONTRACT-001BV` physician report draft response envelope cleanup.
   - current task:
