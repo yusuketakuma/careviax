@@ -189,7 +189,7 @@ async function authenticatedPOST(req: NextRequest) {
       { requestContext: ctx },
     );
 
-    return success(shift, 201);
+    return success({ data: shift }, 201);
   });
 }
 

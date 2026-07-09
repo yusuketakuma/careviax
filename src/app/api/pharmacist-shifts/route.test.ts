@@ -370,6 +370,7 @@ describe('/api/pharmacist-shifts', () => {
         note: '午前のみ',
       },
     });
+    await expect(response.json()).resolves.toEqual({ data: { id: 'shift_1' } });
   });
 
   it('clears blank shift times and blank notes with normalized row ids', async () => {
