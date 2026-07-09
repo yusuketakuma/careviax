@@ -47,6 +47,8 @@
     を legacy root `{ patient, data, hasMore, nextCursor, diff_review, diff_meta }` から
     `{ data: { ... } }` envelope へ移行し、処方履歴画面、印刷ハブ、直近過去歴サマリーの
     readers、route/UI tests、response-shape allowlist、Plans / archive を同期する。
+  - commit:
+    `481ce38b2 fix(api): envelope patient prescriptions response`
   - files inspected:
     `git status --short --untracked-files=all`,
     `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
@@ -126,8 +128,8 @@
     Next recommended response-shape slice is the current allowlist head:
     `src/app/api/patients/[id]/readiness/route.ts`.
   - next action:
-    Commit this patient prescriptions envelope slice with explicit owned paths only,
-    then continue allowlist debt burn-down from the next allowlist head.
+    Continue allowlist debt burn-down from the next allowlist head:
+    `src/app/api/patients/[id]/readiness/route.ts`.
 
 - codex: `API-CONTRACT-001CP` patient overview response envelope cleanup.
   - current task:
