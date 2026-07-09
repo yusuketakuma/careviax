@@ -635,9 +635,17 @@ describe('PharmacyCooperationWorkflowContent', () => {
           url === '/api/partner-visit-records/partner_record_draft/submit' &&
           init?.method === 'POST'
         ) {
-          return new Response(JSON.stringify({ id: 'partner_record_draft', status: 'submitted' }), {
-            status: 200,
-          });
+          return new Response(
+            JSON.stringify({
+              data: {
+                partner_visit_record: { id: 'partner_record_draft', status: 'submitted' },
+                notify_base_pharmacy: true,
+              },
+            }),
+            {
+              status: 200,
+            },
+          );
         }
         if (url === '/api/partner-visit-records/partner_record_confirmed/physician-report-draft') {
           return new Response(

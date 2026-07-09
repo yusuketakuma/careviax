@@ -241,7 +241,19 @@ describe('/api/partner-visit-records/[id]/submit POST', () => {
         }),
       }),
     );
-    await expect(response.json()).resolves.toMatchObject({ notify_base_pharmacy: true });
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        partner_visit_record: {
+          id: rawRecordId,
+          status: 'submitted',
+          has_record_content: false,
+          attachment_count: 0,
+          has_returned_reason: false,
+          has_base_confirmation_snapshot: false,
+        },
+        notify_base_pharmacy: true,
+      },
+    });
   });
 
   it('rejects already submitted records before update, claim, or audit side effects', async () => {
