@@ -159,6 +159,10 @@ describe('/api/medication-profiles', () => {
     );
     await expect(response.json()).resolves.toMatchObject({
       data: [{ id: 'profile_1', drug_name: 'アムロジピン' }],
+      meta: {
+        has_more: false,
+        next_cursor: null,
+      },
     });
   });
 
@@ -170,9 +174,13 @@ describe('/api/medication-profiles', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(response.headers.get('Pragma')).toBe('no-cache');
-    await expect(response.json()).resolves.toMatchObject({
+    await expect(response.json()).resolves.toEqual({
       data: [],
-      hasMore: false,
+      meta: {
+        limit: 50,
+        has_more: false,
+        next_cursor: null,
+      },
     });
     expect(medicationProfileFindManyMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
@@ -321,6 +329,12 @@ describe('/api/medication-profiles', () => {
       'org_1',
     );
     expect(drugMasterFindFirstMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual({
+      data: {
+        id: 'profile_2',
+        patient_id: 'patient_1',
+      },
+    });
   });
 
   it('validates and stores a selected DrugMaster id for manual medication profiles', async () => {

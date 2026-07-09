@@ -97,7 +97,9 @@ async function authenticatedGET(req: NextRequest) {
         accessContext,
       }))
     ) {
-      return withSensitiveNoStore(success({ data: [], hasMore: false, nextCursor: undefined }));
+      return withSensitiveNoStore(
+        success({ data: [], meta: { limit, has_more: false, next_cursor: null } }),
+      );
     }
 
     const patientAssignmentWhere = buildPatientAssignmentWhere(accessContext);
@@ -131,7 +133,17 @@ async function authenticatedGET(req: NextRequest) {
       },
     });
 
-    return withSensitiveNoStore(success(buildCursorPage(profiles, limit, (profile) => profile.id)));
+    const page = buildCursorPage(profiles, limit, (profile) => profile.id);
+    return withSensitiveNoStore(
+      success({
+        data: page.data,
+        meta: {
+          limit,
+          has_more: page.hasMore,
+          next_cursor: page.nextCursor ?? null,
+        },
+      }),
+    );
   });
 }
 
