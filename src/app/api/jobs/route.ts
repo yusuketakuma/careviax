@@ -137,6 +137,11 @@ const JOB_DEFINITIONS = [
     schedule_hint: '5分毎 + 要求時',
     endpoint: '/api/jobs/webhook-delivery-retry',
   },
+  {
+    job_type: 'yrese-clinical-sync-queue-drain',
+    schedule_hint: '5分毎 + 要求時',
+    endpoint: '/api/jobs/yrese-clinical-sync-queue-drain',
+  },
   { job_type: 'evening', schedule_hint: '毎夕', endpoint: '/api/jobs/evening' },
   {
     job_type: 'evening-unrecorded-visits',

@@ -30,6 +30,7 @@ const {
   drainMedicationHistoryBulkExportJobsMock,
   cleanupExpiredBulkExportArtifactsMock,
   retryWebhookDeliveriesMock,
+  drainYreseClinicalSyncQueueJobMock,
   checkFacilityStandardExpiryMock,
   checkCredentialExpiryMock,
   checkConsentExpiryMock,
@@ -68,6 +69,7 @@ const {
   drainMedicationHistoryBulkExportJobsMock: vi.fn(),
   cleanupExpiredBulkExportArtifactsMock: vi.fn(),
   retryWebhookDeliveriesMock: vi.fn(),
+  drainYreseClinicalSyncQueueJobMock: vi.fn(),
   checkFacilityStandardExpiryMock: vi.fn(),
   checkCredentialExpiryMock: vi.fn(),
   checkConsentExpiryMock: vi.fn(),
@@ -118,6 +120,7 @@ vi.mock('@/server/jobs', () => ({
   drainMedicationHistoryBulkExportJobs: drainMedicationHistoryBulkExportJobsMock,
   cleanupExpiredBulkExportArtifacts: cleanupExpiredBulkExportArtifactsMock,
   retryWebhookDeliveries: retryWebhookDeliveriesMock,
+  drainYreseClinicalSyncQueueJob: drainYreseClinicalSyncQueueJobMock,
   checkFacilityStandardExpiry: checkFacilityStandardExpiryMock,
   checkCredentialExpiry: checkCredentialExpiryMock,
   checkConsentExpiry: checkConsentExpiryMock,
@@ -188,6 +191,14 @@ describe('/api/jobs/[jobType] POST', () => {
       succeededCount: 1,
       failedCount: 1,
       blockedCount: 0,
+    });
+    drainYreseClinicalSyncQueueJobMock.mockResolvedValue({
+      processedCount: 2,
+      scannedCount: 3,
+      succeededCount: 1,
+      conflictCount: 1,
+      failedCount: 0,
+      skippedCount: 1,
     });
     cleanupExpiredBulkExportArtifactsMock.mockResolvedValue({
       processedCount: 3,
@@ -674,6 +685,27 @@ describe('/api/jobs/[jobType] POST', () => {
 
     expect(response.status).toBe(200);
     expect(retryWebhookDeliveriesMock).toHaveBeenCalledWith({ orgId: 'org_1' });
+  });
+
+  it('scopes authenticated yrese clinical sync queue drains to the admin organization', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = await POST(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ jobType: 'yrese-clinical-sync-queue-drain' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(drainYreseClinicalSyncQueueJobMock).toHaveBeenCalledWith({ orgId: 'org_1' });
+    await expectJobSuccessData(response, {
+      jobType: 'yrese-clinical-sync-queue-drain',
+      processedCount: 2,
+      scannedCount: 3,
+      succeededCount: 1,
+      conflictCount: 1,
+      failedCount: 0,
+      skippedCount: 1,
+    });
   });
 
   it('returns 200 when admin executes visit record retention checks', async () => {

@@ -39,6 +39,7 @@ import {
   drainMedicationHistoryBulkExportJobs,
   cleanupExpiredBulkExportArtifacts,
   retryWebhookDeliveries,
+  drainYreseClinicalSyncQueueJob,
 } from '@/server/jobs';
 
 type JobExecutionContext = {
@@ -97,6 +98,10 @@ const JOB_HANDLERS: Record<string, JobHandler> = {
     ),
   'webhook-delivery-retry': (context) =>
     retryWebhookDeliveries(
+      context.authType === 'auth' && context.orgId ? { orgId: context.orgId } : undefined,
+    ),
+  'yrese-clinical-sync-queue-drain': (context) =>
+    drainYreseClinicalSyncQueueJob(
       context.authType === 'auth' && context.orgId ? { orgId: context.orgId } : undefined,
     ),
   'daily-facility-standard-expiry': checkFacilityStandardExpiry,

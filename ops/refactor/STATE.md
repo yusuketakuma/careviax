@@ -226,6 +226,87 @@
     Commit this import service slice with explicit path staging, then implement the actual yrese
     webhook route/signature boundary and retry worker around `ClinicalSyncQueueItem`.
 
+- codex: `FHIR-READY-WEBHOOK-001` yrese webhook receive boundary and clinical sync queue worker.
+  - current task:
+    `importYreseClinicalWebhook()` を実際の Next.js route と job runner へ接続する。`POST
+/api/webhooks/yrese` は raw body の HMAC-SHA256 署名検証後だけ JSON を解釈し、FHIR resource が
+    同梱されている場合は cache/import service へ渡す。`ClinicalSyncQueueItem` drain worker は
+    due queue を claim し、MedicationRequest / MedicationDispense / MedicationStatement のうち
+    PH-OS `patient_id` が照合済みのものだけ `MedicationTimelineItem` に投影する。
+  - files inspected:
+    `git status --short --untracked-files=all`, `ops/refactor/STATE.md`,
+    Next.js local docs `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `src/app/api/communications/inbound/route.ts`, `src/app/api/admin/webhooks/route.ts`,
+    `src/app/api/jobs/[jobType]/route.ts`, `src/app/api/jobs/route.ts`,
+    `src/server/jobs/{index,runner,webhook}.ts`, `src/server/services/outbound-webhook.ts`,
+    `src/lib/api/{response,sensitive-response}.ts`, `src/lib/auth/context.ts`,
+    and `prisma/schema/standard-clinical-integration.prisma`.
+  - files changed:
+    `src/app/api/webhooks/yrese/route.ts`,
+    `src/app/api/webhooks/yrese/route.test.ts`,
+    `src/server/services/yrese-webhook-signature.ts`,
+    `src/server/services/standard-clinical-sync-queue.ts`,
+    `src/server/services/standard-clinical-sync-queue.test.ts`,
+    `src/server/jobs/standard-clinical-sync.ts`,
+    `src/server/jobs/index.ts`,
+    `src/app/api/jobs/[jobType]/route.ts`,
+    `src/app/api/jobs/[jobType]/route.test.ts`, and
+    `src/app/api/jobs/route.ts`.
+  - bugs found:
+    Import service had no public receive boundary, no signing-secret fail-closed behavior, no raw
+    body signature verification, no size cap, and no job entry to drain `ClinicalSyncQueueItem`.
+    A queue worker that marked items succeeded without downstream projection would have hidden
+    unprocessed clinical data.
+  - bugs fixed:
+    Added a no-store yrese webhook route with `YRESE_WEBHOOK_SECRET`, `x-yrese-signature` /
+    `x-ph-os-yrese-signature`, raw-body HMAC verification, 1MiB payload cap, schema validation,
+    optional FHIR resource extraction, and minimized 202 response. Added a clinical sync queue
+    worker that claim-locks due yrese items, projects medication FHIR cache rows to
+    `MedicationTimelineItem` only when patient linkage exists, moves unresolved patient linkage to
+    `conflict_requires_review`, and records provenance for successful timeline projection.
+    Registered `yrese-clinical-sync-queue-drain` in the job API and job catalog.
+  - security risks found:
+    Webhook endpoints can become PHI ingress and replay surfaces if unsigned payloads, oversized
+    bodies, raw errors, or internal DB IDs are accepted or echoed. Queue workers can also falsely
+    mark unresolved FHIR data as processed.
+  - security risks reduced:
+    Missing/invalid signature is rejected before JSON import; missing signing secret returns 503
+    fail-closed. All route responses are sensitive no-store and never echo raw payload/FHIR content
+    or internal queue/event/cache IDs. Worker errors persist fixed codes/metadata only, never raw
+    FHIR payloads. API-key job execution without org scope does not cross-org drain clinical data.
+  - performance issues found:
+    No hot-path runtime issue, but due queue processing needed bounded scans and claim semantics.
+  - performance issues improved:
+    Worker uses bounded `take`, priority/created ordering, and updateMany claim checks to avoid
+    duplicate processing by concurrent workers.
+  - validation commands:
+    `pnpm exec prettier --write ...webhook/queue/job files`;
+    `pnpm vitest run src/app/api/webhooks/yrese/route.test.ts src/server/services/standard-clinical-sync-queue.test.ts 'src/app/api/jobs/[jobType]/route.test.ts' --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint src/app/api/webhooks/yrese/route.ts src/app/api/webhooks/yrese/route.test.ts src/server/services/yrese-webhook-signature.ts src/server/services/standard-clinical-sync-queue.ts src/server/services/standard-clinical-sync-queue.test.ts src/server/jobs/standard-clinical-sync.ts src/server/jobs/index.ts 'src/app/api/jobs/[jobType]/route.ts' 'src/app/api/jobs/[jobType]/route.test.ts' src/app/api/jobs/route.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused`;
+    `pnpm api-response-shape:check`;
+    `pnpm route-auth-wrapper:check`;
+    `pnpm db:raw-read-org-guard:check`;
+    `pnpm db:query-shape:check`;
+    `pnpm dto-direct-prisma-return:check`;
+    `pnpm exec prettier --check ...webhook/queue/job files`;
+    `git diff --check`.
+  - validation results:
+    Focused route/queue/job tests passed 39/39. ESLint passed. `typecheck` and
+    `typecheck:no-unused` passed with 8GB Node heap. API response shape, route auth wrapper,
+    raw-read org guard, query-shape guard, DTO direct Prisma return guard, Prettier check, and
+    `git diff --check` passed.
+  - remaining work:
+    No live DB migration was applied, no external yrese endpoint was called, no deploy was run, and
+    `YRESE_WEBHOOK_SECRET` is not configured in any environment by this slice. The worker currently
+    projects only medication timeline rows; patient identity verification, facility/home-care
+    enrollment workflows, retention purge, FHIR profile validation, and UI timeline integration
+    remain follow-up work.
+  - next action:
+    Commit this webhook/worker slice with explicit path staging, then continue with patient identity
+    verification and medication timeline presenter wiring.
+
 - codex: `API-CONTRACT-001DQ` pharmacy site insurance config response envelope cleanup.
   - current task:
     `PATCH /api/pharmacy-sites/:id/insurance-configs/:configId` の success DTO を明示化し、
