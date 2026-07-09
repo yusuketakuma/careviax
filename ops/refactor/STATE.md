@@ -41,6 +41,79 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001CL` patient home operations response envelope cleanup.
+  - current task:
+    `GET /api/patients/:id/home-operations` の home operations snapshot success response を
+    legacy root snapshot から `{ data: snapshot }` envelope へ移行し、patient workspace
+    reader / UI smoke fixture / detail-slices test / response-shape allowlist / Plans を同期する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `ops/refactor/STATE.md`, `tools/api-response-shape-allowlist.json`,
+    `gbrain search "API-CONTRACT-001 home-operations response shape allowlist"`,
+    `src/app/api/patients/[id]/home-operations/route.ts`,
+    `src/app/api/patients/[id]/detail-slices.test.ts`,
+    `src/app/api/__tests__/protected-get-routes.test.ts`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+    `src/app/(dashboard)/conferences/conferences-content.tsx`,
+    `src/app/(dashboard)/conferences/conferences-content.test.tsx`,
+    `tools/tests/ui-route-mocked-smoke.spec.ts`, `Plans.md`, and `docs/plans-archive.md`.
+  - files changed:
+    `Plans.md`, `docs/plans-archive.md`, `ops/refactor/STATE.md`,
+    `tools/api-response-shape-allowlist.json`, `tools/tests/ui-route-mocked-smoke.spec.ts`,
+    `src/app/api/patients/[id]/home-operations/route.ts`,
+    `src/app/api/patients/[id]/detail-slices.test.ts`, and
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`.
+  - bugs found:
+    The patient home operations route returned snapshot fields such as `generated_at`,
+    `attention_count`, `top_alerts`, and `items` at the public success response root,
+    keeping one API response-shape allowlist entry alive. The patient workspace reader
+    still consumed the legacy root snapshot shape.
+  - bugs fixed:
+    GET success now returns `success({ data: operations })`. Patient workspace unwraps
+    `payload.data`, and representative route / UI smoke fixtures now assert the current
+    envelope. Response-shape debt dropped from 92 to 91.
+  - security risks found:
+    No visit permission check, patient id validation, service-level access filtering,
+    no-store wrapper, not-found response, or sanitized internal-error response changed.
+  - security risks reduced:
+    Removed home operations snapshot fields from the response root.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None; this is response contract cleanup.
+  - UI/UX note:
+    No visible UI/UX layout or interaction change. Reader and mocked route fixture changed
+    only to match the current API envelope, so image generation was not applicable.
+  - Oracle note:
+    No Oracle consult was run for this slice per the allowlist-debt concentration directive
+    and the repeated envelope-only local pattern. Validation covered route/frontend tests,
+    contract ratchet, scoped lint/format, and full typecheck.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/home-operations/route.ts' 'src/app/api/patients/[id]/detail-slices.test.ts' 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' tools/tests/ui-route-mocked-smoke.spec.ts`;
+    `pnpm vitest run 'src/app/api/patients/[id]/detail-slices.test.ts' --reporter=dot`;
+    `pnpm vitest run 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' --reporter=dot --testTimeout=30000`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint 'src/app/api/patients/[id]/home-operations/route.ts' 'src/app/api/patients/[id]/detail-slices.test.ts' 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' tools/tests/ui-route-mocked-smoke.spec.ts`;
+    `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/home-operations/route.ts' 'src/app/api/patients/[id]/detail-slices.test.ts' 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' tools/tests/ui-route-mocked-smoke.spec.ts`;
+    `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/home-operations/route.ts' 'src/app/api/patients/[id]/detail-slices.test.ts' 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' tools/tests/ui-route-mocked-smoke.spec.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Prettier passed. Detail-slices route tests passed 1 file / 56 tests; the test run
+    emitted existing PHI audit mock warning logs, but assertions passed. Patient card
+    workspace tests passed 1 file / 94 tests. `api-response-shape:check` passed with 91
+    allowlisted violations and 0 new violations. `plans:active:check` passed. Scoped
+    ESLint, scoped Prettier check, scoped diff check, and full typecheck passed.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 91 allowlisted response-shape violations.
+    Next recommended response-shape slice is the current allowlist head:
+    `src/app/api/patients/[id]/insurance/[insuranceId]/route.ts`.
+  - next action:
+    Commit this patient home operations envelope slice with explicit owned paths only, then
+    continue allowlist debt burn-down from the next allowlist head.
+
 - codex: `API-CONTRACT-001CK` patient header summary response envelope cleanup.
   - current task:
     `GET /api/patients/:id/header-summary` の patient header summary success response を

@@ -157,9 +157,11 @@ const sliceRoutes = [
       items: [{ key: 'documents', label: '契約・同意・書類', alerts: ['未回収'] }],
     },
     expectedBody: {
-      attention_count: 1,
-      top_alerts: [{ key: 'documents', message: '未回収' }],
-      items: [{ key: 'documents' }],
+      data: {
+        attention_count: 1,
+        top_alerts: [{ key: 'documents', message: '未回収' }],
+        items: [{ key: 'documents' }],
+      },
     },
   },
   {
@@ -560,9 +562,11 @@ describe('patient detail slice routes', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      attention_count: 1,
-      top_alerts: [{ key: 'documents', message: '未回収' }],
-      items: [{ key: 'documents' }],
+      data: {
+        attention_count: 1,
+        top_alerts: [{ key: 'documents', message: '未回収' }],
+        items: [{ key: 'documents' }],
+      },
     });
   });
 

@@ -4861,8 +4861,10 @@ export function CardWorkspace({
       const res = await fetch(buildPatientApiPath(patientId, '/home-operations'), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('在宅運用管理の取得に失敗しました');
-      return res.json();
+      const payload = await readApiJson<{ data: PatientHomeOperationsSnapshot }>(res, {
+        fallbackMessage: '在宅運用管理の取得に失敗しました',
+      });
+      return payload.data;
     },
     enabled: Boolean(orgId && patient),
   });

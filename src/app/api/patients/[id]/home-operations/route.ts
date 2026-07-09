@@ -20,7 +20,7 @@ const authenticatedGET = withAuthContext(
     });
     if (!operations) return notFound('患者が見つかりません');
 
-    return success(operations);
+    return success({ data: operations });
   },
   {
     permission: 'canVisit',
