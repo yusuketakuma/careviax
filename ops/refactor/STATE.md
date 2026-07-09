@@ -41,6 +41,90 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001CF` patient share cases collection response envelope cleanup.
+  - current task:
+    `GET /api/patient-share-cases` の list success を `data + meta` envelope へ、
+    `POST /api/patient-share-cases` の create success を `{ data: shareCase }` envelope
+    へ移行し、workflow / patient card readers, fixtures, response-shape allowlist, Plans
+    を同期する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `src/app/api/patient-share-cases/route.ts`,
+    `src/app/api/patient-share-cases/route.test.ts`,
+    `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`,
+    `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+    `tools/tests/ui-route-mocked-smoke.spec.ts`, `tools/api-response-shape-allowlist.json`,
+    `Plans.md`, `docs/plans-archive.md`, and this ledger.
+  - files changed:
+    `Plans.md`, `docs/plans-archive.md`, `tools/api-response-shape-allowlist.json`,
+    `src/app/api/patient-share-cases/route.ts`,
+    `src/app/api/patient-share-cases/route.test.ts`,
+    `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`,
+    `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+    `tools/tests/ui-route-mocked-smoke.spec.ts`, and this ledger.
+  - bugs found:
+    The patient share cases collection route returned GET cursor/count metadata as root
+    `hasMore` / `nextCursor` / `total_count` / `visible_count` / `hidden_count` /
+    `status_counts` fields and POST create success as a raw share-case DTO root, keeping
+    two API response-shape allowlist violations alive. Workflow and patient card fixtures
+    still modeled the legacy response shapes.
+  - bugs fixed:
+    GET success now returns `{ data: shareCases, meta: { has_more, next_cursor, ...counts } }`.
+    POST create success now returns `{ data: shareCase }`. The pharmacy cooperation
+    workflow reader converts `meta.has_more` / `meta.next_cursor` and count metadata back
+    to the local page shape. Patient card create response typing and fixtures now use the
+    current `data` envelope. Route tests assert legacy root pagination/count/create fields
+    are not returned. Response-shape debt dropped from 99 to 97.
+  - security risks found:
+    No auth permission, org/RLS scope, safe patient link DTO projection, management plan
+    validation, patient snapshot write, compact audit metadata, no-store wrapper, or
+    sanitized error response changed.
+  - security risks reduced:
+    Removed list pagination/count metadata and create share-case fields from the response
+    root while preserving tests that patient-link snapshots, decline reasons, raw
+    `share_scope`, memo text, patient names, and addresses are not serialized.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None; this is response contract cleanup. Existing exact count gating remains limited
+    to the pharmacy cooperation workflow first page without filters/cursor.
+  - UI/UX note:
+    No visible UI/UX layout or interaction change. Reader schemas and mock response
+    fixtures changed only to match the current API envelope, so image generation was not
+    applicable.
+  - Oracle note:
+    No Oracle consult was run for this slice per the allowlist-debt concentration directive
+    and the repeated envelope-only local pattern. Validation covered route tests, workflow
+    tests, patient card tests, contract ratchet, scoped lint/format, and full typecheck.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json src/app/api/patient-share-cases/route.ts src/app/api/patient-share-cases/route.test.ts 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' tools/tests/ui-route-mocked-smoke.spec.ts`;
+    `pnpm vitest run src/app/api/patient-share-cases/route.test.ts --reporter=dot`;
+    `pnpm vitest run 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=30000`;
+    `pnpm vitest run 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' --reporter=dot --testTimeout=30000`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint src/app/api/patient-share-cases/route.ts src/app/api/patient-share-cases/route.test.ts 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' tools/tests/ui-route-mocked-smoke.spec.ts`;
+    `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json src/app/api/patient-share-cases/route.ts src/app/api/patient-share-cases/route.test.ts 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' tools/tests/ui-route-mocked-smoke.spec.ts`;
+    `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json src/app/api/patient-share-cases/route.ts src/app/api/patient-share-cases/route.test.ts 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' tools/tests/ui-route-mocked-smoke.spec.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Prettier passed. Patient share cases route test passed 1 file / 30 tests.
+    Pharmacy cooperation workflow component test passed 1 file / 31 tests. Patient card
+    workspace component test passed 1 file / 94 tests. `api-response-shape:check` passed
+    with 97 allowlisted violations and 0 new violations. `plans:active:check` passed.
+    Scoped ESLint, scoped Prettier check, scoped diff check, and full typecheck passed.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 97 allowlisted response-shape violations.
+    Next recommended response-shape slice is the current allowlist head:
+    `src/app/api/patients/[id]/archive/route.ts`.
+  - next action:
+    Commit and push this patient share cases collection envelope slice with explicit owned
+    paths only, then continue allowlist debt burn-down from the next allowlist head.
+
 - codex: `API-CONTRACT-001CE` patient share case share-scope response envelope cleanup.
   - current task:
     `PATCH /api/patient-share-cases/:id` の share-scope update success response を

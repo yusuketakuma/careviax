@@ -479,76 +479,77 @@ const patientShareCaseStatusCountsSchema = z.object({
 const patientShareCasePageSchema: z.ZodType<PatientShareCasePage> = z
   .object({
     data: z.array(patientShareCaseRowSchema),
-    hasMore: z.boolean(),
-    nextCursor: z.string().trim().min(1).optional(),
-    total_count: z.number().int().nonnegative().optional(),
-    visible_count: z.number().int().nonnegative().optional(),
-    hidden_count: z.number().int().nonnegative().optional(),
-    status_counts: patientShareCaseStatusCountsSchema.optional(),
+    meta: z.object({
+      has_more: z.boolean(),
+      next_cursor: z.string().trim().min(1).nullable(),
+      total_count: z.number().int().nonnegative().optional(),
+      visible_count: z.number().int().nonnegative().optional(),
+      hidden_count: z.number().int().nonnegative().optional(),
+      status_counts: patientShareCaseStatusCountsSchema.optional(),
+    }),
   })
   .superRefine((value, ctx) => {
-    const visibleCount = value.visible_count ?? value.data.length;
-    const totalCount = value.total_count ?? visibleCount;
-    const hiddenCount = value.hidden_count ?? Math.max(totalCount - visibleCount, 0);
-    const statusCountTotal = value.status_counts
-      ? patientShareCaseStatuses.reduce((sum, status) => sum + value.status_counts![status], 0)
+    const visibleCount = value.meta.visible_count ?? value.data.length;
+    const totalCount = value.meta.total_count ?? visibleCount;
+    const hiddenCount = value.meta.hidden_count ?? Math.max(totalCount - visibleCount, 0);
+    const statusCountTotal = value.meta.status_counts
+      ? patientShareCaseStatuses.reduce((sum, status) => sum + value.meta.status_counts![status], 0)
       : null;
 
-    if (value.hasMore && !value.nextCursor) {
+    if (value.meta.has_more && !value.meta.next_cursor) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['nextCursor'],
-        message: 'nextCursor is required when hasMore is true',
+        path: ['meta', 'next_cursor'],
+        message: 'next_cursor is required when has_more is true',
       });
     }
     if (visibleCount !== value.data.length) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['visible_count'],
+        path: ['meta', 'visible_count'],
         message: 'visible_count must match the returned data length',
       });
     }
     if (totalCount < visibleCount) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['total_count'],
+        path: ['meta', 'total_count'],
         message: 'total_count must be greater than or equal to visible_count',
       });
     }
     if (hiddenCount !== totalCount - visibleCount) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['hidden_count'],
+        path: ['meta', 'hidden_count'],
         message: 'hidden_count must equal total_count minus visible_count',
       });
     }
-    if (hiddenCount > 0 && !value.status_counts) {
+    if (hiddenCount > 0 && !value.meta.status_counts) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['status_counts'],
+        path: ['meta', 'status_counts'],
         message: 'status_counts is required when hidden rows exist',
       });
     }
     if (statusCountTotal !== null && statusCountTotal !== totalCount) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['status_counts'],
+        path: ['meta', 'status_counts'],
         message: 'status_counts must sum to total_count',
       });
     }
   })
-  .transform(
-    ({ data, hasMore, nextCursor, total_count, visible_count, hidden_count, status_counts }) => ({
-      data,
-      hasMore,
-      ...(nextCursor !== undefined ? { nextCursor } : {}),
-      total_count: total_count ?? visible_count ?? data.length,
-      visible_count: visible_count ?? data.length,
-      hidden_count:
-        hidden_count ?? Math.max((total_count ?? visible_count ?? data.length) - data.length, 0),
-      status_counts: status_counts ?? buildVisiblePatientShareCaseStatusCounts(data),
-    }),
-  );
+  .transform(({ data, meta }) => ({
+    data,
+    hasMore: meta.has_more,
+    ...(meta.next_cursor ? { nextCursor: meta.next_cursor } : {}),
+    total_count: meta.total_count ?? meta.visible_count ?? data.length,
+    visible_count: meta.visible_count ?? data.length,
+    hidden_count:
+      meta.hidden_count ??
+      Math.max((meta.total_count ?? meta.visible_count ?? data.length) - data.length, 0),
+    status_counts: meta.status_counts ?? buildVisiblePatientShareCaseStatusCounts(data),
+  }));
 const pharmacyVisitRequestPageSchema = cursorPaginatedPageSchema(pharmacyVisitRequestRowSchema);
 const partnerVisitRecordPageSchema = cursorPaginatedPageSchema(partnerVisitRecordRowSchema);
 const partnerVisitRecordResponseSchema = z.object({

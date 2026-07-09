@@ -144,10 +144,13 @@ describe('PharmacyCooperationWorkflowContent', () => {
                   },
                 },
               ],
-              hasMore: false,
-              total_count: 4,
-              visible_count: 4,
-              hidden_count: 0,
+              meta: {
+                has_more: false,
+                next_cursor: null,
+                total_count: 4,
+                visible_count: 4,
+                hidden_count: 0,
+              },
             }),
             { status: 200 },
           );
@@ -697,10 +700,13 @@ describe('PharmacyCooperationWorkflowContent', () => {
         return new Response(
           JSON.stringify({
             data: [{ id: 'share_case_1', partnership: null }],
-            hasMore: false,
-            total_count: 1,
-            visible_count: 1,
-            hidden_count: 0,
+            meta: {
+              has_more: false,
+              next_cursor: null,
+              total_count: 1,
+              visible_count: 1,
+              hidden_count: 0,
+            },
           }),
           { status: 200 },
         );
@@ -975,19 +981,22 @@ describe('PharmacyCooperationWorkflowContent', () => {
         return new Response(
           JSON.stringify({
             data: [],
-            hasMore: false,
-            total_count: 0,
-            visible_count: 0,
-            hidden_count: 0,
-            status_counts: {
-              draft: 0,
-              consent_pending: 0,
-              partner_confirmation_pending: 0,
-              active: 0,
-              suspended: 0,
-              revoked: 0,
-              ended: 0,
-              declined: 0,
+            meta: {
+              has_more: false,
+              next_cursor: null,
+              total_count: 0,
+              visible_count: 0,
+              hidden_count: 0,
+              status_counts: {
+                draft: 0,
+                consent_pending: 0,
+                partner_confirmation_pending: 0,
+                active: 0,
+                suspended: 0,
+                revoked: 0,
+                ended: 0,
+                declined: 0,
+              },
             },
           }),
           { status: 200 },
@@ -1114,20 +1123,22 @@ describe('PharmacyCooperationWorkflowContent', () => {
                 patient_link: null,
               },
             ],
-            hasMore: true,
-            nextCursor: 'share_case_1',
-            total_count: 7,
-            visible_count: 1,
-            hidden_count: 6,
-            status_counts: {
-              draft: 0,
-              consent_pending: 6,
-              partner_confirmation_pending: 0,
-              active: 1,
-              suspended: 0,
-              revoked: 0,
-              ended: 0,
-              declined: 0,
+            meta: {
+              has_more: true,
+              next_cursor: 'share_case_1',
+              total_count: 7,
+              visible_count: 1,
+              hidden_count: 6,
+              status_counts: {
+                draft: 0,
+                consent_pending: 6,
+                partner_confirmation_pending: 0,
+                active: 1,
+                suspended: 0,
+                revoked: 0,
+                ended: 0,
+                declined: 0,
+              },
             },
           }),
           { status: 200 },
@@ -1144,7 +1155,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
     expect(within(pendingShareCard as HTMLElement).getByText('6')).toBeTruthy();
   });
 
-  it('keeps rendering legacy share-case cursor pages that do not include count metadata', async () => {
+  it('keeps rendering share-case cursor pages that do not include count metadata', async () => {
     const originalFetch = vi.mocked(fetch).getMockImplementation();
     expect(originalFetch).toBeTruthy();
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -1171,7 +1182,10 @@ describe('PharmacyCooperationWorkflowContent', () => {
                 patient_link: null,
               },
             ],
-            hasMore: false,
+            meta: {
+              has_more: false,
+              next_cursor: null,
+            },
           }),
           { status: 200 },
         );
@@ -1212,11 +1226,13 @@ describe('PharmacyCooperationWorkflowContent', () => {
                 patient_link: null,
               },
             ],
-            hasMore: true,
-            nextCursor: 'share_case_bad_counts',
-            total_count: 7,
-            visible_count: 1,
-            hidden_count: 0,
+            meta: {
+              has_more: true,
+              next_cursor: 'share_case_bad_counts',
+              total_count: 7,
+              visible_count: 1,
+              hidden_count: 0,
+            },
           }),
           { status: 200 },
         );

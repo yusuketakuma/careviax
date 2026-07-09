@@ -2409,7 +2409,7 @@ describe('CardWorkspace', () => {
       if (url === '/api/patient-share-cases') {
         return {
           ok: true,
-          json: async () => ({ id: 'share_case_created', status: 'draft' }),
+          json: async () => ({ data: { id: 'share_case_created', status: 'draft' } }),
         };
       }
       return {

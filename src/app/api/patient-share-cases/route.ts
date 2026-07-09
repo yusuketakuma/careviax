@@ -342,22 +342,22 @@ export const GET = withAuthContext(
       return { page, countSummary };
     });
 
-    const payload = {
-      ...result.page,
-      data: result.page.data.map(toSafePatientShareCase),
-    };
     return withSensitiveNoStore(
-      success(
-        result.countSummary
-          ? {
-              ...payload,
-              total_count: result.countSummary.totalCount,
-              visible_count: result.page.data.length,
-              hidden_count: result.countSummary.hiddenCount,
-              status_counts: result.countSummary.statusCounts,
-            }
-          : payload,
-      ),
+      success({
+        data: result.page.data.map(toSafePatientShareCase),
+        meta: {
+          has_more: result.page.hasMore,
+          next_cursor: result.page.nextCursor ?? null,
+          ...(result.countSummary
+            ? {
+                total_count: result.countSummary.totalCount,
+                visible_count: result.page.data.length,
+                hidden_count: result.countSummary.hiddenCount,
+                status_counts: result.countSummary.statusCounts,
+              }
+            : {}),
+        },
+      }),
     );
   },
   {
@@ -553,7 +553,7 @@ export const POST = withAuthContext(
     if ('response' in result) {
       return withSensitiveNoStore(result.response ?? validationError('入力値が不正です'));
     }
-    return withSensitiveNoStore(success(toSafePatientShareCase(result.shareCase), 201));
+    return withSensitiveNoStore(success({ data: toSafePatientShareCase(result.shareCase) }, 201));
   },
   {
     permission: 'canManagePatientSharing',

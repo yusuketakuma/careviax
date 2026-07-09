@@ -1441,12 +1441,14 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
       state.shareCaseStatus = 'consent_pending';
       await fulfillJson(
         route,
-        buildPharmacyCoopShareCase({
-          created: state.shareCaseCreated,
-          status: state.shareCaseStatus,
-          baseApproved: state.baseApproved,
-          partnerAccepted: state.partnerAccepted,
-        }),
+        {
+          data: buildPharmacyCoopShareCase({
+            created: state.shareCaseCreated,
+            status: state.shareCaseStatus,
+            baseApproved: state.baseApproved,
+            partnerAccepted: state.partnerAccepted,
+          }),
+        },
         201,
       );
       return;
@@ -1458,7 +1460,10 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
       baseApproved: state.baseApproved,
       partnerAccepted: state.partnerAccepted,
     });
-    await fulfillJson(route, { data: shareCase ? [shareCase] : [], hasMore: false });
+    await fulfillJson(route, {
+      data: shareCase ? [shareCase] : [],
+      meta: { has_more: false, next_cursor: null },
+    });
   });
 
   await page.route(

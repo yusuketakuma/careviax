@@ -253,15 +253,27 @@ describe('/api/patient-share-cases', () => {
     const body = await response.json();
     expect(body).toEqual(
       expect.objectContaining({
-        total_count: 1,
-        visible_count: 1,
-        hidden_count: 0,
-        status_counts: expect.objectContaining({
-          consent_pending: 1,
-          active: 0,
+        data: expect.any(Array),
+        meta: expect.objectContaining({
+          has_more: false,
+          next_cursor: null,
+          total_count: 1,
+          visible_count: 1,
+          hidden_count: 0,
+          status_counts: expect.objectContaining({
+            consent_pending: 1,
+            active: 0,
+          }),
         }),
       }),
     );
+    expect(body.data).toHaveLength(1);
+    expect(body).not.toHaveProperty('hasMore');
+    expect(body).not.toHaveProperty('nextCursor');
+    expect(body).not.toHaveProperty('total_count');
+    expect(body).not.toHaveProperty('visible_count');
+    expect(body).not.toHaveProperty('hidden_count');
+    expect(body).not.toHaveProperty('status_counts');
     const bodyText = JSON.stringify(body);
     expect(bodyText).not.toContain('base_patient_snapshot');
     expect(bodyText).not.toContain('partner_patient_snapshot');
@@ -400,20 +412,28 @@ describe('/api/patient-share-cases', () => {
     const body = await response.json();
     expect(body).toEqual(
       expect.objectContaining({
-        hasMore: true,
-        nextCursor: 'share_case_2',
-        total_count: 12,
-        visible_count: 2,
-        hidden_count: 10,
-        status_counts: expect.objectContaining({
-          active: 5,
-          consent_pending: 4,
-          partner_confirmation_pending: 3,
-          suspended: 0,
+        meta: expect.objectContaining({
+          has_more: true,
+          next_cursor: 'share_case_2',
+          total_count: 12,
+          visible_count: 2,
+          hidden_count: 10,
+          status_counts: expect.objectContaining({
+            active: 5,
+            consent_pending: 4,
+            partner_confirmation_pending: 3,
+            suspended: 0,
+          }),
         }),
       }),
     );
     expect(body.data).toHaveLength(2);
+    expect(body).not.toHaveProperty('hasMore');
+    expect(body).not.toHaveProperty('nextCursor');
+    expect(body).not.toHaveProperty('total_count');
+    expect(body).not.toHaveProperty('visible_count');
+    expect(body).not.toHaveProperty('hidden_count');
+    expect(body).not.toHaveProperty('status_counts');
     const bodyText = JSON.stringify(body);
     expect(bodyText).not.toContain('share_case_hidden_cursor_probe');
     expect(bodyText).not.toContain('must not be serialized');
@@ -524,13 +544,20 @@ describe('/api/patient-share-cases', () => {
     const body = await response.json();
     expect(body).toEqual(
       expect.objectContaining({
-        hasMore: true,
-        nextCursor: 'share_case_2',
+        meta: expect.objectContaining({
+          has_more: true,
+          next_cursor: 'share_case_2',
+        }),
       }),
     );
     expect(body).not.toHaveProperty('total_count');
     expect(body).not.toHaveProperty('visible_count');
     expect(body).not.toHaveProperty('hidden_count');
+    expect(body).not.toHaveProperty('hasMore');
+    expect(body).not.toHaveProperty('nextCursor');
+    expect(body.meta).not.toHaveProperty('total_count');
+    expect(body.meta).not.toHaveProperty('visible_count');
+    expect(body.meta).not.toHaveProperty('hidden_count');
     expect(body.data).toHaveLength(2);
     const bodyText = JSON.stringify(body);
     expect(bodyText).not.toContain('share_case_hidden_cursor_probe');
@@ -610,13 +637,20 @@ describe('/api/patient-share-cases', () => {
     const body = await response.json();
     expect(body).toEqual(
       expect.objectContaining({
-        hasMore: true,
-        nextCursor: 'share_case_page_2',
+        meta: expect.objectContaining({
+          has_more: true,
+          next_cursor: 'share_case_page_2',
+        }),
       }),
     );
     expect(body).not.toHaveProperty('total_count');
     expect(body).not.toHaveProperty('visible_count');
     expect(body).not.toHaveProperty('hidden_count');
+    expect(body).not.toHaveProperty('hasMore');
+    expect(body).not.toHaveProperty('nextCursor');
+    expect(body.meta).not.toHaveProperty('total_count');
+    expect(body.meta).not.toHaveProperty('visible_count');
+    expect(body.meta).not.toHaveProperty('hidden_count');
     const auditChanges = createAuditLogEntryMock.mock.calls[0]?.[2]?.changes;
     expect(auditChanges).toEqual(
       expect.objectContaining({
@@ -866,7 +900,17 @@ describe('/api/patient-share-cases', () => {
         },
       }),
     );
-    const bodyText = JSON.stringify(await response.json());
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: {
+        id: 'share_case_1',
+        status: 'consent_pending',
+      },
+    });
+    expect(body).not.toHaveProperty('id');
+    expect(body).not.toHaveProperty('status');
+    expect(body).not.toHaveProperty('scope_keys');
+    const bodyText = JSON.stringify(body);
     expect(bodyText).not.toContain('base_patient_snapshot');
     expect(bodyText).not.toContain('partner_patient_snapshot');
     expect(bodyText).not.toContain('share_scope');

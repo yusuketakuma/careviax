@@ -399,8 +399,10 @@ type PatientShareCaseCreateInput = {
 };
 
 type PatientShareCaseCreateResponse = {
-  id: string;
-  status: string;
+  data: {
+    id: string;
+    status: string;
+  };
 };
 
 type ManagementPlanOption = {
