@@ -1,8 +1,8 @@
 'use client';
 
-import * as Sentry from '@sentry/nextjs';
 import { useEffect } from 'react';
 import { ErrorState } from '@/components/ui/error-state';
+import { clientLog } from '@/lib/utils/client-log';
 
 export default function GlobalError({
   error,
@@ -12,11 +12,8 @@ export default function GlobalError({
   unstable_retry: () => void;
 }) {
   useEffect(() => {
-    console.error('[GlobalError]', error);
-    Sentry.captureException(error, {
-      tags: { boundary: 'GlobalError' },
-      extra: { digest: error.digest },
-    });
+    // Client telemetry keeps only coded boundary context; raw Error can carry PHI.
+    clientLog.error('global_error_boundary', error, { code: error.digest });
   }, [error]);
 
   return (

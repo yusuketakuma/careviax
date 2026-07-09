@@ -76,6 +76,9 @@ jobs:
       - name: Frontend contract check
         run: pnpm frontend-contract:check
 
+      - name: Client PHI log check
+        run: pnpm client-phi-log:check
+
       - name: DTO direct Prisma return check
         run: pnpm dto-direct-prisma-return:check
 

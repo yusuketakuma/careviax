@@ -1,8 +1,8 @@
 'use client';
 
-import * as Sentry from '@sentry/nextjs';
 import { useEffect } from 'react';
 import { ErrorState } from '@/components/ui/error-state';
+import { clientLog } from '@/lib/utils/client-log';
 
 export function createRouteErrorBoundary(tag: string) {
   return function RouteError({
@@ -13,11 +13,8 @@ export function createRouteErrorBoundary(tag: string) {
     reset: () => void;
   }) {
     useEffect(() => {
-      console.error(`[${tag}]`, error);
-      Sentry.captureException(error, {
-        tags: { boundary: tag },
-        extra: { digest: error.digest },
-      });
+      // Client telemetry keeps only coded boundary context; raw Error can carry PHI.
+      clientLog.error('route_error_boundary', error, { code: error.digest, route: tag });
     }, [error]);
 
     return (

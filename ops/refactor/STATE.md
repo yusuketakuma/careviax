@@ -41,6 +41,97 @@
 
 ## 直近の作業
 
+- codex: `FE-PHI-SAFE-CLIENT-LOG-001` console/raw-error minimization and CI guard.
+  - current task:
+    `Plans.md` v9 の高優先 security/frontend 残スコープから、client observability の raw Error /
+    componentStack console leakage を削減し、local-only にならない guard を追加する。併せて未pushの
+    `RLS-RAW-READ-GUARD-001` と `PERF-DB-SLO-TAKE-LINT-001` を Plans 実態へ同期する。
+  - files inspected:
+    `git status --short --untracked-files=all`, `ops/refactor/STATE.md`, `Plans.md`,
+    `package.json`, `.github/workflows/ci.yml`,
+    `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/error.md`,
+    `src/instrumentation-client.ts`, `src/lib/observability/sentry-redaction.ts`,
+    `src/lib/utils/logger.ts`, `src/app/global-error.tsx`,
+    `src/components/ui/route-error-boundary.tsx`, `src/components/ui/error-boundary.tsx`,
+    `src/app/(dashboard)/notifications/notifications-content.tsx`,
+    `src/components/providers/root-provider.tsx`, client console/Sentry search results, and
+    `gbrain search "CareViaX Plans.md 未実装 task GateResult FailurePattern"`.
+  - files changed:
+    `.github/workflows/ci.yml`, `Plans.md`, `package.json`,
+    `src/app/(dashboard)/notifications/notifications-content.tsx`, `src/app/global-error.tsx`,
+    `src/components/providers/root-provider.tsx`, `src/components/ui/error-boundary.tsx`,
+    `src/components/ui/route-error-boundary.tsx`, `src/lib/utils/client-log.ts`,
+    `src/lib/utils/client-log.test.ts`, `tools/client-phi-log-allowlist.json`,
+    `tools/scripts/check-client-phi-log.mjs`, `tools/scripts/check-client-phi-log.test.ts`,
+    and this ledger.
+  - coordination:
+    Used bounded `privacy_compliance_reviewer` subagent for read-only review of the FE-PHI slice.
+    The reviewer flagged raw client `Sentry.captureException(error)`, guard false negatives, weak
+    context constraints, and missing CI enforcement; the patch was updated before landing.
+  - implementation:
+    Added `clientLog` as a PHI-safe client logging helper that emits coded events via the shared
+    safe logger path and redacts obvious email/phone/dynamic-route identifiers from context.
+    Replaced raw Error console logging in notifications pending-sync refresh, offline visit-brief
+    cache prune bootstrap, React component error boundary, global error boundary, and route error
+    boundary. Removed raw client `Sentry.captureException(error)` from global/route boundaries so
+    browser telemetry uses coded `captureMessage` through `clientLog` instead of sending exception
+    messages/stacks. Added `client-phi-log:check` and CI enforcement. The guard now scans multiline
+    `console.*` calls and rejects bare error args, `error.message`, raw stacks/componentStack,
+    `String(error)`, template interpolation, and type-asserted raw errors, with stale allowlist
+    enforcement. `Plans.md` now moves the already-committed RLS raw-read guard and read-SLO drift
+    guard into Done/frozen, updates counts/recommended order, and marks `FE-PHI-SAFE-CLIENT-LOG-001`
+    Partial with remaining toast/offline retry/deeper telemetry scope.
+  - bugs found:
+    Client error boundaries still sent raw client exceptions to Sentry after console minimization,
+    and the first version of the static guard missed `console.warn(error)`, multiline calls,
+    `error.message`, `String(error)`, template interpolation, and type assertions. `Plans.md`
+    still listed two already-implemented guard tasks as active queue rows.
+  - bugs fixed:
+    Raw Error/componentStack console output is removed from the touched client paths; raw client
+    exception capture is removed from the global/route boundaries; the static guard catches the
+    reviewed false-negative forms; `Plans.md` no longer re-queues completed RLS/SLO guard work.
+  - security risks found:
+    Error messages/stacks can carry PHI/PII/clinical content from dashboard screens into browser
+    console, Sentry exception payloads, screenshots, support sessions, or copied diagnostics.
+  - security risks reduced:
+    The touched client boundary and bootstrap paths now log only coded events/error type/digest-like
+    context, with CI-backed guard coverage for raw console error regressions.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None.
+  - validation commands:
+    `pnpm exec prettier --write ...`;
+    `pnpm vitest run src/lib/utils/client-log.test.ts tools/scripts/check-client-phi-log.test.ts --reporter=dot`;
+    `pnpm client-phi-log:check`;
+    `pnpm exec eslint src/lib/utils/client-log.ts src/lib/utils/client-log.test.ts tools/scripts/check-client-phi-log.mjs tools/scripts/check-client-phi-log.test.ts 'src/app/(dashboard)/notifications/notifications-content.tsx' src/app/global-error.tsx src/components/providers/root-provider.tsx src/components/ui/error-boundary.tsx src/components/ui/route-error-boundary.tsx`;
+    `pnpm plans:active:check`;
+    `pnpm frontend-contract:check`;
+    `pnpm exec prettier --check ...`;
+    `git diff --check -- ...`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm db:read-slo:check`;
+    `pnpm db:raw-read-org-guard:check`;
+    `pnpm exec vitest run tools/scripts/check-raw-read-org-guard.test.ts tools/scripts/check-read-path-slo.test.ts tools/scripts/check-read-path-slo-drift.test.ts --reporter=dot`;
+    `pnpm lint`.
+  - validation results:
+    Focused clientLog/guard tests passed (2 files / 23 tests). `client-phi-log:check` passed with
+    1 allowlisted server-side raw-error console call and 0 new violations. Targeted ESLint passed.
+    `plans:active:check`, `frontend-contract:check`, Prettier check, scoped `git diff --check`, and
+    full typecheck passed. `db:read-slo:check` passed with 4 known take-drift occurrences and 0 new
+    drift. `db:raw-read-org-guard:check` passed with 117 allowlisted violations and 0 new
+    violations. Raw-read/read-SLO fixture tests passed (3 files / 31 tests). Full `pnpm lint`
+    exited 0 with pre-existing warnings only in `src/lib/platform/break-glass.test.ts` for `_tx`
+    and `_input`.
+  - remaining work:
+    `FE-PHI-SAFE-CLIENT-LOG-001` remains Partial: toast/notification display surfaces, any deeper
+    offline retry diagnostics, and non-console telemetry rules should still be swept before marking
+    the whole client observability track Done. The next active implementation priority in
+    `Plans.md` is `STOCK-001-VISIT-UI` unless user redirects.
+  - next action:
+    Commit this scoped FE-PHI/Plans/CI slice, then push the branch with the two existing guard
+    commits and this commit.
+
 - codex: `SEC-EVENT-AUDIT-RLS-DROP-001` migration-free security event audit persistence.
   - current task:
     Claude からの agmsg request を `codex` として引き取り、`logSecurityEvent()` の

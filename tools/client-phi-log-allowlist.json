@@ -1,0 +1,10 @@
+{
+  "entries": [
+    {
+      "path": "src/server/services/backup-monitor.ts",
+      "needle": "console.error(message, err)",
+      "reason": "Server-side backup monitor writes to CloudWatch (not the browser console); out of the client PHI observability scope. Message is a coded operational string.",
+      "expectedCount": 1
+    }
+  ]
+}

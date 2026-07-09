@@ -25,6 +25,7 @@ import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { NOTIFICATIONS_API_PATH, buildNotificationsApiPath } from '@/lib/notifications/api-paths';
 import { normalizeNotificationStreamPayload } from '@/lib/notifications/stream-payload';
 import { messageFromError } from '@/lib/utils/error-message';
+import { clientLog } from '@/lib/utils/client-log';
 import type { NotificationCategoryFilter } from './notifications-query-state';
 
 /**
@@ -129,7 +130,7 @@ export function NotificationsContent({ initialCategory = 'all' }: NotificationsC
   useEffect(() => {
     if (typeof window === 'undefined') return;
     void refreshSyncCount().catch((error) => {
-      console.warn('[notifications] pending sync count refresh failed', error);
+      clientLog.warn('notifications.pending_sync_refresh_failed', error);
     });
   }, [refreshSyncCount]);
 

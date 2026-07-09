@@ -1,8 +1,9 @@
 'use client';
 
-import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { Component, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { AlertTriangle } from 'lucide-react';
+import { clientLog } from '@/lib/utils/client-log';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -24,9 +25,9 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error, info: ErrorInfo) {
-    // In production this would log to CloudWatch / Sentry
-    console.error('[ErrorBoundary]', error, info.componentStack);
+  componentDidCatch(error: Error) {
+    // Console output keeps only a coded reason; raw Error/componentStack can carry PHI.
+    clientLog.error('react_error_boundary', error);
   }
 
   handleRetry = () => {
@@ -40,10 +41,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       return (
         <div className="flex min-h-[400px] flex-col items-center justify-center gap-6 p-8 text-center">
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10">
-            <AlertTriangle
-              className="h-8 w-8 text-destructive"
-              aria-hidden="true"
-            />
+            <AlertTriangle className="h-8 w-8 text-destructive" aria-hidden="true" />
           </div>
           <div className="space-y-2">
             <h2 className="text-lg font-semibold text-foreground">
