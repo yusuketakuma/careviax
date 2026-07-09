@@ -46,6 +46,8 @@
     `GET /api/patients/:id/overview` の patient overview success response を legacy
     raw patient overview root から `{ data: overview }` envelope へ移行し、dashboard
     readers、route tests、response-shape allowlist、Plans / archive を同期する。
+  - commit:
+    `90812c443 fix(api): envelope patient overview response`
   - files inspected:
     `git status --short --untracked-files=all`,
     `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
@@ -129,8 +131,8 @@
     Next recommended response-shape slice is the current allowlist head:
     `src/app/api/patients/[id]/prescriptions/route.ts`.
   - next action:
-    Commit this patient overview envelope slice with explicit owned paths only, then
-    continue allowlist debt burn-down from the next allowlist head.
+    Continue allowlist debt burn-down from the next allowlist head:
+    `src/app/api/patients/[id]/prescriptions/route.ts`.
 
 - codex: `API-CONTRACT-001CO` patient labs collection create response envelope cleanup.
   - current task:
