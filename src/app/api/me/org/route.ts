@@ -8,5 +8,5 @@ export const GET = withAuthContext(async (_req, ctx) => {
     select: { name: true },
   });
 
-  return success({ name: org?.name ?? '' });
+  return success({ data: { name: org?.name ?? '' } });
 });

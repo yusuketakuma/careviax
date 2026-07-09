@@ -112,7 +112,8 @@ export default function PatientVisitRecordsPrintPage() {
         cache: 'no-store',
       });
       if (!response.ok) throw new Error('薬局情報を取得できませんでした');
-      return response.json();
+      const payload = (await response.json()) as { data: { name: string } };
+      return payload.data;
     },
     staleTime: 60_000,
   });

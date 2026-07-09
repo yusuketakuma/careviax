@@ -48,7 +48,7 @@ describe('/api/me/org GET', () => {
       where: { id: 'org_1' },
       select: { name: true },
     });
-    await expect(response.json()).resolves.toMatchObject({ name: 'CareViaX薬局' });
+    await expect(response.json()).resolves.toEqual({ data: { name: 'CareViaX薬局' } });
   });
 
   it('returns an empty name when the authenticated organization is missing', async () => {
@@ -57,6 +57,6 @@ describe('/api/me/org GET', () => {
     const response = await GET(createRequest(), emptyRouteContext);
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({ name: '' });
+    await expect(response.json()).resolves.toEqual({ data: { name: '' } });
   });
 });

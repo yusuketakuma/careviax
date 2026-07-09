@@ -160,10 +160,16 @@ describe('PatientVisitRecordsPrintPage', () => {
       },
     );
 
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ data: [] }),
-    } as unknown as Response);
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ data: { name: '青葉薬局' } }),
+      } as unknown as Response)
+      .mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ data: [] }),
+      } as unknown as Response);
     vi.stubGlobal('fetch', fetchMock);
 
     try {
