@@ -52,6 +52,55 @@
 
 ## 直近の作業
 
+- codex: visit brief feedback minimal success-envelope migration.
+  - commit:
+    `aeca5db1f fix(api): envelope visit brief feedback success`.
+  - current task:
+    P0 `API-CONTRACT-001DT` として、`POST /api/visit-brief-feedback` の 201 success を
+    strict `{ data: { ok: true } }` envelope へ移行し、allowlist debt を 45 から 44 へ削減する。
+  - files inspected:
+    `Plans.md`, `docs/plans-archive.md`, `src/app/api/visit-brief-feedback/route.ts` and tests,
+    `src/components/visit-brief/visit-brief-card.tsx` and tests,
+    `src/app/(dashboard)/visits/[id]/brief/visit-brief-review-content.tsx` and tests,
+    patient-access/RLS/audit/no-store helpers, rate-limit registration, route auth allowlist,
+    and `tools/api-response-shape-allowlist.json`.
+  - files changed:
+    `Plans.md`, `docs/plans-archive.md`, `src/app/api/visit-brief-feedback/route.ts`,
+    `src/app/api/visit-brief-feedback/route.test.ts`, `tools/api-response-shape-allowlist.json`,
+    and this state file.
+  - bugs found / fixed:
+    The success response still used the legacy root `{ ok: true }`. It now returns exactly
+    `{ data: { ok: true } }` with status 201. Both existing production readers parse success through
+    `readApiJson<unknown>` but never use the body as state, and one success fixture already used the target
+    envelope, so no production client compatibility branch or dual shape was added. A new route test proves
+    authentication denial occurs before malformed-body parsing, RLS, patient lookup, or audit write.
+  - security/privacy:
+    Exact helpful and corrected-summary success assertions prove the response does not expose patient/generation
+    IDs, comments, corrected clinical text, provider/model metadata, or audit/mutation details. Existing
+    `canVisit`, patient access, org RLS request context, access-before-audit, helpful/needs-review audit actions,
+    awaited fail-closed audit write, scope-miss no-audit 404, sanitized 500, and sensitive no-store headers remain
+    unchanged. Error bodies and statuses are unchanged.
+  - performance:
+    Response serialization only; no query, transaction, write, request, retry, dependency, or frontend render changed.
+  - plan review:
+    Two independent read-only reviewers compared this route with pharmacy visit requests and billing preview, then
+    returned Conditional GO at confidence 0.97 and 0.98 because this removes one P0 violation without changing a
+    reader, database path, or audit behavior. Oracle was not used, per current user instruction. The final verifier
+    returned PASS at confidence 10/10. Its optional `review` skill workflow could not run because the read-only
+    subagent lacked the required question tool and fix-first authority, so it used scoped diff/security/gate review.
+  - validation:
+    Focused route and two reader suites passed 3 files / 29 tests. `pnpm api-response-shape:check` passed at
+    44 allowlisted / 0 new; `pnpm plans:active:check`, `pnpm route-auth-wrapper:check`,
+    `pnpm db:raw-read-org-guard:check`, `pnpm client-phi-log:check`,
+    `pnpm dto-direct-prisma-return:check`, exact-path ESLint/Prettier, and `git diff --check` passed.
+    Full `tsc` and `pnpm typecheck:no-unused` were rerun serially and still stop only at pre-existing user-owned
+    dirty `src/app/(dashboard)/communications/inbound/inbound-content.tsx:2285`
+    (`string | null` is not assignable to `string | undefined`); the verifier found no owned-diff regression.
+  - remaining / next action:
+    Continue the P0 response-envelope burn-down from 44 after a fresh route-family plan review. Full TypeScript green
+    remains externally blocked by the unrelated inbound UI edit. No deploy, migration, production mutation, external
+    send, destructive operation, or push ran.
+
 - codex: presence envelope parity and false-empty repair.
   - commit:
     `c8eaa56f3 fix(api): align presence response envelopes`.
