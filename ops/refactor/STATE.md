@@ -536,6 +536,8 @@
     yrese/FHIR sends still require an explicit target environment and current authorization.
 
 - codex: `FHIR-READY-RETENTION-001` raw FHIR vault retention purge job.
+  - commit:
+    `4a4ebe264 feat(integration): add FHIR raw vault retention purge`
   - current task:
     `ClinicalFhirRawResourceVault` の期限切れ raw FHIR payload を、legal hold と access policy を
     尊重しながら org scoped に削除する retention purge service / job / admin job API entry を追加する。
@@ -604,9 +606,9 @@
     and no environment secret was changed. The purge job is registered but no production scheduler
     or environment target has been configured by this slice.
   - next action:
-    Commit this retention purge slice with explicit path staging, then record the commit hash in
-    this STATE ledger. Continue toward review UI / conflict handling or environment migration
-    proof only when the required target/authorization is explicit.
+    Continue toward review UI / conflict handling or environment migration proof only when the
+    required target/authorization is explicit. Keep migration apply, deploy, external yrese/FHIR
+    send, and secret changes unexecuted until the current target environment is explicit.
 
 - codex: `API-CONTRACT-001DQ` pharmacy site insurance config response envelope cleanup.
   - current task:
