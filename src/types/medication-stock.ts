@@ -82,3 +82,116 @@ export type PatientMedicationStockSummaryResponse = {
     partial_failures: [];
   };
 };
+
+export type VisitMedicationStockObservationKindDto =
+  | 'observed_absolute'
+  | 'usage_delta'
+  | 'usage_frequency'
+  | 'not_observed'
+  | 'refill_request';
+
+export type VisitMedicationStockObservationSourcePreset =
+  | 'pharmacist_counted'
+  | 'patient_reported'
+  | 'caregiver_reported'
+  | 'facility_staff_reported'
+  | 'other_institution_record';
+
+export type VisitMedicationStockUnobservedReasonCode =
+  | 'patient_refused'
+  | 'caregiver_unavailable'
+  | 'storage_inaccessible'
+  | 'medication_not_present'
+  | 'identity_uncertain'
+  | 'visit_time_limited'
+  | 'safety_priority'
+  | 'other_institution_unconfirmed'
+  | 'unknown';
+
+export type VisitMedicationStockObservationDraft = {
+  client_observation_id: string;
+  stock_item_id: string;
+  unit: string;
+  kind: VisitMedicationStockObservationKindDto;
+  quantity_input: string;
+  used_quantity_input: string;
+  usage_quantity_input: string;
+  usage_period_days_input: string;
+  last_used_date: string;
+  unobserved_reason_code: VisitMedicationStockUnobservedReasonCode | '';
+  source_preset: VisitMedicationStockObservationSourcePreset | '';
+};
+
+export type VisitMedicationStockObservationDraftField =
+  | 'client_observation_id'
+  | 'stock_item_id'
+  | 'unit'
+  | 'kind'
+  | 'quantity_input'
+  | 'used_quantity_input'
+  | 'usage_quantity_input'
+  | 'usage_period_days_input'
+  | 'last_used_date'
+  | 'unobserved_reason_code'
+  | 'source_preset';
+
+export type VisitMedicationStockObservationDraftErrors = Record<
+  string,
+  Partial<Record<VisitMedicationStockObservationDraftField, string>>
+>;
+
+export type VisitMedicationStockObservationRequest = {
+  observed_at: string;
+  observations: Array<{
+    client_observation_id: string;
+    stock_item_id: string;
+    kind: VisitMedicationStockObservationKindDto;
+    unit: string;
+    quantity?: number;
+    used_quantity?: number;
+    usage_quantity?: number;
+    usage_period_days?: number;
+    last_used_at?: string;
+    last_used_precision?: 'date_only';
+    unobserved_reason_code?: VisitMedicationStockUnobservedReasonCode;
+    source_confidence: 'structured_exact' | 'structured_partial' | 'manual';
+    source_context_code:
+      | 'pharmacist_direct_observation'
+      | 'patient_report'
+      | 'caregiver_report'
+      | 'facility_staff_report'
+      | 'record_review';
+    confirmation_level:
+      | 'counted_by_pharmacist'
+      | 'patient_reported'
+      | 'caregiver_reported'
+      | 'other_professional_reported'
+      | 'other_institution_record';
+  }>;
+};
+
+export type VisitMedicationStockObservationResponse = {
+  data: {
+    visit_record_id: string;
+    observations: Array<{
+      client_observation_id: string;
+      stock_item_id: string;
+      stock_event_id: string;
+      observation_context_id: string;
+      event_type: 'visit_observation';
+      observation_kind: VisitMedicationStockObservationKindDto;
+      quantity_kind: 'delta' | 'observed_absolute' | 'usage_rate' | 'no_quantity';
+      snapshot: {
+        current_quantity: number | null;
+        stock_risk_level: MedicationStockRiskLevelDto;
+        calculated_at: string;
+      };
+      idempotent_replay: boolean;
+    }>;
+  };
+  meta: {
+    generated_at: string;
+    applied_count: number;
+    replay_count: number;
+  };
+};

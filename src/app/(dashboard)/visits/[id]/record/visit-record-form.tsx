@@ -37,6 +37,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useSpeechRecognition } from '@/lib/hooks/use-speech-recognition';
 import { useSoapDraft } from '@/lib/hooks/use-soap-draft';
 import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
+import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
 import { downscaleImage } from '@/lib/files/downscale-image';
 import { isOfflineEncryptionUnavailableError } from '@/lib/offline/crypto';
 import { listEvidenceDraftSummariesForSchedule } from '@/lib/offline/evidence-drafts';
@@ -88,7 +89,10 @@ import {
   resolveMobileVisitStepHeading,
 } from './visit-mode-mobile.shared';
 import { ResidualMedicationForm } from '@/components/features/visits/residual-medication-form';
-import { VisitMedicationStockObservationPanel } from '@/components/features/visits/visit-medication-stock-observation-panel';
+import {
+  VisitMedicationStockObservationPanel,
+  type VisitMedicationStockObservationSubmissionState,
+} from '@/components/features/visits/visit-medication-stock-observation-panel';
 import { SoapVoiceFieldToggle } from '@/components/features/visits/soap-voice-field-toggle';
 import { VoiceSoapAssist } from '@/components/features/visits/voice-soap-assist';
 import { FacilityVisitRecordSwitcher } from '@/components/features/visits/facility-visit-record-switcher';
@@ -116,6 +120,11 @@ import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { CdsAlertPanel, type CdsAlert } from '@/components/features/cds/alert-panel';
 import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import type { StructuredSoap } from '@/types/structured-soap';
+import type {
+  VisitMedicationStockObservationDraft,
+  VisitMedicationStockObservationDraftErrors,
+  VisitMedicationStockObservationRequest,
+} from '@/types/medication-stock';
 import {
   buildHomeVisit2026ReadinessItems,
   getMissingHomeVisit2026CompletionItems,
@@ -130,6 +139,10 @@ import {
 } from '@/lib/visit-location';
 import { appendVoiceTranscript } from '@/lib/voice-recognition';
 import { getVisitExecutionQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
+import {
+  buildVisitMedicationStockObservationRequest,
+  submitVisitMedicationStockObservations,
+} from '@/lib/visits/medication-stock-observation';
 import {
   createFacilityVisitRecordHref,
   getNextGroupedVisitScheduleId,
@@ -286,6 +299,25 @@ type UploadedVisitAttachment = {
   size_bytes: number;
   uploaded_at: string | null;
   kind: 'photo' | 'attachment';
+};
+
+type SavedVisitRecord = {
+  id: string;
+  version: number;
+  patient_id: string;
+};
+
+type VisitRecordMutationInput = {
+  values: FormValues;
+  medicationStockRequest: VisitMedicationStockObservationRequest | null;
+  medicationStockIdempotencyKey: string | null;
+};
+
+type PendingMedicationStockSubmission = {
+  record: SavedVisitRecord;
+  attachmentWarning: string | null;
+  request: VisitMedicationStockObservationRequest;
+  idempotencyKey: string;
 };
 
 type VisitPreparationSnapshot = {
@@ -572,9 +604,11 @@ function VisitRecordLoadingState() {
 export function VisitRecordForm({
   id,
   facilityVisitContext = null,
+  medicationStockObservationWriteEnabled = false,
 }: {
   id: string;
   facilityVisitContext?: FacilityVisitContext | null;
+  medicationStockObservationWriteEnabled?: boolean;
 }) {
   const router = useRouter();
   const orgId = useOrgId();
@@ -587,6 +621,15 @@ export function VisitRecordForm({
   // 撮影・動作確認用のデモ注入(dev 限定、p0_34 の window フックの作法)
   const [demoUnsyncedPhotoCount, setDemoUnsyncedPhotoCount] = useState<number | null>(null);
   const [selectedAttachments, setSelectedAttachments] = useState<VisitAttachmentDraft[]>([]);
+  const [medicationStockDrafts, setMedicationStockDrafts] = useState<
+    VisitMedicationStockObservationDraft[]
+  >([]);
+  const [medicationStockValidationErrors, setMedicationStockValidationErrors] =
+    useState<VisitMedicationStockObservationDraftErrors>({});
+  const [medicationStockSubmissionState, setMedicationStockSubmissionState] =
+    useState<VisitMedicationStockObservationSubmissionState>({ status: 'idle' });
+  const [pendingMedicationStockSubmission, setPendingMedicationStockSubmission] =
+    useState<PendingMedicationStockSubmission | null>(null);
   const [draftSaveStatus, setDraftSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [visitGeoLog, setVisitGeoLog] = useState<VisitGeoLog | null>(null);
   const [locationTrackingEnabled] = useState(() =>
@@ -787,7 +830,7 @@ export function VisitRecordForm({
     control: form.control,
   }) as FormValues;
   const allowNavigation = useUnsavedChangesGuard({
-    enabled: form.formState.isDirty,
+    enabled: form.formState.isDirty || medicationStockDrafts.length > 0,
   });
   const isFormDirty = form.formState.isDirty;
   useEffect(() => {
@@ -1311,7 +1354,7 @@ export function VisitRecordForm({
 
   // Create visit record mutation
   const createRecord = useMutation({
-    mutationFn: async (values: FormValues) => {
+    mutationFn: async ({ values }: VisitRecordMutationInput) => {
       const payload = normalizeVisitReceiptPayload({
         ...values,
         patient_id: schedule?.patient_id ?? values.patient_id,
@@ -1344,7 +1387,7 @@ export function VisitRecordForm({
         throw new Error(err.message ?? '訪問記録の保存に失敗しました');
       }
 
-      const { record } = await res.json();
+      const { record } = (await res.json()) as { record: SavedVisitRecord };
       const labPatientId = schedule?.patient_id ?? values.patient_id;
 
       // ⑤ 反映導線: 確認した患者情報を正本(患者詳細)へ反映する(任意・オンライン時のみ・非ブロッキング)。
@@ -1423,10 +1466,11 @@ export function VisitRecordForm({
         };
       }
     },
-    onSuccess: async ({ record, attachmentWarning }) => {
+    onSuccess: async ({ record, attachmentWarning }, variables) => {
       await clearDraft();
       await refreshSyncState();
       setSelectedAttachments([]);
+      form.reset(form.getValues());
       await invalidateQueryKeys(
         queryClient,
         getVisitExecutionQueryKeys({
@@ -1435,25 +1479,96 @@ export function VisitRecordForm({
           scheduleId: id,
         }),
       );
-      allowNavigation();
       if (attachmentWarning) {
         toast.warning(attachmentWarning);
-      } else {
-        toast.success('訪問記録を保存しました');
       }
-      const nextScheduleId = getNextGroupedVisitScheduleId(id, effectiveFacilityVisitContext);
-      if (nextScheduleId && effectiveFacilityVisitContext) {
-        router.push(createFacilityVisitRecordHref(nextScheduleId, effectiveFacilityVisitContext));
+
+      if (variables.medicationStockRequest && variables.medicationStockIdempotencyKey) {
+        const pending = {
+          record,
+          attachmentWarning,
+          request: variables.medicationStockRequest,
+          idempotencyKey: variables.medicationStockIdempotencyKey,
+        } satisfies PendingMedicationStockSubmission;
+        setPendingMedicationStockSubmission(pending);
+        const applied = await submitPendingMedicationStockObservation(pending);
+        if (!applied) return;
+        await finishSavedVisit(record, attachmentWarning, true);
         return;
       }
-      router.push(`/visits/${record.id}`);
+
+      await finishSavedVisit(record, attachmentWarning, false);
     },
     onError: (err: Error) => {
       toast.error(messageFromError(err, '保存に失敗しました'));
     },
   });
 
+  async function submitPendingMedicationStockObservation(
+    pending: PendingMedicationStockSubmission,
+  ): Promise<boolean> {
+    setMedicationStockSubmissionState({
+      status: 'saving',
+      message: '訪問記録は保存済みです。残数観測を登録しています。',
+    });
+    const result = await submitVisitMedicationStockObservations({
+      visitRecordId: pending.record.id,
+      orgId,
+      idempotencyKey: pending.idempotencyKey,
+      request: pending.request,
+    });
+    if (!result.ok) {
+      setMedicationStockSubmissionState({ status: result.status, message: result.message });
+      toast.error(`訪問記録は保存しましたが、${result.message}`);
+      return false;
+    }
+    setMedicationStockSubmissionState({ status: 'idle' });
+    setPendingMedicationStockSubmission(null);
+    setMedicationStockDrafts([]);
+    setMedicationStockValidationErrors({});
+    return true;
+  }
+
+  async function finishSavedVisit(
+    record: SavedVisitRecord,
+    attachmentWarning: string | null,
+    medicationStockApplied: boolean,
+  ) {
+    allowNavigation();
+    if (!attachmentWarning) {
+      toast.success(
+        medicationStockApplied ? '訪問記録と残数観測を保存しました' : '訪問記録を保存しました',
+      );
+    }
+    const nextScheduleId = getNextGroupedVisitScheduleId(id, effectiveFacilityVisitContext);
+    if (nextScheduleId && effectiveFacilityVisitContext) {
+      router.push(createFacilityVisitRecordHref(nextScheduleId, effectiveFacilityVisitContext));
+      return;
+    }
+    router.push(`/visits/${record.id}`);
+  }
+
+  async function retryMedicationStockSubmission() {
+    if (!pendingMedicationStockSubmission || medicationStockSubmissionState.status === 'saving') {
+      return;
+    }
+    const applied = await submitPendingMedicationStockObservation(pendingMedicationStockSubmission);
+    if (!applied) return;
+    await finishSavedVisit(
+      pendingMedicationStockSubmission.record,
+      pendingMedicationStockSubmission.attachmentWarning,
+      true,
+    );
+  }
+
   async function onSubmit(values: FormValues) {
+    if (pendingMedicationStockSubmission || medicationStockSubmissionState.status !== 'idle') {
+      document
+        .getElementById('visit-medication-stock-observation-panel')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      toast.error('訪問記録は保存済みです。残数観測の登録結果を確認してください');
+      return;
+    }
     if (
       requiresCarryItemWarningAcknowledgement &&
       values.carry_item_warning_acknowledged !== true
@@ -1514,6 +1629,34 @@ export function VisitRecordForm({
       visit_geo_log: locationTrackingEnabled ? (nextVisitGeoLog ?? undefined) : undefined,
     });
 
+    let medicationStockRequest: VisitMedicationStockObservationRequest | null = null;
+    let medicationStockIdempotencyKey: string | null = null;
+    if (medicationStockDrafts.length > 0) {
+      if (!medicationStockObservationWriteEnabled) {
+        document
+          .getElementById('visit-medication-stock-observation-panel')
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        toast.error('残数観測の登録機能はDB連携確認中です。従来の残薬記録を使用してください。');
+        return;
+      }
+      const prepared = buildVisitMedicationStockObservationRequest(medicationStockDrafts);
+      if (!prepared.ok) {
+        setMedicationStockValidationErrors(prepared.errors);
+        document
+          .getElementById('visit-medication-stock-observation-panel')
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        toast.error('残数観測の入力内容を確認してください');
+        return;
+      }
+      if (!isNetworkOnline || (typeof window !== 'undefined' && !window.navigator.onLine)) {
+        toast.error('残数観測がある場合はオンラインで訪問記録を保存してください');
+        return;
+      }
+      medicationStockRequest = prepared.data;
+      medicationStockIdempotencyKey = createClientIdempotencyKey('visit-stock-request');
+      setMedicationStockValidationErrors({});
+    }
+
     if (typeof window !== 'undefined' && !window.navigator.onLine) {
       if (selectedAttachments.length > 0) {
         toast.error('添付ファイルがある場合はオンラインで保存してください');
@@ -1538,7 +1681,11 @@ export function VisitRecordForm({
       return;
     }
 
-    createRecord.mutate(payload);
+    createRecord.mutate({
+      values: payload,
+      medicationStockRequest,
+      medicationStockIdempotencyKey,
+    });
   }
 
   const errorSummaryItems = collectFormErrorSummaryItems(form.formState.errors, {
@@ -1616,9 +1763,11 @@ export function VisitRecordForm({
     unsyncedPhotoCount,
   );
   const visitSaveState: VisitSaveState =
-    createRecord.isPending || draftSaveStatus === 'saving'
+    createRecord.isPending ||
+    medicationStockSubmissionState.status === 'saving' ||
+    draftSaveStatus === 'saving'
       ? 'saving'
-      : syncConflicts.length > 0
+      : syncConflicts.length > 0 || medicationStockSubmissionState.status === 'conflict'
         ? 'conflict'
         : isOffline || pendingSyncCount > 0 || unsyncedPhotoCount > 0
           ? 'sync_waiting'
@@ -2649,7 +2798,18 @@ export function VisitRecordForm({
                 )}
               >
                 <CardContent className="space-y-4 pt-4">
-                  <VisitMedicationStockObservationPanel patientId={schedule?.patient_id ?? null} />
+                  <VisitMedicationStockObservationPanel
+                    patientId={schedule?.patient_id ?? null}
+                    writeEnabled={medicationStockObservationWriteEnabled}
+                    drafts={medicationStockDrafts}
+                    onDraftsChange={(drafts) => {
+                      setMedicationStockDrafts(drafts);
+                      setMedicationStockValidationErrors({});
+                    }}
+                    validationErrors={medicationStockValidationErrors}
+                    submissionState={medicationStockSubmissionState}
+                    onRetrySubmission={() => void retryMedicationStockSubmission()}
+                  />
                   <ResidualMedicationForm
                     onImmediateDraftSave={() => flushCurrentDraftSnapshot({ force: true })}
                   />
@@ -2783,7 +2943,9 @@ export function VisitRecordForm({
               saveState={visitSaveState}
               onSaveDraft={handleManualDraftSave}
               onMobileStepSelect={handleMobileStepSelect}
-              submitPending={createRecord.isPending}
+              submitPending={
+                createRecord.isPending || medicationStockSubmissionState.status !== 'idle'
+              }
             />
           </div>
 

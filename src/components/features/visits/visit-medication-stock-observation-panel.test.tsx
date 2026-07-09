@@ -1,12 +1,16 @@
 // @vitest-environment jsdom
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { useState } from 'react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { VisitMedicationStockObservationPanel } from './visit-medication-stock-observation-panel';
-import type { PatientMedicationStockSummaryResponse } from '@/types/medication-stock';
+import type {
+  PatientMedicationStockSummaryResponse,
+  VisitMedicationStockObservationDraft,
+} from '@/types/medication-stock';
 
 const { useOrgIdMock, useNetworkOnlineMock, fetchMock } = vi.hoisted(() => ({
   useOrgIdMock: vi.fn(),
@@ -112,6 +116,37 @@ function renderPanel(patientId: string | null = 'patient_1') {
   });
 }
 
+function freshStockSummary(): PatientMedicationStockSummaryResponse {
+  return {
+    ...stockSummary,
+    meta: {
+      ...stockSummary.meta,
+      generated_at: new Date().toISOString(),
+    },
+  };
+}
+
+function WritePanelHarness({
+  onDraftsChange,
+  initialDrafts = [],
+}: {
+  onDraftsChange?: (drafts: VisitMedicationStockObservationDraft[]) => void;
+  initialDrafts?: VisitMedicationStockObservationDraft[];
+}) {
+  const [drafts, setDrafts] = useState(initialDrafts);
+  return (
+    <VisitMedicationStockObservationPanel
+      patientId="patient_1"
+      writeEnabled
+      drafts={drafts}
+      onDraftsChange={(nextDrafts) => {
+        setDrafts(nextDrafts);
+        onDraftsChange?.(nextDrafts);
+      }}
+    />
+  );
+}
+
 describe('VisitMedicationStockObservationPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -143,9 +178,10 @@ describe('VisitMedicationStockObservationPanel', () => {
     expect(screen.getByText('snapshot未作成')).toBeTruthy();
     expect(screen.getByText('他 1 件')).toBeTruthy();
 
-    const quantityInputs = screen.getAllByLabelText('今回確認した残数') as HTMLInputElement[];
-    expect(quantityInputs).toHaveLength(2);
-    expect(quantityInputs.every((input) => input.disabled)).toBe(true);
+    expect(screen.getByText('登録無効')).toBeTruthy();
+    const observationSelectors = screen.getAllByRole('combobox', { name: '今回の観測' });
+    expect(observationSelectors).toHaveLength(2);
+    expect(observationSelectors.every((input) => input.hasAttribute('disabled'))).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(String(fetchMock.mock.calls[0][0])).toBe(
       '/api/patients/patient_1/medication-stock?item_limit=20&event_limit=0',
@@ -207,5 +243,115 @@ describe('VisitMedicationStockObservationPanel', () => {
         'オフライン中のため残数管理情報を取得できません。通信復帰後に再取得してください。',
       ),
     ).toBeTruthy();
+  });
+
+  it('collects a controlled observation draft without posting before visit record save', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(freshStockSummary()), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    const onDraftsChange = vi.fn();
+
+    render(<WritePanelHarness onDraftsChange={onDraftsChange} />, {
+      wrapper: createQueryClientWrapper(),
+    });
+
+    expect(await screen.findByText('モーラスパップ30mg')).toBeTruthy();
+    const observationSelectors = screen.getAllByRole('combobox', { name: '今回の観測' });
+    fireEvent.click(observationSelectors[0]);
+    const observedAbsoluteOption = screen.getByRole('option', { name: '今回残数' });
+    fireEvent.pointerDown(observedAbsoluteOption, { pointerType: 'mouse' });
+    fireEvent.click(observedAbsoluteOption);
+
+    await waitFor(() => {
+      expect(onDraftsChange).toHaveBeenCalledWith([
+        expect.objectContaining({
+          stock_item_id: 'stock_1',
+          kind: 'observed_absolute',
+        }),
+      ]);
+    });
+
+    fireEvent.change(screen.getByLabelText('今回残数（枚）'), {
+      target: { value: '4' },
+    });
+    fireEvent.click(screen.getByRole('combobox', { name: '確認元' }));
+    const pharmacistSourceOption = screen.getByRole('option', { name: '薬剤師が直接確認' });
+    fireEvent.pointerDown(pharmacistSourceOption, { pointerType: 'mouse' });
+    fireEvent.click(pharmacistSourceOption);
+
+    expect(onDraftsChange).toHaveBeenLastCalledWith([
+      expect.objectContaining({
+        stock_item_id: 'stock_1',
+        kind: 'observed_absolute',
+        quantity_input: '4',
+        source_preset: 'pharmacist_counted',
+      }),
+    ]);
+    expect(
+      fetchMock.mock.calls.some((call) =>
+        String(call[0]).includes('/medication-stock-observations'),
+      ),
+    ).toBe(false);
+  });
+
+  it('preserves a draft but disables mutation fields when the network goes offline', async () => {
+    useNetworkOnlineMock.mockReturnValue(false);
+    const draft: VisitMedicationStockObservationDraft = {
+      client_observation_id: 'obs_1',
+      stock_item_id: 'stock_1',
+      unit: '枚',
+      kind: 'observed_absolute',
+      quantity_input: '4',
+      used_quantity_input: '',
+      usage_quantity_input: '',
+      usage_period_days_input: '',
+      last_used_date: '',
+      unobserved_reason_code: '',
+      source_preset: 'pharmacist_counted',
+    };
+
+    render(<WritePanelHarness initialDrafts={[draft]} />, {
+      wrapper: createQueryClientWrapper(),
+    });
+
+    expect(screen.getByText('オフライン送信不可')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'オフライン中のため残数管理情報を取得できません。通信復帰後に再取得してください。',
+      ),
+    ).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('shows persistent submission failure and retries only through the explicit action', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(freshStockSummary()), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    const onRetrySubmission = vi.fn();
+
+    render(
+      <VisitMedicationStockObservationPanel
+        patientId="patient_1"
+        writeEnabled
+        drafts={[]}
+        onDraftsChange={() => undefined}
+        submissionState={{
+          status: 'conflict',
+          message: '残数観測が競合しました。最新情報を確認して同じ内容で再試行してください。',
+        }}
+        onRetrySubmission={onRetrySubmission}
+      />,
+      { wrapper: createQueryClientWrapper() },
+    );
+
+    expect((await screen.findByRole('alert')).textContent).toContain('残数観測が競合しました');
+    fireEvent.click(screen.getByRole('button', { name: '同じ内容で再試行' }));
+    expect(onRetrySubmission).toHaveBeenCalledTimes(1);
   });
 });

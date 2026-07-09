@@ -4,12 +4,17 @@ import { Prisma } from '@prisma/client';
 
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
-const { applyVisitMedicationStockObservationsMock, withAuthContextOptions, withOrgContextMock } =
-  vi.hoisted(() => ({
-    applyVisitMedicationStockObservationsMock: vi.fn(),
-    withAuthContextOptions: [] as Array<{ permission?: string; message?: string }>,
-    withOrgContextMock: vi.fn(),
-  }));
+const {
+  applyVisitMedicationStockObservationsMock,
+  isVisitMedicationStockObservationWriteEnabledMock,
+  withAuthContextOptions,
+  withOrgContextMock,
+} = vi.hoisted(() => ({
+  applyVisitMedicationStockObservationsMock: vi.fn(),
+  isVisitMedicationStockObservationWriteEnabledMock: vi.fn(),
+  withAuthContextOptions: [] as Array<{ permission?: string; message?: string }>,
+  withOrgContextMock: vi.fn(),
+}));
 
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext: (
@@ -40,6 +45,13 @@ vi.mock('@/lib/db/rls', () => ({
 
 vi.mock('@/modules/pharmacy', () => ({
   applyVisitMedicationStockObservations: applyVisitMedicationStockObservationsMock,
+}));
+
+vi.mock('@/lib/visits/medication-stock-observation-gate.server', () => ({
+  isVisitMedicationStockObservationWriteEnabled: isVisitMedicationStockObservationWriteEnabledMock,
+  VISIT_MEDICATION_STOCK_OBSERVATION_DISABLED_CODE: 'MEDICATION_STOCK_OBSERVATION_DISABLED',
+  VISIT_MEDICATION_STOCK_OBSERVATION_DISABLED_MESSAGE:
+    '残数観測の登録機能はDB連携確認中です。従来の残薬記録を使用してください。',
 }));
 
 import { POST as rawPOST } from './route';
@@ -81,6 +93,7 @@ function createBody(overrides: Record<string, unknown> = {}) {
 describe('POST /api/visit-records/[id]/medication-stock-observations', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    isVisitMedicationStockObservationWriteEnabledMock.mockReturnValue(true);
     withOrgContextMock.mockImplementation(async (_orgId, callback) => callback({ tx: true }));
     applyVisitMedicationStockObservationsMock.mockResolvedValue({
       kind: 'applied',
@@ -119,6 +132,22 @@ describe('POST /api/visit-records/[id]/medication-stock-observations', () => {
         message: '訪問記録の残数観測を登録する権限がありません',
       }),
     );
+  });
+
+  it('fails closed before parsing or writing when the matched UI/API release gate is disabled', async () => {
+    isVisitMedicationStockObservationWriteEnabledMock.mockReturnValueOnce(false);
+
+    const response = await POST(createRequest(createBody()));
+    const payload = await response.json();
+
+    expect(response.status).toBe(503);
+    expectSensitiveNoStore(response);
+    expect(payload).toEqual({
+      code: 'MEDICATION_STOCK_OBSERVATION_DISABLED',
+      message: '残数観測の登録機能はDB連携確認中です。従来の残薬記録を使用してください。',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(applyVisitMedicationStockObservationsMock).not.toHaveBeenCalled();
   });
 
   it('records visit medication stock observations through a serializable org-scoped transaction', async () => {

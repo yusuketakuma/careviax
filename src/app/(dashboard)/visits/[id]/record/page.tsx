@@ -1,6 +1,7 @@
 import { Metadata } from 'next';
 import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-intro';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { isVisitMedicationStockObservationWriteEnabled } from '@/lib/visits/medication-stock-observation-gate.server';
 import { VisitRecordForm } from './visit-record-form';
 
 export const metadata: Metadata = {
@@ -9,6 +10,7 @@ export const metadata: Metadata = {
 
 export default async function VisitRecordPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const medicationStockObservationWriteEnabled = isVisitMedicationStockObservationWriteEnabled();
 
   return (
     // p0_23(<md): 没入型ウィザードのため余白・カード装飾・導入ブロックを外し、
@@ -39,7 +41,11 @@ export default async function VisitRecordPage({ params }: { params: Promise<{ id
         mainWorkflowDescription="訪問記録入力でも、次に報告書へ進む主業務フローの位置を見失わないようにしています。"
       />
 
-      <VisitRecordForm id={id} facilityVisitContext={null} />
+      <VisitRecordForm
+        id={id}
+        facilityVisitContext={null}
+        medicationStockObservationWriteEnabled={medicationStockObservationWriteEnabled}
+      />
     </PageScaffold>
   );
 }

@@ -20,6 +20,11 @@ import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
 import { logger } from '@/lib/utils/logger';
 import {
+  isVisitMedicationStockObservationWriteEnabled,
+  VISIT_MEDICATION_STOCK_OBSERVATION_DISABLED_CODE,
+  VISIT_MEDICATION_STOCK_OBSERVATION_DISABLED_MESSAGE,
+} from '@/lib/visits/medication-stock-observation-gate.server';
+import {
   applyVisitMedicationStockObservations,
   type VisitMedicationStockObservationInput,
 } from '@/modules/pharmacy';
@@ -224,6 +229,14 @@ const authenticatedPOST = withAuthContext(
     const { id: rawId } = await params;
     const visitRecordId = normalizeRequiredRouteParam(rawId);
     if (!visitRecordId) return validationError('訪問記録IDが不正です');
+
+    if (!isVisitMedicationStockObservationWriteEnabled()) {
+      return error(
+        VISIT_MEDICATION_STOCK_OBSERVATION_DISABLED_CODE,
+        VISIT_MEDICATION_STOCK_OBSERVATION_DISABLED_MESSAGE,
+        503,
+      );
+    }
 
     const parsedIdempotencyKey = parseOptionalIdempotencyKey(req.headers.get('Idempotency-Key'));
     if (!parsedIdempotencyKey.ok) return validationError(parsedIdempotencyKey.message);

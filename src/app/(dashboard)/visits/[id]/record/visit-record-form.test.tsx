@@ -8,6 +8,10 @@ import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { VisitRecordForm, fetchVisitRecordCdsAlerts } from './visit-record-form';
+import type {
+  VisitMedicationStockObservationDraft,
+  VisitMedicationStockObservationDraftErrors,
+} from '@/types/medication-stock';
 
 const {
   routerBackMock,
@@ -30,6 +34,7 @@ const {
   fetchUrls,
   cdsAlertPanelCalls,
   medicationStockPanelCalls,
+  submitVisitMedicationStockObservationsMock,
 } = vi.hoisted(() => ({
   routerBackMock: vi.fn(),
   routerPushMock: vi.fn(),
@@ -55,7 +60,16 @@ const {
   toastInfoMock: vi.fn(),
   fetchUrls: [] as string[],
   cdsAlertPanelCalls: [] as Array<{ isUnavailable?: boolean; isLoading?: boolean }>,
-  medicationStockPanelCalls: [] as Array<{ patientId: string | null | undefined }>,
+  medicationStockPanelCalls: [] as Array<{
+    patientId: string | null | undefined;
+    writeEnabled?: boolean;
+    drafts?: readonly VisitMedicationStockObservationDraft[];
+    validationErrors?: VisitMedicationStockObservationDraftErrors;
+    submissionState?: { status: string; message?: string };
+    onDraftsChange?: (drafts: VisitMedicationStockObservationDraft[]) => void;
+    onRetrySubmission?: () => void;
+  }>,
+  submitVisitMedicationStockObservationsMock: vi.fn(),
 }));
 
 vi.mock('next/navigation', () => ({
@@ -201,15 +215,64 @@ vi.mock('@/components/features/visits/visit-medication-management-section', () =
 }));
 
 vi.mock('@/components/features/visits/visit-medication-stock-observation-panel', () => ({
-  VisitMedicationStockObservationPanel: ({
-    patientId,
-  }: {
+  VisitMedicationStockObservationPanel: (props: {
     patientId: string | null | undefined;
+    writeEnabled?: boolean;
+    drafts?: readonly VisitMedicationStockObservationDraft[];
+    validationErrors?: VisitMedicationStockObservationDraftErrors;
+    submissionState?: { status: string; message?: string };
+    onDraftsChange?: (drafts: VisitMedicationStockObservationDraft[]) => void;
+    onRetrySubmission?: () => void;
   }) => {
-    medicationStockPanelCalls.push({ patientId });
-    return <div data-testid="visit-medication-stock-observation-panel" />;
+    medicationStockPanelCalls.push(props);
+    const validDraft: VisitMedicationStockObservationDraft = {
+      client_observation_id: 'obs_stock_1',
+      stock_item_id: 'stock_1',
+      unit: '枚',
+      kind: 'observed_absolute',
+      quantity_input: '4',
+      used_quantity_input: '',
+      usage_quantity_input: '',
+      usage_period_days_input: '',
+      last_used_date: '2026-04-09',
+      unobserved_reason_code: '',
+      source_preset: 'pharmacist_counted',
+    };
+    const invalidDraft: VisitMedicationStockObservationDraft = {
+      ...validDraft,
+      quantity_input: '',
+      source_preset: '',
+    };
+    const firstValidationError = Object.values(props.validationErrors ?? {})[0]?.quantity_input;
+    return (
+      <div data-testid="visit-medication-stock-observation-panel">
+        <span data-testid="visit-medication-stock-submission-state">
+          {props.submissionState?.status ?? 'idle'}
+        </span>
+        <span data-testid="visit-medication-stock-validation-error">
+          {firstValidationError ?? ''}
+        </span>
+        <button type="button" onClick={() => props.onDraftsChange?.([validDraft])}>
+          残数観測テスト入力
+        </button>
+        <button type="button" onClick={() => props.onDraftsChange?.([invalidDraft])}>
+          残数観測不正入力
+        </button>
+        <button type="button" onClick={props.onRetrySubmission}>
+          残数観測再試行
+        </button>
+      </div>
+    );
   },
 }));
+
+vi.mock('@/lib/visits/medication-stock-observation', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/visits/medication-stock-observation')>();
+  return {
+    ...actual,
+    submitVisitMedicationStockObservations: submitVisitMedicationStockObservationsMock,
+  };
+});
 
 vi.mock('@/components/features/visits/patient-care-team-source-panel', () => ({
   PatientCareTeamSourcePanel: () => null,
@@ -253,10 +316,19 @@ vi.mock('./visit-completion-readiness-warning', () => ({
 
 setupDomTestEnv();
 
-function renderVisitRecordForm() {
-  return render(<VisitRecordForm id="schedule_partial" facilityVisitContext={null} />, {
-    wrapper: createQueryClientWrapper(),
-  });
+function renderVisitRecordForm({
+  medicationStockObservationWriteEnabled = false,
+}: { medicationStockObservationWriteEnabled?: boolean } = {}) {
+  return render(
+    <VisitRecordForm
+      id="schedule_partial"
+      facilityVisitContext={null}
+      medicationStockObservationWriteEnabled={medicationStockObservationWriteEnabled}
+    />,
+    {
+      wrapper: createQueryClientWrapper(),
+    },
+  );
 }
 
 describe('VisitRecordForm carry-item acknowledgement', () => {
@@ -269,6 +341,36 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
     useNetworkOnlineMock.mockReturnValue(true);
     refreshSyncStateMock.mockResolvedValue(undefined);
     refreshSyncCountMock.mockResolvedValue(undefined);
+    submitVisitMedicationStockObservationsMock.mockResolvedValue({
+      ok: true,
+      data: {
+        data: {
+          visit_record_id: 'record_1',
+          observations: [
+            {
+              client_observation_id: 'obs_stock_1',
+              stock_item_id: 'stock_1',
+              stock_event_id: 'event_1',
+              observation_context_id: 'context_1',
+              event_type: 'visit_observation',
+              observation_kind: 'observed_absolute',
+              quantity_kind: 'observed_absolute',
+              snapshot: {
+                current_quantity: 4,
+                stock_risk_level: 'ok',
+                calculated_at: '2026-04-09T01:00:00.000Z',
+              },
+              idempotent_replay: false,
+            },
+          ],
+        },
+        meta: {
+          generated_at: '2026-04-09T01:00:00.000Z',
+          applied_count: 1,
+          replay_count: 0,
+        },
+      },
+    });
     offlineStoreState.isOffline = false;
     offlineStoreState.pendingSyncCount = 0;
     offlineStoreState.syncConflicts = [];
@@ -941,6 +1043,7 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
 
     expect(screen.getByTestId('visit-medication-stock-observation-panel')).toBeTruthy();
     expect(medicationStockPanelCalls.some((call) => call.patientId === 'patient_1')).toBe(true);
+    expect(medicationStockPanelCalls.at(-1)?.writeEnabled).toBe(false);
 
     fireEvent.click(screen.getByRole('button', { name: '延期' }));
     fireEvent.submit(document.querySelector('form')!);
@@ -951,6 +1054,176 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
     expect(visitRecordPostBodies[0]).not.toHaveProperty('medication_stock_observations');
     expect(visitRecordPostBodies[0]).not.toHaveProperty('stock_observations');
     expect(fetchUrls.some((url) => url.includes('/medication-stock-observations'))).toBe(false);
+  });
+
+  it('fails closed when medication stock drafts exist while the server capability gate is disabled', async () => {
+    renderVisitRecordForm();
+
+    await waitFor(() => {
+      expect((document.querySelector('input[name="patient_id"]') as HTMLInputElement)?.value).toBe(
+        'patient_1',
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '残数観測テスト入力' }));
+    await waitFor(() => {
+      expect(medicationStockPanelCalls.at(-1)?.drafts).toHaveLength(1);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '延期' }));
+    fireEvent.submit(document.querySelector('form')!);
+
+    await waitFor(() => {
+      expect(toastErrorMock).toHaveBeenCalledWith(
+        '残数観測の登録機能はDB連携確認中です。従来の残薬記録を使用してください。',
+      );
+    });
+    expect(visitRecordPostBodies).toHaveLength(0);
+    expect(submitVisitMedicationStockObservationsMock).not.toHaveBeenCalled();
+  });
+
+  it('submits medication stock observations after the visit record with a request idempotency key', async () => {
+    renderVisitRecordForm({ medicationStockObservationWriteEnabled: true });
+
+    await waitFor(() => {
+      expect((document.querySelector('input[name="patient_id"]') as HTMLInputElement)?.value).toBe(
+        'patient_1',
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '残数観測テスト入力' }));
+    await waitFor(() => {
+      expect(medicationStockPanelCalls.at(-1)?.drafts).toHaveLength(1);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '延期' }));
+    fireEvent.submit(document.querySelector('form')!);
+
+    await waitFor(() => {
+      expect(visitRecordPostBodies).toHaveLength(1);
+    });
+    await waitFor(() => {
+      expect(submitVisitMedicationStockObservationsMock).toHaveBeenCalledTimes(1);
+    });
+
+    expect(visitRecordPostBodies[0]).not.toHaveProperty('medication_stock_observations');
+    expect(visitRecordPostBodies[0]).not.toHaveProperty('stock_observations');
+    expect(submitVisitMedicationStockObservationsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        visitRecordId: 'record_1',
+        orgId: 'org_1',
+        idempotencyKey: expect.stringMatching(/^visit-stock-request:/),
+        request: expect.objectContaining({
+          observations: [
+            expect.objectContaining({
+              client_observation_id: 'obs_stock_1',
+              stock_item_id: 'stock_1',
+              kind: 'observed_absolute',
+              quantity: 4,
+              unit: '枚',
+              source_context_code: 'pharmacist_direct_observation',
+            }),
+          ],
+        }),
+      }),
+    );
+    await waitFor(() => {
+      expect(routerPushMock).toHaveBeenCalledWith('/visits/record_1');
+    });
+    expect(toastSuccessMock).toHaveBeenCalledWith('訪問記録と残数観測を保存しました');
+  });
+
+  it('keeps the visit record unsaved when medication stock draft validation fails', async () => {
+    renderVisitRecordForm({ medicationStockObservationWriteEnabled: true });
+
+    await waitFor(() => {
+      expect((document.querySelector('input[name="patient_id"]') as HTMLInputElement)?.value).toBe(
+        'patient_1',
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '残数観測不正入力' }));
+    await waitFor(() => {
+      expect(medicationStockPanelCalls.at(-1)?.drafts).toHaveLength(1);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '延期' }));
+    fireEvent.submit(document.querySelector('form')!);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('visit-medication-stock-validation-error').textContent).toContain(
+        '今回残数は0以上の数値で入力してください。',
+      );
+    });
+    expect(visitRecordPostBodies).toHaveLength(0);
+    expect(submitVisitMedicationStockObservationsMock).not.toHaveBeenCalled();
+    expect(toastErrorMock).toHaveBeenCalledWith('残数観測の入力内容を確認してください');
+  });
+
+  it('keeps failed medication stock observations pending and retries with the same idempotency key', async () => {
+    submitVisitMedicationStockObservationsMock
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 'conflict',
+        message: '残数観測が競合しました。最新情報を確認して同じ内容で再試行してください。',
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        data: {
+          data: { visit_record_id: 'record_1', observations: [] },
+          meta: {
+            generated_at: '2026-04-09T01:00:00.000Z',
+            applied_count: 0,
+            replay_count: 1,
+          },
+        },
+      });
+
+    renderVisitRecordForm({ medicationStockObservationWriteEnabled: true });
+
+    await waitFor(() => {
+      expect((document.querySelector('input[name="patient_id"]') as HTMLInputElement)?.value).toBe(
+        'patient_1',
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '残数観測テスト入力' }));
+    fireEvent.click(screen.getByRole('button', { name: '延期' }));
+    fireEvent.submit(document.querySelector('form')!);
+
+    await waitFor(() => {
+      expect(submitVisitMedicationStockObservationsMock).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('visit-medication-stock-submission-state').textContent).toBe(
+        'conflict',
+      );
+    });
+    expect(routerPushMock).not.toHaveBeenCalledWith('/visits/record_1');
+    expect(visitRecordPostBodies).toHaveLength(1);
+
+    fireEvent.submit(document.querySelector('form')!);
+
+    await waitFor(() => {
+      expect(toastErrorMock).toHaveBeenCalledWith(
+        '訪問記録は保存済みです。残数観測の登録結果を確認してください',
+      );
+    });
+    expect(visitRecordPostBodies).toHaveLength(1);
+    expect(submitVisitMedicationStockObservationsMock).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: '残数観測再試行' }));
+
+    await waitFor(() => {
+      expect(submitVisitMedicationStockObservationsMock).toHaveBeenCalledTimes(2);
+    });
+    const firstCall = submitVisitMedicationStockObservationsMock.mock.calls[0]?.[0];
+    const secondCall = submitVisitMedicationStockObservationsMock.mock.calls[1]?.[0];
+    expect(secondCall?.idempotencyKey).toBe(firstCall?.idempotencyKey);
+    expect(secondCall?.request).toEqual(firstCall?.request);
+    await waitFor(() => {
+      expect(routerPushMock).toHaveBeenCalledWith('/visits/record_1');
+    });
   });
 
   it('flushes the current draft immediately when an attachment is selected', async () => {
